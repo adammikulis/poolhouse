@@ -287,7 +287,9 @@ impl Net {
         }
         let mut c = PeerClient::connect(&self.me, addr, Some(expect))?;
         let name = locked(&self.node)?.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
-        let hello = c.call(&json!({"op": "hello"}))?;
+        let ask = peer::hello_request(&*locked(&self.node)?);
+        let hello = c.call(&ask)?;
+        locked(&self.node)?.observe_build(&c.fingerprint, &hello);
         if hello["project"].as_str().unwrap_or("") != locked(&self.node)?.members.project {
             return Err(Error::Denied("that pool belongs to another project".into()));
         }
@@ -406,6 +408,10 @@ impl Net {
         }
         let grant: Value = serde_json::from_slice(&grant)?;
         self.adopt(&c, &grant, addr, "join-code")?;
+        let ask = peer::hello_request(&*locked(&self.node)?);
+        if let Ok(hello) = c.call(&ask) {
+            locked(&self.node)?.observe_build(&c.fingerprint, &hello);
+        }
         Ok(json!({"pool": grant["pool"], "peer": c.fingerprint}))
     }
 
@@ -422,7 +428,7 @@ impl Net {
         for (fp, addr) in targets {
             let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
                 .and_then(|a| PeerClient::connect(&self.me, a, Some(&fp)))
-                .and_then(|mut c| sync_all(&self.node, &mut c));
+                .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all(&self.node, &mut c)));
             let mut n = locked(&self.node)?;
             let f = n.facts.peer(&fp);
             match result {
@@ -434,6 +440,20 @@ impl Net {
             }
         }
         Ok(reached)
+    }
+
+    /// Ask the peer for its build and remember it; refuse to sync with a peer on another wire version, saying how to fix it.
+    fn compatible(&self, c: &mut PeerClient) -> Result<()> {
+        let ask = peer::hello_request(&*locked(&self.node)?);
+        let hello = c.call(&ask)?;
+        let mut node = locked(&self.node)?;
+        node.observe_build(&c.fingerprint, &hello);
+        let theirs = crate::build::Seen::read(&hello);
+        if theirs.wire != node.build.wire {
+            let name = node.members.get(&c.fingerprint).map(|d| d.name.clone()).unwrap_or_default();
+            return Err(Error::Denied(format!("needs update: {}", crate::build::fix_for(&node.build, &theirs, &name))));
+        }
+        Ok(())
     }
 
     fn sync_loop(self: Arc<Net>, every: Duration) {

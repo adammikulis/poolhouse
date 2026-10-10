@@ -1,41 +1,38 @@
-"""Read-only preflight listing what strict enforcement would stop for a project."""
+"""Read-only preflight listing what strict enforcement would stop on a board."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from poolhouse.workspace import enforcement
-from poolhouse.workspace.identity import HUMAN
-from poolhouse.workspace.taskboard import TaskBoard
+from poolhouse.board.session import Session
+from poolhouse.board.tasks import Tasks
 
 LIVE = ('queued', 'working', 'review', 'blocked')
 
 
-def check(ws, key: str) -> dict[str, Any]:
-    """Tasks of project ``key`` that strict mode would strand, each with the reason."""
-    board = TaskBoard(ws)
-    with board._store() as graph:
-        tasks = [node['attrs'] for node in graph.nodes('task')
-                 if enforcement.key_of(node['attrs']['project']) == key]
-        verifiers = {node['id']: node['attrs']['verifier'] for node in graph.nodes('review')}
+def check(s: Session) -> dict[str, Any]:
+    """Tasks of the board that strict mode would strand, each with the reason."""
+    listed = Tasks(s).list()
+    agents = {a.name: a for a in s.agents()}
     found: list[dict[str, str]] = []
 
     def note(task: dict[str, Any], kind: str, detail: str) -> None:
-        found.append({'task': task['id'], 'title': task['title'], 'state': task['state'],
-                      'kind': kind, 'detail': detail})
+        found.append({'task': task['id'], 'title': task['title'], 'state': task['state'], 'kind': kind, 'detail': detail})
 
-    for task in tasks:
-        if task['state'] == 'queued' and not task['assignees'] \
-                and ws.registry.role_of(task['created_by']) != HUMAN:
-            note(task, 'unassigned', f'created by {task["created_by"]}; only its creator\'s own '
-                 'workers could claim it')
+    def top(name: str) -> bool:
+        return name in agents and not agents[name].parent
+
+    for task in listed['tasks']:
+        if task['state'] == 'queued' and not task['assignees'] and not top(task['created_by']):
+            note(task, 'unassigned', f'created by {task["created_by"]}; only its creator\'s own workers could claim it')
         if task['state'] in LIVE:
             for identity in task['assignees'] + task['reviewers']:
-                if not board._project_grant(identity, task, 'strict'):
-                    note(task, 'designated', f'{identity} is not registered in the task project')
-        if task['state'] == 'accepted' and task.get('review_id') in verifiers:
-            verifier = verifiers[task['review_id']]
-            if not board._qualifies(verifier, ws.registry.role_of(verifier), task, 'strict'):
+                if identity not in agents or agents[identity].retired:
+                    note(task, 'designated', f'{identity} is not a live session of this board')
+        review = task.get('review')
+        if task['state'] == 'accepted' and review:
+            verifier = review['verifier']
+            parent = agents[task['worker']].parent if task['worker'] in agents else ''
+            if not (top(verifier) or verifier in task['reviewers'] or verifier == task['created_by'] == parent):
                 note(task, 'review', f'reviewer {verifier} would not qualify for a new review')
-    return {'project': key, 'mode': enforcement.current(ws, key)['mode'], 'tasks': len(tasks),
-            'stranded': found, 'clear': not found}
+    return {'board': s.board, 'mode': listed['mode'], 'tasks': len(listed['tasks']), 'stranded': found, 'clear': not found}

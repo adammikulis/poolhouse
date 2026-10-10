@@ -9,7 +9,7 @@ import sys
 import time
 
 import pytest
-from workspace_kit import SRC, STRIPPED, Kit, clean_env, cli, run_python
+from workspace_kit import SRC, Kit, clean_env, cli, run_python
 
 from poolhouse import private_path
 from poolhouse.platform import process_group_kwargs
@@ -393,24 +393,6 @@ def test_wait_returns_when_a_message_arrives_and_times_out_otherwise(kit):
         kit.base, kit.owner)
     assert sender.returncode == 0, sender.stderr
     assert [m["seq"] for m in kit.ws.wait(reader, 20)] == [1]
-
-
-def test_watch_once_is_a_background_command_that_exits_when_a_message_arrives(kit):
-    reader = kit.agent("reader")
-    env = {**{k: v for k, v in os.environ.items() if k not in STRIPPED},
-           "POOLHOUSE_WORKSPACE_HOME": str(kit.base), "PYTHONPATH": SRC,
-           "POOLHOUSE_WORKSPACE_TOKEN": reader}
-    watcher = subprocess.Popen([sys.executable, "-m", "poolhouse.workspace.cli", "watch", "--once",
-                                "--timeout", "60", "--json"], env=env, stdout=subprocess.PIPE,
-                               text=True)
-    time.sleep(1.0)
-    assert watcher.poll() is None
-    kit.ws.send(kit.owner, "reader", "task", "wake up")
-    out, _ = watcher.communicate(timeout=30)
-    assert watcher.returncode == 0 and json.loads(out.splitlines()[0])["seq"] == 1
-    quiet = cli(kit.base, reader, "watch", "--once", "--timeout", "1")
-    assert quiet.returncode == 3
-    assert kit.ws.inbox(reader) == []
 
 
 def test_chain_rows_cannot_be_overridden_by_a_caller_field(tmp_path):

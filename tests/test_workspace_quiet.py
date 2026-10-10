@@ -88,7 +88,7 @@ def test_board_posts_without_a_subscription_are_not_delivered_but_are_counted(ki
     ws.send(t["alice"], "#ops", "note", "two")
     assert ws.inbox(t["bob"]) == [] and ws.board.subs(t["bob"]) == [
         {"type": "board", "target": "#ops", "mode": "digest"}]
-    assert "2 unread on #ops" in ws.board.summary(t["bob"])["unread_lines"]
+    assert next(b for b in ws.board.list(t["bob"]) if b["name"] == "#ops")["unread"] == 2
     assert len(ws.board.read(t["bob"], "#ops")) == 2
     assert "#ops" in ws.board.digest(t["bob"])["text"]
 

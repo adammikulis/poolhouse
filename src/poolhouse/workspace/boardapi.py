@@ -735,13 +735,3 @@ class BoardApi:
         if ack:
             self.store.mark(who.id, ANNOUNCE_MARK, rows[-1]["seq"])
         return self._digested(lines, "announcements", {"messages": len(rows), "more": more})
-
-    # -- the summary ----------------------------------------------------------------------
-    def summary(self, token: str) -> dict[str, Any]:
-        """The caller's boards and unread counts, and unread direct messages."""
-        listing = self.list(token)
-        return {"boards": [{"name": b["name"], "unread": b["unread"], "member": b["member"]}
-                           for b in listing],
-                "unread_lines": [f"{b['unread']} unread on {b['name']}" for b in listing
-                                 if b["unread"]],
-                "dms_unread": sum(p["unread"] for p in self.dm_list(token))}

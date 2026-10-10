@@ -130,7 +130,7 @@ The quarantine store holds one record per subject, whatever the kind:
 | `mcp_server` | a third-party server disconnected, its tools dropped | unexpected tools or schema change | reconnect on release |
 | `config` | a plugin or config file changed since its pin | hash mismatch | restore moves the changed file back |
 | `credential` | a name marked suspect, withheld from child processes | its value seen in output or a held message | rotation clears it; the value is never printed |
-| `device` | a device id and address blocked, key and lease revoked on this device | auth failures, replay | unblock on release |
+| `device` | a device id and address blocked, key and lease revoked here | auth failures, replay | unblock on release |
 | `server` | leases revoked and the managed server stopped | binary digest mismatch, unexpected children | restart through the Broker after release |
 
 Considered and left out, with the reason: network egress filtering of the whole machine (no

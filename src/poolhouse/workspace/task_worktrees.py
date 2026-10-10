@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from poolhouse import worktreerules
+from poolhouse.board.taskspec import TASK_ID
 from poolhouse.graph.store import GraphStore
 from poolhouse.net import git
 from poolhouse.workspace import (
@@ -14,7 +15,6 @@ from poolhouse.workspace import (
 )
 from poolhouse.workspace.chain import held
 from poolhouse.workspace.identity import HUMAN, Denied
-from poolhouse.workspace.task_schema import TASK_ID
 
 
 def prepare(ws, token: str, worker: str, task: str) -> dict:

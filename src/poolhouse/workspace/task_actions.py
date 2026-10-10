@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from uuid import uuid4
 
+from poolhouse.board.taskspec import fingerprint, review_decision, submission, text
 from poolhouse.graph.store import GraphStore
 from poolhouse.workspace import task_provenance, task_worktrees, testruns
 from poolhouse.workspace.chain import held
@@ -12,7 +13,6 @@ from poolhouse.workspace.family_accounts import bind_resource
 from poolhouse.workspace.identity import HUMAN, Denied
 from poolhouse.workspace.resource_allocations import verified_binding
 from poolhouse.workspace.task_graph import link, record, save
-from poolhouse.workspace.task_schema import fingerprint, review_decision, submission, text
 
 HEARTBEAT_S = 120
 

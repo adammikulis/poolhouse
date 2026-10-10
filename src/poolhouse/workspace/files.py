@@ -7,6 +7,7 @@ import hashlib
 import os
 import re
 import stat
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +26,8 @@ from poolhouse.workspace.screen import Refused, fence, injection_markers, refusa
 if TYPE_CHECKING:
     from poolhouse.workspace.service import Workspace
 
-__all__ = ["REF", "Attachment", "FileApi", "Where", "human_size", "valid_handle"]
+__all__ = ["HOUR_S", "REF", "Attachment", "FileApi", "Where", "classify", "clean_name", "human_size", "out_path",
+           "read_source", "scan_verdict", "valid_handle"]
 
 REF = re.compile(r"(?<![A-Za-z0-9_])file:([0-9a-f]{12})(?![A-Za-z0-9_])")
 HANDLE = re.compile(r"[0-9a-f]{12}")
@@ -98,6 +100,80 @@ def clean_name(name: str, width: int) -> str:
     base = re.split(r"[\\/]", name.replace("\x00", " "))[-1]
     cleaned = plain.line(re.sub(r"[\\/:*?\"<>|]", "_", base), width).strip(". ")
     return cleaned or "file"
+
+
+def classify(name: str, data: bytes) -> tuple[str, bool]:
+    """``(kind, is_text)`` of ``data`` posted as ``name``; `Refused` for what is never kept."""
+    shown = sniff.detect(data[:sniff.HEAD])
+    low = name.lower()
+    if low.endswith(BLOCKED_SUFFIXES) or shown in BLOCKED_KINDS or PICKLE_MAGIC.match(data[:2]):
+        raise Refused(f"{plain.line(name, 40)} is not accepted: archives, executables, scripts, "
+                      f"pickles and model weights are never posted ({shown or 'by its name'})")
+    if shown == "text" or shown == "json":
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            return "binary", False
+        return shown, b"\x00" not in data
+    return shown or "binary", False
+
+
+def scan_verdict(scratch: Path, kind: str, data: bytes, scanners: Sequence[netscan.Scanner] | None = None) -> str:
+    """Why the scanners refuse ``data`` (written to a temporary file in ``scratch`` while they look), or an empty string."""
+    scanners = scanners if scanners is not None else default_scanners()
+    scratch.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = scratch / f"{hashlib.sha256(data).hexdigest()[:16]}.bin"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+        summary = netscan.scan_file(path, scanners)
+        keep, why = netscan.ScanPolicy().decide(netscan.category(kind), summary)
+    finally:
+        path.unlink(missing_ok=True)
+    return "" if keep else why
+
+
+def read_source(path: str, cap: int, avoid: Sequence[Path]) -> tuple[bytes, str]:
+    """The bytes of ``path`` (or stdin for -), at most one byte over ``cap``, and the file's own name; a link, a
+    folder or a file inside one of the ``avoid`` folders is refused."""
+    if path == "-":
+        return sys.stdin.buffer.read(cap + 1), ""
+    target = Path(path).expanduser()
+    if any(target.resolve().is_relative_to(base.resolve()) for base in avoid):
+        raise Refused("a file inside the workspace's own state is never attached")
+    if not stat.S_ISREG(target.lstat().st_mode):
+        raise Refused("attach a regular file, not a link or a folder")
+    fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(fd, "rb") as handle:
+        return handle.read(cap + 1), target.name
+
+
+def out_path(target: str, roots: Sequence[Path]) -> Path:
+    """A path inside one of ``roots``, with no ``..`` and no symlink on the way, that does not exist yet."""
+    raw = Path(target)
+    if not target or "\x00" in target or ".." in raw.parts:
+        raise Refused("--out is a path inside your worktree, with no ..")
+    for root in roots:
+        base = root.resolve()
+        path = raw if raw.is_absolute() else base / raw
+        try:
+            inside = path.relative_to(base)
+        except ValueError:
+            continue
+        walk = base
+        for part in inside.parts:
+            walk = walk / part
+            if walk.is_symlink():
+                raise Refused("--out never goes through a symlink")
+        if not path.parent.is_dir():
+            raise Refused("--out needs its folder to exist")
+        if path.exists():
+            raise Refused("--out never overwrites a file")
+        if not stat.S_ISDIR(path.parent.stat().st_mode):
+            raise Refused("--out needs its folder to exist")
+        return path
+    raise Refused("--out is a path inside your worktree")
 
 
 class FileApi:
@@ -177,35 +253,9 @@ class FileApi:
             raise ValueError("attach to a board such as #general, an agent id, or thread:SEQ")
         return to, reply_to
 
-    def _kind(self, name: str, data: bytes) -> tuple[str, bool]:
-        """``(kind, is_text)``; `Refused` for what is never kept."""
-        shown = sniff.detect(data[:sniff.HEAD])
-        low = name.lower()
-        if low.endswith(BLOCKED_SUFFIXES) or shown in BLOCKED_KINDS or PICKLE_MAGIC.match(data[:2]):
-            raise Refused(f"{plain.line(name, 40)} is not accepted: archives, executables, scripts, "
-                          f"pickles and model weights are never posted ({shown or 'by its name'})")
-        if shown == "text" or shown == "json":
-            try:
-                data.decode("utf-8")
-            except UnicodeDecodeError:
-                return "binary", False
-            return shown, b"\x00" not in data
-        return shown or "binary", False
-
     def _scan(self, who: Identity, name: str, kind: str, data: bytes) -> None:
-        scanners = self.scanners if self.scanners is not None else default_scanners()
-        tmp = self.store.directory / "scan"
-        tmp.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path = tmp / f"{hashlib.sha256(data).hexdigest()[:16]}.bin"
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        try:
-            with os.fdopen(fd, "wb") as out:
-                out.write(data)
-            summary = netscan.scan_file(path, scanners)
-            keep, why = netscan.ScanPolicy().decide(netscan.category(kind), summary)
-        finally:
-            path.unlink(missing_ok=True)
-        if not keep:
+        why = scan_verdict(self.store.directory / "scan", kind, data, self.scanners)
+        if why:
             qid = self.ws.quarantine.hold("file", f"{who.id}:{plain.line(name, 40)}",
                                           ["scanner"], f"file {plain.line(name, 40)} held: {why}", who.id)
             self.ws.audit("file.refused", who.id, why="scan", qid=qid)
@@ -249,7 +299,7 @@ class FileApi:
             raise ValueError(f"no agent called {plain.line(to, 48)}")
         source = self._source(who, given.derived_from)
         self._caps(who, to, len(data))
-        kind, is_text = self._kind(name, data)
+        kind, is_text = classify(name, data)
         text = data.decode("utf-8") if is_text else ""
         if is_text and (why := refusals(text, self.ws.denylist)):
             self.ws.audit("write.refused", who.id, what="file", why="screen")
@@ -401,39 +451,13 @@ class FileApi:
         who = self._who(token)
         row = self._reach(who, handle)
         self._unheld(who, row["file"])
-        path = self._out_path(target, roots)
+        path = out_path(target, roots)
         data = self._content(handle)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "wb") as out:
             out.write(data)
         self.ws.audit("file.read", who.id, file=handle, size=len(data), what="out")
         return {"id": handle, "wrote": str(path), "size": len(data), "authority": "none"}
-
-    @staticmethod
-    def _out_path(target: str, roots: Sequence[Path]) -> Path:
-        raw = Path(target)
-        if not target or "\x00" in target or ".." in raw.parts:
-            raise Refused("--out is a path inside your worktree, with no ..")
-        for root in roots:
-            base = root.resolve()
-            path = raw if raw.is_absolute() else base / raw
-            try:
-                inside = path.relative_to(base)
-            except ValueError:
-                continue
-            walk = base
-            for part in inside.parts:
-                walk = walk / part
-                if walk.is_symlink():
-                    raise Refused("--out never goes through a symlink")
-            if not path.parent.is_dir():
-                raise Refused("--out needs its folder to exist")
-            if path.exists():
-                raise Refused("--out never overwrites a file")
-            if not stat.S_ISDIR(path.parent.stat().st_mode):
-                raise Refused("--out needs its folder to exist")
-            return path
-        raise Refused("--out is a path inside your worktree")
 
     # -- listing and searching -------------------------------------------------------
     def _wanted(self, who: Identity, w: Where) -> dict[str, dict[str, Any]]:

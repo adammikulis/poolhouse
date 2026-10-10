@@ -10,9 +10,11 @@ from pathlib import Path
 import pytest
 from workspace_kit import Kit, clean_env, cli
 
+from poolhouse.board.client import NodeError
 from poolhouse.testing import injection_corpus as corpus
 from poolhouse.workspace import Denied, Refused, boardroute, tokens
 
+pytest_plugins = ["node_kit"]
 pytestmark = pytest.mark.redteam
 RLO = "\u202e"
 NAMES = ("#../../etc/passwd", "#a/b", "#a" + chr(92) + "b", "#<script>alert(1)</script>", "#a" + RLO + "b",
@@ -241,11 +243,7 @@ def test_a_post_cannot_borrow_another_identity_or_smuggle_options(kit, route):
 def test_following_and_the_live_route_give_an_agent_nothing_it_could_not_already_read(kit, route):
     ws, a, b = kit.ws, kit.tokens["alice"], kit.tokens["bob"]
     ws.board.create(a, "#vault", private=True)
-    send_secret = ws.send(a, "#vault", "note", "SECRETBOARD")
-    for done in (cli(kit.base, b, "watch", "--board", "#vault", "--once", "--timeout", "1"),
-                 cli(kit.base, b, "watch", "--thread", str(send_secret["seq"]), "--once", "--timeout", "1"),
-                 cli(kit.base, b, "watch", "--dm", "alice", "--once", "--timeout", "1")):
-        assert "SECRET" not in done.stdout + done.stderr
+    ws.send(a, "#vault", "note", "SECRETBOARD")
     assert cli(kit.base, b, "chat", "--board", "#vault", env_extra={"CLAUDECODE": "1"}).returncode == 3
     with pytest.raises(Denied):
         ws.news(b, 0, 0)
@@ -282,3 +280,41 @@ def test_the_route_answers_nobody_without_the_session_the_listener_made(kit):
         assert ask("/board/boards", cookie=f"ml_session={server.session}")[0] == 200
     finally:
         server.stop()
+
+
+@pytest.fixture
+def trio(workspace_node):
+    node = workspace_node
+    node.alice, node.bob, node.mallory = (node.member(n) for n in ("alice", "bob", "mallory"))
+    return node
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_a_hostile_room_name_is_refused_by_the_node_and_names_nothing(trio, name):
+    session = trio.session(trio.mallory)
+    for call in (lambda: session.room("create", name), lambda: session.room("join", name),
+                 lambda: session.post(name, "note", "x"), lambda: session.subscribe("board", name)):
+        with pytest.raises(NodeError) as refused:
+            call()
+        assert refused.value.code in ("invalid", "denied"), name
+    if name:
+        assert session.read(channel=name).entries == []
+    assert [room["name"] for room in session.rooms()] == ["#general", "#announcements"]
+    assert trio.cli("board", "list", "--json", who=trio.mallory).returncode == 0
+
+
+def test_watching_follows_nothing_an_agent_cannot_read(trio):
+    alice, bob, mallory = trio.alice, trio.bob, trio.mallory
+    trio.cli("board", "create", "#vault", "--private", who=alice)
+    thread = json.loads(trio.cli("send", bob.name, "question", "SECRETDM", "--json", who=alice).stdout)["seq"]
+    trio.cli("board", "post", "#vault", "SECRETROOM", who=alice)
+    for who, argv in ((mallory, ("--room", "#vault")), (mallory, ("--thread", thread)), (mallory, ("--dm", alice.name)),
+                      (bob, ("--room", "#vault"))):
+        done = trio.cli("watch", *argv, "--once", "--timeout", "1", who=who)
+        assert done.returncode in (2, 3) and "SECRET" not in done.stdout + done.stderr, argv
+    assert trio.cli("watch", "--room", "#vault", "--dm", alice.name, who=alice).returncode == 2
+    for argv in (("board", "read", "#vault"), ("thread", thread), ("board", "threads", "#vault"), ("board", "mentions")):
+        done = trio.cli(*argv, who=mallory)
+        assert "SECRET" not in done.stdout + done.stderr, argv
+    assert json.loads(trio.cli("inbox", "--json", who=mallory).stdout) == []
+    assert trio.cli("quarantine-ls", who=mallory).stdout.strip() in ("[]", "(none)")

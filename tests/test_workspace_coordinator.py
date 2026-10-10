@@ -1,14 +1,12 @@
 """Two device roots use authenticated Fleet transport and one authoritative graph."""
 
 import base64
-import concurrent.futures
 import json
 import os
 import subprocess
 import sys
 import threading
 from types import SimpleNamespace
-from uuid import uuid4
 
 import pytest
 import wheel_cache
@@ -28,7 +26,6 @@ from poolhouse.workspace import cli, coordinator, coordinator_client, coordinato
 from poolhouse.workspace.coordination import workspace_id
 from poolhouse.workspace.coordinator_client import Remote
 from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.taskboard import TaskBoard
 
 
 @pytest.fixture(scope='module')
@@ -86,53 +83,31 @@ def shared(tmp_path, monkeypatch, installed_metadata):
         runner.shutdown()
 
 
-def test_real_distribution_registration_and_two_roots_share_messages_tasks_claims(shared):
+def test_real_distribution_registration_and_a_second_root_reads_the_coordinators_audit_head(shared):
     from importlib.metadata import entry_points
     assert any(entry.value == 'poolhouse.workspace.coordinator:route'
                for entry in entry_points(group='poolhouse.member_routes'))
-    sent = shared.ws.send(shared.alice, 'bob', 'task', 'Inspect shared state')
-    assert shared.remote.command(['outbox'], shared.alice)[0]['seq'] == sent['seq']
-    spec = {'title': 'Shared task', 'description': 'Read coordinator graph', 'acceptance': ['Exact graph state'],
-            'project': {}, 'capabilities': [], 'limits': {}, 'source_key': 'two-device-proof'}
-    task = shared.remote.command(['task-create', json.dumps(spec)], shared.alice)
-    assert TaskBoard(shared.ws).get(shared.alice, task['id'])['id'] == task['id']
-    assert shared.remote.command(['tasks'], shared.alice)['tasks'][0]['id'] == task['id']
+    assert shared.remote.command(['audit-head'], shared.alice)['head'] == shared.ws.audit_log.head()
     assert not (shared.device / 'messages.jsonl').exists()
     assert not (shared.device / 'coordination.db').exists()
-
-
-def test_exact_request_race_and_reconnect_append_once(shared):
-    request = uuid4().hex
-    spec = lambda title: json.dumps({'title': title, 'description': 'd', 'acceptance': ['a'], 'project': {},  # noqa: E731
-                                     'capabilities': [], 'limits': {}, 'source_key': 'race'})
-    def create(_):
-        return shared.remote.command(['task-create', spec('One assigned task')], shared.alice, request_id=request)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(create, range(2)))
-    assert results[0]['id'] == results[1]['id']
-    assert len(TaskBoard(shared.ws).list(shared.alice)['tasks']) == 1
-    assert create(None)['id'] == results[0]['id']
-    with pytest.raises(ServerError) as refused:
-        shared.remote.command(['task-create', spec('Changed payload')], shared.alice, request_id=request)
-    assert refused.value.status == 403
 
 
 @pytest.mark.redteam
 def test_live_agent_and_fleet_auth_precede_replay(shared):
     shared.ws.revoke(shared.owner, 'alice')
     with pytest.raises(ServerError) as sender:
-        shared.remote.command(['status'], shared.alice)
+        shared.remote.command(['audit-head'], shared.alice)
     assert sender.value.status == 403
     with pytest.raises(ServerError) as fleet:
-        Remote(shared.remote.config, Member(shared.remote.member.base_url, 'wrong')).command(['status'], shared.bob)
+        Remote(shared.remote.config, Member(shared.remote.member.base_url, 'wrong')).command(['audit-head'], shared.bob)
     assert fleet.value.status == 401
 
 
 @pytest.mark.redteam
 @pytest.mark.parametrize('argv', [['mint', 'untrusted'], ['init'], ['agent', 'start'],
                                   ['task-integrate', 'task:' + 'a' * 32],
-                                  ['whoami', '--agent', 'owner'], ['status', '--agent', 'owner'],
-                                  ['status', '--token-file', '/secret'], ['notes-verify'], ['claim', 'port', '8784']])
+                                  ['whoami', '--agent', 'owner'], ['tasks', '--agent', 'owner'],
+                                  ['tasks', '--token-file', '/secret'], ['notes-verify'], ['claim', 'port', '8784']])
 def test_remote_call_cannot_open_local_execution_or_choose_an_actor(shared, argv):
     with pytest.raises(ServerError) as refused:
         shared.remote.command(argv, shared.alice)
@@ -143,13 +118,13 @@ def test_remote_call_cannot_open_local_execution_or_choose_an_actor(shared, argv
 @pytest.mark.redteam
 def test_person_token_wrong_workspace_bounds_and_plaintext_remote_are_refused(shared):
     with pytest.raises(ServerError) as person:
-        shared.remote.command(['status'], shared.owner)
+        shared.remote.command(['audit-head'], shared.owner)
     assert person.value.status == 403
     with pytest.raises(ServerError) as wrong:
-        Remote({**shared.remote.config, 'workspace': 'workspace:' + '0' * 32}, shared.remote.member).command(['status'], shared.alice)
+        Remote({**shared.remote.config, 'workspace': 'workspace:' + '0' * 32}, shared.remote.member).command(['audit-head'], shared.alice)
     assert wrong.value.status == 403
     with pytest.raises(ServerError) as large:
-        shared.remote.command(['task-create', 'x' * coordinator.MAX_REQUEST], shared.alice)
+        shared.remote.command(['audit-head', 'x' * coordinator.MAX_REQUEST], shared.alice)
     assert large.value.status == 413
     from poolhouse.fleet.onboard.web import Call
     request = Call('GET', '/workspace/v1/info', {}, '192.0.2.1', False, lambda _max: b'')
@@ -162,7 +137,7 @@ def test_existing_invitation_enrolls_remote_agent_without_person_credentials(sha
     invite = shared.ws.invites.create('windows', 60, {})
     name = shared.remote.join(shared.device, invite, 'windows', 'model-a', 'codex')
     token = tokens.load(shared.device, name)
-    assert shared.remote.command(['outbox'], token) == []
+    assert shared.remote.command(['audit-head'], token)['head']
     assert shared.ws.auth(token).id == name
     assert shared.ws.auth(token).role == 'agent'
     assert not (shared.device / 'agents.json').exists()
@@ -171,29 +146,23 @@ def test_existing_invitation_enrolls_remote_agent_without_person_credentials(sha
 
 
 def test_declared_cli_arguments_roundtrip_without_credentials(shared):
-    sent = shared.ws.send(shared.bob, 'alice', 'status', 'read me')
-    args = cli.COMMANDS.parser().parse_args(['ack', str(sent['seq']), '--agent', 'alice', '--request-id', 'a' * 32])
+    args = cli.COMMANDS.parser().parse_args(['audit-head', '--agent', 'alice', '--request-id', 'a' * 32])
     from poolhouse.workspace.coordinator_client import argv_for
     options = next(options for name, _help, options, _fn in cli.TABLE if name == args.cmd)
     argv = argv_for(args, [*cli.COMMON, *options])
     assert '--agent' not in argv and '--token-file' not in argv and '--request-id' not in argv
-    got = shared.remote.command(argv, shared.alice, request_id=args.request_id)
-    assert got['cursor'] == sent['seq'] and shared.ws.bus.cursor('alice') == sent['seq'], 'acked as the token holder'
-    assert shared.ws.bus.cursor('bob') == 0
+    assert shared.remote.command(argv, shared.alice, request_id=args.request_id)['head'] == shared.ws.audit_log.head()
 
 
 def test_installed_cli_on_second_device_reads_shared_state_without_local_fallback(shared, installed_metadata):
     remote = coordinator_client.client(shared.device)
     agent = remote.ensure(shared.device, 'second-device', project=shared.project_scope)
-    spec = {'title': 'Shared CLI task', 'description': 'd', 'acceptance': ['a'], 'project': {}, 'capabilities': [],
-            'limits': {}, 'source_key': 'second-device'}
-    sent = shared.remote.command(['task-create', json.dumps(spec)], shared.bob)
     environment = {**{k: v for k, v in os.environ.items() if k != 'POOLHOUSE_POOL_KEY'}, 'POOLHOUSE_WORKSPACE_HOME': str(shared.device),
                    'PYTHONPATH': str(installed_metadata), 'POOLHOUSE_WORKSPACE_AGENT': agent}
-    result = subprocess.run([sys.executable, '-m', 'poolhouse.workspace.cli', 'tasks', '--json'],
+    result = subprocess.run([sys.executable, '-m', 'poolhouse.workspace.cli', 'audit-head', '--json'],
                             cwd=shared.project_dir, env=environment, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)['tasks'][0]['id'] == sent['id']
+    assert json.loads(result.stdout)['head'] == shared.ws.audit_log.head()
     registration = shared.ws.registry._load()[agent]
     assert registration['session_device'] == 'd' * 64
     assert registration['project'] == shared.project_scope
@@ -203,7 +172,7 @@ def test_installed_cli_on_second_device_reads_shared_state_without_local_fallbac
     assert not (shared.device / 'agents.json').exists()
 
 
-@pytest.mark.parametrize('tool', ['workspace_status', 'workspace_inbox', 'workspace_tasks'])
+@pytest.mark.parametrize('tool', ['workspace_status', 'workspace_inbox'])
 def test_remote_mcp_never_falls_back_to_local_workspace(tmp_path, monkeypatch, tool):
     from poolhouse.workspace import tools
 
@@ -215,14 +184,17 @@ def test_remote_mcp_never_falls_back_to_local_workspace(tmp_path, monkeypatch, t
     assert not (base / 'registry.json').exists()
 
 
-@pytest.mark.parametrize('handler', ['_watching'])
+@pytest.mark.parametrize('handler', ['watching'])
 def test_remote_watchers_refuse_before_opening_a_local_board(tmp_path, monkeypatch, handler):
+    from poolhouse.workspace import board_cli, rooms_cli
+
     base = clean_env(monkeypatch, tmp_path)
     coordinator_config.save(base, {'mode': 'remote', 'workspace': 'workspace:' + 'a' * 32,
                                      'endpoint': 'https://coordinator.example:8770'})
-    with pytest.raises(Denied, match='local-only'):
-        getattr(cli, handler)(None)
-    assert not (base / 'registry.json').exists()
+    monkeypatch.setattr(board_cli, 'connect', lambda args: (_ for _ in ()).throw(Denied('the node is not reachable')))
+    with pytest.raises(Denied, match='not reachable'):
+        getattr(rooms_cli, handler)(SimpleNamespace(room='', thread='', dm='', since=-1, timeout=0.0))
+    assert not (base / 'registry.json').exists(), 'a watcher reads its own node and never opens the old local board'
 
 
 @pytest.mark.redteam

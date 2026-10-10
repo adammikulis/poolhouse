@@ -120,7 +120,7 @@ def test_local_runner_discovers_authority_once(monkeypatch):
     monkeypatch.setattr(cli, "Workspace", LocalWorkspace)
     monkeypatch.setattr(cli, "_local_token", lambda args: "local-session")
     seen = []
-    assert cli._runner(lambda args, ws, token: seen.append((ws, token)))(SimpleNamespace(json=True, cmd="outbox")) == 0
+    assert cli._runner(lambda args, ws, token: seen.append((ws, token)))(SimpleNamespace(json=True, cmd="audit-head")) == 0
     assert len(seen) == 1 and isinstance(seen[0][0], LocalWorkspace)
     assert seen[0][1] == "local-session"
     assert discoveries == [True]
@@ -139,7 +139,7 @@ def test_coordinator_runner_keeps_selected_authority(monkeypatch):
     monkeypatch.setattr(cli.coordinator_client, "argv_for", lambda *a: [])
     monkeypatch.setattr(cli, "_coordinator_token", lambda args, selected: "coordinator-session"
                         if selected is remote else pytest.fail("different coordinator"))
-    args = SimpleNamespace(cmd="outbox", json=True, request_id="")
+    args = SimpleNamespace(cmd="audit-head", json=True, request_id="")
     assert cli._runner(lambda *a: pytest.fail("local dispatch"))(args) == 0
     assert calls == ["coordinator-session"]
     assert discoveries == [True]

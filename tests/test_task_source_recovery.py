@@ -79,7 +79,7 @@ def test_source_rebind_refuses_unrelated_or_active_assignments(stopped, monkeypa
                 if kind == 'creator':
                     task['created_by'] = 'unrelated'
                 else:
-                    from poolhouse.workspace.task_schema import SPEC_FIELDS, fingerprint
+                    from poolhouse.board.taskspec import SPEC_FIELDS, fingerprint
                     task['project'] = {'key': 'unrelated', 'name': 'other'}
                     task['spec_hash'] = fingerprint({key: task[key] for key in SPEC_FIELDS})
                 graph.upsert_node({'id': task['id'], 'kind': 'task', 'attrs': task})
@@ -213,7 +213,7 @@ def test_cancelled_graph_update_restores_worker_and_preserves_pending_scope(stop
 @pytest.mark.parametrize('task_grant', [False, True])
 @pytest.mark.parametrize('child_grant', [False, True])
 def test_source_recovery_retains_inherited_parent_project_grant(stopped, task_grant, child_grant):
-    from poolhouse.workspace.task_schema import SPEC_FIELDS, fingerprint
+    from poolhouse.board.taskspec import SPEC_FIELDS, fingerprint
 
     kit = stopped
     project = {'key': 'repo-demo', 'name': 'demo'}
@@ -240,7 +240,7 @@ def test_source_recovery_retains_inherited_parent_project_grant(stopped, task_gr
 @pytest.mark.redteam
 @pytest.mark.parametrize('task_grant', [False, True])
 def test_source_recovery_refuses_conflicting_child_project_grant(stopped, task_grant):
-    from poolhouse.workspace.task_schema import SPEC_FIELDS, fingerprint
+    from poolhouse.board.taskspec import SPEC_FIELDS, fingerprint
 
     kit = stopped
     owner = kit.ws.auth(kit.owner)

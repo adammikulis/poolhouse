@@ -13,7 +13,7 @@ from poolhouse.board.client import Denied
 from poolhouse.files import read_json, write_json, writing
 from poolhouse.private_path import problem
 
-__all__ = ["cursors", "forget", "load", "remember", "store"]
+__all__ = ["cursors", "forget", "load", "private", "remember", "store"]
 
 
 def _folder(state: Path, board: str) -> Path:
@@ -21,6 +21,14 @@ def _folder(state: Path, board: str) -> Path:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     for parent in (path.parent, path):
         parent.chmod(0o700)
+    return path
+
+
+def private(state: Path, board: str, name: str) -> Path:
+    """A folder ``name`` for what a client keeps for ``board`` that only its owner may enter, made if needed."""
+    path = _folder(state, board) / name
+    path.mkdir(exist_ok=True, mode=0o700)
+    path.chmod(0o700)
     return path
 
 

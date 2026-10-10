@@ -1,5 +1,26 @@
 # Tasks and independent outcomes
 
+## On the node
+
+The agents' task commands run on the node (`docs/node.md`, "The task board"): `task-create`, `tasks`, `task`,
+`task-subscribe`, `task-unsubscribe`, `task-assign`, `task-claim`, `task-heartbeat`, `task-checkpoint`, `task-submit`,
+`task-review`, `task-credit` and `enforcement`, the `workspace_task*` MCP tools and `ph.board.tasks`/`add_task`/
+`review_task`. A task belongs to the board it is made on, which is its project; a task of another device counts only
+for a device on the landing list.
+
+A parent gives a worker a task with `task-assign ID WORKER LEASE`, where LEASE is the worker's lease of its model
+(`lease_list`); the answer's `allocation_id` is what the worker claims. The claim holds a two-minute `task` lease of
+the node that `task-heartbeat` renews; a lease that is not renewed is recovered by an independent session (`recover`),
+which spends one retry. A submission is stamped with the model of the lease and the worker's registration, and its
+review names the exact proposal. In `open` mode any other session reviews; in `strict` mode a person (a session with no
+parent that holds the grant `task_authority`), a designated reviewer, or the creator who is the worker's parent.
+`enforcement` shows or changes the mode of the board. A task with a reserved scope stays `accepted` until its landing is
+recorded with `task_complete`; the credit of an independent review is recorded in the encrypted work ledger under the
+board's id.
+
+The person's Tasks page, the local project task workers (scheduler, worktrees, integration, source recovery) and
+`task-integrate` still use the workspace store described below until their pages and the local agent loop move to the node.
+
 Open **Tasks** in the main UI to inspect structured work. Search or filter by status, select
 an item, and inspect its account, physical device, authenticated worker, bound model,
 resource lease, checkpoints, artifact hashes and independent reviews. The Board remains

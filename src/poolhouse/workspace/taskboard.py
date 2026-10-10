@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
 
+from poolhouse.board.taskspec import SPEC_FIELDS, TASK_ID, fingerprint, task_spec
 from poolhouse.graph.store import GraphStore
 from poolhouse.workspace import (
     enforcement,
@@ -22,7 +23,6 @@ from poolhouse.workspace.identity import HUMAN, Denied
 from poolhouse.workspace.rates import RateLimited
 from poolhouse.workspace.resource_allocations import verified_binding
 from poolhouse.workspace.task_graph import link, record, save
-from poolhouse.workspace.task_schema import SPEC_FIELDS, TASK_ID, fingerprint, task_spec
 
 MAX_TASKS = 5000
 

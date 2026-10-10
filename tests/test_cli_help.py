@@ -205,7 +205,7 @@ def _documented() -> list[tuple[str, str, tuple[str, ...], set[str]]]:
         text = page.read_text()
 
         for number, line in _command_lines(text):
-            words = shlex.split(line, posix=True)
+            words = shlex.split(line, comments=True, posix=True)
             command, rest = words[0], words[1:]
             if command not in SCRIPTS:
                 continue

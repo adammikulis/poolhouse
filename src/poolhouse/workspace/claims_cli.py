@@ -29,9 +29,9 @@ def claim(args: argparse.Namespace, s: Session) -> Any:
 
 
 def release(args: argparse.Namespace, s: Session) -> Any:
-    """Give a claim up."""
+    """Give a claim up; --held-by frees one of the caller's own subagents."""
     key = claims.normal(args.kind, args.key)
-    return {"kind": args.kind, "key": key, "released": s.release(args.kind, key)}
+    return {"kind": args.kind, "key": key, "released": s.release(args.kind, key, args.held_by)}
 
 
 def listing(args: argparse.Namespace, s: Session) -> Any:
@@ -55,7 +55,8 @@ TABLE = (
     ("claim", "own a branch, worktree, port, area, install environment or server", [
         *CLAIM, flag("--ttl", type=float, default=0.0, help="seconds; renew with heartbeat"),
         flag("--pid", type=int, default=0, help="release when this process is gone")], claim),
-    ("release", "give a claim up", CLAIM, release),
+    ("release", "give a claim up", [*CLAIM, flag("--held-by", default="", help="a subagent of yours whose claim to give up")],
+     release),
     ("claims", "every live claim", [FOR_AGENT, flag("--kind", choices=KINDS, default="")], listing),
     ("heartbeat", "renew every claim you hold", [flag("--ttl", type=float, default=0.0)], heartbeat),
     ("who", "who owns this?", CLAIM, who),

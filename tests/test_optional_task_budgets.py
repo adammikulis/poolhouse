@@ -95,7 +95,8 @@ def test_guarded_none_transport_interrupts_before_response_headers(cause):
 def test_optional_wall_limits_preserve_recovery_bounds_and_counter_schema(tmp_path):
     import json
 
-    from poolhouse.workspace import task_caps, task_schema
+    from poolhouse.board import taskspec as task_schema
+    from poolhouse.workspace import task_caps
     spec = {"title": "Inspect queue", "acceptance": ["Report queue state"]}
     for wall in (None, 200000):
         assert task_schema.task_spec({**spec, "limits": {"max_wall_s": wall}})["limits"]["max_wall_s"] == wall

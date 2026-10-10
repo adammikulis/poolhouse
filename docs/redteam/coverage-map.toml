@@ -279,7 +279,8 @@ note = "Native coordinator graphs and Fleet sockets reject self-review, same-dev
 match = ["mcp-tool:workspace_reputation"]
 status = "covered"
 tests = ["tests/test_work_reputation.py::test_reputation_read_requires_valid_token_and_read_capability",
-         "tests/test_work_reputation.py::test_local_and_mcp_tools_read_reputation_and_task_frame_contains_team_awareness"]
+         "tests/test_work_reputation.py::test_local_tools_read_reputation_and_task_frame_contains_team_awareness",
+         "tests/test_board_task_credit.py::test_the_reputation_tool_reads_the_boards_own_standings"]
 note = "Reputation reads use the authenticated caller token and delegated read capability; local and MCP tools expose evidence without any self-award operation"
 
 [[group]]
@@ -741,6 +742,13 @@ status = "covered"
 count = 1
 tests = ["tests/test_redteam_devbranch.py"]
 note = "the argv is fixed and the checkout path is one argument; the environment value is returned as text, never run, and a protected branch name is refused"
+
+[[group]]
+match = ["spawn:build_update.py:count", "spawn:build_update.py:fast_forward", "spawn:build_update.py:rebuild", "spawn:build_update.py:reselect"]
+status = "covered"
+tests = ["tests/test_build_update.py::test_a_hostile_origin_address_or_branch_name_never_reaches_git",
+         "tests/test_build_update.py::test_a_hostile_build_id_is_never_passed_to_the_node_or_to_git"]
+note = "the argv is fixed; the origin address and branch name are checked before git sees them, a commit must be 40 hex characters, and what a member reports about its build is only ever shown"
 
 [[group]]
 match = ["spawn:net/git.py:blobs", "spawn:net/git.py:source_index"]

@@ -4,11 +4,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from poolhouse import worktreerules
+from poolhouse.board.taskspec import text
 from poolhouse.serve.process import pid_exists, started_at
 from poolhouse.workspace import integration_git as repo, localagent
 from poolhouse.workspace.identity import HUMAN, Denied
 from poolhouse.workspace.task_graph import link, record, save
-from poolhouse.workspace.task_schema import text
 from poolhouse.workspace.taskboard import TaskBoard
 
 

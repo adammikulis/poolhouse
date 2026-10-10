@@ -458,7 +458,7 @@ fn trust(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
 
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
-        "land_request" => request(node, board, token, p),
+        "land_request" => node.work_gate().and_then(|()| request(node, board, token, p)),
         "land_review" => review(node, board, token, p),
         "land_cancel" => cancel(node, board, token, p),
         "land_brake" => brake(node, board, token, p),

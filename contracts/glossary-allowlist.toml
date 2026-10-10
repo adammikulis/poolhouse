@@ -23,6 +23,10 @@ path = "scripts/nomenclature.py"
 reason = "the rewrite quotes banned words in its examples"
 
 [[exclude]]
+path = "scripts/gates/glossary_words.py"
+reason = "the gate's own description names the banned words"
+
+[[exclude]]
 path = "tests/test_glossary.py"
 reason = "the check quotes banned words to prove it finds them"
 

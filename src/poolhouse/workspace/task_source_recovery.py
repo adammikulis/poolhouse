@@ -6,13 +6,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from poolhouse import worktreerules
+from poolhouse.board.taskspec import text
 from poolhouse.command import flag
 from poolhouse.graph.store import GraphStore
 from poolhouse.workspace import integration_git as repo, localagent, tokens
 from poolhouse.workspace.chain import held
 from poolhouse.workspace.identity import HUMAN, Denied, Identity
 from poolhouse.workspace.task_graph import link, record, save
-from poolhouse.workspace.task_schema import text
 from poolhouse.workspace.task_worktree_recovery import _inactive, dematerialize
 from poolhouse.workspace.taskboard import TaskBoard
 

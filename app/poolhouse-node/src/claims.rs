@@ -16,7 +16,7 @@ pub const METHODS: [&str; 3] = ["claim", "release", "claims"];
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "claim" => &["kind", "key", "ttl_s", "pid", "local"],
-        "release" => &["kind", "key"],
+        "release" => &["kind", "key", "held_by"],
         "claims" => &["kind"],
         _ => return None,
     })
@@ -32,7 +32,7 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 fn kind_of<'a>(p: &'a Map<String, Value>, required: bool) -> Result<&'a str> {
     let kind = text(p, "kind")?;
-    if kind.is_empty() && !required || CLAIM_KINDS.contains(&kind) {
+    if kind.is_empty() && !required || CLAIM_KINDS.contains(&kind) && kind != "task" {
         Ok(kind)
     } else {
         Err(Error::Invalid("a claim kind is worktree, branch, area, port, server or install".into()))
@@ -95,11 +95,24 @@ fn claim(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     Ok(json!({"changed": true, "claim": show(node, &l, kind, &name, board)}))
 }
 
+/// The session whose claim a release gives up: the caller's own, or one of its spawned subagents'
+/// that the caller names, since a parent may free what its child can no longer release.
+fn releasing_for(node: &mut Node, board: &str, caller: &crate::identity::Holder, held_by: &str) -> Result<String> {
+    if held_by.is_empty() || held_by == caller.name {
+        return Ok(caller.name.clone());
+    }
+    let child = node.host(board)?.names.get(held_by).map(|i| i.parent.clone());
+    if caller.board != board || child.as_deref() != Some(caller.name.as_str()) {
+        return Err(Error::Denied(format!("{held_by} is not a subagent of {}; only a parent releases its subagent's claim", caller.name)));
+    }
+    Ok(held_by.to_string())
+}
+
 fn release(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let (kind, key) = (kind_of(p, true)?, text(p, "key")?);
     let name = held_as(kind, board, key);
     let access = node.access(token, board, true)?;
-    let holder = format!("{board}/{}", access.holder.name);
+    let holder = format!("{board}/{}", releasing_for(node, board, &access.holder, text(p, "held_by")?)?);
     rpc::tick(node, &[board])?;
     let ids: Vec<String> = node.leases.table.leases.iter().filter(|l| l.holder == holder && l.state == State::Held && mine(l, kind, &name)).map(|l| l.id.clone()).collect();
     if ids.is_empty() {
@@ -130,7 +143,7 @@ fn claims(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     for l in node.leases.table.leases.iter().filter(|l| l.state == State::Held && l.board == board) {
         for r in &l.resources {
             if let Resource::Claim { kind: k, name } = r {
-                if kind.is_empty() || kind == k {
+                if (kind.is_empty() || kind == k) && k != "task" {
                     out.push(show(node, l, k, name, board));
                 }
             }

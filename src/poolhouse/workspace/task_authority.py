@@ -1,12 +1,12 @@
 """Live task authority for managing existing project workers."""
 
 from poolhouse import worktreerules
+from poolhouse.board.taskspec import SPEC_FIELDS, TASK_ID, fingerprint
 from poolhouse.graph.store import GraphStore
 from poolhouse.workspace import localagent as la, project, tokens
 from poolhouse.workspace.chain import held
 from poolhouse.workspace.identity import HUMAN, Denied
 from poolhouse.workspace.task_graph import record
-from poolhouse.workspace.task_schema import SPEC_FIELDS, TASK_ID, fingerprint
 
 
 def authorize(ws, token, worker, task):

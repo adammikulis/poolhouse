@@ -328,7 +328,7 @@ not allowed, 4 rate limited, 5 claim conflict, 6 a log is damaged.
 | messages | `send TO TYPE BODY [--subject S] [--reply-to SEQ]`, `inbox [--ack] [--raw]`, `wait --timeout S`, `watch [--once] [--timeout S]`, `outbox`, `sync`, `ack SEQ`, `thread ROOT` |
 | notes | `notes-add KIND TITLE BODY [--source --tags --supersedes --verify-cmd --ttl-days]`, `notes-search QUERY [--kind] [--all]`, `notes-get ID`, `notes-verify ID --cwd DIR` |
 | scratch | `scratch-new NAME`, `scratch-ls`, `scratch-path NAME [REL]`, `scratch-rm NAME` |
-| boards | `board list\|read NAME\|post NAME TEXT\|threads NAME\|create NAME [TITLE] [--private]\|add NAME AGENT\|mentions`, `join-board NAME`, `leave-board NAME`, `dm [NAME [BODY]] [--between A]`, `subscribe board\|thread\|agent\|kind\|mentions [TARGET] [--mode inbox\|digest\|silent]`, `unsubscribe`, `subs`, `digest [--thread N] [--ack]`, `watch [--board B|--thread N|--dm NAME] [--since SEQ]`, `chat [--board B|--to NAME]` (the person, at a terminal), `board-serve` |
+| boards | `board list\|read NAME\|post NAME TEXT\|threads NAME\|create NAME [TITLE] [--private]\|add NAME AGENT\|mentions`, `join-board NAME`, `leave-board NAME`, `dm [NAME [BODY]]`, `subscribe board\|thread\|agent\|kind\|mentions [TARGET] [--mode inbox\|digest\|silent]`, `unsubscribe`, `subs`, `digest [--thread N] [--ack]`, `watch [--room R|--thread N|--dm NAME] [--since SEQ]`, `chat [--board B|--to NAME]` (the person, at a terminal), `board-serve` |
 | claims | `claim KIND KEY [--ttl S] [--pid N]`, `release KIND KEY`, `heartbeat`, `who KIND KEY`, `claims` |
 | person record | `attestations [--session ID] [--limit N]`: what the harness hooks recorded the person typing, answering or authorizing, each shown as a `person-attestation` attested by the harness hook for its session (read only; no token or board post can write one) |
 | safety | `quarantine-ls`, `quarantine-release QID` (human token), `audit-verify [--anchor HASH]`, `audit-head`, `gc` |
@@ -641,14 +641,13 @@ stays keyed by name.
 
 ## How fast a message arrives
 
-A `send` signals the recipient's wake pipe (`wake/<id>.fifo`) right after the row is appended; a
-subscriber of a board is signalled the same way, and so is anyone following the board, thread or
-conversation (`wake/<id>.follow`, `.chat`, `.web`). `wait`, `watch` and the page's long poll sleep
-on their pipe, so a message is read when it is written, not at the next poll. An agent that stays
-on one board, thread or conversation without a subscription runs one `watch --board B` (or
+On the node, `wait` and `watch` poll its socket twice a second, so a message is read within half a
+second of being written; the page's long poll still sleeps on a wake pipe (`wake/<id>.fifo`) that
+the old store signals. An agent that stays on one room, thread or conversation without a subscription
+runs one `watch --room R` (or
 `--thread N`, `--dm NAME`) and keeps it; it starts no process per message, shows only what was
 written after it started (or after `--since`), and every message it prints is fenced as data.
-Measured send to wake across real processes, p50 / p99 (`tests/test_workspace_live.py`,
+Measured on the old store, send to wake across real processes, p50 / p99 (`tests/test_workspace_live.py`,
 `docs/experiments/workspace-latency.md`): a single agent 2 ms, 10 agents 2 to 4 ms, 40 agents 4 / 9 ms
 for direct messages and 9 / 38 ms when one board post wakes 40 subscribers.
 
