@@ -14,7 +14,7 @@ from poolhouse import hub, limits as limits_mod, platform
 from poolhouse.client import thinking
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
-from poolhouse.serve import build, holding, ops, quant_guard
+from poolhouse.serve import build, holding, ops, plan_cli, quant_guard, warm
 from poolhouse.serve.backend import ServerFailed, ServerSpec, parse_context
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.ops import Refused
@@ -136,7 +136,8 @@ def _asked_spec(args: argparse.Namespace, model: str, extra: tuple[str, ...]) ->
         # llama-server's own flags, which only a profile carries: `up` has no flag of its
         # own for `-ub 2048`
         extra_args=extra,
-        cpu_moe=bool(getattr(args, "cpu_moe", False)))
+        cpu_moe=bool(getattr(args, "cpu_moe", False)),
+        n_cpu_moe=getattr(args, "n_cpu_moe", None))
 
 
 OPTIONS_UP = [
@@ -215,6 +216,13 @@ OPTIONS_UP = [
     flag("--cpu-moe", action="store_true",
          help="keep every Mixture-of-Experts weight on the CPU, which is how a 35B with "
               "3B active fits a machine that could not hold it all"),
+    flag("--n-cpu-moe", type=int, default=None, metavar="N",
+         help="keep the Mixture-of-Experts weights of the first N layers on the CPU"),
+    flag("--plan", default="", choices=["", "auto"],
+         help="auto: read the model's GGUF headers and this machine's card and RAM, set "
+              "--on-cpu / --n-cpu-moe / --cpu-moe to what fits, and print what was chosen "
+              "(`poolhouse-serve plan MODEL` shows the same placement for any machine). A "
+              "placement flag given here wins and nothing is set"),
     flag("--lookup-cache", default="", metavar="FILE",
          help="an n-gram cache kept on disk and updated as it generates, so what was "
               "learnt answering one question speculates the next. Only the ngram-cache "
@@ -301,6 +309,11 @@ def cmd_up(args: argparse.Namespace) -> int:
     for note in resolved_spec.notes:
         warn(note)
     spec = resolved_spec.spec
+    if getattr(args, "plan", "") == "auto":
+        planned = _planned(args, spec)
+        if isinstance(planned, int):
+            return planned
+        spec = planned
 
     if getattr(args, "preflight_only", False):
         try:
@@ -315,6 +328,33 @@ def cmd_up(args: argparse.Namespace) -> int:
         warn("error: up no longer grows a server; `poolhouse-serve escalate PORT` does")
         return 2
     return _lease(args, spec, manager, chosen=chosen, profile=profile)
+
+
+def _planned(args: argparse.Namespace, spec: ServerSpec) -> ServerSpec | int:
+    """``spec`` with the placement `poolhouse-serve plan` chooses for this machine, or the
+    exit code when nothing fits. Placement flags given on the command line win."""
+    if args.on_cpu or args.cpu_moe or args.n_cpu_moe is not None:
+        warn("plan auto: a placement flag was given, so none is set")
+        return spec
+    if not Path(str(spec.model)).is_file():
+        warn("plan auto: the model is not on disk yet, so there is no header to plan from")
+        return spec
+    if int(spec.context) == DEFAULT_CONTEXT:
+        spec = replace(spec, context=plan_cli.DEFAULT_CONTEXT)
+    try:
+        plan, lines = plan_cli.auto_fields(
+            str(spec.model), context=int(spec.context), parallel=int(spec.parallel),
+            cache=(spec.cache_type_k, spec.cache_type_v))
+    except plan_cli.Shortfall as no:
+        for line in no.lines:
+            warn(line)
+        return 2
+    for line in lines:
+        warn(line)
+    warm_thread = warm.start(spec.model, plan.host_in_ram or plan.fast_experts)
+    if warm_thread is not None:
+        warn("plan auto: reading the ranges the last run touched ahead in the background")
+    return replace(spec, **plan.spec_fields())
 
 
 def _idle_seconds(args: argparse.Namespace) -> float:

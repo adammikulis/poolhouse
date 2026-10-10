@@ -16,9 +16,11 @@ from poolhouse.serve import (
     lifecycle_cli,
     llamacpp_cli,
     machine_cli,
+    plan_cli,
     profile_cli,
     slots_cli,
     status_cli,
+    warm_cli,
 )
 
 __all__ = ["COMMANDS", "main"]
@@ -53,6 +55,17 @@ COMMANDS.add(
     "fit", fit_cli.cmd_fit,
     help="how many people fit at a given context, from measured KV numbers",
     options=fit_cli.OPTIONS)
+
+COMMANDS.add(
+    "plan", plan_cli.cmd_plan,
+    help="where a model's tensors go on a machine -- card, RAM, disk -- from its GGUF "
+         "headers alone",
+    options=plan_cli.OPTIONS)
+
+COMMANDS.add(
+    "warm", warm_cli.cmd_warm,
+    help="record which ranges of a model a run left in the page cache, and read them ahead",
+    options=warm_cli.OPTIONS)
 
 COMMANDS.add(
     "memory", machine_cli.cmd_memory,

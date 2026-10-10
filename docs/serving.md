@@ -732,3 +732,147 @@ commit from the client's checkout. An explicitly incompatible protocol permits
 status inspection and refuses mutations with an owned-broker upgrade instruction.
 Upgrade only an owned broker at a quiescent boundary, preserving foreign holders.
 A reused PID or a socket reporting another PID does not validate the registration.
+
+### Low-VRAM placement
+
+A mixture-of-experts model reads a small part of itself each token, so a machine whose card
+cannot hold the file can still serve it: the tensors every token needs sit in fast memory, the
+routed experts the card has no room for sit in RAM, and the n-gram table is mmapped from disk.
+`poolhouse-serve plan` reads the GGUF **headers** only (tensor names, shapes, types, offsets;
+no weights, no server, no GPU) and prints that placement for any machine:
+
+```
+poolhouse-serve plan MODEL --vram 24 --ram 64                  # a card and host RAM
+poolhouse-serve plan MODEL --ram 16                            # no card: CPU only, paged from disk
+poolhouse-serve plan MODEL --unified 96 --ram-gbps 400         # a Mac: no overrides are set
+poolhouse-serve plan MODEL --vram 12 --ram 32 --context 262144 --cache-type-k q8_0 --cache-type-v q4_0
+poolhouse-serve up MODEL --plan auto                           # the same, for this machine
+```
+
+`--context` defaults to 131072, the least a coding profile needs. `up --plan auto` raises a
+context left at the `up` default to 131072, detects the card and RAM through
+`poolhouse.hub.probe.machine_memory`, sets `--on-cpu` / `--n-cpu-moe` / `--cpu-moe` (or
+`--n-gpu-layers 0` with no card) to what fits, and prints what it chose. A placement flag given
+on the command line (`--on-cpu`, `--cpu-moe`, `--n-cpu-moe`) wins and nothing is set. When
+the always-needed tensors and the cache do not fit, it refuses with the exact shortfall.
+
+**What goes where.** Roles come from the tensor names (`poolhouse.serve.placement.part_of`).
+
+| Role | Tensors | Placement |
+|---|---|---|
+| always needed | attention, Gated DeltaNet (`ssm_*`), indexer, router (`ffn_gate_inp`), shared experts (`*_shexp`), token embedding, output head, norms, hyper-connection (`hc_*`), the per-layer-input (`ple_*`) projections, an MTP head | fast memory, every layer, every token |
+| routed experts | `ffn_{gate,up,down}_exps`, the expert count read from the tensor shape | the card takes the most layers that fit (`--n-cpu-moe N` moves the first N layers to RAM; `--cpu-moe` moves all); what RAM cannot hold is paged from disk |
+| n-gram table | `per_layer_token_embd` (or any `ngram` / `engram` tensor) | `--override-tensor per_layer_token_embd=CPU`, mmapped from disk, a few rows a token |
+
+Sharded files are planned from every shard and each shard is reported with its roles. In the
+ISTA-DASLab Coder release, shard 1 (29.6 GB, the transformer) is the resident one and shard 2
+(28.8 GB, the n-gram table) is the disk-served one; in the unsloth builds the table shares a
+shard with experts, so the shard is reported as holding the table. A tensor type this build's
+table does not know (type 42 in `ffn_down_exps` of the IQ1_M Coder) is sized from the offset
+to the next tensor and reported as `unknown type 42`.
+
+**What a token reads** is computed from the header, not assumed: each layer's expert bytes
+times `expert_used_count / expert_count`, at the types in the file. For the 512-expert Q4_K
+shape (the fixture the tests use) that is 1.327 GB a token (10 experts x 3 x 2560 x 640 x 48
+layers at 4.5 bits); for the pruned 256-expert Coder IQ1_M header it is 937 MB; for the
+UD-IQ4_XS header on this machine 1.1 GB.
+
+**Caches at 128k** (from the header: `attention.compress_ratios` or `full_attention_interval`
+for the layers that hold a cache, `head_count_kv`, `key_length`, `value_length`,
+`attention.indexer.key_length`, the `ssm.*` sizes for the recurrent state). For Flash-Next:
+12 layers x 2 KV heads x 256 x (K + V) = 24,576 B/token at f16, 13,056 at q8_0, 6,912 at
+q4_0, so 3.22 GB / 1.71 GB / 0.91 GB at 131,072 tokens. The indexer cache is **not** the
+0.4 GB the card's description implies: the header implies one shared key head of 128 (3,072
+B/token at f16, 0.4 GB at 128k), but llama.cpp allocates an indexer cache the size of the K/V
+cache (measured 2026-09-02, 49,152 B/token at f16, 26,112 at q8_0; `fit`,
+docs/architectures/qwen4exp.md), so the plan charges the allocated size: 6.1 GB at f16 and
+3.3 GB at q8_0 for K/V plus indexer at 128k, plus 112 MB of recurrent state a sequence
+(36 layers x (3 x (6144 + 2 x 16 x 128) + 128 x 6144) x 4 B). Quantised K costs more quality
+than quantised V, so q8_0 for both is the default and V goes to q4_0 before K does. Compute
+buffers are an assumption (`--compute`, default 2 GB with the runtime; the measured Metal
+buffers were 0.38 GB at 32k and 0.55 GB at 64k tokens, nothing measured at 128k or on CUDA).
+
+**Machine classes at 128k, q8_0 K and V** (`plan`, 2026-10-10, both models' real headers; the
+512-expert model is UD-IQ4_XS because its header is on this machine, Q4_K_XL is 16.5 GB
+bigger on disk). Card/RAM columns are the plan's resident bytes in GiB. Every speed is an
+**estimate**: decode = 1 / max over tiers of (bytes read per token / bandwidth), with 300 GB/s
+card, 50 GB/s RAM, 3 GB/s disk assumed and experts used uniformly; prompt = tokens / max(
+bandwidth-bound time, compute-bound time), 512-token micro-batches, 20 TFLOPS assumed. Nothing
+here was run.
+
+| Machine | Model | Placement | Card / RAM / disk | Decode (est.) | Prompt (est.) |
+|---|---|---|---|---|---|
+| 8 GB card, 32 GB RAM | both | refused: short by 1.9 GB (Coder), 2.8 GB (IQ4_XS) | | | |
+| 12 GB card, 32 GB RAM | Coder IQ1_M | `--n-cpu-moe 45` | 11.2 / 21.7 / 26.8 | 31-55 tok/s | 1,051 tok/s |
+| 12 GB card, 32 GB RAM | UD-IQ4_XS | `--cpu-moe` | 10.3 / 28.0 / 54.3 (27.4 paged) | 4.6-5.2 tok/s | 49 tok/s |
+| 16 GB card, 32 GB RAM | Coder IQ1_M | `--n-cpu-moe 37` | 15.3 / 17.5 / 26.8 | 34-68 tok/s | 1,241 tok/s |
+| 24 GB card, 64 GB RAM | Coder IQ1_M | `--n-cpu-moe 21` | 23.2 / 9.6 / 26.8 | 42-64 tok/s | 1,506 tok/s |
+| 24 GB card, 64 GB RAM | UD-IQ4_XS | `--n-cpu-moe 37` | 23.3 / 42.4 / 26.8 | 29-56 tok/s | 525 tok/s |
+| 32 GB card, 64 GB RAM | Coder IQ1_M | `--n-cpu-moe 4` (f16 cache: 10) | 31.0 / 1.8 / 26.8 | 55-60 tok/s | 1,506 tok/s |
+| 32 GB card, 64 GB RAM | UD-IQ4_XS | `--n-cpu-moe 30` | 31.4 / 34.3 / 26.8 | 32-59 tok/s | 617 tok/s |
+| 12 GB card, 16 GB RAM | Coder IQ1_M | `--n-cpu-moe 45`, 9.7 GB paged | 11.2 / 12.0 / 36.5 | 6.3-7.4 tok/s | 136 tok/s |
+| no card, 16 GB RAM | Coder IQ1_M | `--n-gpu-layers 0`, 20.9 GB paged | 0 / 12.0 / 47.7 | 2.7-3.4 tok/s | 67 tok/s |
+| Mac, 96 GB usable | Coder IQ1_M | none (unified) | 32.9 resident, 26.8 mmapped | 78 tok/s at 400 GB/s | 1,506 tok/s |
+| Mac, 96 GB usable | UD-IQ4_XS | none (unified) | 65.7 resident, 26.8 mmapped | 68 tok/s at 400 GB/s | 1,499 tok/s |
+| Mac, 24 GB usable | Coder IQ1_M | none, 8.9 GB paged | 24.0 / 0 / 35.7 | 7.4-8.1 tok/s | 159 tok/s |
+
+Reading the table: a 24 GB card keeps about 14 GB of experts beside the hot path
+(4.1 GB), a 3.3 GB cache and 2 GB of buffers; a 32 GB card holds the Coder's 29.6 GB shard with
+4 layers of experts in RAM at q8_0 and 10 at f16 (the f16 cache is 6.1 GB, so it does not
+fit whole); with 16 GB of RAM the experts RAM cannot hold are read from disk each token and
+the speed is the disk's (NVMe-bound: tokens/s = disk GB/s / paged expert bytes read per token).
+On a Mac the CPU and GPU halves are one pool, so no override is set and `--on-cpu` buys
+nothing; a pool smaller than the experts pages the rest from disk the same way. The decode
+ranges are tiers overlapped (upper) to tiers in series (lower). The prompt speed assumes
+every expert is read once per micro-batch, ignores the attention score cost and PCIe
+transfers of weights computed on the other device, and is the practical cost of a long coding
+context: a 128k prompt is 87 s at 1,506 tok/s and 16 min at 136 tok/s. A third-party engine
+(Strata) claims about 1.3k tok/s prompt processing at 4k tokens on a 12 GB card; that is its
+author's claim, not a measurement here.
+
+**Measured and estimated.** Measured: the tensor names, shapes, types and sizes (the headers),
+the llama.cpp cache allocation per token and the recurrent state (`fit` records), the Metal
+compute buffers at 32k and 64k. Estimated: every bandwidth, the compute figure, the 2 GB
+buffer headroom, uniform expert use, every tokens/s and prompt figure above. Unmeasured and
+needing a GPU lease from the owner: a real `--n-cpu-moe` load on a CUDA card, decode and prompt
+speed on any machine class above, compute buffers at 128k, the router's expert skew.
+
+#### Warm manifest
+
+The n-gram table and the cold experts are mmapped, so the first tokens after a load wait for
+the page cache. `poolhouse-serve warm MODEL --record` asks the OS which pages of every expert
+and n-gram tensor are in the page cache now (`mincore` on a read-only mapping; POSIX only) and
+merges them into `MODEL.warm.json` beside the first shard; `--prefault` and `up --plan auto`
+ask the OS to read those ranges ahead in a background thread
+(`madvise(WILLNEED)` on a read-only mapping on Linux and macOS, `PrefetchVirtualMemory`
+on Windows, which is written and not run here), so `up` returns without waiting. The manifest
+is versioned, carries each shard's size and mtime, and is ignored when any of them changed.
+Recorded: per tensor the resident byte ranges (runs closer than 256 KiB joined, at most 20,000
+runs), with the shard and layer. That is page-level residency, including whatever read-ahead
+pulled in beside a touched page. Planned, not built, because llama.cpp does not report them:
+per-expert activation counts per layer and per-row n-gram gather counts, which need the patch
+below.
+
+#### Designed, not built: a per-expert hot cache
+
+KTransformers and fiddler keep the experts the router chooses most on the GPU and the rest on
+the CPU. llama.cpp's `--n-cpu-moe` places whole layers by index. A patch would count router
+outputs per (layer, expert) in the MoE graph, write the counts out, and at load place the
+`k` hottest experts of every layer in a per-layer GPU buffer with an indirection table (cold
+experts stay on the CPU). It earns its place only if the router is skewed on real prompts: if
+10 of 512 experts per layer carry, say, half of the routed tokens, a card holding the hot
+20% of experts reads 80% of the expert bytes from fast memory instead of the share
+`--n-cpu-moe` gives it. The evidence needed first is the measured activation skew per layer
+on real coding prompts (a histogram of router choices, which needs the counting patch run on
+a GPU the owner has leased), and the same run with `--n-cpu-moe` for the baseline. Until
+that exists, the uniform-use assumption in the estimates is a floor on what a hot cache could
+gain, not a measurement.
+
+#### Candidate engine: Strata (unverified)
+
+A third-party engine named Strata is said to run this model from 8 GB of VRAM. Nothing about
+it has been fetched, read or run. Under the replace-wrap-or-keep rule it is a candidate to
+evaluate, and before any decision someone reads its repository (licence, supported
+architectures, how it places experts and the n-gram table, its prompt-processing path), the
+author's own benchmark command and hardware, and whether it exposes a server API poolhouse's
+broker could lease.

@@ -12,7 +12,7 @@ from poolhouse.hub.modelfile import scan_gguf
 from poolhouse.serve.preflight import shard_names
 from poolhouse.units import human_bytes
 
-__all__ = ["Tensor", "render_tensors", "shard_paths", "table_bytes", "tensors_of",
+__all__ = ["Tensor", "render_tensors", "shard_paths", "table_bytes", "tensors_by_shard", "tensors_of",
            "totals_by_role", "totals_by_type"]
 
 # ggml's own block quantisation, as (name, values per block, bytes per block). Straight out
@@ -47,6 +47,7 @@ class Tensor:
     type: str
     shape: tuple[int, ...]
     bytes: int
+    offset: int = 0
 
     @property
     def elements(self) -> int:
@@ -85,23 +86,41 @@ def shard_paths(model: str | Path) -> list[Path]:
 
 
 def _tensors_in(path: Path) -> list[Tensor]:
-    """Every tensor one GGUF file's header names, without reading any tensor data."""
+    """Every tensor one GGUF file's header names, without reading any tensor data.
+
+    A type this table does not know is sized from the offsets: the gap to the next tensor's
+    data, or to the end of the file for the last one.
+    """
+    scan = scan_gguf(path, want=lambda _key: False, tensors=True)
+    after = sorted({entry.offset for entry in scan.tensors})
+    end = max(path.stat().st_size - scan.data_start, 0)
     out: list[Tensor] = []
-    for entry in scan_gguf(path, want=lambda _key: False, tensors=True).tensors:
-        named, block, per_block = _GGML_TYPES.get(entry.kind, (f"type{entry.kind}", 1, 0))
+    for entry in scan.tensors:
         count = 1
         for dim in entry.shape:
             count *= dim
-        out.append(Tensor(name=entry.name, type=named, shape=entry.shape,
-                          bytes=count // block * per_block if block else 0))
+        if entry.kind in _GGML_TYPES:
+            named, block, per_block = _GGML_TYPES[entry.kind]
+            size = count // block * per_block
+        else:
+            named = f"unknown type {entry.kind}"
+            later = [one for one in after if one > entry.offset]
+            size = (later[0] if later else end) - entry.offset
+        out.append(Tensor(name=entry.name, type=named, shape=entry.shape, bytes=max(size, 0),
+                          offset=scan.data_start + entry.offset))
     return out
+
+
+def tensors_by_shard(model: str | Path) -> list[tuple[Path, list[Tensor]]]:
+    """Each shard of a model on this machine with the tensors its header holds."""
+    return [(shard, _tensors_in(shard)) for shard in shard_paths(model)]
 
 
 def tensors_of(model: str | Path) -> list[Tensor]:
     """Every tensor in a model, over all of its shards, largest first."""
     found: list[Tensor] = []
-    for shard in shard_paths(model):
-        found += _tensors_in(shard)
+    for _shard, held in tensors_by_shard(model):
+        found += held
     return sorted(found, key=lambda t: (-t.bytes, t.name))
 
 
