@@ -20,6 +20,8 @@ pub enum Why {
     DeadHolder,
     /// A queued request nobody polled for any more.
     Abandoned,
+    /// A pool-wide claim another device's board shows was acquired first: the pool holds it for that device.
+    Lost,
 }
 
 impl Why {
@@ -29,6 +31,7 @@ impl Why {
             Why::Expired => "expire",
             Why::DeadHolder => "dead",
             Why::Abandoned => "abandon",
+            Why::Lost => "lost",
         }
     }
 }
@@ -88,6 +91,19 @@ impl Table {
                 ended.push((l.clone(), why));
             }
             why.is_none()
+        });
+        ended
+    }
+
+    /// End the held leases whose pool-wide claim the board gives to another device (its acquire came first), so one device holds it pool-wide.
+    pub fn yield_to(&mut self, foreign: &Foreign) -> Vec<(Lease, Why)> {
+        let mut ended = Vec::new();
+        self.leases.retain(|l| {
+            let lost = l.state == State::Held && !l.local && l.resources.iter().any(|r| r.pool_wide() && foreign.contains_key(&(l.board.clone(), r.key())));
+            if lost {
+                ended.push((l.clone(), Why::Lost));
+            }
+            !lost
         });
         ended
     }

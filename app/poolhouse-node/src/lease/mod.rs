@@ -66,7 +66,8 @@ impl Leases {
     /// anything changed. Returns what happened, for the board.
     pub fn tick(&mut self, foreign: &Foreign) -> Result<Vec<Event>> {
         let now = self.now();
-        let ended = self.table.sweep(now);
+        let mut ended = self.table.sweep(now);
+        ended.extend(self.table.yield_to(foreign));
         let mut events = self.table.schedule(&self.cfg, now, foreign, &ended);
         events.extend(ended.into_iter().map(|(l, why)| Event::Ended(l, why)));
         if !events.is_empty() {

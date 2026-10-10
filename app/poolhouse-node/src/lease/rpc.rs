@@ -129,9 +129,13 @@ fn acquire(node: &mut Node, board: &str, who: &str, p: &Map<String, Value>) -> R
     let table = &node.leases.table;
     let lease = table.find(&id).cloned().ok_or_else(|| Error::Invalid("the lease ended at once".into()))?;
     if lease.state == State::Queued && !req.wait {
-        let blockers: Vec<Value> = table.leases.iter().filter(|o| o.state == State::Held && o.holder != lease.holder
+        let elsewhere = foreign(node, &[board])?;
+        let table = &node.leases.table;
+        let mut blockers: Vec<Value> = lease.resources.iter().filter_map(|r| elsewhere.get(&(board.to_string(), r.key())))
+            .map(|holder| json!({"holder": holder, "expires_ms": 0})).collect();
+        blockers.extend(table.leases.iter().filter(|o| o.state == State::Held && o.holder != lease.holder
             && o.resources.iter().any(|x| lease.resources.iter().any(|r| r.conflicts(x) || (!r.exclusive() && r.key() == x.key()))))
-            .map(|o| json!({"holder": if o.board == board { o.holder.as_str() } else { "other-board" }, "expires_ms": o.expires_ms})).collect();
+            .map(|o| json!({"holder": if o.board == board { o.holder.as_str() } else { "other-board" }, "expires_ms": o.expires_ms})));
         node.leases.table.release(&id, &lease.holder)?;
         node.leases.save()?;
         return Ok(json!({"state": "busy", "blockers": blockers}));
