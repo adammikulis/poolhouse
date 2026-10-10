@@ -8,6 +8,7 @@ import threading
 import time
 from pathlib import Path
 
+import poolhouse
 from poolhouse.hook_diagnostics import record
 from poolhouse.worktreerules import checkout_metadata
 
@@ -53,6 +54,7 @@ def arm(event: str) -> None:
     global TIMER
     if event != "post":
         return
+    poolhouse.__version__  # noqa: B018  read now: the deadline thread records it and cannot import while a slow import holds the lock
     def expired():
         code = failure(TimeoutError(f"post notification exceeded {POST_SECONDS:g}s deadline"), "post", STAGE)
         sys.stdout.flush()

@@ -424,12 +424,14 @@ class TestFetch:
     def test_an_unsharded_reference_downloads_just_the_one_file(self, monkeypatch):
         import poolhouse.hub as hub
 
-        with fake_hub({"maker/thing-GGUF": {"thing-Q4_K_M.gguf": gguf(40),
-                                            "thing-Q8_0.gguf": gguf(50)}}) as server:
+        # sizes no other test of this file serves: the Hub cache keeps a blob by its digest, so a file
+        # another test already brought down to this worker's cache would not be downloaded again
+        with fake_hub({"maker/thing-GGUF": {"thing-Q4_K_M.gguf": gguf(41),
+                                            "thing-Q8_0.gguf": gguf(51)}}) as server:
             server.point(monkeypatch)
             got = hub.fetch("hf:maker/thing-GGUF/thing-Q4_K_M.gguf")
         assert list(server.downloads) == ["maker/thing-GGUF/thing-Q4_K_M.gguf"]
-        assert got.name == "thing-Q4_K_M.gguf" and got.read_bytes() == gguf(40)
+        assert got.name == "thing-Q4_K_M.gguf" and got.read_bytes() == gguf(41)
 
     def test_a_file_the_repo_does_not_hold_names_what_it_does(self, monkeypatch):
         import poolhouse.hub as hub

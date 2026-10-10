@@ -195,7 +195,7 @@ class _Route:
     holds the cookie the Board route requires."""
 
     def __init__(self, session: Callable[[], Session]) -> None:
-        self.session = session
+        self.person_session = session
         self.port = 0
         self.session = secrets.token_urlsafe(24)
 
@@ -210,7 +210,7 @@ class _Route:
         body = call.body(POST_MAX) if call.method == "POST" and 0 < wanted <= POST_MAX else b""
         req = Request(call.method, call.path, headers, self.port, session_ok(headers, self.session), body)
         board = urlsplit(call.path).path.startswith(PREFIX)
-        status, headers, body = respond(self.session, req) if board else _page(req)
+        status, headers, body = respond(self.person_session, req) if board else _page(req)
         if status == 200 and not board and self.opened_with_session(call):
             headers["Set-Cookie"] = f"{COOKIE}={self.session}; HttpOnly; SameSite=Strict; Path=/"
         kind = headers.pop("Content-Type", "application/octet-stream")

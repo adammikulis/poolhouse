@@ -699,7 +699,7 @@ def test_join_carries_the_project_and_whoami_status_and_inbox_show_it(base, ws, 
     where = repo(tmp_path / "board", "https://example.test/o/board.git")
     plain = project.describe(str(where))
     code = ws.invites.create("", 600.0, plain)
-    assert "connected for board" in onboard.snippet("", code, "", plain["name"])
+    assert f"connected for project {plain['name']}" in onboard.snippet("", code, "", plain["name"])
     onboard.join(ws, code, "codex")
     assert ws.registry.info("codex")["project"] == plain
     ws.send(tokens.load(base, "codex"), "lead", "status", "hi")

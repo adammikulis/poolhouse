@@ -171,7 +171,7 @@ def test_registered_conversation_graph_without_files_root(daemon, tmp_path):
     assert daemon.call('/ui/knowledge/stores', headers={'Origin': 'https://other.invalid'})[0] == 403
 
 
-def test_registered_project_graph_requires_local_person(daemon, tmp_path):
+def test_a_registered_project_coordination_graph_is_not_offered_or_readable(daemon, tmp_path):
     import json
     from dataclasses import asdict
 
@@ -194,12 +194,9 @@ def test_registered_project_graph_requires_local_person(daemon, tmp_path):
     cookie = 'poolhouse_ui=' + session.sid
     code, data, _ = daemon.call('/ui/knowledge/stores', cookie=cookie)
     assert code == 200, data
-    assert data['sources'] == [{'path': source, 'name': 'Experiment · tasks and coordination'}]
-    code, data, _ = daemon.call('/ui/knowledge/nodes?' + urlencode({'store': source}), cookie=cookie)
-    assert code == 200, data
-    assert data['nodes'][0]['id'] == 'task:one'
-    assert daemon.call('/ui/knowledge/nodes?' + urlencode({
-        'store': 'project:' + 'b' * 32 + ':coordination'}), cookie=cookie)[0] == 403
+    assert data['sources'] == []
+    for store in (source, 'project:' + 'b' * 32 + ':coordination'):
+        assert daemon.call('/ui/knowledge/nodes?' + urlencode({'store': store}), cookie=cookie)[0] == 403
 
 
 def test_large_fields_and_directory_discovery_are_bounded(daemon):
