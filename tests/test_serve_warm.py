@@ -20,9 +20,9 @@ from poolhouse.serve.tensors import tensors_by_shard
 MIB = 1024 * 1024
 
 
-@pytest.fixture(scope="module")
-def model(tmp_path_factory):
-    return flash_next(tmp_path_factory.mktemp("warm"), shards=2, experts=256)
+@pytest.fixture
+def model(tmp_path):
+    return flash_next(tmp_path, shards=2, experts=256)
 
 
 def tensor(model, name):
