@@ -18,6 +18,9 @@ pub struct PeerFacts {
     pub last_error: String,
     /// The build this peer last reported; None until it has been asked.
     pub seen: Option<crate::build::Seen>,
+    /// Dials to this peer that failed in a row, and the time before which none is made (a peer nothing can reach is not dialed every cycle).
+    pub fails: u32,
+    pub retry_at_ms: u64,
 }
 
 pub struct Facts {

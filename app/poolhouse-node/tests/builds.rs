@@ -40,7 +40,7 @@ fn a_device_that_hears_of_a_newer_build_is_stale_and_the_newer_one_is_not() {
     let (a, b) = join();
     build(&a, "aaaa", 5, 1);
     build(&b, "bbbb", 9, 1);
-    a.net.sync_once().unwrap();
+    a.net.sync_once(true).unwrap();
     assert_eq!(a.status()["build"]["state"], "catching up");
     assert_eq!(row(&a, &b)["build_state"], "newer");
     assert_eq!(row(&a, &b)["build"], "bbbb");
@@ -54,7 +54,7 @@ fn a_catching_up_device_takes_no_lease_until_it_is_current() {
     let (a, b) = join();
     build(&a, "aaaa", 5, 1);
     build(&b, "bbbb", 9, 1);
-    a.net.sync_once().unwrap();
+    a.net.sync_once(true).unwrap();
     let refused = gpu(&a);
     assert_eq!(refused["ok"], false, "{refused}");
     assert_eq!(refused["error"]["code"], "denied");
@@ -72,10 +72,10 @@ fn a_pinned_stale_device_still_takes_work_and_is_shown_pinned() {
     build(&a, "aaaa", 5, 1);
     a.node.lock().unwrap().build.pinned = true;
     build(&b, "bbbb", 9, 1);
-    a.net.sync_once().unwrap();
+    a.net.sync_once(true).unwrap();
     assert_eq!(a.status()["build"]["state"], "pinned");
     assert_eq!(gpu(&a)["ok"], true);
-    b.net.sync_once().unwrap();
+    b.net.sync_once(true).unwrap();
     assert_eq!(row(&b, &a)["build_state"], "pinned");
 }
 
@@ -85,7 +85,7 @@ fn a_peer_on_another_wire_version_is_shown_needing_an_update_with_the_fix_and_is
     build(&a, "aaaa", 5, 1);
     build(&b, "bbbb", 9, 2);
     a.say("demo", &a.token, "from a");
-    let reached = a.net.sync_once().unwrap();
+    let reached = a.net.sync_once(true).unwrap();
     assert_eq!(reached, 0, "no sync with a peer on another wire");
     let theirs = row(&a, &b);
     assert_eq!(theirs["build_state"], "needs update");

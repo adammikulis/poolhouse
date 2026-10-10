@@ -15,6 +15,7 @@
 //! | `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` | members | test shards (`shard`) |
 
 use std::collections::BTreeMap;
+use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::time::Duration;
 
@@ -100,7 +101,10 @@ fn members(node: &mut Node, fp: &str, req: &Value) -> Result<Value> {
     if let Some(p) = req.get("policy") {
         take_policy(node, p)?;
     }
-    Ok(json!({"pool": node.members.id, "changed": changed, "rows": node.members.export(), "policy": policy_json(node)}))
+    if let Some(builds) = req.get("builds") {
+        node.take_builds(fp, builds);
+    }
+    Ok(json!({"pool": node.members.id, "changed": changed, "rows": node.members.export(), "policy": policy_json(node), "builds": node.builds_known()}))
 }
 
 fn hosted<'a>(node: &'a mut Node, req: &Value, bfp: &str) -> Result<&'a mut crate::node::Hosted> {
@@ -185,38 +189,65 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
     }
 }
 
-/// Serve one accepted connection until the peer closes it or is refused.
+/// How a served connection ended.
+pub enum Ended {
+    Closed,
+    /// The peer asked to be reached over this connection (`attach`): it cannot be dialed, so the requests now go the other way.
+    Attached,
+}
+
+/// Serve one accepted connection until the peer closes it or is refused; a member that sends `attach` hands the connection over to
+/// `Net::register_reverse`, which uses it to send that member requests.
 pub fn serve(net: &Net, tcp: TcpStream) -> Result<()> {
     tcp.set_read_timeout(Some(IO_TIMEOUT))?;
     tcp.set_write_timeout(Some(IO_TIMEOUT))?;
     let ip = tcp.peer_addr()?.ip();
     let mut s = tls::accept(net.server_config.clone(), tcp)?;
-    let fp = cert_fingerprint(&s.peer);
+    let der = s.peer.clone();
+    let fp = cert_fingerprint(&der);
     net.session_opened(&fp);
-    let result = serve_requests(net, &mut s, ip);
+    let result = serve_requests(net, &mut s, &der, ip, true);
+    if matches!(result, Ok(Ended::Attached)) {
+        net.register_reverse(PeerClient::accepted(s)?);
+        return Ok(());
+    }
     net.session_closed(&fp);
-    result
+    result.map(|_| ())
 }
 
-fn serve_requests(net: &Net, s: &mut Secured<rustls::ServerConnection>, ip: IpAddr) -> Result<()> {
-    let der = s.peer.clone();
+/// Answer requests on ``s`` from the device with certificate ``der`` until it closes. ``allow_attach`` is false on a connection this
+/// device dialed: only the device that was dialed may be asked to hand the connection over.
+pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpAddr, allow_attach: bool) -> Result<Ended> {
     while let Some(req) = read_frame_max(s, MAX_PEER_FRAME)? {
+        if allow_attach && req["op"] == "attach" {
+            let active = net.node.lock().map_err(|_| Error::Damaged("node poisoned".into()))?.members.is_active(&cert_fingerprint(der));
+            let reply = if active { reply_of(Ok(json!({"attached": true}))) } else { reply_of(Err(Error::Denied("only a member can be reached over its connection".into()))) };
+            write_frame_max(s, &reply, MAX_PEER_FRAME)?;
+            if active {
+                return Ok(Ended::Attached);
+            }
+            continue;
+        }
         let (result, revoked) = {
             let mut node = net.node.lock().map_err(|_| Error::Damaged("node poisoned".into()))?;
-            let result = dispatch(net, &mut node, &der, ip, &req);
-            (result, node.members.standing(&cert_fingerprint(&der)) == Standing::Revoked)
+            let result = dispatch(net, &mut node, der, ip, &req);
+            (result, node.members.standing(&cert_fingerprint(der)) == Standing::Revoked)
         };
         write_frame_max(s, &reply_of(result), MAX_PEER_FRAME)?;
         if revoked {
-            return Ok(());
+            return Ok(Ended::Closed);
         }
     }
-    Ok(())
+    Ok(Ended::Closed)
 }
+
+/// What a connection is written to and read from.
+pub trait Link: Read + Write + Send {}
+impl<T: Read + Write + Send> Link for T {}
 
 /// A connection to a peer, authenticated both ways.
 pub struct PeerClient {
-    secured: Secured<rustls::ClientConnection>,
+    link: Box<dyn Link>,
     pub fingerprint: String,
     pub board_fingerprint: String,
     pub der: Vec<u8>,
@@ -233,13 +264,37 @@ impl PeerClient {
         tcp.set_nodelay(true)?;
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, secured })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured) })
+    }
+
+    /// Like `connect`, for a connection that stays open for hours: no read timeout (the other end speaks when it has something) and TCP
+    /// keepalives, so a path that died is noticed.
+    pub fn connect_long(me: &Identity, addr: SocketAddr, expect: Option<&str>) -> Result<PeerClient> {
+        let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
+        tcp.set_write_timeout(Some(IO_TIMEOUT))?;
+        tcp.set_nodelay(true)?;
+        socket2::SockRef::from(&tcp).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(Duration::from_secs(30)).with_interval(Duration::from_secs(10)))?;
+        let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
+        let der = secured.peer.clone();
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured) })
+    }
+
+    /// A connection a member opened to this device, to send that member requests over it.
+    pub fn accepted(secured: Secured<rustls::ServerConnection>) -> Result<PeerClient> {
+        let der = secured.peer.clone();
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured) })
+    }
+
+    /// Answer the requests that come down this connection (the other end holds the channel), until it closes.
+    pub fn serve(mut self, net: &Net, ip: IpAddr) -> Result<Ended> {
+        let der = self.der.clone();
+        serve_requests(net, &mut self.link, &der, ip, false)
     }
 
     /// Send one request; a refusal comes back as the matching error.
     pub fn call(&mut self, request: &Value) -> Result<Value> {
-        write_frame_max(&mut self.secured, request, MAX_PEER_FRAME)?;
-        let reply = read_frame_max(&mut self.secured, MAX_PEER_FRAME)?.ok_or_else(|| Error::Denied("the peer closed the connection".into()))?;
+        write_frame_max(&mut self.link, request, MAX_PEER_FRAME)?;
+        let reply = read_frame_max(&mut self.link, MAX_PEER_FRAME)?.ok_or_else(|| Error::Denied("the peer closed the connection".into()))?;
         if reply["ok"] == true {
             return Ok(reply["result"].clone());
         }

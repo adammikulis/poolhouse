@@ -401,6 +401,20 @@ listener is the one network port.
   both hold, through `sync::rows_since` and `sync::take`, so a wire row meets the checks an in-process row
   does and the same quotas (400 rows, 2 MiB, 16 origins per request). A relay's copy never marks an origin
   damaged; only the device that owns the origin can, by sending a forged copy of it.
+- **Who dials whom.** A device dials every active member whose address it holds, each cycle (`--sync-ms`), and swaps pool records and
+  boards in both directions over that one connection, so a device only the others cannot dial (behind NAT, as WSL2 is) still sends and
+  receives everything by dialing out. An address is learned at the join (the one the joiner dialed; for the member joined, the source
+  address it saw plus the port the joiner announced) and from a beacon; addresses are not passed on, because an address is only good
+  from where it was seen. Rows reach members a device has no address for through the members in between (a relay), and so do the
+  builds members report (`members` carries the builds the sender knows, first hand or told, shown with `relayed: true` until the
+  device reports its own). A member whose dial failed is left alone for a second, doubling to a minute, so a device nothing can reach
+  does not hold up the others; `sync_now` dials regardless. A dial refused at the handshake says that the member may have put this
+  device out of the pool.
+- **Reaching a device nothing can dial** (`attach`). After a successful sync a device keeps one long-lived connection to the member
+  it dialed (no read timeout, TCP keepalives) and sends `attach`; the member keeps it and sends that device its requests down it
+  (`Net::call_member`: test shards today), and the device answers them as it answers any peer, from the certificate the member
+  showed. A member that is revoked is not sent anything; a channel that fails is dropped and the member's address, if any, is
+  dialed. A device behind NAT is therefore reachable by the members it dials, which are the members whose address it holds.
 - **Discovery** (`beacon.rs`). One UDP datagram with the pool id, the device fingerprint, an address and
   a port, signed with the device key and valid for a minute; sent to the multicast group on a configurable
   port. Never matched by name. Loopback, unspecified and multicast addresses are never advertised (a

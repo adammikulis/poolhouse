@@ -36,7 +36,7 @@ fn tips(v: &Value, key: &str) -> Result<BTreeMap<String, Tip>> {
 pub fn sync_members(node: &Mutex<Node>, c: &mut PeerClient) -> Result<usize> {
     let ask = {
         let n = locked(node)?;
-        json!({"op": "members", "pool": n.members.id, "rows": n.members.export(), "policy": policy_json(&n)})
+        json!({"op": "members", "pool": n.members.id, "rows": n.members.export(), "policy": policy_json(&n), "builds": n.builds_known()})
     };
     let reply = c.call(&ask)?;
     let rows = reply.get("rows").and_then(Value::as_array).ok_or_else(|| Error::Invalid("rows is a list".into()))?;
@@ -44,6 +44,9 @@ pub fn sync_members(node: &Mutex<Node>, c: &mut PeerClient) -> Result<usize> {
     let changed = n.members.merge(rows, &c.fingerprint)?;
     if let Some(p) = reply.get("policy") {
         take_policy(&mut n, p)?;
+    }
+    if let Some(builds) = reply.get("builds") {
+        n.take_builds(&c.fingerprint, builds);
     }
     Ok(changed)
 }

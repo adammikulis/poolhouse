@@ -3,10 +3,10 @@
 //!
 //! The node's lock is never held across network I/O: a request takes it, decides, and lets go.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
 
 use rustls::ServerConfig;
@@ -65,6 +65,11 @@ pub struct Net {
     last_join: Mutex<Value>,
     /// True while the device listens for a pool of its project before making one.
     settling: AtomicBool,
+    /// Members that opened a connection to this device and keep it open for requests to go down (they cannot be dialed: they are behind NAT).
+    reverse: Mutex<BTreeMap<String, Arc<Mutex<PeerClient>>>>,
+    /// Members this device is keeping such a connection to, so each is attached once.
+    attaching: Mutex<BTreeSet<String>>,
+    this: OnceLock<Weak<Net>>,
 }
 
 fn locked<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
@@ -94,6 +99,16 @@ fn join_hint(e: &Error) -> String {
     text
 }
 
+/// A dial's failure as the device that made it should read it: a TLS alert at the handshake is how a member refuses a device it put out of
+/// the pool (or whose certificate it does not know), and that alert alone says nothing a person can act on.
+fn refusal_hint(e: &Error) -> String {
+    let text = e.to_string();
+    if text.contains("received fatal alert") {
+        return format!("{text}: the member refused this device's certificate at the handshake; it may have put this device out of the pool, so ask a member for the pool's list");
+    }
+    text
+}
+
 impl Net {
     /// Start listening (and beaconing and syncing, as configured) for ``node``.
     pub fn start(node: Arc<Mutex<Node>>, cfg: NetConfig) -> Result<Arc<Net>> {
@@ -110,7 +125,9 @@ impl Net {
         let net = Arc::new(Net {
             node, server_config: server_config(&me, standing)?, me, port, stop, shards,
             window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), settling: AtomicBool::new(false), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
+            reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeSet::new()), this: OnceLock::new(),
         });
+        let _ = net.this.set(Arc::downgrade(&net));
         locked(&net.node)?.facts.listen = Some(listener.local_addr()?.to_string());
         let n = net.clone();
         std::thread::spawn(move || n.accept_loop(listener));
@@ -416,12 +433,16 @@ impl Net {
     }
 
     // -- sync -------------------------------------------------------------
-    /// Swap pool records and boards with every active member we can reach; the number reached.
-    pub fn sync_once(&self) -> Result<usize> {
+    /// Swap pool records and boards with every active member we can reach; the number reached. A member whose last dials failed is left
+    /// alone until its backoff ends (a second, then twice as long, up to a minute) unless ``force``: a device nothing can reach does not
+    /// hold up the members that can be reached.
+    pub fn sync_once(&self, force: bool) -> Result<usize> {
         let targets: Vec<(String, String)> = {
             let n = locked(&self.node)?;
             let me = self.me.fingerprint();
+            let now = wall_ms();
             n.members.active().into_iter().filter(|d| d.fingerprint != me)
+                .filter(|d| force || n.facts.peers.get(&d.fingerprint).is_none_or(|f| f.retry_at_ms <= now))
                 .filter_map(|d| n.facts.peers.get(&d.fingerprint).and_then(|f| f.addr.clone()).map(|a| (d.fingerprint, a))).collect()
         };
         let mut reached = 0;
@@ -433,13 +454,88 @@ impl Net {
             let f = n.facts.peer(&fp);
             match result {
                 Ok(_) => {
-                    (f.last_sync_ms, f.last_seen_ms, f.last_error) = (wall_ms(), wall_ms(), String::new());
+                    (f.last_sync_ms, f.last_seen_ms, f.last_error, f.fails, f.retry_at_ms) = (wall_ms(), wall_ms(), String::new(), 0, 0);
                     reached += 1;
+                    drop(n);
+                    if let Ok(a) = addr.parse::<SocketAddr>() {
+                        self.attach(&fp, a);
+                    }
                 }
-                Err(e) => f.last_error = e.to_string(),
+                Err(e) => {
+                    f.fails = f.fails.saturating_add(1);
+                    f.retry_at_ms = wall_ms() + (1000u64 << f.fails.min(6)).min(60_000);
+                    f.last_error = refusal_hint(&e);
+                }
             }
         }
         Ok(reached)
+    }
+
+    /// Keep one connection open to ``fp`` for it to send this device requests down, unless one is already kept: this device may be behind
+    /// NAT, where the member cannot dial it but this device can dial the member.
+    fn attach(&self, fp: &str, addr: SocketAddr) {
+        let Some(net) = self.this.get().and_then(Weak::upgrade) else { return };
+        let Ok(mut kept) = locked(&self.attaching) else { return };
+        if !kept.insert(fp.to_string()) {
+            return;
+        }
+        drop(kept);
+        let fp = fp.to_string();
+        std::thread::spawn(move || {
+            let _ = net.attach_run(&fp, addr);
+            if let Ok(mut kept) = locked(&net.attaching) {
+                kept.remove(&fp);
+            }
+        });
+    }
+
+    fn attach_run(&self, fp: &str, addr: SocketAddr) -> Result<()> {
+        let mut c = PeerClient::connect_long(&self.me, addr, Some(fp))?;
+        c.call(&json!({"op": "attach"}))?;
+        self.session_opened(fp);
+        let ended = c.serve(self, addr.ip());
+        self.session_closed(fp);
+        ended.map(|_| ())
+    }
+
+    /// Hold the connection ``client`` (a member's, opened to this device) as the way to send that member requests.
+    pub fn register_reverse(&self, client: PeerClient) {
+        let fp = client.fingerprint.clone();
+        let replaced = self.reverse.lock().ok().and_then(|mut m| m.insert(fp.clone(), Arc::new(Mutex::new(client))));
+        if replaced.is_some() {
+            self.session_closed(&fp);
+        }
+    }
+
+    fn drop_reverse(&self, fp: &str, link: &Arc<Mutex<PeerClient>>) {
+        let removed = self.reverse.lock().ok().is_some_and(|mut m| m.get(fp).is_some_and(|l| Arc::ptr_eq(l, link)) && m.remove(fp).is_some());
+        if removed {
+            self.session_closed(fp);
+        }
+    }
+
+    /// Send one request to the member ``fp``: down the connection it opened to this device when it keeps one (it cannot be dialed), else
+    /// to its address.
+    pub fn call_member(&self, fp: &str, addr: Option<SocketAddr>, request: &Value) -> Result<Value> {
+        let link = locked(&self.reverse)?.get(fp).cloned();
+        if let Some(link) = link {
+            if !locked(&self.node)?.members.is_active(fp) {
+                self.drop_reverse(fp, &link);
+                return Err(Error::Denied("this device was put out of the pool".into()));
+            }
+            let sent = locked(&link)?.call(request);
+            match sent {
+                Err(Error::Io(_)) => self.drop_reverse(fp, &link),
+                Err(Error::Denied(m)) if m == "the peer closed the connection" => self.drop_reverse(fp, &link),
+                other => return other,
+            }
+        }
+        let addr = addr.ok_or_else(|| Error::Invalid("this device has no address for it and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync, or run `sync_now` on it".into()))?;
+        let mut c = PeerClient::connect(&self.me, addr, Some(fp)).map_err(|e| match e {
+            Error::Io(io) => Error::Invalid(format!("{io} at {addr}, and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync")),
+            other => other,
+        })?;
+        c.call(request)
     }
 
     /// Ask the peer for its build and remember it; refuse to sync with a peer on another wire version, saying how to fix it.
@@ -458,7 +554,7 @@ impl Net {
 
     fn sync_loop(self: Arc<Net>, every: Duration) {
         while !self.stop.load(Ordering::SeqCst) {
-            let _ = self.sync_once();
+            let _ = self.sync_once(false);
             let mut waited = Duration::ZERO;
             while waited < every && !self.stop.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(50));
@@ -495,7 +591,7 @@ impl Net {
             "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120)),
             "join_pool" => self.join_pool(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
             "shard_call" => self.shard_call(c),
-            _ => Ok(json!({"reached": self.sync_once()?})),
+            _ => Ok(json!({"reached": self.sync_once(true)?})),
         }
     }
 
@@ -523,11 +619,11 @@ impl Net {
         };
         request.insert("op".into(), json!(op));
         request.insert("by".into(), json!(by));
-        PeerClient::connect(&self.me, addr, Some(&fp))?.call(&Value::Object(request))
+        self.call_member(&fp, addr, &Value::Object(request))
     }
 
     /// The active member other than this device that ``name`` names, and where it was last reached.
-    fn device_named(&self, node: &Node, name: &str) -> Result<(String, SocketAddr)> {
+    fn device_named(&self, node: &Node, name: &str) -> Result<(String, Option<SocketAddr>)> {
         let me = self.me.fingerprint();
         let found: Vec<Device> = node.members.active().into_iter().filter(|d| d.fingerprint != me && (d.fingerprint == name || d.name == name)).collect();
         let device = match found.as_slice() {
@@ -535,8 +631,7 @@ impl Net {
             [] => return Err(Error::Invalid(format!("no other active device of this pool is called {}", name.chars().take(60).collect::<String>()))),
             _ => return Err(Error::Invalid("two devices have that name: name one by its fingerprint".into())),
         };
-        let addr = node.facts.peers.get(&device.fingerprint).and_then(|f| f.addr.clone())
-            .ok_or_else(|| Error::Invalid(format!("{} has not been reached yet: no address is known", device.name)))?;
-        Ok((device.fingerprint.clone(), addr.parse().map_err(|_| Error::Invalid("the address on record is not usable".into()))?))
+        let addr = node.facts.peers.get(&device.fingerprint).and_then(|f| f.addr.as_deref()).and_then(|a| a.parse().ok());
+        Ok((device.fingerprint.clone(), addr))
     }
 }

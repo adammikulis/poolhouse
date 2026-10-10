@@ -45,6 +45,8 @@ pub struct Seen {
     pub seq: u64,
     pub wire: u32,
     pub pinned: bool,
+    /// Told by another member rather than reported by the device itself: shown, and replaced the first time the device reports.
+    pub relayed: bool,
 }
 
 impl Seen {
@@ -54,7 +56,12 @@ impl Seen {
             seq: v.get("build_seq").and_then(Value::as_u64).unwrap_or(0),
             wire: v.get("wire").and_then(Value::as_u64).and_then(|w| u32::try_from(w).ok()).unwrap_or(0),
             pinned: v.get("pinned").and_then(Value::as_bool).unwrap_or(false),
+            relayed: false,
         }
+    }
+
+    pub fn json(&self) -> Value {
+        json!({"build": self.id, "build_seq": self.seq, "wire": self.wire, "pinned": self.pinned})
     }
 }
 
@@ -81,6 +88,35 @@ pub fn fix_for(mine: &Build, theirs: &Seen, name: &str) -> String {
 }
 
 impl Node {
+    /// The builds this device knows (first hand or told), its own included, to tell a member that cannot reach every device itself.
+    pub fn builds_known(&self) -> Value {
+        let mut out = serde_json::Map::new();
+        out.insert(self.cert.fingerprint(), self.build.json());
+        for (fp, seen) in self.seen_active() {
+            out.insert(fp.clone(), seen.json());
+        }
+        Value::Object(out)
+    }
+
+    /// Take what the member ``from`` tells of other members' builds: kept for each active member this device has not heard from itself,
+    /// and replaced as soon as that member reports its own.
+    pub fn take_builds(&mut self, from: &str, told: &Value) {
+        let me = self.cert.fingerprint();
+        let Some(map) = told.as_object() else { return };
+        if !self.members.is_active(from) {
+            return;
+        }
+        let told: Vec<(String, Value)> = map.iter().take(256).filter(|(fp, _)| **fp != me && **fp != from && self.members.is_active(fp)).map(|(fp, v)| (fp.clone(), v.clone())).collect();
+        for (fp, said) in told {
+            let first_hand = self.facts.peers.get(&fp).and_then(|f| f.seen.as_ref()).is_some_and(|s| !s.relayed);
+            if !first_hand {
+                let mut seen = Seen::read(&said);
+                seen.relayed = true;
+                self.facts.peer(&fp).seen = Some(seen);
+            }
+        }
+    }
+
     /// Remember the build the active member ``fp`` reported.
     pub fn observe_build(&mut self, fp: &str, said: &Value) {
         if self.members.is_active(fp) {
@@ -131,7 +167,7 @@ impl Node {
             Some(s) => {
                 let st = state(&self.build, s);
                 let fix = if st == "needs update" { fix_for(&self.build, s, name) } else { String::new() };
-                json!({"build": s.id, "build_seq": s.seq, "wire": s.wire, "pinned": s.pinned, "build_state": if s.pinned && st != "needs update" { "pinned" } else { st }, "fix": fix})
+                json!({"build": s.id, "build_seq": s.seq, "wire": s.wire, "pinned": s.pinned, "relayed": s.relayed, "build_state": if s.pinned && st != "needs update" { "pinned" } else { st }, "fix": fix})
             }
         }
     }
