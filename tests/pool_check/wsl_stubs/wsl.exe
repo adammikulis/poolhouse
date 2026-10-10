@@ -1,0 +1,3 @@
+#!/bin/sh
+# `wsl.exe --shutdown` would end the session; the stub records that it was asked and does nothing else.
+echo "$*" >> /tmp/wsl.exe.calls

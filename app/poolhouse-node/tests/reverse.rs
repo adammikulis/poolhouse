@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 /// ``a`` can be dialed, ``b`` cannot: the address ``a`` holds for ``b`` is one nothing listens on.
 fn behind_nat() -> (Dev, Dev) {
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     a.node.lock().unwrap().facts.set_addr(&b.fp(), "127.0.0.1:9").unwrap();
     (a, b)
 }
@@ -41,7 +41,7 @@ fn the_channel_of_a_removed_member_is_not_used() {
     let (a, b) = behind_nat();
     b.net.sync_once(true).unwrap();
     eventually("the channel", 10, || caps(&a, &b)["ok"] == true);
-    a.ok("member_revoke", "", &a.token, json!({"fingerprint": b.fp()}));
+    a.ok("member_remove", "", &a.token, json!({"fingerprint": b.fp()}));
     let after = caps(&a, &b);
     assert_eq!(after["ok"], false, "{after}");
 }

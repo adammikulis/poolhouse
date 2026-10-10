@@ -17,8 +17,8 @@ fn row(d: &Dev, other: &Dev) -> Value {
 /// a knows only b's address and c knows only b's: a and c never dial each other.
 fn chain() -> (Dev, Dev, Dev) {
     let (a, b, c) = (device(), device(), device());
-    b.pair_secure(&a);
-    b.pair_secure(&c);
+    b.join_with_code(&a);
+    b.join_with_code(&c);
     (a, b, c)
 }
 
@@ -53,9 +53,9 @@ fn what_a_member_reports_itself_replaces_what_was_told() {
 #[test]
 fn a_build_is_told_on_through_more_than_one_member() {
     let (a, b, c, d) = (device(), device(), device(), device());
-    b.pair_secure(&a);
-    b.pair_secure(&c);
-    c.pair_secure(&d);
+    b.join_with_code(&a);
+    b.join_with_code(&c);
+    c.join_with_code(&d);
     build(&d, "dddd", 20);
     for _ in 0..2 {
         for dev in [&d, &c, &b, &a] {

@@ -1,0 +1,114 @@
+name: pool-check
+
+# scripts/pool-check on real machines: the same steps, each operating system's own node (macOS, Linux, Windows), a WSL distribution on a
+# Windows runner, and the Windows device and a WSL device of one runner joined into one pool. No secrets, no Docker, no network beyond
+# loopback and the runner's own virtual switch. docs/pool-check.md says what each job proves and what none can.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "app/poolhouse-node/**"
+      - "src/poolhouse/node*.py"
+      - "src/poolhouse/testfarm/**"
+      - "src/poolhouse/board/**"
+      - "tests/pool_check/**"
+      - "scripts/pool-check"
+      - ".github/workflows/pool-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pool-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: native on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - name: install the package and pytest
+        run: python -m pip install pytest -e .
+      - name: three native devices, every step
+        run: python scripts/pool-check --platform native --devices 3
+
+  wsl:
+    name: native in WSL Ubuntu on a Windows runner
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: build-essential curl ca-certificates git
+      - name: this tree, built and installed inside WSL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = (wsl.exe -d Ubuntu-24.04 --exec wslpath -u "$env:GITHUB_WORKSPACE").Trim()
+          wsl.exe -d Ubuntu-24.04 --exec bash "$src/tests/pool_check/wsl_provision.sh" "$src" /root/poolhouse
+          if ($LASTEXITCODE -ne 0) { throw "provisioning the WSL distribution failed" }
+      - name: three native devices inside WSL, every step
+        shell: pwsh
+        run: |
+          wsl.exe -d Ubuntu-24.04 --cd /root/poolhouse --exec /root/poolhouse/.venv/bin/python scripts/pool-check --platform native --devices 3 --binary /root/poolhouse/app/target/debug/poolhouse-node
+          if ($LASTEXITCODE -ne 0) { throw "the pool check failed in WSL" }
+
+  windows-and-wsl:
+    name: a Windows device and a WSL device of one runner in one pool
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      - uses: Vampire/setup-wsl@d1da7f2c0322a5ee4f24975344f67fc0f5baf364 # v7.0.0
+        with:
+          distribution: Ubuntu-24.04
+          additional-packages: build-essential curl ca-certificates git
+      - name: the Windows device's node and package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install pytest -e .
+          cargo build --manifest-path app/Cargo.toml -p poolhouse-node
+          if ($LASTEXITCODE -ne 0) { throw "building the node on Windows failed" }
+      # The Windows device listens on every interface here (a runner is not anyone's own machine) so the WSL device, which reaches it at the
+      # address of the Windows side of the virtual switch, can dial it: the rule lets that node through Windows Firewall.
+      - name: allow the Windows node through Windows Firewall
+        shell: pwsh
+        run: |
+          $node = (Resolve-Path app\target\debug\poolhouse-node.exe).Path
+          New-NetFirewallRule -DisplayName "pool-check node" -Direction Inbound -Program $node -Action Allow -Profile Any | Out-Null
+          Get-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue | Out-String | Write-Host
+      - name: this tree, built and installed inside WSL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = (wsl.exe -d Ubuntu-24.04 --exec wslpath -u "$env:GITHUB_WORKSPACE").Trim()
+          wsl.exe -d Ubuntu-24.04 --exec bash "$src/tests/pool_check/wsl_provision.sh" "$src" /root/poolhouse
+          if ($LASTEXITCODE -ne 0) { throw "provisioning the WSL distribution failed" }
+      - name: the two devices, every step that fits two devices
+        shell: pwsh
+        run: |
+          python scripts/pool-check --platform windows-wsl --wsl-distro Ubuntu-24.04 --wsl-checkout /root/poolhouse --wsl-binary /root/poolhouse/app/target/debug/poolhouse-node
+          if ($LASTEXITCODE -ne 0) { throw "the pool check of the Windows and WSL devices failed" }

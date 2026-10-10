@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Start a real pool of N devices (this machine and N-1 Linux containers) and check that it works, step by step.
+
+    scripts/pool-check                 3 devices: the Mac device and 2 Linux containers; every step
+    scripts/pool-check --devices 5     a pool of five
+    scripts/pool-check --only join-secure --only entries-converge
+    scripts/pool-check --list
+
+Every container is a different operating system, kernel, network stack and filesystem with its own node, state and name, joined
+through the real join path. The Mac device's node listens on loopback only and uses no multicast, so this never asks for Local
+Network access. docs/pool-check.md says what it proves and what it cannot.
+"""
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "tests"))
+
+from pool_check.rig import main  # noqa: E402
+
+if __name__ == "__main__":
+    raise SystemExit(main())

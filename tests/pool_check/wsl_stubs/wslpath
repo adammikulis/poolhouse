@@ -1,0 +1,3 @@
+#!/bin/sh
+# `wslpath -u C:\Users\poolcheck` as WSL answers it: the drive under /mnt.
+printf '/mnt/c/Users/poolcheck\n'

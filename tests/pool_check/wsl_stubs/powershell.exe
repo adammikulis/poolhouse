@@ -1,0 +1,7 @@
+#!/bin/sh
+# What the Windows side of WSL interop says to poolhouse.device_host, for a Windows with no poolhouse firewall rules yet:
+# the user's profile folder, and "missing" for the firewall query. Nothing else is asked of it in a dry run.
+case "$*" in
+  *USERPROFILE*) printf 'C:\\Users\\poolcheck\n' ;;
+  *Get-NetFirewallRule*) printf 'missing\n' ;;
+esac

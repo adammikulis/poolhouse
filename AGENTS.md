@@ -214,6 +214,13 @@ nothing still commits on its own branch by named files before it reports -- stag
 is the state that leaks -- and reports the branch, the commits, and the suite result on that
 branch.
 
+### Before the owner is told to set up another device
+
+Before telling the owner to set up another device, run `scripts/pool-check` (docs/pool-check.md) and fix what fails: it starts real
+devices of a different operating system, kernel and network stack, joins them through the real join path, and reports PASS or FAIL per
+step. A claim that devices work together that was tested only with two nodes on one machine over loopback is not tested; the pool check
+is the minimum, and what it cannot cover (a real Windows device, a beacon on a real network, a firewall prompt) is said, not implied.
+
 ## 2. Git, worktrees and landing
 
 ### Instructions are carried out as given
