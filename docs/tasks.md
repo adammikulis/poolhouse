@@ -18,8 +18,10 @@ parent that holds the grant `task_authority`), a designated reviewer, or the cre
 recorded with `task_complete`; the credit of an independent review is recorded in the encrypted work ledger under the
 board's id.
 
-The person's Tasks page, the local project task workers (scheduler, worktrees, integration, source recovery) and
-`task-integrate` still use the workspace store described below until their pages and the local agent loop move to the node.
+The person's Tasks page is on the node too: the UI daemon reads and writes it as the person's own session on the board
+(`docs/node.md`, "The person's session"), so a task made by `task-create` and a task made on the page are the same row.
+The local project task workers (scheduler, worktrees, integration, source recovery) and `task-integrate` still use the
+workspace store described below until the local agent loop moves to the node.
 
 Open **Tasks** in the main UI to inspect structured work. Search or filter by status, select
 an item, and inspect its account, physical device, authenticated worker, bound model,
@@ -80,8 +82,8 @@ shown as unrated until independently assessed. Reliability uses accepted/rejecte
 infrastructure blockage is excluded. **Runs are free**: balances and reputation do not
 restrict access or spend credits.
 
-The person-facing API is `GET /ui/tasks`, `GET /ui/tasks?id=task:…`, and same-origin
-`POST /ui/tasks`. POST actions are create (`spec`), review (`id`, `decision`), recovery or
+The person-facing API is `GET /ui/projects/ID/tasks`, `GET /ui/projects/ID/tasks?id=task-…` (the project's board; the
+older `/ui/tasks` answers for the daemon's working directory), and same-origin `POST` to the same path. POST actions are create (`spec`), review (`id`, `decision`), recovery or
 resume (`id`, `reason`), and credit retry (`id`). Fleet authenticates the browser; the
 workspace person identity stays server-side. Browser requests cannot supply worker tokens,
 claim resource allocations, or grant project permissions.

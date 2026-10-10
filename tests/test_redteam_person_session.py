@@ -18,19 +18,24 @@ from launch_support import browser, hand_typed, redeem, sign_in, ticket
 from test_fleet_ui import WORDS, Serving
 from test_redteam_human_floor import run_command
 
-from poolhouse import home
+from poolhouse import home, node_launch
+from poolhouse.board import person, session as sessions
 from poolhouse.fleet import session as session_module
 from poolhouse.fleet.launch_secret import HEADER, LaunchSecret
 from poolhouse.fleet.projects import ProjectRegistry, identity
 from poolhouse.net import git
-from poolhouse.workspace.identity import HUMAN
 from poolhouse.workspace.remote_host import WorkspaceHost
 
 pytestmark = pytest.mark.redteam
 
 
+pytest_plugins = ["node_kit"]
+
+
 @pytest.fixture
-def window(tmp_path, monkeypatch):
+def window(tmp_path, monkeypatch, workspace_node):
+    monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
+    monkeypatch.delenv("POOLHOUSE_BOARD")
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "machine-workspace"))
     checkout = tmp_path / "experiment"
     checkout.mkdir()
@@ -46,6 +51,8 @@ def window(tmp_path, monkeypatch):
     server.ui.audit = lambda event, **fields: server.rows.append({"event": event, **fields}) or host.audit(event, **fields)
     server.project = project
     server.workspace = host.workspace(project)
+    server.node = workspace_node
+    server.checkout = checkout
     try:
         yield server
     finally:
@@ -53,7 +60,9 @@ def window(tmp_path, monkeypatch):
 
 
 def people(window) -> list[str]:
-    return [name for name, entry in window.workspace.registry._load().items() if entry.get("role") == HUMAN]
+    """The names of the person's sessions on the project's board: none until the page connects."""
+    name = sessions.find(person.HARNESS, person.NATIVE_ID, cwd=window.checkout, client=window.node.client)
+    return [name] if name else []
 
 
 def connect(window, cookie="", headers=None):
@@ -104,7 +113,7 @@ def test_a_ticket_opens_one_session_and_only_once(window):
     assert status == 200
     cookie = headers["Set-Cookie"].split(";", 1)[0]
     assert connect(window, cookie)[0] == 200
-    assert people(window) == ["local-person"]
+    assert len(people(window)) == 1
     status, _, headers = redeem(window, issued["ticket"])
     assert status == 401 and "Set-Cookie" not in headers
 
@@ -140,14 +149,15 @@ def test_a_passphrase_session_connects(window):
     status, _, headers = window.call("/ui/session", method="POST", body={"passphrase": WORDS, "group": "home"})
     assert status == 200
     assert connect(window, headers["Set-Cookie"].split(";", 1)[0])[0] == 200
-    assert people(window) == ["local-person"]
+    assert len(people(window)) == 1
 
 
-def test_the_credentialed_connect_is_recorded_in_the_project_audit_chain(window):
+def test_the_credentialed_connect_is_recorded_in_the_audit_chain(window):
     cookie = sign_in(window)
     assert connect(window, cookie)[0] == 200
-    rows = [row for row in window.workspace.audit_log.rows() if row.get("event") == "person.connect"]
+    rows = [row for row in window.rows if row.get("event") == "person.connect"]
     assert rows and rows[-1]["origin"] == "launch-ticket" and rows[-1]["project"] == window.project
+    assert rows[-1]["actor"] == people(window)[0]
 
 
 def test_a_ticket_is_asked_for_only_by_the_machine_itself_with_its_secret(window):

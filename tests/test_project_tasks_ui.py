@@ -1,67 +1,61 @@
-"""Human-authorized task controls use the selected project store."""
+"""Human-authorized task controls use the selected project's board on the node."""
 
 import pytest
-import test_project_board_ui as board_ui
+from person_kit import OTHER, PROJECT
 
-from poolhouse.workspace import tokens
-from poolhouse.workspace.taskboard import TaskBoard
+from poolhouse.board import person
+from poolhouse.board.tasks import Tasks
 
-project_board = board_ui.project_board
-PROJECT = board_ui.PROJECT
-OTHER = board_ui.OTHER
+pytest_plugins = ["node_kit", "person_kit"]
 
 
-def task_call(project_board, project=PROJECT, **options):
-    call, _, projects = project_board
-    projects[project].name = 'Experiment' if project == PROJECT else 'Other experiment'
-    return call('', project=project, path=f'/ui/projects/{project}/tasks', **options)
+def board_of(node, projects, ident):
+    """The person's session on the board of one project."""
+    return person.seat(projects[ident].root, node.client)
 
 
-def test_tasks_preserve_records_and_ignore_unrelated_default_coordinator(project_board, monkeypatch):
-    from poolhouse.workspace import coordinator_config
-
-    monkeypatch.setattr(coordinator_config, 'load', lambda _: {'mode': 'remote'})
-    _, workspaces, _ = project_board
-    ws = workspaces[PROJECT]
-    owner = tokens.read_file(tokens.directory(ws.base) / tokens.OWNER_FILE)
-    existing = TaskBoard(ws).create(owner, {'title': 'Existing task', 'acceptance': ['Reviewed']})
-    status, created = task_call(project_board, method='POST', body={'spec': {
+def test_tasks_preserve_records_and_show_those_made_through_the_node(project_tasks):
+    call, node, projects = project_tasks
+    lead = board_of(node, projects, PROJECT)
+    existing = Tasks(lead).create({'title': 'Existing task', 'acceptance': ['Reviewed']})
+    status, created = call(method='POST', body={'spec': {
         'title': 'New task', 'acceptance': ['Passed'], 'deps': [existing['id']]}})
     assert status == 200, created
-    assert created['project'] == {'key': PROJECT, 'name': 'Experiment'}
-    status, result = task_call(project_board)
+    assert created['project'] == {'key': PROJECT, 'name': 'experiment'}
+    status, result = call()
     assert status == 200, result
     assert {task['id'] for task in result['tasks']} == {existing['id'], created['id']}
     assert result['overview']['remaining'] == 2 and result['overview']['queued'] == 2
     assert result['overview']['eta_seconds'] is None
-    status, other = task_call(project_board, OTHER)
+    status, other = call(project=OTHER)
     assert status == 200 and other['tasks'] == []
-    assert workspaces[OTHER].base != ws.base
+    assert board_of(node, projects, OTHER).board != lead.board
 
 
 @pytest.mark.parametrize('options', [{'cookie': 'forged'}, {'ip': '198.51.100.4'},
                                     {'method': 'POST', 'origin': 'https://outside.invalid',
                                      'body': {'spec': {'title': 'Forbidden', 'acceptance': ['No']}}}])
-def test_tasks_reject_forged_remote_and_cross_origin_people(project_board, options):
-    status, _ = task_call(project_board, **options)
-    assert status == 403
+def test_tasks_reject_forged_remote_and_cross_origin_people(project_tasks, options):
+    call, node, projects = project_tasks
+    assert call(**options)[0] == 403
+    assert Tasks(board_of(node, projects, PROJECT)).list()['tasks'] == []
 
 
-def test_tasks_refuse_foreign_project_metadata_and_agent_owner(project_board):
-    status, _ = task_call(project_board, method='POST', body={'spec': {
+def test_tasks_refuse_foreign_project_metadata(project_tasks):
+    call, node, projects = project_tasks
+    status, _ = call(method='POST', body={'spec': {
         'title': 'Wrong project', 'acceptance': ['No'], 'project': {'key': OTHER}}})
     assert status == 403
-    _, workspaces, projects = project_board
-    ws = workspaces[PROJECT]
-    owner = tokens.read_file(tokens.directory(ws.base) / tokens.OWNER_FILE)
-    tokens.store(ws.base, tokens.OWNER_FILE, ws.mint(owner, 'another-worker'))
-    # the person is the live browser session bound to this project, never the owner file's token
-    assert task_call(project_board)[0] == 200
-    agents = ws.registry._load()
-    person = next(name for name, entry in agents.items() if entry['role'] == 'human')
-    agents[person]['person_project'] = OTHER
-    ws.registry._save(agents)
-    assert task_call(project_board)[0] == 403
-    assert task_call(project_board, method='POST', body={'spec': {'title': 'Unbound', 'acceptance': ['No']}})[0] == 403
-    projects[OTHER].board_host = 'http://foreign:8770'
-    assert task_call(project_board, OTHER)[0] == 409
+    assert Tasks(board_of(node, projects, PROJECT)).list()['tasks'] == []
+
+
+def test_person_task_create_names_the_project(project_tasks):
+    call, _, _ = project_tasks
+    status, task = call(method='POST', body={'spec': {'title': 'Replay', 'acceptance': ['Replay passes']}})
+    assert status == 200 and task['project']['key'] == PROJECT
+
+
+def test_a_directory_that_is_no_project_is_refused_not_given_another_projects_tasks(project_tasks, tmp_path):
+    call, _, projects = project_tasks
+    projects[PROJECT].root = str(tmp_path)
+    assert call()[0] == 403

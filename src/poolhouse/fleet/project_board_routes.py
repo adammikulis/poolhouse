@@ -4,7 +4,9 @@ import re
 import shlex
 
 from .discovery import memberships
+from .extension_routes import load
 from .projects import lan_host
+from .session import parse_cookie
 
 
 class ProjectBoardRoutes:
@@ -29,18 +31,14 @@ class ProjectBoardRoutes:
                 return True
             if match[2] == "tasks":
                 project = projects.get(match[1])
-                if not projects.hosts(project.board_host):
-                    self.send(409, {"error": "Open Tasks on this project's authoritative device.",
-                                    "board_host": project.board_host})
-                    return True
-                return host.person_tasks(self, match[1],
+                return load("tasks")(self, prefix=self.path, root=project.root,
                                          project={"key": match[1], "name": project.name})
             if match[2].startswith("board/"):
                 project = projects.get(match[1])
-                if not projects.hosts(project.board_host):
-                    self.send(409, {"error": "open the Board on this project's authoritative device"})
-                    return True
-                return host.person_board(self, match[1])
+                opened = self.ui.sessions.get(parse_cookie(self.cookie))
+                return load("board")(self, root=project.root, prefix=f"/ui/projects/{match[1]}/board/",
+                                          audit=lambda name: self.ui.record("person.connect", actor=name, project=match[1],
+                                                                            origin=getattr(opened, "origin", "")))
             if match[2] == "board" and self.method == "GET":
                 self.send(200, host.status(match[1]))
             elif match[2] == "invite" and self.method == "POST":

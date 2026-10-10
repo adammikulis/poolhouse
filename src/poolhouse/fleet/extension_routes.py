@@ -5,6 +5,14 @@ from importlib.metadata import entry_points
 GROUP = "poolhouse.ui_routes"
 
 
+def load(name: str):
+    """The route function an installed extension registered under ``name``."""
+    found = [entry for entry in entry_points(group=GROUP) if entry.name == name]
+    if len(found) != 1:
+        raise RuntimeError(f"install one {name} UI extension")
+    return found[0].load()
+
+
 class ExtensionRoutes:
     def route(self) -> bool:
         for entry in entry_points(group=GROUP):

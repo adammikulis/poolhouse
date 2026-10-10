@@ -3,9 +3,7 @@ conversation without a subscription, the person's terminal chat, and the page's 
 
 from __future__ import annotations
 
-import http.client
 import io
-import json
 import os
 import statistics
 import subprocess
@@ -13,12 +11,11 @@ import sys
 import threading
 import time
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
 from workspace_kit import SRC, STRIPPED, Kit, clean_env, cli
 
-from poolhouse.workspace import Denied, boardroute, chat, tokens
+from poolhouse.workspace import Denied, chat, tokens
 from poolhouse.workspace.boardapi import Follow
 
 WAITER = """
@@ -280,124 +277,3 @@ def test_the_chat_command_runs_for_a_person_at_a_terminal(kit, monkeypatch):
     assert kit.owner.encode() not in seen
 
 
-# -- the page's one write and its live feed ---------------------------------------------------------
-@pytest.fixture
-def route(kit):
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    server = boardroute.serve(kit.ws)
-    server.start()
-
-    def call(path, method="GET", headers=None, body=None, json_body=True):
-        head = {"Cookie": f"ml_session={server.session}", **(headers or {})}
-        if body is not None and json_body:
-            head.setdefault("Content-Type", "application/json")
-            body = json.dumps(body)
-        conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=30)
-        conn.request(method, path, body=body, headers=head)
-        r = conn.getresponse()
-        out = r.status, r.read()
-        conn.close()
-        return out
-
-    call.port = server.port
-    call.origin = {"Origin": f"http://127.0.0.1:{server.port}"}
-    yield call
-    server.stop()
-
-
-def test_the_person_posts_to_a_board_a_thread_and_a_conversation_from_the_page(kit, route):
-    ws, t = kit.ws, kit.tokens
-    ws.board.create(t["alice"], "#ops", private=True)
-    root = send(kit, "alice", "#ops", "start", subject="s")
-    status, body = route("/board/post", "POST", route.origin, {"to": "#ops", "body": "<img src=x> hi", "subject": "from me"})
-    assert status == 200 and json.loads(body)["to"] == "#ops"
-    status, body = route("/board/post", "POST", route.origin,
-                         {"to": "#ops", "body": "a reply", "reply_to": root["seq"]})
-    assert status == 200 and json.loads(body)["thread"] == root["seq"]
-    assert route("/board/post", "POST", route.origin, {"to": "alice", "body": "hello alice"})[0] == 200
-    posted = ws.board.ui_read(kit.owner, "#ops")["messages"]
-    assert [m["body"] for m in posted if m["from"] == "owner"] == ["<img src=x> hi", "a reply"]
-    assert [m["role"] for m in posted if m["from"] == "owner"] == ["human", "human"]
-    assert [m["text"].splitlines()[-2] for m in ws.inbox(t["alice"])][-1] == "hello alice"
-    assert "owner" in {b["name"]: b for b in ws.board.list(kit.owner)}["#ops"]["members"]
-
-
-def test_the_post_route_refuses_a_foreign_page_a_wrong_type_a_bad_body_and_other_paths(kit, route):
-    doc = {"to": "#general", "body": "x"}
-    before = kit.ws.bus.log.head()
-    cross = {"Origin": "http://attacker.example"}
-    assert route("/board/post", "POST", cross, doc)[0] in (403, 421)
-    assert route("/board/post", "POST", {}, doc)[0] == 403
-    assert route("/board/post", "POST", {**route.origin, "Sec-Fetch-Site": "cross-site"}, doc)[0] == 403
-    assert route("/board/post", "POST", {**route.origin, "Host": "attacker.example"}, doc)[0] == 421
-    assert route("/board/post", "POST", {**route.origin, "Content-Type": "text/plain"}, json.dumps(doc),
-                 json_body=False)[0] == 400
-    for bad in ({"to": "#general"}, {"to": "#general", "body": "   "}, {"to": 3, "body": "x"},
-                {"to": "#general", "body": "x", "reply_to": "7"}, {"to": "#general", "body": "x", "type": "nope"},
-                {"to": "#nothing", "body": "x"}, {"to": "nobody", "body": "x"}, [1], "x"):
-        assert route("/board/post", "POST", route.origin, bad)[0] in (400, 403), bad
-    assert route("/board/post", "POST", route.origin, {"to": "#general", "body": "x" * 40000})[0] == 400
-    for path in ("/board/boards", "/board/subscribe", "/board/join", "/", "/board/post/x"):
-        assert route(path, "POST", route.origin, doc)[0] in (405, 501)
-    assert route("/board/post", "PUT", route.origin, doc)[0] in (405, 501)
-    assert kit.ws.bus.log.head() == before
-
-
-@pytest.fixture
-def tight(kit):
-    kit.limits(sends_per_window=2, child_sends_per_window=2)
-
-
-def test_a_post_from_the_page_counts_against_the_persons_rate_limit(kit, tight, route):
-    statuses = [route("/board/post", "POST", route.origin, {"to": "#general", "body": f"m{i}"})[0]
-                for i in range(4)]
-    assert statuses == [200, 200, 429, 429]
-
-
-def test_the_live_route_answers_the_moment_a_message_arrives_and_times_out_quietly(kit, route):
-    ws = kit.ws
-    seq = json.loads(route("/board/head")[1])["seq"]
-    began = time.monotonic()
-    got = json.loads(route(f"/board/wait?after={seq}&timeout=1")[1])
-    assert got["seq"] == seq and 0.8 < time.monotonic() - began < 5
-    ws.board.create(kit.tokens["alice"], "#ops")
-    threading.Timer(0.4, lambda: send(kit, "alice", "#ops", "pushed")).start()
-    began = time.monotonic()
-    woke = json.loads(route(f"/board/wait?after={seq}&timeout=20")[1])
-    assert woke["seq"] > seq and time.monotonic() - began < 3
-    threading.Timer(0.3, lambda: send(kit, "alice", "bob", "a private pair")).start()
-    began = time.monotonic()
-    pair = json.loads(route(f"/board/wait?after={woke['seq']}&timeout=20")[1])
-    assert pair["seq"] > woke["seq"] and time.monotonic() - began < 3
-    assert Path(kit.base / "wake").is_dir()
-
-
-def test_the_person_wakes_in_milliseconds_not_polls(kit, route):
-    send(kit, "alice", "bob", "warm up")
-    seq = json.loads(route("/board/head")[1])["seq"]
-    lat = []
-
-    def ask(after, out):
-        out.update(got=json.loads(route(f"/board/wait?after={after}&timeout=20")[1]), at=time.monotonic())
-
-    for i in range(5):
-        out: dict = {}
-        thread = threading.Thread(target=ask, args=(seq, out))
-        thread.start()
-        time.sleep(0.3)
-        send(kit, "alice", "bob", f"ping {i}")
-        began = time.monotonic()  # the send's own signing and fsync are not the wake-up
-        thread.join(15)
-        lat.append(max(0.0, out["at"] - began) * 1000)
-        seq = out["got"]["seq"]
-    lat.sort()
-    print(f"person long poll: p50 {statistics.median(lat):.1f} ms, max {lat[-1]:.1f} ms")
-    assert statistics.median(lat) < 100
-
-
-def test_the_posting_function_itself_refuses_an_agent_token(kit):
-    body = json.dumps({"to": "#general", "body": "x"}).encode()
-    with pytest.raises(Denied):
-        boardroute._post(kit.ws, kit.tokens["alice"], body)
-    with pytest.raises(ValueError):
-        boardroute._post(kit.ws, kit.owner, json.dumps({"to": "#general", "body": "x" * 40000}).encode())

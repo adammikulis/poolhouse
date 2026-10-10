@@ -156,9 +156,7 @@ def available(ui) -> dict:
         boards = {p["board_host"] for p in projects if p["id"] == project["id"] and p["board_host"]}
         if len(boards) > 1:
             project["state"] = "conflict"
-    workspaces = [{**board, "is_self": True, "local_authority": True}
-                  for board in ui.projects.boards()
-                  if ui.projects.hosts(board["board_host"])] if ui.projects else []
+    workspaces = [{**board, "is_self": True, "local_authority": True} for board in ui.projects.boards()] if ui.projects else []
     return {"projects": projects, "devices": devices, "workspaces": workspaces,
             "candidates": ui.projects.candidates() if ui.projects else [],
             "local": ui.projects.list() if ui.projects else []}

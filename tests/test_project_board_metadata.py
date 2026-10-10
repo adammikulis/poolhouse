@@ -138,14 +138,8 @@ def test_native_registration_refuses_unbounded_or_relative_path(tmp_path, root):
     assert not registry.path.exists()
 
 
-@pytest.mark.parametrize('configuration', [
-    ('https://device:8770', True),
-    ('https://foreign:8770', False),
-    ('', False),
-])
-def test_person_workspace_catalogue_includes_unshared_local_authority_only(repository, tmp_path, monkeypatch,
-                                                                          configuration):
-    host, visible = configuration
+@pytest.mark.parametrize('host', ['https://device:8770', 'https://foreign:8770', ''])
+def test_person_workspace_catalogue_includes_every_unshared_local_project(repository, tmp_path, monkeypatch, host):
     registry = ProjectRegistry(tmp_path / 'registry', 'device', (repository,), 'https://device:8770')
     identifier = identity(repository)
     registered = registry.get(identifier)
@@ -157,11 +151,11 @@ def test_person_workspace_catalogue_includes_unshared_local_authority_only(repos
     assert result['projects'] == result['local'] == []
     assert registry.catalogue()['projects'] == []
     assert registry.catalogue()['boards'] == []
-    assert result['workspaces'] == ([{
+    assert result['workspaces'] == [{
         'id': identifier, 'name': 'project', 'machine': 'device',
         'board_host': host,
         'is_self': True, 'local_authority': True,
-    }] if visible else [])
+    }]
     assert not (tmp_path / 'registry' / 'project-bundles').exists()
 
 

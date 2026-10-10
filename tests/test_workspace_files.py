@@ -461,55 +461,6 @@ def test_the_default_listing_is_bounded_and_counts_the_rest(kit):
     assert len(kit.ws.files.list(kit.tokens["alice"], widen=True)) == 12
 
 
-# -- the person's page ------------------------------------------------------------------------
-@pytest.fixture
-def page(kit):
-    import http.client
-
-    from poolhouse.workspace import boardroute, tokens
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    server = boardroute.serve(kit.ws, 0)
-    server.start()
-
-    def call(path):
-        conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
-        conn.request("GET", path, headers={"Cookie": f"ml_session={server.session}"})
-        r = conn.getresponse()
-        body = r.read()
-        conn.close()
-        return r.status, {k.lower(): v for k, v in r.getheaders()}, body
-    yield call
-    server.stop()
-
-
-def test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered(kit, page):
-    h = attach(kit, "alice", "#ops", b"<script>alert(1)</script> hello\n", name="a b<c>.html")["file"]
-    status, headers, body = page(f"/board/file?id={h}")
-    assert status == 200 and body == b"<script>alert(1)</script> hello\n"
-    assert headers["content-type"].startswith("text/plain")
-    assert headers["content-disposition"].startswith("attachment; filename=\"") and "<" not in headers["content-disposition"]
-    assert headers["x-content-type-options"] == "nosniff"
-    assert headers["content-security-policy"] == "default-src 'none'"
-
-
-def test_the_page_shows_a_binary_file_as_name_size_and_hash_only(kit, page):
-    png = b"\x89PNG\r\n\x1a\n" + b"1" * 40
-    h = attach(kit, "alice", "#ops", png, name="shot.png")["file"]
-    status, headers, body = page(f"/board/file?id={h}")
-    doc = json.loads(body)
-    assert status == 200 and headers["content-type"].startswith("application/json")
-    assert doc == {"name": "shot.png", "size": len(png), "type": "png", "sha256": hashlib.sha256(png).hexdigest()}
-
-
-def test_the_page_answers_an_unknown_file_with_a_refusal_and_lists_the_file_on_its_message(kit, page):
-    assert page("/board/file?id=" + "0" * 12)[0] == 403
-    assert page("/board/file?id=../../x")[0] == 403
-    attach(kit, "alice", "#ops", name="n.txt")
-    _, _, body = page("/board/messages?board=%23ops")
-    row = json.loads(body)["messages"][-1]
-    assert row["file"]["name"] == "n.txt" and row["type"] == "file"
-
-
 def test_gc_shreds_files_whose_messages_have_been_pruned(kit):
     h = attach(kit, "alice", "#ops")["file"]
     keep = attach(kit, "alice", "#ops", b"kept file\n")["file"]

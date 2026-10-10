@@ -517,6 +517,37 @@ are in `workspace/board_cli.py`, `claims_cli.py` and `notes_cli.py` and go to th
 sessions is fenced as untrusted data on the way out and a credential in outgoing text is refused on the way in
 (`screen`, still Python). Tests use `tests/node_kit.py`: a real node on a short `/tmp` root.
 
+## The person's session (the UI)
+
+The UI daemon acts for the person through one session of its own per board, `poolhouse.board.person.seat(root)`: a
+parentless session registered under the harness `poolhouse-ui` and the model `person`, which the node's grant check
+(a session with no parent) treats as the person. Its token is kept in the daemon's private client folder
+(`<state>/client/<board>/`), never in a page; a page's request is checked (loopback, credentialed launch session, same
+origin) and then answered by that session. `root` is a project's checkout: `place.resolve` makes it the board, so a
+directory that is no project is refused (`403`) and never given another project's board. The Tasks page
+(`workspace/task_routes.py`) and the Board page (`workspace/boardroute.py`, `board_page.py`, `fleet_routes.py`) read and
+write the node only; a task made by `poolhouse-workspace task-create` and a task made on the page are the same row.
+
+The Board page counts messages with whole numbers, which the node does not have: a message's number is its time in
+milliseconds times 4096 plus its tick, moved up past the number before it when two share one (`board_page.Log`), the same
+for every device. Looking at an open room joins the person to it; `wait` and `head` answer a number that grows with the
+board's entries and poll the node every 50 ms.
+
+Not built, because the node has no counterpart or the person would gain a right no one granted:
+
+- The person reads every board, private ones too, and a conversation between two other sessions (as the old store let
+  the owner). On the node a private room is read by its members and a direct message by its two ends only; the person
+  reads what the person's session may read.
+- The Board directory's device OS and provenance line per agent (the node's agents carry no device record).
+- Per-project grants and the `can` capability list of a person (the old registry's `read`/`send` restriction).
+- A page post counted against the person's rate limit (`429`); the node's quotas answer `429` when they apply.
+- The `board_host` authority of a project: the Tasks and Board pages open for every registered project on every device of
+  the pool; `fleet/projects.py` still carries the field until the old store is deleted.
+- The old task store's device-account reviewer rule (`device_accounts.py`, `family_accounts.py`: a reviewer on the worker's
+  account may not review it), the `test_entry` evidence link on checkpoints (`testruns.evidence`) and the
+  `execution_config` / `broker_runtime` provenance of an allocation (`resource_allocations.py`) have no node counterpart yet;
+  they move with the local agent loop (their callers are `task_scheduler`, `task_worker` and `localloop`).
+
 ## Run and test
 
 ```
