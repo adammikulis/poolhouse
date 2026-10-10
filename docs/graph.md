@@ -179,7 +179,7 @@ keeps a request on disk before saying so, `RefreshRoutes` streams the stages a s
 `<store>.conversations` with the id, kind and label of each entry an answer drew on, or in
 it with `conversations_in_store`), what `look_up` calls (`finder`, which
 is where `search.hybrid` goes so meaning votes beside the words) and what each other route
-is given, and hangs its own journal off `answered`; each route is a 404 until it is given
+is given, and hangs its own log off `answered`; each route is a 404 until it is given
 its thing,
 and the ones that change the machine refuse a request that came through a proxy.
 `Handler` composes them all; who may ask is still the project's policy.

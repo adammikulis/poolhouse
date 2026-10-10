@@ -20,8 +20,8 @@ from person_support import (
     git,
     human,
     local_command,
+    member,
     notification,
-    peer,
     person_consume,
     project_dir,
     prompt_event,
@@ -87,11 +87,11 @@ def test_the_statement_keeps_a_hash_a_short_redacted_excerpt_and_where_the_trans
     assert statement["claude_version"] == VERSION and statement["source"] == "harness-hook:UserPromptSubmit"
 
 
-@pytest.mark.parametrize("entry", [peer, notification, local_command,
+@pytest.mark.parametrize("entry", [member, notification, local_command,
                                    functools.partial(human, version="9.9.9"),
                                    functools.partial(human, promptSource="system"),
-                                   functools.partial(human, turnOrigin="peer"),
-                                   functools.partial(human, origin={"kind": "peer"}),
+                                   functools.partial(human, turnOrigin="member"),
+                                   functools.partial(human, origin={"kind": "member"}),
                                    functools.partial(human, sessionId="other")])
 def test_a_prompt_the_person_did_not_type_leaves_no_record(world, entry):
     tmp, state, repo = world

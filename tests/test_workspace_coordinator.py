@@ -17,12 +17,12 @@ from workspace_kit import Kit, clean_env
 from poolhouse import http
 from poolhouse.fleet import projects, tls
 from poolhouse.fleet.api import Daemon, make_handler
-from poolhouse.fleet.discovery import derive_token, mint_cluster
+from poolhouse.fleet.discovery import derive_token, mint_pool
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.onboard.requests import Device, Devices
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.http import Server, ServerError
-from poolhouse.hub.peerbook import PeerBook
+from poolhouse.hub.memberbook import MemberBook
 from poolhouse.net import git
 from poolhouse.workspace import cli, coordinator, coordinator_client, coordinator_config, tokens
 from poolhouse.workspace.coordination import workspace_id
@@ -45,8 +45,8 @@ def shared(tmp_path, monkeypatch, installed_metadata):
     identity = workspace_id(kit.ws)
     coordinator_config.save(kit.base, {'mode': 'host', 'workspace': identity})
     runner = JobRunner(tmp_path / 'daemon')
-    membership = mint_cluster('default', tmp_path / 'cluster.key')
-    monkeypatch.setenv('POOLHOUSE_CLUSTER_KEY', str(tmp_path / 'cluster.key'))
+    membership = mint_pool('default', tmp_path / 'pool.key')
+    monkeypatch.setenv('POOLHOUSE_POOL_KEY', str(tmp_path / 'pool.key'))
     fleet_token = derive_token(membership.key)
     kit.project_dir = tmp_path / 'shared-project'
     kit.project_dir.mkdir()
@@ -58,25 +58,25 @@ def shared(tmp_path, monkeypatch, installed_metadata):
         id=kit.project_scope['key'], name=kit.project_scope['name'], root=str(kit.project_dir),
         source_machine=hosted.machine, board_host=hosted.host, shared=True)
     hosted._save()
-    device = Device('d' * 64, 'paired-device', 'paired-host', '127.0.0.1', 1,
+    device = Device('d' * 64, 'member', 'member', '127.0.0.1', 1,
                     mine=True, secret=base64.urlsafe_b64encode(b'd' * 32).decode())
     server = Server(('127.0.0.1', 0), make_handler(Daemon(
         runner, tmp_path / 'files', fleet_token, devices=lambda: [device], projects=hosted)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    peer = Peer(f'http://127.0.0.1:{server.server_address[1]}', fleet_token)
-    kit.remote = Remote({'workspace': identity, 'endpoint': peer.base_url}, peer)
+    member = Member(f'http://127.0.0.1:{server.server_address[1]}', fleet_token)
+    kit.remote = Remote({'workspace': identity, 'endpoint': member.base_url}, member)
     kit.device = tmp_path / 'windows-device'
     kit.device.mkdir()
     installed_home = tmp_path / 'installed-home'
     monkeypatch.setenv('POOLHOUSE_HOME', str(installed_home))
     certificate = tls.identity(tmp_path / 'tls', 'test-coordinator').beacon
     Devices(installed_home / 'onboard' / 'devices.json')._write([device])
-    PeerBook(installed_home / 'onboard' / 'peers.json').add({
-        'name': 'test-coordinator', 'url': peer.base_url, 'source': 'pairing',
+    MemberBook(installed_home / 'onboard' / 'members.json').add({
+        'name': 'test-coordinator', 'url': member.base_url, 'source': 'join-code',
         'fingerprint': device.fingerprint, 'certificate': certificate,
         'device_secret': device.secret})
     coordinator_config.save(kit.device, {'mode': 'remote', 'workspace': identity,
-                                         'endpoint': peer.base_url, 'cert': certificate})
+                                         'endpoint': member.base_url, 'cert': certificate})
     tokens.store(kit.device, 'alice', kit.alice)
     try:
         yield kit
@@ -89,7 +89,7 @@ def shared(tmp_path, monkeypatch, installed_metadata):
 def test_real_distribution_registration_and_two_roots_share_messages_tasks_claims(shared):
     from importlib.metadata import entry_points
     assert any(entry.value == 'poolhouse.workspace.coordinator:route'
-               for entry in entry_points(group='poolhouse.peer_routes'))
+               for entry in entry_points(group='poolhouse.member_routes'))
     sent = shared.ws.send(shared.alice, 'bob', 'task', 'Inspect shared state')
     assert shared.remote.command(['outbox'], shared.alice)[0]['seq'] == sent['seq']
     spec = {'title': 'Shared task', 'description': 'Read coordinator graph', 'acceptance': ['Exact graph state'],
@@ -124,7 +124,7 @@ def test_live_agent_and_fleet_auth_precede_replay(shared):
         shared.remote.command(['status'], shared.alice)
     assert sender.value.status == 403
     with pytest.raises(ServerError) as fleet:
-        Remote(shared.remote.config, Peer(shared.remote.peer.base_url, 'wrong')).command(['status'], shared.bob)
+        Remote(shared.remote.config, Member(shared.remote.member.base_url, 'wrong')).command(['status'], shared.bob)
     assert fleet.value.status == 401
 
 
@@ -146,7 +146,7 @@ def test_person_token_wrong_workspace_bounds_and_plaintext_remote_are_refused(sh
         shared.remote.command(['status'], shared.owner)
     assert person.value.status == 403
     with pytest.raises(ServerError) as wrong:
-        Remote({**shared.remote.config, 'workspace': 'workspace:' + '0' * 32}, shared.remote.peer).command(['status'], shared.alice)
+        Remote({**shared.remote.config, 'workspace': 'workspace:' + '0' * 32}, shared.remote.member).command(['status'], shared.alice)
     assert wrong.value.status == 403
     with pytest.raises(ServerError) as large:
         shared.remote.command(['task-create', 'x' * coordinator.MAX_REQUEST], shared.alice)
@@ -188,7 +188,7 @@ def test_installed_cli_on_second_device_reads_shared_state_without_local_fallbac
     spec = {'title': 'Shared CLI task', 'description': 'd', 'acceptance': ['a'], 'project': {}, 'capabilities': [],
             'limits': {}, 'source_key': 'second-device'}
     sent = shared.remote.command(['task-create', json.dumps(spec)], shared.bob)
-    environment = {**{k: v for k, v in os.environ.items() if k != 'POOLHOUSE_CLUSTER_KEY'}, 'POOLHOUSE_WORKSPACE_HOME': str(shared.device),
+    environment = {**{k: v for k, v in os.environ.items() if k != 'POOLHOUSE_POOL_KEY'}, 'POOLHOUSE_WORKSPACE_HOME': str(shared.device),
                    'PYTHONPATH': str(installed_metadata), 'POOLHOUSE_WORKSPACE_AGENT': agent}
     result = subprocess.run([sys.executable, '-m', 'poolhouse.workspace.cli', 'tasks', '--json'],
                             cwd=shared.project_dir, env=environment, capture_output=True, text=True, timeout=15)
@@ -235,7 +235,7 @@ def test_hostile_saved_coordinator_origin_is_refused_before_transport(tmp_path, 
 
     (tmp_path / 'coordinator.json').write_text(json.dumps({
         'version': 1, 'mode': 'remote', 'workspace': 'workspace:' + 'a' * 32, 'endpoint': endpoint}))
-    monkeypatch.setattr(coordinator_client, '_device_peer',
+    monkeypatch.setattr(coordinator_client, '_device_member',
                         lambda config: pytest.fail('hostile configuration reached credential/transport setup'))
     with pytest.raises(Denied):
         coordinator_client.client(tmp_path)
@@ -253,9 +253,9 @@ def test_fleet_membership_without_coordinator_selection_preserves_local_workspac
     registry = tmp_path / 'agents.json'
     registry.write_text('{"existing": true}', encoding='utf-8')
     before = registry.read_bytes()
-    monkeypatch.setattr(coordinator_client, 'load_cluster_key', lambda: bytes(range(32)))
+    monkeypatch.setattr(coordinator_client, 'load_pool_key', lambda: bytes(range(32)))
     monkeypatch.setattr(coordinator_client, 'discover', lambda: [])
-    monkeypatch.setattr(coordinator_client, '_device_peer',
+    monkeypatch.setattr(coordinator_client, '_device_member',
                         lambda config: pytest.fail('unselected coordinator reached device proof'))
     assert coordinator_client.client(tmp_path) is None
     assert registry.read_bytes() == before
@@ -271,36 +271,36 @@ def test_selected_coordinator_outage_preserves_remote_authority(tmp_path, monkey
     def unavailable(config):
         raise Denied('selected device is unavailable')
 
-    monkeypatch.setattr(coordinator_client, '_device_peer', unavailable)
+    monkeypatch.setattr(coordinator_client, '_device_member', unavailable)
     with pytest.raises(Denied, match='selected coordinator'):
         coordinator_client.client(tmp_path)
     assert (tmp_path / 'coordinator.json').read_bytes() == before
     assert not (tmp_path / 'agents.json').exists()
 
 
-def test_coordinator_discovery_without_pairing_does_not_probe_network(monkeypatch):
-    monkeypatch.setattr(coordinator_client, '_paired_rows', lambda: [])
-    monkeypatch.setattr(Peer, 'discover',
-                        classmethod(lambda cls, **kwargs: pytest.fail('unpaired discovery')))
+def test_coordinator_discovery_without_joining_does_not_probe_network(monkeypatch):
+    monkeypatch.setattr(coordinator_client, '_joined_rows', lambda: [])
+    monkeypatch.setattr(Member, 'discover',
+                        classmethod(lambda cls, **kwargs: pytest.fail('unjoined discovery')))
     assert coordinator_client.discover() == []
 
 
-def test_coordinator_discovery_rejects_unpaired_peer_before_http(monkeypatch):
-    peer = SimpleNamespace(base_url='https://127.0.0.1:8770',
+def test_coordinator_discovery_rejects_unjoined_member_before_http(monkeypatch):
+    member = SimpleNamespace(base_url='https://127.0.0.1:8770',
                            beacon=SimpleNamespace(cert='invented-cert'))
-    monkeypatch.setattr(coordinator_client, '_paired_rows', lambda: [{}])
-    monkeypatch.setattr(Peer, 'discover', classmethod(lambda cls, **kwargs: [peer]))
+    monkeypatch.setattr(coordinator_client, '_joined_rows', lambda: [{}])
+    monkeypatch.setattr(Member, 'discover', classmethod(lambda cls, **kwargs: [member]))
 
     def denied(config):
-        raise Denied('no active pairing')
+        raise Denied('no active joining')
 
-    monkeypatch.setattr(coordinator_client, '_device_peer', denied)
+    monkeypatch.setattr(coordinator_client, '_device_member', denied)
     assert coordinator_client.discover() == []
 
 
 @pytest.mark.parametrize('response', ['valid', 'timeout', 'list'])
 def test_coordinator_discovery_uses_bounded_device_transport(monkeypatch, response):
-    peer = SimpleNamespace(base_url='https://127.0.0.1:8770',
+    member = SimpleNamespace(base_url='https://127.0.0.1:8770',
                            beacon=SimpleNamespace(cert='invented-cert'))
     calls = []
 
@@ -311,9 +311,9 @@ def test_coordinator_discovery_uses_bounded_device_transport(monkeypatch, respon
         info = {'authority': 'coordinator', 'protocol': 1, 'workspace': 'workspace:' + 'a' * 32}
         return 200, json.dumps([] if response == 'list' else info).encode(), {}
 
-    monkeypatch.setattr(coordinator_client, '_paired_rows', lambda: [{}])
-    monkeypatch.setattr(Peer, 'discover', classmethod(lambda cls, **kwargs: [peer]))
-    monkeypatch.setattr(coordinator_client, '_device_peer',
+    monkeypatch.setattr(coordinator_client, '_joined_rows', lambda: [{}])
+    monkeypatch.setattr(Member, 'discover', classmethod(lambda cls, **kwargs: [member]))
+    monkeypatch.setattr(coordinator_client, '_device_member',
                         lambda config: SimpleNamespace(_request=request))
     assert bool(coordinator_client.discover()) is (response == 'valid')
     assert calls == [('GET', '/workspace/v1/info', {'timeout': 2, 'retry': http.ONCE})]

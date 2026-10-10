@@ -318,7 +318,7 @@ class TestTellingTheFleet:
     """A server nobody announced is a server no other machine can use.
 
     `poolhouse-serve up` leased and recorded the port in its own state file and stopped there, so a
-    peer asking who is serving a model saw nothing and loaded its own copy — while a working
+    member asking who is serving a model saw nothing and loaded its own copy — while a working
     serving sat idle on this machine.
     """
 

@@ -272,10 +272,10 @@ to `yellow`, `does not fit` to `red`, unknown to `none`.
 
 | Pattern | Where it lived | Now |
 | --- | --- | --- |
-| Resource bars (`.meter`, `.track`, `.fill`) for memory, processors, video memory, GPU | `fleet/web/components/cluster-view.html`, `style.css` | `ml-meter` in the cluster cards |
-| Slot pips for job slots | `cluster-view.html` (`.slots`, `.slot`) | unchanged, specific to the cluster card |
+| Resource bars (`.meter`, `.track`, `.fill`) for memory, processors, video memory, GPU | `fleet/web/components/pool-view.html`, `style.css` | `ml-meter` in the pool cards |
+| Slot pips for job slots | `pool-view.html` (`.slots`, `.slot`) | unchanged, specific to the pool card |
 | Download bar | `models-view.html` `bar()` | `ml-progress` |
-| Chips and badges (`.label`, `.badge`, temperature `.warm`/`.hot`) | `style.css`, `cluster-view.html` | unchanged for vendor badges and telemetry readings; verdict chips are `ml-chip` |
+| Chips and badges (`.label`, `.badge`, temperature `.warm`/`.hot`) | `style.css`, `pool-view.html` | unchanged for vendor badges and telemetry readings; verdict chips are `ml-chip` |
 | Wizard progress dots (`.steps`) | `first-run.html`, `style.css` | `ml-stepper` with `controls="none"` |
 | Close question (`.sheet`) | `close-sheet.html`, `style.css` | `ml-sheet` |
 | Context slider with a readout | `fleet-model.html` `contextPicker`, used by `first-run.html` and `settings-view.html` | `ml-slider` with `stops` |
@@ -283,7 +283,7 @@ to `yellow`, `does not fit` to `red`, unknown to `none`.
 | Segmented toggle (`.toggle`) | `fit-view.html`, `rates-view.html` | unchanged |
 | Line charts with hover and zoom (hand-built SVG) | `fit-charts.html`, `rates-view.html` | unchanged, specific to the fit screens |
 | Fit table (`table.fit`) | `fit-view.html` | unchanged |
-| Rows (`.row`) for models, clusters, downloads | `models-view.html`, `first-run.html` | unchanged |
+| Rows (`.row`) for models, pools, downloads | `models-view.html`, `first-run.html` | unchanged |
 | Notices (`.err`, `.ok`, `.hint`, `.spin`) | `style.css` | unchanged |
 | Navigation tabs | `fleet-nav.html` | unchanged |
 | Toasts, sparklines | not present | `ml-toaster`, `ml-sparkline` |

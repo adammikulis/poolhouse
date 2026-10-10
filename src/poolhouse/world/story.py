@@ -62,7 +62,7 @@ TOPIC_KINDS = ("topic", "skill", "subject", "interest")
 # Relations that mean "these two do things together", "one answers to the other", and "this
 # person is in that group". A community has none of the second; the sampler only ever uses
 # what it finds.
-PEER = frozenset({"works_with", "now_works_with", "collaborates_with", "pairs_with",
+MEMBER = frozenset({"works_with", "now_works_with", "collaborates_with", "pairs_with",
                   "co_authors", "reviews_for", "co_maintains"})
 UPWARD = frozenset({"reports_to", "advised_by", "supervised_by", "mentored_by", "managed_by"})
 DOWNWARD = frozenset({"manages", "advises", "supervises", "mentors", "leads"})

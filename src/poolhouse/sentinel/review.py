@@ -43,7 +43,7 @@ def held_items(store: Store, now: float) -> list[Item]:
 
 
 def hint(items: list[Item]) -> str:
-    """``2 held: peer 127.0.0.1 (forged traffic), server :51089. Review them: ...``, or
+    """``2 held: member 127.0.0.1 (forged traffic), server :51089. Review them: ...``, or
     an empty string when nothing is held."""
     if not items:
         return ""

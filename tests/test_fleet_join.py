@@ -1,8 +1,8 @@
-"""``poolhouse-cluster``: one command makes a machine a peer, and the page's Join runs it too.
+"""``poolhouse-pool``: one command makes a machine a member, and the page's Join runs it too.
 
 The daemon it starts, the llama-server it fetches and the logon service it installs are the
 three things faked here -- each behind a parameter of `join_machine` -- and everything else
-is real: a real cluster key written under ``tmp_path``, a real ``/health`` on a real loopback
+is real: a real pool key written under ``tmp_path``, a real ``/health`` on a real loopback
 socket, a real beacon on a randomised UDP port, and the real daemon with the UI mounted for
 the page's routes. Every name is invented.
 """
@@ -27,8 +27,8 @@ from poolhouse.fleet.discovery import (
     Advertiser,
     Beacon,
     derive_token,
-    in_cluster,
-    load_cluster_key,
+    in_pool,
+    load_pool_key,
     memberships,
 )
 from poolhouse.fleet.join import (
@@ -38,13 +38,13 @@ from poolhouse.fleet.join import (
     join_machine,
     leave_machine,
     main,
-    peers,
+    members,
     sweep_argv,
     table,
 )
 from poolhouse.http import Server
 from poolhouse.platform import process_group_kwargs
-from tests.cluster_support import join as join_cluster, key_for
+from tests.pool_support import join as join_pool_by_passphrase, key_for
 
 WORDS = "quince larch marlow"
 DEVICE = {"gpu": "Pellard P40", "vram_total_gb": 24.0, "vram_free_gb": 20.5,
@@ -109,7 +109,7 @@ def machine_looks_fine(monkeypatch):
         Finding(name="memory a model may use", good=True, said="96G of 128G (75%)"),
         Finding(name="models on this machine", good=True, said="2 file(s)")])
     monkeypatch.setattr(joining, "_server_here", lambda: "/opt/fake/bin/llama-server")
-    monkeypatch.setattr(joining.automatic_clusters, "ensure",
+    monkeypatch.setattr(joining.automatic_pools, "ensure",
                         lambda path, **kw: memberships(path)[0])
 
 
@@ -120,7 +120,7 @@ def udp() -> int:
 
 @pytest.fixture
 def key(tmp_path) -> Path:
-    return tmp_path / "cluster.key"
+    return tmp_path / "pool.key"
 
 
 @pytest.fixture
@@ -142,35 +142,35 @@ class TestJoin:
         def start(port: int, root: Path, name: str) -> int:
             calls.append((port, root, name))
             # The daemon `join` starts reads the key `join` wrote a moment before.
-            daemons.append(FakeDaemon(port, load_cluster_key(key), udp, name="larch"))
+            daemons.append(FakeDaemon(port, load_pool_key(key), udp, name="larch"))
             return 4242
 
 
-        assert not in_cluster(key)
+        assert not in_pool(key)
         monkeypatch.setattr(joining, "join_by_passphrase",
-                            lambda words, group, path, **kw: join_cluster(words, group=group, path=path))
+                            lambda words, group, path, **kw: join_pool_by_passphrase(words, group=group, path=path))
         joined = join_machine(name="larch", passphrase=WORDS, group="home", port=tcp,
-                              root=tmp_path / "root", cluster_key_path=key, start=start,
+                              root=tmp_path / "root", pool_key_path=key, start=start,
                               discovery_port=udp, say=said.append)
 
-        assert in_cluster(key) and memberships(key)[0].group == "home"
+        assert in_pool(key) and memberships(key)[0].group == "home"
         assert calls == [(tcp, tmp_path / "root", "larch")]
         assert joined.started and joined.daemon_pid == 4242
         assert joined.name == "larch", "the name comes from the daemon's own /health"
         assert {c.name for c in joined.checks} >= {"memory a model may use", "llama-server"}
         assert all(c.good for c in joined.checks)
 
-        names = [p["name"] for p in joined.peers]
+        names = [p["name"] for p in joined.members]
         assert names == ["larch"], f"the fleet must see the machine that joined; saw {names}"
-        me = joined.peers[0]
+        me = joined.members[0]
         assert me["is_self"]
         assert me["serving"] == ["quince-2b.gguf:8099"]
         assert me["room"] == "20.5/24.0 GB"
         assert me["commit"] == "abc1234"
         assert me["models"] == ["quince-2b.gguf", "larch-9b.gguf"]
-        assert me["clusters"] == ["home"]
+        assert me["pools"] == ["home"]
         text = "\n".join(said)
-        assert "joined cluster 'home'" in text
+        assert "joined pool 'home'" in text
         assert f"discovery port {udp}" in text
         assert "larch" in text and "quince-2b.gguf:8099" in text, "it prints what the fleet sees"
 
@@ -178,17 +178,17 @@ class TestJoin:
 
     def test_a_running_daemon_is_reused_and_enrolled_through(self, tmp_path, key, udp, daemons):
         """Writing the key file under a running daemon leaves it announcing the old set;
-        the cluster has to go in through the daemon, which re-reads them."""
+        the pool has to go in through the daemon, which re-reads them."""
         tcp = _free_tcp()
 
-        # Already in a cluster, already running, before `join` is asked for a second one.
-        join_cluster(WORDS, group="home", path=key)
-        daemons.append(FakeDaemon(tcp, load_cluster_key(key), udp, name="quince"))
+        # Already in a pool, already running, before `join` is asked for a second one.
+        join_pool_by_passphrase(WORDS, group="home", path=key)
+        daemons.append(FakeDaemon(tcp, load_pool_key(key), udp, name="quince"))
         enrolled: list[tuple[str, str]] = []
         started: list = []
 
         joined = join_machine(name="ignored", passphrase="other words here", group="lab",
-                              port=tcp, root=tmp_path, cluster_key_path=key,
+                              port=tcp, root=tmp_path, pool_key_path=key,
                               start=lambda *a: started.append(a) or 1,
                               enrol=lambda words, group: enrolled.append((words, group)),
                               discovery_port=udp, say=lambda s: None)
@@ -196,16 +196,16 @@ class TestJoin:
         assert enrolled == [("other words here", "lab")]
         assert not joined.started
         assert joined.name == "quince", "the running daemon's name wins over --name"
-        assert [p["name"] for p in joined.peers] == ["quince"]
+        assert [p["name"] for p in joined.members] == ["quince"]
 
     @pytest.mark.slow
 
-    def test_already_in_a_cluster_needs_no_passphrase(self, tmp_path, key, udp, daemons):
+    def test_already_in_a_pool_needs_no_passphrase(self, tmp_path, key, udp, daemons):
 
-        join_cluster(WORDS, group="home", path=key)
+        join_pool_by_passphrase(WORDS, group="home", path=key)
         tcp = _free_tcp()
-        daemons.append(FakeDaemon(tcp, load_cluster_key(key), udp))
-        joined = join_machine(port=tcp, root=tmp_path, cluster_key_path=key,
+        daemons.append(FakeDaemon(tcp, load_pool_key(key), udp))
+        joined = join_machine(port=tcp, root=tmp_path, pool_key_path=key,
                               discovery_port=udp, say=lambda s: None)
         assert joined.group == "home"
 
@@ -219,7 +219,7 @@ class TestJoin:
         asked: list[str] = []
 
         def start(port: int, root: Path, name: str) -> int:
-            daemons.append(FakeDaemon(port, load_cluster_key(key), udp))
+            daemons.append(FakeDaemon(port, load_pool_key(key), udp))
             return 7
 
         def installs(mode: str, **kw) -> Autostart:
@@ -230,9 +230,9 @@ class TestJoin:
         # deadline out on purpose; the FakeDaemon `start` puts up answers on the first poll,
         # so a short deadline measures the same fall-through in three seconds instead of twenty
 
-        join_cluster(WORDS, path=key)
+        join_pool_by_passphrase(WORDS, path=key)
         joined = join_machine(persist=True, port=tcp, root=tmp_path,
-                              cluster_key_path=key, start=start, persist_with=installs,
+                              pool_key_path=key, start=start, persist_with=installs,
                               discovery_port=udp, say=lambda s: None, wait_s=3.0, group="poolhouse")
         assert asked == ["login"] and joined.persisted and joined.persist_note == ""
 
@@ -240,7 +240,7 @@ class TestJoin:
             return Autostart(mode, installed=False, command="sudo cp agent.plist /Library",
                              note="needs administrator rights")
 
-        joined = join_machine(persist=True, port=tcp, root=tmp_path, cluster_key_path=key,
+        joined = join_machine(persist=True, port=tcp, root=tmp_path, pool_key_path=key,
                               start=start, persist_with=refuses, discovery_port=udp,
                               say=lambda s: None, wait_s=3.0)
         assert not joined.persisted
@@ -248,10 +248,10 @@ class TestJoin:
 
     def test_a_daemon_that_never_answers_is_an_error_naming_the_log(self, tmp_path, key, udp):
 
-        join_cluster(WORDS, path=key)
+        join_pool_by_passphrase(WORDS, path=key)
         with pytest.raises(JoinError) as left:
             join_machine(port=_free_tcp(), root=tmp_path / "r",
-                         cluster_key_path=key, start=lambda *a: 99, wait_s=0.6,
+                         pool_key_path=key, start=lambda *a: 99, wait_s=0.6,
                          discovery_port=udp, say=lambda s: None, group="poolhouse")
         assert "traind.log" in str(left.value)
 
@@ -315,7 +315,7 @@ class TestStatus:
         assert "measuring" in first and "abc1234" in first and "quince-2b.gguf:8099" in first
         assert "idle" in second and "8 GB ram" in second
 
-    def test_a_peer_that_can_hear_says_which_protocols_answer(self):
+    def test_a_member_that_can_hear_says_which_protocols_answer(self):
         """Which machine to send a recording to: `speech.working()` on its beacon."""
         heard = describe(Beacon(name="larch", port=8770, host="10.0.0.2",
                                 device={**DEVICE, "speech": ["asr", "vad"]}))
@@ -325,12 +325,12 @@ class TestStatus:
         assert "SPEECH" in head
         assert "asr,vad" in first and "asr,vad" not in second
 
-    def test_no_peers_says_what_to_run(self):
-        assert "poolhouse-cluster join" in table([])
+    def test_no_members_says_what_to_run(self):
+        assert "poolhouse-pool join" in table([])
 
-    def test_a_tracking_peer_shows_its_commit_and_the_branch_it_follows(self):
+    def test_a_tracking_member_shows_its_commit_and_the_branch_it_follows(self):
         """A fleet half on one commit and half on another is what this column exists to
-        make visible, so the age is when that peer last looked, not when it started."""
+        make visible, so the age is when that member last looked, not when it started."""
         import time as _time
 
         row = describe(Beacon(name="harrowgate", port=8770, host="10.0.0.4", device={
@@ -344,14 +344,14 @@ class TestStatus:
         assert "9f2c1ab 3h" in line, line
         assert "main 4m" in line, line
 
-    def test_a_peer_following_releases_says_so_and_one_following_nothing_says_off(self):
+    def test_a_member_following_releases_says_so_and_one_following_nothing_says_off(self):
         releasing = describe(Beacon(name="quincewood", port=8770, device={
             "tracking": "releases", "update_checked_at": 1.0}))
         stuck = describe(Beacon(name="larchmere", port=8770, device={"tracking": "off"}))
         text = table([releasing, stuck])
         assert "releases" in text and "off" in text
 
-    def test_a_peer_whose_last_update_failed_is_marked_rather_than_looking_fine(self):
+    def test_a_member_whose_last_update_failed_is_marked_rather_than_looking_fine(self):
         row = describe(Beacon(name="pellard", port=8770, device={
             "tracking": "main", "update_checked_at": 2.0,
             "update_error": "git pull --ff-only failed"}))
@@ -370,30 +370,30 @@ class TestStatus:
 
     @pytest.mark.slow
 
-    def test_peers_lists_one_machine_once_across_two_clusters(self, key, udp, daemons):
+    def test_members_lists_one_machine_once_across_two_pools(self, key, udp, daemons):
 
-        join_cluster(WORDS, group="home", path=key)
-        join_cluster("other words here", group="lab", path=key)
+        join_pool_by_passphrase(WORDS, group="home", path=key)
+        join_pool_by_passphrase("other words here", group="lab", path=key)
         tcp = _free_tcp()
         beacon = Beacon(name="larch", port=tcp, device=dict(DEVICE), machine="id-larch")
         both = [Advertiser(beacon, m.key, port=udp, interval_s=0.2).start()
                 for m in memberships(key)]
         try:
-            rows = peers(cluster_key_path=key, timeout_s=1.0, port=udp,
+            rows = members(pool_key_path=key, timeout_s=1.0, port=udp,
                          self_machine="id-larch")
         finally:
             for a in both:
                 a.stop()
         assert [r["name"] for r in rows] == ["larch"]
-        assert sorted(rows[0]["clusters"]) == ["home", "lab"]
+        assert sorted(rows[0]["pools"]) == ["home", "lab"]
 
     def test_status_command_prints_json_rows(self, key, udp, daemons, monkeypatch, capsys):
 
-        join_cluster(WORDS, group="home", path=key)
+        join_pool_by_passphrase(WORDS, group="home", path=key)
         tcp = _free_tcp()
-        daemons.append(FakeDaemon(tcp, load_cluster_key(key), udp, name="larch"))
+        daemons.append(FakeDaemon(tcp, load_pool_key(key), udp, name="larch"))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--cluster-key", str(key), "--port", str(tcp), "status", "--json",
+        code = main(["--pool-key", str(key), "--port", str(tcp), "status", "--json",
                      "--timeout", "1"])
         rows = json.loads(capsys.readouterr().out)
         assert code == 0 and [r["name"] for r in rows] == ["larch"]
@@ -402,35 +402,35 @@ class TestStatus:
     def test_two_machines_of_one_name_are_listed_apart(self, key, udp, daemons,
                                                         monkeypatch, capsys):
 
-        join_cluster(WORDS, group="home", path=key)
+        join_pool_by_passphrase(WORDS, group="home", path=key)
         tcp = _free_tcp()
-        daemons.append(FakeDaemon(tcp, load_cluster_key(key), udp, name="Mac",
+        daemons.append(FakeDaemon(tcp, load_pool_key(key), udp, name="Mac",
                                   machine="a1b2c3d4e5f60708"))
-        daemons.append(FakeDaemon(_free_tcp(), load_cluster_key(key), udp, name="Mac",
+        daemons.append(FakeDaemon(_free_tcp(), load_pool_key(key), udp, name="Mac",
                                   machine="a1b2f00000000000"))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--cluster-key", str(key), "--port", str(tcp), "status", "--json",
+        code = main(["--pool-key", str(key), "--port", str(tcp), "status", "--json",
                      "--timeout", "1"])
         rows = json.loads(capsys.readouterr().out)
         assert code == 0
         assert [(r["name"], r["called"], r["is_self"]) for r in rows] == [
             ("Mac#a1b2c", "Mac", True), ("Mac#a1b2f", "Mac", False)]
 
-        main(["--cluster-key", str(key), "--port", str(tcp), "status", "--timeout", "1"])
+        main(["--pool-key", str(key), "--port", str(tcp), "status", "--timeout", "1"])
         text = capsys.readouterr().out
         assert "Mac#a1b2c" in text and "Mac#a1b2f" in text
 
-    def test_status_in_no_cluster_says_join(self, key, capsys):
-        assert main(["--cluster-key", str(key), "status"]) == 1
-        assert "poolhouse-cluster join" in capsys.readouterr().err
+    def test_status_in_no_pool_says_join(self, key, capsys):
+        assert main(["--pool-key", str(key), "status"]) == 1
+        assert "poolhouse-pool join" in capsys.readouterr().err
 
-    def test_join_takes_the_passphrase_name_and_cluster_from_the_environment(
+    def test_join_takes_the_passphrase_name_and_pool_from_the_environment(
             self, key, tmp_path, monkeypatch):
         """An install script has no terminal to type a passphrase at, and prompting one
         that cannot answer hangs the install rather than failing it."""
         monkeypatch.setenv("POOLHOUSE_PASSPHRASE", WORDS)
         monkeypatch.setenv("POOLHOUSE_NAME", "harrowgate")
-        monkeypatch.setenv("POOLHOUSE_CLUSTER", "attic")
+        monkeypatch.setenv("POOLHOUSE_POOL", "attic")
         asked: dict = {}
 
         def fake_join(**kw):
@@ -439,7 +439,7 @@ class TestStatus:
                                   root=Path(kw["root"]), group=kw["group"])
 
         monkeypatch.setattr(joining, "join_machine", fake_join)
-        code = main(["--cluster-key", str(key), "--root", str(tmp_path), "join",
+        code = main(["--pool-key", str(key), "--root", str(tmp_path), "join",
                      "--track", "main"])
 
         assert code == 0
@@ -457,7 +457,7 @@ class TestStatus:
                                           joining.Joined(name="x", port=1,
                                                          root=Path(kw["root"]),
                                                          group="g"))[1])
-        main(["--cluster-key", str(key), "--root", str(tmp_path), "join",
+        main(["--pool-key", str(key), "--root", str(tmp_path), "join",
               "--passphrase", WORDS, "--name", "larchmere", "--group", "home"])
 
         assert asked["passphrase"] == WORDS and asked["name"] == "larchmere"
@@ -465,9 +465,9 @@ class TestStatus:
 
 # -- leaving ---------------------------------------------------------------------------
 class TestLeave:
-    def test_leave_drops_the_cluster_the_service_and_the_daemon_it_started(self, tmp_path, key):
+    def test_leave_drops_the_pool_the_service_and_the_daemon_it_started(self, tmp_path, key):
 
-        join_cluster(WORDS, group="home", path=key)
+        join_pool_by_passphrase(WORDS, group="home", path=key)
         # A process standing in for the daemon `join` started, stopped by pid, never by name.
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
                                  **process_group_kwargs())
@@ -476,10 +476,10 @@ class TestLeave:
         joining.started_file(root).write_text(json.dumps({"pid": child.pid}))
         removed: list[Path] = [tmp_path / "agent.plist"]
 
-        out = leave_machine(root=root, cluster_key_path=key, say=lambda s: None,
+        out = leave_machine(root=root, pool_key_path=key, say=lambda s: None,
                             unpersist=lambda: removed)
         try:
-            assert out["left"] == ["home"] and not in_cluster(key)
+            assert out["left"] == ["home"] and not in_pool(key)
             assert out["removed"] == [str(tmp_path / "agent.plist")]
             assert out["stopped"] == child.pid
             assert child.wait(timeout=5) != 0
@@ -490,9 +490,9 @@ class TestLeave:
 
     def test_leave_one_group_keeps_the_other(self, tmp_path, key):
 
-        join_cluster(WORDS, group="home", path=key)
-        join_cluster("other words here", group="lab", path=key)
-        out = leave_machine(group="lab", root=tmp_path, cluster_key_path=key,
+        join_pool_by_passphrase(WORDS, group="home", path=key)
+        join_pool_by_passphrase("other words here", group="lab", path=key)
+        out = leave_machine(group="lab", root=tmp_path, pool_key_path=key,
                             say=lambda s: None, unpersist=lambda: [])
         assert out["left"] == ["lab"] and [m.group for m in memberships(key)] == ["home"]
 
@@ -501,10 +501,10 @@ class TestLeave:
 class TestSweepLine:
     def test_the_line_is_one_serve_per_model_and_nothing_this_machine_would_run(self):
         argv = sweep_argv(["quince-2b.gguf", "hf:pellard/larch-9B-GGUF/larch-9B-Q4_K_M.gguf"],
-                          peers=["larch", "pi"], sample=8, label="tuesday")
+                          members=["larch", "pi"], sample=8, label="tuesday")
         assert argv[:2] == ["sweep", "--fleet"]
         assert argv.count("--serve") == 2
-        assert argv[argv.index("--peers") + 1] == "larch,pi"
+        assert argv[argv.index("--members") + 1] == "larch,pi"
         assert argv[argv.index("--sample") + 1] == "8"
         assert "--detach" not in argv, "the caller detaches, and hands the log back"
 
@@ -516,13 +516,13 @@ class TestSweepLine:
         from poolhouse.bench.run import _parser
 
         monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "bench"))
-        args = _parser().parse_args(sweep_argv(["quince-2b.gguf"], peers=["larch"], sample=4))
-        assert args.fleet and args.serve == ["quince-2b.gguf"] and args.peers == "larch"
+        args = _parser().parse_args(sweep_argv(["quince-2b.gguf"], members=["larch"], sample=4))
+        assert args.fleet and args.serve == ["quince-2b.gguf"] and args.members == "larch"
 
 
 # -- the page --------------------------------------------------------------------------
 class TestThePage:
-    """The Cluster view's Join button and its 'Run across fleet' form, against the real
+    """The Pool view's Join button and its 'Run across fleet' form, against the real
     daemon with the UI mounted -- `test_fleet_ui.Serving` -- on a real socket."""
 
     @pytest.fixture
@@ -533,24 +533,24 @@ class TestThePage:
 
         monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "bench"))
         s = Serving(tmp_path, name="studio", schedule=Availability())
-        s.ui.peer_port = s.port
+        s.ui.member_port = s.port
         s.ui.discovery_port = udp
         s.ui.root = tmp_path / "traind"
         s.call("/ui/setup/join", method="POST", body={"mode": "create", "passphrase": WORDS, "group": "home"})
         _, _, headers = s.call("/ui/session", method="POST", body={"passphrase": WORDS})
         cookie = headers["Set-Cookie"].split(";")[0]
-        # Another machine in the same cluster, holding two models and serving one.
-        daemons.append(FakeDaemon(_free_tcp(), load_cluster_key(s.keyfile), udp, name="larch"))
+        # Another machine in the same pool, holding two models and serving one.
+        daemons.append(FakeDaemon(_free_tcp(), load_pool_key(s.keyfile), udp, name="larch"))
         try:
             yield s, cookie
         finally:
             s.close()
 
-    def test_the_fleet_view_lists_peers_with_serving_room_and_the_models_held(self, page):
+    def test_the_fleet_view_lists_members_with_serving_room_and_the_models_held(self, page):
         s, cookie = page
         status, body, _ = s.call("/ui/fleet", cookie=cookie)
         assert status == 200
-        larch = next(p for p in body["peers"] if p["name"] == "larch")
+        larch = next(p for p in body["members"] if p["name"] == "larch")
         assert larch["serving"] == ["quince-2b.gguf:8099"]
         assert larch["room"] == "20.5/24.0 GB" and larch["commit"] == "abc1234"
         assert body["models"] == ["larch-9b.gguf", "quince-2b.gguf"]
@@ -561,7 +561,7 @@ class TestThePage:
     def test_the_join_button_runs_the_same_join(self, page, monkeypatch):
 
         monkeypatch.setattr(fleet_ui, "join_by_passphrase",
-                            lambda words, group, path, **kw: join_cluster(words, group=group, path=path))
+                            lambda words, group, path, **kw: join_pool_by_passphrase(words, group=group, path=path))
         s, cookie = page
         original = memberships(s.keyfile)
         status, body, _ = s.call("/ui/fleet/join", method="POST", body={}, cookie=cookie)
@@ -577,7 +577,7 @@ class TestThePage:
         assert held[1].key == key_for("other words here", "lab")
         assert any("already running as 'studio'" in line for line in body["said"])
         assert {c["name"] for c in body["checks"]} >= {"llama-server"}
-        assert "larch" in [p["name"] for p in body["peers"]]
+        assert "larch" in [p["name"] for p in body["members"]]
 
     def test_run_across_fleet_builds_the_line_and_detaches_it(self, page, tmp_path):
         from poolhouse.bench.underway import measuring_file
@@ -586,12 +586,12 @@ class TestThePage:
         status, body, _ = s.call("/ui/bench/sweep", method="POST", body={}, cookie=cookie)
         assert status == 400
 
-        asked = {"models": ["quince-2b.gguf"], "peers": ["larch"], "sample": 4,
+        asked = {"models": ["quince-2b.gguf"], "members": ["larch"], "sample": 4,
                  "label": "tuesday", "dry_run": True}
         status, body, _ = s.call("/ui/bench/sweep", method="POST", body=asked, cookie=cookie)
         assert status == 200
         assert body["command"] == ("poolhouse-bench sweep --fleet --serve quince-2b.gguf "
-                                   "--peers larch --sample 4 --label tuesday")
+                                   "--members larch --sample 4 --label tuesday")
 
         detached: list[list[str]] = []
 
@@ -646,7 +646,7 @@ class TestThePage:
         assert set(said) == {"studio", "larch"}
         assert said["studio"]["ok"] and said["studio"]["is_self"]
         assert said["studio"]["said"].startswith("paused until")
-        assert not said["larch"]["ok"], "the fake peer takes no availability request"
+        assert not said["larch"]["ok"], "the fake member takes no availability request"
         assert body["reached"] == 1 and body["total"] == 2
 
         allowed, why = s.schedule.may_start()
@@ -661,7 +661,7 @@ class TestThePage:
 
 # -- the whole fleet at once -----------------------------------------------------------
 class PausableDaemon:
-    """A peer with a real `Availability` behind ``/availability``, and a beacon."""
+    """A member with a real `Availability` behind ``/availability``, and a beacon."""
 
     def __init__(self, port: int, key: bytes, udp: int, name: str, root: Path) -> None:
         from poolhouse.fleet.api import Daemon, make_handler
@@ -693,12 +693,12 @@ class PausableDaemon:
 
 
 @pytest.fixture
-def cluster(tmp_path, key, udp):
-    """Three peers on loopback in one cluster, and the root a command would keep."""
-    from tests.cluster_support import join as join_cluster
+def pool(tmp_path, key, udp):
+    """Three members on loopback in one pool, and the root a command would keep."""
+    from tests.pool_support import join as join_pool_by_passphrase
 
-    join_cluster(WORDS, group="home", path=key)
-    made = [PausableDaemon(_free_tcp(), load_cluster_key(key), udp, name=n, root=tmp_path / n)
+    join_pool_by_passphrase(WORDS, group="home", path=key)
+    made = [PausableDaemon(_free_tcp(), load_pool_key(key), udp, name=n, root=tmp_path / n)
             for n in ("harrowgate", "larch", "studio")]
     yield made, key, udp, tmp_path / "root"
     for one in made:
@@ -708,7 +708,7 @@ def cluster(tmp_path, key, udp):
 def _rows(key: Path, udp: int, made: list, self_name: str = "") -> list[dict]:
     """The discovery rows, addressed to where these fakes actually listen."""
     ports = {d.name: d.httpd.server_address[1] for d in made}
-    rows = joining.peers(cluster_key_path=key, port=udp,
+    rows = joining.members(pool_key_path=key, port=udp,
                          self_machine=f"id-{self_name}" if self_name else "")
     for row in rows:
         row["base_url"] = f"http://127.0.0.1:{ports[row['name']]}"
@@ -717,15 +717,15 @@ def _rows(key: Path, udp: int, made: list, self_name: str = "") -> list[dict]:
 
 class TestPauseTheFleet:
     @pytest.mark.slow
-    def test_pause_reaches_every_machine_and_resume_puts_them_back(self, cluster):
+    def test_pause_reaches_every_machine_and_resume_puts_them_back(self, pool):
         from poolhouse.fleet.pausing import Fanout, pause_fleet, pause_table
 
-        made, key, udp, root = cluster
+        made, key, udp, root = pool
         rows = _rows(key, udp, made, self_name="studio")
         assert len(rows) == 3, [r["name"] for r in rows]
 
         answers = pause_fleet(Fanout(root, minutes=120, reason="away from the desk",
-                                     cluster_key_path=key), rows)
+                                     pool_key_path=key), rows)
         assert [a.ok for a in answers] == [True] * 3
         assert all(d.schedule.paused for d in made)
         assert {d.schedule.paused_reason for d in made} == {"away from the desk"}
@@ -733,18 +733,18 @@ class TestPauseTheFleet:
         assert text.startswith("paused 3 of 3 machines for 2h")
         assert "studio (this machine)" in text, text
 
-        back = pause_fleet(Fanout(root, resume=True, cluster_key_path=key), rows)
+        back = pause_fleet(Fanout(root, resume=True, pool_key_path=key), rows)
         assert [a.said for a in back] == ["taking work again"] * 3
         assert not any(d.schedule.paused for d in made)
         assert pause_table(back, resume=True).startswith("resumed 3 of 3 machines")
 
     @pytest.mark.slow
-    def test_a_machine_that_is_off_is_named_as_still_taking_work(self, cluster):
+    def test_a_machine_that_is_off_is_named_as_still_taking_work(self, pool):
         from poolhouse.fleet.pausing import UNHEARD, Fanout, pause_fleet, pause_table
 
-        made, key, udp, root = cluster
+        made, key, udp, root = pool
         rows = _rows(key, udp, made)
-        asked = Fanout(root, minutes=60, cluster_key_path=key)
+        asked = Fanout(root, minutes=60, pool_key_path=key)
         pause_fleet(asked, rows)
 
         made[1].close()                                  # larch goes to sleep
@@ -757,28 +757,28 @@ class TestPauseTheFleet:
         assert "larch" in text and UNHEARD in text
         assert "1 machine did not hear this" in text
 
-    def test_the_length_of_the_pause_is_read_the_way_every_duration_is(self, cluster,
+    def test_the_length_of_the_pause_is_read_the_way_every_duration_is(self, pool,
                                                                       monkeypatch):
-        _, key, _, root = cluster
+        _, key, _, root = pool
         sent: list = []
         monkeypatch.setattr(joining, "pause_fleet", lambda what, rows: sent.append(what) or [])
-        monkeypatch.setattr(joining, "peers", lambda **kw: [])
-        code = joining.main(["--cluster-key", str(key), "--root", str(root),
+        monkeypatch.setattr(joining, "members", lambda **kw: [])
+        code = joining.main(["--pool-key", str(key), "--root", str(root),
                              "pause", "--for", "2h 30m", "--reason", "somebody is here"])
         assert code == 1, "no machine answered, so the command says so"
         assert sent[0].minutes == 150
         assert sent[0].reason == "somebody is here"
 
-    def test_a_length_that_is_not_a_length_is_refused(self, cluster):
-        _, key, _, root = cluster
-        assert joining.main(["--cluster-key", str(key), "--root", str(root),
+    def test_a_length_that_is_not_a_length_is_refused(self, pool):
+        _, key, _, root = pool
+        assert joining.main(["--pool-key", str(key), "--root", str(root),
                              "pause", "--for", "soon"]) == 2
 
 
 # -- a machine that was away -----------------------------------------------------------
 def _paused(name: str, until: float | None, reason: str = "",
             paused: bool = True) -> dict:
-    """A peer row shaped the way a beacon carries one."""
+    """A member row shaped the way a beacon carries one."""
     return {"name": name,
             "device": {"availability": {"paused": paused, "paused_until": until,
                                         "paused_reason": reason}}}
@@ -825,53 +825,53 @@ class TestWhichPauseIsAdopted:
 
     def test_a_pause_with_no_reason_still_says_why(self):
         from poolhouse.fleet.availability import Availability
-        from poolhouse.fleet.pausing import CLUSTER_PAUSE, adopt_pause, pause_among
+        from poolhouse.fleet.pausing import POOL_PAUSE, adopt_pause, pause_among
 
         mine = Availability()
         adopt_pause(mine, pause_among([_paused("larch", None)]))
-        assert CLUSTER_PAUSE in mine.may_start()[1]
+        assert POOL_PAUSE in mine.may_start()[1]
 
 
 class TestAdoptingThePauseOnStartup:
     @pytest.mark.slow
-    def test_a_machine_that_starts_into_a_paused_cluster_comes_up_paused(self, cluster):
+    def test_a_machine_that_starts_into_a_paused_pool_comes_up_paused(self, pool):
         from poolhouse.fleet.availability import Availability
-        from poolhouse.fleet.pausing import adopt_pause, peer_pause
+        from poolhouse.fleet.pausing import adopt_pause, member_pause
 
-        made, key, udp, _ = cluster
+        made, key, udp, _ = pool
         for one in made:
             one.schedule.pause(minutes=120, reason="somebody is here")
 
         mine = Availability()
-        taken = adopt_pause(mine, peer_pause(key, timeout_s=3.0, port=udp))
-        assert taken is not None, "no peer's pause was heard"
+        taken = adopt_pause(mine, member_pause(key, timeout_s=3.0, port=udp))
+        assert taken is not None, "no member's pause was heard"
         assert not mine.may_start()[0]
         assert "somebody is here" in mine.may_start()[1]
 
     @pytest.mark.slow
-    def test_a_machine_that_starts_into_a_running_cluster_takes_work(self, cluster):
+    def test_a_machine_that_starts_into_a_running_pool_takes_work(self, pool):
         from poolhouse.fleet.availability import Availability
-        from poolhouse.fleet.pausing import adopt_pause, peer_pause
+        from poolhouse.fleet.pausing import adopt_pause, member_pause
 
-        made, key, udp, _ = cluster
+        made, key, udp, _ = pool
         for one in made:
             one.schedule.pause(minutes=1, reason="somebody is here")
             one.schedule.resume()
 
         mine = Availability()
-        assert adopt_pause(mine, peer_pause(key, timeout_s=3.0, port=udp)) is None
+        assert adopt_pause(mine, member_pause(key, timeout_s=3.0, port=udp)) is None
         assert mine.may_start()[0]
 
-    def test_a_machine_with_no_cluster_does_not_wait(self, tmp_path):
-        from poolhouse.fleet.pausing import peer_pause
+    def test_a_machine_with_no_pool_does_not_wait(self, tmp_path):
+        from poolhouse.fleet.pausing import member_pause
 
         started = time.time()
-        assert peer_pause(tmp_path / "nothing.key", timeout_s=30.0) is None
+        assert member_pause(tmp_path / "nothing.key", timeout_s=30.0) is None
         assert time.time() - started < 1.0
 
 
 class TestStatusSaysWhoIsPaused:
-    def test_a_paused_peer_is_named_with_its_reason(self):
+    def test_a_paused_member_is_named_with_its_reason(self):
         from poolhouse.fleet.availability import Availability
 
         schedule = Availability()
@@ -884,17 +884,17 @@ class TestStatusSaysWhoIsPaused:
         assert "paused" in text and "somebody is here" in text
 
     @pytest.mark.slow
-    def test_a_real_daemon_boots_into_a_paused_cluster_paused(self, cluster, tmp_path):
+    def test_a_real_daemon_boots_into_a_paused_pool_paused(self, pool, tmp_path):
         """The whole path: a daemon started as a process reads the beacons and writes
         down the pause before it takes work."""
         import os
 
         from poolhouse.fleet.availability import Availability
 
-        made, key, udp, _ = cluster
+        made, key, udp, _ = pool
         made[1].schedule.pause(minutes=120, reason="somebody is at the desk")
         root = tmp_path / "windermere"
-        env = {**os.environ, "POOLHOUSE_CLUSTER_KEY": str(key),
+        env = {**os.environ, "POOLHOUSE_POOL_KEY": str(key),
                "POOLHOUSE_DISCOVERY_PORT": str(udp),
                "PYTHONPATH": str(Path(joining.__file__).parents[2])}
         code = ("from poolhouse.fleet.daemon import serve, DaemonOptions;"
@@ -947,21 +947,21 @@ class TestTheStartedRecord:
 
 
 class TestWhoAPauseIsSentTo:
-    """`pausing.peer_clients` builds the clients `pause_fleet` posts to."""
+    """`pausing.member_clients` builds the clients `pause_fleet` posts to."""
 
-    def test_a_row_gets_a_client_holding_the_token_its_cluster_derives(self, tmp_path):
+    def test_a_row_gets_a_client_holding_the_token_its_pool_derives(self, tmp_path):
         from poolhouse.fleet.discovery import derive_token
-        from poolhouse.fleet.pausing import peer_clients
+        from poolhouse.fleet.pausing import member_clients
 
-        key = tmp_path / "clusters.json"
-        join_cluster("nine blue kettles", group="studio", path=key)
-        join_cluster("four grey lanterns", group="annex", path=key)
+        key = tmp_path / "pools.json"
+        join_pool_by_passphrase("nine blue kettles", group="studio", path=key)
+        join_pool_by_passphrase("four grey lanterns", group="annex", path=key)
         held = {m.group: m.key for m in memberships(key)}
 
-        clients = peer_clients(
-            [{"name": "workshop", "base_url": "https://10.0.0.4:8770", "clusters": ["studio"]},
-             {"name": "attic", "base_url": "https://10.0.0.5:8770", "clusters": ["annex"]}],
-            cluster_key_path=key, timeout=12.5)
+        clients = member_clients(
+            [{"name": "workshop", "base_url": "https://10.0.0.4:8770", "pools": ["studio"]},
+             {"name": "attic", "base_url": "https://10.0.0.5:8770", "pools": ["annex"]}],
+            pool_key_path=key, timeout=12.5)
 
         assert sorted(clients) == ["attic", "workshop"]
         assert clients["workshop"].base_url == "https://10.0.0.4:8770"
@@ -971,15 +971,15 @@ class TestWhoAPauseIsSentTo:
         assert clients["workshop"].timeout == 12.5
 
     def test_a_row_no_key_of_this_machine_reaches_gets_no_client(self, tmp_path):
-        from poolhouse.fleet.pausing import peer_clients
+        from poolhouse.fleet.pausing import member_clients
 
-        key = tmp_path / "clusters.json"
-        join_cluster("nine blue kettles", group="studio", path=key)
+        key = tmp_path / "pools.json"
+        join_pool_by_passphrase("nine blue kettles", group="studio", path=key)
 
-        clients = peer_clients(
-            [{"name": "workshop", "base_url": "https://10.0.0.4:8770", "clusters": ["studio"]},
-             {"name": "stranger", "base_url": "https://10.0.0.6:8770", "clusters": ["elsewhere"]},
+        clients = member_clients(
+            [{"name": "workshop", "base_url": "https://10.0.0.4:8770", "pools": ["studio"]},
+             {"name": "stranger", "base_url": "https://10.0.0.6:8770", "pools": ["elsewhere"]},
              {"name": "unlisted", "base_url": "https://10.0.0.7:8770"}],
-            cluster_key_path=key)
+            pool_key_path=key)
 
         assert list(clients) == ["workshop"]

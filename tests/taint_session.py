@@ -40,7 +40,7 @@ SCHEMAS = [
         ("world_make", {"type": "object", "properties": {
             "size": {"type": "string"}, "seed": {"type": "integer"}, "out": {"type": "string"}}}),
         ("models_files", {"type": "object", "properties": {"repo": {"type": "string"}}}),
-        ("fleet_peers", {"type": "object", "properties": {}}),
+        ("fleet_members", {"type": "object", "properties": {}}),
         ("speech_transcribe", {"type": "object", "properties": {"path": {"type": "string"}}}),
         ("bench_status", {"type": "object", "properties": {}}),
         ("ollama_models", {"type": "object", "properties": {"words": {"type": "string"}}}),

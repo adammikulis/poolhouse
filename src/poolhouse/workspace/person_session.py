@@ -34,7 +34,7 @@ class SessionWorkspace(Workspace):
         if not self._session.credentialed:
             ui.record('person.refused', reason='uncredentialed-session', source=request.client_ip)
             raise Denied('this session was not opened with a credential; open poolhouse from its own '
-                         'window, or run: poolhouse peers open')
+                         'window, or run: poolhouse members open')
         headers = {key.lower(): value for key, value in request.handler.headers.items()}
         if boardroute._checked(request.method, headers,
                                request.handler.server.server_address[1], writes=True):

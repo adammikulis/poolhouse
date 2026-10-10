@@ -1,0 +1,212 @@
+# Where a banned word of docs/glossary.md may stay, each entry with its reason. The vocabulary test
+# (tests/test_glossary.py) and scripts/nomenclature.py both read this file and nothing else.
+#
+# [[exclude]]  a whole file is outside the vocabulary: history, a vendored or third-party file, or a
+#              file that has to quote the banned words to define or check them
+# [[allow]]    one family of word may stay in the files a pattern names: it means something else there
+# [[token]]    one exact word is another library's name and stays everywhere
+
+[[exclude]]
+path = "CHANGELOG.md"
+reason = "release notes keep the names a release had"
+
+[[exclude]]
+path = "docs/glossary.md"
+reason = "defines the banned words"
+
+[[exclude]]
+path = "contracts/glossary-*.toml"
+reason = "the rules and this list name the banned words"
+
+[[exclude]]
+path = "scripts/nomenclature.py"
+reason = "the rewrite quotes banned words in its examples"
+
+[[exclude]]
+path = "tests/test_glossary.py"
+reason = "the check quotes banned words to prove it finds them"
+
+[[exclude]]
+path = "HANDOFF.md"
+reason = "dated notes between agents, a record of what was true when written"
+
+[[exclude]]
+path = "docs/notes/*"
+reason = "dated notes, a record of what was true when written"
+
+[[exclude]]
+path = "docs/*REPORT*.md"
+reason = "dated report, a record of what was true when written"
+
+[[exclude]]
+path = "docs/codex-code-report.md"
+reason = "dated report, a record of what was true when written"
+
+[[exclude]]
+path = "docs/report-2026-09-23.md"
+reason = "dated report, a record of what was true when written"
+
+[[exclude]]
+path = "docs/redteam/baseline-*"
+reason = "dated measurement, a record of what was true when taken"
+
+[[exclude]]
+path = "docs/experiments/*"
+reason = "dated measurements with the command that produced them"
+
+[[exclude]]
+path = "docs/poolhouse-refactor-plan.md"
+reason = "the rename plan names the words it retires"
+
+[[exclude]]
+path = "docs/*.patch"
+reason = "a patch of the old project's protected files, applied once at cutover"
+
+[[exclude]]
+path = "patches/*"
+reason = "patches against third-party llama.cpp"
+
+[[exclude]]
+path = "THIRD_PARTY_NOTICES.md"
+reason = "third-party licence text"
+
+[[exclude]]
+path = "NOTICE"
+reason = "third-party licence text"
+
+[[exclude]]
+path = "src/poolhouse/ui/assets/*"
+reason = "vendored three.js, DOMPurify and their relatives"
+
+[[exclude]]
+path = "*.lock"
+reason = "lock files name third-party packages"
+
+[[exclude]]
+path = "docs/images/*"
+reason = "images"
+
+# -- "pair" as ordinary English: a pair of values, nodes, entities or options ------------------------
+
+[[allow]]
+path = ["src/poolhouse/graph/*", "src/poolhouse/data/tidy-gold.json", "tests/test_graph*.py", "tests/test_store_cli.py",
+        "src/poolhouse/ingest/*", "tests/test_ingest*.py", "src/poolhouse/world/*"]
+words = ["pair"]
+reason = "pairs of entities or sentences in graph, ingest and world code; nothing to do with membership"
+
+[[allow]]
+path = ["src/poolhouse/spec/*", "src/poolhouse/spec/*/*", "src/poolhouse/bench/*", "src/poolhouse/serve/*",
+        "tests/test_serve*.py", "src/poolhouse/train/*", "src/poolhouse/train/*/*", "tests/test_train*.py",
+        "tests/test_backend*.py", "src/poolhouse/testing/*", "scripts/experiments/*", "tests/test_iq_experiment.py",
+        "tests/test_redteam_iq_override.py", "tests/test_quant_guard.py", "src/poolhouse/hub/modelfile.py",
+        "tests/test_hub_modelfile.py", "src/poolhouse/decide/*", "src/poolhouse/client/*", "tests/test_client.py"]
+words = ["pair"]
+reason = "key-value pairs, draft/target pairs and (a, b) pairs in model, serving, training and benchmark code"
+
+[[allow]]
+path = ["src/poolhouse/memory/*", "src/poolhouse/datasheet/*", "src/poolhouse/entities/*", "src/poolhouse/redact/*",
+        "tests/test_redact.py", "src/poolhouse/redteam/*", "src/poolhouse/redteam/*/*", "src/poolhouse/sources/*",
+        "src/poolhouse/agent/*", "src/poolhouse/guard/*", "tests/test_datasheet_find.py", "tests/test_do.py",
+        "tests/test_gguf.py", "tests/test_web.py", "tests/taint_session.py", "tests/conftest.py"]
+words = ["pair"]
+reason = "(schema, callable) pairs, name-shaped pairs and similar tuples in tool and agent code"
+
+[[allow]]
+path = ["src/poolhouse/do.py", "src/poolhouse/web.py", "src/poolhouse/harnesshook.py", "src/poolhouse/hookcheck.py",
+        "src/poolhouse/roles.py", "src/poolhouse/runtime_store.py", "src/poolhouse/tar_libraries.py",
+        "src/poolhouse/migrate.py", "src/poolhouse/migrate_paths.py", "tests/test_migrate_paths.py",
+        "tests/test_migrate_edges.py", "src/poolhouse/testfarm/report.py", "packaging/smoke.py",
+        "scripts/test_terminal_bank.py", "scripts/test_container_bridge.py", "scripts/gates/_perfile.py",
+        "scripts/hooks/*", "scripts/install-hooks.sh", "tests/test_hooks_installed.py",
+        "tests/test_hooks_rename_aware.py", "tests/test_git_template.py", "tests/test_gates_duplicates.py", "tests/test_no_real_names.py",
+        "tests/README.md", "tests/test_land_board.py", "tests/test_land_isolation.py", "tests/test_net_git.py"]
+words = ["pair"]
+reason = "key=value pairs, (old, new) path pairs, renamed-file pairs and similar tuples in tooling code"
+
+[[allow]]
+path = ["src/poolhouse/fleet/web/components/chat-model-picker.html", "src/poolhouse/fleet/web/components/chat-view.html",
+        "src/poolhouse/fleet/web/components/fit-view.html", "src/poolhouse/fleet/web/components/rates-view.html",
+        "src/poolhouse/fleet/web/components/telemetry-view.html", "src/poolhouse/fleet/conversation_graph.py",
+        "src/poolhouse/fleet/autostart_models.py", "tests/test_fleet_updates.py",
+        "contracts/vague-predicates.json", "contracts/name-shapes.json"]
+words = ["pair"]
+reason = "a coding model pair, a measured pair of values and name-shaped pairs; nothing to do with membership"
+
+[[allow]]
+path = ["app/poolhouse-node/src/cert.rs", "app/poolhouse-node/src/rules.rs", "app/poolhouse-node/tests/board.rs"]
+words = ["pair"]
+reason = "a key pair and a (wall, value) pair in the node's certificate, rule and board code"
+
+[[allow]]
+path = ["docs/agent-roles.md", "docs/agent.md", "docs/assistant-security.md", "docs/continuity.md", "docs/development.md",
+        "docs/friction-audit.md", "docs/landing-queue.md", "docs/model-benchmarks.md", "docs/serving.md",
+        "docs/training.md", "docs/ui-primitives.md", "docs/web-research.md"]
+words = ["pair"]
+reason = "a pair of values or tools in prose about models, serving, tests and tools"
+
+[[token]]
+token = "object_pairs_hook"
+reason = "the json module's own argument name"
+
+[[token]]
+token = "ObjectLayerPairFilterTable"
+reason = "the Jolt physics library's own class"
+
+[[token]]
+token = "mObjectLayerPairFilter"
+reason = "the Jolt physics library's own field"
+
+[[token]]
+token = "KeyPair"
+reason = "the rcgen/cryptography libraries' own type for a public and private key"
+
+[[token]]
+token = "TorchPair"
+reason = "a torch/mlx implementation pair in the backend parity code"
+
+[[token]]
+token = "MLXPair"
+reason = "a torch/mlx implementation pair in the backend parity code"
+
+# -- "cluster" as ordinary English or another program's word -------------------------------------------
+
+[[allow]]
+path = ["src/poolhouse/graph/*", "src/poolhouse/graph/web/components/*", "tests/test_graph*.py",
+        "src/poolhouse/bench/folding.py", "tests/test_bench_extract.py", "src/poolhouse/world/names.py"]
+words = ["cluster"]
+reason = "clusters of entities, names and consonants in graph, benchmark and world-building code"
+
+[[allow]]
+path = ["src/poolhouse/guard/argscan.py", "src/poolhouse/guard/sqlscan.py"]
+words = ["cluster"]
+reason = "the guard reads other programs' arguments: a Kubernetes cluster name and the SQL CLUSTER statement"
+
+# -- "mesh" as the 3D-graphics word ------------------------------------------------------------------
+
+[[allow]]
+path = ["src/poolhouse/fleet/web/components/gym-scene.html", "src/poolhouse/fleet/web/components/gym-drone-geometry.html",
+        "tests/test_gym_scene_browser.py", "tests/test_gym_drone.py", "src/poolhouse/gym/drone_sensors.py",
+        "docs/studio-gym.md", "src/poolhouse/data/tidy-gold.json", "src/poolhouse/world/names.py"]
+words = ["mesh"]
+reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial) in the drone simulator and its page; graphics, not a network"
+
+# -- "peer" in the node's wire protocol ------------------------------------------------------------------
+
+[[allow]]
+path = ["app/poolhouse-node/*", "docs/node.md", "docs/sentinel-open-join.md"]
+words = ["peer"]
+reason = "the node's wire protocol is the peer protocol: the other end of a connection, which may not yet be a member"
+
+[[token]]
+token = "test_many_renames_are_read_in_one_pass_and_each_is_paired"
+reason = "a test of the commit hooks, which pair each renamed file with its old path; the red-team map names it"
+
+[[allow]]
+path = "docs/cutover.md"
+words = ["pair", "cluster", "journal", "mesh", "peer", "seat", "revoke"]
+reason = "names the old files and commands so a person can find and remove them"
+
+[[allow]]
+path = "docs/person-delegation.md"
+words = ["peer"]
+reason = "quotes Claude Code's own messaging field value `turnOrigin = peer`"

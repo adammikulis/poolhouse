@@ -1,6 +1,6 @@
 """What a request is allowed to claim about its own size and speed.
 
-A peer-supplied ``Content-Length``, ``Range`` or ``Content-Range`` is a claim, not a fact:
+A member-supplied ``Content-Length``, ``Range`` or ``Content-Range`` is a claim, not a fact:
 `declared_length` and `content_range` refuse the ones that are malformed, negative, absurdly
 large or inconsistent, `read_body` reads exactly what was declared within a deadline, and
 `LimitedServer` caps how many connections are open and how long a client may take to send

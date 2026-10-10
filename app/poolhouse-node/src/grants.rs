@@ -1,11 +1,11 @@
-//! Who may change the pool: the check behind `member_revoke`, `set_join_policy`, `pair_accept`
-//! and `pair_start`. The standing-grant system arrives with the trust ledger; until then the
+//! Who may change the pool: the check behind `member_remove`, `set_join_policy`, `add_device`
+//! and `join_pool`. The standing-grant system arrives with the trust ledger; until then the
 //! stub lets any registered local session act, and a node can be given a stricter check.
 
 use crate::identity::Holder;
 
-/// Whether the session ``holder`` may take ``action`` (`member_revoke`, `set_join_policy`,
-/// `pair_accept`, `pair_start`).
+/// Whether the session ``holder`` may take ``action`` (`member_remove`, `set_join_policy`,
+/// `add_device`, `join_pool`).
 pub trait Grants: Send {
     fn allows(&self, holder: &Holder, action: &str) -> bool;
 }

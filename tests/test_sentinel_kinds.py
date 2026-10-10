@@ -1,5 +1,5 @@
 """Every kind of subject goes through the same store: messages, tool calls, tools, sessions,
-memory, artifacts, servers, MCP servers, credentials and peers."""
+memory, artifacts, servers, MCP servers, credentials and members."""
 
 from __future__ import annotations
 
@@ -139,15 +139,15 @@ def test_an_untrusted_mcp_server_is_blocked_and_its_hook_runs(node):
     assert node.mcp_allowed("mine")
 
 
-def test_peer_and_server_hooks_carry_out_the_outside_effects_and_undo_them(node):
+def test_member_and_server_hooks_carry_out_the_outside_effects_and_undo_them(node):
     log = []
-    node.store.on_quarantine["peer"] = [lambda r: log.append(("drop", r.key)),
+    node.store.on_quarantine["member"] = [lambda r: log.append(("drop", r.key)),
                                         lambda r: log.append(("revoke", r.key))]
-    node.store.on_release["peer"] = [lambda r: log.append(("allow", r.key))]
+    node.store.on_release["member"] = [lambda r: log.append(("allow", r.key))]
     node.store.on_quarantine["server"] = [lambda r: log.append(("stop", r.key))]
-    peer = node.store.quarantine(("peer", "10.0.0.4"), "forged", None)
+    member = node.store.quarantine(("member", "10.0.0.4"), "forged", None)
     node.store.quarantine(("server", "port:8080"), "binary changed", None)
-    node.store.release(peer.id, grant("release", peer.id))
+    node.store.release(member.id, grant("release", member.id))
     assert log == [("drop", "10.0.0.4"), ("revoke", "10.0.0.4"), ("stop", "port:8080"),
                    ("allow", "10.0.0.4")]
 
@@ -156,7 +156,7 @@ def test_the_chip_follows_the_state(node, tmp_path):
     assert node.chip()["verdict"] == "green"
     node.store.watch("session", "s", "x")
     assert node.chip()["verdict"] == "yellow"
-    record = node.store.quarantine(("peer", "p"), "x", None)
+    record = node.store.quarantine(("member", "p"), "x", None)
     assert node.chip()["held"] == 1
     node.store.release(record.id, grant("release", record.id))
     (node.root / "events.log").write_text("")

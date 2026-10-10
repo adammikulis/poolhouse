@@ -13,14 +13,14 @@ from poolhouse import claude, harnessid
 
 @pytest.fixture(autouse=True)
 def _no_workspace(monkeypatch, tmp_path):
-    from poolhouse.workspace import harness_seat, tokens
+    from poolhouse.workspace import harness_session, tokens
 
     kit = Kit(clean_env(monkeypatch, tmp_path))
     def invite(name, project, parent, say, *, claim):
         token = kit.agent(name)
         tokens.store(kit.base, name, token)
-        monkeypatch.setattr(harness_seat, 'reported_models', lambda url: [claim[0]])
-        return harnessid.Seat(name, minted=True, base=kit.base, issuer=kit.ws.auth(kit.owner))
+        monkeypatch.setattr(harness_session, 'reported_models', lambda url: [claim[0]])
+        return harnessid.HarnessSession(name, minted=True, base=kit.base, issuer=kit.ws.auth(kit.owner))
     monkeypatch.setattr(harnessid, "invite", invite)
     monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
 

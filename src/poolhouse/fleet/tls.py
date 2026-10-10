@@ -1,8 +1,8 @@
 """Transport security for fleet traffic: a self-signed certificate per daemon, pinned by the
 machines that talk to it.
 
-A device makes its own certificate (`identity`) and is that certificate: it is pinned at pairing
-and listed in the cluster's membership (`fleet.membership`), it is what the device presents as a
+A device makes its own certificate (`identity`) and is that certificate: it is pinned at joining
+and listed in the pool's membership (`fleet.membership`), it is what the device presents as a
 client and what its daemon serves. A client trusts the one certificate it was told to and no
 other (`pinned_context`): no certificate authority and no first-use trust. A server asks every
 client for its certificate and completes the handshake only with one that is a member
@@ -39,8 +39,8 @@ __all__ = ["Identity", "Members", "TlsUnavailable", "device_directory", "identit
            "member_context", "pinned_context", "present", "server_context"]
 
 VALID_DAYS = 3650
-"""A device certificate is an identity pinned by the people it was paired with, not a session
-credential: it lasts ten years and a replacement is a new pairing."""
+"""A device certificate is an identity pinned by the people it was joined with, not a session
+credential: it lasts ten years and a replacement is a new join."""
 RENEW_DAYS = 30
 INSTALL = "pip install 'poolhouse[fleet-tls]' (the cryptography package), or put openssl on PATH"
 
@@ -51,7 +51,7 @@ class TlsUnavailable(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class Identity:
-    """A daemon's certificate and key on disk, and the certificate as peers receive it."""
+    """A daemon's certificate and key on disk, and the certificate as members receive it."""
 
     certfile: Path
     keyfile: Path
@@ -177,7 +177,7 @@ def identity(root: Path, name: str, *, now: float | None = None,
 
 def server_context(ident: Identity) -> ssl.SSLContext:
     """The context a listener answers TLS clients with, asking none for a certificate: TLS 1.3
-    or nothing. Pairing and installing use it, since their clients are not members yet."""
+    or nothing. Joining and installing use it, since their clients are not members yet."""
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3
     ctx.load_cert_chain(str(ident.certfile), str(ident.keyfile))

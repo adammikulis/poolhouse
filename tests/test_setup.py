@@ -387,7 +387,7 @@ def test_the_speech_findings_are_printed_with_the_rest(monkeypatch, capsys):
 
 
 def test_the_firewall_finding_names_both_inbound_rules_and_how_to_add_them():
-    """Windows hears no beacon and answers no peer until TCP 8770 and UDP 8771 are let in.
+    """Windows hears no beacon and answers no member until TCP 8770 and UDP 8771 are let in.
     `_firewall_rule_present` asks ``netsh``; where there is none, every rule reads absent."""
     from poolhouse.fleet.discovery import windows_firewall_line, windows_firewall_rules
     from poolhouse.setup import _firewall_finding
@@ -516,29 +516,29 @@ def test_ports_finding_says_held_by_the_given_daemon():
 
 # -- the fleet ----------------------------------------------------------------
 
-def test_fleet_finding_says_in_no_cluster_when_never_joined(tmp_path):
+def test_fleet_finding_says_in_no_pool_when_never_joined(tmp_path):
     from poolhouse.setup import _fleet_findings
 
     found = {f.name: f for f in
-             _fleet_findings(cluster_key_path=tmp_path / "cluster.key")}
+             _fleet_findings(pool_key_path=tmp_path / "pool.key")}
     assert found.keys() == {"fleet: joined", "ports"}
     assert not found["fleet: joined"].good
-    assert found["fleet: joined"].said == "in no cluster"
-    assert found["fleet: joined"].fix[:2] == ["poolhouse-cluster", "join"] and "--passphrase" in found["fleet: joined"].fix
+    assert found["fleet: joined"].said == "in no pool"
+    assert found["fleet: joined"].fix[:2] == ["poolhouse-pool", "join"] and "--passphrase" in found["fleet: joined"].fix
 
 
 def test_fleet_finding_says_the_daemon_does_not_answer(tmp_path):
-    from poolhouse.fleet.discovery import create_cluster_key
+    from poolhouse.fleet.discovery import create_pool_key
     from poolhouse.setup import _fleet_findings
 
-    keyfile = tmp_path / "cluster.key"
-    create_cluster_key(keyfile, group="poolhouse")
+    keyfile = tmp_path / "pool.key"
+    create_pool_key(keyfile, group="poolhouse")
     found = {f.name: f for f in
              _fleet_findings(port=_free_tcp_port(), discovery_port=_free_udp_port(),
-                             cluster_key_path=keyfile)}
+                             pool_key_path=keyfile)}
     assert found["fleet: joined"].good
     assert not found["fleet: daemon"].good
-    assert found["fleet: daemon"].fix == ["poolhouse-cluster", "join"]
+    assert found["fleet: daemon"].fix == ["poolhouse-pool", "join"]
     assert "fleet: seen" not in found
     assert found["ports"].good
 
@@ -548,13 +548,13 @@ REPO = Path(__file__).resolve().parent.parent
 
 @contextlib.contextmanager
 def _booted_daemon(tmp_path):
-    """A real ``poolhouse-traind``, on its own cluster key and its own ports, for the
+    """A real ``poolhouse-traind``, on its own pool key and its own ports, for the
     fleet findings to answer and be heard by."""
-    from poolhouse.fleet.discovery import create_cluster_key
+    from poolhouse.fleet.discovery import create_pool_key
     from poolhouse.fleet.launch import already_running
 
-    keyfile = tmp_path / "cluster.key"
-    create_cluster_key(keyfile, group="poolhouse")
+    keyfile = tmp_path / "pool.key"
+    create_pool_key(keyfile, group="poolhouse")
     http_port, disco_port = _free_tcp_port(), _free_udp_port()
     env = {**os.environ, "POOLHOUSE_DISCOVERY_PORT": str(disco_port),
           "PYTHONPATH": str(REPO / "src"), "PYTHONUNBUFFERED": "1"}
@@ -564,7 +564,7 @@ def _booted_daemon(tmp_path):
         [sys.executable, "-m", "poolhouse.fleet.daemon",
          "--root", str(tmp_path / "traind"), "--host", "127.0.0.1",
          "--port", str(http_port), "--name", "setuptestbox",
-         "--cluster-key", str(keyfile), "--no-web"],
+         "--pool-key", str(keyfile), "--no-web"],
         env=env, stdout=fh, stderr=subprocess.STDOUT)
     deadline = time.time() + 20
     try:
@@ -593,12 +593,12 @@ def test_fleet_findings_see_a_real_booted_daemon(tmp_path):
 
     with _booted_daemon(tmp_path) as (keyfile, http_port, disco_port):
         found = {f.name: f for f in _fleet_findings(
-            port=http_port, discovery_port=disco_port, cluster_key_path=keyfile)}
+            port=http_port, discovery_port=disco_port, pool_key_path=keyfile)}
     assert found["fleet: joined"].good
     assert found["fleet: daemon"].good
     assert "setuptestbox" in found["fleet: daemon"].said
     assert found["fleet: seen"].good, found["fleet: seen"].said
-    assert found["fleet: seen"].said == "sees itself among 1 peer(s)"
+    assert found["fleet: seen"].said == "sees itself among 1 member(s)"
     assert found["ports"].good
     assert "this machine's own daemon" in found["ports"].said
 

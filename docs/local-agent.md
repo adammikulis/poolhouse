@@ -21,7 +21,7 @@ a link, `/agents?session=...`, that sets the browser session cookie the start an
    choice to pass as `--model`.
 2. **Identity.** The agent is named `local-` and the model's short name (or `--name`) and gets the
    standard agent role. Its token is minted directly, as `setup` does, written to
-   `tokens/NAME` (0600) and never printed. Its project board is placed as for a joined agent.
+   `tokens/NAME` (0600) and never printed. Its board is placed as for a joined agent.
 3. **Loop.** `python -m poolhouse.workspace.localloop NAME` runs detached (`poolhouse.jobs.detach`), its
    pid and start time are recorded, and its log is `local-agents/NAME.log`. The same name again
    reports the running agent and changes nothing.

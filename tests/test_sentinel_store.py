@@ -110,24 +110,24 @@ def test_restore_never_overwrites(store, models):
 
 
 def test_release_needs_a_grant_for_that_record(store):
-    record = store.quarantine(("peer", "10.0.0.9"), "forged", None)
-    other = store.quarantine(("peer", "10.0.0.8"), "forged", None)
+    record = store.quarantine(("member", "10.0.0.9"), "forged", None)
+    other = store.quarantine(("member", "10.0.0.8"), "forged", None)
     with pytest.raises(HumanRequired):
         store.release(record.id, grant("release", other.id))
     with pytest.raises(HumanRequired):
         store.release(record.id, grant("purge", record.id))
-    assert store.blocked("peer", "10.0.0.9")
+    assert store.blocked("member", "10.0.0.9")
 
 
 def test_a_forged_grant_is_refused(store):
-    record = store.quarantine(("peer", "10.0.0.9"), "forged", None)
+    record = store.quarantine(("member", "10.0.0.9"), "forged", None)
     forged = HumanGrant("release", record.id, 9e18, object())
     with pytest.raises(HumanRequired, match="not a grant"):
         store.release(record.id, forged)
 
 
 def test_an_expired_grant_is_refused(store):
-    record = store.quarantine(("peer", "p"), "x", None)
+    record = store.quarantine(("member", "p"), "x", None)
     old = grant("release", record.id)
     with pytest.raises(HumanRequired, match="expired"):
         old.check("release", record.id, now=old.expires + 1)
@@ -164,8 +164,8 @@ def test_only_the_defined_transitions_are_taken(store):
 
 
 def test_watching_a_watched_subject_adds_no_transition(store):
-    first = store.watch("peer", "p", "a")
-    second = store.watch("peer", "p", "b", {"n": 2})
+    first = store.watch("member", "p", "a")
+    second = store.watch("member", "p", "b", {"n": 2})
     assert len(second.history) == len(first.history) == 1
     assert second.evidence["n"] == 2
 
@@ -209,7 +209,7 @@ def test_purge_deletes_what_was_held_and_keeps_the_record(store, models):
 
 
 def test_state_is_private_and_sealed(store):
-    store.quarantine(("peer", "p"), "x", None)
+    store.quarantine(("member", "p"), "x", None)
     state = store.root / "state.json"
     assert state.stat().st_mode & 0o777 == 0o600
     assert (store.root / "state.json.key").stat().st_mode & 0o777 == 0o600
@@ -217,8 +217,8 @@ def test_state_is_private_and_sealed(store):
 
 def test_an_edited_state_file_falls_back_to_the_previous_seal(tmp_path, models):
     first = Store(tmp_path / "s", Bus(), roots=[models])
-    first.quarantine(("peer", "a"), "x", None)
-    first.quarantine(("peer", "b"), "x", None)
+    first.quarantine(("member", "a"), "x", None)
+    first.quarantine(("member", "b"), "x", None)
     state = tmp_path / "s" / "state.json"
     doc = json.loads(state.read_text())
     doc["payload"]["records"][0]["state"] = "released"
@@ -227,18 +227,18 @@ def test_an_edited_state_file_falls_back_to_the_previous_seal(tmp_path, models):
     second = Store(tmp_path / "s", bus, roots=[models])
     assert any(e.kind == "sentinel.tamper" for e in bus.recent())
     assert not second.tampered
-    assert second.state_of("peer", "a") == State.QUARANTINED
-    assert second.state_of("peer", "unknown") == State.CLEAR
+    assert second.state_of("member", "a") == State.QUARANTINED
+    assert second.state_of("member", "unknown") == State.CLEAR
 
 
 def test_a_state_with_no_valid_copy_fails_closed(tmp_path, models):
     first = Store(tmp_path / "s", Bus(), roots=[models])
-    record = first.quarantine(("peer", "a"), "x", None)
+    record = first.quarantine(("member", "a"), "x", None)
     (tmp_path / "s" / "state.json").write_text("{ not json")
     (tmp_path / "s" / "state.json.prev").unlink(missing_ok=True)
     bus = Bus()
     second = Store(tmp_path / "s", bus, roots=[models])
-    assert second.tampered and second.blocked("peer", "anything")
+    assert second.tampered and second.blocked("member", "anything")
     assert any(e.kind == "sentinel.tamper" for e in bus.recent())
     with pytest.raises(TransitionRefused):
         second.release(record.id, grant("release", record.id))
@@ -246,20 +246,20 @@ def test_a_state_with_no_valid_copy_fails_closed(tmp_path, models):
 
 def test_a_crash_between_write_and_rename_leaves_the_old_state(tmp_path, models):
     first = Store(tmp_path / "s", Bus(), roots=[models])
-    first.quarantine(("peer", "a"), "x", None)
+    first.quarantine(("member", "a"), "x", None)
     (tmp_path / "s" / "state.json.tmp").write_text("{half a record")
     for junk in (tmp_path / "s").glob("tmp*"):
         junk.write_text("partial")
     again = Store(tmp_path / "s", Bus(), roots=[models])
-    assert again.blocked("peer", "a") and not again.tampered
+    assert again.blocked("member", "a") and not again.tampered
 
 
 def test_a_second_process_sees_and_adds_to_the_same_state(tmp_path, models):
     one = Store(tmp_path / "s", Bus(), roots=[models])
     two = Store(tmp_path / "s", Bus(), roots=[models])
-    one.quarantine(("peer", "a"), "x", None)
-    two.quarantine(("peer", "b"), "x", None)
-    assert one.blocked("peer", "b") and two.blocked("peer", "a")
+    one.quarantine(("member", "a"), "x", None)
+    two.quarantine(("member", "b"), "x", None)
+    assert one.blocked("member", "b") and two.blocked("member", "a")
     assert len(one.records()) == 2
 
 
@@ -284,18 +284,18 @@ def test_old_clear_records_age_out_and_quarantined_ones_never_do(tmp_path, model
               limits=Limits(clear_after_s=10.0))
     s.watch("session", "old", "x")
     s.clear("session", "old")
-    s.quarantine(("peer", "bad"), "x", None)
+    s.quarantine(("member", "bad"), "x", None)
     now[0] += 100
     s.watch("session", "new", "x")
     kinds = {(r.kind, r.key) for r in s.records()}
-    assert ("session", "old") not in kinds and ("peer", "bad") in kinds
+    assert ("session", "old") not in kinds and ("member", "bad") in kinds
 
 
 def test_a_hook_runs_on_quarantine_and_a_failing_one_is_reported(store):
     seen = []
-    store.on_quarantine["peer"] = [lambda r: seen.append(r.key),
+    store.on_quarantine["member"] = [lambda r: seen.append(r.key),
                                    lambda r: (_ for _ in ()).throw(RuntimeError("no"))]
-    store.quarantine(("peer", "p"), "x", None)
+    store.quarantine(("member", "p"), "x", None)
     assert seen == ["p"]
     assert any(e.kind == "effect.failed" for e in store.bus.recent())
 

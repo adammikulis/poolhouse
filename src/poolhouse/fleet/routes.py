@@ -15,17 +15,18 @@ from . import (
     component_routes,
     credential_routes,
     invite_routes,
-    lan_clusters,
+    lan_pools,
     project_client,
     recovery,
 )
+from .board_routes import BoardRoutes
 from .chat_routes import ChatRoutes
 from .discovery import (
     DiscoveryError,
-    cluster_group,
-    in_cluster,
-    load_cluster_key,
+    in_pool,
+    load_pool_key,
     memberships,
+    pool_group,
     require_name,
 )
 from .extension_routes import ExtensionRoutes
@@ -35,12 +36,11 @@ from .gym_routes import GymRoutes
 from .initial_setup_routes import InitialSetupRoutes
 from .knowledge_routes import KnowledgeRoutes
 from .launch_routes import LaunchRoutes
-from .onboard.clusters import known_clusters
-from .onboard.joining import JoinOptions, cluster_action, join_by_passphrase
+from .onboard.joining import JoinOptions, join_by_passphrase, pool_action
+from .onboard.pools import known_pools
 from .page import COMPONENTS, render
 from .page_security import PAGE_HEADERS
 from .pausing import minutes_of
-from .project_board_routes import ProjectBoardRoutes
 from .room_routes import RoomRoutes
 from .runtime_repair_routes import RuntimeRepairRoutes
 from .session import parse_cookie
@@ -209,10 +209,10 @@ class PageRoutes:
         return super().open_route()
 
 
-def found_clusters(routes: Any) -> bool:
-    """Answer with the clusters on this machine and those the network offers."""
+def found_pools(routes: Any) -> bool:
+    """Answer with the pools on this machine and those the network offers."""
     ui = routes.ui
-    found = known_clusters(ui.cluster_key_path, port=ui.discovery_port, self_names=(ui.name,))
+    found = known_pools(ui.pool_key_path, port=ui.discovery_port, self_names=(ui.name,))
     routes.send(200, {"found": [c.public() for c in found]})
     return True
 
@@ -230,35 +230,35 @@ class SetupRoutes:
             return True
         if self.path == "/ui/setup/join" and self.method == "POST":
             return self._join()
-        if self.path == "/ui/setup/clusters" and self.method == "GET":
-            why = self._may_setup() if not in_cluster(self.ui.cluster_key_path) else ""
+        if self.path == "/ui/setup/pools" and self.method == "GET":
+            why = self._may_setup() if not in_pool(self.ui.pool_key_path) else ""
             if why:
                 self.send(403, {"error": why})
-            elif in_cluster(self.ui.cluster_key_path) and not self.ui.authed(self.cookie):
-                self.send(401, {"error": "sign in to discover clusters"})
+            elif in_pool(self.ui.pool_key_path) and not self.ui.authed(self.cookie):
+                self.send(401, {"error": "sign in to discover pools"})
             else:
                 try:
-                    self.send(200, {"clusters": lan_clusters.nearby(port=self.ui.discovery_port),
-                                    "found": [c.public() for c in known_clusters(
-                                        self.ui.cluster_key_path, port=self.ui.discovery_port,
+                    self.send(200, {"pools": lan_pools.nearby(port=self.ui.discovery_port),
+                                    "found": [c.public() for c in known_pools(
+                                        self.ui.pool_key_path, port=self.ui.discovery_port,
                                         self_names=(self.ui.name,))]})
                 except OSError:
-                    self.send(503, {"error": "LAN discovery is unavailable; enter the cluster name manually."})
+                    self.send(503, {"error": "LAN discovery is unavailable; enter the pool name manually."})
             return True
         if self.path == "/ui/setup/suggest" and self.method == "GET":
             return self._suggest()
         if self.path in ("/ui/setup/prefs", "/ui/setup/done") and self.method == "POST":
             return self._prefs()
-        if self.path == "/ui/setup/peers" and self.method == "GET":
-            self.send(200, {"peers": self.ui.peers(force=True)})
+        if self.path == "/ui/setup/members" and self.method == "GET":
+            self.send(200, {"members": self.ui.members(force=True)})
             return True
         return super().public_route()
 
     def _join(self) -> bool:
         ui = self.ui
-        joined = in_cluster(ui.cluster_key_path)
+        joined = in_pool(ui.pool_key_path)
         if joined and not ui.authed(self.cookie):
-            self.send(401, {"error": "this machine is already in a cluster -- sign in to "
+            self.send(401, {"error": "this machine is already in a pool -- sign in to "
                                      "move it to another one"})
             return True
         if not joined:
@@ -269,12 +269,12 @@ class SetupRoutes:
         req = self.body()
         try:
             if not isinstance(req.get("existing", False), bool):
-                raise DiscoveryError("existing cluster selection must be true or false")
+                raise DiscoveryError("existing pool selection must be true or false")
             held = ui.sessions.get(parse_cookie(self.cookie))
             state, sid = ui.join(str(req.get("passphrase") or ""),
                                  require_name(req.get("group")), self.client_ip,
                                  options=JoinOptions(action=req.get("mode"), existing=req.get("existing") is True,
-                                                     mode=req.get("cluster_mode")),
+                                                     mode=req.get("pool_mode")),
                                  origin=held.origin if held is not None and held.credentialed else "")
         except DiscoveryError as exc:
             self.send(429 if "attempts" in str(exc) or "busy" in str(exc) else 400,
@@ -301,7 +301,7 @@ class SetupRoutes:
 
     def _prefs(self) -> bool:
         ui = self.ui
-        if in_cluster(ui.cluster_key_path):
+        if in_pool(ui.pool_key_path):
             if not ui.authed(self.cookie):
                 self.send(401, {"error": "sign in first"})
                 return True
@@ -349,7 +349,7 @@ class SessionRoutes:
             self.send(429, {"error": str(exc)})
             return True
         if sid is None:
-            self.send(401, {"error": "that passphrase does not match this cluster"})
+            self.send(401, {"error": "that passphrase does not match this pool"})
             return True
         session = ui.sessions.get(sid)
         self.send(200, {"signed_in": True, "expires_at": session.expires_at},
@@ -401,7 +401,7 @@ class SettingsRoutes:
                 "theme_registry": registry(),
                 "resolved_theme": resolve(ui.settings.appearance if ui.settings else default_appearance()),
                 "name": ui.name,
-                "group": cluster_group(ui.cluster_key_path),
+                "group": pool_group(ui.pool_key_path),
                 "version": current_version(),
                 "autostart": auto.status(),
                 "schedule": ui.schedule.public() if ui.schedule else {},
@@ -454,13 +454,13 @@ class SettingsRoutes:
             self.send(501, {"error": "this daemon does not know where it keeps things"})
             return True
         if self.method == "GET":
-            items = plan(ui.root, key_path=ui.cluster_key_path)
+            items = plan(ui.root, key_path=ui.pool_key_path)
             self.send(200, {"items": [i.public() for i in items],
                             "app": str(app_location() or "")})
             return True
         if self.method == "POST":
             keys = [str(k) for k in (self.body().get("remove") or [])]
-            out = remove(ui.root, keys, key_path=ui.cluster_key_path)
+            out = remove(ui.root, keys, key_path=ui.pool_key_path)
             out["app"] = str(app_location() or "")
             self.send(200, out)
             return True
@@ -531,7 +531,7 @@ class ModelRoutes:
         if ui.models is None:
             self.send(501, {"error": "no model store on this daemon"})
             return True
-        key = load_cluster_key(ui.cluster_key_path)
+        key = load_pool_key(ui.pool_key_path)
         auto_models = ui.settings is None or ui.settings.autodownload_models
         if self.method == "GET":
             return self._models_here(key, auto_models)
@@ -548,7 +548,7 @@ class ModelRoutes:
         here = {m.name for m in ui.models.all()}
         free = ui.models.free_gb()
         elsewhere: dict[str, list[str]] = {}
-        for beacon in (ui.peers() if key is not None else []):
+        for beacon in (ui.members() if key is not None else []):
             if beacon.get("is_self"):
                 continue
             for row in (beacon.get("device", {}).get("models") or []):
@@ -556,7 +556,7 @@ class ModelRoutes:
         self.send(200, {
             "here": [m.public() for m in ui.models.all()],
             "library": ui.models.library(),
-            "elsewhere": [{"name": n, "peers": p}
+            "elsewhere": [{"name": n, "members": p}
                           for n, p in sorted(elsewhere.items()) if n not in here],
             "free_gb": free,
             "autodownload": auto_models,
@@ -700,17 +700,17 @@ class UpdateRoutes:
         return True
 
 
-class ClusterRoutes:
-    """The clusters this machine is in, the machines it sees, and joining another."""
+class PoolRoutes:
+    """The pools this machine is in, the machines it sees, and joining another."""
 
     def route(self) -> bool:
-        if self.path == "/ui/clusters":
-            return self._clusters()
-        if self.path == "/ui/clusters/found" and self.method == "GET":
-            return found_clusters(self)
-        if self.path == "/ui/peers" and self.method == "GET":
-            self.send(200, {"peers": self.ui.peers(), "self": self.ui.name,
-                            "group": cluster_group(self.ui.cluster_key_path)})
+        if self.path == "/ui/pools":
+            return self._pools()
+        if self.path == "/ui/pools/found" and self.method == "GET":
+            return found_pools(self)
+        if self.path == "/ui/members" and self.method == "GET":
+            self.send(200, {"members": self.ui.members(), "self": self.ui.name,
+                            "group": pool_group(self.ui.pool_key_path)})
             return True
         if self.path == "/ui/fleet" and self.method == "GET":
             self.send(200, self.ui.fleet())
@@ -734,11 +734,11 @@ class ClusterRoutes:
                                            reason=str(req.get("reason") or "")))
         return True
 
-    def _clusters(self) -> bool:
+    def _pools(self) -> bool:
         ui = self.ui
         if self.method == "GET":
-            self.send(200, {"clusters": [m.public() for m in
-                                         memberships(ui.cluster_key_path)]})
+            self.send(200, {"pools": [m.public() for m in
+                                         memberships(ui.pool_key_path)]})
             return True
         if self.method == "POST":
             req = self.body()
@@ -747,25 +747,25 @@ class ClusterRoutes:
                 group = require_name(req.get("group"))
                 with ui.join_guard():
                     if req.get("mode") is not None:
-                        cluster_action(str(req["mode"]), words, group, ui.cluster_key_path,
-                                       options=JoinOptions(port=ui.discovery_port, mode=req.get("cluster_mode")))
+                        pool_action(str(req["mode"]), words, group, ui.pool_key_path,
+                                       options=JoinOptions(port=ui.discovery_port, mode=req.get("pool_mode")))
                     else:
-                        join_by_passphrase(words, group, ui.cluster_key_path,
-                                           options=JoinOptions(port=ui.discovery_port, mode=req.get("cluster_mode")))
+                        join_by_passphrase(words, group, ui.pool_key_path,
+                                           options=JoinOptions(port=ui.discovery_port, mode=req.get("pool_mode")))
             except DiscoveryError as exc:
                 self.send(400, {"error": str(exc)})
                 return True
-            recovery.remember(words, group, ui.cluster_key_path)
-            rows = memberships(ui.cluster_key_path)
+            recovery.remember(words, group, ui.pool_key_path)
+            rows = memberships(ui.pool_key_path)
             ui.rejoined()
-            self.send(200, {"clusters": [m.public() for m in rows], "joined": group,
+            self.send(200, {"pools": [m.public() for m in rows], "joined": group,
                             "mode": str(req.get("mode") or "join")})
             return True
         if self.method == "DELETE":
             group = str(self.body().get("group") or "")
             rows = ui.leave(group)
             ui.rejoined()
-            self.send(200, {"clusters": [m.public() for m in rows], "left": group})
+            self.send(200, {"pools": [m.public() for m in rows], "left": group})
             return True
         return super().route()
 
@@ -815,7 +815,7 @@ class JobRoutes:
             self.send(400, {"error": "pick at least one model to measure"})
             return True
         try:
-            argv = sweep_argv(models, peers=[str(p) for p in (req.get("peers") or [])],
+            argv = sweep_argv(models, members=[str(p) for p in (req.get("members") or [])],
                               sample=int(req.get("sample") or 0),
                               label=str(req.get("label") or ""),
                               extra=[str(a) for a in (req.get("extra") or [])])
@@ -846,7 +846,7 @@ class JobRoutes:
 
 
 class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
-             ProjectBoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, ClusterRoutes, JobRoutes,
+             BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, WorkspaceRoutes, GymRecordingRoutes, GymRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
 
@@ -874,13 +874,13 @@ class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryR
     def signed_in(self) -> bool:
         """Whether the request may go on; sends the refusal when it may not.
 
-        A machine in no cluster has no password anyone could be asked for, so it answers
+        A machine in no pool has no password anyone could be asked for, so it answers
         to itself and to nobody else.
         """
         ui = self.ui
         if ui.authed(self.cookie):
             return True
-        if in_cluster(ui.cluster_key_path):
+        if in_pool(ui.pool_key_path):
             self.send(401, {"error": "sign in first"})
             return False
         why = ui.may_setup(self.client_ip, self.host_header,

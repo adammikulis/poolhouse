@@ -60,10 +60,10 @@ def default_gateway() -> str:
     return gateway(done.stdout)
 
 
-def probe_command(bundle: Path, out: Path, seconds: int, peers: list[str] | None = None) -> list[str]:
+def probe_command(bundle: Path, out: Path, seconds: int, members: list[str] | None = None) -> list[str]:
     """Launch the bundle through Launch Services (`open`), the way a person's double-click would, and wait for it to exit."""
     return ["open", "-W", "-n", "-a", str(bundle), "--args", "probe", "--seconds", str(seconds), "--out", str(out),
-            *(word for peer in peers or [] for word in ("--peer", peer))]
+            *(word for member in members or [] for word in ("--member", member))]
 
 
 def explanation(verdict_: str, result: dict | None) -> str:

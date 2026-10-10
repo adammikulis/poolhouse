@@ -1,4 +1,4 @@
-"""Choosing which peer runs a piece of work, and saying why when none can."""
+"""Choosing which member runs a piece of work, and saying why when none can."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from dataclasses import dataclass, field
 from statistics import median
 from typing import Any
 
-from .remote import Peer
+from .remote import Member
 
 __all__ = ["Candidate", "Requires", "Score", "candidates", "choose", "eligible",
            "soonest"]
 
 Score = Callable[["Candidate", float], float]
-"""Seconds until done, given the candidate and the median rate of the measured peers."""
+"""Seconds until done, given the candidate and the median rate of the measured members."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,13 +28,13 @@ class Requires:
     min_ram_gb: float = 0.0
     min_cpus: int = 0
     exclusive: bool = False
-    """Take the whole box. Advisory: it refuses a peer that is not entirely free, but two"""
+    """Take the whole box. Advisory: it refuses a member that is not entirely free, but two"""
 
-    def why_not(self, peer_name: str, report: Mapping[str, Any],
+    def why_not(self, member_name: str, report: Mapping[str, Any],
                 free: int, slots: int) -> str:
-        """Empty when this peer admits the work, otherwise the reason it does not."""
-        if self.names and peer_name not in self.names:
-            return f"name {peer_name!r} is not one of {list(self.names)}"
+        """Empty when this member admits the work, otherwise the reason it does not."""
+        if self.names and member_name not in self.names:
+            return f"name {member_name!r} is not one of {list(self.names)}"
 
         labels = set(report.get("labels") or ())
         missing = [lbl for lbl in self.labels if lbl not in labels]
@@ -74,60 +74,60 @@ class Requires:
             return schedule.get("unavailable_because") or "is not taking work right now"
         return ""
 
-    def admits(self, peer_name: str, report: Mapping[str, Any],
+    def admits(self, member_name: str, report: Mapping[str, Any],
                free: int, slots: int) -> bool:
-        return not self.why_not(peer_name, report, free, slots)
+        return not self.why_not(member_name, report, free, slots)
 
 
 @dataclass(frozen=True, slots=True)
 class Candidate:
-    """One peer, as it looks right now, for one piece of work."""
+    """One member, as it looks right now, for one piece of work."""
 
-    peer: Peer
+    member: Member
     name: str
     report: Mapping[str, Any] = field(default_factory=dict)
     machine: str = ""
-    """The peer's `home.machine_id`, or its name when its ``/health`` gives none."""
+    """The member's `home.machine_id`, or its name when its ``/health`` gives none."""
     slots: int = 1
     free: int = 0
     queued: int = 0
     rate: float | None = None
     """Measured units/second for this kind of work. ``None`` means never measured, which"""
     bench: float | None = None
-    """This peer's join-time benchmark score, if it has one. A proxy for real work and"""
+    """This member's join-time benchmark score, if it has one. A proxy for real work and"""
     transfer_gb: float = 0.0
     """Bytes this unit would have to fetch to run here, in GB."""
 
 
-def candidates(peers: Sequence[Peer], *, kind: str = "",
+def candidates(members: Sequence[Member], *, kind: str = "",
                rates: Mapping[tuple[str, str], float] | None = None,
                bench: Mapping[str, float] | None = None,
-               held: Callable[[Peer], float] | None = None) -> list[Candidate]:
-    """Ask every peer what it looks like now. Unreachable peers drop out silently.
-    ``rates`` and ``bench`` are keyed on each peer's `Candidate.machine`."""
+               held: Callable[[Member], float] | None = None) -> list[Candidate]:
+    """Ask every member what it looks like now. Unreachable members drop out silently.
+    ``rates`` and ``bench`` are keyed on each member's `Candidate.machine`."""
     out: list[Candidate] = []
-    for peer in peers:
+    for member in members:
         try:
-            health = peer.health()
+            health = member.health()
         except Exception:                             # noqa: BLE001
             continue
-        name = health.get("name") or peer.name
+        name = health.get("name") or member.name
         machine = str(health.get("machine") or name)
         slots = int(health.get("slots") or 1)
         out.append(Candidate(
-            peer=peer, name=name, report=health, machine=machine, slots=slots,
+            member=member, name=name, report=health, machine=machine, slots=slots,
             free=int(health.get("free", slots if not health.get("busy") else 0)),
             queued=int(health.get("queued") or 0),
             rate=(rates or {}).get((machine, kind)),
             bench=(bench or {}).get(machine),
-            transfer_gb=held(peer) if held else 0.0,
+            transfer_gb=held(member) if held else 0.0,
         ))
     return out
 
 
 def eligible(cands: Sequence[Candidate],
              requires: Requires) -> tuple[list[Candidate], dict[str, str]]:
-    """Split into peers that admit the work and peers that do not, with reasons."""
+    """Split into members that admit the work and members that do not, with reasons."""
     kept, refused = [], {}
     for c in cands:
         reason = requires.why_not(c.name, c.report, c.free, c.slots)
@@ -153,7 +153,7 @@ def soonest(work: float = 1.0, *, link_gbps: float = 1.0,
 
 def choose(cands: Sequence[Candidate], *, score: Score | None = None,
            explore: bool = True) -> Candidate | None:
-    """The peer to use, or ``None`` when every one of them is full."""
+    """The member to use, or ``None`` when every one of them is full."""
     free = [c for c in cands if c.free > 0]
     if not free:
         return None

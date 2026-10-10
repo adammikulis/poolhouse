@@ -132,7 +132,7 @@ status = "covered"
 count = 1
 tests = ["tests/test_redteam_board_client.py::test_a_notes_command_is_never_run_through_a_shell",
          "tests/test_redteam_board_client.py::test_a_command_off_the_allow_list_is_refused_whatever_the_note_says",
-         "tests/test_redteam_board_client.py::test_a_peers_note_cannot_choose_the_command_a_verification_records"]
+         "tests/test_redteam_board_client.py::test_a_members_note_cannot_choose_the_command_a_verification_records"]
 note = "a note's command runs as an argument vector the owner allow-listed, with no shell; shell syntax and off-list commands do not run, and the recorded command is the note's own"
 
 [[group]]
@@ -157,8 +157,8 @@ status = "covered"
 count = 1
 tests = ["tests/test_project_enrollment_admission.py::test_local_project_route_refuses_unauthorized_registration",
          "tests/test_project_enrollment_admission.py::test_native_registration_requires_local_active_dev_proof",
-         "tests/test_project_board_metadata.py::test_native_registration_refuses_identity_mismatch_before_mutation",
-         "tests/test_project_board_metadata.py::test_native_registration_refuses_unbounded_or_relative_path"]
+         "tests/test_board_metadata.py::test_native_registration_refuses_identity_mismatch_before_mutation",
+         "tests/test_board_metadata.py::test_native_registration_refuses_unbounded_or_relative_path"]
 note = "native registration requires loopback sealed active Dev admission and an exact bounded local Git identity; rejected requests do not register or expose a path"
 
 [[group]]
@@ -200,13 +200,13 @@ tests = ["tests/test_fleet_invite_client.py::test_every_resolved_address_must_be
 note = "Every DNS result is checked before a frozen sockaddr connection; the exact TLS leaf is pinned before HTTP; modified raw grants fail authentication"
 
 [[group]]
-match = ["egress:workspace/coordinator_client.py:_device_peer"]
+match = ["egress:workspace/coordinator_client.py:_device_member"]
 status = "covered"
 count = 1
-tests = ["tests/test_redteam_device_transport.py::test_coordinator_peer_rejects_untrusted_pairing_before_transport",
+tests = ["tests/test_redteam_device_transport.py::test_coordinator_member_rejects_untrusted_joining_before_transport",
          "tests/test_workspace_coordinator.py::test_hostile_saved_coordinator_origin_is_refused_before_transport",
          "tests/test_workspace_coordinator.py::test_remote_mcp_never_falls_back_to_local_workspace"]
-note = "Saved origins reject plaintext, credentials and foreign URL components; revoked, missing, ambiguous, unpaired and certificate-mismatched device rows cannot install a pin or open transport; remote clients refuse local fallback"
+note = "Saved origins reject plaintext, credentials and foreign URL components; revoked, missing, ambiguous, unjoined and certificate-mismatched device rows cannot install a pin or open transport; remote clients refuse local fallback"
 
 [[group]]
 match = ["route:fleet/launch_routes.py:/ui/launch-ticket", "route:fleet/launch_routes.py:/ui/launch/ticket"]
@@ -228,7 +228,7 @@ count = 1
 note = "The loopback ticket request reads the recorded port and secret only from an owner-only, non-symlink record; a daemon that answers with errors, non-JSON or no ticket yields the bare page"
 
 [[group]]
-match = ["human:fleet/peers.py:cmd_open"]
+match = ["human:fleet/members.py:cmd_open"]
 status = "covered"
 tests = ["tests/test_redteam_person_session.py::test_the_open_command_hands_an_agent_or_a_pipe_nothing",
          "tests/test_redteam_person_session.py::test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address",
@@ -260,7 +260,7 @@ status = "covered"
 tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
          "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
          "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-         "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_cluster"]
+         "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"]
 note = "Native Fleet sockets reject remote first-run ownership, DNS-rebinding Host values, missing UI headers and joined setup mutation without an authenticated session"
 
 [[group]]
@@ -271,7 +271,7 @@ tests = ["tests/test_fleet_task_routes.py::test_foreign_page_cannot_create_tasks
          "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate",
          "tests/test_taskboard.py::test_designated_reviewer_without_read_capability_cannot_grade_task",
          "tests/test_taskboard.py::test_changed_task_specification_cannot_be_claimed",
-         "tests/test_task_credit.py::test_same_device_parent_cannot_review_through_another_worker_seat",
+         "tests/test_task_credit.py::test_same_device_parent_cannot_review_through_another_worker_session",
          "tests/test_task_credit.py::test_review_and_proposal_tampering_cannot_mint_credits"]
 note = "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
 
@@ -297,7 +297,7 @@ note = "The installed read-only History extension runs after custom UI-header an
 [[group]]
 match = ["spawn:fleet/environment.py:Environment.host_python"]
 status = "n/a"
-note = "The interpreter comes from the fixed library catalog or the running Python; the probe uses a fixed -c program and an argv list, without model, peer or browser text"
+note = "The interpreter comes from the fixed library catalog or the running Python; the probe uses a fixed -c program and an argv list, without model, member or browser text"
 
 [[group]]
 match = ["spawn:fleet/environment.py:Environment.require_current_runtime"]
@@ -325,9 +325,9 @@ note = "Real sign-in requests reject hostile passphrases and rate-limit repeated
 
 # -- named LAN setup and recovery uploads ---------------------------------------------------
 [[group]]
-match = ["route:fleet/routes.py:/ui/setup/clusters",
+match = ["route:fleet/routes.py:/ui/setup/pools",
          "route:fleet/setup_recovery_routes.py:/ui/setup/recovery",
-         "parser:fleet/lan_clusters.py", "parser:fleet/recovery.py"]
+         "parser:fleet/lan_pools.py", "parser:fleet/recovery.py"]
 status = "covered"
 tests = [
   "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary",
@@ -366,8 +366,8 @@ note = "A foreign origin, a forged identity, a malformed or oversized body and a
 [[group]]
 match = ["route:workspace/coding_routes.py:/ui/coding/*", "parser:workspace/coding_routes.py",
          "parser:workspace/coding_turns.py", "parser:workspace/coding_events.py",
-         "spawn:workspace/coding_turns.py:*", "human:workspace/harness_seat.py:*",
-         "egress:workspace/harness_seat.py:Seat.record_model"]
+         "spawn:workspace/coding_turns.py:*", "human:workspace/harness_session.py:*",
+         "egress:workspace/harness_session.py:HarnessSession.record_model"]
 status = "covered"
 tests = [
   "tests/test_coding_routes.py::test_client_cannot_supply_identity_or_unsupported_fields",
@@ -377,7 +377,7 @@ tests = [
   "tests/test_coding_routes.py::test_cancel_stops_native_process_and_the_next_turn_can_start",
   "tests/test_coding_routes.py::test_launcher_refusal_is_failed_instead_of_a_completed_empty_turn",
   "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-  "tests/test_harness_rails.py::TestSeat::test_a_fake_endpoint_cannot_verify_a_delegated_agents_model",
+  "tests/test_harness_rails.py::TestHarnessSession::test_a_fake_endpoint_cannot_verify_a_delegated_agents_model",
 ]
 note = "Coding is a declared authenticated Fleet extension; only same-origin person UI can start turns, browser bodies cannot set identity or policy, native argv/session resume retains maintained role hooks, cancellation revokes the temporary agent"
 
@@ -414,7 +414,7 @@ match = ["mcp-tool:workspace_attach", "mcp-tool:workspace_file", "mcp-tool:works
 status = "covered"
 tests = [
   "tests/test_workspace_files.py::test_a_file_is_read_only_by_those_who_may_read_its_message",
-  "tests/test_workspace_files.py::test_a_direct_message_file_is_private_to_the_pair_and_the_person",
+  "tests/test_workspace_files.py::test_a_direct_message_file_is_private_to_the_join_and_the_person",
   "tests/test_workspace_files.py::test_search_never_returns_what_the_caller_may_not_read",
   "tests/test_workspace_files.py::test_executables_archives_and_pickles_are_refused",
   "tests/test_workspace_files.py::test_hostile_names_are_cleaned_to_one_plain_name",
@@ -590,30 +590,30 @@ tests = [
 note = "an agent, subagent or forged token cannot choose host mode; only a person selects what the device hosts"
 
 [[group]]
-match = ["parser:workspace/mesh_sync.py", "human:workspace/mesh_fold.py:*"]
+match = ["parser:workspace/replica_sync.py", "human:workspace/replica_fold.py:*"]
 status = "covered"
 tests = [
-  "tests/test_journal.py::test_a_relay_cannot_append_rows_under_a_replayed_head",
-  "tests/test_journal.py::test_a_head_must_sign_the_row_directly_before_it",
-  "tests/test_journal.py::test_an_origin_that_is_not_32_lower_case_hex_never_reaches_the_file_system",
-  "tests/test_journal.py::test_the_upper_case_form_of_this_devices_origin_cannot_reach_its_journal",
-  "tests/test_journal.py::test_a_forged_copy_marks_an_origin_damaged_only_when_its_owner_presented_it",
-  "tests/test_journal.py::test_an_origin_bound_by_a_relay_is_rebound_to_the_key_its_owner_presents",
-  "tests/test_journal.py::test_a_device_holds_no_more_journals_than_the_origin_cap",
-  "tests/test_mesh_attacks.py::test_a_person_role_or_any_other_role_string_is_stored_as_an_agent",
-  "tests/test_mesh_attacks.py::test_a_foreign_post_may_only_target_general_or_announcements",
-  "tests/test_mesh_attacks.py::test_unknown_fields_of_a_foreign_message_reject_it",
-  "tests/test_mesh_attacks.py::test_a_note_body_cannot_choose_the_operation_that_is_appended",
-  "tests/test_mesh_attacks.py::test_newlines_and_unusable_names_are_rejected",
-  "tests/test_mesh_attacks.py::test_a_sender_named_like_a_local_agent_is_rejected",
-  "tests/test_mesh_attacks.py::test_flagged_text_from_another_device_is_quarantined_not_shown",
-  "tests/test_mesh_attacks.py::test_one_malformed_row_does_not_block_the_rows_after_it",
-  "tests/test_mesh_attacks.py::test_acknowledgements_count_only_for_a_row_whose_hash_matches",
-  "tests/test_mesh.py::test_a_person_role_in_a_row_from_another_device_is_stored_as_an_agent",
-  "tests/test_mesh.py::test_a_peer_serving_a_head_under_another_key_is_refused_and_nothing_of_it_is_folded",
-  "tests/test_mesh.py::test_an_agent_token_cannot_start_a_sync",
+  "tests/test_device_logs.py::test_a_relay_cannot_append_rows_under_a_replayed_head",
+  "tests/test_device_logs.py::test_a_head_must_sign_the_row_directly_before_it",
+  "tests/test_device_logs.py::test_an_origin_that_is_not_32_lower_case_hex_never_reaches_the_file_system",
+  "tests/test_device_logs.py::test_the_upper_case_form_of_this_devices_origin_cannot_reach_its_log",
+  "tests/test_device_logs.py::test_a_forged_copy_marks_an_origin_damaged_only_when_its_owner_presented_it",
+  "tests/test_device_logs.py::test_an_origin_bound_by_a_relay_is_rebound_to_the_key_its_owner_presents",
+  "tests/test_device_logs.py::test_a_device_holds_no_more_logs_than_the_origin_cap",
+  "tests/test_replica_attacks.py::test_a_person_role_or_any_other_role_string_is_stored_as_an_agent",
+  "tests/test_replica_attacks.py::test_a_foreign_post_may_only_target_general_or_announcements",
+  "tests/test_replica_attacks.py::test_unknown_fields_of_a_foreign_message_reject_it",
+  "tests/test_replica_attacks.py::test_a_note_body_cannot_choose_the_operation_that_is_appended",
+  "tests/test_replica_attacks.py::test_newlines_and_unusable_names_are_rejected",
+  "tests/test_replica_attacks.py::test_a_sender_named_like_a_local_agent_is_rejected",
+  "tests/test_replica_attacks.py::test_flagged_text_from_another_device_is_quarantined_not_shown",
+  "tests/test_replica_attacks.py::test_one_malformed_row_does_not_block_the_rows_after_it",
+  "tests/test_replica_attacks.py::test_acknowledgements_count_only_for_a_row_whose_hash_matches",
+  "tests/test_replica.py::test_a_person_role_in_a_row_from_another_device_is_stored_as_an_agent",
+  "tests/test_replica.py::test_a_member_serving_a_head_under_another_key_is_refused_and_nothing_of_it_is_folded",
+  "tests/test_replica.py::test_an_agent_token_cannot_start_a_sync",
 ]
-note = "journal rows from a paired device are stored only after the chain, a head over the row before it and an origin id of 32 lower-case hex characters verify, then folded as an agent under a local device name through the local size, screen and quarantine checks"
+note = "log rows from a member are stored only after the chain, a head over the row before it and an origin id of 32 lower-case hex characters verify, then folded as an agent under a local device name through the local size, screen and quarantine checks"
 
 [[group]]
 match = ["human:*"]
@@ -668,16 +668,16 @@ tests = [
   "tests/test_fleet_board_routes.py::test_page_cannot_post_announcements_or_use_agent_owner_file",
   "tests/test_fleet_board_routes.py::test_oversized_post_and_unsupported_methods_do_not_mutate",
   "tests/test_fleet_board_routes.py::test_ack_marks_only_an_existing_visible_message_in_its_scope",
-  "tests/test_project_board_ui.py::test_selected_project_messages_and_person_post",
-  "tests/test_project_board_ui.py::test_person_board_rejects_foreign_requests",
-  "tests/test_project_board_ui.py::test_missing_remote_or_unconfigured_project_never_falls_back",
-  "tests/test_project_board_ui.py::test_person_identity_is_required_and_never_created",
-  "tests/test_project_board_ui.py::test_person_board_refuses_unsupported_methods",
-  "tests/test_project_board_ui.py::test_person_threads_direct_messages_and_ack",
-  "tests/test_project_board_ui.py::test_person_post_accepts_exact_browser_origin",
-  "tests/test_project_board_ui.py::test_person_post_rejects_different_browser_origin",
+  "tests/test_board_ui.py::test_selected_project_messages_and_person_post",
+  "tests/test_board_ui.py::test_person_board_rejects_foreign_requests",
+  "tests/test_board_ui.py::test_missing_remote_or_unconfigured_project_never_falls_back",
+  "tests/test_board_ui.py::test_person_identity_is_required_and_never_created",
+  "tests/test_board_ui.py::test_person_board_refuses_unsupported_methods",
+  "tests/test_board_ui.py::test_person_threads_direct_messages_and_ack",
+  "tests/test_board_ui.py::test_person_post_accepts_exact_browser_origin",
+  "tests/test_board_ui.py::test_person_post_rejects_different_browser_origin",
   "tests/test_redteam_board.py::test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal",
-  "tests/test_redteam_board.py::test_an_agent_cannot_read_another_board_or_pair_through_any_command",
+  "tests/test_redteam_board.py::test_an_agent_cannot_read_another_board_or_join_through_any_command",
   "tests/test_redteam_board.py::test_boards_and_subscriptions_cannot_be_made_without_limit",
   "tests/test_workspace_board.py::test_the_route_reads_only_and_checks_host_origin_and_fetch_site",
   "tests/test_redteam_board.py::test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it",
@@ -711,7 +711,7 @@ tests = ["tests/test_redteam_device_transport.py::test_daemon_project_dispatch_r
          "tests/test_device_agent_bootstrap.py::test_project_bootstrap_has_same_device_boundary",
          "tests/test_device_agent_bootstrap.py::test_http_device_session_recovery_and_revocation",
          "tests/test_workspace_remote.py::test_signed_sealed_fleet_and_agent_capabilities_both_required"]
-note = "Real daemon project requests reject missing, revoked and cluster-only device proof, unsealed bodies and malformed JSON before host dispatch; project operations require both paired-device and agent authority"
+note = "Real daemon project requests reject missing, removed and pool-only device proof, unsealed bodies and malformed JSON before host dispatch; project operations require both member and agent authority"
 
 [[group]]
 match = ["route:fleet/invite_routes.py:/ui/fleet/android-devices"]
@@ -733,7 +733,7 @@ note = "actual daemon sockets reject malformed bodies before dispatch, unauthent
 match = ["route:fleet/project_client.py:*"]
 status = "covered"
 tests = ["tests/test_project_ui_access.py", "tests/test_project_source.py", "tests/test_remote_transport_attacks.py"]
-note = "source publication and checkout require a browser session; hostile candidate paths, peer schema, redirects and source archives are rejected before checkout"
+note = "source publication and checkout require a browser session; hostile candidate paths, member schema, redirects and source archives are rejected before checkout"
 
 [[group]]
 match = ["spawn:devbranch.py:development_branch"]
@@ -771,11 +771,11 @@ status = "covered"
 tests = ["tests/test_startup_models.py::StartupModelTests::test_startup_route_refuses_untrusted_requests_and_ignores_query_paths"]
 
 [[group]]
-match = ["route:fleet/routes.py:/ui/setup/clusters", "route:fleet/routes.py:/ui/clusters/found"]
+match = ["route:fleet/routes.py:/ui/setup/pools", "route:fleet/routes.py:/ui/pools/found"]
 status = "covered"
 tests = [
   "tests/test_fleet_found_route.py::test_first_run_refuses_the_list_from_another_machine",
-  "tests/test_fleet_found_route.py::test_a_machine_in_a_cluster_asks_for_the_list_behind_its_sign_in",
+  "tests/test_fleet_found_route.py::test_a_machine_in_a_pool_asks_for_the_list_behind_its_sign_in",
 ]
 
 [[group]]
@@ -819,16 +819,16 @@ tests = [
   "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
   "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
   "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-  "tests/test_fleet_ui.py::TestSignIn::test_the_cluster_cannot_be_browsed_without_signing_in",
+  "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in",
 ]
 note = "session, header and host checks are attacked; the query and body of each /ui screen route are not"
 
 [[group]]
-match = ["route:fleet/onboard/pairing.py:*", "handler:fleet/onboard/pairing.py:*"]
+match = ["route:fleet/onboard/join_code.py:*", "handler:fleet/onboard/join_code.py:*"]
 status = "covered"
 tests = [
-  "tests/test_peer_pairing.py::test_an_offer_whose_tag_is_not_the_exchanges_is_refused_and_nothing_is_learned",
-  "tests/test_onboard_pairing.py",
+  "tests/test_join_by_code.py::test_an_offer_whose_tag_is_not_the_exchanges_is_refused_and_nothing_is_learned",
+  "tests/test_onboard_join_code.py",
 ]
 
 [[group]]
@@ -843,10 +843,10 @@ status = "covered"
 tests = ["tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"]
 
 [[group]]
-match = ["route:fleet/onboard/peers_cli.py:*"]
+match = ["route:fleet/onboard/members_cli.py:*"]
 status = "partial"
-tests = ["tests/test_peer_first.py"]
-note = "peer-book verbs add, remove, on, off and limit take a name and an address typed by the person; hostile names are tested only through the dialog"
+tests = ["tests/test_member_first.py"]
+note = "member-book verbs add, remove, on, off and limit take a name and an address typed by the person; hostile names are tested only through the dialog"
 
 [[group]]
 match = ["route:graph/*", "handler:graph/serve.py:*"]
@@ -972,10 +972,10 @@ tests = ["tests/test_roles.py", "tests/test_redteam_chat.py"]
 note = "roles, rules and the taint rail are attacked; hostile --resume session files are tested only for shape in tests/test_chat.py"
 
 [[group]]
-match = ["cli:poolhouse-traind", "cli:poolhouse-cluster", "cli:poolhouse-peers"]
+match = ["cli:poolhouse-traind", "cli:poolhouse-pool", "cli:poolhouse-members"]
 status = "partial"
-tests = ["tests/test_redteam_fleet.py", "tests/test_peer_pairing.py"]
-note = "the daemon's handler and the pairing exchange are attacked; the join and peer-book argument parsing are not"
+tests = ["tests/test_redteam_fleet.py", "tests/test_join_by_code.py"]
+note = "the daemon's handler and the join exchange are attacked; the join and member-book argument parsing are not"
 
 [[group]]
 match = ["cli:poolhouse-credentials"]
@@ -1020,7 +1020,7 @@ tests = [
 match = ["spawn:node_app.py:*", "spawn:node_signing.py:*", "spawn:node_permission.py:*"]
 status = "covered"
 tests = ["tests/test_node_app.py::test_a_hostile_path_is_one_argument_in_every_command_line_the_app_builds"]
-note = "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or peer address is one argument, and the certificate name, bundle id and requirement are constants"
+note = "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
 
 [[group]]
 match = ["spawn:worktreerules.py:*"]
@@ -1037,7 +1037,7 @@ note = "a constant argv per tool; the pasted text goes on stdin"
 [[group]]
 match = ["spawn:activity/gate.py:tree_hash"]
 status = "n/a"
-note = "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, peer or file name reaches it"
+note = "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"
 
 [[group]]
 match = ["spawn:platform.py:launch", "spawn:fleet/wsl.py:_read", "spawn:fleet/wsl.py:prepare"]
@@ -1154,7 +1154,7 @@ note = "a worktree path is the value of git -C, never an option or a shell word;
 match = ["spawn:*"]
 status = "partial"
 tests = ["tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"]
-note = "the AST gate shows no spawn goes through a shell; what each argv carries (peer names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+note = "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
 
 # -- listeners -----------------------------------------------------------------------------
 [[group]]
@@ -1163,7 +1163,7 @@ status = "covered"
 tests = ["tests/test_wsl_network.py::test_bridge_refuses_authentication_and_socket_scope",
          "tests/test_wsl_network.py::test_bridge_caps_messages_and_datagrams",
          "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports",
-         "tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_peer",
+         "tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_member",
          "tests/test_wsl_ui.py::test_local_ui_queues_connections_over_admission_limit",
          "tests/test_wsl_ui.py::test_local_ui_close_terminates_idle_helper_and_releases_slot",
          "tests/test_wsl_network.py::test_gateway_relay_preserves_raw_transport_and_nonloopback_scope"]
@@ -1228,7 +1228,7 @@ note = "a fixed loopback TCP probe treats timeouts and unhealthy listeners as li
 [[group]]
 match = ["egress:fleet/wsl_ui.py:stdio"]
 status = "covered"
-tests = ["tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_peer",
+tests = ["tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_member",
          "tests/test_wsl_ui.py::test_local_ui_transport_keeps_silent_connections_unbounded",
          "tests/test_wsl_ui.py::test_stdio_helper_exits_cleanly_after_http_response_with_input_open",
          "tests/test_wsl_ui.py::test_local_ui_close_terminates_idle_helper_and_releases_slot"]
@@ -1246,7 +1246,7 @@ status = "covered"
 tests = ["tests/test_remote_transport_attacks.py::test_wsl_control_replies_reject_oversized_and_malformed_frames",
          "tests/test_wsl_network.py::test_udp_bridge_refuses_non_discovery_destinations",
          "tests/test_wsl_network.py::test_udp_bridge_preserves_timeout",
-         "tests/test_wsl_network.py::test_discovery_reply_cache_retains_recent_peers_and_fixed_destinations",
+         "tests/test_wsl_network.py::test_discovery_reply_cache_retains_recent_members_and_fixed_destinations",
          "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports"]
 note = "launcher-selected control and fixed daemon destinations cannot be redirected by relay bytes; control frames and discovery datagrams have bounded reads and deadlines"
 
@@ -1376,10 +1376,10 @@ match = ["parser:workspace/remote_host.py"]
 status = "covered"
 count = 1
 tests = [
-  "tests/test_project_board_ui.py::test_person_connect_rejects_invalid_content_length_without_registry_mutation",
-  "tests/test_project_board_ui.py::test_person_connect_rejects_invalid_json_without_registry_mutation",
-  "tests/test_project_board_ui.py::test_person_board_rejects_foreign_requests",
-  "tests/test_project_board_ui.py::test_person_post_rejects_different_browser_origin",
+  "tests/test_board_ui.py::test_person_connect_rejects_invalid_content_length_without_registry_mutation",
+  "tests/test_board_ui.py::test_person_connect_rejects_invalid_json_without_registry_mutation",
+  "tests/test_board_ui.py::test_person_board_rejects_foreign_requests",
+  "tests/test_board_ui.py::test_person_post_rejects_different_browser_origin",
 ]
 note = "person joins reject hostile length and JSON bodies without registry mutation; browser session and origin remain checked"
 
@@ -1397,7 +1397,7 @@ tests = ["tests/test_sentinel_store.py", "tests/test_redteam_memory.py",
 [[group]]
 match = ["parser:fleet/onboard/*"]
 status = "covered"
-tests = ["tests/test_onboard_manifest.py", "tests/test_peer_pairing.py", "tests/test_onboard_pairing.py"]
+tests = ["tests/test_onboard_manifest.py", "tests/test_join_by_code.py", "tests/test_onboard_join_code.py"]
 
 [[group]]
 match = ["parser:hub/hfstore.py"]

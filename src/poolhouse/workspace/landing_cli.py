@@ -44,7 +44,7 @@ TABLE = [
      lambda a, s: landing.brake(s, False)),
     ("land-trust", "count the landing entries of another device of the pool (its certificate fingerprint; a person "
                   "or a lead with the grant), or stop counting them with --revoke",
-     [flag("device", help="the device's fingerprint, from `poolhouse-peers ls --json`"),
+     [flag("device", help="the device's fingerprint, from `poolhouse-members ls --json`"),
       flag("--revoke", action="store_true", help="stop counting this device's landing entries")],
      lambda a, s: landing.trust(s, a.device, not a.revoke)),
     ("land-queue", "the landing queue, who holds the runner and what the current gate last did", [],

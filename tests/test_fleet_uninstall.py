@@ -19,8 +19,8 @@ def installed(tmp_path):
     root = home / "traind"
     for name in ("chats", "files", "models", "env", "llama"):
         (root / name).mkdir(parents=True)
-    (home / "cluster.key").write_text("k" * 44)
-    (home / "cluster.group").write_text("home")
+    (home / "pool.key").write_text("k" * 44)
+    (home / "pool.group").write_text("home")
     (home / "traind.log").write_text("log")
     (root / "settings.json").write_text("{}")
     (root / "token").write_text("t")
@@ -29,7 +29,7 @@ def installed(tmp_path):
     (root / "chats" / "a.json").write_text('{"id": "a"}')
     (root / "env" / "pyvenv.cfg").write_text("home = /x")
     (root / "llama" / "llama-server").write_bytes(b"x" * 128)
-    return root, home / "cluster.key"
+    return root, home / "pool.key"
 
 
 class TestWhatIsOffered:
@@ -57,7 +57,7 @@ class TestWhatIsOffered:
     def test_nothing_absent_is_offered(self, tmp_path):
         bare = tmp_path / "traind"
         bare.mkdir()
-        assert plan(bare, key_path=tmp_path / "cluster.key") == []
+        assert plan(bare, key_path=tmp_path / "pool.key") == []
 
 
 class TestRemoving:

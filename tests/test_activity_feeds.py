@@ -111,8 +111,8 @@ def test_sentinel_events_are_mirrored_with_their_severity_and_nothing_loops(pers
 def test_a_quarantine_reaches_the_log(person):
     feeds.attach()
     node = sentinel.default()
-    node.store.quarantine(("peer", "10.9.9.9"), "forged", None)
-    assert any(e.kind.startswith("security.quarantine") and e.subject == "peer:10.9.9.9" for e in entries())
+    node.store.quarantine(("member", "10.9.9.9"), "forged", None)
+    assert any(e.kind.startswith("security.quarantine") and e.subject == "member:10.9.9.9" for e in entries())
 
 
 def test_attaching_twice_does_not_double_every_event(person):

@@ -114,7 +114,7 @@ def review_without_a_terminal(env, **extra) -> subprocess.CompletedProcess:
 
 def test_review_with_no_terminal_is_one_dialog_and_never_a_terminal_or_editor(desk):
     env, log = desk
-    held = sentinel.default().store.quarantine(("peer", "10.0.0.7"), "peer.forged_traffic: x", {})
+    held = sentinel.default().store.quarantine(("member", "10.0.0.7"), "member.forged_traffic: x", {})
     done = review_without_a_terminal(env)
     assert done.returncode == 0
     started = lines(log, "start")
@@ -126,9 +126,9 @@ def test_review_with_no_terminal_is_one_dialog_and_never_a_terminal_or_editor(de
 
 def test_review_with_no_terminal_started_by_an_agent_prints_the_list_and_shows_nothing(desk):
     env, log = desk
-    sentinel.default().store.quarantine(("peer", "10.0.0.7"), "peer.forged_traffic: x", {})
+    sentinel.default().store.quarantine(("member", "10.0.0.7"), "member.forged_traffic: x", {})
     done = review_without_a_terminal(env, CLAUDECODE="1")
-    assert done.returncode == 0 and "peer 10.0.0.7" in done.stdout
+    assert done.returncode == 0 and "member 10.0.0.7" in done.stdout
     assert lines(log, "start") == []
 
 

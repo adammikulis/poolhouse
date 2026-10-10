@@ -451,12 +451,12 @@ def sweep_options() -> tuple[Option, ...]:
         flag("--fleet", action="store_true",
              help="spread the --serve models over the fleet instead of this "
                   "machine: one job per model, this same line with that one "
-                  "--serve, planned over the peers, dispatched, waited for and "
-                  "gathered into --kept, then shown. Every peer must be on this "
-                  "checkout's commit; a peer that is not is refused, here and by "
+                  "--serve, planned over the members, dispatched, waited for and "
+                  "gathered into --kept, then shown. Every member must be on this "
+                  "checkout's commit; a member that is not is refused, here and by "
                   "its daemon"),
-        flag("--peers", default="", metavar="NAME,...",
-             help="with --fleet, only these peers (default: whichever the fleet "
+        flag("--members", default="", metavar="NAME,...",
+             help="with --fleet, only these members (default: whichever the fleet "
                   "plans over)"),
         *asking_options(), *reaching_options(), *measuring_options(), *checking(),
     )

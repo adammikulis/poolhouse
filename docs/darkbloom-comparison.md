@@ -191,7 +191,7 @@ Stated by the project:
   [repo doc: threat-model.yaml, "R-snoop" entry].
 
 Independent review: I found no third-party audit. A vendor-evaluation page by an integrator calls it
-"hop-by-hop encrypted private inference", "stronger than an ordinary unmanaged peer, but not local-only
+"hop-by-hop encrypted private inference", "stronger than an ordinary unmanaged device, but not local-only
 or zero-knowledge", cites no audit and relies on the project's documentation [secondary source,
 https://wavect.io/blog/darkbloom-ai-private-inference-mac/, 2026-08-25; the page's structured data
 shows a conflicting date of 2026-10-08].
@@ -281,8 +281,8 @@ SIP-downgrade-and-restore behaviour (to be qualified), and everything that attes
 ## 9. Comparison with this repository
 
 Our side, from sibling-branch notes [this repo: docs/pool-encryption.md, docs/service.md,
-docs/home-pool.md]: the pool is a mesh of the owner's own devices with pinned per-device TLS and a
-shared cluster key; guest tenancy Level 1 ("no casual visibility") is buildable now; Level 2
+docs/pool.md]: the pool is a replica of the owner's own devices with pinned per-device TLS and a
+shared pool key; guest tenancy Level 1 ("no casual visibility") is buildable now; Level 2
 (resistance to a determined owner) "is not buildable in this pool today" and its Apple-silicon entry
 says secure enclave and device attestation prove a device and app to Apple's service, "not a sandboxed
 job to a third party" [this repo: docs/pool-encryption.md, section 7.4]. The service note limits
@@ -292,8 +292,8 @@ process that holds plaintext prompts and KV cache [this repo: docs/pool-encrypti
 
 | Darkbloom mechanism | Our counterpart | Fit |
 |---|---|---|
-| Central coordinator: routing, billing, attestation verification | None by design; mesh, no host | Differs. Each guest must verify the host itself; no one trusted third party |
-| Coordinator in a Confidential VM | n/a | Out of reach for a mesh; also removes the plaintext intermediary, which is an advantage |
+| Central coordinator: routing, billing, attestation verification | None by design; a replicated board, no host | Differs. Each guest must verify the host itself; no one trusted third party |
+| Coordinator in a Confidential VM | n/a | Out of reach for a replica; also removes the plaintext intermediary, which is an advantage |
 | sealed-box (X25519 plus XSalsa20-Poly1305) per request to an attested key | G3: HPKE to an ephemeral "sandbox key" made inside the job, returned only to the guest | Same idea, better: the key is born in the sandbox and the guest encrypts directly, with no re-encryption hop |
 | SE-held device identity key | Slice 8 hardware-backed device key (no vetted Python wrapper) | Adoptable; needs a native helper |
 | MDM, MDA | None | Needs an operator running MDM and an Apple push certificate; contradicts the no-host design. Out of reach |
@@ -322,11 +322,11 @@ guest job against the owner (the sandbox is still needed), or metadata. [analysi
 Two structural points. First, the guest must pin a team id the owner does not control. If the owner
 signs the helper with the owner's own team id, the attestation says only "some app by the owner"; so
 Level 2 makes the project (or another release authority) a trust root, in place of Darkbloom's single
-coordinator operator. Second, a mesh gives Apple-chain verification to each guest, but the hardest
+coordinator operator. Second, a replica gives Apple-chain verification to each guest, but the hardest
 Darkbloom component, the central policy and revocation service, would have to be rebuilt as
 signed, replicated revocation records (slice 7 of the pool-encryption plan). [analysis]
 
-Out of reach as a mesh: MDM/MDA, the Confidential-VM coordinator, serial or RAM certification,
+Out of reach as a replica: MDM/MDA, the Confidential-VM coordinator, serial or RAM certification,
 hypervisor isolation, and any guarantee against physical or kernel-level attack.
 
 ## 10. Decisions for the owner
@@ -346,4 +346,4 @@ Decided 2026-10-08:
 Deferred until Level 2 is revisited (all three depend on it): what runs the guest's model (keep
 `llama-server` for Level 1 and make no Level 2 claim for inference; the in-process engine, step D, is the
 Level 2 option); what we may tell a guest (Level 1 wording only, no "owner cannot see prompts" claim); whether
-we ever add an operator (MDM, push, coordinator; the mesh stays host-free meanwhile).
+we ever add an operator (MDM, push, coordinator; the replica stays host-free meanwhile).

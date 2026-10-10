@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import urllib.parse
 
-from . import automatic_clusters, cluster_modes, invite_routes
+from . import automatic_pools, invite_routes, pool_modes
 from .discovery import DiscoveryError, memberships, require_name
 from .session import parse_cookie
 
@@ -22,7 +22,7 @@ class InitialSetupRoutes:
         presented = self.ui.sessions.get(parse_cookie(self.cookie))
         if presented is None or not presented.credentialed:
             self.ui.record("session.refused", reason="setup-without-credential", source=self.client_ip)
-            self.send(403, {"error": "open poolhouse from its own window, or run: poolhouse peers open"})
+            self.send(403, {"error": "open poolhouse from its own window, or run: poolhouse members open"})
             return True
         try:
             self._initial_preferences()
@@ -53,32 +53,32 @@ class InitialSetupRoutes:
         if not 0 < length <= 4096:
             raise ValueError("setup request must be between 1 and 4096 bytes")
         body = self.body()
-        if not isinstance(body, dict) or set(body) - {"name", "cluster_mode", "automatic"}:
+        if not isinstance(body, dict) or set(body) - {"name", "pool_mode", "automatic"}:
             raise ValueError("choose a device name and mode")
         if "automatic" in body and not isinstance(body["automatic"], bool):
             raise ValueError("automatic must be a boolean")
         name = require_name(body.get("name", ""))
-        mode = cluster_modes.validate(body.get("cluster_mode"))
+        mode = pool_modes.validate(body.get("pool_mode"))
         if self.ui.settings is None or self.ui.settings_path is None:
             raise DiscoveryError("device settings are unavailable")
-        selected = memberships(self.ui.cluster_key_path)
+        selected = memberships(self.ui.pool_key_path)
         if (selected and selected[0].mode == "prod" and self.ui.settings.setup_done
                 and not invite_routes.person_session(self)):
             raise DiscoveryError("sign in before changing Production setup")
         fresh_auto = (len(selected) == 1 and selected[0].mode == "dev"
                       and selected[0].selection == "automatic" and not self.ui.settings.setup_done
-                      and not self.ui.settings.cluster_mode)
+                      and not self.ui.settings.pool_mode)
         if selected and selected[0].mode != mode and not (fresh_auto and mode == "prod"):
-            raise DiscoveryError("leave the current cluster before changing modes")
+            raise DiscoveryError("leave the current pool before changing modes")
         with self.ui.join_guard():
             if selected and selected[0].mode != mode:
                 self.ui.leave(selected[0].group)
             if mode == "dev":
                 if body.get("automatic") is True:
-                    automatic_clusters.select_automatic(self.ui.cluster_key_path, port=self.ui.discovery_port)
+                    automatic_pools.select_automatic(self.ui.pool_key_path, port=self.ui.discovery_port)
                 else:
-                    automatic_clusters.ensure(self.ui.cluster_key_path, mode="dev", port=self.ui.discovery_port)
+                    automatic_pools.ensure(self.ui.pool_key_path, mode="dev", port=self.ui.discovery_port)
             self.ui.set_name(name)
-            self.ui.settings.cluster_mode = mode
+            self.ui.settings.pool_mode = mode
             self.ui.settings.save(self.ui.settings_path)
             self.ui.rejoined()

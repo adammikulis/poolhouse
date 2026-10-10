@@ -6,7 +6,7 @@ local API on a Unix socket (a named pipe on Windows). It is the Rust crate `app/
 workspace `app/`; the Tauri app (`app/src-tauri`) is the other member and depends on the lib.
 
 This is slices A and B1 of the node refactor: the crate (boards, identity, local socket, in-process
-sync) and its network side (peer transport, membership, board sync over it, discovery, pairing),
+sync) and its network side (peer transport, membership, board sync over it, discovery, joining),
 built and tested alone. The shipping section below puts it in every runtime and keeps it running; no Python client calls its board methods yet (see "What is left").
 
 ## Boards, projects, links
@@ -135,11 +135,11 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
 | `status` | (board, token for detail) | | counts; with a token, the board's detail |
 | `shutdown` | board, token | | `{stopping}` |
-| `pool_status` | | | the pool id, join policy, this device, `listen`, `pairing_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error` |
-| `member_revoke` | token with the grant | `fingerprint` | `{fingerprint, status}` |
+| `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error` |
+| `member_remove` | token with the grant | `fingerprint` | `{fingerprint, status}` |
 | `set_join_policy` | token with the grant | `policy` (`open` or `secure`) | `{policy, changed}` |
-| `pair_accept` | token with the grant | `passphrase` (else a six-digit code is made), `ttl_s` | `{code, expires_in_s, port, fingerprint}` |
-| `pair_start` | token with the grant | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
+| `add_device` | token with the grant | `passphrase` (else a six-digit code is made), `ttl_s` | `{code, expires_in_s, port, fingerprint}` |
+| `join_pool` | token with the grant | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
 | `sync_now` | token with the grant | | `{reached}` |
 | `shard_call` | token with the grant | `device` (name or fingerprint), `op`, `args` | the device's answer to one test-shard op (docs/test-farm.md); the node adds `op` and the session as `by`, and refuses `op`/`by` in `args` |
 | `shard_consent` | (token with the grant to change) | `enabled`, `python`, `repo` | `{enabled, python, repo, by, at_ms}`; turning it on or off writes an audit entry to the pool board; shards are off until a person turns them on at that device |
@@ -148,7 +148,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 
 The grant check is `grants::Grants` (the standing-grant system comes later); the stub lets any
 registered local session act, and a node can be given a stricter one. The network methods
-(`pair_accept`, `pair_start`, `sync_now`) run without the node's lock held, so a slow peer blocks no
+(`add_device`, `join_pool`, `sync_now`) run without the node's lock held, so a slow peer blocks no
 other request.
 
 `read` cursors are a map origin to last seq returned, so a read returns each entry once even when a
@@ -161,7 +161,7 @@ and one session.
 be a live session of the board (here or announced by an identity entry from another device); the post
 is refused otherwise. `read` returns it only to its sender and its recipient, on every path, including
 a linked board that shares everything. Peers replicate it like any row (every member of the pool holds
-the log), so this is privacy between sessions, not encryption between devices. A sender shown as
+the log), so this is privacy between sessions, not encryption between members. A sender shown as
 `name@dN` (written on another device) is matched by recipient only.
 
 **Sessions.** `register` records the model id and harness (`model_state` `claimed`; a subagent that names no
@@ -213,7 +213,7 @@ unlisted model from requesting or reviewing, and the runner re-derives standing 
 Landing authority is this device's own. The fold counts a `landing` entry only when this device wrote it or the
 device that wrote it is on this device's landing list and still an active member of the pool; every other entry
 stays on the board (it replicates like any row) and `land_queue` lists it under `foreign` as "foreign, ignored"
-with the device's name and the count, so a device that joined the pool (by pairing or by auto-enrolment under
+with the device's name and the count, so a device that joined the pool (by joining or by auto-enrolment under
 `open`) cannot post a request, a review or a runner state that this device acts on. The writer of an origin is
 the device whose key verified its log (`Board::writer_fingerprint`), matched to the pool record now, so the
 list follows revocation. The list (`<state>/land_trust.json`, kept per pool, empty by default, never
@@ -315,19 +315,19 @@ listener is the one network port.
   origin binding) is read back out of the certificate a peer showed.
 - **Transport** (`tls.rs`, rustls with the ring provider). TLS 1.3 only; a TLS 1.2 client is refused. Both
   sides show a certificate. A client pins the one fingerprint it expects (a changed digit is a refused
-  handshake) or, when pairing, takes any certificate and lets the exchange authenticate it. A server
-  completes the handshake for an unknown certificate (it may pair or join, nothing else) and refuses
+  handshake) or, when joining, takes any certificate and lets the exchange authenticate it. A server
+  completes the handshake for an unknown certificate (it may join or join, nothing else) and refuses
   one the pool has revoked. No certificate, no connection.
 - **Membership** (`membership.rs`, `pool.json`; semantics of `fleet/membership.py`). Per device: fingerprint,
   certificate, status `active` or `revoked`, who recorded it. A row whose fingerprint is not the hash of
   its certificate is dropped; revoked wins every merge and is never undone; a revoked certificate cannot
   be enrolled again. Members swap records with the `members` op; only an active member's rows are merged.
-  Every request is checked against the record when it arrives, so a device revoked after it connected is
+  Every request is checked against the record when it arrives, so a device removed after it connected is
   refused at its next request on the same connection. Changes are written to the board `pool` as audit
   entries; the record is the authority.
 - **Join policy**: one pool attribute, `open` or `secure` (default `secure`), newest change wins, set by
   `set_join_policy` and carried by the `members` op.
-- **Peer ops** (`peer.rs`, frames up to 4 MiB): `hello`, `join_open`, `pair_exchange`, `pair_confirm` for
+- **Peer ops** (`peer.rs`, frames up to 4 MiB): `hello`, `join_open`, `join_exchange`, `join_confirm` for
   a non-member; `members`, `boards`, `vector`, `pull`, `push` for a member. `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` (members only)
   run another device's tests here when its person allowed it (`shard/`, docs/test-farm.md): the sender is the
   certificate, a shard belongs to the certificate that made it, the run holds CPU slots in the lease table. A device syncs only the boards
@@ -341,8 +341,8 @@ listener is the one network port.
   one in its certificate). A non-member's is ignored unless this pool's policy is `open`, and then only
   when it names this pool, or this device is alone and the beacon's pool id sorts before its own (so two
   lone devices never join each other at once); the dial is pinned to the fingerprint in the beacon.
-- **Pairing** (`pairing.rs`). `secure`: `pair_accept` opens a window (a six-digit code or a passphrase,
-  three tries, a time limit), `pair_start` on the other device runs SPAKE2 (`spake2`) with both certificate
+- **Joining** (`join_code.rs`). `secure`: `add_device` opens a window (a six-digit code or a passphrase,
+  three tries, a time limit), `join_pool` on the other device runs SPAKE2 (`spake2`) with both certificate
   fingerprints as its identities and HMAC-SHA256 confirmations, as in `fleet/onboard/pake.py`; the pool
   record then arrives sealed under the exchange. `open`: the device is enrolled on its first contact from
   the same segment and the enrolment is recorded with the certificate fingerprint (`by: open`). A device
@@ -505,5 +505,5 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   pool (`Pool::adopt`).
 - The head signature still uses an empty pool id as its domain (`Node.pool`); the pool id lives in
   `pool.json` and the beacon. Moving it into the head would need a re-sign when a device joins.
-- Addresses of members come from the beacon, from pairing (the caller's address and announced port) and
-  `peers.json`; a member that moves between pairings is found again by its beacon only.
+- Addresses of members come from the beacon, from joining (the caller's address and announced port) and
+  `peers.json`; a member that moves between joins is found again by its beacon only.

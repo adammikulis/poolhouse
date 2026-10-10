@@ -12,7 +12,7 @@ routes beside the ask ones -- refresh, review, request, draft -- are
 
 ``AskRoutes`` is the server-side half, with no opinion about where the graph
 comes from or which model answers: a subclass says how a question is answered (``asker``)
-and which corpus it answers over (``store``), and hangs whatever it wants -- a journal, a
+and which corpus it answers over (``store``), and hangs whatever it wants -- an edit log, a
 review queue, a slot number -- off ``answered`` and ``failed``. Conversations are kept in
 `thread.conversation_store` beside that corpus, never in it, unless
 ``conversations_in_store`` is set.
@@ -186,7 +186,7 @@ class AskRoutes(MetricsRoutes):
         so it can still be a 409 rather than an error frame.
     ``answered(ask, out, payload)``
         Called with the answer before the response goes out; returns the payload to send.
-        The default remembers the pair of turns in the thread. A subclass that journals or
+        The default remembers the pair of turns in the thread. A subclass that keeps an edit log or
         queues something does it here, after ``super()``, so the page is never told a
         thing happened before it has.
     ``failed(ask, exc)``

@@ -322,8 +322,8 @@ class FileApi:
         if to.startswith("#"):
             place, rel = f"board:{to}", "in_board"
         else:
-            pair = "|".join(sorted((who, to)))
-            place, rel = f"board:dm:{pair}", "in_board"
+            parties = "|".join(sorted((who, to)))
+            place, rel = f"board:dm:{parties}", "in_board"
         g.upsert_node({"id": place, "kind": "board", "label": place[6:]})
         g.upsert_edge({"source": node, "target": place, "rel": rel})
         if reply_to:

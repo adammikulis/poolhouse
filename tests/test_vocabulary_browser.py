@@ -26,11 +26,11 @@ daemon = fleet_page.daemon
 joined = fleet_page.joined
 no_release_lookup = fleet_page.no_release_lookup
 open_page = fleet_page.open_page
-with_peers = fleet_page.with_peers
+with_members = fleet_page.with_members
 
 VOCABULARIES = ("professional", "friendly")
 #: each screen and the element that shows it
-SCREENS = {"chat": "#chat", "cluster": "#cluster", "projects": "#projects", "settings": "#settings", "fit": "#fit"}
+SCREENS = {"chat": "#chat", "pool": "#pool", "projects": "#projects", "settings": "#settings", "fit": "#fit"}
 RAW_ID = re.compile(r"\b(?:" + "|".join(sorted({k.split(".")[0] for k in CATALOGUE})) + r")\.[a-z0-9_.]*[a-z0-9]\b")
 
 
@@ -46,9 +46,9 @@ def vocab_of(page):
 
 
 @pytest.mark.parametrize("vocab", VOCABULARIES)
-def test_every_screen_loads_in_both_vocabularies(with_peers, open_page, vocab):
+def test_every_screen_loads_in_both_vocabularies(with_members, open_page, vocab):
     for route, shown in SCREENS.items():
-        page, errors = visit(open_page, with_peers, vocab, route)
+        page, errors = visit(open_page, with_members, vocab, route)
         assert vocab_of(page) == vocab
         assert page.title() == "Poolhouse"
         page.wait_for_selector(f"{shown}:not([hidden])")
@@ -58,8 +58,8 @@ def test_every_screen_loads_in_both_vocabularies(with_peers, open_page, vocab):
         assert errors == [], (route, errors)
 
 
-def test_the_icon_is_served_from_the_pages_own_origin_and_is_the_favicon(with_peers, open_page):
-    page, _ = visit(open_page, with_peers, "professional", "cluster")
+def test_the_icon_is_served_from_the_pages_own_origin_and_is_the_favicon(with_members, open_page):
+    page, _ = visit(open_page, with_members, "professional", "pool")
     href = page.get_attribute('link[rel="icon"]', "href")
     assert href == "/ui/static/poolhouse.svg"
     got = page.request.get(page.url.split("/ui/")[0] + href)
@@ -67,19 +67,19 @@ def test_the_icon_is_served_from_the_pages_own_origin_and_is_the_favicon(with_pe
     assert b"<svg" in got.body() and b"http" not in got.body().replace(b"http://www.w3.org/2000/svg", b"")
 
 
-def test_friendly_wording_keeps_the_plain_word_beside_it(with_peers, open_page):
-    page, _ = visit(open_page, with_peers, "friendly", "cluster")
-    heading = page.locator("cluster-view h1")
+def test_friendly_wording_keeps_the_plain_word_beside_it(with_members, open_page):
+    page, _ = visit(open_page, with_members, "friendly", "pool")
+    heading = page.locator("pool-view h1")
     assert heading.inner_text() == "Rooms"
     assert heading.get_attribute("data-plain") == "Devices"
     assert heading.get_attribute("title") == "Devices"
     assert "Devices" in heading.evaluate("node => getComputedStyle(node, '::after').content")
     assert page.locator('#nav-tabs a[data-workspace="pool"]').get_attribute("title") == "The Pool Deck"
-    assert page.locator('#nav-context a[href="#cluster"]').inner_text() == "Rooms"
+    assert page.locator('#nav-context a[href="#pool"]').inner_text() == "Rooms"
 
 
-def test_the_developer_section_flips_the_vocabulary_live_and_keeps_it(with_peers, open_page):
-    page, errors = visit(open_page, with_peers, "professional", "settings")
+def test_the_developer_section_flips_the_vocabulary_live_and_keeps_it(with_members, open_page):
+    page, errors = visit(open_page, with_members, "professional", "settings")
     page.evaluate("() => { window.marker = 'same page'; }")
     page.click('[data-section="developer"]')
     assert page.locator("vocabulary-settings").is_visible()
@@ -88,23 +88,23 @@ def test_the_developer_section_flips_the_vocabulary_live_and_keeps_it(with_peers
     assert page.inner_text("settings-view h1").startswith("Household")
     assert page.evaluate("() => window.marker") == "same page"
     assert page.evaluate("() => localStorage.getItem('poolhouse.ui.vocab')") == "friendly"
-    page.goto(page.url.split("?")[0].split("#")[0] + "#cluster")
-    page.wait_for_function("() => window.fleetModel && window.fleetModel.route === 'cluster'")
+    page.goto(page.url.split("?")[0].split("#")[0] + "#pool")
+    page.wait_for_function("() => window.fleetModel && window.fleetModel.route === 'pool'")
     assert vocab_of(page) == "friendly"
     page.evaluate("() => window.fleetModel.setVocab('professional')")
-    assert page.inner_text("cluster-view h1") == "Devices"
+    assert page.inner_text("pool-view h1") == "Devices"
     assert errors == []
 
 
-def test_the_address_wins_over_what_the_browser_kept(with_peers, open_page):
-    page, _ = visit(open_page, with_peers, "friendly", "cluster")
-    page.goto(page.url.split("?")[0] + "?vocab=professional#cluster")
-    page.wait_for_function("() => window.fleetModel && window.fleetModel.route === 'cluster'")
+def test_the_address_wins_over_what_the_browser_kept(with_members, open_page):
+    page, _ = visit(open_page, with_members, "friendly", "pool")
+    page.goto(page.url.split("?")[0] + "?vocab=professional#pool")
+    page.wait_for_function("() => window.fleetModel && window.fleetModel.route === 'pool'")
     assert vocab_of(page) == "professional"
 
 
-def test_the_resolution_order_is_address_then_storage_then_server_then_default(with_peers, open_page):
-    page, _ = visit(open_page, with_peers, "professional", "cluster")
+def test_the_resolution_order_is_address_then_storage_then_server_then_default(with_members, open_page):
+    page, _ = visit(open_page, with_members, "professional", "pool")
     pick = "(args) => window.fleetModel.vocabResolve(...args)"
     allowed = ["professional", "friendly"]
     assert page.evaluate(pick, ["friendly", "professional", "professional", "professional", allowed]) == "friendly"
@@ -115,17 +115,17 @@ def test_the_resolution_order_is_address_then_storage_then_server_then_default(w
     assert page.evaluate(pick, [" FRIENDLY ", None, None, "professional", allowed]) == "friendly"
 
 
-def test_the_page_works_when_browser_storage_is_off(browser, with_peers):
-    base = f"http://127.0.0.1:{with_peers.port}"
+def test_the_page_works_when_browser_storage_is_off(browser, with_members):
+    base = f"http://127.0.0.1:{with_members.port}"
     ctx = browser.new_context(viewport={"width": 1200, "height": 800})
-    name, _, value = with_peers.cookie.partition("=")
+    name, _, value = with_members.cookie.partition("=")
     ctx.add_cookies([{"name": name, "value": value, "url": base}])
     ctx.add_init_script("Object.defineProperty(window, 'localStorage', {get() { throw new Error('off'); }});")
     page = ctx.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(f"{base}/ui/?vocab=friendly#cluster")
-    page.wait_for_function("() => window.fleetModel && window.fleetModel.route === 'cluster'")
+    page.goto(f"{base}/ui/?vocab=friendly#pool")
+    page.wait_for_function("() => window.fleetModel && window.fleetModel.route === 'pool'")
     assert vocab_of(page) == "friendly"
     page.evaluate("() => window.fleetModel.setVocab('professional')")
     assert vocab_of(page) == "professional"
@@ -133,8 +133,8 @@ def test_the_page_works_when_browser_storage_is_off(browser, with_peers):
     ctx.close()
 
 
-def test_the_content_security_policy_is_unchanged(with_peers, browser):
-    base = f"http://127.0.0.1:{with_peers.port}"
+def test_the_content_security_policy_is_unchanged(with_members, browser):
+    base = f"http://127.0.0.1:{with_members.port}"
     ctx = browser.new_context()
     response = ctx.new_page().goto(f"{base}/ui/?vocab=friendly")
     assert response.headers["content-security-policy"] == CONTENT_SECURITY_POLICY
@@ -160,16 +160,16 @@ def test_first_run_setup_loads_in_both_vocabularies_and_flips_live(daemon, open_
 
 
 @pytest.mark.parametrize("vocab", VOCABULARIES)
-def test_the_phone_width_has_no_sideways_scroll(with_peers, open_page, vocab):
-    for route in ("cluster", "settings"):
-        page, _ = visit(open_page, with_peers, vocab, route)
+def test_the_phone_width_has_no_sideways_scroll(with_members, open_page, vocab):
+    for route in ("pool", "settings"):
+        page, _ = visit(open_page, with_members, vocab, route)
         page.set_viewport_size({"width": 390, "height": 800})
         page.wait_for_timeout(150)
         assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), (route, vocab)
 
 
-def test_the_navigation_still_reaches_settings(with_peers, open_page):
-    page, errors = visit(open_page, with_peers, "professional", "cluster")
+def test_the_navigation_still_reaches_settings(with_members, open_page):
+    page, errors = visit(open_page, with_members, "professional", "pool")
     reach(page, "settings")
     assert page.locator("#settings").is_visible()
     assert errors == []

@@ -1,9 +1,9 @@
-"""Spreading work over several peers, against several real daemons.
+"""Spreading work over several members, against several real daemons.
 
 Nothing is mocked, for the reason the other fleet tests give: the failures this module
 exists to prevent are scheduling-shaped and process-shaped. Two units overlapping on a
-one-slot box, a broken peer draining the queue, a Ctrl-C leaving three machines running
--- a fake Peer that returns canned job dicts reproduces none of them, because in every
+one-slot box, a broken member draining the queue, a Ctrl-C leaving three machines running
+-- a fake Member that returns canned job dicts reproduces none of them, because in every
 case the thing that went wrong is that a real process really was still running.
 """
 
@@ -24,10 +24,10 @@ from poolhouse.fleet.device import device_report
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.pool import Candidate, Requires, candidates, choose, eligible, soonest
 from poolhouse.fleet.rates import Rates
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.fleet.work import Unit, run
 from poolhouse.http import Server
-from tests.cluster_support import any_command
+from tests.pool_support import any_command
 
 
 def _free_port() -> int:
@@ -59,7 +59,7 @@ class Box:
             make_handler(Daemon(self.runner, self.files, token, name, report,
                                          command=any_command)))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-        self.peer = Peer(f"http://127.0.0.1:{port}", token)
+        self.member = Member(f"http://127.0.0.1:{port}", token)
 
     def close(self) -> None:
         self.runner.shutdown()
@@ -97,7 +97,7 @@ def _marker_unit(uid: str, marker: Path, seconds: float = 0.6) -> Unit:
 
 # -- eligibility ---------------------------------------------------------
 class TestRequires:
-    """Why a peer cannot take a unit has to survive as text. 'Nothing ran' with no
+    """Why a member cannot take a unit has to survive as text. 'Nothing ran' with no
     reason is the failure mode that turns a five-minute fix into an afternoon."""
 
     PI = {"backends": [], "cpus": 4, "ram_gb": 8.0, "labels": ["prep"]}
@@ -135,8 +135,8 @@ class TestRequires:
 
     def test_eligible_reports_the_kept_and_the_reasons_for_the_rest(self):
         cands = [
-            Candidate(peer=None, name="pi", report=self.PI, slots=1, free=1),
-            Candidate(peer=None, name="rtx", report=self.RTX, slots=1, free=1),
+            Candidate(member=None, name="pi", report=self.PI, slots=1, free=1),
+            Candidate(member=None, name="rtx", report=self.RTX, slots=1, free=1),
         ]
         kept, refused = eligible(cands, Requires(backend="cuda"))
         assert [c.name for c in kept] == ["rtx"]
@@ -147,20 +147,20 @@ class TestRequires:
 class TestChoose:
     @staticmethod
     def _c(name, *, rate=None, bench=None, free=1, queued=0, transfer_gb=0.0):
-        return Candidate(peer=None, name=name, report={}, slots=1, free=free,
+        return Candidate(member=None, name=name, report={}, slots=1, free=free,
                          queued=queued, rate=rate, bench=bench, transfer_gb=transfer_gb)
 
-    def test_an_unmeasured_peer_gets_work_while_a_fast_one_sits_idle(self):
-        """A missing measurement is not evidence. Score an unmeasured peer as slow and
-        the first peer ever measured wins forever, because nothing else is ever tried."""
+    def test_an_unmeasured_member_gets_work_while_a_fast_one_sits_idle(self):
+        """A missing measurement is not evidence. Score an unmeasured member as slow and
+        the first member ever measured wins forever, because nothing else is ever tried."""
         picked = choose([self._c("fast", rate=1000.0), self._c("new")])
         assert picked.name == "new"
 
-    def test_among_unmeasured_peers_the_benchmark_breaks_the_tie(self):
+    def test_among_unmeasured_members_the_benchmark_breaks_the_tie(self):
         picked = choose([self._c("slow", bench=10.0), self._c("quick", bench=900.0)])
         assert picked.name == "quick"
 
-    def test_an_unbenchmarked_peer_still_outranks_a_slow_benchmarked_one(self):
+    def test_an_unbenchmarked_member_still_outranks_a_slow_benchmarked_one(self):
         """'Not measured' must not quietly become 'measured badly'."""
         picked = choose([self._c("benched_slow", bench=1.0), self._c("unknown")])
         assert picked.name == "unknown"
@@ -170,7 +170,7 @@ class TestChoose:
                         score=soonest(work=10.0))
         assert picked.name == "fast"
 
-    def test_a_peer_that_already_holds_the_data_beats_a_faster_one_that_does_not(self):
+    def test_a_member_that_already_holds_the_data_beats_a_faster_one_that_does_not(self):
         """A slower box holding the shard usually wins: a score that ignores transfer
         keeps picking the fast idle box and keeps waiting on the network."""
         picked = choose(
@@ -184,32 +184,32 @@ class TestChoose:
 
 
 # -- fanning out over real daemons ---------------------------------------
-def test_units_spread_over_the_peers_and_never_overlap_on_one(boxes, tmp_path, rates):
+def test_units_spread_over_the_members_and_never_overlap_on_one(boxes, tmp_path, rates):
     """Each box is one slot. Two units overlapping on a single box would mean the
     fan-out is racing the daemon's own invariant rather than respecting it."""
     marker = tmp_path / "ran.jsonl"
     units = [_marker_unit(f"u{i}", marker) for i in range(6)]
 
-    placements = run(units, [b.peer for b in boxes], kind="test", rates=rates,
+    placements = run(units, [b.member for b in boxes], kind="test", rates=rates,
                      poll_s=0.1)
 
     assert all(p.ok for p in placements), [p.error for p in placements if not p.ok]
     rows = [json.loads(line) for line in marker.read_text().splitlines()]
     assert len(rows) == 6
-    assert len({p.peer for p in placements}) > 1, "everything landed on one box"
+    assert len({p.member for p in placements}) > 1, "everything landed on one box"
 
-    by_peer: dict[str, list[dict]] = {}
+    by_member: dict[str, list[dict]] = {}
     for placement, row in ((p, r) for p in placements for r in rows
                            if r["unit"] == p.unit_id):
-        by_peer.setdefault(placement.peer, []).append(row)
-    for peer, ran in by_peer.items():
+        by_member.setdefault(placement.member, []).append(row)
+    for member, ran in by_member.items():
         ran.sort(key=lambda r: r["start"])
         for earlier, later in zip(ran, ran[1:], strict=False):
             assert earlier["end"] <= later["start"] + 0.05, \
-                f"{peer} ran two units at once"
+                f"{member} ran two units at once"
 
 
-def test_a_failing_unit_is_retried_on_a_different_peer(boxes, tmp_path, rates):
+def test_a_failing_unit_is_retried_on_a_different_member(boxes, tmp_path, rates):
     """Retrying on the box that just failed it learns nothing. The point of a retry is
     to find out whether the unit is wrong or the machine is."""
     marker = tmp_path / "attempts.txt"
@@ -222,21 +222,21 @@ def test_a_failing_unit_is_retried_on_a_different_peer(boxes, tmp_path, rates):
     )
     unit = Unit(id="flaky", argv=[sys.executable, "-c", script, str(marker)])
 
-    [placement] = run([unit], [b.peer for b in boxes], kind="test", rates=rates,
+    [placement] = run([unit], [b.member for b in boxes], kind="test", rates=rates,
                       retries=1, poll_s=0.1)
 
     assert placement.ok, placement.error
     assert placement.attempts == 2
-    assert len(set(placement.tried)) == 2, f"retried on the same peer: {placement.tried}"
+    assert len(set(placement.tried)) == 2, f"retried on the same member: {placement.tried}"
 
 
-def test_a_unit_no_peer_admits_fails_at_once_with_every_reason(boxes, rates):
+def test_a_unit_no_member_admits_fails_at_once_with_every_reason(boxes, rates):
     """Not the same as 'nothing free'. Waiting for capacity that would not help if it
     arrived is a hang, and a hang with no message is the worst of both."""
     unit = Unit(id="needs-cuda", argv=["true"], requires=Requires(backend="cuda"))
 
     started = time.time()
-    [placement] = run([unit], [b.peer for b in boxes], kind="test", rates=rates)
+    [placement] = run([unit], [b.member for b in boxes], kind="test", rates=rates)
 
     assert placement.state == "unplaceable"
     assert time.time() - started < 10
@@ -248,13 +248,13 @@ def test_a_unit_no_peer_admits_fails_at_once_with_every_reason(boxes, rates):
 def test_a_pinned_unit_runs_where_it_was_pinned(boxes, tmp_path, rates):
     marker = tmp_path / "pinned.jsonl"
     unit = _marker_unit("pinned", marker, seconds=0.1)
-    unit = Unit(id=unit.id, argv=unit.argv, peer="beta")
+    unit = Unit(id=unit.id, argv=unit.argv, member="beta")
 
-    [placement] = run([unit], [b.peer for b in boxes], kind="test", rates=rates,
+    [placement] = run([unit], [b.member for b in boxes], kind="test", rates=rates,
                       poll_s=0.1)
 
     assert placement.ok, placement.error
-    assert placement.peer == "beta"
+    assert placement.member == "beta"
 
 
 def test_a_completed_unit_leaves_a_measurement_behind(boxes, tmp_path, rates):
@@ -263,7 +263,7 @@ def test_a_completed_unit_leaves_a_measurement_behind(boxes, tmp_path, rates):
     marker = tmp_path / "measured.jsonl"
     units = [_marker_unit(f"m{i}", marker, seconds=0.2) for i in range(3)]
 
-    placements = run(units, [b.peer for b in boxes], kind="tokenize", rates=rates,
+    placements = run(units, [b.member for b in boxes], kind="tokenize", rates=rates,
                      poll_s=0.1)
 
     assert all(p.ok for p in placements)
@@ -278,13 +278,13 @@ def test_two_machines_of_one_name_are_measured_apart(tmp_path, rates):
     marker = tmp_path / "same-name.jsonl"
     try:
         placements = run([_marker_unit(f"s{i}", marker, seconds=0.3) for i in range(4)],
-                         [b.peer for b in made], kind="tokenize", rates=rates, poll_s=0.05)
+                         [b.member for b in made], kind="tokenize", rates=rates, poll_s=0.05)
     finally:
         for b in made:
             b.close()
 
     assert all(p.ok for p in placements), [p.error for p in placements]
-    assert {p.peer for p in placements} == {"Mac"}
+    assert {p.member for p in placements} == {"Mac"}
     assert {p.machine for p in placements} == {"id-mac-a", "id-mac-b"}
     on_disk = Rates(rates.path)
     assert len(on_disk) == 2
@@ -297,7 +297,7 @@ def test_candidates_read_each_machines_own_rate_under_one_name(tmp_path, rates):
     rates.record("id-mac-a", "tokenize", units=10, seconds=1)
     rates.record("id-mac-b", "tokenize", units=2, seconds=1)
     try:
-        seen = candidates([b.peer for b in made], kind="tokenize", rates=rates.as_map())
+        seen = candidates([b.member for b in made], kind="tokenize", rates=rates.as_map())
     finally:
         for b in made:
             b.close()
@@ -306,7 +306,7 @@ def test_candidates_read_each_machines_own_rate_under_one_name(tmp_path, rates):
         ("Mac", "id-mac-a", 10.0), ("Mac", "id-mac-b", 2.0)]
 
 
-def test_a_broken_peer_is_quarantined_instead_of_draining_the_queue(tmp_path, rates):
+def test_a_broken_member_is_quarantined_instead_of_draining_the_queue(tmp_path, rates):
     """The fast-fail black hole: a box whose card has fallen over accepts and fails work
     faster than the healthy boxes can take any, so every unit fails on the one machine
     that cannot run them."""
@@ -316,7 +316,7 @@ def test_a_broken_peer_is_quarantined_instead_of_draining_the_queue(tmp_path, ra
         units = [Unit(id=f"u{i}", argv=[sys.executable, "-c", "pass"])
                  for i in range(12)]
         events: list[tuple[str, dict]] = []
-        placements = run(units, [good.peer, broken.peer], kind="test", rates=rates,
+        placements = run(units, [good.member, broken.member], kind="test", rates=rates,
                          poll_s=0.05, on_event=lambda e, f: events.append((e, f)))
     finally:
         good.close()
@@ -327,15 +327,15 @@ def test_a_broken_peer_is_quarantined_instead_of_draining_the_queue(tmp_path, ra
     assert any(e == "done" for e, _ in events)
 
 
-def test_a_multi_slot_peer_really_runs_several_at_once(tmp_path, rates):
+def test_a_multi_slot_member_really_runs_several_at_once(tmp_path, rates):
     """--slots on the daemon means nothing if the fan-out still feeds it one at a time.
-    The specific failure: one worker thread per peer rather than per slot, which looks
+    The specific failure: one worker thread per member rather than per slot, which looks
     exactly like the daemon ignoring its own flag."""
     box = Box(tmp_path / "prep", "prep", slots=4)
     try:
         marker = tmp_path / "concurrent.jsonl"
         units = [_marker_unit(f"p{i}", marker, seconds=0.8) for i in range(4)]
-        placements = run(units, [box.peer], kind="prep", rates=rates, poll_s=0.05)
+        placements = run(units, [box.member], kind="prep", rates=rates, poll_s=0.05)
     finally:
         box.close()
 
@@ -357,14 +357,14 @@ def test_a_labelled_unit_never_lands_on_a_box_that_lacks_the_label(tmp_path, rat
     try:
         units = [Unit(id=f"s{i}", argv=[sys.executable, "-c", "import time;time.sleep(0.3)"],
                       requires=Requires(labels=("prep",))) for i in range(6)]
-        placements = run(units, [gpu.peer, pi.peer], kind="prep", rates=rates,
+        placements = run(units, [gpu.member, pi.member], kind="prep", rates=rates,
                          poll_s=0.05)
     finally:
         gpu.close()
         pi.close()
 
     assert all(p.ok for p in placements), [p.error for p in placements if not p.ok]
-    landed = {p.peer for p in placements}
+    landed = {p.member for p in placements}
     assert landed == {"pi"}, f"prep work reached the training box: {landed}"
 
 

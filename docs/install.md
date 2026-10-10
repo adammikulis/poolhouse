@@ -67,7 +67,7 @@ downloads, one directory per long command's logs -- lives under `~/.cache/poolho
 `POOLHOUSE_CACHE` moves and which is safe to delete.
 
 Unattended, for a machine you are setting up from a script: `POOLHOUSE_NAME`,
-`POOLHOUSE_PASSPHRASE`, `POOLHOUSE_CLUSTER`, `POOLHOUSE_MODE`, `POOLHOUSE_MODELS`,
+`POOLHOUSE_PASSPHRASE`, `POOLHOUSE_POOL`, `POOLHOUSE_MODE`, `POOLHOUSE_MODELS`,
 `POOLHOUSE_ADOPT_CACHE`, `POOLHOUSE_REF` answer every prompt, and a machine with no terminal
 is never prompted at all. `POOLHOUSE_OFFLINE_ZIP` and `POOLHOUSE_OFFLINE_MODELS` install from
 local files and skip every network step; `POOLHOUSE_OFFLINE_WHEELS` names the directory the
@@ -98,7 +98,7 @@ build option creates local install artifacts; it does not publish or commit eith
 
 Past the install, every step is a Poolhouse command rather than shell -- `poolhouse-setup`
 (what this machine can do), `poolhouse-serve build` (llama.cpp), `poolhouse-models fetch`
-(into the one cache, every download checked against its sha256), `poolhouse-cluster join
+(into the one cache, every download checked against its sha256), `poolhouse-pool join
 --persist`, and `poolhouse-doctor` at the end, whose lines it prints.
 
 **Or download it yourself** from the [latest release](https://github.com/adammikulis/poolhouse/releases/latest):
@@ -125,18 +125,18 @@ find each other on their own.
 **On Windows** the same daemon runs, with the handful of things Windows does differently
 decided in one place (`poolhouse/platform.py`): a job gets its own process group and is
 stopped with a `CTRL_BREAK_EVENT` it can catch as `SIGBREAK`, the one-runner lock is
-`msvcrt.locking` where POSIX has `flock`, the cluster key is made private with `icacls`
+`msvcrt.locking` where POSIX has `flock`, the pool key is made private with `icacls`
 where `chmod 600` would only flip the read-only bit, and `poolhouse-traind --persist`
 registers a Scheduled Task at logon (`com.poolhouse.traind.login`) the way `poolhouse-serve
 build --persist` registers its weekly refresh. `--system` registers a second one
-(`com.poolhouse.traind.system`) at `ONSTART` instead, so the machine is a peer before anyone
+(`com.poolhouse.traind.system`) at `ONSTART` instead, so the machine is a device before anyone
 logs in -- with `/RU <you>` rather than `/RU SYSTEM`, because SYSTEM has its own profile and
 would download every model again into an empty cache. It is a Scheduled Task rather than a
 real service because a service needs a wrapper to hold a long-lived Python process, while a
 startup task is one line and survives a reboot either way. Two things a Windows machine needs that the
 others do not: llama.cpp comes from `poolhouse-serve build --from release` (a release zip,
 since most Windows installs have no compiler), and **Windows Defender Firewall blocks the
-daemon's TCP 8770 and its UDP 8771 beacons inbound by default**, so `poolhouse-peers ls` on
+daemon's TCP 8770 and its UDP 8771 beacons inbound by default**, so `poolhouse-members ls` on
 another machine sees nothing until, in a prompt opened as administrator:
 
 ```
@@ -151,7 +151,7 @@ new Windows machine, in this order, each of which should say what follows it:
 `poolhouse-serve build --from release` ("current -> ...\builds\bNNNN" after "verifying");
 `poolhouse-traind --persist` ("installed to start at login", then a `traind.log` under
 `~\.poolhouse` that begins `poolhouse traind on http://0.0.0.0:8770`);
-`poolhouse-peers ls` from another machine (the Windows box listed with its GPU). `ci.yml`'s
+`poolhouse-members ls` from another machine (the Windows box listed with its GPU). `ci.yml`'s
 `windows` job runs `install.ps1 -Headless` end to end on a Windows runner -- a venv under a
 scratch prefix, the console scripts on its own PATH, then `-Uninstall` taking the venv away
 again -- against a wheel built in the same job, with no model and no network.
@@ -224,7 +224,7 @@ a runtime launcher, or the service manager does not hold the unit.
 
 The daemon holds a per-root lock, so a second start exits instead of competing, and rotates the
 log files under `~/.poolhouse/autostart/logs` when one passes 5 MiB (three copies kept; systemd
-units log to the journal instead). A unit points at the launcher path, whose contents `ensure`
+units log to the log instead). A unit points at the launcher path, whose contents `ensure`
 switches atomically when it selects a new runtime, so a runtime upgrade needs no reinstall.
 The units carry no tokens and no secrets, and there is no unit for landing work: landing needs
 an agent identity (claims, board posts, push rules), so it stays in an agent session.
@@ -238,7 +238,7 @@ Checking a reboot is manual, because a test cannot reboot a machine:
 
 1. `prepare`, `install`, then `status` prints `autostart: current`.
 2. Reboot, log in, wait a minute. `status` prints `autostart: current` and
-   `poolhouse-peers ls` from another machine lists this one.
+   `poolhouse-members ls` from another machine lists this one.
 3. Kill the daemon process: it returns within the restart interval; kill it six times in
    five minutes and the manager stops restarting it (systemd), which `status` shows as drifted.
 4. Edit the unit file: `status` prints `drifted`. `rollback` restores the file it replaced.

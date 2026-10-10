@@ -1,4 +1,4 @@
-"""Agent-token coordinator RPC on the authenticated Fleet peer server."""
+"""Agent-token coordinator RPC on the authenticated Fleet member server."""
 
 import json
 import ssl
@@ -9,8 +9,8 @@ from poolhouse.workspace import (
     coordinator_calls,
     coordinator_config,
     device_sessions,
-    mesh_sync,
     onboard,
+    replica_sync,
     tokens,
 )
 from poolhouse.workspace.chain import ChainBroken
@@ -81,7 +81,7 @@ def answer(ws, call, *, device=None, projects=None):
 
 
 def route(handler, body=None):
-    if mesh_sync.route(handler, body):
+    if replica_sync.route(handler, body):
         return True
     path = handler.path.split('?')[0]
     if path not in (PREFIX + 'info', PREFIX + 'call', PREFIX + 'join', PREFIX + 'ensure'):

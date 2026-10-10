@@ -1,11 +1,11 @@
-"""Which devices are in a cluster, by certificate: the record every link off this machine is checked against.
+"""Which devices are in a pool, by certificate: the record every link off this machine is checked against.
 
 A device is its certificate (`tls.identity`); its fingerprint is the SHA-256 of the DER. A request from
 another machine is answered only when the certificate it showed in the TLS handshake is listed here as
 active, and a revoked or unknown one is refused at its next handshake and its next request, even on a
 connection already open. Revoking is one record that spreads by `merge`, and a revocation is never undone.
 The join flows call `enrol` once they have authenticated the newcomer; `merge` takes rows only from a
-peer that has itself authenticated as an active member.
+member that has itself authenticated as an active member.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ MOST_ROWS = 4096
 
 
 class Revoked(PermissionError):
-    """A certificate that was put out of the cluster; it cannot be let back in."""
+    """A certificate that was put out of the pool; it cannot be let back in."""
 
 
 def fingerprint_of(cert: str) -> str:
@@ -50,7 +50,7 @@ def fingerprint_of(cert: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Device:
-    """One device's standing in one cluster."""
+    """One device's standing in one pool."""
 
     fingerprint: str
     cert: str
@@ -59,7 +59,7 @@ class Device:
     status: str
     at: float
     by: str
-    """The fingerprint of the device that recorded this, or why (``pairing``, ``self``)."""
+    """The fingerprint of the device that recorded this, or why (``join-code``, ``self``)."""
 
     @property
     def active(self) -> bool:
@@ -70,7 +70,7 @@ class Device:
 
     @classmethod
     def read(cls, row: Any) -> Device | None:
-        """A row from the file or a peer, or None when it is not what it claims: a fingerprint
+        """A row from the file or a member, or None when it is not what it claims: a fingerprint
         that is not the hash of the certificate beside it is a tampered pin and is dropped."""
         try:
             fingerprint, cert, status = str(row["fingerprint"]), str(row.get("cert", "")), str(row["status"])
@@ -96,7 +96,7 @@ def _join(held: Device | None, new: Device) -> Device:
 
 
 class Roster:
-    """The devices of one cluster, kept in a file named for the cluster's key (so every part of
+    """The devices of one pool, kept in a file named for the pool's key (so every part of
     this machine that holds the key finds the same record, whatever file the key came from)."""
 
     def __init__(self, key: bytes) -> None:
@@ -165,7 +165,7 @@ class Roster:
         def change(rows: dict[str, Device]) -> int:
             held = rows.get(fingerprint)
             if held is not None and not held.active:
-                raise Revoked(f"{name or fingerprint[:12]} was put out of the cluster; it needs a new certificate")
+                raise Revoked(f"{name or fingerprint[:12]} was put out of the pool; it needs a new certificate")
             if held is None:
                 rows[fingerprint] = new
                 return 1
@@ -177,7 +177,7 @@ class Roster:
     def revoke(self, fingerprint: str, by: str) -> Device:
         """Put a device out: it is refused from its next handshake and its next request."""
         if not FINGERPRINT.fullmatch(fingerprint):
-            raise ValueError("a device is revoked by its fingerprint, 64 hex digits")
+            raise ValueError("a device is removed by its fingerprint, 64 hex digits")
 
         def change(rows: dict[str, Device]) -> int:
             held = rows.get(fingerprint)
@@ -194,7 +194,7 @@ class Roster:
         return [d.public() for d in self.devices()]
 
     def merge(self, rows: Iterable[Any], by: str) -> int:
-        """Take what a peer that is an active member knows: new devices are added and every
+        """Take what a member that is an active member knows: new devices are added and every
         revocation is applied. Returns how many records changed."""
         heard = [d for row in list(rows)[:MOST_ROWS] if (d := Device.read(row)) is not None]
 
@@ -212,11 +212,11 @@ class Roster:
         return self._write(change)
 
     def forget(self) -> None:
-        """Drop the record when this machine leaves the cluster."""
+        """Drop the record when this machine leaves the pool."""
         with contextlib.suppress(OSError):
             self.file.unlink()
 
 
 def roster(key: bytes) -> Roster:
-    """The record of the cluster whose key is ``key``."""
+    """The record of the pool whose key is ``key``."""
     return Roster(key)

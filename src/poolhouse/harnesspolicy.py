@@ -132,7 +132,7 @@ def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence
 
 
 def workspace_authority(line: str, actor: str) -> Decision | None:
-    """A model's workspace CLI call must use its launcher-bound seat, never another token."""
+    """A model's workspace CLI call must use its launcher-bound session, never another token."""
     commands, _ = segments(line)
     for command in commands:
         words = command.argv

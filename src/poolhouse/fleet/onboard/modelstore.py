@@ -1,4 +1,4 @@
-"""Serve the machine's own model store to paired devices (``fleet share --models``).
+"""Serve the machine's own model store to members (``fleet share --models``).
 
 The files are what `hub.discover` finds (GGUF and safetensors), offered by file name with their
 repository, size and sha256. Only the model roots: a file is listed, and again at every request,

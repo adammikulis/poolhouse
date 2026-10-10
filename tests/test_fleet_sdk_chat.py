@@ -13,7 +13,7 @@ from poolhouse.testing.fakes import FakeLlamaServer, Served
 
 
 @pytest.mark.redteam
-def test_sdk_cannot_change_selected_peer_endpoint(monkeypatch):
+def test_sdk_cannot_change_selected_member_endpoint(monkeypatch):
     touched = []
     monkeypatch.setattr("poolhouse.client.sdk.open_stream", lambda *a, **k: touched.append(a))
     transport = FleetTransport("http://127.0.0.1:4567/infer/v1/chat/completions", "secret")
@@ -23,7 +23,7 @@ def test_sdk_cannot_change_selected_peer_endpoint(monkeypatch):
     assert touched == []
 
 
-def test_sdk_explicit_peer_prefix_and_no_environment_credentials(monkeypatch):
+def test_sdk_explicit_member_prefix_and_no_environment_credentials(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "environment-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://unselected.invalid")
     client = local_client(Target("display", "http://127.0.0.1:4567/infer/v1/chat/completions"),

@@ -119,7 +119,7 @@ def conflict(name, args, cwd, actor, roots=()):
 
 
 def reserve(name, args, cwd, actor, roots):
-    """Reserve an inspectable mutation using the launcher's authenticated workspace seat."""
+    """Reserve an inspectable mutation using the launcher's authenticated workspace session."""
     if not isinstance(args, dict) or (name not in SHELL_TOOLS and CATALOG.get(name) != 'reversible'):
         return
     required = resources(name, args, cwd)

@@ -1,6 +1,6 @@
 """The one HTTP handler the onboarding servers share.
 
-Pairing, file sharing and the bootstrap offer each say what a request means as a function
+Joining, file sharing and the bootstrap offer each say what a request means as a function
 from `Call` to `Reply`; this module is the only place that speaks HTTP for them. It reads a
 bounded body, writes the reply (a stream for files) and turns a framing error into a status.
 """

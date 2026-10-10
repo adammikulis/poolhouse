@@ -22,7 +22,7 @@ daemon = fleet_page.daemon
 joined = fleet_page.joined
 no_release_lookup = fleet_page.no_release_lookup
 open_page = fleet_page.open_page
-with_peers = fleet_page.with_peers
+with_members = fleet_page.with_members
 
 
 
@@ -42,7 +42,7 @@ def device(name, vendor, ram, slots_free, **more):
     """One invented device: ``more`` may carry gpu, serving, paused and is_self."""
     slots, free = slots_free
     return {"name": name, "port": 8770, "host": "10.0.0.9", "base_url": f"http://10.0.0.{len(name)}:8770",
-            "is_self": more.get("is_self", False), "clusters": ["home"], "slots": slots, "free": free, "queued": 0,
+            "is_self": more.get("is_self", False), "pools": ["home"], "slots": slots, "free": free, "queued": 0,
             "busy": free == 0,
             "device": {"vendor": vendor, "cuda": vendor == "nvidia", "gpu": more.get("gpu", ""), "cpus": 16, "ram_gb": ram,
                        "ram_used_gb": ram / 3,
@@ -70,7 +70,7 @@ def sample(page):
     def respond(route):
         url = route.request.url
         body = {"ok": True, "projects": [{"id": PROJECT, "name": "ledger-service", "state": "available", "is_self": True},
-                                         {"id": "b" * 32, "name": "field-notes", "state": "available", "is_self": False, "peer": "attic-laptop"}],
+                                         {"id": "b" * 32, "name": "field-notes", "state": "available", "is_self": False, "member": "attic-laptop"}],
                 "candidates": [], "devices": []} if url.rstrip("/").endswith("/ui/projects") else SAMPLE_BOARD
         route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
     page.route("**/ui/projects", respond)
@@ -79,7 +79,7 @@ def sample(page):
 
 @pytest.fixture
 def full_pool(joined):
-    joined.ui.peers = lambda force=False: SAMPLE_DEVICES
+    joined.ui.members = lambda force=False: SAMPLE_DEVICES
     return joined
 
 
@@ -87,7 +87,7 @@ def full_pool(joined):
 @pytest.mark.parametrize("size", SIZES)
 def test_main_screens(full_pool, open_page, vocab, size):
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, route in (("chat", "chat"), ("devices", "cluster"), ("projects", "projects"), ("settings", "settings")):
+    for name, route in (("chat", "chat"), ("devices", "pool"), ("projects", "projects"), ("settings", "settings")):
         page, errors = open_page(full_pool, path=f"/ui/?vocab={vocab}#{route}", cookie=full_pool.cookie)
         page.set_viewport_size(SIZES[size])
         sample(page)

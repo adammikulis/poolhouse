@@ -229,7 +229,7 @@ iteration:
    submitter, and the task's subscribers (`task-subscribe`), a message under the watcher's own
    identity. An ejection also writes the `blocked` task event.
 
-The watcher is a role of the derived coordinator (docs/mesh-board.md, section 6); today that is the
+The watcher is a role of the derived coordinator (docs/board-replication.md, section 6); today that is the
 main session that started it, as a background task running `scripts/land watch`. It does not
 push. It fast-forwards the local target and says "push left to the lead" unless the session is
 allowed to push the development branch (AGENTS.md, "Landing"; `scripts/hooks/pre-push`). It

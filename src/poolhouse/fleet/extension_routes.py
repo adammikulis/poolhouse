@@ -13,7 +13,7 @@ class ExtensionRoutes:
                 if not self.ui.credentialed(self.cookie):
                     self.ui.record("person.refused", reason="extension-without-credential",
                                    source=self.client_ip, route=entry.name)
-                    self.send(403, {"error": "open poolhouse from its own window, or run: poolhouse peers open"})
+                    self.send(403, {"error": "open poolhouse from its own window, or run: poolhouse members open"})
                     return True
                 return bool(entry.load()(self))
         return super().route()

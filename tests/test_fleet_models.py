@@ -463,8 +463,8 @@ class TestDraftModels:
 
         srv = Server(("127.0.0.1", free_port()), H)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
-        big = a_model(tmp_path / "models", name="pair.gguf", mb=2)
-        model = store.find("pair.gguf")
+        big = a_model(tmp_path / "models", name="join.gguf", mb=2)
+        model = store.find("join.gguf")
         try:
             got = store.ensure_draft(
                 model, f"http://127.0.0.1:{srv.server_address[1]}/d.gguf")
@@ -473,7 +473,7 @@ class TestDraftModels:
 
         assert got == big.with_suffix(".draft.gguf")
         assert got.read_bytes() == payload
-        assert [m.name for m in store.all()] == ["pair.gguf"]
+        assert [m.name for m in store.all()] == ["join.gguf"]
 
     def test_a_draft_is_copied_from_a_machine_that_has_it(self, store, tmp_path,
                                                           monkeypatch):
@@ -484,11 +484,11 @@ class TestDraftModels:
         from poolhouse.http import Server
 
         theirs = tmp_path / "theirs"
-        payload = a_model(theirs, name="pair.draft.gguf", mb=2).read_bytes()
-        a_model(theirs, name="pair.gguf", mb=2)
+        payload = a_model(theirs, name="join.draft.gguf", mb=2).read_bytes()
+        a_model(theirs, name="join.gguf", mb=2)
         root = tmp_path / "traind"
         (root / "files").mkdir(parents=True)
-        key = b"a-cluster-key-they-both-know"
+        key = b"a-pool-key-they-both-know"
         token = load_or_create_token(root, key)
         runner = JobRunner(root)
         port = free_port()
@@ -496,7 +496,7 @@ class TestDraftModels:
             ("127.0.0.1", port),
             make_handler(Daemon(runner, root / "files", token,
                          models=Models([theirs], theirs),
-                         cluster_key_path=tmp_path / "their.key")))
+                         pool_key_path=tmp_path / "their.key")))
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
         asked = []
@@ -505,8 +505,8 @@ class TestDraftModels:
             lambda self, name, k, **kw: (asked.append(name),
                                          [("theirs", f"http://127.0.0.1:{port}", 0)])[1])
 
-        big = a_model(tmp_path / "models", name="pair.gguf", mb=2)
-        model = store.find("pair.gguf")
+        big = a_model(tmp_path / "models", name="join.gguf", mb=2)
+        model = store.find("join.gguf")
         try:
             got = store.ensure_draft(model, "http://127.0.0.1:1/none.gguf", key=key)
         finally:
@@ -516,7 +516,7 @@ class TestDraftModels:
 
         assert got == big.with_suffix(".draft.gguf")
         assert got.read_bytes() == payload
-        assert asked == ["pair.gguf"], "the machines holding the model are the ones asked"
+        assert asked == ["join.gguf"], "the machines holding the model are the ones asked"
 
     def test_a_name_pointing_out_of_the_store_finds_nothing(self, store, tmp_path):
         (tmp_path / "secret.draft.gguf").write_bytes(b"x" * 4096)
@@ -697,7 +697,7 @@ class TestSuggestions:
 class TestProgress:
     def test_the_two_kinds_of_progress_do_not_share_a_callback(self, store):
         """ensure() reports a stage as text and bytes as two numbers. One callback
-        taking both would be called with a string and then with a pair."""
+        taking both would be called with a string and then with a second value."""
         payload = gguf_bytes(extra=512 * 1024)
 
         class H(http.server.BaseHTTPRequestHandler):
@@ -896,14 +896,14 @@ class TestRemoving:
 
 
 class TestOverHTTP:
-    """The routes a peer uses: GET /models and POST /models/get."""
+    """The routes a member uses: GET /models and POST /models/get."""
 
     @pytest.fixture
     def served(self, tmp_path):
         from poolhouse.fleet.api import Daemon, make_handler
         from poolhouse.fleet.daemon import load_or_create_token
         from poolhouse.fleet.jobs import JobRunner
-        from poolhouse.fleet.remote import Peer
+        from poolhouse.fleet.remote import Member
         from poolhouse.http import Server
 
         root = tmp_path / "traind"
@@ -918,33 +918,33 @@ class TestOverHTTP:
             ("127.0.0.1", port),
             make_handler(Daemon(runner, files, token,
                          models=Models([theirs], theirs),
-                         cluster_key_path=tmp_path / "cluster.key")))
+                         pool_key_path=tmp_path / "pool.key")))
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         try:
-            yield Peer(f"http://127.0.0.1:{port}", token), theirs
+            yield Member(f"http://127.0.0.1:{port}", token), theirs
         finally:
             runner.shutdown()
             httpd.shutdown()
             httpd.server_close()
 
-    def test_a_peer_lists_the_models_a_machine_holds(self, served):
-        peer, _ = served
-        rows = peer.models()
+    def test_a_member_lists_the_models_a_machine_holds(self, served):
+        member, _ = served
+        rows = member.models()
         assert [r["name"] for r in rows] == ["qwen3-4b-q4.gguf"]
         assert "path" not in rows[0]
 
-    def test_a_peer_asks_a_machine_for_a_model_it_already_has(self, served):
-        peer, theirs = served
-        got = peer.get_model("qwen3")
+    def test_a_member_asks_a_machine_for_a_model_it_already_has(self, served):
+        member, theirs = served
+        got = member.get_model("qwen3")
         assert got["name"] == "qwen3-4b-q4.gguf"
         assert got["size"] == (theirs / "qwen3-4b-q4.gguf").stat().st_size
 
     def test_asking_for_one_nobody_has_is_refused_not_crashed(self, served):
-        from poolhouse.fleet.remote import PeerError
+        from poolhouse.fleet.remote import MemberError
 
-        peer, _ = served
-        with pytest.raises(PeerError):
-            peer.get_model("nothing-like-this.gguf")
+        member, _ = served
+        with pytest.raises(MemberError):
+            member.get_model("nothing-like-this.gguf")
 
 
 class TestCaches:
@@ -1051,7 +1051,7 @@ class TestWhereADownloadMayComeFrom:
         assert not list(store.store.glob("*"))
 
 
-def a_peer_holding(listing, body):
+def a_member_holding(listing, body):
     """A server that lists ``listing`` at /models and answers every other path with ``body``."""
 
     class Holding(http.server.BaseHTTPRequestHandler):
@@ -1068,24 +1068,24 @@ def a_peer_holding(listing, body):
     return threaded_server(Holding)
 
 
-class TestWhatAPeerOrServerSends:
+class TestWhatAMemberOrServerSends:
     @pytest.mark.parametrize("evil", ["../../escaped.gguf", "/tmp/escaped-abs.gguf"])
-    def test_a_peer_cannot_place_a_file_outside_the_store(self, store, tmp_path, evil):
-        with a_peer_holding([{"name": evil}], gguf_bytes()) as base:
-            got = store._from_peer("escaped", base, b"k", None)
+    def test_a_member_cannot_place_a_file_outside_the_store(self, store, tmp_path, evil):
+        with a_member_holding([{"name": evil}], gguf_bytes()) as base:
+            got = store._from_member("escaped", base, b"k", None)
         assert got.path.parent == store.store
         assert not (tmp_path / "escaped.gguf").exists()
         assert not Path("/tmp/escaped-abs.gguf").exists()
 
-    def test_a_peer_name_without_a_weights_suffix_is_refused(self, store):
-        with a_peer_holding([{"name": "evil.sh"}], gguf_bytes()) as base, pytest.raises(ModelError):
-            store._from_peer("evil", base, b"k", None)
+    def test_a_member_name_without_a_weights_suffix_is_refused(self, store):
+        with a_member_holding([{"name": "evil.sh"}], gguf_bytes()) as base, pytest.raises(ModelError):
+            store._from_member("evil", base, b"k", None)
         assert not list(store.store.glob("*"))
 
-    def test_a_peer_file_that_is_not_a_gguf_is_deleted(self, store):
-        with a_peer_holding([{"name": "m.gguf"}], b"<html>not a model</html>") as base, \
+    def test_a_member_file_that_is_not_a_gguf_is_deleted(self, store):
+        with a_member_holding([{"name": "m.gguf"}], b"<html>not a model</html>") as base, \
                 pytest.raises(ModelError):
-            store._from_peer("m", base, b"k", None)
+            store._from_member("m", base, b"k", None)
         assert not list(store.store.glob("*"))
 
     def test_a_download_that_is_not_a_gguf_is_deleted(self, store):

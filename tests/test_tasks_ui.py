@@ -168,7 +168,7 @@ def test_tasks_join_selected_person_workspace_with_real_backend(tmp_path, playwr
     host = WorkspaceHost(registry)
     host.prepare(project)
     ws = host.workspace(project)
-    monkeypatch.setattr(project_client, 'peers', lambda ui: [])
+    monkeypatch.setattr(project_client, 'members', lambda ui: [])
     server = Serving(tmp_path / 'ui')
     server.ui.settings.setup_done = True
     server.ui.projects, server.ui.workspaces = registry, host

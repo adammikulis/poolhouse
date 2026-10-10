@@ -1,4 +1,4 @@
-"""Peer discovery: real UDP on a real interface, and a real daemon subprocess.
+"""Member discovery: real UDP on a real interface, and a real daemon subprocess.
 
 Nothing is mocked, for the same reason the daemon tests aren't. The failures
 this module exists to prevent are network-shaped and adversary-shaped -- a
@@ -32,14 +32,14 @@ from poolhouse.fleet.discovery import (
     _pack,
     _prefer,
     _verify,
-    create_cluster_key,
+    create_pool_key,
     derive_token,
     discover,
     fit_beacon,
-    load_cluster_key,
+    load_pool_key,
     named_apart,
 )
-from poolhouse.fleet.remote import Peer, PeerError
+from poolhouse.fleet.remote import Member, MemberError
 
 #: Real UDP on a real interface and a real daemon subprocess, per the docstring
 #: above -- so every test here waits out a network timeout at least once.
@@ -107,8 +107,8 @@ def _reach(port: int) -> dict[str, str]:
 
 @pytest.fixture
 def key(tmp_path) -> bytes:
-    create_cluster_key(tmp_path / "cluster.key", group="poolhouse")
-    return load_cluster_key(tmp_path / "cluster.key")
+    create_pool_key(tmp_path / "pool.key", group="poolhouse")
+    return load_pool_key(tmp_path / "pool.key")
 
 
 @pytest.fixture
@@ -118,27 +118,27 @@ def port() -> int:
 
 # -- the key -------------------------------------------------------------
 def test_key_is_created_once_and_not_silently_rotated(tmp_path):
-    p = tmp_path / "cluster.key"
-    first = create_cluster_key(p, group="poolhouse")
-    assert create_cluster_key(p, group="poolhouse") == first, "re-running init must not evict the cluster"
-    assert create_cluster_key(p, overwrite=True, group="poolhouse") != first
+    p = tmp_path / "pool.key"
+    first = create_pool_key(p, group="poolhouse")
+    assert create_pool_key(p, group="poolhouse") == first, "re-running init must not evict the pool"
+    assert create_pool_key(p, overwrite=True, group="poolhouse") != first
 
 
 def test_the_file_holding_the_keys_is_not_world_readable(tmp_path):
-    from poolhouse.fleet.discovery import clusters_path
+    from poolhouse.fleet.discovery import pools_path
 
-    p = tmp_path / "cluster.key"
-    create_cluster_key(p, group="poolhouse")
-    assert oct(clusters_path(p).stat().st_mode)[-3:] == "600"
+    p = tmp_path / "pool.key"
+    create_pool_key(p, group="poolhouse")
+    assert oct(pools_path(p).stat().st_mode)[-3:] == "600"
 
 
 def test_missing_key_reads_as_none(tmp_path):
-    assert load_cluster_key(tmp_path / "absent.key") is None
+    assert load_pool_key(tmp_path / "absent.key") is None
 
 
 def test_token_is_a_pure_function_of_the_key(tmp_path):
-    a = create_cluster_key(tmp_path / "a.key", group="poolhouse").encode()
-    b = create_cluster_key(tmp_path / "b.key", group="poolhouse").encode()
+    a = create_pool_key(tmp_path / "a.key", group="poolhouse").encode()
+    b = create_pool_key(tmp_path / "b.key", group="poolhouse").encode()
     assert derive_token(a) == derive_token(a), "both ends must compute the same token"
     assert derive_token(a) != derive_token(b)
     assert a.decode() not in derive_token(a), "the token must not leak the key"
@@ -151,27 +151,27 @@ def test_advertiser_is_found_and_carries_its_device_report(key, port):
         found = discover(key, timeout_s=2.0, port=port)
     names = [b.name for b in found]
     assert "rtx" in names, f"advertiser not discovered; saw {names}"
-    peer = next(b for b in found if b.name == "rtx")
-    assert peer.device["gpu"] == "RTX 3090 Ti"
-    assert peer.port == 8770
-    assert peer.host, "host must be filled in from the packet source address"
-    assert peer.base_url == f"http://{peer.host}:8770"
+    member = next(b for b in found if b.name == "rtx")
+    assert member.device["gpu"] == "RTX 3090 Ti"
+    assert member.port == 8770
+    assert member.host, "host must be filled in from the packet source address"
+    assert member.base_url == f"http://{member.host}:8770"
 
 
 def test_nothing_is_found_when_nothing_is_advertising(key, port):
     assert discover(key, timeout_s=0.6, port=port) == []
 
 
-def test_a_peer_with_a_different_key_is_invisible(key, port, tmp_path):
-    other = create_cluster_key(tmp_path / "other.key", group="poolhouse").encode()
+def test_a_member_with_a_different_key_is_invisible(key, port, tmp_path):
+    other = create_pool_key(tmp_path / "other.key", group="poolhouse").encode()
     with Advertiser(Beacon(name="stranger", port=8770), other, port=port,
                     interval_s=0.2):
         assert discover(key, timeout_s=1.0, port=port) == [], \
             "a daemon keyed differently must not be discoverable"
 
 
-def test_two_peers_are_told_apart(key, port):
-    """Two daemons are two peers even when they share a host and a port."""
+def test_two_members_are_told_apart(key, port):
+    """Two daemons are two members even when they share a host and a port."""
     a = Beacon(name="rtx", port=8770, device={"cuda": True})
     b = Beacon(name="mac", port=8771, device={"backends": ["mlx"]})
     with Advertiser(a, key, port=port, interval_s=0.2), \
@@ -183,7 +183,7 @@ def test_two_peers_are_told_apart(key, port):
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="Linux's lo carries no multicast")
-def test_two_peers_on_one_port_are_both_found_when_the_lan_refuses_multicast(
+def test_two_members_on_one_port_are_both_found_when_the_lan_refuses_multicast(
         key, port, monkeypatch):
     """A LAN that refuses every multicast and broadcast (EHOSTUNREACH on a macOS runner)
     leaves loopback, where a unicast reaches one of two sockets sharing a port."""
@@ -199,10 +199,10 @@ def test_two_peers_on_one_port_are_both_found_when_the_lan_refuses_multicast(
     assert sorted(p.name for p in found) == ["mac", "rtx"]
 
 
-def test_one_daemon_on_several_interfaces_is_one_peer():
+def test_one_daemon_on_several_interfaces_is_one_member():
     """A box with a VPN up answers the same query from each address it holds.
 
-    Counting those as separate peers is how `find_one` starts reporting two
+    Counting those as separate members is how `find_one` starts reporting two
     GPUs on a machine that has one, and how a run gets submitted to a route
     rather than to a card.
     """
@@ -251,7 +251,7 @@ def test_a_slow_device_probe_does_not_delay_the_answer(key, port):
 
 
 def test_a_beacon_without_an_instance_still_has_an_identity():
-    """Tolerate a peer that predates instance ids rather than merging them all."""
+    """Tolerate a member that predates instance ids rather than merging them all."""
     a = Beacon(name="rtx", port=8770, hostname="boxa")
     b = Beacon(name="rtx", port=8770, hostname="boxb")
     assert a.identity != b.identity
@@ -279,7 +279,7 @@ def test_a_beacon_is_neither_readable_nor_guessable_from(key):
 
 
 def test_a_beacon_signed_with_another_key_is_refused(key, tmp_path):
-    other = create_cluster_key(tmp_path / "other.key", group="poolhouse").encode()
+    other = create_pool_key(tmp_path / "other.key", group="poolhouse").encode()
     raw = _pack(other, {"v": PROTOCOL, "kind": "beacon", "t": time.time(), "nonce": "",
                         "beacon": {"name": "evil", "port": 8770}})
     assert _verify(key, raw, kind="beacon") is None
@@ -324,8 +324,8 @@ def test_garbage_on_the_port_does_not_kill_the_listener(key, port):
 def _booted(tmp_path, *extra: str):
     """Boot the actual daemon the way a machine would, rooted in ``tmp_path/traind``
     with ``extra`` flags, and yield ``(keyfile, disco_port, http_port, log)``."""
-    keyfile = tmp_path / "cluster.key"
-    create_cluster_key(keyfile, group="poolhouse")
+    keyfile = tmp_path / "pool.key"
+    create_pool_key(keyfile, group="poolhouse")
     disco_port = _free_udp_port()
     http_port = _free_tcp_port()
     env = {**os.environ,
@@ -342,7 +342,7 @@ def _booted(tmp_path, *extra: str):
         [sys.executable, "-m", "poolhouse.fleet.daemon",
          "--root", str(tmp_path / "traind"), "--host", "127.0.0.1",
          "--port", str(http_port), "--name", "testbox",
-         "--cluster-key", str(keyfile), *extra],
+         "--pool-key", str(keyfile), *extra],
         env=env, stdout=fh, stderr=subprocess.STDOUT)
     # /health, not a bare connect: the daemon's socket is bound and its backlog accepts
     # from the moment the server object is built, seconds before it serves or advertises.
@@ -352,7 +352,7 @@ def _booted(tmp_path, *extra: str):
         try:
             if driver.health().get("ok"):
                 break
-        except PeerError:
+        except MemberError:
             if proc.poll() is not None:
                 pytest.fail(f"traind died:\n{log.read_text(errors='replace')}")
             time.sleep(0.1)
@@ -381,13 +381,13 @@ def traind(tmp_path):
         yield booted
 
 
-def _driver(keyfile: Path, http_port: int) -> Peer:
-    """A `Peer` at the booted daemon by address, with the token discovery would derive --
+def _driver(keyfile: Path, http_port: int) -> Member:
+    """A `Member` at the booted daemon by address, with the token discovery would derive --
     for tests about what the daemon does, not about finding it."""
-    return Peer(f"http://127.0.0.1:{http_port}", derive_token(load_cluster_key(keyfile)))
+    return Member(f"http://127.0.0.1:{http_port}", derive_token(load_pool_key(keyfile)))
 
 
-def _probe(rtx: Peer) -> dict:
+def _probe(rtx: Member) -> dict:
     """The one command a daemon is asked to run in these tests: its own short calibration."""
     return rtx.submit(["python3", "-m", "poolhouse.fleet.calibration", "--budget", "0.05"],
                       name="probe")
@@ -399,7 +399,7 @@ def test_a_restarted_daemon_keeps_its_machine_id(tmp_path):
     seen = []
     for _ in range(2):
         with _booted(tmp_path) as (keyfile, disco_port, http_port, _log):
-            found = discover(load_cluster_key(keyfile), timeout_s=3.0, port=disco_port)
+            found = discover(load_pool_key(keyfile), timeout_s=3.0, port=disco_port)
             health = _driver(keyfile, http_port).health()
             seen.append((health["machine"], [b.machine for b in found],
                          [b.instance for b in found]))
@@ -411,7 +411,7 @@ def test_a_booted_daemon_is_found_and_driven_with_no_address_configured(traind, 
     """The whole point: nobody typed a host, a port, or a token anywhere."""
     keyfile, disco_port, http_port, log = traind
     try:
-        rtx = Peer.find_one(cluster_key_path=keyfile, timeout_s=3.0,
+        rtx = Member.find_one(pool_key_path=keyfile, timeout_s=3.0,
                                      port=disco_port)
     except DiscoveryError as exc:
         pytest.fail(f"{exc}\n--- traind said ---\n{log.read_text(errors='replace')}")
@@ -478,10 +478,10 @@ def test_a_daemon_pointed_at_a_held_bench_home_keeps_training_queued_and_says_so
     assert "taking queued work again" in log.read_text(errors="replace")
 
 
-def test_find_one_says_why_when_no_peer_matches(traind):
+def test_find_one_says_why_when_no_member_matches(traind):
     keyfile, disco_port, _, _log = traind
-    with pytest.raises(DiscoveryError, match="no peer matches"):
-        Peer.find_one(name="not-this-box", cluster_key_path=keyfile,
+    with pytest.raises(DiscoveryError, match="no member matches"):
+        Member.find_one(name="not-this-box", pool_key_path=keyfile,
                                timeout_s=3.0, port=disco_port)
 
 
@@ -496,7 +496,7 @@ def test_a_daemon_that_can_hear_is_found_by_asking_for_speech(traind):
     deadline = time.time() + 120
     while True:
         try:
-            peer = Peer.find_one(require="speech", cluster_key_path=keyfile,
+            member = Member.find_one(require="speech", pool_key_path=keyfile,
                                  timeout_s=3.0, port=disco_port)
             break
         except DiscoveryError as exc:
@@ -504,35 +504,35 @@ def test_a_daemon_that_can_hear_is_found_by_asking_for_speech(traind):
                 pytest.fail(f"{exc}\n--- traind said ---\n"
                             f"{log.read_text(errors='replace')}")
             time.sleep(0.5)
-    assert peer.beacon.port == http_port
-    assert "vad" in peer.beacon.device["speech"]
-    assert "vad" in peer.health()["speech"]
+    assert member.beacon.port == http_port
+    assert "vad" in member.beacon.device["speech"]
+    assert "vad" in member.health()["speech"]
 
 
 def test_discovery_without_a_key_is_an_error_not_an_empty_list(tmp_path):
     """Silence and 'you have no key' are different facts and must read that way."""
-    with pytest.raises(DiscoveryError, match="no cluster key"):
-        Peer.find_one(cluster_key_path=tmp_path / "absent.key")
+    with pytest.raises(DiscoveryError, match="no pool key"):
+        Member.find_one(pool_key_path=tmp_path / "absent.key")
 
 
-def test_peers_ls_reports_the_running_daemon(traind):
+def test_members_ls_reports_the_running_daemon(traind):
     keyfile, disco_port, http_port, _log = traind
     env = {**os.environ, "POOLHOUSE_DISCOVERY_PORT": str(disco_port),
            "PYTHONPATH": str(REPO / "src")}
-    r = subprocess.run([sys.executable, "-m", "poolhouse.fleet.peers",
-                        "--cluster-key", str(keyfile), "ls", "--json",
+    r = subprocess.run([sys.executable, "-m", "poolhouse.fleet.members",
+                        "--pool-key", str(keyfile), "ls", "--json",
                         "--timeout", "3"],
                        env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    peers = json.loads(r.stdout)
-    assert any(p["name"] == "testbox" and p["port"] == http_port for p in peers)
+    members = json.loads(r.stdout)
+    assert any(p["name"] == "testbox" and p["port"] == http_port for p in members)
 
 
 # -- a beacon that tells the truth about right now ------------------------
 def test_a_busy_daemon_stops_advertising_itself_as_idle(key, port):
     """The specific failure: Beacon.busy/queued are set once when the daemon boots and
     never touched again, so a box that has been training for six hours still announces
-    itself as idle. Anything choosing a peer on that basis is reading a constant."""
+    itself as idle. Anything choosing a member on that basis is reading a constant."""
     beacon = Beacon(name="rtx", port=8770, slots=1, free=1)
     state = {"free": 1}
 
@@ -553,7 +553,7 @@ def test_a_busy_daemon_stops_advertising_itself_as_idle(key, port):
 
 def test_a_machine_holding_hundreds_of_models_is_still_found(key, port):
     """The models go on the beacon, and a beacon is one datagram. Past 65,507 bytes
-    `sendto` refuses it and the daemon is in no `poolhouse-peers ls` at all."""
+    `sendto` refuses it and the daemon is in no `poolhouse-members ls` at all."""
     held = [{"name": f"a-model-with-a-long-enough-name-{n:04d}.gguf", "size": n}
             for n in range(900)]
     beacon = Beacon(name="hoarder", port=8770,
@@ -561,11 +561,11 @@ def test_a_machine_holding_hundreds_of_models_is_still_found(key, port):
     with Advertiser(beacon, key, port=port, interval_s=0.2):
         found = discover(key, timeout_s=2.0, port=port)
 
-    peer = next((b for b in found if b.name == "hoarder"), None)
-    assert peer is not None, f"a machine with {len(held)} models vanished; saw {found}"
-    sent = peer.device["models"]
+    member = next((b for b in found if b.name == "hoarder"), None)
+    assert member is not None, f"a machine with {len(held)} models vanished; saw {found}"
+    sent = member.device["models"]
     assert 0 < len(sent) < len(held), f"{len(sent)} of {len(held)} models sent"
-    assert peer.device["models_total"] == len(held), \
+    assert member.device["models_total"] == len(held), \
         "the beacon does not say how many models it left off"
 
 
@@ -638,34 +638,34 @@ class TestPassphrase:
         assert check_length(f"  {'a' * 5}\n") == "aaaaa"
 
     def test_joining_writes_a_key_only_this_user_can_read(self, tmp_path):
-        from poolhouse.fleet.discovery import clusters_path
-        from tests.cluster_support import join_cluster
+        from poolhouse.fleet.discovery import pools_path
+        from tests.pool_support import join_pool_by_passphrase
 
-        keyfile = tmp_path / "cluster.key"
-        key = join_cluster(self.WORDS, path=keyfile)
+        keyfile = tmp_path / "pool.key"
+        key = join_pool_by_passphrase(self.WORDS, path=keyfile)
 
-        assert clusters_path(keyfile).stat().st_mode & 0o077 == 0
-        assert load_cluster_key(keyfile) == key
+        assert pools_path(keyfile).stat().st_mode & 0o077 == 0
+        assert load_pool_key(keyfile) == key
 
-    def test_a_cluster_key_is_random_and_256_bits(self, tmp_path):
+    def test_a_pool_key_is_random_and_256_bits(self, tmp_path):
         import base64
 
-        from poolhouse.fleet.discovery import mint_cluster
+        from poolhouse.fleet.discovery import mint_pool
 
-        one = mint_cluster("home", tmp_path / "a.key").key
-        two = mint_cluster("home", tmp_path / "b.key").key
+        one = mint_pool("home", tmp_path / "a.key").key
+        two = mint_pool("home", tmp_path / "b.key").key
         assert one != two
         assert len(base64.urlsafe_b64decode(one + b"=")) == 32
 
 
 def test_two_passphrase_groups_share_a_network_without_seeing_each_other(port, tmp_path):
-    """Several clusters on one LAN, separated by nothing but the words people typed.
+    """Several pools on one LAN, separated by nothing but the words people typed.
     The isolation is the same mechanism that keeps a stranger out: a beacon signed with
     another key does not verify, so it is never answered."""
-    from tests.cluster_support import join_cluster
+    from tests.pool_support import join_pool_by_passphrase
 
-    ours = join_cluster("correct horse battery staple", path=tmp_path / "ours.key")
-    theirs = join_cluster("a completely different phrase", path=tmp_path / "theirs.key")
+    ours = join_pool_by_passphrase("correct horse battery staple", path=tmp_path / "ours.key")
+    theirs = join_pool_by_passphrase("a completely different phrase", path=tmp_path / "theirs.key")
 
     with Advertiser(Beacon(name="ours", port=8770), ours, port=port, interval_s=0.2), \
          Advertiser(Beacon(name="theirs", port=8771), theirs, port=port, interval_s=0.2):
@@ -677,31 +677,31 @@ def test_two_passphrase_groups_share_a_network_without_seeing_each_other(port, t
 
 
 class TestTheGroupIsRemembered:
-    def test_joining_records_which_cluster_it_joined(self, tmp_path):
-        from poolhouse.fleet.discovery import cluster_group
-        from tests.cluster_support import join_cluster
+    def test_joining_records_which_pool_it_joined(self, tmp_path):
+        from poolhouse.fleet.discovery import pool_group
+        from tests.pool_support import join_pool_by_passphrase
 
-        join_cluster("correct horse battery", group="garage",
-                     path=tmp_path / "cluster.key")
-        assert cluster_group(tmp_path / "cluster.key") == "garage"
+        join_pool_by_passphrase("correct horse battery", group="garage",
+                     path=tmp_path / "pool.key")
+        assert pool_group(tmp_path / "pool.key") == "garage"
 
     def test_the_keys_are_not_left_where_anyone_can_read_them(self, tmp_path):
-        from poolhouse.fleet.discovery import cluster_group, clusters_path
-        from tests.cluster_support import join_cluster
+        from poolhouse.fleet.discovery import pool_group, pools_path
+        from tests.pool_support import join_pool_by_passphrase
 
-        keyfile = tmp_path / "cluster.key"
-        join_cluster("correct horse battery", group="garage", path=keyfile)
+        keyfile = tmp_path / "pool.key"
+        join_pool_by_passphrase("correct horse battery", group="garage", path=keyfile)
 
-        assert clusters_path(keyfile).stat().st_mode & 0o077 == 0
-        assert cluster_group(keyfile) == "garage"
+        assert pools_path(keyfile).stat().st_mode & 0o077 == 0
+        assert pool_group(keyfile) == "garage"
 
     def test_a_machine_never_joined_is_in_no_group(self, tmp_path):
-        from poolhouse.fleet.discovery import cluster_group
+        from poolhouse.fleet.discovery import pool_group
 
-        assert cluster_group(tmp_path / "nothing.key") is None
+        assert pool_group(tmp_path / "nothing.key") is None
 
 
-class TestBelongingToSeveralClusters:
+class TestBelongingToSeveralPools:
     """A machine is not owned by one group of machines."""
 
     WORDS = "correct horse battery staple"
@@ -709,9 +709,9 @@ class TestBelongingToSeveralClusters:
 
     def test_it_joins_more_than_one_and_keeps_both(self, tmp_path):
         from poolhouse.fleet.discovery import memberships
-        from tests.cluster_support import join
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(self.WORDS, group="home", path=anchor)
         join(self.OTHER, group="work", path=anchor)
 
@@ -720,53 +720,53 @@ class TestBelongingToSeveralClusters:
 
     def test_leaving_one_leaves_the_others_alone(self, tmp_path):
         from poolhouse.fleet.discovery import leave, memberships
-        from tests.cluster_support import join
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(self.WORDS, group="home", path=anchor)
         join(self.OTHER, group="work", path=anchor)
         leave("home", anchor)
 
         assert [m.group for m in memberships(anchor)] == ["work"]
 
-    def test_leaving_the_last_one_leaves_no_cluster(self, tmp_path):
-        from poolhouse.fleet.discovery import in_cluster, leave
-        from tests.cluster_support import join
+    def test_leaving_the_last_one_leaves_no_pool(self, tmp_path):
+        from poolhouse.fleet.discovery import in_pool, leave
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(self.WORDS, group="home", path=anchor)
         leave("home", anchor)
 
-        assert in_cluster(anchor) is False
+        assert in_pool(anchor) is False
 
     def test_the_machine_answers_as_the_first_one(self, tmp_path):
-        from poolhouse.fleet.discovery import cluster_group, leave, load_cluster_key, memberships
-        from tests.cluster_support import join
+        from poolhouse.fleet.discovery import leave, load_pool_key, memberships, pool_group
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(self.WORDS, group="home", path=anchor)
         join(self.OTHER, group="work", path=anchor)
 
-        assert cluster_group(anchor) == "home"
-        assert load_cluster_key(anchor) == memberships(anchor)[0].key
+        assert pool_group(anchor) == "home"
+        assert load_pool_key(anchor) == memberships(anchor)[0].key
 
         leave("home", anchor)
-        assert cluster_group(anchor) == "work", "it did not promote the one left"
+        assert pool_group(anchor) == "work", "it did not promote the one left"
 
-    def test_joining_the_same_cluster_twice_does_not_double_it(self, tmp_path):
+    def test_joining_the_same_pool_twice_does_not_double_it(self, tmp_path):
         from poolhouse.fleet.discovery import memberships
-        from tests.cluster_support import join
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(self.WORDS, group="home", path=anchor)
         join(self.WORDS, group="home", path=anchor)
         assert [m.group for m in memberships(anchor)] == ["home"]
 
-    def test_a_new_passphrase_for_a_cluster_replaces_the_old_key(self, tmp_path):
+    def test_a_new_passphrase_for_a_pool_replaces_the_old_key(self, tmp_path):
         from poolhouse.fleet.discovery import memberships
-        from tests.cluster_support import join
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(self.WORDS, group="home", path=anchor)
         first = memberships(anchor)[0].key
         join(self.OTHER, group="home", path=anchor)
@@ -774,37 +774,37 @@ class TestBelongingToSeveralClusters:
         assert [m.group for m in memberships(anchor)] == ["home"]
         assert memberships(anchor)[0].key != first, "the passphrase did not change"
 
-    def test_a_key_without_current_membership_does_not_join_a_cluster(
+    def test_a_key_without_current_membership_does_not_join_a_pool(
             self, tmp_path):
-        from poolhouse.fleet.discovery import cluster_group, in_cluster, load_cluster_key
-        from tests.cluster_support import key_for
+        from poolhouse.fleet.discovery import in_pool, load_pool_key, pool_group
+        from tests.pool_support import key_for
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         key = key_for(self.WORDS, "poolhouse")
         anchor.write_text(key.decode() + "\n")
 
-        assert not in_cluster(anchor)
-        assert load_cluster_key(anchor) is None
-        assert cluster_group(anchor) is None
+        assert not in_pool(anchor)
+        assert load_pool_key(anchor) is None
+        assert pool_group(anchor) is None
 
     def test_a_legacy_group_file_does_not_restore_membership(self, tmp_path):
-        from poolhouse.fleet.discovery import cluster_group
-        from tests.cluster_support import key_for
+        from poolhouse.fleet.discovery import pool_group
+        from tests.pool_support import key_for
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         anchor.write_text(key_for(self.WORDS, "garage").decode())
-        (tmp_path / "cluster.group").write_text("garage\n")
+        (tmp_path / "pool.group").write_text("garage\n")
 
-        assert cluster_group(anchor) is None
+        assert pool_group(anchor) is None
 
     def test_current_memberships_never_adopt_an_old_key(self, tmp_path):
         from poolhouse.fleet.discovery import leave, memberships
-        from tests.cluster_support import join, key_for
+        from tests.pool_support import join, key_for
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         anchor.write_text(key_for(self.WORDS, "poolhouse").decode())
         assert memberships(anchor) == []
-        assert not (tmp_path / "cluster.json").exists()
+        assert not (tmp_path / "pool.json").exists()
 
         join(self.WORDS, group="lab", path=anchor)
         assert {m.group for m in memberships(anchor)} == {"lab"}
@@ -813,26 +813,26 @@ class TestBelongingToSeveralClusters:
         leave("lab", path=anchor)
         assert memberships(anchor) == [], "leaving must not be undone by the old file"
 
-    def test_two_machines_in_the_same_cluster_derive_the_same_key(self, tmp_path):
-        from tests.cluster_support import join
+    def test_two_machines_in_the_same_pool_derive_the_same_key(self, tmp_path):
+        from tests.pool_support import join
 
         one = join(self.WORDS, group="home", path=tmp_path / "a.key")
         two = join(self.WORDS, group="home", path=tmp_path / "b.key")
         assert one[0].key == two[0].key
 
-    def test_the_same_words_in_different_clusters_do_not_meet(self, tmp_path):
-        from tests.cluster_support import join
+    def test_the_same_words_in_different_pools_do_not_meet(self, tmp_path):
+        from tests.pool_support import join
 
         home = join(self.WORDS, group="home", path=tmp_path / "a.key")
         work = join(self.WORDS, group="work", path=tmp_path / "b.key")
         assert home[0].key != work[0].key
 
-    def test_a_corrupt_list_reads_as_no_clusters(self, tmp_path):
-        from poolhouse.fleet.discovery import clusters_path, memberships
+    def test_a_corrupt_list_reads_as_no_pools(self, tmp_path):
+        from poolhouse.fleet.discovery import memberships, pools_path
 
-        anchor = tmp_path / "cluster.key"
-        clusters_path(anchor).parent.mkdir(parents=True, exist_ok=True)
-        clusters_path(anchor).write_text("{not json")
+        anchor = tmp_path / "pool.key"
+        pools_path(anchor).parent.mkdir(parents=True, exist_ok=True)
+        pools_path(anchor).write_text("{not json")
         assert memberships(anchor) == []
 
 

@@ -43,7 +43,7 @@ result). When it fills 80% of the context it is compacted as in `docs/compaction
 ## What the agent can and cannot do
 
 Reads run without asking: `serve_status`, `models_find`, `models_files`, `models_on_disk`,
-`ollama_models`, `bench_status`, `bench_history`, `bench_show`, `fleet_peers`, `setup_look`,
+`ollama_models`, `bench_status`, `bench_history`, `bench_show`, `fleet_members`, `setup_look`,
 `doctor`, `jobs_status`, `jobs_wait`, and `review_view` (status, held items, events, hosts,
 downloads, scanners of the security review, as JSON).
 

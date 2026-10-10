@@ -58,8 +58,8 @@ def add(sub: argparse._SubParsersAction) -> None:
     suggest.add_argument("--max-verdict", choices=("green", "yellow", "red"), default="green")
     pull = make("pull", "download hf:owner/repo[/file.gguf][:QUANT]", arg="ref")
     pull.add_argument("--dest", help="plain folder to download into (default: the Hugging Face hub cache)")
-    pull.add_argument("--no-peers", action="store_true",
-                      help="do not ask paired devices first; download from the Hub (also POOLHOUSE_NO_PEERS=1)")
+    pull.add_argument("--no-members", action="store_true",
+                      help="do not ask paired devices first; download from the Hub (also POOLHOUSE_NO_MEMBERS=1)")
     snapshot = make("snapshot", "download a public Hub model or dataset into the persistent Hugging Face cache",
                     arg="repo")
     snapshot.add_argument("--repo-type", choices=("model", "dataset"), default="model")
@@ -89,7 +89,7 @@ def _list(args: argparse.Namespace) -> int:
     came = {m.id: origins.latest(m.path.name, m.size_bytes) for m in found}
     rows = [[m.name[:40], m.kind, human_bytes(m.size_bytes), m.quantization, m.format, m.source,
              _from(came[m.id]), "" if m.is_complete else "incomplete", m.id[:60]] for m in found]
-    return _emit(args, [m.as_dict() | {"from_peer": came[m.id]} for m in found], lambda: (
+    return _emit(args, [m.as_dict() | {"from_member": came[m.id]} for m in found], lambda: (
         _table(rows, ["NAME", "KIND", "SIZE", "QUANT", "FORMAT", "SOURCE", "FROM", "", "ID"]),
         say(f"\n{len(found)} models, {human_bytes(sum(m.size_bytes for m in found))}")))
 
@@ -100,7 +100,7 @@ def _from(line: dict | None) -> str:
     if not line:
         return ""
     relied = line.get("relies_on") or {}
-    return f"peer {line.get('peer', '?')}" + (
+    return f"member {line.get('member', '?')}" + (
         f", licence accepted by {relied.get('accepted_by') or '?'} on {relied.get('device', '?')}"
         if relied else "")
 
@@ -196,7 +196,7 @@ def _pull(args: argparse.Namespace) -> int:
             warn(f"\r{p.phase:11} {p.fraction:6.1%}  {human_bytes(p.bytes_per_second)}/s  "
                  f"{p.file}", end="", flush=True)
 
-    got = hub.pull(args.ref, args.dest, show, peers=False if args.no_peers else None)
+    got = hub.pull(args.ref, args.dest, show, members=False if args.no_members else None)
     warn("")
     return _emit(args, {"path": str(got)}, lambda: say(str(got)))
 

@@ -161,7 +161,7 @@ def test_the_store_is_bounded(ledger, clock):
     # write the whole store a thousand times
     for n in range(MAX_SOURCES + 3):
         ledger.flush_s = 10**9
-        ledger.clean("peer", f"p{n}")
+        ledger.clean("member", f"p{n}")
     ledger.flush()
     assert len(ledger.sources()) <= MAX_SOURCES
 
@@ -297,7 +297,7 @@ def test_an_agents_process_is_refused_and_nothing_changes(person, monkeypatch, c
 def test_a_person_lists_shows_exports_forgets_and_deletes_all(person, capsys):
     held = Ledger()
     held.observe("host", "a.example", "scan_hit")
-    held.observe("peer", "node-1", "denial")
+    held.observe("member", "node-1", "denial")
     held.close()
     assert cli.main(["list"]) == 0 and "host:a.example" in capsys.readouterr().out
     assert cli.main(["show", "host:a.example"]) == 0 and '"state": "bad"' in capsys.readouterr().out

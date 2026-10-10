@@ -28,7 +28,7 @@ from poolhouse.log import say, warn
 BUNDLE_ID = "app.poolhouse.node"
 NAME = "Poolhouse"
 EXECUTABLE = "poolhouse-node"
-USAGE = "Poolhouse finds and pairs with your other devices on this network."
+USAGE = "Poolhouse finds and joins your other devices on this network."
 BONJOUR = ["_poolhouse._tcp"]
 SOURCE_RECORD = "source.json"
 MINIMUM_SYSTEM = "13.0"

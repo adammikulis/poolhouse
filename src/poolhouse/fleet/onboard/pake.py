@@ -1,4 +1,4 @@
-"""Pairing by a short code: SPAKE2 from the `spake2` package, with confirmations on top.
+"""Joining by a short code: SPAKE2 from the `spake2` package, with confirmations on top.
 
 A six digit code is twenty bits, so a MAC over it on the wire could be tried against every code
 offline. In SPAKE2 nothing sent lets a listener test a guess, and a side's confirmation is sent
@@ -35,7 +35,7 @@ def require() -> Any:
     try:
         import spake2
     except ImportError as exc:
-        raise PakeUnavailable(f"pairing needs the spake2 package: {INSTALL}") from exc
+        raise PakeUnavailable(f"joining needs the spake2 package: {INSTALL}") from exc
     return spake2
 
 

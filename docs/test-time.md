@@ -9,7 +9,7 @@ so for most of my run two 16-worker pools shared 16 cores.
 Command: `PYTHONPATH=<scratch> PHASE_OUT=<scratch>/ph/p PYTEST_ADDOPTS="-p phase_timing" scripts/test full --no-reuse`
 (plugin `phase_timing.py` writes setup/call/teardown per test and per-fixture setup seconds; it only observes).
 - Start 09:42, load avg (1/5/15) 5.5/5.6/9.7 at launch; 30.1/19.2/14.8 at +3 min; 30.7/26.9/19.7 at +8 min; 22.4/26.6/22.0 at +13 min; 12.0/17.6/19.4 at end (09:59). Mean 1-minute load over the run about 25 on 16 CPUs. Memory pressure: 96-97 percent free throughout (not a factor). Own workers: 16, plus 4 refill workers started at +154 s.
-- Result: 13588 tests, 144 failed, 114 errors, 165 skipped, wall 876.8 s. The failures cluster in files that depend on timing or on the working tree (test_project_board_ui 31 errors, test_workspace_remote 28, test_device_agent 16, test_remote_workers 15, test_worker_completion 13, test_model_tiers 12, test_workspace_quickstart 10, test_workspace_live 7 "wakes within milliseconds"). I did not triage which are load and which are real; the previous full job 20261009-091503-dd42 (also at load about 10) had 126 failed/113 errors, so most are not load.
+- Result: 13588 tests, 144 failed, 114 errors, 165 skipped, wall 876.8 s. The failures pool in files that depend on timing or on the working tree (test_board_ui 31 errors, test_workspace_remote 28, test_device_agent 16, test_remote_workers 15, test_worker_completion 13, test_model_tiers 12, test_workspace_quickstart 10, test_workspace_live 7 "wakes within milliseconds"). I did not triage which are load and which are real; the previous full job 20261009-091503-dd42 (also at load about 10) had 126 failed/113 errors, so most are not load.
 - Recorded idle baseline `tests/full-tier-time.json`: wall 183 s, cpu 1921 s, 9573 tests, 16 workers. My run is 4.8x the wall of the baseline; load is the dominant reason, but the suite also grew from 9573 to 13588 collected tests.
 
 ## 1. Where the wall goes (full tier, load about 25)
@@ -37,7 +37,7 @@ The `-X importtime` of what `tests/conftest.py` imports (poolhouse.testing.fakes
 | setup | function | 37 | 24.5 | 661 ms |
 | served | function | 172 | 20.8 | 121 ms |
 | installed_metadata | module | 1 | 19.4 | 19372 ms |
-| paired | function | 13 | 19.3 | 1485 ms |
+| joined | function | 13 | 19.3 | 1485 ms |
 | checkout | function | 33 | 18.2 | 551 ms |
 | replicas | function | 6 | 13.4 | 2227 ms |
 | team | function | 18 | 12.9 | 717 ms |
@@ -45,7 +45,7 @@ The `-X importtime` of what `tests/conftest.py` imports (poolhouse.testing.fakes
 | seeded_store | module | 1 | 11.5 | 11468 ms |
 | long_thread | module | 1 | 10.4 | 10370 ms |
 The autouse fixtures are cheap: `_no_internet` 0.3 ms and `_no_machine_binary` 0.2 ms per test (13437 tests, 4.1 s and 3.1 s total); `_real_home` session fixture 280 ms x 15 workers. Per-file fixed overhead from conftest is therefore negligible; the cost is the heavyweight function-scoped `board` (a started board daemon: 138 x 1.64 s), `kit`, `repo`/`checkout` (real git repos), `world`, `project`, `store`.
-Totals: board+kit+repo+world+project+store+inactive+setup+paired+checkout = about 640 s of the 2086 s setup, at load about 25.
+Totals: board+kit+repo+world+project+store+inactive+setup+joined+checkout = about 640 s of the 2086 s setup, at load about 25.
 
 ## 2. Slowest files (full run, this load) against their CPU seconds in the history store
 Columns: n tests, setup/call/teardown seconds in my run, my total, history cpu, history wall, my/history-wall. my/history-wall about 2 is the load factor (load about 25 on 16 CPUs); values far above 2 (live 7.7, surface 4.3, land 3.8, budgets 3.7, task_integration 3.5, quickstart 3.2) are timing-sensitive files that degrade worse than the machine does.
@@ -73,7 +73,7 @@ Columns: n tests, setup/call/teardown seconds in my run, my total, history cpu, 
 | test_board_coordination | 14 | 3 | 91 | 0 | 94 | 46 | 54 | 1.8 |
 | test_keystore | 42 | 2 | 90 | 0 | 92 | 29 | 47 | 1.9 |
 | test_taskboard | 7 | 43 | 46 | 0 | 89 | 29 | 51 | 1.7 |
-| test_peer_first | 47 | 1 | 49 | 37 | 87 | 12 | 47 | 1.9 |
+| test_device_first | 47 | 1 | 49 | 37 | 87 | 12 | 47 | 1.9 |
 | test_serve_no_bypass | 12 | 0 | 86 | 0 | 87 | 42 | 43 | 2.0 |
 | test_workspace_nudge | 11 | 4 | 81 | 0 | 85 | 22 | 31 | 2.7 |
 | test_land | 17 | 6 | 79 | 0 | 85 | 18 | 23 | 3.8 |
@@ -86,10 +86,10 @@ Columns: n tests, setup/call/teardown seconds in my run, my total, history cpu, 
 | test_sandbox_seatbelt | 23 | 0 | 76 | 0 | 77 | 8 | 39 | 2.0 |
 | test_ingest | 87 | 3 | 70 | 1 | 74 | 18 | 42 | 1.8 |
 | test_budgets | 64 | 3 | 66 | 0 | 69 | 18 | 19 | 3.7 |
-| test_peer_pairing | 26 | 43 | 14 | 11 | 68 | 24 | 39 | 1.7 |
+| test_join_by_code | 26 | 43 | 14 | 11 | 68 | 24 | 39 | 1.7 |
 | test_onboard_cli | 12 | 7 | 57 | 3 | 67 | 17 | 36 | 1.9 |
 | test_graph_store | 53 | 1 | 65 | 0 | 67 | 8 | 32 | 2.1 |
-Reading: of a typical slow file's time, about half is load (ratio about 2). The history cpu column is the load-independent floor: for the 40 files above the total is about 2000 cpu-seconds out of 7000 measured seconds. The `workspace_*`, `board_*`, `task_*`, `peer_*` files together are 3300 s of 10170 s measured (32 percent) and are the board-daemon-on-a-port cluster: they are what the in-process node would delete.
+Reading: of a typical slow file's time, about half is load (ratio about 2). The history cpu column is the load-independent floor: for the 40 files above the total is about 2000 cpu-seconds out of 7000 measured seconds. The `workspace_*`, `board_*`, `task_*`, `member_*` files together are 3300 s of 10170 s measured (32 percent) and are the board-daemon-on-a-port pool: they are what the in-process node would delete.
 
 ### 60 slowest tests (top of the list; full list in the scratch file analysis.txt)
 1 `workspace_swarm::test_two_hundred_waits_each_racing_one_send_never_miss` 236 s call; 2-3 `workspace_live::test_a_waiting_agent_wakes_within_milliseconds_of_a_send[dm-40]` / `[board-40]` 100 s each (a latency assertion run for N waiters, 8 params in the file 20 to 100 s each); 4 `workspace_bus::test_concurrent_senders_get_one_total_order` 98 s; 5 `workspace_quickstart::test_setup_walks_through_six_steps_with_a_scripted_person` 73 s; 6 `workspace_coordinator::test_real_distribution_registration_and_two_roots_share_message` 53 s (41 s setup: builds a real wheel); 7 `budgets::test_metric_is_within_its_budget[pyright-errors]` 48 s (runs pyright); 8-9 `workspace_board::test_digests_are_bounded...` 49 s and `workspace_screen_tiers::test_normal_traffic_is_never_held_for_a_token_holder` 47 s; then seven `task_integration` tests at 30-42 s each, 15-27 s of it setup (real git repo + registered daemon); `test_land::test_infrastructure_diff_starts_one_background_full_run` 42 s; `no_data_files::test_the_tracked_tree_passes` 35 s; `keystore::test_a_burst_of_700_fresh_readers...` 33 s; `affected_scripts` 28.5 s; `net_scan::test_real_clamav...` 21 s; `graph_thread::test_recall_finds_the_fact_from_turn_one_two_hundred_turns_later` 21 s (all setup: module fixture `long_thread` 10 s); `graph_engine_contract::test_every_relation_reads_the_same_from_both_ends_after_a_write` 23 s (all setup: graph open); 12 `workspace_local_agent` tests at 20-36 s.
@@ -102,7 +102,7 @@ Top 10 tests are 852 s (8 percent), top 60 are 2250 s (22 percent). One `test_wo
 ## 3. Overtesting
 - Copy-paste near-duplication is small. Normalised-AST grouping of test bodies of 3+ statements and 300+ AST chars found 22 groups holding 49 tests (the biggest is 6 tests in `test_no_real_names.py` and 3 in `test_redact.py` that differ only in a string constant; they should be one parametrized test, saving nothing in time because they are cheap). No two test files share more than half of their test names. No test file imports a missing `poolhouse` module and no module-level skip marks or "parked" skips exist, so there are no dead files by that test. (Command: `dups.py` in scratch.)
 - The overtesting here is structural, not copy-paste: one end-to-end route per assertion. Measured evidence: `board` fixture 138 x 1.64 s = 226 s, `kit` 437 x 0.26 s, real git `repo`/`checkout`/`project` fixtures 132+33+140 x 0.4-0.55 s, `test_task_integration` 9 tests = 312 s (about 35 s each) where each starts a registered daemon and a real git repo to check one integration rule, `test_worktree_rules` 100 tests with 103 s of setup (about 1 s each, each initialising a real repo), `test_task_worktree_recovery` 30 tests with 248 s of setup (8 s each), `test_workspace_files` 61 tests with 182 s setup.
-- Parametrisation multiplying a slow setup: `workspace_live` `[dm|board]-{10,40,...}` runs the wake-latency test at several fan-outs (the 40-waiter cases are 100 s each at load, 28 s cpu for the file). `test_peer_first` 37 s teardown (47 tests). `test_graph_bench` 191 tests, 119 s.
+- Parametrisation multiplying a slow setup: `workspace_live` `[dm|board]-{10,40,...}` runs the wake-latency test at several fan-outs (the 40-waiter cases are 100 s each at load, 28 s cpu for the file). `test_member_first` 37 s teardown (47 tests). `test_graph_bench` 191 tests, 119 s.
 - Tests of generated files / repo-wide scans re-run on every tier: `test_budgets` (pyright 48 s, others 3-10 s), `no_data_files::test_the_tracked_tree_passes` 35 s, `affected_scripts` 28 s, plus the structural gates that `scripts/test gate` already runs (budgets, red-team coverage, command reference, layers). Those are 150-250 s of the full run duplicated with the gate.
 
 ## 4. Hooks (this is the part the coordinator added)
@@ -144,7 +144,7 @@ Mechanism of the phone misfire (hook.py): `PHONE = \+?\d[\d ().-]{8,}\d` accepts
 1. Pre-commit no-real-names: scan only added lines (or added hunks with 3 lines of context) through spaCy instead of the whole staged file; keep the engine warm or load only `en_core_web_sm` with the parser/lemmatizer disabled (`spacy.load(..., disable=["parser","lemmatizer","attribute_ruler"])`). Small commit: 20.7 s wall / 8.5 cpu down to about 5 s (engine load 4.7 s is the floor without a warm server). Large single-file commits scale at about 35 KB/s (271 KB took 7.7 s); added-lines-only makes that independent of file size. Now.
 2. budgets pre-commit on merges: skip it when MERGE_HEAD exists and the file is identical to one parent (same rule no-real-names already uses), and run only the checkers that read staged files (not all of `gates.run`) on a plain commit. Merge: 65.8 s to about 0 s (the gates run in `scripts/test gate` anyway); small commit 6 s to about 2 s. Now.
 3. weakened-assertions on a merge: judge only `git diff --cc` (the conflict resolution) when MERGE_HEAD exists. Removes the false refusals of correct merges, and 1.7 s. Now.
-4. In-process board node for the `board` fixture instead of a daemon on a port: 138 x 1.64 s = 226 s of setup (at load; about 100 s idle-equivalent) plus the sleeps in the 32 percent `workspace_*/board_*/task_*/peer_*` cluster (3300 s measured, about 1400 s history cpu). Refactor (in-process node / Rust node daemon).
+4. In-process board node for the `board` fixture instead of a daemon on a port: 138 x 1.64 s = 226 s of setup (at load; about 100 s idle-equivalent) plus the sleeps in the 32 percent `workspace_*/board_*/task_*/member_*` pool (3300 s measured, about 1400 s history cpu). Refactor (in-process node / Rust node daemon).
 5. Session-scoped template git repo copied (`cp -a` or `git worktree`) per test instead of `git init` + commits per test: `repo`/`checkout`/`project`/`world` fixtures are 132+33+140+155 calls, about 180 s of setup; `test_task_worktree_recovery` 248 s and `test_worktree_rules` 103 s and `test_task_integration` 175 s of setup are mostly git. A template copy costs about 20 ms. Estimated 250-350 s of measured seconds (about 100-150 s of cpu). Now.
 6. Replace the wake-latency scale tests with event-based assertions and one small fan-out: `workspace_swarm` 236 s single test, `workspace_live` 8 params 200 s of 344, `workspace_bus::test_concurrent_senders...` 98 s. These dominate the tail; the run cannot finish before the 236 s test does. Keep one 40-waiter case in the slow marker. Saves about 400 s of measured test time and about 200 s of wall tail. Partly refactor (in-process node makes them microseconds), but the parametrisation cut is now.
 7. Move whole-tree scans out of `full`: `budgets::pyright-errors` 48 s, `no_data_files::test_the_tracked_tree_passes` 35 s, `affected_scripts` 28 s and the other `test_budgets` metric cases (about 20 s) are re-runs of `scripts/test gate`. Mark them `gate` and run once per landing. About 130 s measured in the full tier. Now.

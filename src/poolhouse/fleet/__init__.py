@@ -31,17 +31,17 @@ _WHERE = {
     "JobRunner": "jobs",
     "Advertiser": "discovery",
     "Beacon": "discovery",
-    "DEFAULT_CLUSTER": "discovery",
+    "DEFAULT_POOL": "discovery",
     "DiscoveryError": "discovery",
     "MIN_JOIN_LENGTH": "discovery",
-    "cluster_group": "discovery",
-    "create_cluster_key": "discovery",
+    "pool_group": "discovery",
+    "create_pool_key": "discovery",
     "derive_token": "discovery",
     "discover": "discovery",
-    "in_cluster": "discovery",
+    "in_pool": "discovery",
     "join_by_passphrase": "onboard.joining",
     "key_path": "discovery",
-    "load_cluster_key": "discovery",
+    "load_pool_key": "discovery",
     "Suggestion": "catalogue",
     "families": "catalogue",
     "family_of": "catalogue",
@@ -66,8 +66,8 @@ _WHERE = {
     "eligible": "pool",
     "soonest": "pool",
     "Rates": "rates",
-    "Peer": "remote",
-    "PeerError": "remote",
+    "Member": "remote",
+    "MemberError": "remote",
     "Endpoint": "serving",
     "Served": "serving",
     "Serving": "serving",
@@ -84,7 +84,7 @@ Candidate: Any
 ChatError: Any
 Conversation: Any
 Conversations: Any
-DEFAULT_CLUSTER: Any
+DEFAULT_POOL: Any
 Daemon: Any
 DaemonOptions: Any
 DaemonError: Any
@@ -99,8 +99,8 @@ Message: Any
 Model: Any
 ModelError: Any
 Models: Any
-Peer: Any
-PeerError: Any
+Member: Any
+MemberError: Any
 Placement: Any
 REPORT_GROUP: Any
 Rates: Any
@@ -114,8 +114,8 @@ Unit: Any
 calibrate: Any
 candidates: Any
 choose: Any
-cluster_group: Any
-create_cluster_key: Any
+pool_group: Any
+create_pool_key: Any
 derive_token: Any
 device_report: Any
 discover: Any
@@ -125,11 +125,11 @@ eligible: Any
 families: Any
 family_of: Any
 how_many: Any
-in_cluster: Any
+in_pool: Any
 join_by_passphrase: Any
 is_unfiltered: Any
 key_path: Any
-load_cluster_key: Any
+load_pool_key: Any
 load_or_create_token: Any
 make_handler: Any
 measure: Any
@@ -149,7 +149,7 @@ targets: Any
 
 __all__ = [
     'BENCH_KIND',
-    'DEFAULT_CLUSTER',
+    'DEFAULT_POOL',
     'MIN_JOIN_LENGTH',
     'REPORT_GROUP',
     'Advertiser',
@@ -167,12 +167,12 @@ __all__ = [
     'Getting',
     'Job',
     'JobRunner',
+    'Member',
+    'MemberError',
     'Message',
     'Model',
     'ModelError',
     'Models',
-    'Peer',
-    'PeerError',
     'Placement',
     'Rates',
     'Requires',
@@ -185,8 +185,7 @@ __all__ = [
     'calibrate',
     'candidates',
     'choose',
-    'cluster_group',
-    'create_cluster_key',
+    'create_pool_key',
     'derive_token',
     'device_report',
     'discover',
@@ -196,14 +195,15 @@ __all__ = [
     'families',
     'family_of',
     'how_many',
-    'in_cluster',
+    'in_pool',
     'is_unfiltered',
     'join_by_passphrase',
     'key_path',
-    'load_cluster_key',
     'load_or_create_token',
+    'load_pool_key',
     'make_handler',
     'measure',
+    'pool_group',
     'popular',
     'registered_reports',
     'resolve',

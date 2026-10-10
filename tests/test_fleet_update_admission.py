@@ -139,7 +139,7 @@ def test_update_defers_when_admission_is_held(tmp_path, monkeypatch, kind):
 
 
 @pytest.mark.parametrize("announce", [False, True])
-def test_leaving_last_cluster_stops_discovery_and_rotates_auth(tmp_path, monkeypatch, announce):
+def test_leaving_last_pool_stops_discovery_and_rotates_auth(tmp_path, monkeypatch, announce):
     from poolhouse import macauth
     from poolhouse.fleet import daemon as module
     from poolhouse.fleet.discovery import derive_token
@@ -147,9 +147,9 @@ def test_leaving_last_cluster_stops_discovery_and_rotates_auth(tmp_path, monkeyp
     runtime = object.__new__(DaemonRuntime)
     old_key = b'k' * 32
     runtime.root = tmp_path
-    runtime.cluster_key_path = tmp_path / 'cluster.key'
+    runtime.pool_key_path = tmp_path / 'pool.key'
     runtime.key = old_key
-    runtime.token = module.load_or_create_token(tmp_path, old_key, profile=runtime.cluster_key_path)
+    runtime.token = module.load_or_create_token(tmp_path, old_key, profile=runtime.pool_key_path)
     stopped = []
     runtime.advertisers = {'old': SimpleNamespace(stop=lambda: stopped.append(True))}
     runtime.advertiser = runtime.advertisers['old']
@@ -158,15 +158,15 @@ def test_leaving_last_cluster_stops_discovery_and_rotates_auth(tmp_path, monkeyp
     runtime.members = SimpleNamespace(ensure_self=lambda identity, name: None)
     runtime.identity, runtime.name = None, 'fixture'
     runtime.fetcher = SimpleNamespace(key=old_key)
-    runtime.settings = SimpleNamespace(cluster_mode='dev')
-    runtime.daemon = SimpleNamespace(cluster_mode='dev')
+    runtime.settings = SimpleNamespace(pool_mode='dev')
+    runtime.daemon = SimpleNamespace(pool_mode='dev')
     monkeypatch.setattr(module, 'memberships', lambda path: [])
-    runtime.joined_a_cluster()
+    runtime.joined_a_pool()
     assert stopped == [True] and runtime.advertisers == {}
     assert runtime.key is None and runtime.fetcher.key is None and runtime.advertiser is None
     assert runtime.token != derive_token(old_key)
     assert runtime.token.startswith(macauth.PREFIX)
-    assert module.load_or_create_token(tmp_path, profile=runtime.cluster_key_path) == runtime.token
+    assert module.load_or_create_token(tmp_path, profile=runtime.pool_key_path) == runtime.token
     assert runtime.every_token() == set()
     auth = macauth.Authenticator(lambda: {runtime.token, *runtime.every_token()})
     url = "https://device.test/status"
@@ -177,13 +177,13 @@ def test_leaving_last_cluster_stops_discovery_and_rotates_auth(tmp_path, monkeyp
 
 
 
-def test_unannounced_cluster_change_updates_machine_auth(tmp_path, monkeypatch):
+def test_unannounced_pool_change_updates_machine_auth(tmp_path, monkeypatch):
     from poolhouse.fleet import daemon as module
     from poolhouse.fleet.discovery import derive_token
 
     runtime = object.__new__(DaemonRuntime)
     runtime.root = tmp_path
-    runtime.cluster_key_path = tmp_path / 'cluster.key'
+    runtime.pool_key_path = tmp_path / 'pool.key'
     runtime.key = b'a' * 32
     runtime.token = derive_token(runtime.key)
     runtime.fetcher = SimpleNamespace(key=runtime.key)

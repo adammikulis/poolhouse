@@ -28,7 +28,7 @@ def test_a_literal_state_path_is_found(tmp_path, line: str) -> None:
 
 
 @pytest.mark.parametrize("line", [
-    'HELP = "the key file (default: ~/.poolhouse/cluster.key)"',
+    'HELP = "the key file (default: ~/.poolhouse/pool.key)"',
     'def f():\n    """Kept under ``~/.poolhouse/bench``."""',
     'ROOT = state("traind")',
 ])

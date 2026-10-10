@@ -130,7 +130,7 @@ def test_scatter_add_accumulates_duplicate_indices(name):
 
 @needs_mlx
 def test_mlx_scatter_add_differentiates_through_a_computed_index():
-    """An index computed from the input (an argmin, a cluster assignment) is not differentiable,
+    """An index computed from the input (an argmin, a pool assignment) is not differentiable,
     and a gradient still flows to the scattered values."""
     import mlx.core as mx
 

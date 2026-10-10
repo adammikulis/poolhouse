@@ -110,11 +110,11 @@ class TestThePage:
         assert status == 200 and kind.startswith("text/html")
 
     def test_a_machine_running_no_daemon_gets_the_fit_view_alone(self, page):
-        """`poolhouse-serve fit --ui` puts up the page with no cluster behind it, so it is
+        """`poolhouse-serve fit --ui` puts up the page with no pool behind it, so it is
         assembled without the screens that would ask one questions."""
         _, got, _ = page.call("/ui/fit")
         assert "<fit-view>" in got["raw"]
-        for gone in ("<cluster-view>", "<chat-view>", "<models-view>", "<settings-view>"):
+        for gone in ("<pool-view>", "<chat-view>", "<models-view>", "<settings-view>"):
             assert gone not in got["raw"], f"{gone} has no daemon to talk to here"
 
     def test_every_asset_it_asks_for_exists(self, page):
@@ -209,9 +209,9 @@ class TestTheSplitBetweenTheFitComponents:
             assert page.url.endswith('#fit')
             expect(page.locator('#models')).to_be_hidden()
             expect(page.locator('#fit-heading')).to_be_visible()
-            expect(nav.locator('a[href="#cluster"]')).to_be_visible()
-            nav.locator('a[href="#cluster"]').click()
-            expect(page.locator('#cluster')).to_be_visible()
+            expect(nav.locator('a[href="#pool"]')).to_be_visible()
+            nav.locator('a[href="#pool"]').click()
+            expect(page.locator('#pool')).to_be_visible()
             expect(page.locator('#fit-heading')).to_be_hidden()
             page.locator('#nav-guide').click()
             expect(page.locator('#nav-demo')).to_be_visible()
@@ -388,7 +388,7 @@ class TestTheCliFlag:
         assert parser.parse_args(["fit"]).ui is False
 
     def test_a_server_it_puts_up_answers_only_loopback(self):
-        """There is no cluster passphrase behind this page, so there had better be no
+        """There is no pool passphrase behind this page, so there had better be no
         address on it either."""
         server = serve_page(name="atrium")
         try:

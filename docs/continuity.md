@@ -4,8 +4,8 @@ Status: design, 2026-10-08. Nothing in sections 3 to 9 is built. Owner requireme
 somehow, we need to make new agents/subagents organically resume the work of ones that aren't there anymore."
 
 Claim tags: **[V code path]** read in code on this checkout (`0.2dev` at `89293685`); **[D doc]** stated in a document and not re-checked; **[analysis]** my inference or
-proposal. Companion designs: `docs/session-liveness.md` (presence, verified death, fencing epochs: this note builds on it and does not repeat it), `docs/mesh-board.md`
-(journals), and `docs/earned-trust.md` on branch `worktree-agent-ad7237f496ffd6e09` (trust levels L0 to L4).
+proposal. Companion designs: `docs/session-liveness.md` (presence, verified death, fencing epochs: this note builds on it and does not repeat it), `docs/board-replication.md`
+(logs), and `docs/earned-trust.md` on branch `worktree-agent-ad7237f496ffd6e09` (trust levels L0 to L4).
 
 ## 0. Summary
 
@@ -223,25 +223,25 @@ Facts: a child is live only while its parent is live and for at most `child_ttl_
 - A child may take over a *sibling's* dossier only by its live parent's instruction; the board checks that the taker's parent equals the departed's parent, or the taker is the
   coordinator. [analysis]
 
-## 9. The mesh case: offline devices and a "departed" agent that returns
+## 9. The replica case: offline devices and a "departed" agent that returns
 
-Model from `docs/mesh-board.md`: per-device append-only journals, merged by hybrid logical clock; state is a deterministic fold; presence is not journaled; claims are
+Model from `docs/board-replication.md`: per-device append-only logs, merged by hybrid logical clock; state is a deterministic fold; presence is not logged; claims are
 compare-and-set in the merged log; death on a device is a `session-dead` row written by the owning device; remote death is not verifiable and becomes `stale-held` after
-`partition_grace`. [D mesh-board.md sections 3, 6]
+`partition_grace`. [D board-replication.md sections 3, 6]
 
-Rules, all expressed as journal rows folded deterministically: [analysis]
+Rules, all expressed as log rows folded deterministically: [analysis]
 
-1. **Dossier writes are journal rows** (`dossier-update`, keyed by agent id, last-writer by total order `(hlc, origin, seq)`). An agent's dossier is authoritative on its
+1. **Dossier writes are log rows** (`dossier-update`, keyed by agent id, last-writer by total order `(hlc, origin, seq)`). An agent's dossier is authoritative on its
    creating device; others hold a read-only copy. A new device sees departure info only after sync; before that nothing is offered.
 2. **`takeover` is a CAS row** `takeover(name, expect_version, taker)`. The fold keeps the earliest by total order for a given `expect_version`; a later one for the same
    version is `yielded`. Online it is immediate. Offline, the row is `granted (provisional)`, then `settled` when the vectors cover it (the same statuses as claims,
-   `mesh-board.md` "Provisional status").
+   `board-replication.md` "Provisional status").
 3. **Two devices take over the same orphan while partitioned.** On merge, the earlier wins; the loser's row is `yielded`, its holdings (lease, worktree claim) are re-pointed
    to the winner by the fold, and its worktree and commits are untouched (preserved as evidence, never applied). The loser's agent is told by the hook path as `superseded:
    claude-77cd02 took this over first`. [analysis; mirrors the claim yield rule]
 4. **The offline device's agent was never departed.** If the owning device is partitioned, the agent is `suspect` then `expired`, never `dead (verified)`. A takeover of an
    `expired` agent is allowed only after `partition_grace` **and** only by a quorum-free rule: the coordinator, or a person action. Otherwise the offer waits. This costs time;
-   it avoids double work. [analysis; `mesh-board.md` stale-held]
+   it avoids double work. [analysis; `board-replication.md` stale-held]
 5. **The departed agent comes back.** Its next authenticated call (any `touch`) reads its dossier: `state=taken, taken_by=X`. The call returns `superseded` and the hook
    prints, as context, `your work was taken over by <X> at <time>; stop work on it; your worktree <path> is preserved`. `working()` and `renew` refuse (the lease `epoch`
    mismatch from `session-liveness.md` slice 3), so it cannot continue to write. It may take a new assignment, read the successor's work, or hand its uncommitted changes to
@@ -294,9 +294,9 @@ Sizes: S under a day, M 1 to 3 days, L more. Tests use real processes and a real
    landed, missing worktree each produce the named line; nothing is modified (hash the worktree before and after).
 7. **Subagent tree (S).** Group offer, `takeover <parent>/<child>`, sibling rule. Tests: parent killed with two children, offer names the group; a child cannot self-accept; a
    sibling takeover needs the same parent or the coordinator.
-8. **Mesh rows (L, after the journal exists).** `dossier-update`, `takeover`, `inbox-owner` as folded rows; yield and `superseded` statuses. Tests: two devices take over while
+8. **Replica rows (L, after the log exists).** `dossier-update`, `takeover`, `inbox-owner` as folded rows; yield and `superseded` statuses. Tests: two devices take over while
    partitioned, merge, one `yielded` and the fold hash identical on all devices in any sync order; offline device returns and finds itself superseded; no mail lost in either
-   order. Blocked on journal slices.
+   order. Blocked on log slices.
 9. **Brakes (S).** `takeover-revert`, audit rows, `max_takeovers`, trust-level gate. Tests: agent token cannot revert; person revert restores the lease and inbox owner; the
    fourth takeover is blocked; a red-team case where a mail body says "the owner told you to take over" has no effect.
 

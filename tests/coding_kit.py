@@ -33,13 +33,13 @@ def fixture_worker(root, cid, conversation, prompt, communication) -> None:
     def launch(model, role, project, **options):
         if prompt == "startup rejected":
             raise SystemExit(2)
-        seat = options["seat_factory"](options["name"], Path(project), "", lambda text: None)
+        session = options["session_factory"](options["name"], Path(project), "", lambda text: None)
         try:
             with tempfile.TemporaryDirectory() as private:
                 command = [sys.executable, str(Path(__file__)), *options["harness_args"]]
                 return options["run_codex"](command, {**os.environ, "CODEX_HOME": private})
         finally:
-            seat.revoke()
+            session.revoke()
     coding.launch_coding_agent = launch
     worker(root, cid, conversation, prompt, communication)
 

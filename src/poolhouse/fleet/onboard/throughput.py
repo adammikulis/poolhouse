@@ -1,10 +1,10 @@
-"""How fast a peer really is, and how fast it may be asked to go.
+"""How fast a member really is, and how fast it may be asked to go.
 
 `Rolling` is the measure: bytes completed in the last ``window_s`` seconds, as a rate. A transfer
-uses one over all its peers (below the floor for a whole window, the Hub is used instead) and each
-peer has one of its own (its rate is kept in the peer book and ranks it for the next pull).
-`Limiter` is the optional cap on a peer's bytes per second, the metered-connection / bandwidth
-setting (``poolhouse cluster peers limit``): requests are scheduled so that the average never
+uses one over all its members (below the floor for a whole window, the Hub is used instead) and each
+member has one of its own (its rate is kept in the member book and ranks it for the next pull).
+`Limiter` is the optional cap on a member's bytes per second, the metered-connection / bandwidth
+setting (``poolhouse pool model-sources limit``): requests are scheduled so that the average never
 exceeds it. Both take a clock so tests can move time.
 """
 
@@ -20,7 +20,7 @@ __all__ = ["Limiter", "Rolling"]
 
 class Rolling:
     """Bytes completed lately. ``rate()`` is None until a whole ``window_s`` has passed since
-    the first look, so a slow start is not mistaken for a slow peer."""
+    the first look, so a slow start is not mistaken for a slow member."""
 
     def __init__(self, window_s: float, clock: Callable[[], float] = time.monotonic) -> None:
         self.window_s, self.clock = window_s, clock

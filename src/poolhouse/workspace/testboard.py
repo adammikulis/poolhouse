@@ -73,20 +73,20 @@ def thread_for_key(folder: Path, prefix: str) -> int:
         return 0
 
 
-def follow_thread(seat: Acting, thread: int) -> dict[str, Any]:
+def follow_thread(session: Acting, thread: int) -> dict[str, Any]:
     """Subscribe the session's agent to a run's board thread (one inbox message per update)."""
-    return seat.ws.board.subscribe(seat.token, "thread", str(thread), "inbox", True)
+    return session.ws.board.subscribe(session.token, "thread", str(thread), "inbox", True)
 
 
 class BoardEvents:
-    """Posts a run's milestones to the project board and the inboxes that follow them.
+    """Posts a run's milestones to the board and the inboxes that follow them.
 
     ``watchers`` lists the identities that follow the task a job is attached to.
     """
 
-    def __init__(self, seat: Acting, watchers: Callable[[], list[str]] | None = None) -> None:
-        self.seat, self.watchers = seat, watchers
-        self.agent = seat.identity
+    def __init__(self, session: Acting, watchers: Callable[[], list[str]] | None = None) -> None:
+        self.session, self.watchers = session, watchers
+        self.agent = session.identity
         self.threads: dict[str, int] = {}
         self.board = ""
 
@@ -94,24 +94,24 @@ class BoardEvents:
     def _try(what: str, call: Callable[[], Any]) -> Any:
         return guarded(what, call)
 
-    def _project_board(self) -> str:
+    def _board_for(self) -> str:
         if not self.board:
-            found = self.seat.ws.board.list(self.seat.token)
+            found = self.session.ws.board.list(self.session.token)
             self.board = next((b["name"] for b in found if b["project"] and b["member"]), "-")
         return self.board
 
     def _post(self, subject: str, body: str, reply_to: int = 0) -> int:
-        board = self._project_board()
+        board = self._board_for()
         if board == "-":
             return 0
-        sent = self.seat.ws.send(self.seat.token, board, "status", body, subject=subject, reply_to=reply_to)
+        sent = self.session.ws.send(self.session.token, board, "status", body, subject=subject, reply_to=reply_to)
         return int(sent["seq"])
 
     def claimed(self, file: str, key: str) -> int:
-        """Open the key's thread on the project board."""
+        """Open the key's thread on the board."""
         seq = self._try("claim", lambda: self._post(
             f"test {Path(file).name} {key[:8]}",
-            f"test-run key={key[:12]} file={file} state=running agent={self.seat.identity['id']}")) or 0
+            f"test-run key={key[:12]} file={file} state=running agent={self.session.identity['id']}")) or 0
         self.threads[key] = seq
         return seq
 
@@ -126,7 +126,7 @@ class BoardEvents:
     def waiting(self, file: str, owner: dict) -> None:
         """Follow the thread of the run this request waits on."""
         if owner.get("thread"):
-            self._try("subscribe", lambda: follow_thread(self.seat, int(owner["thread"])))
+            self._try("subscribe", lambda: follow_thread(self.session, int(owner["thread"])))
 
     def wait_failed(self, file: str, owner: dict) -> None:
         """Nothing beyond the thread reply, which the owner posts."""
@@ -134,11 +134,11 @@ class BoardEvents:
     def canary_mismatch(self, file: str, detail: str) -> None:
         """Announce a cached pass that failed when re-executed."""
         line = f"test reuse canary mismatch: {file}: {detail}"[:190]
-        self._try("canary", lambda: self.seat.ws.announce(self.seat.token, "blocked", line))
+        self._try("canary", lambda: self.session.ws.announce(self.session.token, "blocked", line))
 
     def job_started(self, job: str, spec: dict) -> int:
-        """Open the job's thread on the project board."""
-        who = self.seat.identity["id"]
+        """Open the job's thread on the board."""
+        who = self.session.identity["id"]
         return self._try("job start", lambda: self._post(
             f"test job {job}", f"test-job job={job} tier={(spec.get('argv') or ['?'])[0]} owner={who} state=running")) or 0
 
@@ -156,9 +156,9 @@ class BoardEvents:
         listeners: list[str] = []
         if thread:
             sent = self._post(f"test job {job} {outcome}", body, thread)
-            row = self.seat.ws.bus.get(sent) if sent else None
-            listeners = self.seat.ws.board.listeners(row) if row else []
+            row = self.session.ws.bus.get(sent) if sent else None
+            listeners = self.session.ws.board.listeners(row) if row else []
         for name in dict.fromkeys((self.watchers() if self.watchers else None) or []):
-            if name not in listeners and name != self.seat.identity["id"]:
-                self._try("direct", lambda name=name: self.seat.ws.send(
-                    self.seat.token, name, "status", body, subject=f"test job {job} {outcome}"))
+            if name not in listeners and name != self.session.identity["id"]:
+                self._try("direct", lambda name=name: self.session.ws.send(
+                    self.session.token, name, "status", body, subject=f"test job {job} {outcome}"))

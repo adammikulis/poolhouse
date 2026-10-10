@@ -1,4 +1,4 @@
-"""Each device is its own certificate; a cluster lists the devices in it; a device put out is refused."""
+"""Each device is its own certificate; a pool lists the devices in it; a device put out is refused."""
 
 import base64
 import http.client as httpclient
@@ -17,8 +17,8 @@ from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.pool_roster import Pool
 
-SPARE = macauth.PREFIX + "a-secret-no-cluster-key-made"
-"""A request secret the daemon accepts that is derived from no cluster, so only the certificate decides."""
+SPARE = macauth.PREFIX + "a-secret-no-pool-key-made"
+"""A request secret the daemon accepts that is derived from no pool, so only the certificate decides."""
 GONE = (ssl.SSLError, OSError, httpclient.HTTPException, http.ServerUnreachable)
 
 
@@ -89,15 +89,15 @@ def _anonymous(server_cert: str) -> ssl.SSLContext:
 @pytest.fixture
 def served(tmp_path):
     """A real fleet daemon handler behind its real member context, on TLS, in a temp root."""
-    keyfile = tmp_path / "cluster.key"
-    key = discovery.mint_cluster("lab", keyfile, mode="prod").key
+    keyfile = tmp_path / "pool.key"
+    key = discovery.mint_pool("lab", keyfile, mode="prod").key
     server = device(tmp_path, "server")
     pool = Pool(keyfile)
     pool.enrol("lab", server.cert, "server", "self")
     root = tmp_path / "daemon"
     (root / "files").mkdir(parents=True)
     runner = JobRunner(root)
-    daemon = Daemon(runner, root / "files", derive_token(key), name="server", cluster_key_path=keyfile,
+    daemon = Daemon(runner, root / "files", derive_token(key), name="server", pool_key_path=keyfile,
                     tokens=lambda: {derive_token(m.key) for m in memberships(keyfile)} | {SPARE}, members=pool)
     handler = make_handler(daemon)
     handler.protocol_version = "HTTP/1.1"
@@ -133,14 +133,14 @@ def test_two_devices_with_different_keys_are_told_apart(served, tmp_path):
     assert seen["alpha"]["groups"] == ["lab"]
 
 
-def test_a_device_that_was_never_paired_is_refused(served, tmp_path):
+def test_a_device_that_was_never_joined_is_refused(served, tmp_path):
     stranger = device(tmp_path, "stranger")
     conn = served.connect(stranger)
     with pytest.raises(GONE):
         served.get(conn, "/jobs")
 
 
-def test_a_caller_with_no_certificate_cannot_use_the_cluster_secret(served):
+def test_a_caller_with_no_certificate_cannot_use_the_pool_secret(served):
     conn = served.connect(None)
     status, answer = served.get(conn, "/jobs")
     assert status == 401 and "certificate" in answer["error"]
@@ -148,8 +148,8 @@ def test_a_caller_with_no_certificate_cannot_use_the_cluster_secret(served):
     assert status == 401
 
 
-def test_a_member_of_another_cluster_cannot_use_this_clusters_secret(served, tmp_path):
-    other = discovery.mint_cluster("other", served.keyfile, mode="prod")
+def test_a_member_of_another_pool_cannot_use_this_pools_secret(served, tmp_path):
+    other = discovery.mint_pool("other", served.keyfile, mode="prod")
     one = enrolled(served, tmp_path, "alpha")
     conn = served.connect(one)
     status, _ = served.get(conn, "/fleet/v1/self", secret=derive_token(other.key))
@@ -161,7 +161,7 @@ def test_a_member_of_another_cluster_cannot_use_this_clusters_secret(served, tmp
 # -- revocation -----------------------------------------------------------------------------
 
 
-def test_a_revoked_device_is_refused_at_its_next_request_on_a_live_session(served, tmp_path):
+def test_a_removed_device_is_refused_at_its_next_request_on_a_live_session(served, tmp_path):
     one = enrolled(served, tmp_path, "alpha")
     conn = served.connect(one)
     assert served.get(conn, "/fleet/v1/self")[0] == 200
@@ -170,7 +170,7 @@ def test_a_revoked_device_is_refused_at_its_next_request_on_a_live_session(serve
     assert status == 403 and "not a member" in answer["error"]
 
 
-def test_the_certificate_alone_refuses_a_revoked_device_when_the_secret_names_no_cluster(served, tmp_path):
+def test_the_certificate_alone_refuses_a_removed_device_when_the_secret_names_no_pool(served, tmp_path):
     one = enrolled(served, tmp_path, "alpha")
     conn = served.connect(one)
     assert served.get(conn, "/fleet/v1/self", secret=SPARE)[0] == 200
@@ -179,7 +179,7 @@ def test_the_certificate_alone_refuses_a_revoked_device_when_the_secret_names_no
     assert status == 403 and "not a member" in answer["error"]
 
 
-def test_a_revoked_device_fails_the_next_handshake_too(served, tmp_path):
+def test_a_removed_device_fails_the_next_handshake_too(served, tmp_path):
     one = enrolled(served, tmp_path, "alpha")
     first = served.connect(one)
     assert served.get(first, "/fleet/v1/self")[0] == 200
@@ -188,7 +188,7 @@ def test_a_revoked_device_fails_the_next_handshake_too(served, tmp_path):
         served.get(served.connect(one), "/fleet/v1/self")
 
 
-def test_a_revoked_device_is_out_everywhere_it_is_checked(served, tmp_path):
+def test_a_removed_device_is_out_everywhere_it_is_checked(served, tmp_path):
     one = enrolled(served, tmp_path, "alpha")
     beacon = Beacon(name="alpha", host="127.0.0.1", port=1234, cert=one.cert)
     devices = membership.roster(memberships(served.keyfile)[0].key)
@@ -216,17 +216,17 @@ def test_a_revoked_certificate_cannot_be_enrolled_again(served, tmp_path):
     one = enrolled(served, tmp_path, "alpha")
     served.pool.revoke(one.ident.fingerprint, "owner")
     with pytest.raises(membership.Revoked):
-        served.pool.enrol("lab", one.cert, "alpha", "pairing")
+        served.pool.enrol("lab", one.cert, "alpha", "join-code")
     assert not served.pool.is_active(one.ident.fingerprint)
 
 
-def test_a_stale_peer_cannot_bring_a_revoked_device_back(served, tmp_path):
+def test_a_stale_member_cannot_bring_a_removed_device_back(served, tmp_path):
     one = enrolled(served, tmp_path, "alpha")
     stale = [d.public() for d in served.pool.roster("lab").devices()]
     served.pool.revoke(one.ident.fingerprint, "owner")
-    assert served.pool.merge("lab", stale, "peer") == 0
+    assert served.pool.merge("lab", stale, "member") == 0
     later = [{**row, "at": row["at"] + 3600} for row in stale]
-    assert served.pool.merge("lab", later, "peer") == 0
+    assert served.pool.merge("lab", later, "member") == 0
     assert not served.pool.is_active(one.ident.fingerprint)
 
 
@@ -240,13 +240,13 @@ def test_a_revocation_heard_from_a_member_is_applied_and_kept(served, tmp_path):
         served.get(served.connect(one), "/fleet/v1/self")
 
 
-def test_only_a_member_of_the_cluster_exchanges_membership(served, tmp_path):
+def test_only_a_member_of_the_pool_exchanges_membership(served, tmp_path):
     stranger = device(tmp_path, "stranger")
     with pytest.raises(GONE):
         served.post(stranger, "/fleet/v1/members", {"group": "lab", "rows": []})
     status, _ = served.post(None, "/fleet/v1/members", {"group": "lab", "rows": []})
     assert status == 401
-    other = discovery.mint_cluster("elsewhere", served.keyfile, mode="prod")
+    other = discovery.mint_pool("elsewhere", served.keyfile, mode="prod")
     one = enrolled(served, tmp_path, "alpha")
     status, _ = served.post(one, "/fleet/v1/members", {"group": "elsewhere", "rows": []})
     assert status == 403 and other.group == "elsewhere"
@@ -294,7 +294,7 @@ def test_a_roster_row_whose_fingerprint_is_not_its_certificates_is_dropped(serve
     with pytest.raises(GONE):
         served.get(served.connect(one), "/fleet/v1/self")
     forged = [{"fingerprint": one.ident.fingerprint, "cert": other.cert, "status": "active", "name": "x"}]
-    assert served.pool.merge("lab", forged, "peer") == 0
+    assert served.pool.merge("lab", forged, "member") == 0
 
 
 def test_a_beacon_whose_certificate_was_never_enrolled_is_not_pinned(served, tmp_path):

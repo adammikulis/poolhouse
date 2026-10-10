@@ -186,7 +186,7 @@ def harvest(config: dict[str, Any], cell: Cell, out_dir: Path) -> dict[str, Any]
         return {"accuracy": got["accuracy"] * 100, "n": got["n"], "errors": got["errors"],
                 "ms_per_decision": got["p50_ms"]}
     from poolhouse import bench
-    from poolhouse.bench.peer_runs import exported
+    from poolhouse.bench.member_runs import exported
 
     store = expand(config["store"])
     if cell.task == "generation":

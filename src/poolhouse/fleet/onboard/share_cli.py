@@ -1,4 +1,4 @@
-"""``poolhouse cluster share``: serve files to the devices that may have them.
+"""``poolhouse pool share``: serve files to the devices that may have them.
 
 ``--models`` serves the machine's model store instead of a folder (`modelstore.py`): the GGUF and
 safetensors files `hub.discover` finds in the usual folders (or only in the ``--models-dir``
@@ -28,9 +28,9 @@ from ..discovery import memberships
 from ..tls import TlsUnavailable, identity
 from . import modelstore
 from .human import HumanRequired, mint
+from .join_code import DEFAULT_SHARE_PORT
 from .manifest import SHARING_LEVELS, Entry, Signer, verify
-from .pairing import DEFAULT_SHARE_PORT
-from .peerfirst import quarantine_veto
+from .memberfirst import quarantine_veto
 from .requests import Devices
 from .sharing import OPEN, OWNER, Licences
 from .signing import KeyStoreError, SigningKeys
@@ -44,8 +44,8 @@ SUFFIX_KIND = {".whl": "wheel", ".gz": "sdist", ".zip": "sdist", ".gguf": "model
 
 
 def add_share(sub: Any, common: Any) -> None:
-    p = common(sub.add_parser("share", help="serve files, with a signed manifest, to paired "
-                                            "devices of this cluster"))
+    p = common(sub.add_parser("share", help="serve files, with a signed manifest, to joined "
+                                            "devices of this pool"))
     p.add_argument("--dir", default="", help="the files to share (a flat folder)")
     p.add_argument("--models", action="store_true",
                    help="share this machine's model store (GGUF and safetensors found in the "
@@ -55,7 +55,7 @@ def add_share(sub: Any, common: Any) -> None:
                    help="with --models: look only in these folders (repeatable)")
     p.add_argument("--for", dest="span", default="10m")
     p.add_argument("--port", type=int, default=DEFAULT_SHARE_PORT,
-                   help="the port to listen on (default: the one pairing records; 0: any)")
+                   help="the port to listen on (default: the one join records; 0: any)")
     p.add_argument("--host", default="", help="the address to listen on (default: every "
                                               "interface)")
     p.add_argument("--sharing", action="append", default=[], metavar="NAME=LEVEL",
@@ -67,12 +67,12 @@ def add_share(sub: Any, common: Any) -> None:
                    help="where a model comes from, for a device that must fetch it itself")
 
 
-def _pairs(items: list[str]) -> dict[str, str]:
+def _joins(items: list[str]) -> dict[str, str]:
     return dict(item.split("=", 1) for item in items if "=" in item)
 
 
 def _entries(share_dir: Path, args: argparse.Namespace) -> list[Entry]:
-    level, licence, source = _pairs(args.sharing), _pairs(args.licence), _pairs(args.source)
+    level, licence, source = _joins(args.sharing), _joins(args.licence), _joins(args.source)
     out = []
     for f in sorted(share_dir.iterdir()):
         if not f.is_file():
@@ -104,11 +104,11 @@ def _emit(args: argparse.Namespace, document: dict[str, Any], text: str) -> None
 def cmd_share(args: argparse.Namespace) -> int:
     directory = Path(args.state) if args.state else home.state("onboard")
     share_dir, held = Path(args.dir) if args.dir else directory, memberships()
-    bad = [v for v in _pairs(args.sharing).values() if v not in SHARING_LEVELS]
+    bad = [v for v in _joins(args.sharing).values() if v not in SHARING_LEVELS]
     if not held or bad or not (args.models or (share_dir.is_dir() and args.dir)):
-        _emit(args, {"error": "needs a cluster, --dir (or --models) and sharing levels of "
+        _emit(args, {"error": "needs a pool, --dir (or --models) and sharing levels of "
                               f"{'/'.join(SHARING_LEVELS)}"},
-              "error: needs a cluster and --dir (or --models)")
+              "error: needs a pool and --dir (or --models)")
         return 2
     skipped: list[str] = []
     paths = roots = None
@@ -119,8 +119,8 @@ def cmd_share(args: argparse.Namespace) -> int:
             found, roots = modelstore.candidates(args.models_dir or None)
             store = modelstore.build(
                 found, roots, digests=modelstore.Digests(directory / "model-digests.json"),
-                terms=modelstore.Terms(_pairs(args.sharing), _pairs(args.licence),
-                                       _pairs(args.source)), veto=quarantine_veto)
+                terms=modelstore.Terms(_joins(args.sharing), _joins(args.licence),
+                                       _joins(args.source)), veto=quarantine_veto)
             entries, paths, skipped = store.entries, store.paths, store.skipped
         else:
             entries = _entries(share_dir, args)

@@ -31,7 +31,7 @@ def _helper(monkeypatch, port):
     return [sys.executable, "-m", "poolhouse.fleet.wsl_ui", str(port)], children
 
 
-def test_local_ui_relay_preserves_bytes_and_actual_loopback_peer(monkeypatch):
+def test_local_ui_relay_preserves_bytes_and_actual_loopback_member(monkeypatch):
     with socket.socket() as upstream:
         upstream.bind(("127.0.0.1", 0))
         upstream.listen()

@@ -100,16 +100,16 @@ def test_interactive_chat_command_is_given_to_the_person_without_a_job(joined, o
 
 
 def test_apple_memory_is_one_physical_pool(joined, open_page):
-    joined.ui.peers = lambda force=False: [{
+    joined.ui.members = lambda force=False: [{
         'name': 'local-mac', 'is_self': True, 'slots': 1, 'free': 1,
         'device': {'vendor': 'apple', 'unified_memory': True,
                    'ram_gb': 128, 'ram_used_gb': 45,
                    'vram_total_gb': 112, 'vram_free_gb': 112,
                    'serving': [{'models': ['Qwen3.8-27B'], 'context': 262144,
                                 'slots': 1, 'spec_type': 'draft-mtp', 'draft_status': 'active'}]}}]
-    page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#cluster')
+    page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#pool')
     page.get_by_text('45.0 GB of 128.0 GB in use', exact=False).wait_for()
-    meters = page.locator('cluster-view ml-meter')
+    meters = page.locator('pool-view ml-meter')
     assert meters.filter(has=page.get_by_text('memory', exact=True)).count() == 1
     assert page.get_by_text('unified memory', exact=True).count() == 0
     assert page.locator('.loaded-models').get_by_text('Qwen3.8-27B', exact=True).is_visible()

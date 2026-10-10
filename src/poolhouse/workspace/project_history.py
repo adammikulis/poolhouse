@@ -1,4 +1,4 @@
-"""Explicit bounded adoption of one historical project board."""
+"""Explicit bounded adoption of one historical board."""
 
 import hashlib
 import json
@@ -19,7 +19,7 @@ def adopt(base: Path, history: dict) -> dict:
     selected = []
     for row in rows:
         if not isinstance(row, dict) or row.get("board", board) != board:
-            raise ValueError("history must contain only the selected project board")
+            raise ValueError("history must contain only the selected board")
         text = str(row.get("text") or "")
         if len(text.encode()) > 16_384:
             raise ValueError("historical message exceeds the size limit")

@@ -27,7 +27,7 @@ ALLOWED = {
     "src/poolhouse/workspace/device_agent.py": {"_add", "mint"},
     "src/poolhouse/workspace/guide.py": {"bootstrap_agent", "init"},
     "src/poolhouse/workspace/identity.py": {"_add"},
-    "src/poolhouse/workspace/journal.py": {"_add"},  # appends a journal row; it creates no identity
+    "src/poolhouse/workspace/device_logs.py": {"_add"},  # appends a log row; it creates no identity
     "src/poolhouse/workspace/localstart.py": {"mint"},
     "src/poolhouse/workspace/onboard.py": {"adopt", "init", "mint"},
     "src/poolhouse/workspace/remote_host.py": {"enroll_project", "init"},
@@ -104,10 +104,10 @@ def test_an_invite_always_yields_a_standard_agent_whoever_issued_it(tmp_path, mo
     monkeypatch.setenv("CLAUDECODE", "1")
     for issuer_role, name in ((AGENT, "worker"), (LEAD, "lead-1")):
         token = kit.agent(name, issuer_role)
-        made = kit.ws.invite(token, "peer", 1800.0, 1)
+        made = kit.ws.invite(token, "member", 1800.0, 1)
         record, = (r for r in kit.ws.invites._load()["invites"].values() if r["issuer"] == name)
         assert not {"role", "roles"} & set(record)
-        joined = onboard.join(kit.ws, made["code"], f"peer-{name}")
+        joined = onboard.join(kit.ws, made["code"], f"member-{name}")
         info = kit.ws.registry.info(joined)
         assert info["role"] == AGENT and info["parent"] == name
         assert kit.ws.auth(tokens.load(kit.base, joined)).trust == "agent-claimed"

@@ -23,7 +23,7 @@ def test_a_log_other_agents_append_to_is_not_a_write_by_this_run(tmp_path, rel):
 
 @pytest.mark.parametrize("rel", ["keystore/blob", "sentinel/manifest.json", "sentinel/events.log.head.key",
                                  "activity/u-501/activity.log.head.key", "sentinel/honey.json",
-                                 "credentials.toml", "requests/inbox.enc", "cluster.key"])
+                                 "credentials.toml", "requests/inbox.enc", "pool.key"])
 def test_anything_credential_like_is_still_guarded(tmp_path, rel):
     before = file_mtimes(tmp_path)
     touch(tmp_path, rel)

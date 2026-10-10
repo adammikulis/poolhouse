@@ -54,7 +54,7 @@ def test_dev_admission_is_required_before_presence(host):
     actor = remote_tests.joined(host)
     ws = host.workspace(remote_tests.PROJECT)
     agents = ws.registry._load()
-    agents[actor['id']]['project'].update(cluster='development', cluster_id='selected')
+    agents[actor['id']]['project'].update(pool='development', pool_id='selected')
     ws.registry._save(agents)
     host._presence.clear()
     body = {'agent_token': actor['token'], 'operation': 'whoami', 'args': [], 'kwargs': {}}

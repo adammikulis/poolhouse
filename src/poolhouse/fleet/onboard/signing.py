@@ -1,6 +1,6 @@
-"""Where the cluster's Ed25519 signing key lives, and who may do what with it.
+"""Where the pool's Ed25519 signing key lives, and who may do what with it.
 
-The key is generated on the controller and is a different key from the cluster key, so losing
+The key is generated on the controller and is a different key from the pool key, so losing
 one is not losing the other. It is kept in a file wrapped under a subkey of the user's master
 key in the operating system's keystore (`poolhouse.keystore`). With no usable keystore it is
 kept in a file encrypted under a passphrase (scrypt, ChaCha20-Poly1305, from `cryptography`,

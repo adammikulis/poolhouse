@@ -56,7 +56,7 @@ KINDS: dict[str, Kind] = {
     "hold": Kind("a held call counting down"),
     "quarantine_release": Kind("something sentinel holds that a person may release", human_only=True),
     "host_approval": Kind("a network host an agent asked to reach", human_only=True),
-    "pairing": Kind("a machine or agent asking to join", human_only=True),
+    "join-code": Kind("a machine or agent asking to join", human_only=True),
     "grant": Kind("a grant of a human-only action", human_only=True),
     "keystore_unlock": Kind("the keystore asking to be unlocked", human_only=True),
     "rule_suggestion": Kind("a rule the agent suggests"),

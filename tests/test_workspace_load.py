@@ -73,8 +73,8 @@ def synthetic(**more) -> dict:
     ({"cpu_s": 99.0}, ["cpu_s_per_agent_per_message"]),
 ])
 def test_each_budget_fails_the_run_when_its_measure_is_over(kit, tmp_path, change, missed):
-    kit.agent("peer")
-    kit.ws.send(kit.owner, "peer", "note", "x")
+    kit.agent("member")
+    kit.ws.send(kit.owner, "member", "note", "x")
     ring = tmp_path / "ring.json"
     shape = {"agents": 1, "messages": 1, "wall": 1.0, "default_limits": False}
     out = load.report([synthetic(**change)], kit.ws, ring, shape)
@@ -82,9 +82,9 @@ def test_each_budget_fails_the_run_when_its_measure_is_over(kit, tmp_path, chang
 
 
 def test_a_broken_chain_fails_the_run(kit, tmp_path):
-    kit.agent("peer")
-    kit.ws.send(kit.owner, "peer", "note", "first")
-    kit.ws.send(kit.owner, "peer", "note", "pay the invoice")
+    kit.agent("member")
+    kit.ws.send(kit.owner, "member", "note", "first")
+    kit.ws.send(kit.owner, "member", "note", "pay the invoice")
     with kit.ws.bus.log.graph.opened() as graph:
         event = kit.ws.bus.log.graph._events(graph, "bus")[-1]
         event["row"]["body"] = "pay the other invoice"

@@ -1,11 +1,11 @@
-"""One pause, sent to every machine in the cluster, and what each of them said.
+"""One pause, sent to every machine in the pool, and what each of them said.
 
-There is no cluster-wide switch. `pause_fleet` asks each peer the same thing
-``poolhouse-cluster`` asks one -- ``POST /availability`` -- so every machine still owns its
+There is no pool-wide switch. `pause_fleet` asks each member the same thing
+``poolhouse-pool`` asks one -- ``POST /availability`` -- so every machine still owns its
 own answer. A machine that is off never receives the message; `seen` remembers the ones
 this machine has met so `pause_table` can name it.
 
-A machine that was off hears nothing, so it asks when it starts: `peer_pause` reads the
+A machine that was off hears nothing, so it asks when it starts: `member_pause` reads the
 pause off the beacons it can hear and `adopt_pause` takes it.
 """
 
@@ -23,11 +23,11 @@ from poolhouse.home import expand
 
 from .availability import Availability
 from .discovery import Beacon, derive_token, discover, memberships
-from .remote import Peer, PeerError
+from .remote import Member, MemberError
 
 __all__ = [
     "ADOPT_S",
-    "CLUSTER_PAUSE",
+    "POOL_PAUSE",
     "SEEN_FILE",
     "SEEN_FOR_S",
     "UNHEARD",
@@ -35,12 +35,12 @@ __all__ = [
     "Answer",
     "Fanout",
     "adopt_pause",
+    "member_clients",
+    "member_pause",
     "minutes_of",
     "pause_among",
     "pause_fleet",
     "pause_table",
-    "peer_clients",
-    "peer_pause",
     "remember_seen",
     "seen",
 ]
@@ -52,7 +52,7 @@ UNHEARD = "did not answer; it will take work when it comes back"
 REACH_S = 15.0
 ADOPT_S = 2.5
 """How long a starting daemon listens for a pause before it takes work."""
-CLUSTER_PAUSE = "the cluster was paused while this machine was away"
+POOL_PAUSE = "the pool was paused while this machine was away"
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,19 +77,19 @@ class Fanout:
     resume: bool = False
     minutes: float | None = None
     reason: str = ""
-    cluster_key_path: Path | str | None = None
+    pool_key_path: Path | str | None = None
 
 
-def peer_clients(rows: Sequence[dict[str, Any]], *,
-                 cluster_key_path: Path | str | None = None,
-                 timeout: float = 60.0) -> dict[str, Peer]:
-    """A `remote.Peer` for each row a cluster key of this machine's reaches, by name."""
-    tokens = {m.group: derive_token(m.key) for m in memberships(cluster_key_path)}
-    out: dict[str, Peer] = {}
+def member_clients(rows: Sequence[dict[str, Any]], *,
+                 pool_key_path: Path | str | None = None,
+                 timeout: float = 60.0) -> dict[str, Member]:
+    """A `remote.Member` for each row a pool key of this machine's reaches, by name."""
+    tokens = {m.group: derive_token(m.key) for m in memberships(pool_key_path)}
+    out: dict[str, Member] = {}
     for row in rows:
-        token = next((tokens[g] for g in row.get("clusters") or [] if g in tokens), "")
+        token = next((tokens[g] for g in row.get("pools") or [] if g in tokens), "")
         if token:
-            out[str(row["name"])] = Peer(str(row["base_url"]), token, timeout=timeout)
+            out[str(row["name"])] = Member(str(row["base_url"]), token, timeout=timeout)
     return out
 
 
@@ -141,7 +141,7 @@ def _until(said: dict[str, Any]) -> str:
 def pause_fleet(what: Fanout, rows: Sequence[dict[str, Any]]) -> list[Answer]:
     """Send one pause or resume to each machine, and what each said."""
     remember_seen(rows, what.root)
-    clients = peer_clients(rows, cluster_key_path=what.cluster_key_path, timeout=REACH_S)
+    clients = member_clients(rows, pool_key_path=what.pool_key_path, timeout=REACH_S)
     action = "resume" if what.resume else "pause"
     fields: dict[str, Any] = {}
     if not what.resume:
@@ -150,14 +150,14 @@ def pause_fleet(what: Fanout, rows: Sequence[dict[str, Any]]) -> list[Answer]:
     out: list[Answer] = []
     for row in rows:
         name, mine = str(row["name"]), bool(row.get("is_self"))
-        peer = clients.get(name)
-        if peer is None:
-            out.append(Answer(name, False, "no cluster key reaches this machine", mine))
+        member = clients.get(name)
+        if member is None:
+            out.append(Answer(name, False, "no pool key reaches this machine", mine))
             continue
         try:
-            out.append(Answer(name, True, _until(peer.availability(action, **fields)),
+            out.append(Answer(name, True, _until(member.availability(action, **fields)),
                               mine))
-        except (PeerError, OSError, ValueError) as exc:
+        except (MemberError, OSError, ValueError) as exc:
             told = str(exc)
             out.append(Answer(name, False,
                               UNHEARD if "unreachable" in told else told[-160:], mine))
@@ -205,14 +205,14 @@ class Adopted:
 
 
 def _reported(row: dict[str, Any]) -> dict[str, Any]:
-    """The availability half of a peer row, whether it is loose or under ``device``."""
+    """The availability half of a member row, whether it is loose or under ``device``."""
     said = row.get("availability") or (row.get("device") or {}).get("availability")
     return said if isinstance(said, dict) else {}
 
 
 def pause_among(rows: Sequence[dict[str, Any]], *,
                 now: float | None = None) -> Adopted | None:
-    """The pause that lasts longest among these peers, or None when none is in force."""
+    """The pause that lasts longest among these members, or None when none is in force."""
     now = time.time() if now is None else now
     best: Adopted | None = None
     for row in rows:
@@ -226,18 +226,18 @@ def pause_among(rows: Sequence[dict[str, Any]], *,
         if until <= now:
             continue
         if best is None or until > best.until:
-            best = Adopted(str(row.get("name") or "a peer"), until,
+            best = Adopted(str(row.get("name") or "a member"), until,
                            str(said.get("paused_reason") or ""))
     return best
 
 
-def peer_pause(cluster_key_path: Path | str | None = None, *,
+def member_pause(pool_key_path: Path | str | None = None, *,
                timeout_s: float = ADOPT_S, port: int | None = None,
                finder: Callable[..., list[Beacon]] = discover) -> Adopted | None:
-    """Listen for this machine's clusters and return the pause they are under."""
+    """Listen for this machine's pools and return the pause they are under."""
     rows: list[dict[str, Any]] = []
     deadline = time.time() + timeout_s
-    for member in memberships(cluster_key_path):
+    for member in memberships(pool_key_path):
         left = deadline - time.time()
         if left <= 0:
             break
@@ -253,5 +253,5 @@ def adopt_pause(schedule: Availability, found: Adopted | None) -> Adopted | None
     if schedule.paused and (schedule.paused_until or math.inf) >= found.until:
         return None
     schedule.paused_until = found.until
-    schedule.paused_reason = found.reason or CLUSTER_PAUSE
+    schedule.paused_reason = found.reason or POOL_PAUSE
     return found

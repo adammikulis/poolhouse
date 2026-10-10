@@ -13,12 +13,12 @@ pytestmark = pytest.mark.slow
 
 def project_response(path, state):
     if path == "/ui/projects":
-        return {"projects": [{"id": "project-a", "name": "Shared app", "peer": "mac-test",
+        return {"projects": [{"id": "project-a", "name": "Shared app", "member": "mac-test",
                               "board_host": "mac-authority", "state": "shared"}],
                 "candidates": [{"id": "local-a", "name": "Local app"}],
                 "devices": [{"name": "old-device", "state": "upgrade_required"}]}
     if path.endswith("/board"):
-        return state.get("project_board") or {"state": "awaiting_agents", "agents": [], "messages": []}
+        return state.get("board_for") or {"state": "awaiting_agents", "agents": [], "messages": []}
     if path.endswith("/invite"):
         return {"code": "test-code", "command": "poolhouse-workspace join test-code", "ttl_s": 600}
     return {"checkout": "/isolated/shared-app", "attached": False}
@@ -42,7 +42,7 @@ def route(request, state):
     elif path == "/ui/models":
         body = {"free_gb": 120, "here": [{"name": "quill-27B.gguf", "size": 1000},
                  {"name": "quill-27B.draft.gguf", "size": 50}],
-                "elsewhere": [{"name": "marrow-9B.gguf", "peers": ["remote-test"]}],
+                "elsewhere": [{"name": "marrow-9B.gguf", "members": ["remote-test"]}],
                 "getting": [{"id": "download-a", "name": "another.gguf", "state": "getting",
                              "done": state["done"], "total": 100, "rate_bps": 10, "eta_seconds": 9}]}
     elif path == "/ui/serving":
@@ -63,11 +63,11 @@ def route(request, state):
                 "families": ["Qwen"], "page": 0, "pages": 2}
     elif path == "/ui/fleet":
         body = {"group": "default", "models": ["quill-27B.gguf", "marrow-9B.gguf"],
-                "peers": [{"name": "local-test", "is_self": True, "models": ["quill-27B.gguf"], "device": {}},
+                "members": [{"name": "local-test", "is_self": True, "models": ["quill-27B.gguf"], "device": {}},
                           {"name": "remote-test", "models": ["marrow-9B.gguf"], "device": {}}],
                 "bench": {"available": True}}
-    elif path == "/ui/clusters":
-        body = {"clusters": [{"group": "default"}]}
+    elif path == "/ui/pools":
+        body = {"pools": [{"group": "default"}]}
     elif path == "/ui/room":
         body = {"machine": {"supported": False}}
     elif path == "/ui/settings":
@@ -100,7 +100,7 @@ def app():
 
         page.route("http://design.test/**", lambda request: route(request, state))
         page.goto("http://design.test/")
-        page.locator("#cluster:not([hidden])").wait_for()
+        page.locator("#pool:not([hidden])").wait_for()
         yield page, state, errors
         browser.close()
 
@@ -120,28 +120,28 @@ def test_projects_keep_source_checkout_separate_from_explicit_agent_access(app):
     assert not state["posts"]
     page.get_by_role("button", name="Get source on this device", exact=True).click()
     page.get_by_text("Source ready at /isolated/shared-app. Connect an agent separately to join the shared board.").wait_for()
-    assert ("/ui/projects/project-a/checkout", {"peer": "mac-test"}) in state["posts"]
+    assert ("/ui/projects/project-a/checkout", {"member": "mac-test"}) in state["posts"]
     assert not any("invite" in path for path, _ in state["posts"])
     page.get_by_label("Agent label (optional)").fill("Mac reviewer")
     page.get_by_role("button", name="Create agent access code", exact=True).click()
     page.get_by_text("poolhouse-workspace join test-code", exact=True).wait_for()
     assert ("/ui/projects/project-a/invite", {"hint": "Mac reviewer", "uses": 1}) in state["posts"]
-    state["project_board"] = {"state": "connected", "agents": [{"id": "agent-a", "label": "Mac reviewer", "role": "agent"}],
+    state["board_for"] = {"state": "connected", "agents": [{"id": "agent-a", "label": "Mac reviewer", "role": "agent"}],
                               "messages": [{"from": "Mac reviewer", "text": "Review ready"}]}
     page.evaluate("document.querySelector('projects-view').draw()")
     page.get_by_text("Review ready", exact=True).wait_for()
     assert page.get_by_label("Agent label (optional)").input_value() == "Mac reviewer"
     assert page.get_by_text("Agents connected to the shared board", exact=True).is_visible()
-    state["project_board"] = {"state": "offline", "agents": [{"id": "agent-a", "online": False}]}
+    state["board_for"] = {"state": "offline", "agents": [{"id": "agent-a", "online": False}]}
     page.evaluate("document.querySelector('projects-view').draw()")
     page.get_by_text("Registered agents are offline", exact=True).wait_for()
-    state["project_board"] = {"state": "unconfigured", "agents": []}
+    state["board_for"] = {"state": "unconfigured", "agents": []}
     page.evaluate("document.querySelector('projects-view').draw()")
     page.get_by_text("Board not connected/configured", exact=True).wait_for()
     assert page.get_by_role("button", name="Create agent access code", exact=True).is_disabled()
     page.get_by_label("Host this project's board on this device").check()
     page.wait_for_function("() => !document.querySelector('#project-invite').disabled")
-    state["project_board"] = {"state": "connection_required", "board_host": "https://mac.test:8770", "agents": []}
+    state["board_for"] = {"state": "connection_required", "board_host": "https://mac.test:8770", "agents": []}
     page.evaluate("document.querySelector('projects-view').draw()")
     page.get_by_text("Connect to the existing board on https://mac.test:8770. Create agent access on the authority device.").wait_for()
     assert page.get_by_role("button", name="Create agent access code", exact=True).is_disabled()
@@ -150,7 +150,7 @@ def test_projects_keep_source_checkout_separate_from_explicit_agent_access(app):
 
 def test_project_authority_conflict_disables_access_without_fabricating_agents(app):
     page, state, errors = app
-    state["project_board"] = {"state": "conflict", "error": "Two authorities claim this project"}
+    state["board_for"] = {"state": "conflict", "error": "Two authorities claim this project"}
     page.get_by_role("link", name="Projects & agents", exact=True).click()
     page.get_by_role("button", name="Open project", exact=True).click()
     page.get_by_text("Two authorities claim this project", exact=True).wait_for()
@@ -239,18 +239,18 @@ def test_capacity_lives_in_models_and_uses_q8_geometry(app):
 
 def test_benchmark_has_labelled_selection_and_preserves_form_across_poll(app):
     page, state, errors = app
-    page.locator("#cluster-sweep > summary").click()
+    page.locator("#pool-sweep > summary").click()
     page.get_by_label("quill-27B.gguf", exact=False).check()
     page.get_by_label("Questions", exact=True).select_option("limit")
     page.get_by_label("Question limit", exact=True).fill("12")
     page.get_by_label("Run name", exact=False).fill("evening comparison")
-    page.evaluate("window.savedRunName = document.getElementById('label'); document.querySelector('cluster-view').draw()")
+    page.evaluate("window.savedRunName = document.getElementById('label'); document.querySelector('pool-view').draw()")
     page.wait_for_function("() => document.getElementById('label') === window.savedRunName")
     assert page.get_by_label("Run name", exact=False).input_value() == "evening comparison"
-    assert "poolhouse-bench" not in page.locator("#cluster-sweep").inner_text()
+    assert "poolhouse-bench" not in page.locator("#pool-sweep").inner_text()
     page.get_by_role("button", name="Start benchmark", exact=True).click()
     page.get_by_text("Benchmark started. You can leave this screen while it runs.", exact=True).wait_for()
-    assert ("/ui/bench/sweep", {"models": ["quill-27B.gguf"], "peers": ["local-test", "remote-test"],
+    assert ("/ui/bench/sweep", {"models": ["quill-27B.gguf"], "members": ["local-test", "remote-test"],
                                 "sample": 12, "label": "evening comparison"}) in state["posts"]
     assert not errors
 

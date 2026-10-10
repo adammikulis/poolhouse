@@ -7,7 +7,7 @@ from poolhouse.workspace.identity import AGENT, HUMAN, LEAD, Identity
 
 __all__ = ["KIND", "ledger_installed", "record_injection", "sender_standing"]
 
-KIND = "peer"
+KIND = "member"
 """The ledger kind a sender is recorded under."""
 LIVE_ROLES = (AGENT, HUMAN, LEAD)
 

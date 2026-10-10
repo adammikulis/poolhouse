@@ -21,7 +21,7 @@ def the_passphrase_is_kept(a_keystore):  # noqa: F811
 
 
 @pytest.fixture(autouse=True)
-def the_cluster_already_exists(monkeypatch, tmp_path):
+def the_pool_already_exists(monkeypatch, tmp_path):
     from poolhouse.fleet.onboard import joining
 
     monkeypatch.setattr(joining, "find_joiners", lambda *a, **k: [])
@@ -101,7 +101,7 @@ def test_an_access_token_header_cannot_make_the_request(room):
 
 def test_a_session_opened_with_a_token_cannot_make_the_request(room):
     room.call("/ui/setup/join", method="POST", body={"passphrase": WORDS, "group": "home"})
-    token = next(iter(room._cluster_tokens()))
+    token = next(iter(room._pool_tokens()))
     _, _, headers = room.call("/ui/session", method="POST", body={"token": token})
     cookie = headers["Set-Cookie"].split(";")[0]
     status, body, _ = room.call("/ui/room/apply", method="POST", body={"mb": 65536},

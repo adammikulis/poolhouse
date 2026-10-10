@@ -237,10 +237,10 @@ def workspace_extension(ws: Workspace, token: str, me: str, state: TaskState,
         ws.audit("local-agent.effort", me, level=level, ceiling=ceiling, reason_chars=len(str(reason)))
         return {"set": True, "effort": level, "takes_effect": "the next task"}
 
-    pairs = [(do._schema(fn.__name__, "", fn, fn.__doc__ or ""), fn)
+    schemas = [(do._schema(fn.__name__, "", fn, fn.__doc__ or ""), fn)
              for fn in (workspace_roster, workspace_thread, workspace_reputation, workspace_send, set_effort)]
     return roles.Extension(
-        tools=lambda: pairs,
+        tools=lambda: schemas,
         context=lambda: (f"You are {me}, an agent in the poolhouse workspace. Tasks arrive as "
                          "messages; what you give to `done` is sent back as the reply. You may "
                          "send a task, question or status to another agent with workspace_send; "

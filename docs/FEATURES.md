@@ -11,27 +11,27 @@ python docs/verify_release.py
 
 ## Setting up
 
-Create a named cluster on one machine, then select it on another and enter its passphrase.
-Cluster keys are random. The maintained authenticated password exchange gives an existing
+Create a named pool on one machine, then select it on another and enter its passphrase.
+Pool keys are random. The maintained authenticated password exchange gives an existing
 member's key to a machine with the correct passphrase; it does not derive the key from words.
-Clusters created without a passphrase are joined through an authenticated recovery file.
+Pools created without a passphrase are joined through an authenticated recovery file.
 
-- Nearby cluster names are discovery hints, not membership or execution authority.
-- Authenticated cluster traffic is separated by each cluster's independent key.
+- Nearby pool names are discovery hints, not membership or execution authority.
+- Authenticated pool traffic is separated by each pool's independent key.
 - The group name scopes passphrase authentication, even when two groups choose the same words.
 - Passphrases are stretched with scrypt before the PAKE exchange. Failed joining attempts
   are rate limited; a discovery hint never grants access.
-- At least five characters are required; use a stronger phrase for an actual cluster.
+- At least five characters are required; use a stronger phrase for an actual pool.
 
-Beacons are signed. A peer's address is taken from the packet it arrived in, never from
+Beacons are signed. A device's address is taken from the packet it arrived in, never from
 anything the packet claims about itself.
 
-A machine can be in several clusters at once, and join or leave any of them from the
-Cluster screen without touching the others. It answers to each: work sent from any
-cluster it belongs to reaches it, and its models and served endpoints are offered to all
+A machine can be in several pools at once, and join or leave any of them from the
+Pool screen without touching the others. It answers to each: work sent from any
+pool it belongs to reaches it, and its models and served endpoints are offered to all
 of them. The one it answers as, when something has to pick, is the first in the list.
 Leaving takes effect at once, and a machine that has left stops answering to that
-cluster's credential.
+pool's credential.
 
 Settings has a button to walk through first-run setup again, for renaming the machine or
 changing its passphrase.
@@ -84,14 +84,14 @@ a row is set aside for a growing cooldown rather than draining the queue.
 - **Pause.** Stops the machine taking work now. What is already running is stopped and
   requeued, so the machine comes back to you immediately and the run resumes from its
   last checkpoint. A pause survives a restart.
-- **Pause the whole fleet.** One command pauses every machine in the cluster, with a
+- **Pause the whole fleet.** One command pauses every machine in the pool, with a
   reason and a length, and names any it could not reach. A machine that was off, asleep
   or unplugged takes the pause from its neighbours when it starts, along with the reason,
   so it does not come back in the middle of your evening and start a job. Resume works
   the other way round: a machine that was away when you resumed stays paused until you
   resume it while it is running.
 - **Reservations.** One machine can hold another for a while, with a ceiling so a
-  forgotten reservation cannot take a machine out of the cluster permanently.
+  forgotten reservation cannot take a machine out of the pool permanently.
 
 ## Models
 
@@ -148,7 +148,7 @@ Talk to a model from the interface, whichever machine is running it.
   server is downloaded the first time and checked against the digest GitHub publishes
   for it.
 
-- **A machine with no speech model sends audio to one that has it.** `Peer.transcribe`
+- **A machine with no speech model sends audio to one that has it.** `Member.transcribe`
   posts a recording to another machine's daemon and gets back the text with the time of
   every segment, under the credential the fleet already shares. `poolhouse-speech` does the
   same locally: transcribe a file, say a line into a WAV, or find the seconds somebody is
@@ -225,33 +225,33 @@ no interface of its own: it opens on the page the daemon serves, which is the sa
 browser gets. Each download also carries that daemon on its own, for a machine with no
 screen.
 
-- **First run** asks what to call the machine, then which clusters it belongs to, then
+- **First run** asks what to call the machine, then which pools it belongs to, then
   what the machine is for. The settings are pre-filled from the hardware, with the reason
   shown beside each, so a wrong guess is visible rather than silent.
-- **Clusters are optional and there can be several.** The same page lists the ones this
+- **Pools are optional and there can be several.** The same page lists the ones this
   machine is in, joins another with a passphrase, and leaves one. A machine that joins
   none runs models and trains on its own; with no passphrase there is nothing to check,
   so it answers to that machine and to nobody else.
 - **Starting up** — with the computer, when you log in, or only when you open it. The
   boot option asks for permission through the operating system's own password dialog.
-- **The cluster view** shows every machine with its vendor, how many jobs are
+- **The pool view** shows every machine with its vendor, how many jobs are
   running of how many it will take, how much of its memory is in use, how busy its
   processors are, and — where a probe reports them — temperature, clocks, power,
   video memory and whether it is throttling.
 - **Closing** asks once whether to keep running so the others can still send it work, or
   quit. The answer is remembered if you leave the box ticked.
 
-**Made of components.** Every screen is a custom element in a file of its own — the cluster,
+**Made of components.** Every screen is a custom element in a file of its own — the pool,
 chat, models, settings, what fits, first run, signing in — sharing one model of the daemon's
 routes; a page is the list of them, so a caller leaves one out (`poolhouse-serve fit --ui`
 serves what fits and nothing else). Each screen has a route mixin to match.
 
-Setup on a machine that has not joined a cluster is refused from anywhere but that
+Setup on a machine that has not joined a pool is refused from anywhere but that
 machine, because until it joins there is no credential to check and the first person to
 reach it would own it. A headless machine can be set up over the network with a one-time
 code printed on its console.
 
-The cluster key never enters the browser. Signing in is the passphrase, checked by
+The pool key never enters the browser. Signing in is the passphrase, checked by
 deriving the key again and comparing.
 
 ## Removing it
@@ -398,7 +398,7 @@ graph and can be asked about afterwards.
 - **Reading quality is a gate, not an opinion.** A gold set of passages with every relation
   they state written down scores the reading — recall, precision, every miss named — and a
   gold set of questions scores the answering. Either can fail a run below a chosen F1.
-- **An extraction somebody else wrote comes in as a source**: a pair of node and edge
+- **An extraction somebody else wrote comes in as a source**: a nodes file and an edges file
   files joins the store with the same shape and the same provenance behind every claim, its
   free vocabulary marked as the extractor's own.
 
@@ -427,7 +427,7 @@ Serving and asking a model well is a measurement per model, not a habit.
 
 ## Placing a fleet
 
-A plan says which model each peer should serve, and with how many slots, for a number of
+A plan says which model each device should serve, and with how many slots, for a number of
 conversations at once. Models are taken best-measured first, and each goes to every machine
 with room for its weights and at least one slot's cache at the chosen context — or, asked
 the other way, each machine serves whichever model slots the most of the people still
@@ -498,7 +498,7 @@ tomorrow. Only the selectors differ, so the selectors are data — `website`, `s
 
 - **Several daemons on one machine share a discovery port**, and only one of them
   answers. One daemon per machine is unaffected; this only shows up when simulating a
-  cluster on a single box.
+  pool on a single box.
 - **The native window is verified on macOS.** Windows and Linux use different webview
   backends, and a window cannot be tested without a display.
 - **The macOS app carries no developer certificate.** Install it with the command on the
@@ -506,7 +506,7 @@ tomorrow. Only the selectors differ, so the selectors are data — `website`, `s
   zip in a browser is quarantined, and macOS refuses it until it is opened once from the
   right-click menu.
 - **No dataset browser yet.** Models are catalogued across the network; datasets are
-  not. Peer-to-peer transfer of them exists, but nothing indexes what each machine has.
+  not. Device-to-device transfer of them exists, but nothing indexes what each machine has.
 - **Conversations stay on the machine they were held on.** They are not shared across
   the network.
 - **Training is one machine per run.** Splitting a single run across machines is not

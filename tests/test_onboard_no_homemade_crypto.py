@@ -1,5 +1,5 @@
 """No module under poolhouse/fleet/onboard writes its own elliptic-curve or big-integer group
-arithmetic. Pairing is the `spake2` package, signing and TLS are `cryptography`, HMAC and
+arithmetic. Joining is the `spake2` package, signing and TLS are `cryptography`, HMAC and
 hashes are the standard library. The scan looks for what such code is made of: a three-argument
 `pow` (modular exponentiation or inverse), integer literals or shifts that name a curve or
 group size, and functions named for group operations."""

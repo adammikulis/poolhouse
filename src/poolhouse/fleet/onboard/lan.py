@@ -1,7 +1,7 @@
 """Onboarding talks to machines on this network and to nothing on the public internet.
 
-Pairing, fetching a manifest and fetching a file from a peer open their own connections (the
-peer's certificate is pinned, not looked up in a trust store), so they do not go through
+Joining, fetching a manifest and fetching a file from a member open their own connections (the
+member's certificate is pinned, not looked up in a trust store), so they do not go through
 `poolhouse.net`. What keeps them from being a way to the internet is this check, made at every
 connection: the address must not be a public one (loopback, private, link-local and
 carrier-grade NAT, which covers tailnets, all pass). `tests/test_net_no_bypass.py` allows these

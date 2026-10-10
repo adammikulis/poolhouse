@@ -1,5 +1,5 @@
 """Files between daemons: their digests, the paths they may be written to, the ranges a
-GET asks for, and the `Fetcher` that pulls one from a peer."""
+GET asks for, and the `Fetcher` that pulls one from a member."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from poolhouse.files import sha256_file
 
 from .discovery import derive_token, discover
 from .jobs import DaemonError
-from .remote import Peer
+from .remote import Member
 
 _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
 FILE_CHUNK = 1 << 20
@@ -96,7 +96,7 @@ def byte_range(header: str) -> tuple[int, int | None]:
 
 @dataclass
 class Fetch:
-    """One peer-to-peer transfer in flight."""
+    """One device-to-device transfer in flight."""
 
     id: str
     source: str
@@ -128,22 +128,22 @@ class Fetcher:
         self.fetches: dict[str, Fetch] = {}
         self._lock = threading.Lock()
         self._sem = threading.Semaphore(slots)
-        self._peers: dict[str, tuple[float, str]] = {}
+        self._members: dict[str, tuple[float, str]] = {}
 
     def resolve(self, name: str) -> str:
-        """A peer name to a base URL, via signed discovery. Never from the caller."""
+        """A member name to a base URL, via signed discovery. Never from the caller."""
         if self.key is None:
             raise DaemonError(
-                "this daemon holds no cluster key, so it cannot authenticate to a peer "
-                "-- run 'poolhouse-peers init' and copy the key here")
-        cached = self._peers.get(name)
+                "this daemon holds no pool key, so it cannot authenticate to a member "
+                "-- run 'poolhouse-members init' and copy the key here")
+        cached = self._members.get(name)
         if cached and cached[0] > time.time():
             return cached[1]
         for beacon in discover(self.key, timeout_s=self.discover_timeout_s):
-            self._peers[beacon.name] = (time.time() + 30.0, beacon.base_url)
-        found = self._peers.get(name)
+            self._members[beacon.name] = (time.time() + 30.0, beacon.base_url)
+        found = self._members.get(name)
         if not found:
-            raise DaemonError(f"no peer named {name!r} answered on this LAN")
+            raise DaemonError(f"no member named {name!r} answered on this LAN")
         return found[1]
 
     def start(self, *, source: str, relpath: str, to: str,
@@ -162,13 +162,13 @@ class Fetcher:
         with self._sem:
             try:
                 base_url = self.resolve(fetch.source)
-                peer = Peer(base_url, derive_token(self.key))  # type: ignore[arg-type]
+                member = Member(base_url, derive_token(self.key))  # type: ignore[arg-type]
 
                 def progress(done: int, total: int) -> None:
                     fetch.done, fetch.total = done, total
 
                 target.parent.mkdir(parents=True, exist_ok=True)
-                peer.pull(fetch.relpath, target, on_progress=progress)
+                member.pull(fetch.relpath, target, on_progress=progress)
                 if sha256:
                     got = sha256_file(target)
                     if not hmac.compare_digest(got, sha256.strip().lower()):

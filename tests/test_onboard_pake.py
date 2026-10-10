@@ -1,4 +1,4 @@
-"""The pairing exchange (SPAKE2 from the spake2 package): agrees on a right code, fails on a
+"""The join exchange (SPAKE2 from the spake2 package): agrees on a right code, fails on a
 wrong one or a changed identity, refuses hostile messages."""
 
 import sys

@@ -39,22 +39,22 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:3px solid
 ::selection { background:var(--poolhouse-yellow); color:var(--poolhouse-navy); }
 .grid { display: grid; gap: var(--gap); align-items: start;
         grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
-.peer {
+.member {
   background: var(--bg-raised); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 16px 18px 18px;
   box-shadow: var(--shadow); position: relative; overflow: hidden;
   transition: border-color .2s, transform .2s;
 }
-.peer:hover { border-color: var(--line-bright); transform: translateY(-1px); }
-.peer.self::after {
+.member:hover { border-color: var(--line-bright); transform: translateY(-1px); }
+.member.self::after {
   content: "this machine"; position: absolute; top: 12px; right: 14px;
   font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim);
 }
-.peer .name { font-weight: 650; font-size: 16px; letter-spacing: -.01em; }
-.peer .url { color: var(--dim); font-family: var(--mono); font-size: 11.5px; margin-top: 1px; }
-.peer .row { display: flex; align-items: center; gap: 8px; background: none; border: 0;
+.member .name { font-weight: 650; font-size: 16px; letter-spacing: -.01em; }
+.member .url { color: var(--dim); font-family: var(--mono); font-size: 11.5px; margin-top: 1px; }
+.member .row { display: flex; align-items: center; gap: 8px; background: none; border: 0;
              padding: 0; margin: 0; }
-.peer ml-meter { margin-top: 14px; }
+.member ml-meter { margin-top: 14px; }
 
 .badge {
   display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px;

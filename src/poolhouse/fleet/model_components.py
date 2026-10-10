@@ -160,11 +160,11 @@ def catalogue(models, name: str, source: str = "", key: bytes | None = None) -> 
     repo, _ = _reference(source)
     policy = models.sources()
     if key is not None and policy in {"lan", "both"}:
-        from .remote import Peer, PeerError
+        from .remote import Member, MemberError
 
-        for peer in Peer.discover(key=key, timeout_s=1):
+        for member in Member.discover(key=key, timeout_s=1):
             try:
-                for held in peer.models():
+                for held in member.models():
                     same = _reference(held.get("source", "")) == _reference(source) if source else held.get("name") == name
                     if not same:
                         continue
@@ -172,7 +172,7 @@ def catalogue(models, name: str, source: str = "", key: bytes | None = None) -> 
                         if offered.get("kind") in KINDS:
                             offers.append({**offered, "status": "available", "error": "",
                                            "download_bytes": offered["size"], "storage_bytes": offered["size"]})
-            except (PeerError, OSError, ValueError, KeyError):
+            except (MemberError, OSError, ValueError, KeyError):
                 continue
     if repo and policy in {"internet", "both"}:
         try:

@@ -412,7 +412,7 @@ class TestTheLibraryFunctions:
 
 
 class TestWhatThisMachineHears:
-    """`working` is what the fleet beacon carries, so a peer with a microphone can be
+    """`working` is what the fleet beacon carries, so a member with a microphone can be
     picked out of a listing."""
 
     @pytest.fixture(autouse=True)

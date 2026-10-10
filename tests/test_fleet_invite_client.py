@@ -56,7 +56,7 @@ def test_every_resolved_address_must_be_a_remote_lan_device(monkeypatch, address
 @pytest.fixture(params=["dev", "prod"])
 def invitation_server(tmp_path, monkeypatch, request):
     identity = tls.identity(tmp_path / 'tls', 'test-device')
-    member = Membership(group='Test cluster', key=encode(b'k' * 32).encode(),
+    member = Membership(group='Test pool', key=encode(b'k' * 32).encode(),
                         mode=request.param, selection='manual')
     hits = []
     source = [None]
@@ -131,7 +131,7 @@ def test_modified_grant_is_rejected(invitation_server, monkeypatch):
     def tampered(data, path, fields):
         answer, certificate = post(data, path, fields)
         if path.endswith('/redeem'):
-            answer['grant_data'] = encode(json.dumps({'kind': 'computer', 'group': 'Wrong cluster',
+            answer['grant_data'] = encode(json.dumps({'kind': 'computer', 'group': 'Wrong pool',
                                                          'key': member.key.decode()}).encode())
         return answer, certificate
 

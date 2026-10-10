@@ -1,10 +1,16 @@
 """Onboarding events reach a sentinel through the adapter docs/onboarding.md shows, and each
-step of a pairing leaves its event. The sentinel half runs only where sentinel is merged."""
+step of a join leaves its event. The sentinel half runs only where sentinel is merged."""
 
 import pytest
 from onboard_support import Clock, Recorder, identity, info, requests
 
-from poolhouse.fleet.onboard.pairing import Grant, Hooks, PairError, PairingClient, PairingServer
+from poolhouse.fleet.onboard.join_code import (
+    Grant,
+    Hooks,
+    JoinCodeClient,
+    JoinCodeError,
+    JoinCodeServer,
+)
 from poolhouse.fleet.onboard.requests import Refused
 
 
@@ -20,22 +26,22 @@ def watch_onboarding(bus, sentinel, Event, Severity):
         Event(e.kind, Severity.parse(e.severity), "onboard", e.subject, e.evidence, e.ts)))
 
 
-def test_a_whole_pairing_leaves_the_events_a_watcher_needs(tmp_path):
+def test_a_whole_joining_leaves_the_events_a_watcher_needs(tmp_path):
     rec = Recorder()
     acceptor, joiner = identity(tmp_path, "a"), identity(tmp_path, "j")
     rq = requests(tmp_path, rec, Clock())
-    with PairingServer(rq, acceptor, Hooks(lambda r: Grant(group="g", key="k")),
+    with JoinCodeServer(rq, acceptor, Hooks(lambda r: Grant(group="g", key="k")),
                        bus=rec.bus, address=("127.0.0.1", 0)) as server:
-        c = PairingClient("127.0.0.1", server.port, fingerprint=joiner.fingerprint)
+        c = JoinCodeClient("127.0.0.1", server.port, fingerprint=joiner.fingerprint)
         rid = c.ask(name="n", hostname="h", model="m")
         code = rq.accept(rid, mine=True).code
         wrong = "000000" if code != "000000" else "111111"
-        with pytest.raises(PairError):
+        with pytest.raises(JoinCodeError):
             c.finish(wrong)
         c.finish(code)
     kinds = rec.kinds()
     assert kinds == ["onboard.request.received", "onboard.request.accepted",
-                     "onboard.pair.wrong_code", "onboard.pair.succeeded"]
+                     "onboard.join.wrong_code", "onboard.join.succeeded"]
     assert [e.severity for e in rec.events] == ["notice", "notice", "warning", "notice"]
     assert not any(code in str(e.evidence) or code in e.subject for e in rec.events)
 
@@ -56,8 +62,8 @@ def test_the_adapter_hands_events_to_a_real_sentinel(tmp_path):
     rec = Recorder()
     s = sentinel.Sentinel(tmp_path / "sentinel")
     stop = watch_onboarding(rec.bus, s, sentinel.Event, sentinel.Severity)
-    rec.bus.emit("onboard.pair.locked", "critical", "request:abc", reason="x")
+    rec.bus.emit("onboard.join.locked", "critical", "request:abc", reason="x")
     stop()
     seen = s.bus.recent(kind="onboard.")
     assert [(e.kind, e.severity.name, e.source) for e in seen] == \
-        [("onboard.pair.locked", "CRITICAL", "onboard")]
+        [("onboard.join.locked", "CRITICAL", "onboard")]

@@ -101,9 +101,9 @@ def term():
             t.proc.wait()
 
 
-def seed_peer(addr: str, why: str = "peer.forged_traffic: forged=3"):
+def seed_member(addr: str, why: str = "member.forged_traffic: forged=3"):
     time.sleep(0.02)
-    return sentinel.default().store.quarantine(("peer", addr), why, {})
+    return sentinel.default().store.quarantine(("member", addr), why, {})
 
 
 def seed_watch(kind: str, key: str, why: str):
@@ -123,10 +123,10 @@ def releases() -> list:
 # -- the screen -----------------------------------------------------------------------------
 def test_the_screen_lists_every_held_subject_in_plain_words(term):
     seed_watch("server", "port:51089", "server.unmanaged: port=51089")
-    seed_peer("127.0.0.1")
+    seed_member("127.0.0.1")
     t = term("review")
     screen = t.until("q quit")
-    assert "peer 127.0.0.1" in screen and "server :51089" in screen
+    assert "member 127.0.0.1" in screen and "server :51089" in screen
     assert "forged or replayed signature" in screen          # the plain reason of the selected one
     assert "Requests from this machine are refused" in screen  # what it blocks
     assert "release" in screen and "purge" in screen
@@ -136,7 +136,7 @@ def test_the_screen_lists_every_held_subject_in_plain_words(term):
 
 def test_hostile_names_reach_the_screen_only_as_visible_escapes(term):
     seed_watch("session", HOSTILE, "weird")
-    seed_peer("10.0.0.9", "peer.forged_traffic: " + HOSTILE)
+    seed_member("10.0.0.9", "member.forged_traffic: " + HOSTILE)
     t = term("review")
     t.until("q quit")
     t.send("d")                                              # the details screen shows the most
@@ -152,8 +152,8 @@ def test_hostile_names_reach_the_screen_only_as_visible_escapes(term):
 
 
 def test_release_takes_one_confirming_key_and_releases_only_the_selected_item(term):
-    older = seed_peer("10.0.0.1")
-    newer = seed_peer("10.0.0.2")
+    older = seed_member("10.0.0.1")
+    newer = seed_member("10.0.0.2")
     t = term("review")
     t.until("q quit")
     t.send("2")                                               # the older one, second in the list
@@ -161,7 +161,7 @@ def test_release_takes_one_confirming_key_and_releases_only_the_selected_item(te
     screen = t.until("[y = yes")
     assert "10.0.0.1" in screen and "Releasing ends this" in screen
     t.send("y")
-    t.until("released peer 10.0.0.1")
+    t.until("released member 10.0.0.1")
     t.send("q")
     assert t.finish() == 0
     assert state_of(older.id) == State.RELEASED and state_of(newer.id) == State.QUARANTINED
@@ -170,7 +170,7 @@ def test_release_takes_one_confirming_key_and_releases_only_the_selected_item(te
 
 
 def test_any_other_key_cancels_a_release(term):
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     t = term("review")
     t.until("q quit")
     t.send("r")
@@ -183,7 +183,7 @@ def test_any_other_key_cancels_a_release(term):
 
 
 def test_keep_and_quit_change_nothing(term):
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     watched = seed_watch("server", "port:1", "server.unmanaged: x")
     t = term("review")
     t.until("q quit")
@@ -196,7 +196,7 @@ def test_keep_and_quit_change_nothing(term):
 
 
 def test_release_all_watched_touches_only_the_watched(term):
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     w1 = seed_watch("server", "port:1", "server.unmanaged: x")
     w2 = seed_watch("session", "s1", "tools.mix_shift: d=0.5")
     t = term("review")
@@ -212,8 +212,8 @@ def test_release_all_watched_touches_only_the_watched(term):
 
 
 def test_arrow_keys_move_the_selection(term):
-    seed_peer("10.0.0.1")
-    seed_peer("10.0.0.2")
+    seed_member("10.0.0.1")
+    seed_member("10.0.0.2")
     t = term("review")
     t.until("q quit")
     t.send("\x1b[B")
@@ -223,7 +223,7 @@ def test_arrow_keys_move_the_selection(term):
 
 
 def test_purge_needs_the_whole_id_typed(term):
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     t = term("review")
     t.until("q quit")
     t.send("p")
@@ -234,14 +234,14 @@ def test_purge_needs_the_whole_id_typed(term):
     t.send("p")
     t.until("type " + held.id)
     t.send(held.id + "\n")
-    t.until("purged peer 10.0.0.1")
+    t.until("purged member 10.0.0.1")
     t.send("q")
     assert t.finish() == 0
     assert sentinel.default().store.get(held.id).purged is True
 
 
 def test_the_details_screen_shows_history_events_and_the_equivalent_commands(term):
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     t = term("review")
     t.until("q quit")
     t.send("d")
@@ -256,7 +256,7 @@ def test_the_details_screen_shows_history_events_and_the_equivalent_commands(ter
 # -- who may act ---------------------------------------------------------------------------
 @pytest.mark.parametrize("marker", MARKERS)
 def test_an_agent_started_process_is_refused_and_releases_nothing(term, marker):
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     t = term("review", env=child_env(**{marker: "1"}))
     code = t.finish()
     assert code != 0 and marker in t.text and "started by an agent" in t.text
@@ -264,7 +264,7 @@ def test_an_agent_started_process_is_refused_and_releases_nothing(term, marker):
 
 
 def test_stdin_that_is_not_a_terminal_prints_the_list_and_releases_nothing():
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     master, slave = pty.openpty()
     done = subprocess.run([sys.executable, "-c", "import sys; from poolhouse.sentinel.cli import "
                            "command; sys.exit(command(['review']))"], stdin=subprocess.DEVNULL,
@@ -277,7 +277,7 @@ def test_stdin_that_is_not_a_terminal_prints_the_list_and_releases_nothing():
 
 
 def test_stdout_that_is_not_a_terminal_prints_the_list_and_releases_nothing():
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     master, slave = pty.openpty()
     done = subprocess.run([sys.executable, "-c", "import sys; from poolhouse.sentinel.cli import "
                            "command; sys.exit(command(['review']))"], stdin=slave,
@@ -290,7 +290,7 @@ def test_stdout_that_is_not_a_terminal_prints_the_list_and_releases_nothing():
 
 def test_a_keystroke_cannot_be_injected_by_what_is_held(term):
     """Held text that spells keys (r, y) is shown escaped and is never read as input."""
-    held = seed_peer("10.0.0.1", "peer.forged_traffic: r\ny\n")
+    held = seed_member("10.0.0.1", "member.forged_traffic: r\ny\n")
     seed_watch("session", "ry\n", "x")
     t = term("review")
     t.until("q quit")
@@ -309,31 +309,31 @@ def run(capsys, *argv):
 @pytest.mark.parametrize("marker", MARKERS)
 def test_list_json_status_and_chip_work_for_an_agent_and_stay_escaped(capsys, monkeypatch, marker):
     monkeypatch.setenv(marker, "1")
-    seed_peer("127.0.0.1")
+    seed_member("127.0.0.1")
     seed_watch("session", HOSTILE, "weird")
     code, out, _ = run(capsys, "review", "--list")
-    assert code == 0 and "peer 127.0.0.1" in out and "forged or replayed" in out
+    assert code == 0 and "member 127.0.0.1" in out and "forged or replayed" in out
     assert "\x1b" not in out and "‮" not in out and "\x07" not in out
     assert "\\x1b[31m" in out and max(len(line) for line in out.splitlines()) < 600
     rows = json.loads(run(capsys, "review", "--json")[1])
-    assert {r["kind"] for r in rows} == {"peer", "session"}
+    assert {r["kind"] for r in rows} == {"member", "session"}
     assert all(set(r) >= {"number", "id", "state", "name", "why", "blocks", "advice"} for r in rows)
     code, out, _ = run(capsys, "status")
     assert code == 0 and "2 held:" in out and "Review them: poolhouse-security review" in out
     assert "\x1b" not in out and "‮" not in out
     code, out, _ = run(capsys, "chip")
-    assert code == 0 and "yellow" in out and "peer 127.0.0.1 (forged traffic)" in out
+    assert code == 0 and "yellow" in out and "member 127.0.0.1 (forged traffic)" in out
     assert json.loads(run(capsys, "chip", "--json")[1])["review"].startswith("2 held")
 
 
 def test_status_names_what_is_held_and_exit_codes_are_unchanged(capsys):
     assert run(capsys, "status")[0] == 0
     assert "held:" not in run(capsys, "status")[1]
-    seed_peer("127.0.0.1")
+    seed_member("127.0.0.1")
     seed_watch("server", "port:51089", "server.unmanaged: port=51089")
     code, out, _ = run(capsys, "status")
     assert code == 0
-    assert ("2 held: server :51089 (unmanaged), peer 127.0.0.1 (forged traffic). "
+    assert ("2 held: server :51089 (unmanaged), member 127.0.0.1 (forged traffic). "
             "Review them: poolhouse-security review") in out
     assert run(capsys, "chip")[0] == 0 and run(capsys, "review", "--list")[0] == 0
 
@@ -344,7 +344,7 @@ def test_list_with_nothing_held_says_so(capsys):
 
 
 def test_the_old_release_command_still_refuses_an_agent(capsys, monkeypatch):
-    held = seed_peer("10.0.0.1")
+    held = seed_member("10.0.0.1")
     monkeypatch.setenv("CLAUDECODE", "1")
     code, _, err = run(capsys, "quarantine", "release", held.id)
     assert code == 2 and "started by an agent" in err

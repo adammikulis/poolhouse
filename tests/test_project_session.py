@@ -1,4 +1,4 @@
-"""Distinct and resumable Codex identities on shared project Boards."""
+"""Distinct and resumable Codex identities on shared boards."""
 
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -33,7 +33,7 @@ def sessions(tmp_path, monkeypatch):
     class Remote:
         host = "https://board.invalid:8770"
         project_id = PROJECT
-        cluster_key = ""
+        pool_key = ""
         def __init__(self, *args, **kwargs):
             pass
         def token(self, *, agent, **kwargs):
@@ -49,7 +49,7 @@ def sessions(tmp_path, monkeypatch):
     remote = Remote()
     project_connection.bind(remote, root, "legacy-agent", "development")
     choice = {"host": remote.host, "project_id": PROJECT,
-              "cluster": "development", "root": str(root), "automatic": True, "agent": ""}
+              "pool": "development", "root": str(root), "automatic": True, "agent": ""}
     local = SimpleNamespace(registry=SimpleNamespace(info=lambda actor: {"model": "fixture-model", "harness": "codex"}))
     monkeypatch.setattr(cli, "Workspace", lambda: local)
     monkeypatch.setattr(cli, "_local_token", lambda args: "local-agent-token")
@@ -196,7 +196,7 @@ def test_claim_owner_is_readable_and_json_is_unchanged(capsys):
     owner = "board:" + "a" * 32 + ":codex-fixture"
     row = {"kind": "file", "key": "source.py", "owner": owner}
     render.show(SimpleNamespace(json=False), row)
-    assert "codex-fixture on shared project Board" in capsys.readouterr().out
+    assert "codex-fixture on shared board" in capsys.readouterr().out
     render.show(SimpleNamespace(json=True), row)
     assert json.loads(capsys.readouterr().out)["owner"] == owner
 

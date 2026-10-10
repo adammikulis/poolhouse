@@ -18,7 +18,7 @@ _REGISTERED: list[Ledger] = []
 
 
 def install(ledger: Ledger | None = None) -> Ledger:
-    """Make ``ledger`` (by default the person's own) what net and peers report to, and raise
+    """Make ``ledger`` (by default the person's own) what net and members report to, and raise
     the divergence notice through sentinel's dialog. Idempotent without an argument."""
     if ledger is None and _REGISTERED and observers.installed() is _REGISTERED[-1]:
         return _REGISTERED[-1]

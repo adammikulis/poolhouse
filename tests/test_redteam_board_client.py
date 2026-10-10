@@ -41,7 +41,7 @@ def test_a_command_off_the_allow_list_is_refused_whatever_the_note_says(workspac
         assert done.returncode == 3 and "verify_allow" in done.stdout and not marker.exists(), hostile
 
 
-def test_a_peers_note_cannot_choose_the_command_a_verification_records(workspace_node):
+def test_a_members_note_cannot_choose_the_command_a_verification_records(workspace_node):
     me = workspace_node.member("author")
     allow(["true"])
     note = json.loads(workspace_node.cli("notes-add", "fact", "x", "y", "--verify-cmd", "true", "--json", who=me).stdout)

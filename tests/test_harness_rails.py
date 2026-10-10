@@ -284,8 +284,8 @@ def _fake_serving(seen):
 class TestLaunch:
     @pytest.fixture(autouse=True)
     def _quiet(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(codex.tokens, "load", lambda base, agent: "assigned-test-seat")
-        monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, **kwargs: harnessid.Seat(name, base=tmp_path / "workspace"))
+        monkeypatch.setattr(codex.tokens, "load", lambda base, agent: "assigned-test-session")
+        monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, **kwargs: harnessid.HarnessSession(name, base=tmp_path / "workspace"))
         monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         monkeypatch.setattr(claude, "alias_of", lambda url, model: "qwen-27b")
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen-27b")
@@ -331,7 +331,7 @@ class TestLaunch:
         assert scope["required"] is True
         assert scope["command"] == sys.executable
         assert scope["args"][-1] == "--workspace-only"
-        assert scope["env"]["POOLHOUSE_WORKSPACE_TOKEN"] == "assigned-test-seat"
+        assert scope["env"]["POOLHOUSE_WORKSPACE_TOKEN"] == "assigned-test-session"
         assert "--dangerously-bypass-hook-trust" in seen["command"] and seen["command"][-2:] == ["exec", "fix it"]
         assert tmp_path / "tree" not in seen["home"].parents and not seen["home"].exists()
 
@@ -366,7 +366,7 @@ class TestWorkspaceCommands:
     def test_a_hostile_label_is_one_argument_and_never_a_shell_line(self, tmp_path, monkeypatch):
         exe = self._fake_workspace(tmp_path, monkeypatch)
         hostile = "x; touch /tmp/pwned $(id) `id`"
-        assert harnessid.announce(harnessid.Seat(hostile), "t", lambda _: None)
+        assert harnessid.announce(harnessid.HarnessSession(hostile), "t", lambda _: None)
         argv = Path(f"{exe}.argv").read_text().splitlines()
         assert argv == ["announce", "joined", "t", "--agent", hostile]
         seen = []
@@ -384,11 +384,11 @@ class TestWorkspaceCommands:
     def test_a_failed_announcement_identifies_the_workspace_trust_check(self, monkeypatch):
         said = []
         monkeypatch.setenv("PATH", "/nonexistent")
-        assert harnessid.announce(harnessid.Seat("l"), "t", said.append) is False
+        assert harnessid.announce(harnessid.HarnessSession("l"), "t", said.append) is False
         assert "selected authority and device trust" in said[0]
 
 
-class TestSeat:
+class TestHarnessSession:
     @pytest.fixture(autouse=True)
     def _own_workspace(self, monkeypatch, tmp_path):
         clean_env(monkeypatch, tmp_path)
@@ -414,38 +414,38 @@ class TestSeat:
         said = []
         project = tmp_path / "proj"
         project.mkdir()
-        seat = harnessid.invite("local-test-codex", project, "claude", said.append)
+        session = harnessid.invite("local-test-codex", project, "claude", said.append)
         ws = Workspace()
-        assert seat.persistent and not seat.minted and ws.registry.role_of("local-test-codex") == "agent"
+        assert session.persistent and not session.minted and ws.registry.role_of("local-test-codex") == "agent"
         token_file = tokens.directory(ws.base) / "local-test-codex"
         assert private_path.problem(token_file) == ""
         secret = token_file.read_text().strip()
-        assert secret not in "".join(said) and seat.flags() == ["--agent", "local-test-codex"]
-        assert seat.revoke() is False and token_file.exists()
+        assert secret not in "".join(said) and session.flags() == ["--agent", "local-test-codex"]
+        assert session.revoke() is False and token_file.exists()
         assert ws.auth(secret).id == "local-test-codex"
         again = harnessid.invite("local-test-codex", project, "claude", said.append)
         assert again.persistent and tokens.load(ws.base, again.name) == secret
 
-    def test_the_seat_is_on_the_project_board_with_the_quiet_defaults(self, person, tmp_path):
+    def test_the_session_is_on_the_board_with_the_quiet_defaults(self, person, tmp_path):
         from poolhouse.workspace import Workspace
 
         project = tmp_path / "proj"
         project.mkdir()
-        seat = harnessid.invite("local-test-codex", project, "claude", lambda _: None)
-        boards, subs = Workspace(seat.base).board.store.state()
+        session = harnessid.invite("local-test-codex", project, "claude", lambda _: None)
+        boards, subs = Workspace(session.base).board.store.state()
         assert any("local-test-codex" in b["members"] for k, b in boards.items() if k != "#general")
         assert not subs.get("local-test-codex")
 
     def test_a_launcher_records_its_model_as_claimed(self, person, monkeypatch, tmp_path):
         from poolhouse.workspace import Workspace
 
-        seat = harnessid.invite("local-test-codex", tmp_path, "claude", lambda _: None)
-        assert seat.record_model("qwen-27b", "codex") is True
-        assert "qwen-27b" in json.dumps(Workspace(seat.base).registry.info("local-test-codex"))
-        assert Workspace(seat.base).registry.info(seat.name)["model_state"] == "claimed"
+        session = harnessid.invite("local-test-codex", tmp_path, "claude", lambda _: None)
+        assert session.record_model("qwen-27b", "codex") is True
+        assert "qwen-27b" in json.dumps(Workspace(session.base).registry.info("local-test-codex"))
+        assert Workspace(session.base).registry.info(session.name)["model_state"] == "claimed"
         monkeypatch.setenv("CLAUDECODE", "1")
-        assert seat.record_model("other", "codex") is True
-        assert harnessid.Seat("x").record_model("m", "codex") is False
+        assert session.record_model("other", "codex") is True
+        assert harnessid.HarnessSession("x").record_model("m", "codex") is False
 
     def test_ending_the_session_keeps_identity_and_removes_harness_files(self, person, monkeypatch, tmp_path):
         from poolhouse.workspace import Workspace, tokens
@@ -473,8 +473,8 @@ class TestSeat:
 
     def test_an_agent_launcher_initializes_itself_without_a_parent_credential(self, monkeypatch, tmp_path):
         monkeypatch.setenv("CLAUDECODE", "1")
-        seat = harnessid.invite("local-test-codex", tmp_path, "claude", lambda _: None)
-        assert seat.name == "local-test-codex" and seat.persistent
+        session = harnessid.invite("local-test-codex", tmp_path, "claude", lambda _: None)
+        assert session.name == "local-test-codex" and session.persistent
 
     @pytest.mark.parametrize("authority", ["selected", "discovered", "coordinator"])
     def test_remote_launcher_uses_selected_authority_without_local_bootstrap(self, monkeypatch, tmp_path, authority):
@@ -501,11 +501,11 @@ class TestSeat:
         monkeypatch.setattr(harnessid, "authoritative", lambda *a: {"key": "a" * 32, "name": "project"})
         monkeypatch.setattr(harnessid.limits, "root", lambda: tmp_path)
         monkeypatch.setattr(harnessid, "Workspace", lambda *a: pytest.fail("local fallback"))
-        seat = harnessid.invite("worker", tmp_path, "", lambda _: None)
-        assert seat.name == "device-worker" and seat.persistent
-        assert seat.record_model("test-model", "test-harness")
+        session = harnessid.invite("worker", tmp_path, "", lambda _: None)
+        assert session.name == "device-worker" and session.persistent
+        assert session.record_model("test-model", "test-harness")
         assert calls[-1][0] == ("claim_model" if via_board else "ensure")
-        assert not seat.revoke()
+        assert not session.revoke()
 
     def test_a_fake_endpoint_cannot_verify_a_delegated_agents_model(self, monkeypatch, tmp_path):
         from poolhouse.testing import FakeLlamaServer, Served
@@ -516,14 +516,14 @@ class TestSeat:
         parent = ws.mint(owner, "codex", "agent")
         tokens.store(ws.base, "codex", parent)
         monkeypatch.setenv("CLAUDECODE", "1")
-        seat = harnessid.invite("local-qwen", tmp_path, "codex", lambda _: None)
+        session = harnessid.invite("local-qwen", tmp_path, "codex", lambda _: None)
         endpoint = FakeLlamaServer(Served(model="qwen-27b"))
         try:
-            assert seat.record_model("qwen-27b", "codex", endpoint.base_url)
-            assert ws.whoami_model(seat.name)["model_state"] == "claimed"
+            assert session.record_model("qwen-27b", "codex", endpoint.base_url)
+            assert ws.whoami_model(session.name)["model_state"] == "claimed"
         finally:
             endpoint.close()
-            seat.revoke()
+            session.revoke()
 
     def test_an_agent_launcher_delegates_a_distinct_private_child_without_changing_invite_policy(self, monkeypatch, tmp_path):
         from poolhouse.workspace import Workspace, tokens
@@ -534,15 +534,15 @@ class TestSeat:
         tokens.store(ws.base, "codex", parent)
         monkeypatch.setenv("CLAUDECODE", "1")
         said = []
-        seat = harnessid.invite("local-qwen", tmp_path, "codex", said.append)
-        assert seat.name == "codex/local-qwen" and seat.flags() == ["--agent", "codex/local-qwen"]
-        secret = tokens.load(ws.base, seat.name)
+        session = harnessid.invite("local-qwen", tmp_path, "codex", said.append)
+        assert session.name == "codex/local-qwen" and session.flags() == ["--agent", "codex/local-qwen"]
+        secret = tokens.load(ws.base, session.name)
         child = ws.auth(secret)
         assert child.parent == "codex" and child.role == "agent"
         assert set(child.can) <= set(ws.auth(parent).can)
         assert secret not in "".join(said)
         assert ws.limits.agent_invite_ask == "approve-first" and ws.invites.made_by("codex") == []
-        assert seat.revoke() and ws.auth(parent).id == "codex"
+        assert session.revoke() and ws.auth(parent).id == "codex"
         from poolhouse.workspace import Denied
 
         with pytest.raises(Denied, match="revoked"):
@@ -556,12 +556,12 @@ class TestSeat:
 class TestCodingAgent:
     def test_launch_coding_agent_runs_codex_with_the_project_and_the_orders(self, monkeypatch, tmp_path):
         seen = {}
-        monkeypatch.setattr(codex.tokens, "load", lambda base, agent: "assigned-test-seat")
+        monkeypatch.setattr(codex.tokens, "load", lambda base, agent: "assigned-test-session")
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen-27b")
         monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, *, claim: seen.update(
-            name=name, project=project, claim=claim) or harnessid.Seat(name, base=tmp_path / "workspace"))
+            name=name, project=project, claim=claim) or harnessid.HarnessSession(name, base=tmp_path / "workspace"))
         binary = tmp_path / "codex"
         binary.write_text("#!/bin/sh\n")
         (tmp_path / "proj").mkdir()

@@ -1,4 +1,4 @@
-//! Landing authority is this device's own: two real nodes, paired over loopback TLS, and a request, a review and a
+//! Landing authority is this device's own: two real nodes, joined over loopback TLS, and a request, a review and a
 //! runner state written on the other one count here only while that device is on this device's list.
 
 mod kit;
@@ -21,9 +21,9 @@ fn both_ways(a: &Dev, b: &Dev) {
 }
 
 /// This device (a) and one that joined its pool (b), which holds three sessions: asker, judge and runner.
-fn pair() -> (Dev, Dev, [String; 3]) {
+fn join() -> (Dev, Dev, [String; 3]) {
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     both_ways(&a, &b);
     let tokens = ["asker", "judge", "runner"].map(|id| b.session("demo", &format!("b-{id}")).1);
     (a, b, tokens)
@@ -52,7 +52,7 @@ fn trust(a: &Dev, b: &Dev, on: bool) -> Value {
 
 #[test]
 fn a_device_that_joined_the_pool_lands_nothing_here_until_this_device_names_it() {
-    let (a, b, tokens) = pair();
+    let (a, b, tokens) = join();
     forge(&b, &tokens);
     both_ways(&a, &b);
 
@@ -78,7 +78,7 @@ fn a_device_that_joined_the_pool_lands_nothing_here_until_this_device_names_it()
 
 #[test]
 fn an_entry_of_this_device_still_counts_beside_ignored_foreign_ones() {
-    let (a, b, tokens) = pair();
+    let (a, b, tokens) = join();
     forge(&b, &tokens);
     both_ways(&a, &b);
     a.ok("land_request", "demo", &a.token, json!({"branch": "mine", "sha": TIP, "target": "dev", "selectors": ["t"]}));
@@ -90,18 +90,18 @@ fn an_entry_of_this_device_still_counts_beside_ignored_foreign_ones() {
 
 #[test]
 fn putting_a_trusted_device_out_of_the_pool_ends_its_standing_too() {
-    let (a, b, tokens) = pair();
+    let (a, b, tokens) = join();
     forge(&b, &tokens);
     both_ways(&a, &b);
     trust(&a, &b, true);
     assert_eq!(statuses(&queue(&a)), ["landed"]);
-    a.ok("member_revoke", "", &a.token, json!({"fingerprint": b.fp()}));
-    assert!(statuses(&queue(&a)).is_empty(), "a revoked device no longer counts, listed or not");
+    a.ok("member_remove", "", &a.token, json!({"fingerprint": b.fp()}));
+    assert!(statuses(&queue(&a)).is_empty(), "a removed device no longer counts, listed or not");
 }
 
 #[test]
 fn naming_a_device_is_for_a_session_with_no_parent_and_only_for_an_active_member_and_is_audited() {
-    let (a, b, _) = pair();
+    let (a, b, _) = join();
     let kid = a.ok("register", "demo", &a.token, json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": "kid"}))["token"].as_str().unwrap().to_string();
     let code = |r: Value| r["error"]["code"].as_str().unwrap_or("ok").to_string();
     assert_eq!(code(a.call("land_trust", "demo", &kid, json!({"device": b.fp(), "trusted": true}))), "denied", "a subagent never names a device");
@@ -118,7 +118,7 @@ fn naming_a_device_is_for_a_session_with_no_parent_and_only_for_an_active_member
 
 #[test]
 fn the_list_is_this_devices_own_and_never_replicated() {
-    let (a, b, tokens) = pair();
+    let (a, b, tokens) = join();
     forge(&b, &tokens);
     trust(&a, &b, true);
     both_ways(&a, &b);

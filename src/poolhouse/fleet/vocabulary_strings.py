@@ -26,7 +26,7 @@ CATALOGUE: dict[str, tuple[str, str]] = {
     "settings.title": ("Settings", "Household"),
     "wizard.summary": ("Poolhouse setup · {at} of {total} · {name}", "Moving in · {at} of {total} · {name}"),
     "wizard.title": ("Set up this machine", "Settle into your room"),
-    "wizard.pool": ("Clusters", "Pick a house"),
+    "wizard.pool": ("Pools", "Pick a house"),
     "wizard.stage.0": ("Device", "Your room"),
     "wizard.stage.1": ("Pool", "The house"),
     "wizard.stage.2": ("Work", "The chores"),

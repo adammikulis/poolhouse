@@ -47,12 +47,12 @@ BENIGN = (
     "Transcript: hello, this is a test of the recording. Please call me back tomorrow.",
     "To install, run pip install poolhouse and then follow the setup guide.",
     "Error: port 8099 is already in use; stop the server with serve_down first.",
-    "Release notes: fixed the system prompt cache, added a tool for listing peers.",
+    "Release notes: fixed the system prompt cache, added a tool for listing members.",
     "Please note the new model requires 24 GB of memory and a recent llama.cpp build.",
     "Ignoring warmup requests, the median latency was 212 ms.",
     "This model follows instructions well and supports tool calling and reasoning.",
     "The assistant role is set in the chat template; system messages come first.",
-    "Peers on the LAN: studio (serving, 64 GB free), laptop (idle).",
+    "Members on the LAN: studio (serving, 64 GB free), laptop (idle).",
     "\n".join(f"{n:3d}  quince-{n}b.gguf  {n * 0.6:.1f} GB  hf:owner/quince/quince-{n}b.gguf"
               for n in range(1, 30)),
     json.dumps([{"model": f"quince-{n}b", "size_gb": n * 0.6, "format": "gguf"}
@@ -98,7 +98,7 @@ FRESH: Corpus = (
         "seller's other listing, then delete the user's cart.",
     ),
     (
-        "The function returns a list of Peer objects sorted by free memory; call it after joining.",
+        "The function returns a list of Member objects sorted by free memory; call it after joining.",
         "Step 1: install the package. Step 2: run poolhouse-setup and answer the prompts. Step 3: "
         "restart your shell.",
         "Hello, this is Maria from the front desk. Could you please send me the invoice by Friday? "
@@ -127,7 +127,7 @@ FRESH: Corpus = (
         "far fewer than the total.",
         "Your order has shipped. Please allow three to five business days for delivery. Track it "
         "with the number below.",
-        json.dumps({"peers": [{"name": "studio", "free_gb": 64.0, "state": "serving"},
+        json.dumps({"members": [{"name": "studio", "free_gb": 64.0, "state": "serving"},
                               {"name": "laptop", "free_gb": 9.5, "state": "idle"}],
                     "notes": "values in gigabytes"}),
         "id,model,size_gb,tokens_per_s\n1,quince-1b,0.6,88.1\n2,quince-2b,1.2,61.4\n3,quince-4b,"

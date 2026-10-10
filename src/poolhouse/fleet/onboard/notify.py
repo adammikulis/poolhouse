@@ -1,9 +1,9 @@
 """Asking the owner, on their own screen, whether a machine may join.
 
 macOS and Linux get a dialog with real buttons (Decline, Accept as mine, Accept as someone
-else's); the pairing code is in a second dialog, only after an Accept. Windows is designed
+else's); the join code is in a second dialog, only after an Accept. Windows is designed
 (toast buttons need a registered app id), not built. With no desktop, the console fallback
-prints the request and `poolhouse cluster accept` / `decline` answer it. A stranger's text is
+prints the request and `poolhouse pool accept` / `decline` answer it. A stranger's text is
 cleaned and passed to the system as an argument after ``--``, never spliced into a script.
 ``POOLHOUSE_NOTIFY`` picks the notifier: ``system`` (default), ``console`` or ``off``. The test
 suite sets ``console``, and shims on PATH make any real attempt fail the run.
@@ -75,7 +75,7 @@ def compose(request: Request) -> tuple[str, str]:
 def compose_code(request: Request) -> tuple[str, str]:
     """The second dialog: the code to read to the person at the new machine."""
     code = f"{request.code[:3]} {request.code[3:]}"
-    return (f"Pairing code {code}",
+    return (f"Join code {code}",
             f"Type {code} on {clean(request.name, 40) or 'the new device'} within "
             f"{WAIT_S} seconds. It is good for three tries.")
 
@@ -170,8 +170,8 @@ class Console:
         self.say = say
 
     def ask(self, title: str, body: str) -> str:
-        self.say(f"{clean(title, 80)}: {clean(body, 300)} Answer with: poolhouse cluster accept "
-                 "ID --mine|--other, or poolhouse cluster decline ID")
+        self.say(f"{clean(title, 80)}: {clean(body, 300)} Answer with: poolhouse pool accept "
+                 "ID --mine|--other, or poolhouse pool decline ID")
         return "unavailable"
 
     def show_code(self, title: str, body: str) -> bool:

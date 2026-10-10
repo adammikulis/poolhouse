@@ -204,12 +204,12 @@ def test_owner_mint_refuses_hostname_rebinding():
 def test_join_invitation_passes_owner_and_setup_router_guards(
         tmp_path, monkeypatch, case):
     joined, authenticated, header, host, expected = case
-    ui = UI(name="recipient", cluster_key_path=tmp_path / "cluster.key")
+    ui = UI(name="recipient", pool_key_path=tmp_path / "pool.key")
     calls, replies = [], []
     ui.join_guard = nullcontext
     ui.join_invitation = lambda code: calls.append(code) or {"ok": True, "group": "lab"}
     ui.authed = lambda cookie: authenticated
-    monkeypatch.setattr(routes, "in_cluster", lambda path: joined)
+    monkeypatch.setattr(routes, "in_pool", lambda path: joined)
     body = json.dumps({"invite": "test-invitation"}).encode()
     headers = {"Host": host, "Content-Length": str(len(body))}
     if header:

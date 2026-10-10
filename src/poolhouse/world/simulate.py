@@ -29,9 +29,9 @@ from poolhouse.world.sentences import _STATED, template_writer
 from poolhouse.world.speaking import ModelWriter, model_writer
 from poolhouse.world.story import (
     DOWNWARD,
+    MEMBER,
     ORG_KINDS,
     OUTCOMES,
-    PEER,
     PLACE_KINDS,
     PROJECT_KINDS,
     TOPIC_KINDS,
@@ -54,7 +54,7 @@ MEAN_LENGTH = 5.0                     # what per_day is divided by to get thread
 
 # Routine conversation kinds, and the relation class each belongs to.
 CHATTER = {
-    "peer": ("standup", "ask", "share"),
+    "member": ("standup", "ask", "share"),
     "line": ("checkin", "plan"),
     "group": ("share", "ask", "plan"),
     "cross": ("ask", "handoff"),
@@ -128,7 +128,7 @@ class _Relations:
         for gid, held in self.groups.items():
             for p in held["people"]:
                 self.of.setdefault(p, []).append(gid)
-        self.peers: dict[str, list[str]] = {p: [] for p in self.people}
+        self.members: dict[str, list[str]] = {p: [] for p in self.people}
         self.line: dict[str, list[str]] = {p: [] for p in self.people}
         # every relation with a person at the near end that a message knows how to state
         self.stated: dict[str, list[tuple[str, str, str]]] = {}
@@ -141,9 +141,9 @@ class _Relations:
                     held.append((a, rel, b))
             if a not in self.of or b not in self.of:
                 continue
-            if rel in PEER:
-                self._add(self.peers, a, b)
-                self._add(self.peers, b, a)
+            if rel in MEMBER:
+                self._add(self.members, a, b)
+                self._add(self.members, b, a)
             elif rel in UPWARD or rel in DOWNWARD:
                 self._add(self.line, a, b)
                 self._add(self.line, b, a)
@@ -173,7 +173,7 @@ class _Relations:
         mine = set(self.of.get(person, ()))
         return [p for p in self.people
                 if p != person and not (mine & set(self.of.get(p, ())))
-                and p not in self.peers.get(person, ()) and p not in self.line.get(person, ())]
+                and p not in self.members.get(person, ()) and p not in self.line.get(person, ())]
 
 
 # -- the sampler -------------------------------------------------------------------------------
@@ -190,7 +190,7 @@ def _venue(rel: _Relations, cls: str, kind: str, who: Sequence[str], facts: Mapp
            rng: random.Random) -> tuple[str, str]:
     """Where a routine thread of that class among ``who`` lands: ``(source, channel)``."""
     me, other = who[0], who[1] if len(who) > 1 else who[0]
-    if cls == "peer":
+    if cls == "member":
         shared = rel.common_group(me, other)
         if shared and rng.random() < 0.6:
             return ("slack", slug(rel.groups[shared]["label"]))
@@ -213,8 +213,8 @@ def _chatter(world: World, rel: _Relations, day: int, rng: random.Random,
     for me in world.people:
         for _ in range(_poisson(rng, per_day / MEAN_LENGTH)):
             options: list[tuple[str, int]] = []
-            if rel.peers.get(me):
-                options.append(("peer", 3))
+            if rel.members.get(me):
+                options.append(("member", 3))
             if rel.line.get(me):
                 options.append(("line", 2))
             if any(len(rel.groups[g]["people"]) > 1 for g in rel.of.get(me, ())):
@@ -228,8 +228,8 @@ def _chatter(world: World, rel: _Relations, day: int, rng: random.Random,
                 options = [("cross", 1)]
             cls = rng.choices([c for c, _ in options], [w for _, w in options])[0]
             group = ""
-            if cls == "peer":
-                who = [me, rng.choice(rel.peers[me])]
+            if cls == "member":
+                who = [me, rng.choice(rel.members[me])]
             elif cls == "line":
                 who = [me, rng.choice(rel.line[me])]
             elif cls == "group":

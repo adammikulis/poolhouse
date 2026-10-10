@@ -17,13 +17,13 @@ from poolhouse.http import ServerError, request_json
 from poolhouse.log import say, warn
 
 from . import launch_open
-from .cluster_modes import notice
 from .daemon_control import ControlError, request_replacement
 from .discovery import (
     DEFAULT_PORT as DISCOVERY_PORT,  # noqa: F401  (keeps ports in view)
     memberships,
 )
 from .measuring import same_commit
+from .pool_modes import notice
 from .runtime_paths import default_root
 from .updates import state
 from .wsl import WSLError, prepare, replace_running, start
@@ -111,19 +111,19 @@ def last_screen(name: str, *, track: str = "", port: int = HTTP_PORT) -> list[st
              f"  running     {version}" + ("" if commit in ("", f"v{version}") else f"  {commit}")]
     groups = memberships()
     if groups:
-        lines.append(f"  cluster     {groups[0].group}")
+        lines.append(f"  pool     {groups[0].group}")
     url = f"http://127.0.0.1:{port}/ui/"
     if already_running(port) is None:
         return [*lines, "",
                 f"  next        poolhouse                        -- starts it and opens {url}",
-                "              poolhouse-cluster join --persist   -- joins the cluster and starts "
+                "              poolhouse-pool join --persist   -- joins the pool and starts "
                 "it at every login"]
     return [*lines,
             f"  open        {url}",
             f"  updates     {'follows ' + track if track else 'releases'}, "
             "whenever nothing is running here",
             "",
-            "  next        poolhouse-cluster status    -- other devices in the cluster"]
+            "  next        poolhouse-pool status    -- other devices in the pool"]
 
 
 def _root(arguments: list[str]) -> Path:
@@ -173,7 +173,7 @@ def _arguments(argv):
 
 def _reuse(running: dict[str, Any], known: argparse.Namespace, rest: list[str]) -> int:
     groups = memberships()
-    say(notice(running.get("cluster_mode") or (groups[0].mode if groups else "dev")))
+    say(notice(running.get("pool_mode") or (groups[0].mode if groups else "dev")))
     say(f"Poolhouse is already running as '{running.get('name', '?')}'.")
     if not known.no_browser:
         webbrowser.open(launch_open.page_url(known.port, _root(rest)))

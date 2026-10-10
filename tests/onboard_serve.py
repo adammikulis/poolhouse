@@ -1,4 +1,4 @@
-"""A peer that serves files, as its own process: ``python onboard_serve.py ROOT MANIFEST PUB
+"""A member that serves files, as its own process: ``python onboard_serve.py ROOT MANIFEST PUB
 SECRET [TLSDIR|-] [STATE]``. Prints its port on the first line, then serves until its input
 closes. STATE is a directory holding ``devices.json`` and ``licences.json``."""
 
@@ -19,7 +19,7 @@ def main() -> None:
     state = Path(sys.argv[6]) if len(sys.argv) > 6 else None
     raw = Path(manifest_path).read_bytes()
     manifest = verify(raw, base64.b64decode(pub))
-    ident = tls.identity(Path(tls_dir), "peer") if tls_dir else None
+    ident = tls.identity(Path(tls_dir), "member") if tls_dir else None
     devices = Devices(state / "devices.json").all if state else (lambda: [])
     licences = Licences(state / "licences.json") if state else None
     with ShareServer(Share(Path(root), raw, manifest, licences),

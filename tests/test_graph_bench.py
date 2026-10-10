@@ -3237,7 +3237,7 @@ def test_a_sigterm_says_killed_before_it_raises(capsys):
 
 def test_every_run_carries_the_host_and_the_commit(tmp_path, monkeypatch):
     """Stamped by `save`, kept as given when a record arrives with them -- a run gathered
-    from a peer names the peer, not the machine that gathered it."""
+    from a member names the member, not the machine that gathered it."""
     import socket
 
     from poolhouse.bench import keep
@@ -3343,19 +3343,19 @@ def test_a_fleet_job_line_is_the_sweep_without_what_stays_on_this_machine(tmp_pa
 
     graph = tmp_path / "g.json"
     graph.write_text('{"nodes": [], "edges": []}')
-    argv = ["sweep", "--fleet", "--peers", "quill,lantern", "--serve", "a.gguf", "--serve",
+    argv = ["sweep", "--fleet", "--members", "quill,lantern", "--serve", "a.gguf", "--serve",
             "b.gguf", "--serve-draft", "ha.gguf", "--also", "terse", "--kept", "/k",
             "--no-queue", "--sample", "5", "--graph", str(graph), "--questions="]
     assert _stripped(argv) == (["sweep", "--also", "terse", "--sample", "5"], ["ha.gguf"]), \
-        "--kept never rides to a peer, and --graph travels as the file's text"
-    assert _stripped(["sweep", "--peers=quill", "--serve=x.gguf"]) == (["sweep"], [])
+        "--kept never rides to a member, and --graph travels as the file's text"
+    assert _stripped(["sweep", "--members=quill", "--serve=x.gguf"]) == (["sweep"], [])
     assert _shipped(argv) == {"--graph": '{"nodes": [], "edges": []}'}, \
         "an empty --questions is the default, and ships nothing"
     with pytest.raises(Refused, match="--questions"):
         _shipped(["sweep", "--questions", str(tmp_path / "absent.jsonl")])
 
 
-# The rest of `sweep --fleet` -- discovering real peers, planning and dispatching real jobs
+# The rest of `sweep --fleet` -- discovering real members, planning and dispatching real jobs
 # over them -- is in tests/test_fleet_bench.py, beside the real daemons it needs.
 
 

@@ -23,9 +23,9 @@ from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.serving import Serving
 from poolhouse.http import Server, ServerError, open_stream
 from poolhouse.testing.fakes import FakeLlamaServer, Served
-from tests.cluster_support import a_keystore, join_cluster  # noqa: F401
 from tests.keystore_support import counting  # noqa: F401
 from tests.net_site import gguf_bytes
+from tests.pool_support import a_keystore, join_pool_by_passphrase  # noqa: F401
 
 PIECES = ["Hel", "lo", " there"]
 
@@ -50,7 +50,7 @@ def loopback_is_the_internet(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def nobody_else_is_on_the_network(monkeypatch):
-    """A join finds no machine to shake hands with, so it makes the cluster."""
+    """A join finds no machine to shake hands with, so it makes the pool."""
     from poolhouse.fleet.onboard import joining
 
     monkeypatch.setattr(joining, "find_joiners", lambda *a, **k: [])
@@ -78,7 +78,7 @@ def host(tmp_path, model_server):
     root = tmp_path / "host"
     files = root / "files"
     files.mkdir(parents=True)
-    key = join_cluster(WORDS, group="home", path=tmp_path / "host.key")
+    key = join_pool_by_passphrase(WORDS, group="home", path=tmp_path / "host.key")
     token = load_or_create_token(root, key)
     serving = Serving(root / "serving.json")
     serving.register(model_server, ["qwen3-4b.gguf"])
@@ -98,7 +98,7 @@ def host(tmp_path, model_server):
 
 
 class TestPickingWhereToSend:
-    def test_known_non_chat_local_and_peer_targets_are_excluded(self):
+    def test_known_non_chat_local_and_member_targets_are_excluded(self):
         from poolhouse.fleet.serving import Served as LocalServed
 
         class Local:
@@ -106,22 +106,22 @@ class TestPickingWhereToSend:
                 return [LocalServed(port=9998, models=['embedding.gguf'], capabilities={'chat': False}),
                         LocalServed(port=9999, models=['future-decoder.gguf'])]
 
-        peer = {'base_url': 'http://127.0.0.1:12345', 'name': 'peer', 'device': {'serving': [
+        member = {'base_url': 'http://127.0.0.1:12345', 'name': 'member', 'device': {'serving': [
             {'models': ['speech'], 'capabilities': {'chat': False}},
             {'models': ['remote-decoder'], 'capabilities': {'chat': True}}]}}
-        assert [row.model for row in targets([peer], Local())] == ['future-decoder.gguf', 'remote-decoder']
-        found = targets([peer], Local())
+        assert [row.model for row in targets([member], Local())] == ['future-decoder.gguf', 'remote-decoder']
+        found = targets([member], Local())
         assert found[0].public()['capabilities']['chat'] is None
         assert found[1].public()['capabilities']['chat'] is True
 
-    def test_a_machine_serving_nothing_still_sees_a_peers_model(self, host):
+    def test_a_machine_serving_nothing_still_sees_a_members_model(self, host):
         found = targets([host], serving=None, token="t")
         assert [t.model for t in found] == ["qwen3-4b.gguf"]
-        assert found[0].peer == "host"
+        assert found[0].member == "host"
         assert found[0].local is False
         assert found[0].url.endswith("/infer/v1/chat/completions")
 
-    def test_this_machine_is_preferred_over_a_peer_holding_the_same_model(self, host):
+    def test_this_machine_is_preferred_over_a_member_holding_the_same_model(self, host):
         class Fake:
             def live(self):
                 from poolhouse.fleet.serving import Served
@@ -149,7 +149,7 @@ class TestChattingThroughTheInterface:
     def bare(self, tmp_path, host):
         """A machine that installed nothing: no model store, nothing serving."""
         ui = UIServing(tmp_path / "bare", name="laptop")
-        join_cluster(WORDS, group="home", path=ui.keyfile)
+        join_pool_by_passphrase(WORDS, group="home", path=ui.keyfile)
         ui.call("/ui/setup/join", method="POST",
                 body={"passphrase": WORDS, "group": "home"})
         _, _, headers = ui.call("/ui/session", method="POST",
@@ -157,7 +157,7 @@ class TestChattingThroughTheInterface:
         assert ui.ui.models is None
         assert ui.ui.serving is None
         ui.ui.settings.download_sources = "both"
-        ui.ui._peers = (time.time(), [host])
+        ui.ui._members = (time.time(), [host])
         try:
             yield ui, headers["Set-Cookie"].split(";")[0]
         finally:
@@ -168,12 +168,12 @@ class TestChattingThroughTheInterface:
         status, body, _ = ui.call("/ui/chat", cookie=cookie)
         assert status == 200
         assert [m["model"] for m in body["models"]] == ["qwen3-4b.gguf"]
-        assert body["models"][0]["peer"] == "host"
+        assert body["models"][0]["member"] == "host"
 
     def test_post_cannot_select_a_known_non_chat_server(self, bare):
         ui, cookie = bare
-        peer = ui.ui._peers[1][0]
-        peer['device']['serving'][0]['capabilities'] = {'chat': False, 'embedding': True}
+        member = ui.ui._members[1][0]
+        member['device']['serving'][0]['capabilities'] = {'chat': False, 'embedding': True}
         status, body, _ = ui.call('/ui/chat', cookie=cookie)
         assert status == 200 and body['models'] == []
         status, body, _ = ui.call('/ui/chat', method='POST', cookie=cookie,
@@ -187,7 +187,7 @@ class TestChattingThroughTheInterface:
             body={"model": "qwen3-4b.gguf",
                   "messages": [{"role": "user", "content": "hi"}]})
         assert status == 200
-        assert headers.get("X-Poolhouse-Peer") == "host"
+        assert headers.get("X-Poolhouse-Member") == "host"
         text = raw["raw"] if "raw" in raw else json.dumps(raw)
         assert "Hel" in text and "there" in text
 
@@ -403,7 +403,7 @@ class TestChattingThroughTheInterface:
             _, _, headers = ui.call("/ui/session", method="POST",
                                     body={"passphrase": WORDS})
             cookie = headers["Set-Cookie"].split(";")[0]
-            ui.ui._peers = (time.time(), [])
+            ui.ui._members = (time.time(), [])
             status, body, _ = ui.call(
                 "/ui/chat", method="POST", cookie=cookie,
                 body={"messages": [{"role": "user", "content": "hi"}]})
@@ -414,8 +414,8 @@ class TestChattingThroughTheInterface:
 
 
 
-class TestAnsweringToSeveralClusters:
-    """The bearer token is derived from a cluster key, so a machine in two clusters
+class TestAnsweringToSeveralPools:
+    """The bearer token is derived from a pool key, so a machine in two pools
     has two tokens and must accept either."""
 
     def daemon(self, tmp_path, anchor):
@@ -434,7 +434,7 @@ class TestAnsweringToSeveralClusters:
         httpd = Server(
             ("127.0.0.1", port),
             make_handler(Daemon(runner, files, token, "box",
-                         cluster_key_path=anchor,
+                         pool_key_path=anchor,
                          tokens=lambda: {derive_token(m.key)
                                          for m in memberships(anchor)})))
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -442,7 +442,7 @@ class TestAnsweringToSeveralClusters:
 
     def ask(self, base, token):
         # /health answers anyone with whether the daemon is there. /jobs wants a request
-        # signed with the cluster's secret, which is what this is about.
+        # signed with the pool's secret, which is what this is about.
         from poolhouse.http import build_request
 
         req = build_request(f"{base}/jobs", token=token)
@@ -452,11 +452,11 @@ class TestAnsweringToSeveralClusters:
         except ServerError as exc:
             return exc.status
 
-    def test_either_cluster_can_reach_it(self, tmp_path):
+    def test_either_pool_can_reach_it(self, tmp_path):
         from poolhouse.fleet.discovery import derive_token
-        from tests.cluster_support import join
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(WORDS, group="home", path=anchor)
         join("a different set of words here", group="work", path=anchor)
         rows = {m.group: m.key for m in __import__(
@@ -466,18 +466,18 @@ class TestAnsweringToSeveralClusters:
         try:
             assert self.ask(base, derive_token(rows["home"])) == 200
             assert self.ask(base, derive_token(rows["work"])) == 200, (
-                "the second cluster was refused")
+                "the second pool was refused")
             assert self.ask(base, "not-a-real-token") == 401
         finally:
             runner.shutdown()
             httpd.shutdown()
             httpd.server_close()
 
-    def test_a_cluster_it_left_is_refused(self, tmp_path):
+    def test_a_pool_it_left_is_refused(self, tmp_path):
         from poolhouse.fleet.discovery import derive_token, leave, memberships
-        from tests.cluster_support import join
+        from tests.pool_support import join
 
-        anchor = tmp_path / "cluster.key"
+        anchor = tmp_path / "pool.key"
         join(WORDS, group="home", path=anchor)
         join("a different set of words here", group="work", path=anchor)
         gone = derive_token({m.group: m.key
@@ -487,7 +487,7 @@ class TestAnsweringToSeveralClusters:
         try:
             assert self.ask(base, gone) == 200
             leave("work", anchor)
-            assert self.ask(base, gone) == 401, "it still answered a cluster it left"
+            assert self.ask(base, gone) == 401, "it still answered a pool it left"
         finally:
             runner.shutdown()
             httpd.shutdown()

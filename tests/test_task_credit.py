@@ -202,31 +202,31 @@ def test_awards_follow_verified_model_family_not_device_or_worker_label(board, l
 
 
 @pytest.mark.redteam
-def test_designated_peer_review_awards_with_live_person_grant_and_revocation_is_enforced(board, ledger):
+def test_designated_member_review_awards_with_live_person_grant_and_revocation_is_enforced(board, ledger):
     from poolhouse.workspace import resource_allocations as resources
 
-    peer = board.agent('review-peer')
+    member = board.agent('review-member')
     project = {'root': '/approved/project'}
     board.ws.registry.set_project(board.ws.auth(board.owner), board.worker_id, project)
-    board.ws.registry.set_project(board.ws.auth(board.owner), 'review-peer', project)
+    board.ws.registry.set_project(board.ws.auth(board.owner), 'review-member', project)
     task = board.board.create(board.owner, {**board.spec, 'project': project,
-                              'reviewers': ['review-peer'], 'source_key': 'independent-peer'})
+                              'reviewers': ['review-member'], 'source_key': 'independent-member'})
     board.prepare(task['id'])
     allocation = resources.assign(board.ws, board.parent, board.worker_id, task['id'], 'native-grant')
     board.board.claim(board.child, task['id'], allocation['allocation_id'])
     board.board.submit(board.child, task['id'], {'artifacts': {'reviewed.json': 'd' * 64},
                       'checks': [{'name': 'Worker claims acceptance', 'passed': True}]})
-    completed_review(board, peer, task['id'], accepted())
-    result = task_credit.verify_task(board.ws, peer, task['id'], ledger=ledger)
-    assert result['credited'] and result['verifier'] == 'review-peer'
-    board.ws.registry.set_project(board.ws.auth(board.owner), 'review-peer', {'root': '/different/project'})
+    completed_review(board, member, task['id'], accepted())
+    result = task_credit.verify_task(board.ws, member, task['id'], ledger=ledger)
+    assert result['credited'] and result['verifier'] == 'review-member'
+    board.ws.registry.set_project(board.ws.auth(board.owner), 'review-member', {'root': '/different/project'})
     with pytest.raises(Denied):
-        task_credit.verify_task(board.ws, peer, task['id'], ledger=ledger)
+        task_credit.verify_task(board.ws, member, task['id'], ledger=ledger)
     assert work_reputation.standings(board.ws, board.child, ledger=ledger)['own']['economy']['balance'] == 10
 
 
 @pytest.mark.redteam
-def test_same_device_parent_cannot_review_through_another_worker_seat(board, ledger):
+def test_same_device_parent_cannot_review_through_another_worker_session(board, ledger):
     localagent.save(board.ws, localagent.Agent('parent-worker', 'gemma', identity='lead',
                                                profile='coding'))
     tokens.store(board.base, 'lead', board.parent)

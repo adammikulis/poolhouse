@@ -1,4 +1,4 @@
-"""Paired-device agent recovery preserves scope and denies revoked trust."""
+"""Member agent recovery preserves scope and denies revoked trust."""
 
 import base64
 import concurrent.futures
@@ -15,7 +15,7 @@ from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.onboard.requests import Device
 from poolhouse.fleet.onboard.web import Call
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.http import Server, ServerError
 from poolhouse.workspace import (
     coordinator,
@@ -60,7 +60,7 @@ def test_lost_and_expired_session_keep_identity_project_and_model(enrolled):
     assert kit.ws.registry.info(name)['project'] == info['project']
 
 
-def test_revoked_device_and_identity_cannot_recover(enrolled):
+def test_removed_device_and_identity_cannot_recover(enrolled):
     kit, device, projects, document = enrolled
     name, token = device_sessions.ensure(kit.ws, device, projects, document)
     device.status = 'revoked'
@@ -121,11 +121,11 @@ def test_http_device_session_recovery_and_revocation(enrolled, tmp_path, monkeyp
         SimpleNamespace(name='workspace', load=lambda: coordinator.route)])
     runner = JobRunner(tmp_path / 'runner')
     server = Server(('127.0.0.1', 0), make_handler(Daemon(
-        runner, tmp_path / 'files', 'legacy-cluster', projects=projects, devices=lambda: [device])))
+        runner, tmp_path / 'files', 'legacy-pool', projects=projects, devices=lambda: [device])))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    peer = Peer(f'http://127.0.0.1:{server.server_address[1]}', device_auth.secret(device))
-    remote = Remote({'workspace': identity}, peer)
+    member = Member(f'http://127.0.0.1:{server.server_address[1]}', device_auth.secret(device))
+    remote = Remote({'workspace': identity}, member)
     base = tmp_path / 'other-device'
     base.mkdir()
     try:
@@ -226,7 +226,7 @@ def test_concurrent_recovery_keeps_the_persisted_session_valid(enrolled, tmp_pat
 @pytest.mark.parametrize('count', [0, 2])
 def test_enrolled_device_never_creates_local_authority_without_unique_coordinator(tmp_path, monkeypatch, count):
     base = tmp_path / 'workspace'
-    monkeypatch.setattr(coordinator_client, 'load_cluster_key', lambda: b'enrolled')
+    monkeypatch.setattr(coordinator_client, 'load_pool_key', lambda: b'enrolled')
     monkeypatch.setattr(coordinator_client, 'discover', lambda: [(None, {})] * count)
     if count:
         with pytest.raises(Denied, match='ambiguous'):
@@ -269,7 +269,7 @@ def test_delegated_session_inherits_root_device_and_live_project_boundary(enroll
     child = kit.ws.delegate(parent, 'helper')
     token = tokens.load(kit.base, child['id'])
     device_sessions.check(kit.ws, token, device, projects)
-    with pytest.raises(Denied, match='active paired device'):
+    with pytest.raises(Denied, match='active member'):
         device_sessions.check(kit.ws, token, None, projects)
     projects.list = lambda: []
     with pytest.raises(Denied, match='not uniquely hosted'):
@@ -382,26 +382,26 @@ def test_saved_project_scope_accepts_its_primary_worktree_equivalent(saved_proje
         assert actor.id == 'worker'
 
 
-def test_registration_records_reported_device_and_authenticated_peer_then_refreshes(enrolled):
+def test_registration_records_reported_device_and_authenticated_member_then_refreshes(enrolled):
     kit, device, projects, document = enrolled
     metadata = {'machine_id': '1' * 16, 'device_id': 'b' * 64,
                 'hostname': 'worker', 'os': 'Linux', 'architecture': 'x86_64',
                 'runtime_version': '0.2.2', 'runtime_commit': 'c' * 40,
-                'peer_id': 'f' * 64, 'verification': 'local-observed'}
+                'member_id': 'f' * 64, 'verification': 'local-observed'}
     name, token = device_sessions.ensure(kit.ws, device, projects, {**document, 'device': metadata})
     before = kit.ws.auth(token)
     profile = kit.ws.registry.info(name)['device']
     assert profile['os'] == 'Linux' and profile['hostname'] == 'worker'
     assert profile['machine_id'] is None and profile['device_id'] is None
-    assert profile['peer_id'] == device.fingerprint
-    assert profile['peer_verification'] == 'paired'
+    assert profile['member_id'] == device.fingerprint
+    assert profile['member_verification'] == 'joined'
     assert profile['verification'] == 'agent-reported'
     child = kit.ws.delegate(token, 'helper')
     inherited = kit.ws.registry.info(child['id'])['device']
     assert (inherited['verification'], inherited['inherited_from'], inherited['parent_verification']) == (
         'inherited', name, 'agent-reported')
-    assert {key: inherited[key] for key in ('hostname', 'os', 'peer_id', 'peer_verification')} == {
-        key: profile[key] for key in ('hostname', 'os', 'peer_id', 'peer_verification')}
+    assert {key: inherited[key] for key in ('hostname', 'os', 'member_id', 'member_verification')} == {
+        key: profile[key] for key in ('hostname', 'os', 'member_id', 'member_verification')}
     updated = {**metadata, 'runtime_version': '0.2.3', 'runtime_commit': 'd' * 40}
     assert device_sessions.ensure(kit.ws, device, projects, {**document, 'device': updated}, token) == (name, token)
     assert kit.ws.registry.info(name)['device']['runtime_commit'] == 'd' * 40
@@ -417,7 +417,7 @@ def test_malformed_registration_device_cannot_create_identity(enrolled):
     assert kit.ws.registry.ids() == before
 
 
-@pytest.mark.parametrize('mode', ['dev', 'paired'])
+@pytest.mark.parametrize('mode', ['dev', 'joined'])
 def test_cached_delegated_token_returns_without_root_registration(enrolled, mode):
     from poolhouse.workspace.remote import RemoteWorkspace
     kit, device, projects, document = enrolled

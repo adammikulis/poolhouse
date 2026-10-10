@@ -1,4 +1,4 @@
-"""Automatic Dev capabilities follow authenticated cluster key changes."""
+"""Automatic Dev capabilities follow authenticated pool key changes."""
 
 import hashlib
 import json
@@ -23,9 +23,9 @@ CURRENT = "d" * 64
 
 def enrolled(enrollment):
     host, project, body = enrollment
-    code, issued = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    code, issued = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     assert code == 201, issued
-    request = {"agent_token": issued["token"], "cluster": "fresh-dev", "cluster_id": CURRENT}
+    request = {"agent_token": issued["token"], "pool": "fresh-dev", "pool_id": CURRENT}
     return host, project, issued, request
 
 
@@ -36,11 +36,11 @@ def test_renewal_preserves_capability_identity_history_and_membership(enrollment
     history = ws.board.store.log.rows()
     query = {"agent_token": issued["token"], "operation": "whoami"}
     assert host.answer(PROJECT, "board", query, admission=("fresh-dev", CURRENT, True))[0] == 403
-    assert host.renew(PROJECT, request, cluster="fresh-dev", cluster_id=CURRENT)[0] == 200
+    assert host.renew(PROJECT, request, pool="fresh-dev", pool_id=CURRENT)[0] == 200
     after = ws.registry._load()[issued["id"]]
     assert {k: v for k, v in before.items() if k != "project"} == {
         k: v for k, v in after.items() if k != "project"}
-    assert after["project"] == {**before["project"], "cluster": "fresh-dev", "cluster_id": CURRENT}
+    assert after["project"] == {**before["project"], "pool": "fresh-dev", "pool_id": CURRENT}
     assert ws.board.store.log.rows() == history
     code, reply = host.answer(PROJECT, "board", query, admission=("fresh-dev", CURRENT, True))
     assert code == 200 and reply["result"]["id"] == issued["id"]
@@ -73,7 +73,7 @@ def test_renewal_never_restores_other_authority(enrollment, attack):
         project.board_host = "https://foreign:8770"
     ws.registry._save(rows)
     before = ws.registry.path.read_bytes()
-    assert host.renew(PROJECT, request, cluster="fresh-dev", cluster_id=CURRENT)[0] == 403
+    assert host.renew(PROJECT, request, pool="fresh-dev", pool_id=CURRENT)[0] == 403
     assert ws.registry.path.read_bytes() == before
 
 
@@ -95,7 +95,7 @@ def test_registry_authenticates_renewal_inside_revocation_lock(enrollment, monke
         registry.revoke(actor, actor.id)
         revoked.set()
     renewal = threading.Thread(target=lambda: results.append(registry.renew_dev_project(
-        issued["token"], PROJECT, request["cluster"], CURRENT)))
+        issued["token"], PROJECT, request["pool"], CURRENT)))
     revocation = threading.Thread(target=revoke)
     renewal.start()
     try:
@@ -110,7 +110,7 @@ def test_registry_authenticates_renewal_inside_revocation_lock(enrollment, monke
             revocation.join(5)
     assert len(results) == 1 and revoked.is_set()
     with pytest.raises(Denied, match="revoked"):
-        registry.renew_dev_project(issued["token"], PROJECT, request["cluster"], CURRENT)
+        registry.renew_dev_project(issued["token"], PROJECT, request["pool"], CURRENT)
 
 
 @pytest.mark.redteam
@@ -128,26 +128,26 @@ def test_renew_route_requires_current_active_dev_tls(tmp_path, monkeypatch, atta
     handler._sealing = lambda: (None, SimpleNamespace(secret=secret), attack != "unsealed", {})
     replies = []
     handler._send = lambda code, body: replies.append((code, body))
-    assert handler._workspace(json.dumps({"cluster": member.group,
-        "cluster_id": hashlib.sha256(member.key).hexdigest()}).encode())
+    assert handler._workspace(json.dumps({"pool": member.group,
+        "pool_id": hashlib.sha256(member.key).hexdigest()}).encode())
     assert replies[0][0] == 403
 
 
 def test_remote_renewal_uses_existing_capability_without_recovery(tmp_path, monkeypatch):
     remote = RemoteWorkspace.__new__(RemoteWorkspace)
     remote.base, remote.project_id = tmp_path / "private", PROJECT
-    remote.mode, remote.cluster, remote.cluster_id = "dev", "fresh-dev", CURRENT
+    remote.mode, remote.pool, remote.pool_id = "dev", "fresh-dev", CURRENT
     remote.device_cert = "pinned"
     token = "mlws1.worker.existing"
     tokens.store(remote.base, "worker", token)
     requests = []
     def request(action, body):
         requests.append((action, body))
-        return {"id": "worker", "project_id": PROJECT, "cluster_id": CURRENT}
+        return {"id": "worker", "project_id": PROJECT, "pool_id": CURRENT}
     monkeypatch.setattr(remote, "_request", request)
     assert remote.renew("worker")["id"] == "worker"
     assert [(action, {key: value for key, value in body.items() if key != "device"}) for action, body in requests] == [
-        ("renew", {"agent_token": token, "cluster": "fresh-dev", "cluster_id": CURRENT})]
+        ("renew", {"agent_token": token, "pool": "fresh-dev", "pool_id": CURRENT})]
     assert requests[0][1]["device"]["verification"] == "local-observed"
     assert tokens.load(remote.base, "worker") == token
 
@@ -155,36 +155,36 @@ def test_remote_renewal_uses_existing_capability_without_recovery(tmp_path, monk
 @pytest.mark.parametrize("case", [("dev", "worker", "c" * 64, True),
     ("dev", "worker", CURRENT, False), ("prod", "worker", "c" * 64, False),
     ("dev", "other", "c" * 64, False), ("dev", "worker", "", True)])
-def test_saved_connection_refresh_is_determined_by_cluster_scope(tmp_path, monkeypatch, case):
+def test_saved_connection_refresh_is_determined_by_pool_scope(tmp_path, monkeypatch, case):
     mode, actor, old_id, renew = case
     key = b"new-key"
     new_id = hashlib.sha256(key).hexdigest()
     stored = new_id if old_id == CURRENT else old_id
-    connection = {"agent": "worker", "local_agent": "local-worker", "cluster_id": stored,
-                  "cluster": "old-dev", "host": "https://board.invalid", "project_id": PROJECT,
+    connection = {"agent": "worker", "local_agent": "local-worker", "pool_id": stored,
+                  "pool": "old-dev", "host": "https://board.invalid", "project_id": PROJECT,
                   "root": str(tmp_path)}
     monkeypatch.setattr(automatic_connection, "memberships", lambda path: [SimpleNamespace(group="fresh-dev", key=key, mode=mode)])
     calls = []
     monkeypatch.setattr(automatic_connection, "RemoteWorkspace", lambda *a, **k: calls.append(k) or "remote")
-    monkeypatch.setattr(automatic_connection, "bind", lambda *a, **k: {**connection, "cluster_id": new_id})
+    monkeypatch.setattr(automatic_connection, "bind", lambda *a, **k: {**connection, "pool_id": new_id})
     result = automatic_connection.refresh(connection, actor)
     assert bool(calls) is renew
-    assert result["cluster_id"] == (new_id if renew else stored)
+    assert result["pool_id"] == (new_id if renew else stored)
 
 
-def test_bind_renews_saved_scope_and_persists_current_cluster(tmp_path, monkeypatch):
+def test_bind_renews_saved_scope_and_persists_current_pool(tmp_path, monkeypatch):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
     root = tmp_path / "checkout"
     root.mkdir()
     prior = {"agent": "worker", "host": "https://board.invalid", "project_id": PROJECT,
-             "cluster_id": "c" * 64, "local_agent": "local-worker"}
+             "pool_id": "c" * 64, "local_agent": "local-worker"}
     monkeypatch.setattr(project_connection, "selected", lambda path: prior)
     events = []
-    remote = SimpleNamespace(host=prior["host"], project_id=PROJECT, cluster_key="", cluster_id=CURRENT,
+    remote = SimpleNamespace(host=prior["host"], project_id=PROJECT, pool_key="", pool_id=CURRENT,
                              mode="dev", token=lambda **kw: "existing")
     remote.renew = lambda agent: events.append(agent)
-    remote.call = lambda *a: {"id": "worker", "role": "agent", "project": {"key": PROJECT, "cluster_id": CURRENT}}
+    remote.call = lambda *a: {"id": "worker", "role": "agent", "project": {"key": PROJECT, "pool_id": CURRENT}}
     made = project_connection.bind(remote, root, "worker", "fresh-dev", local_agent="local-worker")
     assert events == ["worker"]
-    assert made["cluster_id"] == CURRENT
-    assert project_connection._saved()[str(root)]["cluster_id"] == CURRENT
+    assert made["pool_id"] == CURRENT
+    assert project_connection._saved()[str(root)]["pool_id"] == CURRENT

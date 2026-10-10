@@ -107,7 +107,7 @@ def stamped(server: Mapping[str, Any] | None) -> dict[str, Any]:
 
     Every run says which machine measured it and which code: a fleet gathers runs from
     several hosts into one store, and the table, the ranking and the frontier must tell
-    them apart. A record that arrives with a host -- gathered from a peer, or measured
+    them apart. A record that arrives with a host -- gathered from a member, or measured
     under ``--host`` -- keeps it; an empty one is filled in with this machine's hostname
     and `home.machine_id`. ``beside`` is what else held the card while it was measured,
     written only when something did.

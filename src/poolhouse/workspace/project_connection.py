@@ -44,7 +44,7 @@ def _save(path: Path, connections: dict, before: str) -> None:
         tmp.write_text(text, encoding="utf-8")
 
 
-def bind(remote: RemoteWorkspace, root: Path, agent: str, cluster: str = "", **options: str) -> dict:
+def bind(remote: RemoteWorkspace, root: Path, agent: str, pool: str = "", **options: str) -> dict:
     """Bind a local project root to an authenticated board identity."""
     if set(options) - {"local_agent", "agent_token"}:
         raise TypeError("unsupported project binding option")
@@ -52,8 +52,8 @@ def bind(remote: RemoteWorkspace, root: Path, agent: str, cluster: str = "", **o
     prior = selected(root)
     if (prior and prior.get("agent") == agent and prior["host"] == remote.host
             and prior["project_id"] == remote.project_id and getattr(remote, "mode", "prod") == "dev"
-            and (prior.get("cluster_id") or prior.get("local_agent"))
-            and prior.get("cluster_id") != remote.cluster_id):
+            and (prior.get("pool_id") or prior.get("local_agent"))
+            and prior.get("pool_id") != remote.pool_id):
         remote.renew(agent)
     who = remote.call("whoami", agent_token or remote.token(agent=agent))
     if agent_token and who.get("id") != agent:
@@ -71,9 +71,9 @@ def bind(remote: RemoteWorkspace, root: Path, agent: str, cluster: str = "", **o
                 and not same_machine_host(authority["host"], remote.host))):
         raise Denied("this checkout already names another board")
     made = {"host": remote.host, "project_id": remote.project_id, "agent": agent,
-            "cluster": cluster, "cluster_key": remote.cluster_key}
-    if who.get("project", {}).get("cluster_id"):
-        made["cluster_id"] = who["project"]["cluster_id"]
+            "pool": pool, "pool_key": remote.pool_key}
+    if who.get("project", {}).get("pool_id"):
+        made["pool_id"] = who["project"]["pool_id"]
     if local_agent:
         made["local_agent"] = local_agent
     session = project_session.current(local_agent) if local_agent else ""
@@ -129,7 +129,7 @@ def selected(cwd: Path | None = None, *, local_agent: str = "") -> dict | None:
                 return {**configured, "root": str(root)}
             if authority.get("host"):
                 return {"host": authority["host"], "project_id": metadata["project_id"],
-                        "agent": "", "cluster": authority.get("cluster", ""), "root": str(root)}
+                        "agent": "", "pool": authority.get("pool", ""), "root": str(root)}
             raise Denied("this shared checkout has no board connection; attach it before using workspace commands")
         if configured:
             return {**configured, "root": str(root)}
@@ -138,7 +138,7 @@ def selected(cwd: Path | None = None, *, local_agent: str = "") -> dict | None:
         configured = connections.get(str(checkout[1]))
         if configured:
             if configured["project_id"] != projects.identity(checkout[0]):
-                raise Denied("this worktree differs from its shared project Board")
+                raise Denied("this worktree differs from its shared board")
             chosen = project_session.connection(configured)
             if chosen.get("session"):
                 return {**chosen, "root": str(checkout[0])}
@@ -150,11 +150,11 @@ def selected(cwd: Path | None = None, *, local_agent: str = "") -> dict | None:
 def _find_authority(project_id: str) -> tuple[str, str] | None:
     candidates = []
     for member in discovery.memberships():
-        peers = remote.Peer.discover(key=member.key, group=member.group, timeout_s=1)
+        daemons = remote.Member.discover(key=member.key, group=member.group, timeout_s=1)
         published = []
-        for peer in peers:
+        for daemon in daemons:
             try:
-                rows = project_client.catalogue(peer)["projects"]
+                rows = project_client.catalogue(daemon)["projects"]
             except (OSError, ValueError, ServerError):
                 continue
             published.extend(row for row in rows if row["id"] == project_id)
@@ -164,19 +164,19 @@ def _find_authority(project_id: str) -> tuple[str, str] | None:
         if not boards:
             continue
         board = next(iter(boards))
-        hosts = [peer for peer in peers if remote.device_address(peer, board)]
+        hosts = [daemon for daemon in daemons if remote.device_address(daemon, board)]
         if len(hosts) != 1:
             raise Denied("the project's workspace authority is missing or ambiguous on this network")
         candidates.append((member.group, hosts[0].base_url))
     if not candidates:
         return None
     if len(set(candidates)) != 1:
-        raise Denied("this project appears on more than one cluster; select one workspace authority")
+        raise Denied("this project appears on more than one pool; select one workspace authority")
     return candidates[0]
 
 
 def auto_attach(cwd: Path | None = None) -> dict | None:
-    """Discover this Git project's one workspace through an enrolled cluster."""
+    """Discover this Git project's one workspace through an enrolled pool."""
     current = (cwd or Path.cwd()).resolve()
     try:
         root = Path(git.run(["rev-parse", "--show-toplevel"], cwd=current).stdout.strip()).resolve()
@@ -186,10 +186,10 @@ def auto_attach(cwd: Path | None = None) -> dict | None:
     authority = _find_authority(project_id)
     if authority is None:
         return None
-    cluster, host = authority
-    remote = RemoteWorkspace(host, project_id, cluster=cluster)
+    pool, host = authority
+    remote = RemoteWorkspace(host, project_id, pool=pool)
     return {"host": remote.host, "project_id": project_id, "agent": "",
-            "cluster": cluster, "cluster_key": remote.cluster_key, "root": str(root)}
+            "pool": pool, "pool_key": remote.pool_key, "root": str(root)}
 
 
 class Operations:
@@ -204,7 +204,7 @@ class Operations:
 
 
 class BoardWorkspace(Operations):
-    """The supported local CLI operations backed by one remote project board."""
+    """The supported local CLI operations backed by one board on another device."""
 
     def __init__(self, remote: RemoteWorkspace, token: str):
         self.remote, self.token = remote, token

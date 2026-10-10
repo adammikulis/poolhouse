@@ -56,7 +56,7 @@ def execute(ws, token, document, parser, handlers):
         raise ValueError('a stable request ID is required')
     who, args, handler = prepare(ws, token, argv, parser, handlers)
     if argv[0] in ('claim', 'release', 'who') and args.kind not in ('branch', 'area'):
-        raise Denied('device-local resource claims require a verified paired-device namespace')
+        raise Denied('device-local resource claims require a verified member namespace')
     if argv[0] in READS:
         return handler(args, ws, token)
     digest = hashlib.sha256(json.dumps(argv, ensure_ascii=True).encode()).hexdigest()

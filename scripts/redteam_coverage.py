@@ -57,19 +57,19 @@ ATTACKER = {
     "parser": "a crafted file or page crashes the reader, exhausts it or smuggles text",
 }
 TRUST = {
-    "route": "network peer or local browser",
-    "handler": "network peer or local browser",
+    "route": "network member or local browser",
+    "handler": "network member or local browser",
     "mcp-tool": "tool arguments written by a model that may have read hostile text",
     "chat-tool": "tool arguments written by a model that may have read hostile text",
     "slash-command": "a line typed at the prompt, or text echoed from outside",
     "cli": "the person at a terminal; arguments may carry text from outside",
-    "spawn": "arguments built from model output, peer messages or file names",
+    "spawn": "arguments built from model output, member messages or file names",
     "listener": "anything that can connect to the address",
-    "egress": "addresses and redirects named by pages, repositories and peers",
-    "human": "an agent process or a peer",
-    "desktop": "names of peers, sessions, files",
+    "egress": "addresses and redirects named by pages, repositories and members",
+    "human": "an agent process or a member",
+    "desktop": "names of members, sessions, files",
     "keystore": "the process environment and the files on disk",
-    "context": "tool results, pages, files, peers, stored facts",
+    "context": "tool results, pages, files, members, stored facts",
     "parser": "files, pages and archives from outside",
 }
 SPAWN = {
@@ -112,10 +112,10 @@ ROUTE_DIRS = ("fleet/", "graph/", "sentinel/", "ui/")
 ROUTE_FILES = {"workspace/fleet_routes.py", "workspace/coding_routes.py", "activity/fleet_routes.py", "workspace/work_reputation.py"}
 ROLE_VALUES = {"tool", "user", "system"}
 TRUST_BY_FILE = {
-    "fleet/api.py": "peer holding the cluster key; /health open to anyone",
+    "fleet/api.py": "member holding the pool key; /health open to anyone",
     "fleet/routes.py": "browser session on this machine behind the UI header",
     "graph/": "browser on this machine",
-    "fleet/onboard/pairing.py": "anyone on the LAN, unauthenticated until the owner accepts",
+    "fleet/onboard/join_code.py": "anyone on the LAN, unauthenticated until the owner accepts",
     "fleet/onboard/bootstrap.py": "whoever holds the unguessable address",
 }
 
@@ -178,9 +178,9 @@ def string_defaults(tree: ast.Module) -> dict[str, str]:
     for fn in ast.walk(tree):
         if isinstance(fn, ast.FunctionDef):
             args = fn.args
-            pairs = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
+            defaults = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
                      *zip(args.kwonlyargs, args.kw_defaults, strict=True)]
-            out.update({a.arg: d.value for a, d in pairs
+            out.update({a.arg: d.value for a, d in defaults
                         if isinstance(d, ast.Constant) and isinstance(d.value, str)})
     return out
 
@@ -218,9 +218,9 @@ def prefix_defaults(node: ast.FunctionDef) -> list[str]:
     """The route prefixes a handler takes as a ``prefix`` parameter's default, which its
     ``startswith(prefix)`` test hides from `route_names`."""
     args = node.args
-    pairs = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
+    defaults = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
              *((a, d) for a, d in zip(args.kwonlyargs, args.kw_defaults, strict=True) if d is not None)]
-    return [d.value + "*" for a, d in pairs if a.arg == "prefix" and isinstance(d, ast.Constant)
+    return [d.value + "*" for a, d in defaults if a.arg == "prefix" and isinstance(d, ast.Constant)
             and isinstance(d.value, str) and d.value.startswith("/") and len(d.value) > 2]
 
 

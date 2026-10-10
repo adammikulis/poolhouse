@@ -22,7 +22,7 @@ from poolhouse.sentinel.human import HumanGrant, protect
 from poolhouse.sentinel.integrity import Manifest, Pin, check_file
 from poolhouse.sentinel.policy import Mode, decide
 from poolhouse.sentinel.rails import RailWatch, reads_like_instruction
-from poolhouse.sentinel.rates import Abuse, PeerWatch, ToolMix
+from poolhouse.sentinel.rates import Abuse, MemberWatch, ToolMix
 from poolhouse.sentinel.redaction import redact
 from poolhouse.sentinel.score import Score
 from poolhouse.sentinel.sealed import SealedFile
@@ -76,7 +76,7 @@ class Sentinel:
         self.manifest = Manifest(self.root / "manifest.json", clock)
         self.baselines = Baseline(self.root / "canaries.json")
         self.honey = Honey(state=self.root / "honey.json")
-        self.peers, self.tools, self.rails = PeerWatch(), ToolMix(), RailWatch()
+        self.members, self.tools, self.rails = MemberWatch(), ToolMix(), RailWatch()
         self.abuse = Abuse()
         self.score = Score()
         self._flights: dict[str, int] = {}
@@ -144,8 +144,8 @@ class Sentinel:
         return [self.handle(f) for f in found if f is not None]
 
     # -- what callers ask ------------------------------------------------------------
-    def peer_blocked(self, peer: str) -> bool:
-        return self.mode != Mode.OFF and self.store.blocked("peer", peer)
+    def member_blocked(self, member: str) -> bool:
+        return self.mode != Mode.OFF and self.store.blocked("member", member)
 
     def tool_allowed(self, name: str, caller: str = "") -> bool:
         if self.mode == Mode.OFF:

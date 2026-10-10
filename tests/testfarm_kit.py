@@ -1,7 +1,7 @@
-"""Real node processes for the tests-on-another-device suites: paired devices on loopback, this process as one session.
+"""Real node processes for the tests-on-another-device suites: members on loopback, this process as one session.
 
 The nodes listen on 127.0.0.1 only and run no beacon, so nothing uses multicast or asks the person for network
-permission. ``pool`` is device A (the asker, this process's session) and B (the host), already paired; ``third``
+permission. ``pool`` is device A (the asker, this process's session) and B (the host), already joined; ``third``
 makes a node C, alone in a pool of its own, for the tests that need a stranger.
 """
 
@@ -58,18 +58,18 @@ def skip_unless_possible() -> None:
         pytest.skip("shards run on Python 3.13, and these node processes are POSIX")
 
 
-def pair(a: Device, b: Device) -> None:
-    """Enrol ``b`` in ``a``'s pool with a pairing code."""
-    code = a.call("pair_accept", token=a.token)
-    b.call("pair_start", token=b.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
+def join(a: Device, b: Device) -> None:
+    """Enrol ``b`` in ``a``'s pool with a join code."""
+    code = a.call("add_device", token=a.token)
+    b.call("join_pool", token=b.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
 
 
 @pytest.fixture
 def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
-    """Two paired devices; this process is device A's session. Returns (a, b, shards, tree root)."""
+    """Two members; this process is device A's session. Returns (a, b, shards, tree root)."""
     skip_unless_possible()
     a, b = start(node_binary, "a"), start(node_binary, "b")
-    pair(a, b)
+    join(a, b)
     for name in STRIPPED:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
@@ -100,12 +100,12 @@ def third(node_binary):  # noqa: F811
 
 
 def enable(b: Device) -> None:
-    """Turn shards on at ``b`` the way its person would: this interpreter, this checkout, taking tests from its one pool peer."""
+    """Turn shards on at ``b`` the way its person would: this interpreter, this checkout, taking tests from its one pool member."""
     (asker,) = pool_devices(b.state)
     b.call("shard_consent", token=b.token, enabled=True, python=sys.executable, repo=str(ROOT), allow=[asker["fingerprint"]])
 
 
-def peer(a: Device) -> dict:
+def member(a: Device) -> dict:
     """The one other device in ``a``'s pool."""
     (found,) = pool_devices(a.state)
     return found

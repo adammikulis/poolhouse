@@ -114,10 +114,10 @@ impl Dev {
         self.ok("set_join_policy", "", &self.token, json!({"policy": policy}));
     }
 
-    /// Pair `joiner` into this device's pool with a code.
-    pub fn pair_secure(&self, joiner: &Dev) -> Value {
-        let code = self.ok("pair_accept", "", &self.token, json!({}))["code"].as_str().unwrap().to_string();
-        joiner.ok("pair_start", "", &joiner.token, json!({"host": "127.0.0.1", "port": self.net.port, "passphrase": code}))
+    /// Join `joiner` into this device's pool with a code.
+    pub fn join_with_code(&self, joiner: &Dev) -> Value {
+        let code = self.ok("add_device", "", &self.token, json!({}))["code"].as_str().unwrap().to_string();
+        joiner.ok("join_pool", "", &joiner.token, json!({"host": "127.0.0.1", "port": self.net.port, "passphrase": code}))
     }
 }
 

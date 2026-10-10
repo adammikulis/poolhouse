@@ -3,9 +3,9 @@
 A proposal is what `poolhouse.graph.requests.propose` wrote: a request, the edits a model
 read out of it, and a ``status``. `Queue` lists them for a page and acts on one: refusing
 marks it, accepting lands its edits in the store through `poolhouse.graph.propose.apply`,
-undoing takes an accepted one back to proposed. A caller that keeps its own journal of
+undoing takes an accepted one back to proposed. A caller that keeps its own edit log of
 accepted edits -- something a rebuild applies over fresh extractions -- hands the queue a
-``journal`` pair, ``(fold, unfold)``, called with each edit and the journal's mapping.
+``edit_log`` pair, ``(fold, unfold)``, called with each edit and the edit log's mapping.
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ class Queue:
     """The proposals in ``path``, listed and acted on.
 
     ``store`` is the GraphStore path accepted edits land in; without one, or while it does
-    not exist yet, accepting only marks the proposal and journals it. ``journal`` is
+    not exist yet, accepting only marks the proposal and records it in the edit log. ``edit_log`` is
     ``(path, fold, unfold)``: a JSON mapping and the two functions that put one edit into it
     and take it out again, ``fold`` returning a reason when it cannot. ``exported`` runs
     after edits have landed in the store, for a caller that keeps a copy of the graph
@@ -64,13 +64,13 @@ class Queue:
     """
 
     def __init__(self, path: Path | str, *, store: Path | str | None = None,
-                 journal: tuple[Path | str, Callable[..., str | None], Callable[..., Any]]
+                 edit_log: tuple[Path | str, Callable[..., str | None], Callable[..., Any]]
                  | None = None,
                  exported: Callable[[], str | None] | None = None,
                  log: Callable[[str], Any] = lambda _: None) -> None:
         self.path = Path(path)
         self.store = Path(store) if store else None
-        self.journal = journal
+        self.edit_log = edit_log
         self.exported = exported
         self.log = log
         self.lock = threading.Lock()
@@ -97,7 +97,7 @@ class Queue:
     def act(self, key: str, action: str) -> list[str]:
         """Accept, refuse or undo one proposal on disk. Returns what could not be applied.
 
-        Accepting journals first, then lands in the store, then exports: the journal is what
+        Accepting writes the edit log first, then lands in the store, then exports: the edit log is what
         a rebuild reads, so an edit the store would not take is still not lost. ``KeyError``
         for a key not in the queue, ``ValueError`` for an action that is not one of `ACTIONS`.
         """
@@ -115,21 +115,21 @@ class Queue:
         if action == "refuse":
             proposals[key]["status"] = "refused"
         elif action == "undo":
-            self._journal(edits, taking_back=True)
+            self._edit_log(edits, taking_back=True)
             proposals[key]["status"] = "proposed"
         else:
-            taken = self._journal(edits, taking_back=False, problems=problems)
+            taken = self._edit_log(edits, taking_back=False, problems=problems)
             problems += self.into_store(taken)
             proposals[key]["status"] = "accepted"
         write_json(self.path, proposals)
         return problems
 
-    def _journal(self, edits: list[dict[str, Any]], *, taking_back: bool,
+    def _edit_log(self, edits: list[dict[str, Any]], *, taking_back: bool,
                  problems: list[str] | None = None) -> list[dict[str, Any]]:
-        """Fold every edit into the journal (or unfold it); returns the edits that folded."""
-        if self.journal is None:
+        """Fold every edit into the edit log (or unfold it); returns the edits that folded."""
+        if self.edit_log is None:
             return list(edits)
-        path, fold, unfold = self.journal
+        path, fold, unfold = self.edit_log
         held = read_json(Path(path), {})
         taken: list[dict[str, Any]] = []
         for edit in edits:
@@ -148,7 +148,7 @@ class Queue:
     def into_store(self, edits: list[dict[str, Any]]) -> list[str]:
         """Apply edits to the store and run ``exported``. Returns the problems.
 
-        A store that is not there yet is left alone: the journal has the edits, and opening
+        A store that is not there yet is left alone: the edit log has the edits, and opening
         a store for writing would create an empty one.
         """
         if self.store is None or not edits:
@@ -162,7 +162,7 @@ class Queue:
                         for c in changes if c.problems]
             with GraphStore(self.store) as store:
                 landed = apply(store, [c for c in changes if c.sound])
-        except Exception as exc:  # noqa: BLE001 - the journal has it; the rebuild applies it
+        except Exception as exc:  # noqa: BLE001 - the edit log has it; the rebuild applies it
             return [f"store: not applied ({type(exc).__name__}: {str(exc)[:120]})"]
         problems += [f"{c.op} {c.target}: {'; '.join(c.problems) or 'the store would not take it'}"
                      for c in landed["skipped"]]

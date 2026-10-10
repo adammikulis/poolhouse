@@ -7,9 +7,9 @@ its unlocked session. Removing the saved connection requires a new invite.
 
 Create an Android invite in Fleet on the computer's local owner interface. Approving that
 invite grants one hour of local model chat and status. Fleet also lists and revokes Android
-connections. Restarting the computer daemon, changing cluster membership or its listener
+connections. Restarting the computer daemon, changing pool membership or its listener
 certificate invalidates the connection. Computer enrollment invites are rejected. The
-companion never receives a cluster execution key. Replies stream as generated; Cancel and
+companion never receives a pool execution key. Replies stream as generated; Cancel and
 leaving the app close the request.
 
 The app supports Android R and later. Camera permission is requested only for scanning; paste

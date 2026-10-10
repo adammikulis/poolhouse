@@ -168,8 +168,8 @@ def test_help_lists_every_command_and_hands_a_named_one_its_own_help(capsys):
         cli.help_main(["--help"])
 
 
-def test_cluster_is_the_public_device_group_command(monkeypatch):
+def test_pool_is_the_public_device_group_command(monkeypatch):
     monkeypatch.setattr(cli, "PYPROJECT", REPO / "pyproject.toml")
     registered = cli.commands()
-    assert registered["cluster"] == "poolhouse.fleet.join:main"
+    assert registered["pool"] == "poolhouse.fleet.join:main"
     assert "fleet" not in registered

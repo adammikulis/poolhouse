@@ -105,7 +105,7 @@ def test_delegates_inherit_project_reads_but_still_require_read_capability(proje
         ws.board.ui_thread(blind, root["seq"])
 
 
-def test_project_board_read_visibility_preserves_membership_for_posting(project):
+def test_board_read_visibility_preserves_membership_for_posting(project):
     ws, t = project.ws, project.tokens
     board = ws.board.place("worker-a", {"key": "project-a", "name": "Widgets"})[-1]
     ws.send(t["worker-a"], board, "note", "Project progress")

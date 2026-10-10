@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import home, http, hub, lock, net
-from poolhouse.hub import hfstore, peers as peering, remote
+from poolhouse.hub import hfstore, members as peering, remote
 from poolhouse.hub.remote import GatedRepo, NotFound, RemoteFile
 from poolhouse.net.download import staged_part
 from poolhouse.units import human_bytes
@@ -192,8 +192,8 @@ def _want(one: RemoteFile, auth: str) -> net.Want:
                     purpose="model download", verify=_by_object_id(one))
 
 
-def _from_peers(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> bool:
-    """Try the paired devices for ``one``; True when ``final`` is in place. Whatever goes
+def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> bool:
+    """Try the members for ``one``; True when ``final`` is in place. Whatever goes
     wrong with them is a reason to ask the Hub, a cancel is not."""
     cancel = meter.cancel
     try:
@@ -205,12 +205,12 @@ def _from_peers(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter)
     except peering.Stopped as exc:
         raise Cancelled(one.path) from exc
     except (OSError, ValueError, RuntimeError) as exc:
-        logger.warning("peers failed for %s, using the Hub: %s", one.path, exc)
+        logger.warning("members failed for %s, using the Hub: %s", one.path, exc)
         return False
 
 
 def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> None:
-    if meter.session is not None and _from_peers(parsed, one, final, meter):
+    if meter.session is not None and _from_members(parsed, one, final, meter):
         return
     cancel = meter.cancel
     url, auth = _url(parsed, one), remote.token()
@@ -267,7 +267,7 @@ def _space(folder: Path, need: int) -> None:
 
 
 def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = None,
-         cancel: CancelToken | None = None, *, peers: bool | None = None) -> Path:
+         cancel: CancelToken | None = None, *, members: bool | None = None) -> Path:
     """Download ``ref`` and return its GGUF file or safetensors folder, in the Hub cache's snapshot.
 
     ``dest`` writes plain files into that folder instead of the cache. Every shard of a sharded build comes
@@ -276,7 +276,7 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
     failed pull leaves ``<file>.part`` and the next pull of the same reference continues
     it. Two processes pulling the same file take turns.
 
-    Paired devices are asked first (``peers=False`` skips them; `poolhouse.hub.peers`): their
+    Members are asked first (``members=False`` skips them; `poolhouse.hub.members`): their
     bytes count only if they hash to the Hub's own digest, else the Hub is used.
     """
     parsed = remote.parse(ref)
@@ -284,7 +284,7 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
         files = remote.listing(parsed.repo, parsed.revision)
         if parsed.file not in {one.path for one in files}:
             raise NotFound(f"{parsed.repo} has no {parsed.file}")
-        return _snapshot_files(parsed, files, dest, _Run(on_progress, cancel, peers))
+        return _snapshot_files(parsed, files, dest, _Run(on_progress, cancel, members))
     try:
         parsed, chosen = plan(ref)
     except NotFound:
@@ -295,8 +295,8 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
         if "config.json" not in names or not any(name.lower().endswith(".safetensors")
                                                    for name in names):
             raise
-        return _snapshot_files(parsed, files, dest, _Run(on_progress, cancel, peers))
-    folder = _bring(parsed, chosen, dest, _Run(on_progress, cancel, peers))
+        return _snapshot_files(parsed, files, dest, _Run(on_progress, cancel, members))
+    folder = _bring(parsed, chosen, dest, _Run(on_progress, cancel, members))
     return folder / chosen[0].path
 
 
@@ -306,7 +306,7 @@ class _Run:
 
     report: Report | None = None
     cancel: CancelToken | None = None
-    peers: bool | None = None
+    members: bool | None = None
 
 
 def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None,
@@ -323,7 +323,7 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
     meter = _Meter(parsed.text, sum(f.size for f in chosen), len(chosen), run.report)
     meter.cancel = run.cancel
     if any(not _present(t.final, t.file) for t in targets):
-        meter.session = peering.session(run.peers)
+        meter.session = peering.session(run.members)
     for index, target in enumerate(targets):
         meter.index = index
         target.final.parent.mkdir(parents=True, exist_ok=True)

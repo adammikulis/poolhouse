@@ -12,7 +12,7 @@ from workspace_kit import Kit, clean_env
 
 from poolhouse import claude, harnessing
 from poolhouse.workspace import profilehook, tokens
-from poolhouse.workspace.harness_seat import Seat
+from poolhouse.workspace.harness_session import HarnessSession
 
 
 def payload(event='PreToolUse', **values):
@@ -101,8 +101,8 @@ def test_launcher_observation_preserves_requests_without_inventing_effective_lim
     tokens.store(kit.base, 'alice', token)
     monkeypatch.setattr(profilehook.harness_remote, 'context', lambda *_args, **_kwargs: None)
     args = SimpleNamespace(model='requested', ctx=32000, effort='high', max_output_tokens=1000, max_turns=None)
-    seat = Seat('alice', persistent=True, base=kit.base)
-    assert seat.record_execution(args, 'claude-code', ('http://localhost:9', 'served', 16000), tmp_path)
+    session = HarnessSession('alice', persistent=True, base=kit.base)
+    assert session.record_execution(args, 'claude-code', ('http://localhost:9', 'served', 16000), tmp_path)
     fields = kit.ws.execution_profiles(token)[0]['fields']
     assert fields['requested_context']['value'] == 32000
     assert fields['requested_output_tokens']['value'] == 1000
@@ -163,11 +163,11 @@ def test_launcher_metadata_outage_has_an_independent_bounded_deadline(monkeypatc
     import threading
     import time
 
-    from poolhouse.workspace import harness_seat
+    from poolhouse.workspace import harness_session
 
     release = threading.Event()
     finished = threading.Event()
-    monkeypatch.setattr(harness_seat, 'PROFILE_TIMEOUT', 0.05)
+    monkeypatch.setattr(harness_session, 'PROFILE_TIMEOUT', 0.05)
 
     def unavailable(*_args):
         try:
@@ -176,12 +176,12 @@ def test_launcher_metadata_outage_has_an_independent_bounded_deadline(monkeypatc
         finally:
             finished.set()
 
-    monkeypatch.setattr(Seat, '_record_execution', unavailable)
+    monkeypatch.setattr(HarnessSession, '_record_execution', unavailable)
     args = SimpleNamespace(ctx=32000, max_turns=None)
-    seat = Seat('alice', persistent=True)
+    session = HarnessSession('alice', persistent=True)
     start = time.monotonic()
     try:
-        assert not seat.record_execution(args, 'claude-code', ('http://localhost:9', 'served', 16000), tmp_path)
+        assert not session.record_execution(args, 'claude-code', ('http://localhost:9', 'served', 16000), tmp_path)
         assert time.monotonic() - start < 0.5
         assert args.ctx == 32000 and args.max_turns is None
     finally:
@@ -208,8 +208,8 @@ def test_local_launcher_observation_keeps_its_established_workspace_authority(mo
     kit = Kit(clean_env(monkeypatch, tmp_path))
     token = kit.agent('alice')
     tokens.store(kit.base, 'alice', token)
-    monkeypatch.setattr(profilehook, 'send', lambda *_args: pytest.fail('local seat authority was reselected'))
-    seat = Seat('alice', persistent=True, base=kit.base)
-    assert seat.record_execution(SimpleNamespace(ctx=32000), 'claude-code',
+    monkeypatch.setattr(profilehook, 'send', lambda *_args: pytest.fail('local session authority was reselected'))
+    session = HarnessSession('alice', persistent=True, base=kit.base)
+    assert session.record_execution(SimpleNamespace(ctx=32000), 'claude-code',
                                  ('http://localhost:9', 'served', 16000), tmp_path)
     assert kit.ws.execution_profiles(token)[0]['actor'] == 'alice'

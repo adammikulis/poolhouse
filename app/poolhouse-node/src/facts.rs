@@ -21,7 +21,7 @@ pub struct PeerFacts {
 pub struct Facts {
     path: PathBuf,
     pub listen: Option<String>,
-    pub pairing_until_ms: u64,
+    pub join_code_until_ms: u64,
     pub beacon: bool,
     pub peers: BTreeMap<String, PeerFacts>,
 }
@@ -34,7 +34,7 @@ impl Facts {
             Err(e) => return Err(e.into()),
         };
         let peers = addrs.into_iter().map(|(fp, a)| (fp, PeerFacts { addr: Some(a), ..PeerFacts::default() })).collect();
-        Ok(Facts { path: path.into(), listen: None, pairing_until_ms: 0, beacon: false, peers })
+        Ok(Facts { path: path.into(), listen: None, join_code_until_ms: 0, beacon: false, peers })
     }
 
     pub fn peer(&mut self, fingerprint: &str) -> &mut PeerFacts {

@@ -2,9 +2,9 @@
 
 A request that arrives over TLS from another machine carries the certificate its sender showed
 in the handshake. It is answered only when that certificate is a member's (`pool_roster`) and,
-when the request is signed with a cluster's secret, a member of that same cluster. A sender that
+when the request is signed with a pool's secret, a member of that same pool. A sender that
 showed no certificate (a phone, a browser) may use only the credential of its own device.
-The check runs on every request, so a device put out of the cluster is refused at its next one
+The check runs on every request, so a device put out of the pool is refused at its next one
 even on a connection it opened before.
 """
 
@@ -22,7 +22,7 @@ from poolhouse.macauth import Authenticator, Verdict
 from .discovery import derive_token, memberships
 from .pool_roster import Pool
 
-__all__ = ["ANONYMOUS", "LOCAL", "MEMBER", "STRANGER", "Screen", "Screened", "cluster_of", "identify"]
+__all__ = ["ANONYMOUS", "LOCAL", "MEMBER", "STRANGER", "Screen", "Screened", "identify", "pool_of"]
 
 LOCAL, ANONYMOUS, MEMBER, STRANGER = "local", "anonymous", "member", "stranger"
 
@@ -46,7 +46,7 @@ class Screened:
     status and reason to answer with when it may not be served."""
 
     kind: str
-    peer: str
+    member: str
     verdict: Verdict | None = None
     refusal: tuple[int, str] | None = None
 
@@ -55,28 +55,28 @@ class Screen:
     """The checks a request must pass, which differ by who sent it and by route."""
 
     def __init__(self, secrets_now: Callable[[], Iterable[str]], device_secrets: Callable[[], Iterable[str]],
-                 pool: Pool, cluster_key_path: Path | str | None, watch: Callable[[Any], Any]) -> None:
-        self.pool, self.cluster_key_path = pool, cluster_key_path
-        self.cluster = watch(Authenticator(secrets_now))
+                 pool: Pool, pool_key_path: Path | str | None, watch: Callable[[Any], Any]) -> None:
+        self.pool, self.pool_key_path = pool, pool_key_path
+        self.pool_secret = watch(Authenticator(secrets_now))
         self.workspace = Authenticator(lambda: [*secrets_now(), *device_secrets()])
         self.enrolled = Authenticator(device_secrets)
 
     def check(self, handler: Any, body: bytes | None) -> Screened:
         """Screen the request ``handler`` (a request handler) is serving, whose body was ``body``."""
-        kind, peer = identify(handler.connection, self.pool)
+        kind, member = identify(handler.connection, self.pool)
         workspace = handler.path.split("?")[0].startswith("/workspace/v1/")
         if kind == STRANGER:
-            return Screened(kind, peer, refusal=(403, "this device is not a member of the cluster"))
+            return Screened(kind, member, refusal=(403, "this device is not a member of the pool"))
         if kind == ANONYMOUS and not workspace:
-            return Screened(kind, peer, refusal=(401, "a request from another machine presents its device certificate"))
-        checking = self.enrolled if kind == ANONYMOUS else self.workspace if workspace else self.cluster
+            return Screened(kind, member, refusal=(401, "a request from another machine presents its device certificate"))
+        checking = self.enrolled if kind == ANONYMOUS else self.workspace if workspace else self.pool_secret
         verdict = checking.check(handler.command, handler.path, handler.headers, body, handler.client_address[0])
-        if verdict.ok and kind == MEMBER and (group := cluster_of(verdict.secret, self.cluster_key_path)) is not None \
-                and group not in self.pool.groups_of(peer):
-            return Screened(kind, peer, verdict, (403, "this device is not a member of that cluster"))
-        return Screened(kind, peer, verdict)
+        if verdict.ok and kind == MEMBER and (group := pool_of(verdict.secret, self.pool_key_path)) is not None \
+                and group not in self.pool.groups_of(member):
+            return Screened(kind, member, verdict, (403, "this device is not a member of that pool"))
+        return Screened(kind, member, verdict)
 
 
-def cluster_of(secret: str, cluster_key_path: Path | str | None) -> str | None:
-    """The cluster whose key a request secret was derived from; None for any other secret."""
-    return next((m.group for m in memberships(cluster_key_path) if derive_token(m.key) == secret), None)
+def pool_of(secret: str, pool_key_path: Path | str | None) -> str | None:
+    """The pool whose key a request secret was derived from; None for any other secret."""
+    return next((m.group for m in memberships(pool_key_path) if derive_token(m.key) == secret), None)

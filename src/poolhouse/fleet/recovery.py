@@ -1,4 +1,4 @@
-"""The cluster passphrase kept in the OS keystore, and the recovery file that joins a machine without it."""
+"""The pool passphrase kept in the OS keystore, and the recovery file that joins a machine without it."""
 
 from __future__ import annotations
 
@@ -17,20 +17,20 @@ from poolhouse.platform import private_file
 from poolhouse.sentinel import human
 
 from .discovery import (
-    DEFAULT_CLUSTER,
+    DEFAULT_POOL,
     DiscoveryError,
     Membership,
     adopt,
-    clusters_path,
     memberships,
+    pools_path,
     require_name,
 )
 
 PURPOSE = "fleet-passphrase"
 HEADER = (
-    "# poolhouse cluster recovery file",
-    "# Anyone holding this file can run commands on every machine in the cluster.",
-    "# `poolhouse-cluster recovery import FILE` joins a machine with it; it does not reveal the passphrase.",
+    "# poolhouse pool recovery file",
+    "# Anyone holding this file can run commands on every machine in the pool.",
+    "# `poolhouse-pool recovery import FILE` joins a machine with it; it does not reveal the passphrase.",
 )
 
 
@@ -40,7 +40,7 @@ def _store() -> keystore.Keystore:
 
 def passphrases_path(path: Path | str | None = None) -> Path:
     """The file holding the keystore-wrapped passphrases, beside the memberships."""
-    return clusters_path(path).with_suffix(".passphrases")
+    return pools_path(path).with_suffix(".passphrases")
 
 
 def _held(path: Path | str | None) -> dict[str, str]:
@@ -48,7 +48,7 @@ def _held(path: Path | str | None) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else {}
 
 
-def remember(passphrase: str, group: str = DEFAULT_CLUSTER, path: Path | str | None = None,
+def remember(passphrase: str, group: str = DEFAULT_POOL, path: Path | str | None = None,
              say: Callable[[str], None] = warn) -> None:
     """Store ``passphrase`` for ``group`` under the keystore; ``say`` gets a sentence when it could not."""
     try:
@@ -64,10 +64,10 @@ def remember(passphrase: str, group: str = DEFAULT_CLUSTER, path: Path | str | N
 
 
 def recall(group: str = "", path: Path | str | None = None) -> str | None:
-    """The stored passphrase for ``group`` (default: the first cluster), or None."""
+    """The stored passphrase for ``group`` (default: the first pool), or None."""
     if not group:
         rows = memberships(path)
-        group = rows[0].group if rows else DEFAULT_CLUSTER
+        group = rows[0].group if rows else DEFAULT_POOL
     blob = _held(path).get(group)
     if blob is None:
         return None
@@ -92,11 +92,11 @@ def forget(group: str, path: Path | str | None = None) -> None:
 
 
 def export_recovery(file: Path | str, group: str = "", path: Path | str | None = None) -> Membership:
-    """Write the group and key of a cluster this machine is in to ``file`` (mode 600)."""
+    """Write the group and key of a pool this machine is in to ``file`` (mode 600)."""
     rows = memberships(path)
     held = next((m for m in rows if not group or m.group == group), None)
     if held is None:
-        raise DiscoveryError("this machine is in no cluster" if not group else f"not in a cluster called '{group}'")
+        raise DiscoveryError("this machine is in no pool" if not group else f"not in a pool called '{group}'")
     body = json.dumps({"group": held.group, "key": held.key.decode(), "mode": held.mode}, indent=1)
     target = home.expand(file)
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -120,11 +120,11 @@ def parse_recovery(text: str) -> Membership:
         return Membership(group=require_name(data.get("group")), key=key.encode("ascii"),
                           mode=data["mode"], selection="manual")
     except (KeyError, ValueError, TypeError, UnicodeError, DiscoveryError) as exc:
-        raise DiscoveryError("not a valid cluster recovery file") from exc
+        raise DiscoveryError("not a valid pool recovery file") from exc
 
 
 def import_recovery(file: Path | str, path: Path | str | None = None) -> Membership:
-    """Join from a recovery file, replacing any membership of the same cluster."""
+    """Join from a recovery file, replacing any membership of the same pool."""
     with home.expand(file).open() as source:
         member = parse_recovery(source.read(8193))
     return adopt(member, path)
@@ -133,33 +133,33 @@ def import_recovery(file: Path | str, path: Path | str | None = None) -> Members
 def add_commands(sub: Any) -> None:
     """Register ``passphrase`` and ``recovery export|import`` on a subparsers object."""
     p = sub.add_parser("passphrase", help="print the stored passphrase (a person at a terminal)")
-    p.add_argument("--group", default="", help="which cluster (default: the first)")
-    r = sub.add_parser("recovery", help="export this machine's cluster key to FILE, or import FILE to join "
+    p.add_argument("--group", default="", help="which pool (default: the first)")
+    r = sub.add_parser("recovery", help="export this machine's pool key to FILE, or import FILE to join "
                        "without the passphrase (export needs a person at a terminal)")
     r.add_argument("op", choices=("export", "import"))
     r.add_argument("file")
-    r.add_argument("--group", default="", help="export: which cluster (default: the first)")
+    r.add_argument("--group", default="", help="export: which pool (default: the first)")
 
 
 def run(args: argparse.Namespace) -> int:
     """Run ``passphrase`` or ``recovery``; the exit status."""
-    path = args.cluster_key
+    path = args.pool_key
     try:
         if args.cmd == "passphrase":
             human.require_person("passphrase")
             words = recall(args.group, path)
             if words is None:
-                warn("no passphrase is stored for this cluster")
+                warn("no passphrase is stored for this pool")
                 return 1
             say(words)
         elif args.op == "export":
             authority.require("fleet.recovery", "recovery export")
             held = export_recovery(args.file, args.group, path)
-            say(f"wrote the key for cluster '{held.group}' to {args.file}")
-            say("Anyone holding that file can run commands on every machine in the cluster.")
+            say(f"wrote the key for pool '{held.group}' to {args.file}")
+            say("Anyone holding that file can run commands on every machine in the pool.")
         else:
             held = import_recovery(args.file, path)
-            say(f"joined cluster '{held.group}'")
+            say(f"joined pool '{held.group}'")
     except (human.HumanRequired, DiscoveryError, keystore.KeystoreError, OSError) as exc:
         warn(f"error: {exc}")
         return 2

@@ -28,10 +28,10 @@ from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.device import device_report, resolve_report, stdlib_device_report
 from poolhouse.fleet.files import DIGEST_HEADER, safe_relpath
 from poolhouse.fleet.jobs import DaemonError, JobRunner
-from poolhouse.fleet.remote import Peer, PeerError
+from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.settings import Settings
 from poolhouse.http import Server, ServerError, request_bytes
-from tests.cluster_support import any_command, join_cluster
+from tests.pool_support import any_command, join_pool_by_passphrase
 
 
 def _free_port() -> int:
@@ -52,7 +52,7 @@ def daemon(tmp_path):
                                 make_handler(Daemon(runner, files, token, command=any_command)))
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
-    client = Peer(f"http://127.0.0.1:{port}", token)
+    client = Member(f"http://127.0.0.1:{port}", token)
     try:
         yield client, root, files, token
     finally:
@@ -94,13 +94,13 @@ def test_a_dot_names_the_root_itself(tmp_path):
 # -- auth ----------------------------------------------------------------
 def test_health_needs_no_token(daemon):
     client, *_ = daemon
-    assert Peer(client.base_url, "").health()["ok"] is True
+    assert Member(client.base_url, "").health()["ok"] is True
 
 
 def test_health_rejects_a_supplied_invalid_credential(daemon):
     client, *_ = daemon
-    with pytest.raises(PeerError, match="401"):
-        Peer(client.base_url, "forged-token").health()
+    with pytest.raises(MemberError, match="401"):
+        Member(client.base_url, "forged-token").health()
 
 
 def test_the_favicon_is_a_204_without_a_token(daemon):
@@ -116,8 +116,8 @@ def test_the_favicon_is_a_204_without_a_token(daemon):
 
 def test_everything_else_requires_the_token(daemon):
     client, _, _, _ = daemon
-    bad = Peer(client.base_url, "not-the-token")
-    with pytest.raises(PeerError) as e:
+    bad = Member(client.base_url, "not-the-token")
+    with pytest.raises(MemberError) as e:
         bad.jobs()
     assert "401" in str(e.value)
 
@@ -201,13 +201,13 @@ def test_stopping_a_queued_job_dequeues_it(daemon):
 
 def test_empty_argv_is_rejected(daemon):
     client, *_ = daemon
-    with pytest.raises(PeerError):
+    with pytest.raises(MemberError):
         client.submit([])
 
 
 def test_unknown_job_is_404(daemon):
     client, *_ = daemon
-    with pytest.raises(PeerError) as e:
+    with pytest.raises(MemberError) as e:
         client.job("nope")
     assert "404" in str(e.value)
 
@@ -254,7 +254,7 @@ def test_push_is_chunked_for_large_files(daemon, tmp_path):
 
 def test_pull_of_a_missing_file_is_404(daemon, tmp_path):
     client, *_ = daemon
-    with pytest.raises(PeerError) as e:
+    with pytest.raises(MemberError) as e:
         client.pull("no/such.bin", tmp_path / "x.bin")
     assert "404" in str(e.value)
 
@@ -263,7 +263,7 @@ def test_upload_cannot_escape_the_file_root(daemon, tmp_path):
     client, _, files, _ = daemon
     src = tmp_path / "evil.bin"
     src.write_bytes(b"pwn")
-    with pytest.raises(PeerError):
+    with pytest.raises(MemberError):
         client.push(src, "../escaped.bin")
     assert not (files.parent / "escaped.bin").exists()
 
@@ -351,7 +351,7 @@ def test_a_stale_oversized_part_is_refused_not_spliced(daemon, tmp_path):
     (files / "small.bin").write_bytes(b"x" * 1000)
     out = tmp_path / "small.bin"
     out.with_suffix(".bin.part").write_bytes(b"y" * 5000)
-    with pytest.raises(PeerError, match="delete it and pull again"):
+    with pytest.raises(MemberError, match="delete it and pull again"):
         client.pull("small.bin", out)
     assert not out.exists(), "a refused pull must not produce a file"
 
@@ -379,7 +379,7 @@ def test_an_explicit_range_end_is_honoured(daemon, tmp_path):
 def test_a_suffix_range_is_refused_rather_than_mis_served(daemon):
     client, _root, files, _ = daemon
     (files / "s.bin").write_bytes(b"abcdefghij")
-    with pytest.raises(PeerError, match="suffix ranges"):
+    with pytest.raises(MemberError, match="suffix ranges"):
         client._request("GET", "/files/s.bin", headers={"Range": "bytes=-5"})
 
 
@@ -398,7 +398,7 @@ def test_an_upload_that_does_not_match_its_digest_is_discarded(daemon, tmp_path)
     """The bytes arrived intact by luck or not at all -- either way, refuse."""
     client, _root, files, _ = daemon
     payload = b"the real payload" * 64
-    with pytest.raises(PeerError, match="checksum mismatch"):
+    with pytest.raises(MemberError, match="checksum mismatch"):
         client._request("PUT", "/files/bad.bin", data=payload, headers={
             "Content-Range": f"bytes 0-{len(payload)-1}/{len(payload)}",
             "X-Poolhouse-Complete": "1",
@@ -441,7 +441,7 @@ def test_a_download_whose_bytes_do_not_match_the_digest_is_discarded(daemon, tmp
     os.utime(target, ns=(st.st_atime_ns, st.st_mtime_ns))
 
     out = tmp_path / "second.bin"
-    with pytest.raises(PeerError, match="checksum mismatch"):
+    with pytest.raises(MemberError, match="checksum mismatch"):
         client.pull("ckpt.bin", out)
     assert not out.exists(), "a corrupt download must not be promoted"
     assert not out.with_suffix(".bin.part").exists()
@@ -455,7 +455,7 @@ def test_a_resumed_download_verifies_the_bytes_it_did_not_fetch(daemon, tmp_path
     out = tmp_path / "resume.bin"
     # A .part whose length is plausible but whose content is wrong.
     out.with_suffix(".bin.part").write_bytes(b"\xff" * 2048)
-    with pytest.raises(PeerError, match="checksum mismatch"):
+    with pytest.raises(MemberError, match="checksum mismatch"):
         client.pull("resume.bin", out)
     assert not out.exists()
 
@@ -483,7 +483,7 @@ def multi_daemon(tmp_path):
     httpd = Server(("127.0.0.1", port),
                                 make_handler(Daemon(runner, files, token, command=any_command)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    client = Peer(f"http://127.0.0.1:{port}", token)
+    client = Member(f"http://127.0.0.1:{port}", token)
     try:
         yield client, runner
     finally:
@@ -586,7 +586,7 @@ def test_resuming_an_upload_whose_part_vanished_is_refused(daemon, tmp_path):
     digest check as 'checksum mismatch' -- sending the uploader after a corruption that
     never happened. The truth is that there is nothing here to resume from."""
     client, _root, files, _token = daemon
-    with pytest.raises(PeerError) as exc:
+    with pytest.raises(MemberError) as exc:
         client._request("PUT", "/files/gap.bin", data=b"tail",
                         headers={"Content-Range": "bytes 4096-4099/4100",
                                  "X-Poolhouse-Complete": "1"})
@@ -714,7 +714,7 @@ def test_the_daemon_advertises_what_the_probe_reports(tmp_path):
                      command=any_command)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        health = Peer(f"http://127.0.0.1:{port}", token).health()
+        health = Member(f"http://127.0.0.1:{port}", token).health()
     finally:
         runner.shutdown()
         httpd.shutdown()
@@ -751,7 +751,7 @@ def test_health_answers_with_the_name_the_machine_has_now(tmp_path):
         make_handler(Daemon(runner, root / "files", token, lambda: called[0],
                                          command=any_command)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    client = Peer(f"http://127.0.0.1:{port}", token)
+    client = Member(f"http://127.0.0.1:{port}", token)
     try:
         before = client.health()["name"]
         called[0] = "quillhaven"
@@ -772,7 +772,7 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
     root = tmp_path / "traind"
     (root / "files").mkdir(parents=True)
     Settings(name="briarcombe-loop").save(root / "settings.json")
-    join_cluster("copper willow river", group="default")
+    join_pool_by_passphrase("copper willow river", group="default")
     port = _free_port()
     repo = Path(__file__).resolve().parent.parent
     env = {**os.environ, "PYTHONPATH": str(repo / "src"), "PYTHONUNBUFFERED": "1"}
@@ -783,7 +783,7 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
          "--root", str(root), "--host", "127.0.0.1", "--port", str(port),
          "--no-web", "--no-announce"],
         env=env, stdout=fh, stderr=subprocess.STDOUT)
-    client = Peer(f"http://127.0.0.1:{port}", "")
+    client = Member(f"http://127.0.0.1:{port}", "")
     deadline = time.time() + 20
     health = None
     try:
@@ -791,7 +791,7 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
             try:
                 health = client.health()
                 break
-            except PeerError:
+            except MemberError:
                 if proc.poll() is not None:
                     pytest.fail(f"traind died:\n{log.read_text(errors='replace')}")
                 time.sleep(0.1)
@@ -807,7 +807,7 @@ def test_serve_forever_prefers_the_settings_name_over_the_hostname(tmp_path):
 
     assert health is not None and health["name"] == "briarcombe-loop"
     assert health["name"] != socket.gethostname()
-    assert "  cluster default" in log.read_text(errors="replace")
+    assert "  pool default" in log.read_text(errors="replace")
 
 
 def test_a_job_can_write_something_the_coordinator_can_actually_pull(daemon):
@@ -898,7 +898,7 @@ class TestWhatAMachineIsDoing:
         assert second == 0.0, "after priming it should be psutil's own number"
 
     def test_it_still_answers_without_psutil(self, monkeypatch):
-        """poolhouse-cluster does not ask for psutil; it is a bonus."""
+        """poolhouse-pool does not ask for psutil; it is a bonus."""
         import builtins
 
         import poolhouse.fleet.device as mod
@@ -957,8 +957,8 @@ class TestWhatAMachineIsDoing:
         assert got["ram_used_gb"] <= got["ram_gb"]
 
 
-def test_every_cluster_advertiser_is_stopped_at_shutdown():
-    """A machine in three clusters runs three advertisers; leaving stops all of them."""
+def test_every_pool_advertiser_is_stopped_at_shutdown():
+    """A machine in three pools runs three advertisers; leaving stops all of them."""
     from poolhouse.fleet.daemon import _stop_advertisers
 
     class Fake:
@@ -1036,7 +1036,7 @@ class TestSpeechOverTheNetwork:
 
         return wav.encode(b"\x00\x00" * 1600, sample_rate=16000)
 
-    def test_a_peer_transcribes_audio_it_is_sent(self, daemon, tmp_path):
+    def test_a_member_transcribes_audio_it_is_sent(self, daemon, tmp_path):
         client, *_ = daemon
         clip = tmp_path / "clip.wav"
         clip.write_bytes(self.a_clip())
@@ -1053,26 +1053,26 @@ class TestSpeechOverTheNetwork:
         client, *_ = daemon
         clip = tmp_path / "clip.wav"
         clip.write_bytes(self.a_clip())
-        bad = Peer(client.base_url, "not-the-token")
-        with pytest.raises(PeerError, match="401"):
+        bad = Member(client.base_url, "not-the-token")
+        with pytest.raises(MemberError, match="401"):
             bad.transcribe(clip)
 
-    def test_a_peer_says_which_engines_it_has(self, daemon):
+    def test_a_member_says_which_engines_it_has(self, daemon):
         client, *_ = daemon
         assert client.speech()["asr"]["auto"] == "fake"
 
     def test_listing_engines_needs_the_credential(self, daemon):
         client, *_ = daemon
-        with pytest.raises(PeerError, match="401"):
-            Peer(client.base_url, "not-the-token").speech()
+        with pytest.raises(MemberError, match="401"):
+            Member(client.base_url, "not-the-token").speech()
 
-    def test_a_peer_with_no_engine_answers_503_rather_than_hanging_up(self, daemon, monkeypatch):
+    def test_a_member_with_no_engine_answers_503_rather_than_hanging_up(self, daemon, monkeypatch):
         from poolhouse import speech as package
         from poolhouse.speech import Registry
 
         monkeypatch.setattr(package, "ASR", Registry(kind="asr"))
         client, *_ = daemon
-        with pytest.raises(PeerError, match="503"):
+        with pytest.raises(MemberError, match="503"):
             client.transcribe(self.a_clip())
 
 

@@ -48,14 +48,14 @@ def test_device_metadata_is_visible_and_delegates_inherit_without_changing_right
 
 
 @pytest.mark.redteam
-def test_agent_device_report_cannot_claim_paired_authority_or_change_another_actor(kit):
+def test_agent_device_report_cannot_claim_joined_authority_or_change_another_actor(kit):
     alice, bob = kit.agent('alice'), kit.agent('bob')
     kit.ws.registry._record_device('bob', device('Windows'))
     before = kit.ws.registry.info('bob')
-    kit.ws.registry.record_device_claim(alice, {**device(), 'verification': 'paired',
-                                               'peer_id': 'b' * 64, 'peer_verification': 'paired', 'source': 'fleet-pairing'})
+    kit.ws.registry.record_device_claim(alice, {**device(), 'verification': 'joined',
+                                               'member_id': 'b' * 64, 'member_verification': 'joined', 'source': 'fleet-join-code'})
     own = kit.ws.registry.info('alice')['device']
-    assert own['verification'] == 'agent-reported' and own['peer_id'] is None and own['peer_verification'] == 'unknown'
+    assert own['verification'] == 'agent-reported' and own['member_id'] is None and own['member_verification'] == 'unknown'
     assert kit.ws.registry.info('bob') == before and kit.ws.auth(bob).id == 'bob'
     with pytest.raises(Denied):
         kit.ws.registry.record_device_claim('', device())
@@ -63,7 +63,7 @@ def test_agent_device_report_cannot_claim_paired_authority_or_change_another_act
 
 @pytest.mark.parametrize('value', [None, [], {'device_id': 'invented'},
                                   {**device(), 'hostname': 'bad\nname'},
-                                  {**device(), 'verification': 'paired'}])
+                                  {**device(), 'verification': 'joined'}])
 def test_malformed_or_unproved_device_metadata_is_rejected(kit, value):
     kit.agent('alice')
     before = kit.ws.registry.info('alice')['device']
@@ -110,7 +110,7 @@ def test_child_own_profile_wins_and_caller_cannot_forge_inheritance(kit):
     assert child_token
     registry.record_device_claim(child_token, {**device('Windows'),
                                  'inherited_from': 'unrelated', 'source': 'parent-registry',
-                                 'verification': 'inherited', 'parent_verification': 'paired'})
+                                 'verification': 'inherited', 'parent_verification': 'joined'})
     shown = registry.info(child['id'])
     assert shown['device']['os'] == 'Windows'
     assert shown['device']['verification'] == 'agent-reported'
@@ -179,23 +179,23 @@ def test_own_profile_report_is_atomic_when_verified_harness_refuses_change(kit):
 @pytest.mark.parametrize('report', ['claim', 'profile'])
 def test_an_agent_report_never_sets_the_stable_device_or_machine_identity(kit, report):
     token = kit.agent('worker')
-    forged = {**device(), 'machine_id': 'b' * 16, 'peer_id': 'c' * 64, 'peer_verification': 'paired',
-              'verification': 'paired', 'source': 'fleet-pairing'}
+    forged = {**device(), 'machine_id': 'b' * 16, 'member_id': 'c' * 64, 'member_verification': 'joined',
+              'verification': 'joined', 'source': 'fleet-join-code'}
     if report == 'claim':
         kit.ws.registry.record_device_claim(token, forged)
     else:
         kit.ws.record_profile(token, forged, '')
     shown = kit.ws.registry.info('worker')['device']
-    assert shown['device_id'] is None and shown['machine_id'] is None and shown['peer_id'] is None
-    assert shown['verification'] == 'agent-reported' and shown['peer_verification'] == 'unknown'
+    assert shown['device_id'] is None and shown['machine_id'] is None and shown['member_id'] is None
+    assert shown['verification'] == 'agent-reported' and shown['member_verification'] == 'unknown'
     assert shown['hostname'] == 'workstation'
 
 
 @pytest.mark.redteam
 @pytest.mark.parametrize('stronger', [
     {'verification': 'local-observed', 'source': 'local-runtime'},
-    {'verification': 'agent-reported', 'source': 'agent-report', 'peer_id': 'd' * 64, 'peer_verification': 'paired'},
-    {'verification': 'paired', 'source': 'fleet-pairing', 'peer_id': 'd' * 64, 'peer_verification': 'paired'},
+    {'verification': 'agent-reported', 'source': 'agent-report', 'member_id': 'd' * 64, 'member_verification': 'joined'},
+    {'verification': 'joined', 'source': 'fleet-join-code', 'member_id': 'd' * 64, 'member_verification': 'joined'},
 ])
 @pytest.mark.parametrize('report', ['claim', 'profile'])
 def test_a_profile_report_does_not_replace_a_stronger_record(kit, stronger, report):
@@ -225,12 +225,12 @@ def test_runtime_commit_stays_and_the_installed_revision_duplicate_is_gone():
     shown = device_metadata.normalize({**device(), 'runtime_commit': 'a' * 40, 'machine_id': 'b' * 16})
     assert shown['runtime_commit'] == 'a' * 40 and shown['machine_id'] == 'b' * 16
     assert 'installed_revision' not in shown
-    assert {'inherited_from', 'parent_verification', 'peer_verification'} <= set(shown)
+    assert {'inherited_from', 'parent_verification', 'member_verification'} <= set(shown)
 
 
 @pytest.mark.parametrize('field,value', [('machine_id', 'invalid'), ('runtime_commit', 'abc'),
                                          ('observed_at', float('nan')), ('observed_at', True),
-                                         ('architecture', 'bad\nvalue'), ('peer_verification', 'paired')])
+                                         ('architecture', 'bad\nvalue'), ('member_verification', 'joined')])
 def test_extended_profile_fields_are_bounded(field, value):
     with pytest.raises(ValueError):
         device_metadata.normalize({**device(), field: value})

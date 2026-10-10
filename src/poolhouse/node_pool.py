@@ -1,4 +1,4 @@
-"""The node's pool of devices, for a machine that joined it without a cluster key.
+"""The node's pool of devices, for a machine that joined it without a pool key.
 
 The node (``poolhouse-node run --lan``) takes the project of the repository it runs in, listens for an open pool of that
 project, joins the one it hears and makes one when it hears none (docs/sentinel-open-join.md, 3.7). Nothing here asks for
@@ -41,7 +41,7 @@ def rows(pool: dict) -> list[dict]:
 
 
 def render(pool: dict, *, as_json: bool) -> str:
-    """The text `poolhouse-peers ls` prints for a pool."""
+    """The text `poolhouse-members ls` prints for a pool."""
     if as_json:
         return json.dumps({"pool": pool.get("pool"), "project": pool.get("project"), "policy": pool.get("policy"),
                            "members": rows(pool)}, indent=2)

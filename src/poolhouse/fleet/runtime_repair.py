@@ -96,10 +96,10 @@ def _prepare(ui, queue):
             if not _waiting(queue):
                 return
             candidate = registry.select(target.name)
-        running = wait_for_health(ui.peer_port, seconds=60)
+        running = wait_for_health(ui.member_port, seconds=60)
         if not running or not running.get("launcher_control"):
             raise ValueError("The running app has no owned update boundary; update the app before repairing its runtime.")
-        result = {"candidate": candidate, "port": ui.peer_port,
+        result = {"candidate": candidate, "port": ui.member_port,
                   "instance": running["launcher_control"]}
         queue._update(row, note="Waiting for active work to finish before installing", result=result)
         process = start_process(

@@ -54,7 +54,7 @@ def test_foreign_page_cannot_create_tasks(tasks, options):
 
 def test_joined_unsigned_and_browser_claims_are_refused(tasks, monkeypatch):
     server, kit = tasks
-    monkeypatch.setattr(routes, 'in_cluster', lambda _: True)
+    monkeypatch.setattr(routes, 'in_pool', lambda _: True)
     assert post(server, {'spec': {'title': 'x', 'acceptance': ['x']}}, cookie='')[0] == 401
     cookie = server.ui.sessions.cookie_header(server.ui.sessions.open('person', 'launch-ticket'))
     assert post(server, {'action': 'claim', 'token': 'worker', 'allocation_id': 'fake'}, cookie=cookie)[0] == 400

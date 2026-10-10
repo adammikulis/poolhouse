@@ -2,7 +2,7 @@
 that is a small script rather than a model, and stores in ``tmp_path``.
 
 Two fake daemons are two real ``Server``s running the real handler over a
-real `JobRunner`; only three things are stood in for -- the memory a peer may use, the
+real `JobRunner`; only three things are stood in for -- the memory a member may use, the
 commit it runs, and the launch of ``poolhouse-bench --detach``, which would load a model
 and write under ``~/.poolhouse``. Nothing here reads that directory. Every name is invented.
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.bench.peer_runs import gather, import_runs
+from poolhouse.bench.member_runs import gather, import_runs
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
@@ -36,7 +36,7 @@ from poolhouse.fleet.measuring import (
     jobs_from,
     same_commit,
 )
-from poolhouse.fleet.remote import Peer, PeerError
+from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.sizing import estimate
 from poolhouse.fleet.sweeps import (
     Handle,
@@ -47,7 +47,7 @@ from poolhouse.fleet.sweeps import (
     wait,
 )
 from poolhouse.http import Server
-from tests.cluster_support import any_command
+from tests.pool_support import any_command
 
 G = 2**30
 COMMIT = "ab12cd3"
@@ -88,7 +88,7 @@ class Box:
     """One fake daemon: its client, its host, and where it keeps things."""
 
     name: str
-    peer: Peer
+    member: Member
     host: BenchHost
     runner: JobRunner
     home: Path
@@ -117,10 +117,10 @@ def _box(tmp_path: Path, name: str, *, room: int, launch=None, busy: bool = Fals
                                 make_handler(Daemon(runner, files, token, name, report, bench=host,
                                          command=any_command)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    peer = Peer(f"http://127.0.0.1:{httpd.server_address[1]}", token)
-    box = Box(name=name, peer=peer, host=host, runner=runner, home=home, httpd=httpd)
+    member = Member(f"http://127.0.0.1:{httpd.server_address[1]}", token)
+    box = Box(name=name, member=member, host=host, runner=runner, home=home, httpd=httpd)
     if busy:
-        box.peer.submit([sys.executable, "-c", "import time; time.sleep(30)"], name="training")
+        box.member.submit([sys.executable, "-c", "import time; time.sleep(30)"], name="training")
         deadline = time.time() + 5
         while time.time() < deadline and not runner.status()["busy"]:
             time.sleep(0.05)
@@ -157,14 +157,14 @@ def _await(predicate, timeout=10.0):
     return False
 
 
-# -- what a peer says about itself ---------------------------------------------------
+# -- what a member says about itself ---------------------------------------------------
 def test_health_carries_room_commit_and_whether_it_is_measuring(boxes):
     roomy, small = boxes
-    got = roomy.peer.health()
+    got = roomy.member.health()
     assert got["room_bytes"] == 96 * G
     assert got["bench_commit"] == COMMIT
     assert got["measuring"] is False
-    assert small.peer.health()["room_bytes"] == 24 * G
+    assert small.member.health()["room_bytes"] == 24 * G
 
 
 def test_the_installed_commit_names_this_checkout():
@@ -178,34 +178,34 @@ def test_the_installed_commit_names_this_checkout():
 
 
 # -- plan ----------------------------------------------------------------------------
-def test_plan_puts_the_big_model_on_the_roomy_peer_and_reports_what_fits_nowhere(boxes):
+def test_plan_puts_the_big_model_on_the_roomy_member_and_reports_what_fits_nowhere(boxes):
     roomy, small = boxes
     needs = {"big-27B.gguf": 60 * G, "tiny-2B.gguf": 4 * G, "huge-120B.gguf": 200 * G}
     said: list[str] = []
 
-    got = plan(list(needs), [roomy.peer, small.peer], needs=needs, log=said.append)
+    got = plan(list(needs), [roomy.member, small.member], needs=needs, log=said.append)
 
-    assert got[roomy.peer] == ["big-27B.gguf"]
-    assert got[small.peer] == ["tiny-2B.gguf"], "the second model spreads, not stacks"
+    assert got[roomy.member] == ["big-27B.gguf"]
+    assert got[small.member] == ["tiny-2B.gguf"], "the second model spreads, not stacks"
     assert [m for m, _ in got.unplaced] == ["huge-120B.gguf"]
     why = got.unplaced[0][1]
     assert "roomy: room 96.0G < 200.0G" in why and "small: room 24.0G < 200.0G" in why
     text = "\n".join(said)
-    assert "planning 3 model(s) over 2 peer(s)" in text
+    assert "planning 3 model(s) over 2 member(s)" in text
     assert "big-27B.gguf" in text and "-> roomy (room 96.0G)" in text
     assert "huge-120B.gguf" in text and "fits nowhere" in text
 
 
-def test_plan_skips_a_busy_peer_and_says_so(tmp_path):
+def test_plan_skips_a_busy_member_and_says_so(tmp_path):
     busy = _box(tmp_path, "taken", room=96 * G, busy=True)
     idle = _box(tmp_path, "free", room=24 * G)
     try:
         said: list[str] = []
-        got = plan(["m.gguf", "n.gguf"], [busy.peer, idle.peer], needs={"m.gguf": 8 * G,
+        got = plan(["m.gguf", "n.gguf"], [busy.member, idle.member], needs={"m.gguf": 8 * G,
                                                                       "n.gguf": 50 * G},
                    log=said.append)
-        assert got[idle.peer] == ["m.gguf"]
-        assert got[busy.peer] == []
+        assert got[idle.member] == ["m.gguf"]
+        assert got[busy.member] == []
         assert got.unplaced[0][0] == "n.gguf"
         assert "taken: busy" in got.unplaced[0][1]
     finally:
@@ -215,45 +215,45 @@ def test_plan_skips_a_busy_peer_and_says_so(tmp_path):
             box.httpd.server_close()
 
 
-def test_the_dispatcher_counts_as_a_peer(tmp_path, boxes):
+def test_the_dispatcher_counts_as_a_member(tmp_path, boxes):
     roomy, small = boxes
     me = here(name="desk", home=tmp_path / "desk-bench")
     me.host.room = lambda: 128 * G
-    got = plan(["big.gguf"], [roomy.peer, small.peer, me], needs={"big.gguf": 100 * G},
+    got = plan(["big.gguf"], [roomy.member, small.member, me], needs={"big.gguf": 100 * G},
                log=lambda _line: None)
     assert got[me] == ["big.gguf"]
     me.host.runner.shutdown()
 
 
-def test_a_model_of_unknown_size_goes_to_the_roomiest_idle_peer(boxes):
-    """Unknown is not enormous: the peer's own preflight sizes it before the load."""
+def test_a_model_of_unknown_size_goes_to_the_roomiest_idle_member(boxes):
+    """Unknown is not enormous: the member's own preflight sizes it before the load."""
     roomy, small = boxes
     said: list[str] = []
-    got = plan(["mystery.gguf"], [roomy.peer, small.peer], needs={"mystery.gguf": 0},
+    got = plan(["mystery.gguf"], [roomy.member, small.member], needs={"mystery.gguf": 0},
                log=said.append)
-    assert got[roomy.peer] == ["mystery.gguf"]
+    assert got[roomy.member] == ["mystery.gguf"]
     assert "size unknown" in "\n".join(said)
 
 
-def test_jobs_from_gives_each_peer_only_its_serves(boxes):
+def test_jobs_from_gives_each_member_only_its_serves(boxes):
     roomy, small = boxes
-    planned = {roomy.peer: ["big.gguf"], small.peer: ["tiny.gguf"]}
+    planned = {roomy.member: ["big.gguf"], small.member: ["tiny.gguf"]}
     base = Job(argv=("sweep", "--short", "--shortlist", "8"), models=(), commit=COMMIT,
                kept_label="tuesday", needs={"big.gguf": 60 * G, "tiny.gguf": 4 * G},
                files={"--graph": "{}"})
     jobs = jobs_from(planned, base, drafts={"big.gguf": "auto"})
-    assert jobs[roomy.peer].argv == ("sweep", "--short", "--shortlist", "8",
+    assert jobs[roomy.member].argv == ("sweep", "--short", "--shortlist", "8",
                                      "--serve", "big.gguf", "--serve-draft", "auto")
-    assert jobs[small.peer].argv == ("sweep", "--short", "--shortlist", "8",
+    assert jobs[small.member].argv == ("sweep", "--short", "--shortlist", "8",
                                      "--serve", "tiny.gguf")
-    assert jobs[small.peer].needs == {"tiny.gguf": 4 * G}
-    assert jobs[small.peer].name == "bench:tuesday"
-    assert jobs[small.peer].files == jobs[roomy.peer].files == {"--graph": "{}"}
+    assert jobs[small.member].needs == {"tiny.gguf": 4 * G}
+    assert jobs[small.member].name == "bench:tuesday"
+    assert jobs[small.member].files == jobs[roomy.member].files == {"--graph": "{}"}
 
 
 @pytest.mark.parametrize("flag", ["--kept", "--detach", "--no-queue", "--graph",
                                   "--questions"])
-def test_a_job_may_not_carry_what_the_peer_owns(flag):
+def test_a_job_may_not_carry_what_the_member_owns(flag):
     with pytest.raises(ValueError, match=flag):
         Job(argv=("sweep", flag, "x"), models=("m",), commit=COMMIT)
 
@@ -283,18 +283,18 @@ def test_estimate_of_a_model_that_is_nowhere_is_unknown_not_enormous(tmp_path):
 def test_a_daemon_refuses_a_mismatched_commit(boxes):
     roomy, _ = boxes
     with pytest.raises(Refused) as caught:
-        submit_bench(roomy.peer, _job("m.gguf", commit="ff00ee1"))
+        submit_bench(roomy.member, _job("m.gguf", commit="ff00ee1"))
     assert caught.value.kind == "commit"
     assert "roomy runs poolhouse ab12cd3, the dispatcher ff00ee1" in str(caught.value)
     # what the wire says: 409 with the reason and which refusal it was
-    with pytest.raises(PeerError) as raw:
-        roomy.peer._json("POST", "/bench", _job("m.gguf", commit="ff00ee1").public())
+    with pytest.raises(MemberError) as raw:
+        roomy.member._json("POST", "/bench", _job("m.gguf", commit="ff00ee1").public())
     assert "409" in str(raw.value) and '"refused": "commit"' in str(raw.value)
 
 
 def test_a_dirty_tree_on_one_side_is_still_the_same_commit(boxes):
     roomy, _ = boxes
-    got = submit_bench(roomy.peer, _job("m.gguf", commit=f"{COMMIT} (dirty)"))
+    got = submit_bench(roomy.member, _job("m.gguf", commit=f"{COMMIT} (dirty)"))
     assert got["state"] == "preparing"
 
 
@@ -303,19 +303,19 @@ def test_a_daemon_refuses_while_its_measuring_lock_is_held(boxes):
 
     roomy, _ = boxes
     with only_one(roomy.home / "measuring.lock"):
-        assert roomy.peer.health()["measuring"] is True
+        assert roomy.member.health()["measuring"] is True
         with pytest.raises(Refused) as caught:
-            submit_bench(roomy.peer, _job("m.gguf"))
+            submit_bench(roomy.member, _job("m.gguf"))
     assert caught.value.kind == "lock"
     assert "measuring.lock is held by pid" in str(caught.value)
-    assert roomy.peer.health()["measuring"] is False
+    assert roomy.member.health()["measuring"] is False
 
 
 def test_a_daemon_refuses_a_second_job_while_its_own_is_running(boxes):
     roomy, _ = boxes
-    first = submit_bench(roomy.peer, _job("m.gguf"))
+    first = submit_bench(roomy.member, _job("m.gguf"))
     with pytest.raises(Refused) as caught:
-        submit_bench(roomy.peer, _job("n.gguf"))
+        submit_bench(roomy.member, _job("n.gguf"))
     assert caught.value.kind == "lock"
     assert first["id"] in str(caught.value)
 
@@ -323,7 +323,7 @@ def test_a_daemon_refuses_a_second_job_while_its_own_is_running(boxes):
 def test_a_daemon_refuses_a_model_that_does_not_fit_its_room(boxes):
     _, small = boxes
     with pytest.raises(Refused) as caught:
-        submit_bench(small.peer, _job("big.gguf", needs={"big.gguf": 60 * G}))
+        submit_bench(small.member, _job("big.gguf", needs={"big.gguf": 60 * G}))
     assert caught.value.kind == "room"
     assert "big.gguf needs 60.0G and small may use 24.0G" in str(caught.value)
     assert small.host.launch.calls == [], "nothing was started"
@@ -331,40 +331,40 @@ def test_a_daemon_refuses_a_model_that_does_not_fit_its_room(boxes):
 
 def test_a_malformed_job_is_400_not_409(boxes):
     roomy, _ = boxes
-    with pytest.raises(PeerError) as raw:
-        roomy.peer._json("POST", "/bench", {"argv": "sweep --kept x", "commit": COMMIT})
+    with pytest.raises(MemberError) as raw:
+        roomy.member._json("POST", "/bench", {"argv": "sweep --kept x", "commit": COMMIT})
     assert "400" in str(raw.value) and "--kept" in str(raw.value)
 
 
 # -- dispatch and wait ---------------------------------------------------------------
 def test_dispatch_and_wait_see_done_and_the_job_is_listed_like_any_other(boxes):
     roomy, small = boxes
-    jobs = {roomy.peer: _job("big.gguf"), small.peer: _job("tiny.gguf")}
+    jobs = {roomy.member: _job("big.gguf"), small.member: _job("tiny.gguf")}
     said: list[str] = []
 
     handles = dispatch(jobs, log=said.append)
     assert [h.state for h in handles] == ["preparing", "preparing"], "accepted at once"
     assert all(h.id and h.log for h in handles)
-    assert _await(lambda: roomy.peer.job(handles[0].id)["state"] == "running")
-    assert roomy.peer.health()["measuring"] is True
-    assert roomy.peer.health()["busy"] is True, "a measurement holds the GPU"
-    listed = {j["id"]: j for j in roomy.peer.jobs()}
+    assert _await(lambda: roomy.member.job(handles[0].id)["state"] == "running")
+    assert roomy.member.health()["measuring"] is True
+    assert roomy.member.health()["busy"] is True, "a measurement holds the GPU"
+    listed = {j["id"]: j for j in roomy.member.jobs()}
     assert listed[handles[0].id]["name"] == "bench:sweep"
     assert listed[handles[0].id]["argv"][:2] == ["poolhouse-bench", "sweep"]
 
     done = wait(handles, poll_s=0.1, timeout_s=20, log=said.append)
 
     assert [h.state for h in done] == ["done", "done"]
-    assert roomy.peer.health()["measuring"] is False
+    assert roomy.member.health()["measuring"] is False
     text = "\n".join(said)
     assert "roomy: bench:sweep preparing (job" in text and "roomy: bench:sweep running\n" in text
     assert "roomy: bench:sweep done" in text and "small: bench:sweep done" in text
     assert "kept as bench:tried" in text, "the log tail is printed when a job ends"
-    assert "kept as bench:tried" in roomy.peer.log(handles[0].id)
+    assert "kept as bench:tried" in roomy.member.log(handles[0].id)
     assert roomy.host.launch.calls == [["sweep", "--short", "--serve", "big.gguf"]]
 
 
-def test_a_job_ships_its_graph_and_questions_and_the_peer_reads_its_own_copy(boxes):
+def test_a_job_ships_its_graph_and_questions_and_the_member_reads_its_own_copy(boxes):
     roomy, _ = boxes
     job = Job(argv=("sweep", "--short", "--serve", "big.gguf"), models=("big.gguf",),
               commit=COMMIT, files={"--graph": '{"nodes": []}', "--questions": "q?\n"})
@@ -372,7 +372,7 @@ def test_a_job_ships_its_graph_and_questions_and_the_peer_reads_its_own_copy(box
     with pytest.raises(ValueError, match="--store"):
         Job(argv=("sweep",), models=(), commit=COMMIT, files={"--store": "x"})
 
-    (handle,) = dispatch({roomy.peer: job}, log=lambda _l: None)
+    (handle,) = dispatch({roomy.member: job}, log=lambda _l: None)
 
     assert _await(lambda: roomy.host.launch.calls)
     (line,) = roomy.host.launch.calls
@@ -386,16 +386,16 @@ def test_a_job_ships_its_graph_and_questions_and_the_peer_reads_its_own_copy(box
     assert _await(lambda: not given.exists()), "removed once the job ends"
 
 
-def test_a_peer_nobody_answers_for_is_said_and_the_rest_go_on(boxes, tmp_path):
+def test_a_member_nobody_answers_for_is_said_and_the_rest_go_on(boxes, tmp_path):
     roomy, _ = boxes
-    gone = Peer(f"http://127.0.0.1:{_free_port()}", "no-token")
+    gone = Member(f"http://127.0.0.1:{_free_port()}", "no-token")
     said: list[str] = []
 
-    placed = plan(["big.gguf"], [gone, roomy.peer], needs={"big.gguf": 4 * G},
+    placed = plan(["big.gguf"], [gone, roomy.member], needs={"big.gguf": 4 * G},
                   log=said.append)
-    assert placed[roomy.peer] == ["big.gguf"] and "did not answer" in "\n".join(said)
+    assert placed[roomy.member] == ["big.gguf"] and "did not answer" in "\n".join(said)
 
-    handles = dispatch({gone: _job("tiny.gguf"), roomy.peer: _job("big.gguf")},
+    handles = dispatch({gone: _job("tiny.gguf"), roomy.member: _job("big.gguf")},
                        log=said.append)
     assert handles[0].state == "refused" and handles[0].why.startswith("unreachable: ")
     assert handles[1].state == "preparing"
@@ -436,7 +436,7 @@ def test_a_bench_runs_on_this_interpreter_unless_the_app_is_frozen(boxes, monkey
     from poolhouse.fleet.measuring import bench_python
 
     roomy, _ = boxes
-    (handle,) = dispatch({roomy.peer: _job("big.gguf")}, log=lambda _l: None)
+    (handle,) = dispatch({roomy.member: _job("big.gguf")}, log=lambda _l: None)
     assert roomy.host.launch.pythons == [Path(sys.executable)]
     wait([handle], poll_s=0.1, timeout_s=20, log=lambda _l: None)
 
@@ -447,7 +447,7 @@ def test_a_bench_runs_on_this_interpreter_unless_the_app_is_frozen(boxes, monkey
     assert _await(lambda: roomy.runner.jobs[accepted.id].state == "failed")
     assert accepted.state == "preparing", "the answer is the job as accepted, whatever came after"
     said: list[str] = []
-    (failed,) = wait(dispatch({roomy.peer: _job("big.gguf")}, log=said.append),
+    (failed,) = wait(dispatch({roomy.member: _job("big.gguf")}, log=said.append),
                      poll_s=0.1, timeout_s=20, log=said.append)
     assert failed.state == "failed"
     assert "error: roomy could not start poolhouse-bench" in "\n".join(said)
@@ -480,9 +480,9 @@ def _wheel(where: Path, name: str, version: str, extras: tuple[str, ...],
 
 
 @pytest.mark.slow
-def test_a_frozen_peer_installs_the_bench_after_accepting_the_job(boxes, tmp_path, monkeypatch):
+def test_a_frozen_member_installs_the_bench_after_accepting_the_job(boxes, tmp_path, monkeypatch):
     """The install runs after ``POST /bench`` has answered, so an install slower than the
-    dispatcher's peer timeout is ``preparing``, not an unreachable peer."""
+    dispatcher's member timeout is ``preparing``, not an unreachable member."""
     from poolhouse.fleet.environment import Environment
 
     roomy, _ = boxes
@@ -492,7 +492,7 @@ def test_a_frozen_peer_installs_the_bench_after_accepting_the_job(boxes, tmp_pat
     bundled = tmp_path / "bundle" / "wheels"
     bundled.mkdir(parents=True)
     _wheel(bundled, "poolhouse", "0.0.1", ("graph", "store", "serve", "hub"),
-           ("poolhouse/bench/__init__.py", "poolhouse/bench/peer_runs.py", "ladybug.py"))
+           ("poolhouse/bench/__init__.py", "poolhouse/bench/member_runs.py", "ladybug.py"))
     real_pip = Environment.pip
 
     def slow_pip(self, args, **kw):
@@ -506,22 +506,22 @@ def test_a_frozen_peer_installs_the_bench_after_accepting_the_job(boxes, tmp_pat
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path / "bundle"), raising=False)
     roomy.runner.environment = environment
-    impatient = Peer(roomy.peer.base_url, roomy.peer.token, timeout=2.0)
+    impatient = Member(roomy.member.base_url, roomy.member.token, timeout=2.0)
     said: list[str] = []
     began = time.monotonic()
     (handle,) = dispatch({impatient: _job("big.gguf")}, log=said.append)
     assert handle.state == "preparing" and time.monotonic() - began < 2.0
     (done,) = wait([handle], poll_s=0.2, timeout_s=120, log=said.append)
     assert done.state == "done", "\n".join(said)
-    assert time.monotonic() - began > 4.0, "the install was slower than the peer timeout"
+    assert time.monotonic() - began > 4.0, "the install was slower than the member timeout"
     assert roomy.host.launch.pythons == [environment.python]
     assert environment.installed().get("poolhouse") == "0.0.1"
     assert "unreachable" not in "\n".join(said)
     assert [ln.split()[-1] for ln in said if "bench:sweep" in ln][-2:] == ["running", "done"]
 
 
-def test_an_export_reads_the_store_through_peer_runs(tmp_path):
-    from poolhouse.bench.peer_runs import exported
+def test_an_export_reads_the_store_through_member_runs(tmp_path):
+    from poolhouse.bench.member_runs import exported
 
     store = tmp_path / "runs.ladybug"
     _kept(store, "kept-before", "2020-01-01T00:00:00")
@@ -534,7 +534,7 @@ def test_an_export_reads_the_store_through_peer_runs(tmp_path):
     whole = exported(store, since=since, full=True, anyway=True)
     assert sorted(r["label"] for r in whole["runs"]) == ["kept-after", "kept-over-another"]
     assert all(r["rows"] for r in whole["runs"])
-    said = subprocess.run([sys.executable, "-m", "poolhouse.bench.peer_runs"],
+    said = subprocess.run([sys.executable, "-m", "poolhouse.bench.member_runs"],
                           input=json.dumps({"store": str(store), "since": since}),
                           capture_output=True, text=True, check=True).stdout
     assert json.loads(said) == flat
@@ -566,11 +566,11 @@ def test_a_bench_that_says_error_is_failed(tmp_path):
     box = _box(tmp_path, "shaky", room=96 * G, launch=scripted_launch(fails=True))
     try:
         said: list[str] = []
-        handles = dispatch({box.peer: _job("m.gguf")}, log=said.append)
+        handles = dispatch({box.member: _job("m.gguf")}, log=said.append)
         done = wait(handles, poll_s=0.1, timeout_s=20, log=said.append)
         assert done[0].state == "failed"
         assert "error: boom" in "\n".join(said)
-        assert box.peer.job(handles[0].id)["returncode"] == 1
+        assert box.member.job(handles[0].id)["returncode"] == 1
     finally:
         box.runner.shutdown()
         box.httpd.shutdown()
@@ -580,8 +580,8 @@ def test_a_bench_that_says_error_is_failed(tmp_path):
 def test_a_refusal_is_a_handle_not_an_exception(boxes):
     roomy, small = boxes
     said: list[str] = []
-    handles = dispatch({small.peer: _job("big.gguf", needs={"big.gguf": 60 * G}),
-                        roomy.peer: _job("big.gguf", needs={"big.gguf": 60 * G})},
+    handles = dispatch({small.member: _job("big.gguf", needs={"big.gguf": 60 * G}),
+                        roomy.member: _job("big.gguf", needs={"big.gguf": 60 * G})},
                        log=said.append)
     assert handles[0].state == "refused" and handles[0].why.startswith("room:")
     assert handles[1].state == "preparing"
@@ -592,15 +592,15 @@ def test_a_refusal_is_a_handle_not_an_exception(boxes):
 def test_stopping_a_bench_job_terminates_the_detached_pid(tmp_path):
     box = _box(tmp_path, "slow", room=96 * G, launch=scripted_launch(seconds=30))
     try:
-        handle = dispatch({box.peer: _job("m.gguf")}, log=lambda _l: None)[0]
-        pid = box.peer.job(handle.id)["pid"]
-        box.peer.stop(handle.id)
-        assert box.peer.job(handle.id)["state"] == "stopped"
+        handle = dispatch({box.member: _job("m.gguf")}, log=lambda _l: None)[0]
+        pid = box.member.job(handle.id)["pid"]
+        box.member.stop(handle.id)
+        assert box.member.job(handle.id)["state"] == "stopped"
         from poolhouse.fleet.measuring import _alive
 
         assert _await(lambda: not _alive(pid), timeout=10), "the pid should be gone"
         time.sleep(0.3)
-        assert box.peer.job(handle.id)["state"] == "stopped", "the watcher must not unsettle it"
+        assert box.member.job(handle.id)["state"] == "stopped", "the watcher must not unsettle it"
     finally:
         box.runner.shutdown()
         box.httpd.shutdown()
@@ -658,12 +658,12 @@ def _later(seconds: float) -> str:
     return time.strftime("%FT%T", time.localtime(time.time() + seconds))
 
 
-def test_gather_imports_each_peers_runs_with_host_set_and_skips_duplicates(boxes, tmp_path):
+def test_gather_imports_each_members_runs_with_host_set_and_skips_duplicates(boxes, tmp_path):
     from poolhouse.bench import runs
 
     roomy, small = boxes
     into = tmp_path / "home.ladybug"
-    handles = dispatch({roomy.peer: _job("big.gguf"), small.peer: _job("tiny.gguf")},
+    handles = dispatch({roomy.member: _job("big.gguf"), small.member: _job("tiny.gguf")},
                        log=lambda _l: None)
     # kept while the jobs ran: one each, and one before the job began, which stays there
     _kept(roomy.store, "big-plain", _later(30))
@@ -683,7 +683,7 @@ def test_gather_imports_each_peers_runs_with_host_set_and_skips_duplicates(boxes
     assert home["server"]["host"] == "roomy"
     assert home["server"]["machine"] == "id-roomy"
     assert home["server"]["commit"] == COMMIT
-    assert home["server"]["model"] == "invented-4B.gguf", "the peer's server record survives"
+    assert home["server"]["model"] == "invented-4B.gguf", "the member's server record survives"
     assert len(home["rows"]) == 4, "the whole run comes home, rows and all"
     assert got["id-roomy"][0].endswith("@roomy")
     assert "roomy: imported 1 run(s)" in "\n".join(said)
@@ -701,7 +701,7 @@ def test_gather_brings_home_a_run_over_another_graph_and_export_here_still_holds
 
     roomy, _ = boxes
     into = tmp_path / "home.ladybug"
-    handles = dispatch({roomy.peer: _job("big.gguf")}, log=lambda _l: None)
+    handles = dispatch({roomy.member: _job("big.gguf")}, log=lambda _l: None)
     _kept(roomy.store, "big-real", _later(30), invented=False)
     _kept(roomy.store, "big-plain", _later(31))
     wait(handles, poll_s=0.1, timeout_s=20, log=lambda _l: None)
@@ -715,9 +715,9 @@ def test_gather_brings_home_a_run_over_another_graph_and_export_here_still_holds
     assert [r["label"] for r in exported] == ["big-plain"] and held == 1
 
 
-def test_a_peer_that_kept_nothing_is_said_not_skipped_silently(boxes, tmp_path):
+def test_a_member_that_kept_nothing_is_said_not_skipped_silently(boxes, tmp_path):
     roomy, _ = boxes
-    handles = dispatch({roomy.peer: _job("big.gguf")}, log=lambda _l: None)
+    handles = dispatch({roomy.member: _job("big.gguf")}, log=lambda _l: None)
     wait(handles, poll_s=0.1, timeout_s=20, log=lambda _l: None)
     said: list[str] = []
     got = gather(handles, into=tmp_path / "home.ladybug", log=said.append)
@@ -733,7 +733,7 @@ def test_two_machines_of_one_name_gather_as_two_machines(tmp_path):
     made[1].host.machine = "id-Mac-other"
     try:
         into = tmp_path / "home.ladybug"
-        handles = dispatch({box.peer: _job("tiny.gguf") for box in made},
+        handles = dispatch({box.member: _job("tiny.gguf") for box in made},
                            log=lambda _l: None)
         assert [h.host for h in handles] == ["Mac", "Mac"]
         assert [h.machine for h in handles] == ["id-Mac", "id-Mac-other"]
@@ -759,17 +759,17 @@ def test_two_machines_of_one_name_gather_as_two_machines(tmp_path):
 def test_the_export_route_answers_the_flat_shape_show_export_writes(boxes):
     roomy, _ = boxes
     _kept(roomy.store, "big-plain", "2026-09-02T10:00:00")
-    flat = bench_export(roomy.peer, since="2026-09-02T00:00:00", full=False)
+    flat = bench_export(roomy.member, since="2026-09-02T00:00:00", full=False)
     assert flat["host"] == "roomy" and flat["commit"] == COMMIT
     (one,) = flat["runs"]
     assert one["label"] == "big-plain" and one["questions"] == 4
     assert one["f1"] == 0.5 and "rows" not in one
-    nothing = bench_export(roomy.peer, since="2026-09-03T00:00:00", full=False)
+    nothing = bench_export(roomy.member, since="2026-09-03T00:00:00", full=False)
     assert nothing["runs"] == []
 
 
 def test_import_runs_by_hand_from_a_flat_export_file(tmp_path):
-    """A peer with no daemon: `poolhouse-bench show --export` there, copy, import here."""
+    """A member with no daemon: `poolhouse-bench show --export` there, copy, import here."""
     from poolhouse.bench import derived, runs
 
     exported = tmp_path / "attic.json"
@@ -815,8 +815,8 @@ def test_import_runs_takes_the_json_text_and_the_answer_shape_too(tmp_path):
     assert runs(into)[0]["server"]["commit"] == "ff00ee1", "the answer's commit is taken"
 
 
-# -- the dispatcher as a peer, end to end --------------------------------------------
-def test_a_local_peer_goes_through_the_same_path(tmp_path):
+# -- the dispatcher as a member, end to end --------------------------------------------
+def test_a_local_member_goes_through_the_same_path(tmp_path):
     me = Local(name="desk", home=tmp_path / "desk")
     me.host.commit = COMMIT
     me.host.room = lambda: 64 * G
@@ -836,7 +836,7 @@ def test_a_local_peer_goes_through_the_same_path(tmp_path):
 
 
 def test_a_handle_with_no_job_has_nothing_to_gather(tmp_path):
-    refused = Handle(peer=None, job=_job("m.gguf"), state="refused", why="room: no")
+    refused = Handle(member=None, job=_job("m.gguf"), state="refused", why="room: no")
     assert gather([refused], into=tmp_path / "home.ladybug", log=lambda _l: None) == {}
 
 
@@ -877,34 +877,34 @@ def test_the_bench_home_moves_with_the_environment(tmp_path):
 # -- ops.fleet_planned / fleet_measure: the poolhouse-bench sweep --fleet side -----------
 #
 # `bench/ops.py` is the glue between `poolhouse-bench sweep --fleet` and the fleet
-# functions above: it has to turn `--peers` names (or none) into the real peers `plan`
-# needs, and the placement `plan` returns into the ``{peer: Job}`` mapping `dispatch`
-# needs. Discovery itself (real UDP, a real cluster key) is `tests/test_fleet_discovery.py`'s
-# job; here `poolhouse.fleet.join.peers` and `poolhouse.fleet.pausing.peer_clients` are stood
+# functions above: it has to turn `--members` names (or none) into the real members `plan`
+# needs, and the placement `plan` returns into the ``{member: Job}`` mapping `dispatch`
+# needs. Discovery itself (real UDP, a real pool key) is `tests/test_fleet_discovery.py`'s
+# job; here `poolhouse.fleet.join.members` and `poolhouse.fleet.pausing.member_clients` are stood
 # in for, so what is real is exactly what was broken: `plan`, `jobs_from`, `dispatch`,
 # `wait` and `gather`, over the same two daemons as the rest of this module.
 
 def _discovery_stub(monkeypatch, clients):
-    """`poolhouse.fleet.join.peers` and `poolhouse.fleet.pausing.peer_clients` answering with
-    ``clients`` (``{name: Peer}``), so `ops._discovered` runs for real over them."""
+    """`poolhouse.fleet.join.members` and `poolhouse.fleet.pausing.member_clients` answering with
+    ``clients`` (``{name: Member}``), so `ops._discovered` runs for real over them."""
     import poolhouse.fleet.join as join_module
     import poolhouse.fleet.pausing as pausing_module
 
-    monkeypatch.setattr(join_module, "peers", lambda **kw: [{"name": n} for n in clients])
-    monkeypatch.setattr(pausing_module, "peer_clients", lambda rows, **kw: dict(clients))
+    monkeypatch.setattr(join_module, "members", lambda **kw: [{"name": n} for n in clients])
+    monkeypatch.setattr(pausing_module, "member_clients", lambda rows, **kw: dict(clients))
 
 
-def test_fleet_planned_and_measure_spread_real_jobs_over_discovered_peers(boxes, tmp_path,
+def test_fleet_planned_and_measure_spread_real_jobs_over_discovered_members(boxes, tmp_path,
                                                                           monkeypatch):
-    """The bug: `fleet_planned` handed `sweeps.plan` the ``--peers`` names as strings (or
+    """The bug: `fleet_planned` handed `sweeps.plan` the ``--members`` names as strings (or
     None), and `fleet_measure` handed `sweeps.dispatch` a list where it takes
-    ``{peer: Job}``. Both are real peers and a real mapping here."""
+    ``{member: Job}``. Both are real members and a real mapping here."""
     import poolhouse.fleet.sweeps as sweeps_module
     from poolhouse.bench import ops, runs
 
     roomy, small = boxes
     monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
-    _discovery_stub(monkeypatch, {"roomy": roomy.peer, "small": small.peer})
+    _discovery_stub(monkeypatch, {"roomy": roomy.member, "small": small.member})
     real_wait = sweeps_module.wait
     monkeypatch.setattr(sweeps_module, "wait",
                         lambda handles: real_wait(handles, poll_s=0.1, timeout_s=20))
@@ -913,11 +913,11 @@ def test_fleet_planned_and_measure_spread_real_jobs_over_discovered_peers(boxes,
             "--serve", "tiny.gguf"]
     planned = ops.fleet_planned(argv, ["big.gguf", "tiny.gguf"])
 
-    by_peer = {roomy.peer: "roomy", small.peer: "small"}
-    named = {by_peer[peer]: job for peer, job in planned.jobs.items()}
-    assert set(named) == {"roomy", "small"}, "one real Job per real peer, not a list"
+    by_member = {roomy.member: "roomy", small.member: "small"}
+    named = {by_member[member]: job for member, job in planned.jobs.items()}
+    assert set(named) == {"roomy", "small"}, "one real Job per real member, not a list"
     assert named["roomy"].argv == ("sweep", "--plain-only", "--serve", "big.gguf"), \
-        "--kept never rides to a peer: it keeps its own runs in its own store"
+        "--kept never rides to a member: it keeps its own runs in its own store"
     assert named["small"].argv == ("sweep", "--plain-only", "--serve", "tiny.gguf")
     said = "\n".join(planned.lines)
     assert "plan: 2 model(s) on commit ab12cd3 over roomy, small" in said
@@ -932,14 +932,14 @@ def test_fleet_planned_and_measure_spread_real_jobs_over_discovered_peers(boxes,
     assert sorted(r["label"] for r in runs(into)) == ["big-plain", "tiny-plain"]
 
 
-def test_fleet_planned_refuses_before_dispatch_when_the_assigned_peer_is_on_another_commit(
+def test_fleet_planned_refuses_before_dispatch_when_the_assigned_member_is_on_another_commit(
         boxes, monkeypatch):
     from poolhouse.bench import ops
     from poolhouse.bench.ops import Refused as OpsRefused
 
     roomy, small = boxes
     monkeypatch.setattr(ops, "_commit", lambda root=None: "ffffff (dirty)")
-    _discovery_stub(monkeypatch, {"roomy": roomy.peer, "small": small.peer})
+    _discovery_stub(monkeypatch, {"roomy": roomy.member, "small": small.member})
 
     with pytest.raises(OpsRefused) as caught:
         ops.fleet_planned(["sweep", "--fleet", "--serve", "m.gguf"], ["m.gguf"])
@@ -947,17 +947,17 @@ def test_fleet_planned_refuses_before_dispatch_when_the_assigned_peer_is_on_anot
     assert any(line.startswith("plan:") for line in caught.value.said)
 
 
-def test_fleet_planned_refuses_a_named_peer_discovery_did_not_find(boxes, monkeypatch):
+def test_fleet_planned_refuses_a_named_member_discovery_did_not_find(boxes, monkeypatch):
     from poolhouse.bench import ops
     from poolhouse.bench.ops import Refused as OpsRefused
 
     roomy, small = boxes
     monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
-    _discovery_stub(monkeypatch, {"roomy": roomy.peer, "small": small.peer})
+    _discovery_stub(monkeypatch, {"roomy": roomy.member, "small": small.member})
 
     with pytest.raises(OpsRefused, match="lantern"):
         ops.fleet_planned(["sweep", "--fleet", "--serve", "m.gguf"], ["m.gguf"],
-                          peers=["lantern"])
+                          members=["lantern"])
 
 
 def test_fleet_planned_refuses_a_store_on_this_machine_and_passes_an_empty_one(boxes,
@@ -967,14 +967,14 @@ def test_fleet_planned_refuses_a_store_on_this_machine_and_passes_an_empty_one(b
 
     roomy, _ = boxes
     monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
-    _discovery_stub(monkeypatch, {"roomy": roomy.peer})
+    _discovery_stub(monkeypatch, {"roomy": roomy.member})
 
     with pytest.raises(OpsRefused, match=r"--store /here/graph\.ladybug is a graph store"):
         ops.fleet_planned(["sweep", "--fleet", "--store", "/here/graph.ladybug",
                            "--serve", "m.gguf"], ["m.gguf"])
     planned = ops.fleet_planned(["sweep", "--fleet", "--store=", "--serve", "m.gguf"],
                                 ["m.gguf"])
-    assert planned.jobs[roomy.peer].argv == ("sweep", "--store=", "--serve", "m.gguf")
+    assert planned.jobs[roomy.member].argv == ("sweep", "--store=", "--serve", "m.gguf")
 
 
 def test_fleet_planned_refuses_when_discovery_finds_nobody(monkeypatch):
@@ -984,7 +984,7 @@ def test_fleet_planned_refuses_when_discovery_finds_nobody(monkeypatch):
     monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
     _discovery_stub(monkeypatch, {})
 
-    with pytest.raises(OpsRefused, match="no peer answered discovery"):
+    with pytest.raises(OpsRefused, match="no member answered discovery"):
         ops.fleet_planned(["sweep", "--fleet", "--serve", "m.gguf"], ["m.gguf"])
 
 
@@ -1017,9 +1017,9 @@ def _free_port(kind: int = socket.SOCK_STREAM) -> int:
 
 
 def _boot_daemon(tmp_path: Path, name: str, *, keyfile: Path, disco_port: int):
-    """A real ``poolhouse-cluster`` daemon in a subprocess, once it answers /health: (proc,
+    """A real ``poolhouse-pool`` daemon in a subprocess, once it answers /health: (proc,
     log, open log handle)."""
-    from poolhouse.fleet.discovery import derive_token, load_cluster_key
+    from poolhouse.fleet.discovery import derive_token, load_pool_key
 
     root = tmp_path / name
     root.mkdir(parents=True, exist_ok=True)
@@ -1032,15 +1032,15 @@ def _boot_daemon(tmp_path: Path, name: str, *, keyfile: Path, disco_port: int):
     proc = subprocess.Popen(
         [sys.executable, "-m", "poolhouse.fleet.daemon", "--root", str(root / "traind"),
          "--bench-home", str(root / "bench"), "--host", "127.0.0.1",
-         "--port", str(http_port), "--name", name, "--cluster-key", str(keyfile)],
+         "--port", str(http_port), "--name", name, "--pool-key", str(keyfile)],
         env=env, stdout=fh, stderr=subprocess.STDOUT, cwd=root)
-    driver = Peer(f"http://127.0.0.1:{http_port}", derive_token(load_cluster_key(keyfile)))
+    driver = Member(f"http://127.0.0.1:{http_port}", derive_token(load_pool_key(keyfile)))
     deadline = time.time() + 20
     while time.time() < deadline:
         try:
             if driver.health().get("ok"):
                 return proc, log, fh
-        except PeerError:
+        except MemberError:
             if proc.poll() is not None:
                 pytest.fail(f"{name} traind died:\n{log.read_text(errors='replace')}")
         time.sleep(0.1)
@@ -1060,11 +1060,11 @@ def _own_graph(where: Path) -> list[str]:
 
 @pytest.mark.slow
 def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(tmp_path, monkeypatch):
-    """Nothing here is mocked: a real ``poolhouse-cluster`` daemon booted as a subprocess, found
+    """Nothing here is mocked: a real ``poolhouse-pool`` daemon booted as a subprocess, found
     by real UDP discovery, given a real HTTP job that runs the real ``poolhouse-bench`` over a
     graph that is not the shipped community, on a llama-server-shaped process instead of a
     GPU; the run it keeps comes home. The graph and questions are gone from the
-    dispatcher's disk before the job is sent, so the peer reads only what the job carried."""
+    dispatcher's disk before the job is sent, so the member reads only what the job carried."""
     import shutil
 
     from conftest import write_gguf
@@ -1072,17 +1072,17 @@ def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(tmp_pat
     import poolhouse.bench as bench
     import poolhouse.fleet.sweeps as sweeps_module
     from poolhouse.bench import runs
-    from poolhouse.fleet.discovery import create_cluster_key
+    from poolhouse.fleet.discovery import create_pool_key
     from poolhouse.graph.cache import digest
     from poolhouse.testing.fakes import fake_llama_binary
 
-    keyfile = tmp_path / "cluster.key"
-    create_cluster_key(keyfile, group="poolhouse")
+    keyfile = tmp_path / "pool.key"
+    create_pool_key(keyfile, group="poolhouse")
     disco_port = _free_port(socket.SOCK_DGRAM)
     booted = [_boot_daemon(tmp_path, name, keyfile=keyfile, disco_port=disco_port)
               for name in ("quill", "lantern")]
     try:
-        monkeypatch.setenv("POOLHOUSE_CLUSTER_KEY", str(keyfile))
+        monkeypatch.setenv("POOLHOUSE_POOL_KEY", str(keyfile))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(disco_port))
         monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "dispatcher-home"))
 
@@ -1124,14 +1124,14 @@ def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(tmp_pat
 
 
 def _one_machine(boxes, tmp_path, monkeypatch, *, models):
-    """A dispatcher whose own daemon is the only peer and shares its bench home."""
+    """A dispatcher whose own daemon is the only member and shares its bench home."""
     import poolhouse.bench as bench
     import poolhouse.fleet.sweeps as sweeps_module
     from poolhouse.bench import ops
 
     roomy, _ = boxes
     monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
-    _discovery_stub(monkeypatch, {"roomy": roomy.peer})
+    _discovery_stub(monkeypatch, {"roomy": roomy.member})
     monkeypatch.setattr(bench, "home_dir", lambda: roomy.home)
     real_wait = sweeps_module.wait
     monkeypatch.setattr(sweeps_module, "wait",

@@ -43,7 +43,7 @@ signature was made by that key, in that namespace, over the SHA-256 or SHA-512 o
 signature, a signature from another key or namespace, and an asset that differs from what was signed are each refused
 and the download is deleted. The verifier is Ed25519 in plain Python; nothing else is installed.
 
-`poolhouse-cluster join --track BRANCH` fetches the branch and runs `git verify-commit FETCH_HEAD` with `RELEASE_KEY` as
+`poolhouse-pool join --track BRANCH` fetches the branch and runs `git verify-commit FETCH_HEAD` with `RELEASE_KEY` as
 the only allowed signer; the checkout then fast-forwards to exactly that commit. A tip commit that is unsigned or
 signed by another key is not pulled. Commits on the branch are signed with the same key, loaded into ssh-agent by `scripts/release-key agent`, which
 prints the git settings to use:
@@ -73,7 +73,7 @@ If `gh` fails, nothing is stored and `signing.py` is unchanged.
 
 `RELEASE_KEY` must be set before a release is published: `scripts/release-key create --write` at the owner's terminal,
 then commit `src/poolhouse/fleet/signing.py`. Without it the signed-update path fails closed. `updates.download_release`
-deletes every downloaded asset with "no release key is set" and installs nothing, and `poolhouse-cluster join --track`
+deletes every downloaded asset with "no release key is set" and installs nothing, and `poolhouse-pool join --track`
 refuses every fetched commit with the same message, so no machine updates itself from a release or a tracked branch.
 A release published before the key is set is signed with a key nothing pins, and its assets verify against nothing.
 

@@ -57,13 +57,13 @@ WORDS = "correct horse battery staple"
 
 
 # -- setup ---------------------------------------------------------------
-@check("Setup", "cluster keys are random even when their join passphrases match")
+@check("Setup", "pool keys are random even when their join passphrases match")
 def _():
-    from poolhouse.fleet.discovery import mint_cluster
+    from poolhouse.fleet.discovery import mint_pool
     from poolhouse.fleet.onboard.joining import join_secret
     secret = join_secret(WORDS, "verify-setup")
-    a = mint_cluster("verify-setup", TMP / "random-a.key", join=secret)
-    b = mint_cluster("verify-setup", TMP / "random-b.key", join=secret)
+    a = mint_pool("verify-setup", TMP / "random-a.key", join=secret)
+    b = mint_pool("verify-setup", TMP / "random-b.key", join=secret)
     assert a.key != b.key and a.join == b.join
     assert secret != join_secret(WORDS, "another-group")
     return "independent random keys; group-scoped join authentication"
@@ -72,10 +72,10 @@ def _():
 @check("Setup", "two groups on one network cannot see each other")
 def _():
     from poolhouse.fleet import Advertiser, Beacon, discover
-    from poolhouse.fleet.discovery import mint_cluster
+    from poolhouse.fleet.discovery import mint_pool
     port = free_port()
-    ours = mint_cluster("ours", TMP / "a.key").key
-    theirs = mint_cluster("theirs", TMP / "b.key").key
+    ours = mint_pool("ours", TMP / "a.key").key
+    theirs = mint_pool("theirs", TMP / "b.key").key
     with Advertiser(Beacon(name="ours", port=8770), ours, port=port, interval_s=0.2), \
          Advertiser(Beacon(name="theirs", port=8771), theirs, port=port, interval_s=0.2):
         we = {b.name for b in discover(ours, timeout_s=2.0, port=port)}
@@ -96,11 +96,11 @@ def _():
 
 @check("Setup", "the group is remembered, so a passphrase can be checked later")
 def _():
-    from poolhouse.fleet.discovery import cluster_group, mint_cluster
+    from poolhouse.fleet.discovery import mint_pool, pool_group
     from poolhouse.fleet.onboard.joining import join_secret, matches
     key = TMP / "grp.key"
-    mint_cluster("garage", key, join=join_secret(WORDS, "garage"))
-    assert cluster_group(key) == "garage"
+    mint_pool("garage", key, join=join_secret(WORDS, "garage"))
+    assert pool_group(key) == "garage"
     assert matches(WORDS, path=key)
     assert not matches("wrong words here", path=key)
     return "group 'garage'"
@@ -112,7 +112,7 @@ class Box:
         from poolhouse.fleet import (
             Daemon,
             JobRunner,
-            Peer,
+            Member,
             device_report,
             load_or_create_token,
             make_handler,
@@ -126,14 +126,14 @@ class Box:
         self.runner = JobRunner(root, self.files, slots=slots)
         self.port = free_port()
         report = lambda: {**device_report(lambda: dict(extra or {})), "labels": list(labels)}
-        self.ui = UI(name=name, cluster_key_path=root / "cluster.key")
+        self.ui = UI(name=name, pool_key_path=root / "pool.key")
         self.ui.runner, self.ui.settings = self.runner, Settings()
         self.ui.settings_path, self.ui.report = root / "settings.json", report
         self.httpd = ThreadingHTTPServer(
             (host, self.port),
             make_handler(Daemon(self.runner, self.files, token, name, report, ui=self.ui)))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-        self.peer = Peer(f"http://127.0.0.1:{self.port}", token)
+        self.member = Member(f"http://127.0.0.1:{self.port}", token)
 
     def close(self):
         self.runner.shutdown(); self.httpd.shutdown(); self.httpd.server_close()
@@ -143,11 +143,11 @@ class Box:
 def _():
     box = Box("pull")
     try:
-        job = box.peer.submit([sys.executable, "-c",
+        job = box.member.submit([sys.executable, "-c",
             "import os,pathlib;d=pathlib.Path(os.environ['POOLHOUSE_OUT']);"
             "d.mkdir(parents=True,exist_ok=True);(d/'r.txt').write_text('done')"])
-        box.peer.wait(job["id"], poll_s=0.1, timeout_s=30)
-        got = box.peer.pull(f"jobs/{job['id']}/out/r.txt", TMP / "pulled.txt")
+        box.member.wait(job["id"], poll_s=0.1, timeout_s=30)
+        got = box.member.pull(f"jobs/{job['id']}/out/r.txt", TMP / "pulled.txt")
         assert got.read_text() == "done"
         return "argv -> job -> file back"
     finally:
@@ -158,9 +158,9 @@ def _():
 def _():
     one, many = Box("one", slots=1), Box("many", slots=4)
     try:
-        assert one.peer.health()["slots"] == 1
+        assert one.member.health()["slots"] == 1
         for i in range(4):
-            many.peer.submit([sys.executable, "-c", "import time;time.sleep(2)"])
+            many.member.submit([sys.executable, "-c", "import time;time.sleep(2)"])
         end = time.time() + 8
         while time.time() < end and many.runner.status()["free"] > 0:
             time.sleep(0.1)
@@ -174,14 +174,14 @@ def _():
 def _():
     box = Box("stop", slots=2)
     try:
-        keep = box.peer.submit([sys.executable, "-c", "import time;time.sleep(4)"])
-        doomed = box.peer.submit([sys.executable, "-c", "import time;time.sleep(4)"])
+        keep = box.member.submit([sys.executable, "-c", "import time;time.sleep(4)"])
+        doomed = box.member.submit([sys.executable, "-c", "import time;time.sleep(4)"])
         end = time.time() + 6
         while time.time() < end and len(box.runner.status()["running"]) < 2:
             time.sleep(0.1)
-        box.peer.stop(doomed["id"])
+        box.member.stop(doomed["id"])
         time.sleep(0.5)
-        assert box.peer.job(keep["id"])["state"] == "running"
+        assert box.member.job(keep["id"])["state"] == "running"
         return "neighbour survived"
     finally:
         box.close()
@@ -192,7 +192,7 @@ def _():
     box = Box("empty")
     try:
         p = TMP / "empty.bin"; p.write_bytes(b"")
-        box.peer.push(p, "empty.bin")
+        box.member.push(p, "empty.bin")
         assert (box.files / "empty.bin").read_bytes() == b""
         return "0 bytes round-tripped"
     finally:
@@ -215,8 +215,8 @@ def _():
 @check("Placement", "an unmeasured machine is tried, not skipped")
 def _():
     from poolhouse.fleet import Candidate, choose
-    fast = Candidate(peer=None, name="fast", report={}, slots=1, free=1, rate=1000.0)
-    new = Candidate(peer=None, name="new", report={}, slots=1, free=1, rate=None)
+    fast = Candidate(member=None, name="fast", report={}, slots=1, free=1, rate=1000.0)
+    new = Candidate(member=None, name="new", report={}, slots=1, free=1, rate=None)
     assert choose([fast, new]).name == "new"
     return "unmeasured wins while it has capacity"
 
@@ -227,7 +227,7 @@ def _():
     gpu, pi = Box("gpu-lbl", labels=("train",)), Box("pi-lbl", labels=("prep",))
     try:
         unit = Unit(id="needs-cuda", argv=["true"], requires=Requires(backend="cuda"))
-        [place] = run([unit], [gpu.peer, pi.peer], rates=Rates(TMP / "r.json"))
+        [place] = run([unit], [gpu.member, pi.member], rates=Rates(TMP / "r.json"))
         assert place.state == "unplaceable", place
         assert "gpu-lbl" in place.error and "pi-lbl" in place.error
         return place.error[:70]
@@ -242,9 +242,9 @@ def _():
     try:
         units = [Unit(id=f"u{i}", argv=[sys.executable, "-c", "pass"],
                       requires=Requires(labels=("prep",))) for i in range(4)]
-        places = run(units, [gpu.peer, pi.peer], rates=Rates(TMP / "r2.json"), poll_s=0.05)
+        places = run(units, [gpu.member, pi.member], rates=Rates(TMP / "r2.json"), poll_s=0.05)
         assert all(p.ok for p in places), [p.error for p in places]
-        assert {p.peer for p in places} == {"p2"}
+        assert {p.member for p in places} == {"p2"}
         return "all four landed on the prep box"
     finally:
         gpu.close(); pi.close()
@@ -254,6 +254,7 @@ def _():
 @check("Scheduling", "working hours block new work, including past midnight")
 def _():
     from datetime import datetime
+
     from poolhouse.fleet.availability import Availability
     day = Availability.from_specs(busy=["mon-fri 09:00-17:00"])
     assert not day.open_at(datetime.fromisoformat("2026-08-24 10:00"))
@@ -271,14 +272,14 @@ def _():
     sched = Availability()
     box.runner.gate = lambda: sched.may_start()
     try:
-        job = box.peer.submit([sys.executable, "-c", "import time;time.sleep(30)"])
+        job = box.member.submit([sys.executable, "-c", "import time;time.sleep(30)"])
         end = time.time() + 5
         while time.time() < end and not box.runner.status()["running"]:
             time.sleep(0.1)
         sched.pause(reason="gaming")
         box.runner.stop_running()
         time.sleep(0.5)
-        assert box.peer.job(job["id"])["state"] == "queued"
+        assert box.member.job(job["id"])["state"] == "queued"
         return "job requeued, machine free"
     finally:
         box.close()
@@ -297,6 +298,7 @@ def _():
 @check("Training", "a language model trains and the loss falls")
 def _():
     import math
+
     from poolhouse.train.run import run as train_run
     data = TMP / "corpus"; data.mkdir()
     (data / "c.jsonl").write_text("\n".join(json.dumps(
@@ -310,6 +312,7 @@ def _():
 @check("Training", "a classifier generalises to rows it never saw")
 def _():
     import math
+
     from poolhouse.train.run import run as train_run
     data = TMP / "reviews"; data.mkdir()
     rows = [{"text": f"This was {'great' if i % 2 else 'awful'}, truly.",
@@ -527,9 +530,9 @@ def _():
 
     from poolhouse.fleet import Daemon, JobRunner, Models, make_handler
     from poolhouse.fleet.daemon import load_or_create_token
-    from poolhouse.fleet.discovery import mint_cluster
+    from poolhouse.fleet.discovery import mint_pool
 
-    key = mint_cluster("verify-models", TMP / "models.key").key
+    key = mint_pool("verify-models", TMP / "models.key").key
     where = TMP / "haver"
     where.mkdir(parents=True, exist_ok=True)
     payload = os.urandom(3 * 1024 * 1024)
@@ -542,14 +545,14 @@ def _():
     port = free_port()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(Daemon(
         runner, files, load_or_create_token(root, key), "haver",
-        models=Models([where], where), cluster_key_path=TMP / "models.key")))
+        models=Models([where], where), pool_key_path=TMP / "models.key")))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         want = TMP / "wanter"
         want.mkdir(parents=True, exist_ok=True)
         # Several daemons on one box share the discovery port, so the address that
         # discovery would supply is given directly.
-        got = Models([want], want)._from_peer(
+        got = Models([want], want)._from_member(
             "tiny-test.gguf", f"http://127.0.0.1:{port}", key, None)
         assert got.path.read_bytes() == payload, "the copy does not match"
         assert got.path.parent == want
@@ -728,7 +731,7 @@ def _():
 
 
 # -- chat ----------------------------------------------------------------
-@check("Chat", "a machine that can run nothing itself still talks to a peer's model")
+@check("Chat", "a machine that can run nothing itself still talks to a member's model")
 def _():
     """The install with no model server is the common one. If this fails, the
     product does not work for the people it is for."""
@@ -739,7 +742,7 @@ def _():
     from poolhouse.fleet import Daemon, JobRunner, Serving, make_handler
     from poolhouse.fleet.chat import find, reply_text, stream, targets
     from poolhouse.fleet.daemon import load_or_create_token
-    from poolhouse.fleet.discovery import derive_token, mint_cluster
+    from poolhouse.fleet.discovery import derive_token, mint_pool
 
     class Model(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -766,7 +769,7 @@ def _():
     model = ThreadingHTTPServer(("127.0.0.1", free_port()), Model)
     threading.Thread(target=model.serve_forever, daemon=True).start()
 
-    key = mint_cluster("verify-chat", TMP / "chat.key").key
+    key = mint_pool("verify-chat", TMP / "chat.key").key
     root = TMP / "host-daemon"
     files = root / "files"
     files.mkdir(parents=True, exist_ok=True)
@@ -783,7 +786,7 @@ def _():
         beacon = {"name": "host", "base_url": f"http://127.0.0.1:{port}",
                   "is_self": False, "device": {"serving": serving.public()}}
         reachable = targets([beacon], serving=None, token=derive_token(key))
-        assert reachable, "a peer is serving and this machine cannot see it"
+        assert reachable, "a member is serving and this machine cannot see it"
         target = find(reachable, "tiny-test.gguf")
         assert target is not None and not target.local
         said = b"".join(stream(target, {"model": target.model, "stream": True,
@@ -808,7 +811,7 @@ def _():
     from poolhouse import speech as package
     from poolhouse.fleet import Daemon, JobRunner, make_handler
     from poolhouse.fleet.daemon import load_or_create_token
-    from poolhouse.fleet.remote import Peer
+    from poolhouse.fleet.remote import Member
     from poolhouse.media import wav
     from poolhouse.speech import ProviderHealth, Registry, Segment, Transcript
 
@@ -842,9 +845,9 @@ def _():
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(Daemon(runner, files, token)))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        peer = Peer(f"http://127.0.0.1:{port}", token)
-        assert peer.speech()["asr"]["auto"] == "fake"
-        heard = peer.transcribe(wav.encode(b"\x00\x00" * 1600, sample_rate=16000))
+        member = Member(f"http://127.0.0.1:{port}", token)
+        assert member.speech()["asr"]["auto"] == "fake"
+        heard = member.transcribe(wav.encode(b"\x00\x00" * 1600, sample_rate=16000))
         assert heard.text == "the fleet is up"
         assert heard.segments[0].end_s == 0.1
     finally:
@@ -852,7 +855,7 @@ def _():
         runner.shutdown()
         httpd.shutdown()
         httpd.server_close()
-    return "a recording posted to a peer came back as text with segment times"
+    return "a recording posted to a member came back as text with segment times"
 
 
 @check("Chat", "a conversation is still there after a restart")
@@ -908,7 +911,7 @@ def _():
     root = home / "traind"
     for name in ("chats", "files", "models", "env"):
         (root / name).mkdir(parents=True, exist_ok=True)
-    key = home / "cluster.key"
+    key = home / "pool.key"
     key.write_text("k" * 44)
     (root / "models" / "big.gguf").write_bytes(b"m" * 8192)
     (root / "files" / "mine.jsonl").write_bytes(b"d" * 256)
@@ -1052,6 +1055,7 @@ def _():
 @check("Graphs", "the model reads a graph with tools, and invented ids are refused")
 def _():
     from dataclasses import dataclass
+
     from poolhouse.graph.conversation import converse
     graph = {"nodes": [{"id": "p:a", "kind": "person", "label": "Ada", "mentions": 1,
                         "attrs": {}, "messages": []}], "edges": [], "messages": {}}
@@ -1144,14 +1148,14 @@ def _():
                 per_seq=200 * kb, compute=gb),
             Fit(model="small-2b-UD-Q4_K_XL.gguf", weights=2 * gb, per_token=12 * kb,
                 per_seq=100 * kb, compute=gb // 4)]
-    peers = [Room(name="studio", room=110 * gb), Room(name="larch", room=20 * gb)]
-    got = place(30, 16384, peers, [big, small], fits)
+    members = [Room(name="studio", room=110 * gb), Room(name="larch", room=20 * gb)]
+    got = place(30, 16384, members, [big, small], fits)
     assert got.placed == 30 and got.unplaced == 0, got.as_dict()
-    assert got.rows[0].model == big.model, "the better model did not reach the roomiest peer"
+    assert got.rows[0].model == big.model, "the better model did not reach the roomiest member"
     tight = place(400, 16384, [Room(name="pi", room=4 * gb)], [big, small], fits)
     assert tight.unplaced > 0 and any(p == "pi" and m == big.model for p, m, _ in tight.why), \
         "the model that fits nowhere was not named"
-    return "30 placed over two peers; on a 4 GB peer the big model is refused by name"
+    return "30 placed over two members; on a 4 GB member the big model is refused by name"
 
 
 # -- agents and the web ----------------------------------------------------
@@ -1160,7 +1164,7 @@ def _():
     from poolhouse.mcp import TOOLS
     names = {t.name for t in TOOLS}
     need = {"serve_up", "serve_down", "serve_status", "models_find", "models_files",
-            "models_fetch", "bench_run", "bench_status", "fleet_peers", "world_make",
+            "models_fetch", "bench_run", "bench_status", "fleet_members", "world_make",
             "setup_look", "doctor", "speech_providers", "speech_transcribe", "speech_say"}
     missing = need - names
     assert not missing, f"missing MCP tools: {sorted(missing)}"

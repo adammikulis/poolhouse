@@ -20,11 +20,11 @@ from poolhouse.workspace import (
     project_connection,
     tokens,
 )
-from poolhouse.workspace.harness_seat import Seat
+from poolhouse.workspace.harness_session import HarnessSession
 from poolhouse.workspace.identity import AGENT_MARKERS, valid_name
 from poolhouse.workspace.project import authoritative, describe
 
-__all__ = ["Seat", "agent_name", "announce", "brief", "invite"]
+__all__ = ["HarnessSession", "agent_name", "announce", "brief", "invite"]
 
 LONGEST = 48
 SENDER_WAIT_S = 15
@@ -57,7 +57,7 @@ def brief(name: str, alias: str, harness: str, parent: str, orders_from: Sequenc
 
 
 def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None],
-           *, claim: tuple[str, str] = ("", "")) -> Seat:
+           *, claim: tuple[str, str] = ("", "")) -> HarnessSession:
     """Connect a local or project agent under its authenticated authority."""
     if not valid_name(name):
         say(f"error: {name!r} is not a usable agent id (a-z, 0-9, . _ -; up to {LONGEST})")
@@ -69,18 +69,18 @@ def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None]
         connection = project_connection.selected(project_dir) or project_connection.auto_attach(project_dir)
         if connection is not None:
             remote = project_connection.RemoteWorkspace(
-                connection["host"], connection["project_id"], cluster=connection.get("cluster", ""),
-                cluster_key=Path(connection["cluster_key"]) if connection.get("cluster_key") else None)
+                connection["host"], connection["project_id"], pool=connection.get("pool", ""),
+                pool_key=Path(connection["pool_key"]) if connection.get("pool_key") else None)
             token = remote.token(agent=name)
             actual = remote.call("whoami", token)["id"]
-            return Seat(actual, base=remote.base, persistent=True,
+            return HarnessSession(actual, base=remote.base, persistent=True,
                         record_claim=lambda model, harness: remote.call(
                             "claim_model", remote.token(agent=actual), model, harness))
         coordinator = coordinator_client.client(limits.root())
         if coordinator is not None:
             found = authoritative(str(project_dir))
             actual = coordinator.ensure(limits.root(), name, project=found)
-            return Seat(actual, base=limits.root(), persistent=True,
+            return HarnessSession(actual, base=limits.root(), persistent=True,
                         record_claim=lambda model, harness: coordinator.ensure(
                             limits.root(), actual, model=model, harness=harness, project=found))
         ws = Workspace()
@@ -95,26 +95,26 @@ def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None]
             child = ws.delegate(token, name)
             found = describe(str(project_dir))
             ws.board.place(child["id"], found)
-            return Seat(child["id"], minted=True, base=ws.base, issuer=who)
+            return HarnessSession(child["id"], minted=True, base=ws.base, issuer=who)
         guide.agent_connect(ws, name, describe(str(project_dir)))
     except (Denied, ValueError, OSError) as why:
         say(f"workspace connection refused: {why}")
         raise ValueError(f"a workspace identity could not be created for {name}: {why}") from why
-    return Seat(name, base=ws.base, persistent=True)
+    return HarnessSession(name, base=ws.base, persistent=True)
 
 
-def announce(seat: Seat, text: str, say: Callable[[str], None]) -> bool:
-    """Post ``text`` as a ``joined`` announcement from the seat; when that fails, say how to join."""
+def announce(session: HarnessSession, text: str, say: Callable[[str], None]) -> bool:
+    """Post ``text`` as a ``joined`` announcement from the session; when that fails, say how to join."""
     exe = shutil.which("poolhouse-workspace")
     ok = False
     if exe:
         try:
-            done = subprocess.run([exe, "announce", "joined", text[:180], *seat.flags()], capture_output=True,
+            done = subprocess.run([exe, "announce", "joined", text[:180], *session.flags()], capture_output=True,
                                   text=True, timeout=SENDER_WAIT_S, check=False, stdin=subprocess.DEVNULL,
                                   env={**os.environ, "POOLHOUSE_NONINTERACTIVE": "1"})
             ok = done.returncode == 0
         except (OSError, subprocess.SubprocessError):
             ok = False
     if not ok:
-        say(f"workspace announcement failed for {seat.name}; check the selected authority and device trust")
+        say(f"workspace announcement failed for {session.name}; check the selected authority and device trust")
     return ok

@@ -25,15 +25,15 @@ def test_default_mode_is_open(board):
     assert enforcement.mode(board.ws, {'key': 'anything'}) == 'open'
 
 
-def test_unassigned_task_by_an_agent_is_claimable_by_peers_only_when_open(board):
-    peer = board.ws.auth(board.agent('peer'))
+def test_unassigned_task_by_an_agent_is_claimable_by_members_only_when_open(board):
+    member = board.ws.auth(board.agent('member'))
     open_task = task(board, 'unassigned')
-    assert task_scope.eligible(board.ws, peer, open_task)
+    assert task_scope.eligible(board.ws, member, open_task)
     mode(board, 'strict')
-    assert not task_scope.eligible(board.ws, peer, open_task)
+    assert not task_scope.eligible(board.ws, member, open_task)
     assert task_scope.eligible(board.ws, board.ws.auth(board.child), open_task)
     mode(board, 'open')
-    assert task_scope.eligible(board.ws, peer, open_task)
+    assert task_scope.eligible(board.ws, member, open_task)
 
 
 def test_assignee_needs_the_task_project_only_when_strict(board):
@@ -46,12 +46,12 @@ def test_assignee_needs_the_task_project_only_when_strict(board):
 
 def test_new_reviews_need_delegated_authority_only_when_strict(board):
     proposed(board)
-    peer = board.agent('peer')
+    member = board.agent('member')
     mode(board, 'strict')
     with pytest.raises(Denied):
-        board.board.review(peer, board.task['id'], accepted())
+        board.board.review(member, board.task['id'], accepted())
     mode(board, 'open')
-    assert board.board.review(peer, board.task['id'], accepted())['accepted']
+    assert board.board.review(member, board.task['id'], accepted())['accepted']
 
 
 def test_promotion_keeps_in_flight_work_running(board):
@@ -67,13 +67,13 @@ def test_promotion_keeps_in_flight_work_running(board):
 
 def test_accepted_review_stays_valid_after_promotion(board):
     proposed(board)
-    board.board.review(board.agent('peer'), board.task['id'], accepted())
+    board.board.review(board.agent('member'), board.task['id'], accepted())
     mode(board, 'strict')
-    assert board.board.assert_reviewer(board.agent('peer2'), board.task['id'])['id'] == board.task['id']
+    assert board.board.assert_reviewer(board.agent('member2'), board.task['id'])['id'] == board.task['id']
 
 
 def test_check_lists_what_strict_would_strand_without_changing_the_mode(board):
-    task(board, 'peer-claimable')
+    task(board, 'member-claimable')
     task(board, 'designated', assignees=[board.worker_id])
     report = enforcement_check.check(board.ws, '')
     kinds = {(row['kind'], row['task']) for row in report['stranded']}
@@ -83,9 +83,9 @@ def test_check_lists_what_strict_would_strand_without_changing_the_mode(board):
     assert enforcement.current(board.ws, '')['mode'] == 'open'
 
 
-def test_accepted_review_by_a_peer_is_reported(board):
+def test_accepted_review_by_a_member_is_reported(board):
     proposed(board)
-    board.board.review(board.agent('peer'), board.task['id'], accepted())
+    board.board.review(board.agent('member'), board.task['id'], accepted())
     assert board.board.get(board.parent, board.task['id'])['state'] == 'accepted'
     stranded = enforcement_check.check(board.ws, '')['stranded']
     assert [row['kind'] for row in stranded if row['task'] == board.task['id']] == ['review']

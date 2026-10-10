@@ -31,17 +31,17 @@ fn a_revocation_is_never_undone_and_wins_every_merge() {
     let dir = tempfile::tempdir().unwrap();
     let mut pool = pool_in(&dir);
     let other = identity(2);
-    let device = pool.enrol(&other.der, "laptop", "pairing", 10).unwrap();
+    let device = pool.enrol(&other.der, "laptop", "join-code", 10).unwrap();
     assert_eq!(pool.standing(&device.fingerprint), Standing::Active);
     pool.revoke(&device.fingerprint, "me", 20).unwrap();
     assert_eq!(pool.standing(&device.fingerprint), Standing::Revoked);
-    assert!(matches!(pool.enrol(&other.der, "laptop", "pairing", 30), Err(Error::Denied(_))), "a revoked certificate stays out");
+    assert!(matches!(pool.enrol(&other.der, "laptop", "join-code", 30), Err(Error::Denied(_))), "a revoked certificate stays out");
     let stale = vec![json!({"fingerprint": device.fingerprint, "cert": device.cert, "name": "laptop", "status": "active", "at": 99, "by": "x"})];
-    assert_eq!(pool.merge(&stale, "peer").unwrap(), 0, "a stale peer cannot bring a revoked device back");
+    assert_eq!(pool.merge(&stale, "peer").unwrap(), 0, "a stale peer cannot bring a removed device back");
     assert_eq!(pool.standing(&device.fingerprint), Standing::Revoked);
     let fresh_dir = tempfile::tempdir().unwrap();
     let mut fresh = pool_in(&fresh_dir);
-    fresh.enrol(&other.der, "laptop", "pairing", 10).unwrap();
+    fresh.enrol(&other.der, "laptop", "join-code", 10).unwrap();
     assert_eq!(fresh.merge(&pool.export(), "peer").unwrap(), 1, "a revocation heard from a peer is applied");
     assert_eq!(fresh.standing(&device.fingerprint), Standing::Revoked);
 }
@@ -70,19 +70,19 @@ fn the_record_survives_a_restart_and_the_policy_takes_the_newest_change() {
     assert_eq!((again.policy, again.id.clone(), again.devices().len()), (Policy::Open, pool.id.clone(), 1));
 }
 
-// -- pairing -----------------------------------------------------------------
+// -- joining -----------------------------------------------------------------
 
 #[test]
-fn two_nodes_pair_with_a_code_and_converge() {
+fn two_nodes_join_with_a_code_and_converge() {
     let (a, b) = (device(), device());
     let (_, at) = a.session("demo", "x");
     let (_, bt) = b.session("demo", "y");
     a.say("demo", &at, "from a");
     b.say("demo", &bt, "from b");
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     assert_eq!(a.pool(), b.pool());
     assert!(a.is_member(&b.fp()) && b.is_member(&a.fp()));
-    assert_eq!(a.member(&b.fp()).unwrap()["by"], "pairing");
+    assert_eq!(a.member(&b.fp()).unwrap()["by"], "join-code");
     b.ok("sync_now", "", &b.token, json!({}));
     for (dev, t) in [(&a, &at), (&b, &bt)] {
         let mut texts = dev.texts("demo", t);
@@ -91,7 +91,7 @@ fn two_nodes_pair_with_a_code_and_converge() {
     }
     a.say("demo", &at, "later from a");
     a.ok("sync_now", "", &a.token, json!({}));
-    assert!(b.texts("demo", &bt).contains(&"later from a".to_string()), "the paired device records the address it was reached at");
+    assert!(b.texts("demo", &bt).contains(&"later from a".to_string()), "the member records the address it was reached at");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn only_boards_both_devices_hold_are_synced() {
     let (a, b) = (device(), device());
     let (_, at) = a.session("secret", "x");
     a.say("secret", &at, "private to a");
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     b.ok("sync_now", "", &b.token, json!({}));
     assert!(!b.node.lock().unwrap().boards.contains_key("secret"));
     assert!(b.node.lock().unwrap().boards.contains_key("demo"));
@@ -108,9 +108,9 @@ fn only_boards_both_devices_hold_are_synced() {
 #[test]
 fn a_wrong_passphrase_fails_and_three_wrong_tries_close_the_window() {
     let (a, b) = (device(), device());
-    let code = a.ok("pair_accept", "", &a.token, json!({"passphrase": "correct horse"}))["code"].as_str().unwrap().to_string();
+    let code = a.ok("add_device", "", &a.token, json!({"passphrase": "correct horse"}))["code"].as_str().unwrap().to_string();
     assert_eq!(code, "correct horse");
-    let start = |pass: &str| b.call("pair_start", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": pass}));
+    let start = |pass: &str| b.call("join_pool", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": pass}));
     for _ in 0..3 {
         let r = start("wrong guess");
         assert_eq!(r["ok"], false, "{r}");
@@ -120,19 +120,19 @@ fn a_wrong_passphrase_fails_and_three_wrong_tries_close_the_window() {
     assert_ne!(a.pool(), b.pool());
     let r = start("correct horse");
     assert_eq!(r["ok"], false, "the window is closed after three wrong tries: {r}");
-    a.ok("pair_accept", "", &a.token, json!({"passphrase": "correct horse"}));
+    a.ok("add_device", "", &a.token, json!({"passphrase": "correct horse"}));
     assert_eq!(start("correct horse")["ok"], true, "a fresh window takes the right code");
     assert!(a.is_member(&b.fp()));
 }
 
 #[test]
-fn pairing_needs_an_open_window_and_a_device_alone_in_its_pool() {
+fn joining_needs_an_open_window_and_a_device_alone_in_its_pool() {
     let (a, b, c) = (device(), device(), device());
-    let r = b.call("pair_start", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": "anything at all"}));
+    let r = b.call("join_pool", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": "anything at all"}));
     assert_eq!(r["error"]["code"], "denied", "no window is open: {r}");
-    a.pair_secure(&b);
-    let code = a.ok("pair_accept", "", &a.token, json!({}))["code"].as_str().unwrap().to_string();
-    let r = b.call("pair_start", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": code}));
+    a.join_with_code(&b);
+    let code = a.ok("add_device", "", &a.token, json!({}))["code"].as_str().unwrap().to_string();
+    let r = b.call("join_pool", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": code}));
     assert_eq!(r["error"]["code"], "denied", "b already has a member: {r}");
     let _ = c;
 }
@@ -142,7 +142,7 @@ fn join_policy_open_enrols_a_device_that_names_the_fingerprint() {
     let (a, b) = (device(), device());
     let (_, at) = a.session("demo", "x");
     a.say("demo", &at, "from a");
-    let ask = |fp: &str| b.call("pair_start", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "fingerprint": fp}));
+    let ask = |fp: &str| b.call("join_pool", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "fingerprint": fp}));
     assert_eq!(ask(&a.fp())["error"]["code"], "denied", "policy secure: a device is not taken without a code");
     assert!(!a.is_member(&b.fp()));
     a.set_policy("open");
@@ -166,7 +166,7 @@ fn the_policy_is_switched_by_a_session_with_the_grant_and_spreads() {
         }
     }
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     let no_token = a.call("set_join_policy", "", "", json!({"policy": "open"}));
     assert_eq!(no_token["error"]["code"], "denied");
     a.node.lock().unwrap().grants = Box::new(Nobody);
@@ -264,30 +264,30 @@ fn a_certificate_other_than_the_pinned_one_is_refused() {
 }
 
 #[test]
-fn a_revoked_device_is_refused_at_its_next_request_on_a_live_session() {
+fn a_removed_device_is_refused_at_its_next_request_on_a_live_session() {
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     let mut live = PeerClient::connect(&b.net.me, a.addr(), Some(&a.fp())).unwrap();
     assert!(live.call(&json!({"op": "boards"})).is_ok());
-    a.ok("member_revoke", "", &a.token, json!({"fingerprint": b.fp()}));
+    a.ok("member_remove", "", &a.token, json!({"fingerprint": b.fp()}));
     let refused = live.call(&json!({"op": "boards"}));
     assert!(matches!(refused, Err(Error::Denied(_))), "{refused:?}");
     assert!(PeerClient::connect(&b.net.me, a.addr(), Some(&a.fp())).and_then(|mut c| c.call(&json!({"op": "boards"}))).is_err(), "and at a new connection");
     assert_eq!(a.member(&b.fp()).unwrap()["status"], "revoked");
-    let again = a.call("pair_accept", "", &a.token, json!({"passphrase": "another code"}));
+    let again = a.call("add_device", "", &a.token, json!({"passphrase": "another code"}));
     assert_eq!(again["ok"], true);
-    let c = b.call("pair_start", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": "another code"}));
+    let c = b.call("join_pool", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": "another code"}));
     assert_eq!(c["ok"], false, "a revoked certificate does not come back: {c}");
 }
 
 #[test]
 fn a_revocation_reaches_a_third_device_through_a_member() {
     let (a, b, c) = (device(), device(), device());
-    a.pair_secure(&b);
-    a.pair_secure(&c);
+    a.join_with_code(&b);
+    a.join_with_code(&c);
     b.ok("sync_now", "", &b.token, json!({}));
     assert!(b.is_member(&c.fp()) || { b.ok("sync_now", "", &b.token, json!({})); b.is_member(&c.fp()) });
-    a.ok("member_revoke", "", &a.token, json!({"fingerprint": c.fp()}));
+    a.ok("member_remove", "", &a.token, json!({"fingerprint": c.fp()}));
     b.ok("sync_now", "", &b.token, json!({}));
     assert_eq!(b.member(&c.fp()).unwrap()["status"], "revoked", "the record spreads by merge");
     let mut at_b = PeerClient::connect(&c.net.me, b.addr(), Some(&b.fp()));
@@ -299,7 +299,7 @@ fn a_revocation_reaches_a_third_device_through_a_member() {
 #[test]
 fn pool_status_says_who_is_connected_and_when() {
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     let before = a.member(&b.fp()).unwrap();
     assert_eq!(before["connected"], false);
     assert_eq!(before["addr"], format!("127.0.0.1:{}", b.net.port));

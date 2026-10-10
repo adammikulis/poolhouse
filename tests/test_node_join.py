@@ -63,8 +63,8 @@ def test_two_nodes_enrol_each_other_under_open_share_a_board_and_a_revoked_one_s
         member = node_join.others(node_join.status(a))[0]
         assert member["by"] == "open" and node_join.status(a)["pool"] == node_join.status(b)["pool"]
         waited("the board to converge", lambda: bodies(a, ta) == bodies(b, tb) == ["from a", "from b"], 30)
-        call(a, "member_revoke", {"fingerprint": member["fingerprint"]}, token=node_join._token(a))
-        time.sleep(2)  # several beacons and syncs: a revoked device is not let back in
+        call(a, "member_remove", {"fingerprint": member["fingerprint"]}, token=node_join._token(a))
+        time.sleep(2)  # several beacons and syncs: a removed device is not let back in
         assert not node_join.others(node_join.status(a))
         assert any(m["status"] == "revoked" for m in node_join.status(a)["members"])
     finally:
@@ -119,7 +119,7 @@ if LAN:
             assert node_join_check.step_listening(check).ok
             assert node_join_check.step_beacon_send(check).ok
             assert node_join_check.step_policy(check).ok
-            step = node_join_check.step_peer_beacon(check)
+            step = node_join_check.step_member_beacon(check)
             assert not step.ok and "other device" in step.fix, "alone on a port nobody else uses, nothing is heard"
         finally:
             node_launch.stop_node(home / "d")

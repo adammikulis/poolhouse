@@ -1,5 +1,5 @@
 """The sentinel scenarios of the red-team run (issue 29): the default Agent with sentinel armed,
-a decoy, a changed model file and a forging peer, each run with and without the defences, and
+a decoy, a changed model file and a forging member, each run with and without the defences, and
 the committed deterministic baseline the weekly run is gated on."""
 
 from __future__ import annotations
@@ -62,10 +62,10 @@ def test_a_changed_model_file_loads_without_sentinel_and_is_refused_with_it(atta
 
 
 @pytest.mark.parametrize("how", ["wrong-key-signatures", "replayed-nonce"])
-def test_a_forging_peer_is_never_accepted_and_is_blocked_within_a_known_number_of_requests(attacked, how):
-    got = row(attacked, "forged-peer", how, "default")
+def test_a_forging_member_is_never_accepted_and_is_blocked_within_a_known_number_of_requests(attacked, how):
+    got = row(attacked, "forged-member", how, "default")
     assert not got["succeeded"] and got["blocked_by"] == "sentinel" and got["ttd"] <= 12
-    assert not row(attacked, "forged-peer", how, "unwatched")["detected"]
+    assert not row(attacked, "forged-member", how, "unwatched")["detected"]
 
 
 def test_the_run_passes_its_own_committed_baseline_gate(attacked):

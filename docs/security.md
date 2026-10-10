@@ -11,60 +11,60 @@ for anything that acts for a person, with what is built and what is not).
 ## The model
 
 **Trusted.** The account that runs Poolhouse, the files under `POOLHOUSE_HOME` and
-`POOLHOUSE_CACHE`, every machine that holds the cluster key, `huggingface.co`, `github.com`
+`POOLHOUSE_CACHE`, every machine that holds the pool key, `huggingface.co`, `github.com`
 and the Python packages the user installed.
 
-Development is the default cluster mode and trusts nearby Poolhouse devices for automatic
-admission. A local-network device can obtain the Development cluster key through the
+Development is the default pool mode and trusts nearby Poolhouse devices for automatic
+admission. A local-network device can obtain the pool key of a pool in dev mode through the
 advertised pinned TLS endpoint without a passphrase or person approval. Production requires
 explicit admission and preserves an explicitly recorded Production profile.
 
 **Not trusted.** Anything that arrives over a network from a name or address the user did not
 choose to trust: a web page, a model repository's file list, a downloaded archive, a
-redirect, a GGUF file, a machine that has not proved it holds the cluster key, and anybody
+redirect, a GGUF file, a machine that has not proved it holds the pool key, and anybody
 else on the LAN.
 
-**A cluster member is fully trusted.** The daemon runs the command line a peer sends it
-(`POST /jobs`), downloads what a peer names (`POST /models/get`) and writes files a peer
-sends (`PUT /files/*`). Holding the cluster key is the same as having a shell on every machine
-in the cluster, and holding the key is no longer enough to be one: a request from another machine
+**A pool member is fully trusted.** The daemon runs the command line a device sends it
+(`POST /jobs`), downloads what a device names (`POST /models/get`) and writes files a device
+sends (`PUT /files/*`). Holding the pool key is the same as having a shell on every machine
+in the pool, and holding the key is no longer enough to be one: a request from another machine
 is answered only over mutual TLS 1.3 by a device whose own certificate is listed as a member
-(`fleet/membership.py`), so a device is put out alone (`poolhouse-peers members revoke`) and is refused
-from its next handshake and next request. The cluster key stays as the secret that seals beacons and
+(`fleet/membership.py`), so a device is put out alone (`poolhouse-members roster remove`) and is refused
+from its next handshake and next request. The pool key stays as the secret that seals beacons and
 signs and seals request bodies (defence in depth); a device that is revoked still knows it until the
-key is rotated (docs/pool-encryption.md, slice 7). Production admission protects its cluster key, 256 random bits that
+key is rotated (docs/pool-encryption.md, slice 7). Production admission protects its pool key, 256 random bits that
 no passphrase derives. Development admission extends this trust to nearby devices through
 its automatic TLS handshake. The passphrase is only a password for the Production join handshake, which locks out a
-source that keeps failing, so it is at least 5 characters; `poolhouse-peers init` makes a key with
-no passphrase. A job a peer submits is limited to an allowlist of Poolhouse commands
+source that keeps failing, so it is at least 5 characters; `poolhouse-members init` makes a key with
+no passphrase. A job a device submits is limited to an allowlist of Poolhouse commands
 (`docs/fleet.md`).
 
 ## What listens
 
 | Surface | Default | Who can reach it |
 |---|---|---|
-| Fleet daemon, TCP 8770 | `127.0.0.1` (plain HTTP) until the machine joins a cluster, or `--lan`, `--host`, `--setup-from-lan`; beyond this machine it speaks TLS only | a LAN peer that pins its certificate, shows a member device's certificate in the TLS 1.3 handshake and holds the cluster key (signed requests inside TLS); plain HTTP from another machine is dropped |
+| Fleet daemon, TCP 8770 | `127.0.0.1` (plain HTTP) until the machine joins a pool, or `--lan`, `--host`, `--setup-from-lan`; beyond this machine it speaks TLS only | a LAN device that pins its certificate, shows a member device's certificate in the TLS 1.3 handshake and holds the pool key (signed requests inside TLS); plain HTTP from another machine is dropped |
 | Daemon web interface, `/ui` | this machine alone | other machines only with `--ui-from-lan`, and then over TLS only (it signs in with the passphrase) |
-| Discovery beacons, UDP 8771, multicast `239.255.77.70`, TTL 1 | sent once a cluster is joined | the LAN segment |
+| Discovery beacons, UDP 8771, multicast `239.255.77.70`, TTL 1 | sent once a pool is joined | the LAN segment |
 | llama-server and other model servers | `127.0.0.1`, a random port | this machine; the daemon's `/infer` passes signed requests on to a fixed set of model-server paths |
 | `poolhouse-graph` page | `127.0.0.1` | this machine |
-| Pairing listener, TCP 8772, announcements UDP 8773 | off; only while `poolhouse cluster listen` runs | anyone on the LAN can send a request; nothing is given until the owner accepts and the code is typed. TLS only; plain HTTP is refused. `docs/onboarding.md` |
-| Bootstrap offer, an HTTPS port chosen at the time | off; only while `poolhouse cluster bootstrap` runs, for ten minutes | whoever has the unguessable address; program files only |
+| Joining listener, TCP 8772, announcements UDP 8773 | off; only while `poolhouse pool add-device` runs | anyone on the LAN can send a request; nothing is given until the owner accepts and the code is typed. TLS only; plain HTTP is refused. `docs/onboarding.md` |
+| Bootstrap offer, an HTTPS port chosen at the time | off; only while `poolhouse pool bootstrap` runs, for ten minutes | whoever has the unguessable address; program files only |
 
 A beacon carries the machine's name, port, device report and its TLS certificate, sealed with
-AES-256-GCM under a key derived from the cluster key; the kind, a timestamp and the asker's nonce
-are authenticated. It never carries the passphrase, the cluster key or the request secret, and a
+AES-256-GCM under a key derived from the pool key; the kind, a timestamp and the asker's nonce
+are authenticated. It never carries the passphrase, the pool key or the request secret, and a
 capture holds nothing a passphrase guess can be tested against. The one unsealed datagram is a
-request to join a cluster by name and its answer (a port and whether it speaks TLS).
+request to join a pool by name and its answer (a port and whether it speaks TLS).
 
 **The join handshake.** A machine that has the passphrase and not the key asks a daemon in the
-cluster for it. They run SPAKE2 with the passphrase as the password and the daemon's certificate
+pool for it. They run SPAKE2 with the passphrase as the password and the daemon's certificate
 fingerprint as an identity, confirm to each other, and the daemon sends the key sealed under the
 exchange's key. An eavesdropper or an impersonator gets at most one online guess per attempt. A
 daemon counts every attempt per source address: five in ten minutes without a success locks that
 address out for ten minutes, thirty from all addresses lock the handshake for ten minutes, and
 each attempt is logged with its source and outcome. Each machine that joined with the
-passphrase keeps a scrypt hash of it beside the key (`cluster.json`, mode 600), which is the
+passphrase keeps a scrypt hash of it beside the key (`pool.json`, mode 600), which is the
 exchange's password; only a machine that holds it takes others in or checks a sign-in, and anyone
 who can read that file already holds the key. The passphrase itself is kept in the operating
 system's keystore.
@@ -78,8 +78,8 @@ run a job, read or write a file, learn the name or device report from `/health`,
 web interface. Can send requests; one that is not correctly signed is refused, and an address
 with ten failures in a minute is locked out for a minute. Can try passphrase guesses against the join
 handshake, at five per ten minutes per address (see above); nothing it captures supports a
-guess offline. Cannot read traffic between peers: request and response bodies and beacons are
-sealed under a key derived from the cluster key, and connections are TLS to a certificate the
+guess offline. Cannot read traffic between devices: request and response bodies and beacons are
+sealed under a key derived from the pool key, and connections are TLS to a certificate the
 beacon vouched for, TLS 1.3 at the least. Nothing turns TLS off, so file transfers and the streamed
 output of the model proxy, which the application does not seal, are protected by the transport alone.
 
@@ -119,20 +119,20 @@ These apply to every consumer of the library without a switch.
   and the model tier unless the caller passes `interventions=guard.off(because=...)`, which is
   logged. An empty list is refused.
 - A GGUF or safetensors header is read by one bounded reader (`poolhouse.hub.modelfile`): every
-  count and length is checked against the file's size, and a header is held to a pair cap, an
+  count and length is checked against the file's size, and a header is held to a key-value entry cap, an
   item budget, a nesting depth, a dimension cap and a time budget.
 - A server a `ServerManager` starts stops with the process that started it, including when that
   process is killed outright (`stop_on_exit`, a watchdog process, an orphan sweep on the next
   lease that stops only a server whose record proves its pid).
 - Importing `poolhouse` registers no signal handler or exit hook, builds no manager, opens no
   socket and writes no file; `poolhouse.__version__` and a `NullHandler` are all it adds.
-- The daemon listens on this machine until the machine joins a cluster; beyond this machine it
+- The daemon listens on this machine until the machine joins a pool; beyond this machine it
   is TLS 1.3 to a pinned certificate or nothing (there is no switch that turns it off, and a
   listener beyond this machine cannot be built without a TLS context); every request is signed, fresh and unseen, and its body is sealed
   with AES-256-GCM under a key derived separately from the signing secret; request framing,
   connection count and time are bounded.
-- A cluster's key is random and is handed to a joining machine by a password-authenticated
-  exchange; no key is derived from a passphrase, and a protocol 2 peer is ignored.
+- A pool's key is random and is handed to a joining machine by a password-authenticated
+  exchange; no key is derived from a passphrase, and a protocol 2 device is ignored.
 - `poolhouse.http.open_stream` and `build_request` open only `http` and `https`; messages about
   a URL carry no user, password or secret query parameter.
 - Everything fetched from the internet goes through `poolhouse.net` (`docs/internet.md`): a
@@ -146,7 +146,7 @@ These apply to every consumer of the library without a switch.
 - llama-server is never handed an `hf:` reference, so it never downloads anything itself.
 - Archives unpack through `safenames.unpack`; a remote file name goes through
   `safenames.safe_filename`.
-- Child processes (model servers, a peer's job) do not inherit tokens and keys.
+- Child processes (model servers, a device's job) do not inherit tokens and keys.
 - An MCP server started over stdio runs under the sandbox (`poolhouse.sandbox`): it reads the
   interpreter and the project, writes a scratch directory, reaches loopback only and sees only
   the environment it was given. With no sandbox available it is not started unless the caller
@@ -182,7 +182,7 @@ own:
 
 - **The guard's judge model** is attacked directly and measured with a real model: results in
   `docs/redteam/findings.md` ("Judge hardening") and `docs/guardrails.md` ("Attacks on the judge itself").
-- **Model servers a person pointed at.** `client/`, `bench/`, `fleet/*` peers, `serve/*` (a
+- **Model servers a person pointed at.** `client/`, `bench/`, `fleet/*` devices, `serve/*` (a
   server's slots and props by local port), and the decide backend (`decide/logprob.py`,
   `decide/router.py`, the server in `POOLHOUSE_DECIDE_URL`, 127.0.0.1:8080 unless set). These
   talk to an inference server the person configured; nothing they get back is installed or kept.
@@ -190,17 +190,17 @@ own:
   `localhost`, `::1`) unless the operator names the host in `POOLHOUSE_FETCH_ALLOW_HOSTS`,
   because a decider sees every tool call it judges (`decide.logprob.require_decider_host`;
   `tests/test_decide_hosts.py`). `client/` may still name a remote host; that is the person's choice.
-- **LAN onboarding** (`fleet/onboard/pairing.py`, `fleet/onboard/transfer.py`). A peer's
+- **LAN onboarding** (`fleet/onboard/join_code.py`, `fleet/onboard/transfer.py`). A device's
   certificate is pinned and never looked up in a trust store, so these cannot use the pipeline's
   client. What keeps them off the internet is `fleet/onboard/lan.py`: every connection first
   refuses an address that is public (loopback, private, link-local and carrier-grade NAT pass).
-  A `PeerSource` needs a pinned TLS context, or `http` to this machine only. A test removes the
+  A `DeviceSource` needs a pinned TLS context, or `http` to this machine only. A test removes the
   check and watches it fail, and another asserts neither module builds a default-trust client.
 - **Tailscale** (`fleet/tailnet.py`, `fleet/onboard/routes.py`). Detection runs only
   `tailscale status --json` (bounded output and time, scrubbed environment, tailnet-range
-  addresses only, no auth field copied). `routes.py` checks a paired device's pinned certificate
+  addresses only, no auth field copied). `routes.py` checks a member's pinned certificate
   over its LAN or tailnet address after `lan.py` has refused public addresses; a tailnet address
-  is a route, not a trust grant, and is learned only from the pairing exchange or a status peer
+  is a route, not a trust grant, and is learned only from the join exchange or a status device
   whose certificate matched, never from an announcement. See `docs/onboarding.md`.
 - **The red-team lab** (`redteam/tools.py`, `redteam/scenarios/fleet.py`,
   `redteam/scenarios/isolation.py`), which only connects to servers it started on 127.0.0.1.
@@ -224,16 +224,16 @@ at that commit.
 
 | # | Sev. | Where | What an attacker does | Fixed in |
 |---|---|---|---|---|
-| 1 | High | `fleet/daemon.py:396`, `fleet/api.py:99` | A host on the LAN sniffs the static bearer token from plaintext HTTP and has code execution on every peer (`POST /jobs`) | `188ff67` signed requests: the secret is never sent, requests are fresh and single-use |
-| 2 | High | `fleet/daemon.py:396` | The daemon listened on every interface by default, so a machine that never joined a cluster was reachable | `188ff67` loopback unless joined, `--lan`, `--host` or `--setup-from-lan` |
-| 3 | High | `fleet/models.py:252`, `fleet/api.py:421` | A peer (or anything holding the token) names `http://169.254.169.254/...` or an internal URL as a model source and the daemon fetches it; redirects were not re-checked | `e12a6d2` downloads go through `httpguard`; `db89b03` the guarded fetch itself |
+| 1 | High | `fleet/daemon.py:396`, `fleet/api.py:99` | A host on the LAN sniffs the static bearer token from plaintext HTTP and has code execution on every device (`POST /jobs`) | `188ff67` signed requests: the secret is never sent, requests are fresh and single-use |
+| 2 | High | `fleet/daemon.py:396` | The daemon listened on every interface by default, so a machine that never joined a pool was reachable | `188ff67` loopback unless joined, `--lan`, `--host` or `--setup-from-lan` |
+| 3 | High | `fleet/models.py:252`, `fleet/api.py:421` | A device (or anything holding the token) names `http://169.254.169.254/...` or an internal URL as a model source and the daemon fetches it; redirects were not re-checked | `e12a6d2` downloads go through `httpguard`; `db89b03` the guarded fetch itself |
 | 4 | High | `fleet/api.py:187,383,542` | `Content-Length` was read with a bare `int()`: a non-number raised in the handler, a negative one made `rfile.read(-1)` wait for EOF holding a thread, a huge one was read into memory | `188ff67` one validated reader, 413 above the cap |
 | 5 | Medium | `fleet/api.py:546` | `Content-Range` parsed with a bare `int()`; offsets and lengths were never checked against each other | `188ff67` |
 | 6 | Medium | `fleet/api.py` (server) | A client that dripped headers, or opened connections without limit, held a thread each (slowloris) | `188ff67` 15 s header deadline, 30 s socket timeout, 64 connections |
 | 7 | Medium | `fleet/api.py:174` | The `/infer` proxy forwarded any path to the model server, including `POST /slots/N?action=erase` and `/props` | `22b0267` allow-listed paths; caches and properties are read-only |
 | 8 | Medium | `fleet/api.py` (`/health`) | An unauthenticated caller read the machine name, device report and what it serves | `188ff67` |
 | 9 | Medium | `fleet/ui.py` login | Another machine on the LAN opening the web interface sent the passphrase over plain HTTP | `0828ee2` `--ui-from-lan` is the named opt-in; now it answers other machines over TLS only |
-| 10 | Medium | `fleet/discovery.py:86` | A 5 character minimum passphrase against offline grinding of a beacon's MAC | `7c13db7` 12 characters; superseded: beacons are sealed under a random cluster key and the passphrase only goes through the join handshake, so the minimum is 5 |
+| 10 | Medium | `fleet/discovery.py:86` | A 5 character minimum passphrase against offline grinding of a beacon's MAC | `7c13db7` 12 characters; superseded: beacons are sealed under a random pool key and the passphrase only goes through the join handshake, so the minimum is 5 |
 | 11 | Medium | `serve/manager.py` | A killed host left its llama-server holding GPU memory until the next lease on that port | `c367a8a` exit hook, signal chain and watchdog; `6f93a5a` verified orphan sweep |
 | 12 | Medium | `serve/process.py:126,157` | Without psutil, `kill_process_tree` silently did nothing and records were dropped | `c157987` psutil is a core dependency |
 | 13 | Medium | `fleet/updates.py:186` | A release asset's name from the API JSON was joined onto a directory (`../`), and an asset with no digest was accepted | `e12a6d2` |
@@ -241,7 +241,7 @@ at that commit.
 | 15 | Medium | `serve/build_release.py:86`, `fleet/llama.py:136`, `fleet/updates.py:238` | Three archive extractors with no size or entry cap; a zip bomb filled the disk | `e12a6d2`, `982b8eb` one extractor, `safenames.unpack` |
 | 16 | Medium | `fleet/autostart.py:140,187` | The boot job was staged in a user-writable directory and copied by the privileged command; a user-level process swapped it while the password dialog was open | `70a13f1` the command carries the text |
 | 17 | Medium | `packaging/install.sh:112`, `install.ps1:129` | The installers ran what a release zip contained with no integrity check | `60df6a0` digest required and compared |
-| 18 | Medium | `serve/binary.py:234`, `fleet/jobs.py:255`, `serve/python_engines.py:56` | A model server or a peer's job inherited `HF_TOKEN`, `ANTHROPIC_API_KEY` and every other secret in the environment | `0bc5597` |
+| 18 | Medium | `serve/binary.py:234`, `fleet/jobs.py:255`, `serve/python_engines.py:56` | A model server or a device's job inherited `HF_TOKEN`, `ANTHROPIC_API_KEY` and every other secret in the environment | `0bc5597` |
 | 19 | Low | `sources/html.py:239` | A document with a DOCTYPE and nested entities expanded without bound (`S314`) | `982b8eb` refused |
 | 20 | Low | `fleet/autostart.py:109`, `scrape/browser.py:74` | A path or an application name containing `"` ended an AppleScript string | `70a13f1` escaped |
 | 21 | Low | `http.py:130,140` | A URL with a password or `?token=` appeared in `ServerError` messages and so in logs; `file:` and `ftp:` were opened by `urllib` | `f36831e` |
@@ -250,9 +250,9 @@ at that commit.
 | 24 | Low | `.github/workflows/*.yml` | Third-party actions pinned by tag, no `permissions:` on `ci.yml` and `release.yml` | `2478cfc` |
 | 25 | Info | `credentials` (new) | Tokens were read ad hoc from the environment by each caller | `816f978` one resolver; `docs/credentials.md` |
 | 26 | Info | `http.check` | The address check ran before the connection, so DNS could answer differently the second time | `db89b03` `httpguard.fetch` connects to the address it checked |
-| 27 | Low | `serve/preflight.py:87`, `serve/mlx_tree.py:92` | A model file whose header declares a string, an array or a pair count of 2^40 made the preflight allocate or loop on it | `35846af` |
-| 28 | Medium | `fleet/daemon.py`, `fleet/api.py` | Anyone on the segment read and altered peer-to-peer bodies (jobs, files, replies) | `d6ea366` |
-| 29 | Medium | `fleet/discovery.py:_salt_for` | The passphrase salt was a hash of the cluster name, so a table precomputed for `poolhouse` fit every cluster of that name | `518a855` per-cluster random salt, protocol 2; superseded: no key is derived from a passphrase |
+| 27 | Low | `serve/preflight.py:87`, `serve/mlx_tree.py:92` | A model file whose header declares a string, an array or a key-value count of 2^40 made the preflight allocate or loop on it | `35846af` |
+| 28 | Medium | `fleet/daemon.py`, `fleet/api.py` | Anyone on the segment read and altered device-to-device bodies (jobs, files, replies) | `d6ea366` |
+| 29 | Medium | `fleet/discovery.py:_salt_for` | The passphrase salt was a hash of the pool name, so a table precomputed for `poolhouse` fit every pool of that name | `518a855` per-pool random salt, protocol 2; superseded: no key is derived from a passphrase |
 | 30 | Medium | `hub/header.py`, `hub/cards.py`, `serve/tensors.py` | Three more GGUF readers walked the counts and lengths a file claimed: a 2^60-byte string raised `MemoryError`, a 2^50-item or deeply nested array looped for as long as it liked, and a model list hung on one hostile file | integration: one reader, `hub/modelfile.py` |
 
 `ruff --select S` (bandit) over `src`: 84 findings at `agent/audit`; the `ruff-security` budget
@@ -296,32 +296,32 @@ as its identities, so a wrong code and a machine in the middle
 fail the same way, and a captured exchange gives nothing to test guesses against. The code
 exists only after the owner accepts, never appears in a notification, lives 120 seconds and
 has three tries; requests are limited per device, per address and overall, and a declined or
-failed device waits. A cluster member is fully trusted, so pairing hands over the cluster key
-unless told not to. Pairing also lists each side's certificate in the other's cluster record, and
-`poolhouse-peers members revoke` puts a device out of the cluster (not only of pairing): it is
+failed device waits. A pool member is fully trusted, so joining hands over the pool key
+unless told not to. Joining also lists each side's certificate in the other's pool record, and
+`poolhouse-members roster remove` puts a device out of the pool (not only of joining): it is
 refused from its next handshake, but, while it holds the key, it can still read captured beacons until
-the key is rotated (not automated yet). Files from peers are checked
-against a manifest signed with the cluster's Ed25519 key (generated on the controller, kept in the
-OS keystore, separate from the cluster key; export, rotation and revocation need a person at a
+the key is rotated (not automated yet). Files from devices are checked
+against a manifest signed with the pool's Ed25519 key (generated on the controller, kept in the
+OS keystore, separate from the pool key; export, rotation and revocation need a person at a
 terminal; manifests last three days), chunk by chunk, and are staged for the scan rather than
 installed. A gated model goes only to the devices the owner marked as theirs, after their licence
 acceptance is on record; credentials never travel. Nothing pushes software to a machine that has none: the owner
 opens an offer on it and runs a short, pinned installer, or starts `bootstrap --ssh` with their own
-keys, a host key typed in full and a fixed script. Model downloads ask the paired devices before the
-Hub (`docs/model-discovery.md`, "Peers first"): the digest a file must have is the Hub's listing,
-never one a peer states; peers are reached only on private, loopback, link-local or tailnet
+keys, a host key typed in full and a fixed script. Model downloads ask the members before the
+Hub (`docs/model-discovery.md`, "Devices first"): the digest a file must have is the Hub's listing,
+never one a device states; devices are reached only on private, loopback, link-local or tailnet
 addresses over pinned TLS; the serving device applies the sharing level and withholds a quarantined
-copy; a peer whose bytes fail a digest is dropped and reported to sentinel. Off with `--no-peers`,
-`POOLHOUSE_NO_PEERS=1` or `poolhouse cluster peers off`. Pairing fills the peer book: each side's
+copy; a device whose bytes fail a digest is dropped and reported to sentinel. Off with `--no-members`,
+`POOLHOUSE_NO_MEMBERS=1` or `poolhouse pool model-sources off`. Joining fills the device book: each side's
 share address, pinned certificate, signing key and request key arrive in the grant and in an
 offer sealed under the exchange (a bad tag, or a certificate other than the one the exchange
 bound, stores nothing); revoking removes the rows. `fleet share --models` serves only paths that
 resolve inside the model roots at every request, never a quarantined copy, and a gated model only
 to the owner's marked devices with the licence acceptance on record, which the downloading device
-writes down (who, when, hash) in an append-only file. Routes to a paired device (this network,
+writes down (who, when, hash) in an append-only file. Routes to a member (this network,
 then its tailnet address) always end in the pinned certificate after the public-address check; a
-peer that stays under 2 MiB/s for 15 s is given up for the Hub. What this does not cover:
-the pairing mathematics is Python integers (not constant time) and wants an independent review
+device that stays under 2 MiB/s for 15 s is given up for the Hub. What this does not cover:
+the join mathematics is Python integers (not constant time) and wants an independent review
 before a public release; the re-key flow, per-device credentials and SSH push are designed and
 not built.
 
@@ -355,7 +355,7 @@ no more than what its tests show:
   `.poolhouse-quarantine` directory under the managed root it sits in. Nothing outside
   `POOLHOUSE_HOME`, `POOLHOUSE_CACHE` and the Hugging Face hub cache is ever moved. Release
   moves the file back byte for byte; only a person's confirmed purge deletes.
-- **A peer that replays signed requests or sends forged ones is refused** once it crosses a
+- **A device that replays signed requests or sends forged ones is refused** once it crosses a
   threshold, through a wrapper around `macauth.Authenticator.check` that the fleet daemon
   installs (`tests/test_sentinel_wiring_serve.py` sends forged requests to a real handler).
 - **Text a guard rail denies or reads as an instruction is held**, not shown again, and a
@@ -537,7 +537,7 @@ a link or image in it is shown as the words and the address it names, and forms,
 and styles are removed, so nothing a model writes can fetch an address or send the person
 anywhere.
 
-Board participation in Fleet uses the existing UI authorization: a signed-in cluster session
+Board participation in Fleet uses the existing UI authorization: a signed-in pool session
 or a strictly local UI on an unjoined machine. Every API request requires the UI header;
 posts also require a same-origin JSON request. The maintained Board service reads the private
 person token on the server and verifies its human role. Browser requests cannot supply a

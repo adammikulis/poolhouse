@@ -1,8 +1,8 @@
 """Who may be handed which file: the three levels of `Entry.sharing`, and the licence record.
 
-``open``   any paired peer may have it (programs, ungated models).
+``open``   any member may have it (programs, ungated models).
 ``owner``  a licence-restricted or gated model: only a device the owner marked as THEIRS at
-           pairing, and only once the owner's acceptance of that licence is on record (who,
+           joining, and only once the owner's acceptance of that licence is on record (who,
            when, which licence, its URL). A device belonging to another person never gets it,
            even inside the same fleet.
 ``never``  the licence forbids copies: every device downloads it itself from the source.
@@ -44,9 +44,9 @@ def classify(*, gated: bool | None, forbids_copies: bool | None) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Access:
-    """Who is asking, as far as the server can tell: the paired device whose own secret signed
+    """Who is asking, as far as the server can tell: the member whose own secret signed
     the request (``device``, its certificate fingerprint) and whether the owner marked it
-    theirs. A request signed with only the cluster key has neither."""
+    theirs. A request signed with only the pool key has neither."""
 
     device: str = ""
     mine: bool = False

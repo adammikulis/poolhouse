@@ -98,7 +98,7 @@ class StartupModelTests(unittest.TestCase):
         ui.authed.return_value = False
         ui.may_setup.return_value = "remote setup refused"
         with patch.object(routes, "choices") as offered, patch.object(
-                routes, "in_cluster", return_value=False), patch.object(routes.Router, "send") as send:
+                routes, "in_pool", return_value=False), patch.object(routes.Router, "send") as send:
             routes.Router(ui, handler).run()
             self.assertEqual(send.call_args.args[0], 403)
             offered.assert_not_called()

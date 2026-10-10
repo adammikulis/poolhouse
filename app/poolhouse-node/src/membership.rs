@@ -29,7 +29,7 @@ const VERSION: u64 = 1;
 pub enum Policy {
     /// A device on the same network segment is enrolled automatically.
     Open,
-    /// A device is enrolled only through a pairing code both people know.
+    /// A device is enrolled only through a join code both people know.
     Secure,
 }
 
@@ -78,7 +78,7 @@ pub struct Device {
     /// Milliseconds since the epoch.
     #[serde(default)]
     pub at: u64,
-    /// The fingerprint of the device that recorded this, or why (`pairing`, `open`, `self`).
+    /// The fingerprint of the device that recorded this, or why (`join-code`, `open`, `self`).
     #[serde(default)]
     pub by: String,
 }
@@ -225,7 +225,7 @@ impl Pool {
     /// Put a device out: it is refused from its next handshake and its next request.
     pub fn revoke(&mut self, fingerprint: &str, by: &str, now_ms: u64) -> Result<Device> {
         if !valid_fingerprint(fingerprint) {
-            return Err(Error::Invalid("a device is revoked by its fingerprint, 64 hex digits".into()));
+            return Err(Error::Invalid("a device is removed by its fingerprint, 64 hex digits".into()));
         }
         let held = self.devices.get(fingerprint).cloned();
         if let Some(d) = held.as_ref().filter(|d| d.status == Status::Revoked) {

@@ -335,9 +335,9 @@ def test_the_system_prompt_tells_the_model_what_the_fence_means():
 @pytest.mark.parametrize('value,kind', [
     ('mlws1.worker.' + 'a' * 43, 'workspace-token'),
     ('mlws1.worker.one/child.two.' + 'b' * 43, 'workspace-token'),
-    ('mlsk1.' + 'c' * 43, 'cluster-token'),
+    ('mlsk1.' + 'c' * 43, 'pool-token'),
 ])
-def test_bare_workspace_and_cluster_capabilities_are_redacted(value, kind):
+def test_bare_workspace_and_pool_capabilities_are_redacted(value, kind):
     clean, kinds = redact(f'connection refused for {value}')
     assert value not in clean and kind in kinds
     assert 'connection refused' in clean

@@ -1,4 +1,4 @@
-"""Shell access to an authoritative project board."""
+"""Shell access to an authoritative board."""
 
 from argparse import Namespace
 from pathlib import Path
@@ -13,8 +13,8 @@ from poolhouse.workspace.remote import RemoteWorkspace
 OPTIONS = [option("json"), flag("action", choices=("connect", "connection", "join", "whoami", "agents", "boards",
             "read", "post", "send", "inbox", "announce", "claims", "claim", "release", "heartbeat", "history", "use")),
            flag("arguments", nargs="*"), flag("--host", default=""),
-           flag("--project-id", default=""), flag("--cluster-key", default=""),
-           flag("--cluster", default=""),
+           flag("--project-id", default=""), flag("--pool-key", default=""),
+           flag("--pool", default=""),
            flag("--name", default=""), flag("--agent", default=""),
            flag("--token-file", default=""), flag("--model", default=""),
            flag("--harness", default=""), flag("--note", default="", help="claim: a short note shown beside the claim"),
@@ -26,13 +26,13 @@ def run(args):
     """Run a project-scoped remote operation."""
     if args.action == "connect":
         if args.arguments or args.host or args.project_id:
-            raise ValueError("connect discovers this project on its Dev cluster")
+            raise ValueError("connect discovers this project on its pool")
         return connect(Path(args.project_root), args.name or args.agent,
-                       claim=(args.model, args.harness), cluster=args.cluster,
-                       cluster_key=Path(args.cluster_key) if args.cluster_key else None)
+                       claim=(args.model, args.harness), pool=args.pool,
+                       pool_key=Path(args.pool_key) if args.pool_key else None)
     remote = RemoteWorkspace(args.host, args.project_id,
-                             cluster_key=Path(args.cluster_key) if args.cluster_key else None,
-                             cluster=args.cluster)
+                             pool_key=Path(args.pool_key) if args.pool_key else None,
+                             pool=args.pool)
     values, action = args.arguments, args.action
     if action == "join":
         if len(values) != 1:
@@ -48,7 +48,7 @@ def run(args):
             raise ValueError("connection takes no positional arguments")
         return connection_details.details(remote, token)
     if action == "use":
-        return bind(remote, Path(args.project_root), args.agent, args.cluster)
+        return bind(remote, Path(args.project_root), args.agent, args.pool)
     if action in {"claim", "release", "heartbeat"}:
         if (action == "heartbeat" and values) or (action != "heartbeat" and len(values) != 2):
             raise ValueError(f"invalid arguments for remote {action}")

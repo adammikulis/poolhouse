@@ -81,18 +81,18 @@ def rail_answer(shown: Any) -> RailAnswer:
 
 def watch_authenticator(auth: Any, sentinel: Sentinel, verdict: type) -> Any:
     """Wrap ``auth.check`` (a ``macauth.Authenticator``; ``verdict`` is its ``Verdict``
-    class) so that outcomes feed the peer watch and a quarantined address is refused."""
+    class) so that outcomes feed the member watch and a quarantined address is refused."""
     original = auth.check
 
     def check(method: str, url: str, headers: Mapping[str, str], body: bytes | None,
               who: str = "") -> Any:
-        if who and sentinel.peer_blocked(who):
+        if who and sentinel.member_blocked(who):
             return verdict(False, "this address is quarantined", locked=True)
         result = original(method, url, headers, body, who)
         if who:
             outcome = "ok" if result.ok else next(
                 (o for needle, o in _OUTCOMES if needle in result.reason), "bad_sig")
-            sentinel.handle_all([sentinel.peers.note(who, outcome)])
+            sentinel.handle_all([sentinel.members.note(who, outcome)])
         return result
 
     auth.check = check

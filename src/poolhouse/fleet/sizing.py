@@ -19,7 +19,7 @@ def estimate(model: str, *, context: int = 32768, draft: str = "auto",
     file is at hand, else the weights' size from the Hub listing, else 0 for unknown.
 
     Unknown is not enormous: `plan` sends a model it could not size to the roomiest idle
-    peer and lets that peer's preflight be the judge, as `weight_of` leaves it to the load.
+    member and lets that member's preflight be the judge, as `weight_of` leaves it to the load.
     ``preflight`` is `serve.preflight.Preflight` unless a test hands in a fake.
     """
     from poolhouse.serve.preflight import RUNTIME_ALLOWANCE_BYTES

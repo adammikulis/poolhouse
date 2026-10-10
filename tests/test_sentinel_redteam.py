@@ -1,4 +1,4 @@
-"""An attacker acting through the agent loop or a peer cannot release, disable, read or edit
+"""An attacker acting through the agent loop or a member cannot release, disable, read or edit
 what sentinel holds."""
 
 from __future__ import annotations
@@ -119,7 +119,7 @@ def test_the_held_file_is_unreachable_through_the_agent_surface(node):
 
 
 def test_an_edited_state_file_cannot_release_anything(node):
-    held = node.store.quarantine(("peer", "10.1.1.1"), "forged", None)
+    held = node.store.quarantine(("member", "10.1.1.1"), "forged", None)
     state = node.store.root / "state.json"
     doc = json.loads(state.read_text())
     for record in doc["payload"]["records"]:
@@ -127,22 +127,22 @@ def test_an_edited_state_file_cannot_release_anything(node):
     state.write_text(json.dumps(doc))
     fresh = Sentinel(node.root, roots=[node.store.root])
     assert fresh.store.tampered
-    assert fresh.peer_blocked("10.1.1.1") and fresh.peer_blocked("anyone")
+    assert fresh.member_blocked("10.1.1.1") and fresh.member_blocked("anyone")
     assert any(e.kind == "sentinel.tamper" for e in fresh.bus.recent())
     assert held.id
 
 
-def test_a_peer_cannot_lift_its_own_block(node):
+def test_a_member_cannot_lift_its_own_block(node):
     now = [0.0]
-    from poolhouse.sentinel.rates import PeerLimits, PeerWatch
+    from poolhouse.sentinel.rates import MemberLimits, MemberWatch
 
-    node.peers = PeerWatch(PeerLimits(), clock=lambda: now[0])
+    node.members = MemberWatch(MemberLimits(), clock=lambda: now[0])
     for _ in range(3):
-        node.handle_all([node.peers.note("10.9.9.9", "replay")])
-    assert node.peer_blocked("10.9.9.9")
+        node.handle_all([node.members.note("10.9.9.9", "replay")])
+    assert node.member_blocked("10.9.9.9")
     for _ in range(100):
-        node.handle_all([node.peers.note("10.9.9.9", "ok")])
-    assert node.peer_blocked("10.9.9.9")
+        node.handle_all([node.members.note("10.9.9.9", "ok")])
+    assert node.member_blocked("10.9.9.9")
 
 
 def _cli(*argv, env_extra=None, tty=False, answer=""):
@@ -180,7 +180,7 @@ def cli_env(tmp_path):
 
 def _seed(tmp_path) -> str:
     node = Sentinel(tmp_path / "home" / "sentinel", roots=[tmp_path])
-    return node.store.quarantine(("peer", "10.2.2.2"), "forged", None).id
+    return node.store.quarantine(("member", "10.2.2.2"), "forged", None).id
 
 
 def test_the_command_line_refuses_release_without_a_terminal(tmp_path, cli_env):

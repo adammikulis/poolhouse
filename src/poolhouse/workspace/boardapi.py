@@ -40,7 +40,7 @@ class Held(list):  # type: ignore[type-arg]
 
 @dataclass(slots=True)
 class Follow:
-    """What to follow: one of ``board``, ``thread`` or ``dm`` (with ``between`` for a pair a person
+    """What to follow: one of ``board``, ``thread`` or ``dm`` (with ``between`` for a conversation a person
     reads), the messages after ``after`` (negative: from now, after the last ``backlog``), at most
     ``limit`` of them, how long `Workspace.follow` waits and which wake pipe it sleeps on."""
 
@@ -288,7 +288,7 @@ class BoardApi:
         who = Identity(member, AGENT)
         names = []
         if project:
-            name = self.store.project_board(project)
+            name = self.store.board_for(project)
             with self.store.locked():
                 boards = self.store.state()[0]
                 if initial_only and any(row.get("kind") == "board"
@@ -366,12 +366,12 @@ class BoardApi:
         return {"root": root, **page(rows, self._plain, limit, after, before)}
 
     # -- direct conversations -------------------------------------------------------------
-    def _pair_ok(self, who: Identity, a: str, b: str) -> None:
+    def _parties_ok(self, who: Identity, a: str, b: str) -> None:
         if (who.role == AGENT and who.id not in (a, b)
-                and not coordination_access.shared_pair(self.ws, who, a, b)):
+                and not coordination_access.shared_conversation(self.ws, who, a, b)):
             raise Denied(f"{who.id} is not part of that conversation")
 
-    def _pair_rows(self, a: str, b: str) -> list[dict[str, Any]]:
+    def _conversation_rows(self, a: str, b: str) -> list[dict[str, Any]]:
         return [r for r in self.ws.bus.log.rows() if r["kind"] == "msg" and self.ws.bus.live(r)
                 and {r["from"], r["to"]} == {a, b} and not r["to"].startswith("#")
                 and r["to"] != "*" and a != b]
@@ -383,9 +383,9 @@ class BoardApi:
         a = between or who.id
         if not (valid_id(other) and valid_id(a)):
             raise ValueError("name an agent id")
-        self._pair_ok(who, a, other)
+        self._parties_ok(who, a, other)
         out = []
-        for r in self._pair_rows(a, other)[-max(limit, 0):]:
+        for r in self._conversation_rows(a, other)[-max(limit, 0):]:
             shown = self._show(r, 0, who)
             shown["direction"] = "sent" if r["from"] == a else "received"
             out.append(shown)
@@ -398,24 +398,24 @@ class BoardApi:
         who = self._who(token)
         if not (valid_id(a) and valid_id(b)):
             raise ValueError("name two agent ids")
-        self._pair_ok(who, a, b)
+        self._parties_ok(who, a, b)
         return [{**self._plain(r), "direction": "sent" if r["from"] == a else "received"}
-                for r in self._pair_rows(a, b)[-max(limit, 0):]]
+                for r in self._conversation_rows(a, b)[-max(limit, 0):]]
 
     def ui_dm_page(self, token: str, a: str, b: str, window: tuple[int, int, int] = (100, 0, 0)) -> dict[str, Any]:
         """A cursor and byte bounded direct conversation page."""
         who = self._who(token)
         if not (valid_id(a) and valid_id(b)):
             raise ValueError("name two agent ids")
-        self._pair_ok(who, a, b)
+        self._parties_ok(who, a, b)
         limit, after, before = window
-        rows = self._pair_rows(a, b) if limit else []
+        rows = self._conversation_rows(a, b) if limit else []
         return {"a": a, "b": b, **page(rows, self._plain, limit, after, before)}
 
     def dm_list(self, token: str) -> list[dict[str, Any]]:
         """The caller's discoverable addressed and shared project conversations."""
         who = self._who(token)
-        marks, pairs = self.store.marks(who.id), {}
+        marks, threads = self.store.marks(who.id), {}
         for r in self.ws.bus.log.rows():
             if r["kind"] != "msg" or r["to"].startswith("#") or r["to"] == "*" \
                     or not self.ws.bus.live(r):
@@ -423,13 +423,13 @@ class BoardApi:
             if not coordination_access.can_read_row(self.ws, who, r):
                 continue
             key = tuple(sorted((r["from"], r["to"])))
-            p = pairs.setdefault(key, {"a": key[0], "b": key[1], "messages": 0, "last": 0.0,
+            p = threads.setdefault(key, {"a": key[0], "b": key[1], "messages": 0, "last": 0.0,
                                        "unread": 0})
             p["messages"] += 1
             p["last"] = r["ts"]
             other = r["from"]
             p["unread"] += r["to"] == who.id and r["seq"] > marks.get(f"dm:{other}", 0)
-        return sorted(pairs.values(), key=lambda p: p["last"], reverse=True)
+        return sorted(threads.values(), key=lambda p: p["last"], reverse=True)
 
     def mentions(self, token: str, limit: int = 50) -> list[dict[str, Any]]:
         """Recent board messages that mention the caller, on boards the caller can read."""
@@ -459,7 +459,7 @@ class BoardApi:
                 raise ValueError(f"no message {plain.line(target, 20)}")
             if root["to"].startswith("#"):
                 self.require_read(who, root["to"])
-            elif not coordination_access.shared_pair(self.ws, who, root["from"], root["to"]):
+            elif not coordination_access.shared_conversation(self.ws, who, root["from"], root["to"]):
                 self.ws.audit("board.denied", who.id, act="subscribe-dm")
                 raise Denied("subscribe to direct coordination within your project")
             self._thread_access(who, self.ws.bus.thread(root["seq"]))
@@ -656,7 +656,7 @@ class BoardApi:
         a = between or who.id
         if not (valid_id(dm) and valid_id(a)):
             raise ValueError("name an agent id")
-        self._pair_ok(who, a, dm)
+        self._parties_ok(who, a, dm)
         return lambda r: ({r["from"], r["to"]} == {a, dm} and a != dm
                           and not r["to"].startswith("#") and r["to"] != "*")
 

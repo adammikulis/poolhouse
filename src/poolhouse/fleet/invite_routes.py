@@ -120,7 +120,7 @@ def public(ui: Any, handler: Any, raw: bytes | None) -> bool:
 
 def joined(ui: Any, redeemed: tuple[Any, str]) -> dict[str, Any]:
     member, host_cert = redeemed
-    adopt(member, ui.cluster_key_path)
-    Pool(ui.cluster_key_path).joined(member.group, host_cert, "invitation")
+    adopt(member, ui.pool_key_path)
+    Pool(ui.pool_key_path).joined(member.group, host_cert, "invitation")
     ui.rejoined()
     return {"ok": True, "group": member.group}

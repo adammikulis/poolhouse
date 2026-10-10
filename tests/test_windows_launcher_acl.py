@@ -19,7 +19,7 @@ def test_a_launcher_others_can_only_read_and_run_is_owned(tmp_path):
     import ntsecuritycon
 
     from poolhouse import windows_private
-    target = tmp_path / "poolhouse-peers.exe"
+    target = tmp_path / "poolhouse-members.exe"
     target.write_text("x")
     windows_private.restrict(target)
     _grant(target, ntsecuritycon.FILE_GENERIC_READ | ntsecuritycon.FILE_GENERIC_EXECUTE)
@@ -31,7 +31,7 @@ def test_a_launcher_another_account_can_write_is_refused(tmp_path):
     import ntsecuritycon
 
     from poolhouse import windows_private
-    target = tmp_path / "poolhouse-peers.exe"
+    target = tmp_path / "poolhouse-members.exe"
     target.write_text("x")
     windows_private.restrict(target)
     _grant(target, ntsecuritycon.FILE_GENERIC_WRITE)

@@ -1,4 +1,4 @@
-"""Paired-device egress and daemon project authority attacks."""
+"""Member egress and daemon project authority attacks."""
 
 import base64
 import threading
@@ -9,7 +9,7 @@ import pytest
 from poolhouse.fleet import device_auth
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.http import Server, ServerError
 from poolhouse.workspace import coordinator_client
 from poolhouse.workspace.identity import Denied
@@ -18,32 +18,32 @@ pytest_plugins = ("test_device_agent_bootstrap",)
 
 
 @pytest.mark.redteam
-@pytest.mark.parametrize("change", ["revoked", "certificate", "unpaired", "missing", "ambiguous"])
-def test_coordinator_peer_rejects_untrusted_pairing_before_transport(tmp_path, monkeypatch, change):
+@pytest.mark.parametrize("change", ["revoked", "certificate", "unjoined", "missing", "ambiguous"])
+def test_coordinator_member_rejects_untrusted_joining_before_transport(tmp_path, monkeypatch, change):
     device = SimpleNamespace(fingerprint="a" * 64, status="revoked" if change == "revoked" else "active")
-    row = {"source": "discovery" if change == "unpaired" else "pairing",
+    row = {"source": "discovery" if change == "unjoined" else "join-code",
            "fingerprint": device.fingerprint,
            "certificate": "wrong" if change == "certificate" else "trusted",
            "device_secret": "" if change == "missing" else base64.urlsafe_b64encode(b"x" * 32).decode()}
     monkeypatch.setattr(coordinator_client.home, "state", lambda name: tmp_path)
     monkeypatch.setattr(coordinator_client, "Devices", lambda path: SimpleNamespace(all=lambda: [device]))
-    monkeypatch.setattr(coordinator_client, "PeerBook", lambda path: SimpleNamespace(
+    monkeypatch.setattr(coordinator_client, "MemberBook", lambda path: SimpleNamespace(
         rows=lambda: [row, dict(row)] if change == "ambiguous" else [row]))
     monkeypatch.setattr(coordinator_client.http, "pin", lambda *args: pytest.fail("untrusted pin installed"))
-    monkeypatch.setattr(coordinator_client, "Peer", lambda *args, **kwargs: pytest.fail("untrusted transport opened"))
-    with pytest.raises(Denied, match="unique active paired"):
-        coordinator_client._device_peer({"endpoint": "https://coordinator.example:8770", "cert": "trusted"})
+    monkeypatch.setattr(coordinator_client, "Member", lambda *args, **kwargs: pytest.fail("untrusted transport opened"))
+    with pytest.raises(Denied, match="unique active member"):
+        coordinator_client._device_member({"endpoint": "https://coordinator.example:8770", "cert": "trusted"})
 
 
 @pytest.mark.redteam
-@pytest.mark.parametrize("credential", ["missing", "cluster", "revoked", "unsealed", "malformed"])
+@pytest.mark.parametrize("credential", ["missing", "pool", "revoked", "unsealed", "malformed"])
 def test_daemon_project_dispatch_refuses_invalid_device_requests(enrolled, tmp_path, credential):
     _kit, device, projects, document = enrolled
     calls = []
     host = SimpleNamespace(answer=lambda *args, **kwargs: calls.append((args, kwargs)))
     jobs = JobRunner(tmp_path / "jobs")
     server = Server(("127.0.0.1", 0), make_handler(Daemon(
-        jobs, tmp_path / "files", "cluster-token", projects=projects,
+        jobs, tmp_path / "files", "pool-token", projects=projects,
         workspaces=host, devices=lambda: [device])))
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
@@ -71,9 +71,9 @@ def test_daemon_project_dispatch_refuses_invalid_device_requests(enrolled, tmp_p
             with pytest.raises(ServerError) as refused:
                 request_bytes(origin + route, method="POST", data=b"{}", headers=headers)
         else:
-            peer = Peer(origin, "cluster-token" if credential == "cluster" else secret)
+            member = Member(origin, "pool-token" if credential == "pool" else secret)
             with pytest.raises(ServerError) as refused:
-                peer._request("POST", route, data=b"[" if credential == "malformed" else b"{}")
+                member._request("POST", route, data=b"[" if credential == "malformed" else b"{}")
         assert refused.value.status in {400, 401, 403}
         assert calls == []
     finally:

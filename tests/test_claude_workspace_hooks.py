@@ -96,11 +96,11 @@ def test_missing_model_registers_session_without_guessing_and_explains_it(comman
 @pytest.mark.parametrize('name', ['claude-session-start', 'claude-subagent-start'])
 @pytest.mark.redteam
 def test_unavailable_workspace_is_nonblocking_with_redacted_reason(commands, monkeypatch, tmp_path, name):
-    monkeypatch.setenv('HOOK_FAILURE', 'Denied: daemon unavailable mlws1.actor.syntheticSecret123 mlsk1.syntheticCluster123')
+    monkeypatch.setenv('HOOK_FAILURE', 'Denied: daemon unavailable mlws1.actor.syntheticSecret123 mlsk1.syntheticPool123')
     done = invoke(name, {'model': 'claude-sonnet-4-6', 'cwd': str(tmp_path)})
     assert done.returncode == 0 and 'command exited 3' in done.stderr and 'daemon unavailable' in done.stderr
-    assert 'syntheticSecret123' not in done.stderr and 'syntheticCluster123' not in done.stderr
-    assert '[REDACTED:workspace-token]' in done.stderr and '[REDACTED:cluster-token]' in done.stderr
+    assert 'syntheticSecret123' not in done.stderr and 'syntheticPool123' not in done.stderr
+    assert '[REDACTED:workspace-token]' in done.stderr and '[REDACTED:pool-token]' in done.stderr
 
 
 @pytest.mark.parametrize('name', ['claude-session-start', 'claude-subagent-start'])

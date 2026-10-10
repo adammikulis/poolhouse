@@ -630,7 +630,7 @@ def test_what_a_fold_costs_as_a_source_grows_is_what_the_interval_is_chosen_from
 def a_reset(unit):
     return ingest.Read(unit=unit.id, source=unit.source, chapter=unit.chapter,
                        section=unit.section, title=unit.section_title,
-                       error="ServerUnreachable: cannot reach it (Connection reset by peer)")
+                       error="ServerUnreachable: cannot reach it (Connection reset by member)")
 
 
 def test_a_reset_mid_request_is_read_once_more_and_the_second_answer_stands(monkeypatch):

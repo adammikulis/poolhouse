@@ -61,7 +61,7 @@
       const models = this.active ? this.data?.models || [] : chat.chatModels || [];
       const selected = model === undefined ? chat.picker.value : model;
       chat.picker.replaceChildren(...models.map((one) => el("option", { value: this.active ? one.ref : one.model },
-        one.name || (one.local ? one.model : `${one.model} — on ${one.peer}`))));
+        one.name || (one.local ? one.model : `${one.model} — on ${one.member}`))));
       if (selected && ![...chat.picker.options].some((option) => option.value === selected)) {
         chat.picker.append(el("option", { value: selected, disabled: "" }, `${selected} — unavailable`));
       }

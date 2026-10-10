@@ -386,10 +386,10 @@ def test_the_live_route_answers_the_moment_a_message_arrives_and_times_out_quiet
     began = time.monotonic()
     woke = json.loads(route(f"/board/wait?after={seq}&timeout=20")[1])
     assert woke["seq"] > seq and time.monotonic() - began < 3
-    threading.Timer(0.3, lambda: send(kit, "alice", "bob", "a private pair")).start()
+    threading.Timer(0.3, lambda: send(kit, "alice", "bob", "a private join")).start()
     began = time.monotonic()
-    pair = json.loads(route(f"/board/wait?after={woke['seq']}&timeout=20")[1])
-    assert pair["seq"] > woke["seq"] and time.monotonic() - began < 3
+    join = json.loads(route(f"/board/wait?after={woke['seq']}&timeout=20")[1])
+    assert join["seq"] > woke["seq"] and time.monotonic() - began < 3
     assert Path(kit.base / "wake").is_dir()
 
 

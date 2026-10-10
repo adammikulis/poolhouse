@@ -78,10 +78,10 @@ def test_maintained_launcher_records_selected_profile_and_mode(tmp_path, monkeyp
         return SimpleNamespace(pid=42, command=[module, *argv], log=log, started=1)
     monkeypatch.setattr(join, "detach", detach)
     profile = tmp_path / "development.key"
-    assert join.start_daemon(9123, tmp_path / "daemon", "device", cluster_key_path=profile, mode="dev") == 42
+    assert join.start_daemon(9123, tmp_path / "daemon", "device", pool_key_path=profile, mode="dev") == 42
     assert captured[0][0] == "poolhouse.cli.daemon"
     assert captured[0][1] == ["--port", "9123", "--root", str(tmp_path / "daemon"),
-                              "--name", "device", "--cluster-key", str(profile.resolve()), "--mode", "dev"]
+                              "--name", "device", "--pool-key", str(profile.resolve()), "--mode", "dev"]
     record = join.read_json(join.started_file(tmp_path / "daemon"), {})
     assert record["argv"] == [captured[0][0], *captured[0][1]]
 
@@ -91,17 +91,17 @@ def test_default_join_launcher_receives_effective_selected_profile(tmp_path, mon
     responses = iter([None, {"name": "device", "machine": "device-id"}])
     monkeypatch.setattr(join, "already_running", lambda _port: next(responses))
     monkeypatch.setattr(join, "checks", lambda *args, **kwargs: [])
-    monkeypatch.setattr(join, "peers", lambda **kwargs: [])
+    monkeypatch.setattr(join, "members", lambda **kwargs: [])
     monkeypatch.setattr(join, "wait_for_health", lambda *args, **kwargs: {})
-    monkeypatch.setattr(join.automatic_clusters, "ensure", lambda *args, **kwargs:
+    monkeypatch.setattr(join.automatic_pools, "ensure", lambda *args, **kwargs:
                         SimpleNamespace(group="development", mode="dev"))
     monkeypatch.setattr(join, "start_daemon", lambda *args, **kwargs: launched.append((args, kwargs)) or 42)
     profile = tmp_path / "development.key"
     joined = join.join_machine(root=tmp_path / "daemon", port=9123, name="device",
-                               cluster_key_path=profile, say=lambda _text: None)
+                               pool_key_path=profile, say=lambda _text: None)
     assert joined.started and joined.mode == "dev"
     assert launched == [((9123, tmp_path / "daemon", "device"),
-                         {"cluster_key_path": profile, "mode": "dev"})]
+                         {"pool_key_path": profile, "mode": "dev"})]
 
 
 def test_injected_launcher_keeps_three_argument_contract(tmp_path):

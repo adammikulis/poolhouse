@@ -1,7 +1,7 @@
 # Reputation of sources
 
 Poolhouse keeps a record of how every source it deals with has behaved: hosts, URLs, addresses,
-fleet peers, model repositories, artifact hashes and connectors. The record tightens what is
+fleet devices, model repositories, artifact hashes and connectors. The record tightens what is
 asked of a source. It never grants anything.
 
 ## Store
@@ -53,7 +53,7 @@ Only the system's own observations move a score; no function that changes a scor
 - `net.Pipeline.get/open`: clean runs, redirect targets, content shape; refusals as `denial`.
 - `net.download`: a failed pin is `hash_change`, a scanner hit is `scan_hit` (host and artifact
   hash), another rejection is `denial`; a kept file is a clean run.
-- `PeerWatch.note`: authentication failures and replays are `denial`, good requests are clean runs.
+- `DeviceWatch.note`: authentication failures and replays are `denial`, good requests are clean runs.
 - `web.read`: a page that reads like an instruction is `injection_flagged` against the URL it was
   fetched from.
 
@@ -76,7 +76,7 @@ A person at a terminal only; an agent marker in the environment refuses every on
 Completion credits and work reputation are separate from source-risk scores. New
 awards come only from the project task queue's independently accepted review.
 The reviewer is the person, the worker's actual task-creator parent, or a designated
-peer with a live person-set project grant. The worker cannot review or award itself.
+device with a live person-set project grant. The worker cannot review or award itself.
 The award binds the immutable task specification, worker proposal and review hashes;
 independent review checks replace worker-reported claims. Quality attestations are
 recorded in that authenticated review. Message threads provide discussion, not task
@@ -98,7 +98,7 @@ priority or baseline access. No redemption or charging is enabled. Resource usag
 accounted separately when a reviewer supplies measured per-task counters; unknown
 values stay null. Aggregates report the measurement count and cover independently reviewed
 contributions, not every run; worker-reported usage is not treated as a measurement. One owner-enrolled base agent per installed physical device owns its economy account.
-Saved local worker seats bind only through person-authorized enrollment using the
+Saved local worker sessions bind only through person-authorized enrollment using the
 maintained device ID; workers cannot choose or steal an account. Historical worker
 evidence rolls up through those persistent graph membership edges, including after
 model changes or worker stop. Devices remain separate. Unenrolled workers remain

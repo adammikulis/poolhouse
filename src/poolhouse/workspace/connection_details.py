@@ -1,4 +1,4 @@
-"""Verified network connection details for a project Board."""
+"""Verified network connection details for a board."""
 
 import base64
 import hashlib
@@ -30,15 +30,15 @@ def details(remote, token: str) -> dict:
             raise Denied("no reachable network address is available; local access remains available")
     elif address.is_unspecified or address.is_multicast or not address.is_private:
         raise Denied("connection details require a reachable LAN address")
-    peer = RemoteWorkspace(host, remote.project_id, cluster=remote.cluster,
-                           cluster_key=Path(remote.cluster_key) if remote.cluster_key else None)
-    if peer.device_cert != remote.device_cert:
+    member = RemoteWorkspace(host, remote.project_id, pool=remote.pool,
+                           pool_key=Path(remote.pool_key) if remote.pool_key else None)
+    if member.device_cert != remote.device_cert:
         raise Denied("network endpoint does not match the authenticated project authority")
-    verified = peer.call("whoami", token)
+    verified = member.call("whoami", token)
     if verified != who:
         raise Denied("network endpoint returned another project agent identity")
     return {"host": host, "port": urlsplit(host).port, "project_id": remote.project_id,
-            "cluster": remote.cluster,
+            "pool": remote.pool,
             "agent": who["id"], "tls_fingerprint": hashlib.sha256(
                 base64.b64decode(remote.device_cert)).hexdigest(),
             "state": "verified"}

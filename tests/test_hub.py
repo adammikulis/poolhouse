@@ -280,13 +280,13 @@ def test_on_disk_resolves_symlinks_because_a_cache_is_made_of_them(tmp_path, mon
     assert hub.on_disk() == {"thing-Q4.gguf": 5000}
 
 
-def _gguf(tmp_path, pairs):
+def _gguf(tmp_path, joins):
     """A minimal GGUF carrying only metadata, for reading it back."""
     import struct
 
     out = bytearray(b"GGUF" + struct.pack("<I", 3) + struct.pack("<Q", 0)
-                    + struct.pack("<Q", len(pairs)))
-    for key, value in pairs.items():
+                    + struct.pack("<Q", len(joins)))
+    for key, value in joins.items():
         out += struct.pack("<Q", len(key)) + key.encode()
         out += struct.pack("<I", 6) + struct.pack("<f", value)     # 6 == float32
     where = tmp_path / "model.gguf"

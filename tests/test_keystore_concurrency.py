@@ -63,7 +63,7 @@ def test_concurrent_keychain_sets_all_land_in_credentials_json(tmp_path):
 
 
 def test_concurrent_passphrase_saves_all_land_in_the_passphrase_file(tmp_path):
-    memberships = tmp_path / "home" / "clusters.json"
+    memberships = tmp_path / "home" / "pools.json"
     race(tmp_path, PASSPHRASES, str(memberships))
     held = json.loads(memberships.with_suffix(".passphrases").read_text())
     assert sorted(held) == sorted(f"n{i}" for i in range(RACERS))
@@ -76,5 +76,5 @@ def test_forgetting_a_passphrase_while_another_command_holds_the_file_reports_in
     told = []
     monkeypatch.setattr(recovery, "warn", told.append)
     monkeypatch.setattr(lock, "rewriting", lambda *_a, **_k: (_ for _ in ()).throw(lock.Busy("held")))
-    recovery.forget("g", tmp_path / "clusters.json")
+    recovery.forget("g", tmp_path / "pools.json")
     assert told and "was not removed" in told[0]

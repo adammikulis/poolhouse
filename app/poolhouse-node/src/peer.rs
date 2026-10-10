@@ -9,7 +9,7 @@
 //! |---|---|---|
 //! | `hello` | anyone not revoked | pool id, join policy, fingerprints; the boards held, to members |
 //! | `join_open` | anyone, under policy `open` | enrol the caller; reply with the pool record |
-//! | `pair_exchange`, `pair_confirm` | anyone, while pairing is open | SPAKE2 (`pairing`) |
+//! | `join_exchange`, `join_confirm` | anyone, while a join code is open | SPAKE2 (`join_code`) |
 //! | `members` | members | swap pool records |
 //! | `boards`, `vector`, `pull`, `push` | members | board sync (`netsync`) |
 //! | `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` | members | test shards (`shard`) |
@@ -72,7 +72,7 @@ fn hello(node: &Node, standing: Standing) -> Value {
 
 fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr) -> Result<Value> {
     if node.members.policy != Policy::Open {
-        return Err(Error::Denied("this pool takes a device only through a pairing code".into()));
+        return Err(Error::Denied("this pool takes a device only through a join code".into()));
     }
     if !crate::netif::on_segment(ip) {
         return Err(Error::Denied("this pool takes a device without a code only from its own network".into()));
@@ -136,7 +136,7 @@ fn dispatch(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> 
     let fp = cert_fingerprint(der);
     let result = answer(net, node, der, ip, req)?;
     // A device that has just joined says which port it listens on; its address is where it called from.
-    if matches!(req["op"].as_str(), Some("join_open" | "pair_confirm")) {
+    if matches!(req["op"].as_str(), Some("join_open" | "join_confirm")) {
         if let Some(port) = req["port"].as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0) {
             node.facts.set_addr(&fp, &SocketAddr::new(ip, port).to_string())?;
         }
@@ -155,8 +155,8 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
     match (op, standing) {
         ("hello", _) => Ok(hello(node, standing)),
         ("join_open", Standing::Unknown) => join_open(node, der, req, ip),
-        ("pair_exchange" | "pair_confirm", Standing::Unknown) => net.pairing_step(node, der, op, req),
-        ("join_open" | "pair_exchange" | "pair_confirm", _) => Err(Error::Denied("this device is already a member".into())),
+        ("join_exchange" | "join_confirm", Standing::Unknown) => net.join_code_step(node, der, op, req),
+        ("join_open" | "join_exchange" | "join_confirm", _) => Err(Error::Denied("this device is already a member".into())),
         (_, Standing::Unknown) => Err(Error::Denied("this device is not a member of the pool".into())),
         ("members", _) => members(node, &fp, req),
         ("boards", _) => Ok(json!({"boards": node.boards.keys().collect::<Vec<_>>()})),
@@ -208,7 +208,7 @@ pub struct PeerClient {
 impl PeerClient {
     /// Connect to ``addr`` showing ``me``; with ``expect`` the peer must show exactly that
     /// certificate (its fingerprint), without it any certificate is taken and the caller must
-    /// authenticate it (pairing).
+    /// authenticate it (a join code).
     pub fn connect(me: &Identity, addr: SocketAddr, expect: Option<&str>) -> Result<PeerClient> {
         let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
         tcp.set_read_timeout(Some(IO_TIMEOUT))?;

@@ -67,7 +67,7 @@ class Recovering:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise Unavailable('Board did not recover within the bounded reconnect window')
-        self.status.update(state='reconnecting', detail='Waiting for the authenticated project Board')
+        self.status.update(state='reconnecting', detail='Waiting for the authenticated board')
         time.sleep(min(POLL_S, remaining))
 
     def call(self, operation, token, *args, **kwargs):

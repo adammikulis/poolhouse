@@ -163,7 +163,7 @@ jobs:
           U='X-Poolhouse-UI: 1'; J='Content-Type: application/json'
           B=http://127.0.0.1:8899
           # A page is signed in only by a one-use ticket from the daemon's own launch secret
-          # (what `poolhouse peers open` presents), never by headers a client writes.
+          # (what `poolhouse members open` presents), never by headers a client writes.
           SECRET=$(python -c "import json,pathlib; print(json.loads((pathlib.Path.home()/'.poolhouse'/'traind'/'launch'/'secret.json').read_text())['secret'])")
           TICKET=$(curl -sf -H "$J" -H "$U" -H "X-Poolhouse-Launch: $SECRET" -X POST -d '{}' \
             $B/ui/launch/ticket | python -c "import json,sys; print(json.load(sys.stdin)['ticket'])")

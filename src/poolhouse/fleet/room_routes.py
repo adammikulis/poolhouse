@@ -9,7 +9,7 @@ from poolhouse import hub
 from poolhouse.sentinel.human import HumanRequired
 from poolhouse.serve import wired, wired_apply
 
-from .discovery import in_cluster
+from .discovery import in_pool
 from .session import parse_cookie
 
 __all__ = ["RoomRoutes"]
@@ -88,7 +88,7 @@ class RoomRoutes:
             return "a session opened with an access token cannot change the wiring limit"
         if session is not None and not session.credentialed:
             return "this session was not opened with a credential; open poolhouse from its own window"
-        if in_cluster(ui.cluster_key_path) and session is None:
+        if in_pool(ui.pool_key_path) and session is None:
             return "sign in first"
         return ""
 

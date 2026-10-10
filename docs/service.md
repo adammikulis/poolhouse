@@ -13,7 +13,7 @@ Every claim carries a tag:
   not vendor pages, and move weekly; none is a benchmark or a forecast.
 - **[plan]** a proposal, not a fact.
 
-`docs/pool-encryption.md` and `docs/home-pool.md` now sit beside this note and carry the pool's key
+`docs/pool-encryption.md` and `docs/pool.md` now sit beside this note and carry the pool's key
 model and device plan; the decisions of 2026-10-08 are in section 9.1. `model_work_attribution` and
 `work_dimensions` exist only on unlanded branches (commits `133dd374`, `03d09c55`;
 `feat/board-history-pages` and three more) and are marked below. **[code]**
@@ -25,9 +25,9 @@ Two modes, one system.
 | | Private pool | Open market |
 |---|---|---|
 | Who | Devices of one person, family or team who already trust each other | Providers and consumers who have never met |
-| Trust | Pairing with a shared cluster key and pinned TLS today [code] `fleet/tls.py`, [docs] `docs/fleet.md`; per-device keys and revocation replace the shared key [plan] `docs/pool-encryption.md` | None assumed; every party untrusted |
+| Trust | Joining with a shared pool key and pinned TLS today [code] `fleet/tls.py`, [docs] `docs/fleet.md`; per-device keys and revocation replace the shared key [plan] `docs/pool-encryption.md` | None assumed; every party untrusted |
 | Money | None; runs are free, credits are a record [code] `reputation/economy.py` | Priced, settled, paid out |
-| Operator | Nobody; no host [docs] `docs/mesh-board.md` (design note, "nothing is implemented") | An operator for accounts, payments, abuse |
+| Operator | Nobody; no host [docs] `docs/board-replication.md` (design note, "nothing is implemented") | An operator for accounts, payments, abuse |
 | Workloads | Anything the owner runs | Only what survives an untrusted provider (section 4) |
 
 Roles: **provider** (contributes a device), **consumer** (sends work), **operator** (runs accounts,
@@ -73,7 +73,7 @@ sells raw GPU time in a container; the renter carries the trust risk.
 ### 2.2 Decentralised compute projects
 
 Akash (reverse auction, providers bid on containerised workloads, Kubernetes providers), Render
-(began as 3D rendering, now AI inference too), io.net (large GPU clusters), Bittensor (subnets
+(began as 3D rendering, now AI inference too), io.net (large GPU pools), Bittensor (subnets
 compete to produce outputs). One source describes a Bittensor subnet using "proof-of-compute and
 hardware attestation"; another says many such systems are off-chain compute with token incentives
 and reputation, "not fully trustless". I could not find sourced detail on how Akash, Render or
@@ -102,14 +102,14 @@ conflict on Together's dedicated rate.
 
 Differences this system actually has: local-model serving with admission control [docs]
 `docs/serve-admission.md`; work credited only after an independent review that cannot be the worker
-[code]; a mesh with no host [docs, design only]; sandboxing with deny-by-default egress [code]
+[code]; a replica with no host [docs, design only]; sandboxing with deny-by-default egress [code]
 `sandbox/policy.py`. What it lacks relative to every row above: tenants, prices, settlement, uptime
 SLAs, any redundant execution or hardware attestation (a grep for `attestation`, `redundan`,
 `spot.check` over `src/` finds nothing relevant [code]).
 
 Honest assessment, not a forecast:
 
-- Raw GPU hours from strangers: **crowded and price-led** (2.1, 2.2). A home pool has nothing there
+- Raw GPU hours from strangers: **crowded and price-led** (2.1, 2.2). A pool of your own devices has nothing there
   that Vast.ai or RunPod Community does not already sell, and they have the payments, KYC and abuse
   desks. Entering on price alone is not a niche.
 - Token-priced inference of open models (2.3): competitors serve it from datacentres at cents per
@@ -130,7 +130,7 @@ system, not a second one. State per piece:
 
 | Piece | Where | Implemented and tested | What it measures; who attests |
 |---|---|---|---|
-| Verified completion credit | `workspace/task_credit.py` (71 lines); `tests/test_task_credit.py` | Yes. One immutable award per workspace, worker and task (the credit key is moving from the worker identity to its model-and-version account: `docs/continuity.md` section 13); refused if the reviewer is the worker, or if proposal or review hashes mismatch | 10 base credits for an accepted task [code `reputation/economy.py` `BASE_CREDITS`]; attested by an independent reviewer: the person, the worker's task-creator parent, or a peer with a person-set grant [docs `docs/reputation.md`] |
+| Verified completion credit | `workspace/task_credit.py` (71 lines); `tests/test_task_credit.py` | Yes. One immutable award per workspace, worker and task (the credit key is moving from the worker identity to its model-and-version account: `docs/continuity.md` section 13); refused if the reviewer is the worker, or if proposal or review hashes mismatch | 10 base credits for an accepted task [code `reputation/economy.py` `BASE_CREDITS`]; attested by an independent reviewer: the person, the worker's task-creator parent, or a device with a person-set grant [docs `docs/reputation.md`] |
 | Quality bonuses | `reputation/economy.py` `assessment` | Yes. Up to three 5-credit tiers (`validated`, `regression`, `impact`), each linked to passed checks and hashed artifacts | Reviewer reasons; no test-count credit [code] |
 | Work reputation | `reputation/economy.py` `summary`; `workspace/work_reputation.py`; `tests/test_work_reputation.py` | Yes. Quality: reviewer 0-100 ratings with a prior of weight two. Reliability: Beta(1,1) over accepted versus rejected outcomes; infrastructure blocks add no negative sample | Independent review outcomes; sample counts and confidence returned with every score [code] |
 | Advisory price modifier | `economy.summary` `pricing` | Computed only. Bounded 0.8-1.2, neutral at start, `price` 0, `active_charging` False, baseline access guaranteed | Derived from reliability and confidence [code] |
@@ -185,25 +185,25 @@ binds proposal and review hashes, not the worker's claims. **[code]**
 ### 3.5 Isolation and keys
 
 Exists: encrypted-at-rest reputation graph under a keystore key [code]; a TLS certificate per daemon
-pinned by peers, with discovery sealed under a key derived from the cluster key [docs/code
+pinned by devices, with discovery sealed under a key derived from the pool key [docs/code
 `docs/fleet.md`, `fleet/tls.py`]; an OS sandbox with deny-by-default files, network, programs and
-environment [docs `docs/sandbox.md`]. Gaps: one cluster key means every paired member can read
+environment [docs `docs/sandbox.md`]. Gaps: one pool key means every member can read
 every other member's traffic, so it is a *private-pool* primitive only [docs `docs/fleet.md`]; there
 are no per-tenant keys, caches or model-cache separation. The per-tenant key plan from
 `docs/pool-encryption.md` cannot be summarised because that file is absent. **[plan]** per-tenant
 data keys, a per-tenant KV and prompt cache that is never shared across tenants, and a job
 envelope encrypted to the provider's key.
 
-### 3.6 Control plane: mesh versus operator
+### 3.6 Control plane: replica versus operator
 
-The design intent is a mesh with no host, peers with full replicas, a deterministic merge
-[docs `docs/mesh-board.md`, marked "nothing is implemented"]. A commercial service needs an
+The design intent is a replica with no host, devices with full replicas, a deterministic merge
+[docs `docs/board-replication.md`, marked "nothing is implemented"]. A commercial service needs an
 operator. Split: **[plan]**
 
-| Operator-run (centralised, replaceable) | Peer to peer (stays in the mesh) |
+| Operator-run (centralised, replaceable) | Device to device (stays in the replica) |
 |---|---|
 | Accounts, sign-up, KYC where required | Job data path: consumer to provider direct, or via relay |
-| Payment collection and payout | Device pairing and TLS pinning inside a private pool |
+| Payment collection and payout | Device joining and TLS pinning inside a private pool |
 | Matching and price discovery (optional; a private pool needs none) | Verified-work evidence replicated as signed records |
 | Abuse handling, takedown, dispute arbitration | Local sandbox enforcement on the provider |
 | Credit-to-currency policy | Review of work within a pool |
@@ -214,7 +214,7 @@ working. A consumer's job body is never readable by the operator.
 
 ### 3.7 Scheduling, pricing and holdback
 
-Scheduling exists: `fleet/pool.py` chooses a peer from capability and measured rates (`Rates`,
+Scheduling exists: `fleet/pool.py` chooses a device from capability and measured rates (`Rates`,
 keyed on machine id); the broker leases models and admission [code, docs]. Pricing is a 0.8-1.2
 advisory modifier from reliability (3.1). **[plan]** For provider reputation: a new provider holds
 back a fraction of earnings until it has N verified outcomes; a failed canary or mismatched
@@ -302,7 +302,7 @@ focused lead, **[plan]**.
 
 | Phase | Scope | Size | Gate to leave it |
 |---|---|---|---|
-| 0 Private pools | The home pool: your own paired devices, free runs, credits as a record | in progress | A pool of 2+ real devices completes reviewed work end to end with credits recorded; measured by the existing credit and allocation tests plus a live cross-device run |
+| 0 Private pools | The private pool: your own members, free runs, credits as a record | in progress | A pool of 2+ real devices completes reviewed work end to end with credits recorded; measured by the existing credit and allocation tests plus a live cross-device run |
 | 1 Invited guests | A named guest runs work on a pool; per-guest metering and isolation; still free | 4-6 | A guest identity cannot read another's data or cache (tested against a real second identity); every guest job's usage flows through the existing credit and allocation path with a tenant id; a real guest used it for two weeks |
 | 2 Managed pool, small teams | Operator-run accounts and invites for a team's own devices; first money (subscription or credit purchase); abuse and support | 8-12 | One paying team runs for a month with the operator able to onboard and suspend; settlement and refund tested against a real sandbox payment account; counsel has answered section 5 for the chosen jurisdiction |
 | 3 Open market | Stranger providers and consumers; redundant execution, canaries, holdback, disputes; narrow job types | 20+ | Redundant execution catches a provider that returns wrong output in a red-team run; a hostile consumer job fails to escape or egress in the redteam suite; payout and tax reporting live; the section 2.4 niche question has evidence from phases 1-2 |
@@ -344,16 +344,16 @@ touched, without its own task.
 
 | # | Check | Existing code (verified) | Cost | Opportunistic |
 |---|---|---|---|---|
-| 1 | Providers and consumers are untrusted | Complies: sandbox deny-by-default; reviewer cannot be the worker (`task_credit.py`). Violates: one shared cluster key trusts every member (`docs/fleet.md`) | L for the cluster key; S elsewhere | Yes for new code |
+| 1 | Providers and consumers are untrusted | Complies: sandbox deny-by-default; reviewer cannot be the worker (`task_credit.py`). Violates: one shared pool key trusts every member (`docs/fleet.md`) | L for the pool key; S elsewhere | Yes for new code |
 | 2 | No single-owner or single-user assumption in ids, paths, stores or UI | Violates: reputation store is `reputation/u-<id>/graph.enc`; a device has one person-enrolled account; one `owner` token file (`work_reputation.fleet_route`) | M | Yes, when a store path is edited |
 | 3 | Every job and request carries a tenant id | Violates: no `tenant` in `src/` (grep, zero hits); allocations carry worker, task, device only (`resource_allocations.assign`) | M | Yes, add the field as optional on new records |
 | 4 | Every job's resource use flows through the existing credit and attribution path; do not add a parallel ledger | Complies: allocation, `verified_usage`, `economy.summary` (3.1). Violates: usage has only tokens and wall seconds | M | Yes: extend `economy.assessment` usage fields, never a second store |
-| 5 | Keys and caches are per tenant | Violates: one keystore profile `reputation`; one cluster key; no per-tenant KV or prompt cache separation | L | No, design first |
-| 6 | No host or central authority in the data path; an operator is optional and replaceable | Complies by design intent (`docs/mesh-board.md`, design only). Violates: workspace state is one `coordination.db` behind a file lock on one machine (`resource_allocations.py`) | L | No |
+| 5 | Keys and caches are per tenant | Violates: one keystore profile `reputation`; one pool key; no per-tenant KV or prompt cache separation | L | No, design first |
+| 6 | No host or central authority in the data path; an operator is optional and replaceable | Complies by design intent (`docs/board-replication.md`, design only). Violates: workspace state is one `coordination.db` behind a file lock on one machine (`resource_allocations.py`) | L | No |
 | 7 | Verified-work accounting is independent of who ran it | Complies: awards bind proposal and review hashes and refuse a self-review (`task_credit.py`); `work_dimensions` (unlanded) keeps views derived | S | Yes |
 | 8 | Egress and sandbox policy default-deny for foreign work | Complies: `Net.deny()` is the policy default (`sandbox/policy.py`, `docs/sandbox.md`). Not checked: whether every launcher routes through it | S to M | Yes, route a launcher through it when touched |
 | 9 | Secrets never in logs or on the board | Complies in part: `src/poolhouse/redact/` exists, keystore holds keys. Not audited across all log sites | M to audit; S per site | Yes |
-| 10 | Clocks and ordering do not assume one machine | Violates: `held(.../coordination.lock)` is a same-machine file lock; `verified_at` is a local time. Design intent is a hybrid logical clock (`docs/mesh-board.md`, not built) | L | Only new code; avoid new wall-clock ordering |
+| 10 | Clocks and ordering do not assume one machine | Violates: `held(.../coordination.lock)` is a same-machine file lock; `verified_at` is a local time. Design intent is a hybrid logical clock (`docs/board-replication.md`, not built) | L | Only new code; avoid new wall-clock ordering |
 
 ## 9. Owner-only decisions
 
@@ -389,7 +389,7 @@ leaving it (counsel's answer for the chosen jurisdiction is still a phase 2 gate
 Rejected: treating the service as an experiment until the legal position is settled, because it would keep
 the verification, tenancy and accounting work unscheduled and the legal answers depend on what is built.
 
-**Ledger path: signed journals and verified accounting now; an operator Merkle log at phase 2; no own chain
+**Ledger path: signed logs and verified accounting now; an operator Merkle log at phase 2; no own chain
 and no own token.** Decided, following 10.4: option 1 now, option 2 at phase 2, option 3 optional later,
 option 4 never. Rejected: a chain or token of our own (option 4), because verification (3.4) is the hard
 problem and no ledger solves it, and a token adds securities, money-transmission and custody exposure for no
@@ -424,7 +424,7 @@ That is a real property, and none of the other options offers it.
 - **Oracle problem.** A chain cannot see that compute happened. Whether a job ran correctly is
   decided off-chain by redundant execution, attestation or spot checks. This repo has none of
   those [code: grep for `attestation`, `redundan`, `spot.check` over `src/` finds nothing
-  relevant], only independent human or peer review of a task [code `task_credit.py`]. A chain
+  relevant], only independent human or device review of a task [code `task_credit.py`]. A chain
   records the verdict; it does not produce it. The decentralised projects in 2.2 face the same
   limit, and one source says many are off-chain compute with token incentives, not trustless
   [ext, 2.2, 2026-10-08].
@@ -453,14 +453,14 @@ That is a real property, and none of the other options offers it.
 ### 10.3 Options compared
 
 Criteria: what it trusts; cost to build and run; regulatory exposure as questions for a lawyer;
-reversibility; fit by phase. Option 1 is partly design: the per-device signed journals are in
-`docs/mesh-board.md`, "nothing is implemented" [docs]; the only Ed25519 code in `src/` verifies
+reversibility; fit by phase. Option 1 is partly design: the per-device signed logs are in
+`docs/board-replication.md`, "nothing is implemented" [docs]; the only Ed25519 code in `src/` verifies
 release signatures (`fleet/signing.py`) [code]; no Merkle-tree code exists [code, grep].
 
-| | 1 Journals + verified accounting | 2 Operator log, Merkle transparency, processor | 3 Option 2 + root anchored on a public chain, no token | 4 Own chain or rollup, token | 5 Stablecoin settlement, no own chain |
+| | 1 DeviceLogs + verified accounting | 2 Operator log, Merkle transparency, processor | 3 Option 2 + root anchored on a public chain, no token | 4 Own chain or rollup, token | 5 Stablecoin settlement, no own chain |
 |---|---|---|---|---|---|
 | Trusts | Each device for its own entries; the independent reviewer for credit [code] | The operator not to equivocate; auditors and witnesses catch it | As 2, plus a timestamp the operator cannot backdate | Validators, the token's economics, bridge code | The issuer, the chain, and the operator for verification |
-| Build and run | Exists in part: credit path [code]; journals to build | Moderate: log service, signed tree heads, inclusion and consistency proofs (the formats in [RFC 9162](https://www.rfc-editor.org/rfc/rfc9162.html), read 2026-10-08); processor integration | Option 2 plus one periodic chain transaction; fees small | Highest: protocol, validators, audits, liquidity, ongoing security | Moderate: wallet or custodian integration, payout flow; chain fees per payout batch |
+| Build and run | Exists in part: credit path [code]; logs to build | Moderate: log service, signed tree heads, inclusion and consistency proofs (the formats in [RFC 9162](https://www.rfc-editor.org/rfc/rfc9162.html), read 2026-10-08); processor integration | Option 2 plus one periodic chain transaction; fees small | Highest: protocol, validators, audits, liquidity, ongoing security | Moderate: wallet or custodian integration, payout flow; chain fees per payout batch |
 | Lawyer questions | None for money (free runs); privacy of evidence | Processor and connected-account rules; money transmission when holding funds (5.2) | As 2; any issue from using a public chain for timestamps only | Is the token a security or commodity? Is the operator an exchange or issuer? Licences per jurisdiction | Is the operator a money transmitter or virtual-asset provider? Which issuer rules apply? Sanctions screening of wallets |
 | Reversibility | High: ledger is derived from evidence | High: a fiat refund is possible; the log itself is append-only | High: dropping anchoring loses only a timestamp | Low: a token, once held by strangers, is a liability | Medium: payouts final on-chain; can stop offering |
 | Fit | Phase 0-1 | Phase 2 | Phase 2-3 if auditors ask for an external anchor | Phase 3 at earliest; unsupported by any phase gate | Phase 3, for providers who want to be paid without a card rail |

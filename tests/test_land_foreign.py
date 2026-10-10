@@ -23,10 +23,10 @@ from poolhouse.workspace import landing
 
 @pytest.fixture
 def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
-    """Two paired nodes on loopback; this device (a) runs the landing world, the other (b) is a member of its pool."""
+    """Two joined nodes on loopback; this device (a) runs the landing world, the other (b) is a member of its pool."""
     kit.skip_unless_possible()
     a, b = kit.start(node_binary, "a"), kit.start(node_binary, "b")
-    kit.pair(a, b)
+    kit.join(a, b)
     for name in STRIPPED:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))

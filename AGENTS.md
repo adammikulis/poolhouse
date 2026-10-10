@@ -643,7 +643,7 @@ The size gates carry no number. `deep-files` (900 lines of Python) and `deep-com
 lines of the HTML, JavaScript and CSS a page is assembled from) set `HARD = True`, take no line
 in `budgets.json`, and fail on a single finding. A file over the limit is a file to split,
 never an allowance to record. `scripts/gates/duplicates.py` hashes normalised function bodies
-and reports the pairs. `tests/test_gates_duplicates.py` names pairs that must still be found,
+and reports each duplicate with its twin. `tests/test_gates_duplicates.py` names duplicates that must still be found,
 so a normalisation that quietly tightens is caught.
 
 `scripts/mutate` samples functions out of `src/poolhouse`, changes one thing each -- a flipped
@@ -858,10 +858,15 @@ document and quotes no figure. A number without those four is not a measurement,
 
 ### Vocabulary
 
-The group of paired devices is a **pool**, from a pool of one device to a pool of N devices. New code, flags,
-identifiers, files, interface text and docs say pool and never cluster or fleet for it. The word
-cluster is kept only where it means something else, such as clustering in data. Existing uses of
-cluster and fleet are renamed together with the product rename in `docs/poolhouse-refactor-plan.md`.
+`docs/glossary.md` is the single source of truth for the words this project uses and the words it bans, and it
+is binding. Poolhouse pools devices: devices join a pool, a pool of one device is still a pool, a person adds a
+device, a member is removed, and each project has one board. New code, flags, identifiers, files, interface
+text, error messages, documents and the public API use those words and never the ones the glossary bans, and
+never fleet for a pool. `tests/test_glossary.py` fails when a banned word appears outside
+`contracts/glossary-allowlist.toml`, whose every entry carries its reason; `scripts/nomenclature.py` rewrites a
+tree to the glossary and `--dry-run` lists what it would change. A new exception is an allowlist entry with a
+reason, never a skipped test. CHANGELOG.md, the glossary and dated notes keep the words they were written
+with.
 
 ### HANDOFF.md
 
@@ -939,7 +944,7 @@ verbs delegated, makes every other gate a person's and sets enforcement `strict`
 suite sets it.
 
 Three things are a person's whatever the registry says and are not in it: the keystore and
-secrets (unlock, the cluster passphrase and token, signing keys), a passwordless `sudoers` rule
+secrets (unlock, the pool passphrase and token, signing keys), a passwordless `sudoers` rule
 (Poolhouse never installs one), and the human prompt that confirms a privileged operating-system
 step. The wired memory limit is the one machine setting an agent may request (gate
 `serve.wired-limit`): it goes through macOS's own administrator dialog, Poolhouse never sees or

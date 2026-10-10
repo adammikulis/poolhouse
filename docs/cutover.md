@@ -99,7 +99,7 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
    poolhouse runtime ensure --checkout ~/Documents/repos/ml-stack   # builds and selects the runtime under the new name
    poolhouse node build                                             # Poolhouse.app (bundle id app.poolhouse.node, unchanged)
    poolhouse node permission                                        # only if macOS asks for Local Network again
-   poolhouse-peers ls                                               # the node starts on the LAN and the pool is listed
+   poolhouse-members ls                                               # the node starts on the LAN and the pool is listed
    scripts/land up                                                  # the land runner under the new name
    poolhouse-doctor
    ```
@@ -133,7 +133,7 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
    `install --manifest <path>` (one more elevation for a machine-wide task). The named pipe and stop event
    now carry `poolhouse-node-...`; a node started before the move cannot be stopped by the new code, which is
    why step 1 stops it first.
-6. `poolhouse-peers ls` on this Mac and on the device should list each other once both nodes run.
+6. `poolhouse-members ls` on this Mac and on the device should list each other once both nodes run.
 
 ## Rolling back
 
@@ -156,3 +156,17 @@ Then reinstall the old package from the commit before the rename (`git checkout 
 pip install -e .`), remove the patch commit, and start the old node, daemon and runner. A move that was
 cut off on another volume leaves `~/.poolhouse.migrating` (a half copy, safe to delete) and the intact
 `~/.ml-stack`; the next `migrate run` finishes or refuses, it never deletes an unverified source.
+
+## The vocabulary change: every device moves together
+
+The words of `docs/glossary.md` replaced the older ones in the commands, variables, wire messages, node calls,
+state files and element ids (the full table is in CHANGELOG.md under the 0.3.0 breaking changes). A node of the
+older build cannot join, exchange or sync with a node of this build, so every device of a pool runs the new
+build before any of them is used again, and each device joins its pool again. There is no migration for the
+renamed state: the old `cluster.key`, `cluster.group`, `peers.json`, `mesh` and `journals` files are not read,
+and board history made before the change is discarded.
+
+The Windows device does this as part of its cutover: after step 5, `poolhouse-pool status` and
+`poolhouse-members ls` list nothing until the device has joined (`poolhouse-pool join-with-code --host H`,
+the code read from the Mac's `poolhouse-pool add-device`), and `scripts/pool-join-check` reports the result.
+Remove any of the old files left under `~/.poolhouse` by hand once the pool shows both devices.

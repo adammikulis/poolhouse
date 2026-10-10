@@ -51,7 +51,7 @@ def test_local_person_posts_dm_and_thread_without_exposing_credentials(board):
 
 def test_joined_session_is_required_before_owner_identity_is_used(board, monkeypatch):
     server, kit = board
-    monkeypatch.setattr(routes, 'in_cluster', lambda _: True)
+    monkeypatch.setattr(routes, 'in_pool', lambda _: True)
     assert post(server, {'to': 'builder', 'body': 'Unsigned'}, cookie='')[0] == 401
     cookie = server.ui.sessions.cookie_header(server.ui.sessions.open('person', 'launch-ticket'))
     assert post(server, {'to': 'builder', 'body': 'Signed'}, cookie=cookie)[0] == 200

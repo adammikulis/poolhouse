@@ -18,9 +18,9 @@
 #   -Uninstall  takes it off, and leaves the model cache alone
 #
 # Every step past the install is a poolhouse command, not PowerShell: poolhouse-serve build,
-# poolhouse-setup, poolhouse-models fetch, poolhouse-cluster join, poolhouse-doctor.
+# poolhouse-setup, poolhouse-models fetch, poolhouse-pool join, poolhouse-doctor.
 #
-# Unattended: POOLHOUSE_MODE, POOLHOUSE_NAME, POOLHOUSE_PASSPHRASE, POOLHOUSE_CLUSTER,
+# Unattended: POOLHOUSE_MODE, POOLHOUSE_NAME, POOLHOUSE_PASSPHRASE, POOLHOUSE_POOL,
 # POOLHOUSE_MODELS, POOLHOUSE_ADOPT_CACHE, POOLHOUSE_REF, POOLHOUSE_OFFLINE_ZIP,
 # POOLHOUSE_OFFLINE_MODELS. Nothing is prompted for when no console is attached.
 #
@@ -336,16 +336,16 @@ function Fetch-Models {
 
 function Join-Fleet {
     Step "joining the fleet"
-    $fleet = Join-Path $script:bin "poolhouse-cluster.exe"
-    if (-not (Test-Path $fleet)) { Write-Host "skipped: no poolhouse-cluster"; return }
+    $fleet = Join-Path $script:bin "poolhouse-pool.exe"
+    if (-not (Test-Path $fleet)) { Write-Host "skipped: no poolhouse-pool"; return }
     $argv = @("join", "--persist")
     if ($env:POOLHOUSE_NAME)    { $argv += @("--name", $env:POOLHOUSE_NAME) }
-    if ($env:POOLHOUSE_CLUSTER) { $argv += @("--group", $env:POOLHOUSE_CLUSTER) }
+    if ($env:POOLHOUSE_POOL) { $argv += @("--group", $env:POOLHOUSE_POOL) }
     if ($script:track)         { $argv += @("--track", $script:track) }
     if ($env:POOLHOUSE_PASSPHRASE) { $argv += @("--passphrase", $env:POOLHOUSE_PASSPHRASE) }
     elseif (-not (Interactive)) {
         Write-Host "no passphrase, and no console to ask at. Set POOLHOUSE_PASSPHRASE and re-run,"
-        Write-Host "or run:  poolhouse-cluster join --persist"
+        Write-Host "or run:  poolhouse-pool join --persist"
         return
     }
     & $fleet @argv

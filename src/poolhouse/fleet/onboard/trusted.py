@@ -2,7 +2,7 @@
 
 `TrustedLists.ingest` keeps a list only if a key a person pinned signed it, it has not expired and its serial is not
 below the highest kept for that key (replay). `lookup` verifies each kept list again under the keys pinned now, so an
-un-paired or revoked key stops counting. Expiry is not applied at lookup: it bounds fetching, not checking held bytes.
+a key of a device that was removed or revoked stops counting. Expiry is not applied at lookup: it bounds fetching, not checking held bytes.
 """
 
 from __future__ import annotations
@@ -46,12 +46,12 @@ def _key(text: Any) -> bytes | None:
 
 def pinned_keys(directory: Path | None = None) -> tuple[list[bytes], list[str]]:
     """``(keys, revoked key ids)`` a person pinned on this machine: the owner's key of each
-    paired peer, the key in ``trust.json`` and this machine's own signing key."""
+    member, the key in ``trust.json`` and this machine's own signing key."""
     where = Path(directory) if directory else home.state("onboard")
     keys: list[bytes] = []
     revoked: list[str] = []
-    peers = read_json(where / "peers.json", {})
-    for row in peers.get("peers", []) if isinstance(peers, dict) else []:
+    members = read_json(where / "members.json", {})
+    for row in members.get("members", []) if isinstance(members, dict) else []:
         if isinstance(row, dict) and (k := _key(row.get("signing_key"))) is not None:
             keys.append(k)
     for name in ("trust.json", "signing.json"):

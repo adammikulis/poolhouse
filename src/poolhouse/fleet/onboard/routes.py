@@ -1,12 +1,12 @@
-"""Which way a paired device is reached: its address on this network, its tailnet address, or not.
+"""Which way a member is reached: its address on this network, its tailnet address, or not.
 
 A route is only a path. The device on the other end is still proved by its pinned certificate
 (`probe`), so a tailnet address, however it was learned, reaches the device whose certificate
-was pinned at pairing or nobody. Addresses come from the pairing exchange, or from a peer in
+was pinned at joining or nobody. Addresses come from the join exchange, or from a member in
 the local ``tailscale status`` whose certificate matched; never from an announcement.
 
-Every network path that reaches a paired device goes through here: a peer-first model download
-(`peerfirst`), ``fleet fetch``, the SSH bootstrap target (`ssh_address`, where the SSH host key,
+Every network path that reaches a member goes through here: a member-first model download
+(`memberfirst`), ``fleet fetch``, the SSH bootstrap target (`ssh_address`, where the SSH host key,
 not a certificate, is what proves the machine) and ``fleet nearby`` (`beyond_the_lan`, since a
 multicast beacon never crosses a tailnet).
 """
@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from ..tailnet import Tailnet
+from .join_code import fingerprint_of, unverified_context
 from .lan import NotLocal, in_tailnet, require_local
-from .pairing import fingerprint_of, unverified_context
 from .requests import Device, Devices
 
 __all__ = ["Probe", "Reach", "Route", "beyond_the_lan", "learn", "open_probe", "pinned_probe",
@@ -63,7 +63,7 @@ def pinned_probe(address: str, port: int, fingerprint: str, timeout_s: float = 2
 
 
 def lan_address(device: Device) -> str:
-    """The address on this network the device was paired from, or ''."""
+    """The address on this network the device was joined from, or ''."""
     if not device.address or in_tailnet(device.address):
         return ""
     try:
@@ -75,14 +75,14 @@ def lan_address(device: Device) -> str:
 
 def tailnet_candidates(device: Device, tailnet: Tailnet) -> list[str]:
     """Tailnet addresses worth trying for ``device``: the one stored, and those of an online
-    peer of the local tailnet that goes by the device's name. Empty when the tailnet is down."""
+    member of the local tailnet that goes by the device's name. Empty when the tailnet is down."""
     if not tailnet.up:
         return []
     found = [device.tailnet_address] if in_tailnet(device.tailnet_address) else []
     for name in (device.hostname, device.name):
-        peer = tailnet.peer_named(name)
-        if peer is not None and peer.online:
-            found.extend(peer.addresses)
+        member = tailnet.member_named(name)
+        if member is not None and member.online:
+            found.extend(member.addresses)
     return list(dict.fromkeys(found))
 
 
@@ -111,7 +111,7 @@ def reach(device: Device, tailnet: Tailnet | Callable[[], Tailnet], port: int,
 
 
 def learn(devices: Devices, tailnet: Tailnet, port: int, probe: Probe = pinned_probe) -> list[str]:
-    """Store the tailnet address of each active device a tailnet peer reaches with that
+    """Store the tailnet address of each active device a tailnet member reaches with that
     device's certificate; returns the fingerprints updated."""
     updated = []
     for device in devices.all():
@@ -125,7 +125,7 @@ def learn(devices: Devices, tailnet: Tailnet, port: int, probe: Probe = pinned_p
     return updated
 
 
-def _paired(host: str, devices: Devices) -> Device | None:
+def _joined(host: str, devices: Devices) -> Device | None:
     name = host.strip().lower()
     return next((d for d in devices.all() if d.status == "active"
                  and name in (d.name.lower(), d.hostname.lower())), None)
@@ -134,10 +134,10 @@ def _paired(host: str, devices: Devices) -> Device | None:
 def ssh_address(host: str, port: int, devices: Devices, tailnet: Callable[[], Tailnet],
                 probe: Probe = open_probe) -> str:
     """The address to run SSH against for ``host``: ``host`` itself unless it names an active
-    paired device, in which case the first of its network address and its tailnet addresses where
+    member, in which case the first of its network address and its tailnet addresses where
     ``port`` answers (`NotLocal` when none). Only the path changes: SSH still insists on the host
     key the owner confirmed for the machine."""
-    device = _paired(host, devices)
+    device = _joined(host, devices)
     if device is None:
         return host
     found = reach(device, tailnet, port, probe)
@@ -148,7 +148,7 @@ def ssh_address(host: str, port: int, devices: Devices, tailnet: Callable[[], Ta
 
 def beyond_the_lan(devices: Devices, heard: set[str], tailnet: Tailnet, port: int,
                    probe: Probe = pinned_probe) -> list[Reach]:
-    """Paired devices a multicast beacon cannot have reached: those not in ``heard`` (their
+    """Members a multicast beacon cannot have reached: those not in ``heard`` (their
     fingerprints) whose pinned certificate answers at a tailnet address."""
     out = []
     for device in devices.all():
@@ -164,7 +164,7 @@ def beyond_the_lan(devices: Devices, heard: set[str], tailnet: Tailnet, port: in
 def resolve(host: str, port: int, devices: Devices, tailnet: Callable[[], Tailnet],
             probe: Probe = pinned_probe) -> str:
     """The address to connect to for ``host``: ``host`` itself unless it is the name of an
-    active paired device (``tailnet`` is called only then), in which case the address `reach` finds (`NotLocal` when none)."""
+    active member (``tailnet`` is called only then), in which case the address `reach` finds (`NotLocal` when none)."""
     name = host.strip().lower()
     for device in devices.all():
         if device.status == "active" and name in (device.name.lower(), device.hostname.lower()):

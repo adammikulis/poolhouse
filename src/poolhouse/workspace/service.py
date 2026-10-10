@@ -15,7 +15,7 @@ from poolhouse.workspace import (
     coordination_access,
     execution_profile,
     limits as limits_mod,
-    mesh_fold,
+    replica_fold,
     reports,
     spawn,
     tokens,
@@ -30,12 +30,12 @@ from poolhouse.workspace.claims import Claims, Conflict
 from poolhouse.workspace.files import FileApi
 from poolhouse.workspace.identity import AGENT, HUMAN, Denied, Identity, Registry
 from poolhouse.workspace.invites import Invites
-from poolhouse.workspace.mesh import Mesh
 from poolhouse.workspace.modelid import CLAIMED, VERIFIED, clean_model, describe
 from poolhouse.workspace.notes import KINDS, Notes
 from poolhouse.workspace.nudge import Waiting
 from poolhouse.workspace.quarantine import PLACEHOLDER, Quarantine
 from poolhouse.workspace.rates import RateLimited, Rates
+from poolhouse.workspace.replica import Replica
 from poolhouse.workspace.scratch import Scratch
 from poolhouse.workspace.screen import Refused, fence, marker_tiers, refusals
 from poolhouse.workspace.slots import testslots
@@ -122,7 +122,7 @@ class Workspace:
         self.invites = Invites(self.base, self.limits.invite_failures, clock)
         self.audit_log = ChainLog(self.base / "audit.jsonl", clock)
         self.bus = Bus(self.base, clock)
-        self.mesh = Mesh(self.base, clock)
+        self.replica = Replica(self.base, clock)
         self.notes = Notes(self.base, clock)
         self.quarantine = Quarantine(self.base, clock)
         self.rates = Rates(self.base, self.limits.sends_per_window, self.limits.window_s, clock)
@@ -432,8 +432,8 @@ class Workspace:
         row.update(subject='' if qid else row['subject'],
                    body=PLACEHOLDER.format(qid=qid, why=', '.join(flags)) if qid else row['body'],
                    held=qid, flags=flags, expires=self.clock() + ttl_s if ttl_s else 0.0)
-        if (payload := mesh_fold.message_payload(self, row)) is not None:
-            row['jid'] = self.mesh.jid(self.mesh.record('announce' if to == ANNOUNCE else 'message', who.id, payload))
+        if (payload := replica_fold.message_payload(self, row)) is not None:
+            row['jid'] = self.replica.jid(self.replica.record('announce' if to == ANNOUNCE else 'message', who.id, payload))
         made = self.bus.append(row)
         wake.signal(self.base / 'wake', self.board.wake_names(made))
         self.audit('message', who.id, msg=made['seq'], to=to, type=row['type'], held=qid,
@@ -593,7 +593,7 @@ class Workspace:
         """The last messages the token's owner sent, each with its sync status."""
         who = self.auth(token)
         self._may(who, "read")
-        return [{**self.deliver(r, raw=True, reader=who), "sync": self.mesh.status(r.get("jid", ""))}
+        return [{**self.deliver(r, raw=True, reader=who), "sync": self.replica.status(r.get("jid", ""))}
                 for r in self.bus.outbox(who.id, limit)]
 
     def wait(self, token: str, timeout_s: float, ack: bool = False, raw: bool = False,
@@ -665,10 +665,10 @@ class Workspace:
             "source": source[:300], "tags": [t[:40] for t in tags][:10],
             "supersedes": supersedes, "verify_cmd": cmd, "ttl_s": ttl, "held": qid,
             "flags": flags}
-        jid = "" if qid else self.mesh.jid(self.mesh.record("note", who.id, mesh_fold.note_payload(self, who, fields)))
+        jid = "" if qid else self.replica.jid(self.replica.record("note", who.id, replica_fold.note_payload(self, who, fields)))
         note = self.notes.add(who, {**fields, "jid": jid})
         self.audit("note", who.id, id=note["id"], kind=kind, held=qid)
-        return {**self.present_note(note), "sync": self.mesh.status(jid)}
+        return {**self.present_note(note), "sync": self.replica.status(jid)}
 
     def present_note(self, note: dict[str, Any]) -> dict[str, Any]:
         """A note as a reader gets it: fenced, with its trust level and no authority."""

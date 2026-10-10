@@ -1,4 +1,4 @@
-"""Authenticated passphrase exchange for existing clusters and explicit cluster creation."""
+"""Authenticated passphrase exchange for existing pools and explicit pool creation."""
 
 from __future__ import annotations
 
@@ -27,8 +27,8 @@ from ..membership import fingerprint_of as cert_fingerprint
 from ..pool_roster import Pool
 from ..tls import local as local_identity
 from . import pake
+from .join_code import fingerprint_of, unverified_context
 from .lan import loopback_host, require_local
-from .pairing import fingerprint_of, unverified_context
 
 __all__ = [
     "API",
@@ -37,14 +37,14 @@ __all__ = [
     "Joiner",
     "Joining",
     "Offer",
-    "cluster_action",
     "create_by_passphrase",
-    "find_clusters",
     "find_joiners",
+    "find_pools",
     "join_by_passphrase",
     "join_existing",
     "join_secret",
     "matches",
+    "pool_action",
 ]
 
 API = "/join/v1"
@@ -57,7 +57,7 @@ MOST_BODY = 4096
 
 @dataclass(frozen=True, slots=True)
 class JoinOptions:
-    """Cluster admission profile and discovery controls."""
+    """Pool admission profile and discovery controls."""
 
     mode: str | None = None
     port: int | None = None
@@ -70,13 +70,13 @@ DEFAULT_JOIN_OPTIONS = JoinOptions()
 
 
 def join_secret(passphrase: str, group: str) -> str:
-    """The password the join handshake runs on: scrypt of the passphrase under the cluster's name."""
+    """The password the join handshake runs on: scrypt of the passphrase under the pool's name."""
     salt = hashlib.sha256(b"ml-stack-join-v1/" + group.encode()).digest()
     return base64.urlsafe_b64encode(keystore.scrypt_key(passphrase.strip(), salt)).decode().rstrip("=")
 
 
 def matches(passphrase: str, group: str = "", path: Path | str | None = None) -> bool:
-    """Whether ``passphrase`` is the one cluster ``group`` (default: the first) was joined with."""
+    """Whether ``passphrase`` is the one pool ``group`` (default: the first) was joined with."""
     rows = disc.memberships(path)
     held = next((m for m in rows if not group or m.group == group), None)
     if held is None or not held.join:
@@ -108,7 +108,7 @@ def _context(group: str, nonce: str) -> bytes:
 
 
 class Joining:
-    """What a daemon in a cluster answers a machine that asks to join, from the clusters it holds
+    """What a daemon in a pool answers a machine that asks to join, from the pools it holds
     (``groups()``) and its own certificate's fingerprint."""
 
     def __init__(self, groups: Callable[[], list[Membership]],
@@ -116,7 +116,7 @@ class Joining:
                  log: Callable[[str], None] = warn,
                  enrol: Callable[[str, str, str], None] | None = None) -> None:
         self.groups, self.fingerprint, self.log, self.enrol = groups, fingerprint, log, enrol
-        """``enrol(group, certificate, name)`` lists a machine that proved the passphrase as a device of the cluster."""
+        """``enrol(group, certificate, name)`` lists a machine that proved the passphrase as a device of the pool."""
         self.lockout = macauth.Lockout(failures=5, window_s=600.0, lock_s=600.0)
         self.everyone = macauth.Lockout(failures=30, window_s=600.0, lock_s=600.0)
         self.attempts: deque[tuple[float, str, str, str]] = deque(maxlen=200)
@@ -146,9 +146,9 @@ class Joining:
         groups = self.groups()
         member = next((row for row in groups if row.group == group), None)
         if not groups or groups[0].mode != "dev" or member is None or member.mode != "dev":
-            raise Refusal(403, "this cluster requires explicit admission")
+            raise Refusal(403, "this pool requires explicit admission")
         if not transport_tls or self.fingerprint() == PLAIN:
-            raise Refusal(403, "automatic cluster admission requires TLS")
+            raise Refusal(403, "automatic pool admission requires TLS")
         if self.lockout.locked(source) or self.everyone.locked("automatic"):
             raise Refusal(429, "too many automatic joins; retry shortly")
         nonce, cert = body.get("nonce"), str(body.get("cert", ""))
@@ -160,13 +160,13 @@ class Joining:
         self.everyone.failed("automatic")
         if self.enrol is not None:
             self.enrol(group, cert, str(body.get("name", ""))[:80])
-        self._note(source, group, "joined development cluster")
+        self._note(source, group, "joined a pool in dev mode")
         return {"group": group, "key": member.key.decode(), "mode": member.mode,
-                "cluster_id": hashlib.sha256(member.key).hexdigest(), "nonce": nonce}
+                "pool_id": hashlib.sha256(member.key).hexdigest(), "nonce": nonce}
 
     def _note(self, source: str, group: str, outcome: str) -> None:
         self.attempts.append((time.time(), source, group, outcome))
-        self.log(f"join: {outcome} from {source} for cluster '{group}'")
+        self.log(f"join: {outcome} from {source} for pool '{group}'")
 
     def _start(self, body: dict[str, Any], source: str) -> dict[str, Any]:
         try:
@@ -180,7 +180,7 @@ class Joining:
         words = held.join if held is not None and held.join else None
         if words is None:
             self._note(source, group, "refused, this machine cannot take machines in")
-            raise Refusal(404, "this machine cannot take a machine into that cluster")
+            raise Refusal(404, "this machine cannot take a machine into that pool")
         self.lockout.failed(source)
         self.everyone.failed("*")
         sid, context = secrets.token_hex(16), _context(group, str(body.get("nonce"))[:64])
@@ -214,7 +214,7 @@ class Joining:
             raise Refusal(403, "that passphrase was not accepted")
         member = next((m for m in self.groups() if m.group == held.group), None)
         if member is None:
-            raise Refusal(404, "this machine left that cluster")
+            raise Refusal(404, "this machine left that pool")
         self.lockout.passed(source)
         if self.enrol is not None:
             self.enrol(held.group, held.cert, held.name)
@@ -244,7 +244,7 @@ class Joiner:
 
 def _ask_join(group: str, *, timeout_s: float, port: int | None, most: int
               ) -> list[tuple[str, dict[str, Any]]]:
-    """``(address, answer)`` for each daemon that answers a ``join?`` for ``group`` (every cluster when empty)."""
+    """``(address, answer)`` for each daemon that answers a ``join?`` for ``group`` (every pool when empty)."""
     nonce = secrets.token_hex(16)
     ask = json.dumps({"v": disc.PROTOCOL, "kind": "join?", "group": group, "nonce": nonce}).encode()
     found: dict[tuple[str, int, str], tuple[str, dict[str, Any]]] = {}
@@ -281,14 +281,14 @@ def _ask_join(group: str, *, timeout_s: float, port: int | None, most: int
 
 def find_joiners(group: str, *, timeout_s: float = 1.5, port: int | None = None,
                  most: int = 8) -> list[Joiner]:
-    """Daemons on this network in cluster ``group`` that offer to take a machine in."""
+    """Daemons on this network in pool ``group`` that offer to take a machine in."""
     return [Joiner(host, int(said["port"]), bool(said.get("tls")))
             for host, said in _ask_join(group, timeout_s=timeout_s, port=port, most=most)]
 
 
 @dataclass(frozen=True, slots=True)
 class Offer:
-    """A daemon that says it takes machines into the cluster ``group``."""
+    """A daemon that says it takes machines into the pool ``group``."""
 
     group: str
     machine: str
@@ -296,8 +296,8 @@ class Offer:
     method: str = "passphrase"
 
 
-def find_clusters(*, timeout_s: float = 1.5, port: int | None = None, most: int = 64) -> list[Offer]:
-    """The clusters daemons on this network offer to take a machine into, one `Offer` per daemon and cluster."""
+def find_pools(*, timeout_s: float = 1.5, port: int | None = None, most: int = 64) -> list[Offer]:
+    """The pools daemons on this network offer to take a machine into, one `Offer` per daemon and pool."""
     offers = (Offer(str(said.get("group") or ""), str(said.get("name") or host), host,
                     "recovery" if said.get("method") == "recovery" else "passphrase")
               for host, said in _ask_join("", timeout_s=timeout_s, port=port, most=most)
@@ -358,7 +358,7 @@ class _Call:
 
 
 def _shake(joiner: Joiner, group: str, words: str, timeout: float) -> tuple[Membership, str]:
-    """The cluster key ``joiner`` gives a machine that knows ``words`` and the certificate (base64
+    """The pool key ``joiner`` gives a machine that knows ``words`` and the certificate (base64
     DER) of the machine that gave it; `Declined` when it will not."""
     call = _Call(joiner, timeout)
     context = _context(group, secrets.token_hex(16))
@@ -385,7 +385,7 @@ def _shake(joiner: Joiner, group: str, words: str, timeout: float) -> tuple[Memb
         held = recovery.parse_recovery(sealing.open_(
             session.key("join"), bytes.fromhex(str(done.get("sealed"))), context).decode())
         if held.group != group:
-            raise DiscoveryError("the machine answered for a different cluster")
+            raise DiscoveryError("the machine answered for a different pool")
     except (sealing.SealError, ValueError, KeyError, TypeError, DiscoveryError):
         raise Declined(400, "the machine's answer did not authenticate") from None
     return held, base64.b64encode(call.der).decode()
@@ -394,50 +394,50 @@ def _shake(joiner: Joiner, group: str, words: str, timeout: float) -> tuple[Memb
 def create_by_passphrase(passphrase: str, group: str,
                          path: Path | str | None = None, *, port: int | None = None,
                          mode: str = "prod") -> Membership:
-    """Create a named cluster with a passphrase."""
+    """Create a named pool with a passphrase."""
     group = disc.require_name(group)
     if any(member.group == group for member in disc.memberships(path)):
         raise DiscoveryError(f"This machine already belongs to '{group}'. Leave it before creating another.")
     words = disc.check_length(passphrase)
     if find_joiners(group, port=port):
-        raise DiscoveryError(f"A cluster named '{group}' is on this network. Join it instead.")
-    return disc.mint_cluster(group, path, join=join_secret(words, group), mode=mode)
+        raise DiscoveryError(f"A pool named '{group}' is on this network. Join it instead.")
+    return disc.mint_pool(group, path, join=join_secret(words, group), mode=mode)
 
 
-def cluster_action(mode: str, passphrase: str, group: str,
+def pool_action(mode: str, passphrase: str, group: str,
                    path: Path | str | None = None, *, options: JoinOptions = DEFAULT_JOIN_OPTIONS) -> Membership:
-    """Join an existing cluster or create a new one."""
+    """Join an existing pool or create a new one."""
     if mode == "join":
         return join_existing(passphrase, group, path, options=options)
     if mode == "create":
         return create_by_passphrase(passphrase, group, path, port=options.port, mode=options.mode or "prod")
-    raise DiscoveryError("Choose Join existing cluster or Create new cluster.")
+    raise DiscoveryError("Choose Join existing pool or Create new pool.")
 
 
 def join_by_passphrase(passphrase: str, group: str,
                        path: Path | str | None = None, *, options: JoinOptions = DEFAULT_JOIN_OPTIONS) -> Membership:
-    """Join a named cluster or create it when no daemon answers."""
+    """Join a named pool or create it when no daemon answers."""
     group = disc.require_name(group)
     secret = join_secret(disc.check_length(passphrase), group)
     joiners = find_joiners(group, timeout_s=options.timeout_s, port=options.port)
     if not joiners:
         held = next((m for m in disc.memberships(path) if m.group == group), None)
         if held is not None and options.mode is not None and held.mode != options.mode:
-            raise DiscoveryError("the cluster admission mode differs from the requested mode")
+            raise DiscoveryError("the pool admission mode differs from the requested mode")
         return (disc.adopt(replace(held, selection="manual"), path) if held else
-                disc.mint_cluster(group, path, join=secret, mode=options.mode or "prod"))
+                disc.mint_pool(group, path, join=secret, mode=options.mode or "prod"))
     return _accept(joiners, group, secret, path, mode=options.mode)
 
 
 def join_existing(passphrase: str, group: str, path: Path | str | None = None, *,
                   options: JoinOptions = DEFAULT_JOIN_OPTIONS) -> Membership:
-    """Join a live cluster without creating a replacement when it disappears."""
+    """Join a live pool without creating a replacement when it disappears."""
     group = disc.require_name(group)
     secret = join_secret(disc.check_length(passphrase), group)
     joiners = find_joiners(group, timeout_s=options.timeout_s, port=options.port)
     if not joiners:
         raise DiscoveryError(f"No machine in '{group}' answered on this network; "
-                             "cluster is no longer available; refresh nearby clusters.")
+                             "pool is no longer available; refresh nearby pools.")
     return _accept(joiners, group, secret, path, mode=options.mode)
 
 
@@ -448,7 +448,7 @@ def _accept(joiners: list[Joiner], group: str, secret: str,
         try:
             held, host_cert = _shake(one, group, secret, 10.0)
             if mode is not None and held.mode != mode:
-                raise Declined(403, "the cluster admission mode differs from the requested mode")
+                raise Declined(403, "the pool admission mode differs from the requested mode")
             joined = disc.adopt(Membership(group=held.group, key=held.key, join=secret, mode=held.mode,
                                            selection="manual"), path)
             Pool(path).joined(joined.group, host_cert, one.host)
@@ -458,7 +458,7 @@ def _accept(joiners: list[Joiner], group: str, secret: str,
         except DiscoveryError as why:
             refused.append(Declined(0, str(why)))
     if any(w.status == 403 for w in refused):
-        raise DiscoveryError(f"{len(joiners)} cluster(s) on this network answered and none "
+        raise DiscoveryError(f"{len(joiners)} pool(s) on this network answered and none "
                              "accepts that passphrase")
     reason = next((why.args[0] for why in refused if why.status),
                   refused[0].args[0] if refused else "no machine took this one in")

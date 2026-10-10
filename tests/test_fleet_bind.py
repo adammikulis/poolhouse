@@ -1,4 +1,4 @@
-"""The daemon listens on this machine alone until it is told, or the machine joins a cluster."""
+"""The daemon listens on this machine alone until it is told, or the machine joins a pool."""
 
 import contextlib
 import socket
@@ -17,7 +17,7 @@ def test_the_default_is_this_machine_only():
     assert bind_address("", lan=False, joined=False) == LOOPBACK
 
 
-def test_a_cluster_member_or_an_explicit_lan_listens_on_the_network():
+def test_a_pool_member_or_an_explicit_lan_listens_on_the_network():
     assert bind_address(None, lan=True, joined=False) == ALL_INTERFACES
     assert bind_address(None, lan=False, joined=True) == ALL_INTERFACES
 
@@ -37,7 +37,7 @@ def _daemon(tmp_path, port, *flags):
     return subprocess.Popen(
         [sys.executable, "-m", "poolhouse.fleet.daemon", "--root", str(tmp_path / "traind"),
          "--bench-home", str(tmp_path / "bench"), "--port", str(port), "--no-announce",
-         "--no-web", "--cluster-key", str(tmp_path / "none.key"), *flags],
+         "--no-web", "--pool-key", str(tmp_path / "none.key"), *flags],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -82,7 +82,7 @@ def _ui_daemon(tmp_path, *, ui_from_lan):
     (root / "files").mkdir(parents=True)
     runner = JobRunner(root)
     handler = make_handler(Daemon(runner, root / "files", load_or_create_token(root),
-                                  ui=UI(name="box", cluster_key_path=tmp_path / "k"),
+                                  ui=UI(name="box", pool_key_path=tmp_path / "k"),
                                   ui_from_lan=ui_from_lan))
     from poolhouse.fleet import tls
 
@@ -95,7 +95,7 @@ def _ui_daemon(tmp_path, *, ui_from_lan):
 def _status(address, port):
     import http.client
 
-    from poolhouse.fleet.onboard.pairing import unverified_context
+    from poolhouse.fleet.onboard.join_code import unverified_context
 
     conn = (http.client.HTTPConnection(address, port, timeout=5) if address.startswith("127.")
             else http.client.HTTPSConnection(address, port, timeout=5, context=unverified_context()))

@@ -241,7 +241,7 @@ class NetworkBridge:
             allowed.pop(address, None)
             allowed[address] = None
             if len(allowed) > 128:
-                oldest = next(peer for peer in allowed if peer not in fixed)
+                oldest = next(member for member in allowed if member not in fixed)
                 del allowed[oldest]
         return {"data": base64.b64encode(data).decode(), "address": address}
 

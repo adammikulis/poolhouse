@@ -13,7 +13,7 @@ from keyring.errors import PasswordDeleteError
 
 from poolhouse.fleet import tls
 from poolhouse.fleet.onboard.events import Bus, Event
-from poolhouse.fleet.onboard.pairing import Grant
+from poolhouse.fleet.onboard.join_code import Grant
 from poolhouse.fleet.onboard.requests import Limits, Requests
 
 
@@ -59,7 +59,7 @@ def info(fingerprint: str, nonce: str = "ab" * 16, **more: str) -> dict[str, str
 
 
 def grant_for(ident: tls.Identity) -> Grant:
-    return Grant(group="home", key="secret-cluster-key", certificate=ident.beacon)
+    return Grant(group="home", key="secret-pool-key", certificate=ident.beacon)
 
 
 class FileKeyring(KeyringBackend):

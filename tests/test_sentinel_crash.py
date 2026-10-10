@@ -22,14 +22,14 @@ STATE_WRITER = (
     "from poolhouse.sentinel.events import Bus\n"
     "s = Store(sys.argv[1], Bus())\n"
     "for i in itertools.count():\n"
-    "    s.quarantine(('peer', f'{sys.argv[2]}-{i}'), 'x', None)\n")
+    "    s.quarantine(('member', f'{sys.argv[2]}-{i}'), 'x', None)\n")
 
 LOG_WRITER = (
     "import sys, itertools\n"
     "from poolhouse.sentinel.events import Event, EventLog, Severity\n"
     "log = EventLog(__import__('pathlib').Path(sys.argv[1]) / 'events.log', max_bytes=4000)\n"
     "for i in itertools.count():\n"
-    "    log.append(Event('t.x', Severity.INFO, 't', f'peer:{i}', {'n': i}))\n")
+    "    log.append(Event('t.x', Severity.INFO, 't', f'member:{i}', {'n': i}))\n")
 
 
 def _kill_after(code: str, args: list[str], seconds: float) -> None:
@@ -43,13 +43,13 @@ def _kill_after(code: str, args: list[str], seconds: float) -> None:
 def test_a_record_written_before_the_head_landed_is_adopted_not_forked(tmp_path):
     log = EventLog(tmp_path / "events.log")
     for i in range(3):
-        log.append(Event("t.x", Severity.INFO, "t", f"peer:{i}"))
+        log.append(Event("t.x", Severity.INFO, "t", f"member:{i}"))
     head = tmp_path / "events.log.head"
     before = head.read_bytes()
-    log.append(Event("t.x", Severity.INFO, "t", "peer:3"))
+    log.append(Event("t.x", Severity.INFO, "t", "member:3"))
     head.write_bytes(before)
     assert log.verify().ok
-    log.append(Event("t.x", Severity.INFO, "t", "peer:4"))
+    log.append(Event("t.x", Severity.INFO, "t", "member:4"))
     result = log.verify()
     assert result.ok and result.records == 5, result.problems
 
@@ -60,7 +60,7 @@ def test_a_line_appended_without_the_key_is_found(tmp_path):
 
     log = EventLog(tmp_path / "events.log")
     for i in range(3):
-        log.append(Event("t.x", Severity.INFO, "t", f"peer:{i}"))
+        log.append(Event("t.x", Severity.INFO, "t", f"member:{i}"))
     last = json.loads(log.path.read_text().splitlines()[-1])
     forged = {"version": 1, "ts": 1.0, "kind": "t.forged", "severity": "info", "source": "t",
               "subject": "", "evidence": {}, "seq": last["seq"] + 1, "prev": last["hash"]}
@@ -77,7 +77,7 @@ def test_a_crash_in_the_middle_of_a_rotation_leaves_a_chain_that_verifies(tmp_pa
 
     log = EventLog(tmp_path / "events.log", max_bytes=500, keep=3)
     for i in range(40):
-        log.append(Event("t.x", Severity.INFO, "t", f"peer:{i}"))
+        log.append(Event("t.x", Severity.INFO, "t", f"member:{i}"))
     assert len(log.files()) == 3 and log.verify().ok
 
     def crash(*_args):
@@ -86,7 +86,7 @@ def test_a_crash_in_the_middle_of_a_rotation_leaves_a_chain_that_verifies(tmp_pa
     monkeypatch.setattr(events, "promote", crash)
     with pytest.raises(OSError, match="killed"):
         while True:
-            log.append(Event("t.x", Severity.INFO, "t", "peer:more"))
+            log.append(Event("t.x", Severity.INFO, "t", "member:more"))
     monkeypatch.undo()
     result = log.verify()
     assert result.ok, result.problems

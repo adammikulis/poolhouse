@@ -125,7 +125,7 @@ def test_identity_expiry_board_membership_and_body_bounds_precede_cached_reports
         kit.ws.send(kit.sender, 'receiver', 'status', 'Stopped')
 
 
-def test_twin_processes_append_one_exact_report_to_the_verified_journal(tmp_path, monkeypatch):
+def test_twin_processes_append_one_exact_report_to_the_verified_log(tmp_path, monkeypatch):
     kit = Kit(clean_env(monkeypatch, tmp_path))
     sender = kit.agent('reporter')
     kit.agent('receiver')

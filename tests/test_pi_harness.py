@@ -24,7 +24,7 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
             return target
 
     run = SimpleNamespace(files=Files(), cwd=tmp_path, brief="trusted role brief",
-                          seat=SimpleNamespace(name="coding-test"))
+                          session=SimpleNamespace(name="coding-test"))
 
     @contextmanager
     def opened(*_args, **_kwargs):

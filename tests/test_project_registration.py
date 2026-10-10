@@ -92,7 +92,7 @@ def test_sealed_wsl_registration_checks_identity_before_persisting(tmp_path, mon
                               _sealing=lambda: object(), _send=lambda *args: responses.append(args),
                               _object=lambda body: {"root": r"C:\repos\project", "project_id": identifier})
     registry = projects.ProjectRegistry(tmp_path / "registry", "device")
-    assert projects.register(handler, registry, tmp_path / "cluster", b"request")
+    assert projects.register(handler, registry, tmp_path / "pool", b"request")
     assert responses[0][0] == (200 if matching else 400)
     assert bool(registry.boards()) is matching
     assert registry.path.exists() is matching
@@ -107,7 +107,7 @@ def test_registration_rejects_unauthenticated_caller_before_path_translation(tmp
     handler = SimpleNamespace(path="/workspace/v1/local-project", client_address=("192.168.4.8", 0),
                               _sealing=lambda: object(), _send=lambda *args: responses.append(args))
     registry = projects.ProjectRegistry(tmp_path / "registry", "device")
-    assert projects.register(handler, registry, tmp_path / "cluster", b"request")
+    assert projects.register(handler, registry, tmp_path / "pool", b"request")
     assert responses[0][0] == 403
     assert registry.boards() == []
 

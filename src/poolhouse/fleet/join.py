@@ -1,11 +1,11 @@
-"""``poolhouse-cluster`` -- make this machine a peer in one command, and see the devices in the cluster.
+"""``poolhouse-pool`` -- make this machine a member in one command, and see the devices in the pool.
 
 ``join`` is the whole onboarding: the machine facts serving depends on (`poolhouse.setup.look`),
-a llama-server if there is none, a cluster passphrase, the daemon (started now, and at logon
-with ``--persist``), and then a listing of every peer that answered on the discovery port --
-the same beacons `poolhouse-peers ls` reads, since there is one discovery mechanism and this
-adds no second one. ``status`` is that listing on its own, with what each peer serves, its
-room, whether it is measuring, and its commit; ``plan`` says which model each peer should
+a llama-server if there is none, a pool passphrase, the daemon (started now, and at logon
+with ``--persist``), and then a listing of every member that answered on the discovery port --
+the same beacons `poolhouse-members ls` reads, since there is one discovery mechanism and this
+adds no second one. ``status`` is that listing on its own, with what each member serves, its
+room, whether it is measuring, and its commit; ``plan`` says which model each member should
 serve for a number of users, and ``--apply`` serves it; ``leave`` undoes ``join``.
 
 Every step is a function that takes what it needs, so the app's Join button, the MCP
@@ -33,31 +33,31 @@ from poolhouse.jobs import detach
 from poolhouse.log import say, warn
 from poolhouse.units import human_bytes
 
-from . import automatic_clusters, cluster_modes, recovery
+from . import automatic_pools, pool_modes, recovery
 from .applying import apply_plan, serving_table
 from .discovery import (
     Beacon,
     DiscoveryError,
     default_port,
     discover,
-    in_cluster,
+    in_pool,
     key_path,
-    leave as leave_cluster,
+    leave as leave_pool,
     memberships,
     named_apart,
     require_name,
 )
 from .launch import HTTP_PORT, already_running, wait_for_health
 from .onboard.cli import COMMANDS as ONBOARD_COMMANDS, add_commands, run as run_onboarding
-from .onboard.clusters import format_clusters, known_clusters, pick_cluster
 from .onboard.joining import JoinOptions, join_by_passphrase
+from .onboard.pools import format_pools, known_pools, pick_pool
 from .pausing import (
     Answer,
     Fanout,
+    member_clients,
     minutes_of,
     pause_fleet,
     pause_table,
-    peer_clients,
     remember_seen,
 )
 from .runtime_paths import default_root
@@ -74,10 +74,10 @@ __all__ = [
     "join_machine",
     "leave_machine",
     "main",
+    "member_clients",
+    "members",
     "pause_fleet",
     "pause_table",
-    "peer_clients",
-    "peers",
     "remember_seen",
     "remember_track",
     "running_code",
@@ -130,7 +130,7 @@ class Joined:
     persist_note: str = ""
     tracking: str = ""
     machine: str = ""
-    peers: list[dict[str, Any]] = field(default_factory=list)
+    members: list[dict[str, Any]] = field(default_factory=list)
 
     def public(self) -> dict[str, Any]:
         return {"name": self.name, "machine": self.machine, "port": self.port,
@@ -138,7 +138,7 @@ class Joined:
                 "group": self.group, "mode": self.mode, "checks": [c.public() for c in self.checks],
                 "started": self.started, "daemon_pid": self.daemon_pid,
                 "persisted": self.persisted, "persist_note": self.persist_note,
-                "tracking": self.tracking, "peers": self.peers}
+                "tracking": self.tracking, "members": self.members}
 
 
 # -- the checks ------------------------------------------------------------------------
@@ -201,16 +201,16 @@ def started_file(root: Path | str) -> Path:
 
 
 def start_daemon(port: int, root: Path | str, name: str = "", *,
-                 cluster_key_path: Path | str | None = None, mode: str | None = None) -> int:
+                 pool_key_path: Path | str | None = None, mode: str | None = None) -> int:
     """Start ``poolhouse-traind`` owned by no terminal, its log under ``root``; the pid,
     which is also written to `started_file` for ``leave``."""
     root = Path(root).expanduser()
     root.mkdir(parents=True, exist_ok=True)
     argv = ["--port", str(port), "--root", str(root)] + (["--name", name] if name else [])
-    if cluster_key_path is not None:
-        argv.extend(["--cluster-key", str(home.expand(cluster_key_path).resolve())])
+    if pool_key_path is not None:
+        argv.extend(["--pool-key", str(home.expand(pool_key_path).resolve())])
     if mode is not None:
-        argv.extend(["--mode", cluster_modes.validate(mode)])
+        argv.extend(["--mode", pool_modes.validate(mode)])
     ran = detach("poolhouse.cli.daemon", argv, log=root / "traind.log")
     write_json(started_file(root), versioned(
         {"pid": ran.pid, "argv": list(ran.command), "log": str(ran.log),
@@ -255,11 +255,11 @@ def _started_pid(root: Path | str) -> int | None:
 
 
 def _enrol_via_daemon(port: int, passphrase: str, group: str, mode: str | None) -> None:
-    """Add a cluster through the daemon already on ``port``, so it advertises at once.
+    """Add a pool through the daemon already on ``port``, so it advertises at once.
 
-    Writing the key file underneath a running daemon leaves it announcing on the clusters
-    it read at startup; the ``/ui/clusters`` route is what re-reads them. The route is
-    loopback-only for a machine in no cluster and needs a session otherwise, which the same
+    Writing the key file underneath a running daemon leaves it announcing on the pools
+    it read at startup; the ``/ui/pools`` route is what re-reads them. The route is
+    loopback-only for a machine in no pool and needs a session otherwise, which the same
     passphrase opens.
     """
     base = f"http://127.0.0.1:{port}"
@@ -281,16 +281,16 @@ def _enrol_via_daemon(port: int, passphrase: str, group: str, mode: str | None) 
     status, body, set_cookie = call("/ui/session", {"passphrase": passphrase, "group": group})
     if status == 200 and set_cookie:
         cookie = set_cookie.split(";")[0]
-    status, body, _ = call("/ui/clusters", {"passphrase": passphrase, "group": group, "cluster_mode": mode}, cookie)
+    status, body, _ = call("/ui/pools", {"passphrase": passphrase, "group": group, "pool_mode": mode}, cookie)
     if status != 200:
-        raise JoinError(f"the daemon on port {port} refused the cluster: "
+        raise JoinError(f"the daemon on port {port} refused the pool: "
                         f"{body.get('error', status)}")
 
 
-# -- the devices in the cluster ---------------------------------------------------------------
-def describe(beacon: Beacon, *, clusters: Iterable[str] = (),
+# -- the devices in the pool ---------------------------------------------------------------
+def describe(beacon: Beacon, *, pools: Iterable[str] = (),
              self_machine: str = "") -> dict[str, Any]:
-    """One peer as a row: what it serves, its room, whether it is busy, its commit.
+    """One member as a row: what it serves, its room, whether it is busy, its commit.
 
     Read out of the beacon's device report, defensively: a daemon on an older build
     reports fewer fields, and a row with a '?' in it beats no row.
@@ -334,33 +334,33 @@ def describe(beacon: Beacon, *, clusters: Iterable[str] = (),
         "checked_at": float(d.get("update_checked_at") or 0.0),
         "update_error": str(d.get("update_error") or ""),
         "gpu": str(d.get("gpu") or ""),
-        "clusters": list(clusters),
+        "pools": list(pools),
         "is_self": bool(self_machine) and beacon.machine == self_machine,
         "device": d,
     }
 
 
-def peers(*, cluster_key_path: Path | str | None = None, timeout_s: float = 2.0,
+def members(*, pool_key_path: Path | str | None = None, timeout_s: float = 2.0,
           port: int | None = None, self_machine: str = "",
           finder: Callable[..., list[Beacon]] = discover) -> list[dict[str, Any]]:
-    """Every daemon on the LAN that proves it holds one of this machine's cluster keys.
+    """Every daemon on the LAN that proves it holds one of this machine's pool keys.
 
-    One machine in two clusters answers on each; it is listed once with both. Machines
+    One machine in two pools answers on each; it is listed once with both. Machines
     that share a name are listed apart (`named_apart`).
     """
-    # Keyed on the daemon, not its address: the same daemon answers each cluster with a
+    # Keyed on the daemon, not its address: the same daemon answers each pool with a
     # beacon of its own, and can be heard on loopback for one and the LAN for the other.
     found: dict[str, dict[str, Any]] = {}
-    for member in memberships(cluster_key_path):
+    for member in memberships(pool_key_path):
         for beacon in finder(member.key, timeout_s=timeout_s, port=port):
             who = f"{beacon.machine or beacon.hostname}:{beacon.port}"
             row = found.get(who)
             if row is None:
-                found[who] = describe(beacon, clusters=[member.group],
+                found[who] = describe(beacon, pools=[member.group],
                                       self_machine=self_machine)
                 continue
-            if member.group not in row["clusters"]:
-                row["clusters"].append(member.group)
+            if member.group not in row["pools"]:
+                row["pools"].append(member.group)
             if beacon.host.startswith("127.") and not row["host"].startswith("127."):
                 row["host"], row["base_url"] = beacon.host, beacon.base_url
     return sorted(named_apart(list(found.values())),
@@ -381,7 +381,7 @@ def _ago(seconds: float) -> str:
 
 
 def running_code(row: dict[str, Any]) -> str:
-    """What a peer runs: the short sha, and how old that commit is."""
+    """What a member runs: the short sha, and how old that commit is."""
     commit = str(row.get("commit") or "?").split()[0][:7] or "?"
     dirty = "*" if "dirty" in str(row.get("commit") or "") else ""
     age = _ago(float(row.get("commit_age_s") or 0.0))
@@ -389,7 +389,7 @@ def running_code(row: dict[str, Any]) -> str:
 
 
 def updating(row: dict[str, Any]) -> str:
-    """How a peer keeps current, and when it last looked.
+    """How a member keeps current, and when it last looked.
 
     A fleet half on one commit and half on another is the thing this column exists to make
     visible: 'main 4m' is a machine following a branch that looked four minutes ago,
@@ -409,8 +409,8 @@ def updating(row: dict[str, Any]) -> str:
 def table(rows: Sequence[dict[str, Any]]) -> str:
     """The listing, as text."""
     if not rows:
-        return ("no peers answered.\n"
-                "  - is the daemon running there?  poolhouse-cluster join\n"
+        return ("no members answered.\n"
+                "  - is the daemon running there?  poolhouse-pool join\n"
                 "  - same LAN, and the same passphrase?")
     lines = [f"{'NAME':<16} {'URL':<28} {'ROOM':<16} {'STATE':<12} {'COMMIT':<12} "
              f"{'UPDATES':<12} {'SPEECH':<12} SERVING"]
@@ -438,7 +438,7 @@ def join_machine(*, name: str = "", passphrase: str = "", group: str = "",
                  mode: str | None = None,
                  persist: bool = False, track: str = "", port: int = HTTP_PORT,
                  root: Path | str | None = None,
-                 cluster_key_path: Path | str | None = None,
+                 pool_key_path: Path | str | None = None,
                  timeout_s: float = 2.0, wait_s: float = 20.0,
                  say: Callable[[str], None] = say,
                  start: Callable[[int, Path, str], int] | None = None,
@@ -447,9 +447,9 @@ def join_machine(*, name: str = "", passphrase: str = "", group: str = "",
                  persist_with: Callable[..., Any] | None = None,
                  finder: Callable[..., list[Beacon]] = discover,
                  discovery_port: int | None = None) -> Joined:
-    """Join a cluster, start the daemon and return the visible fleet."""
+    """Join a pool, start the daemon and return the visible fleet."""
     if mode is not None:
-        cluster_modes.validate(mode)
+        pool_modes.validate(mode)
     root = home.expand(root) if root else default_root()
     root.mkdir(parents=True, exist_ok=True)
     group = require_name(group) if passphrase else group.strip()
@@ -467,19 +467,19 @@ def join_machine(*, name: str = "", passphrase: str = "", group: str = "",
             (enrol or (lambda words, g: _enrol_via_daemon(
                 port, words, g, mode)))(passphrase, group)
         else:
-            join_by_passphrase(passphrase, group, cluster_key_path,
+            join_by_passphrase(passphrase, group, pool_key_path,
                                options=JoinOptions(mode=mode, timeout_s=timeout_s, port=discovery_port))
-        enrolled = next((m for m in memberships(cluster_key_path) if m.group == group), None)
-        joined.mode = enrolled.mode if enrolled else mode or cluster_modes.PRODUCTION
-        say(f"joined cluster '{group}'")
-        recovery.remember(passphrase, group, cluster_key_path, say=say)
+        enrolled = next((m for m in memberships(pool_key_path) if m.group == group), None)
+        joined.mode = enrolled.mode if enrolled else mode or pool_modes.PRODUCTION
+        say(f"joined pool '{group}'")
+        recovery.remember(passphrase, group, pool_key_path, say=say)
     else:
-        member = automatic_clusters.ensure(cluster_key_path, mode=mode,
+        member = automatic_pools.ensure(pool_key_path, mode=mode,
                                            port=discovery_port or port + 1)
         joined.group = member.group
         joined.mode = member.mode
-        say(f"joined cluster '{member.group}'")
-    say(cluster_modes.notice(joined.mode))
+        say(f"joined pool '{member.group}'")
+    say(pool_modes.notice(joined.mode))
 
     if running is not None:
         _running_notice(joined, running, say)
@@ -491,7 +491,7 @@ def join_machine(*, name: str = "", passphrase: str = "", group: str = "",
                 if wait_for_health(port, seconds=wait_s) is not None:
                     running = already_running(port)
         if running is None:
-            joined.daemon_pid = _start_selected(start, joined, cluster_key_path)
+            joined.daemon_pid = _start_selected(start, joined, pool_key_path)
             joined.started = True
             say(f"started the daemon (pid {joined.daemon_pid}); waiting for it to answer")
             if wait_for_health(port, seconds=wait_s) is None:
@@ -504,19 +504,19 @@ def join_machine(*, name: str = "", passphrase: str = "", group: str = "",
         joined.persisted, joined.persist_note = _persist(persist_with, say)
 
     say(f"asking the network (discovery port {discovery_port or default_port()})")
-    joined.peers = peers(cluster_key_path=cluster_key_path, timeout_s=timeout_s,
+    joined.members = members(pool_key_path=pool_key_path, timeout_s=timeout_s,
                          port=discovery_port, self_machine=joined.machine, finder=finder)
-    say(table(joined.peers))
+    say(table(joined.members))
     return joined
 
 
 def _start_selected(start: Callable[[int, Path, str], int] | None, joined: Joined,
-                    cluster_key_path: Path | str | None) -> int:
+                    pool_key_path: Path | str | None) -> int:
     """Start the selected profile or call the injected launcher."""
     if start is not None:
         return start(joined.port, joined.root, joined.name)
     return start_daemon(joined.port, joined.root, joined.name,
-                        cluster_key_path=cluster_key_path, mode=joined.mode)
+                        pool_key_path=pool_key_path, mode=joined.mode)
 
 
 def _running_notice(joined: Joined, running: dict, say: Callable[[str], None]) -> None:
@@ -531,7 +531,7 @@ def _running_notice(joined: Joined, running: dict, say: Callable[[str], None]) -
 
 def _machine_checks(root: Path, ensure: Callable[[Path], Path] | None,
                     say: Callable[[str], None]) -> list[Check]:
-    """Report the machine checks for cluster onboarding."""
+    """Report the machine checks for pool onboarding."""
     say("checking this machine")
     found = checks(root, ensure=ensure, say=say)
     for check in found:
@@ -559,18 +559,18 @@ def _persist(persist_with: Callable[..., Any] | None, say: Callable[[str], None]
 
 
 def leave_machine(*, group: str = "", root: Path | str | None = None,
-                  cluster_key_path: Path | str | None = None, stop: bool = True,
+                  pool_key_path: Path | str | None = None, stop: bool = True,
                   say: Callable[[str], None] = say,
                   unpersist: Callable[[], list[Path]] | None = None) -> dict[str, Any]:
-    """Undo ``join``: drop the cluster(s), the logon service, and the daemon it started."""
-    before = memberships(cluster_key_path)
+    """Undo ``join``: drop the pool(s), the logon service, and the daemon it started."""
+    before = memberships(pool_key_path)
     left = [m.group for m in before if not group or m.group == group]
     for one in left:
-        leave_cluster(one, cluster_key_path)
-        recovery.forget(one, cluster_key_path)
-        say(f"left cluster '{one}'")
+        leave_pool(one, pool_key_path)
+        recovery.forget(one, pool_key_path)
+        say(f"left pool '{one}'")
     if not left:
-        say("in no cluster" if not before else f"not in a cluster called '{group}'")
+        say("in no pool" if not before else f"not in a pool called '{group}'")
 
     if unpersist is None:
         from . import autostart
@@ -597,7 +597,7 @@ def leave_machine(*, group: str = "", root: Path | str | None = None,
 
 
 # -- a sweep over the fleet ----------------------------------------------------------
-def sweep_argv(models: Sequence[str], *, peers: Sequence[str] = (), sample: int = 0,
+def sweep_argv(models: Sequence[str], *, members: Sequence[str] = (), sample: int = 0,
                label: str = "", extra: Sequence[str] = ()) -> list[str]:
     """The ``poolhouse-bench`` line that spreads ``models`` over the fleet, one job each.
 
@@ -610,8 +610,8 @@ def sweep_argv(models: Sequence[str], *, peers: Sequence[str] = (), sample: int 
     argv = ["sweep", "--fleet"]
     for m in models:
         argv += ["--serve", str(m)]
-    if peers:
-        argv += ["--peers", ",".join(peers)]
+    if members:
+        argv += ["--members", ",".join(members)]
     if sample:
         argv += ["--sample", str(int(sample))]
     if label:
@@ -621,39 +621,39 @@ def sweep_argv(models: Sequence[str], *, peers: Sequence[str] = (), sample: int 
 
 
 # -- the command -----------------------------------------------------------------------
-def _cluster_and_words(args: argparse.Namespace, key: Path | str | None) -> tuple[str, str]:
-    """Read explicit cluster credentials or select automatic admission."""
-    group = args.group or os.environ.get("POOLHOUSE_CLUSTER", "").strip()
+def _pool_and_words(args: argparse.Namespace, key: Path | str | None) -> tuple[str, str]:
+    """Read explicit pool credentials or select automatic admission."""
+    group = args.group or os.environ.get("POOLHOUSE_POOL", "").strip()
     told = args.passphrase or os.environ.get("POOLHOUSE_PASSPHRASE", "").strip()
     if told:
         return require_name(group), told
-    if in_cluster(key):
+    if in_pool(key):
         return group, ""
-    if not group and getattr(args, "mode", None) != cluster_modes.PRODUCTION:
+    if not group and getattr(args, "mode", None) != pool_modes.PRODUCTION:
         return "", ""
     if sys.stdin.isatty() and not os.environ.get("POOLHOUSE_NONINTERACTIVE"):
-        from .peers import _prompt_passphrase
+        from .members import _prompt_passphrase
 
-        say("This machine is in no cluster yet.")
+        say("This machine is in no pool yet.")
         if group:
             return group, _prompt_passphrase(confirm=True)
-        say("Looking for clusters on this network...")
+        say("Looking for pools on this network...")
         me = already_running(args.port) or {}
-        found = known_clusters(key, timeout_s=args.timeout, self_names=(str(me.get("name") or ""),))
-        choice = pick_cluster(found, default="")
+        found = known_pools(key, timeout_s=args.timeout, self_names=(str(me.get("name") or ""),))
+        choice = pick_pool(found, default="")
         say(f"Type the passphrase {'of' if choice.existing else 'for'} '{choice.name}'.")
         return choice.name, _prompt_passphrase(confirm=not choice.existing)
     return require_name(group), sys.stdin.readline().strip()
 
 
 def cmd_join(args: argparse.Namespace) -> int:
-    group, words = _cluster_and_words(args, args.cluster_key)
+    group, words = _pool_and_words(args, args.pool_key)
     # An install script sets these rather than answering prompts it has no terminal for.
     name = args.name or os.environ.get("POOLHOUSE_NAME", "").strip()
     joined = join_machine(name=name, passphrase=words, group=group,
                           mode=args.mode, persist=args.persist, track=args.track, port=args.port,
                           root=args.root,
-                          cluster_key_path=args.cluster_key, timeout_s=args.timeout)
+                          pool_key_path=args.pool_key, timeout_s=args.timeout)
     if args.json:
         say(json.dumps(joined.public(), indent=1))
         return 0
@@ -662,29 +662,29 @@ def cmd_join(args: argparse.Namespace) -> int:
         + (", starting at logon" if joined.persisted else ""))
     if joined.tracking:
         say(f"  following {joined.tracking}: it updates itself when nothing is running")
-    say("  poolhouse-cluster status   -- devices in the cluster, what each serves")
-    say("  poolhouse-cluster leave    -- undo this")
+    say("  poolhouse-pool status   -- devices in the pool, what each serves")
+    say("  poolhouse-pool leave    -- undo this")
     return 0
 
 
-def cmd_clusters(args: argparse.Namespace) -> int:
+def cmd_pools(args: argparse.Namespace) -> int:
     me = already_running(args.port) or {}
-    found = known_clusters(args.cluster_key, timeout_s=args.timeout,
+    found = known_pools(args.pool_key, timeout_s=args.timeout,
                            self_names=(str(me.get("name") or ""),))
     if args.json:
         say(json.dumps([c.public() for c in found], indent=1))
     else:
-        say("\n".join(format_clusters(found)) or "no cluster on this machine or this network")
+        say("\n".join(format_pools(found)) or "no pool on this machine or this network")
     return 0 if found else 1
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    if not memberships(args.cluster_key):
-        warn(f"in no cluster (no key at {key_path(args.cluster_key)}); "
-             "run 'poolhouse-cluster join'")
+    if not memberships(args.pool_key):
+        warn(f"in no pool (no key at {key_path(args.pool_key)}); "
+             "run 'poolhouse-pool join'")
         return 1
     me = already_running(args.port)
-    rows = peers(cluster_key_path=args.cluster_key, timeout_s=args.timeout,
+    rows = members(pool_key_path=args.pool_key, timeout_s=args.timeout,
                  self_machine=str((me or {}).get("machine") or ""))
     if args.json:
         say(json.dumps(rows, indent=1, default=str))
@@ -693,7 +693,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     say(table(rows))
     if me is None:
         say(f"\nthis machine's daemon is not running on port {args.port}; "
-            "'poolhouse-cluster join' starts it")
+            "'poolhouse-pool join' starts it")
     return 0 if rows else 1
 
 
@@ -708,19 +708,19 @@ def _measurements() -> tuple[list[Any], list[Any]]:
 def cmd_plan(args: argparse.Namespace) -> int:
     from .plan import place, table as plan_table
 
-    if not memberships(args.cluster_key):
-        warn(f"in no cluster (no key at {key_path(args.cluster_key)}); "
-             "run 'poolhouse-cluster join'")
+    if not memberships(args.pool_key):
+        warn(f"in no pool (no key at {key_path(args.pool_key)}); "
+             "run 'poolhouse-pool join'")
         return 1
     me = already_running(args.port)
-    rows = peers(cluster_key_path=args.cluster_key, timeout_s=args.timeout,
+    rows = members(pool_key_path=args.pool_key, timeout_s=args.timeout,
                  self_machine=str((me or {}).get("machine") or ""))
     servings, fits = _measurements()
     placement = place(args.users, args.context, rows, servings, fits,
                       prefer=args.prefer)
     applied: list[dict[str, Any]] = []
     if args.apply and placement.rows:
-        applied = apply_plan(placement, rows, cluster_key_path=args.cluster_key,
+        applied = apply_plan(placement, rows, pool_key_path=args.pool_key,
                              say=(lambda line: None) if args.json else print)
     if args.json:
         say(json.dumps({**placement.as_dict(), "applied": applied}, indent=1))
@@ -735,9 +735,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 
 def cmd_pause(args: argparse.Namespace) -> int:
-    if not memberships(args.cluster_key):
-        warn(f"in no cluster (no key at {key_path(args.cluster_key)}); "
-             "run 'poolhouse-cluster join'")
+    if not memberships(args.pool_key):
+        warn(f"in no pool (no key at {key_path(args.pool_key)}); "
+             "run 'poolhouse-pool join'")
         return 1
     resume = args.cmd == "resume"
     span = str(getattr(args, "span", "") or "")
@@ -748,8 +748,8 @@ def cmd_pause(args: argparse.Namespace) -> int:
     answers = pause_fleet(
         Fanout(args.root, resume=resume, minutes=minutes,
                reason=str(getattr(args, "reason", "") or ""),
-               cluster_key_path=args.cluster_key),
-        peers(cluster_key_path=args.cluster_key, timeout_s=args.timeout))
+               pool_key_path=args.pool_key),
+        members(pool_key_path=args.pool_key, timeout_s=args.timeout))
     if args.json:
         say(json.dumps([a.public() for a in answers], indent=1))
     else:
@@ -758,7 +758,7 @@ def cmd_pause(args: argparse.Namespace) -> int:
 
 
 def cmd_leave(args: argparse.Namespace) -> int:
-    leave_machine(group=args.group, root=args.root, cluster_key_path=args.cluster_key,
+    leave_machine(group=args.group, root=args.root, pool_key_path=args.pool_key,
                   stop=not args.keep_running)
     return 0
 
@@ -767,10 +767,10 @@ def main(argv: list[str] | None = None) -> int:
     from .plan import PREFERENCES
 
     ap = argparse.ArgumentParser(
-        prog="poolhouse-cluster",
-        description="Make this machine a peer in one command, and see the devices in the cluster.")
-    ap.add_argument("--cluster-key", default=None,
-                    help="path to the cluster key (default: ~/.poolhouse/cluster.key)")
+        prog="poolhouse-pool",
+        description="Make this machine a member in one command, and see the devices in the pool.")
+    ap.add_argument("--pool-key", default=None,
+                    help="path to the pool key (default: ~/.poolhouse/pool.key)")
     ap.add_argument("--root", default=str(default_root()),
                     help="the daemon's root (default: traind under the state root)")
     ap.add_argument("--port", type=int, default=HTTP_PORT,
@@ -779,19 +779,19 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     join_p = sub.add_parser(
-        "join", help="check this machine, start the daemon, announce, and list cluster devices")
+        "join", help="check this machine, start the daemon, announce, and list pool devices")
     join_p.add_argument("--name", default="",
                         help="how this machine identifies itself (default: the hostname)")
     join_p.add_argument("--persist", action="store_true",
                         help="start the daemon at logon as well, so it comes back after "
                              "a restart")
-    join_p.add_argument("--mode", choices=cluster_modes.MODES, default=None,
-                        help="cluster admission: dev automatically joins nearby devices; "
+    join_p.add_argument("--mode", choices=pool_modes.MODES, default=None,
+                        help="pool admission: dev automatically joins nearby devices; "
                              "prod requires explicit admission (default: existing mode or dev)")
     join_p.add_argument("--passphrase", default="",
-                        help="join a named cluster with shared words (default mode: prod)")
+                        help="join a named pool with shared words (default mode: prod)")
     join_p.add_argument("--group", default="",
-                        help="required cluster name when joining with a passphrase")
+                        help="required pool name when joining with a passphrase")
     join_p.add_argument("--track", default="",
                         help="follow a branch instead of releases, e.g. 'main': this "
                              "machine pulls, reinstalls if the packaging moved and "
@@ -799,39 +799,39 @@ def main(argv: list[str] | None = None) -> int:
                              "Needs a git checkout with an editable install, and runs "
                              "code nobody reviewed. Remembered; '--track off' undoes it.")
     join_p.add_argument("--timeout", type=float, default=2.0,
-                        help="seconds to listen for peers (default: 2)")
+                        help="seconds to listen for members (default: 2)")
     join_p.add_argument("--json", action="store_true", help="print what was done as JSON")
 
-    status_p = sub.add_parser("status", help="the peers: what each serves, its room, its "
+    status_p = sub.add_parser("status", help="the members: what each serves, its room, its "
                                              "lock, its commit")
     status_p.add_argument("--timeout", type=float, default=2.0)
     status_p.add_argument("--json", action="store_true")
 
-    clusters_p = sub.add_parser("clusters", help="the clusters this machine is in and the ones "
+    pools_p = sub.add_parser("pools", help="the pools this machine is in and the ones "
                                                  "other machines on the network offer, with "
                                                  "who holds each")
-    clusters_p.add_argument("--timeout", type=float, default=2.0,
-                            help="seconds to listen for peers (default: 2)")
-    clusters_p.add_argument("--json", action="store_true")
+    pools_p.add_argument("--timeout", type=float, default=2.0,
+                            help="seconds to listen for members (default: 2)")
+    pools_p.add_argument("--json", action="store_true")
 
-    plan_p = sub.add_parser("plan", help="which model each peer serves, and how many "
+    plan_p = sub.add_parser("plan", help="which model each member serves, and how many "
                                          "slots, for a number of users at one context; "
                                          "the best measured models go to the most users")
     plan_p.add_argument("--users", type=int, required=True,
-                        help="how many conversations at once, across the cluster")
+                        help="how many conversations at once, across the pool")
     plan_p.add_argument("--context", type=int, default=16384,
                         help="tokens each conversation gets (default: 16384)")
     plan_p.add_argument("--prefer", choices=sorted(PREFERENCES), default="quality",
-                        help="what each peer serves: 'quality' the best measured model "
+                        help="what each member serves: 'quality' the best measured model "
                              "that fits there (default), 'slots' the model that slots "
                              "the most users there")
     plan_p.add_argument("--apply", action="store_true",
-                        help="serve the plan: each peer runs its model with its slots")
+                        help="serve the plan: each member runs its model with its slots")
     plan_p.add_argument("--timeout", type=float, default=2.0,
-                        help="seconds to listen for peers (default: 2)")
+                        help="seconds to listen for members (default: 2)")
     plan_p.add_argument("--json", action="store_true")
 
-    pause_p = sub.add_parser("pause", help="stop every machine in the cluster taking "
+    pause_p = sub.add_parser("pause", help="stop every machine in the pool taking "
                                            "work; each is asked in turn, and any that "
                                            "does not answer is named")
     pause_p.add_argument("--for", dest="span", default="", metavar="DURATION",
@@ -841,21 +841,21 @@ def main(argv: list[str] | None = None) -> int:
                          help="what to show anyone who asks why a machine is not "
                               "taking work")
     pause_p.add_argument("--timeout", type=float, default=2.0,
-                         help="seconds to listen for peers (default: 2)")
+                         help="seconds to listen for members (default: 2)")
     pause_p.add_argument("--json", action="store_true")
 
-    resume_p = sub.add_parser("resume", help="every machine in the cluster takes work "
+    resume_p = sub.add_parser("resume", help="every machine in the pool takes work "
                                              "again")
     resume_p.add_argument("--timeout", type=float, default=2.0,
-                          help="seconds to listen for peers (default: 2)")
+                          help="seconds to listen for members (default: 2)")
     resume_p.add_argument("--json", action="store_true")
 
-    leave_p = sub.add_parser("leave", help="drop the cluster, the logon service and the "
+    leave_p = sub.add_parser("leave", help="drop the pool, the logon service and the "
                                            "daemon join started")
     leave_p.add_argument("--group", default="",
-                         help="leave only this cluster (default: every one)")
+                         help="leave only this pool (default: every one)")
     leave_p.add_argument("--keep-running", action="store_true",
-                         help="leave the daemon up, just stop answering as a peer")
+                         help="leave the daemon up, just stop answering as a member")
     add_commands(sub)
     recovery.add_commands(sub)
     args = ap.parse_args(argv)
@@ -865,7 +865,7 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, SystemExit) as exc:
             warn(f"error: {exc}")
             return 2
-    fn = {"join": cmd_join, "status": cmd_status, "clusters": cmd_clusters, "plan": cmd_plan,
+    fn = {"join": cmd_join, "status": cmd_status, "pools": cmd_pools, "plan": cmd_plan,
           "pause": cmd_pause, "resume": cmd_pause, "leave": cmd_leave,
           "passphrase": recovery.run, "recovery": recovery.run}[args.cmd]
     try:

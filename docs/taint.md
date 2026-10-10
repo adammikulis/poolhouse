@@ -28,7 +28,7 @@ A label is a trust level and an origin.
 | --- | --- | --- |
 | `system` | written by the operator or the library | system prompt, sink registry, schemas, the installed-model list |
 | `user` | typed by the person in this session | the task, later user turns, the answer to `ask_user` |
-| `untrusted` | anything else | web pages, documents, retrieved chunks, tool results from tools not declared trusted, peer messages, sub-agent output, summaries of any of these |
+| `untrusted` | anything else | web pages, documents, retrieved chunks, tool results from tools not declared trusted, device messages, sub-agent output, summaries of any of these |
 
 Join is the lowest level. An origin is a short id (`tool:web_fetch#3`, `subagent:2`,
 `summary:1`) so a refusal can say which source a value came from and an event can name it without
@@ -41,7 +41,7 @@ quoting it.
   `untrusted`. The existing `UntrustedRail` classification (external source, injection phrase) also
   marks the run contaminated, so nothing it flagged is missed.
 - Messages found in the conversation that the ledger did not see arrive (a resumed session, a
-  `tool` role message, a peer message) are `untrusted`, except the person's own `user` messages.
+  `tool` role message, a device message) are `untrusted`, except the person's own `user` messages.
 - A compaction summary is `untrusted` whenever the ledger is contaminated, and always in a resumed
   conversation whose history the ledger did not see.
 - A sub-agent's result is `untrusted` when the sub-agent was contaminated.
@@ -69,7 +69,7 @@ Propagation is by value where it can be seen and by contamination where it canno
 - A value is **vouched for** (safe) when one of these holds, and no other way exists:
   1. it is a verbatim, word-bounded span of text the person typed (or the answer to `ask_user`);
   2. the sink's schema constrains it to an enum, a boolean, or a number inside a declared range;
-  3. it is a member of a registry the system owns (installed model files, configured peers) read
+  3. it is a member of a registry the system owns (installed model files, configured devices) read
      at the time of the call;
   4. it fully matches a pattern the sink declared for that argument;
   5. it came out of a validated extraction under the schema name the sink asks for.
@@ -83,7 +83,7 @@ Privileged tools are classified by what they can do.
 | `exec` | start a process, run a command, bench runs | Deny | Confirm |
 | `egress` | download, fetch a URL, upload, send | Deny | Confirm |
 | `credential` | join a fleet with a passphrase, use a key | Deny | Confirm |
-| `fleet` | serve up or down, change a peer | Confirm | Confirm |
+| `fleet` | serve up or down, change a device | Confirm | Confirm |
 | `write` | write a file, synthesise to a path | Confirm | Confirm |
 | `state` | any other change | Confirm | Confirm |
 | `read` | search, list, show | Proceed | Proceed |
@@ -216,7 +216,7 @@ untrusted text was read.
 The 3 that ran are the gaps above: `serve_down()` on its default port, `serve_up` of an installed
 model on an allowed port, and an enum value, each after a page told the model to. The coarse
 rule's 4 are calls to tools it does not list (a shell, a file write, a mail send) and a join
-steered by a peer message; taint tracking stops those and asks about the same legitimate tasks
+steered by a device message; taint tracking stops those and asks about the same legitimate tasks
 less than a quarter as often. The 4 legitimate tasks that ask are the ones where the value came
 from the model, not the person: a reference picked from search results, text the model wrote to
 say, the largest file of a repository the person named, and a path the model chose. A person who

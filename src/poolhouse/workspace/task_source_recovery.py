@@ -82,8 +82,8 @@ def _pending(graph, worker, target):
     return max(rows, key=lambda row: row['at']) if rows else None
 
 
-def _apply(ws, journal, runner, scopes):
-    changed = replace(runner, project=journal['target'])
+def _apply(ws, log, runner, scopes):
+    changed = replace(runner, project=log['target'])
     with ExitStack() as rollback:
         rollback.callback(localagent.save, ws, runner)
         localagent.save(ws, changed)
@@ -92,15 +92,15 @@ def _apply(ws, journal, runner, scopes):
                 current = record(graph, scope['id'], 'task-worktree')
                 if current != scope:
                     raise Denied('the task binding changed during source recovery')
-                save(graph, 'task-worktree', {**scope, 'source_project': journal['target']})
+                save(graph, 'task-worktree', {**scope, 'source_project': log['target']})
                 event = {'id': 'checkpoint:' + uuid4().hex, 'task': scope['task'],
-                         'worker': scope['worker'], 'at': ws.clock(), 'summary': journal['reason'],
-                         'transition': 'rebind-source', 'authorized_by': journal['owner'],
-                         'source_project': journal['source'], 'target_project': journal['target'],
+                         'worker': scope['worker'], 'at': ws.clock(), 'summary': log['reason'],
+                         'transition': 'rebind-source', 'authorized_by': log['owner'],
+                         'source_project': log['source'], 'target_project': log['target'],
                          'baseline_commit': scope['baseline_commit']}
                 save(graph, 'checkpoint', event)
                 link(graph, scope['task'], event['id'], 'checkpoint')
-            save(graph, 'source-recovery', {**journal, 'state': 'committed'})
+            save(graph, 'source-recovery', {**log, 'state': 'committed'})
         rollback.pop_all()
 
 
@@ -142,18 +142,18 @@ def rebind(ws, token: str, worker: str, project: str, reason: str) -> dict:
             if previous and previous['state'] == 'prepared':
                 if previous['worker_config'] != snapshot or previous['tasks'] != [s['task'] for s in scopes]:
                     raise Denied('the prepared source recovery configuration changed')
-                journal = previous
+                log = previous
             else:
-                journal = {'id': 'source-recovery:' + uuid4().hex, 'worker': child.id,
+                log = {'id': 'source-recovery:' + uuid4().hex, 'worker': child.id,
                            'owner': who.id, 'source': source, 'target': str(target),
                            'primary': str(worktreerules.checkouts(target)[1]),
                            'reason': reason, 'at': ws.clock(), 'state': 'prepared',
                            'tasks': [scope['task'] for scope in scopes], 'worker_config': snapshot}
-                save(graph, 'source-recovery', journal)
-        _apply(ws, journal, runner, scopes)
-    ws.audit('task.rebind-source', who.id, worker=child.id, recovery=journal['id'])
-    return {'worker': child.id, 'project': str(target), 'tasks': journal['tasks'],
-            'recovery': journal['id'], 'verified': True}
+                save(graph, 'source-recovery', log)
+        _apply(ws, log, runner, scopes)
+    ws.audit('task.rebind-source', who.id, worker=child.id, recovery=log['id'])
+    return {'worker': child.id, 'project': str(target), 'tasks': log['tasks'],
+            'recovery': log['id'], 'verified': True}
 
 
 TABLE = [

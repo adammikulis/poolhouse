@@ -17,7 +17,7 @@ def project_key(ws: Workspace, name: str) -> str:
     return str(info["project"].get("key", "")) if info["role"] else ""
 
 
-def shared_pair(ws: Workspace, who: Identity, a: str, b: str) -> bool:
+def shared_conversation(ws: Workspace, who: Identity, a: str, b: str) -> bool:
     """Whether both conversation participants share the reader's project."""
     key = project_key(ws, who.id)
     return bool(key and project_key(ws, a) == key and project_key(ws, b) == key)
@@ -29,4 +29,4 @@ def can_read_row(ws: Workspace, who: Identity, row: dict[str, Any],
     if row["to"].startswith("#"):
         return ws.board.can_read(who, row["to"], boards)
     return (who.role != AGENT or who.id in (row["from"], row["to"])
-            or row["to"] == "*" or shared_pair(ws, who, row["from"], row["to"]))
+            or row["to"] == "*" or shared_conversation(ws, who, row["from"], row["to"]))

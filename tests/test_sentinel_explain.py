@@ -46,13 +46,13 @@ def finding_kinds() -> set[str]:
                        if isinstance(a, ast.Constant) and isinstance(a.value, str)]
             if path.name in ("honey.py", "integrity.py") and literal:
                 found.add(literal[0] if literal[0].startswith(family) else f"{family}.{literal[0]}")
-    found |= {"peer.version_mismatch", "peer.binary_mismatch"}     # PeerWatch.mismatch(what)
+    found |= {"member.version_mismatch", "member.binary_mismatch"}     # MemberWatch.mismatch(what)
     return found
 
 
 def test_the_scan_finds_the_kinds_it_should():
     kinds = finding_kinds()
-    assert {"peer.forged_traffic", "server.unmanaged", "tools.mix_shift", "honey.token_seen",
+    assert {"member.forged_traffic", "server.unmanaged", "tools.mix_shift", "honey.token_seen",
             "honey.path_named", "integrity.content_changed", "integrity.link_retargeted",
             "integrity.missing", "integrity.unreadable", "canary.hard_drift",
             "guard.tainted", "score.quarantine", "abuse.resource"} <= kinds
@@ -68,20 +68,20 @@ def test_every_subject_kind_says_what_a_quarantine_blocks():
     assert set(explain.BLOCKS) == set(KINDS)
 
 
-def record(reason: str, kind: str = "peer", key: str = "1.2.3.4", state=State.QUARANTINED):
+def record(reason: str, kind: str = "member", key: str = "1.2.3.4", state=State.QUARANTINED):
     return Record("q-1", kind, key, state, reason, {}, 100.0, 100.0)
 
 
 def test_the_reason_is_found_from_the_finding_code_or_the_caller_s_words():
-    assert explain.describe(record("peer.forged_traffic: x=1"), 1, 160.0).why == \
-        explain.WHY["peer.forged_traffic"]
+    assert explain.describe(record("member.forged_traffic: x=1"), 1, 160.0).why == \
+        explain.WHY["member.forged_traffic"]
     assert "reply" in explain.describe(record("model output carries a decoy value"), 1, 0).why
     assert explain.describe(record("something new"), 1, 0).why == explain.UNKNOWN
 
 
 def test_what_it_blocks_and_what_to_do_depend_on_the_state():
-    held = explain.describe(record("peer.forged_traffic: x"), 1, 160.0)
-    assert held.blocks == explain.BLOCKS["peer"] and "false alarm" in held.advice
+    held = explain.describe(record("member.forged_traffic: x"), 1, 160.0)
+    assert held.blocks == explain.BLOCKS["member"] and "false alarm" in held.advice
     watch = explain.describe(record("server.unmanaged: x", "server", "port:51089", State.WATCH),
                              1, 0)
     assert watch.name == "server :51089" and watch.blocks.startswith("Nothing is blocked")
@@ -109,6 +109,6 @@ def test_show_masks_secrets_before_anything_else():
 
 def test_a_name_is_short_and_never_the_raw_path():
     assert explain.name_of("model", "/home/me/models/qwen.gguf") == "model qwen.gguf"
-    assert explain.name_of("peer", "10.0.0.1") == "peer 10.0.0.1"
+    assert explain.name_of("member", "10.0.0.1") == "member 10.0.0.1"
     assert explain.name_of("server", "port:51089") == "server :51089"
     assert len(explain.name_of("session", "\x1b" * 5000)) <= 60

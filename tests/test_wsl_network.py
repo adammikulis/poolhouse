@@ -42,17 +42,17 @@ def test_a_bridge_without_a_lan_address_refuses_to_listen_on_every_interface():
         wsl_network.NetworkBridge("", ("127.0.0.1", 9), discovery.DEFAULT_GROUP, 0, native_socket).start()
 
 
-def test_udp_bridge_preserves_payload_and_peer_address(bridge):
+def test_udp_bridge_preserves_payload_and_member_address(bridge):
     payload = b"MLD3\x00\xff encrypted beacon"
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as peer:
-        peer.bind(("127.0.0.1", bridge.port))
-        peer.settimeout(2)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as member:
+        member.bind(("127.0.0.1", bridge.port))
+        member.settimeout(2)
         with discovery._socket(broadcast=True, bind=("", 0)) as sock:
-            assert sock.sendto(payload, peer.getsockname()) == len(payload)
-            request, address = peer.recvfrom(65535)
+            assert sock.sendto(payload, member.getsockname()) == len(payload)
+            request, address = member.recvfrom(65535)
             assert request == payload
-            peer.sendto(payload[::-1], address)
-            assert sock.recvfrom(65535) == (payload[::-1], peer.getsockname())
+            member.sendto(payload[::-1], address)
+            assert sock.recvfrom(65535) == (payload[::-1], member.getsockname())
 
 
 @pytest.mark.parametrize("address", [("8.8.8.8", 53), ("127.0.0.1", 22), ("192.168.2.1", 8771)])
@@ -66,17 +66,17 @@ def test_udp_bridge_refuses_non_discovery_destinations(bridge, address):
     udp.sendto.assert_not_called()
 
 
-def test_udp_bridge_only_replies_to_received_private_peers(bridge):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as peer:
-        peer.bind(("127.0.0.1", 0))
+def test_udp_bridge_only_replies_to_received_private_members(bridge):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as member:
+        member.bind(("127.0.0.1", 0))
         with discovery._socket(bind=("", bridge.port)) as sock:
             with pytest.raises(OSError):
-                sock.sendto(b"before", peer.getsockname())
-            peer.sendto(b"query", ("127.0.0.1", bridge.port))
-            assert sock.recvfrom(65535) == (b"query", peer.getsockname())
-            sock.sendto(b"reply", peer.getsockname())
-            peer.settimeout(2)
-            assert peer.recvfrom(65535)[0] == b"reply"
+                sock.sendto(b"before", member.getsockname())
+            member.sendto(b"query", ("127.0.0.1", bridge.port))
+            assert sock.recvfrom(65535) == (b"query", member.getsockname())
+            sock.sendto(b"reply", member.getsockname())
+            member.settimeout(2)
+            assert member.recvfrom(65535)[0] == b"reply"
 
 
 def test_udp_bridge_preserves_timeout(bridge):
@@ -281,16 +281,16 @@ def test_gateway_relay_preserves_raw_transport_and_nonloopback_scope(monkeypatch
     raw.assert_called_once_with(client, ("127.0.0.2", 12345), service.stop)
 
 
-def test_discovery_reply_cache_retains_recent_peers_and_fixed_destinations(bridge):
+def test_discovery_reply_cache_retains_recent_members_and_fixed_destinations(bridge):
     fixed = {(bridge.group, bridge.port), ("255.255.255.255", bridge.port), ("127.0.0.1", bridge.port)}
     allowed = dict.fromkeys(fixed)
     udp = MagicMock()
     udp.sendto.return_value = 5
     first = ("10.50.0.1", 10000)
     for index in range(200):
-        peer = ("10.50.0.1", 10000 + index)
-        udp.recvfrom.return_value = (b"query", peer)
-        assert bridge._operate(udp, {"operation": "receive", "timeout": .1, "size": 10}, allowed)["address"] == peer
+        member = ("10.50.0.1", 10000 + index)
+        udp.recvfrom.return_value = (b"query", member)
+        assert bridge._operate(udp, {"operation": "receive", "timeout": .1, "size": 10}, allowed)["address"] == member
         assert len(allowed) <= 128
         assert fixed <= allowed.keys()
     with pytest.raises(OSError, match="Only LAN discovery"):

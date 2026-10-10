@@ -126,9 +126,9 @@ def _role(name: str, platform: str, spec: Spec, launchers: Path) -> Role:
         str(run),
         {"policy": "on-failure" if daemon else "schedule", "backoff_s": 30 if daemon else 60,
          "burst": 5 if daemon else 1, "interval_s": 300 if daemon else 3600},
-        {"mode": "journal" if platform == "linux" else "files",
-         "stdout": "journal" if platform == "linux" else str(logs),
-         "stderr": "journal" if platform == "linux" else str(logs), "max_bytes": LOG_BYTES,
+        {"mode": "log" if platform == "linux" else "files",
+         "stdout": "log" if platform == "linux" else str(logs),
+         "stderr": "log" if platform == "linux" else str(logs), "max_bytes": LOG_BYTES,
          "keep": LOG_KEEP},
         ({"kind": "http", "url": f"http://127.0.0.1:{DAEMON_PORT}/health", "timeout_s": 30} if daemon
          else {"kind": "loaded", "timeout_s": 10}))

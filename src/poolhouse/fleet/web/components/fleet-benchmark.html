@@ -1,5 +1,5 @@
 <template>
-  <details class="panel benchmark-panel" id="cluster-sweep">
+  <details class="panel benchmark-panel" id="pool-sweep">
     <summary><span>Benchmark models</span><span class="why" id="benchmark-summary">Compare models across your pool</span></summary>
     <p class="hint">Choose models and devices, then measure their answers using the same questions.</p>
     <div class="two benchmark-choices">
@@ -32,7 +32,7 @@
       this.selectedModels = new Set();
       this.selectedMachines = new Set();
       this.models = [];
-      this.peers = [];
+      this.members = [];
       this.run = this.querySelector("#benchmark-run");
       this.stop = this.querySelector("#benchmark-stop");
       this.status = this.querySelector("#benchmark-status");
@@ -46,24 +46,24 @@
       this.limit.oninput = () => this.paintStatus();
       this.run.onclick = () => this.start();
       this.stop.onclick = () => this.stopRun();
-      this.querySelector("#cluster-sweep").addEventListener("toggle", (event) => {
+      this.querySelector("#pool-sweep").addEventListener("toggle", (event) => {
         if (event.target.open && !this.historyLoaded) this.loadHistory();
       });
     }
 
     update(fleet) {
       this.bench = fleet.bench || {};
-      const peers = fleet.peers || [];
+      const members = fleet.members || [];
       const models = (fleet.models || []).filter((name) => !/(^mtp[-_]|^mmproj|\.draft\.gguf$)/i.test(name));
-      const key = JSON.stringify([models, peers.map((p) => [p.name, p.models])]);
+      const key = JSON.stringify([models, members.map((p) => [p.name, p.models])]);
       if (key !== this.inventoryKey) {
         const first = this.inventoryKey === undefined;
         this.inventoryKey = key;
         this.models = models;
-        this.peers = peers;
+        this.members = members;
         for (const name of [...this.selectedModels]) if (!models.includes(name)) this.selectedModels.delete(name);
-        for (const name of [...this.selectedMachines]) if (!peers.some(p => p.name === name)) this.selectedMachines.delete(name);
-        if (first) peers.forEach((p) => this.selectedMachines.add(p.name));
+        for (const name of [...this.selectedMachines]) if (!members.some(p => p.name === name)) this.selectedMachines.delete(name);
+        if (first) members.forEach((p) => this.selectedMachines.add(p.name));
         this.drawChoices();
       }
       this.paintStatus();
@@ -79,9 +79,9 @@
     drawChoices() {
       this.querySelector("#benchmark-models").replaceChildren(...(this.models.length
         ? this.models.map((name, i) => this.choice(this.selectedModels, name, name,
-            this.peers.filter((p) => (p.models || []).includes(name)).map((p) => p.name).join(", "), i, "bench-model"))
+            this.members.filter((p) => (p.models || []).includes(name)).map((p) => p.name).join(", "), i, "bench-model"))
         : [el("p", { class: "hint" }, "Install a model under Models to begin.")]));
-      this.querySelector("#benchmark-machines").replaceChildren(...this.peers.map((p, i) =>
+      this.querySelector("#benchmark-machines").replaceChildren(...this.members.map((p, i) =>
         this.choice(this.selectedMachines, p.name, p.name, p.is_self ? "This device" : "Pool device", i, "bench-machine")));
     }
 
@@ -110,7 +110,7 @@
       try {
         const response = await api("/ui/bench/sweep", { method: "POST", body: JSON.stringify({
           models: this.models.filter((x) => this.selectedModels.has(x)),
-          peers: this.peers.map((p) => p.name).filter((x) => this.selectedMachines.has(x)),
+          members: this.members.map((p) => p.name).filter((x) => this.selectedMachines.has(x)),
           sample: this.questions.value === "all" ? 0 : Number(this.limit.value), label: this.label.value.trim(),
         }) });
         this.message = (response.error || (response.ok === false ? "Could not start benchmark." : "")) || "Benchmark started. You can leave this screen while it runs.";

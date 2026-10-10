@@ -25,8 +25,8 @@ from poolhouse.log import warn
 from poolhouse.platform import private_file
 
 from . import tls, wsl_network
-from .cluster_modes import validate
 from .membership import Roster, fingerprint_of, roster
+from .pool_modes import validate
 
 #: Link-local scope in the administratively-scoped block. TTL 1 keeps it there.
 DEFAULT_GROUP = "239.255.77.70"
@@ -37,8 +37,8 @@ DEFAULT_PORT = 8771
 #: traind's own port, repeated here so the firewall rule can name it without importing
 #: the daemon.
 DEFAULT_HTTP_PORT = 8770
-#: What a cluster is called when nobody names one.
-DEFAULT_CLUSTER = "poolhouse"
+#: What a pool is called when nobody names one.
+DEFAULT_POOL = "poolhouse"
 
 
 def default_group() -> str:
@@ -51,7 +51,7 @@ def default_port() -> int:
     return int(raw) if raw else DEFAULT_PORT
 
 PROTOCOL = 3
-"""3 sealed every datagram under a key derived from the cluster key. A peer speaking 2 is not heard."""
+"""3 sealed every datagram under a key derived from the pool key. A member speaking 2 is not heard."""
 MAX_SKEW_S = 60.0
 MAGIC = b"MLD3"
 #: The most one UDP datagram carries.
@@ -69,39 +69,39 @@ class DiscoveryError(RuntimeError):
 
 # -- the key -------------------------------------------------------------
 def require_name(value: object) -> str:
-    """A nonempty cluster name without control characters, at most 64 characters."""
+    """A nonempty pool name without control characters, at most 64 characters."""
     if not isinstance(value, str) or not value.strip():
-        raise DiscoveryError("cluster name is required")
+        raise DiscoveryError("pool name is required")
     return check_name(value)
 
 
 def key_path(path: Path | str | None = None) -> Path:
-    """Where the cluster key lives. ``$POOLHOUSE_CLUSTER_KEY`` wins if set."""
+    """Where the pool key lives. ``$POOLHOUSE_POOL_KEY`` wins if set."""
     if path is not None:
         return home.expand(path)
-    env = os.environ.get("POOLHOUSE_CLUSTER_KEY")
-    return home.expand(env) if env else home.state("cluster.key")
+    env = os.environ.get("POOLHOUSE_POOL_KEY")
+    return home.expand(env) if env else home.state("pool.key")
 
 
-def mint_cluster(group: str, path: Path | str | None = None, *, join: str = "", mode: str = "dev",
+def mint_pool(group: str, path: Path | str | None = None, *, join: str = "", mode: str = "dev",
                  selection: str = "manual") -> Membership:
-    """Make a cluster of a fresh random 256-bit key, replacing one of the same name."""
+    """Make a pool of a fresh random 256-bit key, replacing one of the same name."""
     group = require_name(group)
     key = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=")
     return adopt(Membership(group=group, key=key, join=join, mode=mode, selection=selection), path)
 
 
-def create_cluster_key(path: Path | str | None = None, *,
+def create_pool_key(path: Path | str | None = None, *,
                        overwrite: bool = False, group: str = "") -> str:
-    """Mint a cluster key that no passphrase protects, or return the one here."""
+    """Mint a pool key that no passphrase protects, or return the one here."""
     joined = memberships(path)
     if joined and not overwrite:
         return joined[0].key.decode()
-    return mint_cluster(require_name(group), path).key.decode()
+    return mint_pool(require_name(group), path).key.decode()
 
 
 def adopt(member: Membership, path: Path | str | None = None) -> Membership:
-    """Record ``member`` as a cluster this machine is in, replacing one of the same name."""
+    """Record ``member`` as a pool this machine is in, replacing one of the same name."""
     require_name(member.group)
     _write_memberships([member, *[m for m in memberships(path) if m.group != member.group]], path)
     return member
@@ -129,31 +129,31 @@ def check_name(name: str) -> str:
     """``name`` trimmed, or `DiscoveryError` saying which rule it breaks."""
     name = name.strip()
     if not name:
-        raise DiscoveryError("A cluster name cannot be empty.")
+        raise DiscoveryError("A pool name cannot be empty.")
     if len(name) > MOST_GROUP_NAME:
-        raise DiscoveryError(f"A cluster name is at most {MOST_GROUP_NAME} characters; this one is {len(name)}.")
+        raise DiscoveryError(f"A pool name is at most {MOST_GROUP_NAME} characters; this one is {len(name)}.")
     bad = sorted({c for c in name if c in REFUSED_IN_NAME or not c.isprintable()})
     if bad:
         shown = ", ".join(repr(c) for c in bad)
-        raise DiscoveryError(f"A cluster name cannot contain {shown}: the join handshake uses "
+        raise DiscoveryError(f"A pool name cannot contain {shown}: the join handshake uses "
                                   "slashes as separators and the memberships file cannot carry "
                                   "control characters.")
     return name
 
 
-def cluster_group(path: Path | str | None = None) -> str | None:
-    """The cluster this machine answers as, or None."""
+def pool_group(path: Path | str | None = None) -> str | None:
+    """The pool this machine answers as, or None."""
     rows = memberships(path)
     return rows[0].group if rows else None
 
 
 @dataclass(frozen=True, slots=True)
 class Membership:
-    """One cluster this machine belongs to."""
+    """One pool this machine belongs to."""
 
     group: str
     key: bytes
-    """The cluster's random 256-bit key, urlsafe base64."""
+    """The pool's random 256-bit key, urlsafe base64."""
     join: str = ""
     """What the join handshake takes as the passphrase (`onboard.joining.join_secret`); empty
     on a machine that does not know the passphrase."""
@@ -165,19 +165,19 @@ class Membership:
         require_name(self.group)
         validate(self.mode)
         if self.selection not in {"automatic", "manual"}:
-            raise ValueError("cluster selection must be automatic or manual")
+            raise ValueError("pool selection must be automatic or manual")
         if not isinstance(self.key, bytes) or len(self.key) != 43 or len(base64.b64decode(
                 self.key + b"=" * (-len(self.key) % 4), altchars=b"-_", validate=True)) != 32:
-            raise ValueError("cluster key must contain 256 bits")
+            raise ValueError("pool key must contain 256 bits")
         if not isinstance(self.join, str):
-            raise ValueError("cluster join secret must be text")
+            raise ValueError("pool join secret must be text")
 
     def public(self) -> dict[str, Any]:
         return {"group": self.group, "mode": self.mode, "selection": self.selection}
 
 
-def clusters_path(path: Path | str | None = None) -> Path:
-    """Where the clusters this machine belongs to are recorded.
+def pools_path(path: Path | str | None = None) -> Path:
+    """Where the pools this machine belongs to are recorded.
 
     Named after the path it is given rather than fixed, so two callers pointed at
     different files do not share one store.
@@ -186,11 +186,11 @@ def clusters_path(path: Path | str | None = None) -> Path:
 
 
 def memberships(path: Path | str | None = None) -> list[Membership]:
-    """Every cluster this machine is in, the first being the one it answers as."""
+    """Every pool this machine is in, the first being the one it answers as."""
     out: list[Membership] = []
     seen: set[str] = set()
     try:
-        raw = json.loads(clusters_path(path).read_text())
+        raw = json.loads(pools_path(path).read_text())
     except (OSError, ValueError):
         return []
     for row in raw if isinstance(raw, list) else []:
@@ -209,14 +209,14 @@ def memberships(path: Path | str | None = None) -> list[Membership]:
 def _write_memberships(rows: list[Membership],
                        path: Path | str | None = None) -> None:
     """Record the list this machine belongs to."""
-    listed = clusters_path(path)
+    listed = pools_path(path)
     write_json(listed, [{"group": m.group, "key": m.key.decode(), "join": m.join, "mode": m.mode,
                           "selection": m.selection} for m in rows])
     private_file(listed)
 
 
 def leave(group: str, path: Path | str | None = None) -> list[Membership]:
-    """Drop a cluster. The machine stops answering to it at once."""
+    """Drop a pool. The machine stops answering to it at once."""
     held = memberships(path)
     rows = [m for m in held if m.group != group]
     _write_memberships(rows, path)
@@ -226,13 +226,13 @@ def leave(group: str, path: Path | str | None = None) -> list[Membership]:
     return rows
 
 
-def in_cluster(path: Path | str | None = None) -> bool:
+def in_pool(path: Path | str | None = None) -> bool:
     """Whether this machine has joined one. The question a setup wizard opens with."""
-    return load_cluster_key(path) is not None
+    return load_pool_key(path) is not None
 
 
-def load_cluster_key(path: Path | str | None = None) -> bytes | None:
-    """The key this machine answers as, or None if it is in no cluster."""
+def load_pool_key(path: Path | str | None = None) -> bytes | None:
+    """The key this machine answers as, or None if it is in no pool."""
     rows = memberships(path)
     return rows[0].key if rows else None
 
@@ -251,7 +251,7 @@ def fit_beacon(body: dict[str, Any], budget: int = BEACON_BUDGET) -> dict[str, A
     """The beacon body shortened until one datagram carries it.
 
     ``device["models_total"]`` is how many models the machine holds whenever the list on
-    the beacon is shorter; a peer reads the rest from the daemon's ``/models``.
+    the beacon is shorter; a member reads the rest from the daemon's ``/models``.
     """
     def over(device: dict[str, Any]) -> bool:
         return len(_encoded({**body, "device": device})) > budget
@@ -275,7 +275,7 @@ def _box_key(key: bytes) -> bytes:
 
 
 def _pack(key: bytes, payload: dict[str, Any]) -> bytes:
-    """``payload`` as a datagram: sealed under the key derived from the cluster key, with the
+    """``payload`` as a datagram: sealed under the key derived from the pool key, with the
     kind as associated data."""
     return MAGIC + sealing.seal(_box_key(key), _encoded(payload),
                                 _data(str(payload.get("kind", ""))))
@@ -323,7 +323,7 @@ class Beacon:
     machine: str = ""
     """`home.machine_id` of the machine it runs on: kept across restarts."""
     cert: str = ""
-    """The daemon's certificate, base64 DER, which peers pin; empty when it serves signed-only."""
+    """The daemon's certificate, base64 DER, which members pin; empty when it serves signed-only."""
 
     @property
     def base_url(self) -> str:
@@ -418,10 +418,10 @@ def windows_firewall_rules(http_port: int = DEFAULT_HTTP_PORT,
     """The two inbound rules Windows Defender Firewall needs, as ``(name, netsh line)``.
 
     Beacons are UDP to the multicast group, to the broadcast address and to loopback on
-    ``port``; peers then talk to the daemon over TCP on ``http_port``. Windows blocks
+    ``port``; members then talk to the daemon over TCP on ``http_port``. Windows blocks
     inbound on both by default -- on the Private profile too, unless the first-run prompt
     was answered for this exact executable, which a console script's ``python.exe`` never
-    is -- so a daemon there is invisible to ``poolhouse-peers ls`` until these exist. Each
+    is -- so a daemon there is invisible to ``poolhouse-members ls`` until these exist. Each
     line needs an administrator's shell.
     """
     port = port if port is not None else default_port()
@@ -478,7 +478,7 @@ class AdvertiserOptions(TypedDict, total=False):
     group: str | None
     port: int | None
     interval_s: float
-    cluster: str
+    pool: str
     refresh: Callable[[Beacon], None] | None
 
 
@@ -506,10 +506,10 @@ class Advertiser:
         self.undelivered = 0
         self.last_error = ""
         self._said: set[str] = set()
-        self.cluster = options.get("cluster", "")
+        self.pool = options.get("pool", "")
         self.joinable = False
         self.mode = "dev"
-        """The cluster's name; a machine that asks to join it is told where to shake hands."""
+        """The pool's name; a machine that asks to join it is told where to shake hands."""
 
     # -- lifecycle --
     def start(self, *, wait_s: float = 2.0) -> Advertiser:
@@ -523,7 +523,7 @@ class Advertiser:
         if self._error is not None:
             raise DiscoveryError(f"advertiser failed to bind: {self._error}")
         # Say so at once. The loop's first unsolicited beacon is `interval_s` away, and a
-        # daemon that has just come up should appear in the next `poolhouse-peers ls`
+        # daemon that has just come up should appear in the next `poolhouse-members ls`
         # rather than ten seconds later.
         with contextlib.suppress(OSError):
             self.announce()
@@ -595,7 +595,7 @@ class Advertiser:
                 continue
             except OSError:
                 break
-            if self.cluster and (nonce := _join_nonce(raw, self.cluster)) is not None:
+            if self.pool and (nonce := _join_nonce(raw, self.pool)) is not None:
                 self._tell_join(sock, nonce, addr)
                 continue
             msg = _verify(self.key, raw, kind="who")
@@ -611,11 +611,11 @@ class Advertiser:
 
     def _tell_join(self, sock: socket.socket | wsl_network.DiscoverySocket,
                    nonce: str, addr: tuple[str, int]) -> None:
-        """Answer a machine asking to join this cluster: the port and scheme to shake hands on."""
-        reply = _encoded({"v": PROTOCOL, "kind": "join", "group": self.cluster, "nonce": nonce,
+        """Answer a machine asking to join this pool: the port and scheme to shake hands on."""
+        reply = _encoded({"v": PROTOCOL, "kind": "join", "group": self.pool, "nonce": nonce,
                             "name": self.beacon.name, "port": self.beacon.port, "tls": bool(self.beacon.cert),
                             "method": "automatic" if self.mode == "dev" else "passphrase" if self.joinable else "recovery",
-                            "mode": self.mode, "cluster_id": hashlib.sha256(self.key).hexdigest(),
+                            "mode": self.mode, "pool_id": hashlib.sha256(self.key).hexdigest(),
                             "fingerprint": hashlib.sha256(base64.b64decode(self.beacon.cert)).hexdigest() if self.beacon.cert else ""})
         with contextlib.suppress(OSError):
             sock.sendto(reply, addr)
@@ -650,8 +650,8 @@ def _join_nonce(raw: bytes, group: str) -> str | None:
 
 def discover(key: bytes, *, timeout_s: float = 2.0, group: str | None = None,
              port: int | None = None, enrolled: bool = True) -> list[Beacon]:
-    """Ask the LAN who is running a daemon, and return everyone who proves it with the cluster key
-    and is a device of the cluster (`membership`): a beacon whose certificate was never enrolled,
+    """Ask the LAN who is running a daemon, and return everyone who proves it with the pool key
+    and is a device of the pool (`membership`): a beacon whose certificate was never enrolled,
     or was revoked, is not pinned and not returned. ``enrolled=False`` is for a person choosing
     which devices to enrol, who compares the fingerprints themselves."""
     devices = roster(key) if enrolled else None
@@ -714,7 +714,7 @@ _WARNED: set[str] = set()
 def _trusted(beacon: Beacon, devices: Roster | None = None) -> bool:
     """Whether this machine may be talked to, and if it offers a certificate, pin it.
 
-    With ``devices`` the certificate must belong to an active device of the cluster, else it is
+    With ``devices`` the certificate must belong to an active device of the pool, else it is
     dropped and any pin to its address forgotten.
 
     A beacon with no certificate is a daemon that is not listening beyond its own machine,

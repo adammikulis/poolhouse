@@ -112,7 +112,7 @@ def _assert_workspace_pages(page, primary, expect):
                 'Worlds': ('gym-view', 'Reinforcement learning'), 'Evaluate': ('benchmarks-view', 'Benchmarks'),
                 'Data': ('data-view', 'Datasets'), 'Projects': ('projects-view', 'Projects'),
                 'Tools': ('tools-view', 'Tools'), 'Graph': ('knowledge-view', 'Graph inspector'),
-                'History': ('history-view', 'Activity'), 'Devices': ('cluster-view', 'Devices')}
+                'History': ('history-view', 'Activity'), 'Devices': ('pool-view', 'Devices')}
     for group, titles in [('Studio', ['Models', 'Fine-tune', 'Worlds', 'Evaluate', 'Data']),
                           ('Work', ['Tasks', 'Projects', 'Tools', 'Graph', 'History']),
                           ('Pool', ['Devices', 'Capacity'])]:

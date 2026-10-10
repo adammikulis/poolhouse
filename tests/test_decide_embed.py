@@ -19,7 +19,7 @@ STATES = {
                 "payment failed and the charge is pending", "invoice total looks wrong"],
     "technical": ["the app crash every time I open it", "got a timeout error calling the api",
                   "bug in the export, error on save", "crash with error code 500"],
-    "sales": ["what is the price for the team plan", "can I get a quote for 50 seats",
+    "sales": ["what is the price for the team plan", "can I get a quote for 50 sessions",
               "is there a discount if I upgrade", "upgrade price for enterprise"],
 }
 

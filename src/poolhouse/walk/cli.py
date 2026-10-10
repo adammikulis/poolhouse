@@ -1,7 +1,7 @@
 """``poolhouse-walk``: open a page, press through its screens, and read what came back.
 
     poolhouse-walk fleet
-    poolhouse-walk fleet cluster chat models --out ./shots
+    poolhouse-walk fleet pool chat models --out ./shots
     poolhouse-walk graph search detail 3d --base http://127.0.0.1:8794
 
 Each screen is screenshotted into ``--out`` and its text printed. The exit code is 1 when
@@ -90,12 +90,12 @@ def _walked(args: argparse.Namespace, page: str, **extra: object) -> int:
 
 
 @COMMANDS.command(
-    "fleet", help="the daemon's screens: the first-run steps, then cluster, chat, "
+    "fleet", help="the daemon's screens: the first-run steps, then pool, chat, "
                   "models, settings and fit",
     epilog="screens: " + ", ".join(FLEET),
     options=[*_shared(FLEET_BASE),
              flag("--passphrase", default="",
-                  help="the cluster's passphrase, for a daemon that asks for one"),
+                  help="the pool's passphrase, for a daemon that asks for one"),
              flag("--setup", action="store_true",
                   help="press the first-run buttons that save this machine's "
                        "preferences; without it the wizard is walked only as far as it "

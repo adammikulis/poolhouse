@@ -15,18 +15,18 @@ def make(tmp_path, **limits):
     return requests(tmp_path, rec, clock, Limits(**limits) if limits else None), rec, clock
 
 
-def test_a_request_waits_then_is_accepted_with_a_code_then_pairs(tmp_path):
+def test_a_request_waits_then_is_accepted_with_a_code_then_joins(tmp_path):
     rq, rec, _ = make(tmp_path)
     r = rq.submit(info(FP1), "10.0.0.5")
     assert r.state is State.PENDING and r.code == ""
     got = rq.accept(r.id, mine=True)
     assert got.state is State.ACCEPTED and len(got.code) == 6 and got.code.isdigit()
     assert "code" not in got.public()
-    device = rq.paired(r.id, shared_cluster_key=True)
-    assert device.fingerprint == FP1 and rq.get(r.id).state is State.PAIRED
+    device = rq.joined(r.id, shared_pool_key=True)
+    assert device.fingerprint == FP1 and rq.get(r.id).state is State.JOINED
     assert rq.get(r.id).code == ""
     assert rec.kinds() == ["onboard.request.received", "onboard.request.accepted",
-                           "onboard.pair.succeeded"]
+                           "onboard.join.succeeded"]
 
 
 def test_unanswered_requests_expire_and_the_code_expires_sooner(tmp_path):
@@ -121,19 +121,19 @@ def test_three_wrong_codes_close_the_request_and_the_right_code_no_longer_helps(
     with pytest.raises(Refused):
         rq.take_attempt(r.id)
     assert rq.get(r.id).code == "" and code not in str(rq.get(r.id).public())
-    assert rec.of("onboard.pair.locked")[0].severity == "critical"
+    assert rec.of("onboard.join.locked")[0].severity == "critical"
     with pytest.raises(Refused) as again:           # and the device waits before asking again
         rq.submit(info(FP1, nonce="cd" * 16), "10.0.0.5")
     assert again.value.status == 429
 
 
-def test_a_revoked_device_cannot_ask_again(tmp_path):
+def test_a_removed_device_cannot_ask_again(tmp_path):
     rq, rec, _ = make(tmp_path)
     r = rq.submit(info(FP1), "10.0.0.5")
     rq.accept(r.id, mine=True)
-    rq.paired(r.id, shared_cluster_key=True)
+    rq.joined(r.id, shared_pool_key=True)
     gone = rq.devices.revoke("kitchen-pi")
-    assert gone.status == "revoked" and gone.shared_cluster_key
+    assert gone.status == "revoked" and gone.shared_pool_key
     with pytest.raises(Refused) as why:
         rq.submit(info(FP1, nonce="cd" * 16), "10.0.0.5")
     assert why.value.status == 403
@@ -147,7 +147,7 @@ def test_revoke_by_fingerprint_prefix_and_ambiguity(tmp_path):
     for fp, addr in ((FP1, "10.0.0.5"), (FP2, "10.0.0.6")):
         r = rq.submit(info(fp), addr)
         rq.accept(r.id, mine=True)
-        rq.paired(r.id, shared_cluster_key=False)
+        rq.joined(r.id, shared_pool_key=False)
     with pytest.raises(ValueError):
         rq.devices.revoke("kitchen-pi")             # two devices share that name
     with pytest.raises(KeyError):

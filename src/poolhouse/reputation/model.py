@@ -33,7 +33,7 @@ __all__ = [
     "short_score",
 ]
 
-KINDS = ("ip", "host", "url", "peer", "repo", "hash", "connector")
+KINDS = ("ip", "host", "url", "member", "repo", "hash", "connector")
 EVENTS = {"denial": 1.0, "scan_hit": 3.0, "injection_flagged": 1.0, "cert_or_key_change": 3.0,
           "hash_change": 3.0, "redirect_change": 0.5, "ip_change": 0.5}
 """Bad events and the weight each adds to a source's score."""
@@ -90,7 +90,7 @@ def normal(kind: str, key: str) -> str:
         digest = text.lower().removeprefix("sha256:")
         if _HEX.fullmatch(digest):
             return digest
-    elif kind in ("peer", "connector") and _NAME.fullmatch(text):
+    elif kind in ("member", "connector") and _NAME.fullmatch(text):
         return text
     raise ValueError(f"not a {kind} name")
 

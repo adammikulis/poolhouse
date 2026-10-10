@@ -71,11 +71,11 @@ def test_transferred_listener_accepts_only_its_reserved_endpoint_and_releases(ba
         assert listener.socket.getsockname()[0] == '127.0.0.1'
         assert listener.socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
         with socket.create_connection(listener.socket.getsockname(), timeout=2) as client:
-            peer, _ = listener.socket.accept()
-            with peer:
+            member, _ = listener.socket.accept()
+            with member:
                 client.sendall(b'fixture')
-                assert peer.recv(7) == b'fixture'
-                peer.sendall(b'received')
+                assert member.recv(7) == b'fixture'
+                member.sendall(b'received')
                 assert client.recv(8) == b'received'
     finally:
         listener.close()

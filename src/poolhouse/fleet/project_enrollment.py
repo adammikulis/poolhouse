@@ -1,4 +1,4 @@
-"""Cluster-scoped transport admission for automatic project agents."""
+"""Pool-scoped transport admission for automatic project agents."""
 
 import hashlib
 import hmac
@@ -15,7 +15,7 @@ def _matched(opening, rows):
     return found[0] if len(found) == 1 else None
 
 
-def authenticated_cluster(opening, path) -> tuple[str, str]:
+def authenticated_pool(opening, path) -> tuple[str, str]:
     """Return the current membership proven by an authenticated sealed request."""
     member = _matched(opening, memberships(path))
     return (member.group, hashlib.sha256(member.key).hexdigest()) if member else ("", "")
@@ -33,10 +33,10 @@ def visible(connection, opening, path) -> bool:
 
 
 def admit(connection, opening, path, body) -> bool:
-    """Whether this request proves the selected Dev cluster over encrypted transport."""
+    """Whether this request proves the selected pool over encrypted transport."""
     member = _dev(connection, opening, memberships(path))
-    return bool(member and body.get("cluster") == member.group
-                and body.get("cluster_id") == hashlib.sha256(member.key).hexdigest())
+    return bool(member and body.get("pool") == member.group
+                and body.get("pool_id") == hashlib.sha256(member.key).hexdigest())
 
 
 def local(opening, path, source: str) -> bool:

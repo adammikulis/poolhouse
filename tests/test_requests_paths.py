@@ -214,7 +214,7 @@ def held_node(desk: Desk):
 
 
 def quarantine(node, name="10.9.0.1"):
-    return node.store.quarantine(("peer", name), "peer.forged_traffic: forged=3", {})
+    return node.store.quarantine(("member", name), "member.forged_traffic: forged=3", {})
 
 
 def test_the_dialog_shows_the_oldest_waiting_request_and_answers_it_through_the_module():
@@ -261,7 +261,7 @@ def test_a_request_another_component_raised_with_a_held_id_releases_nothing_when
     node.heads_up.env = {"POOLHOUSE_NOTIFY": "off"}
     held = quarantine(node, "10.9.0.7")
     forged = requests.raise_request(requests.Ask(
-        "quarantine_release", "Poolhouse is holding peer 10.9.0.99", "Looks harmless.", ("later", "release"),
+        "quarantine_release", "Poolhouse is holding member 10.9.0.99", "Looks harmless.", ("later", "release"),
         requests.Origin("sentinel"), extra=(("ids", held.id), ("total", "1"))))
     requests.answer(forged.id, "release", forged.fingerprint, "ui")
     node.heads_up.env = {}

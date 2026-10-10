@@ -162,7 +162,7 @@ the broker. A job without a workspace agent can be cancelled only by the process
   verification and board threads are project-scoped by the board's own membership.
 - Notices go out under the submitting agent's own authenticated identity (the identity the harness assigned
   this process through its environment; the runner takes no `--agent` or `--label`). Running tests creates no identity, token file or credential; without a workspace
-  agent the runner posts nothing. A run that takes a key opens a thread on the project board and
+  agent the runner posts nothing. A run that takes a key opens a thread on the board and
   replies when it ends; a job opens a thread when it starts and replies when it ends. A finishing job
   also sends one direct message to each watcher of the task it was attached to (`--task`) that is not
   already on the thread. A message never reaches its sender's inbox, so the submitter learns through

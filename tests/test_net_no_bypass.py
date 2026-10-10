@@ -10,7 +10,7 @@ this machine or network, or is handed to a library the pipeline cannot wrap. A r
 Three kinds of exemption, each narrow (docs/security.md, "What is exempt from the net scan"):
   * model servers on this machine or network that a person configured or a port names;
   * the LAN onboarding transport, which refuses a public address at every connection
-    (`fleet/onboard/lan.py`, tested below) and pins the peer's certificate;
+    (`fleet/onboard/lan.py`, tested below) and pins the member's certificate;
   * the red-team lab, which only talks to servers it started on 127.0.0.1.
 Anything that can reach a public host, such as a library's own downloader, is not on the list.
 """
@@ -36,13 +36,13 @@ ALLOWED: dict[str, str] = {
     "httpguard.py": "the guarded connection the pipeline is built on",
     "fleet/serving.py": "a port check on loopback",
     "fleet/invite_client.py": "single-use LAN invitation; every resolved address is checked, the selected sockaddr is frozen and TLS is pinned before HTTP",
-    "fleet/project_client.py": "sealed project source from a LAN peer; exact redirects and require_local_url at every request",
-    "workspace/remote.py": "sealed project board on the LAN; exact redirects and require_local_url at every request",
+    "fleet/project_client.py": "sealed project source from a LAN member; exact redirects and require_local_url at every request",
+    "workspace/remote.py": "sealed board on the LAN; exact redirects and require_local_url at every request",
     "fleet/wsl_network.py": "WSL LAN bridge; require_local before each TCP connection and restricted discovery destinations",
-    "fleet/api.py": "proxies an inference call to a fleet peer",
-    "fleet/remote.py": "calls a fleet peer",
-    "fleet/join.py": "joins a fleet peer",
-    "fleet/chat.py": "chat with a fleet peer",
+    "fleet/api.py": "proxies an inference call to a fleet member",
+    "fleet/remote.py": "calls a fleet member",
+    "fleet/join.py": "joins a fleet member",
+    "fleet/chat.py": "chat with a fleet member",
     "fleet/launch.py": "the local daemon's health",
     "fleet/autostart_apply.py": "waits on the health URL the autostart plan recorded: the daemon on 127.0.0.1",
     "fleet/daemon_control.py": "asks the running daemon on its own loopback port to be replaced; "
@@ -65,14 +65,14 @@ ALLOWED: dict[str, str] = {
     "serve/llamacpp_smoke.py": "health, chat and slot checks on the model server a smoke test started",
     "serve/slots_cli.py": "a model server's slots, addressed by local port",
     "serve/unmanaged.py": "the props of a model server found listening on this machine",
-    "fleet/onboard/transfer.py": "files from paired peers; a public address is refused at every "
-                                 "connection and TLS is pinned to the peer's certificate "
+    "fleet/onboard/transfer.py": "files from members; a public address is refused at every "
+                                 "connection and TLS is pinned to the member's certificate "
                                  "(fleet/onboard/lan.py)",
-    "fleet/onboard/pairing.py": "the pairing exchange with a device on this network, confirmed "
+    "fleet/onboard/join_code.py": "the join exchange with a device on this network, confirmed "
                                 "by a code and the certificate fingerprint (fleet/onboard/lan.py)",
     "fleet/onboard/joining.py": "the join handshake with a daemon on this network, proved by the "
                                 "passphrase and the certificate fingerprint (fleet/onboard/lan.py)",
-    "fleet/onboard/routes.py": "asks a paired device's address for its certificate; a public address "
+    "fleet/onboard/routes.py": "asks a member's address for its certificate; a public address "
                                "is refused first and only the pinned certificate counts "
                                "(fleet/onboard/lan.py)",
     "redteam/scenarios/fleet.py": "the lab's own servers on 127.0.0.1",
@@ -219,10 +219,10 @@ def test_a_sibling_module_named_like_a_library_is_not_the_library(tmp_path, sour
     assert findings(path) == []
 
 
-def test_every_module_that_may_open_a_peer_connection_checks_the_address_first():
+def test_every_module_that_may_open_a_member_connection_checks_the_address_first():
     """The onboarding exemption is only as good as `require_local`: each module on the list for
     it calls it before it connects, and none builds a client that trusts the system store."""
-    for rel in ("fleet/onboard/transfer.py", "fleet/onboard/pairing.py", "fleet/onboard/joining.py"):
+    for rel in ("fleet/onboard/transfer.py", "fleet/onboard/join_code.py", "fleet/onboard/joining.py"):
         source = (ROOT / rel).read_text(encoding="utf-8")
         assert "require_local" in source, rel
         assert "create_default_context" not in source, rel

@@ -50,7 +50,7 @@ def _service(role: Role, scope: str, user: str) -> bytes:
     lines += [f"WorkingDirectory={_q(role.workdir)}"]
     lines += [f"Environment={_q(f'{k}={v}')}" for k, v in sorted(role.environment.items())]
     lines += [f"ExecStart={' '.join(_q(a) for a in role.argv)}", "NoNewPrivileges=yes",
-              "TimeoutStopSec=30", "StandardOutput=journal", "StandardError=journal",
+              "TimeoutStopSec=30", "StandardOutput=log", "StandardError=log",
               "LogRateLimitIntervalSec=30s", "LogRateLimitBurst=1000"]
     if daemon:
         lines += ["Restart=on-failure", f"RestartSec={restart['backoff_s']}",

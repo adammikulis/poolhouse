@@ -89,13 +89,13 @@ def parser() -> argparse.ArgumentParser:
 
 
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
-           run_pi: Callable[..., int] | None = None, seat_factory: Callable[..., Any] | None = None) -> int:
+           run_pi: Callable[..., int] | None = None, session_factory: Callable[..., Any] | None = None) -> int:
     """Run Pi against a leased local model with per-tool poolhouse policy checks."""
     words = list(sys.argv[1:] if argv is None else argv)
     ours, extra = (words[:words.index("--")], words[words.index("--") + 1:]) if "--" in words else (words, [])
     args = parser().parse_args(ours)
     provenance.told(args.lease_for)
-    args.seat_factory = seat_factory
+    args.session_factory = session_factory
     binary = args.pi or harnessing.binary_for("pi")
     if not binary:
         say("error: no `pi` on PATH; install @earendil-works/pi-coding-agent")
@@ -145,7 +145,7 @@ def _run(args, command, served, say, runner):
             (config_dir / "models.json").write_text(models(base_url,alias,window,args.max_output_tokens),encoding="utf-8")
             protected = harnessing.protected_paths(run.files)
             hook = run.files.write("poolhouse.ts", extension({"python": sys.executable,
-                "role": args.role, "agent": run.seat.name, "root": str(run.cwd),
+                "role": args.role, "agent": run.session.name, "root": str(run.cwd),
                 "protected": protected, "maxTurns": args.max_turns, "maxOutputTokens": args.max_output_tokens,
                 "thinking": families.for_model_id(alias).think_kwargs(args.effort != "off")}))
             env = {**os.environ,"PI_CODING_AGENT_DIR":str(config_dir),"PI_OFFLINE":"1",

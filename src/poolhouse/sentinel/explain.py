@@ -1,7 +1,7 @@
 """Plain words for what sentinel holds: why, what it blocks, and what to do, without ever
 repeating a held subject's own text raw.
 
-Every name, reason, peer, path and argument on a record came from outside, so `show` is the
+Every name, reason, member, path and argument on a record came from outside, so `show` is the
 only way any of it reaches a terminal or a notification: control, bidi and invisible
 characters become visible escapes and the length is bounded. `WHY` has a sentence for every
 finding kind a detector can raise; ``tests/test_sentinel_explain.py`` reads the detectors and
@@ -21,14 +21,14 @@ from poolhouse.sentinel.store import Record, State
 __all__ = ["BLOCKS", "WHY", "Item", "age", "code_of", "describe", "name_of", "short_code", "show"]
 
 WHY: dict[str, str] = {
-    "peer.forged_traffic": "This machine sent requests with a forged or replayed signature, "
-                           "which no honest poolhouse peer does.",
-    "peer.auth_failures": "This machine failed authentication many times in a row.",
-    "peer.rate": "This machine is sending requests much faster than a peer normally does.",
-    "peer.flapping": "This machine keeps joining and leaving the fleet.",
-    "peer.version_mismatch": "This machine runs a different poolhouse version than the one "
+    "member.forged_traffic": "This machine sent requests with a forged or replayed signature, "
+                           "which no honest poolhouse member does.",
+    "member.auth_failures": "This machine failed authentication many times in a row.",
+    "member.rate": "This machine is sending requests much faster than a member normally does.",
+    "member.flapping": "This machine keeps joining and leaving the fleet.",
+    "member.version_mismatch": "This machine runs a different poolhouse version than the one "
                              "this fleet pinned.",
-    "peer.binary_mismatch": "This machine reports a different program file than the one this "
+    "member.binary_mismatch": "This machine reports a different program file than the one this "
                             "fleet pinned.",
     "server.unmanaged": "A model server is running here that poolhouse did not start.",
     "server.exe_changed": "The program behind a running model server changed after it started.",
@@ -73,7 +73,7 @@ BY_REASON: tuple[tuple[str, str], ...] = (
 UNKNOWN = "Sentinel recorded no plain-language reason for this one; read the details."
 
 BLOCKS: dict[str, str] = {
-    "peer": "Requests from this machine are refused.",
+    "member": "Requests from this machine are refused.",
     "caller": "Requests from this caller are refused.",
     "tool": "This tool cannot be called.",
     "session": "This session is frozen, and notes built from it are held too.",
@@ -101,7 +101,7 @@ def show(value: object, limit: int = 60) -> str:
 
 
 def name_of(kind: str, key: str) -> str:
-    """A short name a person recognises: ``peer 10.0.0.5``, ``server :51089``, ``model
+    """A short name a person recognises: ``member 10.0.0.5``, ``server :51089``, ``model
     qwen.gguf`` (the file name of a path, never the whole path)."""
     if kind == "server":
         port = key.partition(":")[2] or key

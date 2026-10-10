@@ -33,7 +33,7 @@ BODY_LABEL = b"poolhouse-request-body-v1\x00"
 
 
 def derive(key: bytes) -> str:
-    """The request secret two ends compute from the same cluster key (HKDF-SHA256)."""
+    """The request secret two ends compute from the same pool key (HKDF-SHA256)."""
     prk = hmac.new(b"poolhouse-hkdf-salt", key, hashlib.sha256).digest()
     okm = hmac.new(prk, INFO + b"\x01", hashlib.sha256).digest()
     return PREFIX + base64.urlsafe_b64encode(okm).decode().rstrip("=")

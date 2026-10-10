@@ -26,7 +26,7 @@ MAX_BYTES = 4 * 1024 * 1024
 MAX_FILES = 16384
 MAX_CONTENT = 2 * 1024 * 1024 * 1024
 HOLDER_NODES = frozenset({
-    'tests/test_holder_protocol.py::test_actual_kernel_peer_is_the_connected_owned_child',
+    'tests/test_holder_protocol.py::test_actual_kernel_member_is_the_connected_owned_child',
     'tests/test_holder_protocol.py::test_socket_is_private_and_removed_on_context_failure',
     'tests/test_holder_protocol.py::test_existing_channel_is_never_replaced',
     'tests/test_holder_protocol.py::test_unsupported_platform_refuses_before_socket_creation',
@@ -34,7 +34,7 @@ HOLDER_NODES = frozenset({
     'tests/test_holder_protocol.py::test_inherited_listener_reports_creator_not_request_handler',
     'tests/test_holder_protocol.py::test_session_signature_proves_only_fresh_pinned_key_possession',
     'tests/test_holder_protocol.py::test_session_substitution_refuses_even_with_existing_broker_mac',
-    'tests/test_holder_protocol.py::test_unknown_key_and_wrong_broker_peer_refuse',
+    'tests/test_holder_protocol.py::test_unknown_key_and_wrong_broker_member_refuse',
     'tests/test_holder_protocol.py::test_current_lease_and_broker_generation_are_rechecked_before_signing',
     'tests/test_holder_protocol.py::test_transcript_parser_keeps_strict_security_bounds',
     'tests/test_holder_protocol.py::test_protected_gap_never_autostarts_another_broker',
@@ -65,7 +65,7 @@ IDENTITY_FILES = ("pyvenv.cfg", "lib/python3.13/site-packages/poolhouse/__init__
 
 VARIANTS_BY_NODE = {
     'tests/test_holder_protocol.py::test_actual_immutable_runtime_receipt_is_verified_outside_the_socket_deadline': frozenset({'normal'}),
-    'tests/test_holder_protocol.py::test_actual_kernel_peer_is_the_connected_owned_child': frozenset(),
+    'tests/test_holder_protocol.py::test_actual_kernel_member_is_the_connected_owned_child': frozenset(),
     'tests/test_holder_protocol.py::test_actual_owned_preparation_and_mutual_session_exchange_keep_original_lease': frozenset({'normal'}),
     'tests/test_holder_protocol.py::test_actual_owned_socket_frames_are_bounded': frozenset(),
     'tests/test_holder_protocol.py::test_completed_preparation_cannot_extend_a_changed_broker_generation': frozenset({'stale'}),
@@ -87,7 +87,7 @@ VARIANTS_BY_NODE = {
     'tests/test_holder_protocol.py::test_slow_independent_verification_is_cancelled_without_waiting_or_orphaning': frozenset({'slow'}),
     'tests/test_holder_protocol.py::test_socket_is_private_and_removed_on_context_failure': frozenset(),
     'tests/test_holder_protocol.py::test_transcript_parser_keeps_strict_security_bounds': frozenset(),
-    'tests/test_holder_protocol.py::test_unknown_key_and_wrong_broker_peer_refuse': frozenset(),
+    'tests/test_holder_protocol.py::test_unknown_key_and_wrong_broker_member_refuse': frozenset(),
     'tests/test_holder_protocol.py::test_unsupported_platform_refuses_before_socket_creation': frozenset(),
     'tests/test_test_kernel_isolation.py::test_verified_holder_inventory_runs_only_the_fixed_normal_interpreter': frozenset({'normal'}),
     'tests/test_test_kernel_isolation.py::test_native_read_components_compile_independently': frozenset({'normal'}),

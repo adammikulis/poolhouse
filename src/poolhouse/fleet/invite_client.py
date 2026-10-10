@@ -23,9 +23,9 @@ from .tls import local
 LIMIT = 16384
 
 
-def _object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+def _object(joins: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    for key, value in pairs:
+    for key, value in joins:
         if key in result:
             raise ValueError("duplicate invitation field")
         result[key] = value
@@ -61,7 +61,7 @@ def parse_invite(text: str, now: float | None = None) -> dict[str, Any]:
     """Return the validated fields of a current computer invitation."""
     prefix = "poolhouse://enroll?data="
     if not isinstance(text, str) or len(text) > 8192 or not text.startswith(prefix):
-        raise ValueError("paste a cluster invitation created on your other computer")
+        raise ValueError("paste a pool invitation created on your other computer")
     encoded = text[len(prefix):]
     if not re.fullmatch(r"[A-Za-z0-9_-]+", encoded):
         raise ValueError("invalid invitation encoding")

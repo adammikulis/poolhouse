@@ -232,26 +232,26 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       if (data.boards.length && !channels.length) this.channels.append(M.el('p', {class:'hint'}, 'No channels match your search.'));
       if (!data.boards.length) this.channels.append(M.el('p', {class:'hint'}, data.error || 'No team channels in this workspace.'));
       const agents = new Map(data.agents.map(agent => [agent.id, agent.display_name || agent.display_label || agent.id]));
-      const peers = new Map();
+      const members = new Map();
       for (const row of data.dms) {
         const id = row.a === data.me ? row.b : row.a;
         const label = agents.get(id) || id;
-        if (matches(`${label} ${id}`)) peers.set(id, {id, label, unread:row.unread, view:{kind:'dm', a:row.a, b:row.b}});
+        if (matches(`${label} ${id}`)) members.set(id, {id, label, unread:row.unread, view:{kind:'dm', a:row.a, b:row.b}});
       }
       if (data.view.kind === 'dm' && data.me && [data.view.a, data.view.b].includes(data.me)) {
         const id = data.view.a === data.me ? data.view.b : data.view.a;
         const label = agents.get(id) || id;
-        if (!peers.has(id) && matches(`${label} ${id}`)) peers.set(id, {id, label, view:{kind:'dm', a:data.view.a, b:data.view.b}});
+        if (!members.has(id) && matches(`${label} ${id}`)) members.set(id, {id, label, view:{kind:'dm', a:data.view.a, b:data.view.b}});
       }
       const newMessage = data.me ? M.el('details', {}, M.el('summary', {}, '+ New direct message'), this.board.newDm()) : null;
-      const shown = [...peers.values()].slice(0, M.LIST_MAX);
+      const shown = [...members.values()].slice(0, M.LIST_MAX);
       this.direct.replaceChildren(...(newMessage ? [newMessage] : []), ...shown.map(row => {
         const node = button(row.label, data.view.kind === 'dm' && [data.view.a,data.view.b].includes(row.id), row.view, row.id);
         if (row.unread) node.append(M.el('span', {'aria-label':`${row.unread} unread messages`}, ` · ${row.unread}`));
         return node;
       }));
-      if (peers.size > shown.length) this.direct.append(M.el('p', {class:'hint'}, `Showing ${shown.length} of ${peers.size}; search to narrow.`));
-      if (!peers.size) this.direct.append(M.el('p', {class:'hint'}, query ? 'No direct messages match your search.' : 'No direct messages yet.'));
+      if (members.size > shown.length) this.direct.append(M.el('p', {class:'hint'}, `Showing ${shown.length} of ${members.size}; search to narrow.`));
+      if (!members.size) this.direct.append(M.el('p', {class:'hint'}, query ? 'No direct messages match your search.' : 'No direct messages yet.'));
     }
     models(rows) {
       this.live.replaceChildren(...rows.map(row => M.el('button', {type:'button', onclick:() => {

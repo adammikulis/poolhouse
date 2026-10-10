@@ -85,7 +85,7 @@ NOTES = {
     "8MB-json-to-availability": "read and parsed an 8 MB body",
     "8MB-json-to-infer": "forwarded an 8 MB body to the model server",
     "proxy-route": "the proxy forwarded a path other than the chat API",
-    "POST/infer/slots/0?action=erase": "a peer cleared a slot's cache",
+    "POST/infer/slots/0?action=erase": "a member cleared a slot's cache",
 }
 
 

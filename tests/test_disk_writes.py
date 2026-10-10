@@ -19,7 +19,7 @@ PROJECT = "a" * 32
 class Remote:
     host = "http://127.0.0.1:8770"
     project_id = PROJECT
-    cluster_key = ""
+    pool_key = ""
 
     def token(self, **kwargs):
         return "project-agent-capability"

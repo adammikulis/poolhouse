@@ -193,7 +193,7 @@ def test_routine_chatter_goes_where_the_relation_says():
     chatter = [m for m in messages if m.thread is None and not m.attrs["arc"]]
     assert chatter
     where = {(m.attrs["kind"], m.source) for m in chatter}
-    # peers in a team channel or DM; a reporting line in a DM or email; across groups, email or Teams
+    # members in a team channel or DM; a reporting line in a DM or email; across groups, email or Teams
     assert any(k in ("standup", "share") and s == "slack" for k, s in where)
     assert any(k in ("checkin", "plan") and s in ("slack", "email") for k, s in where)
     channels = {m.channel for m in chatter if m.source == "slack"}

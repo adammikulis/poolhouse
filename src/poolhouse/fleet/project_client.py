@@ -16,7 +16,7 @@ from poolhouse.http import Sealed, ServerError, ServerUnreachable, open_stream
 from .discovery import derive_token, memberships
 from .onboard.lan import require_local_url, secure_scheme
 from .project_source import MAX_ARCHIVE, MAX_FILES, MAX_SOURCE, ProjectError, checkout, project_id
-from .remote import Peer
+from .remote import Member
 
 
 def register_local(root, key, project_id, port):
@@ -46,9 +46,9 @@ def register_local(root, key, project_id, port):
         raise ProjectError("local project registration failed") from error
 
 
-def read(peer: Peer, path: str, limit: int, *, deadline: float | None = None) -> bytes:
+def read(member: Member, path: str, limit: int, *, deadline: float | None = None) -> bytes:
     """Read one bounded signed and sealed project response."""
-    endpoint = peer.base_url + path
+    endpoint = member.base_url + path
 
     def guard(url: str) -> str:
         if url != endpoint:
@@ -57,12 +57,12 @@ def read(peer: Peer, path: str, limit: int, *, deadline: float | None = None) ->
         return url
 
     wire_limit = limit + sealing.NONCE_BYTES + 16
-    timeout = min(30, peer.timeout)
+    timeout = min(30, member.timeout)
     if deadline is not None:
         timeout = min(timeout, deadline - time.monotonic())
         if timeout <= 0:
             raise ProjectError("Project discovery exceeded its time limit")
-    with open_stream(guard(endpoint), token=peer.token, guard=guard,
+    with open_stream(guard(endpoint), token=member.token, guard=guard,
                      headers={sealing.HEADER: "2"}, timeout=timeout) as response:
         if not response.headers.get(sealing.HEADER):
             raise ProjectError("Project response was not authenticated and sealed")
@@ -87,23 +87,23 @@ def read(peer: Peer, path: str, limit: int, *, deadline: float | None = None) ->
         return opened
 
 
-def catalogue(peer: Peer, *, deadline: float | None = None) -> dict:
-    result = json.loads(read(peer, "/workspace/v1/projects", 1 << 20, deadline=deadline))
+def catalogue(member: Member, *, deadline: float | None = None) -> dict:
+    result = json.loads(read(member, "/workspace/v1/projects", 1 << 20, deadline=deadline))
     if (not isinstance(result, dict) or not isinstance(result.get("projects"), list)
             or not isinstance(result.get("machine"), str) or not 0 < len(result["machine"]) <= 256
             or len(result["projects"]) > 1000):
-        raise ProjectError("Peer returned an invalid project catalogue")
+        raise ProjectError("Member returned an invalid project catalogue")
     for project in result["projects"]:
         validate_project(project)
         if project.get("source_machine") != result.get("machine"):
-            raise ProjectError("Peer advertised another device's project source")
+            raise ProjectError("Member advertised another device's project source")
     return result
 
 
 def validate_project(project: dict) -> None:
     """Refuse malformed project metadata before selecting a source URL."""
     if not isinstance(project, dict):
-        raise ProjectError("Peer returned an invalid project entry")
+        raise ProjectError("Member returned an invalid project entry")
     for field, length in (("id", 32), ("name", 256), ("source_machine", 256),
                           ("board_host", 2048)):
         value = project.get(field)
@@ -126,30 +126,30 @@ def validate_project(project: dict) -> None:
         require_local_url(project["board_host"])
 
 
-def peers(ui) -> list[Peer]:
+def members(ui) -> list[Member]:
     found = {}
-    for member in memberships(ui.cluster_key_path):
-        for peer in Peer.discover(cluster_key_path=ui.cluster_key_path, key=member.key,
+    for member in memberships(ui.pool_key_path):
+        for daemon in Member.discover(pool_key_path=ui.pool_key_path, key=member.key,
                                   group=member.group, timeout_s=1, port=ui.discovery_port):
-            found.setdefault(peer.base_url, peer)
+            found.setdefault(daemon.base_url, daemon)
     return list(found.values())
 
 
 def available(ui) -> dict:
     projects, devices = [], []
     if ui.projects:
-        projects = [{**p, "is_self": True, "peer": "", "state": "available"}
+        projects = [{**p, "is_self": True, "member": "", "state": "available"}
                     for p in ui.projects.list()]
-    for peer in peers(ui):
-        if peer.beacon and ui.projects and peer.beacon.machine == ui.projects.machine:
+    for member in members(ui):
+        if member.beacon and ui.projects and member.beacon.machine == ui.projects.machine:
             continue
         try:
-            found = catalogue(peer)
-            projects.extend({**p, "is_self": False, "peer": peer.base_url,
-                             "host": peer.base_url, "state": "available"} for p in found["projects"])
-            devices.append({"name": peer.name, "peer": peer.base_url, "state": "available"})
+            found = catalogue(member)
+            projects.extend({**p, "is_self": False, "member": member.base_url,
+                             "host": member.base_url, "state": "available"} for p in found["projects"])
+            devices.append({"name": member.name, "member": member.base_url, "state": "available"})
         except (ServerError, ProjectError, ValueError, OSError) as exc:
-            devices.append({"name": peer.name, "peer": peer.base_url,
+            devices.append({"name": member.name, "member": member.base_url,
                             "state": "upgrade_required" if getattr(exc, "status", 0) in {404, 501} else "offline",
                             "error": str(exc)})
     for project in projects:
@@ -164,17 +164,17 @@ def available(ui) -> dict:
             "local": ui.projects.list() if ui.projects else []}
 
 
-def receive(peer: Peer, identifier: str, base: Path) -> Path:
-    rows = [p for p in catalogue(peer)["projects"] if p["id"] == project_id(identifier)]
+def receive(member: Member, identifier: str, base: Path) -> Path:
+    rows = [p for p in catalogue(member)["projects"] if p["id"] == project_id(identifier)]
     if len(rows) != 1:
         raise ProjectError("Project is not published by this device")
     project = rows[0]
-    data = read(peer, f"/workspace/v1/projects/{identifier}/snapshot?hash={project['source_hash']}", MAX_ARCHIVE)
+    data = read(member, f"/workspace/v1/projects/{identifier}/snapshot?hash={project['source_hash']}", MAX_ARCHIVE)
     if hashlib.sha256(data).hexdigest() != project["archive_sha256"]:
         raise ProjectError("Project archive digest mismatch")
     return checkout(data, identifier, project["source_hash"], base,
                     authority={"host": project.get("board_host", ""),
-                               "source_machine": project["source_machine"], "source_host": peer.base_url})
+                               "source_machine": project["source_machine"], "source_host": member.base_url})
 
 
 def route(request) -> bool:
@@ -199,14 +199,14 @@ def route(request) -> bool:
             ui.projects.unshare(suffix[0])
             request.send(200, {"ok": True})
         elif len(suffix) == 2 and suffix[1] == "checkout" and method == "POST":
-            selected = request.body().get("peer")
-            selected_peers = [p for p in peers(ui) if p.base_url == selected]
-            if len(selected_peers) != 1:
-                raise ProjectError("Choose a currently authenticated cluster device")
+            selected = request.body().get("member")
+            selected_members = [p for p in members(ui) if p.base_url == selected]
+            if len(selected_members) != 1:
+                raise ProjectError("Choose a currently authenticated pool device")
             found = available(ui)
             if any(p["id"] == suffix[0] and p["state"] == "conflict" for p in found["projects"]):
                 raise ProjectError("Project has conflicting workspace authorities")
-            result = receive(selected_peers[0], suffix[0], ui.root / "project-checkouts")
+            result = receive(selected_members[0], suffix[0], ui.root / "project-checkouts")
             request.send(200, {"project_id": suffix[0], "checkout": str(result),
                                "board_host": read_json(result / ".poolhouse-project.json", {}).get("authority", {}).get("host", ""),
                                "attached": False})

@@ -85,7 +85,7 @@ def test_an_injected_instruction_posted_to_a_board_is_held_and_never_shown_to_a_
     assert ws.board.digest(b)["text"].startswith("<untrusted")
 
 
-def test_an_agent_cannot_read_another_board_or_pair_through_any_command(kit):
+def test_an_agent_cannot_read_another_board_or_join_through_any_command(kit):
     ws, a, b, m = kit.ws, kit.tokens["alice"], kit.tokens["bob"], kit.tokens["mallory"]
     ws.board.create(a, "#vault", private=True)
     root = ws.send(a, "#vault", "note", "SECRETBOARD", subject="SECRETSUBJECT")

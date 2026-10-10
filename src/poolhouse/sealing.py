@@ -1,4 +1,4 @@
-"""Authenticated encryption of fleet traffic: AES-256-GCM under a key derived from a cluster secret.
+"""Authenticated encryption of fleet traffic: AES-256-GCM under a key derived from a pool secret.
 
 A sealed message is a 12 byte random nonce followed by the ciphertext and its tag. The
 associated data is authenticated and not sent: for a request it is the method, target, host,

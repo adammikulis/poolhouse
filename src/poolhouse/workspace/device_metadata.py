@@ -10,8 +10,8 @@ from pathlib import Path
 
 from poolhouse.home import device_id, machine_id
 
-STATES = ('paired', 'agent-reported', 'local-observed', 'inherited', 'unknown')
-SOURCES = ('fleet-pairing', 'agent-report', 'local-runtime', 'parent-registry', 'unknown')
+STATES = ('joined', 'agent-reported', 'local-observed', 'inherited', 'unknown')
+SOURCES = ('fleet-join-code', 'agent-report', 'local-runtime', 'parent-registry', 'unknown')
 TEXT = ('architecture', 'runtime_version')
 
 
@@ -24,8 +24,8 @@ def normalize(value):
     if not isinstance(value, dict):
         raise ValueError('device metadata is an object')
     identity = value.get('device_id')
-    peer = value.get('peer_id')
-    for field, text in (('device_id', identity), ('peer_id', peer)):
+    member = value.get('member_id')
+    for field, text in (('device_id', identity), ('member_id', member)):
         if text is not None and (type(text) is not str or not re.fullmatch('[0-9a-f]{64}', text)):
             raise ValueError(f'{field} is a stable device fingerprint or null')
     machine = value.get('machine_id')
@@ -35,14 +35,14 @@ def normalize(value):
     if not _bounded(hostname, system, *(value.get(key, '') for key in TEXT)):
         raise ValueError('device hostname, OS and runtime provenance are bounded text')
     state = value.get('verification', 'agent-reported' if value else 'unknown')
-    if state not in STATES or (state == 'paired' and not peer):
-        raise ValueError('paired device provenance needs its verified peer fingerprint')
+    if state not in STATES or (state == 'joined' and not member):
+        raise ValueError('member provenance needs its verified member fingerprint')
     source = value.get('source', 'agent-report' if value else 'unknown')
     if source not in SOURCES:
         raise ValueError('device source is unsupported')
-    peer_state = value.get('peer_verification', 'unknown')
-    if peer_state not in ('paired', 'unknown') or (peer_state == 'paired' and not peer):
-        raise ValueError('peer verification requires an authenticated peer fingerprint')
+    member_state = value.get('member_verification', 'unknown')
+    if member_state not in ('joined', 'unknown') or (member_state == 'joined' and not member):
+        raise ValueError('member verification requires an authenticated member fingerprint')
     commit = value.get('runtime_commit', '')
     if type(commit) is not str or (commit and not re.fullmatch('[0-9a-f]{40}', commit)):
         raise ValueError('runtime_commit is a full commit or empty')
@@ -59,24 +59,24 @@ def normalize(value):
         raise ValueError('observed_at is a finite nonnegative timestamp')
     return {'device_id': identity, 'hostname': hostname, 'os': system,
             'label': ' · '.join(filter(None, (system, hostname))) or 'Unknown device',
-            'peer_id': peer, 'verification': state, 'source': source, 'runtime_commit': commit,
+            'member_id': member, 'verification': state, 'source': source, 'runtime_commit': commit,
             'inherited_from': parent, 'parent_verification': parent_state,
-            'peer_verification': peer_state, 'machine_id': machine,
+            'member_verification': member_state, 'machine_id': machine,
             **{key: value.get(key, '') for key in TEXT}, 'observed_at': observed}
 
 
-def reported(value, *, peer=None, observed_at=0.0):
+def reported(value, *, member=None, observed_at=0.0):
     """An agent's own device report, as the weakest provenance and never as a stable identity.
 
     The hardware facts it names are kept for display; ``device_id`` and ``machine_id`` are what
     rewards and placement key on, so they are only ever set by this host's own observation. A
-    peer fingerprint is the daemon's, taken from the authenticated pairing, never from the report.
+    member fingerprint is the daemon's, taken from the authenticated joining, never from the report.
     """
     if not isinstance(value, dict):
         raise ValueError('device metadata is an object')
-    return normalize({**value, 'device_id': None, 'machine_id': None, 'peer_id': peer,
+    return normalize({**value, 'device_id': None, 'machine_id': None, 'member_id': member,
                       'verification': 'agent-reported', 'source': 'agent-report',
-                      'peer_verification': 'paired' if peer else 'unknown',
+                      'member_verification': 'joined' if member else 'unknown',
                       'inherited_from': '', 'parent_verification': 'unknown',
                       'observed_at': observed_at})
 

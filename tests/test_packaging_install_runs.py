@@ -31,7 +31,7 @@ from poolhouse.installed import STANDARD, extras
 REPO = Path(__file__).resolve().parent.parent
 SH = REPO / "packaging" / "install.sh"
 SCRIPTS = ("poolhouse", "poolhouse-serve", "poolhouse-models", "poolhouse-setup",
-           "poolhouse-doctor", "poolhouse-cluster", "poolhouse-traind")
+           "poolhouse-doctor", "poolhouse-pool", "poolhouse-traind")
 
 pytestmark = pytest.mark.slow
 

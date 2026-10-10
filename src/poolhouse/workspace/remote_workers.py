@@ -14,7 +14,7 @@ from poolhouse import home, jobs, private_path
 from poolhouse.command import flag, option
 from poolhouse.files import read_json, writing
 from poolhouse.fleet.discovery import memberships
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.graph.store import GraphStore
 from poolhouse.log import say
 from poolhouse.windows_private import restrict
@@ -35,7 +35,7 @@ from poolhouse.workspace.project_connection import BoardWorkspace, selected
 from poolhouse.workspace.remote import RemoteWorkspace
 from poolhouse.workspace.service import Workspace
 
-FIELDS = {'agent_token', 'cluster', 'cluster_id', 'name', 'model', 'effort', 'max_effort',
+FIELDS = {'agent_token', 'pool', 'pool_id', 'name', 'model', 'effort', 'max_effort',
           'ctx', 'max_output_tokens', 'task_caps'}
 OPTIONS = [option('json'), flag('--device', default='', help='discovered target device name'),
            flag('--project', default='.', help='local shared project checkout'),
@@ -88,33 +88,33 @@ def credential(remote, name, model, harness="poolhouse-agent"):
                 raise
             token = ''
         if token:
-            if (not record or record.get('cluster_id') != remote.cluster_id
-                    or record.get('cluster') != remote.cluster):
+            if (not record or record.get('pool_id') != remote.pool_id
+                    or record.get('pool') != remote.pool):
                 remote.renew(alias)
             who = remote.call('whoami', token)
-            if who.get('project', {}).get('cluster_id') != remote.cluster_id:
+            if who.get('project', {}).get('pool_id') != remote.pool_id:
                 raise Denied('worker launch requires an existing Dev project capability')
             graph.upsert_node({'id': 'worker:' + name, 'kind': 'worker-identity', 'label': name,
-                               'attrs': {'requested': name, 'identity': alias, 'cluster_id': remote.cluster_id, 'cluster': remote.cluster}})
+                               'attrs': {'requested': name, 'identity': alias, 'pool_id': remote.pool_id, 'pool': remote.pool}})
             return token
         if record is not None:
             raise Denied('the saved Dev worker capability is unavailable')
         result = remote.enroll(name, model=model, harness=harness)
         graph.upsert_node({'id': 'worker:' + name, 'kind': 'worker-identity', 'label': name,
-                           'attrs': {'requested': name, 'identity': result['id'], 'cluster_id': remote.cluster_id, 'cluster': remote.cluster}})
+                           'attrs': {'requested': name, 'identity': result['id'], 'pool_id': remote.pool_id, 'pool': remote.pool}})
         return tokens.load(remote.base, result['id'])
 
 
-def _remote(projects, project_id, cluster_key, cluster):
+def _remote(projects, project_id, pool_key, pool):
     project = projects.get(project_id)
     if not project.board_host:
         raise Denied('the target project has no Board')
-    remote = RemoteWorkspace(project.board_host, project_id, cluster_key=cluster_key, cluster=cluster)
+    remote = RemoteWorkspace(project.board_host, project_id, pool_key=pool_key, pool=pool)
     return project, remote
 
 
 def _settings(body, admission):
-    cluster, cluster_id = admission
+    pool, pool_id = admission
     if type(body) is not dict or set(body) - FIELDS:
         raise ValueError('worker launch accepts model settings and a project agent capability')
     for key in FIELDS - {'ctx', 'max_output_tokens', 'task_caps'}:
@@ -123,8 +123,8 @@ def _settings(body, admission):
     for key in ('ctx',):
         if key in body and type(body[key]) is not int:
             raise ValueError(f'{key} must be an integer')
-    if body.get('cluster') != cluster or body.get('cluster_id') != cluster_id:
-        raise Denied('worker launch requires this authenticated Dev cluster')
+    if body.get('pool') != pool or body.get('pool_id') != pool_id:
+        raise Denied('worker launch requires this authenticated pool')
     context = body.get('ctx', 0)
     if context != 0 and not 2048 <= context <= 4 * 1024 * 1024:
         raise ValueError('context must be zero or between 2048 and 4M tokens')
@@ -139,18 +139,18 @@ def _effective_limits(agent):
     return {"context": agent.ctx, "max_output_tokens": agent.max_output_tokens, "task_caps": asdict(localloop.caps_of(agent))}
 
 
-def start(projects, project_id, body, *, admission, cluster_key=None):
+def start(projects, project_id, body, *, admission, pool_key=None):
     """Launch a project-bound local model on an authenticated Dev device."""
-    cluster, cluster_id = admission
+    pool, pool_id = admission
     try:
         if len(json.dumps(body).encode()) > 32 * 1024:
             return 413, {'error': 'worker launch exceeds the size limit'}
         name = _settings(body, admission)
-        project, remote = _remote(projects, project_id, cluster_key, cluster)
+        project, remote = _remote(projects, project_id, pool_key, pool)
         caller = remote.call('whoami', body.get('agent_token', ''))
         scope = caller.get('project', {})
         if (caller.get('role') != AGENT or scope.get('key') != project_id
-                or scope.get('cluster_id') != cluster_id or scope.get('cluster') != cluster):
+                or scope.get('pool_id') != pool_id or scope.get('pool') != pool):
             raise Denied('worker launch requires this Dev project capability')
         ws = Workspace()
         connection = la.folder(ws) / f'{name}.remote.json'
@@ -164,7 +164,7 @@ def start(projects, project_id, body, *, admission, cluster_key=None):
                 if body.get('model', localmodel.AUTO) not in (localmodel.AUTO, agent.model):
                     raise ValueError('stop the running worker before changing its model')
                 credential(remote, prior['identity'], localmodel.model_identity(agent.model_name))
-                _save_connection(connection, {**prior, 'cluster_id': cluster_id, 'cluster': cluster})
+                _save_connection(connection, {**prior, 'pool_id': pool_id, 'pool': pool})
                 return 200, {'name': name, 'identity': prior['identity'], 'model': agent.model_name,
                              'pid': agent.pid, 'project_id': project_id, 'state': 'running', 'already': True,
                              'requested_by': caller['id'],
@@ -177,10 +177,10 @@ def start(projects, project_id, body, *, admission, cluster_key=None):
             lan_name = 'lan-' + projects.machine[:12] + '-' + name[:20]
             lan_token = credential(remote, lan_name, localmodel.model_identity(chosen.name))
             lan_identity = remote.call('whoami', lan_token)['id']
-            record = {'host': remote.host, 'project_id': project_id, 'cluster': cluster,
-                      'cluster_key': str(cluster_key) if cluster_key else '',
+            record = {'host': remote.host, 'project_id': project_id, 'pool': pool,
+                      'pool_key': str(pool_key) if pool_key else '',
                       'identity': lan_identity, 'requested_by': caller['id'],
-                      'name': name, 'cluster_id': cluster_id,
+                      'name': name, 'pool_id': pool_id,
                       'requested_context': body.get('ctx', 0) or 'auto',
                       'device_cert': remote.device_cert}
             root = str(Path(project.root).resolve(strict=True))
@@ -208,7 +208,7 @@ def start(projects, project_id, body, *, admission, cluster_key=None):
 
 
 class WorkerRemote:
-    """Refresh an existing worker's Dev transport when its installed cluster key changes."""
+    """Refresh an existing worker's Dev transport when its installed pool key changes."""
 
     def __init__(self, remote, record, path=None):
         self.current, self.record, self.path = remote, dict(record), path
@@ -216,19 +216,19 @@ class WorkerRemote:
 
     def refresh(self):
         old = self.current
-        rows = memberships(Path(old.cluster_key) if old.cluster_key else None)
+        rows = memberships(Path(old.pool_key) if old.pool_key else None)
         if not rows or rows[0].mode != 'dev':
-            raise Denied('the running worker requires its active Dev cluster')
+            raise Denied('the running worker requires its active pool')
         current_id = hashlib.sha256(rows[0].key).hexdigest()
-        if current_id != old.cluster_id or rows[0].group != old.cluster:
+        if current_id != old.pool_id or rows[0].group != old.pool:
             fresh = RemoteWorkspace(old.host, old.project_id,
-                                    cluster_key=Path(old.cluster_key) if old.cluster_key else None,
-                                    cluster=rows[0].group)
+                                    pool_key=Path(old.pool_key) if old.pool_key else None,
+                                    pool=rows[0].group)
             if fresh.device_cert != old.device_cert:
                 raise Denied('the running worker cannot switch its authenticated Board authority')
         else:
             fresh = old
-        if (current_id == self.record.get('cluster_id') and rows[0].group == self.record.get('cluster')
+        if (current_id == self.record.get('pool_id') and rows[0].group == self.record.get('pool')
                 and fresh is old):
             return
         identity = self.record['identity']
@@ -242,12 +242,12 @@ class WorkerRemote:
             for node in graph.nodes('worker-identity'):
                 attrs = node['attrs']
                 if attrs.get('identity') == identity:
-                    graph.upsert_node({**node, 'attrs': {**attrs, 'cluster_id': current_id, 'cluster': rows[0].group}})
+                    graph.upsert_node({**node, 'attrs': {**attrs, 'pool_id': current_id, 'pool': rows[0].group}})
         if self.path is not None:
             fresh._safe_storage(self.path)
-            _save_connection(self.path, {**self.record, 'cluster_id': current_id, 'cluster': rows[0].group})
+            _save_connection(self.path, {**self.record, 'pool_id': current_id, 'pool': rows[0].group})
         self.current = fresh
-        self.record.update(cluster_id=current_id, cluster=rows[0].group)
+        self.record.update(pool_id=current_id, pool=rows[0].group)
 
     def call(self, operation, token, *args, **kwargs):
         self.refresh()
@@ -258,12 +258,12 @@ class BoardWorker(BoardWorkspace):
     """Keep runtime files local while using the selected agent capability."""
 
     def __init__(self, local, record, name=""):
-        cluster_key = Path(record['cluster_key']) if record['cluster_key'] else None
-        rows = memberships(cluster_key)
+        pool_key = Path(record['pool_key']) if record['pool_key'] else None
+        rows = memberships(pool_key)
         if not rows or rows[0].mode != 'dev':
-            raise Denied('the worker requires its active Dev cluster')
-        remote = RemoteWorkspace(record['host'], record['project_id'], cluster_key=cluster_key,
-                                 cluster=rows[0].group)
+            raise Denied('the worker requires its active pool')
+        remote = RemoteWorkspace(record['host'], record['project_id'], pool_key=pool_key,
+                                 pool=rows[0].group)
         if remote.device_cert != record.get('device_cert'):
             raise Denied('the worker cannot switch its saved authenticated Board authority')
         token = tokens.load(remote.base, record['identity'])
@@ -291,27 +291,27 @@ class BoardWorker(BoardWorkspace):
 
 
 def run(args):
-    """Discover one Dev target and launch its model on the shared project Board."""
+    """Discover one Dev target and launch its model on the shared board."""
     if any(getattr(args, key, None) is None for key in (
             "max_output_tokens", "max_rounds", "max_tool_calls", "max_model_calls", "max_task_seconds")):
         say("Task limits include None: tasks could run indefinitely until you stop them.")
     root = Path(args.project).resolve()
     connection = selected(root) or automatic_connection.discover(root)
     if not connection:
-        raise Denied('no project Board was discovered for this checkout')
-    cluster_key = Path(connection['cluster_key']) if connection.get('cluster_key') else None
-    rows = memberships(cluster_key)
+        raise Denied('no board was discovered for this checkout')
+    pool_key = Path(connection['pool_key']) if connection.get('pool_key') else None
+    rows = memberships(pool_key)
     members = rows[:1] if rows and rows[0].mode == 'dev' else []
     if not members:
-        raise Denied('remote worker launch requires the active Dev cluster')
+        raise Denied('remote worker launch requires the active pool')
     remote = RemoteWorkspace(connection['host'], connection['project_id'],
-                             cluster=members[0].group, cluster_key=cluster_key)
-    peers = Peer.discover(key=members[0].key, group=members[0].group)
-    targets = [peer for peer in peers if peer.beacon and peer.beacon.machine != home.machine_id()
-               and (not args.device or peer.name == args.device or peer.beacon.machine == args.device)]
+                             pool=members[0].group, pool_key=pool_key)
+    daemons = Member.discover(key=members[0].key, group=members[0].group)
+    targets = [daemon for daemon in daemons if daemon.beacon and daemon.beacon.machine != home.machine_id()
+               and (not args.device or daemon.name == args.device or daemon.beacon.machine == args.device)]
     if len(targets) != 1:
         raise Denied('select one discovered remote device with --device NAME; found: ' + ', '.join(p.name for p in targets))
-    authorities = [peer for peer in peers if peer.beacon and peer.beacon.cert == remote.device_cert]
+    authorities = [daemon for daemon in daemons if daemon.beacon and daemon.beacon.cert == remote.device_cert]
     if len(authorities) != 1:
         raise Denied('the Board is not discoverable or is ambiguous')
     if args.agent:
@@ -319,10 +319,10 @@ def run(args):
         remote.renew(args.agent)
     else:
         token = credential(remote, 'lan-launch-' + home.device_id()[:12], '', harness='poolhouse-workspace')
-    target = RemoteWorkspace(targets[0].base_url, remote.project_id, cluster=remote.cluster,
-                             cluster_key=Path(remote.cluster_key) if remote.cluster_key else None)
-    result = target._request('worker', {'agent_token': token, 'cluster': remote.cluster,
-                                      'cluster_id': remote.cluster_id, 'name': args.name, 'model': args.model,
+    target = RemoteWorkspace(targets[0].base_url, remote.project_id, pool=remote.pool,
+                             pool_key=Path(remote.pool_key) if remote.pool_key else None)
+    result = target._request('worker', {'agent_token': token, 'pool': remote.pool,
+                                      'pool_id': remote.pool_id, 'name': args.name, 'model': args.model,
                                       'effort': args.effort, 'max_effort': args.max_effort,
                                       'ctx': localprofile.parse_ctx(args.ctx),
                                       'max_output_tokens': args.max_output_tokens,

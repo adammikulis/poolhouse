@@ -148,7 +148,7 @@ def test_chat_policy_refuses_human_only_wording_only_while_it_is_a_person_s():
     assert chatpolicy.refusal_for(text)[0].startswith("release or purge")
 
 
-PERSON_ONLY = ("keystore", "passphrase", "sudoers", "signing", "cluster-token", "init", "review", "os-prompt")
+PERSON_ONLY = ("keystore", "passphrase", "sudoers", "signing", "pool-token", "init", "review", "os-prompt")
 
 
 def test_secrets_and_the_os_prompt_have_no_gate_in_the_registry():
@@ -162,11 +162,11 @@ def test_the_keystore_stays_a_person_s_whatever_the_registry_says(monkeypatch, c
     assert "for a person" in capsys.readouterr().err
 
 
-def test_the_cluster_passphrase_stays_a_person_s(monkeypatch, capsys):
+def test_the_pool_passphrase_stays_a_person_s(monkeypatch, capsys):
     from poolhouse.fleet import recovery
     authority.set_state(["ALL"], authority.DELEGATED, by="lead")
     monkeypatch.setenv("CLAUDECODE", "1")
-    args = argparse.Namespace(cmd="passphrase", group="", cluster_key=None)
+    args = argparse.Namespace(cmd="passphrase", group="", pool_key=None)
     assert recovery.run(args) == 2
     assert "for a person" in capsys.readouterr().err
 
@@ -175,7 +175,7 @@ def test_the_gates_of_no_registry_name_survive_in_the_source():
     from pathlib import Path
     root = Path(authority.__file__).parent
     pinned = {"net/cli.py": 'human.require_person("unlock")', "fleet/recovery.py": 'human.require_person("passphrase")',
-              "fleet/runtime_paths.py": 'person.require_person("display the cluster token")',
+              "fleet/runtime_paths.py": 'person.require_person("display the pool token")',
               "sentinel/review.py": 'human.require_person("review")'}
     for name, call in pinned.items():
         assert call in (root / name).read_text()

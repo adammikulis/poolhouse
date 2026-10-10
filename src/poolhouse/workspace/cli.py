@@ -41,7 +41,6 @@ from poolhouse.workspace import (
     limits,
     localcli,
     localroute,
-    mesh_sync,
     notes_cli,
     nudge,
     onboard,
@@ -52,6 +51,7 @@ from poolhouse.workspace import (
     remote_task_client,
     remote_workers,
     render,
+    replica_sync,
     session_name,
     task_integration,
     task_outcomes,
@@ -127,14 +127,14 @@ def _context(args: argparse.Namespace, connection=_CONNECTION_UNSET):
         return Workspace(), _local_token(args)
     connection = automatic_connection.cli_connection(args, connection, _local_token, Workspace)
     remote = project_connection.RemoteWorkspace(connection["host"], connection["project_id"],
-                                                cluster=connection.get("cluster", ""),
-                                                cluster_key=Path(connection["cluster_key"])
-                                                if connection.get("cluster_key") else None)
+                                                pool=connection.get("pool", ""),
+                                                pool_key=Path(connection["pool_key"])
+                                                if connection.get("pool_key") else None)
     token = remote.token(agent=args.agent or os.environ.get(tokens.AGENT_ENV, "") or connection.get("agent", ""),
                          token_file=getattr(args, "token_file", ""))
     if not connection.get("agent"):
         who = remote.call("whoami", token)
-        project_connection.bind(remote, Path(connection["root"]), who["id"], connection.get("cluster", ""))
+        project_connection.bind(remote, Path(connection["root"]), who["id"], connection.get("pool", ""))
     return project_connection.BoardWorkspace(remote, token), token
 
 
@@ -240,7 +240,7 @@ def _join(args: argparse.Namespace, ws: Workspace) -> int:
     expected = getattr(args, "workspace", "")
     if expected and (not remote or remote.config["workspace"] != expected):
         raise Denied("this invitation belongs to another coordinator workspace; "
-                     "enroll in its cluster and use the complete invitation command")
+                     "enroll in its pool and use the complete invitation command")
     name = remote.join(limits.root(), args.code, args.name, args.model, args.harness) if remote else onboard.join(
         ws, args.code, args.name, claim=(args.model, args.harness))
     if not remote:
@@ -332,7 +332,7 @@ BARE: tuple[tuple[str, str, list[Any], Callable[[argparse.Namespace, Workspace],
       *LIVE], _connect),
     ("join", "an agent redeems an invite code and saves its private token", [
         flag("code"), flag("--name", default="", help="the id you ask for (for example codex); the board refuses reserved ids and adds a suffix when it is taken"),
-        flag("--coordinator", default="", help="select this enrolled cluster coordinator before redeeming the invite"),
+        flag("--coordinator", default="", help="select this enrolled pool coordinator before redeeming the invite"),
         flag("--workspace", default="", help="expected coordinator workspace ID; refuses local redemption"),
         flag("--model", default="", help="the exact model id you run as; recorded as claimed"),
         flag("--harness", default="", help="your harness, e.g. claude-code or codex")],
@@ -423,7 +423,7 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
         flag("name", nargs="?", default=""), flag("body", nargs="?", default=""),
         flag("--type", choices=TYPES, default="note"), flag("--subject", default=""),
         flag("--reply-to", type=int, default=0), flag("--limit", type=int, default=50),
-        flag("--between", default="", help="a person or lead: the pair BETWEEN and NAME")],
+        flag("--between", default="", help="a person or lead: the two parties BETWEEN and NAME")],
      _dm),
     ("subscribe", "choose what reaches your inbox: board, thread, agent, kind or mentions", [
         flag("type", choices=STYPES), flag("target", nargs="?", default=""),
@@ -441,10 +441,10 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      lambda a, w, t: person_view.listing(a.limit, a.session)),
     ("wait", "block until a message arrives", [
         *READ, flag("--timeout", type=float, default=60.0)], _wait),
-    ("outbox", "messages you sent, each provisional until every paired device holds it", [FOR_AGENT],
+    ("outbox", "messages you sent, each provisional until every member holds it", [FOR_AGENT],
      lambda a, w, t: w.outbox(t)),
-    ("sync", "exchange journals with the paired devices (a person or lead)", [],
-     lambda a, w, t: mesh_sync.run(w, t)),
+    ("sync", "exchange logs with the members (a person or lead)", [],
+     lambda a, w, t: replica_sync.run(w, t)),
     ("ack", "mark messages up to SEQ read", [flag("seq", type=int)],
      lambda a, w, t: {"cursor": w.ack(t, a.seq)}),
     ("thread", "a message and its replies (first and newest by default)", [
@@ -562,7 +562,7 @@ def _remote(args: argparse.Namespace) -> int:
     return 0
 
 
-COMMANDS.add("remote", _guarded(_remote), help="attach and use one shared project board on its host",
+COMMANDS.add("remote", _guarded(_remote), help="attach and use one shared board on its host",
              options=remote_cli.OPTIONS)
 COMMANDS.add("remote-agent", _guarded(remote_workers.main_cli),
              help="launch a local Qwen worker on a discovered Dev device", options=remote_workers.OPTIONS)
@@ -612,8 +612,8 @@ def _coordinator(args):
     elif args.action == 'connect':
         result = coordinator_client.connect(base, args.name)
     elif args.action == 'list':
-        result = [{'name': peer.name, 'endpoint': peer.base_url, **info}
-                  for peer, info in coordinator_client.discover()]
+        result = [{'name': member.name, 'endpoint': member.base_url, **info}
+                  for member, info in coordinator_client.discover()]
     else:
         result = coordinator_config.load(base) or {'mode': 'local', 'shared': False}
     if isinstance(result, dict):

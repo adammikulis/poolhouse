@@ -34,7 +34,7 @@ def member(kit, who, board, creator="alice"):
 
 
 # -- boards and membership ---------------------------------------------------------------------
-def test_a_project_board_is_named_from_the_project_recorded_on_join(kit):
+def test_a_board_is_named_from_the_project_recorded_on_join(kit):
     ws = kit.ws
     code = ws.invites.create("codex", 600.0, {"key": "git@example.org:me/widgets.git",
                                               "name": "Widgets"})
@@ -140,7 +140,7 @@ def test_a_direct_conversation_is_one_ordered_view_of_both_directions(kit):
     assert len(ws.board.dm(kit.owner, "bob", between="alice")) == 3
 
 
-def test_an_agent_reads_no_other_pairs_direct_messages_by_any_route(kit):
+def test_an_agent_reads_no_other_joins_direct_messages_by_any_route(kit):
     ws, t = kit.ws, kit.tokens
     sent = send(kit, "alice", "bob", "private")
     with pytest.raises(Denied):

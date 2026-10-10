@@ -18,7 +18,7 @@ from poolhouse.fleet.discovery import derive_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.project_client import catalogue, receive
 from poolhouse.fleet.projects import ProjectRegistry, bootstrap, lan_host
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.http import Server, ServerError
 from poolhouse.net import git
 
@@ -150,13 +150,13 @@ def test_http_source_requires_auth_and_transfers_verified_checkout(repository, t
     base = f"http://127.0.0.1:{server.server_address[1]}"
     try:
         with pytest.raises(ServerError):
-            catalogue(Peer(base, "wrong-token"))
-        assert catalogue(Peer(base, token))["projects"][0]["id"] == project.id
-        result = receive(Peer(base, token), project.id, tmp_path / "received")
+            catalogue(Member(base, "wrong-token"))
+        assert catalogue(Member(base, token))["projects"][0]["id"] == project.id
+        result = receive(Member(base, token), project.id, tmp_path / "received")
         assert (result / "run.sh").read_bytes().startswith(b"#!/bin/sh\n")
         registry.unshare(project.id)
         with pytest.raises(source.ProjectError):
-            receive(Peer(base, token), project.id, tmp_path / "received-again")
+            receive(Member(base, token), project.id, tmp_path / "received-again")
     finally:
         server.shutdown()
         server.server_close()

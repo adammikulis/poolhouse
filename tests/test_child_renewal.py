@@ -1,4 +1,4 @@
-"""Seat renewal preserves identity and refuses foreign or revoked delegates."""
+"""HarnessSession renewal preserves identity and refuses foreign or revoked delegates."""
 
 import pytest
 from workspace_kit import Kit
@@ -24,7 +24,7 @@ def test_parent_renews_same_token_and_identity(tmp_path):
 
 
 @pytest.mark.parametrize('expired', [False, True])
-def test_revoked_or_expired_seat_is_not_restored(tmp_path, expired):
+def test_revoked_or_expired_session_is_not_restored(tmp_path, expired):
     now = [1000.0]
     kit = Kit(tmp_path, clock=lambda: now[0])
     parent = kit.agent('parent')

@@ -56,11 +56,11 @@ impl crate::node::Node {
     }
 
     /// Put a device out for good, and note it on the pool board.
-    pub fn revoke_device(&mut self, fingerprint: &str, by: &str) -> Result<Device> {
+    pub fn remove_device(&mut self, fingerprint: &str, by: &str) -> Result<Device> {
         let was_out = self.members.get(fingerprint).is_some_and(|d| d.status == crate::membership::Status::Revoked);
         let device = self.members.revoke(fingerprint, by, wall_ms())?;
         if !was_out {
-            self.record_event("member_revoked", fingerprint, &format!("by {by}"))?;
+            self.record_event("member_removed", fingerprint, &format!("by {by}"))?;
         }
         Ok(device)
     }
@@ -75,7 +75,7 @@ impl crate::node::Node {
     }
 
     /// The pool as a local client sees it: members with what is known of each, the policy,
-    /// whether pairing is open, and this node's listening address.
+    /// whether a join code is open, and this node's listening address.
     pub fn pool_status(&self) -> Value {
         let me = self.cert.fingerprint();
         let now = wall_ms();
@@ -90,8 +90,8 @@ impl crate::node::Node {
         }).collect();
         json!({
             "pool": self.members.id, "project": self.members.project, "policy": self.members.policy.name(), "fingerprint": me, "listen": self.facts.listen,
-            "beacon": self.facts.beacon, "pairing_open": self.facts.pairing_until_ms > now,
-            "pairing_expires_in_s": self.facts.pairing_until_ms.saturating_sub(now) / 1000, "members": members,
+            "beacon": self.facts.beacon, "join_code_open": self.facts.join_code_until_ms > now,
+            "join_code_expires_in_s": self.facts.join_code_until_ms.saturating_sub(now) / 1000, "members": members,
         })
     }
 }

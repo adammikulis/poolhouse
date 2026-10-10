@@ -1,4 +1,4 @@
-"""Standard agent sessions bound to authenticated paired devices and hosted projects."""
+"""Standard agent sessions bound to authenticated members and hosted projects."""
 
 import hashlib
 import secrets
@@ -48,7 +48,7 @@ def _credential(ws, graph, binding, token):
             value = secrets.token_urlsafe(32)
             now = ws.clock()
             if entry is None:
-                entry = {'role': AGENT, 'created': now, 'minted_by': 'paired-device',
+                entry = {'role': AGENT, 'created': now, 'minted_by': 'member',
                          'can': list(CAPS), 'project': scope, 'session_device': fingerprint,
                          'revoked': False}
                 agents[agent] = entry
@@ -60,7 +60,7 @@ def _credential(ws, graph, binding, token):
 
 def ensure(ws, device, projects, document, token=''):
     if device is None or device.status != 'active':
-        raise Denied('agent registration requires an active paired device')
+        raise Denied('agent registration requires an active member')
     name, model, harness = (document.get(key, '') for key in ('name', 'model', 'harness'))
     if any(type(value) is not str for value in (name, model, harness)):
         raise ValueError('agent identity and model labels are strings')
@@ -70,7 +70,7 @@ def ensure(ws, device, projects, document, token=''):
     if model:
         clean_model(model)
     fingerprint = device.fingerprint
-    profile = device_metadata.reported(document.get('device', {}), peer=fingerprint)
+    profile = device_metadata.reported(document.get('device', {}), member=fingerprint)
     requested_scope = _project(projects, document.get('project'))
     with held(ws.base / 'device-sessions.lock'), GraphStore(ws.base / 'device-sessions.db') as graph:
         bindings = [node['attrs'] for node in graph.nodes('device-session')]
@@ -85,7 +85,7 @@ def ensure(ws, device, projects, document, token=''):
                 raise Denied('the requested project differs from the registered agent scope')
         else:
             if not device.mine:
-                raise Denied('this paired device has no existing agent authorization')
+                raise Denied('this member has no existing agent authorization')
             if (len(bindings) >= ws.limits.agents_live
                     or sum(row['device'] == fingerprint for row in bindings) >= ws.limits.mints_per_identity):
                 raise Denied('the registered device agent limit is reached')
@@ -114,7 +114,7 @@ def check(ws, token, device, projects):
     fingerprint = root.get('session_device') or entry.get('session_device')
     if fingerprint:
         if device is None or device.status != 'active' or fingerprint != device.fingerprint:
-            raise Denied('the agent session requires its active paired device')
+            raise Denied('the agent session requires its active member')
         scope = root.get('project', {})
         if _project(projects, scope) != scope:
             raise Denied('the agent project authorization changed')

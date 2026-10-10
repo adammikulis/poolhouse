@@ -37,14 +37,14 @@ The device takes tests only from the devices in its `allowed` list, which is emp
 network) can ask whether tests are taken (`shard_caps`) and nothing else: `shard_put`, `shard_start`,
 `shard_status` and `shard_cancel` are refused with `denied`, and the refusal is an audit entry on the pool board
 (at most one a minute for each device). Allowing and denying are audit entries naming the session that did it and
-the device. `deny`, and putting a member out of the pool (`member_revoke`), take it off the list, cancel its runs
-that are going, and a revoked member is also refused at the connection.
+the device. `deny`, and putting a member out of the pool (`member_remove`), take it off the list, cancel its runs
+that are going, and a removed member is also refused at the connection.
 
 `on` is `shard_consent` on the device's own node: it saves `<state>/shards.json` (on, the interpreter, the
 checkout), refuses a Python that is not 3.13 and writes an `audit` entry to the pool board naming the session
 that did it. `off` stops the next upload at once (the file is read at every request). Turning it on lets any
 other device of the pool run a tree's tests here as this user, so do it only on a device whose pool you trust;
-revoking a pool member (`member_revoke`) refuses it at its next request. `poolhouse features disable remote-tests` also switches this device's node off.
+removing a pool member (`member_remove`) refuses it at its next request. `poolhouse features disable remote-tests` also switches this device's node off.
 
 ## What runs where
 
@@ -56,17 +56,17 @@ revoking a pool member (`member_revoke`) refuses it at its next request. `poolho
 | pack and upload | the Mac to the device | the working tree as a gzip tar (uncommitted edits travel), 256 KiB at a time, over the node's TLS |
 | run | the device | its node checks the digest, takes CPU slots from its lease service, starts the executor on the device's own Python 3.13 and checkout, which unpacks the tree into a scratch checkout and runs `scripts/test TIER --no-reuse` there |
 | result | the device to the Mac | per-file counts, failing node ids with messages, platform, wall and CPU seconds, an output tail |
-| record | the Mac | the printed lines, the per-device ledger, and a `test-result device=NAME ...` message on the project board |
+| record | the Mac | the printed lines, the per-device ledger, and a `test-result device=NAME ...` message on the board |
 
 ## Mechanism
 
 The node (`app/poolhouse-node/src/shard/`) is the transport, so a shard rides the pool's own membership: a
-request is a peer op on a TLS 1.3 connection pinned to the certificate the pool record holds for the device, and
-the sender is that certificate, never a field of the request. Revoked or unknown devices are refused at every
+request is a device op on a TLS 1.3 connection pinned to the certificate the pool record holds for the device, and
+the sender is that certificate, never a field of the request. Removed or unknown devices are refused at every
 op. The local API has two methods: `shard_call` (a registered session asks one op of a pool device; the node adds
 `op` and `by`, the session behind the token, as a label for the audit trail) and `shard_consent`.
 
-- Peer ops, members only (`shard_caps` for any member; the rest only for a member on the allowed list): `shard_caps`, `shard_put` (one chunk, in order, from offset 0, 256 KiB at most, hex),
+- Device ops, members only (`shard_caps` for any member; the rest only for a member on the allowed list): `shard_caps`, `shard_put` (one chunk, in order, from offset 0, 256 KiB at most, hex),
   `shard_start`, `shard_status`, `shard_cancel`. A shard belongs to the certificate that created it: another
   member gets "no such shard" for its status and its cancel.
 - The job: `id` (32 hex), `tree_sha256`, `size`, `tier` (`all fast full gate slow`), `files` (0 to 200 names, each
@@ -96,7 +96,7 @@ op. The local API has two methods: `shard_call` (a registered session asks one o
   tier besides the file's content key, so a pass on Windows never satisfies macOS or WSL. Only a run that ended
   with pytest's exit 0 or 1 records passes, and only for files with passes and no failures. The ledger is
   `remote-results.json` in the project's reuse folder; `poolhouse-test-devices` reads the last result from it.
-- Retired: the paired-device HTTP route (`/workspace/v1/test-shards`), `Settings.test_shards` and
+- Retired: the member HTTP route (`/workspace/v1/test-shards`), `Settings.test_shards` and
   `fleet/shard_consent.py`. There is one remote path.
 
 ## Windows, WSL, Linux

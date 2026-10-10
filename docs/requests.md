@@ -23,7 +23,7 @@ cut to a bound before it is stored.
 | `memory_remember` | a fact the agent offered | |
 | `hold`, `rule_suggestion` | a held call, a suggested rule | |
 | `quarantine_release` | what sentinel holds | yes: the sentinel re-checks at the click |
-| `host_approval`, `pairing`, `grant`, `keystore_unlock` | declared kinds; their sources still own their prompts | yes |
+| `host_approval`, `join-code`, `grant`, `keystore_unlock` | declared kinds; their sources still own their prompts | yes |
 
 States: `pending`, `approved`, `denied`, `expired`, `cancelled`, `superseded`. Choices: allow this
 time, always allow, never allow, no, cancel, release, keep held, later, approve. A request that

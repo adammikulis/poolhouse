@@ -12,7 +12,7 @@ from poolhouse.workspace.remote_host import WorkspaceHost
 from poolhouse.workspace.taskboard import TaskBoard
 
 PROJECT = "a" * 32
-SCOPE = {"key": PROJECT, "name": "fixture-project", "cluster": "dev", "cluster_id": "c" * 64}
+SCOPE = {"key": PROJECT, "name": "fixture-project", "pool": "dev", "pool_id": "c" * 64}
 
 
 @pytest.fixture
@@ -22,15 +22,15 @@ def enrollment(tmp_path):
                                workspace_base=lambda identifier: tmp_path / identifier)
     host = WorkspaceHost(projects)
     body = {"name": "worker", "model": "gpt-6", "harness": "codex",
-            "cluster": "dev", "cluster_id": "c" * 64}
+            "pool": "dev", "pool_id": "c" * 64}
     return host, project, body
 
 
 def test_enrollment_bootstraps_only_project_agents_and_places_board(enrollment):
     host, _, body = enrollment
-    code, first = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    code, first = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     assert code == 201, first
-    code, second = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    code, second = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     assert code == 201 and second["id"] != first["id"]
     ws = host.workspace(PROJECT)
     assert all(ws.registry.info(name)["role"] == AGENT for name in ws.registry.ids())
@@ -49,12 +49,12 @@ def test_enrollment_bootstraps_only_project_agents_and_places_board(enrollment):
     assert not (ws.base / "tokens" / ".owner").exists()
 
 
-@pytest.mark.parametrize("field,value", [("cluster", "prod"),
+@pytest.mark.parametrize("field,value", [("pool", "prod"),
                                           ("model", "bad model"), ("harness", "bad harness"),
                                           ("name", "owner")])
 def test_enrollment_rejects_invalid_claims(enrollment, field, value):
     host, _, body = enrollment
-    code, _ = host.enroll(PROJECT, {**body, field: value}, cluster="dev", cluster_id="c" * 64)
+    code, _ = host.enroll(PROJECT, {**body, field: value}, pool="dev", pool_id="c" * 64)
     assert code in {400, 403}
     assert not host.workspace(PROJECT).registry.ids()
 
@@ -62,15 +62,15 @@ def test_enrollment_rejects_invalid_claims(enrollment, field, value):
 def test_foreign_authority_is_not_reassigned(enrollment):
     host, project, body = enrollment
     project.board_host = "https://foreign:8770"
-    assert host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)[0] == 403
+    assert host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)[0] == 403
     assert project.board_host == "https://foreign:8770"
 
 
 def test_enrollment_rate_is_shared_across_claimed_names(enrollment):
     host, _, body = enrollment
     for index in range(10):
-        assert host.enroll(PROJECT, {**body, "name": f"worker-{index}"}, cluster="dev", cluster_id="c" * 64)[0] == 201
-    assert host.enroll(PROJECT, {**body, "name": "other-worker"}, cluster="dev", cluster_id="c" * 64)[0] == 429
+        assert host.enroll(PROJECT, {**body, "name": f"worker-{index}"}, pool="dev", pool_id="c" * 64)[0] == 201
+    assert host.enroll(PROJECT, {**body, "name": "other-worker"}, pool="dev", pool_id="c" * 64)[0] == 429
 
 
 def test_atomic_registry_enrollment_cannot_reuse_names_or_exceed_live_bound(tmp_path):
@@ -96,7 +96,7 @@ def test_registry_enrollment_refuses_unbounded_lifetimes(tmp_path, ttl):
 
 def test_native_child_delegation_inherits_scope_and_self_revocation(enrollment):
     host, _, body = enrollment
-    _, parent = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    _, parent = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     request = {"agent_token": parent["token"], "operation": "delegate", "args": ["native"]}
     code, reply = host.answer(PROJECT, "board", request, admission=("dev", "c" * 64, True))
     assert code == 200, reply
@@ -125,7 +125,7 @@ def test_native_child_delegation_inherits_scope_and_self_revocation(enrollment):
 
 def test_native_parent_delegation_is_bounded(enrollment):
     host, _, body = enrollment
-    _, parent = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    _, parent = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     for index in range(8):
         request = {"agent_token": parent["token"], "operation": "delegate", "args": [f"native-{index}"]}
         assert host.answer(PROJECT, "board", request, admission=("dev", "c" * 64, True))[0] == 200
@@ -136,8 +136,8 @@ def test_native_parent_delegation_is_bounded(enrollment):
 def test_native_reservations_are_atomic_project_scoped_and_return_relative_keys(enrollment, repository):  # noqa: F811
     host, project, body = enrollment
     project.root = str(repository)
-    _, first = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
-    _, second = host.enroll(PROJECT, {**body, "name": "other"}, cluster="dev", cluster_id="c" * 64)
+    _, first = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
+    _, second = host.enroll(PROJECT, {**body, "name": "other"}, pool="dev", pool_id="c" * 64)
     def request(agent, operation, *args, **kwargs):
         return host.answer(PROJECT, "board", {"agent_token": agent["token"], "operation": operation,
                            "args": list(args), "kwargs": kwargs}, admission=("dev", "c" * 64, True))
@@ -165,7 +165,7 @@ def test_native_reservations_are_atomic_project_scoped_and_return_relative_keys(
 
 def test_self_revocation_cleans_exact_claims_and_refuses_replaced_generation(enrollment):
     host, _, body = enrollment
-    _, parent = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    _, parent = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     ws = host.workspace(PROJECT)
     actor = ws.auth(parent["token"])
     old = ws.registry.delegate(actor, "native", 300, actor.can, 8)
@@ -182,7 +182,7 @@ def test_self_revocation_cleans_exact_claims_and_refuses_replaced_generation(enr
 
 def test_typed_task_commands_bind_full_project_scope_and_idempotency(enrollment):
     host, _, body = enrollment
-    _, agent = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    _, agent = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     def command(action, payload, request_id="e" * 32):
         return host.answer(PROJECT, "board", {"agent_token": agent["token"], "operation": "task.command",
                            "args": [{"action": action, "payload": payload, "request_id": request_id}]},
@@ -208,7 +208,7 @@ def test_typed_task_commands_bind_full_project_scope_and_idempotency(enrollment)
 def test_native_heartbeat_does_not_renew_physical_or_foreign_area_claims(enrollment, repository):  # noqa: F811
     host, project, body = enrollment
     project.root = str(repository / "project")
-    _, agent = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    _, agent = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     ws = host.workspace(PROJECT)
     actor = ws.auth(agent["token"])
     ws.claims.reserve(actor, [("branch", "source"), ("area", str(repository / "outside")),
@@ -255,7 +255,7 @@ def test_task_client_claim_maps_only_existing_allocation_and_refuses_integration
 def test_new_agent_id_enrolls_without_a_prior_selection(enrollment):
     host, _, body = enrollment
     code, issued = host.enroll(PROJECT, {**body, "name": "claude", "harness": "claude-code"},
-                               cluster="dev", cluster_id="c" * 64)
+                               pool="dev", pool_id="c" * 64)
     assert code == 201, issued
     assert issued["id"].startswith("claude")
     assert host.workspace(PROJECT).registry.info(issued["id"])["role"] == AGENT
@@ -264,9 +264,9 @@ def test_new_agent_id_enrolls_without_a_prior_selection(enrollment):
 @pytest.mark.redteam
 def test_board_hosted_elsewhere_refuses_enrollment_and_renewal(enrollment):
     host, project, body = enrollment
-    code, issued = host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)
+    code, issued = host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)
     assert code == 201, issued
     project.board_host = "https://foreign:8770"
-    assert host.enroll(PROJECT, body, cluster="dev", cluster_id="c" * 64)[0] == 403
-    renewal = {"agent_token": issued["token"], "cluster": "dev", "cluster_id": "c" * 64}
-    assert host.renew(PROJECT, renewal, cluster="dev", cluster_id="c" * 64)[0] == 403
+    assert host.enroll(PROJECT, body, pool="dev", pool_id="c" * 64)[0] == 403
+    renewal = {"agent_token": issued["token"], "pool": "dev", "pool_id": "c" * 64}
+    assert host.renew(PROJECT, renewal, pool="dev", pool_id="c" * 64)[0] == 403

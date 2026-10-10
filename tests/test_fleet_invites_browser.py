@@ -17,7 +17,7 @@ pytestmark = pytest.mark.slow
 def test_owner_creates_copies_revokes_and_expires_scoped_invitation(joined, open_page):
     page, errors = open_page(joined, cookie=joined.cookie)
     page.get_by_text("Manage pool connections", exact=True).click()
-    panel = page.locator("#cluster fleet-invites")
+    panel = page.locator("#pool fleet-invites")
     expect(panel.get_by_role("button", name="Create invite", exact=True)).to_be_visible()
     calls = []
     expires = [time.time() + 120]
@@ -39,7 +39,7 @@ def test_owner_creates_copies_revokes_and_expires_scoped_invitation(joined, open
     expect(field).to_have_value("poolhouse://enroll?data=opaque-fixture")
     expect(panel.get_by_role("img", name="Invitation QR code")).to_be_visible()
     assert calls[0][1] == {"group": "home", "kind": "computer"}
-    page.evaluate("document.querySelector('cluster-view').draw()")
+    page.evaluate("document.querySelector('pool-view').draw()")
     expect(field).to_have_value("poolhouse://enroll?data=opaque-fixture")
     panel.get_by_role("button", name="Copy invite", exact=True).click()
     page.wait_for_function("() => window.copiedInvite === 'poolhouse://enroll?data=opaque-fixture'")
@@ -61,7 +61,7 @@ def test_owner_creates_copies_revokes_and_expires_scoped_invitation(joined, open
     expect(field).to_have_count(0)
     expect(panel.get_by_label("Invitation", exact=True)).to_have_value("")
     assert panel.get_by_role("img", name="Invitation QR code").count() == 0
-    page.evaluate("window.fleetModel.go('cluster')")
+    page.evaluate("window.fleetModel.go('pool')")
     panel.get_by_role("button", name="Create invite", exact=True).click()
     expect(field).to_have_value("poolhouse://enroll?data=opaque-fixture")
     page.locator("#nav-signout").click()
@@ -74,7 +74,7 @@ def test_owner_creates_copies_revokes_and_expires_scoped_invitation(joined, open
 def test_invite_join_refuses_expired_then_clears_success_without_leaking_to_storage(joined, open_page):
     page, errors = open_page(joined, cookie=joined.cookie)
     page.get_by_text("Manage pool connections", exact=True).click()
-    panel = page.locator("#cluster fleet-invites")
+    panel = page.locator("#pool fleet-invites")
     button = panel.get_by_role("button", name="Join with invite", exact=True)
     expect(button).to_be_disabled()
     invite = panel.get_by_label("Invitation", exact=True)
@@ -100,7 +100,7 @@ def test_invite_join_refuses_expired_then_clears_success_without_leaking_to_stor
     assert not errors
 
 
-def test_first_run_has_join_invite_before_cluster_membership(daemon, open_page):
+def test_first_run_has_join_invite_before_pool_membership(daemon, open_page):
     page, errors = open_page(daemon)
     page.locator("#device-mode").select_option("prod")
     page.locator("#first-run").get_by_role("button", name="Continue", exact=True).click()

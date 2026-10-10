@@ -31,21 +31,21 @@ from poolhouse.credentials.environment import child_environment
 from .onboard.lan import in_tailnet
 from .onboard.requests import clean
 
-__all__ = ["MAC_APP_CLI", "READ_ONLY", "Tailnet", "TailnetPeer", "detect", "find_cli", "parse"]
+__all__ = ["MAC_APP_CLI", "READ_ONLY", "Tailnet", "TailnetMember", "detect", "find_cli", "parse"]
 
 logger = logging.getLogger("poolhouse.tailnet")
 
 MAC_APP_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 READ_ONLY: frozenset[tuple[str, ...]] = frozenset({("status", "--json")})
 MOST_OUTPUT = 1 << 20
-MOST_PEERS = 256
+MOST_MEMBERS = 256
 MOST_ADDRESSES = 8
 LABEL = re.compile(r"[^\w.\- ]")
 DNS_NAME = re.compile(r"[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)*")
 
 
 @dataclass(frozen=True, slots=True)
-class TailnetPeer:
+class TailnetMember:
     name: str
     dns_name: str
     addresses: tuple[str, ...]
@@ -66,21 +66,21 @@ class Tailnet:
     state: str = ""
     name: str = ""
     addresses: tuple[str, ...] = ()
-    peers: tuple[TailnetPeer, ...] = ()
+    members: tuple[TailnetMember, ...] = ()
 
-    def peer_named(self, name: str) -> TailnetPeer | None:
-        """The peer ``status`` reported under ``name`` (host name or MagicDNS name); nothing is
+    def member_named(self, name: str) -> TailnetMember | None:
+        """The member ``status`` reported under ``name`` (host name or MagicDNS name); nothing is
         looked up anywhere else."""
         wanted = name.strip().rstrip(".").lower()
         if not self.up or not wanted:
             return None
-        return next((p for p in self.peers
+        return next((p for p in self.members
                      if wanted in (p.name.lower(), p.dns_name, p.dns_name.split(".")[0])), None)
 
     def public(self) -> dict[str, object]:
         return {"installed": self.installed, "up": self.up, "state": self.state,
                 "name": self.name, "addresses": list(self.addresses),
-                "peers": [p.public() for p in self.peers]}
+                "members": [p.public() for p in self.members]}
 
 
 def _label(value: Any) -> str:
@@ -99,13 +99,13 @@ def _addresses(value: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(kept))[:MOST_ADDRESSES]
 
 
-def _peer(row: Any) -> TailnetPeer | None:
+def _member(row: Any) -> TailnetMember | None:
     if not isinstance(row, dict):
         return None
     addresses = _addresses(row.get("TailscaleIPs"))
     if not addresses:
         return None
-    return TailnetPeer(name=_label(row.get("HostName")), dns_name=_dns(row.get("DNSName")),
+    return TailnetMember(name=_label(row.get("HostName")), dns_name=_dns(row.get("DNSName")),
                        addresses=addresses, online=row.get("Online") is True)
 
 
@@ -120,11 +120,11 @@ def parse(raw: bytes) -> Tailnet:
     state = _label(doc.get("BackendState"))[:32]
     me = doc.get("Self") if isinstance(doc.get("Self"), dict) else {}
     mine = _addresses(doc.get("TailscaleIPs")) or _addresses(me.get("TailscaleIPs"))
-    table = doc.get("Peer") if isinstance(doc.get("Peer"), dict) else {}
-    peers = tuple(p for p in (_peer(row) for row in list(table.values())[:MOST_PEERS]) if p)
+    table = doc.get("Member") if isinstance(doc.get("Member"), dict) else {}
+    members = tuple(p for p in (_member(row) for row in list(table.values())[:MOST_MEMBERS]) if p)
     up = state == "Running" and bool(mine)
     return Tailnet(installed=True, up=up, state=state, name=_label(me.get("HostName")),
-                   addresses=mine if up else (), peers=peers if up else ())
+                   addresses=mine if up else (), members=members if up else ())
 
 
 def find_cli(which: Callable[[str], str | None] = shutil.which,
@@ -175,7 +175,7 @@ def _run(cli: str, args: tuple[str, ...], *, timeout_s: float, most: int) -> byt
 
 
 def detect(*, cli: str | None = None, timeout_s: float = 3.0, most: int = MOST_OUTPUT) -> Tailnet:
-    """The local tailnet: not installed, installed but down, or up with its peers."""
+    """The local tailnet: not installed, installed but down, or up with its members."""
     path = cli or find_cli()
     if not path:
         return Tailnet()
