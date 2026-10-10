@@ -22,7 +22,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from poolhouse import home, keystore, legacy, migrate_paths, migrate_scan
+from poolhouse import agent_hooks, home, keystore, legacy, migrate_paths, migrate_scan
 from poolhouse.command import Group, flag
 from poolhouse.files import CrossDevice, promote, read_json, sha256_file
 from poolhouse.log import say, warn
@@ -249,6 +249,16 @@ def _paths_step(account: Path, dry: bool, log: list[str], deep: bool = False) ->
         say(f"paths: ... and {len(found.report) - 20} more files (migrate.log lists them all)")
     if not dry:
         log += migrate_paths.apply(found, pairs, _new_state(account) / migrate_paths.BACKUPS)
+        log += _hooks_step(account)
+
+
+def _hooks_step(account: Path) -> list[str]:
+    """Remove the agents' hooks of the old name from the account's Claude Code and Codex settings."""
+    where = {"claude-code": account / ".claude" / "settings.json", "codex": account / ".codex" / "config.toml"}
+    lines = agent_hooks.removed_lines(agent_hooks.remove_stale(tuple(where), where), where)
+    for line in lines:
+        say(f"hooks: {line}")
+    return [f"hooks: {line}" for line in lines]
 
 
 def verify(account: Path, deep: bool = False) -> int:
