@@ -73,5 +73,5 @@ class Skip(Exception):
 def _tail(failure: BaseException, trace: bool = False) -> str:
     text = str(failure).strip() or type(failure).__name__
     if trace:
-        text += "\n" + "".join(traceback.format_tb(failure.__traceback__)[-4:]).strip()
+        text = f"{type(failure).__name__}: {text}\n" + "".join(traceback.format_tb(failure.__traceback__)[-4:]).strip()
     return text[-4000:]
