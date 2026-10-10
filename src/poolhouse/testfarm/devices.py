@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import time
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from poolhouse.activity import reuse
 from poolhouse.board.client import NodeError
+from poolhouse.command import Group, flag, option
 from poolhouse.log import say
 from poolhouse.workspace import testruns
 
@@ -57,24 +59,28 @@ def table(rows: list[dict]) -> list[str]:
     return lines
 
 
-def command(argv: list[str] | None = None) -> int:
-    """List the devices (``[DEVICE] [--json]``); 1 when no node answers or no registered session is available."""
-    words = list(sys.argv[1:] if argv is None else argv)
-    as_json = "--json" in words
-    named = [w for w in words if w != "--json"]
-    if len(named) > 1 or any(w.startswith("-") for w in named):
-        say("usage: poolhouse-test-devices [DEVICE] [--json]")
-        return 2
+def run(args: argparse.Namespace) -> int:
+    """List the devices; 1 when no node answers or no registered session is available."""
     try:
-        chosen = choose(named[0] if named else "all", pool_devices())
+        chosen = choose(args.device, pool_devices())
         ledger = Ledger(reuse.reuse_base() / testruns.scope(Path.cwd()))
         shards = Shards()
         rows = [describe(shards, device, ledger) for device in chosen]
     except (ShardError, NodeError) as exc:
         say(f"test-devices: {exc}")
         return 1
-    say(json.dumps(rows, indent=2) if as_json else "\n".join(table(rows)))
+    say(json.dumps(rows, indent=2) if args.json else "\n".join(table(rows)))
     return 0
+
+
+COMMAND = Group(
+    "poolhouse-test-devices",
+    "The pool's other devices, whether each takes tests, and its last result here.",
+    options=(flag("device", nargs="?", default="all",
+                  help="the device to list, by name or fingerprint (default: all)"),
+             option("json", help="print the rows as JSON instead of the table")),
+    run=run)
+command = COMMAND.run
 
 
 if __name__ == "__main__":
