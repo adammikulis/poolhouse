@@ -254,6 +254,10 @@ class Session:
         """Shred a file's bytes; only a session with that grant may."""
         return dict(self.call("file_delete", handle=handle))
 
+    def status(self) -> dict[str, Any]:
+        """What the node says of this board: its sessions, entries by kind and whether its logs are whole."""
+        return dict(self.call("status")["board"])
+
     def scratch_new(self, folder: str, ttl_s: int = 0) -> str:
         """Make a private scratch folder; its absolute path."""
         return str(self.call("scratch_new", folder=folder, **({"ttl_s": ttl_s} if ttl_s else {}))["path"])

@@ -333,19 +333,6 @@ def test_the_paste_block_is_short_and_holds_no_secret(base, ws):
     assert "join ABCD" not in onboard.snippet("codex")
 
 
-def test_status_needs_a_token_and_shows_unread_and_claims_without_secrets(base, ws):
-    run_setup(ws)
-    lead = tokens.load(base, "lead")
-    ws.send(lead, "codex", "task", "hello")
-    ws.claim(lead, "port", "9411")
-    out = child(["status", "--json", "--agent", "lead"], base)
-    data = json.loads(out.stdout)
-    codex = next(a for a in data["registered"] if a["id"] == "codex")
-    assert codex["unread"] == 1 and data["claims"][0]["key"] == "9411"
-    assert "mlws1" not in out.stdout
-    assert child(["status"], base).returncode == 3
-
-
 # -- join ------------------------------------------------------------------------------------
 def joined(ws, name="codex", hint=""):
     code = ws.invites.create(hint, 600.0)

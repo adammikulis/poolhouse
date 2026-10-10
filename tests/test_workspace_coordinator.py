@@ -120,18 +120,18 @@ def test_exact_request_race_and_reconnect_append_once(shared):
 def test_live_agent_and_fleet_auth_precede_replay(shared):
     shared.ws.revoke(shared.owner, 'alice')
     with pytest.raises(ServerError) as sender:
-        shared.remote.command(['status'], shared.alice)
+        shared.remote.command(['tasks'], shared.alice)
     assert sender.value.status == 403
     with pytest.raises(ServerError) as fleet:
-        Remote(shared.remote.config, Peer(shared.remote.peer.base_url, 'wrong')).command(['status'], shared.bob)
+        Remote(shared.remote.config, Peer(shared.remote.peer.base_url, 'wrong')).command(['tasks'], shared.bob)
     assert fleet.value.status == 401
 
 
 @pytest.mark.redteam
 @pytest.mark.parametrize('argv', [['mint', 'untrusted'], ['init'], ['agent', 'start'],
                                   ['task-integrate', 'task:' + 'a' * 32],
-                                  ['whoami', '--agent', 'owner'], ['status', '--agent', 'owner'],
-                                  ['status', '--token-file', '/secret'], ['notes-verify'], ['claim', 'port', '8784']])
+                                  ['whoami', '--agent', 'owner'], ['tasks', '--agent', 'owner'],
+                                  ['tasks', '--token-file', '/secret'], ['notes-verify'], ['claim', 'port', '8784']])
 def test_remote_call_cannot_open_local_execution_or_choose_an_actor(shared, argv):
     with pytest.raises(ServerError) as refused:
         shared.remote.command(argv, shared.alice)
@@ -142,10 +142,10 @@ def test_remote_call_cannot_open_local_execution_or_choose_an_actor(shared, argv
 @pytest.mark.redteam
 def test_person_token_wrong_workspace_bounds_and_plaintext_remote_are_refused(shared):
     with pytest.raises(ServerError) as person:
-        shared.remote.command(['status'], shared.owner)
+        shared.remote.command(['tasks'], shared.owner)
     assert person.value.status == 403
     with pytest.raises(ServerError) as wrong:
-        Remote({**shared.remote.config, 'workspace': 'workspace:' + '0' * 32}, shared.remote.peer).command(['status'], shared.alice)
+        Remote({**shared.remote.config, 'workspace': 'workspace:' + '0' * 32}, shared.remote.peer).command(['tasks'], shared.alice)
     assert wrong.value.status == 403
     with pytest.raises(ServerError) as large:
         shared.remote.command(['task-create', 'x' * coordinator.MAX_REQUEST], shared.alice)

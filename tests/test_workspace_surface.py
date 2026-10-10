@@ -22,7 +22,7 @@ def kit(monkeypatch, tmp_path):
 def test_every_command_prints_json_and_reports_errors_as_json(kit):
     worker = kit.agent("worker")
     runs = [
-        (kit.owner, ["status"]), (kit.owner, ["audit-verify"]),
+        (kit.owner, ["audit-verify"]),
         (kit.owner, ["audit-head"]),
         (kit.owner, ["gc"]),
     ]

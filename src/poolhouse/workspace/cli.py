@@ -22,7 +22,6 @@ from poolhouse.workspace import (
     agent_filter,
     authority_cli,
     automatic_connection,
-    autostart_status,
     backlog,
     board_cli,
     chat,
@@ -54,6 +53,7 @@ from poolhouse.workspace import (
     rooms_cli,
     scratch_cli,
     session_name,
+    status_cli,
     task_integration,
     task_outcomes,
     task_source_recovery,
@@ -346,8 +346,6 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      lambda a, w, t: w.audit_verify(a.anchor)),
     ("audit-head", "the audit log's head hash, to keep as an anchor", [],
      lambda a, w, t: {"head": w.audit_log.head()}),
-    ("status", "who is registered, unread counts, claims, the test-slot queue; any agent token", [],
-     lambda a, w, t: {**w.status(), **w.board.summary(t), **autostart_status.fields(w, t)}),
     ("gc", "prune old messages and expired scratch; lead or human", [],
      lambda a, w, t: w.gc(t)),
 )
@@ -457,7 +455,7 @@ for _name, _help, _options, _handler in BARE:
                           *_options])
 for _name, _help, _options, _handler in TABLE:
     COMMANDS.add(_name, _runner(_handler), help=_help, options=[*COMMON, *_options])
-for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE):
+for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE, *status_cli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 
 

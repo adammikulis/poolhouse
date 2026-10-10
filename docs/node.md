@@ -144,7 +144,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `project_add` | | `id, kind, path` | the project |
 | `source_add` | token of that project | `id, kind, path` | the project |
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
-| `status` | (board, token for detail) | | counts; with a token, the board's detail |
+| `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
 | `pool_status` | | | the pool id, join policy, this device, `listen`, `pairing_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error` |
 | `member_revoke` | token with the grant | `fingerprint` | `{fingerprint, status}` |

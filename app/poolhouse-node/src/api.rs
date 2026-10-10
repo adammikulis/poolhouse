@@ -172,9 +172,13 @@ fn status(node: &mut Node, token: &str, board: &str) -> Result<Value> {
                          "boards": node.boards.len(), "uptime_s": node.started.elapsed().as_secs()});
     if !token.is_empty() {
         let access = node.access(token, board, false)?;
+        let mut counts: BTreeMap<String, u64> = BTreeMap::new();
+        for e in node.view(board)? {
+            *counts.entry(serde_json::to_value(e.kind)?.as_str().unwrap_or("").to_string()).or_default() += 1;
+        }
         let h = node.host(board)?;
         out["board"] = json!({"id": board, "origin": h.board.origin(), "sessions": h.names.len(), "damaged": h.board.damaged(),
-                              "rejected": h.board.rejected().len(), "name": access.actor});
+                              "rejected": h.board.rejected().len(), "name": access.actor, "entries": counts});
     }
     Ok(out)
 }

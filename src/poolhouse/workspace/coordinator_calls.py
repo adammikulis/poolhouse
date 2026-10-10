@@ -9,7 +9,7 @@ from poolhouse.workspace.chain import held
 from poolhouse.workspace.identity import HUMAN, Denied
 from poolhouse.workspace.taskboard import TaskBoard
 
-READS = frozenset({'status', 'tasks', 'task', 'audit-verify', 'audit-head'})
+READS = frozenset({'tasks', 'task', 'audit-verify', 'audit-head'})
 WRITES = frozenset({'task-create', 'task-claim', 'task-credit', 'task-review', 'task-heartbeat', 'task-checkpoint', 'task-submit'})
 REQUEST_ID = re.compile(r'[a-f0-9]{32}')
 MAX_OUTCOME = 256 * 1024

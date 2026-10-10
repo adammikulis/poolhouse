@@ -79,7 +79,7 @@ def outbox(args: argparse.Namespace, s: Session) -> Any:
     return [{**inbound.shown(sent.entry, known), "raw": sent.entry.text, "sync": sent.status} for sent in s.outbox()]
 
 
-def _conversations(s: Session) -> list[dict[str, Any]]:
+def conversations(s: Session) -> list[dict[str, Any]]:
     """Every direct conversation of the caller: the pair, how many messages, the latest and how many are unread."""
     pairs: dict[str, dict[str, Any]] = {}
     seen = {}
@@ -97,7 +97,7 @@ def _conversations(s: Session) -> list[dict[str, Any]]:
 def dm(args: argparse.Namespace, s: Session) -> Any:
     """The two-sided conversation with NAME, sending BODY first when given; with no NAME, the conversations."""
     if not args.name:
-        return _conversations(s)
+        return conversations(s)
     if args.body:
         if args.type not in TYPES or args.type == "file":
             raise ValueError(f"type must be one of {', '.join(t for t in TYPES if t != 'file')}")

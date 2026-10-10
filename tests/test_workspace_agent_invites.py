@@ -347,8 +347,6 @@ def test_issue_and_join_are_announced_and_logged_without_the_code(kit):
     joined = audit(kit, "agent_invite.join")[0]
     assert created["who"] == "lead-a" and joined["who"] == name and joined["issuer"] == "lead-a"
     assert made["code"] not in json.dumps(kit.ws.audit_log.rows()) + json.dumps(said)
-    status = cli(kit.base, kit.token, "status", "--json").stdout
-    assert '"parent": "lead-a"' in status
 
 
 def test_a_childs_held_message_is_a_strike_against_the_issuer_until_it_cannot_invite(kit):

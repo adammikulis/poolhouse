@@ -46,7 +46,7 @@ def _unread(s: Session, name: str, entries: list[Entry]) -> int:
     return sum(1 for e in entries if e.sender != s.name and e.number > seen.get(e.origin, 0))
 
 
-def _listing(s: Session) -> list[dict[str, Any]]:
+def listing(s: Session) -> list[dict[str, Any]]:
     out = []
     for r in s.rooms():
         mine = s.read_all(channel=r["name"]) if r["member"] else []
@@ -105,7 +105,7 @@ def board(args: argparse.Namespace, s: Session) -> Any:
     """Rooms: list, read NAME, post NAME TEXT, threads NAME, create NAME [TITLE], add NAME AGENT, mentions."""
     name, rest = args.name, args.rest
     if args.action == "list":
-        return _listing(s)
+        return listing(s)
     if args.action == "mentions":
         return _mentions(args, s)
     if not name:
