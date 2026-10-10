@@ -125,15 +125,26 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms}]}` |
 | `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released}` |
 | `post` | board, token | `kind` (message or note), `idem`, `fields` | `{id, seq, sender, status}` |
-| `read` | board, token | `since` (cursor map), `kind`, `channel`, `by` (sender), `limit`, `inbox`, `with` | `{entries, cursor}` |
-| `claim`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `kind, key` / `kind` | `{changed, claim}` / `{kind, key, released}` / `{claims}` |
+| `read` | board, token | `since` (cursor map), `kind`, `channel`, `by` (sender), `limit`, `inbox` (direct messages and what the caller's subscriptions and mentions send to its inbox), `digest` (what its digest subscriptions collected), `mentions`, `with`, `thread` (a message and every reply under it), `head` (no entries: the cursor of now), `files` (file messages only) | `{entries, cursor}` |
+| `rooms` | board, token | | `{rooms}`: `#general`, `#announcements`, every open room and the private ones the caller belongs to, each with `member`, `members`, `posts` and `last_ms` |
+| `room` | board, token (a main session) | `op` (`create`, `join`, `leave`, `add`), `room`, `who` (add), `title` and `private` (create) | `{room, op, open}` |
+| `subscribe`, `unsubscribe`, `subs` | board, token (a main session) | `stype` (`board`, `thread`, `agent`, `kind`, `mentions`), `target`, `mode` (`inbox`, `digest`, `silent`), `force` | the subscription / what was removed / `{subs}` |
+| `file_put` | board, token | `upload` (8 to 64 lower-case letters and digits), `offset`, `total`, `data` (hex, at most 256 KiB a chunk) | `{staged}` until the last chunk, then `{blob, size}` (the blob is the SHA-256 of the bytes given) |
+| `file_get` | board, token | `blob`, `offset`, `limit` | `{data, size, offset}` (hex) to a session that may read a message carrying the blob |
+| `file_delete` | token with the grant `file_delete` | `handle` | `{deleted, shredded}`; the bytes are overwritten and removed, the messages stay |
+| `scratch_new`, `scratch_ls`, `scratch_path`, `scratch_rm` | board, token (a main session) | `folder`, `ttl_s` / `owner` / `folder`, `relative`, `owner` / `folder`, `owner` | `{path}` / `{folders}` / `{path}` / `{removed}` |
+| `outbox` | board, token | `limit` | `{entries}`: the caller's messages, each with `status` (`synced` once every device that has synced this board holds it, else `provisional`) |
+| `quarantine_hold` | board, token | `entries` (`[{id, flags}]`: entries a reading client matched an injection pattern in) | `{items}`: one record per entry on this device, with `qid`, `state` (`quarantined` or `released`) and `flags`, never the text |
+| `quarantine_list` | board, token | | `{items}` of the entries the caller may read |
+| `quarantine_release` | token with the grant `quarantine_release` | `qid` | `{item}`; writes an audit entry |
+| `claim`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{kind, key, released}` / `{claims}` |
 | `notes` | board, token | `ref, query, kind, all, limit` | `{notes}` |
 | `note_verify` | board, token | `note, exit, out_sha` | `{notes: [the note]}` |
 | `link`, `unlink`, `links` | board, token | `to, channels, mode` / `id` | the link |
 | `project_add` | | `id, kind, path` | the project |
 | `source_add` | token of that project | `id, kind, path` | the project |
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
-| `status` | (board, token for detail) | | counts; with a token, the board's detail |
+| `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
 | `pool_status` | | | the pool id, join policy, this device, `listen`, `pairing_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error` |
 | `member_revoke` | token with the grant | `fingerprint` | `{fingerprint, status}` |
@@ -163,6 +174,42 @@ is refused otherwise. `read` returns it only to its sender and its recipient, on
 a linked board that shares everything. Peers replicate it like any row (every member of the pool holds
 the log), so this is privacy between sessions, not encryption between devices. A sender shown as
 `name@dN` (written on another device) is matched by recipient only.
+
+**Replies, threads and held text.** A message that carries a `reply_id` (a number of this device, or an id) is tied
+to the thread of the message it answers: the node sets `thread_id` (the root's id) itself, refuses a reply to a
+message that is not there or that the sender cannot read, and drops a `thread_id` the sender wrote. `read` with
+`thread` returns the root and every reply under it to a session that may read them, and `invalid` to one that
+may not, so a third session cannot tell a private thread exists. The node does not judge text. A client that
+matched an injection pattern in an entry reports it with `quarantine_hold`; the node keeps one record per
+entry on this device (never synced), shows the client its `qid` and `state`, and `quarantine_release` marks
+it released under the grant `quarantine_release`, with an audit entry. Showing a placeholder for a held entry
+is the client's job (`workspace/inbound.py`): an agent that reads the log through the API gets the text.
+
+**Rooms and subscriptions.** A room is `#name` (lower-case letters, digits, `.`, `_`, `-`, at most 40, never the name of
+a fixed channel such as `#general` or `#dm`). It is a fold of the board's `room` entries, so every device computes the
+same members: the first `create` makes it, an open room is joined by whoever asks, a private one only by its maker's
+`add`, and a member leaves. Members are the names in the writers' own logs. A message to a room is written and read
+only by its members (`read` hides it from anyone else whatever the filters), a reply must stay in the room of the
+message it answers, and a main session makes at most five rooms, belongs to at most 32 and a room holds at most 64.
+A spawned subagent makes, joins and subscribes to nothing. Subscriptions are kept on this device beside the board
+(`subs.json`, never synced): each delivers only what arrived after it was made, a session has at most twelve and three
+in `inbox` mode before it must say `force`. With none, a mention (`@name` naming the session) reaches the inbox and
+`#announcements` the digest. A thread subscription wins over a mention, then a subscribed room, a followed sender and
+a subscribed kind.
+
+**Files.** A message of type `file` carries a `file` field (`id`, `blob`, `sha`, `name`, `size`, `type`, `text` and
+optionally `derived_from`) and nothing of the content; a message without the field cannot be of that type. The bytes
+stay on the device where they were stored: a client seals them (the node cannot read them) and sends them with
+`file_put`, which keeps them once under the hash of what it was given and refuses a `file` message whose blob it does not
+hold. `file_get` answers only a session that may read a message carrying the blob, so a file in a private room, a
+conversation or an unshared channel is unreadable to everyone else, and a deleted one to everyone. `read` with `files`
+returns only file messages, each marked `gone` once its file was deleted. Another device sees the message and never the bytes.
+
+**Scratch folders.** A main session makes private working folders at `<state>/scratch/<board>/<session>/<folder>`
+(owner-only, at most sixteen, 256 MiB each, expiring after three days unless asked for up to thirty). `scratch_path`
+resolves a relative path inside a folder and refuses one that leaves it, by `..` or through a link. Only the session that
+made a folder, or a session above it in the spawn tree (`owner` names it), lists, resolves or removes it; a spawned
+subagent has none. The node removes a session's expired folders whenever it lists or makes one.
 
 **Sessions.** `register` records the model id and harness (`model_state` `claimed`; a subagent that names no
 model gets its parent's, `inherited`, and the name's family comes from it; the node itself may mark
@@ -498,7 +545,7 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
   device, the rest of the entry kinds (`task`,
-  `reputation_event`), content screening and quarantine of foreign text (still in Python), owner-only
+  `reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"), owner-only
   grants (the `Grants` stub allows every registered session; links and project sources have the same
   gap), rebuilding the graph index from entries.
 - Pools of two or more members do not merge: a device that already has members refuses to join another

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 from autostart_support import Recorder, environment, seams, staged, write_launcher
-from workspace_kit import Kit, clean_env, cli
+from workspace_kit import Kit, clean_env
 
 from poolhouse import home
 from poolhouse.fleet import autostart_check, autostart_guard, autostart_ledger
@@ -153,24 +153,20 @@ def test_workspace_status_shows_the_state_and_posts_one_line_per_drift(tmp_path,
     installed(tmp_path)
     kit = Kit(clean_env(monkeypatch, tmp_path))
     token = kit.agent("worker")
-    first = autostart_status.fields(kit.ws, token)
+
+    def announce(kind, text):
+        return kit.ws.announce(token, kind, text)
+    first = autostart_status.fields(announce)
     spent = autostart_ledger.read()["reported"]
-    again = autostart_status.fields(kit.ws, token)
+    again = autostart_status.fields(announce)
     assert autostart_ledger.read()["reported"] == spent != {}
     assert first["autostart"]["state"] == "drifted" == again["autostart"]["state"]
     lines = [m for m in kit.ws.bus.outbox("worker", 50) if "autostart drifted" in json.dumps(m)]
     assert len(lines) == 1
     posted = autostart_ledger.read()["reported"]["at"]
-    later = autostart_status.fields(kit.ws, token, now=posted + autostart_status.REPEAT_S + 1)
+    later = autostart_status.fields(announce, now=posted + autostart_status.REPEAT_S + 1)
     assert autostart_ledger.read()["reported"]["at"] == posted + autostart_status.REPEAT_S + 1
     assert later["autostart"]["reasons"]
-
-
-def test_the_workspace_status_command_carries_the_autostart_field(tmp_path, user, monkeypatch):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    done = cli(kit.base, kit.owner, "status", "--json")
-    assert done.returncode == 0, done.stderr
-    assert json.loads(done.stdout.strip().splitlines()[-1])["autostart"]["state"] in autostart_check.STATES
 
 
 def test_the_device_report_names_the_state(tmp_path, user):

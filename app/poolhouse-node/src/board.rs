@@ -311,6 +311,11 @@ impl Board {
         Ok(seq < before)
     }
 
+    /// The fingerprints of the devices that have synced this board with this one.
+    pub fn peer_fingerprints(&self) -> Vec<String> {
+        self.state.t.peers.keys().cloned().collect()
+    }
+
     /// `synced` once every device of ``roster`` holds row ``seq`` of this log, else `provisional`.
     pub fn status(&self, seq: u64, roster: &[String]) -> &'static str {
         let behind = roster.iter().any(|f| self.state.t.acks.get(f).copied().unwrap_or(0) < seq);

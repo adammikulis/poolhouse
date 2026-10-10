@@ -22,8 +22,10 @@ use crate::identity::{Holder, Ident, ModelState, Registry, Tokens};
 use crate::lease::Leases;
 use crate::landtrust::LandTrust;
 use crate::links::Links;
+use crate::quarantine::Quarantine;
 use crate::registry::Projects;
 use crate::row::{valid_name, Kind};
+use crate::subs::Subs;
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
@@ -32,6 +34,8 @@ pub const READ_MAX: usize = 1000;
 pub struct Hosted {
     pub board: Board,
     pub names: Registry,
+    pub quarantine: Quarantine,
+    pub subs: Subs,
 }
 
 pub struct Node {
@@ -108,7 +112,9 @@ impl Node {
             private_dir(&dir)?;
             let board = Board::open(&dir.join("log"), id, &self.pool, self.key.clone())?;
             let names = Registry::open(&dir.join("names.json"))?;
-            self.boards.insert(id.into(), Hosted { board, names });
+            let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
+            let subs = Subs::open(&dir.join("subs.json"))?;
+            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs });
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
     }
@@ -160,7 +166,7 @@ impl Node {
 
     /// The folded entries of ``board``, in merged order, with the foreign rows that were refused recorded.
     pub fn view(&mut self, board: &str) -> Result<Vec<Entry>> {
-        let Hosted { board, names } = self.hosted(board)?;
+        let Hosted { board, names, .. } = self.hosted(board)?;
         let rows = board.merged();
         let own = board.origin().to_string();
         let mut labels: BTreeMap<String, String> = BTreeMap::new();
@@ -190,6 +196,10 @@ impl Node {
             if !self.can_receive(board, to)? {
                 return Err(Error::Denied(format!("{to} is not a session of this board")));
             }
+        }
+        if kind == Kind::Message {
+            crate::rooms::check_post(self, board, &access.actor, fields)?;
+            crate::files::check_post(self, board, fields)?;
         }
         let mut body = fields.clone();
         body.insert(if kind == Kind::Note { "author" } else { "from" }.into(), Value::String(access.actor.clone()));

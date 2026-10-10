@@ -9,14 +9,13 @@ from typing import Any
 
 from poolhouse.workspace import (
     coordinator_config,
-    filecli,
     limits,
     task_integration,
     task_outcomes,
     tokens,
     work_reputation,
 )
-from poolhouse.workspace.files import Attachment, Where
+from poolhouse.workspace.files import Attachment, Where, read_source
 from poolhouse.workspace.identity import TOKEN_ENV, Denied
 from poolhouse.workspace.service import Workspace
 from poolhouse.workspace.taskboard import TaskBoard
@@ -208,7 +207,7 @@ def workspace_attach(to: str, path: str = "", text: str = "", name: str = "", no
     ws = _workspace()
     if bool(path) == bool(text):
         raise ValueError("give exactly one of path and text")
-    data, own = filecli.read_source(path, ws) if path else (text.encode(), "")
+    data, own = read_source(path, ws.limits.file_bytes, [ws.base]) if path else (text.encode(), "")
     return ws.files.attach(_token(), to, data, Attachment(
         name=name or own or "text.txt", note=note, reply_to=reply_to, derived_from=derived_from))
 

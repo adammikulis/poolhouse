@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,10 +13,12 @@ from typing import Any
 from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, Conflict, Denied
 
-__all__ = ["AGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration", "Session",
-           "connect", "find", "register"]
+__all__ = ["AGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration", "Sent",
+           "Session", "connect", "find", "register"]
 
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
+PAGE = 1000
+CHUNK = 256 * 1024
 TOKEN_ENV = "POOLHOUSE_WORKSPACE_TOKEN"  # noqa: S105 - the name of a variable, not a credential
 
 
@@ -31,10 +34,29 @@ class Entry:
     channel: str
     fields: dict[str, Any]
     at_ms: int
+    gone: bool = False
 
     @property
     def text(self) -> str:
         return str(self.fields.get("body", ""))
+
+    @property
+    def origin(self) -> str:
+        """The log this entry is in: the part of its id between the board and the sequence number."""
+        return self.id.rsplit(":", 2)[-2]
+
+    @property
+    def number(self) -> int:
+        """The sequence number of this entry in its log."""
+        return int(self.id.rsplit(":", 1)[-1])
+
+
+@dataclass(frozen=True, slots=True)
+class Sent:
+    """A message its sender wrote and whether every device that syncs the board holds it."""
+
+    entry: Entry
+    status: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +131,7 @@ class Registration:
 def _entry(raw: dict[str, Any]) -> Entry:
     seq = str(raw["seq"])
     return Entry(raw["id"], seq if not raw["foreign"] else raw["id"], raw["kind"], raw["sender"], raw["foreign"],
-                 raw["channel"], raw["fields"], int(raw["hlc"][0]))
+                 raw["channel"], raw["fields"], int(raw["hlc"][0]), bool(raw.get("gone", False)))
 
 
 def _agent(raw: dict[str, Any]) -> Agent:
@@ -172,8 +194,15 @@ class Session:
         return register(self.client, self.board, native, self.token)
 
     def post(self, to: str, kind: str, body: str, subject: str = "", reply_id: str = "") -> dict[str, Any]:
-        """Write a message to ``#general``, ``#announcements`` or one session."""
+        """Write a message to ``#general``, ``#announcements``, a room or one session."""
         fields = {"type": kind, "to": to, "body": body, "subject": subject}
+        if reply_id:
+            fields["reply_id"] = reply_id
+        return dict(self.call("post", kind="message", fields=fields))
+
+    def post_file(self, to: str, body: str, file: dict[str, Any], reply_id: str = "") -> dict[str, Any]:
+        """Write a message of type `file` carrying the description of a file the node already holds."""
+        fields: dict[str, Any] = {"type": "file", "to": to, "body": body, "subject": "", "file": file}
         if reply_id:
             fields["reply_id"] = reply_id
         return dict(self.call("post", kind="message", fields=fields))
@@ -182,12 +211,122 @@ class Session:
         """Entries after ``since``; the page's cursor is the ``since`` of the next read of this question.
 
         ``filters`` are ``kind``, ``channel``, ``by`` (a sender), ``limit``, ``inbox`` (messages to this
-        session) and ``conversation`` (messages between this session and one other)."""
+        session and what its subscriptions send there), ``digest`` (what its digest subscriptions collected),
+        ``mentions`` (messages that name this session), ``conversation`` (messages between this session
+        and one other) and ``thread`` (a message and every reply to it or to a reply). ``head`` reads
+        nothing and answers the cursor of now."""
         params = {("with" if k == "conversation" else k): v for k, v in filters.items() if v}
         if since:
             params["since"] = since
         got = self.call("read", **params)
         return Page([_entry(e) for e in got["entries"]], got["cursor"])
+
+    def read_all(self, since: dict[str, int] | None = None, **filters: Any) -> list[Entry]:
+        """Every entry the question matches after ``since``, read a page at a time, oldest first."""
+        found: list[Entry] = []
+        cursor: dict[str, int] = dict(since or {})
+        while True:
+            page = self.read(cursor, limit=PAGE, **filters)
+            found += page.entries
+            if len(page.entries) < PAGE:
+                return found
+            cursor = page.cursor
+
+    def store(self, sealed: bytes) -> str:
+        """Send sealed bytes to the node in chunks; the id the node keeps them under."""
+        upload, sent = uuid.uuid4().hex, 0
+        while True:
+            chunk = sealed[sent:sent + CHUNK]
+            got = self.call("file_put", upload=upload, offset=sent, total=len(sealed), data=chunk.hex())
+            sent += len(chunk)
+            if "blob" in got:
+                return str(got["blob"])
+
+    def fetch(self, blob: str) -> bytes:
+        """The sealed bytes the node keeps as ``blob``, if this session may read a message that carries them."""
+        out = bytearray()
+        while True:
+            got = self.call("file_get", blob=blob, offset=len(out))
+            out += bytes.fromhex(got["data"])
+            if len(out) >= got["size"] or not got["data"]:
+                return bytes(out)
+
+    def files(self) -> list[Entry]:
+        """The file messages this session may read, oldest first, each marked `gone` when its file was deleted."""
+        return self.read_all(files=True)
+
+    def delete_file(self, handle: str) -> dict[str, Any]:
+        """Shred a file's bytes; only a session with that grant may."""
+        return dict(self.call("file_delete", handle=handle))
+
+    def status(self) -> dict[str, Any]:
+        """What the node says of this board: its sessions, entries by kind and whether its logs are whole."""
+        return dict(self.call("status")["board"])
+
+    def scratch_new(self, folder: str, ttl_s: int = 0) -> str:
+        """Make a private scratch folder; its absolute path."""
+        return str(self.call("scratch_new", folder=folder, **({"ttl_s": ttl_s} if ttl_s else {}))["path"])
+
+    def scratch_ls(self, owner: str = "") -> list[dict[str, Any]]:
+        """The scratch folders of this session, or of a session below it, with size and expiry."""
+        return list(self.call("scratch_ls", **({"owner": owner} if owner else {}))["folders"])
+
+    def scratch_path(self, folder: str, relative: str = "", owner: str = "") -> str:
+        """A path inside a scratch folder; refused when it would leave it."""
+        params = {k: v for k, v in (("relative", relative), ("owner", owner)) if v}
+        return str(self.call("scratch_path", folder=folder, **params)["path"])
+
+    def scratch_rm(self, folder: str, owner: str = "") -> bool:
+        """Delete a scratch folder; whether there was one."""
+        return bool(self.call("scratch_rm", folder=folder, **({"owner": owner} if owner else {}))["removed"])
+
+    def head(self) -> dict[str, int]:
+        """The cursor of now: a read since it returns only what is written after."""
+        return dict(self.call("read", head=True)["cursor"])
+
+    def rooms(self) -> list[dict[str, Any]]:
+        """The rooms this session may see, with whether it is a member."""
+        return list(self.call("rooms")["rooms"])
+
+    def room(self, op: str, name: str, who: str = "", title: str = "", private: bool = False) -> dict[str, Any]:
+        """Make, join, leave or add ``who`` to the room ``name``."""
+        params = {k: v for k, v in (("who", who), ("title", title), ("private", private)) if v}
+        return dict(self.call("room", op=op, room=name, **params))
+
+    def subscribe(self, stype: str, target: str = "", mode: str = "inbox", force: bool = False) -> dict[str, Any]:
+        """Choose what reaches this session's inbox or digest: a room, thread, sender, kind or mentions."""
+        return dict(self.call("subscribe", stype=stype, target=target, mode=mode, **({"force": True} if force else {})))
+
+    def unsubscribe(self, stype: str, target: str = "") -> dict[str, Any]:
+        """Drop one subscription; the messages stay."""
+        return dict(self.call("unsubscribe", stype=stype, target=target))
+
+    def subs(self) -> list[dict[str, Any]]:
+        """This session's subscriptions."""
+        return list(self.call("subs")["subs"])
+
+    def outbox(self, limit: int = 0) -> list[Sent]:
+        """The messages this session sent, oldest first, each `synced` or `provisional`."""
+        got = self.call("outbox", **({"limit": limit} if limit else {}))
+        return [Sent(_entry(e), e["status"]) for e in got["entries"]]
+
+    def origin(self) -> str:
+        """The id of this device's log of the board."""
+        return str(self.call("status")["board"]["origin"])
+
+    def hold(self, flagged: list[tuple[str, list[str]]]) -> dict[str, dict[str, Any]]:
+        """Report entries whose text matched an injection pattern (id and marker names): the node keeps
+        one record of each on this device. Answers each entry's quarantine record by entry id."""
+        got = self.call("quarantine_hold", entries=[{"id": i, "flags": f} for i, f in flagged])
+        return {item["id"]: item for item in got["items"]}
+
+    def held(self) -> list[dict[str, Any]]:
+        """The entries held on this device that this session may read, without their text."""
+        return list(self.call("quarantine_list")["items"])
+
+    def free(self, qid: str) -> dict[str, Any]:
+        """Let the held entry ``qid`` be shown; only a session with that grant may."""
+        return dict(self.call("quarantine_release", qid=qid)["item"])
 
     def note_add(self, kind: str, title: str, body: str, **extra: Any) -> dict[str, Any]:
         """Write a note; ``extra`` may hold ``source``, ``tags``, ``supersedes`` (note references),
@@ -213,8 +352,10 @@ class Session:
             raise
         return _claim(got["claim"], got["changed"])
 
-    def release(self, kind: str, key: str) -> bool:
-        return bool(self.call("release", kind=kind, key=key)["released"])
+    def release(self, kind: str, key: str, held_by: str = "") -> bool:
+        """Give a claim up; ``held_by`` names a subagent of this session whose claim it frees."""
+        params = {"held_by": held_by} if held_by else {}
+        return bool(self.call("release", kind=kind, key=key, **params)["released"])
 
     def claims(self, kind: str = "") -> list[Claim]:
         return [_claim(c) for c in self.call("claims", **({"kind": kind} if kind else {}))["claims"]]

@@ -214,7 +214,7 @@ fn foreign_entries_are_built_from_allow_lists_and_checked() {
     };
     let bad = [
         general(json!({"flags": ["reviewed"]}), "mallory"),
-        general(json!({"to": "#private"}), "mallory"),
+        general(json!({"to": "#Private"}), "mallory"),
         general(json!({"subject": "two\nlines"}), "mallory"),
         general(json!({}), "someone-else"),
         general(json!({}), "@local"),

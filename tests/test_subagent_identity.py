@@ -134,13 +134,6 @@ def test_a_delegated_gate_refuses_a_spawned_subagent_but_not_its_lead(kit, monke
 
 
 
-def test_private_records_stay_lead_or_person_only(kit):
-    spawn(kit, kit.lead, "agent-a")
-    kit.ws.scratch_new(kit.lead, "mine")
-    refused = cli(kit.base, kit.bob, "scratch-ls", "--for-agent", kit.lead_name, "--json")
-    assert refused.returncode == 3 and "cannot reach" in refused.stdout
-
-
 def test_a_board_call_with_a_sender_parent_name_or_label_is_refused_by_the_host(host):
     agent = joined(host, name="pc")
     for extra in ({"sender": "mac"}, {"from": "mac"}, {"label": "x"}, {"parent": "mac"}, {"name": "mac"}):

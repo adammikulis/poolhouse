@@ -130,6 +130,6 @@ def test_a_remote_call_cannot_carry_a_sender_or_an_agent(kit):
         document = {'workspace': 'w', 'request_id': 'a' * 32, 'argv': ['whoami'], key: 'claude-ffffff'}
         with pytest.raises(ValueError, match='contains workspace, request_id and argv'):
             execute(kit.ws, token, document, parser, handlers)
-    for argv in (['status', '--agent', 'claude-ffffff'], ['ack', '1', '--agent', 'claude-ffffff']):
+    for argv in (['tasks', '--agent', 'claude-ffffff'], ['task-create', '{}', '--agent', 'claude-ffffff']):
         with pytest.raises(Denied, match='authenticated by its token'):
             execute(kit.ws, token, {'workspace': 'w', 'request_id': 'b' * 32, 'argv': argv}, parser, handlers)
