@@ -67,6 +67,7 @@ jobs:
           distribution: Ubuntu-24.04
           additional-packages: build-essential curl ca-certificates git
       - name: this tree, built and installed inside WSL
+        timeout-minutes: 25
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -74,6 +75,7 @@ jobs:
           wsl.exe -d Ubuntu-24.04 --exec bash "$src/tests/pool_check/wsl_provision.sh" "$src" /root/poolhouse
           if ($LASTEXITCODE -ne 0) { throw "provisioning the WSL distribution failed" }
       - name: three native devices inside WSL, every step
+        timeout-minutes: 40
         shell: pwsh
         run: |
           wsl.exe -d Ubuntu-24.04 --cd /root/poolhouse --exec /root/poolhouse/.venv/bin/python scripts/pool-check --platform native --devices 3 --binary /root/poolhouse/app/target/debug/poolhouse-node
@@ -111,6 +113,7 @@ jobs:
           New-NetFirewallRule -DisplayName "pool-check node" -Direction Inbound -Program $node -Action Allow -Profile Any | Out-Null
           Get-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue | Out-String | Write-Host
       - name: this tree, built and installed inside WSL
+        timeout-minutes: 25
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -118,6 +121,7 @@ jobs:
           wsl.exe -d Ubuntu-24.04 --exec bash "$src/tests/pool_check/wsl_provision.sh" "$src" /root/poolhouse
           if ($LASTEXITCODE -ne 0) { throw "provisioning the WSL distribution failed" }
       - name: the two devices, every step that fits two devices
+        timeout-minutes: 40
         shell: pwsh
         run: |
           python scripts/pool-check --platform windows-wsl --wsl-distro Ubuntu-24.04 --wsl-checkout /root/poolhouse --wsl-binary /root/poolhouse/app/target/debug/poolhouse-node
