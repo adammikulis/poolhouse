@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from poolhouse.kvtype import DEFAULT_KV_CACHE
 from poolhouse.serve.preflight import _kv_estimate_bytes, recurrent_state_bytes
 from poolhouse.serve.tensors import Tensor
 
@@ -201,5 +202,5 @@ def cache_bytes(meta: Mapping[str, object], context: int, cache_k: str, cache_v:
     """The KV cache for ``context`` tokens plus the recurrent state of ``parallel`` sequences,
     for the layers that hold either."""
     found = dict(meta)
-    return (_kv_estimate_bytes(found, context, cache_k or "f16", cache_v or "f16")
+    return (_kv_estimate_bytes(found, context, cache_k or DEFAULT_KV_CACHE, cache_v or DEFAULT_KV_CACHE)
             + recurrent_state_bytes(found) * max(1, parallel))

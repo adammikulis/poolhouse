@@ -11,6 +11,7 @@ from pathlib import Path
 from poolhouse import hub
 from poolhouse.command import flag
 from poolhouse.hub.probe import MachineMemory, machine_memory
+from poolhouse.kvtype import DEFAULT_KV_CACHE
 from poolhouse.log import say, warn
 from poolhouse.serve import plan as plan_mod
 from poolhouse.serve.kvbudget import CACHE_TYPES, kv_row
@@ -43,10 +44,10 @@ OPTIONS = [
          help="tokens across all slots the cache is sized for (default: %(default)s, "
               "what a coding profile needs)"),
     flag("--parallel", type=int, default=1, metavar="N", help="slots (default: 1)"),
-    flag("--cache-type-k", default="q8_0", choices=CACHE_TYPES,
+    flag("--cache-type-k", default=DEFAULT_KV_CACHE, choices=CACHE_TYPES,
          help="how the K cache is stored (default: %(default)s). Quantised K costs more "
               "quality than quantised V"),
-    flag("--cache-type-v", default="q8_0", choices=CACHE_TYPES,
+    flag("--cache-type-v", default=DEFAULT_KV_CACHE, choices=CACHE_TYPES,
          help="how the V cache is stored (default: %(default)s); q4_0 here is the cheaper "
               "of the two compromises"),
     flag("--compute", type=float, default=DEFAULTS["compute_buffers"] / GIB, metavar="GB",
@@ -92,7 +93,7 @@ class Ask:
 
     context: int = DEFAULT_CONTEXT
     parallel: int = 1
-    cache: tuple[str, str] = ("q8_0", "q8_0")
+    cache: tuple[str, str] = (DEFAULT_KV_CACHE, DEFAULT_KV_CACHE)
     compute: int = DEFAULTS["compute_buffers"]
     ubatch: int = DEFAULTS["ubatch"]
     tflops: float = DEFAULTS["tflops"]
@@ -258,7 +259,7 @@ def auto_fields(model: str, *, context: int, parallel: int, cache: tuple[str, st
     args = argparse.Namespace(vram=None, ram=None, unified=None, ram_gbps=DEFAULTS["ram_gbps"],
                               vram_gbps=DEFAULTS["vram_gbps"], disk_read=DEFAULTS["disk_gbps"])
     plan = plan_for(model, hardware_of(args, here),
-                    Ask(context, parallel, (cache[0] or "q8_0", cache[1] or "q8_0")))
+                    Ask(context, parallel, (cache[0] or DEFAULT_KV_CACHE, cache[1] or DEFAULT_KV_CACHE)))
     fields = plan.spec_fields()
     lines = [f"plan auto: {_machine_line(plan)}, {context:,} tokens of context",
              "  placement: " + (", ".join(f"{k}={v!r}" for k, v in fields.items())
