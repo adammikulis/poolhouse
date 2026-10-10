@@ -363,8 +363,6 @@ def test_a_childs_held_message_is_a_strike_against_the_issuer_until_it_cannot_in
 
 def test_outputs_are_byte_stable_for_the_same_state(kit):
     join(kit, make(kit), "peer")
-    first = cli(kit.base, kit.token, "outbox").stdout
-    assert first == cli(kit.base, kit.token, "outbox").stdout
     one, two = (json.dumps(without_observation_time(json.loads(cli(kit.base, kit.token, "status", "--json").stdout)),
                            sort_keys=True) for _ in range(2))
     assert one == two

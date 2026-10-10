@@ -22,11 +22,11 @@ def kit(monkeypatch, tmp_path):
 def test_every_command_prints_json_and_reports_errors_as_json(kit):
     worker = kit.agent("worker")
     runs = [
-        (kit.owner, ["outbox"]), (kit.owner, ["status"]), (worker, ["scratch-new", "tmp"]),
+        (kit.owner, ["status"]), (worker, ["scratch-new", "tmp"]),
         (worker, ["scratch-ls"]), (worker, ["scratch-path", "tmp", "a.txt"]),
         (worker, ["scratch-rm", "tmp"]), (kit.owner, ["audit-verify"]),
-        (kit.owner, ["audit-head"]), (kit.owner, ["quarantine-ls"]),
-        (kit.owner, ["gc"]), (worker, ["ack", "1"]),
+        (kit.owner, ["audit-head"]),
+        (kit.owner, ["gc"]),
     ]
     for token, argv in runs:
         done = cli(kit.base, token, *argv, "--json")
@@ -34,8 +34,6 @@ def test_every_command_prints_json_and_reports_errors_as_json(kit):
         json.loads(done.stdout.strip().splitlines()[-1])
     bad = cli(kit.base, worker, "mint", "x", "--role", "lead", "--json")
     assert bad.returncode == 3 and json.loads(bad.stdout)["kind"] == "Denied"
-    none = cli(kit.base, "", "outbox", "--json")
-    assert none.returncode == 3 and json.loads(none.stdout)["error"]
 
 
 

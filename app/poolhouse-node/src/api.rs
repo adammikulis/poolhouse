@@ -22,14 +22,15 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "hello" | "status" | "shutdown" | "links" => &[],
         "register" => &["model", "harness", "session"],
         "post" => &["kind", "idem", "fields"],
-        "read" => &["since", "kind", "channel", "by", "limit", "inbox", "with"],
+        "read" => &["since", "kind", "channel", "by", "limit", "inbox", "with", "thread"],
         "link" => &["to", "channels", "mode"],
         "unlink" => &["id"],
         "project_add" | "source_add" => &["id", "kind", "path"],
         "project_list" => &[],
         "project_resolve" => &["path"],
         m => return crate::poolapi::params(m).or_else(|| crate::lease::rpc::params_for(m)).or_else(|| crate::sessions::params_for(m))
-            .or_else(|| crate::claims::params_for(m)).or_else(|| crate::landing::params_for(m)).or_else(|| crate::notes::params_for(m)),
+            .or_else(|| crate::claims::params_for(m)).or_else(|| crate::landing::params_for(m)).or_else(|| crate::notes::params_for(m))
+            .or_else(|| crate::mail::params_for(m)).or_else(|| crate::quarantine::params_for(m)),
     })
 }
 
@@ -48,7 +49,7 @@ fn str_of<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
     }
 }
 
-fn entry_json(e: &Entry) -> Value {
+pub fn entry_json(e: &Entry) -> Value {
     json!({"id": e.id, "origin": e.origin, "seq": e.seq, "hlc": [e.hlc.0, e.hlc.1], "kind": e.kind, "sender": e.sender,
            "foreign": e.foreign, "channel": e.channel, "fields": e.fields})
 }
@@ -63,8 +64,13 @@ fn read(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
     let (kind, channel, sender, with) = (str_of(p, "kind")?, str_of(p, "channel")?, str_of(p, "by")?, str_of(p, "with")?);
     let inbox = p.get("inbox").and_then(Value::as_bool).unwrap_or(false);
     let me = access.actor.as_str();
+    let entries = node.view(board)?;
+    let thread = match str_of(p, "thread")? {
+        "" => None,
+        reference => Some(crate::mail::root_of(node, board, &entries, me, reference)?),
+    };
     let mut out = Vec::new();
-    for e in node.view(board)? {
+    for e in entries {
         let kind_name = serde_json::to_value(e.kind)?;
         let to = e.fields.get("to").and_then(Value::as_str).unwrap_or("");
         let direct = e.channel == crate::fold::DIRECT;
@@ -73,7 +79,7 @@ fn read(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
             && (!inbox || direct && to == me)
             && (with.is_empty() || direct && (e.sender == with && to == me || e.sender == me && to == with))
             && (kind.is_empty() || kind_name == kind) && (channel.is_empty() || e.channel == channel)
-            && (sender.is_empty() || e.sender == sender);
+            && (sender.is_empty() || e.sender == sender) && thread.as_ref().is_none_or(|t| crate::mail::in_thread(&e, t));
         if wanted && out.len() < limit {
             cursor.insert(e.origin.clone(), e.seq);
             out.push(entry_json(&e));
@@ -93,6 +99,9 @@ fn post(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
     let mut fields = fields.clone();
     if kind == Kind::Message && !fields.contains_key("to") {
         fields.insert("to".into(), json!(crate::fold::GENERAL));
+    }
+    if kind == Kind::Message {
+        crate::mail::link_reply(node, token, board, &mut fields)?;
     }
     if kind == Kind::Note {
         crate::notes::resolve_supersedes(node, board, &mut fields)?;
@@ -172,6 +181,8 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         m if crate::claims::METHODS.contains(&m) => crate::claims::call(node, m, board, token, p),
         m if crate::landing::METHODS.contains(&m) => crate::landing::call(node, m, board, token, p),
         m if crate::notes::METHODS.contains(&m) => crate::notes::call(node, m, board, token, p),
+        m if crate::mail::METHODS.contains(&m) => crate::mail::call(node, m, board, token, p),
+        m if crate::quarantine::METHODS.contains(&m) => crate::quarantine::call(node, m, board, token, p),
         "links" => node.access(token, board, false).map(|_| json!(node.links.all().iter().filter(|l| l.from == board || l.to == board).collect::<Vec<_>>())),
         "shutdown" => node.access(token, board, false).map(|_| {
             node.stop.store(true, Ordering::SeqCst);

@@ -21,6 +21,7 @@ use crate::fsutil::private_dir;
 use crate::identity::{Holder, Ident, ModelState, Registry, Tokens};
 use crate::lease::Leases;
 use crate::links::Links;
+use crate::quarantine::Quarantine;
 use crate::registry::Projects;
 use crate::row::{valid_name, Kind};
 
@@ -31,6 +32,7 @@ pub const READ_MAX: usize = 1000;
 pub struct Hosted {
     pub board: Board,
     pub names: Registry,
+    pub quarantine: Quarantine,
 }
 
 pub struct Node {
@@ -102,7 +104,8 @@ impl Node {
             private_dir(&dir)?;
             let board = Board::open(&dir.join("log"), id, &self.pool, self.key.clone())?;
             let names = Registry::open(&dir.join("names.json"))?;
-            self.boards.insert(id.into(), Hosted { board, names });
+            let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
+            self.boards.insert(id.into(), Hosted { board, names, quarantine });
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
     }
@@ -154,7 +157,7 @@ impl Node {
 
     /// The folded entries of ``board``, in merged order, with the foreign rows that were refused recorded.
     pub fn view(&mut self, board: &str) -> Result<Vec<Entry>> {
-        let Hosted { board, names } = self.hosted(board)?;
+        let Hosted { board, names, .. } = self.hosted(board)?;
         let rows = board.merged();
         let own = board.origin().to_string();
         let mut labels: BTreeMap<String, String> = BTreeMap::new();

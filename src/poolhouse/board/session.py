@@ -12,10 +12,11 @@ from typing import Any
 from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, Conflict, Denied
 
-__all__ = ["AGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration", "Session",
-           "connect", "find", "register"]
+__all__ = ["AGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration", "Sent",
+           "Session", "connect", "find", "register"]
 
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
+PAGE = 1000
 TOKEN_ENV = "POOLHOUSE_WORKSPACE_TOKEN"  # noqa: S105 - the name of a variable, not a credential
 
 
@@ -35,6 +36,24 @@ class Entry:
     @property
     def text(self) -> str:
         return str(self.fields.get("body", ""))
+
+    @property
+    def origin(self) -> str:
+        """The log this entry is in: the part of its id between the board and the sequence number."""
+        return self.id.rsplit(":", 2)[-2]
+
+    @property
+    def number(self) -> int:
+        """The sequence number of this entry in its log."""
+        return int(self.id.rsplit(":", 1)[-1])
+
+
+@dataclass(frozen=True, slots=True)
+class Sent:
+    """A message its sender wrote and whether every device that syncs the board holds it."""
+
+    entry: Entry
+    status: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,12 +196,47 @@ class Session:
         """Entries after ``since``; the page's cursor is the ``since`` of the next read of this question.
 
         ``filters`` are ``kind``, ``channel``, ``by`` (a sender), ``limit``, ``inbox`` (messages to this
-        session) and ``conversation`` (messages between this session and one other)."""
+        session), ``conversation`` (messages between this session and one other) and ``thread`` (a
+        message and every reply to it or to a reply)."""
         params = {("with" if k == "conversation" else k): v for k, v in filters.items() if v}
         if since:
             params["since"] = since
         got = self.call("read", **params)
         return Page([_entry(e) for e in got["entries"]], got["cursor"])
+
+    def read_all(self, **filters: Any) -> list[Entry]:
+        """Every entry the question matches, read a page at a time, oldest first."""
+        found: list[Entry] = []
+        cursor: dict[str, int] = {}
+        while True:
+            page = self.read(cursor, limit=PAGE, **filters)
+            found += page.entries
+            if len(page.entries) < PAGE:
+                return found
+            cursor = page.cursor
+
+    def outbox(self, limit: int = 0) -> list[Sent]:
+        """The messages this session sent, oldest first, each `synced` or `provisional`."""
+        got = self.call("outbox", **({"limit": limit} if limit else {}))
+        return [Sent(_entry(e), e["status"]) for e in got["entries"]]
+
+    def origin(self) -> str:
+        """The id of this device's log of the board."""
+        return str(self.call("status")["board"]["origin"])
+
+    def hold(self, flagged: list[tuple[str, list[str]]]) -> dict[str, dict[str, Any]]:
+        """Report entries whose text matched an injection pattern (id and marker names): the node keeps
+        one record of each on this device. Answers each entry's quarantine record by entry id."""
+        got = self.call("quarantine_hold", entries=[{"id": i, "flags": f} for i, f in flagged])
+        return {item["id"]: item for item in got["items"]}
+
+    def held(self) -> list[dict[str, Any]]:
+        """The entries held on this device that this session may read, without their text."""
+        return list(self.call("quarantine_list")["items"])
+
+    def free(self, qid: str) -> dict[str, Any]:
+        """Let the held entry ``qid`` be shown; only a session with that grant may."""
+        return dict(self.call("quarantine_release", qid=qid)["item"])
 
     def note_add(self, kind: str, title: str, body: str, **extra: Any) -> dict[str, Any]:
         """Write a note; ``extra`` may hold ``source``, ``tags``, ``supersedes`` (note references),
@@ -207,8 +261,10 @@ class Session:
             raise
         return _claim(got["claim"], got["changed"])
 
-    def release(self, kind: str, key: str) -> bool:
-        return bool(self.call("release", kind=kind, key=key)["released"])
+    def release(self, kind: str, key: str, held_by: str = "") -> bool:
+        """Give a claim up; ``held_by`` names a subagent of this session whose claim it frees."""
+        params = {"held_by": held_by} if held_by else {}
+        return bool(self.call("release", kind=kind, key=key, **params)["released"])
 
     def claims(self, kind: str = "") -> list[Claim]:
         return [_claim(c) for c in self.call("claims", **({"kind": kind} if kind else {}))["claims"]]

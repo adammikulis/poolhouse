@@ -115,7 +115,7 @@ def test_a_request_to_a_subagent_is_addressed_to_its_name_and_is_not_the_leads(b
 
 def test_inbox_shows_what_is_owed_and_attention_prints_it(board, capsys):
     seq = ask(board)
-    args = argparse.Namespace(json=False, ack=False, children=False, all=False, limit=0)
+    args = argparse.Namespace(json=False, ack=False, children=False, all=False, limit=0, raw=False)
     board_cli.inbox(args, later(board, board.lead, HOUR))
     shown = capsys.readouterr().out
     assert f'[{seq}] question from {board.alice.name}, unanswered 1h' in shown and 'who publishes' in shown

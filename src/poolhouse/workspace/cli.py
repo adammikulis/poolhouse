@@ -41,6 +41,7 @@ from poolhouse.workspace import (
     limits,
     localcli,
     localroute,
+    mail_cli,
     mesh_sync,
     notes_cli,
     nudge,
@@ -64,7 +65,7 @@ from poolhouse.workspace.boards import MODES, STYPES
 from poolhouse.workspace.bus import TYPES
 from poolhouse.workspace.chain import ChainBroken
 from poolhouse.workspace.claims import Conflict
-from poolhouse.workspace.cli_options import COMMON, FOR_AGENT, NODE_COMMON, READ, WIDEN
+from poolhouse.workspace.cli_options import COMMON, FOR_AGENT, NODE_COMMON, WIDEN
 from poolhouse.workspace.coordination import workspace_id
 from poolhouse.workspace.identity import AGENT_MARKERS, ROLES, TOKEN_ENV, BoardUnavailable, Denied
 from poolhouse.workspace.rates import RateLimited
@@ -178,20 +179,12 @@ def _invite(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
                                      (made["uses"], int(made["ttl_s"] // 60))), "uses": made["uses"]}
 
 
-def _wait(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
-    return ws.wait(token, args.timeout, args.ack, args.raw, limit=args.limit, widen=args.all)
-
-
 def _worktrees(args, ws, token):
     if args.cleanup:
         who = ws.auth(token)
         ws._may(who, 'claim')
         return worktree_lifecycle.cleanup(ws.base, who.id, args.cleanup, ws.claims)
     return worktree_lifecycle.pending(ws.base, ws.auth(token).id)
-
-
-def _released(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
-    return {"released": args.qid, "text_chars": len(ws.quarantine_release(token, args.qid))}
 
 
 def _init(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
@@ -283,15 +276,6 @@ def _board(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
         return b.add(token, name, rest[0])
     return ws.send(token, name, args.type, render.body(" ".join(rest)), subject=args.subject,
                    reply_to=args.reply_to)
-
-
-def _dm(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
-    if not args.name:
-        return ws.board.dm_list(token)
-    if args.body:
-        ws.send(token, args.name, args.type, render.body(args.body), subject=args.subject,
-                reply_to=args.reply_to)
-    return ws.board.dm(token, args.name, args.between, args.limit)
 
 
 def _subscribe(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
@@ -419,12 +403,6 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      _board),
     ("join-board", "join an open board", [flag("name")], lambda a, w, t: w.board.join(t, a.name)),
     ("leave-board", "leave a board", [flag("name")], lambda a, w, t: w.board.leave(t, a.name)),
-    ("dm", "the two-sided conversation with NAME (BODY sends first); no NAME lists them", [
-        flag("name", nargs="?", default=""), flag("body", nargs="?", default=""),
-        flag("--type", choices=TYPES, default="note"), flag("--subject", default=""),
-        flag("--reply-to", type=int, default=0), flag("--limit", type=int, default=50),
-        flag("--between", default="", help="a person or lead: the pair BETWEEN and NAME")],
-     _dm),
     ("subscribe", "choose what reaches your inbox: board, thread, agent, kind or mentions", [
         flag("type", choices=STYPES), flag("target", nargs="?", default=""),
         flag("--mode", choices=MODES, default="inbox",
@@ -439,16 +417,8 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
     ("attestations", "what the harness hooks recorded the person saying, as person-attestations; read-only", [
         flag("--session", default=""), flag("--limit", type=int, default=50)],
      lambda a, w, t: person_view.listing(a.limit, a.session)),
-    ("wait", "block until a message arrives", [
-        *READ, flag("--timeout", type=float, default=60.0)], _wait),
-    ("outbox", "messages you sent, each provisional until every paired device holds it", [FOR_AGENT],
-     lambda a, w, t: w.outbox(t)),
     ("sync", "exchange journals with the paired devices (a person or lead)", [],
      lambda a, w, t: mesh_sync.run(w, t)),
-    ("ack", "mark messages up to SEQ read", [flag("seq", type=int)],
-     lambda a, w, t: {"cursor": w.ack(t, a.seq)}),
-    ("thread", "a message and its replies (first and newest by default)", [
-        flag("root", type=int), *WIDEN], lambda a, w, t: w.thread(t, a.root, a.limit, a.all)),
     ("scratch-new", "make a scratch folder", [
         flag("name"), flag("--ttl-hours", type=float, default=0.0)],
      lambda a, w, t: {"path": w.scratch_new(t, a.name, a.ttl_hours * 3600)}),
@@ -465,8 +435,6 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      filecli.ATTACH, filecli.attach),
     ("file", "a file by handle (--meta, --text, --out PATH), or: list, search QUERY, delete HANDLE (a person)",
      filecli.FILE, filecli.file),
-    ("quarantine-ls", "flagged items held back", [], lambda a, w, t: w.quarantine_list()),
-    ("quarantine-release", "deliver a held item, fenced; human token", [flag("qid")], _released),
     ("audit-verify", "whether every log's chain holds", [flag("--anchor", default="")],
      lambda a, w, t: w.audit_verify(a.anchor)),
     ("audit-head", "the audit log's head hash, to keep as an anchor", [],
@@ -594,7 +562,7 @@ for _name, _help, _options, _handler in BARE:
                           *_options])
 for _name, _help, _options, _handler in TABLE:
     COMMANDS.add(_name, _runner(_handler), help=_help, options=[*COMMON, *_options])
-for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE):
+for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 
 
