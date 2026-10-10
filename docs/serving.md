@@ -24,7 +24,7 @@ caches it on first use, so there is no separate fetching step.
 Managed serving uses `q8_0` for both K and V caches, including the prediction head, on
 every backend that can: `ServerSpec`, `Serving`, `poolhouse-serve up`, measured profiles
 (one that pins `f16` keeps it; one that names nothing gets `q8_0`) and the memory admission
-(`poolhouse.serve.kvcache.DEFAULT_KV_CACHE` is the one place the default lives).
+(`poolhouse.kvtype.DEFAULT_KV_CACHE` is the one place the default lives).
 `--kv f16` and `--draft-kv f16` select full precision explicitly, `--kv q4_0` opts into
 the smaller cache, and `--kv K/V` sets the halves apart. These settings do not change the
 model weights' quantization. `up` and `status` print the types a server really has.

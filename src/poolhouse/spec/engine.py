@@ -20,7 +20,7 @@ from mlx_vlm.models.qwen4_exp.ple_storage import PLE_MARKER, prepare_external_pl
 from mlx_vlm.utils import load_model
 
 from poolhouse import home, hub
-from poolhouse.serve.kvcache import DEFAULT_KV_BITS
+from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.spec import LAYOUTS, attention
 from poolhouse.spec.accept import Rule
 from poolhouse.spec.cost import load_curve

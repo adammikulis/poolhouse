@@ -735,7 +735,7 @@ Two at once on one device is more than twice as slow, and it takes the meaning o
 
 The KV cache is stored as `q8_0` (8 bit) for K and V on every serve path, llama.cpp and MLX alike, unless a
 spec, a profile or a person overrides it (`f16` for full precision, `q4_0` for less memory). The default lives in
-`poolhouse.serve.kvcache.DEFAULT_KV_CACHE` and nowhere else; read what a spec is really served with through
+`poolhouse.kvtype.DEFAULT_KV_CACHE` and nowhere else; read what a spec is really served with through
 `kvcache.effective`, which also applies the fallbacks (V stays f16 without flash attention) and says why.
 Quality note and fallbacks: `docs/serving.md`.
 

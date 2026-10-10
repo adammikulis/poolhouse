@@ -15,9 +15,9 @@ import mlx.core as mx
 from poolhouse.command import Group, flag, option
 from poolhouse.graph.serve import Handler
 from poolhouse.http import Server
+from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.log import say
 from poolhouse.serve.backend import DEFAULT_HOST
-from poolhouse.serve.kvcache import DEFAULT_KV_BITS
 from poolhouse.serve.mlxref import PREFIX
 from poolhouse.spec.accept import Rule
 from poolhouse.spec.engine import DRAFTERS, Engine, EngineConfig, Reply, Request
