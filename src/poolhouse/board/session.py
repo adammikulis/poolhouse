@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,7 @@ __all__ = ["AGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note"
 
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
 PAGE = 1000
+CHUNK = 256 * 1024
 TOKEN_ENV = "POOLHOUSE_WORKSPACE_TOKEN"  # noqa: S105 - the name of a variable, not a credential
 
 
@@ -32,6 +34,7 @@ class Entry:
     channel: str
     fields: dict[str, Any]
     at_ms: int
+    gone: bool = False
 
     @property
     def text(self) -> str:
@@ -127,7 +130,7 @@ class Registration:
 def _entry(raw: dict[str, Any]) -> Entry:
     seq = str(raw["seq"])
     return Entry(raw["id"], seq if not raw["foreign"] else raw["id"], raw["kind"], raw["sender"], raw["foreign"],
-                 raw["channel"], raw["fields"], int(raw["hlc"][0]))
+                 raw["channel"], raw["fields"], int(raw["hlc"][0]), bool(raw.get("gone", False)))
 
 
 def _agent(raw: dict[str, Any]) -> Agent:
@@ -186,8 +189,15 @@ class Session:
         return register(self.client, self.board, native, self.token)
 
     def post(self, to: str, kind: str, body: str, subject: str = "", reply_id: str = "") -> dict[str, Any]:
-        """Write a message to ``#general``, ``#announcements`` or one session."""
+        """Write a message to ``#general``, ``#announcements``, a room or one session."""
         fields = {"type": kind, "to": to, "body": body, "subject": subject}
+        if reply_id:
+            fields["reply_id"] = reply_id
+        return dict(self.call("post", kind="message", fields=fields))
+
+    def post_file(self, to: str, body: str, file: dict[str, Any], reply_id: str = "") -> dict[str, Any]:
+        """Write a message of type `file` carrying the description of a file the node already holds."""
+        fields: dict[str, Any] = {"type": "file", "to": to, "body": body, "subject": "", "file": file}
         if reply_id:
             fields["reply_id"] = reply_id
         return dict(self.call("post", kind="message", fields=fields))
@@ -216,6 +226,33 @@ class Session:
             if len(page.entries) < PAGE:
                 return found
             cursor = page.cursor
+
+    def store(self, sealed: bytes) -> str:
+        """Send sealed bytes to the node in chunks; the id the node keeps them under."""
+        upload, sent = uuid.uuid4().hex, 0
+        while True:
+            chunk = sealed[sent:sent + CHUNK]
+            got = self.call("file_put", upload=upload, offset=sent, total=len(sealed), data=chunk.hex())
+            sent += len(chunk)
+            if "blob" in got:
+                return str(got["blob"])
+
+    def fetch(self, blob: str) -> bytes:
+        """The sealed bytes the node keeps as ``blob``, if this session may read a message that carries them."""
+        out = bytearray()
+        while True:
+            got = self.call("file_get", blob=blob, offset=len(out))
+            out += bytes.fromhex(got["data"])
+            if len(out) >= got["size"] or not got["data"]:
+                return bytes(out)
+
+    def files(self) -> list[Entry]:
+        """The file messages this session may read, oldest first, each marked `gone` when its file was deleted."""
+        return self.read_all(files=True)
+
+    def delete_file(self, handle: str) -> dict[str, Any]:
+        """Shred a file's bytes; only a session with that grant may."""
+        return dict(self.call("file_delete", handle=handle))
 
     def head(self) -> dict[str, int]:
         """The cursor of now: a read since it returns only what is written after."""

@@ -22,7 +22,7 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "hello" | "status" | "shutdown" | "links" => &[],
         "register" => &["model", "harness", "session"],
         "post" => &["kind", "idem", "fields"],
-        "read" => &["since", "kind", "channel", "by", "limit", "inbox", "with", "thread", "digest", "mentions", "head"],
+        "read" => &["since", "kind", "channel", "by", "limit", "inbox", "with", "thread", "digest", "mentions", "head", "files"],
         "link" => &["to", "channels", "mode"],
         "unlink" => &["id"],
         "project_add" | "source_add" => &["id", "kind", "path"],
@@ -31,7 +31,7 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
         m => return crate::poolapi::params(m).or_else(|| crate::lease::rpc::params_for(m)).or_else(|| crate::sessions::params_for(m))
             .or_else(|| crate::claims::params_for(m)).or_else(|| crate::landing::params_for(m)).or_else(|| crate::notes::params_for(m))
             .or_else(|| crate::mail::params_for(m)).or_else(|| crate::quarantine::params_for(m))
-            .or_else(|| crate::rooms::params_for(m)).or_else(|| crate::subs::params_for(m)),
+            .or_else(|| crate::rooms::params_for(m)).or_else(|| crate::subs::params_for(m)).or_else(|| crate::files::params_for(m)),
     })
 }
 
@@ -64,7 +64,7 @@ fn read(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
     let limit = p.get("limit").and_then(Value::as_u64).map_or(READ_DEFAULT, |n| (n as usize).clamp(1, READ_MAX));
     let (kind, channel, sender, with) = (str_of(p, "kind")?, str_of(p, "channel")?, str_of(p, "by")?, str_of(p, "with")?);
     let flag = |k: &str| p.get(k).and_then(Value::as_bool).unwrap_or(false);
-    let (inbox, digest, mentioned) = (flag("inbox"), flag("digest"), flag("mentions"));
+    let (inbox, digest, mentioned, files) = (flag("inbox"), flag("digest"), flag("mentions"), flag("files"));
     let me = access.actor.as_str();
     let entries = node.view(board)?;
     if flag("head") {
@@ -85,6 +85,7 @@ fn read(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
             && access.channels.as_ref().is_none_or(|c| c.contains(&e.channel)) && e.readable_by(me) && crate::rooms::may_read(&rooms, &e, me)
             && (!inbox || direct && to == me || crate::subs::delivered(&e, me, &subs, "inbox"))
             && (!digest || crate::subs::delivered(&e, me, &subs, "digest"))
+            && (!files || e.kind == Kind::Message && e.fields.contains_key("file"))
             && (!mentioned || e.kind == Kind::Message && e.sender != me && crate::subs::mentions(e.fields.get("body").and_then(Value::as_str).unwrap_or(""), me))
             && (with.is_empty() || direct && (e.sender == with && to == me || e.sender == me && to == with))
             && (kind.is_empty() || kind_name == kind) && (channel.is_empty() || e.channel == channel)
@@ -92,6 +93,12 @@ fn read(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
         if wanted && out.len() < limit {
             cursor.insert(e.origin.clone(), e.seq);
             out.push(entry_json(&e));
+        }
+    }
+    if files {
+        let gone = crate::files::gone(node, board);
+        for v in &mut out {
+            v["gone"] = json!(v["fields"]["file"]["id"].as_str().is_some_and(|h| gone.contains(h)));
         }
     }
     Ok(json!({"entries": out, "cursor": cursor}))
@@ -193,6 +200,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         m if crate::mail::METHODS.contains(&m) => crate::mail::call(node, m, board, token, p),
         m if crate::rooms::METHODS.contains(&m) => crate::rooms::call(node, m, board, token, p),
         m if crate::subs::METHODS.contains(&m) => crate::subs::call(node, m, board, token, p),
+        m if crate::files::METHODS.contains(&m) => crate::files::call(node, m, board, token, p),
         m if crate::quarantine::METHODS.contains(&m) => crate::quarantine::call(node, m, board, token, p),
         "links" => node.access(token, board, false).map(|_| json!(node.links.all().iter().filter(|l| l.from == board || l.to == board).collect::<Vec<_>>())),
         "shutdown" => node.access(token, board, false).map(|_| {

@@ -11,6 +11,7 @@ pub mod client;
 pub mod device;
 pub mod error;
 pub mod facts;
+pub mod files;
 pub mod fold;
 pub mod fsutil;
 pub mod grants;

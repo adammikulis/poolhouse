@@ -351,10 +351,6 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      lambda a, w, t: {"removed": w.scratch_rm(t, a.name, _agent_named(w, a.for_agent))}),
     ("worktrees", "inspect or clean your landed coding checkout scopes",
      [flag("--cleanup", default="", help="remove an owned landed checkout and record its cleanup proof")], _worktrees),
-    ("attach", "post a file to a board, an agent or a thread; the message carries a handle, never the content",
-     filecli.ATTACH, filecli.attach),
-    ("file", "a file by handle (--meta, --text, --out PATH), or: list, search QUERY, delete HANDLE (a person)",
-     filecli.FILE, filecli.file),
     ("audit-verify", "whether every log's chain holds", [flag("--anchor", default="")],
      lambda a, w, t: w.audit_verify(a.anchor)),
     ("audit-head", "the audit log's head hash, to keep as an anchor", [],
@@ -470,7 +466,7 @@ for _name, _help, _options, _handler in BARE:
                           *_options])
 for _name, _help, _options, _handler in TABLE:
     COMMANDS.add(_name, _runner(_handler), help=_help, options=[*COMMON, *_options])
-for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE):
+for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 
 

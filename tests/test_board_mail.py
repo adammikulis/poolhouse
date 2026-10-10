@@ -3,11 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import pty
-import select
-import subprocess
-import sys
 import threading
 import time
 
@@ -141,19 +136,6 @@ def test_a_soft_marker_from_a_sender_in_good_standing_is_delivered_flagged(team)
     assert row["state"] == "clear" and "authority-claim" in row["flags"] and row["text"].startswith("<untrusted")
 
 
-def release_at_a_terminal(team, who, qid):
-    """Run `quarantine-release` with a pseudo-terminal on stdin and stdout, as a person would."""
-    leader, follower = pty.openpty()
-    env = team.env(who)
-    done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", "quarantine-release", qid, "--json"], env=env,
-                          stdin=follower, stdout=follower, stderr=subprocess.PIPE, text=True, timeout=90, check=False)
-    ready, _, _ = select.select([leader], [], [], 5)  # read before the slave closes: macOS drops what is unread then
-    output = os.read(leader, 65536).decode() if ready else ""
-    os.close(follower)
-    os.close(leader)
-    return done.returncode, output, done.stderr
-
-
 def test_only_a_person_at_a_terminal_releases_a_held_message_and_it_then_shows_fenced(team):
     row = hold(team)
     refused = team.cli("quarantine-release", row["held"], "--json", who=team.bob)
@@ -161,7 +143,7 @@ def test_only_a_person_at_a_terminal_releases_a_held_message_and_it_then_shows_f
     marked = team.cli("quarantine-release", row["held"], "--json", who=team.bob, env={"CLAUDECODE": "1"})
     assert marked.returncode == 3 and "started by an agent" in json.loads(marked.stdout)["error"]
     assert json.loads(team.cli("quarantine-ls", "--json", who=team.bob).stdout)[0]["state"] == "quarantined"
-    code, output, err = release_at_a_terminal(team, team.bob, row["held"])
+    code, output, err = team.terminal("quarantine-release", row["held"], "--json", who=team.bob)
     assert code == 0, err
     assert json.loads(output)["released"] == "q1"
     freed = json.loads(team.cli("thread", row["seq"], "--json", who=team.bob).stdout)[0]

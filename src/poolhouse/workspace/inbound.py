@@ -11,7 +11,8 @@ from typing import Any
 
 from poolhouse.board.session import Agent, Entry, Session
 from poolhouse.workspace import limits
-from poolhouse.workspace.boardapi import Held
+from poolhouse.workspace.boardapi import Held, data_line
+from poolhouse.workspace.files import REF, human_size
 from poolhouse.workspace.identity import AGENT, Identity
 from poolhouse.workspace.modelid import describe
 from poolhouse.workspace.screen import fence, marker_tiers
@@ -20,6 +21,16 @@ from poolhouse.workspace.standing import record_injection, sender_standing
 __all__ = ["PLACEHOLDER", "advanced", "hold", "judge", "names", "present", "shown"]
 
 PLACEHOLDER = "[held in quarantine as {qid}: {why}. A person releases it; until then it is not shown]"
+
+
+class Seen(dict[str, dict[str, Any]]):
+    """What a reader knows about entries it is about to show: the node's quarantine record of each held one, by entry
+    id, and in ``files`` the file messages its text names, by handle."""
+
+    files: dict[str, Entry]
+
+
+NOT_AVAILABLE = "file {} (not available to you)"
 
 
 def names(s: Session) -> dict[str, Agent]:
@@ -40,9 +51,9 @@ def judge(e: Entry) -> tuple[list[str], bool, bool]:
     return sorted([*hard, *soft]), bool(hard), held
 
 
-def hold(s: Session, entries: list[Entry]) -> dict[str, dict[str, Any]]:
-    """The node's quarantine record of each entry of ``entries`` that must be held, by entry id. What the
-    session wrote itself is never held from it."""
+def hold(s: Session, entries: list[Entry]) -> Seen:
+    """The node's quarantine record of each entry of ``entries`` that must be held, by entry id, and the files
+    their text names. What the session wrote itself is never held from it."""
     flagged = []
     for e in entries:
         flags, hard, held = judge(e)
@@ -50,13 +61,29 @@ def hold(s: Session, entries: list[Entry]) -> dict[str, dict[str, Any]]:
             flagged.append((e.id, flags))
             if hard:
                 record_injection(Identity(e.sender, AGENT))
-    return s.hold(flagged) if flagged else {}
+    seen = Seen(s.hold(flagged) if flagged else {})
+    named = any(REF.search(e.text) for e in entries)
+    seen.files = {e.fields["file"]["id"]: e for e in s.files() if not e.gone} if named else {}
+    return seen
+
+
+def _refs(text: str, files: dict[str, Entry]) -> str:
+    """``text`` with each ``file:HANDLE`` shown as its name and size when the reader may read it, else as unavailable."""
+    def one(m: Any) -> str:
+        found = files.get(m.group(1))
+        if found is None:
+            return NOT_AVAILABLE.format(m.group(1))
+        meta = found.fields["file"]
+        return f"file:{m.group(1)} ({data_line(meta['name'], 60)}, {human_size(int(meta['size']))})"
+    return REF.sub(one, text) if "file:" in text else text
 
 
 def shown(e: Entry, models: dict[str, Agent], cap: int = 0, held: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     """A message as a reader gets it: fenced as untrusted data, never as an instruction; a held one as its
     placeholder until a person releases it. With ``cap`` the body is cut and says where the rest is."""
     kind, body = str(e.fields.get("type", "note")), _text(e)
+    if held is not None and e.id not in held:
+        body = _refs(body, getattr(held, "files", {}))
     who = models.get(e.sender)
     model, state = (who.model, who.model_state) if who else ("", "")
     record = (held or {}).get(e.id)

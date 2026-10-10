@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import fcntl
 import os
+import pty
 import pwd
+import select
 import shutil
 import subprocess
 import sys
@@ -106,6 +108,18 @@ class WorkspaceNode:
         """Run ``poolhouse-workspace`` as a subprocess, as ``who``."""
         return subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", *argv], env=self.env(who, env),
                               capture_output=True, text=True, timeout=timeout, check=False, input=stdin, cwd=cwd)
+
+    def terminal(self, *argv: str, who: Member | None = None, timeout: float = 90) -> tuple[int, str, str]:
+        """Run ``poolhouse-workspace`` with a pseudo-terminal on stdin and stdout, as a person at a screen would:
+        the exit status, what it printed there and what it wrote to stderr."""
+        leader, follower = pty.openpty()
+        done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", *argv], env=self.env(who), stdin=follower, stdout=follower,
+                              stderr=subprocess.PIPE, text=True, timeout=timeout, check=False)
+        ready, _, _ = select.select([leader], [], [], 5)  # read before the slave closes: macOS drops what is unread then
+        output = os.read(leader, 65536).decode() if ready else ""
+        os.close(follower)
+        os.close(leader)
+        return done.returncode, output, done.stderr
 
     def stop(self) -> None:
         """Stop the node and its supervisor and wait for them to go."""

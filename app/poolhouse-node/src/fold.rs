@@ -18,7 +18,7 @@ pub const DIRECT: &str = "#dm";
 const MESSAGE_TYPES: [&str; 9] = ["task", "status", "handoff", "question", "answer", "claim", "release", "note", "file"];
 const ANNOUNCE_TYPES: [&str; 4] = ["joined", "milestone", "done", "blocked"];
 const NOTE_KINDS: [&str; 4] = ["decision", "rule", "fact", "question"];
-const MESSAGE_KEYS: [&str; 7] = ["type", "from", "to", "subject", "body", "reply_id", "thread_id"];
+const MESSAGE_KEYS: [&str; 8] = ["type", "from", "to", "subject", "body", "reply_id", "thread_id", "file"];
 const NOTE_KEYS: [&str; 9] = ["nkind", "title", "body", "source", "tags", "author", "supersedes", "verify_cmd", "ttl_days"];
 const IDENTITY_KEYS: [&str; 7] = ["name", "parent", "family", "model", "model_state", "harness", "retired"];
 const VERIFY_KEYS: [&str; 4] = ["note", "exit", "cmd", "out_sha"];
@@ -146,6 +146,11 @@ fn message(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<S
     }
     line(&map, "subject", 200)?;
     text(&map, "body", BODY_BYTES, true)?;
+    match (kind == "file", map.get("file")) {
+        (true, Some(meta)) => crate::files::check_meta(meta)?,
+        (false, None) => {}
+        _ => return reject("a file message carries its file, and only a file message does"),
+    }
     for link in ["reply_id", "thread_id"] {
         line(&map, link, 128)?;
     }

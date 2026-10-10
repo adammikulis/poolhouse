@@ -193,6 +193,7 @@ impl Node {
         }
         if kind == Kind::Message {
             crate::rooms::check_post(self, board, &access.actor, fields)?;
+            crate::files::check_post(self, board, fields)?;
         }
         let mut body = fields.clone();
         body.insert(if kind == Kind::Note { "author" } else { "from" }.into(), Value::String(access.actor.clone()));
