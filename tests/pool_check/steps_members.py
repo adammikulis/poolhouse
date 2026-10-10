@@ -55,12 +55,21 @@ def a_removed_device_is_refused_by_every_member(world: World) -> None:
     victim.admin("sync_now")
     time.sleep(3)
     for device in rest:
-        assert "written after removal" not in device.bodies(), f"{device.name} took an entry from the removed {victim.name}"
+        assert "written after removal" not in device.bodies(), f"{device.name} took an entry from the removed {victim.name}; " + _what_each_knows(rest, victim)
     host, port = world.first.reach(victim)
     again = victim.try_call("join_pool", token=victim.admin_token, host=host, port=port, fingerprint=world.first.fingerprint)
     assert not again["ok"], f"a removed device joined again: {again}"
     shown = {d.name: next(m for m in d.members() if m["fingerprint"] == victim.fingerprint)["last_error"] for d in rest}
     return "the removed device's last error as each member left it: " + "; ".join(f"{k}: {v or '(none)'}" for k, v in shown.items())
+
+
+def _what_each_knows(devices: list, victim) -> str:
+    """For a failure report: how each device lists the removed device (its standing, address, last error) at the moment of the check."""
+    seen = {}
+    for device in devices:
+        mine = [m for m in device.members() if m["fingerprint"] == victim.fingerprint]
+        seen[device.name] = {k: mine[0].get(k) for k in ("status", "addr", "connected", "last_error", "last_sync")} if mine else "(not listed)"
+    return f"what each member says of {victim.name}: {seen}"
 
 
 def a_swapped_certificate_is_refused(world: World) -> None:

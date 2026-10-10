@@ -129,7 +129,9 @@ def test_a_device_that_is_current_or_has_no_node_does_nothing():
     assert build_update.update_once(pool=pool(9, theirs=9), steps=calls.steps()).action == "current"
     assert build_update.update_once(pool=pool(9, theirs=3), steps=calls.steps()).action == "current"
     assert calls.log == []
-    assert build_update.update_once(Path("/no/such/state"), steps=calls.steps()).action == "no-node"
+    gone = build_update.update_once(Path("/no/such/state"), steps=calls.steps())
+    assert gone.action == "no-node"
+    assert gone.detail.startswith("no node answers (") and not gone.detail.startswith("no node answers ()"), f"the reason is not said: {gone.detail}"
 
 
 def test_the_off_switch_turns_the_updater_off(monkeypatch):

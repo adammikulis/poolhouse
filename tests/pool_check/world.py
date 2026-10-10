@@ -72,8 +72,8 @@ class World:
             self.first.listen_all = True
             self.others.append(hosted)
             self.devices.append(hosted)
-            count = 1
-        for index in range(1, count):
+            count = self.count = 2
+        for index in range(len(self.devices), count):
             if native:
                 device: Device = LocalDevice.make(binary, f"{PLATFORM_NAME}{index}")
             else:

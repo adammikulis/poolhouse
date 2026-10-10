@@ -27,12 +27,17 @@ def network_args(*, project: str = "", project_dir: str = "") -> list[str]:
     return [LAN, *(["--project", project] if project else []), *(["--project-dir", project_dir] if project_dir else [])]
 
 
+def ask(state: Path | None = None) -> tuple[dict | None, str]:
+    """The pool the node of ``state`` belongs to and, when no node answers, why not (the error the connection or the node gave)."""
+    try:
+        return node_health.call(state or state_root("node"), "pool_status"), ""
+    except (OSError, ValueError) as exc:
+        return None, f"{type(exc).__name__}: {exc}"
+
+
 def status(state: Path | None = None) -> dict | None:
     """The pool the node of ``state`` belongs to (id, project, policy, members), or None when no node answers."""
-    try:
-        return node_health.call(state or state_root("node"), "pool_status")
-    except (OSError, ValueError):
-        return None
+    return ask(state)[0]
 
 
 def rows(pool: dict) -> list[dict]:

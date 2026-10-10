@@ -171,9 +171,11 @@ def update_once(state: Path | None = None, *, steps: Steps | None = None, agent:
         return Result("off", f"{OFF_ENV}=off")
     if pinned():
         return Result("pinned", "this device's build is pinned: it is left as it is")
-    pool = pool if pool is not None else node_pool.status(state)
+    why = ""
     if pool is None:
-        return Result("no-node", "no node answers, so no member's build is known")
+        pool, why = node_pool.ask(state)
+    if pool is None:
+        return Result("no-node", f"no node answers ({why}), so no member's build is known")
     ahead = newest(pool)
     if ahead is None:
         runtime_store.write_state({"update": None})

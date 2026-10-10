@@ -48,6 +48,8 @@ def test_ls_without_a_key_file_and_without_a_node_still_says_what_is_missing(tmp
 
 def test_status_is_none_when_no_node_answers(tmp_path):
     assert node_pool.status(tmp_path / "empty") is None
+    found, why = node_pool.ask(tmp_path / "empty")
+    assert found is None and why
 
 
 @pytest.mark.parametrize(("own", "extra", "started"), [

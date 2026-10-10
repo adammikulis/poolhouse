@@ -70,7 +70,8 @@ def node_binary(given: str) -> Path:
     return ROOT / "app" / "target" / "debug" / ("poolhouse-node.exe" if sys.platform == "win32" else "poolhouse-node")
 
 
-def main(argv: list[str] | None = None) -> int:
+def parser() -> argparse.ArgumentParser:
+    """The command line of scripts/pool-check."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--platform", choices=PLATFORMS, default="docker", help="docker: this machine and Linux containers (needs Docker); native: every device is a node on this machine "
                     "(what a CI runner of any operating system runs; needs no Docker)")
@@ -80,8 +81,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--list", action="store_true", help="list the steps and exit")
     ap.add_argument("--binary", default="", help="the first device's poolhouse-node binary (default: built with cargo here)")
     ap.add_argument("--distro", default=dock.DISTRO, help=f"the Linux distribution image of the containers (default {dock.DISTRO}; debian:bookworm-slim and ubuntu:22.04 also work)")
+    ap.add_argument("--wsl-distro", default="Ubuntu", help="with --platform windows-wsl: the WSL distribution that is the second device")
+    ap.add_argument("--wsl-checkout", default="/root/poolhouse", help="with --platform windows-wsl: where this tree is installed inside that distribution")
+    ap.add_argument("--wsl-binary", default="", help="with --platform windows-wsl: the node binary inside that distribution (the Windows device's is --binary)")
     ap.add_argument("--clean", action="store_true", help="remove this rig's Docker image when done (the next run builds it again)")
-    args = ap.parse_args(argv)
+    return ap
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
     from poolhouse.log import say, warn
 
     if args.list:
