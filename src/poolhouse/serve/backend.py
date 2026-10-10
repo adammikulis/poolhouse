@@ -19,8 +19,9 @@ from typing import Any
 from poolhouse import home, sentinel, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.platform import process_group_kwargs
-from poolhouse.serve import confined as confinement, exit_guard, grant
+from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache
 from poolhouse.serve.binary import child_env, require_binary
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.logs import prune
 from poolhouse.serve.ports import DEFAULT_HOST, port_is_free, reclaim_port
@@ -275,8 +276,8 @@ class ServerSpec:
     # cost of drafting with a model rather than a head -- on shared memory the two caches
     # compete for one pool -- and it is why llama.cpp lets the draft's cache be quantised
     # separately. A head like EAGLE3 reuses the target's own states and keeps almost nothing.
-    spec_draft_type_k: str = ""
-    spec_draft_type_v: str = ""
+    spec_draft_type_k: str = DEFAULT_KV_CACHE
+    spec_draft_type_v: str = DEFAULT_KV_CACHE
     # Where the n-gram table lives. The in-context kinds keep none: they look up sequences
     # already in the prompt, in memory, and touch no disk. `ngram-cache` is the exception --
     # `lookup_static` is read and never written, `lookup_dynamic` is updated as it
@@ -342,11 +343,11 @@ class ServerSpec:
     cpu_moe: bool = False
     n_cpu_moe: int | None = None
     # How the *main* model's KV cache is stored -- not the draft's, which
-    # `spec_draft_type_k/v` already covers. "" leaves the server's own default, which is
-    # f16; every serving poolhouse leases through (`Serving.cache_type`) asks for q8_0. A
+    # `spec_draft_type_k/v` already covers. q8_0 unless named (`poolhouse.serve.kvcache`
+    # answers what is really served, after its fallbacks); f16 is an explicit override. A
     # preflight's fit estimate reads these back to size the KV cache it predicts.
-    cache_type_k: str = ""
-    cache_type_v: str = ""
+    cache_type_k: str = DEFAULT_KV_CACHE
+    cache_type_v: str = DEFAULT_KV_CACHE
     # mmap is the server's own default; False trades load-time paging for a slower first
     # load that pages in once rather than on every touch, which matters on a machine where
     # a model larger than RAM would otherwise thrash. mlock pins what is loaded so it
@@ -639,9 +640,8 @@ class LlamaServerBackend(ServerBackend):
         argv: list[str] = []
         if spec.spec_type:
             argv += ["--spec-type", str(spec.spec_type)]
-        for flag, value in (("--spec-draft-type-k", spec.spec_draft_type_k or None),
-                            ("--spec-draft-type-v", spec.spec_draft_type_v or None),
-                            ("--spec-draft-n-max", spec.spec_draft_max),
+        argv += kvcache.draft_flags(spec)
+        for flag, value in (("--spec-draft-n-max", spec.spec_draft_max),
                             ("--spec-draft-p-min", spec.spec_p_min),
                             ("--spec-tree", spec.spec_tree),
                             ("--spec-draft-n-min", spec.spec_draft_min),
@@ -700,10 +700,7 @@ class LlamaServerBackend(ServerBackend):
             argv += ["-fa", "on"]
         if spec.jinja and not spec.embedding and not spec.reranking:
             argv += ["--jinja"]
-        if spec.cache_type_k:
-            argv += ["--cache-type-k", str(spec.cache_type_k)]
-        if spec.cache_type_v:
-            argv += ["--cache-type-v", str(spec.cache_type_v)]
+        argv += kvcache.cache_flags(spec)
         load_mode = _load_mode(spec)
         if load_mode:
             argv += ["--load-mode", load_mode]

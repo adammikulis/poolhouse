@@ -16,9 +16,15 @@ pytest.importorskip("mlx_lm.models.qwen3_5",
 
 from mlx_lm.generate import generate_step  # noqa: E402
 from mlx_lm.models import qwen3_5  # noqa: E402
+from mlx_lm.models.cache import (  # noqa: E402
+    ArraysCache,
+    KVCache,
+    QuantizedKVCache,
+    RotatingKVCache,
+)
 from mlx_lm.models.gated_delta import compute_g, gated_delta_update  # noqa: E402
 
-from poolhouse.spec import deltanet  # noqa: E402
+from poolhouse.spec import attention, deltanet  # noqa: E402
 from poolhouse.spec.decode import Asked, Session, decode  # noqa: E402
 from poolhouse.spec.drafters import Budget  # noqa: E402
 from poolhouse.spec.drafters.dflash import DFlashDrafter  # noqa: E402
@@ -33,11 +39,11 @@ from poolhouse.spec.verify import TreeVerifier  # noqa: E402
 PROMPT = [5, 7, 11, 13, 17, 19, 23, 29]
 
 
-def tiny_hybrid(seed: int = 0, layers: int = 8) -> object:
+def tiny_hybrid(seed: int = 0, layers: int = 8, head_dim: int = 16) -> object:
     mx.random.seed(seed)
     text = {"model_type": "qwen3_5_text", "hidden_size": 64, "intermediate_size": 128,
             "num_hidden_layers": layers, "num_attention_heads": 4, "num_key_value_heads": 2,
-            "head_dim": 16, "vocab_size": 97, "linear_num_value_heads": 4,
+            "head_dim": head_dim, "vocab_size": 97, "linear_num_value_heads": 4,
             "linear_num_key_heads": 2, "linear_key_head_dim": 32, "linear_value_head_dim": 12,
             "linear_conv_kernel_dim": 4, "full_attention_interval": 4,
             "rope_parameters": {"rope_type": "default", "rope_theta": 10000.0,
@@ -197,3 +203,49 @@ def test_the_sampler_draws_from_the_distribution_it_reports() -> None:
         assert mx.allclose(probs[row, :kept], top[:kept] / top[:kept].sum(), atol=1e-3).item()
         assert float(probs[row, kept:].sum()) == 0.0
         assert int(drawn[row]) in ids[row, :kept].tolist()
+
+
+@pytest.fixture
+def cpu():
+    """No Metal: the quantised-cache tests run on the CPU stream and put the device back."""
+    before = mx.default_device()
+    mx.set_default_device(mx.cpu)
+    yield
+    mx.set_default_device(before)
+
+
+def run_with(layout, bits, drafter=None):
+    session = Session(layout, drafter or NgramDrafter(Budget(max_nodes=8)), kv_bits=bits)
+    return session, decode(session, PROMPT, Asked(24))
+
+
+def test_the_kv_plan_counts_the_layers_that_quantise(cpu) -> None:
+    bits, note = attention.plan_kv(layout_for(tiny_hybrid(head_dim=64)), 8)
+    assert bits == 8
+    assert "8 bits on 2 of 8 layers" in note and "other 6" in note
+
+
+def test_heads_narrower_than_a_scale_group_stay_f16_and_say_why(cpu) -> None:
+    bits, note = attention.plan_kv(layout_for(tiny_hybrid(head_dim=16)), 8)
+    assert bits is None and "16 wide" in note
+    assert attention.plan_kv(layout_for(tiny_hybrid(head_dim=64)), None)[0] is None
+
+
+def test_only_plain_attention_caches_are_converted(cpu) -> None:
+    caches = [KVCache(), ArraysCache(size=2), RotatingKVCache(max_size=8)]
+    assert attention.quantise(caches, 8) == 1
+    assert [type(c) for c in caches] == [QuantizedKVCache, ArraysCache, RotatingKVCache]
+
+
+def test_a_quantised_cache_decodes_what_the_f16_cache_decodes(cpu) -> None:
+    """8-bit attention caches, recurrent layers as they were, and whole branches accepted:
+    tree attention, compaction and the prefix snapshots all run over the quantised rows."""
+    layout = layout_for(tiny_hybrid(head_dim=64))
+    plain = run_with(layout, None)
+    assert not any(isinstance(c, QuantizedKVCache) for c in plain[0].cache)
+    session, done = run_with(layout, 8, KnownContinuation(plain[1].tokens))
+    kinds = [type(c) for c in session.cache]
+    assert kinds.count(QuantizedKVCache) == 2 and kinds.count(ArraysCache) == 6
+    assert all(c.bits == 8 for c in session.cache if isinstance(c, QuantizedKVCache))
+    assert done.tokens == plain[1].tokens
+    assert any(p.accepted for p in done.passes), "a tree pass must have been compacted"

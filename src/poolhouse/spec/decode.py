@@ -84,8 +84,9 @@ class Session:
     rewritten, so an offset is enough. ``keep`` bounds how many snapshots are held.
     """
 
-    def __init__(self, layout: Layout, drafter: Drafter, keep: int = 2) -> None:
-        self.layout, self.drafter, self.keep = layout, drafter, keep
+    def __init__(self, layout: Layout, drafter: Drafter, keep: int = 2,
+                 kv_bits: int | None = None) -> None:
+        self.layout, self.drafter, self.keep, self.kv_bits = layout, drafter, keep, kv_bits
         self.reset()
 
     def reset(self) -> None:
@@ -127,6 +128,8 @@ class Session:
         if best is None or self.cache is None:
             self.reset()
             self.cache = self.layout.make_cache()
+            if self.kv_bits:
+                attention.quantise(self.cache, self.kv_bits)
             verifier = TreeVerifier(self.layout, self.cache, taps)
             hidden = verifier.prefill(prefix)
             self.drafter.prefill(prompt, verifier.fused if taps else hidden)

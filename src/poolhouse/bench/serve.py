@@ -24,7 +24,7 @@ from poolhouse.bench.measure import found as finder_of
 from poolhouse.bench.score import Row, _which
 from poolhouse.bench.show import drafted
 from poolhouse.log import say, warn
-from poolhouse.serve import binary as binaries, mlx_tree, preflight as checks
+from poolhouse.serve import binary as binaries, mlx_tree, mlxref, preflight as checks
 from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.manager import ServerManager
@@ -164,7 +164,7 @@ def _manager(config: Any, binary: str) -> tuple[Any, str]:
 
 def _preflighted(spec: Any, build: str) -> Any:
     """The preflight report for ``spec`` on ``build``; raises `NotLoaded` when it refuses."""
-    report = (mlx_tree.report_for(spec, limit_bytes=hub.room()) if mlx_tree.is_mlx(spec.model)
+    report = (mlx_tree.report_for(spec, limit_bytes=hub.room()) if mlxref.is_mlx(spec.model)
               else checks.Preflight(spec, binary=build, limit_bytes=hub.room()))
     if not report.ok:
         raise NotLoaded(report.said())

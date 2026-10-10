@@ -6,8 +6,13 @@ from collections.abc import Sequence
 
 import mlx.core as mx
 import mlx.nn as nn
+from mlx_lm.models.base import quantized_scaled_dot_product_attention
+from mlx_lm.models.cache import KVCache, QuantizedKVCache
 
-__all__ = ["attend", "compact", "rewind", "tree_mask"]
+__all__ = ["GROUP_SIZE", "attend", "compact", "plan_kv", "quantise", "rewind", "tree_mask"]
+
+GROUP_SIZE = 64
+"""Values per scale in a quantised KV cache: mlx-lm's own default."""
 
 
 def tree_mask(ancestors: Sequence[Sequence[int]], offset: int) -> mx.array:
@@ -36,9 +41,54 @@ def attend(mod: nn.Module, cache: object, x: mx.array, positions: mx.array,
     keys = keys[:, :, 0, :].transpose(1, 0, 2)[None]
     values = values.transpose(1, 0, 2)[None]
     keys, values = cache.update_and_fetch(keys, values)
-    out = mx.fast.scaled_dot_product_attention(queries, keys, values, scale=mod.scale, mask=mask)
+    if hasattr(cache, "bits"):
+        out = quantized_scaled_dot_product_attention(
+            queries, keys, values, scale=mod.scale, mask=mask,
+            group_size=cache.group_size, bits=cache.bits)
+    else:
+        out = mx.fast.scaled_dot_product_attention(queries, keys, values, scale=mod.scale,
+                                                   mask=mask)
     out = out[0].transpose(1, 0, 2).reshape(count, -1)
     return mod.o_proj(out * mx.sigmoid(gate.reshape(count, -1)))
+
+
+def _parts(held: object) -> tuple[mx.array, ...]:
+    """The arrays one side of a cache is stored in: one, or a quantised cache's three."""
+    return tuple(held) if isinstance(held, tuple) else (held,)
+
+
+def quantise(caches: list[object], bits: int, group_size: int = GROUP_SIZE) -> int:
+    """Replace each empty attention cache in ``caches`` with a ``bits``-bit one; returns how many.
+
+    Only a plain ``KVCache`` converts: a recurrent layer's state, a rotating window and any
+    other kind stay as they are, as mlx-lm's own ``maybe_quantize_kv_cache`` leaves them.
+    """
+    done = 0
+    for index, held in enumerate(caches):
+        if type(held) is KVCache and held.offset == 0:
+            caches[index] = QuantizedKVCache(group_size=group_size, bits=bits)
+            done += 1
+    return done
+
+
+def plan_kv(layout: object, bits: int | None) -> tuple[int | None, str]:
+    """``(bits, note)``: the width this layout's attention caches are stored at, and one line.
+
+    ``None`` bits with a reason where the layout cannot (its attention reads the cache
+    directly and has no quantised path) or the heads are narrower than one scale group.
+    """
+    if not bits:
+        return None, "KV cache stored as f16"
+    if not getattr(layout, "kv_quantisable", False):
+        return None, "KV cache stored as f16: this layout has no quantised attention path"
+    width = int(getattr(layout.args, "head_dim", 0) or 0)  # type: ignore[attr-defined]
+    if width % GROUP_SIZE:
+        return None, (f"KV cache stored as f16: a head is {width} wide, not a multiple of "
+                      f"the {GROUP_SIZE} values a scale covers")
+    held = layout.make_cache()  # type: ignore[attr-defined]
+    each = sum(type(one) is KVCache for one in held)
+    return bits, (f"KV cache stored in {bits} bits on {each} of {len(held)} layers; the "
+                  f"other {len(held) - each} hold recurrent state, which is not quantised")
 
 
 def _index_rows(cache: object) -> tuple[mx.array, mx.array] | None:
@@ -52,18 +102,20 @@ def compact(caches: Sequence[object], offset: int, path: mx.array) -> None:
     A cache that also keeps indexer keys (``index_keys`` [B, L, D] and their positions) has
     those rows moved the same way.
     """
-    rows = [(c.keys[..., offset + path, :], c.values[..., offset + path, :]) for c in caches]
+    rows = [(tuple(a[..., offset + path, :] for a in _parts(c.keys)),
+             tuple(a[..., offset + path, :] for a in _parts(c.values))) for c in caches]
     indexed = [_index_rows(c) for c in caches]
     kept = [None if held is None else
             (mx.concatenate([held[0][:, :offset], held[0][:, offset + path]], axis=1),
              mx.concatenate([held[1][..., :offset], held[1][..., offset + path]], axis=-1))
             for held in indexed]
-    mx.eval(*[half for pair in rows for half in pair],
+    mx.eval(*[half for pair in rows for side in pair for half in side],
             *[half for pair in kept if pair is not None for half in pair])
     accepted = int(path.size)
     for cache, (keys, values), index in zip(caches, rows, kept, strict=True):
-        cache.keys[..., offset:offset + accepted, :] = keys
-        cache.values[..., offset:offset + accepted, :] = values
+        for held, moved in zip((*_parts(cache.keys), *_parts(cache.values)), (*keys, *values),
+                               strict=True):
+            held[..., offset:offset + accepted, :] = moved
         cache.offset = offset + accepted
         if index is not None:
             cache.index_keys, cache.index_position_ids = index

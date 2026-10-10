@@ -317,9 +317,11 @@ def test_reuse_requires_recorded_semantic_settings(field, asked):
     from dataclasses import replace
 
     spec = replace(ServerSpec(model="qwen.gguf"), **{field: asked})
+    # a server records the cache it serves, which a spec naming none gets as q8_0
+    served = {"cache_type_k": "q8_0", "cache_type_v": "q8_0"}
     assert not admission.compatible(spec, {}, [])
-    assert not admission.compatible(spec, {field: "wrong"}, [])
-    assert admission.compatible(spec, {field: asked}, [])
+    assert not admission.compatible(spec, {**served, field: "wrong"}, [])
+    assert admission.compatible(spec, {**served, field: asked}, [])
 
 
 def test_compatible_draft_paths_can_name_the_same_installed_file(tmp_path):
@@ -328,7 +330,8 @@ def test_compatible_draft_paths_can_name_the_same_installed_file(tmp_path):
     alias = tmp_path / "matching-head.gguf"
     alias.symlink_to(draft)
     spec = ServerSpec(model="qwen.gguf", draft=alias)
-    assert admission.compatible(spec, {"draft": str(draft)}, [])
+    assert admission.compatible(spec, {"draft": str(draft), "cache_type_k": "q8_0",
+                                       "cache_type_v": "q8_0"}, [])
 
 
 def test_chat_and_coding_share_matching_cache_but_not_different_cache(tmp_path, backend, machine):

@@ -68,6 +68,9 @@ def linear_block(mod: nn.Module, cache: Any, x: mx.array, walk: TreePass) -> mx.
 class Qwen35Layout:
     """mlx-lm's ``qwen3_5`` and ``qwen3_5_moe``: pre-norm residual blocks, dense or MoE MLP."""
 
+    #: its attention reads a cache through `attention.attend`, which has a quantised path
+    kv_quantisable = True
+
     def __init__(self, model: nn.Module) -> None:
         self.model = model
         self.text = model.language_model

@@ -20,7 +20,8 @@ from mlx_vlm.models.qwen4_exp.ple_storage import PLE_MARKER, prepare_external_pl
 from mlx_vlm.utils import load_model
 
 from poolhouse import home, hub
-from poolhouse.spec import LAYOUTS
+from poolhouse.serve.kvcache import DEFAULT_KV_BITS
+from poolhouse.spec import LAYOUTS, attention
 from poolhouse.spec.accept import Rule
 from poolhouse.spec.cost import load_curve
 from poolhouse.spec.decode import Asked, Decoded, Pass, Session, decode
@@ -85,6 +86,8 @@ class EngineConfig:
     max_nodes: int = 32
     keep: int = 2
     recalibrate: bool = False
+    #: bits the attention KV cache is stored in; None or 0 keeps f16
+    kv_bits: int | None = DEFAULT_KV_BITS
 
 
 @dataclass(frozen=True)
@@ -145,7 +148,8 @@ class Engine:
         curve = load_curve(self.layout, path.name, again=config.recalibrate)
         budget = Budget(max_nodes=min(32, max(1, config.max_nodes)), cost=curve)
         self.drafter = make_drafter(config, self.layout, budget)
-        self.session = Session(self.layout, self.drafter, keep=config.keep)
+        bits, self.kv_note = attention.plan_kv(self.layout, config.kv_bits)
+        self.session = Session(self.layout, self.drafter, keep=config.keep, kv_bits=bits)
         self.eos = set(self.tokenizer.eos_token_ids)
         self.think_end = self.tokenizer.convert_tokens_to_ids("</think>")
 

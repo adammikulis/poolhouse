@@ -182,7 +182,7 @@ class TestFit:
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
         context = 4096
-        report = Preflight(ServerSpec(model=gguf, context=context),
+        report = Preflight(ServerSpec(model=gguf, context=context, cache_type_k="f16", cache_type_v="f16"),
                            binary=fake_binary(tmp_path))
         # 2 x n_layer x n_kv_heads x head_dim x context x bytes_per_element(f16=2)
         expected = 32 * 8 * 128 * context * (2.0 + 2.0)
@@ -193,7 +193,8 @@ class TestFit:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        f16 = Preflight(ServerSpec(model=gguf, context=4096), binary=fake_binary(tmp_path))
+        f16 = Preflight(ServerSpec(model=gguf, context=4096, cache_type_k="f16", cache_type_v="f16"),
+                        binary=fake_binary(tmp_path))
         q8 = Preflight(ServerSpec(model=gguf, context=4096, cache_type_k="q8_0",
                                   cache_type_v="q8_0"), binary=fake_binary(tmp_path))
         assert q8.kv_estimate_bytes < f16.kv_estimate_bytes
@@ -208,7 +209,8 @@ class TestFit:
             "llama.attention.head_count": 32,   # head_dim = 4096 / 32 = 128
         }
         gguf = write_gguf(tmp_path / "model.gguf", meta)
-        report = Preflight(ServerSpec(model=gguf, context=4096), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(model=gguf, context=4096, cache_type_k="f16", cache_type_v="f16"),
+                           binary=fake_binary(tmp_path))
         assert report.kv_estimate_bytes == int(32 * 8 * 128 * 4096 * 4.0)
 
     def test_it_reports_the_number_against_a_limit_either_way(self, tmp_path, monkeypatch):
@@ -655,7 +657,8 @@ class TestSeams:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        report = Preflight(ServerSpec(model=gguf, context=512), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(model=gguf, context=512, cache_type_k="f16", cache_type_v="f16"),
+                           binary=fake_binary(tmp_path))
         by_name = {c.name: c for c in report.checks}
         assert by_name["shards"].ok and by_name["architecture"].detail == "llama"
         assert report.weights_bytes == gguf.stat().st_size
@@ -679,14 +682,18 @@ class TestTheDraftsOwnCacheEstimate:
 
     def test_only_the_heads_own_prediction_layers_hold_a_cache(self, tmp_path):
         """The head carries the target's block count -- 49 -- and builds one layer."""
-        spec = ServerSpec(model="m.gguf", draft=str(self._head(tmp_path)), context=32768)
+        spec = ServerSpec(model="m.gguf", draft=str(self._head(tmp_path)), context=32768,
+                          spec_draft_type_k="f16", spec_draft_type_v="f16")
         # one layer, 2 KV heads, 256 wide each way, f16
         assert preflight.draft_kv_estimate_bytes(spec) == 1 * 2 * (256 * 2 + 256 * 2) * 32768
 
-    def test_the_heads_cache_type_is_f16_until_it_is_said(self, tmp_path):
+    def test_the_heads_cache_type_is_q8_0_until_it_is_said(self, tmp_path):
         head = str(self._head(tmp_path))
         full = preflight.draft_kv_estimate_bytes(
-            ServerSpec(model="m.gguf", draft=head, context=32768))
+            ServerSpec(model="m.gguf", draft=head, context=32768,
+                       spec_draft_type_k="f16", spec_draft_type_v="f16"))
+        assert preflight.draft_kv_estimate_bytes(
+            ServerSpec(model="m.gguf", draft=head, context=32768)) == int(full * (34 / 32) / 2)
         smaller = preflight.draft_kv_estimate_bytes(
             ServerSpec(model="m.gguf", draft=head, context=32768,
                        spec_draft_type_k="q4_0", spec_draft_type_v="q4_0"))
@@ -726,7 +733,8 @@ class TestTheDraftsOwnCacheEstimate:
             "marrow.attention.head_count_kv": 2,
             "marrow.attention.key_length": 128,
             "marrow.attention.value_length": 128})
-        spec = ServerSpec(model="m.gguf", draft=str(whole), context=4096)
+        spec = ServerSpec(model="m.gguf", draft=str(whole), context=4096,
+                          spec_draft_type_k="f16", spec_draft_type_v="f16")
         assert preflight.draft_kv_estimate_bytes(spec) == \
             8 * 2 * (128 * 2 + 128 * 2) * 4096
 

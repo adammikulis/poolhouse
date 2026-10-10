@@ -731,6 +731,14 @@ Models may be resident together as memory allows, in any role: several decision,
 
 Two at once on one device is more than twice as slow, and it takes the meaning out of every number either one produces: a row measured under load cannot be compared with a row measured alone, and neither can be trusted afterwards. Measured 2026-09-09, one machine, Qwen3.8-Flash-Next: a one-line reply asked on a second slot while an extraction ran took 81s, against a second or two alone, and the extraction was slowed too. So: `--parallel 1` unless something genuinely needs concurrent conversations, and a program that reads and answers over the same model does both through the same server, one after the other. `poolhouse-serve status` says how many slots a server has and which models are resident; check it before starting a run that will take hours.
 
+### The KV cache is 8 bit unless overridden
+
+The KV cache is stored as `q8_0` (8 bit) for K and V on every serve path, llama.cpp and MLX alike, unless a
+spec, a profile or a person overrides it (`f16` for full precision, `q4_0` for less memory). The default lives in
+`poolhouse.serve.kvcache.DEFAULT_KV_CACHE` and nowhere else; read what a spec is really served with through
+`kvcache.effective`, which also applies the fallbacks (V stays f16 without flash attention) and says why.
+Quality note and fallbacks: `docs/serving.md`.
+
 ### Driving a model on this machine
 
 Never point `poolhouse-claude`, `poolhouse-agent` or `poolhouse-chat` at a checkout you are editing.

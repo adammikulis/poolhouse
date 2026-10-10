@@ -52,13 +52,14 @@ from poolhouse.asking import Asking
 from poolhouse.client.health import serving_params
 from poolhouse.client.settings import SAMPLERS, Request, Transport
 from poolhouse.log import say
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 
 __all__ = ["Config", "Serving", "Talking", "draft_for", "drafted", "projector_for",
            "release_all", "said_cache", "served", "servers", "serving_said", "slot",
            "split_cache_type"]
 
 #: how the KV cache is stored unless a serving says otherwise
-DEFAULT_CACHE = "q8_0"
+DEFAULT_CACHE = DEFAULT_KV_CACHE
 
 
 def split_cache_type(asked: str) -> tuple[str, str]:
@@ -97,7 +98,7 @@ class Serving:
     draft_n_max: int | None = None      # tokens guessed ahead; None leaves the default
     draft_p_min: float | None = None    # the draft's confidence floor; None leaves the default
     # One cache type sets both draft halves; K/V sets them separately.
-    draft_cache_type: str = "q8_0"
+    draft_cache_type: str = DEFAULT_CACHE
     # Which method the head implements. "" reads it off the head's own name, which is right
     # whenever the name says so; a profile that measured one says it outright, and a head
     # that lives inside the weights -- `--spec-type draft-mtp` with no `-md` -- can only be

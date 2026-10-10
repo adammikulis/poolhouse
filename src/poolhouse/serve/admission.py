@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from poolhouse.serve import kvcache
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.preflight import (
     RUNTIME_ALLOWANCE_BYTES,
@@ -118,8 +119,8 @@ def estimate_bytes(spec: ServerSpec) -> int:
     kv = 0
     try:
         meta = read_gguf_header(Path(str(spec.model)))
-        kv = _kv_estimate_bytes(meta, int(spec.context),
-                                spec.cache_type_k or "f16", spec.cache_type_v or "f16")
+        kept = kvcache.effective(spec)
+        kv = _kv_estimate_bytes(meta, int(spec.context), kept.k or "f16", kept.v or "f16")
         kv += recurrent_state_bytes(meta) * max(1, spec.parallel)
     except (OSError, ValueError, struct.error):
         kv = 0
@@ -193,8 +194,9 @@ def compatible(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]
         return False
     if spec.mtp is not None and entry.get("mtp") is not spec.mtp:
         return False
-    for field in ("cache_type_k", "cache_type_v", "spec_type"):
-        asked = getattr(spec, field)
+    kept = kvcache.effective(spec)
+    for field, asked in (("cache_type_k", kept.k), ("cache_type_v", kept.v),
+                         ("spec_type", spec.spec_type)):
         if asked and entry.get(field) != asked:
             return False
     for field in ("draft", "chat_template_file"):

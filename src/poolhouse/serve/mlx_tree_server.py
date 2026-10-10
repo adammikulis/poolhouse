@@ -17,7 +17,8 @@ from poolhouse.graph.serve import Handler
 from poolhouse.http import Server
 from poolhouse.log import say
 from poolhouse.serve.backend import DEFAULT_HOST
-from poolhouse.serve.mlx_tree import PREFIX
+from poolhouse.serve.kvcache import DEFAULT_KV_BITS
+from poolhouse.serve.mlxref import PREFIX
 from poolhouse.spec.accept import Rule
 from poolhouse.spec.engine import DRAFTERS, Engine, EngineConfig, Reply, Request
 from poolhouse.spec.sample import Sampling
@@ -78,10 +79,12 @@ def cmd_tree(args: argparse.Namespace) -> int:
     """Load, then answer until stopped."""
     model = str(args.model)
     engine = Engine(EngineConfig(model=model.removeprefix(PREFIX), drafter=args.drafter,
-                                 drafter_model=args.drafter_model, max_nodes=args.max_nodes))
+                                 drafter_model=args.drafter_model, max_nodes=args.max_nodes,
+                                 kv_bits=args.kv_bits or None))
     completer = TreeCompleter(engine, name=model, context=int(args.context), rule=args.accept)
     handler = Handler.configured(name="TreeServer", completer=completer)
     httpd = Server((DEFAULT_HOST, int(args.port)), handler)
+    say(engine.kv_note, flush=True)
     say(f"serving {model} with the {args.drafter} drafter on "
         f"http://{DEFAULT_HOST}:{args.port}/v1/chat/completions", flush=True)
     try:
@@ -104,6 +107,9 @@ COMMANDS = Group(
              help="the DFlash or MTP head's weights"),
         flag("--max-nodes", type=int, default=32, metavar="N",
              help="the most tree nodes one pass verifies (default: 32)"),
+        flag("--kv-bits", type=int, default=DEFAULT_KV_BITS, metavar="BITS",
+             help=f"bits the attention KV cache is stored in (default: {DEFAULT_KV_BITS}); "
+                  "0 keeps f16. Recurrent layers keep their state as it is"),
         flag("--accept", default=DEFAULT_RULE, metavar="RULE",
              help=f"acceptance rule when sampling: lossless or ratio:theta=T "
                   f"(default: {DEFAULT_RULE})"),

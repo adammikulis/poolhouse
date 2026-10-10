@@ -23,6 +23,7 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.hub.modelfile import scan_gguf
+from poolhouse.serve import kvcache
 from poolhouse.units import human_bytes
 
 __all__ = ["Check", "Preflight", "PreflightFailed", "Report", "read_gguf_header",
@@ -483,8 +484,9 @@ def draft_kv_estimate_bytes(
     """Bytes of KV cache the draft head this spec names keeps, at the spec's context.
 
     0 when no head is named, or its file is not on this machine to read. llama.cpp stores
-    the head's cache at f16 unless ``spec_draft_type_k/v`` say otherwise, whatever the
-    target's own cache type is.
+    the head's cache at f16 unless told otherwise; poolhouse tells it q8_0 unless
+    ``spec_draft_type_k/v`` say otherwise (`poolhouse.serve.kvcache`), whatever the target's
+    own cache type is.
     """
     ref = str(getattr(spec, "draft", "") or "")
     if not ref:
@@ -499,8 +501,12 @@ def draft_kv_estimate_bytes(
         meta = (read_header or read_gguf_header)(path)
     except (OSError, ValueError, KeyError, struct.error):
         return 0
-    type_k = str(getattr(spec, "spec_draft_type_k", "") or "f16")
-    type_v = str(getattr(spec, "spec_draft_type_v", "") or type_k)
+    try:
+        target = (read_header or read_gguf_header)(Path(str(spec.model)))
+    except (OSError, ValueError, KeyError, struct.error):
+        target = {}
+    kept = kvcache.effective(spec, target)
+    type_k, type_v = kept.draft_k or "f16", kept.draft_v or kept.draft_k or "f16"
     context = int(getattr(spec, "context", 0) or 0)
     per_token = _head_kv_per_token(meta, type_k, type_v)
     if per_token:
@@ -541,7 +547,7 @@ def _measured_fit_check(spec, limit_bytes: int,
 
     every = (fits or records)()
     found = fit_for(str(spec.model), every,
-                    cache_type=spec.cache_type_k or spec.cache_type_v, spec=spec.spec_type)
+                    cache_type=kvcache.effective(spec).said, spec=spec.spec_type)
     if found is None:
         if spec.rope_scaling != "yarn":
             return None
@@ -584,9 +590,12 @@ def wrong_cache_types(spec, binary: str | Path, *,
     skipped, the way an unreadable ``--help`` is.
     """
     reader = values
+    kept = kvcache.effective(spec)
+    effective = {"cache_type_k": kept.k, "cache_type_v": kept.v,
+                 "spec_draft_type_k": kept.draft_k, "spec_draft_type_v": kept.draft_v}
     wrong = []
     for flag, field_name in CACHE_TYPE_FLAGS:
-        asked = str(getattr(spec, field_name, "") or "")
+        asked = str(effective.get(field_name, ""))
         allowed = reader(binary, flag) if asked else frozenset()
         if allowed and asked not in allowed:
             wrong.append(f"{flag} {asked} is not one of {', '.join(sorted(allowed))}")
@@ -672,7 +681,8 @@ def Preflight(spec, *, binary: str | Path, limit_bytes: int = 0,
         except Exception:  # noqa: BLE001 - already reported by the architecture check
             meta = {}
 
-    kv_bytes = _kv_estimate_bytes(meta, spec.context, spec.cache_type_k, spec.cache_type_v)
+    kept = kvcache.effective(spec, meta)
+    kv_bytes = _kv_estimate_bytes(meta, spec.context, kept.k or "f16", kept.v or "f16")
     report.kv_estimate_bytes = kv_bytes
     state_and_draft = (recurrent_state_bytes(meta) * max(1, spec.parallel)
                        + draft_kv_estimate_bytes(spec, read_header=read_header))

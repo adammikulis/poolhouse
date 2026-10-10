@@ -25,7 +25,7 @@ from poolhouse.ingest.extract import extract_unit, schema
 from poolhouse.log import say, warn
 from poolhouse.serve.backend import LlamaServerBackend
 from poolhouse.serve.binary import BinaryNotFound, find_binary
-from poolhouse.serve.mlx_tree import is_mlx
+from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.profile import profile_for, profiles
 from poolhouse.serve.serving import Config, Serving, Talking
 from poolhouse.sources import pdf

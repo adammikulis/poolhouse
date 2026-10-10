@@ -11,7 +11,7 @@ from pathlib import Path
 
 from poolhouse import hub, sentinel
 from poolhouse.serve.backend import ServerSpec, flags_of, help_of
-from poolhouse.serve.mlx_tree import is_mlx
+from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.preflight import read_gguf_header
 from poolhouse.serve.tensors import tensors_of
 

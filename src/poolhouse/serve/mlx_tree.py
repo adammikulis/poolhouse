@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from poolhouse import home, hub
 from poolhouse.hub import room
 from poolhouse.hub.modelfile import safetensors_header
+from poolhouse.serve import kvcache
 from poolhouse.serve.backend import (
     Lease,
     ServerBackend,
@@ -26,24 +29,14 @@ from poolhouse.serve.backend import (
     server_log,
 )
 from poolhouse.serve.binary import hub_environment
+from poolhouse.serve.mlxref import PREFIX
 from poolhouse.serve.preflight import Check, Report
 from poolhouse.spec import LAYOUTS
 
-__all__ = ["PREFIX", "MlxTreeBackend", "drafter_of", "is_mlx", "located", "report_for",
-           "resident_bytes"]
+__all__ = ["MlxTreeBackend", "drafter_of", "located", "report_for", "resident_bytes"]
 
-PREFIX = "mlx:"
 #: the node cap when a spec names none
 MAX_NODES = 32
-
-
-def is_mlx(model: str | Path) -> bool:
-    """Whether ``model`` names MLX weights: ``mlx:owner/repo`` or a directory with a config."""
-    text = str(model)
-    if text.startswith(PREFIX):
-        return True
-    where = home.expand(text)
-    return where.is_dir() and (where / "config.json").is_file()
 
 
 def located(model: str | Path) -> Path | None:
@@ -88,6 +81,31 @@ def resident_bytes(where: Path | None) -> int:
     return held
 
 
+def kv_bytes(config: Mapping[str, Any], context: int, bits: int | None) -> tuple[int, int, int]:
+    """``(bytes, attention layers, layers)`` of the KV cache for ``context`` tokens.
+
+    Only attention layers keep a KV cache; a recurrent layer's state is not quantised and not
+    counted here. A ``bits``-bit cache stores ``bits / 8`` bytes a value plus a 16-bit scale
+    and bias per ``GROUP_SIZE`` values; ``None`` is f16, 2 bytes. 0 bytes when the config does
+    not say how wide the heads are.
+    """
+    text = config.get("text_config") or config
+    layers = int(text.get("num_hidden_layers") or 0)
+    kinds = text.get("layer_types")
+    if kinds:
+        each = sum(kind == "full_attention" for kind in kinds)
+    elif text.get("full_attention_interval"):
+        each = layers // int(text["full_attention_interval"])
+    else:
+        each = layers
+    heads = int(text.get("num_key_value_heads") or text.get("num_attention_heads") or 0)
+    width = int(text.get("head_dim") or 0)
+    if not width and text.get("num_attention_heads"):
+        width = int(text.get("hidden_size") or 0) // int(text["num_attention_heads"])
+    per_value = 2.0 if not bits else bits / 8 + 4 / 64
+    return int(2 * each * heads * width * context * per_value), each, layers
+
+
 def report_for(spec: ServerSpec, *, limit_bytes: int = 0) -> Report:
     """What can be known before the load: weights present, a layout for them, and the fit."""
     report = Report()
@@ -101,6 +119,14 @@ def report_for(spec: ServerSpec, *, limit_bytes: int = 0) -> Report:
         known = kind in LAYOUTS
         report.checks.append(Check("layout", known, f"model_type {kind!r}"
                                    + ("" if known else " has no tree-verification layout")))
+        kept = kvcache.effective(spec)
+        held, each, layers = kv_bytes(
+            json.loads((weights / "config.json").read_text(encoding="utf-8")),
+            int(spec.context), kept.bits)
+        report.kv_estimate_bytes = held
+        report.checks.append(Check(
+            "kv cache", True, f"{kept.said}: {held / 2**30:.2f}G at {spec.context:,} tokens on "
+            f"{each} of {layers} layers (recurrent state is not quantised and not counted)"))
     try:
         kind = drafter_of(spec.draft)
         report.checks.append(Check("drafter", True, kind))
@@ -110,9 +136,9 @@ def report_for(spec: ServerSpec, *, limit_bytes: int = 0) -> Report:
     report.weights_bytes = resident_bytes(weights)
     drafted = resident_bytes(located(spec.draft)) if kind in ("dflash", "mtp") else 0
     if limit_bytes and report.weights_bytes:
-        wanted = report.weights_bytes + drafted
+        wanted = report.weights_bytes + drafted + report.kv_estimate_bytes
         report.checks.append(Check("fit", wanted <= limit_bytes,
-                                   f"{wanted / 2**30:.1f}G of weights against "
+                                   f"{wanted / 2**30:.1f}G of weights and cache against "
                                    f"{limit_bytes / 2**30:.1f}G this machine allows"))
     return report
 
@@ -127,7 +153,8 @@ class MlxTreeBackend(ServerBackend):
         argv = [sys.executable, "-m", "poolhouse.serve.mlx_tree_server", str(spec.model),
                 "--port", str(spec.port), "--context", str(spec.context),
                 "--drafter", kind,
-                "--max-nodes", str(spec.spec_draft_max or MAX_NODES)]
+                "--max-nodes", str(spec.spec_draft_max or MAX_NODES),
+                "--kv-bits", str(kvcache.effective(spec).bits or 0)]
         if kind in ("dflash", "mtp"):
             argv += ["--drafter-model", str(spec.draft).removeprefix(PREFIX)]
         return argv

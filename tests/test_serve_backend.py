@@ -281,11 +281,12 @@ class TestMemoryFlags:
     so a preflight's fit estimate can read the cache type back, and so a bench can vary
     them the way it varies everything else through ``ServerSpec``."""
 
-    def test_none_on_every_field_emits_nothing(self, tmp_path):
+    def test_a_spec_that_names_nothing_gets_the_default_cache_and_no_load_mode(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
             ServerSpec(model="m.gguf"))
-        for flag in ("--cache-type-k", "--cache-type-v", "--load-mode"):
-            assert flag not in argv, flag
+        assert "--load-mode" not in argv
+        assert argv[argv.index("--cache-type-k") + 1] == "q8_0"
+        assert argv[argv.index("--cache-type-v") + 1] == "q8_0"
 
     def test_cache_types_carry_their_values(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
@@ -675,6 +676,7 @@ class TestDraftCacheType:
 
         binary = fake_binary(tmp_path, help_text=HELP)
         spec = ServerSpec(model=write_gguf(tmp_path / "model.gguf", {}),
+                          draft=write_gguf(tmp_path / "draft.gguf", {}),
                           spec_draft_type_k="q3_K", spec_draft_type_v="q8_0")
         said = wrong_cache_types(spec, binary, values=values_of)
         assert len(said) == 1

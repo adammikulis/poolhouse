@@ -21,12 +21,13 @@ from pathlib import Path
 from poolhouse import hub
 from poolhouse.hub import header
 from poolhouse.hub.probe import MachineMemory
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE, flash_attention_likely
 from poolhouse.serve.preflight import _head_kv_per_token, _kv_estimate_bytes, recurrent_state_bytes
 from poolhouse.ui.verdict import THRESHOLDS, verdict_of
 
 __all__ = ["DEFAULT_KV", "Estimate", "Meter", "Setup", "estimate", "estimate_meta", "max_context", "meters", "rating", "verdict"]
 
-DEFAULT_KV = "q8_0"
+DEFAULT_KV = DEFAULT_KV_CACHE
 """The KV cache type assumed unless one is asked for."""
 
 MIB = 1024**2
@@ -41,9 +42,6 @@ YELLOW_AT = THRESHOLDS.yellow_at
 RED_AT = THRESHOLDS.red_at
 """A placement turns yellow at this share of the memory it goes in, and red at this one; the
 numbers are `poolhouse.ui.verdict`'s, which the bars that draw it read too."""
-
-HIGH_ATTENTION_HEADS = (64, 80, 96, 112, 128, 192, 256, 512)
-
 
 def split_kv(kind: str) -> tuple[str, str]:
     """``(K, V)`` from ``q8_0`` or ``q8_0/f16``."""
@@ -116,16 +114,6 @@ def _layers(found: Mapping[str, object]) -> tuple[str, int]:
 def _heads(found: Mapping[str, object]) -> int:
     arch, _ = _layers(found)
     return int(found.get(f"{arch}.attention.head_count") or 0)  # type: ignore[call-overload]
-
-
-def flash_attention_likely(found: Mapping[str, object]) -> bool:
-    """Whether the header's attention head sizes are ones llama.cpp's flash kernels cover."""
-    arch, _ = _layers(found)
-    dim = found.get(f"{arch}.attention.key_length")
-    if not dim:
-        embed, heads = found.get(f"{arch}.embedding_length"), _heads(found)
-        dim = int(embed) // heads if embed and heads else 0  # type: ignore[call-overload]
-    return int(dim or 0) in HIGH_ATTENTION_HEADS  # type: ignore[call-overload]
 
 
 def compute_bytes(found: Mapping[str, object], weights: int, context: int, batch: int,

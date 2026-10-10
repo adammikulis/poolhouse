@@ -21,9 +21,30 @@ caches it on first use, so there is no separate fetching step.
 
 ## Serving a model
 
-Managed serving uses `q8_0` for both K and V caches, including the prediction head.
-`--kv f16` and `--draft-kv f16` select full precision explicitly. These settings do not
-change the model weights' quantization.
+Managed serving uses `q8_0` for both K and V caches, including the prediction head, on
+every backend that can: `ServerSpec`, `Serving`, `poolhouse-serve up`, measured profiles
+(one that pins `f16` keeps it; one that names nothing gets `q8_0`) and the memory admission
+(`poolhouse.serve.kvcache.DEFAULT_KV_CACHE` is the one place the default lives).
+`--kv f16` and `--draft-kv f16` select full precision explicitly, `--kv q4_0` opts into
+the smaller cache, and `--kv K/V` sets the halves apart. These settings do not change the
+model weights' quantization. `up` and `status` print the types a server really has.
+
+Why `q8_0`: it stores 34 bytes per 32 values, about half of f16, at near-f16 quality
+(measured 2026-09-02 on Flash-Next: F1 unchanged, faster). K is more sensitive to
+quantisation than V, so `q4_0` is an opt-in for people who need the memory; `f16` is for
+people who need full precision. A quantised V cache needs flash attention, which `up` turns on;
+where flash attention is off or a model's head size has no kernel for it, V stays `f16` (K
+stays quantised) and `up` prints one line saying so. A draft head's own cache follows the
+same default and the same fallback. A recurrent layer's state (DeltaNet, Mamba) is not a KV
+cache and is never quantised. An embedding or reranking server keeps no chat cache and gets
+no flag.
+
+MLX weights (`mlx:` models, tree-verified decoding) store the attention caches in 8 bits
+(group size 64) by default: `--kv q8_0` is 8 bits, `q4_0` is 4, `f16` keeps them unquantised.
+MLX has one width for K and V together, so a pair that differs uses the higher of the two and
+`up` says so. Only plain attention layers quantise; a hybrid model's recurrent layers keep
+their state, and the server's log says how many of its layers did. A layout whose attention has
+no quantised path, or heads narrower than 64 values, stays f16 with the reason printed.
 
 Memory estimates read the GGUF's KV head count, key and value dimensions, attention
 layers and recurrent state sizes. The first-run Qwen3.8 27B offer uses its published

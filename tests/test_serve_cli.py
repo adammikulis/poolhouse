@@ -56,7 +56,8 @@ def serving(state):
         fake = FakeLlamaServer(Served(**held))
         started.append(fake)
         if recorded:
-            record_server(state, fake.port, model=MODEL)
+            record_server(state, fake.port, model=MODEL, cache_type_k="q8_0",
+                          cache_type_v="q8_0")
         return fake
 
     yield start

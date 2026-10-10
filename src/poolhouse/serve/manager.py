@@ -23,7 +23,16 @@ from poolhouse.files import write_json
 from poolhouse.hub import free_memory, installed_for, room as machine_room
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
-from poolhouse.serve import admission, exit_guard, guarded, mtp, provenance, quant_guard, unmanaged
+from poolhouse.serve import (
+    admission,
+    exit_guard,
+    guarded,
+    kvcache,
+    mtp,
+    provenance,
+    quant_guard,
+    unmanaged,
+)
 from poolhouse.serve.admitting import STATE_LOCK_TIMEOUT_S, Admitting
 from poolhouse.serve.backend import (
     Lease,
@@ -54,7 +63,8 @@ from poolhouse.serve.leases import (
     same_process,
 )
 from poolhouse.serve.matching import model_matches, serving_mismatch
-from poolhouse.serve.mlx_tree import MlxTreeBackend, is_mlx
+from poolhouse.serve.mlx_tree import MlxTreeBackend
+from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free, reclaim_port
 from poolhouse.serve.process import (
     cmdline_digest,
@@ -705,6 +715,7 @@ class ServerManager(Admitting):
 
     def _record(self, spec: ServerSpec, info: ServerInfo,
                 iq: quant_guard.IqQuant | None = None) -> None:
+        kept = kvcache.effective(spec)
         self._mine[str(spec.port)] = {
             "port": info.port,
             "pid": info.pid,
@@ -716,8 +727,10 @@ class ServerManager(Admitting):
             "embedding": bool(spec.embedding),
             "mmproj": bool(spec.mmproj),
             "mtp": info.mtp,
-            "cache_type_k": spec.cache_type_k,
-            "cache_type_v": spec.cache_type_v,
+            "cache_type_k": kept.k,
+            "cache_type_v": kept.v,
+            "kv_cache": kept.said,
+            "kv_notes": list(kept.notes),
             "draft": str(spec.draft or ""),
             "spec_type": spec.spec_type,
             "chat_template_file": str(spec.chat_template_file or ""),

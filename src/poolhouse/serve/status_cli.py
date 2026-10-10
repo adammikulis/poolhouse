@@ -191,6 +191,9 @@ def cmd_status(args: argparse.Namespace) -> int:
             " per slot")
         say(f"  slots    {snapshot.slots if snapshot.slots is not None else 'not reported'}")
         say(f"  device   {snapshot.device or 'not recorded'}")
+        if snapshot.kv_cache:
+            say(f"  kv cache {snapshot.kv_cache}"
+                + "".join(f"  ({note})" for note in snapshot.kv_notes))
         say(f"  lease    {_lease_line(snapshot)}")
         if snapshot.iq_warning:
             say(f"  WARNING  {status_note(snapshot.iq_warning)}")

@@ -12,6 +12,7 @@ from poolhouse.command import flag, option
 from poolhouse.log import say, warn
 from poolhouse.serve import charts, fit as fit_mod, ops
 from poolhouse.serve.backend import ServerSpec, parse_context
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.ops import Refused
 from poolhouse.serve.serving import split_cache_type
 
@@ -60,11 +61,11 @@ OPTIONS = [
          help="measure it with a draft head as well -- a path, an hf: reference, or "
               "'auto'. A draft *model* keeps its own cache at the same context, which "
               "is the real cost of drafting with one"),
-    flag("--kv", default="q8_0", metavar="TYPE",
+    flag("--kv", default=DEFAULT_KV_CACHE, metavar="TYPE",
          help="measure with the main model's KV cache stored as this: q8_0 (the "
               "default), f16, q4_0. A record is kept per cache type, because that is "
               "what changes the per-token cost"),
-    flag("--draft-kv", default="q8_0", metavar="TYPE",
+    flag("--draft-kv", default=DEFAULT_KV_CACHE, metavar="TYPE",
          help="the head's own KV cache: q8_0 by default, f16 for full precision. "
               "One value sets both halves; K/V sets them separately"),
     flag("--room", action="append", default=[], metavar="SIZE",
@@ -147,8 +148,9 @@ def _measure_each(args: argparse.Namespace, *, room: int) -> int:
     draft_k, draft_v = split_cache_type(str(getattr(args, "draft_kv", "") or ""))
     spec = ServerSpec(model="", port=args.port, context=args.context,
                       parallel=max(1, int(getattr(args, "parallel", 1) or 1)),
-                      cache_type_k=kv, cache_type_v=kv,
-                      spec_draft_type_k=draft_k, spec_draft_type_v=draft_v, warmup=False)
+                      cache_type_k=kv or DEFAULT_KV_CACHE, cache_type_v=kv or DEFAULT_KV_CACHE,
+                      spec_draft_type_k=draft_k or DEFAULT_KV_CACHE,
+                      spec_draft_type_v=draft_v or DEFAULT_KV_CACHE, warmup=False)
     try:
         recorded = ops.measure(
             list(args.model), spec=spec, backend=backend, timeout=args.timeout, room=room,

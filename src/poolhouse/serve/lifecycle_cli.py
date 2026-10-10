@@ -14,13 +14,14 @@ from poolhouse import hub, limits as limits_mod, platform
 from poolhouse.client import thinking
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
-from poolhouse.serve import build, holding, ops, quant_guard
+from poolhouse.serve import build, holding, kvcache, ops, quant_guard
 from poolhouse.serve.backend import ServerFailed, ServerSpec, parse_context
 from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.ops import Refused
 from poolhouse.serve.profile import ASK, WORKLOADS, profile_for, resolved
 from poolhouse.serve.quant_guard import BlockedQuant
-from poolhouse.serve.serving import said_cache, split_cache_type
+from poolhouse.serve.serving import split_cache_type
 from poolhouse.serve.weights import DEFAULT_TIMEOUT_S
 from poolhouse.units import human_bytes, parse_duration
 
@@ -113,6 +114,7 @@ def _asked_spec(args: argparse.Namespace, model: str, extra: tuple[str, ...]) ->
     """The spec ``up`` was asked for, before 'auto' is answered."""
     kv = str(getattr(args, "kv", "") or "")
     draft_k, draft_v = split_cache_type(str(getattr(args, "draft_kv", "") or ""))
+    kv_k, kv_v = split_cache_type(kv)
     draft = str(getattr(args, "draft", "") or "")
     plain = draft.lower() == "none" or str(getattr(args, "spec", "") or "").lower() == "none"
     return ServerSpec(
@@ -121,8 +123,9 @@ def _asked_spec(args: argparse.Namespace, model: str, extra: tuple[str, ...]) ->
         mtp=False if plain or not getattr(args, "mtp", True) else None,
         mmproj=str(getattr(args, "mmproj", "") or "") or None,
         spec_type="" if plain else str(getattr(args, "spec", "") or ""),
-        cache_type_k=kv, cache_type_v=kv,
-        spec_draft_type_k=draft_k, spec_draft_type_v=draft_v,
+        cache_type_k=kv_k or DEFAULT_KV_CACHE, cache_type_v=kv_v or DEFAULT_KV_CACHE,
+        spec_draft_type_k=draft_k or DEFAULT_KV_CACHE,
+        spec_draft_type_v=draft_v or DEFAULT_KV_CACHE,
         kv_unified=getattr(args, "kv_unified", None),
         embedding=bool(getattr(args, "embedding", False)),
         reranking=bool(getattr(args, "reranking", False)),
@@ -230,15 +233,18 @@ OPTIONS_UP = [
     flag("--reranking", action="store_true",
          help="serve a reranker (llama-server --reranking, answering /v1/rerank); it is "
               "never shared with a chat or embedding lease"),
-    flag("--kv", default="q8_0", metavar="TYPE",
-         help="what the KV cache is stored as (default q8_0: measured 2026-09-02 on "
-              "Flash-Next, F1 unchanged, faster, half the cache; the recurrent state is "
-              "not the KV and stays); f16 is the full-size cache"),
+    flag("--kv", default="", metavar="TYPE",
+         help="what the KV cache is stored as. Default q8_0 for K and V (about half the "
+              "memory of f16 at near-f16 quality; measured 2026-09-02 on Flash-Next, F1 "
+              "unchanged, faster); f16 or q4_0 override it, and K/V sets the halves apart. "
+              "Without flash attention, or on a head size with no kernel, V stays f16 and "
+              "`up` says so; the recurrent state is not the KV and stays; MLX weights use "
+              "the higher of the two as its bit width"),
     flag("--kv-unified", action=argparse.BooleanOptionalAction, default=None,
          help="one cache pool for every slot, masked per sequence, rather than a cache "
               "per slot; --no-kv-unified asks for the latter outright. Left unset, the "
               "build decides"),
-    flag("--draft-kv", default="q8_0", metavar="TYPE",
+    flag("--draft-kv", default="", metavar="TYPE",
          help="the head's own KV cache: q8_0 by default, f16 for full precision. "
               "One value sets both halves; K/V sets them separately"),
     flag("--mtp", action=argparse.BooleanOptionalAction, default=True,
@@ -344,6 +350,7 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
         return 3 if isinstance(exc, BlockedQuant) else 2
 
     told = ""
+    kept = kvcache.effective(spec)
     if held.status == "ready":
         told = ops.announce(args.root, replace(spec, port=held.port))
         if args.port and int(args.port) != held.port:
@@ -354,8 +361,8 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
                         "holder_pid": held.pid, "model": str(spec.model),
                         "context": spec.context, "parallel": spec.parallel,
                         "draft": str(spec.draft or ""),
-                        "draft_cache_type": said_cache(spec.spec_draft_type_k,
-                                                       spec.spec_draft_type_v),
+                        "kv_cache": kept.said, "kv_notes": list(kept.notes),
+                        "draft_cache_type": kept.draft_said,
                         "announced": told.startswith("announced")}, indent=2))
         return 0
     if held.status != "ready":
@@ -370,8 +377,9 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
         say("  no measured profile: served with the defaults the broker uses for this shape")
     if spec.draft:
         say(f"  guessing ahead with {str(spec.draft).rsplit('/', 1)[-1]}")
-    if spec.spec_draft_type_k or spec.spec_draft_type_v:
-        say(f"  the draft's own cache stored as {said_cache(spec.spec_draft_type_k, spec.spec_draft_type_v)}")
+    say(f"  KV cache {kept.said}" + "".join(f"  ({note})" for note in kept.notes))
+    if kept.draft_said:
+        say(f"  the draft's own cache stored as {kept.draft_said}")
     if spec.mmproj:
         say(f"  reading pictures with {str(spec.mmproj).rsplit('/', 1)[-1]}")
     if spec.spec_type:

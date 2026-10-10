@@ -10,6 +10,7 @@ from pathlib import Path
 from poolhouse.command import flag
 from poolhouse.log import say, warn
 from poolhouse.serve import ops, wired_cli
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.ops import Refused
 from poolhouse.units import human_bytes
 
@@ -27,7 +28,7 @@ OPTIONS_MEMORY = [
          help="size the wiring limit for this model (id, name or path)"),
     flag("--ctx", type=int, default=131072, metavar="N",
          help="with --for: context length in tokens (default: %(default)s)"),
-    flag("--kv", default="q8_0", choices=["q8_0", "f16", "q4_0"],
+    flag("--kv", default=DEFAULT_KV_CACHE, choices=["q8_0", "f16", "q4_0"],
          help="with --for: KV cache type (default: %(default)s)"),
     flag("--mtp", action=argparse.BooleanOptionalAction, default=True,
          help="with --for: serve with the MTP head, sharing the model's weights (default: on)"),

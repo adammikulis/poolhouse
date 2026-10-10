@@ -36,6 +36,7 @@ from typing import Any
 
 from poolhouse.asking import Asking
 from poolhouse.records import Records
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 
 __all__ = [
     "ASK",
@@ -194,10 +195,10 @@ class Profile:
         each, note = (_alone_context(self, served) if taken == 1
                      else (self.slot_context, ""))
         return Serving(model=served, port=port, slots=taken,
-                     slot_context=each, cache_type=self.cache_type or "q8_0",
+                     slot_context=each, cache_type=self.cache_type or DEFAULT_KV_CACHE,
                      draft=draft, draft_n_max=self.spec_draft_max,
                      draft_p_min=self.spec_p_min,
-                     draft_cache_type=self.draft_cache_type or "q8_0",
+                     draft_cache_type=self.draft_cache_type or DEFAULT_KV_CACHE,
                      spec_type=self.spec_type, mmproj=seeing,
                      reasoning_budget=self.reasoning_budget, build=self.build,
                      extra_args=tuple(self.extra_args), note=note)
@@ -526,7 +527,7 @@ def _fit_for(profile: Profile, *, room: int) -> Any | None:
     from poolhouse.serve.fit import records as fit_records
 
     name = _plain(profile.model)
-    want_cache = profile.cache_type or "f16"
+    want_cache = profile.cache_type or DEFAULT_KV_CACHE
     every = [f for f in fit_records(room=room) if _plain(f.model) == name]
     matched = [f for f in every if f.cache_type == want_cache and f.spec == profile.spec_type]
     if matched:

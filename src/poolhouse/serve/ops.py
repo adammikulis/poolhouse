@@ -27,6 +27,7 @@ from poolhouse.serve import (
     broker_wire,
     chat_template as chat_template_mod,
     fit as fit_mod,
+    kvcache,
     measuring as measuring_mod,
     preflight as preflight_mod,
     profile as profile_mod,
@@ -43,7 +44,8 @@ from poolhouse.serve.backend import (
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.leases import lease_file, orphaned, recorded_servers
 from poolhouse.serve.manager import ServerManager
-from poolhouse.serve.mlx_tree import is_mlx, report_for
+from poolhouse.serve.mlx_tree import report_for
+from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, server_pids_on_port
 from poolhouse.serve.process import every_server, machine_memory, pid_exists
 from poolhouse.units import human_bytes, parse_duration
@@ -107,6 +109,8 @@ class Snapshot:
     log: str | None = None
     iq_warning: str | None = None
     device: str = ""
+    kv_cache: str = ""
+    kv_notes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +243,8 @@ def look(port: int, records: dict[int, dict], served: Mapping[int, Any] | None =
         holder_running=pid_exists(owner),
         recorded=bool(entry),
         device=str(entry.get("device") or ""),
+        kv_cache=str(entry.get("kv_cache") or ""),
+        kv_notes=tuple(str(n) for n in entry.get("kv_notes") or ()),
         load_s=_float_or_none(entry.get("load_s")),
         warmup_s=_float_or_none(entry.get("warmup_s")),
         log=str(entry["log"]) if entry.get("log") else None,
@@ -571,7 +577,7 @@ def measure(names: Sequence[str], *, spec: ServerSpec, backend: LlamaServerBacke
             measured, model=Path(str(named).rsplit("/", 1)[-1]).name,
             weights=preflight_mod._shards_of(one)[0] or weight_of(model),
             draft=preflight_mod._ref_bytes(head or None), room=room,
-            cache_type=one.cache_type_k or measured.cache_type, spec=kind,
+            cache_type=kvcache.effective(one).said or measured.cache_type, spec=kind,
             context=one.context, parallel=one.parallel,
             # from the header, not the log: how much of this file is a gathered table
             table_bytes=tensors_mod.table_bytes(model),
