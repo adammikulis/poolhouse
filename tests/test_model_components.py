@@ -143,7 +143,7 @@ def test_addon_route_refuses_untrusted_requests_before_component_lookup(method):
     ui.authed.return_value = False
     ui.may_setup.return_value = "remote setup refused"
     with patch.object(components, "catalogue") as catalogue, patch.object(
-            routes, "in_cluster", return_value=False), patch.object(routes.Router, "send") as send:
+            routes, "in_pool", return_value=False), patch.object(routes.Router, "send") as send:
         routes.Router(ui, handler).run()
         assert send.call_args.args[0] == 403
         catalogue.assert_not_called()

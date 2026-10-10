@@ -12,9 +12,9 @@ fn build(d: &Dev, id: &str, seq: u64, wire: u32) {
     d.node.lock().unwrap().build = Build { id: id.into(), seq, wire, pinned: false };
 }
 
-fn pair() -> (Dev, Dev) {
+fn join() -> (Dev, Dev) {
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     (a, b)
 }
 
@@ -28,7 +28,7 @@ fn row(d: &Dev, other: &Dev) -> Value {
 
 #[test]
 fn hello_carries_the_build_and_the_wire_version() {
-    let (a, b) = pair();
+    let (a, b) = join();
     build(&b, "bbbb", 9, 1);
     let mut c = PeerClient::connect(&a.net.me, b.addr(), Some(&b.fp())).unwrap();
     let hello = c.call(&json!({"op": "hello"})).unwrap();
@@ -37,7 +37,7 @@ fn hello_carries_the_build_and_the_wire_version() {
 
 #[test]
 fn a_device_that_hears_of_a_newer_build_is_stale_and_the_newer_one_is_not() {
-    let (a, b) = pair();
+    let (a, b) = join();
     build(&a, "aaaa", 5, 1);
     build(&b, "bbbb", 9, 1);
     a.net.sync_once().unwrap();
@@ -51,7 +51,7 @@ fn a_device_that_hears_of_a_newer_build_is_stale_and_the_newer_one_is_not() {
 
 #[test]
 fn a_catching_up_device_takes_no_lease_until_it_is_current() {
-    let (a, b) = pair();
+    let (a, b) = join();
     build(&a, "aaaa", 5, 1);
     build(&b, "bbbb", 9, 1);
     a.net.sync_once().unwrap();
@@ -68,7 +68,7 @@ fn a_catching_up_device_takes_no_lease_until_it_is_current() {
 
 #[test]
 fn a_pinned_stale_device_still_takes_work_and_is_shown_pinned() {
-    let (a, b) = pair();
+    let (a, b) = join();
     build(&a, "aaaa", 5, 1);
     a.node.lock().unwrap().build.pinned = true;
     build(&b, "bbbb", 9, 1);
@@ -81,7 +81,7 @@ fn a_pinned_stale_device_still_takes_work_and_is_shown_pinned() {
 
 #[test]
 fn a_peer_on_another_wire_version_is_shown_needing_an_update_with_the_fix_and_is_not_synced() {
-    let (a, b) = pair();
+    let (a, b) = join();
     build(&a, "aaaa", 5, 1);
     build(&b, "bbbb", 9, 2);
     a.say("demo", &a.token, "from a");
@@ -106,7 +106,7 @@ fn pool_status_counts_the_leases_so_an_updater_can_tell_whether_the_device_may_b
 
 #[test]
 fn a_peer_with_no_build_fields_is_an_older_wire_and_shown_needing_an_update() {
-    let (a, b) = pair();
+    let (a, b) = join();
     a.node.lock().unwrap().observe_build(&b.fp(), &json!({"pool": "x"}));
     let theirs = row(&a, &b);
     assert_eq!(theirs["build_state"], "needs update");

@@ -89,8 +89,8 @@ fn a_node_killed_with_sigkill_while_taking_rows_recovers_and_converges() {
     for i in 0..ROWS {
         a.call("post", "demo", &at, json!({"kind": "message", "fields": {"type": "status", "body": format!("a row {i}")}}));
     }
-    let code = a.call("pair_accept", "", &at, json!({}))["code"].as_str().unwrap().to_string();
-    b.call("pair_start", "", &bt, json!({"host": "127.0.0.1", "port": a.port(), "passphrase": code}));
+    let code = a.call("add_device", "", &at, json!({}))["code"].as_str().unwrap().to_string();
+    b.call("join_pool", "", &bt, json!({"host": "127.0.0.1", "port": a.port(), "passphrase": code}));
     let copy = b.log_of(&a_origin);
 
     // B starts taking A's rows; kill it the moment its copy has begun to grow.

@@ -5,7 +5,7 @@
 
 Under policy `open` two devices on the same network, each with its node running, hear each other's signed beacon and enrol
 one another on first contact; each enrolment is recorded (by `open`, with the certificate fingerprint) and can be revoked
-with `member_revoke`. Under `secure` nothing enrols without a pairing code. `pool-join-check` (scripts/) walks every step
+with `member_remove`. Under `secure` nothing enrols without a join code. `pool-join-check` (scripts/) walks every step
 of this on one device and says which fails and what to change.
 """
 
@@ -28,7 +28,7 @@ DEFAULT_BEACON_PORT = 7448
 BOARD = "pool"
 SESSION = "pool-join"
 POLICIES = ("open", "secure")
-PAIR_CODE_ENV = "POOLHOUSE_PAIR_CODE"
+JOIN_CODE_ENV = "POOLHOUSE_JOIN_CODE"
 POLL_S = 1.0
 
 
@@ -40,7 +40,7 @@ EXPLANATION = """\
 This turns on the node's network so this device can find and join another one on the same network.
   What:  the node listens on TCP {port} and sends and listens for a small signed beacon on UDP {beacon_port}.
   Why:   so two of your devices on the same wifi or cable can pool without a code (join policy open),
-         or be paired with one (secure). Nothing leaves this network.
+         or be joined with one (secure). Nothing leaves this network.
   What you will see: your computer may ask to allow this program to find devices on your local network
          (macOS: Local Network; Windows: a firewall prompt). Allow it. It asks once, only now.
   Undo:  python -m poolhouse.node_join join --policy secure, or stop the node with python -m poolhouse.node_launch stop.
@@ -151,26 +151,26 @@ def _join(state: Path, a) -> dict:
 
 GROUP.add("join", _run(_join),
     help="start the node with its network on and set the join policy",
-    options=[STATE, flag("--policy", default="open", choices=POLICIES, help="open: devices on this network enrol by themselves; secure: a pairing code"),
+    options=[STATE, flag("--policy", default="open", choices=POLICIES, help="open: devices on this network enrol by themselves; secure: a join code"),
              flag("--wait", type=float, default=0.0, help="seconds to wait for another device to appear"),
              flag("--yes", action="store_true", help="agree to turning the network on without being asked"),
              flag("--binary", default="", help="run this poolhouse-node binary instead of the selected runtime's")])
 def _invite(state: Path, a) -> dict:
-    return call(state, "pair_accept", {"ttl_s": a.ttl}, token=_token(state))
+    return call(state, "add_device", {"ttl_s": a.ttl}, token=_token(state))
 
 
-def _pair(state: Path, a) -> dict:
-    code = a.code or os.environ.get(PAIR_CODE_ENV, "")
+def _join_with_code(state: Path, a) -> dict:
+    code = a.code or os.environ.get(JOIN_CODE_ENV, "")
     if not code:
-        raise PoolError(f"give the code the other device printed: --code, or {PAIR_CODE_ENV} in the environment")
-    return call(state, "pair_start", {"host": a.host, "port": a.port, "passphrase": code}, token=_token(state))
+        raise PoolError(f"give the code the other device printed: --code, or {JOIN_CODE_ENV} in the environment")
+    return call(state, "join_pool", {"host": a.host, "port": a.port, "passphrase": code}, token=_token(state))
 
 
-GROUP.add("invite", _run(_invite), help="make a short-lived pairing code for another device to join this pool with (policy secure)",
+GROUP.add("invite", _run(_invite), help="make a short-lived join code for another device to join this pool with (policy secure)",
     options=[STATE, flag("--ttl", type=int, default=300, help="seconds the code stays valid")])
-GROUP.add("pair", _run(_pair), help="join the pool of the device that printed a pairing code",
+GROUP.add("join-with-code", _run(_join_with_code), help="join the pool of the device that printed a join code",
     options=[STATE, flag("--host", required=True, help="that device's address"), flag("--port", type=int, default=DEFAULT_PORT),
-             flag("--code", default="", help=f"the code (else {PAIR_CODE_ENV})")])
+             flag("--code", default="", help=f"the code (else {JOIN_CODE_ENV})")])
 GROUP.add("status", _run(lambda state, a: status(state)), help="the pool, its members and the beacon's counts", options=[STATE])
 
 main = GROUP.run

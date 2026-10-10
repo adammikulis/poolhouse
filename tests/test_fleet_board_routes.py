@@ -40,7 +40,7 @@ def inbox(worker):
 
 def test_local_person_posts_dm_and_thread_without_exposing_credentials(board):
     server, node, worker = board
-    me = person.seat(Path.cwd(), node.client)
+    me = person.session(Path.cwd(), node.client)
     code, directory, _ = server.call('/ui/board/agents')
     assert code == 200 and directory['owner_id'] == me.name
     assert [(a['id'], a['role']) for a in directory['agents']] == [(node.worker.name, 'agent')]
@@ -60,7 +60,7 @@ def test_local_person_posts_dm_and_thread_without_exposing_credentials(board):
 
 def test_joined_session_is_required_before_the_persons_session_is_used(board, monkeypatch):
     server, _, worker = board
-    monkeypatch.setattr(routes, 'in_cluster', lambda _: True)
+    monkeypatch.setattr(routes, 'in_pool', lambda _: True)
     assert post(server, {'to': 'builder', 'body': 'Unsigned'}, cookie='')[0] == 401
     cookie = server.ui.sessions.cookie_header(server.ui.sessions.open('person', 'launch-ticket'))
     assert post(server, {'to': board[1].worker.name, 'body': 'Signed'}, cookie=cookie)[0] == 200
@@ -109,7 +109,7 @@ def test_oversized_post_and_unsupported_methods_do_not_mutate(board):
 
 def test_ack_marks_only_an_existing_visible_message_in_its_scope(board):
     server, node, _ = board
-    me = person.seat(Path.cwd(), node.client)
+    me = person.session(Path.cwd(), node.client)
     _, sent, _ = post(server, {'to': node.worker.name, 'body': 'Inspect this run.'})
     headers = {'Origin': f'http://127.0.0.1:{server.port}', 'Sec-Fetch-Site': 'same-origin'}
     def ack(doc):

@@ -61,7 +61,7 @@ class Denied(PermissionError):
 
 
 class BoardUnavailable(Denied):
-    """The project board could not be reached or authenticated: local work carries on with a
+    """The board could not be reached or authenticated: local work carries on with a
     warning, and the claim records attribute once it is back."""
 
 
@@ -96,11 +96,11 @@ def _hash(secret: str) -> str:
 
 
 def _outranks(stored: dict, incoming: dict) -> bool:
-    """Whether a stored record rests on observation or an authenticated pairing that an agent's
-    own report must not replace. A report that is itself paired by the daemon may refresh it."""
-    if incoming.get('verification') != 'agent-reported' or incoming.get('peer_verification') == 'paired':
+    """Whether a stored record rests on observation or an authenticated joining that an agent's
+    own report must not replace. A report that the daemon itself verified may refresh it."""
+    if incoming.get('verification') != 'agent-reported' or incoming.get('member_verification') == 'joined':
         return False
-    return stored.get('verification') in ('paired', 'local-observed') or stored.get('peer_verification') == 'paired'
+    return stored.get('verification') in ('joined', 'local-observed') or stored.get('member_verification') == 'joined'
 
 
 class Registry:
@@ -213,8 +213,8 @@ class Registry:
             if not entry or entry.get('role') != AGENT or entry.get('parent') or entry.get('presentation'):
                 return
             device = entry.get('device', {}).get('device_id')
-            peers = [row.get('presentation', {}) for row in agents.values()]
-            ordinal = max((row.get('ordinal', 0) for row in peers), default=0) + 1
+            members = [row.get('presentation', {}) for row in agents.values()]
+            ordinal = max((row.get('ordinal', 0) for row in members), default=0) + 1
             entry['presentation'] = {'device': device, 'ordinal': ordinal, 'kind': 'unknown'}
             self._save(agents)
 
@@ -496,10 +496,10 @@ class Registry:
             raise ValueError("invalid project agent name")
         if (not isinstance(project, dict) or not re.fullmatch("[a-f0-9]{32}", project.get("key", ""))
                 or not isinstance(project.get("name"), str) or len(project["name"]) > 256
-                or set(project) != {"key", "name", "cluster", "cluster_id"}
-                or not isinstance(project.get("cluster"), str) or not 1 <= len(project["cluster"]) <= 128
-                or not isinstance(project.get("cluster_id"), str)
-                or not re.fullmatch("[a-f0-9]{64}", project["cluster_id"])):
+                or set(project) != {"key", "name", "pool", "pool_id"}
+                or not isinstance(project.get("pool"), str) or not 1 <= len(project["pool"]) <= 128
+                or not isinstance(project.get("pool_id"), str)
+                or not re.fullmatch("[a-f0-9]{64}", project["pool_id"])):
             raise ValueError("invalid project capability scope")
         if not math.isfinite(ttl_s) or not 0 < ttl_s <= 30 * 86_400:
             raise ValueError("project agent lifetime must be between zero and 30 days")
@@ -513,27 +513,27 @@ class Registry:
             secret = secrets.token_urlsafe(32)
             now = self.clock()
             agents[name] = {"role": AGENT, "hash": _hash(secret), "created": now,
-                            "minted_by": "dev-cluster", "expires": now + ttl_s,
+                            "minted_by": "automatic-pool", "expires": now + ttl_s,
                             "revoked": False, "project": dict(project), "can": list(CAPS)}
             self._save(agents)
         return name, f"{PREFIX}{name}.{secret}"
 
-    def renew_dev_project(self, token: str, project_id: str, cluster: str, cluster_id: str) -> Identity:
-        """Bind a live automatic project capability to its authenticated Dev cluster."""
+    def renew_dev_project(self, token: str, project_id: str, pool: str, pool_id: str) -> Identity:
+        """Bind a live automatic project capability to its authenticated pool."""
         if (not re.fullmatch("[a-f0-9]{32}", project_id)
-                or not isinstance(cluster, str) or not 1 <= len(cluster) <= 128
-                or not re.fullmatch("[a-f0-9]{64}", cluster_id)):
-            raise ValueError("invalid project cluster scope")
+                or not isinstance(pool, str) or not 1 <= len(pool) <= 128
+                or not re.fullmatch("[a-f0-9]{64}", pool_id)):
+            raise ValueError("invalid project pool scope")
         with held(self.path.with_name("agents.lock")):
             who = self.authenticate(token)
             agents = self._load()
             entry = agents[who.id]
             scope = entry.get("project", {})
             if (who.role != AGENT or who.parent or entry.get("session_device")
-                    or entry.get("minted_by") != "dev-cluster"
-                    or scope.get("key") != project_id or not scope.get("cluster_id")):
-                raise Denied("cluster renewal requires this project's live automatic Dev agent")
-            entry["project"] = {**scope, "cluster": cluster, "cluster_id": cluster_id}
+                    or entry.get("minted_by") != "automatic-pool"
+                    or scope.get("key") != project_id or not scope.get("pool_id")):
+                raise Denied("pool renewal requires this project's live automatic Dev agent")
+            entry["project"] = {**scope, "pool": pool, "pool_id": pool_id}
             self._save(agents)
             return who
 

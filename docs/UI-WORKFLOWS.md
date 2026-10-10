@@ -22,7 +22,7 @@ Commands execute in the daemon files root with the existing job environment and 
 | Supervised, tool caller, decision model, PPO training | Training |
 | Sensors, controllers, live native environments | Gym |
 | Measurement sweeps, history, capacity and cost charts | Benchmarks |
-| Peers, availability, clusters, fleet coordination | Fleet |
+| Devices, availability, pools, fleet coordination | Fleet |
 | Decision ask, probabilities, evaluation, calibration, fetching | Tools decision lab |
 | Graph store and graph server | Tools: poolhouse-store, poolhouse-graph |
 | World model, ingestion, walking, retrieval surfaces | Tools: poolhouse-world, poolhouse-ingest, poolhouse-walk, poolhouse-surface |
@@ -48,7 +48,7 @@ artifacts contain the authoritative episode record.
 ## Files and jobs
 
 Data paths resolve under the daemon files root and reject traversal or escaped symlinks.
-Uploads create new UTF-8 files up to 10 MB. Previews are limited to 1 MB. Use the peer file-transfer
+Uploads create new UTF-8 files up to 10 MB. Previews are limited to 1 MB. Use the device file-transfer
 CLI for larger files. Training paths are relative to the same files root. Gym training stores its
 own artifacts under the Gym cache.
 
@@ -148,7 +148,7 @@ and any blocking owner or reason. Publishing is inspection-only: it offers no re
 permission controls. Open sections stay open while task data refreshes. The authorized
 project shows its folder name; expand it to inspect the full path.
 
-Designated peer assignees and reviewers need an existing person-set project grant matching
+Designated device assignees and reviewers need an existing person-set project grant matching
 the task's permission metadata. Listing an identity in a task creates no new authority.
 An actual worker cannot review its own proposal. Execution paths come from the verified
 scheduler allocation, never from task descriptions or browser-supplied permission metadata.

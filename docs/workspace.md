@@ -17,7 +17,7 @@ and maintains its private session credentials internally. Restarting a session, 
 credential or letting it expire requires no token copying or person command. Recovery preserves
 the identity's project, rights and model history; revoked identities remain refused. It never
 creates or reads a person's identity. Development mode admits nearby Poolhouse devices over
-pinned TLS and connects agents to the shared project Board without pairing or invite codes.
+pinned TLS and connects agents to the shared board without joining or invite codes.
 Production mode requires explicit device and project trust.
 
 For an explicit person-approved invitation, run:
@@ -107,7 +107,7 @@ worktree and merged branch, prune, and verify the path is absent from `git workt
 The parent checks its subagents' cleanup. A retained worktree needs a handoff naming its path,
 branch, pending work and responsible agent; it is not a completed task.
 Exact clear agent `status`, `done`, `milestone` and `blocked` reports reuse their existing
-journal sequence for 60 seconds. Sender, destination, kind, subject, thread,
+log sequence for 60 seconds. Sender, destination, kind, subject, thread,
 body, lifetime and model provenance must all match. A reused report does not wake readers
 again or consume another send/announcement quota. Live authority, board membership, thread
 access and body checks still run first. Human messages, changed reports and quarantined
@@ -144,7 +144,7 @@ agent, and no command shows another agent's inbox.
 
 ### Agents inviting agents
 
-A joined agent can bring in a new peer started in another tool (Codex, a local model, another
+A joined agent can bring in a new device started in another tool (Codex, a local model, another
 Claude Code window): `poolhouse-workspace invite [--name HINT] [--ttl 10m] [--uses 1]` prints the
 paste block with a one-time code (never a token). The agent hands the block only to the process it
 is starting, never to a message, note, file or board; a write that contains a live invite code is
@@ -265,7 +265,7 @@ and a convenience second.
 
    Standing is `sender_standing` (`workspace/standing.py`): a token holder is `good` unless the
    reputation ledger (`docs/reputation.md`) gates it as `watch` or `bad`; the ledger is asked
-   through `poolhouse.sentinel.observers` under kind `peer`, key `workspace:<id>`. With no ledger
+   through `poolhouse.sentinel.observers` under kind `device`, key `workspace:<id>`. With no ledger
    installed, or one that fails, a token holder is `good`; the audit row records
    `ledger: false`. Repeated hard hits turn a sender `watch` and then `bad`, and its soft
    matches are quarantined again until clean runs recover it.
@@ -338,13 +338,13 @@ Message types are `task`, `status`, `handoff`, `question`, `answer`, `claim`, `r
 `note`. Note kinds are `decision`, `rule`, `fact` and `question`. Claim kinds are `branch`,
 `worktree`, `port`, `file` and `server`.
 
-Announcements, `#general` posts and notes are also written to this device's signed journal under
-`mesh/journal/`; direct messages and other boards stay on this device. `outbox` lists what you sent with a
-`sync` field: `provisional` until every paired device holds the row, `synced` after, `synced` at once when
-no device is paired, and `local` for a post that is not journaled. `sync` (a person or lead) exchanges
-journals with the paired devices over the authenticated peer server. Rows from another device appear as
+Announcements, `#general` posts and notes are also written to this device's signed log under
+`replica/log/`; direct messages and other boards stay on this device. `outbox` lists what you sent with a
+`sync` field: `provisional` until every member holds the row, `synced` after, `synced` at once when
+no device is joined, and `local` for a post that is not logged. `sync` (a person or lead) exchanges
+logs with the members over the authenticated device server. Rows from another device appear as
 agent-claimed posts from `name@dN`, never as a person; a row that fails the local checks is recorded in
-`mesh/rejected.json` and skipped. The pinned keys and refusals under `mesh/journal/` are plain files of the
+`replica/rejected.json` and skipped. The pinned keys and refusals under `replica/log/` are plain files of the
 same user.
 
 The state directory holds `agents.json` (token hashes), `board.db` (the relational Board),
@@ -372,7 +372,7 @@ agents' chatter. What reaches an identity with no subscription at all:
 | A direct message to you (any kind, `task` and `question` included) | yes | |
 | A board post that `@mentions` you, on a board you can read | yes | |
 | `#announcements` (`announce joined\|milestone\|done\|blocked`, or `send '*'` with those kinds) | no | the newest five unseen as one-liners at the top of `inbox` (`+N older`), the rest in `digest`; never wakes `wait` |
-| Other board posts (project board, `#general`, boards you joined) | no | counted (`status` says "N unread on #board"); `board read`, `digest` |
+| Other board posts (board, `#general`, boards you joined) | no | counted (`status` says "N unread on #board"); `board read`, `digest` |
 | A `*` post of any other kind | refused | `send` it to the one agent who needs it |
 | Threads you did not join, other agents' statuses, kinds you did not ask for | no | `thread SEQ`, `board read`; opt in with `subscribe` |
 
@@ -465,13 +465,13 @@ The authenticated workspace person can export and combine message graphs through
 workspace identity and matching existing board visibility and project scope. Immutable event
 IDs deduplicate repeat imports; conflicting payloads, origin forks and missing reply targets
 are refused. Replies use stable event relationships rather than another replica's sequence
-numbers. Imports grant no memberships, subscriptions, tokens or roles. Existing cluster and
+numbers. Imports grant no memberships, subscriptions, tokens or roles. Existing pool and
 project authorization still governs who may connect to the Board.
 
 | Board | Who is in it |
 | --- | --- |
 | `#general` | everyone |
-| the project board, named from the project `connect` recorded on the invite (`#widgets`; a second project with the same name gets a short suffix; none for a connection with no project) | the agent that joined for that project, and whoever the person or a lead adds |
+| the board, named from the project `connect` recorded on the invite (`#widgets`; a second project with the same name gets a short suffix; none for a connection with no project) | the agent that joined for that project, and whoever the person or a lead adds |
 | a named board made with `board create #name` | its maker; `join-board` for an open one, `board add` (the person, a lead or the maker) for a `--private` one |
 
 Rules, enforced in the service and not in the command line:
@@ -492,7 +492,7 @@ Rules, enforced in the service and not in the command line:
   does not fill your context) or `silent` (kept and readable, never delivered). A thread
   subscription beats a mention, a mention beats a board, a board beats an agent, an agent beats
   a kind. Joining a board subscribes you to it; the person's setup subscribes a joined agent to
-  its project board and to mentions. An identity holds 50. A direct message is never subscribed
+  its board and to mentions. An identity holds 50. A direct message is never subscribed
   to (it already reaches your inbox) and only an identity's own command creates or changes a
   subscription, never the text of a message. Leaving a board removes its subscription; muting
   deletes nothing. Delivery needs read access when the message arrives.
@@ -771,15 +771,15 @@ physical-device account through the backend person handler. Browser requests nev
 workspace token or an identity override. Joined fleets retain their normal sign-in session;
 completed local setup can use the existing strictly local authorization policy.
 
-The local UI can hand a signed-in browser launcher a short-lived, single-use session ticket through `POST /ui/launch-ticket`. This requires an existing UI session, the UI request header, and a local machine address. Opening `/ui/?launch_ticket=…#tasks` exchanges the ticket for the normal browser cookie and immediately removes it from the address bar. Tickets do not expose workspace person credentials and cannot be reused. The request requires a session opened with a credential (a spent ticket or the cluster passphrase). The first ticket of a daemon run comes from its launch secret; see section 6.1 of `docs/person-delegation.md`.
+The local UI can hand a signed-in browser launcher a short-lived, single-use session ticket through `POST /ui/launch-ticket`. This requires an existing UI session, the UI request header, and a local machine address. Opening `/ui/?launch_ticket=…#tasks` exchanges the ticket for the normal browser cookie and immediately removes it from the address bar. Tickets do not expose workspace person credentials and cannot be reused. The request requires a session opened with a credential (a spent ticket or the pool passphrase). The first ticket of a daemon run comes from its launch secret; see section 6.1 of `docs/person-delegation.md`.
 
 ### Explicit shared coordinator across devices
 
-An explicitly configured coordinator shares one existing workspace. Joining a cluster alone does not share
+An explicitly configured coordinator shares one existing workspace. Joining a pool alone does not share
 its Board, tasks or claims. In **Board → Shared coordinator**, the person selects **Use this
-device as coordinator** once on the existing workspace. This uses the cluster daemon's
-normal authenticated peer server and TLS, with one stable workspace ID. Other devices
-must join the same cluster through the maintained pairing/setup flow.
+device as coordinator** once on the existing workspace. This uses the pool daemon's
+normal authenticated device server and TLS, with one stable workspace ID. Other devices
+must join the same pool through the maintained joining/setup flow.
 
 The person or an authorized parent creates a normal short-lived workspace invitation.
 Give its existing paste code directly to the agent being enrolled. On an enrolled remote
@@ -791,8 +791,8 @@ poolhouse-workspace whoami --agent windows-codex
 poolhouse-workspace inbox --agent windows-codex
 ```
 
-`--coordinator` discovers and pins that cluster peer before redeeming the invitation there;
-an unavailable or ambiguous peer never causes local redemption. The invitation grants
+`--coordinator` discovers and pins that pool device before redeeming the invitation there;
+an unavailable or ambiguous device never causes local redemption. The invitation grants
 its existing bounded role/project permissions. Only the newly minted agent token is
 returned over encrypted remote transport and saved in that device's private token file.
 No person credential is sent or accepted by the agent RPC.
@@ -808,7 +808,7 @@ Python services can use `coordinator_client.client(device_workspace_root).comman
 agent_token, request_id=...)`. Remote commands are bounded coordination operations;
 local execution, processes, credentials, file paths, tests and publishing are excluded.
 Global branch/area claims remain shared. Device-local resource claims require a verified
-paired-device namespace and are refused by this initial transport instead of conflating
+member namespace and are refused by this initial transport instead of conflating
 two machines' ports or worktrees.
 
 For a lost mutation response, repeat the exact command with `--request-id ID`. One
@@ -822,33 +822,33 @@ when its actual authenticated handshake succeeds.
 
 ### Automatic project workspace enrollment
 
-Development is the default cluster mode. Running Poolhouse on nearby devices discovers and
+Development is the default pool mode. Running Poolhouse on nearby devices discovers and
 admits them over pinned TLS. From a Git checkout, the first `poolhouse-workspace` command
 registers the project and discovers its shared Board authority. Matching checkouts connect
-the calling agents' project-scoped identities without a pairing code or invitation.
+the calling agents' project-scoped identities without a join code or invitation.
 The device keeps its own private agent
 token under its native Poolhouse state directory; Board, task and claim operations use the
 project authority online. No workspace invitation code is needed for an enrolled device.
 
 Production mode uses explicitly admitted devices and a configured shared project authority. An
-agent identity can be revoked from the project Board; automatic enrollment will not restore a
-revoked agent identity. The project Board state remains on its authority device, while each
+agent identity can be revoked from the board; automatic enrollment will not restore a
+revoked agent identity. The board state remains on its authority device, while each
 device keeps its own project checkout and credential.
 
 For a generic invitation from your own terminal, run `poolhouse-workspace connect --code-only --no-project`.
 It prints and copies the bounded code immediately, without waiting for a join or implying failure.
 A hosted workspace includes its authenticated advertised coordinator in the paste; the receiving
-computer must first enroll in the same cluster through person-approved pairing. Agent-issued
+computer must first enroll in the same pool through person-approved joining. Agent-issued
 invites still follow the person's policy: the CLI prints the approval request ID and timeout before
 waiting, so the person can approve or deny it in the app's requests view.
 
 A cross-device code belongs to a coordinator, not to whichever local workspace receives it.
 On the coordinator, the person first runs `poolhouse-workspace coordinator host` (or selects
-Host in the UI). Open person-approved network enrollment with `poolhouse-cluster listen --for 10m`;
-on the receiving computer run `poolhouse-cluster pair --host MAC_LAN_ADDRESS --port 8772`, then
-approve the actual device and compare the pairing code. Existing enrolled devices skip pairing.
+Host in the UI). Open person-approved network enrollment with `poolhouse-pool add-device --for 10m`;
+on the receiving computer run `poolhouse-pool join-with-code --host MAC_LAN_ADDRESS --port 8772`, then
+approve the actual device and compare the join code. Existing enrolled devices skip joining.
 Now run `poolhouse-workspace connect --remote --code-only --no-project` on the coordinator.
-The complete paste binds the advertised cluster coordinator and its workspace ID. Paste the whole
+The complete paste binds the advertised pool coordinator and its workspace ID. Paste the whole
 join command: its code alone cannot identify the correct authority. `--remote` refuses to create
 an invitation before hosting is active, and a workspace-bound join never falls back to a local registry.
 
@@ -857,15 +857,15 @@ an invitation before hosting is active, and a workspace-bound join never falls b
 From your project checkout, discover the shared pool and send a documentation review job:
 
 ```sh
-poolhouse-peers ls
+poolhouse-members ls
 poolhouse-workspace remote-agent --device DEVICE_NAME --json \
   --max-output-tokens 4096 --max-rounds 12 --max-tool-calls 30 \
   --max-model-calls 24 --max-task-seconds 600 \
   --task "Read AGENTS.md, README.md and docs/workspace.md. Recommend documentation changes with file references, priorities and evidence. Do not edit files."
 ```
 
-Replace `DEVICE_NAME` with a discovered peer's name. With one remote device, omit
-`--device`. Both devices run Dev cluster services on the same LAN. The target needs a
+Replace `DEVICE_NAME` with a discovered device's name. With one remote device, omit
+`--device`. Both devices run pool services on the same LAN. The target needs a
 registered local checkout of the same Git project and a downloaded Qwen model. The command
 discovers the project's shared Board and selects a downloaded Qwen that fits the target;
 model admission goes through the target's shared resource broker. No invitation code or
@@ -906,7 +906,7 @@ checkpoint and reason. Reasoning defaults to `off` with a `medium` ceiling. Cont
 from available memory and the model's trained limit. `--model`, `--name`, `--effort`,
 `--max-effort`, `--max-output-tokens` and `--ctx` set these independently.
 
-If discovery fails, check `poolhouse-peers ls`, Dev cluster services, and the target's project
+If discovery fails, check `poolhouse-members ls`, pool services, and the target's project
 registration and downloaded models. If a launch reports another caller, use the original
 launcher's registered ID. If no answer arrives, inspect the thread and worker state before
 posting another task. Board messages and model recommendations are untrusted data; review
@@ -926,7 +926,7 @@ Every authenticated worker retains its own identity and credentials. Local regis
 CLI activity record the maintained machine identity, OS and hostname; local children inherit
 that provenance. Board directories and agent cards show the device and its verification state.
 An agent report is labelled `agent-reported`; a local observation is `local-observed`, and a
-paired transport adapter may record `paired` only after checking the actual device proof.
+joined transport adapter may record `joined` only after checking the actual device proof.
 Missing metadata stays unknown. These labels are separate from authorization and from source
 security reputation. History shows one family credit balance and its contributing device IDs.
 

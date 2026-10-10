@@ -29,7 +29,7 @@ from .discovery import (
     derive_token,
     discover,
     key_path,
-    load_cluster_key,
+    load_pool_key,
     primary_ip,
 )
 from .onboard.lan import secure_scheme
@@ -40,26 +40,26 @@ if TYPE_CHECKING:
 CHUNK = 8 << 20          # 8MB: big enough to be fast, small enough to resume cheaply
 DIGEST_HEADER = "X-Poolhouse-SHA256"
 
-# A read is safe to send again; an unreachable peer is not worth waiting on twice.
+# A read is safe to send again; an unreachable member is not worth waiting on twice.
 READS = Retry(tries=3, when_unreachable=False)
 
 
-def device_address(peer, declared: str) -> bool:
+def device_address(member, declared: str) -> bool:
     """Whether an origin names the authenticated device endpoint."""
-    beacon = peer.beacon
+    beacon = member.beacon
     if not beacon or not beacon.cert or not beacon.machine:
         return False
     try:
-        observed, named = urllib.parse.urlsplit(peer.base_url), urllib.parse.urlsplit(declared)
+        observed, named = urllib.parse.urlsplit(member.base_url), urllib.parse.urlsplit(declared)
         if (named.scheme != 'https' or observed.scheme != 'https' or named.port != observed.port
                 or named.username or named.password or named.path not in ('', '/')
                 or named.query or named.fragment):
             return False
-        if declared.rstrip('/') == peer.base_url.rstrip('/'):
+        if declared.rstrip('/') == member.base_url.rstrip('/'):
             return True
         if beacon.machine != home.machine_id():
             return False
-        return same_machine_host(peer.base_url, declared)  # this machine's beacon under loopback or LAN name
+        return same_machine_host(member.base_url, declared)  # this machine's beacon under loopback or LAN name
     except ValueError:
         return False
 
@@ -86,23 +86,23 @@ def range_total(content_range: str) -> int | None:
         return None
 
 
-class PeerError(ServerError):
-    """One request to one peer did not work."""
+class MemberError(ServerError):
+    """One request to one member did not work."""
 
 
-def _peer_error(where: str, exc: ServerError) -> PeerError:
-    """One peer's failure, said the way its callers read it."""
+def _member_error(where: str, exc: ServerError) -> MemberError:
+    """One member's failure, said the way its callers read it."""
     if isinstance(exc, ServerUnreachable):
-        return PeerError(f"{where} -> unreachable: {exc}")
-    return PeerError(f"{where} -> {exc.status}: {exc.body[:400]}",
+        return MemberError(f"{where} -> unreachable: {exc}")
+    return MemberError(f"{where} -> {exc.status}: {exc.body[:400]}",
                      status=exc.status, body=exc.body, headers=exc.headers)
 
 
-class Peer:
+class Member:
     def __init__(self, base_url: str, token: str, *, timeout: float = 60.0,
                  beacon: Beacon | None = None) -> None:
         if not secure_scheme(base_url):
-            raise ValueError(f"a peer is reached over https, or http on this machine only: {base_url}")
+            raise ValueError(f"a member is reached over https, or http on this machine only: {base_url}")
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.timeout = timeout
@@ -115,15 +115,15 @@ class Peer:
     # -- discovery -------------------------------------------------------
     @classmethod
     def discover(cls, *, timeout_s: float = 2.0, key: bytes | None = None,
-                 cluster_key_path: Path | str | None = None,
+                 pool_key_path: Path | str | None = None,
                  timeout: float = 60.0, group: str | None = None,
-                 port: int | None = None) -> list[Peer]:
-        """Every daemon on the LAN that proves it holds the cluster key."""
-        key = key or load_cluster_key(cluster_key_path)
+                 port: int | None = None) -> list[Member]:
+        """Every daemon on the LAN that proves it holds the pool key."""
+        key = key or load_pool_key(pool_key_path)
         if key is None:
             raise DiscoveryError(
-                f"no cluster key at {key_path(cluster_key_path)} -- "
-                "run 'poolhouse-peers init' here and copy the key to each box")
+                f"no pool key at {key_path(pool_key_path)} -- "
+                "run 'poolhouse-members init' here and copy the key to each box")
         token = derive_token(key)
         return [cls(b.base_url, token, timeout=timeout, beacon=b)
                 for b in discover(key, timeout_s=timeout_s, group=group, port=port)]
@@ -131,18 +131,18 @@ class Peer:
     @classmethod
     def find_one(cls, *, require: str = "", name: str = "",
                  timeout_s: float = 2.0, key: bytes | None = None,
-                 cluster_key_path: Path | str | None = None,
+                 pool_key_path: Path | str | None = None,
                  timeout: float = 60.0, group: str | None = None,
-                 port: int | None = None) -> Peer:
-        """The one peer to use, or an error saying exactly why there isn't one."""
-        peers = cls.discover(timeout_s=timeout_s, key=key,
-                             cluster_key_path=cluster_key_path, timeout=timeout,
+                 port: int | None = None) -> Member:
+        """The one member to use, or an error saying exactly why there isn't one."""
+        members = cls.discover(timeout_s=timeout_s, key=key,
+                             pool_key_path=pool_key_path, timeout=timeout,
                              group=group, port=port)
-        if not peers:
+        if not members:
             raise DiscoveryError(
-                "no peers answered -- is traind running there, is it on this "
-                "LAN, and does it hold the same cluster key?")
-        pool = peers
+                "no members answered -- is traind running there, is it on this "
+                "LAN, and does it hold the same pool key?")
+        pool = members
         if name:
             pool = [p for p in pool if p.beacon and p.beacon.name == name]
         if require:
@@ -151,12 +151,12 @@ class Peer:
                                      or require in (p.beacon.device.get("backends") or []))]
         if not pool:
             seen = ", ".join(f"{p.name} {sorted(p.beacon.device.get('backends') or [])}"
-                             for p in peers if p.beacon)
+                             for p in members if p.beacon)
             raise DiscoveryError(
-                f"no peer matches name={name!r} require={require!r}; found: {seen}")
+                f"no member matches name={name!r} require={require!r}; found: {seen}")
         if len(pool) > 1:
             raise DiscoveryError(
-                "several peers match, name one: "
+                "several members match, name one: "
                 + ", ".join(p.name for p in pool))
         return pool[0]
 
@@ -170,7 +170,7 @@ class Peer:
                                   headers=headers, token=self.token,
                                   timeout=timeout or self.timeout, retry=retry)
         except ServerError as exc:
-            raise _peer_error(f"{method} {path}", exc) from None
+            raise _member_error(f"{method} {path}", exc) from None
         return reply.status, reply.body, reply.headers
 
     def _json(self, method: str, path: str, payload: Any = None) -> Any:
@@ -186,21 +186,21 @@ class Peer:
         return json.loads(body or b"{}")
 
     def members(self, group: str, rows: list[dict]) -> dict:
-        """Give this peer our record of a cluster's devices and take back its own."""
+        """Give this member our record of a pool's devices and take back its own."""
         return self._json("POST", "/fleet/v1/members", {"group": group, "rows": rows})
 
     def availability(self, action: str = "", **fields: Any) -> dict:
-        """Read or change when this peer takes work."""
+        """Read or change when this member takes work."""
         if not action:
             return self._json("GET", "/availability")
         return self._json("POST", "/availability", {"action": action, **fields})
 
     def models(self) -> list[dict]:
-        """Model files this peer holds."""
+        """Model files this member holds."""
         return self._json("GET", "/models")["models"]
 
     def get_model(self, name: str, *, source: str = "") -> dict:
-        """Have this peer obtain a model, from the network or the internet."""
+        """Have this member obtain a model, from the network or the internet."""
         return self._json("POST", "/models/get", {"name": name, "source": source})
 
     def jobs(self) -> list[dict]:
@@ -238,17 +238,17 @@ class Peer:
             if job["state"] not in ("queued", "running"):
                 return job
             if deadline and time.time() > deadline:
-                raise PeerError(f"job {job_id} still {job['state']} after timeout")
+                raise MemberError(f"job {job_id} still {job['state']} after timeout")
             time.sleep(poll_s)
 
     # -- speech ----------------------------------------------------------
     def speech(self) -> dict:
-        """What this peer can hear and say: every engine it has, and which it would use."""
+        """What this member can hear and say: every engine it has, and which it would use."""
         return self._json("GET", "/speech/providers")
 
     def transcribe(self, audio: Path | str | bytes, *, language: str | None = None,
                    provider: str | None = None, timeout: float = 600.0) -> Transcript:
-        """Have this peer turn audio into text, so a machine with no speech model can still
+        """Have this member turn audio into text, so a machine with no speech model can still
         transcribe. ``audio`` is a path or the bytes of an audio file."""
         from poolhouse.speech.protocols import Segment, Transcript
 
@@ -318,10 +318,10 @@ class Peer:
                 if size is not None and start == size:
                     promote(partial, local)
                     return local
-                raise PeerError(
+                raise MemberError(
                     f"{partial} is {start} bytes but the remote file is "
                     f"{size}; delete it and pull again") from None
-            raise _peer_error(f"GET {route}{remote}", exc) from None
+            raise _member_error(f"GET {route}{remote}", exc) from None
 
         with resp:
             want = (resp.headers.get(DIGEST_HEADER) or "").strip().lower()
@@ -339,14 +339,14 @@ class Peer:
                         on_progress(done, total if total is not None else done)
         got = partial.stat().st_size
         if total is not None and got != total:
-            raise PeerError(
+            raise MemberError(
                 f"{remote}: got {got} of {total} bytes; left {partial.name} "
                 "in place to resume from")
         if want:
             actual = sha256_file(partial)
             if not hmac.compare_digest(actual, want):
                 partial.unlink(missing_ok=True)
-                raise PeerError(
+                raise MemberError(
                     f"{remote}: checksum mismatch (expected {want[:16]}..., "
                     f"got {actual[:16]}...); discarded the download")
         promote(partial, local)

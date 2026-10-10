@@ -32,7 +32,7 @@ __all__ = ["KINDS", "TRANSITIONS", "Holding", "Limits", "Record", "State", "Stor
            "fingerprint", "placeholder", "sentinel_dir"]
 
 KINDS = ("message", "tool_call", "tool", "session", "memory", "model", "artifact",
-         "binary", "config", "mcp_server", "credential", "peer", "server", "caller")
+         "binary", "config", "mcp_server", "credential", "member", "server", "caller")
 FILE_KINDS = ("model", "artifact", "binary", "config")
 TEXT_KINDS = ("message", "tool_call", "memory", "session")
 

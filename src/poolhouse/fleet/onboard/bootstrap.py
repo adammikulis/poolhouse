@@ -1,13 +1,13 @@
 """A machine with nothing installed asks for poolhouse; nobody pushes it.
 
-The owner runs ``poolhouse cluster bootstrap`` on a machine that has poolhouse. It serves, for a
+The owner runs ``poolhouse pool bootstrap`` on a machine that has poolhouse. It serves, for a
 few minutes, a page at an unguessable address on the LAN. The owner opens it on the new
 machine (typed, or scanned from a QR code drawn from `Offer.url`), reads what would be
 installed, and runs the one command the page shows. The address carries the offer's
 certificate fingerprint and the command pins that certificate; the installer is fixed text
 that checks the manifest digest printed on the page and each file's size and SHA-256 before it
-hands anything to pip. Offers carry program files only, never models and never a cluster key:
-joining a cluster is the pairing step, with a code, once poolhouse is installed.
+hands anything to pip. Offers carry program files only, never models and never a pool key:
+joining a pool is the join step, with a code, once poolhouse is installed.
 """
 
 from __future__ import annotations

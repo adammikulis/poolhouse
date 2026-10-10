@@ -20,7 +20,7 @@ fn both_ways(a: &Dev, b: &Dev) {
 #[test]
 fn a_task_of_another_device_counts_once_this_device_names_it_and_carries_its_makers_label() {
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     both_ways(&a, &b);
     let (maker, token) = b.session("demo", "b-maker");
     let made = b.ok("task_create", "demo", &token, json!({"title": "Remote work", "acceptance": ["It runs"]}));

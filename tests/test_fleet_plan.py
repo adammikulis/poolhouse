@@ -1,6 +1,6 @@
-"""``poolhouse-cluster plan``: which model each peer serves, and how many slots, for N users.
+"""``poolhouse-pool plan``: which model each member serves, and how many slots, for N users.
 
-Profiles, memory records and peers are invented; the command is driven through `join.main`
+Profiles, memory records and members are invented; the command is driven through `join.main`
 against daemons on loopback, and ``--apply`` against the real daemon handler over a
 llama-server that is a script. Every name is invented.
 """
@@ -17,18 +17,18 @@ from test_fleet_join import WORDS, FakeDaemon, _free_tcp, _free_udp
 from poolhouse.fleet import join as joining
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
-from poolhouse.fleet.discovery import Advertiser, Beacon, load_cluster_key
+from poolhouse.fleet.discovery import Advertiser, Beacon, load_pool_key
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.join import main
 from poolhouse.fleet.models import Models
 from poolhouse.fleet.plan import Room, fit_for, place, ranked, room_of, table
-from poolhouse.fleet.remote import Peer, PeerError
+from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.serving import Hosting, NoRoom, ServeSettings, Serving
 from poolhouse.http import Server
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.profile import Profile
 from poolhouse.testing.fakes import fake_llama_binary
-from tests.cluster_support import join as join_cluster
+from tests.pool_support import join as join_pool_by_passphrase
 
 G = 1 << 30
 M = 1 << 20
@@ -91,22 +91,22 @@ class TestRanking:
 
 
 class TestPlacing:
-    def test_three_users_all_get_the_best_model_on_the_roomy_peer(self):
+    def test_three_users_all_get_the_best_model_on_the_roomy_member(self):
         got = place(3, 16384, [SMALLER, ROOMY], PROFILES, FITS)
-        assert [(r.peer, r.model, r.slots) for r in got.rows] == [("roomy", BIG, 3)]
+        assert [(r.member, r.model, r.slots) for r in got.rows] == [("roomy", BIG, 3)]
         assert got.unplaced == 0 and got.placed == 3
         assert got.rows[0].used == 41 * G + 3 * 16 * G and got.rows[0].room == 96 * G
 
     def test_more_users_than_the_best_model_slots_go_to_a_smaller_model(self):
         got = place(5, 16384, [SMALLER, ROOMY], PROFILES, FITS)
-        assert [(r.peer, r.model, r.slots) for r in got.rows] == [
+        assert [(r.member, r.model, r.slots) for r in got.rows] == [
             ("roomy", BIG, 3), ("small", MID, 2)]
         assert got.unplaced == 0
         assert ("small", BIG, "room 24.0G < 41.0G loaded") in got.why
 
-    def test_a_tiny_peer_gets_the_small_model(self):
+    def test_a_tiny_member_gets_the_small_model(self):
         got = place(7, 16384, [TINY, SMALLER, ROOMY], PROFILES, FITS)
-        assert [(r.peer, r.model, r.slots) for r in got.rows] == [
+        assert [(r.member, r.model, r.slots) for r in got.rows] == [
             ("roomy", BIG, 3), ("small", MID, 3), ("tiny", SMALL, 1)]
         assert got.unplaced == 0
 
@@ -119,22 +119,22 @@ class TestPlacing:
         assert "4 user(s) without a slot" in text
         assert "small: quince-70b-Q4_K_M.gguf: room 24.0G < 41.0G loaded" in text
 
-    def test_no_peer_answering_is_the_reason_given(self):
+    def test_no_member_answering_is_the_reason_given(self):
         said: list[str] = []
         got = place(3, 16384, [], PROFILES, FITS, log=said.append)
         assert got.unplaced == 3 and got.rows == []
-        assert got.why == [("*", "*", "no peer answered")]
-        assert "no peer answered" in table(got)
-        assert any("no peer answered" in line for line in said)
+        assert got.why == [("*", "*", "no member answered")]
+        assert "no member answered" in table(got)
+        assert any("no member answered" in line for line in said)
 
-    def test_a_shorter_context_slots_everyone_on_one_peer(self):
+    def test_a_shorter_context_slots_everyone_on_one_member(self):
         long = place(5, 16384, [SMALLER, ROOMY], PROFILES, FITS)
         short = place(5, 4096, [SMALLER, ROOMY], PROFILES, FITS)
-        assert [r.peer for r in long.rows] == ["roomy", "small"]
-        assert [(r.peer, r.slots) for r in short.rows] == [("roomy", 5)]
+        assert [r.member for r in long.rows] == ["roomy", "small"]
+        assert [(r.member, r.slots) for r in short.rows] == [("roomy", 5)]
         assert short.rows[0].context == 4096
 
-    def test_a_peer_with_no_room_figure_is_named_once(self):
+    def test_a_member_with_no_room_figure_is_named_once(self):
         got = place(1, 16384, [Room("blank", 0)], PROFILES, FITS)
         assert got.rows == [] and got.unplaced == 1
         assert [w for w in got.why if w[2] == "room unknown"] == [("blank", "*",
@@ -149,22 +149,22 @@ class TestPlacing:
         got = place(5, 16384, [SMALLER, ROOMY], PROFILES, FITS)
         d = got.as_dict()
         assert d["placed"] == 5 and d["unplaced"] == 0
-        assert d["rows"][0]["peer"] == "roomy" and d["rows"][0]["slots"] == 3
-        assert {"peer": "small", "model": BIG, "reason": "room 24.0G < 41.0G loaded"} in d["why"]
+        assert d["rows"][0]["member"] == "roomy" and d["rows"][0]["slots"] == 3
+        assert {"member": "small", "model": BIG, "reason": "room 24.0G < 41.0G loaded"} in d["why"]
 
 
 class TestPreference:
-    """`--prefer quality` gives a peer the best model that fits; `--prefer slots` the
+    """`--prefer quality` gives a member the best model that fits; `--prefer slots` the
     model that slots the most of the users still waiting."""
 
-    def test_quality_slots_one_on_a_peer_where_a_smaller_model_slots_three(self):
+    def test_quality_slots_one_on_a_member_where_a_smaller_model_slots_three(self):
         got = place(3, 16384, [MIDSIZE], PROFILES, FITS, prefer="quality")
-        assert [(r.peer, r.model, r.slots) for r in got.rows] == [("midsize", BIG, 1)]
+        assert [(r.member, r.model, r.slots) for r in got.rows] == [("midsize", BIG, 1)]
         assert got.unplaced == 2 and got.prefer == "quality"
 
     def test_slots_takes_the_smaller_model_and_everyone_gets_one(self):
         got = place(3, 16384, [MIDSIZE], PROFILES, FITS, prefer="slots")
-        assert [(r.peer, r.model, r.slots) for r in got.rows] == [("midsize", MID, 3)]
+        assert [(r.member, r.model, r.slots) for r in got.rows] == [("midsize", MID, 3)]
         assert got.unplaced == 0 and got.prefer == "slots"
 
     def test_quality_is_what_no_preference_asks_for(self):
@@ -195,8 +195,8 @@ class TestPreference:
     def test_the_table_and_the_data_name_the_preference(self):
         good = place(3, 16384, [MIDSIZE], PROFILES, FITS, prefer="quality")
         many = place(3, 16384, [MIDSIZE], PROFILES, FITS, prefer="slots")
-        assert "--prefer quality: the best measured model that fits each peer" in table(good)
-        assert "--prefer slots: the model that slots the most users on each peer" in table(many)
+        assert "--prefer quality: the best measured model that fits each member" in table(good)
+        assert "--prefer slots: the model that slots the most users on each member" in table(many)
         assert good.as_dict()["prefer"] == "quality" and many.as_dict()["prefer"] == "slots"
 
 
@@ -208,8 +208,8 @@ def udp() -> int:
 
 @pytest.fixture
 def key(tmp_path) -> Path:
-    path = tmp_path / "cluster.key"
-    join_cluster(WORDS, group="home", path=path)
+    path = tmp_path / "pool.key"
+    join_pool_by_passphrase(WORDS, group="home", path=path)
     return path
 
 
@@ -233,62 +233,62 @@ def _device(room: int) -> dict:
 class TestCommand:
     def test_it_prints_the_split_as_json(self, key, udp, daemons, measured, monkeypatch,
                                          capsys):
-        raw = load_cluster_key(key)
+        raw = load_pool_key(key)
         roomy, small = _free_tcp(), _free_tcp()
         daemons.append(FakeDaemon(roomy, raw, udp, name="roomy", device=_device(96 * G)))
         daemons.append(FakeDaemon(small, raw, udp, name="small", device=_device(24 * G)))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--cluster-key", str(key), "--port", str(roomy), "plan", "--users", "5",
+        code = main(["--pool-key", str(key), "--port", str(roomy), "plan", "--users", "5",
                      "--context", "16384", "--json", "--timeout", "1"])
         got = json.loads(capsys.readouterr().out)
         assert code == 0
-        assert [(r["peer"], r["model"], r["slots"]) for r in got["rows"]] == [
+        assert [(r["member"], r["model"], r["slots"]) for r in got["rows"]] == [
             ("roomy", BIG, 3), ("small", MID, 2)]
         assert got["unplaced"] == 0 and got["applied"] == []
 
     def test_it_prints_a_table_and_says_who_is_without_a_slot(
             self, key, udp, daemons, measured, monkeypatch, capsys):
-        raw = load_cluster_key(key)
+        raw = load_pool_key(key)
         small = _free_tcp()
         daemons.append(FakeDaemon(small, raw, udp, name="small", device=_device(24 * G)))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--cluster-key", str(key), "--port", str(small), "plan", "--users", "4",
+        code = main(["--pool-key", str(key), "--port", str(small), "plan", "--users", "4",
                      "--timeout", "1"])
         out = capsys.readouterr().out
         assert code == 1
-        assert "PEER" in out and "small" in out and MID in out
+        assert "MEMBER" in out and "small" in out and MID in out
         assert "3 of 4 user(s) placed at 16384 tokens each" in out
         assert "1 user(s) without a slot" in out
         assert f"small: {BIG}: room 24.0G < 41.0G loaded" in out
 
     def test_the_preference_reaches_the_planner_and_the_table(
             self, key, udp, daemons, measured, monkeypatch, capsys):
-        raw = load_cluster_key(key)
+        raw = load_pool_key(key)
         port = _free_tcp()
         daemons.append(FakeDaemon(port, raw, udp, name="midsize", device=_device(57 * G)))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        argv = ["--cluster-key", str(key), "--port", str(port), "plan", "--users", "3",
+        argv = ["--pool-key", str(key), "--port", str(port), "plan", "--users", "3",
                 "--context", "16384", "--timeout", "1"]
         assert main([*argv, "--json"]) == 1
         good = json.loads(capsys.readouterr().out)
         assert main([*argv, "--prefer", "slots", "--json"]) == 0
         many = json.loads(capsys.readouterr().out)
         assert good["prefer"] == "quality"
-        assert [(r["peer"], r["model"], r["slots"]) for r in good["rows"]] == [
+        assert [(r["member"], r["model"], r["slots"]) for r in good["rows"]] == [
             ("midsize", BIG, 1)]
         assert good["unplaced"] == 2
         assert many["prefer"] == "slots"
-        assert [(r["peer"], r["model"], r["slots"]) for r in many["rows"]] == [
+        assert [(r["member"], r["model"], r["slots"]) for r in many["rows"]] == [
             ("midsize", MID, 3)]
         assert many["unplaced"] == 0
         main([*argv, "--prefer", "slots"])
         out = capsys.readouterr().out
-        assert "--prefer slots: the model that slots the most users on each peer" in out
+        assert "--prefer slots: the model that slots the most users on each member" in out
         assert "3 of 3 user(s) placed at 16384 tokens each" in out
 
-    def test_in_no_cluster_it_says_join(self, tmp_path, capsys):
-        assert main(["--cluster-key", str(tmp_path / "none.key"), "plan", "--users", "1"]) == 1
-        assert "poolhouse-cluster join" in capsys.readouterr().err
+    def test_in_no_pool_it_says_join(self, tmp_path, capsys):
+        assert main(["--pool-key", str(tmp_path / "none.key"), "plan", "--users", "1"]) == 1
+        assert "poolhouse-pool join" in capsys.readouterr().err
 
 
 # -- POST /serve, and --apply -------------------------------------------------------------
@@ -328,7 +328,7 @@ class ServingDaemon:
                          report=lambda: {"room_bytes": room}, serving=self.serving,
                          models=self.models, hosting=self.hosting)))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-        self.client = Peer(f"http://127.0.0.1:{self.port}", self.token)
+        self.client = Member(f"http://127.0.0.1:{self.port}", self.token)
         self.advertiser = None
         if key is not None:
             self.advertiser = Advertiser(
@@ -375,14 +375,14 @@ class TestServeRoute:
     def test_a_model_it_does_not_hold_is_404(self, tmp_path, llama_binary, daemons):
         d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)
         daemons.append(d)
-        with pytest.raises(PeerError, match="404"):
+        with pytest.raises(MemberError, match="404"):
             d.client._json("POST", "/serve", {"model": BIG, "parallel": 1})
 
     def test_more_slots_than_the_room_holds_is_409(self, tmp_path, llama_binary,
                                                    daemons):
         d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)
         daemons.append(d)
-        with pytest.raises(PeerError, match="409") as caught:
+        with pytest.raises(MemberError, match="409") as caught:
             d.client._json("POST", "/serve", {"model": MID, "context": 16384,
                                               "parallel": 8})
         assert "refused" in str(caught.value) and "does not fit" in str(caught.value)
@@ -391,8 +391,8 @@ class TestServeRoute:
     def test_without_a_bearer_token_it_is_401(self, tmp_path, llama_binary, daemons):
         d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)
         daemons.append(d)
-        with pytest.raises(PeerError, match="401"):
-            Peer(d.client.base_url, "wrong")._json("POST", "/serve", {"model": MID})
+        with pytest.raises(MemberError, match="401"):
+            Member(d.client.base_url, "wrong")._json("POST", "/serve", {"model": MID})
 
     def test_hosting_refuses_before_leasing(self, tmp_path):
         hosting = Hosting(tmp_path, Serving(tmp_path / "serving.json"),
@@ -405,12 +405,12 @@ class TestApply:
     def test_apply_serves_the_plan_through_each_daemon(
             self, tmp_path, llama_binary, key, udp, daemons, measured, monkeypatch,
             capsys):
-        raw = load_cluster_key(key)
+        raw = load_pool_key(key)
         d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G, key=raw,
                           udp=udp)
         daemons.append(d)
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--cluster-key", str(key), "--port", str(d.port), "plan", "--users",
+        code = main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users",
                      "2", "--context", "16384", "--apply", "--timeout", "1"])
         out = capsys.readouterr().out
         assert code == 0, out
@@ -422,21 +422,21 @@ class TestApply:
     def test_apply_as_json_carries_each_answer(
             self, tmp_path, llama_binary, key, udp, daemons, measured, monkeypatch,
             capsys):
-        raw = load_cluster_key(key)
+        raw = load_pool_key(key)
         d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G, key=raw,
                           udp=udp)
         daemons.append(d)
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        main(["--cluster-key", str(key), "--port", str(d.port), "plan", "--users", "2",
+        main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users", "2",
               "--apply", "--json", "--timeout", "1"])
         got = json.loads(capsys.readouterr().out)
         assert got["applied"][0]["status"] == 201
         assert got["applied"][0]["served"]["slots"] == 2
         assert got["applied"][0]["serving"][0]["models"] == [MID]
 
-    def test_a_peer_that_refuses_is_reported_not_dropped(
+    def test_a_member_that_refuses_is_reported_not_dropped(
             self, tmp_path, llama_binary, key, udp, daemons, monkeypatch, capsys):
-        raw = load_cluster_key(key)
+        raw = load_pool_key(key)
         d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G, key=raw,
                           udp=udp, fits=lambda: [])
         daemons.append(d)
@@ -445,7 +445,7 @@ class TestApply:
             [Profile(model=BIG, questions=100, right=0.9)],
             [Fit(model=BIG, weights_gpu=G, compute=0, per_token=1024)]))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
-        code = main(["--cluster-key", str(key), "--port", str(d.port), "plan", "--users",
+        code = main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users",
                      "1", "--apply", "--json", "--timeout", "1"])
         got = json.loads(capsys.readouterr().out)
         assert code == 0

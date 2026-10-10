@@ -154,54 +154,54 @@ revision's) stays where it is and is listed, and the command exits 1. Everything
 `<state>/models-migrate.log`; a cut-off run is finished by the next, and a second run finds nothing to do.
 Files outside an `owner/repo` folder and half-written `.part` files are listed and never moved.
 
-### Peers first
+### Devices first
 
-By default a pull asks the devices you paired before it goes to the Hub, on the local network
+By default a pull asks the devices you joined before it goes to the Hub, on the local network
 or at an address you stored (a VPN or overlay such as a tailnet; never a public one). The
-stored devices are the peer book (`<state>/onboard/peers.json`, the `PeerBook` of
-`poolhouse.hub.peerbook`). **Pairing fills it**: when two devices pair (`fleet listen` / `fleet
-pair`), each keeps the other's share address (the address the pairing used and the share port,
+stored devices are the device book (`<state>/onboard/members.json`, the `DeviceBook` of
+`poolhouse.hub.memberbook`). **Joining fills it**: when two devices join (`fleet listen` / `fleet
+join`), each keeps the other's share address (the address the join used and the share port,
 `--share-port`, default 8773), pinned certificate, owner signing key and request key, learned from
-the grant and from an offer sealed under the exchange, so it is as authentic as the pairing; a
+the grant and from an offer sealed under the exchange, so it is as authentic as the join; a
 device started with `--no-share` has no share address and no row is made for it. Revoking a
-device removes its rows. `Poolhouse cluster peers add NAME --url https://host:port --certificate ...
---signing-key ... [--device-secret ...]` stays as the manual path for a device paired some other
-way, with `remove`, `on` and `off`. A row that came from pairing names its device, and its route
+device removes its rows. `Poolhouse pool devices add NAME --url https://host:port --certificate ...
+--signing-key ... [--device-secret ...]` stays as the manual path for a device joined some other
+way, with `remove`, `on` and `off`. A row that came from joining names its device, and its route
 is chosen when the pull starts: the address on this network, else its tailnet address
-(`fleet/onboard/routes.py`), each answering with the pinned certificate; a revoked device is not
-asked. For each file of the pull the session asks every peer for its signed
-manifest (over TLS pinned to that device's certificate), keeps the peers whose manifest lists
+(`fleet/onboard/routes.py`), each answering with the pinned certificate; a removed device is not
+asked. For each file of the pull the session asks every device for its signed
+manifest (over TLS pinned to that device's certificate), keeps the devices whose manifest lists
 that very file (name, size and digest), orders them by how fast they answered, and fetches the
 file chunk by chunk, resumably, from several at once. `on_progress`, `CancelToken` and the
 sentinel events work as for a Hub pull.
 
-**What is trusted.** Not the peer. The digest a file must have is the Hub's own listing
-(fetched through `poolhouse.net`); a peer whose manifest lists the file with another digest is
-not used, and a digest a peer states never replaces the pin. Only when the listing carries no
+**What is trusted.** Not the device. The digest a file must have is the Hub's own listing
+(fetched through `poolhouse.net`); a device whose manifest lists the file with another digest is
+not used, and a digest a device states never replaces the pin. Only when the listing carries no
 digest does an entry of a manifest signed by your own pinned manifest key supply it. Every
 chunk is checked against the signed manifest, the whole file against the pin, and the result
-goes through the same format check, scan and quarantine as an internet download. A peer that
+goes through the same format check, scan and quarantine as an internet download. A device that
 sends bytes failing a digest is dropped for the rest of the pull, the partial bytes are deleted,
-and a critical `onboard.peer.bad_copy` event goes to the bus and to sentinel; the Hub is used.
+and a critical `onboard.member.bad_copy` event goes to the bus and to sentinel; the Hub is used.
 
 **Who may have what** is decided by the device that serves the file, not by the one asking:
 `never` (the licence forbids copies) is refused, `owner` (gated or licensed models) goes only to
 a device you marked as yours and only after you recorded accepting that licence on the serving
-device (who, when, which licence; keep it with `poolhouse cluster share`), `open` goes to any
-paired device. A copy that sentinel holds in quarantine on the serving device is not served.
-Credentials such as `HF_TOKEN` never leave a device. A peer that has no copy, refuses or is
+device (who, when, which licence; keep it with `poolhouse pool share`), `open` goes to any
+member. A copy that sentinel holds in quarantine on the serving device is not served.
+Credentials such as `HF_TOKEN` never leave a device. A device that has no copy, refuses or is
 unreachable costs a few seconds at most (each answer has 4 s) and the pull continues from the Hub.
 
-**Speed.** Each peer's rate is measured (bytes completed per second, kept in the peer book and
-blended with earlier transfers); peers are ranked by it, unmeasured ones first so that they get
-measured. A peer gets at most two requests at a time, and an optional bandwidth cap:
-`poolhouse cluster peers limit [NAME] [--rate 20MiB/s] [--streams N] [--metered on|off]` (no NAME
-means every peer; `--rate off` and `--streams 0` remove a limit; `--metered on` means the link to
+**Speed.** Each device's rate is measured (bytes completed per second, kept in the device book and
+blended with earlier transfers); devices are ranked by it, unmeasured ones first so that they get
+measured. A device gets at most two requests at a time, and an optional bandwidth cap:
+`poolhouse pool model-sources limit [NAME] [--rate 20MiB/s] [--streams N] [--metered on|off]` (no NAME
+means every device; `--rate off` and `--streams 0` remove a limit; `--metered on` means the link to
 that device costs per byte, so it is not asked and the Hub is used). When the transfer as a whole
 stays under 2 MiB/s for a 15 s window it is given up, the partial bytes are kept for a resume and
 the Hub is used.
 
-**Serving the model store.** `poolhouse cluster share --models [--models-dir DIR ...]` serves the
+**Serving the model store.** `poolhouse pool share --models [--models-dir DIR ...]` serves the
 GGUF and safetensors files `poolhouse-models list` shows (or only those under the `--models-dir`
 folders), by file name with the repository, size and sha256, under the sharing levels above.
 Nothing outside the model roots is served: each path is resolved at every request and a symlink
@@ -212,13 +212,13 @@ licence is the repository unless `--licence` says otherwise; you confirm it once
 The manifest is signed with the owner key and its serial only rises.
 
 **What the downloading device keeps.** An append-only local record
-(`<state>/onboard/peer-downloads.jsonl`, `poolhouse.hub.origins`): when, which file (name, size,
-sha256), which peer, and for an `owner` model the acceptance it relied on (the licence, who
+(`<state>/onboard/member-downloads.jsonl`, `poolhouse.hub.origins`): when, which file (name, size,
+sha256), which device, and for an `owner` model the acceptance it relied on (the licence, who
 accepted it and when, as the serving device reported it). `poolhouse-models list` shows it in the
-FROM column and in `--json` as `from_peer`.
+FROM column and in `--json` as `from_member`.
 
-**Turning it off.** `poolhouse-models pull --no-peers` or `fetch --no-peers` (or
-`pull(..., peers=False)`) for one pull; `POOLHOUSE_NO_PEERS=1` for a shell; `poolhouse cluster peers off`
+**Turning it off.** `poolhouse-models pull --no-members` or `fetch --no-members` (or
+`pull(..., devices=False)`) for one pull; `POOLHOUSE_NO_MEMBERS=1` for a shell; `poolhouse pool model-sources off`
 for the machine. Nothing is contacted when it is off.
 
 `search(query, Filters(max_bytes, quant, owner, gated, limit, files))` returns `Repo` rows with

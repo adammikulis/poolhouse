@@ -19,7 +19,7 @@ suspicious agent and/or device if not already implemented." Tags: **[V path]** r
 | Claims | expired or dead-holder claims are swept; `on_swept`, `on_stolen` callbacks exist. [V `claims.py`] | No consumer is wired to the ledger. [D `docs/earned-trust.md` 1.2] |
 | Reputation | accepted/rejected reviewed tasks, reliability; `work_reputation` says `authority: none`. [V; D `docs/earned-trust.md`] | Standing grants nothing and takes nothing away. |
 | Commit hooks | `scripts/hooks/weakened-assertions` refuses a commit that weakens an assertion; `claude-bash-guard` and `claude-edit-guard` refuse listed actions. [V `scripts/hooks/`; D `CLAUDE.md`] | A refusal in a shell; recorded nowhere the board sees. |
-| Sentinel peer flags | `PeerWatch` flags an **address** for forged traffic, flapping, rate. [V `sentinel/rates.py`] | Address, not agent or device identity. |
+| Sentinel device flags | `DeviceWatch` flags an **address** for forged traffic, flapping, rate. [V `sentinel/rates.py`] | Address, not agent or device identity. |
 | Sentinel `HumanGrant`, `agent_may` | stops an agent reaching sentinel verbs. [V `sentinel/human.py`] | Refusal only. |
 
 So: agent misbehaviour is caught in about six places and recorded in none of them in one shape. There

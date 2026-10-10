@@ -5,9 +5,9 @@ import pytest
 from poolhouse import macauth
 from poolhouse.macauth import Authenticator, Lockout, Stamp
 
-KEY = b"a-cluster-key-of-thirty-two-bytes"
+KEY = b"a-pool-key-of-thirty-two-bytes"
 SECRET = macauth.derive(KEY)
-OTHER = macauth.derive(b"some-other-clusters-key-32-bytes")
+OTHER = macauth.derive(b"some-other-pools-key-32-bytes")
 URL = "http://10.1.2.3:8770/jobs?tail=5"
 NOW = 1_700_000_000.0
 
@@ -70,12 +70,12 @@ def test_an_empty_body_and_no_body_sign_alike():
     assert _send(_auth(), body=None).ok
 
 
-def test_the_wrong_secret_is_refused_and_so_is_one_of_another_cluster():
+def test_the_wrong_secret_is_refused_and_so_is_one_of_another_pool():
     assert not _send(_auth(), secret=OTHER).ok
     assert not _send(_auth(), secret="mlsk1.guess").ok
 
 
-def test_a_machine_in_two_clusters_answers_to_both():
+def test_a_machine_in_two_pools_answers_to_both():
     auth = Authenticator(lambda: [SECRET, OTHER], clock=Clock())
     assert _send(auth, secret=OTHER).ok
     assert _send(auth, stamp=Stamp(NOW, "m" * 24)).ok

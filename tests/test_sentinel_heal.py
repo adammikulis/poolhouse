@@ -101,7 +101,7 @@ def test_only_a_missing_record_with_nothing_moved_settles():
     cases = {
         "still there": ("model", str(present), "integrity.missing: x"),
         "other finding": ("model", str(home.home() / "gone-a.bin"), "integrity.content_changed: x"),
-        "other kind": ("peer", str(home.home() / "gone-b.bin"), "integrity.missing: x"),
+        "other kind": ("member", str(home.home() / "gone-b.bin"), "integrity.missing: x"),
     }
     for kind, key, reason in cases.values():
         made = node.store.quarantine((kind, key), reason, {})
@@ -203,7 +203,7 @@ def test_unchanged_deep_scan_preserves_manifest_and_state_lock_mtimes():
     node = sentinel.default()
     (path,) = pinned(node, 1)
     node.manifest.pin(path, "model")
-    node.store.quarantine(("peer", "fixture-peer"), "fixture finding", {})
+    node.store.quarantine(("member", "fixture-member"), "fixture finding", {})
     names = ("manifest.json", "manifest.json.prev", "state.lock")
     before = {name: (node.root / name).stat().st_mtime_ns for name in names}
     node.scan(deep=True)

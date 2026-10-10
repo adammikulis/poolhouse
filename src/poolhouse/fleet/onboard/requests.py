@@ -1,11 +1,11 @@
 """The join request: a stranger's ask, the owner's answer, and the limits around the ask.
 
-States: pending -> accepted (a person said yes; the code exists and counts down) -> paired,
+States: pending -> accepted (a person said yes; the code exists and counts down) -> joined,
 or declined, expired, failed (too many wrong codes). The store is a file, so the process that
 listens and the command a person types (accept, decline) see one state. Limits, each a test:
 one active request per fingerprint and per address; a window per address and a ceiling on
 pending requests; a declined fingerprint waits, three declines in a row block it an hour; an
-unanswered request expires, an untyped code sooner; three tries at the code; a revoked device
+unanswered request expires, an untyped code sooner; three tries at the code; a removed device
 cannot ask again until the owner allows it.
 """
 
@@ -41,7 +41,7 @@ class State(StrEnum):
     ACCEPTED = "accepted"
     DECLINED = "declined"
     EXPIRED = "expired"
-    PAIRED = "paired"
+    JOINED = "joined"
     FAILED = "failed"
 
 
@@ -111,20 +111,20 @@ class Device:
     name: str
     hostname: str
     address: str
-    paired: float
+    joined: float
     status: str = "active"
     revoked: float = 0.0
-    shared_cluster_key: bool = False
+    shared_pool_key: bool = False
     mine: bool = False
     """Whether the owner said this device is theirs, as against another person's."""
     secret: str = ""
     """The key this device signs its file requests with (urlsafe base64); private file."""
     tailnet_address: str = ""
-    """Where this device is on the tailnet, learned only from the pairing exchange or from a
-    Tailscale peer whose certificate matched this device's (`routes.learn`)."""
+    """Where this device is on the tailnet, learned only from the join exchange or from a
+    Tailscale member whose certificate matched this device's (`routes.learn`)."""
 
 
-AUTHENTICATED_SOURCES = frozenset({"pairing", "tailscale-verified"})
+AUTHENTICATED_SOURCES = frozenset({"join-code", "tailscale-verified"})
 
 
 @dataclass(slots=True)
@@ -136,7 +136,7 @@ class _Ledger:
 
 
 class Devices:
-    """The machines this one has paired with, and the ones the owner has revoked."""
+    """The machines this one has joined with, and the ones the owner has revoked."""
 
     def __init__(self, path: Path, *, bus: Bus = BUS,
                  clock: Callable[[], float] = time.time) -> None:
@@ -163,12 +163,12 @@ class Devices:
         with self._lock:
             return self._read()
 
-    def add(self, request: Request, *, shared_cluster_key: bool, secret: str = "") -> Device:
+    def add(self, request: Request, *, shared_pool_key: bool, secret: str = "") -> Device:
         with self._lock, only_one(self.path.with_suffix(".lock"), announce=lambda _m: None):
             rows = [d for d in self._read() if d.fingerprint != request.fingerprint]
             device = Device(request.fingerprint, request.name, request.hostname,
                             request.address, self.clock(),
-                            shared_cluster_key=shared_cluster_key, mine=bool(request.mine),
+                            shared_pool_key=shared_pool_key, mine=bool(request.mine),
                             secret=secret,
                             tailnet_address=request.address if in_tailnet(request.address) else "")
             rows.append(device)
@@ -176,22 +176,22 @@ class Devices:
         return device
 
     def add_accepter(self, fingerprint: str, name: str, address: str, *, secret: str,  # noqa: PLR0913 - all keywords
-                     mine: bool = False, shared_cluster_key: bool = False) -> Device:
-        """Record the machine that accepted this one (the asking side's record of a pairing).
+                     mine: bool = False, shared_pool_key: bool = False) -> Device:
+        """Record the machine that accepted this one (the asking side's record of a join).
         ``secret`` is the key that machine signs its file requests with; ``mine`` only if the
         person at this machine said the accepting one is theirs."""
         with self._lock, only_one(self.path.with_suffix(".lock"), announce=lambda _m: None):
             rows = [d for d in self._read() if d.fingerprint != fingerprint]
             device = Device(fingerprint, clean(name) or "unnamed", "", address, self.clock(),
-                            shared_cluster_key=shared_cluster_key, mine=mine, secret=secret,
+                            shared_pool_key=shared_pool_key, mine=mine, secret=secret,
                             tailnet_address=address if in_tailnet(address) else "")
             rows.append(device)
             self._write(rows)
         return device
 
     def learn_tailnet(self, fingerprint: str, address: str, *, source: str) -> Device:
-        """Record ``address`` as the tailnet address of a paired device. ``source`` must be an
-        authenticated one (``pairing``, ``tailscale-verified``); an announcement is refused."""
+        """Record ``address`` as the tailnet address of a member. ``source`` must be an
+        authenticated one (``join-code``, ``tailscale-verified``); an announcement is refused."""
         if source not in AUTHENTICATED_SOURCES:
             raise ValueError(f"a tailnet address is not taken from {source!r}")
         if not in_tailnet(address):
@@ -226,7 +226,7 @@ class Devices:
             hit.status, hit.revoked = "revoked", self.clock()
             self._write(rows)
         self.bus.emit("onboard.revoked", "notice", f"device:{hit.fingerprint}",
-                      name=hit.name, held_cluster_key=hit.shared_cluster_key)
+                      name=hit.name, held_pool_key=hit.shared_pool_key)
         return hit
 
     def allow_again(self, fingerprint: str) -> bool:
@@ -334,7 +334,7 @@ class Requests:
     def _admit(self, ledger: _Ledger, fingerprint: str, address: str, now: float) -> None:
         lim = self.limits
         if self.devices.revoked(fingerprint):
-            raise Refused(403, "this device was revoked by the owner")
+            raise Refused(403, "this device was removed by the owner")
         until = ledger.waits.get(fingerprint, 0.0)
         if until > now:
             raise Refused(429, f"try again in {int(until - now) + 1} seconds")
@@ -419,7 +419,7 @@ class Requests:
                       fingerprint=request.fingerprint[:16], address=request.address)
         return request
 
-    # -- the pairing step --
+    # -- the join step --
     def take_attempt(self, request_id: str) -> Request:
         """Spend one try at the code. `Refused` unless the request is accepted and unexpired;
         the try that goes past `Limits.attempts` kills the request and makes the fingerprint
@@ -448,7 +448,7 @@ class Requests:
             if request is None or request.state is not State.ACCEPTED:
                 return 0
             left = self.limits.attempts - request.attempts
-            self.bus.emit("onboard.pair.wrong_code", "warning", f"request:{request.id}",
+            self.bus.emit("onboard.join.wrong_code", "warning", f"request:{request.id}",
                           fingerprint=request.fingerprint[:16], address=request.address,
                           tries_left=max(0, left))
             if left <= 0:
@@ -461,20 +461,20 @@ class Requests:
         request.state, request.code, request.decided, request.note = \
             State.FAILED, "", now, why
         ledger.waits[request.fingerprint] = now + self.limits.failed_wait_s
-        self.bus.emit("onboard.pair.locked", "critical", f"request:{request.id}",
+        self.bus.emit("onboard.join.locked", "critical", f"request:{request.id}",
                       fingerprint=request.fingerprint[:16], address=request.address,
                       reason=why)
 
-    def paired(self, request_id: str, *, shared_cluster_key: bool, secret: str = "") -> Device:
+    def joined(self, request_id: str, *, shared_pool_key: bool, secret: str = "") -> Device:
         with self._lock, self._transaction():
             ledger = self._load()
             request = next((r for r in ledger.requests if r.id == request_id), None)
             if request is None or request.state is not State.ACCEPTED:
                 raise Refused(409, "the request is not waiting for a code")
-            request.state, request.code, request.decided = State.PAIRED, "", self.clock()
+            request.state, request.code, request.decided = State.JOINED, "", self.clock()
             self._save(ledger)
-        device = self.devices.add(request, shared_cluster_key=shared_cluster_key, secret=secret)
-        self.bus.emit("onboard.pair.succeeded", "notice", f"device:{request.fingerprint}",
+        device = self.devices.add(request, shared_pool_key=shared_pool_key, secret=secret)
+        self.bus.emit("onboard.join.succeeded", "notice", f"device:{request.fingerprint}",
                       name=request.name, address=request.address,
-                      shared_cluster_key=shared_cluster_key, mine=bool(request.mine))
+                      shared_pool_key=shared_pool_key, mine=bool(request.mine))
         return device

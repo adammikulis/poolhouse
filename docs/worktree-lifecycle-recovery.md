@@ -3,7 +3,7 @@
 Coding sessions use their authenticated agent identity. Connect and device-session setup may
 run automatically for the agent's own session through supported tooling. Agents never initialize
 a human workspace, read an owner credential file, or mint a person's credentials. Explicit
-invalid credentials remain errors; a selected remote board never falls back to a local board.
+invalid credentials remain errors; a board selected on another device never falls back to a board on this device.
 
 ## Recovery workflow
 

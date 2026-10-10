@@ -22,7 +22,7 @@ from poolhouse.workspace import (
     work_reputation,
 )
 from poolhouse.workspace.coding_turns import Manager, Turn
-from poolhouse.workspace.harness_seat import Seat
+from poolhouse.workspace.harness_session import HarnessSession
 
 BOOTSTRAP = (
     'You are an implementation worker in the assigned task worktree. '
@@ -47,8 +47,8 @@ class TaskManager(Manager):
         self.checkpoint = lambda _: None
         self.steps = self.calls = 0
 
-    def _seat(self, name, folder, parent, say):
-        return Seat(self.identity, base=self.workspace.base, managed_inbox=True)
+    def _session(self, name, folder, parent, say):
+        return HarnessSession(self.identity, base=self.workspace.base, managed_inbox=True)
 
     def _event(self, turn, row, harness):
         if harness == 'claude' and row.get('type') == 'assistant':

@@ -54,7 +54,7 @@ def plan(root: Path | str, *, key_path: Path | str | None = None) -> list[Item]:
     rows = [
         ("settings", "Settings and this machine's identity",
          (root / "settings.json", root / "availability.json", root / "token",
-          root / "serving.json", home / "cluster.key", home / "cluster.group",
+          root / "serving.json", home / "pool.key", home / "pool.group",
           home / "traind.log"),
          True, "The passphrase can make the key again."),
         ("conversations", "Chats",

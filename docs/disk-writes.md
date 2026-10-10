@@ -40,7 +40,7 @@ Appended and kept: `audit.jsonl` (about 54 KB/h over the last 24 h, hash chained
 
 ## Kept (not weakened)
 
-Signed journals and the hash chain (`workspace/chain.py` fsync on append), claims and leases,
+Signed logs and the hash chain (`workspace/chain.py` fsync on append), claims and leases,
 authorization and keystore state, the sealed event log, and the lifecycle store's staged copy,
 fsync and promote on a real change.
 

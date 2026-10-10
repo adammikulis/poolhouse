@@ -81,7 +81,7 @@ def status() -> Pool:
     """The pool this device belongs to, with every member (removed ones too); starts this device's node if needed."""
     raw = _node.call("pool_status")
     return Pool(str(raw["pool"]), str(raw.get("project") or ""), str(raw["policy"]), str(raw["fingerprint"]),
-                str(raw.get("listen") or ""), bool(raw.get("pairing_open")),
+                str(raw.get("listen") or ""), bool(raw.get("join_code_open")),
                 tuple(_member(m) for m in raw.get("members", [])))
 
 
@@ -121,14 +121,14 @@ def add_device(ttl_s: int = 300) -> dict[str, object]:
     Returns what the node answers: the code and how long it is valid. Show the code to the person at the other
     device; it is typed there (or passed to `join`) within ``ttl_s`` seconds.
     """
-    return dict(_node.call("pair_accept", {"ttl_s": ttl_s}, token=_node.session().token))
+    return dict(_node.call("add_device", {"ttl_s": ttl_s}, token=_node.session().token))
 
 
 def join(host: str, code: str, *, port: int = DEFAULT_PORT) -> dict[str, object]:
     """Join the pool of the device at ``host`` using the ``code`` its `add_device` made; this device becomes a member."""
     if not code:
         raise errors.Error("give the code the other device showed")
-    return dict(_node.call("pair_start", {"host": host, "port": port, "passphrase": code}, token=_node.session().token))
+    return dict(_node.call("join_pool", {"host": host, "port": port, "passphrase": code}, token=_node.session().token))
 
 
 def remove(device: str) -> Member:
@@ -137,7 +137,7 @@ def remove(device: str) -> Member:
     if len(found) != 1:
         names = ", ".join(m.name for m in members()) or "none"
         raise errors.Error(f"{'no' if not found else 'two'} member is called {device!r} (members: {names})")
-    _node.call("member_revoke", {"fingerprint": found[0].fingerprint}, token=_node.session().token)
+    _node.call("member_remove", {"fingerprint": found[0].fingerprint}, token=_node.session().token)
     return next(m for m in members(include_removed=True) if m.fingerprint == found[0].fingerprint)
 
 
@@ -152,8 +152,8 @@ def capacity() -> Capacity:
     Only this device is measured here; the capacity of the other members is planned (docs/api.md, "planned").
     """
     node_name = status()
-    seat = _node.session()
-    table = seat.call("lease_list")
+    session = _node.session()
+    table = session.call("lease_list")
     cfg = table.get("config", {})
     held = [x for x in table.get("leases", []) if x.get("state") == "held"]
     slots = sum(r.get("count", 0) for x in held for r in x.get("resources", []) if r.get("type") == "cpu_slots")

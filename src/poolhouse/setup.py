@@ -228,50 +228,50 @@ def _speech_findings() -> list[Finding]:
 
 
 def _fleet_findings(*, port: int | None = None, discovery_port: int | None = None,
-                    cluster_key_path: Path | str | None = None) -> list[Finding]:
-    """Whether this machine has joined a cluster, its daemon answers, discovery hears it
-    among the peers ``poolhouse-cluster status`` would list, and its two ports are free or
+                    pool_key_path: Path | str | None = None) -> list[Finding]:
+    """Whether this machine has joined a pool, its daemon answers, discovery hears it
+    among the members ``poolhouse-pool status`` would list, and its two ports are free or
     held by that same daemon.
 
     Stops naming fleet findings at the first thing that is wrong: a daemon cannot answer
-    before a cluster is joined, and discovery cannot hear a daemon that is not running.
+    before a pool is joined, and discovery cannot hear a daemon that is not running.
     """
     from poolhouse.fleet.discovery import DEFAULT_HTTP_PORT, default_port, memberships
-    from poolhouse.fleet.join import already_running, peers
+    from poolhouse.fleet.join import already_running, members
 
     port = DEFAULT_HTTP_PORT if port is None else port
     discovery_port = default_port() if discovery_port is None else discovery_port
     out: list[Finding] = []
-    mine = memberships(cluster_key_path)
+    mine = memberships(pool_key_path)
     me = already_running(port)
     if not mine:
-        out.append(Finding(name="fleet: joined", good=False, said="in no cluster",
-                           fix=["poolhouse-cluster", "join", "--passphrase", "WORDS"]))
+        out.append(Finding(name="fleet: joined", good=False, said="in no pool",
+                           fix=["poolhouse-pool", "join", "--passphrase", "WORDS"]))
     else:
-        out.append(Finding(name="fleet: joined", good=True, said=f"cluster '{mine[0].group}'"))
+        out.append(Finding(name="fleet: joined", good=True, said=f"pool '{mine[0].group}'"))
         if me is None:
             out.append(Finding(name="fleet: daemon", good=False,
-                               said=f"does not answer on {port}", fix=["poolhouse-cluster", "join"]))
+                               said=f"does not answer on {port}", fix=["poolhouse-pool", "join"]))
         else:
             out.append(Finding(name="fleet: daemon", good=True,
                                said=f"'{me.get('name', '?')}' answers on {port}"))
             try:
-                rows = peers(cluster_key_path=cluster_key_path, port=discovery_port,
+                rows = members(pool_key_path=pool_key_path, port=discovery_port,
                             self_machine=str(me.get("machine") or ""))
             except OSError as exc:
                 out.append(Finding(name="fleet: seen", good=False,
-                                   said=f"discovery failed: {exc}", fix=["poolhouse-peers", "ls"]))
+                                   said=f"discovery failed: {exc}", fix=["poolhouse-members", "ls"]))
             else:
                 seen = any(row.get("is_self") for row in rows)
                 out.append(Finding(
                     name="fleet: seen", good=seen,
-                    said=(f"sees itself among {len(rows)} peer(s)" if seen else
-                          f"discovery hears {len(rows)} peer(s), none itself"),
-                    fix=[] if seen else ["poolhouse-peers", "ls"],
+                    said=(f"sees itself among {len(rows)} member(s)" if seen else
+                          f"discovery hears {len(rows)} member(s), none itself"),
+                    fix=[] if seen else ["poolhouse-members", "ls"],
                     note="" if seen else
                          "the beacon is unreachable even on loopback -- a firewall or a "
                          "security tool dropping local multicast hides this machine from "
-                         "every peer"))
+                         "every member"))
     out.append(_ports_finding(port, discovery_port, me))
     return out
 
@@ -322,7 +322,7 @@ def _ports_finding(http_port: int, discovery_port: int, daemon: dict[str, object
         said="free" if not stuck else f"held by something else: {', '.join(map(str, stuck))}",
         fix=[] if not stuck else ["lsof", "-nP", f"-iTCP:{http_port}", f"-iUDP:{discovery_port}"],
         note="" if not stuck else
-             "poolhouse-cluster join needs both free to start the daemon and hear the LAN")
+             "poolhouse-pool join needs both free to start the daemon and hear the LAN")
 
 
 def _scripts() -> list[str]:
@@ -388,7 +388,7 @@ def _firewall_finding() -> Finding:
         root=True,
         note="" if not missing else
              "Windows blocks inbound TCP 8770 (the daemon) and UDP 8771 (its beacons) "
-             "by default, so other machines see nothing in 'poolhouse-peers ls'. Run the "
+             "by default, so other machines see nothing in 'poolhouse-members ls'. Run the "
              "line in a prompt opened as administrator")
 
 

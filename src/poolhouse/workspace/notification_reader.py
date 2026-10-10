@@ -39,7 +39,7 @@ def binding(label: str, cwd: Path, session: str) -> dict:
         checkout = worktreerules.checkouts(current)
         configured = saved.get(str(checkout[1])) if checkout else None
         if configured and configured.get('project_id') != project_connection.projects.identity(checkout[0]):
-            raise Denied('notification worktree differs from its saved project Board')
+            raise Denied('notification worktree differs from its saved board')
     if configured is None:
         raise Denied('notification requires an existing project binding')
     if label == 'codex' and 'sessions' in configured:
@@ -74,8 +74,8 @@ def authenticated(label: str, cwd: Path, session: str, *, board=None):
             raise Denied('notification context does not match the saved project reader')
         return remote, actor, tokens.load(remote.base, actor)
     remote = project_connection.RemoteWorkspace(
-        chosen['host'], chosen['project_id'], cluster=chosen.get('cluster', ''),
-        cluster_key=Path(chosen['cluster_key']) if chosen.get('cluster_key') else None)
+        chosen['host'], chosen['project_id'], pool=chosen.get('pool', ''),
+        pool_key=Path(chosen['pool_key']) if chosen.get('pool_key') else None)
     token = tokens.load(remote.base, actor)
     who = remote.call('whoami', token)
     if (who.get('id') != actor or who.get('role') != AGENT

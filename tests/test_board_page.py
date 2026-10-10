@@ -29,9 +29,9 @@ def team(workspace_node, monkeypatch):
 @pytest.fixture
 def route(team):
     """``call(path, method, headers, body)`` against a listener serving the person's session; ``call.me`` is it."""
-    server = boardroute.serve(lambda: person.seat(Path.cwd(), team.client))
+    server = boardroute.serve(lambda: person.session(Path.cwd(), team.client))
     server.start()
-    person.seat(Path.cwd(), team.client)
+    person.session(Path.cwd(), team.client)
 
     def call(path, method="GET", headers=None, body=None, json_body=True):
         head = {"Cookie": f"ml_session={server.session}", **(headers or {})}
@@ -47,7 +47,7 @@ def route(team):
 
     call.port = server.port
     call.origin = {"Origin": f"http://127.0.0.1:{server.port}"}
-    call.me = person.seat(Path.cwd(), team.client)
+    call.me = person.session(Path.cwd(), team.client)
     yield call
     server.stop()
 
@@ -106,8 +106,8 @@ def test_the_route_reads_only_and_checks_host_origin_and_fetch_site(team, route)
 
 def test_the_route_without_a_signed_in_person_answers_401_and_in_no_project_403(team):
     port = 1
-    seat = lambda: person.seat(Path.cwd(), team.client)  # noqa: E731
-    assert boardroute.respond(seat, boardroute.Request("GET", "/board/boards", {"host": f"127.0.0.1:{port}"},
+    session = lambda: person.session(Path.cwd(), team.client)  # noqa: E731
+    assert boardroute.respond(session, boardroute.Request("GET", "/board/boards", {"host": f"127.0.0.1:{port}"},
                                                        port, signed_in=False))[0] == 401
 
     def nowhere():
@@ -165,10 +165,10 @@ def test_the_live_route_answers_the_moment_a_message_arrives_and_times_out_quiet
     began = time.monotonic()
     woke = json.loads(route(f"/board/wait?after={seq}&timeout=20")[2])
     assert woke["seq"] > seq and time.monotonic() - began < 3
-    threading.Timer(0.3, lambda: alice.post(team.bob.name, "note", "a private pair")).start()
+    threading.Timer(0.3, lambda: alice.post(team.bob.name, "note", "a private join")).start()
     began = time.monotonic()
-    pair = json.loads(route(f"/board/wait?after={woke['seq']}&timeout=20")[2])
-    assert pair["seq"] > woke["seq"] and time.monotonic() - began < 3
+    join = json.loads(route(f"/board/wait?after={woke['seq']}&timeout=20")[2])
+    assert join["seq"] > woke["seq"] and time.monotonic() - began < 3
 
 
 def test_the_person_wakes_within_a_tenth_of_a_second(team, route):

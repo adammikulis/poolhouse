@@ -22,7 +22,7 @@ from test_fleet_ui import WORDS, Serving  # noqa: E402
 
 #: where each screen is reached from the workspace rail
 RAIL = {"Chat": "#nav-tabs a[data-workspace='conversations']", "Models": "#nav-tabs a[data-workspace='studio']",
-        "Settings": "#nav-settings", "Cluster": "#nav-tabs a[data-workspace='pool']"}
+        "Settings": "#nav-settings", "Pool": "#nav-tabs a[data-workspace='pool']"}
 
 GIB = 1024 ** 3
 ROOM = 96 * GIB
@@ -90,7 +90,7 @@ def daemon(tmp_path, monkeypatch):
 
 @pytest.fixture
 def joined(daemon):
-    """That daemon, in a cluster, with a session cookie for the browser."""
+    """That daemon, in a pool, with a session cookie for the browser."""
     daemon.cookie = sign_in(daemon)
     daemon.call("/ui/setup/join", method="POST", cookie=daemon.cookie,
                 body={"passphrase": WORDS, "group": "home"})
@@ -99,15 +99,15 @@ def joined(daemon):
 
 
 @pytest.fixture
-def with_peers(joined):
-    """One invented machine on the LAN, so the cluster view has a card to draw.
+def with_members(joined):
+    """One invented machine on the LAN, so the pool view has a card to draw.
 
     The route still assembles the answer; only the multicast sweep is stood in for,
     because a test has no second machine.
     """
-    joined.ui.peers = lambda force=False: [{
+    joined.ui.members = lambda force=False: [{
         "name": "greenhollow", "port": 8770, "host": "10.0.0.9",
-        "base_url": "http://10.0.0.9:8770", "is_self": False, "clusters": ["home"],
+        "base_url": "http://10.0.0.9:8770", "is_self": False, "pools": ["home"],
         "slots": 4, "free": 1, "queued": 2, "busy": False,
         "device": {"vendor": "nvidia", "cuda": True, "gpu": "Marrowgate 5000",
                    "cpus": 16, "ram_gb": 64.0, "ram_used_gb": 20.0, "cpu_pct": 41.0,
@@ -126,7 +126,7 @@ def open_page(browser):
 
     def _open(served, *, path="/ui/", cookie=""):
         base = f"http://127.0.0.1:{served.port}"
-        path = "/ui/#cluster" if cookie and path == "/ui/" else path  # a signed-in session lands on Chats
+        path = "/ui/#pool" if cookie and path == "/ui/" else path  # a signed-in session lands on Chats
         ctx = browser.new_context(viewport={"width": 1400, "height": 950})
         contexts.append(ctx)
         if cookie:
@@ -147,33 +147,33 @@ def open_page(browser):
 
 
 def connections(page):
-    """Open the pool screen's connections and pairing section, which starts closed."""
-    page.click("cluster-view summary:has-text('Pool connections')")
-    page.wait_for_selector("#cluster-joined .row")
+    """Open the pool screen's connections and joining section, which starts closed."""
+    page.click("pool-view summary:has-text('Pool connections')")
+    page.wait_for_selector("#pool-joined .row")
 
 
 def open_capacity(page):
-    page.click(RAIL["Cluster"])
+    page.click(RAIL["Pool"])
     page.click('#nav-context a[href="#fit"]')
     page.locator("#fit").scroll_into_view_if_needed()
 
 
 # -- first run ---------------------------------------------------------------------------
 class TestFirstRun:
-    def test_a_machine_in_no_cluster_opens_on_the_wizard(self, daemon, open_page):
+    def test_a_machine_in_no_pool_opens_on_the_wizard(self, daemon, open_page):
         page, errors = open_page(daemon)
         page.wait_for_selector("#first-run:not([hidden])")
         assert page.locator("#first-run h1").inner_text() == "Set up this machine"
         assert not errors
 
-    def test_naming_it_moves_on_to_the_clusters_step(self, daemon, open_page):
+    def test_naming_it_moves_on_to_the_pools_step(self, daemon, open_page):
         page, errors = open_page(daemon)
         page.wait_for_selector("#first-run:not([hidden])")
         page.fill("#n", "quillhaven")
         page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Clusters')")
-        assert page.locator("#first-run button:has-text('Pair manually')").is_visible()
-        assert page.locator("#setup-cluster-passphrase").count() == 0
+        page.wait_for_selector("#first-run h1:has-text('Pools')")
+        assert page.locator("#first-run button:has-text('Join manually')").is_visible()
+        assert page.locator("#setup-pool-passphrase").count() == 0
         assert not errors
 
     def test_a_short_passphrase_cannot_be_joined_with(self, daemon, open_page):
@@ -181,12 +181,12 @@ class TestFirstRun:
         page.wait_for_selector("#first-run:not([hidden])")
         page.fill("#n", "quillhaven")
         page.click("#first-run button:has-text('Continue')")
-        page.click("#first-run button:has-text('Pair manually')")
-        page.wait_for_selector("#setup-cluster-passphrase")
-        page.fill("#setup-cluster-name", "default")
-        page.fill("#setup-cluster-passphrase", "abc")
+        page.click("#first-run button:has-text('Join manually')")
+        page.wait_for_selector("#setup-pool-passphrase")
+        page.fill("#setup-pool-name", "default")
+        page.fill("#setup-pool-passphrase", "abc")
         assert page.locator("#first-run button:has-text('Join existing pool')").is_disabled()
-        page.fill("#setup-cluster-passphrase", "correct horse battery")
+        page.fill("#setup-pool-passphrase", "correct horse battery")
         assert page.locator("#first-run button:has-text('Join existing pool')").is_enabled()
         assert not errors
 
@@ -198,7 +198,7 @@ class TestFirstRun:
         page.wait_for_selector("#first-run:not([hidden])")
         page.fill("#n", "quillhaven")
         page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Clusters')")
+        page.wait_for_selector("#first-run h1:has-text('Pools')")
         page.click("#first-run button:has-text('Continue')")
         page.wait_for_selector("#labels-prep")
 
@@ -208,18 +208,18 @@ class TestFirstRun:
             "label[for=labels-train] .why").inner_text()
         assert not errors
 
-    def test_dev_can_pair_manually_and_return_to_automatic(self, daemon, open_page, monkeypatch):
-        from poolhouse.fleet import automatic_clusters
+    def test_dev_can_join_manually_and_return_to_automatic(self, daemon, open_page, monkeypatch):
+        from poolhouse.fleet import automatic_pools
         from poolhouse.fleet.discovery import memberships
 
-        monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: [])
+        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
         page, errors = open_page(daemon)
         page.wait_for_selector("#device-mode")
         page.click("#first-run button:has-text('Continue')")
-        page.click("#first-run button:has-text('Pair manually')")
-        page.select_option("#setup-cluster-action", "create")
-        page.fill("#setup-cluster-name", "private-lab")
-        page.fill("#setup-cluster-passphrase", WORDS)
+        page.click("#first-run button:has-text('Join manually')")
+        page.select_option("#setup-pool-action", "create")
+        page.fill("#setup-pool-name", "private-lab")
+        page.fill("#setup-pool-passphrase", WORDS)
         page.click("#first-run button:has-text('Create new pool')")
         page.wait_for_selector("#first-run .ok:has-text('Created')")
         assert memberships(daemon.keyfile)[0].selection == "manual"
@@ -229,40 +229,40 @@ class TestFirstRun:
         assert not errors
 
     def test_fresh_automatically_joined_device_can_choose_prod(self, daemon, open_page, monkeypatch):
-        from poolhouse.fleet import automatic_clusters
+        from poolhouse.fleet import automatic_pools
         from poolhouse.fleet.discovery import memberships
 
-        monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: [])
-        automatic_clusters.ensure(daemon.keyfile, mode="dev")
+        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
+        automatic_pools.ensure(daemon.keyfile, mode="dev")
         page, errors = open_page(daemon)
         page.wait_for_selector("#device-mode")
         page.select_option("#device-mode", "prod")
         page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Clusters')")
+        page.wait_for_selector("#first-run h1:has-text('Pools')")
         assert memberships(daemon.keyfile) == []
-        assert daemon.ui.settings.cluster_mode == "prod"
-        assert page.locator("#setup-cluster-passphrase").is_visible()
+        assert daemon.ui.settings.pool_mode == "prod"
+        assert page.locator("#setup-pool-passphrase").is_visible()
         assert page.locator("#first-run button:has-text('Connect automatically')").count() == 0
         assert not errors
 
-    def test_dev_can_return_to_auto_after_leaving_all_clusters(self, daemon, open_page, monkeypatch):
-        from poolhouse.fleet import automatic_clusters
+    def test_dev_can_return_to_auto_after_leaving_all_pools(self, daemon, open_page, monkeypatch):
+        from poolhouse.fleet import automatic_pools
         from poolhouse.fleet.discovery import memberships
 
-        monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: [])
+        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
         page, errors = open_page(daemon)
         page.wait_for_selector("#device-mode")
         page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Clusters')")
+        page.wait_for_selector("#first-run h1:has-text('Pools')")
         daemon.ui.setup_finished()
         page.reload()
-        page.click(RAIL["Cluster"])
+        page.click(RAIL["Pool"])
         connections(page)
-        page.click("#cluster-joined button:has-text('Leave')")
-        page.wait_for_selector("#cluster-joined button:has-text('Connect automatically')")
+        page.click("#pool-joined button:has-text('Leave')")
+        page.wait_for_selector("#pool-joined button:has-text('Connect automatically')")
         assert not memberships(daemon.keyfile)
-        page.click("#cluster-joined button:has-text('Connect automatically')")
-        page.wait_for_selector("#cluster-joined .row")
+        page.click("#pool-joined button:has-text('Connect automatically')")
+        page.wait_for_selector("#pool-joined .row")
         assert memberships(daemon.keyfile)[0].selection == "automatic"
         assert not errors
 
@@ -270,7 +270,7 @@ class TestFirstRun:
             self, daemon, open_page, monkeypatch):
         import threading
 
-        from poolhouse.fleet import automatic_clusters, llama
+        from poolhouse.fleet import automatic_pools, llama
         from poolhouse.fleet.environment import Environment
 
         entered, release = threading.Event(), threading.Event()
@@ -280,13 +280,13 @@ class TestFirstRun:
             assert release.wait(20)
             return root / "managed-server"
         monkeypatch.setattr(llama, "ensure_server", install)
-        monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: [])
+        monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
         daemon.ui.environment = Environment(daemon.ui.root)
         page, errors = open_page(daemon)
         try:
             page.wait_for_selector("#device-mode")
             page.click("#first-run button:has-text('Continue')")
-            page.wait_for_selector("#first-run h1:has-text('Clusters')")
+            page.wait_for_selector("#first-run h1:has-text('Pools')")
             page.click("#first-run button:has-text('Continue')")
             page.wait_for_selector("#labels-prep")
             page.click("#first-run button:has-text('Continue')")
@@ -318,13 +318,13 @@ class TestFirstRun:
 
 # -- signing in --------------------------------------------------------------------------
 class TestSigningIn:
-    def test_a_cluster_asks_for_its_passphrase(self, joined, open_page):
+    def test_a_pool_asks_for_its_passphrase(self, joined, open_page):
         page, errors = open_page(joined)
         page.wait_for_selector("#signin:not([hidden])")
         assert "passphrase" in page.locator("#signin .sub").inner_text()
         assert not errors
 
-    def test_the_wrong_words_are_refused_and_the_right_ones_open_the_cluster(
+    def test_the_wrong_words_are_refused_and_the_right_ones_open_the_pool(
             self, joined, open_page):
         page, errors = open_page(joined)
         page.wait_for_selector("#signin:not([hidden])")
@@ -336,28 +336,28 @@ class TestSigningIn:
         page.fill("#p", WORDS)
         page.click("#signin-go")
         page.wait_for_selector("#chat:not([hidden])")
-        page.click(RAIL["Cluster"])
-        page.wait_for_selector("#cluster:not([hidden])")
-        assert page.locator("#cluster h1").inner_text() == "Devices"
+        page.click(RAIL["Pool"])
+        page.wait_for_selector("#pool:not([hidden])")
+        assert page.locator("#pool h1").inner_text() == "Devices"
         assert not errors
 
 
-# -- the cluster -------------------------------------------------------------------------
-class TestTheClusterView:
+# -- the pool -------------------------------------------------------------------------
+class TestThePoolView:
     def test_a_machine_on_its_own_says_how_to_add_another(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
-        page.wait_for_selector("#cluster-cards .empty")
-        assert "Your pool starts here" in page.locator("#cluster-cards").inner_text()
-        assert "DEVICES" in page.locator("#cluster-stat").inner_text().upper()
+        page.wait_for_selector("#pool-cards .empty")
+        assert "Your pool starts here" in page.locator("#pool-cards").inner_text()
+        assert "DEVICES" in page.locator("#pool-stat").inner_text().upper()
         assert not errors
 
-    def test_a_machines_card_says_what_it_is_and_what_it_is_doing(self, with_peers,
+    def test_a_machines_card_says_what_it_is_and_what_it_is_doing(self, with_members,
                                                                   open_page):
-        page, errors = open_page(with_peers, cookie=with_peers.cookie)
-        page.wait_for_selector("#cluster-cards .peer")
-        peer = page.locator("#cluster-cards .peer").first
+        page, errors = open_page(with_members, cookie=with_members.cookie)
+        page.wait_for_selector("#pool-cards .member")
+        member = page.locator("#pool-cards .member").first
         # the meters draw inside their shadow roots, which inner_text does not enter
-        card = peer.inner_text() + " " + peer.evaluate(
+        card = member.inner_text() + " " + member.evaluate(
             "n => [...n.querySelectorAll('ml-meter')].map(m => m.shadowRoot.textContent).join(' ')")
         assert "greenhollow" in card
         assert "NVIDIA · CUDA" in card and "Marrowgate 5000" in card
@@ -368,24 +368,24 @@ class TestTheClusterView:
         assert "79°C" in card and "2400 MHz" in card and "310.5 W" in card
         assert "throttled" in card
         assert "speech: asr, vad" in card
-        assert "3/4" in page.locator("#cluster-stat").inner_text()
+        assert "3/4" in page.locator("#pool-stat").inner_text()
         assert not errors
 
-    def test_the_cluster_it_is_in_is_listed_with_a_way_out(self, joined, open_page):
+    def test_the_pool_it_is_in_is_listed_with_a_way_out(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
         connections(page)
-        assert "home" in page.locator("#cluster-joined").inner_text()
-        assert page.locator("#cluster-joined button:has-text('Leave')").count() == 1
+        assert "home" in page.locator("#pool-joined").inner_text()
+        assert page.locator("#pool-joined button:has-text('Leave')").count() == 1
         assert not errors
 
     def test_benchmark_options_are_explicit_and_no_command_is_shown(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
-        page.locator("#cluster-sweep > summary").click()
-        page.locator("#cluster-sweep").get_by_label("Questions", exact=True).select_option("limit")
-        page.locator("#cluster-sweep").get_by_label("Question limit", exact=True).fill("40")
-        page.locator("#cluster-sweep").get_by_label("Run name", exact=False).fill("nightly")
+        page.locator("#pool-sweep > summary").click()
+        page.locator("#pool-sweep").get_by_label("Questions", exact=True).select_option("limit")
+        page.locator("#pool-sweep").get_by_label("Question limit", exact=True).fill("40")
+        page.locator("#pool-sweep").get_by_label("Run name", exact=False).fill("nightly")
         assert page.locator("#sample").input_value() == "40"
-        assert "poolhouse-bench" not in page.locator("#cluster-sweep").inner_text()
+        assert "poolhouse-bench" not in page.locator("#pool-sweep").inner_text()
         assert not errors
 
 
@@ -393,7 +393,7 @@ class TestTheClusterView:
 class TestTheChatView:
     def test_with_nothing_serving_it_says_where_to_start_one(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
-        page.wait_for_selector("#cluster:not([hidden])")
+        page.wait_for_selector("#pool:not([hidden])")
         page.click(RAIL["Chat"])
         page.wait_for_selector("#chat-none:not([hidden])")
         assert "No model is running" in page.locator("#chat-none").inner_text()
@@ -475,11 +475,11 @@ class TestTheSettingsView:
     def test_no_screen_shows_the_word_null(self, joined, open_page):
         """`replaceChildren` writes the word "null" for a gap the way `el` never does."""
         page, errors = open_page(joined, cookie=joined.cookie)
-        page.wait_for_selector("#cluster-cards")
+        page.wait_for_selector("#pool-cards")
         for tab, ready in (("Chat", "#chat-none, #chat-askrow"),
                            ("Models", "models-view h1"),
                            ("Settings", "#settings-save"),
-                           ("Cluster", "#cluster-cards")):
+                           ("Pool", "#pool-cards")):
             page.click(RAIL[tab])
             page.wait_for_selector(ready)
             shown = page.locator("#root").inner_text()
@@ -629,7 +629,7 @@ class TestTheFitView:
             page, errors = open_page(served, path="/ui/fit")
             page.wait_for_selector("table.fit tbody tr")
             assert page.locator("fleet-nav").count() == 0
-            assert page.locator("cluster-view").count() == 0
+            assert page.locator("pool-view").count() == 0
             assert not errors
         finally:
             httpd.shutdown()
@@ -639,7 +639,7 @@ class TestTheFitView:
 class TestClosingTheWindow:
     """The question the native window asks, drawn by the page behind it."""
 
-    def test_a_machine_on_its_own_is_not_told_it_belongs_to_a_cluster(self, daemon,
+    def test_a_machine_on_its_own_is_not_told_it_belongs_to_a_pool(self, daemon,
                                                                      open_page):
         daemon.call("/ui/setup/done", method="POST")
         page, errors = open_page(daemon)
@@ -652,7 +652,7 @@ class TestClosingTheWindow:
         assert "Stays reachable" in page.locator("#close-background-d").inner_text()
         assert not errors
 
-    def test_a_machine_in_a_cluster_is_told_what_the_others_lose(self, joined,
+    def test_a_machine_in_a_pool_is_told_what_the_others_lose(self, joined,
                                                                  open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
         page.wait_for_function("() => typeof window.poolhouseAskOnClose === 'function'")

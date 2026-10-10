@@ -1,4 +1,4 @@
-"""Finding pairable machines: announcements in, a bounded and aging list out."""
+"""Finding joinable machines: announcements in, a bounded and aging list out."""
 
 import ipaddress
 import json
@@ -12,7 +12,7 @@ FP = "ab" * 32
 
 
 def say(**more):
-    body = {"v": 1, "kind": "pair-open", "name": "kitchen-pi", "hostname": "kitchen.local",
+    body = {"v": 1, "kind": "join-open", "name": "kitchen-pi", "hostname": "kitchen.local",
             "model": "Linux aarch64", "port": 8772, "fingerprint": FP, **more}
     return json.dumps(body).encode()
 

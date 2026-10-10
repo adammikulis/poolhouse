@@ -14,8 +14,8 @@ from poolhouse.workspace.identity import Denied
      "Denied: native roots must belong to the selected project"),
     ("token file /fixture/session: secret-token-value",
      "Denied: token file /fixture/session:"),
-    ("project board unavailable: https://private-host/?token=secret-token-value",
-     "Denied: project board unavailable:"),
+    ("board unavailable: https://private-host/?token=secret-token-value",
+     "Denied: board unavailable:"),
     ("unknown refusal with secret-token-value", "Denied: unknown refusal with"),
 ])
 def test_run_reports_authorization_category_without_private_values(monkeypatch, capsys, reason, expected):

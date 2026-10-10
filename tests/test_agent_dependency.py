@@ -27,10 +27,10 @@ def test_local_chat_refuses_before_spawn(monkeypatch, tmp_path):
 def test_chat_readiness_reports_actual_dependency(monkeypatch):
     monkeypatch.setitem(sys.modules, "agents", None)
     from poolhouse.fleet import chat_routes
-    monkeypatch.setattr(chat_routes, "load_cluster_key", lambda path: None)
+    monkeypatch.setattr(chat_routes, "load_pool_key", lambda path: None)
     monkeypatch.setattr(chat_routes, "targets", lambda *args: [])
     route = ChatRoutes()
-    route.ui = SimpleNamespace(cluster_key_path=None, serving=None)
+    route.ui = SimpleNamespace(pool_key_path=None, serving=None)
     route.method = "GET"
     replies = []
     route.send = lambda status, body: replies.append((status, body))

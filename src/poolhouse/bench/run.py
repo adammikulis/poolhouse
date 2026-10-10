@@ -96,7 +96,7 @@ def _main(argv: list[str] | None = None) -> int:
     """``poolhouse-bench`` -- what a change to the asking costs, and whether it was worth it."""
     words = list(argv if argv is not None else sys.argv[1:])
     args = _parser().parse_args(words)
-    # the line as given, for `sweep --fleet` to hand each peer the same line with one model
+    # the line as given, for `sweep --fleet` to hand each member the same line with one model
     args._argv = words
     return _run(args)
 
@@ -277,13 +277,13 @@ def cmd_prepare(args: Any) -> int:
 def _fleet_sweep(args: Any) -> int:
     """``sweep --fleet``: the plan said, the jobs dispatched, waited for and gathered."""
     if not getattr(args, "_argv", None):
-        warn("error: --fleet hands each peer the command line it was given, and this run has none")
+        warn("error: --fleet hands each member the command line it was given, and this run has none")
         return 2
-    peers = [p.strip() for p in str(getattr(args, "peers", "") or "").split(",") if p.strip()]
+    members = [p.strip() for p in str(getattr(args, "members", "") or "").split(",") if p.strip()]
     try:
         planned = ops.fleet_planned(list(getattr(args, "_argv", None) or []),
                                     [str(m) for m in (getattr(args, "serve", []) or [])],
-                                    peers=peers)
+                                    members=members)
     except Refused as why:
         for line in why.said:
             say(line)

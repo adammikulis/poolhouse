@@ -2,7 +2,7 @@
 
 import pytest
 from task_kit import accepted, board as board_fixture, model_lease
-from test_board_task_credit import ledger as ledger_fixture, reviewed, seat, standing
+from test_board_task_credit import ledger as ledger_fixture, reviewed, session, standing
 
 from poolhouse.workspace import task_credit
 from poolhouse.workspace.task_provenance import snapshot
@@ -15,7 +15,7 @@ ledger = ledger_fixture
 def test_same_actor_switches_model_without_rewriting_receipts_or_duplicating_credit(board, ledger):
     first_proposal, _ = reviewed(board, {**accepted(), 'verified_usage': {
         'source': 'Independent task review', 'tokens_in': None, 'tokens_out': 24, 'wall_seconds': 2.0}})
-    lead = seat(board, board.lead)
+    lead = session(board, board.lead)
     first = task_credit.verify_on_board(lead, board.task['id'], ledger=ledger)
     lease = model_lease(board.node, board.worker, 'gemma')
     task = board.tasks(board.lead).create({**board.spec, 'source_key': 'second-model'})
@@ -52,7 +52,7 @@ def test_same_actor_switches_model_without_rewriting_receipts_or_duplicating_cre
 def test_unaccepted_dimensions_keep_existing_review_policy_without_awards(board, ledger, outcome, samples):
     reviewed(board, {'accepted': False, 'outcome': outcome, 'reason': 'Independent outcome.',
                      'checks': [{'name': 'Replay passes', 'passed': False}]})
-    task_credit.verify_on_board(seat(board, board.lead), board.task['id'], ledger=ledger)
+    task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
     result = standing(board, board.worker, ledger)['dimensions']
     for kind in ('agents', 'models'):
         assert len(result[kind]) == 1
@@ -81,7 +81,7 @@ def test_history_filters_actor_exact_runtime_and_family_over_the_same_review(boa
     from poolhouse.workspace.service import Workspace
 
     reviewed(board)
-    task_credit.verify_on_board(seat(board, board.lead), board.task['id'], ledger=ledger)
+    task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
     ws = Workspace(tmp_path / 'ws')
     tokens.store(ws.base, tokens.OWNER_FILE, ws.init('owner'))
     monkeypatch.setattr(work_reputation, 'Workspace', lambda: ws)

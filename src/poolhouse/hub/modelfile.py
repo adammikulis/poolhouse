@@ -62,6 +62,8 @@ class TensorEntry:
     kind: int
     offset: int
 
+_ALIGNMENT = "general.alignment"
+
 
 @dataclass(slots=True)
 class Scan:
@@ -74,6 +76,7 @@ class Scan:
     pair_count: int = 0
     values: dict[str, object] = field(default_factory=dict)
     tensors: list[TensorEntry] = field(default_factory=list)
+    data_start: int = 0
     stopped: tuple[str, int, int, int] | None = None
 
 
@@ -189,6 +192,7 @@ def scan_gguf(path: Path | str, *, want: Callable[[str], bool] | None = None,
     """
     path = Path(path).expanduser()
     out = Scan()
+    alignment = 32
     with path.open("rb") as f:
         size = path.stat().st_size
         rd = _Reader(f, size, str(path), limits)
@@ -211,11 +215,14 @@ def scan_gguf(path: Path | str, *, want: Callable[[str], bool] | None = None,
                     out.stopped = (key, kind, -1, 0)
                 return out
             keep = want is None or want(key)
-            got = rd.value(kind, 0, keep)
+            got = rd.value(kind, 0, keep or key == _ALIGNMENT)
             if keep:
                 out.values[key] = got
+            if key == _ALIGNMENT and isinstance(got, int) and got > 0:
+                alignment = got
         if tensors:
             out.tensors = _tensor_table(rd, out.tensor_count)
+            out.data_start = -(-f.tell() // alignment) * alignment
     return out
 
 

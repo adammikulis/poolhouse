@@ -19,23 +19,23 @@ def run(board, who, *argv):
 
 
 def test_check_lists_what_strict_would_strand_without_changing_the_mode(board):
-    seat = board.node.session(board.lead)
-    board.tasks(board.worker).create({**board.spec, 'source_key': 'peer-claimable'})
+    session = board.node.session(board.lead)
+    board.tasks(board.worker).create({**board.spec, 'source_key': 'member-claimable'})
     retiring = board.node.member('retiring', parent=board.lead)
     board.tasks(board.lead).create({**board.spec, 'source_key': 'designated', 'assignees': [retiring.name]})
     board.node.session(retiring).retire()
-    report = enforcement_check.check(seat)
+    report = enforcement_check.check(session)
     kinds = {row['kind'] for row in report['stranded']}
     assert kinds == {'unassigned', 'designated'}
     assert report['mode'] == 'open' and not report['clear']
     assert board.tasks(board.lead).mode()['mode'] == 'open'
 
 
-def test_accepted_review_by_a_peer_is_reported(board):
+def test_accepted_review_by_a_member_is_reported(board):
     board.tasks(board.lead).scope(board.task['id'], {'state': 'reserved'})
     proposed(board)
-    peer = board.node.member('peer', parent=board.other)
-    board.tasks(peer).review(board.task['id'], accepted())
+    member = board.node.member('member', parent=board.other)
+    board.tasks(member).review(board.task['id'], accepted())
     assert board.tasks(board.lead).get(board.task['id'])['state'] == 'accepted'
     stranded = enforcement_check.check(board.node.session(board.lead))['stranded']
     assert [row['kind'] for row in stranded if row['task'] == board.task['id']] == ['review']

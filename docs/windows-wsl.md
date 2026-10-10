@@ -50,7 +50,7 @@ python -m poolhouse.device_setup --yes
    | binary | cargo is missing or the build failed | the printed rustup / `cargo build --release -p poolhouse-node` line (in `app/`) |
    | node, listening | the node did not start | read `node.log` in the state directory it names |
    | beacon-send, beacon-receive | a firewall blocks the beacon | step 2 again; a third-party firewall needs the same two rules |
-   | peer-beacon | the other device is not beaconing | step 5 on the Mac, now |
+   | member-beacon | the other device is not beaconing | step 5 on the Mac, now |
    | enrolled | policy differs, or the device already has members | both devices on policy `open`; see "Secure pools" |
    | converge | the board message did not cross | rerun with the other device up |
 5. **The Mac side.** The Mac must be on the same wifi or cable (not a guest network, not a VPN) with its node
@@ -70,14 +70,14 @@ python -m poolhouse.device_setup --yes
 
 ## Secure pools
 
-Under policy `secure` nothing enrols without a pairing code. The Mac makes one and the Windows device uses it. The
+Under policy `secure` nothing enrols without a join code. The Mac makes one and the Windows device uses it. The
 code is valid for five minutes; you read it from the Mac's session, never from the owner:
 
 ```sh
 # on the Mac (its agent runs this)
 python -m poolhouse.node_join invite            # prints {"code": "...", "port": 7447, "expires_in_s": 300, ...}
 # on this device (the Mac's agent sends you the code and the Mac's address over the board; the code is short-lived)
-POOLHOUSE_PAIR_CODE=CODE python -m poolhouse.node_join pair --host MAC_ADDRESS
+POOLHOUSE_JOIN_CODE=CODE python -m poolhouse.node_join join-with-code --host MAC_ADDRESS
 ```
 
 The code is in the environment, not the command line, so it is not left in a process list. Do not write it in a

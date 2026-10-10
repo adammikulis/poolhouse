@@ -52,7 +52,7 @@ def test_baseline_pins_then_scan_finds_a_change(capsys):
 
 def test_events_filter_by_kind_and_severity(capsys):
     node = sentinel.default()
-    node.store.quarantine(("peer", "1.2.3.4"), "forged", {"token": "hf_" + "z" * 30})
+    node.store.quarantine(("member", "1.2.3.4"), "forged", {"token": "hf_" + "z" * 30})
     code, out, _ = run(capsys, "events", "--json", "--severity", "critical")
     rows = json.loads(out)
     assert code == 0 and rows and all(r["severity"] == "critical" for r in rows)
@@ -81,10 +81,10 @@ def test_show_prints_metadata_but_never_the_held_text_without_a_person(capsys):
     assert code == 2 and "SECRET INSTRUCTION" not in out + err
 
 
-def test_add_quarantines_a_peer_by_hand(capsys):
-    code, out, _ = run(capsys, "quarantine", "add", "peer:10.5.5.5", "--reason", "seen scanning")
-    assert code == 0 and "quarantined peer:10.5.5.5" in out
-    assert sentinel.default().peer_blocked("10.5.5.5")
+def test_add_quarantines_a_member_by_hand(capsys):
+    code, out, _ = run(capsys, "quarantine", "add", "member:10.5.5.5", "--reason", "seen scanning")
+    assert code == 0 and "quarantined member:10.5.5.5" in out
+    assert sentinel.default().member_blocked("10.5.5.5")
 
 
 def test_honey_plant_status_remove(capsys):
@@ -98,4 +98,4 @@ def test_honey_plant_status_remove(capsys):
 def test_mode_shows_and_refuses_a_change_without_a_person(capsys):
     assert run(capsys, "mode")[1].strip() == Mode.GUARDED.value
     assert run(capsys, "mode", "off")[0] == 2
-    assert sentinel.default().store.state_of("peer", "x") == State.CLEAR
+    assert sentinel.default().store.state_of("member", "x") == State.CLEAR

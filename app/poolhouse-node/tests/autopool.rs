@@ -69,7 +69,7 @@ fn it_joins_an_open_pool_of_its_project_that_it_hears_instead_of_making_one() {
     eventually("a to open its pool", 10, || policy(&a) == "open");
     // a has a member, so it is not alone; b's id sorts above a's, so only "join a pool that is not alone" can bring b in
     let member = device();
-    a.pair_secure(&member);
+    a.join_with_code(&member);
     let b = device_above(&a.pool(), auto(beacon(pb, &[pa]), "poolhouse", 60_000));
     eventually("b to join a's pool well inside its listening window", 10, || a.is_member(&b.fp()) && b.is_member(&a.fp()));
     assert_eq!(b.pool(), a.pool());
@@ -95,7 +95,7 @@ fn a_secure_pool_of_its_project_is_ignored_and_the_device_makes_its_own() {
     let a = device_with(auto(beacon(pa, &[pb]), "poolhouse", 0));
     eventually("a to open its pool", 10, || policy(&a) == "open");
     let member = device();
-    a.pair_secure(&member);
+    a.join_with_code(&member);
     a.set_policy("secure");
     let b = device_above(&a.pool(), auto(beacon(pb, &[pa]), "poolhouse", 600));
     eventually("b to make its own open pool", 10, || policy(&b) == "open");

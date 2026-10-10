@@ -176,7 +176,7 @@ class Agent:
         """Send to the neighbour, renew claims, wait for mail; every tenth agent reads a thread."""
         first = 0
         for i in range(self.spec["messages"]):
-            sent = self.timed("send", self.ws.send, self.token, self.spec["peer"], "status", f"{self.name} {i}")
+            sent = self.timed("send", self.ws.send, self.token, self.spec["member"], "status", f"{self.name} {i}")
             if sent:
                 self.out["sent"] += 1
                 first = first or sent["seq"]
@@ -247,7 +247,7 @@ def run(agents: int = 30, messages: int = 20, *, default_limits: bool = False,
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_NOTIFY": "off"}
     kids = []
     for i, n in enumerate(names):
-        spec = {"index": i, "name": n, "token": tokens[n], "peer": names[(i + 1) % agents],
+        spec = {"index": i, "name": n, "token": tokens[n], "member": names[(i + 1) % agents],
                 "messages": messages, "expect": messages, "base": str(base), "home": str(home),
                 "ring": str(ring), "go": str(go), "drain_s": drain_s}
         kids.append(subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--child",

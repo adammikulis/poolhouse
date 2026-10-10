@@ -66,7 +66,7 @@ class TooLarge(Refused):
 class Limits:
     """What a fetch may spend: bytes, redirects, and time (``timeout`` per socket wait,
     ``deadline_s`` for the whole). ``allow_hosts`` names hosts, by name or address, that may
-    be private because the caller means to reach them (a peer on the LAN); a redirect to any
+    be private because the caller means to reach them (a member on the LAN); a redirect to any
     other host is checked as usual. ``resolver`` answers for DNS. ``vet`` is called with every
     URL before it is connected to, the first and each redirect target, and raises to refuse."""
 

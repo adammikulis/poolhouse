@@ -274,21 +274,21 @@ is indistinguishable from the page, so none of them opens a session or selects t
   `<root>/launch/secret.json` (`version`, `secret`, `port`) owner-only, not a symlink, with the
   directory registered with sentinel so no agent tool call may name it. Nothing the caller sends
   chooses the host, the port or the file.
-* **Ticket.** The daemon's own window and the owner's terminal (`poolhouse peers open`) present the
+* **Ticket.** The daemon's own window and the owner's terminal (`poolhouse devices open`) present the
   secret to `POST /ui/launch/ticket` (no `Origin`, no `Sec-Fetch-Site`, loopback `Host`) and get a
   ticket valid for 60 seconds and one redemption, at most eight waiting at once. The page opens as
   `/ui/?launch_ticket=...`, redeems it with `POST /ui/session`, and removes it from the address bar.
-  A launch-secret ticket opens no session once a Production cluster is joined: that machine asks
-  for the cluster passphrase.
+  A launch-secret ticket opens no session once a pool in prod mode is joined: that machine asks
+  for the pool passphrase.
 * **Origin.** Every session records how it was opened. `launch-ticket`, `passphrase`,
-  `recovery-file` and `invite` are credentialed; `token` and a session opened by joining a cluster
+  `recovery-file` and `invite` are credentialed; `token` and a session opened by joining a pool
   with no credential are not. Choosing a device name and mode (`/ui/setup/initial`), joining the
   workspace as the person (`SessionWorkspace`, checked on every person request and again inside
-  `connect`), the project Board and invitation routes, every installed `/ui/<extension>` route,
+  `connect`), the board and invitation routes, every installed `/ui/<extension>` route,
   credential changes, coordinator selection, the wiring limit and handing a session to a browser
   (`/ui/launch-ticket`) refuse a session that is not credentialed.
 * **Hand-typed address.** A page opened without a ticket, or whose session ended, shows how to open
-  it from the Poolhouse window or with `poolhouse peers open`, which refuses a process an agent
+  it from the Poolhouse window or with `poolhouse devices open`, which refuses a process an agent
   started and a process with no terminal. Inside the app's window the page offers a Reopen button
   that asks the app for a fresh ticket.
 * **Board page.** `poolhouse-workspace board-serve` makes its own session secret and prints the
@@ -307,7 +307,7 @@ Limits that remain:
   signed-in screen. Reading the secret, the arguments or the daemon's memory is not defended; a
   separate operating-system account for agents, or a sandbox that hides the state directory and
   process list from them, is what closes it.
-* `POST /ui/setup/join` on a machine that has not joined a cluster still opens a session for any
+* `POST /ui/setup/join` on a machine that has not joined a pool still opens a session for any
   loopback caller. That session is not credentialed, so it cannot act as the person or reach the
   routes listed above, but it is accepted by routes that only ask for a live session.
 * The Windows launcher keeps the daemon in WSL and does not read the secret file from there, so
@@ -360,9 +360,9 @@ Remaining (slice 1b-ii), consumers that still obtain `parent/name` tokens:
 | Consumer | Needs |
 |---|---|
 | `service.py` `Workspace.delegate`, `identity.py` `Registry.delegate`, `person_session.py` stub | delete with the last caller |
-| `remote.py` `delegate`, `remote_host.py` operation `delegate` and its audit | delete; native sessions become a parent seat with a label |
-| `automatic_connection.py` native session start, `harnessid.py` local harness start | `Seat(label, parent=...)`; `harnesshook`, `harness_claims`, `harness_remote` and `notification_reader` key their identity and physical claim owner by the seat name today |
-| `localstart.py` `_worker_identity`, `child_renewal.py`, `task_scheduler.py`, `device_agent.bind_worker` | worker seats for tasks |
+| `remote.py` `delegate`, `remote_host.py` operation `delegate` and its audit | delete; native sessions become a parent session with a label |
+| `automatic_connection.py` native session start, `harnessid.py` local harness start | `HarnessSession(label, parent=...)`; `harnesshook`, `harness_claims`, `harness_remote` and `notification_reader` key their identity and physical claim owner by the session name today |
+| `localstart.py` `_worker_identity`, `child_renewal.py`, `task_scheduler.py`, `device_agent.bind_worker` | worker sessions for tasks |
 | `task_worktrees`, `resource_allocations`, `backlog`, `issuepump`, `claim_handoff`, `task_integration`, `task_source_recovery`, `task_worktree_recovery`, `task_scope`, `taskboard`, `task_actions` | authorize by `child.parent == caller` where the worker holds its own token |
 | tests | about 25 files build a delegated worker through `ws.delegate` (`taskboard_kit`, `test_child_renewal`, `test_workspace_quickstart`, `test_device_agent*`, `test_automatic_project_connection`, `test_enrollment`) |
 

@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parents[1]
 ROOT = REPO / "src" / "poolhouse"
 
 LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("core", ("activity", "agent_dependency", "agent_hooks", "asking", "authority", "backend", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
+    ("core", ("activity", "agent_dependency", "agent_hooks", "agent_hooks_stale", "asking", "authority", "backend", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
               "entities", "errors", "extraction", "files", "files_windows", "gate", "geo",
               "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "http_cancel", "httpguard", "installed", "interventions", "features", "jobs", "jsonl", "keystore", "keystore_guard", "legacy", "limits",
               "runtime", "runtime_launchers",

@@ -15,7 +15,7 @@ from poolhouse.sentinel import Mode, Sentinel, State, human
 from poolhouse.sentinel.adapters import GuardLogHandler, screening, watch_authenticator
 from poolhouse.sentinel.servers import unmanaged_findings
 
-KEY = b"a-cluster-key-of-thirty-two-bytes"
+KEY = b"a-pool-key-of-thirty-two-bytes"
 SECRET = macauth.derive(KEY)
 URL = "/jobs"
 HOST = "10.1.2.3:8770"
@@ -40,37 +40,37 @@ def _send(auth, nonce, who, secret=SECRET):
     return auth.check("POST", URL, _signed(nonce, secret), b"{}", who)
 
 
-def test_a_replayed_request_raises_events_and_the_peer_is_blocked(node):
+def test_a_replayed_request_raises_events_and_the_member_is_blocked(node):
     auth = watch_authenticator(Authenticator(lambda: [SECRET]), node, Verdict)
     assert _send(auth, "n" * 24, "10.9.9.9").ok
     for _ in range(3):
         assert not _send(auth, "n" * 24, "10.9.9.9").ok
-    kinds = [e.kind for e in node.bus.recent(kind="peer.")]
-    assert "peer.auth_failures" in kinds and "peer.forged_traffic" in kinds
-    assert node.store.state_of("peer", "10.9.9.9") == State.QUARANTINED
+    kinds = [e.kind for e in node.bus.recent(kind="member.")]
+    assert "member.auth_failures" in kinds and "member.forged_traffic" in kinds
+    assert node.store.state_of("member", "10.9.9.9") == State.QUARANTINED
     refused = _send(auth, "fresh" * 5, "10.9.9.9")
     assert not refused.ok and "quarantined" in refused.reason
     assert _send(auth, "other" * 5, "10.9.9.10").ok
 
 
-def test_forged_signatures_block_the_sender_and_not_the_honest_peer(node):
+def test_forged_signatures_block_the_sender_and_not_the_honest_member(node):
     auth = watch_authenticator(Authenticator(lambda: [SECRET]), node, Verdict)
     wrong = macauth.derive(b"an-attackers-key-of-32-bytes-long")
     for i in range(35):
         _send(auth, f"forged{i:018d}", "10.6.6.6", secret=wrong)
-    assert node.store.state_of("peer", "10.6.6.6") == State.QUARANTINED
-    assert node.peer_blocked("10.6.6.6")
+    assert node.store.state_of("member", "10.6.6.6") == State.QUARANTINED
+    assert node.member_blocked("10.6.6.6")
     for i in range(50):
         assert _send(auth, f"honest{i:018d}", "10.1.1.1").ok
-    assert node.store.state_of("peer", "10.1.1.1") == State.CLEAR
+    assert node.store.state_of("member", "10.1.1.1") == State.CLEAR
 
 
-def test_a_released_peer_can_talk_again(node):
+def test_a_released_member_can_talk_again(node):
     auth = watch_authenticator(Authenticator(lambda: [SECRET]), node, Verdict)
     _send(auth, "n" * 24, "10.7.7.7")
     for _ in range(3):
         _send(auth, "n" * 24, "10.7.7.7")
-    record = node.store.find("peer", "10.7.7.7")
+    record = node.store.find("member", "10.7.7.7")
     node.store.release(record.id, grant("release", record.id))
     assert _send(auth, "afterwards" * 2 + "x", "10.7.7.7").ok
 

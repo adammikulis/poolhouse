@@ -410,7 +410,7 @@ Every run records which machine measured it (`server["host"]`) and which code
 `host` column only when a store holds more than one; the ranking never composes one host's
 accuracy with another's cost -- a cost run from another machine is listed as
 `rejected: other host` -- and `--rates` and `--plot` name points by host. `sweep --fleet
-[--peers NAME,...]` spreads the `--serve` models over the fleet: one job per model with
+[--members NAME,...]` spreads the `--serve` models over the fleet: one job per model with
 the same line otherwise, planned, dispatched, waited for and gathered into `--kept`, then
-shown; a peer on another commit is refused before anything is dispatched.
+shown; a device on another commit is refused before anything is dispatched.
 

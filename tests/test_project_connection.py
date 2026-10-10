@@ -21,7 +21,7 @@ class RejectLocalWorkspace:
 class Remote:
     host = "http://127.0.0.1:8770"
     project_id = PROJECT
-    cluster_key = ""
+    pool_key = ""
 
     def __init__(self, *args, **kwargs):
         self.calls = []
@@ -87,27 +87,27 @@ def test_unsupported_privileged_operation_is_explicitly_refused():
 
 
 def test_auto_discovery_selects_only_the_project_authority(monkeypatch):
-    member = SimpleNamespace(group="home", key=b"cluster-key")
+    member = SimpleNamespace(group="home", key=b"pool-key")
     host = SimpleNamespace(base_url="https://host.local:8770",
                            beacon=SimpleNamespace(machine="authority-machine"))
     source = SimpleNamespace(base_url="https://source.local:8770",
                              beacon=SimpleNamespace(machine="source-machine"))
     monkeypatch.setattr(discovery, "memberships", lambda: [member])
-    monkeypatch.setattr(remote.Peer, "discover", classmethod(lambda cls, **kwargs: [host, source]))
-    monkeypatch.setattr(project_client, "catalogue", lambda peer: {"projects": [
+    monkeypatch.setattr(remote.Member, "discover", classmethod(lambda cls, **kwargs: [host, source]))
+    monkeypatch.setattr(project_client, "catalogue", lambda member: {"projects": [
         {"id": PROJECT, "board_host": host.base_url}]})
-    monkeypatch.setattr(remote, "device_address", lambda peer, declared: peer.base_url == declared)
+    monkeypatch.setattr(remote, "device_address", lambda member, declared: member.base_url == declared)
     assert connection._find_authority(PROJECT) == ("home", host.base_url)
 
 
 def test_auto_discovery_refuses_conflicting_project_authorities(monkeypatch):
-    member = SimpleNamespace(group="home", key=b"cluster-key")
+    member = SimpleNamespace(group="home", key=b"pool-key")
     hosts = [SimpleNamespace(base_url=f"https://host-{i}.local:8770",
                              beacon=SimpleNamespace(machine=f"machine-{i}")) for i in range(2)]
     monkeypatch.setattr(discovery, "memberships", lambda: [member])
-    monkeypatch.setattr(remote.Peer, "discover", classmethod(lambda cls, **kwargs: hosts))
-    monkeypatch.setattr(project_client, "catalogue", lambda peer: {"projects": [
-        {"id": PROJECT, "board_host": peer.base_url}]})
+    monkeypatch.setattr(remote.Member, "discover", classmethod(lambda cls, **kwargs: hosts))
+    monkeypatch.setattr(project_client, "catalogue", lambda member: {"projects": [
+        {"id": PROJECT, "board_host": member.base_url}]})
     with pytest.raises(Denied, match="conflicting workspace authorities"):
         connection._find_authority(PROJECT)
 
@@ -120,10 +120,10 @@ def test_auto_attach_discovers_authority_without_registering_a_device(monkeypatc
     monkeypatch.setattr(projects, "identity", lambda root: PROJECT)
     monkeypatch.setattr(connection, "_find_authority", lambda project: ("home", "https://host.local:8770"))
     monkeypatch.setattr(connection, "RemoteWorkspace", lambda host, project_id, **kwargs:
-                        SimpleNamespace(host=host, cluster_key=""))
+                        SimpleNamespace(host=host, pool_key=""))
     assert connection.auto_attach(tmp_path) == {
         "host": "https://host.local:8770", "project_id": PROJECT, "agent": "",
-        "cluster": "home", "cluster_key": "", "root": str(tmp_path.resolve())}
+        "pool": "home", "pool_key": "", "root": str(tmp_path.resolve())}
 
 
 def test_this_machines_own_beacon_is_named_by_its_loopback_or_its_lan_address(monkeypatch):

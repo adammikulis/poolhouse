@@ -1,4 +1,4 @@
-"""Which model each peer serves, and how many slots, for a number of users at one context."""
+"""Which model each member serves, and how many slots, for a number of users at one context."""
 
 from __future__ import annotations
 
@@ -17,15 +17,15 @@ RANKED_AFTER = 20
 """A profile with fewer questions than this ranks after every one with more."""
 
 PREFERENCES = {
-    "quality": "the best measured model that fits each peer",
-    "slots": "the model that slots the most users on each peer",
+    "quality": "the best measured model that fits each member",
+    "slots": "the model that slots the most users on each member",
 }
-"""What each ``--prefer`` choice gives a peer."""
+"""What each ``--prefer`` choice gives a member."""
 
 
 @dataclass(frozen=True)
 class Room:
-    """A peer as the planner sees it: a name, its room in bytes, and where it answers."""
+    """A member as the planner sees it: a name, its room in bytes, and where it answers."""
 
     name: str
     room: int
@@ -33,18 +33,18 @@ class Room:
     serving: tuple[str, ...] = ()
 
 
-def room_of(peer: Any) -> Room:
+def room_of(member: Any) -> Room:
     """A `Room` out of a `Beacon`, a `join.describe` row, or a ``/health`` body."""
-    if isinstance(peer, Room):
-        return peer
-    if isinstance(peer, dict):
-        device = peer.get("device") if isinstance(peer.get("device"), dict) else peer
-        name = str(peer.get("name") or "")
-        base_url = str(peer.get("base_url") or "")
+    if isinstance(member, Room):
+        return member
+    if isinstance(member, dict):
+        device = member.get("device") if isinstance(member.get("device"), dict) else member
+        name = str(member.get("name") or "")
+        base_url = str(member.get("base_url") or "")
     else:
-        device = getattr(peer, "device", None) or {}
-        name = str(getattr(peer, "name", "") or "")
-        base_url = str(getattr(peer, "base_url", "") or "")
+        device = getattr(member, "device", None) or {}
+        name = str(getattr(member, "name", "") or "")
+        base_url = str(getattr(member, "base_url", "") or "")
     served = tuple(str(m) for one in (device.get("serving") or [])
                    for m in (one.get("models") or []))
     return Room(name=name, room=int(device.get("room_bytes") or 0), base_url=base_url,
@@ -92,9 +92,9 @@ def fit_for(model: str, fits: Sequence[Fit], *, cache_type: str = "",
 
 @dataclass(frozen=True)
 class Row:
-    """One peer, the model it serves, and how many slots at what context."""
+    """One member, the model it serves, and how many slots at what context."""
 
-    peer: str
+    member: str
     model: str
     slots: int
     context: int
@@ -105,7 +105,7 @@ class Row:
 
 @dataclass
 class Placement:
-    """Every slot given out, the users left without one, and every peer a model was not
+    """Every slot given out, the users left without one, and every member a model was not
     placed on with why not."""
 
     users: int
@@ -114,7 +114,7 @@ class Placement:
     rows: list[Row] = field(default_factory=list)
     unplaced: int = 0
     why: list[tuple[str, str, str]] = field(default_factory=list)
-    """``(peer, model, reason)``."""
+    """``(member, model, reason)``."""
 
     @property
     def placed(self) -> int:
@@ -124,39 +124,39 @@ class Placement:
         return {"users": self.users, "context": self.context, "prefer": self.prefer,
                 "placed": self.placed, "unplaced": self.unplaced,
                 "rows": [asdict(r) for r in self.rows],
-                "why": [{"peer": p, "model": m, "reason": r} for p, m, r in self.why]}
+                "why": [{"member": p, "model": m, "reason": r} for p, m, r in self.why]}
 
 
-def _note(out: Placement, peer: str, model: str, reason: str) -> None:
-    if (peer, model, reason) not in out.why:
-        out.why.append((peer, model, reason))
+def _note(out: Placement, member: str, model: str, reason: str) -> None:
+    if (member, model, reason) not in out.why:
+        out.why.append((member, model, reason))
 
 
-def _slots_on(peer: Room, fit: Fit, context: int, left: int) -> tuple[int, int, str]:
-    """Slots for at most ``left`` users on ``peer``, the bytes that uses, and the reason
+def _slots_on(member: Room, fit: Fit, context: int, left: int) -> tuple[int, int, str]:
+    """Slots for at most ``left`` users on ``member``, the bytes that uses, and the reason
     when there are none."""
 
-    here = fit.at_room(peer.room)
+    here = fit.at_room(member.room)
     loaded, each = here.line(context)
-    if loaded > peer.room:
-        return 0, 0, f"room {human_bytes(peer.room)} < {human_bytes(loaded)} loaded"
+    if loaded > member.room:
+        return 0, 0, f"room {human_bytes(member.room)} < {human_bytes(loaded)} loaded"
     slots = min(left, here.free() // each) if each > 0 else left
     if slots < 1:
-        return 0, 0, (f"room {human_bytes(peer.room)} < {human_bytes(loaded + each)} "
+        return 0, 0, (f"room {human_bytes(member.room)} < {human_bytes(loaded + each)} "
                       f"for one slot at {context}")
     return slots, loaded + slots * each, ""
 
 
-def place(users: int, context: int, peers: Sequence[Any], profiles: Sequence[Profile],
+def place(users: int, context: int, members: Sequence[Any], profiles: Sequence[Profile],
           fits: Sequence[Fit], *, log: Callable[[str], None] | None = None,
           prefer: str = "quality") -> Placement:
-    """Slots for ``users`` at ``context`` tokens each across ``peers``.
+    """Slots for ``users`` at ``context`` tokens each across ``members``.
 
     With ``prefer="quality"`` models are taken best first (`ranked`); each goes on every
-    peer with room for its loaded size and at least one slot, roomiest peer first, taking
-    as many slots as fit or as are still wanted. With ``prefer="slots"`` peers are taken
+    member with room for its loaded size and at least one slot, roomiest member first, taking
+    as many slots as fit or as are still wanted. With ``prefer="slots"`` members are taken
     roomiest first and each serves whichever model slots the most of the users still
-    waiting, ties going to the better-ranked one. A peer serves one model. Stops when
+    waiting, ties going to the better-ranked one. A member serves one model. Stops when
     every user has a slot; ``unplaced`` is how many did not get one.
     """
 
@@ -164,13 +164,13 @@ def place(users: int, context: int, peers: Sequence[Any], profiles: Sequence[Pro
     want = prefer if prefer in PREFERENCES else "quality"
     out = Placement(users=int(users), context=int(context), prefer=want)
     left = max(0, int(users))
-    open_peers = sorted((room_of(p) for p in peers), key=lambda r: -r.room)
-    say(f"planning {left} user(s) at {context} tokens over {len(open_peers)} peer(s), "
+    open_members = sorted((room_of(p) for p in members), key=lambda r: -r.room)
+    say(f"planning {left} user(s) at {context} tokens over {len(open_members)} member(s), "
         f"{PREFERENCES[want]}:")
-    if not open_peers:
-        out.why.append(("*", "*", "no peer answered"))
+    if not open_members:
+        out.why.append(("*", "*", "no member answered"))
         out.unplaced = left
-        say(f"  {left} user(s) without a slot: no peer answered")
+        say(f"  {left} user(s) without a slot: no member answered")
         return out
 
     candidates: list[tuple[Profile, Fit]] = []
@@ -188,48 +188,48 @@ def place(users: int, context: int, peers: Sequence[Any], profiles: Sequence[Pro
             _note(out, "*", fit.model, "not ranked")
             say(f"  {fit.model:<48} not ranked")
 
-    def slot(peer: Room, profile: Profile, slots: int, used: int) -> None:
+    def slot(member: Room, profile: Profile, slots: int, used: int) -> None:
         nonlocal left
-        out.rows.append(Row(peer=peer.name, model=profile.model, slots=slots,
-                            context=int(context), used=used, room=peer.room,
-                            base_url=peer.base_url))
-        say(f"  {profile.model:<48} -> {peer.name}: {slots} slot(s), "
-            f"{human_bytes(used)} of {human_bytes(peer.room)}")
+        out.rows.append(Row(member=member.name, model=profile.model, slots=slots,
+                            context=int(context), used=used, room=member.room,
+                            base_url=member.base_url))
+        say(f"  {profile.model:<48} -> {member.name}: {slots} slot(s), "
+            f"{human_bytes(used)} of {human_bytes(member.room)}")
         left -= slots
-        open_peers.remove(peer)
+        open_members.remove(member)
 
     if want == "slots":
-        for peer in list(open_peers):
+        for member in list(open_members):
             if left <= 0:
                 break
-            if peer.room <= 0:
-                _note(out, peer.name, "*", "room unknown")
+            if member.room <= 0:
+                _note(out, member.name, "*", "room unknown")
                 continue
             best: tuple[int, int, Profile] | None = None
             for profile, fit in candidates:
-                slots, used, why = _slots_on(peer, fit, context, left)
+                slots, used, why = _slots_on(member, fit, context, left)
                 if slots < 1:
-                    _note(out, peer.name, profile.model, why)
+                    _note(out, member.name, profile.model, why)
                     continue
                 if best is None or slots > best[0]:
                     best = (slots, used, profile)
             if best is not None:
-                slot(peer, best[2], best[0], best[1])
+                slot(member, best[2], best[0], best[1])
     else:
         for profile, fit in candidates:
             if left <= 0:
                 break
-            for peer in list(open_peers):
+            for member in list(open_members):
                 if left <= 0:
                     break
-                if peer.room <= 0:
-                    _note(out, peer.name, "*", "room unknown")
+                if member.room <= 0:
+                    _note(out, member.name, "*", "room unknown")
                     continue
-                slots, used, why = _slots_on(peer, fit, context, left)
+                slots, used, why = _slots_on(member, fit, context, left)
                 if slots < 1:
-                    _note(out, peer.name, profile.model, why)
+                    _note(out, member.name, profile.model, why)
                     continue
-                slot(peer, profile, slots, used)
+                slot(member, profile, slots, used)
     out.unplaced = left
     if left:
         say(f"  {left} user(s) without a slot")
@@ -239,9 +239,9 @@ def place(users: int, context: int, peers: Sequence[Any], profiles: Sequence[Pro
 def table(placement: Placement) -> str:
     """The placement, as text."""
 
-    lines = [f"{'PEER':<16} {'MODEL':<48} {'SLOTS':>5} {'CONTEXT':>8} {'USED':>8} {'ROOM':>8}"]
+    lines = [f"{'MEMBER':<16} {'MODEL':<48} {'SLOTS':>5} {'CONTEXT':>8} {'USED':>8} {'ROOM':>8}"]
     for r in placement.rows:
-        lines.append(f"{r.peer:<16} {r.model:<48} {r.slots:>5} {r.context:>8} "
+        lines.append(f"{r.member:<16} {r.model:<48} {r.slots:>5} {r.context:>8} "
                      f"{human_bytes(r.used):>8} {human_bytes(r.room):>8}")
     if not placement.rows:
         lines.append("nobody placed")
@@ -251,6 +251,6 @@ def table(placement: Placement) -> str:
                  f"{PREFERENCES.get(placement.prefer, PREFERENCES['quality'])}")
     if placement.unplaced:
         lines.append(f"{placement.unplaced} user(s) without a slot:")
-        for peer, model, reason in placement.why:
-            lines.append(f"  {peer}: {model}: {reason}")
+        for member, model, reason in placement.why:
+            lines.append(f"  {member}: {model}: {reason}")
     return "\n".join(lines)

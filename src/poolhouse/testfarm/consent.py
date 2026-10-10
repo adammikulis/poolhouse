@@ -42,7 +42,7 @@ def fingerprints(named: list[str]) -> list[str]:
 
 def switch(action: str, python: str = "", repo: str = "", devices: list[str] | None = None) -> dict:
     """Apply ``action`` through this device's node; what the node now holds."""
-    seat = board_session.connect()
+    session = board_session.connect()
     params: dict = {"enabled": action == "on"} if action in ("on", "off") else {}
     if action == "on":
         params.update(python=python or sys.executable, repo=repo or own_checkout())
@@ -51,7 +51,7 @@ def switch(action: str, python: str = "", repo: str = "", devices: list[str] | N
         params["allow"] = named
     if action == "deny":
         params["deny"] = named
-    return seat.client.call("shard_consent", "", seat.token, **params)
+    return session.client.call("shard_consent", "", session.token, **params)
 
 
 def options(argv: list[str]) -> dict | None:

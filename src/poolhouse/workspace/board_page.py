@@ -175,16 +175,16 @@ def dm(s: Session, a: str, b: str, window: tuple[int, int, int]) -> dict[str, An
 
 def conversations(s: Session) -> dict[str, Any]:
     """The person's conversations, latest first, with what is unread."""
-    pairs: dict[str, dict[str, Any]] = {}
+    joins: dict[str, dict[str, Any]] = {}
     log = Log(s.read_all(channel=DIRECT, kind="message"))
     for n, e in log.by_number.items():
         other = str(e.fields.get("to", "")) if e.sender == s.name else e.sender
         key = tuple(sorted((s.name, other)))
-        p = pairs.setdefault(other, {"a": key[0], "b": key[1], "messages": 0, "last": 0.0, "unread": 0})
+        p = joins.setdefault(other, {"a": key[0], "b": key[1], "messages": 0, "last": 0.0, "unread": 0})
         p["messages"] += 1
         p["last"] = e.at_ms / 1000
         p["unread"] += e.sender == other and n > _marks(s, "dm:" + other)
-    return {"conversations": sorted(pairs.values(), key=lambda p: p["last"], reverse=True)}
+    return {"conversations": sorted(joins.values(), key=lambda p: p["last"], reverse=True)}
 
 
 def head(s: Session) -> dict[str, Any]:

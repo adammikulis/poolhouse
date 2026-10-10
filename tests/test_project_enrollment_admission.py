@@ -1,4 +1,4 @@
-"""Dev project enrollment transport and immutable cluster scope."""
+"""Dev project enrollment transport and immutable pool scope."""
 
 import hashlib
 import json
@@ -17,19 +17,19 @@ def scope(monkeypatch):
     member = SimpleNamespace(group="development", key=b"development-key", mode="dev")
     monkeypatch.setattr(admission, "memberships", lambda path: [member])
     opening = (None, SimpleNamespace(secret=derive_token(member.key)), True, {})
-    body = {"cluster": member.group, "cluster_id": hashlib.sha256(member.key).hexdigest()}
+    body = {"pool": member.group, "pool_id": hashlib.sha256(member.key).hexdigest()}
     return member, opening, body
 
 
-def test_dev_requires_verified_transport_and_exact_cluster(scope):
+def test_dev_requires_verified_transport_and_exact_pool(scope):
     member, opening, body = scope
     tls = Mock(spec=ssl.SSLSocket)
     assert admission.admit(tls, opening, None, body)
     assert not admission.admit(object(), opening, None, body)
     assert not admission.admit(tls, None, None, body)
     assert not admission.admit(tls, (*opening[:2], False, {}), None, body)
-    assert not admission.admit(tls, opening, None, {**body, "cluster": "production"})
-    assert not admission.admit(tls, opening, None, {**body, "cluster_id": "0" * 64})
+    assert not admission.admit(tls, opening, None, {**body, "pool": "production"})
+    assert not admission.admit(tls, opening, None, {**body, "pool_id": "0" * 64})
     member.mode = "prod"
     assert not admission.admit(tls, opening, None, body)
     assert not admission.visible(tls, opening, None)
@@ -41,7 +41,7 @@ def test_prod_secret_does_not_select_another_dev_membership(scope, monkeypatch):
     prod = SimpleNamespace(group="production", key=b"production-key", mode="prod")
     monkeypatch.setattr(admission, "memberships", lambda path: [dev, prod])
     opening[1].secret = derive_token(prod.key)
-    assert admission.authenticated_cluster(opening, None)[0] == "production"
+    assert admission.authenticated_pool(opening, None)[0] == "production"
     assert not admission.admit(Mock(spec=ssl.SSLSocket), opening, None, body)
 
 
@@ -50,7 +50,7 @@ def test_shared_key_alias_cannot_grant_dev_authority(scope, monkeypatch):
     dev, opening, body = scope
     alias = SimpleNamespace(group="production", key=dev.key, mode="prod")
     monkeypatch.setattr(admission, "memberships", lambda path: [dev, alias])
-    assert admission.authenticated_cluster(opening, None) == ("", "")
+    assert admission.authenticated_pool(opening, None) == ("", "")
     assert not admission.admit(Mock(spec=ssl.SSLSocket), opening, None, body)
 
 
@@ -94,7 +94,7 @@ def test_local_project_route_refuses_unauthorized_registration(scope, tmp_path, 
     handler._sealing = lambda: (*opening[:2], False, {}) if attack == "unsealed" else opening
     replies = []
     handler._send = lambda status, body: replies.append((status, body))
-    assert projects.register(handler, daemon.projects, daemon.cluster_key_path,
+    assert projects.register(handler, daemon.projects, daemon.pool_key_path,
                              json.dumps({"root": str(tmp_path), "project_id": "a" * 32}).encode())
     assert replies[0][0] == (400 if attack == "wrong-project" else 403)
     assert len(calls) == (1 if attack == "wrong-project" else 0)

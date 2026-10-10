@@ -347,13 +347,13 @@ def announce(root: str | Path | None, spec: ServerSpec) -> str:
 
 def withdraw(root: str | Path | None, port: int) -> str:
     """Take ``port`` out of the fleet's beacon; returns a line to print, or ''."""
-    # A registration outlives the server it describes, and every peer then pays a timeout
+    # A registration outlives the server it describes, and every member then pays a timeout
     # to find that out.
     try:
         known = beacon(root)
         if known is not None:
             known.unregister(port)
-    except Exception as exc:  # noqa: BLE001 - a stale entry costs a peer one timeout
+    except Exception as exc:  # noqa: BLE001 - a stale entry costs a member one timeout
         return f"  could not withdraw it from the fleet: {exc}"
     return ""
 

@@ -12,8 +12,8 @@ from poolhouse import home
 from poolhouse.fleet import daemon, tls
 from poolhouse.fleet.onboard import cli as onboard
 from poolhouse.fleet.onboard.requests import Device, Devices
-from poolhouse.fleet.remote import Peer
-from poolhouse.hub.peerbook import PeerBook
+from poolhouse.fleet.remote import Member
+from poolhouse.hub.memberbook import MemberBook
 from poolhouse.workspace import (
     coordinator_client,
     coordinator_config,
@@ -127,10 +127,10 @@ def test_concurrent_host_and_connect_cannot_replace_authority(tmp_path, monkeypa
     monkeypatch.setattr(coordinator_routes, 'held', observed_lock)
     monkeypatch.setattr(coordinator_client, 'held', observed_lock)
     monkeypatch.setattr(coordinator_config, 'save', paused_save)
-    advertised = Peer('https://127.0.0.1:8786', 'cluster-proof',
+    advertised = Member('https://127.0.0.1:8786', 'pool-proof',
                       beacon=SimpleNamespace(name='coordinator', cert='certificate'))
     monkeypatch.setattr(coordinator_client, 'discover', lambda: [(advertised, {'workspace': 'workspace:remote'})])
-    monkeypatch.setattr(coordinator_client, '_device_peer', lambda config: pytest.fail('overwrote host'))
+    monkeypatch.setattr(coordinator_client, '_device_member', lambda config: pytest.fail('overwrote host'))
     host = threading.Thread(target=select, args=({'action': 'host'},))
     connect = threading.Thread(name='connecting', target=select,
                                args=({'action': 'connect', 'name': 'coordinator'},))
@@ -149,37 +149,37 @@ def test_concurrent_host_and_connect_cannot_replace_authority(tmp_path, monkeypa
     assert coordinator_config.load(kit.base)['mode'] == 'host'
 
 
-def test_production_daemon_reuses_pairing_certificate_and_isolated_roots_stay_separate(tmp_path, monkeypatch):
+def test_production_daemon_reuses_joining_certificate_and_isolated_roots_stay_separate(tmp_path, monkeypatch):
     monkeypatch.setenv('POOLHOUSE_HOME', str(tmp_path / 'installation'))
-    paired = onboard._identity(home.state('onboard'))
+    joined = onboard._identity(home.state('onboard'))
     serving = tls.identity(daemon.identity_directory(daemon.default_root()), 'daemon')
-    assert serving.beacon == paired.beacon
+    assert serving.beacon == joined.beacon
     isolated = tmp_path / 'isolated-daemon'
     assert daemon.identity_directory(isolated) == isolated / 'tls'
 
 
 @pytest.mark.parametrize('mismatch', ['', 'workspace', 'endpoint', 'name', 'revoked', 'certificate', 'offline'])
-def test_saved_daemon_certificate_recovers_only_same_active_paired_authority(tmp_path, monkeypatch, mismatch):
+def test_saved_daemon_certificate_recovers_only_same_active_joined_authority(tmp_path, monkeypatch, mismatch):
     monkeypatch.setenv('POOLHOUSE_HOME', str(tmp_path / 'installation'))
     base = tmp_path / 'workspace'
     base.mkdir()
-    paired = onboard._identity(home.state('onboard'))
+    joined = onboard._identity(home.state('onboard'))
     old = tls.identity(tmp_path / 'old-daemon', 'daemon')
     device = Device('d' * 64, 'coordinator', 'host', '127.0.0.1', 1,
                     mine=True, secret=base64.urlsafe_b64encode(b'd' * 32).decode(),
                     status='revoked' if mismatch == 'revoked' else 'active')
     Devices(home.state('onboard', 'devices.json'))._write([device])
-    PeerBook(home.state('onboard', 'peers.json')).add({
-        'name': 'coordinator', 'url': 'https://127.0.0.1:8786', 'source': 'pairing',
-        'fingerprint': device.fingerprint, 'certificate': paired.beacon,
+    MemberBook(home.state('onboard', 'members.json')).add({
+        'name': 'coordinator', 'url': 'https://127.0.0.1:8786', 'source': 'join-code',
+        'fingerprint': device.fingerprint, 'certificate': joined.beacon,
         'device_secret': device.secret})
     config = coordinator_config.save(base, {'mode': 'remote', 'workspace': 'workspace:existing',
                                             'name': 'coordinator', 'endpoint': 'https://127.0.0.1:8786',
                                             'cert': old.beacon})
     beacon = SimpleNamespace(name='other' if mismatch == 'name' else 'coordinator',
-                             cert=old.beacon if mismatch == 'certificate' else paired.beacon)
-    advertised = Peer('https://127.0.0.1:8787' if mismatch == 'endpoint' else config['endpoint'],
-                      'cluster-proof', beacon=beacon)
+                             cert=old.beacon if mismatch == 'certificate' else joined.beacon)
+    advertised = Member('https://127.0.0.1:8787' if mismatch == 'endpoint' else config['endpoint'],
+                      'pool-proof', beacon=beacon)
     found = [(advertised, {
         'workspace': 'workspace:other' if mismatch == 'workspace' else config['workspace']})]
     monkeypatch.setattr(coordinator_client, 'discover', lambda: [] if mismatch == 'offline' else found)
@@ -189,6 +189,6 @@ def test_saved_daemon_certificate_recovers_only_same_active_paired_authority(tmp
         assert coordinator_config.load(base) == config
     else:
         remote = coordinator_client.client(base)
-        assert remote.config['cert'] == paired.beacon
+        assert remote.config['cert'] == joined.beacon
         assert remote.config['workspace'] == config['workspace']
         assert remote.config['endpoint'] == config['endpoint']

@@ -1,4 +1,4 @@
-"""A machine that joined the node's pool lists it with `poolhouse-peers ls` and needs no cluster key file."""
+"""A machine that joined the node's pool lists it with `poolhouse-members ls` and needs no pool key file."""
 
 import argparse
 import json
@@ -7,7 +7,7 @@ import os
 import pytest
 
 from poolhouse import node_launch, node_pool
-from poolhouse.fleet import peers
+from poolhouse.fleet import members
 from poolhouse.fleet.discovery import DiscoveryError
 
 POOL = {"pool": "0123456789abcdef", "project": "ab" * 8, "policy": "open", "members": [
@@ -17,7 +17,7 @@ POOL = {"pool": "0123456789abcdef", "project": "ab" * 8, "policy": "open", "memb
 
 
 def args(tmp_path, *, as_json=False):
-    return argparse.Namespace(cluster_key=str(tmp_path / "no-such.key"), timeout=0.1, json=as_json)
+    return argparse.Namespace(pool_key=str(tmp_path / "no-such.key"), timeout=0.1, json=as_json)
 
 
 def test_only_active_members_are_listed_with_who_is_this_machine():
@@ -33,17 +33,17 @@ def test_the_network_arguments_ask_for_the_lan_and_pass_a_project_on():
 
 def test_ls_without_a_key_file_prints_the_pool_of_the_running_node(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(node_pool, "status", lambda state=None: POOL)
-    assert peers.cmd_ls(args(tmp_path)) == 0
+    assert members.cmd_ls(args(tmp_path)) == 0
     out = capsys.readouterr().out
     assert "0123456789abcdef" in out and "desk" in out and "192.0.2.9:7447" in out and "gone" not in out
-    assert peers.cmd_ls(args(tmp_path, as_json=True)) == 0
+    assert members.cmd_ls(args(tmp_path, as_json=True)) == 0
     assert [m["name"] for m in json.loads(capsys.readouterr().out)["members"]] == ["desk", "b" * 12]
 
 
 def test_ls_without_a_key_file_and_without_a_node_still_says_what_is_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(node_pool, "status", lambda state=None: None)
-    with pytest.raises(DiscoveryError, match="no cluster key"):
-        peers.cmd_ls(args(tmp_path))
+    with pytest.raises(DiscoveryError, match="no pool key"):
+        members.cmd_ls(args(tmp_path))
 
 
 def test_status_is_none_when_no_node_answers(tmp_path):

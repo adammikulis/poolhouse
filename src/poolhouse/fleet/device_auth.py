@@ -1,4 +1,4 @@
-"""Request credentials for active paired devices."""
+"""Request credentials for active members."""
 
 import base64
 import hmac

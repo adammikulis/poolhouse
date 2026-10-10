@@ -129,7 +129,7 @@ class Availability:
     windows: list[Window] = field(default_factory=list)
     reservation: Reservation | None = None
     max_hold_s: float = 12 * 3600
-    """Longest a peer may hold this box. A reservation with no ceiling is a way to take"""
+    """Longest a member may hold this box. A reservation with no ceiling is a way to take"""
     paused_until: float | None = None
     """``None`` when running. A timestamp when paused for a while, and ``math.inf`` when"""
     paused_reason: str = ""

@@ -23,11 +23,11 @@ class TestWhichScreens:
         assert ops.screens_of("graph", []) == GRAPH
 
     def test_names_come_back_in_the_pages_own_order(self):
-        assert ops.screens_of("fleet", ["fit", "cluster"]) == ("cluster", "fit")
+        assert ops.screens_of("fleet", ["fit", "pool"]) == ("pool", "fit")
 
     def test_a_screen_the_page_does_not_have_is_refused_by_name(self):
         with pytest.raises(ValueError, match="no screen called 'dashboard'"):
-            ops.screens_of("fleet", ["dashboard", "cluster"])
+            ops.screens_of("fleet", ["dashboard", "pool"])
 
     def test_a_page_nobody_serves_is_refused(self):
         with pytest.raises(ValueError, match="no page called 'wiki'"):
@@ -46,10 +46,10 @@ def printed(stops, chars=200):
 
 class TestWhatItPrints:
     def test_a_clean_walk_prints_each_screen_and_exits_zero(self):
-        code, said = printed([Stop("cluster", text="Cluster\nOne machine.",
-                                   shot=Path("/shots/01-cluster.png"))])
+        code, said = printed([Stop("pool", text="Pool\nOne machine.",
+                                   shot=Path("/shots/01-pool.png"))])
         assert code == 0
-        assert "01-cluster.png" in said and "One machine." in said
+        assert "01-pool.png" in said and "One machine." in said
         assert "1 screen(s) walked, 0 skipped, 0 with errors" in said
 
     def test_a_screen_that_errored_is_named_and_the_walk_exits_one(self):
@@ -107,12 +107,12 @@ class TestWalkingTheDaemon:
         stops = walked(daemon, tmp_path, playwright)
         by_name = {stop.screen: stop for stop in stops}
 
-        assert [s.screen for s in stops if s.shot] == ["name", "clusters", "job", "start"]
+        assert [s.screen for s in stops if s.shot] == ["name", "pools", "job", "start"]
         assert all(stop.ok for stop in stops)
         assert "Set up this machine" in by_name["name"].text
-        assert "Clusters" in by_name["clusters"].text
+        assert "Pools" in by_name["pools"].text
         assert "preferences" in by_name["run"].skipped
-        assert "first-run" in by_name["cluster"].skipped
+        assert "first-run" in by_name["pool"].skipped
 
     def test_every_screen_it_walked_left_a_picture(self, daemon, tmp_path, playwright):
         stops = walked(daemon, tmp_path, playwright)
@@ -209,12 +209,12 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
 
     from poolhouse.fleet.conversations import Conversations
     from poolhouse.fleet.serving import Serving as Models
-    from tests.cluster_support import join_cluster
+    from tests.pool_support import join_pool_by_passphrase
 
     monkeypatch.setenv("POOLHOUSE_CACHE", str(tmp_path / "cache"))
     served = Serving(tmp_path, name="laptop")
     try:
-        join_cluster(WORDS, group="home", path=served.keyfile)
+        join_pool_by_passphrase(WORDS, group="home", path=served.keyfile)
         served.call("/ui/setup/join", method="POST",
                     body={"passphrase": WORDS, "group": "home"})
         served.call("/ui/setup/done", method="POST")
@@ -222,7 +222,7 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
         models = Models(tmp_path / "serving.json")
         models.register(slow_model.port, ["quince-2b.gguf"])
         served.ui.serving = models
-        served.ui._peers = (time.time(), [])
+        served.ui._members = (time.time(), [])
         stops = walked(served, tmp_path, playwright, screens=("chat",), passphrase=WORDS,
                        say="hello", answer_s=60.0)
     finally:

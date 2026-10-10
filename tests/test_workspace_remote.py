@@ -18,7 +18,7 @@ from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.pool_roster import Pool
 from poolhouse.fleet.projects import ProjectRegistry
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.http import Server, ServerError, request_json
 from poolhouse.workspace import cli, project_connection, remote as remote_module, render, tokens
 from poolhouse.workspace.identity import AGENT, HUMAN, LEAD, Denied
@@ -160,17 +160,17 @@ def test_client_recovers_and_remembers_device_scoped_identity(tmp_path, monkeypa
     requests = []
     def request(action, payload):
         requests.append((action, payload))
-        return {"id": "worker-peer", "token": "mlws1.worker-peer.saved", "project_id": PROJECT}
+        return {"id": "worker-member", "token": "mlws1.worker-member.saved", "project_id": PROJECT}
     monkeypatch.setattr(remote, "_request", request)
-    monkeypatch.setattr(remote, "call", lambda operation, token: {"id": "worker-peer"})
+    monkeypatch.setattr(remote, "call", lambda operation, token: {"id": "worker-member"})
     token = remote.token(agent="worker")
     assert requests[0][0] == "ensure"
     assert requests[0][1]["name"] == "worker"
     assert requests[0][1]["project"] == {"key": PROJECT}
     assert requests[0][1]["agent_token"] == ""
-    assert remote.token(agent="worker-peer") == token
+    assert remote.token(agent="worker-member") == token
     assert len(requests) == 1
-    (tokens.directory(remote.base) / "worker-peer").unlink()
+    (tokens.directory(remote.base) / "worker-member").unlink()
     assert remote.token(agent="worker") == token
     assert requests[-1][1]["name"] == "worker"
 
@@ -223,11 +223,11 @@ def test_transport_is_per_identity_including_delegated_and_explicit_tokens(tmp_p
     remote.base, remote.project_id, remote.fleet_token = tmp_path / "sessions", PROJECT, "dev-mac"
     tokens.prepare(remote.base)
     with remote_module.GraphStore(remote.base / "remote-sessions.db") as graph:
-        graph.upsert_node({"id": "session:paired", "kind": "remote-session", "label": "paired.agent",
-                           "attrs": {"name": "paired", "id": "paired.agent"}})
+        graph.upsert_node({"id": "session:joined", "kind": "remote-session", "label": "joined.agent",
+                           "attrs": {"name": "joined", "id": "joined.agent"}})
     monkeypatch.setattr(remote, "_device_transport", lambda: "device-mac")
-    for name, expected in [("paired.agent", "device-mac"), ("dev-parent", "dev-mac"),
-                           ("paired.agent/child", "device-mac"), ("dev-parent/child", "dev-mac")]:
+    for name, expected in [("joined.agent", "device-mac"), ("dev-parent", "dev-mac"),
+                           ("joined.agent/child", "device-mac"), ("dev-parent/child", "dev-mac")]:
         token = f"{tokens.PREFIX}{name}.secret"
         path = tokens.store(remote.base, name, token)
         explicit = remote.token(token_file=str(path))
@@ -237,13 +237,13 @@ def test_transport_is_per_identity_including_delegated_and_explicit_tokens(tmp_p
     assert remote._transport("enroll", {}) == "dev-mac"
 
 
-@pytest.mark.parametrize("paired, saved", [(False, True), (True, True), (False, False), (True, False)])
-def test_delegated_credentials_never_recover_as_paired_top_identity(tmp_path, monkeypatch, paired, saved):
+@pytest.mark.parametrize("joined, saved", [(False, True), (True, True), (False, False), (True, False)])
+def test_delegated_credentials_never_recover_as_joined_top_identity(tmp_path, monkeypatch, joined, saved):
     from poolhouse.workspace.identity import Denied
     remote = RemoteWorkspace.__new__(RemoteWorkspace)
     remote.base, remote.project_id = tmp_path / "sessions", PROJECT
     tokens.prepare(remote.base)
-    if paired:
+    if joined:
         with remote_module.GraphStore(remote.base / "remote-sessions.db") as graph:
             graph.upsert_node({"id": "session:parent", "kind": "remote-session", "label": "parent",
                                "attrs": {"name": "parent", "id": "parent"}})
@@ -420,11 +420,11 @@ def test_registered_agent_is_not_online_without_authenticated_remote_contact(hos
     assert next(a for a in status["agents"] if a["id"] == "mac")["online"] is True
 
 
-def test_status_includes_only_selected_project_board_messages(host):
+def test_status_includes_only_selected_board_messages(host):
     agent = joined(host)
     boards = call(host, agent, "board.list")[1]["result"]
-    project_board = next(b["name"] for b in boards if b["project"])
-    call(host, agent, "send", project_board, "note", "selected project update")
+    board_for = next(b["name"] for b in boards if b["project"])
+    call(host, agent, "send", board_for, "note", "selected project update")
     call(host, agent, "send", "#general", "note", "not the selected board")
     messages = host.status(PROJECT)["messages"]
     assert len(messages) == 1
@@ -441,15 +441,15 @@ def test_signed_sealed_fleet_and_agent_capabilities_both_required(host, tmp_path
     from poolhouse.fleet.onboard.requests import Device
     from poolhouse.workspace import coordinator_client
     secret = base64.urlsafe_b64encode(b"d" * 32).decode()
-    device = Device("d" * 64, "peer", "peer-host", "127.0.0.1", 1, mine=True, secret=secret)
+    device = Device("d" * 64, "member", "member-host", "127.0.0.1", 1, mine=True, secret=secret)
     daemon = Daemon(runner, files, fleet_token, devices=lambda: [device])
     daemon.projects = host.projects
     daemon.workspaces = host
     server = Server(("127.0.0.1", 0), make_handler(daemon))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_port}"
-    monkeypatch.setattr("poolhouse.workspace.remote.load_cluster_key", lambda path: key)
-    monkeypatch.setattr(coordinator_client, "_device_peer", lambda config: SimpleNamespace(
+    monkeypatch.setattr("poolhouse.workspace.remote.load_pool_key", lambda path: key)
+    monkeypatch.setattr(coordinator_client, "_device_member", lambda config: SimpleNamespace(
         token=macauth.derive(base64.urlsafe_b64decode(secret))))
     try:
         remote = RemoteWorkspace(base, PROJECT)
@@ -485,7 +485,7 @@ def test_client_refuses_unsealed_response(monkeypatch):
             return self
         def __exit__(self, *args):
             return None
-    monkeypatch.setattr("poolhouse.workspace.remote.load_cluster_key", lambda path: bytes(range(32)))
+    monkeypatch.setattr("poolhouse.workspace.remote.load_pool_key", lambda path: bytes(range(32)))
     monkeypatch.setattr("poolhouse.workspace.remote.open_stream", lambda *a, **k: PlainResponse())
     remote = RemoteWorkspace("http://127.0.0.1:8770", PROJECT)
     with pytest.raises(PermissionError, match="not authenticated and sealed"):
@@ -493,7 +493,7 @@ def test_client_refuses_unsealed_response(monkeypatch):
 
 
 def test_remote_client_never_reuses_global_or_human_token_files(monkeypatch, tmp_path):
-    monkeypatch.setattr("poolhouse.workspace.remote.load_cluster_key", lambda path: bytes(range(32)))
+    monkeypatch.setattr("poolhouse.workspace.remote.load_pool_key", lambda path: bytes(range(32)))
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", "global-human-token")
     monkeypatch.delenv(tokens.AGENT_ENV, raising=False)
     remote = RemoteWorkspace("http://127.0.0.1:8770", PROJECT)
@@ -505,8 +505,8 @@ def test_remote_client_never_reuses_global_or_human_token_files(monkeypatch, tmp
 
 
 def test_https_client_discovers_pins_and_authenticates_self_signed_host(host, tmp_path, monkeypatch):
-    keyfile = tmp_path / "cluster.key"
-    key = discovery.mint_cluster("development", keyfile).key
+    keyfile = tmp_path / "pool.key"
+    key = discovery.mint_pool("development", keyfile).key
     ident = tls.identity(tmp_path / "tls", "project-host")
     pool = Pool(keyfile)
     for one in (ident, tls.local()):          # the host, and this machine as its client
@@ -514,7 +514,7 @@ def test_https_client_discovers_pins_and_authenticates_self_signed_host(host, tm
     files = tmp_path / "tls-files"
     files.mkdir()
     runner = JobRunner(tmp_path / "tls-jobs", files)
-    daemon = Daemon(runner, files, derive_token(key), cluster_key_path=keyfile, members=pool)
+    daemon = Daemon(runner, files, derive_token(key), pool_key_path=keyfile, members=pool)
     daemon.projects = host.projects
     daemon.workspaces = host
     server = LimitedServer((ALL_INTERFACES, 0), make_handler(daemon), tls=tls.member_context(ident, pool))
@@ -525,9 +525,9 @@ def test_https_client_discovers_pins_and_authenticates_self_signed_host(host, tm
     advertiser = Advertiser(Beacon(name="project-host", port=server.server_port, cert=ident.beacon,
                                   machine=home.machine_id()),
                             key, port=udp, interval_s=30).start()
-    discover = Peer.discover
-    monkeypatch.setattr("poolhouse.workspace.remote.load_cluster_key", lambda path: key)
-    monkeypatch.setattr(Peer, "discover", lambda **kw: discover(key=kw["key"], port=udp, timeout_s=1))
+    discover = Member.discover
+    monkeypatch.setattr("poolhouse.workspace.remote.load_pool_key", lambda path: key)
+    monkeypatch.setattr(Member, "discover", lambda **kw: discover(key=kw["key"], port=udp, timeout_s=1))
     http._PINNED.clear()
     try:
         remote = RemoteWorkspace(f"https://127.0.0.1:{server.server_port}", PROJECT)
@@ -597,7 +597,7 @@ def test_foreign_authority_cannot_be_replaced_by_local_invite(repository, tmp_pa
 def test_fresh_remote_capability_storage_is_private_before_request(tmp_path, monkeypatch, action):
     remote = RemoteWorkspace.__new__(RemoteWorkspace)
     remote.base, remote.host, remote.project_id = tmp_path / 'remote', 'http://127.0.0.1:9', PROJECT
-    remote.cluster, remote.cluster_id = 'fixture', 'c' * 64
+    remote.pool, remote.pool_id = 'fixture', 'c' * 64
     def request(operation, payload):
         assert private_path.problem(remote.base) == ''
         assert private_path.problem(tokens.directory(remote.base)) == ''

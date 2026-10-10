@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from . import model_components
-from .discovery import load_cluster_key
+from .discovery import load_pool_key
 from .weights import ModelError
 
 
@@ -33,7 +33,7 @@ def route(request) -> bool:
     try:
         if request.method == "GET":
             request.send(200, model_components.catalogue(ui.models, request.asked("name"), request.asked("source"),
-                                                        load_cluster_key(ui.cluster_key_path)))
+                                                        load_pool_key(ui.pool_key_path)))
         elif request.method == "POST":
             body = request.body()
             name, kind = body.get("name", ""), body.get("kind", "")
@@ -44,13 +44,13 @@ def route(request) -> bool:
             if ui.models.sources() not in {"internet", "lan", "both"}:
                 raise ModelError("Choose download sources before installing components")
             offers = selected(ui.models, {"name": name, "mtp": kind == "mtp", "vision": kind == "vision"},
-                              load_cluster_key(ui.cluster_key_path))
+                              load_pool_key(ui.pool_key_path))
             if not offers:
                 request.send(200, {"installed": True, "name": name, "kind": kind})
             elif ui.downloads is None:
                 request.send(501, {"error": "Background downloads are unavailable"})
             else:
-                row = ui.downloads.start(name, key=load_cluster_key(ui.cluster_key_path), components=offers)
+                row = ui.downloads.start(name, key=load_pool_key(ui.pool_key_path), components=offers)
                 request.send(202, row.public())
         else:
             return False

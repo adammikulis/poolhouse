@@ -93,14 +93,14 @@ def parser() -> argparse.ArgumentParser:
 
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
            run_claude: Callable[..., int] | None = None,
-           seat_factory: Callable[..., Any] | None = None) -> int:
+           session_factory: Callable[..., Any] | None = None) -> int:
     """Lease the model, run ``claude`` inside the lease with the session's hooks, return its exit code."""
     words = list(sys.argv[1:] if argv is None else argv)
     ours, extra = (words[: words.index("--")], words[words.index("--") + 1:]) \
         if "--" in words else (words, [])
     args = parser().parse_args(ours)
     provenance.told(args.lease_for)
-    args.seat_factory = seat_factory
+    args.session_factory = session_factory
     binary = args.claude or harnessing.binary_for("claude")
     if not binary:
         say("error: no `claude` on PATH; install Claude Code or pass --claude PATH")

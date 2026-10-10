@@ -24,10 +24,10 @@ def _smoke():
 
 
 def test_the_walk_creates_the_pool_and_reaches_the_end_of_setup(daemon, open_page, monkeypatch):
-    from poolhouse.fleet import automatic_clusters
+    from poolhouse.fleet import automatic_pools
     from poolhouse.fleet.discovery import memberships
 
-    monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: [])
+    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
     page, errors = open_page(daemon)
     page.wait_for_selector("#first-run:not([hidden])")
     _smoke().first_run(page, "ci-runner", fleet_page.WORDS, "ci")

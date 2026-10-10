@@ -20,7 +20,7 @@ def test_info_plist_carries_the_identity_and_the_prompt_keys():
     assert plist["CFBundleName"] == "Poolhouse"
     assert plist["CFBundleExecutable"] == "poolhouse-node"
     assert plist["LSUIElement"] is True
-    assert plist["NSLocalNetworkUsageDescription"] == "Poolhouse finds and pairs with your other devices on this network."
+    assert plist["NSLocalNetworkUsageDescription"] == "Poolhouse finds and joins your other devices on this network."
     assert plist["NSBonjourServices"] == ["_poolhouse._tcp"]
     assert plist["CFBundleIconFile"] == "Poolhouse"
     assert "CFBundleIconFile" not in node_app.info_plist(icon=False)
@@ -67,7 +67,7 @@ def test_parse_sha1_reads_security_output():
 def test_probe_command_goes_through_launch_services():
     argv = node_permission.probe_command(Path("/x/P.app"), Path("/t/o.json"), 30, ["192.168.2.1"])
     assert argv[:5] == ["open", "-W", "-n", "-a", "/x/P.app"]
-    assert argv[5:] == ["--args", "probe", "--seconds", "30", "--out", "/t/o.json", "--peer", "192.168.2.1"]
+    assert argv[5:] == ["--args", "probe", "--seconds", "30", "--out", "/t/o.json", "--member", "192.168.2.1"]
 
 
 def test_verdicts():

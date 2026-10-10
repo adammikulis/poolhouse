@@ -12,14 +12,14 @@ from pathlib import Path
 from poolhouse.board import credentials, place, session as sessions
 from poolhouse.board.client import Client, Denied
 
-__all__ = ["HARNESS", "seat"]
+__all__ = ["HARNESS", "session"]
 
 HARNESS = "poolhouse-ui"
 MODEL = "person"
 NATIVE_ID = "person"
 
 
-def seat(root: str | Path, client: Client | None = None) -> sessions.Session:
+def session(root: str | Path, client: Client | None = None) -> sessions.Session:
     """The person's session on the board of the project at ``root``, registered the first time.
 
     `Denied` when ``root`` is not part of a project the node can place.

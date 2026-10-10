@@ -86,12 +86,12 @@ reaches the internet on its own.
 | 18 | Hash reputation lookup | `net/scanners.py` | none | off by default; sends only a SHA-256 to a VirusTotal-style service with a key from the credentials module; the host needs approval | |
 | 19 | Installers | `packaging/install.sh`, `install.ps1` | `curl` and the release digest | unchanged (they run before Poolhouse exists) | |
 | 20 | Benchmark datasets | `bench/standard.py` | `lm-eval` downloads through `datasets` | unchanged | the harness fetches datasets itself |
-| 21 | Fleet peers | `fleet/*` | signed, TLS-pinned LAN traffic | unchanged | not the internet |
+| 21 | Fleet devices | `fleet/*` | signed, TLS-pinned LAN traffic | unchanged | not the internet |
 | 22 | Model servers and chat endpoints | `client/*`, `claude.py`, `bench/*` | urllib to the endpoint the person configured | unchanged | a remote provider's answers are model output |
 | 23 | Metrics address | `fleet/ui.py` | a page a signed-in person typed | unchanged | any address, behind a session |
 | 24 | Decider checkpoint files | `decide/fetch.py` | `hf_hub_download` (its own transport, hash checked after the file was kept) | pipeline: pinned size and SHA-256 required, laid out as the repository is, held when they differ | |
 | 25 | Injection classifier model | `guard/classifier.py` | `snapshot_download` | pipeline, with the Hub's own size and SHA-256 per file | the Hub's hash is as good as the Hub |
-| 26 | Onboarding: pairing, manifest and file transfer | `fleet/onboard/pairing.py`, `fleet/onboard/transfer.py` | own connections to a peer | unchanged transport (the peer's certificate is pinned), but a public address is refused at every connection (`fleet/onboard/lan.py`) | a peer on a tailnet or VPN counts as this network |
+| 26 | Onboarding: joining, manifest and file transfer | `fleet/onboard/join_code.py`, `fleet/onboard/transfer.py` | own connections to a device | unchanged transport (the device's certificate is pinned), but a public address is refused at every connection (`fleet/onboard/lan.py`) | a device on a tailnet or VPN counts as this network |
 | 27 | Decide backend | `decide/logprob.py`, `decide/router.py` | `poolhouse.http` to `POOLHOUSE_DECIDE_URL` | loopback only unless the host is named in `POOLHOUSE_FETCH_ALLOW_HOSTS` | a decider sees every call it judges, so a remote one is an explicit choice |
 
 ## Scanning

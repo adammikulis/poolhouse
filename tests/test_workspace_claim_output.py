@@ -9,5 +9,5 @@ def test_unclaimed_owner_is_rendered_without_identity_conversion():
 
 
 def test_claimed_owner_is_rendered_readably():
-    assert 'worker on shared project Board' in _text({
+    assert 'worker on shared board' in _text({
         'owner': 'board:' + 'a' * 32 + ':worker'})

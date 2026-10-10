@@ -23,7 +23,7 @@ def team(workspace_node, monkeypatch):
     monkeypatch.setattr(node_launch, "default_state", lambda: node.state)
     node.alice, node.bob = node.member("alice"), node.member("bob")
     node.sessions = {"alice": node.session(node.alice), "bob": node.session(node.bob)}
-    node.me = person.seat(Path.cwd(), node.client)
+    node.me = person.session(Path.cwd(), node.client)
     return node
 
 
@@ -33,7 +33,7 @@ class Port(int):
 
 @pytest.fixture
 def served(team):
-    server = boardroute.serve(lambda: person.seat(Path.cwd(), team.client))
+    server = boardroute.serve(lambda: person.session(Path.cwd(), team.client))
     server.start()
     port = Port(server.port)
     port.session = server.session

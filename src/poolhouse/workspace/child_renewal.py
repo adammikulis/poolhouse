@@ -1,4 +1,4 @@
-"""Registered parents renew existing delegated seats without replacing their tokens."""
+"""Registered parents renew existing delegated sessions without replacing their tokens."""
 
 from poolhouse.workspace.chain import held
 from poolhouse.workspace.identity import AGENT, CAPS, LEAD, Denied
@@ -8,13 +8,13 @@ def renew(ws, token: str, child: str) -> dict:
     """Extend a live child's expiry within its current parent's authority and TTL."""
     parent = ws.auth(token)
     if parent.parent or parent.role not in (AGENT, LEAD):
-        raise Denied('only the registered top-level parent renews a delegated seat')
+        raise Denied('only the registered top-level parent renews a delegated session')
     registry = ws.registry
     with held(registry.path.with_name('agents.lock')):
         rows = registry._load()
         entry = rows.get(child)
         if not entry or entry.get('parent') != parent.id or not registry._live(rows, entry):
-            raise Denied('the delegated seat is not a live child of this parent')
+            raise Denied('the delegated session is not a live child of this parent')
         if not set(entry.get('can', ())) <= set(parent.can) & set(CAPS):
             raise Denied('the child capabilities exceed current parent authority')
         expires = registry.clock() + ws.limits.child_ttl_s

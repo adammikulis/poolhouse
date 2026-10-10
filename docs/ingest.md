@@ -13,7 +13,7 @@ poolhouse-ingest status  --out ./sources.ladybug     # how far, what failed, how
 poolhouse-ingest show    --out ./sources.ladybug     # what each source was read as
 poolhouse-ingest sources --out ./sources.ladybug     # what every source holds together
 poolhouse-ingest fold    --out ./sources.ladybug     # every source so far into the store
-poolhouse-ingest import ./extraction --out ./sources.ladybug --dry-run   # a pair somebody else extracted
+poolhouse-ingest import ./extraction --out ./sources.ladybug --dry-run   # nodes and edges somebody else extracted
 poolhouse-ingest ask     --out ./sources.ladybug "how is heart rate controlled"   # ask the store
 poolhouse-ingest ask     --out ./sources.ladybug --gold ./questions.json  # score the answers, not the reading
 poolhouse-ingest retry   --out ./sources.ladybug   # read again the units that gave up
@@ -77,8 +77,8 @@ what rate, what is in the store, and how long the rest will take.
 
 ## A graph somebody else already extracted
 
-`poolhouse-ingest import DIR --out STORE` takes a `nodes.csv`/`edges.csv` pair another
-extractor wrote and puts it in the store as one source. The pair becomes this library's own
+`poolhouse-ingest import DIR --out STORE` takes a `nodes.csv` and `edges.csv` another
+extractor wrote and puts it in the store as one source. That data becomes this library's own
 reads -- one per section, in the document schema's shape -- and goes in through the same
 fold a read source does, so it has the same node and edge shape, the same `source:<slug>`
 and `read_from` edges, the same `<source>:<chapter>:<section>` unit ids behind every claim,

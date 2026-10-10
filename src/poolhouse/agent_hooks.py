@@ -9,10 +9,10 @@ import shutil
 import tomllib
 from pathlib import Path
 
-from poolhouse import home
+from poolhouse import agent_hooks_stale, home
 from poolhouse.checks import Finding
 
-__all__ = ["AGENTS", "findings", "install", "install_report", "paths"]
+__all__ = ["AGENTS", "findings", "install", "install_report", "paths", "remove_stale", "removed_lines"]
 
 AGENTS = ("claude-code", "codex")
 IDS = {"claude-code": "claude", "codex": "codex"}
@@ -125,14 +125,31 @@ def install(only: tuple[str, ...] = AGENTS, where: dict[str, Path] | None = None
             if agent in (where or {}) or present(agent, found[agent])}
 
 
+def remove_stale(only: tuple[str, ...] = AGENTS, where: dict[str, Path] | None = None) -> dict[str, list[str]]:
+    """Take the hooks that can no longer run (an old-name command, a program that is gone) out of each of
+    ``only``'s settings that is on this machine or named in ``where``; returns the commands removed by agent."""
+    found = {**paths(), **(where or {})}
+    removed = {agent: agent_hooks_stale.remove(agent, found[agent]) for agent in only
+               if agent in (where or {}) or present(agent, found[agent])}
+    return {agent: commands for agent, commands in removed.items() if commands}
+
+
+def removed_lines(removed: dict[str, list[str]], where: dict[str, Path] | None = None) -> list[str]:
+    """What `remove_stale` removed, as the lines to show."""
+    found = {**paths(), **(where or {})}
+    return [f"{agent}: removed the hook {command!r} from {found[agent]} (a backup sits beside it)"
+            for agent, commands in removed.items() for command in commands]
+
+
 def install_report() -> list[str]:
     """`install` for every agent on this machine, as the lines to show; a refusal is a line, not an error."""
     try:
+        gone = removed_lines(remove_stale())
         done = install()
     except (OSError, ValueError) as err:
         return [f"message-board hooks were not written: {err}"]
-    return [f"{agent}: message-board hooks ({', '.join(events)}) are in {paths()[agent]}"
-            for agent, events in done.items()]
+    return gone + [f"{agent}: message-board hooks ({', '.join(events)}) are in {paths()[agent]}"
+                   for agent, events in done.items()]
 
 
 def _commands(groups: object) -> list[str]:
@@ -169,6 +186,8 @@ def findings(where: dict[str, Path] | None = None) -> list[Finding]:
             data = (json.loads(path.read_text()) if agent == "claude-code" else tomllib.loads(path.read_text())) \
                 if path.exists() else {}
             problems = _problems(agent, data, events[agent])
+            problems += [f"{command!r} is an old-name or missing program, so it fails on every event"
+                         for command in agent_hooks_stale.found(agent, path)]
         except (OSError, ValueError) as err:
             problems = [f"{path} cannot be read ({err})"]
         if shutil.which(BINARY) is None:

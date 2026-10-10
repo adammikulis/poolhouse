@@ -9,7 +9,7 @@ from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
 
-SCREENS = ["chat", "cluster", "fit", "models", "settings"]
+SCREENS = ["chat", "pool", "fit", "models", "settings"]
 
 
 def launch_url(page: Page, base: str) -> str:
@@ -34,7 +34,7 @@ def press(page: Page, label: str) -> None:
 
 
 def first_run(page: Page, name: str, passphrase: str, group: str) -> None:
-    """Walks the setup wizard, whatever steps it has, until it offers to open the cluster.
+    """Walks the setup wizard, whatever steps it has, until it offers to open the pool.
 
     Each step is answered by its heading, so a step added or reordered in the wizard is one
     more entry here and not a silent timeout.
@@ -45,12 +45,12 @@ def first_run(page: Page, name: str, passphrase: str, group: str) -> None:
         if heading == "Set up this machine":
             page.fill("#n", name)
             press(page, "Continue")
-        elif heading == "Clusters":
+        elif heading == "Pools":
             if page.locator("#first-run button:text-is('Pair manually')").count():
                 press(page, "Pair manually")
-            page.select_option("#setup-cluster-action", "create")
-            page.fill("#setup-cluster-name", group)
-            page.fill("#setup-cluster-passphrase", passphrase)
+            page.select_option("#setup-pool-action", "create")
+            page.fill("#setup-pool-name", group)
+            page.fill("#setup-pool-passphrase", passphrase)
             press(page, "Create new pool")
             page.wait_for_selector("#first-run .ok:has-text('Created')")
             press(page, "Continue")
@@ -81,7 +81,7 @@ def sign_in(page: Page, passphrase: str) -> None:
     Finishing setup leaves the page signed in on the chat screen; a page that was signed out
     asks for the passphrase first.
     """
-    signed_in = "#chat:not([hidden]), #cluster:not([hidden])"
+    signed_in = "#chat:not([hidden]), #pool:not([hidden])"
     page.wait_for_selector(f"#signin:not([hidden]), {signed_in}")
     if page.locator("#signin:not([hidden])").count():
         page.fill("#p", passphrase)

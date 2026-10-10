@@ -147,15 +147,15 @@ def step_beacon_receive(c: Check) -> Step:
 
 def step_policy(c: Check) -> Step:
     done = node_join.set_policy(c.state, c.policy)
-    return Step("policy", True, f"join policy is {done['policy']}" + (" (devices on this network enrol one another; revoke one with member_revoke)" if c.policy == "open" else ""))
+    return Step("policy", True, f"join policy is {done['policy']}" + (" (devices on this network enrol one another; revoke one with member_remove)" if c.policy == "open" else ""))
 
 
-def step_peer_beacon(c: Check) -> Step:
+def step_member_beacon(c: Check) -> Step:
     shown = _until(c, lambda s: s["beacon_heard"] > 0, c.wait_s)
     if shown["beacon_heard"] == 0:
-        return Step("peer-beacon", False, f"no other device beaconed in {c.wait_s:.0f}s",
+        return Step("member-beacon", False, f"no other device beaconed in {c.wait_s:.0f}s",
                     "run scripts/pool-join-check on the other device now, on the same network (not a guest network, not through a VPN)")
-    return Step("peer-beacon", True, f"heard {shown['beacon_heard']} beacons from other devices")
+    return Step("member-beacon", True, f"heard {shown['beacon_heard']} beacons from other devices")
 
 
 def step_enrolled(c: Check) -> Step:
@@ -195,7 +195,7 @@ def _until(c: Check, ready: Callable[[dict], bool], seconds: float) -> dict:
 
 
 STEPS: list[Callable[[Check], Step]] = [step_platform, step_binary, step_node, step_listening, step_beacon_send,
-                                       step_beacon_receive, step_policy, step_peer_beacon, step_enrolled, step_converge]
+                                       step_beacon_receive, step_policy, step_member_beacon, step_enrolled, step_converge]
 
 
 def steps_for(c: Check) -> list[Callable[[Check], Step]]:
@@ -226,6 +226,6 @@ def summary(c: Check) -> str:
     if failed is not None:
         return f"NOT READY at {failed.name}. The one fix: {failed.fix}\nThen run this again."
     if c.policy != "open":
-        return "READY: the node runs with its network on and beacons; policy secure enrols nobody without a pairing code."
+        return "READY: the node runs with its network on and beacons; policy secure enrols nobody without a join code."
     return (f"READY: this device and {len(node_join.others(c.shown))} other(s) share pool {c.shown.get('pool')}. "
             f"Close the door again with: python -m poolhouse.node_join join --policy secure --state {c.state}")

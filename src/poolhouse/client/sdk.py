@@ -86,7 +86,7 @@ class FleetTransport(httpx.AsyncBaseTransport):
 
 
 def local_client(target: Any, model: str, *, token: str = "", timeout: float | None = None) -> AsyncOpenAI:
-    """Create an explicit client for the selected local or peer chat endpoint."""
+    """Create an explicit client for the selected local or member chat endpoint."""
     suffix = "/chat/completions"
     url = str(target.url)
     if not url.endswith(suffix) or not model:

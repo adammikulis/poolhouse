@@ -52,6 +52,6 @@ def test_empty_passphrase_explains_what_to_enter(joined, open_page):
     page, errors = open_page(joined)
     page.wait_for_selector("#signin:not([hidden])")
     page.locator("#signin-go").click()
-    assert page.locator("#signin-note").inner_text() == "Enter the cluster passphrase."
+    assert page.locator("#signin-note").inner_text() == "Enter the pool passphrase."
     assert page.locator("#signin-go").is_enabled()
     assert not errors

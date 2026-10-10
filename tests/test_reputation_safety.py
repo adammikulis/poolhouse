@@ -148,14 +148,14 @@ def test_a_download_that_fails_its_pin_is_noted_against_the_host(ledger, site, p
     assert ledger.standing("host", "127.0.0.1").state == "bad"
 
 
-def test_peer_outcomes_reach_the_ledger(ledger):
-    from poolhouse.sentinel.rates import PeerWatch
+def test_member_outcomes_reach_the_ledger(ledger):
+    from poolhouse.sentinel.rates import MemberWatch
 
-    watch = PeerWatch()
+    watch = MemberWatch()
     for _ in range(3):
         watch.note("node-9", "ok")
     watch.note("node-9", "bad_sig")
-    held = ledger.standing("peer", "node-9")
+    held = ledger.standing("member", "node-9")
     assert held.short == 1.0 and held.state == "watch"
 
 
@@ -176,7 +176,7 @@ def test_reputation_changes_no_role_grant_or_decision(ledger, clock):
         make_established(ledger, clock, "host", host)
         ledger.observe("host", host, "hash_change")
         ledger.observe("host", host, "scan_hit")
-    ledger.observe("peer", "node-1", "denial")
+    ledger.observe("member", "node-1", "denial")
     assert decisions() == before
     assert roles.ROLES["read-only"].tools == frozenset(chatpolicy.READ)
 
@@ -195,9 +195,9 @@ def test_no_reputation_code_grants_approves_or_releases():
 
 def test_no_source_name_or_event_is_on_disk_in_plaintext(ring, clock):
     held = Ledger(clock=clock, flush_s=0)
-    canaries = ["canary-host-7f3a.example", "canary-peer-91bc", "canary-repo-5d2e/model"]
+    canaries = ["canary-host-7f3a.example", "canary-member-91bc", "canary-repo-5d2e/model"]
     held.observe("host", canaries[0], "scan_hit")
-    held.observe("peer", canaries[1], "denial")
+    held.observe("member", canaries[1], "denial")
     held.trait("repo", canaries[2], "hash", "deadbeef")
     held.clean("host", canaries[0])
     held.close()

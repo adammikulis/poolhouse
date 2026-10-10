@@ -283,7 +283,7 @@ class TestGallery:
         }""")
         assert got["refused"] == "Pick at least one job first."
         assert got["stayed"] == 1 and got["moved"] == 1 and got["seen"] == [1]
-        assert got["mark"] == "Cluster"
+        assert got["mark"] == "Pool"
 
     def test_the_stepper_state_resumes_where_it_was(self, gallery):
         page, _ = gallery()

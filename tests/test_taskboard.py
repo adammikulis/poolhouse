@@ -242,13 +242,13 @@ def test_owned_blockage_records_elapsed_time_without_verified_progress(board):
 
 
 @pytest.mark.redteam
-def test_designated_peer_requires_existing_project_grant_and_cannot_self_review(board):
+def test_designated_member_requires_existing_project_grant_and_cannot_self_review(board):
     enforcement.set_mode(board.ws, board.parent, '', 'strict')
-    peer = board.agent('independent-reviewer')
+    member = board.agent('independent-reviewer')
     owner = board.ws.auth(board.owner)
     project = {'root': '/approved/project'}
     board.ws.registry.set_project(owner, board.worker_id, project)
-    spec = {**board.spec, 'source_key': 'peer-review', 'project': project,
+    spec = {**board.spec, 'source_key': 'member-review', 'project': project,
             'reviewers': ['independent-reviewer']}
     with pytest.raises(Denied, match='project grants'):
         board.board.create(board.owner, spec)
@@ -258,11 +258,11 @@ def test_designated_peer_requires_existing_project_grant_and_cannot_self_review(
     board.allocation = resource_allocations.assign(board.ws, board.parent, board.worker_id,
                                                    board.task['id'], 'native-grant')
     proposed(board)
-    board.board.review(peer, board.task['id'], accepted())
-    assert board.board.assert_reviewer(peer, board.task['id'])['state'] == 'accepted'
+    board.board.review(member, board.task['id'], accepted())
+    assert board.board.assert_reviewer(member, board.task['id'])['state'] == 'accepted'
     board.ws.registry.set_project(owner, 'independent-reviewer', {'root': '/elsewhere'})
     with pytest.raises(Denied):
-        board.board.assert_reviewer(peer, board.task['id'])
+        board.board.assert_reviewer(member, board.task['id'])
 
 
 @pytest.mark.redteam

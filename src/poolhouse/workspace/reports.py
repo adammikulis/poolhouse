@@ -1,4 +1,4 @@
-"""Exact clear agent reports reuse their verified journal entry for sixty seconds."""
+"""Exact clear agent reports reuse their verified log entry for sixty seconds."""
 
 from contextlib import nullcontext
 
@@ -20,7 +20,7 @@ def eligible(row: dict) -> bool:
 
 def duplicate(ws, row: dict) -> dict | None:
     now = ws.clock()
-    # The maintained sender index is derived from the verified journal, not another store.
+    # The maintained sender index is derived from the verified log, not another store.
     for previous in ws.bus.recent_outbox(row['from'], now - WINDOW_S):
         if previous['ts'] <= now and not previous.get('held') and ws.bus.live(previous) \
                 and all(previous.get(key) == row.get(key) for key in FIELDS):

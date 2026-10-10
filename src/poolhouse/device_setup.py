@@ -181,7 +181,7 @@ GROUP = Group("poolhouse.device_setup", "Set this device up to join a pool: the 
     flag("--yes", action="store_true", help="agree to the listed changes without being asked"),
     flag("--dry-run", action="store_true", help="list the changes and make none"),
     flag("--wait", type=float, default=90.0, help="seconds to wait for another device at each step that needs it"),
-    flag("--policy", default="open", choices=node_join.POLICIES, help="open: devices on this network enrol by themselves; secure: a pairing code")])
+    flag("--policy", default="open", choices=node_join.POLICIES, help="open: devices on this network enrol by themselves; secure: a join code")])
 
 main = GROUP.run
 

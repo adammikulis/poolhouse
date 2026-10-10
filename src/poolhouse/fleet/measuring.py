@@ -3,8 +3,8 @@ detached ``poolhouse-bench`` it starts and watches.
 
 `installed_commit` is the poolhouse this process runs and `same_commit` compares two of
 them. `Job` is one ``poolhouse-bench`` invocation on the wire, `jobs_from` builds one per
-peer out of a plan, and `Refused` is what a peer answers when it will not take one.
-`BenchHost` is the bench side of a daemon; `Local` is this machine answering as a peer
+member out of a plan, and `Refused` is what a member answers when it will not take one.
+`BenchHost` is the bench side of a daemon; `Local` is this machine answering as a member
 would, for a dispatcher with no daemon of its own.
 """
 
@@ -57,11 +57,11 @@ __all__ = [
 ]
 
 LOCK = "measuring.lock"
-"""What ``poolhouse-bench`` holds while it measures, under `bench_home`. A peer whose lock
+"""What ``poolhouse-bench`` holds while it measures, under `bench_home`. A member whose lock
 is held is measuring already, whoever started it, and gets no second job."""
 
 STORE = "runs.ladybug"
-"""Where a peer's ``poolhouse-bench`` keeps its runs, under `bench_home`: the store its
+"""Where a member's ``poolhouse-bench`` keeps its runs, under `bench_home`: the store its
 ``--kept`` defaults to, which is why a `Job` may not name one."""
 
 FAILED_MARKS = ("error:", "Traceback (most recent call last)", "[killed]", "selfcheck: FAILED")
@@ -71,7 +71,7 @@ gone, and the log is the record: `poolhouse-bench` prints ``error:`` on every fa
 ``[killed]`` when `stop` reached it, and a traceback when something else did."""
 
 TAIL = 5
-"""Lines of a peer's log `wait` prints when a job ends."""
+"""Lines of a member's log `wait` prints when a job ends."""
 
 UNDER_WAY = ("preparing", "running")
 """The states of a bench job that has not ended: installing or launching, then measuring."""
@@ -99,7 +99,7 @@ def installed_commit() -> str:
     Found from the package's own path -- this file's, up to the nearest ``.git``, a
     directory or a worktree's file (``poolhouse`` is a namespace package and has no
     ``__file__``) -- because that is the code that will measure, whatever ``pip`` thinks
-    is installed. A dispatcher and a peer on different commits measure
+    is installed. A dispatcher and a member on different commits measure
     different things and file them under one name, so `BenchHost.submit` refuses a `Job`
     whose ``commit`` differs from this. Compared with `same_commit`, which ignores dirtiness
     -- a tree edited on one side is a warning in the record, not a reason to refuse.
@@ -143,11 +143,11 @@ def same_commit(mine: str, theirs: str) -> bool:
 
 # -- a job ---------------------------------------------------------------------------
 SHIPPED = {"--graph": "graph.json", "--questions": "questions.jsonl"}
-"""The flags whose file a job carries, and the name the peer writes it under."""
+"""The flags whose file a job carries, and the name the member writes it under."""
 
 
 class Refused(RuntimeError):
-    """A well-formed `Job` this peer will not run now. ``kind`` says which of the three
+    """A well-formed `Job` this member will not run now. ``kind`` says which of the three
     reasons: ``commit`` (its code differs), ``lock`` (it is measuring) or ``room`` (a
     model would not fit its memory) -- or ``launch`` when the bench would not start."""
 
@@ -158,13 +158,13 @@ class Refused(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class Job:
-    """One ``poolhouse-bench`` invocation for one peer.
+    """One ``poolhouse-bench`` invocation for one member.
 
-    ``argv`` is the line after ``poolhouse-bench`` with this peer's ``--serve`` flags;
+    ``argv`` is the line after ``poolhouse-bench`` with this member's ``--serve`` flags;
     ``models`` names those models and ``needs`` estimates each in bytes (0 is unknown).
-    ``commit`` is the dispatcher's `installed_commit`, which the peer must match;
-    ``kept_label`` names the sweep in the peer's job list. ``files`` holds the text of each
-    `SHIPPED` flag's file; the peer writes it under its bench home and adds the flag.
+    ``commit`` is the dispatcher's `installed_commit`, which the member must match;
+    ``kept_label`` names the sweep in the member's job list. ``files`` holds the text of each
+    `SHIPPED` flag's file; the member writes it under its bench home and adds the flag.
     ``argv`` may carry none of ``--kept``, ``--detach``, ``--no-queue`` or a `SHIPPED` flag.
     """
 
@@ -180,7 +180,7 @@ class Job:
             raise ValueError("a bench job needs an argv")
         for flag in ("--kept", "--detach", "--no-queue"):
             if flag in self.argv:
-                raise ValueError(f"a bench job's argv may not carry {flag}: the peer keeps "
+                raise ValueError(f"a bench job's argv may not carry {flag}: the member keeps "
                                  f"its runs in its own store and detaches the run itself")
         for flag in SHIPPED:
             if any(word == flag or word.startswith(flag + "=") for word in self.argv):
@@ -191,7 +191,7 @@ class Job:
             raise ValueError(f"a bench job ships files for {', '.join(SHIPPED)} only, "
                              f"not {', '.join(unknown)}")
         if not self.commit:
-            raise ValueError("a bench job needs the dispatcher's commit, so the peer can "
+            raise ValueError("a bench job needs the dispatcher's commit, so the member can "
                              "refuse to measure with different code")
 
     def public(self) -> dict[str, Any]:
@@ -230,17 +230,17 @@ class Job:
 
     @property
     def name(self) -> str:
-        """What the peer's job list calls it."""
+        """What the member's job list calls it."""
         return f"bench:{self.kept_label or ' '.join(self.models) or self.argv[0]}"
 
 
 def jobs_from(planned: Mapping[Any, Sequence[str]], base: Job, *,
               drafts: Mapping[str, str] | None = None) -> dict[Any, Job]:
-    """One `Job` per peer in a `plan`: ``base`` -- the sweep's line without any ``--serve``,
-    and the needs of every model -- with ``--serve MODEL`` for each model the peer got, and
+    """One `Job` per member in a `plan`: ``base`` -- the sweep's line without any ``--serve``,
+    and the needs of every model -- with ``--serve MODEL`` for each model the member got, and
     ``--serve-draft`` beside it when ``drafts`` names one for that model."""
     out: dict[Any, Job] = {}
-    for peer, models in planned.items():
+    for member, models in planned.items():
         if not models:
             continue
         line = list(base.argv)
@@ -248,7 +248,7 @@ def jobs_from(planned: Mapping[Any, Sequence[str]], base: Job, *,
             line += ["--serve", model]
             if drafts and model in drafts:
                 line += ["--serve-draft", drafts[model]]
-        out[peer] = replace(base, argv=tuple(line), models=tuple(models),
+        out[member] = replace(base, argv=tuple(line), models=tuple(models),
                             needs={m: int(base.needs.get(m, 0)) for m in models})
     return out
 
@@ -286,7 +286,7 @@ def _measures(environment: Environment) -> bool:
         return False
     try:
         done = subprocess.run([str(environment.python), "-c",
-                               "import poolhouse.bench.peer_runs, ladybug"],
+                               "import poolhouse.bench.member_runs, ladybug"],
                               capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
         return False
@@ -406,7 +406,7 @@ class BenchHost:
         Three refusals, checked in this order: the dispatcher's ``commit`` is not this
         machine's (`same_commit`); the measuring lock is held or a job of ours is still
         running; a model's ``needs`` exceeds `room` (a need of 0 is unknown, and passes --
-        the peer's own preflight sizes it before the load). Then `launch` starts the
+        the member's own preflight sizes it before the load). Then `launch` starts the
         bench detached, the pid is adopted into the runner under ``bench:<label>`` with
         the bench's own log, and a thread watches the pid and settles the job.
         """
@@ -516,18 +516,18 @@ class BenchHost:
             return out
         asked = {"store": str(store), "since": since, "full": full, "anyway": anyway}
         done = subprocess.run([str(bench_python(self.runner.environment)), "-m",
-                               "poolhouse.bench.peer_runs"], input=json.dumps(asked),
+                               "poolhouse.bench.member_runs"], input=json.dumps(asked),
                               capture_output=True, text=True, timeout=300)
         if done.returncode != 0:
             raise DaemonError(f"reading {store} failed: {done.stderr.strip()[-400:]}")
         return {**out, **json.loads(done.stdout)}
 
 
-# -- this machine as a peer ----------------------------------------------------------
+# -- this machine as a member ----------------------------------------------------------
 class Local:
-    """This machine, answering as a peer would, in-process: for a dispatcher that runs no
+    """This machine, answering as a member would, in-process: for a dispatcher that runs no
     daemon and still counts itself. The same calls `plan`, `dispatch`, `wait` and `gather`
-    make of a `Peer` -- ``health``, ``job``, ``log`` and the bench ones -- answered by a
+    make of a `Member` -- ``health``, ``job``, ``log`` and the bench ones -- answered by a
     `BenchHost` of its own over a private `JobRunner`."""
 
     def __init__(self, host: BenchHost | None = None, *, name: str = "",
@@ -564,6 +564,6 @@ class Local:
 
 
 def here(*, name: str = "", home: Path | str | None = None) -> Local:
-    """The dispatcher itself as a peer, so `plan` can count it."""
+    """The dispatcher itself as a member, so `plan` can count it."""
     return Local(name=name, home=home)
 

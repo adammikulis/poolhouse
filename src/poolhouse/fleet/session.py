@@ -15,7 +15,7 @@ TTL_S = 12 * 3600
 TICKET_TTL_S = 60.0
 MAX_TICKETS = 8
 CREDENTIALED = frozenset({"launch-ticket", "passphrase", "recovery-file", "invite"})
-"""Session origins that rest on a credential the server checked: a spent launch ticket, a cluster
+"""Session origins that rest on a credential the server checked: a spent launch ticket, a pool
 passphrase, a verified recovery file or a redeemed invitation."""
 
 

@@ -179,7 +179,7 @@ class Loop:
         if hasattr(type(ws), "worker_token"):
             transport = ws.remote.transport if isinstance(ws.remote, worker_reconnect.Recovering) else ws.remote
             ws.remote = worker_reconnect.Recovering(transport, self.stopped, self.status)
-            self.completion = worker_completion.Journal(ws)
+            self.completion = worker_completion.Log(ws)
 
     def agent_orders(self, row: dict[str, Any]) -> str:
         return la.obeys(self.ws, self.agent, row)

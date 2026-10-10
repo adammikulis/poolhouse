@@ -12,7 +12,7 @@ from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def served(tmp_path):
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     port = httpd.server_port
-    yield {"port": port, "token": token, "files": files, "peer": Peer(f"http://127.0.0.1:{port}", token)}
+    yield {"port": port, "token": token, "files": files, "member": Member(f"http://127.0.0.1:{port}", token)}
     runner.shutdown()
     httpd.shutdown()
     httpd.server_close()
@@ -89,7 +89,7 @@ def test_an_unsigned_health_check_learns_only_that_the_daemon_is_there(served):
 
 
 def test_a_signed_health_check_gets_the_whole_answer(served):
-    assert served["peer"].health()["name"] == "alpha"
+    assert served["member"].health()["name"] == "alpha"
 
 
 def test_a_bearer_token_is_not_accepted(served):
@@ -205,7 +205,7 @@ def test_a_range_that_cannot_be_served_is_refused(served):
 
 
 def test_query_numbers_that_are_not_numbers_fall_back(served):
-    job = served["peer"].submit(["python3", "-m", "poolhouse.fleet.calibration", "--budget", "0.05"])
+    job = served["member"].submit(["python3", "-m", "poolhouse.fleet.calibration", "--budget", "0.05"])
     time.sleep(0.5)
     status, _ = talk(served["port"], signed(served, "GET", f"/jobs/{job['id']}/log?tail=abc"))
     assert status == 200

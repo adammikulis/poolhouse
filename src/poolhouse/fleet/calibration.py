@@ -1,6 +1,6 @@
-"""The short calibration a peer runs once when it joins, so placement has a number for a
-machine nobody has measured. `measure` is the work; `argv` is the line a peer is sent to
-run it on itself; `calibrate` sends that to every peer with no score yet and records what
+"""The short calibration a member runs once when it joins, so placement has a number for a
+machine nobody has measured. `measure` is the work; `argv` is the line a member is sent to
+run it on itself; `calibrate` sends that to every member with no score yet and records what
 came back.
 """
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from poolhouse.log import Events
 
     from .rates import Rates
-    from .remote import Peer
+    from .remote import Member
 
 __all__ = ["BENCH_KIND", "BUDGET_S", "argv", "calibrate", "main", "measure"]
 
@@ -73,7 +73,7 @@ def measure(budget_s: float = BUDGET_S) -> dict[str, Any]:
 
 
 def argv(budget_s: float = BUDGET_S) -> list[str]:
-    """What to submit to a peer to have it benchmark itself."""
+    """What to submit to a member to have it benchmark itself."""
     return ["python3", "-m", "poolhouse.fleet.calibration", "--budget", str(budget_s)]
 
 
@@ -92,37 +92,37 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-def calibrate(peers: Sequence[Peer], rates: Rates, *,
+def calibrate(members: Sequence[Member], rates: Rates, *,
               budget_s: float = BUDGET_S, timeout_s: float = 120.0,
               force: bool = False, on_event: Events | None = None,
               ) -> dict[str, float]:
-    """Benchmark every peer that has never been benchmarked. Returns machine -> score."""
+    """Benchmark every member that has never been benchmarked. Returns machine -> score."""
     emit = emitting(on_event)
     scores: dict[str, float] = {}
-    for peer in peers:
+    for member in members:
         try:
-            health = peer.health()
+            health = member.health()
         except Exception as exc:                      # noqa: BLE001
-            emit("skip", peer=peer.base_url, why=str(exc))
+            emit("skip", member=member.base_url, why=str(exc))
             continue
-        name = health.get("name") or peer.name
+        name = health.get("name") or member.name
         machine = str(health.get("machine") or name)
         if not force and rates.get(machine, BENCH_KIND) is not None:
             scores[machine] = rates.get(machine, BENCH_KIND)      # type: ignore[assignment]
             continue
-        emit("bench", peer=name)
+        emit("bench", member=name)
         try:
-            job = peer.submit(argv(budget_s), name="poolhouse-bench")
-            final = peer.wait(job["id"], poll_s=1.0, timeout_s=timeout_s)
+            job = member.submit(argv(budget_s), name="poolhouse-bench")
+            final = member.wait(job["id"], poll_s=1.0, timeout_s=timeout_s)
             if final.get("state") != "done":
-                emit("skip", peer=name, why=f"bench {final.get('state')}")
+                emit("skip", member=name, why=f"bench {final.get('state')}")
                 continue
-            result = json.loads(peer.log(job["id"], tail=5).strip().splitlines()[-1])
+            result = json.loads(member.log(job["id"], tail=5).strip().splitlines()[-1])
             score = float(result["score"])
         except Exception as exc:                      # noqa: BLE001
-            emit("skip", peer=name, why=str(exc))
+            emit("skip", member=name, why=str(exc))
             continue
         rates.record(machine, BENCH_KIND, units=score, seconds=1.0)
         scores[machine] = score
-        emit("benched", peer=name, score=score)
+        emit("benched", member=name, score=score)
     rates.save()

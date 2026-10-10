@@ -28,16 +28,16 @@ class Target:
     model: str
     url: str
     token: str = ""
-    peer: str = ""
+    member: str = ""
     alias: str = ""
     capabilities: dict[str, Any] = field(default_factory=model_capabilities)
 
     @property
     def local(self) -> bool:
-        return not self.peer
+        return not self.member
 
     def public(self) -> dict[str, Any]:
-        return {"model": self.model, "peer": self.peer, "local": self.local,
+        return {"model": self.model, "member": self.member, "local": self.local,
                 'capabilities': self.capabilities,
                 "path": self.alias if self.local and Path(self.alias).is_absolute() else ""}
 
@@ -46,7 +46,7 @@ def _capabilities(value):
     return value if isinstance(value, dict) and 'chat' in value else model_capabilities()
 
 
-def targets(peers: list[dict[str, Any]], serving: Any = None,
+def targets(members: list[dict[str, Any]], serving: Any = None,
             token: str = "") -> list[Target]:
     """Every model this machine can reach, its own and the ones on the network."""
     out: list[Target] = []
@@ -59,7 +59,7 @@ def targets(peers: list[dict[str, Any]], serving: Any = None,
                               capabilities=_capabilities(getattr(served, 'capabilities', None)),
                               alias=next((name for name in served.aliases if Path(name).name == model), model)))
     here = {t.model for t in out}
-    for beacon in peers:
+    for beacon in members:
         if beacon.get("is_self"):
             continue
         base = str(beacon.get("base_url") or "").rstrip("/")
@@ -75,8 +75,8 @@ def targets(peers: list[dict[str, Any]], serving: Any = None,
                                   url=f"{base}/infer{CHAT_PATH}",
                                   token=token,
                                   capabilities=_capabilities(served.get('capabilities')),
-                                  peer=str(beacon.get("name") or "")))
-    out.sort(key=lambda t: (not t.local, t.peer, t.model))
+                                  member=str(beacon.get("name") or "")))
+    out.sort(key=lambda t: (not t.local, t.member, t.model))
     return out
 
 
@@ -104,10 +104,10 @@ def stream(target: Target, payload: dict[str, Any], *,
                      "Accept": "text/event-stream" if payload.get("stream") else "*/*"})
     except ServerUnreachable as exc:
         raise ChatError(
-            f"{target.peer or 'this machine'} did not answer: {exc}") from None
+            f"{target.member or 'this machine'} did not answer: {exc}") from None
     except ServerError as exc:
         raise ChatError(
-            f"{target.peer or 'this machine'} answered {exc.status}: "
+            f"{target.member or 'this machine'} answered {exc.status}: "
             f"{exc.body[:400]}", status=exc.status, body=exc.body) from None
     with response:
         if control is not None:

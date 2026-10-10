@@ -1,9 +1,9 @@
-"""Finding machines that are willing to be paired with, before there is any trust.
+"""Finding machines that are willing to be joined with, before there is any trust.
 
-A machine with pairing open announces its name, model, pairing port and certificate
+A machine with joining open announces its name, model, joining port and certificate
 fingerprint. Nothing in it is authenticated, so it is a hint: the address is the datagram's
 source, strings are cleaned, the list is bounded and ages out. A forged announcement can put a
-wrong name in the list; it cannot get anyone paired, because the code and the certificate the
+wrong name in the list; it cannot get anyone joined, because the code and the certificate the
 exchange binds decide that. The wire is a `Transport`: `UdpTransport` (stdlib multicast and
 broadcast) or `MemoryHub` for tests; an mDNS transport fits the same two methods.
 """
@@ -40,7 +40,7 @@ __all__ = [
 DEFAULT_GROUP = "239.255.77.70"
 DEFAULT_PORT = 8773
 MOST_DATAGRAM = 1200
-KIND = "pair-open"
+KIND = "join-open"
 FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 
 
@@ -108,7 +108,7 @@ class Presence:
 
 
 class Announcer:
-    """Says "I will pair" every ``interval_s`` seconds until stopped."""
+    """Says "I will join" every ``interval_s`` seconds until stopped."""
 
     def __init__(self, transport: Transport, who: Presence, interval_s: float = 5.0) -> None:
         self.transport, self.interval_s = transport, interval_s

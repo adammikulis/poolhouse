@@ -1,4 +1,4 @@
-"""``poolhouse cluster bootstrap --ssh [user@]host``: see `ssh.py`."""
+"""``poolhouse pool bootstrap --ssh [user@]host``: see `ssh.py`."""
 
 from __future__ import annotations
 
@@ -88,6 +88,6 @@ def cmd_ssh(args: argparse.Namespace) -> int:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2
     _emit(args, done, f"installed on {done['target']}; it is listening on port "
-                      f"{done['listen_port']}: pair with: poolhouse cluster pair --host "
+                      f"{done['listen_port']}: join: poolhouse pool join-with-code --host "
                       f"{target.host} --port {done['listen_port']}")
     return 0

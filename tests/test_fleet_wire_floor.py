@@ -17,7 +17,7 @@ from poolhouse.fleet.discovery import Beacon, primary_ip
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.projects import lan_host
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.workspace.remote import RemoteWorkspace
 
 MARKER = b"PLANTED-MARKER-7f3a91c2e8b44d05"
@@ -151,8 +151,8 @@ def test_the_old_switch_changes_nothing(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("host", ["http://192.168.40.9:8770", "http://studio.local:8770"])
-def test_a_project_host_or_peer_over_plain_http_on_the_lan_is_refused(host):
+def test_a_project_host_or_member_over_plain_http_on_the_lan_is_refused(host):
     with pytest.raises(ValueError, match="https"):
         RemoteWorkspace(host, "a" * 32)
     with pytest.raises(ValueError, match="https"):
-        Peer(host, "token")
+        Member(host, "token")

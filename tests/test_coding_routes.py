@@ -125,7 +125,7 @@ def test_joined_coding_session_is_required_before_starting_a_worker(coding_api, 
     from poolhouse.fleet import routes
 
     server, conversation, _kit = coding_api
-    monkeypatch.setattr(routes, "in_cluster", lambda _: True)
+    monkeypatch.setattr(routes, "in_pool", lambda _: True)
     assert post(server, conversation.id, "start", {"message": "unsigned"}, cookie="")[0] == 401
     assert server.ui.conversations.get(conversation.id).messages == []
     cookie = server.ui.sessions.cookie_header(server.ui.sessions.open("person", "launch-ticket"))

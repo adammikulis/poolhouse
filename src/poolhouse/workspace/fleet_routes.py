@@ -19,7 +19,7 @@ def _connect(request, root, audit):
     body = json.loads(request.handler.rfile.read(int(length)))
     if not isinstance(body, dict) or body:
         raise ValueError('joining accepts an empty JSON object')
-    name = person.seat(Path(root)).name
+    name = person.session(Path(root)).name
     if audit:
         audit(name)
     request.send(200, {'connected': True, 'name': name})
@@ -59,7 +59,7 @@ def route(request, *, root=None, prefix="/ui/board/", audit=None) -> bool:
     call = boardroute.Request(
         request.method, request.handler.path.replace(prefix, "/board/", 1),
         headers, request.handler.server.server_address[1], True, raw)
-    status, extra, body = boardroute.respond(lambda: person.seat(where), call)
+    status, extra, body = boardroute.respond(lambda: person.session(where), call)
     request.handler.send_response(status)
     for key, value in extra.items():
         request.handler.send_header(key, value)

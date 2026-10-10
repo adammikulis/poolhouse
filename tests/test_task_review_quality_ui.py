@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from browser_expect import expect
-from person_kit import PROJECT, person_seat
+from person_kit import PROJECT, person_session
 from task_kit import board, proposed
 
 from poolhouse.board.tasks import Tasks
@@ -48,7 +48,7 @@ def test_advanced_person_quality_review_records_fixed_bonus_and_separate_rating(
     server.ui.workspaces = object()
     ledger = WorkLedger(SealedGraph(tmp_path / 'quality.enc', keys=vault.PassphraseKeys(lambda _: 'isolated quality key')))
     verify = task_credit.verify_on_board
-    monkeypatch.setattr(task_outcomes.task_credit, 'verify_on_board', lambda seat, ident: verify(seat, ident, ledger=ledger))
+    monkeypatch.setattr(task_outcomes.task_credit, 'verify_on_board', lambda session, ident: verify(session, ident, ledger=ledger))
     try:
         with playwright.chromium.launch(headless=True) as browser:
             context = browser.new_context(viewport={'width': 390, 'height': 844})
@@ -66,17 +66,17 @@ def test_advanced_person_quality_review_records_fixed_bonus_and_separate_rating(
             page.screenshot(path='/private/tmp/poolhouse-task-quality-form.png', full_page=True)
             viewer.get_by_role('button', name='Record independent review', exact=True).click()
             expect(viewer.locator('.status')).to_contain_text('checks you independently verified')
-            assert Tasks(person_seat(node)).get(board.task['id'])['review'] is None
+            assert Tasks(person_session(node)).get(board.task['id'])['review'] is None
             viewer.get_by_label('Replay passes', exact=True).check()
             viewer.get_by_role('button', name='Record independent review', exact=True).click()
             expect(viewer.locator('.badge')).to_have_text('completed')
             expect(viewer.locator('.status')).to_contain_text('15 credits')
             page.screenshot(path='/private/tmp/poolhouse-task-quality-preview.png', full_page=True)
-        task = Tasks(person_seat(node)).get(board.task['id'])
+        task = Tasks(person_session(node)).get(board.task['id'])
         assert task['review']['quality'] == [{'kind': 'validated', 'reason': 'Replay independently reproduced',
                                              'checks': ['Replay passes'], 'artifacts': ['replay.json']}]
         assert task['review']['review']['quality'] == 85
-        standing = work_reputation.standings_on(person_seat(node), ledger=ledger)
+        standing = work_reputation.standings_on(person_session(node), ledger=ledger)
         earned = next(row for row in standing['team'] if row['economy']['earned'])
         assert earned['economy']['completion_credits'] == 10
         assert earned['economy']['quality_credits'] == 5

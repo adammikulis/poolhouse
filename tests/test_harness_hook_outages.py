@@ -10,7 +10,7 @@ from poolhouse.workspace.identity import BoardUnavailable, Denied
 
 
 def unavailable(*args, **kwargs):
-    raise BoardUnavailable('project board unavailable: connection refused')
+    raise BoardUnavailable('board unavailable: connection refused')
 
 
 def test_post_outage_does_not_reverse_a_completed_tool(monkeypatch, capsys):

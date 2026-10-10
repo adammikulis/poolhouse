@@ -20,7 +20,7 @@ from poolhouse.workspace import tools as workspace_tools
 
 EXPECTED = {"serve_status", "serve_up", "serve_down", "serve_escalate", "models_find",
             "models_files", "models_fetch", "bench_run", "bench_status", "bench_history",
-            "bench_show", "fleet_peers", "world_make", "setup_look", "doctor",
+            "bench_show", "fleet_members", "world_make", "setup_look", "doctor",
             "speech_providers", "speech_transcribe", "speech_say", "decide",
             "conversation_compact", *workspace_tools.NAMES}
 
@@ -159,9 +159,9 @@ class TestTheTools:
         (reply,) = drive(rpc(1, "tools/call", name="bench_show", arguments={}))
         assert said(reply) == [], "an empty bench home holds no runs"
 
-    def test_fleet_peers_in_no_cluster_is_empty_not_an_error(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("POOLHOUSE_CLUSTER_KEY", str(tmp_path / "none.key"))
-        (reply,) = drive(rpc(1, "tools/call", name="fleet_peers", arguments={"timeout_s": 0.2}))
+    def test_fleet_members_in_no_pool_is_empty_not_an_error(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("POOLHOUSE_POOL_KEY", str(tmp_path / "none.key"))
+        (reply,) = drive(rpc(1, "tools/call", name="fleet_members", arguments={"timeout_s": 0.2}))
         assert said(reply) == []
 
     def test_a_tool_that_raises_answers_with_the_error(self, monkeypatch):

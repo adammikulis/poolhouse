@@ -11,7 +11,7 @@ def harness() -> str:
     native = os.environ.get("POOLHOUSE_SESSION_HARNESS", "")
     session = os.environ.get("POOLHOUSE_SESSION_ID", "")
     if bool(native) != bool(session):
-        raise Denied("the native session harness and identifier must be paired")
+        raise Denied("the native session harness and identifier must belong to one session")
     if native:
         if len(native) > 15 or not valid_name(native):
             raise Denied("the native session harness is invalid")
@@ -58,5 +58,5 @@ def owner(value: str) -> str:
     """Return a readable shared Board claim owner."""
     parts = value.split(":", 2)
     if len(parts) == 3 and parts[0] == "board" and len(parts[1]) == 32:
-        return f"{parts[2]} on shared project Board"
+        return f"{parts[2]} on shared board"
     return value

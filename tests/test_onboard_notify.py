@@ -131,8 +131,8 @@ def test_console_prints_the_cleaned_text_and_leaves_the_answer_to_the_commands()
     out = []
     c = notify.Console(out.append)
     assert c.ask("a\nb", "\x1b[31mred") == "unavailable"
-    assert out == ["a b: [31mred Answer with: poolhouse cluster accept ID --mine|--other, or "
-                   "poolhouse cluster decline ID"]
+    assert out == ["a b: [31mred Answer with: poolhouse pool accept ID --mine|--other, or "
+                   "poolhouse pool decline ID"]
 
 
 def test_the_question_cleans_text_again_even_for_a_request_built_by_hand():

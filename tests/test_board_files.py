@@ -194,7 +194,7 @@ def page(team, monkeypatch):
     previous = keyring.get_keyring()
     keyring.set_keyring(FileKeyring())
     monkeypatch.setattr(node_launch, "default_state", lambda: team.state)
-    server = boardroute.serve(lambda: person.seat(Path.cwd(), team.client), 0)
+    server = boardroute.serve(lambda: person.session(Path.cwd(), team.client), 0)
     server.start()
 
     def call(path):

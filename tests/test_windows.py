@@ -385,7 +385,7 @@ class TestPrivateFile:
         monkeypatch.setattr(platform_module.subprocess, "run",
                             lambda argv, **k: ran.append(list(argv)) or _ok())
         monkeypatch.setenv("USERNAME", "fixture-user")
-        target = tmp_path / "cluster.json"
+        target = tmp_path / "pool.json"
         target.write_text("[]")
 
         platform_module.private_file(target)
@@ -396,24 +396,24 @@ class TestPrivateFile:
     def test_posix_is_chmod_600(self, posix, monkeypatch, tmp_path):
         from poolhouse.platform import private_file
 
-        target = tmp_path / "cluster.json"
+        target = tmp_path / "pool.json"
         target.write_text("[]")
         modes = []
         monkeypatch.setattr(Path, "chmod", lambda path, mode: modes.append((path, mode)))
         private_file(target)
         assert modes == [(target, 0o600)]
 
-    def test_the_cluster_key_goes_through_it(self, windows, monkeypatch, tmp_path):
+    def test_the_pool_key_goes_through_it(self, windows, monkeypatch, tmp_path):
         """`discovery` used to chmod directly, which on Windows protects nothing."""
         from poolhouse import platform as platform_module
-        from poolhouse.fleet.discovery import create_cluster_key
+        from poolhouse.fleet.discovery import create_pool_key
 
         ran: list[list[str]] = []
         monkeypatch.setattr(platform_module.subprocess, "run",
                             lambda argv, **k: ran.append(list(argv)) or _ok())
         monkeypatch.setenv("USERNAME", "fixture-user")
-        create_cluster_key(tmp_path / "cluster.key", group="poolhouse")
-        assert any(argv[0] == "icacls" and argv[1].endswith("cluster.json") for argv in ran)
+        create_pool_key(tmp_path / "pool.key", group="poolhouse")
+        assert any(argv[0] == "icacls" and argv[1].endswith("pool.json") for argv in ran)
 
 
 # -- starting at logon ---------------------------------------------------------------
@@ -554,12 +554,12 @@ class TestDiscoveryAndTheFirewall:
 
     def test_the_daemon_announces_itself_the_moment_it_starts(self, monkeypatch, tmp_path):
         """The loop's first beacon is interval_s away. A daemon that has just come up must
-        appear in the next `poolhouse-peers ls`, not the one after."""
+        appear in the next `poolhouse-members ls`, not the one after."""
         from poolhouse.fleet import discovery
         from poolhouse.fleet.discovery import Advertiser, Beacon, _verify
 
-        discovery.create_cluster_key(tmp_path / "cluster.key", group="poolhouse")
-        key = discovery.load_cluster_key(tmp_path / "cluster.key")
+        discovery.create_pool_key(tmp_path / "pool.key", group="poolhouse")
+        key = discovery.load_pool_key(tmp_path / "pool.key")
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as ear:
             ear.bind(("127.0.0.1", 0))
             ear.settimeout(3.0)
@@ -613,9 +613,9 @@ class TestDiscoveryAndTheFirewall:
         monkeypatch.setattr(setup, "_arches", lambda binary, known=None: set())
         assert not [f for f in setup.look() if f.name == "firewall"]
 
-    def test_peers_init_uses_recovery_on_windows_to_preserve_the_name(self, capsys, tmp_path):
-        from poolhouse.fleet.peers import main
+    def test_members_init_uses_recovery_on_windows_to_preserve_the_name(self, capsys, tmp_path):
+        from poolhouse.fleet.members import main
 
-        assert main(["--cluster-key", str(tmp_path / "cluster.key"), "init", "--group", "Cedar lab"]) == 0
+        assert main(["--pool-key", str(tmp_path / "pool.key"), "init", "--group", "Cedar lab"]) == 0
         out = capsys.readouterr().out
         assert "recovery export" in out and "recovery import" in out and "PowerShell" in out

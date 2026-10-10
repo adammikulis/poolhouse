@@ -1,6 +1,6 @@
 """Keep this device on the newest build its pool runs, automatically and without asking.
 
-A node advertises its build and learns its peers'; one that hears of a newer build is catching up and takes no work.
+A node advertises its build and learns its members'; one that hears of a newer build is catching up and takes no work.
 This brings it current at a safe boundary: never while a lease is held or queued or a runtime build runs. A source
 checkout fast-forwards its development branch from its own origin and runs `runtime ensure` (build, health check, node
 swap, rollback); a release install takes the signed update path. A failed update selects the previous runtime again and
@@ -173,7 +173,7 @@ def update_once(state: Path | None = None, *, steps: Steps | None = None, agent:
         return Result("pinned", "this device's build is pinned: it is left as it is")
     pool = pool if pool is not None else node_pool.status(state)
     if pool is None:
-        return Result("no-node", "no node answers, so no peer's build is known")
+        return Result("no-node", "no node answers, so no member's build is known")
     ahead = newest(pool)
     if ahead is None:
         runtime_store.write_state({"update": None})

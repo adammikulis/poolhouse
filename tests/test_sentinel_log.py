@@ -26,7 +26,7 @@ def _lines(log: EventLog) -> list[str]:
 def test_a_secret_never_reaches_the_log(tmp_path):
     log = _log(tmp_path)
     token = "hf_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7"
-    log.append(Event("x.y", Severity.INFO, "t", "peer:1", {
+    log.append(Event("x.y", Severity.INFO, "t", "member:1", {
         "header": f"Authorization: Bearer {token}", "api_key": "plainvalue123",
         "note": f"token={token}", "sha256": "ab" * 32}))
     text = log.path.read_text()

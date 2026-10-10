@@ -1,4 +1,4 @@
-"""Windowed counts: failures and replays per peer, tool-call mix per session, abuse per caller."""
+"""Windowed counts: failures and replays per member, tool-call mix per session, abuse per caller."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from poolhouse.sentinel import observers
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HEURISTIC, HIGH, Finding, finding
 
-__all__ = ["Abuse", "PeerLimits", "PeerWatch", "ToolMix", "Windows", "total_variation"]
+__all__ = ["Abuse", "MemberLimits", "MemberWatch", "ToolMix", "Windows", "total_variation"]
 
 
 class Windows:
@@ -51,8 +51,8 @@ class Windows:
 
 
 @dataclass(frozen=True, slots=True)
-class PeerLimits:
-    """Counts inside one window that make a peer suspicious (``watch_*``) or make its
+class MemberLimits:
+    """Counts inside one window that make a member suspicious (``watch_*``) or make its
     traffic forged beyond doubt (``forged``)."""
 
     watch_bad: int = 10
@@ -63,73 +63,73 @@ class PeerLimits:
     flaps: int = 6
 
 
-class PeerWatch:
-    """Turns a peer's request outcomes into findings."""
+class MemberWatch:
+    """Turns a member's request outcomes into findings."""
 
     OUTCOMES = ("ok", "bad_sig", "replay", "clock", "locked", "oversize", "unsigned")
 
-    def __init__(self, limits: PeerLimits | None = None, *, window_s: float = 60.0,
+    def __init__(self, limits: MemberLimits | None = None, *, window_s: float = 60.0,
                  clock: Callable[[], float] = time.monotonic) -> None:
-        self.limits = limits or PeerLimits()
+        self.limits = limits or MemberLimits()
         self.windows = Windows(window_s, clock=clock)
         self._reported: dict[tuple[str, str], int] = {}
 
-    def note(self, peer: str, outcome: str) -> Finding | None:
-        """Count one request outcome from ``peer``; a finding when a limit is crossed."""
+    def note(self, member: str, outcome: str) -> Finding | None:
+        """Count one request outcome from ``member``; a finding when a limit is crossed."""
         if outcome not in self.OUTCOMES:
             raise ValueError(f"unknown outcome {outcome!r}")
-        self._observe(peer, outcome)
-        requests = self.windows.add(peer, "request")
-        bad = (self.windows.add(peer, "bad") if outcome in ("bad_sig", "unsigned", "locked")
-               else self.windows.count(peer, "bad"))
-        replays = (self.windows.add(peer, "replay") if outcome == "replay"
-                   else self.windows.count(peer, "replay"))
+        self._observe(member, outcome)
+        requests = self.windows.add(member, "request")
+        bad = (self.windows.add(member, "bad") if outcome in ("bad_sig", "unsigned", "locked")
+               else self.windows.count(member, "bad"))
+        replays = (self.windows.add(member, "replay") if outcome == "replay"
+                   else self.windows.count(member, "replay"))
         lim = self.limits
         counts = {"bad": bad, "replays": replays, "requests": requests}
         if replays >= lim.replay_forged or bad + replays >= lim.forged:
-            return self._once(peer, "forged", finding(
-                "peer.forged_traffic", Severity.CRITICAL, ("peer", peer), HIGH, counts))
+            return self._once(member, "forged", finding(
+                "member.forged_traffic", Severity.CRITICAL, ("member", member), HIGH, counts))
         if bad >= lim.watch_bad or replays >= lim.watch_replay:
-            return self._once(peer, "failing", finding(
-                "peer.auth_failures", Severity.WARNING, ("peer", peer), HEURISTIC,
+            return self._once(member, "failing", finding(
+                "member.auth_failures", Severity.WARNING, ("member", member), HEURISTIC,
                 counts))
         if requests >= lim.rate:
-            return self._once(peer, "rate", finding(
-                "peer.rate", Severity.WARNING, ("peer", peer), HEURISTIC, counts))
+            return self._once(member, "rate", finding(
+                "member.rate", Severity.WARNING, ("member", member), HEURISTIC, counts))
         return None
 
     @staticmethod
-    def _observe(peer: str, outcome: str) -> None:
+    def _observe(member: str, outcome: str) -> None:
         if outcome == "ok":
-            observers.clean("peer", peer)
+            observers.clean("member", member)
         elif outcome in ("bad_sig", "unsigned", "replay"):
-            observers.observe("peer", peer, "denial", scale=2.0 if outcome == "replay" else 1.0)
+            observers.observe("member", member, "denial", scale=2.0 if outcome == "replay" else 1.0)
 
-    def _once(self, peer: str, tag: str, found: Finding) -> Finding | None:
+    def _once(self, member: str, tag: str, found: Finding) -> Finding | None:
         """Report a condition once per window rather than once per request."""
         now = self.windows.clock()
-        last = self._reported.get((peer, tag))
+        last = self._reported.get((member, tag))
         if last is not None and now - last < self.windows.window_s:
             return None
-        self._reported[(peer, tag)] = int(now)
+        self._reported[(member, tag)] = int(now)
         if len(self._reported) > 4096:
             self._reported.clear()
         return found
 
-    def joined(self, peer: str) -> Finding | None:
-        """Count a join or leave; a finding when a peer flaps."""
-        n = self.windows.add(peer, "flap")
+    def joined(self, member: str) -> Finding | None:
+        """Count a join or leave; a finding when a member flaps."""
+        n = self.windows.add(member, "flap")
         if n >= self.limits.flaps:
-            return self._once(peer, "flap", finding(
-                "peer.flapping", Severity.NOTICE, ("peer", peer), HEURISTIC,
+            return self._once(member, "flap", finding(
+                "member.flapping", Severity.NOTICE, ("member", member), HEURISTIC,
                 {"changes": n}))
         return None
 
-    def mismatch(self, peer: str, what: str, theirs: str, pinned: str) -> Finding | None:
-        """A finding when a peer reports a ``version`` or ``binary`` that is not the pinned one."""
+    def mismatch(self, member: str, what: str, theirs: str, pinned: str) -> Finding | None:
+        """A finding when a member reports a ``version`` or ``binary`` that is not the pinned one."""
         if not pinned or theirs == pinned:
             return None
-        return finding(f"peer.{what}_mismatch", Severity.WARNING, ("peer", peer), HIGH,
+        return finding(f"member.{what}_mismatch", Severity.WARNING, ("member", member), HIGH,
                        {"reported": theirs, "pinned": pinned})
 
 

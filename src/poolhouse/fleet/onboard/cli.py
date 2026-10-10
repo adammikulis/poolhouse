@@ -1,11 +1,11 @@
-"""``poolhouse cluster nearby | pair | listen | requests | accept | decline | revoke | bootstrap``.
+"""``poolhouse pool nearby | join-with-code | add-device | requests | accept | decline | remove | bootstrap``.
 
 Every command takes ``--json`` and prints one JSON document; nothing is scraped from text.
 State lives under ``--state`` (default ``<state root>/onboard``): the received requests, the
-paired devices, this machine's pairing certificate, the cluster signing key.
+members, this machine's joining certificate, the pool signing key.
 
-The words: the machine that *listens* is the one that already has poolhouse and a cluster, and
-whose owner accepts; the machine that *pairs* is the one asking to join.
+The words: the machine that *adds a device* is the one that already has poolhouse and a pool, and
+whose owner accepts; the machine that *joins* is the one asking to join.
 """
 
 from __future__ import annotations
@@ -37,20 +37,20 @@ from ..tls import TlsUnavailable, identity, pinned_context
 from . import nearby as near
 from .bootstrap import BootstrapServer, Terms
 from .devices_cli import add_devices, cmd_devices
-from .manifest import ManifestError, RotationAnnounced, Signer, key_fingerprint, verify
-from .notify import compose, compose_code, pick
-from .pairing import (
+from .join_code import (
     DEFAULT_PORT,
     DEFAULT_SHARE_PORT,
     Grant,
     Hooks,
+    JoinCodeClient,
+    JoinCodeError,
+    JoinCodeServer,
     Offer,
-    PairError,
-    PairingClient,
-    PairingServer,
 )
-from .peerlearn import forget, learn_from_grant, learn_from_offer, new_secret
-from .peers_cli import add_peers, cmd_peers
+from .manifest import ManifestError, RotationAnnounced, Signer, key_fingerprint, verify
+from .memberlearn import forget, learn_from_grant, learn_from_offer, new_secret
+from .members_cli import add_members, cmd_members
+from .notify import compose, compose_code, pick
 from .requests import Devices, Refused, Request, Requests, State, short
 from .routes import beyond_the_lan, resolve
 from .share_cli import add_share, cmd_share
@@ -59,8 +59,8 @@ from .signing_cli import add_signing, cmd_signing, confirm_signing
 from .ssh_cli import add_ssh, cmd_ssh
 from .transfer import (
     Downloader,
+    MemberSource,
     NotShareable,
-    PeerSource,
     Share,
     TransferError,
     fetch_manifest,
@@ -69,8 +69,8 @@ from .trusted import remember
 
 __all__ = ["add_commands", "adopt", "run"]
 
-COMMANDS = ("nearby", "pair", "listen", "requests", "accept", "decline", "revoke", "bootstrap",
-            "share", "fetch", "signing", "devices", "peers")
+COMMANDS = ("nearby", "join-with-code", "add-device", "requests", "accept", "decline", "remove", "bootstrap",
+            "share", "fetch", "signing", "devices", "model-sources")
 
 
 def state_dir(args: argparse.Namespace) -> Path:
@@ -98,14 +98,14 @@ def add_commands(sub: Any) -> None:
         return p
 
     p = common(sub.add_parser("nearby", help="machines on this network that are open to "
-                                             "pairing"))
+                                             "joining"))
     p.add_argument("--timeout", type=float, default=3.0)
     p.add_argument("--port", type=int, default=near.DEFAULT_PORT)
     p.add_argument("--bind", default="", help="listen on this address only, and do not join "
                                               "the multicast group (for testing)")
 
-    p = common(sub.add_parser("listen", help="open pairing on this machine for a while: "
-                                             "announce, tell the owner of each request"))
+    p = common(sub.add_parser("add-device", help="add a device: open this machine to joins for a while, "
+                                                "announce, tell the owner of each request"))
     p.add_argument("--for", dest="span", default="10m", help="how long to stay open")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--announce-port", type=int, default=near.DEFAULT_PORT)
@@ -116,11 +116,11 @@ def add_commands(sub: Any) -> None:
                    help="do not announce; a machine must be told this one's address")
     p.add_argument("--host", default="", help="the address to listen on (default: every "
                                               "interface)")
-    p.add_argument("--no-cluster", action="store_true",
-                   help="pair the device without giving it this machine's cluster key")
+    p.add_argument("--no-pool", action="store_true",
+                   help="add the device without giving it this machine's pool key")
     _share_args(p)
 
-    p = common(sub.add_parser("pair", help="ask a machine to let this one join"))
+    p = common(sub.add_parser("join-with-code", help="join the pool of a machine, with the code its owner reads out"))
     p.add_argument("--host", required=True)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--code", default="", help="the code the owner reads out (prompted for "
@@ -143,7 +143,7 @@ def add_commands(sub: Any) -> None:
             who.add_argument("--other", dest="mine", action="store_false",
                              help="this device is another person's")
 
-    p = common(sub.add_parser("revoke", help="stop trusting a paired device"))
+    p = common(sub.add_parser("remove", help="remove a member from the pool"))
     p.add_argument("device", help="its name or the first digits of its fingerprint")
 
     p = common(sub.add_parser("bootstrap", help="offer poolhouse to a machine that has none"))
@@ -162,10 +162,10 @@ def add_commands(sub: Any) -> None:
 
     add_share(sub, common)
     add_devices(sub, common)
-    add_peers(sub, common)
+    add_members(sub, common)
     add_signing(sub, common)
 
-    p = common(sub.add_parser("fetch", help="fetch files from a machine this one paired with"))
+    p = common(sub.add_parser("fetch", help="fetch files from a machine this one joined with"))
     p.add_argument("names", nargs="+")
     p.add_argument("--from", dest="source", required=True, metavar="HOST:PORT",
                    help="a machine running 'share'")
@@ -173,15 +173,15 @@ def add_commands(sub: Any) -> None:
                                               "<state>/staging)")
 
 
-def adopt(grant: Grant, directory: Path, *, cluster_path: Path | str | None = None) -> bool:
-    """Make a grant this machine's: join its cluster if it carries one, and remember the
-    certificate and signing key of the machine that took it in. True if a cluster was joined."""
+def adopt(grant: Grant, directory: Path, *, pool_path: Path | str | None = None) -> bool:
+    """Make a grant this machine's: join its pool if it carries one, and remember the
+    certificate and signing key of the machine that took it in. True if a pool was joined."""
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     joined = False
     if grant.key:
-        rows = [m for m in memberships(cluster_path) if m.group != grant.group]
+        rows = [m for m in memberships(pool_path) if m.group != grant.group]
         rows.insert(0, Membership(group=grant.group, key=grant.key.encode(), selection="manual"))
-        write_memberships(rows, cluster_path)
+        write_memberships(rows, pool_path)
         joined = True
     write_json(directory / "trust.json", {"schema_version": 1, "certificate": grant.certificate,
                                           "signing_key": grant.signing_key,
@@ -210,7 +210,7 @@ def cmd_nearby(args: argparse.Namespace) -> int:
         transport.close()
     devices = Devices(state_dir(args) / "devices.json")
     known = {d.fingerprint: d for d in devices.all()}
-    rows = [{**n.public(), "paired": None if n.fingerprint not in known else (
+    rows = [{**n.public(), "joined": None if n.fingerprint not in known else (
         "yours" if known[n.fingerprint].mine else "another person's")} for n in found]
     tailnet = detect() if known else None
     if tailnet is not None and tailnet.up:      # a beacon never crosses a tailnet
@@ -218,15 +218,15 @@ def cmd_nearby(args: argparse.Namespace) -> int:
             rows.append({"name": far.name, "address": far.address, "port": DEFAULT_PORT,
                          "fingerprint": far.fingerprint, "fingerprint_short": short(far.fingerprint),
                          "route": far.route.value,
-                         "paired": "yours" if known[far.fingerprint].mine else "another person's"})
+                         "joined": "yours" if known[far.fingerprint].mine else "another person's"})
     lines = [f"{r['name']}  {r['address']}:{r['port']}  certificate {r['fingerprint_short']}"
-             + (f"  paired, {r['paired']}" if r["paired"] else "") for r in rows] \
-        or ["no machine is open to pairing"]
+             + (f"  joined, {r['joined']}" if r["joined"] else "") for r in rows] \
+        or ["no machine is open to joining"]
     _emit(args, {"nearby": rows}, "\n".join(lines))
     return 0 if rows else 1
 
 
-def cmd_listen(args: argparse.Namespace) -> int:
+def cmd_add_device(args: argparse.Namespace) -> int:
     directory = state_dir(args)
     ident = _identity(directory)
     requests = _requests(directory)
@@ -239,7 +239,7 @@ def cmd_listen(args: argparse.Namespace) -> int:
 
     def grant(_request: Request) -> Grant:
         secret = new_secret()
-        if args.no_cluster or not held:
+        if args.no_pool or not held:
             return Grant(certificate=ident.beacon, signing_key=signer_pub, device_secret=secret,
                          share_port=share_port, name=me)
         m = held[0]
@@ -248,8 +248,8 @@ def cmd_listen(args: argparse.Namespace) -> int:
 
     def learned(request: Request, offer: Offer) -> None:
         learn_from_offer(directory, request, offer)
-        if held and not args.no_cluster and offer.certificate and fingerprint_of(offer.certificate) == request.fingerprint:
-            Pool().enrol(held[0].group, offer.certificate, request.name, "pairing")
+        if held and not args.no_pool and offer.certificate and fingerprint_of(offer.certificate) == request.fingerprint:
+            Pool().enrol(held[0].group, offer.certificate, request.name, "join-code")
             threading.Thread(target=push, args=(Pool(), held[0].group), daemon=True, name="members-push").start()
 
     def tell(request: Request) -> None:
@@ -269,14 +269,14 @@ def cmd_listen(args: argparse.Namespace) -> int:
                 pass            # answered elsewhere, or it ran out, while the dialog was up
         threading.Thread(target=work, daemon=True, name="onboard-ask").start()
 
-    host = args.host or "0.0.0.0"  # noqa: S104  the owner opened pairing on purpose
+    host = args.host or "0.0.0.0"  # noqa: S104  the owner chose to add a device
     span = parse_duration(args.span) or 600.0
     where = [(h, int(p)) for h, _, p in (a.rpartition(":") for a in args.announce_to)]
     transport = near.UdpTransport(port=0 if where else args.announce_port,
                                   destinations=where or None,
                                   group=None if where else near.DEFAULT_GROUP,
                                   bind="127.0.0.1" if where else None)
-    with PairingServer(requests, ident, Hooks(grant, tell, learned), address=(host, args.port)) as server:
+    with JoinCodeServer(requests, ident, Hooks(grant, tell, learned), address=(host, args.port)) as server:
         announcer = near.Announcer(transport, near.Presence(
             socket.gethostname()[:40], socket.gethostname()[:60],
             f"{platform.system()} {platform.machine()}", server.port, ident.fingerprint))
@@ -284,10 +284,10 @@ def cmd_listen(args: argparse.Namespace) -> int:
             announcer.start()
         _emit(args, {"listening": True, "port": server.port, "for_s": span,
                      "fingerprint": ident.fingerprint, "notifier": notifier.name,
-                     "gives_cluster_key": bool(held) and not args.no_cluster},
-              f"pairing is open on port {server.port} for {int(span)} s "
+                     "gives_pool_key": bool(held) and not args.no_pool},
+              f"a device can join with a code on port {server.port} for {int(span)} s "
               f"(certificate {short(ident.fingerprint)}); answer requests with "
-              "'poolhouse cluster accept ID'")
+              "'poolhouse pool accept ID'")
         try:
             with contextlib.suppress(KeyboardInterrupt):
                 time.sleep(span)
@@ -328,7 +328,7 @@ def _answer(args: argparse.Namespace, accept: bool) -> int:
             f"{short(done.fingerprint)}\nread this code to the person at that machine: "
             f"{done.code[:3]} {done.code[3:]}  (good for {int(requests.limits.code_ttl_s)} s)\n"
             f"signing key {document.get('signing_key', '')[:16]}: the new machine shows the "
-            "same digits when it has paired"
+            "same digits when it has joined"
             if accept else f"declined {done.name}")
     _emit(args, document, text)
     return 0
@@ -342,19 +342,19 @@ def cmd_decline(args: argparse.Namespace) -> int:
     return _answer(args, False)
 
 
-def cmd_revoke(args: argparse.Namespace) -> int:
+def cmd_remove(args: argparse.Namespace) -> int:
     requests = _requests(state_dir(args))
     try:
         gone = requests.devices.revoke(args.device)
     except (KeyError, ValueError) as exc:
         _emit(args, {"error": str(exc)}, f"error: {exc}")
         return 2
-    rotate = gone.shared_cluster_key
+    rotate = gone.shared_pool_key
     dropped = forget(state_dir(args), gone)
     _emit(args, {"revoked": gone.fingerprint, "name": gone.name,
-                 "cluster_key_rotation_needed": rotate, "peers_removed": dropped},
+                 "pool_key_rotation_needed": rotate, "members_removed": dropped},
           f"revoked {gone.name} ({short(gone.fingerprint)}): it cannot ask to join again."
-          + (" It holds the cluster key, so the cluster key must be changed on every machine "
+          + (" It holds the pool key, so the pool key must be changed on every machine "
              "to lock it out (not automated yet; see docs/onboarding.md)." if rotate else ""))
     return 0
 
@@ -372,10 +372,10 @@ def _offer(directory: Path, ident: Any, args: argparse.Namespace, secret: str) -
     return Offer(args.share_port, ident.beacon, key, secret)
 
 
-def cmd_pair(args: argparse.Namespace) -> int:
+def cmd_join_with_code(args: argparse.Namespace) -> int:
     directory = state_dir(args)
     ident = _identity(directory)
-    client = PairingClient(args.host, args.port, fingerprint=ident.fingerprint)
+    client = JoinCodeClient(args.host, args.port, fingerprint=ident.fingerprint)
     try:
         request_id = client.ask(name=args.name or socket.gethostname()[:40],
                                 hostname=socket.gethostname()[:60],
@@ -390,7 +390,7 @@ def cmd_pair(args: argparse.Namespace) -> int:
                              if sys.stdin.isatty() else sys.stdin.readline().strip())
         mine_secret = new_secret()
         grant = client.finish(code, _offer(directory, ident, args, mine_secret))
-    except PairError as exc:
+    except JoinCodeError as exc:
         _emit(args, {"error": str(exc), "tries_left": exc.tries_left}, f"error: {exc}")
         return 2
     joined = adopt(grant, directory)
@@ -399,9 +399,9 @@ def cmd_pair(args: argparse.Namespace) -> int:
     learn_from_grant(directory, grant, host=args.host, server_fingerprint=client.server_fingerprint,
                      my_secret=mine_secret, mine=args.mine)
     key_id = key_fingerprint(base64.b64decode(grant.signing_key)) if grant.signing_key else ""
-    _emit(args, {"paired": True, "request": request_id, "joined_cluster": joined,
+    _emit(args, {"joined": True, "request": request_id, "joined_pool": joined,
                  "server_fingerprint": client.server_fingerprint, "signing_key": key_id},
-          "paired" + (f"; this machine is now in cluster '{grant.group}'" if joined else "")
+          "joined" + (f"; this machine is now in pool '{grant.group}'" if joined else "")
           + f"\nsigning key {key_id[:16]}: it should match the other machine's screen")
     return 0
 
@@ -451,8 +451,8 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     host, _, port = args.source.rpartition(":")
     if not (held and trust.get("certificate") and trust.get("signing_key") and host
             and port.isdigit()):
-        _emit(args, {"error": "pair with a machine first, and name HOST:PORT"},
-              "error: pair with a machine first, and name HOST:PORT")
+        _emit(args, {"error": "join a machine first, and name HOST:PORT"},
+              "error: join a machine first, and name HOST:PORT")
         return 2
     try:
         host = resolve(host, int(port), Devices(directory / "devices.json"), detect)
@@ -461,17 +461,17 @@ def cmd_fetch(args: argparse.Namespace) -> int:
         return 2
     secret = macauth.derive(base64.urlsafe_b64decode(trust["device_secret"])) \
         if trust.get("device_secret") else macauth.derive(held[0].key)
-    peer = PeerSource(f"https://{host}:{port}", secret,
+    member = MemberSource(f"https://{host}:{port}", secret,
                       pinned_context(trust["certificate"]), name=host)
     try:
-        raw = fetch_manifest(peer)
+        raw = fetch_manifest(member)
         manifest = verify(raw, base64.b64decode(trust["signing_key"]),
                           min_serial=int(trust.get("serial", 0)),
                           revoked_keys=trust.get("revoked", []))
         remember(raw, base64.b64decode(trust["signing_key"]))
         staged = []
         for name in args.names:
-            got = Downloader(manifest, [peer], Path(args.into) if args.into
+            got = Downloader(manifest, [member], Path(args.into) if args.into
                              else directory / "staging").download(name)
             staged.append(str(got))
     except RotationAnnounced as exc:
@@ -494,10 +494,10 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 
 def run(args: argparse.Namespace) -> int:
-    fn = {"nearby": cmd_nearby, "pair": cmd_pair, "listen": cmd_listen,
+    fn = {"nearby": cmd_nearby, "join-with-code": cmd_join_with_code, "add-device": cmd_add_device,
           "requests": cmd_requests, "accept": cmd_accept, "decline": cmd_decline,
-          "revoke": cmd_revoke, "bootstrap": cmd_bootstrap, "share": cmd_share,
+          "remove": cmd_remove, "bootstrap": cmd_bootstrap, "share": cmd_share,
           "fetch": cmd_fetch, "signing": cmd_signing, "devices": cmd_devices,
-          "peers": cmd_peers}[args.cmd]
+          "model-sources": cmd_members}[args.cmd]
     return fn(args)
 

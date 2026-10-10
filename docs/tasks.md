@@ -160,7 +160,7 @@ poolhouse-workspace task-rebind-source WORKER CHECKOUT "Source checkout recovery
 
 The replacement must belong to the same physical Git repository and contain every original
 baseline. Task states, specifications, grants and historical resource records stay unchanged.
-The operation records source checkpoints and an interruption journal; rerunning the same
+The operation records source checkpoints and an interruption log; rerunning the same
 command resumes a prepared recovery. It runs only on the local coordinator. Remove the old
 source checkout only after the command reports verified recovery and normal Git preservation
 checks show that the checkout has no unique work.

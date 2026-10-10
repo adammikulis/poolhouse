@@ -113,7 +113,7 @@ def _stats(args: argparse.Namespace, ledger: Ledger) -> int:
 
 
 COMMAND = Group("poolhouse-reputation",
-                "How every source poolhouse deals with (host, URL, address, fleet peer, model "
+                "How every source poolhouse deals with (host, URL, address, fleet member, model "
                 "repository, artifact hash) has behaved: list, show, forget and export what is "
                 "recorded, and see its size and integrity. For a person at a terminal; an "
                 "agent's process is refused.")

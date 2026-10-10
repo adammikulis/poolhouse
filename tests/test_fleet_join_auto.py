@@ -1,4 +1,4 @@
-"""Automatic cluster selection at the Fleet command boundary."""
+"""Automatic pool selection at the Fleet command boundary."""
 
 from types import SimpleNamespace
 
@@ -11,22 +11,22 @@ from poolhouse.fleet import join as joining
 def isolated_join(monkeypatch):
     monkeypatch.setattr(joining, "checks", lambda *a, **kw: [])
     monkeypatch.setattr(joining, "already_running", lambda port: {"name": "larch"})
-    monkeypatch.setattr(joining, "peers", lambda **kw: [])
+    monkeypatch.setattr(joining, "members", lambda **kw: [])
     monkeypatch.setattr(joining.recovery, "remember", lambda *a, **kw: None)
 
 
 @pytest.mark.parametrize("mode", [None, "dev", "prod"])
-def test_no_passphrase_uses_automatic_cluster_without_enrollment(
+def test_no_passphrase_uses_automatic_pool_without_enrollment(
         isolated_join, monkeypatch, tmp_path, mode):
-    from poolhouse.fleet import automatic_clusters
+    from poolhouse.fleet import automatic_pools
 
     asked = []
     actual = mode or "dev"
     member = SimpleNamespace(group="orchard", mode=actual)
-    monkeypatch.setattr(automatic_clusters, "ensure",
+    monkeypatch.setattr(automatic_pools, "ensure",
                         lambda path, **kw: asked.append((path, kw)) or member)
-    key = tmp_path / "cluster.key"
-    joined = joining.join_machine(root=tmp_path, cluster_key_path=key, port=9123,
+    key = tmp_path / "pool.key"
+    joined = joining.join_machine(root=tmp_path, pool_key_path=key, port=9123,
                                   mode=mode, say=lambda text: None,
                                   enrol=lambda *a: pytest.fail("automatic enrollment used a passphrase"))
     assert joined.group == "orchard" and joined.mode == actual
@@ -34,11 +34,11 @@ def test_no_passphrase_uses_automatic_cluster_without_enrollment(
     assert not joined.started
 
 
-def test_automatic_cluster_uses_explicit_discovery_port(isolated_join, monkeypatch, tmp_path):
-    from poolhouse.fleet import automatic_clusters
+def test_automatic_pool_uses_explicit_discovery_port(isolated_join, monkeypatch, tmp_path):
+    from poolhouse.fleet import automatic_pools
 
     asked = []
-    monkeypatch.setattr(automatic_clusters, "ensure", lambda path, **kw:
+    monkeypatch.setattr(automatic_pools, "ensure", lambda path, **kw:
                         asked.append(kw) or SimpleNamespace(group="orchard", mode="dev"))
     joining.join_machine(root=tmp_path, discovery_port=9456, say=lambda text: None)
     assert asked[0]["port"] == 9456
@@ -73,7 +73,7 @@ def test_no_argument_terminal_does_not_prompt_or_read_stdin(monkeypatch, tmp_pat
 
     monkeypatch.setattr(sys, "stdin", Terminal())
     monkeypatch.delenv("POOLHOUSE_PASSPHRASE", raising=False)
-    monkeypatch.delenv("POOLHOUSE_CLUSTER", raising=False)
+    monkeypatch.delenv("POOLHOUSE_POOL", raising=False)
     monkeypatch.setattr("builtins.input", lambda *a: pytest.fail("automatic join prompted"))
     asked = []
     monkeypatch.setattr(joining, "join_machine", lambda **kw: asked.append(kw) or joining.Joined(name="larch", port=1, root=tmp_path, group=""))
@@ -84,12 +84,12 @@ def test_no_argument_terminal_does_not_prompt_or_read_stdin(monkeypatch, tmp_pat
 
 def test_automatic_admission_finishes_before_first_daemon_start(isolated_join, monkeypatch,
                                                                tmp_path):
-    from poolhouse.fleet import automatic_clusters
+    from poolhouse.fleet import automatic_pools
 
     events = []
     monkeypatch.setattr(joining, "already_running", lambda port: None)
     monkeypatch.setattr(joining, "wait_for_health", lambda *a, **kw: {})
-    monkeypatch.setattr(automatic_clusters, "ensure", lambda *a, **kw:
+    monkeypatch.setattr(automatic_pools, "ensure", lambda *a, **kw:
                         events.append("admitted") or SimpleNamespace(group="orchard", mode="dev"))
     joined = joining.join_machine(root=tmp_path, say=lambda text: None,
                                   start=lambda *a: events.append("started") or 42)
@@ -98,13 +98,13 @@ def test_automatic_admission_finishes_before_first_daemon_start(isolated_join, m
 
 
 def test_automatic_admission_failure_does_not_start_daemon(isolated_join, monkeypatch, tmp_path):
-    from poolhouse.fleet import automatic_clusters
+    from poolhouse.fleet import automatic_pools
     from poolhouse.fleet.discovery import DiscoveryError
 
     def refuse(*a, **kw):
-        raise DiscoveryError("Production mode needs an explicitly admitted Production cluster")
+        raise DiscoveryError("Production mode needs an explicitly admitted pool")
 
-    monkeypatch.setattr(automatic_clusters, "ensure", refuse)
+    monkeypatch.setattr(automatic_pools, "ensure", refuse)
     with pytest.raises(DiscoveryError, match="explicitly admitted"):
         joining.join_machine(root=tmp_path, mode="prod", say=lambda text: None,
                              start=lambda *a: pytest.fail("started before admission"))

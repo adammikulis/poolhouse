@@ -38,9 +38,9 @@ TABLE = (
     ("task-submit", "submit immutable artifact hashes for review (JSON or -)", [flag("id"), flag("payload")],
      lambda a, s: Tasks(s).submit(a.id, _payload(a))),
     ("task-review", "independently review a task (JSON or -)", [flag("id"), flag("payload")],
-     lambda a, s: task_outcomes.seat_review(s, a.id, _payload(a))),
+     lambda a, s: task_outcomes.session_review(s, a.id, _payload(a))),
     ("enforcement", "show, check, set, promote or demote the board's task enforcement mode (open or strict)",
      enforcement_cli.OPTIONS, enforcement_cli.run),
     ("task-credit", "retry recording the credit of an independently reviewed outcome", [flag("id")],
-     lambda a, s: task_outcomes.seat_credit(s, a.id)),
+     lambda a, s: task_outcomes.session_credit(s, a.id)),
 )

@@ -1,4 +1,4 @@
-"""The commands a peer may be asked to run, and the form the daemon runs them in."""
+"""The commands a member may be asked to run, and the form the daemon runs them in."""
 
 from __future__ import annotations
 
@@ -26,6 +26,6 @@ def allowed(argv: Sequence[str]) -> list[str]:
         return [found, *map(str, argv[1:])]
     if program in INTERPRETERS and len(argv) >= 3 and argv[1] == "-m" and argv[2] in MODULES:
         return [sys.executable, *map(str, argv[1:])]
-    raise ValueError(f"{program!r} is not a command a peer may be asked to run "
+    raise ValueError(f"{program!r} is not a command a member may be asked to run "
                      f"(allowed: {', '.join(sorted(CONSOLE))}, python -m "
                      f"{', '.join(sorted(MODULES))})")

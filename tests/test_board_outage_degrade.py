@@ -1,4 +1,4 @@
-"""A board that said no still says no, and a project board that cannot be reached is an error, not a silent success."""
+"""A board that said no still says no, and a board that cannot be reached is an error, not a silent success."""
 
 import argparse
 
@@ -13,9 +13,9 @@ def _run(cmd, error):
     return cli._guarded(run)(argparse.Namespace(cmd=cmd, json=False))
 
 
-def test_an_unreachable_project_board_and_real_refusals_fail_for_every_command(capsys):
+def test_an_unreachable_board_and_real_refusals_fail_for_every_command(capsys):
     for cmd in ("send", "join", "release"):
-        assert _run(cmd, BoardUnavailable("project board unavailable: connection refused")) == 3
+        assert _run(cmd, BoardUnavailable("board unavailable: connection refused")) == 3
     assert "was not recorded" not in capsys.readouterr().err
     assert _run("announce", Denied("this token may not announce")) == 3
     assert _run("announce", ServerError("HTTP 400", status=400)) == 3

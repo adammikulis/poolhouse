@@ -22,7 +22,7 @@ def fingerprint(row):
     return hashlib.sha256(json.dumps(selected, sort_keys=True).encode()).hexdigest()
 
 
-class Journal:
+class Log:
     """Keep one authenticated worker's pending execution in an owner-only graph."""
 
     def __init__(self, ws):

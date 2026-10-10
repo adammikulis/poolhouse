@@ -33,7 +33,7 @@ from poolhouse.workspace.service import Workspace
 from poolhouse.workspace.work_reputation import standings
 
 MAX_REPLY = 512 * 1024
-BOARD_KEYS = frozenset({"agent_token", "operation", "args", "kwargs", "cluster"})
+BOARD_KEYS = frozenset({"agent_token", "operation", "args", "kwargs", "pool"})
 
 
 def _reputation(ws, token, args, kwargs):
@@ -55,11 +55,11 @@ def _bound_arguments(bound, ws):
 
 
 class WorkspaceHost:
-    """Serve isolated registered project boards to authenticated agents."""
+    """Serve isolated registered boards to authenticated agents."""
 
-    def start_worker(self, project, request, *, admission, cluster_key):
-        """Start a worker within the registered project and admitted cluster."""
-        return remote_workers.start(self.projects, project, request, admission=admission, cluster_key=cluster_key)
+    def start_worker(self, project, request, *, admission, pool_key):
+        """Start a worker within the registered project and admitted pool."""
+        return remote_workers.start(self.projects, project, request, admission=admission, pool_key=pool_key)
 
     def __init__(self, projects: Any) -> None:
         self.projects = projects
@@ -138,21 +138,21 @@ class WorkspaceHost:
         self.prepare(project_id)
         return adopt(self.workspace(project_id).base, history)
 
-    def enroll(self, project_id: str, body: dict, *, cluster: str = "", cluster_id: str = "") -> tuple[int, dict]:
-        """Issue a project agent capability after authenticated Dev cluster admission."""
+    def enroll(self, project_id: str, body: dict, *, pool: str = "", pool_id: str = "") -> tuple[int, dict]:
+        """Issue a project agent capability after authenticated pool admission."""
         try:
             if len(json.dumps(body).encode()) > 32 * 1024:
                 return 413, {"error": "workspace operation exceeds the size limit"}
             project = self.projects.get(project_id)
-            if (not cluster or not cluster_id or body.get("cluster") != cluster
-                    or body.get("cluster_id") != cluster_id):
-                raise Denied("agent enrollment requires its authenticated Dev cluster")
+            if (not pool or not pool_id or body.get("pool") != pool
+                    or body.get("pool_id") != pool_id):
+                raise Denied("agent enrollment requires its authenticated pool")
             if not project.board_host:
                 project = self.projects.claim_authority(project_id)
             if not self.projects.hosts(project.board_host):
                 raise Denied("agent enrollment requires this device to host the project's Board")
             ws = self.workspace(project_id)
-            Rates(ws.base / "enrollment", 10, 600, ws.clock).admit("dev-cluster")
+            Rates(ws.base / "enrollment", 10, 600, ws.clock).admit("automatic-pool")
             wanted = str(body.get("name") or "")
             onboard.pick_name(ws, wanted)
             model = str(body.get("model") or "")
@@ -162,8 +162,8 @@ class WorkspaceHost:
             device = body.get("device")
             if device is not None:
                 device = device_metadata.normalize({**device, "verification": "agent-reported",
-                                                    "source": "agent-report", "peer_id": None})
-            scope = {"key": project_id, "name": project.name, "cluster": cluster, "cluster_id": cluster_id}
+                                                    "source": "agent-report", "member_id": None})
+            scope = {"key": project_id, "name": project.name, "pool": pool, "pool_id": pool_id}
             name, token = ws.registry.enroll_project(wanted.strip().lower(), scope, onboard.TOKEN_S)
             if device is not None:
                 ws.registry.record_device_claim(token, device)
@@ -171,7 +171,7 @@ class WorkspaceHost:
                 ws.registry.record_model(name, model, harness, CLAIMED)
             ws.board.place(name, scope)
             ws.audit("remote.enroll", name, project_id=project_id,
-                     admission="dev-cluster", model=model, harness=harness)
+                     admission="automatic-pool", model=model, harness=harness)
             ws.audit("remote.seen", name, project_id=project_id)
             self._seen(project_id, name, ws.clock())
             return 201, {"id": name, "token": token, "project_id": project_id}
@@ -182,25 +182,25 @@ class WorkspaceHost:
         except (ValueError, TypeError) as exc:
             return 400, {"error": str(exc)}
 
-    def renew(self, project_id: str, body: dict, *, cluster: str = "", cluster_id: str = "") -> tuple[int, dict]:
+    def renew(self, project_id: str, body: dict, *, pool: str = "", pool_id: str = "") -> tuple[int, dict]:
         """Renew an existing automatic capability under authenticated Dev admission."""
         try:
             if len(json.dumps(body).encode()) > 32 * 1024:
                 return 413, {"error": "workspace operation exceeds the size limit"}
             project = self.projects.get(project_id)
-            if (not cluster or not cluster_id or body.get("cluster") != cluster
-                    or body.get("cluster_id") != cluster_id):
-                raise Denied("agent renewal requires its authenticated Dev cluster")
+            if (not pool or not pool_id or body.get("pool") != pool
+                    or body.get("pool_id") != pool_id):
+                raise Denied("agent renewal requires its authenticated pool")
             if not self.projects.hosts(project.board_host):
                 raise Denied("agent renewal requires this device to host the project's Board")
             ws = self.workspace(project_id)
             who = ws.registry.renew_dev_project(str(body.get("agent_token") or ""),
-                                                 project_id, cluster, cluster_id)
+                                                 project_id, pool, pool_id)
             if body.get("device") is not None:
                 ws.registry.record_device_claim(str(body.get("agent_token") or ""), body["device"])
-            ws.audit("remote.renew", who.id, project_id=project_id, admission="dev-cluster")
+            ws.audit("remote.renew", who.id, project_id=project_id, admission="automatic-pool")
             self._seen(project_id, who.id, ws.clock())
-            return 200, {"id": who.id, "project_id": project_id, "cluster_id": cluster_id}
+            return 200, {"id": who.id, "project_id": project_id, "pool_id": pool_id}
         except Denied as exc:
             return 403, {"error": str(exc)}
         except (ValueError, TypeError) as exc:
@@ -233,7 +233,7 @@ class WorkspaceHost:
             if action != "board":
                 return 404, {"error": "no such workspace operation"}
             if set(body) - BOARD_KEYS:
-                raise ValueError("a board call carries its token, operation, args, kwargs and cluster only; "
+                raise ValueError("a board call carries its token, operation, args, kwargs and pool only; "
                                  "the sender, parent, name and label come from the token")
             token = str(body.get("agent_token") or "")
             device_sessions.check(ws, token, device, self.projects)
@@ -370,7 +370,7 @@ class WorkspaceHost:
                 raise ValueError("project resource is not claimed") from exc
             return {**gone, "key": key}
         if len(args) != 1 or not isinstance(args[0], list) or not 1 <= len(args[0]) <= 128:
-            raise ValueError("native reservation takes 1-128 resource pairs")
+            raise ValueError("native reservation takes 1-128 kind-and-name resources")
         if set(kwargs) - {"note"}:
             raise ValueError("native reservation accepts only a note")
         note = kwargs.get("note", "")
@@ -379,7 +379,7 @@ class WorkspaceHost:
         resources, originals = [], {}
         for resource in args[0]:
             if not isinstance(resource, (list, tuple)) or len(resource) != 2:
-                raise ValueError("native reservation takes resource pairs")
+                raise ValueError("native reservation takes kind-and-name resources")
             kind, key = resource
             mapped = self._native_resource(project_id, kind, key)
             resources.append((kind, mapped))
@@ -417,11 +417,11 @@ class WorkspaceHost:
             raise Denied("remote workspace access requires a project agent capability")
         name = ws.registry.root_of(who.id)
         scope = ws.registry.info(name)["project"]
-        cluster, cluster_id, dev_admission = admission
-        if scope.get("cluster_id") and dev_admission is not True:
+        pool, pool_id, dev_admission = admission
+        if scope.get("pool_id") and dev_admission is not True:
             raise Denied("automatic agent access requires active authenticated Dev admission")
-        if scope.get("cluster") and (scope["cluster"] != cluster or scope.get("cluster_id") != cluster_id):
-            raise Denied("agent capability belongs to another cluster")
+        if scope.get("pool") and (scope["pool"] != pool or scope.get("pool_id") != pool_id):
+            raise Denied("agent capability belongs to another pool")
         if scope.get("key") != project_id:
             raise Denied("agent capability belongs to another project")
         return who

@@ -30,13 +30,13 @@ def kit(monkeypatch, tmp_path, person):
 
 def test_a_post_from_the_page_is_recorded_with_its_board_and_size_and_never_its_body(workspace_node, monkeypatch, person):
     monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
-    seat = board_person.seat(Path.cwd(), workspace_node.client)
+    session = board_person.session(Path.cwd(), workspace_node.client)
     port = 9
     req = boardroute.Request("POST", "/board/post", {"host": f"127.0.0.1:{port}", "origin": f"http://127.0.0.1:{port}",
                                                      "content-type": "application/json",
                                                      "content-length": "60"}, port, True,
                              json.dumps({"to": "#general", "body": SECRET_TEXT}).encode())
-    assert boardroute.respond(lambda: seat, req)[0] == 200
+    assert boardroute.respond(lambda: session, req)[0] == 200
     posts = [e for e in entries() if e.kind == "board.post"]
     assert len(posts) == 1 and posts[0].subject == "#general" and posts[0].meta == {"size": len(SECRET_TEXT)}
     assert SECRET_TEXT not in repr(entries())

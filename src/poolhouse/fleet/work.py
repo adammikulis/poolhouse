@@ -1,4 +1,4 @@
-"""Spread a list of jobs over the peers that can run them."""
+"""Spread a list of jobs over the members that can run them."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from poolhouse.log import emitting
 from .calibration import BENCH_KIND
 from .pool import Requires, Score, candidates, eligible
 from .rates import Rates
-from .remote import Peer
+from .remote import Member
 
 __all__ = ["Placement", "Unit", "run"]
 
 QUARANTINE_AFTER = 3
-"""Consecutive failures before a peer is set aside. Three, not one: a peer that fails"""
+"""Consecutive failures before a member is set aside. Three, not one: a member that fails"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,8 +30,8 @@ class Unit:
     argv: Sequence[str]
     name: str = ""
     requires: Requires = Requires()
-    peer: str = ""
-    """Pin to one peer, by name or machine id. Empty means place it automatically."""
+    member: str = ""
+    """Pin to one member, by name or machine id. Empty means place it automatically."""
     work: float = 1.0
     """How much work this is, in whatever unit ``kind``'s measured rate is in."""
 
@@ -43,7 +43,7 @@ class Placement:
     unit_id: str
     state: str = "pending"
     """pending | done | failed | stopped | unreachable | unplaceable"""
-    peer: str = ""
+    member: str = ""
     machine: str = ""
     base_url: str = ""
     job_id: str = ""
@@ -63,15 +63,15 @@ class Placement:
         return self.state == "done"
 
 
-def run(units: Sequence[Unit], peers: Sequence[Peer], *, kind: str = "",
+def run(units: Sequence[Unit], members: Sequence[Member], *, kind: str = "",
         score: Score | None = None, retries: int = 1, poll_s: float = 2.0,
         rates: Rates | None = None,
-        held: Callable[[Peer, Unit], float] | None = None,
+        held: Callable[[Member, Unit], float] | None = None,
         on_event: Callable[[str, dict[str, Any]], None] | None = None,
         ) -> list[Placement]:
-    """Run every unit on some peer, and report where each one went."""
-    if not peers:
-        raise ValueError("no peers to run on")
+    """Run every unit on some member, and report where each one went."""
+    if not members:
+        raise ValueError("no members to run on")
 
     rates = rates if rates is not None else Rates()
     results: dict[str, Placement] = {u.id: Placement(unit_id=u.id) for u in units}
@@ -81,12 +81,12 @@ def run(units: Sequence[Unit], peers: Sequence[Peer], *, kind: str = "",
     cooldown: dict[str, float] = {}
     lock = threading.Lock()
     stop = threading.Event()
-    live: dict[str, tuple[Peer, str]] = {}
+    live: dict[str, tuple[Member, str]] = {}
 
     emit = emitting(on_event)
 
     def take(machine: str) -> str | None:
-        """The next unit the peer on ``machine`` may run, or None."""
+        """The next unit the member on ``machine`` may run, or None."""
         with lock:
             for uid in list(pending):
                 if machine not in admits.get(uid, ()):
@@ -103,7 +103,7 @@ def run(units: Sequence[Unit], peers: Sequence[Peer], *, kind: str = "",
 
     admits: dict[str, tuple[str, ...]] = {}
 
-    def worker(peer: Peer, machine: str, name: str) -> None:
+    def worker(member: Member, machine: str, name: str) -> None:
         while not stop.is_set():
             held_until = cooldown.get(machine, 0.0)
             if held_until > time.time():
@@ -121,15 +121,15 @@ def run(units: Sequence[Unit], peers: Sequence[Peer], *, kind: str = "",
             place = results[uid]
             place.attempts += 1
             place.tried = tuple(dict.fromkeys((*place.tried, machine)))
-            place.peer, place.machine, place.base_url = name, machine, peer.base_url
+            place.member, place.machine, place.base_url = name, machine, member.base_url
             place.started_at = place.started_at or time.time()
-            emit("start", unit=uid, peer=name, attempt=place.attempts)
+            emit("start", unit=uid, member=name, attempt=place.attempts)
             try:
-                job = peer.submit(list(unit.argv), name=unit.name or uid)
+                job = member.submit(list(unit.argv), name=unit.name or uid)
                 place.job_id = job["id"]
                 with lock:
-                    live[uid] = (peer, job["id"])
-                final = peer.wait(job["id"], poll_s=poll_s)
+                    live[uid] = (member, job["id"])
+                final = member.wait(job["id"], poll_s=poll_s)
                 place.returncode = final.get("returncode")
                 place.state = "done" if final.get("state") == "done" else "failed"
                 place.error = "" if place.ok else f"exit {place.returncode}"
@@ -145,15 +145,15 @@ def run(units: Sequence[Unit], peers: Sequence[Peer], *, kind: str = "",
                 strikes[machine] = 0
                 rate = rates.record(machine, kind, units=unit.work,
                                     seconds=place.elapsed_s)
-                emit("done", unit=uid, peer=name, seconds=place.elapsed_s, rate=rate)
+                emit("done", unit=uid, member=name, seconds=place.elapsed_s, rate=rate)
                 continue
 
             strikes[machine] = strikes.get(machine, 0) + 1
-            emit("fail", unit=uid, peer=name, state=place.state, error=place.error)
+            emit("fail", unit=uid, member=name, state=place.state, error=place.error)
             if strikes[machine] >= QUARANTINE_AFTER:
                 wait = min(300.0, 30.0 * 2 ** (strikes[machine] - QUARANTINE_AFTER))
                 cooldown[machine] = time.time() + wait
-                emit("quarantine", peer=name, seconds=wait, strikes=strikes[machine])
+                emit("quarantine", member=name, seconds=wait, strikes=strikes[machine])
 
             if len(place.tried) <= retries and len(_admitting(uid)) > len(place.tried):
                 place.state = "pending"
@@ -164,24 +164,24 @@ def run(units: Sequence[Unit], peers: Sequence[Peer], *, kind: str = "",
 
     bench = {machine: score for (machine, k), score in rates.as_map().items()
              if k == BENCH_KIND}
-    snapshot = candidates(peers, kind=kind, rates=rates.as_map(), bench=bench)
+    snapshot = candidates(members, kind=kind, rates=rates.as_map(), bench=bench)
     for unit in units:
         kept, refused = eligible(list(snapshot), unit.requires)
-        if unit.peer:
-            kept = [c for c in kept if unit.peer in (c.name, c.machine)]
+        if unit.member:
+            kept = [c for c in kept if unit.member in (c.name, c.machine)]
         admits[unit.id] = tuple(c.machine for c in kept)
         if not kept:
             place = results[unit.id]
             place.state = "unplaceable"
             place.error = "; ".join(f"{n}: {r}" for n, r in sorted(refused.items())) \
-                or "no peer answered"
+                or "no member answered"
             place.finished_at = time.time()
             with lock:
                 if unit.id in pending:
                     pending.remove(unit.id)
             emit("unplaceable", unit=unit.id, reasons=refused)
 
-    threads = [threading.Thread(target=worker, args=(c.peer, c.machine, c.name), daemon=True,
+    threads = [threading.Thread(target=worker, args=(c.member, c.machine, c.name), daemon=True,
                                 name=f"fanout-{c.name}-{i}")
                for c in snapshot for i in range(max(1, c.slots))]
     for t in threads:
@@ -193,9 +193,9 @@ def run(units: Sequence[Unit], peers: Sequence[Peer], *, kind: str = "",
         stop.set()
         with lock:
             outstanding = list(live.items())
-        for uid, (peer, job_id) in outstanding:
+        for uid, (member, job_id) in outstanding:
             try:
-                peer.stop(job_id)
+                member.stop(job_id)
                 results[uid].state = "stopped"
             except Exception:                         # noqa: BLE001
                 pass

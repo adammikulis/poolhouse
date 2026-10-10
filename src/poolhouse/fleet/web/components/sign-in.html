@@ -1,12 +1,12 @@
-<!-- sign-in: the passphrase this cluster was set up with -->
+<!-- sign-in: the passphrase this pool was set up with -->
 <template>
   <div class="centre" id="signin" hidden>
     <div class="card">
       <div class="hint">POOLHOUSE</div>
       <h1>Sign in</h1>
-      <p class="sub">Unlock this compute pool with its cluster passphrase.</p>
+      <p class="sub">Unlock this compute pool with its pool passphrase.</p>
       <label for="p">Passphrase</label>
-      <input type="password" id="p" placeholder="Cluster passphrase" autocomplete="current-password">
+      <input type="password" id="p" placeholder="Pool passphrase" autocomplete="current-password">
       <button id="signin-go">Sign in</button>
       <div id="signin-note" role="alert" aria-live="polite"></div>
     </div>
@@ -39,14 +39,14 @@
 
     async submit() {
       if (this.go.disabled) return;
-      if (!this.pass.value.trim()) { M.signIn("Enter the cluster passphrase."); return; }
+      if (!this.pass.value.trim()) { M.signIn("Enter the pool passphrase."); return; }
       this.go.disabled = true;
       this.go.textContent = "Checking…";
       const r = await M.api("/ui/session", { method: "POST",
         body: JSON.stringify({ passphrase: this.pass.value }) });
       this.go.disabled = false;
       this.go.textContent = "Sign in";
-      if (r.ok) { this.pass.value = ""; M.signInMessage = ""; return M.go("cluster"); }
+      if (r.ok) { this.pass.value = ""; M.signInMessage = ""; return M.go("pool"); }
       M.signIn(r.error || "That did not match.");
     }
   }

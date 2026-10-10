@@ -1,4 +1,4 @@
-# Source location, clusters and privacy
+# Source location, pools and privacy
 
 Status: design, 2026-10-09; continues `docs/sources.md` (the `source` record, blocking, safe mode) and
 `docs/flags.md`. Tags: **[V]** read in this repository; **[analysis]** my proposal; **[general knowledge]**
@@ -39,21 +39,21 @@ Fetched on consent into `home.cache("geoip")` (`POOLHOUSE_CACHE`), size-capped, 
 vendor's published digest, atomic write, mode 0600, read by a bounded MMDB reader that refuses a malformed
 file; refreshed monthly or twice weekly; over 120 days old it is marked stale. Country is usually right for
 fixed addresses; region and city often are not; VPN, CDN, cloud and mobile addresses are located where the
-provider says. A cluster is evidence of a network, not of a person. The Python sentinel does the lookup
+provider says. A pool is evidence of a network, not of a person. The Python sentinel does the lookup
 and writes `geo` and `net`; the Rust node holds no database and enforces by address and CIDR lists the
 sentinel hands it. [analysis]
 
-## 3. Aggregation and cluster alerts
+## 3. Aggregation and pool alerts
 
 Counters per `country`, `region`, `asn` and `place`, per window (5 min, 1 h, 24 h), over **distinct
-sources**, so one noisy address is not a cluster. Sparkline: 24 hourly buckets per key, 30 days, counts
+sources**, so one noisy address is not a pool. Sparkline: 24 hourly buckets per key, 30 days, counts
 only. [analysis]
 
 | Alert | Default | Response |
 |---|---|---|
-| `asn_cluster` | 5 distinct sources of one ASN at `throttled` or worse within 30 min | notice, then throttle (below) |
-| `region_cluster` | 15 distinct sources from one region in 60 min and over 5x its 30-day average | notice; throttle on a repeat |
-| `place_cluster` | 3 hostile sources with one local label | notice only; never a block (the owner's own network) |
+| `asn_pool` | 5 distinct sources of one ASN at `throttled` or worse within 30 min | notice, then throttle (below) |
+| `region_pool` | 15 distinct sources from one region in 60 min and over 5x its 30-day average | notice; throttle on a repeat |
+| `place_pool` | 3 hostile sources with one local label | notice only; never a block (the owner's own network) |
 | `new_origin` | a country or ASN unseen for 30 days sends 3 hostile sources | notice only |
 
 Response, with the brakes of `docs/sources.md` 3.1: [analysis]
@@ -86,7 +86,7 @@ poolhouse sources delete ADDRESS     # removes it locally; writes a redaction ro
 `map` is a table sorted by distinct hostile sources: key, count, text sparkline, top detectors, current
 response. The UI panel shows counts per region as a ranked bar list with a per-key sparkline and a window
 picker; it draws no world map. `geo update` shows the licence and attribution and asks once. `geo off`
-removes the database and `geo`/`net` from local rows. `digest --status` adds "2 clusters: AS64500 (5
+removes the database and `geo`/`net` from local rows. `digest --status` adds "2 pools: AS64500 (5
 sources), region XX-YY (17)". [analysis]
 
 ## 5. Privacy and jurisdiction
@@ -193,7 +193,7 @@ commercial installer.
    key; (c) none bundled, location off until the owner adds a file.
 2. **May an ASN or region be throttled automatically?** (a) Throttle only, 1 h, never members
    [recommended]; (b) notice only; (c) also block on repeat.
-3. **Cluster thresholds.** (a) 5 per ASN / 30 min, 15 per region / 60 min [recommended]; (b) stricter;
+3. **Pool thresholds.** (a) 5 per ASN / 30 min, 15 per region / 60 min [recommended]; (b) stricter;
    (c) looser.
 4. **Record city?** (a) No [recommended]; (b) yes behind a switch.
 5. **Baseline retention.** (a) 30 days, blocked entries until expiry plus 30 [recommended]; (b) 14 days;
@@ -209,8 +209,8 @@ commercial installer.
 |---|---|---|---|---|
 | G1 | Offline database reader and fetcher: bounded MMDB reader (own parser or a package; licence and dependency check first), `home.cache("geoip")`, digest, staleness, `geo status|update|off` | M | fixture MMDB gives country and ASN; truncated or lying file refused; private addresses return nothing; a socket guard shows no network call during lookup | none |
 | G2 | `geo`, `net`, `kind_flags`, `place`, `geo_db` on the `source` row; `sources place` | S | bounded fields; LAN gets only `place`; city off | S3 (sources.md), G1 |
-| G3 | Aggregation counters and sparklines | M | five sources of one ASN make a cluster; one noisy address does not | S6, G2 |
-| G4 | Cluster alerts and range responses with the brakes (carve-out, caps, expiry, reason) | M | prefix containing a member is carved out or downgraded; 9th range response refused; safe mode stops it; expiry lifts it | S4, G3 |
+| G3 | Aggregation counters and sparklines | M | five sources of one ASN make a pool; one noisy address does not | S6, G2 |
+| G4 | Pool alerts and range responses with the brakes (carve-out, caps, expiry, reason) | M | prefix containing a member is carved out or downgraded; 9th range response refused; safe mode stops it; expiry lifts it | S4, G3 |
 | G5 | `sources map`, panel, `digest --status` lines, attribution text | M | table from a fixture; panel calls the same code | S7, G3 |
 | G6 | Baseline privacy: retention job, `export ADDRESS`, `delete ADDRESS` with redaction rows, `geo off` | S | a row past retention is gone; export lists all fields; after `delete` no trace in a canary grep of local store and a redaction row on the pool | S3, S9 |
 | G7 | Jurisdiction profiles as policies (off/warn/enforce plus parameters that tighten only), suggestion at setup from the offline lookup | M | a profile cannot lower the baseline; `off` leaves it; the suggestion changes nothing until accepted; no location lookup without a database | G1, G6, plan step 6b policy system |

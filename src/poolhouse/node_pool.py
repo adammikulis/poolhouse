@@ -1,4 +1,4 @@
-"""The node's pool of devices, for a machine that joined it without a cluster key.
+"""The node's pool of devices, for a machine that joined it without a pool key.
 
 The node (``poolhouse-node run --lan``) takes the project of the repository it runs in, listens for an open pool of that
 project, joins the one it hears and makes one when it hears none (docs/sentinel-open-join.md, 3.7). Nothing here asks for
@@ -44,7 +44,7 @@ def rows(pool: dict) -> list[dict]:
 
 
 def render(pool: dict, *, as_json: bool) -> str:
-    """The text `poolhouse-peers ls` prints for a pool."""
+    """The text `poolhouse-members ls` prints for a pool."""
     if as_json:
         return json.dumps({"pool": pool.get("pool"), "project": pool.get("project"), "policy": pool.get("policy"),
                            "build": pool.get("build"), "members": rows(pool)}, indent=2)
@@ -75,7 +75,7 @@ def build_findings(pool: dict | None = None) -> list[Finding]:
     """The doctor's rows: this device's build and each member's, a stale or incompatible one as a failure with its fix."""
     pool = pool if pool is not None else status()
     if pool is None:
-        return [Finding(name="build", good=True, said="no node answers, so no peer's build is known")]
+        return [Finding(name="build", good=True, said="no node answers, so no member's build is known")]
     state = str((pool.get("build") or {}).get("state", "unknown"))
     out = [Finding(name="build", good=state in ("current", "pinned"), said=build_line(pool).removeprefix("build        "),
                    fix=[] if state in ("current", "pinned") else [sys.executable, "-m", "poolhouse.runtime_cli", "update"])]

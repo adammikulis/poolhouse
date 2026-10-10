@@ -75,13 +75,13 @@ class BenchmarksView extends HTMLElement {
   if(this.inventoryPending)return;this.inventoryPending=true;
   try{
    const fleet=await W.api('/ui/fleet');this.inventory=fleet;
-   const models=(fleet.models||[]).filter(name=>!/(^mtp[-_]|^mmproj|\.draft\.gguf$)/i.test(name));const peers=fleet.peers||[];
-   if(!this.devicesInitialized){peers.forEach(p=>this.selectedDevices.add(p.name));this.devicesInitialized=true;}
-   this.selectedModels=new Set([...this.selectedModels].filter(name=>models.includes(name)));this.selectedDevices=new Set([...this.selectedDevices].filter(name=>peers.some(p=>p.name===name)));
-   this.querySelector('#model-choices').replaceChildren(...models.map(name=>this.choice(this.selectedModels,name,name,peers.filter(p=>(p.models||[]).includes(name)).map(p=>p.name).join(' · ')||'Cached model')));
+   const models=(fleet.models||[]).filter(name=>!/(^mtp[-_]|^mmproj|\.draft\.gguf$)/i.test(name));const members=fleet.members||[];
+   if(!this.devicesInitialized){members.forEach(p=>this.selectedDevices.add(p.name));this.devicesInitialized=true;}
+   this.selectedModels=new Set([...this.selectedModels].filter(name=>models.includes(name)));this.selectedDevices=new Set([...this.selectedDevices].filter(name=>members.some(p=>p.name===name)));
+   this.querySelector('#model-choices').replaceChildren(...models.map(name=>this.choice(this.selectedModels,name,name,members.filter(p=>(p.models||[]).includes(name)).map(p=>p.name).join(' · ')||'Cached model')));
    if(!models.length)this.querySelector('#model-choices').append(E('p',{class:'evaluate-empty'},'Add a model in the model library, or enter its ID in advanced options.'));
-   this.querySelector('#device-choices').replaceChildren(...peers.map(p=>this.choice(this.selectedDevices,p.name,p.name,p.is_self?'This device':'Pool device')));
-   if(!peers.length)this.querySelector('#device-choices').append(E('p',{class:'evaluate-empty'},'No pool devices are available. Connect devices in Pool settings.'));
+   this.querySelector('#device-choices').replaceChildren(...members.map(p=>this.choice(this.selectedDevices,p.name,p.name,p.is_self?'This device':'Pool device')));
+   if(!members.length)this.querySelector('#device-choices').append(E('p',{class:'evaluate-empty'},'No pool devices are available. Connect devices in Pool settings.'));
    this.paintActions();
   }catch(error){W.status(this.note,error);}finally{this.inventoryPending=false;}
  }
@@ -131,7 +131,7 @@ class BenchmarksView extends HTMLElement {
    if(!dry_run&&!this.selectedDevices.size)throw Error('Choose at least one pool device.');
    const extra=JSON.parse(this.extra.value);if(!Array.isArray(extra)||extra.some(value=>typeof value!=='string'))throw Error('Additional arguments must be a JSON array of strings.');
    this.pending=true;this.paintActions();this.note.textContent=dry_run?'Reviewing command…':'Starting comparison…';
-   const response=await W.post('/ui/bench/sweep',{models,peers:[...this.selectedDevices],sample,label:this.label.value.trim(),extra,dry_run});
+   const response=await W.post('/ui/bench/sweep',{models,members:[...this.selectedDevices],sample,label:this.label.value.trim(),extra,dry_run});
    if(response.error||response.ok===false)throw Error(response.error||'Could not start the comparison.');
    if(dry_run){this.querySelector('#command').textContent=response.command;this.querySelector('#command-review').hidden=false;this.querySelector('#command-review').open=true;}
    this.note.textContent=dry_run?'Command reviewed. Start the sweep when you are ready.':'Comparison started. Results appear as the benchmark records them.';

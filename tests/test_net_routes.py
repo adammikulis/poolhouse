@@ -74,9 +74,9 @@ def test_pagination_stays_on_the_page_the_agent_was_allowed_to_read(lan, origins
 def test_a_search_result_may_be_read_and_an_invented_address_may_not(lan):
     pytest.importorskip("trafilatura", reason="poolhouse[web] reads this")
     lan.page("/found", HOSTILE)
-    pairs = web.tools(engine=lambda q, n: [{"title": "t", "url": f"{lan.base}/found",
+    joins = web.tools(engine=lambda q, n: [{"title": "t", "url": f"{lan.base}/found",
                                             "snippet": "s​nip"}])
-    (_, searching), (_, reading), _ = pairs
+    (_, searching), (_, reading), _ = joins
     rows = searching({"query": "kilns"})
     assert rows[0]["snippet"] == "snip"
     assert reading({"url": f"{lan.base}/found"})["untrusted"] is True

@@ -1,4 +1,4 @@
-# Sentinel: detecting and containing attacks on a node and its fleet
+# Sentinel: detecting and containing attacks on a device and its pool
 
 Status: implemented in `src/poolhouse/sentinel/`. The first half of this file is the design
 and threat model; "What is built and tested" and "Results" say what exists and what was
@@ -84,22 +84,22 @@ below the baseline's lower Wilson bound by a margin, so a stochastic probe does 
 noise. Models served at temperature 0 have deterministic outputs on a fixed build, so for those a
 changed output is exact evidence of a changed model or build.
 
-### c. Compromised or misbehaving devices and peers
+### c. Compromised or misbehaving devices and devices
 
 | Signal | Class | False-positive cost |
 |---|---|---|
-| request signature fails, with the failing address | reliable per request; heuristic as an attack | a misconfigured peer is blocked until released |
+| request signature fails, with the failing address | reliable per request; heuristic as an attack | a misconfigured device is blocked until released |
 | nonce replay ("already seen") | reliable | none in a correct client |
 | clock outside the window | reliable as a fact; usually a clock, not an attack | counted at a lower weight |
-| lockout fired by the authenticator | reliable | the lockout already costs the peer a minute |
-| request rate far above that peer's own windowed baseline | heuristic | a rate limit and watch, no block |
-| peer reports a different version or binary digest than the cluster pin | reliable | a peer mid-upgrade; watch only |
-| peer flapping (join and leave counts in a window) | heuristic | watch only |
+| lockout fired by the authenticator | reliable | the lockout already costs the device a minute |
+| request rate far above that device's own windowed baseline | heuristic | a rate limit and watch, no block |
+| device reports a different version or binary digest than the pool pin | reliable | a device mid-upgrade; watch only |
+| device flapping (join and leave counts in a window) | heuristic | watch only |
 | payload sizes beyond limits | reliable as a count | request refused |
 
-Out of scope: a peer that holds the cluster key and behaves within limits. The security
-model already treats key holders as fully trusted; sentinel can contain a peer once its
-behaviour shows, and can drop its key from this node, but a stolen key is a rotation matter.
+Out of scope: a device that holds the pool key and behaves within limits. The security
+model already treats key holders as fully trusted; sentinel can contain a device once its
+behaviour shows, and can drop its key from this device, but a stolen key is a rotation matter.
 
 ### d. Compromised servers and processes
 
@@ -112,7 +112,7 @@ behaviour shows, and can drop its key from this node, but a stolen key is a rota
 
 Out of scope: a rootkit, a compromise of the account itself, a kernel bug. The state root
 and the user account are trusted (`docs/security.md`); sentinel hardens its own files against
-the agent and against peers, not against the owner's account being taken over.
+the agent and against devices, not against the owner's account being taken over.
 
 ### Subjects other than models and devices
 
@@ -130,7 +130,7 @@ The quarantine store holds one record per subject, whatever the kind:
 | `mcp_server` | a third-party server disconnected, its tools dropped | unexpected tools or schema change | reconnect on release |
 | `config` | a plugin or config file changed since its pin | hash mismatch | restore moves the changed file back |
 | `credential` | a name marked suspect, withheld from child processes | its value seen in output or a held message | rotation clears it; the value is never printed |
-| `peer` | a device id and address blocked, key and lease revoked on this node | auth failures, replay | unblock on release |
+| `device` | a device id and address blocked, key and lease revoked here | auth failures, replay | unblock on release |
 | `server` | leases revoked and the managed server stopped | binary digest mismatch, unexpected children | restart through the Broker after release |
 
 Considered and left out, with the reason: network egress filtering of the whole machine (no
@@ -165,10 +165,10 @@ about it ("Watch only. Release to stop watching; nothing changes for anything el
 ```
 poolhouse-security review   1 held, 1 watched
 
-> 1  QUARANTINED peer 127.0.0.1   3 min ago
+> 1  QUARANTINED device 127.0.0.1   3 min ago
   2  WATCH       server :51089   1 h ago
 
-  why:    This machine sent requests with a forged or replayed signature, which no honest poolhouse peer does.
+  why:    This machine sent requests with a forged or replayed signature, which no honest poolhouse device does.
   blocks: Requests from this machine are refused.
   next:   Keep it held unless you know this is a false alarm; releasing puts it back in use.
 
@@ -186,9 +186,9 @@ poolhouse-security review   1 held, 1 watched
 | `q` | quit |
 
 `review --list` and `review --json` print the same table anywhere, inside an agent too:
-viewing is not privileged. `status` and `chip` name what is held ("2 held: peer 127.0.0.1
+viewing is not privileged. `status` and `chip` name what is held ("2 held: device 127.0.0.1
 (forged traffic), server :51089 (unmanaged). Review them: poolhouse-security review").
-Everything printed from a record (names, reasons, peers, paths, arguments) is untrusted: it
+Everything printed from a record (names, reasons, devices, paths, arguments) is untrusted: it
 is secret-masked, control, bidi and invisible characters become visible escapes such as
 `\x1b` and `‮`, and every field is length-bounded. The sentence for each finding kind
 is `explain.WHY`, and `tests/test_sentinel_explain.py` reads the detectors and fails when a
@@ -244,10 +244,10 @@ Modes, chosen by a person:
 * `observe`: events and watch states only. No action is taken, ever.
 * `guarded` (default for a new install): auto-quarantine only for high-confidence signals,
   which are exactly: a pinned file whose hash no longer matches, a held-content fingerprint
-  reappearing, and a peer whose signed request replays or forges a MAC more than a
+  reappearing, and a device whose signed request replays or forges a MAC more than a
   threshold within a window. Everything else is watch plus an alert.
 * `enforce`: the heuristic rules also act (freeze a session at N denies, disable a tool at
-  M abuse events, block a peer on sustained rate abuse).
+  M abuse events, block a device on sustained rate abuse).
 * `off`: the kill switch. Set by `POOLHOUSE_SENTINEL=off` with `POOLHOUSE_SENTINEL_BECAUSE` at process start or by the person
   through the command line; detectors keep logging that they are off.
 
@@ -276,7 +276,7 @@ Dry-run: `Sentinel(dry_run=True)` writes the event that says what would have bee
   disk and run) is not recognised by `agent_may`; the terminal and environment checks and the
   seal are what stop it then. Code running as the owner inside this process can build a
   grant, and a process running as the owner can read the key file and rewrite everything.
-  The defence is against the agent loop and against peers, which reach sentinel only through
+  The defence is against the agent loop and against devices, which reach sentinel only through
   tool calls and requests. A state file replaced by an older, validly sealed copy is not
   detected (there is no counter outside the file).
 
@@ -304,8 +304,8 @@ Subscribers (`bus.subscribe(fn)`) get every event; a program that embeds Poolhou
 ## Honeytokens
 
 `poolhouse security honey plant` (also `baseline --honey`) writes decoy files into the state
-root (`.env`, `credentials.toml.bak`, `cluster.key.old`, never over a file the person already
-has) carrying random values shaped like a Hugging Face token and a cluster secret. Nothing
+root (`.env`, `credentials.toml.bak`, `pool.key.old`, never over a file the person already
+has) carrying random values shaped like a Hugging Face token and a pool secret. Nothing
 legitimate reads or sends them, so a sighting is a high-confidence event: the value, or its
 base64, URL-safe base64 or hex form, in tool arguments, tool results, model input or output
 or an outbound request; a decoy path named in a tool call's arguments; a call to one of the
@@ -363,10 +363,10 @@ deep rounds (about an hour at the default cadence) the window is open. The windo
 Armed (tests: `tests/test_supply_chain_pins.py`, `tests/test_supply_chain_audit.py`):
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps
-  (so `hub.pull`, `hub.fetch`, `hub.snapshot`, a file from a paired device in peer-first, and the other
+  (so `hub.pull`, `hub.fetch`, `hub.snapshot`, a file from a member in member-first, and the other
   callers of `net.download`) is recorded in the same sealed pin store the load check reads, in `net.download._pin_pulled`,
   after the size, SHA-256, format and scan checks passed and the file was promoted. The pin is
-  `source=pull`, with `origin` (the URL the bytes came from, or `peer:<name>`) and `digest_from`:
+  `source=pull`, with `origin` (the URL the bytes came from, or `device:<name>`) and `digest_from`:
   `expected` when the download was verified against a digest from another source (the Hub's listing, the release's
   digest, a signed manifest), `computed` when none was published and the pin is the digest of the bytes as they arrived. The
   digest is the one the download already computed over the staged file; nothing is hashed again. A download that fails any
@@ -374,16 +374,16 @@ Armed (tests: `tests/test_supply_chain_pins.py`, `tests/test_supply_chain_audit.
   arrived; a file swapped between the pull and the start is refused.
 * **Signed manifests at load.** A signed file list (`fleet/onboard/manifest.py`, signed by the owner's Ed25519 key) is
   accepted into a sealed store (`signed-lists.json` under the sentinel directory, `fleet/onboard/trusted.py`) when it is
-  fetched from a peer (`PeerSession._ask`) or with the onboarding `fetch` command, and only if it verifies under a key a person
-  pinned (`peers.json`, `trust.json`, this machine's own `signing.json`; the secret half lives in the OS keystore on the signer) and its
+  fetched from a device (`DeviceSession._ask`) or with the onboarding `fetch` command, and only if it verifies under a key a person
+  pinned (`members.json`, `trust.json`, this machine's own `signing.json`; the secret half lives in the OS keystore on the signer) and its
   serial is not below the highest accepted for that key: an older list is refused (`ManifestError`) and does not replace
-  the newer one. At load each kept list is verified again under the keys pinned now, so a key that was un-paired or
+  the newer one. At load each kept list is verified again under the keys pinned now, so a key that was un-joined or
   revoked stops counting. Optional: with no list, or none that names the file by name, nothing changes.
 
 Not armed:
 
 * A manifest is matched by file name. A list that names `x.gguf` applies to any local file called `x.gguf`.
-* A list reaches the load check only after a fetch ran on this machine (peer-first pull or the onboarding `fetch` command);
+* A list reaches the load check only after a fetch ran on this machine (member-first pull or the onboarding `fetch` command);
   there is no command yet that accepts a list from a file, and no vendor-published digest list is read.
 * The serial high-water mark lives in a sealed file next to its key; code running as the same user can delete both and
   reset it. Expiry is not applied at load (a list bounds how long it can be fetched, not how long held bytes are checked).
@@ -400,7 +400,7 @@ Not armed:
 | human grants, agent surface check | `human.py` | built, tested, mutation-checked |
 | model, binary, artifact, config pins; load-time and periodic checks | `integrity.py`, `Sentinel.verify_before_load`, `scan`, `start` | built, tested |
 | canaries and drift | `canary.py`, `serve/canaries.py` | built; scheduled in the daemons' scan loop, tested against real fake-llama processes whose answers change while they run; also run against two real GGUFs |
-| peer outcomes, flapping, version and binary mismatch, tool mix, resource use | `rates.py` | built, tested on synthetic clocks |
+| device outcomes, flapping, version and binary mismatch, tool mix, resource use | `rates.py` | built, tested on synthetic clocks |
 | guard-rail verdicts to findings, held messages, parked calls, tainted text | `rails.py`, `Sentinel.screen` | built; tested against the real `Guard` on the integration branch |
 | derived memory: summaries that repeat held text, memories of a frozen session | `Sentinel.screen_memory`, `register_derived` | built, tested |
 | decoys | `honey.py`, `serve/decoy.py` | built, tested (files, tokens, tools, endpoint) |
@@ -464,15 +464,15 @@ of windows for a fresh baseline and higher for an unlucky one. The defaults are 
 and 0.5: 0 alarms in 4000 simulated windows and in 20 sessions of 600 calls, and an unseen tool
 filling a window is flagged every time. It remains a watch-only signal.
 
-**Peers.** A request replayed three times: the peer is quarantined at the third and its next
+**Members.** A request replayed three times: the device is quarantined at the third and its next
 valid request is refused (against the real `Authenticator`). 35 forged signatures from one
 address: quarantined; an honest address sending 50 valid requests meanwhile: untouched.
-Against the peer watch alone, on a synthetic clock: 5000 valid requests at two per second
-from one peer gave 0 findings, and four failures followed by 200 good requests gave no
+Against the device watch alone, on a synthetic clock: 5000 valid requests at two per second
+from one device gave 0 findings, and four failures followed by 200 good requests gave no
 high-confidence finding.
 
 **Benign use.** 3000 screened documents (paragraphs of this repository's `docs/`), 3000 tool
-calls, 3000 peer requests with an occasional single failure and six pinned files touched and
+calls, 3000 device requests with an occasional single failure and six pinned files touched and
 rewritten with the same bytes, in `enforce` mode: 0 quarantined, 0 watched. 2000 further
 screens and calls with decoys planted: 0 decoy findings. Held-text overlap against 536
 paragraphs of `docs/` after three injections were held: 0 false matches. Against the real guard rails (integration branch), 651 paragraphs of `docs/` shown as web

@@ -1,4 +1,4 @@
-"""Joining a cluster with its passphrase: a real daemon, a real advertiser, a real handshake over HTTP
+"""Joining a pool with its passphrase: a real daemon, a real advertiser, a real handshake over HTTP
 between two machines' roots. Nothing but the loopback address stands in for a LAN."""
 
 from __future__ import annotations
@@ -23,16 +23,16 @@ from poolhouse.fleet.discovery import (
     DiscoveryError,
     derive_token,
     discover,
-    load_cluster_key,
+    load_pool_key,
     memberships,
-    mint_cluster,
+    mint_pool,
 )
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.onboard import joining, pake
 from poolhouse.fleet.onboard.joining import Joining, join_by_passphrase, join_secret, matches
 from poolhouse.fleet.pool_roster import Pool
-from poolhouse.fleet.remote import Peer, PeerError
+from poolhouse.fleet.remote import Member, MemberError
 
 WORDS = "quince larch marlow"
 
@@ -44,12 +44,12 @@ def _free_port(kind: int) -> int:
 
 
 class Machine:
-    """A daemon in cluster ``lab`` that holds ``WORDS`` and answers joins."""
+    """A daemon in pool ``lab`` that holds ``WORDS`` and answers joins."""
 
     def __init__(self, tmp_path, udp: int) -> None:
-        self.keyfile = tmp_path / "a" / "cluster.key"
+        self.keyfile = tmp_path / "a" / "pool.key"
         self.keyfile.parent.mkdir()
-        self.member = mint_cluster("lab", self.keyfile, join=join_secret(WORDS, "lab"), mode="prod")
+        self.member = mint_pool("lab", self.keyfile, join=join_secret(WORDS, "lab"), mode="prod")
         root = tmp_path / "a" / "traind"
         (root / "files").mkdir(parents=True)
         self.runner = JobRunner(root)
@@ -72,11 +72,11 @@ class Machine:
         self.pool.enrol("lab", self.ident.beacon, "a", "self")
         self.httpd = LimitedServer(("0.0.0.0", 0), make_handler(  # noqa: S104 - native LAN fixture
             Daemon(self.runner, root / "files", token, name="a", joining=self.joining, members=self.pool,
-                   cluster_key_path=self.keyfile)), tls=tls.member_context(self.ident, self.pool))
+                   pool_key_path=self.keyfile)), tls=tls.member_context(self.ident, self.pool))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.port = self.httpd.server_port
         self.advertiser = Advertiser(Beacon(name="a", port=self.port, cert=self.ident.beacon), self.member.key,
-                                     port=udp, cluster="lab", interval_s=0.2)
+                                     port=udp, pool="lab", interval_s=0.2)
         self.advertiser.mode = self.member.mode
         self.advertiser.joinable = True
         self.advertiser.start()
@@ -103,13 +103,13 @@ def machine(tmp_path, udp):
 
 
 def _join(tmp_path, udp, words=WORDS, name="b"):
-    return join_by_passphrase(words, "lab", tmp_path / name / "cluster.key", options=joining.JoinOptions(timeout_s=1.0, port=udp))
+    return join_by_passphrase(words, "lab", tmp_path / name / "pool.key", options=joining.JoinOptions(timeout_s=1.0, port=udp))
 
 
-def test_a_new_machine_given_the_passphrase_receives_the_cluster_key(machine, tmp_path, udp):
+def test_a_new_machine_given_the_passphrase_receives_the_pool_key(machine, tmp_path, udp):
     got = _join(tmp_path, udp)
     assert got.group == "lab" and got.key == machine.member.key
-    assert load_cluster_key(tmp_path / "b" / "cluster.key") == machine.member.key
+    assert load_pool_key(tmp_path / "b" / "pool.key") == machine.member.key
     assert any("joined from" in line for line in machine.logged)
     # the host listed the joiner's certificate, which the passphrase exchange bound; the joiner listed the host's
     roster = machine.pool.roster("lab")
@@ -119,7 +119,7 @@ def test_a_new_machine_given_the_passphrase_receives_the_cluster_key(machine, tm
 
 def test_a_join_over_the_real_tls_listener_lists_each_machine_in_the_others_record(machine, tmp_path):
     """The same exchange without the multicast that finds the daemon: the joiner is told where it is."""
-    keyfile = tmp_path / "b" / "cluster.key"
+    keyfile = tmp_path / "b" / "pool.key"
     held = joining._accept([joining.Joiner("127.0.0.1", machine.port, True)], "lab", join_secret(WORDS, "lab"),
                            keyfile)
     assert held.key == machine.member.key
@@ -128,8 +128,8 @@ def test_a_join_over_the_real_tls_listener_lists_each_machine_in_the_others_reco
     assert host.active
     with pytest.raises(DiscoveryError, match="none accepts that passphrase"):
         joining._accept([joining.Joiner("127.0.0.1", machine.port, True)], "lab",
-                        join_secret("not the words", "lab"), tmp_path / "c" / "cluster.key")
-    assert not (tmp_path / "c" / "cluster.key").exists()
+                        join_secret("not the words", "lab"), tmp_path / "c" / "pool.key")
+    assert not (tmp_path / "c" / "pool.key").exists()
 
 
 def test_a_join_without_a_device_certificate_is_refused(machine):
@@ -143,15 +143,15 @@ def test_the_joined_machine_finds_and_drives_the_first_with_what_it_received(mac
     got = _join(tmp_path, udp)
     found = discover(got.key, timeout_s=2.0, port=udp)
     assert [b.name for b in found] == ["a"]
-    peer = Peer(f"https://{found[0].host}:{machine.port}", derive_token(got.key))
-    assert peer.health()["name"] == "a"
-    assert peer.jobs() == []
+    member = Member(f"https://{found[0].host}:{machine.port}", derive_token(got.key))
+    assert member.health()["name"] == "a"
+    assert member.jobs() == []
 
 
 def test_a_wrong_passphrase_is_refused_and_nothing_is_stored(machine, tmp_path, udp):
     with pytest.raises(DiscoveryError, match="none accepts that passphrase"):
         _join(tmp_path, udp, "not the words")
-    assert memberships(tmp_path / "b" / "cluster.key") == []
+    assert memberships(tmp_path / "b" / "pool.key") == []
     sources = {a[1] for a in machine.joining.attempts}
     assert sources
     assert [a[3] for a in machine.joining.attempts if a[3].startswith("refused")] == [
@@ -164,7 +164,7 @@ def test_a_source_that_keeps_failing_is_locked_out_even_with_the_right_words(mac
             _join(tmp_path, udp, "not the words")
     with pytest.raises(DiscoveryError, match="too many attempts"):
         _join(tmp_path, udp)
-    assert memberships(tmp_path / "b" / "cluster.key") == []
+    assert memberships(tmp_path / "b" / "pool.key") == []
     assert machine.joining.attempts[-1][3] == "refused, too many attempts"
     wrong = Counter(a[1] for a in machine.joining.attempts if a[3] == "refused, wrong passphrase")
     assert wrong and set(wrong.values()) == {5}
@@ -173,7 +173,7 @@ def test_a_source_that_keeps_failing_is_locked_out_even_with_the_right_words(mac
 
 def test_a_joined_machine_checks_a_sign_in_against_what_it_was_joined_with(machine, tmp_path, udp):
     _join(tmp_path, udp)
-    keyfile = tmp_path / "b" / "cluster.key"
+    keyfile = tmp_path / "b" / "pool.key"
     assert matches(WORDS, "lab", keyfile) and matches(f"  {WORDS}\n", "", keyfile)
     assert not matches("some other words", "lab", keyfile) and not matches(WORDS, "elsewhere", keyfile)
     assert WORDS not in keyfile.with_suffix(".json").read_text()
@@ -187,9 +187,9 @@ def test_a_passphrase_under_five_characters_is_refused_before_anything_is_sent(m
 
 def test_a_machine_that_finds_nobody_refuses_join_and_creates_no_key(tmp_path, udp):
     with pytest.raises(DiscoveryError, match="No machine"):
-        joining.join_existing(WORDS, "lab", tmp_path / "b" / "cluster.key",
+        joining.join_existing(WORDS, "lab", tmp_path / "b" / "pool.key",
                               options=joining.JoinOptions(mode="prod", timeout_s=1.0, port=udp))
-    assert memberships(tmp_path / "b" / "cluster.key") == []
+    assert memberships(tmp_path / "b" / "pool.key") == []
 
 
 def test_a_captured_join_holds_nothing_to_test_a_guess_against(machine, tmp_path, udp):
@@ -223,7 +223,7 @@ def test_an_answer_altered_on_the_way_is_refused(machine, tmp_path, udp, monkeyp
     monkeypatch.setattr(joining._Call, "post", altered)
     with pytest.raises(DiscoveryError):
         _join(tmp_path, udp)
-    assert memberships(tmp_path / "b" / "cluster.key") == []
+    assert memberships(tmp_path / "b" / "pool.key") == []
 
 
 def test_a_finish_for_a_join_nobody_started_is_refused(machine):
@@ -246,7 +246,7 @@ def test_a_finish_from_another_source_is_refused(machine):
 
 def test_a_machine_that_does_not_know_the_passphrase_takes_nobody_in(tmp_path):
     keyfile = tmp_path / "c.key"
-    mint_cluster("lab", keyfile)
+    mint_pool("lab", keyfile)
     keeper = Joining(lambda: memberships(keyfile))
     status, answer = keeper.handle("/join/v1/start", {"group": "lab", "message": "00"}, "10.0.0.5")
     assert status == 404 and "cannot take" in answer["error"]
@@ -279,7 +279,7 @@ def served(tmp_path):
     root = tmp_path / "d"
     (root / "files").mkdir(parents=True)
     runner = JobRunner(root)
-    key = mint_cluster("lab", tmp_path / "d.key").key
+    key = mint_pool("lab", tmp_path / "d.key").key
     token = derive_token(key)
     httpd = http.Server(("127.0.0.1", 0), make_handler(Daemon(runner, root / "files", token, name="sealed-box",
                                                                     schedule=Availability())))
@@ -320,7 +320,7 @@ def _opened(token, headers, status, answer):
     return json.loads(sealing.open_(sealing.box_key(token), answer, sealing.response_data(nonce, status)))
 
 
-def test_what_a_peer_sends_is_not_readable_on_the_wire(served):
+def test_what_a_member_sends_is_not_readable_on_the_wire(served):
     import unittest.mock as mock
 
     base, token = served
@@ -333,12 +333,12 @@ def test_what_a_peer_sends_is_not_readable_on_the_wire(served):
         return request
 
     with mock.patch.object(http, "build_request", spy):
-        got = Peer(base, token)._json("POST", "/availability", {"action": "reserve", "holder": "hunter2-holder"})
+        got = Member(base, token)._json("POST", "/availability", {"action": "reserve", "holder": "hunter2-holder"})
     assert got["reserved"]
     assert seen and b"hunter2-holder" not in seen[0] and b"reserve" not in seen[0]
 
 
-def test_what_a_peer_is_told_is_not_readable_on_the_wire(served):
+def test_what_a_member_is_told_is_not_readable_on_the_wire(served):
     base, token = served
     url = f"{base}/availability"
     status, answer, reply = _raw(url, "GET", macauth.sign(token, "GET", url, None) | {sealing.HEADER: "2"})
@@ -348,7 +348,7 @@ def test_what_a_peer_is_told_is_not_readable_on_the_wire(served):
         json.loads(answer)
 
 
-def test_a_health_answer_is_sealed_and_opens_for_the_peer_that_asked(served):
+def test_a_health_answer_is_sealed_and_opens_for_the_member_that_asked(served):
     base, token = served
     url = f"{base}/health"
     stamp = macauth.Stamp.now()
@@ -398,7 +398,7 @@ def test_a_sealed_request_sent_twice_is_refused_the_second_time(served):
 
 
 def _rogue(answer: bytes):
-    """A server that answers every request with ``answer`` and holds no cluster key."""
+    """A server that answers every request with ``answer`` and holds no pool key."""
     from http.server import BaseHTTPRequestHandler
 
     class Handler(BaseHTTPRequestHandler):
@@ -417,18 +417,18 @@ def _rogue(answer: bytes):
     return httpd
 
 
-def test_a_plain_answer_from_a_machine_without_the_key_is_refused_by_the_peer(served):
+def test_a_plain_answer_from_a_machine_without_the_key_is_refused_by_the_member(served):
     _, token = served
     rogue = _rogue(b'{"ok": true, "name": "forged"}')
     try:
-        with pytest.raises(PeerError):
-            Peer(f"http://127.0.0.1:{rogue.server_port}", token).health()
+        with pytest.raises(MemberError):
+            Member(f"http://127.0.0.1:{rogue.server_port}", token).health()
     finally:
         rogue.shutdown()
         rogue.server_close()
 
 
-def test_an_answer_altered_after_it_was_sealed_is_refused_by_the_peer(served):
+def test_an_answer_altered_after_it_was_sealed_is_refused_by_the_member(served):
     base, token = served
     url = f"{base}/health"
     stamp = macauth.Stamp.now()
@@ -444,7 +444,7 @@ def test_an_answer_altered_after_it_was_sealed_is_refused_by_the_peer(served):
         opens.open(404, headers, answer)
 
 
-def test_the_join_secret_is_stable_trimmed_and_belongs_to_one_cluster():
+def test_the_join_secret_is_stable_trimmed_and_belongs_to_one_pool():
     assert join_secret(WORDS, "lab") == join_secret(f"  {WORDS}\n", "lab")
     assert join_secret(WORDS, "lab") != join_secret(WORDS, "home")
     assert join_secret(WORDS, "lab") != join_secret("other words", "lab")

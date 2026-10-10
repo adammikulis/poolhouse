@@ -1,4 +1,4 @@
-"""Hostile replies and redirects at the cluster workspace and WSL bridge boundaries."""
+"""Hostile replies and redirects at the pool workspace and WSL bridge boundaries."""
 
 import io
 import json
@@ -15,7 +15,7 @@ from poolhouse.workspace.identity import Denied
 
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
-    monkeypatch.setattr(remote, "load_cluster_key", lambda _path: bytes(range(32)))
+    monkeypatch.setattr(remote, "load_pool_key", lambda _path: bytes(range(32)))
     monkeypatch.setattr(remote, "memberships", lambda _path: [])
     tokens.prepare(tmp_path)
     monkeypatch.setattr(remote.home, "state", lambda *_args: tmp_path)
@@ -24,7 +24,7 @@ def workspace(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("target", ["https://8.8.8.8/steal", "http://127.0.0.1:8771/steal",
                                     "http://127.0.0.1:8770/other"])
-def test_project_board_redirect_cannot_carry_capabilities(workspace, monkeypatch, target):
+def test_board_redirect_cannot_carry_capabilities(workspace, monkeypatch, target):
     attempted = []
 
     @contextmanager
@@ -41,7 +41,7 @@ def test_project_board_redirect_cannot_carry_capabilities(workspace, monkeypatch
 
 @pytest.mark.parametrize("raw", [b"x" * (512 * 1024 + 29), b"not JSON", b"[]", b"null"],
                          ids=["oversized", "malformed", "array", "null"])
-def test_project_board_replies_are_bounded_json_objects(workspace, monkeypatch, raw):
+def test_board_replies_are_bounded_json_objects(workspace, monkeypatch, raw):
     read_sizes = []
     response = io.BytesIO(raw)
 
@@ -60,7 +60,7 @@ def test_project_board_replies_are_bounded_json_objects(workspace, monkeypatch, 
     assert read_sizes == [512 * 1024 + 29]
 
 
-def test_project_board_slow_response_has_finite_timeout_and_no_retry(workspace, monkeypatch):
+def test_board_slow_response_has_finite_timeout_and_no_retry(workspace, monkeypatch):
     timeouts = []
 
     @contextmanager
@@ -113,12 +113,12 @@ def test_project_source_sealed_wire_and_plaintext_boundary(monkeypatch, length):
         yield SimpleNamespace(read=read, status=200, headers={remote.sealing.HEADER: "2"}, sealed=Sealed(key, nonce))
 
     monkeypatch.setattr(project_client, "open_stream", reply)
-    peer = SimpleNamespace(base_url="http://127.0.0.1:8770", token="secret", timeout=30)
+    member = SimpleNamespace(base_url="http://127.0.0.1:8770", token="secret", timeout=30)
     if length > limit:
         with pytest.raises(project_client.ProjectError, match="size limit"):
-            project_client.read(peer, "/workspace/v1/projects", limit)
+            project_client.read(member, "/workspace/v1/projects", limit)
     else:
-        assert project_client.read(peer, "/workspace/v1/projects", limit) == b"x" * length
+        assert project_client.read(member, "/workspace/v1/projects", limit) == b"x" * length
     assert sizes == [limit + remote.sealing.NONCE_BYTES + 16 + 1]
 
 

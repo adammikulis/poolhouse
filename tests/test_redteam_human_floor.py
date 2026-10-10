@@ -35,7 +35,7 @@ def sentinel_dir(tmp_path: Path) -> Path:
 
 def seed_quarantine(tmp_path: Path) -> str:
     node = Sentinel(sentinel_dir(tmp_path), roots=[tmp_path])
-    return node.store.quarantine(("peer", "10.2.2.2"), "forged", None).id
+    return node.store.quarantine(("member", "10.2.2.2"), "forged", None).id
 
 
 def commands(tmp_path: Path) -> list[tuple[str, str, str, list[str], str]]:
@@ -66,7 +66,7 @@ def commands(tmp_path: Path) -> list[tuple[str, str, str, list[str], str]]:
         ("autostart install", "poolhouse.fleet.autostart", "main",
          ["install", "--manifest", str(tmp_path / "manifest.json")], "yes"),
         ("autostart rollback", "poolhouse.fleet.autostart", "main", ["rollback"], "yes"),
-        ("peers open", "poolhouse.fleet.peers", "main", ["open", "--print"], ""),
+        ("members open", "poolhouse.fleet.members", "main", ["open", "--print"], ""),
     ]
 
 
@@ -256,7 +256,7 @@ def test_workspace_init_registers_the_first_identity_for_a_person_at_a_terminal(
     assert "token" in done.stdout
 
 
-SECRET_NAMES = ("passphrase", "password", "secret", "token", "credential", "api_key", "cluster_key")
+SECRET_NAMES = ("passphrase", "password", "secret", "token", "credential", "api_key", "pool_key")
 
 
 def test_no_mcp_tool_takes_a_secret_or_joins_a_fleet():
@@ -265,7 +265,7 @@ def test_no_mcp_tool_takes_a_secret_or_joins_a_fleet():
     for tool in mcp.TOOLS:
         taken = {n.lower() for n in tool.schema()["properties"]}
         assert not any(w in n for n in taken for w in SECRET_NAMES), tool.name
-        assert "join" not in tool.name and "pair" not in tool.name, tool.name
+        assert "join" not in tool.name and "add_device" not in tool.name, tool.name
 
 
 def test_no_tool_an_agent_is_offered_sets_up_joins_delegates_or_names_the_token_directory(
@@ -321,7 +321,7 @@ def test_the_one_thing_an_agent_may_mint_is_a_bounded_child_invite_and_never_a_p
             call()
     with pytest.raises(onboard.authority.HumanRequired):
         guide.connect(kit.ws, guide.Plan(["codex"], 0.0, 0.0, True))
-    made = kit.ws.invite(worker, "peer", 1800.0, 3)
+    made = kit.ws.invite(worker, "member", 1800.0, 3)
     assert made["uses"] == 3 and made["ttl_s"] == 1800.0
     assert not (kit.base / "shared-invites.json").exists()
     entry, = kit.ws.invites._load()["invites"].values()
@@ -335,7 +335,7 @@ def test_the_one_thing_an_agent_may_mint_is_a_bounded_child_invite_and_never_a_p
         with pytest.raises(Denied):
             kit.ws.invite(tokens.load(kit.base, name), "z")
     with pytest.raises(Denied, match=r"limit is 3"):
-        kit.ws.invite(worker, "peer", 600.0, 4)
+        kit.ws.invite(worker, "member", 600.0, 4)
 
 
 APPLY_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "github-protection-apply"

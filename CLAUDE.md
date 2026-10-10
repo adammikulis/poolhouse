@@ -1,7 +1,8 @@
 # Claude Code instructions
 
 [AGENTS.md](AGENTS.md) is the complete repository policy. Read it first; everything here applies
-in addition to it and only covers Claude Code.
+in addition to it and only covers Claude Code. [docs/glossary.md](docs/glossary.md) is the vocabulary
+and is binding: use its words, never the ones it bans.
 
 ## Do what was said, when it was said
 

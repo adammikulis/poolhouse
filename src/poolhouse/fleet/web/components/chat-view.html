@@ -207,7 +207,7 @@
         this.chatModels = available;
         const selected = this.picker.value;
         this.picker.replaceChildren(...available.map((m) =>
-          el("option", { value: m.model }, m.local ? m.model : `${m.model} — on ${m.peer}`)));
+          el("option", { value: m.model }, m.local ? m.model : `${m.model} — on ${m.member}`)));
         if (available.some((m) => m.model === selected)) this.picker.value = selected;
         this.pickrow.hidden = false;
         this.askrow.hidden = !available.length;

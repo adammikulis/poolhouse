@@ -18,9 +18,9 @@ from poolhouse.http import Server
 @pytest.mark.parametrize("path", ["/ui/projects", "/ui/projects/" + "a" * 32 + "/checkout"])
 def test_project_ui_refuses_forged_browser_access(tmp_path, monkeypatch, ui_header, cookie, path):
     touched = []
-    ui = UI(cluster_key_path=tmp_path / "cluster.key")
+    ui = UI(pool_key_path=tmp_path / "pool.key")
     ui.projects = SimpleNamespace(share=lambda *_args: touched.append("share"))
-    monkeypatch.setattr(routes, "in_cluster", lambda _path: True)
+    monkeypatch.setattr(routes, "in_pool", lambda _path: True)
     runner = JobRunner(tmp_path / "jobs")
     server = Server(("127.0.0.1", 0), make_handler(Daemon(runner, tmp_path, "test-daemon", ui=ui)))
     worker = threading.Thread(target=server.serve_forever, daemon=True)

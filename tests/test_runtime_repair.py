@@ -66,7 +66,7 @@ class Route(InitialSetupRoutes, RuntimeRepairRoutes):
         sessions = Sessions()
         person = sessions.open("setup")
         self.ui = SimpleNamespace(root=tmp_path, sessions=sessions, setup_jobs=None,
-                                  _setup_jobs_lock=threading.Lock(), peer_port=8770)
+                                  _setup_jobs_lock=threading.Lock(), member_port=8770)
         self.cookie = "poolhouse_ui=" + person.sid
         self.path = "/ui/agent-runtime/install"
         self.method = "POST"
@@ -313,7 +313,7 @@ def test_central_daemon_protocol_rejects_hostile_job_ids_before_execution(tmp_pa
 def test_preparation_launches_fixed_central_protocol_without_credentials(tmp_path, monkeypatch):
     queue = Jobs(tmp_path)
     row = queue.start(runtime_repair.KIND, {"repair": True}, None)
-    ui = SimpleNamespace(root=tmp_path, peer_port=8770)
+    ui = SimpleNamespace(root=tmp_path, member_port=8770)
     candidate = {"commit": "a" * 40, "sha256": "b" * 64}
     monkeypatch.setattr(runtime_repair.updates, "running_path", lambda: Path("/owned/Poolhouse.app"))
     monkeypatch.setattr(runtime_repair, "Candidates", lambda root: SimpleNamespace(select=lambda name: candidate))
@@ -332,7 +332,7 @@ def test_preparation_launches_fixed_central_protocol_without_credentials(tmp_pat
 def test_failed_candidate_never_launches_worker(tmp_path, monkeypatch):
     queue = Jobs(tmp_path)
     row = queue.start(runtime_repair.KIND, {"repair": True}, None)
-    ui = SimpleNamespace(root=tmp_path, peer_port=8770)
+    ui = SimpleNamespace(root=tmp_path, member_port=8770)
     monkeypatch.setattr(runtime_repair.updates, "running_path", lambda: Path("/owned/Poolhouse.app"))
     def reject(name):
         raise ValueError("Registered candidate artifact has changed.")

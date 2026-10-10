@@ -153,8 +153,8 @@ class _Route(boardroute._Route):
     """The Board's route with the Agents routes and page added; its start and stop routes need the
     same session cookie as the Board route."""
 
-    def __init__(self, ws: Workspace, seat: Callable[[], Session]) -> None:
-        super().__init__(seat)
+    def __init__(self, ws: Workspace, session: Callable[[], Session]) -> None:
+        super().__init__(session)
         self.ws = ws
 
     def __call__(self, call: Call) -> WebReply:
@@ -180,4 +180,4 @@ class _Route(boardroute._Route):
 def serve(ws: Workspace, port: int = 0) -> Listener:
     """A loopback listener for the Board and Agents pages and routes; ``listener.session`` is the
     secret the person's browser presents (open ``/agents?session=...`` once)."""
-    return boardroute.serve(lambda: person.seat(Path.cwd()), port, routes=functools.partial(_Route, ws))
+    return boardroute.serve(lambda: person.session(Path.cwd()), port, routes=functools.partial(_Route, ws))

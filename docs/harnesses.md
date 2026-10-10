@@ -73,7 +73,7 @@ Codex receives a workspace-only MCP server bound to its assigned agent token. In
 status and ownership reads follow the read role; send, claim, announce and acknowledgement
 follow the acting role. The server exposes no model administration or identity minting tools.
 Workspace state stays outside the coding sandbox; use these MCP tools instead of shell CLI
-commands there. The token is kept in the private launcher settings and revoked with the seat.
+commands there. The token is kept in the private launcher settings and revoked with the session.
 Shell workspace commands must explicitly name the launcher-assigned identity; other identity
 flags and token-file overrides are denied.
 

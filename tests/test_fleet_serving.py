@@ -356,7 +356,7 @@ class TestEndpoint:
 
         from poolhouse.client import Client, Transport
 
-        kwargs = Endpoint(peer="gpubox", base_url="http://box:8770",
+        kwargs = Endpoint(member="gpubox", base_url="http://box:8770",
                           token="abc").client_kwargs()
         assert kwargs == {"base_url": "http://box:8770/infer",
                           "transport": Transport(api_key="abc")}
@@ -367,7 +367,7 @@ class TestEndpoint:
         from poolhouse.client import Client
 
         daemon, _, _ = wired
-        endpoint = Endpoint(peer="box", base_url=f"http://127.0.0.1:{daemon.port}",
+        endpoint = Endpoint(member="box", base_url=f"http://127.0.0.1:{daemon.port}",
                             token=daemon.token)
         reply = Client(**endpoint.client_kwargs()).chat(
             [{"role": "user", "content": "hi"}])

@@ -1,7 +1,7 @@
 # Red-team findings
 
-F1-F9 are from `baseline-2026-10-02.md`. Severity is for a machine whose daemon is reachable by peers holding the
-cluster token and whose agent reads pages from the web. The bodies below describe each finding as it was
+F1-F9 are from `baseline-2026-10-02.md`. Severity is for a machine whose daemon is reachable by devices holding the
+pool token and whose agent reads pages from the web. The bodies below describe each finding as it was
 measured on 2026-10-02. The status column is what `baseline-deterministic-2026-10-03.md` (stub model, no GPU)
 shows today: F3 (`proxy-route` 0 of 8) and F4 (`malformed-request` 0 of 55) no longer succeed, `oversized-body`
 still succeeds 2 of 3 (F5, held at 2 by the weekly gate) and `hidden-text-extraction` 6 of 13 (F2, one is the
@@ -16,10 +16,10 @@ and test.
 | F3 | medium | agent/hardening, `fleet/api.py` | `/infer` forwards any path of the model server | closed (0 of 8) |
 | F4 | medium | agent/hardening, `fleet/api.py` | the handler raises on a bad `Content-Length` or a non-object `/jobs` body | closed (0 of 55) |
 | F5 | medium | agent/hardening, `fleet/api.py` | a body is read to the length claimed and never capped | open (2 of 3) |
-| F6 | medium | agent/hardening, `fleet/api.py` | `timings.cache_n` reaches every caller and tells a peer what another session cached | not re-measured |
+| F6 | medium | agent/hardening, `fleet/api.py` | `timings.cache_n` reaches every caller and tells a device what another session cached | not re-measured |
 | F7 | low | model | a system prompt does not hold a secret | model behaviour |
 | F8 | low | agent/port-pcbe, `agent/compact.py` | a summary carries an injected instruction forward | not re-measured |
-| F9 | info | by design | `/health` is open; the token is shared by every peer and `POST /jobs` runs commands | by design |
+| F9 | info | by design | `/health` is open; the token is shared by every device and `POST /jobs` runs commands | by design |
 
 ## F1 The loop does what a page or a user turn tells it (high)
 
@@ -72,7 +72,7 @@ proxy passes them through. A second session that sends prompts differing from th
 position learns which one the server had cached, and recovered a first session's four-digit key
 (the `daemon` row; the `server` row failed on a tokenizer artefact the scenario no longer has, so
 the baseline shows one success where a re-run is expected to show two). It needs a request on a
-shared server, so it matters for a daemon shared by peers who do not trust each other. Removing
+shared server, so it matters for a daemon shared by devices who do not trust each other. Removing
 `timings` and the cached-token count from proxied replies, or serving untrusting callers from
 separate servers, closes it. Repro: `--scenarios isolation`.
 
@@ -91,8 +91,8 @@ tool-result part of a summary as untrusted, or summarising tool results as data,
 ## F9 By design (info)
 
 `/health` answers without a token with the machine's name, load, free slots and loaded models, which
-discovery needs. The token every peer derives from the cluster key is accepted by `POST /jobs`, which
-runs the command it is given: a compromised peer runs commands on every machine in the cluster.
+discovery needs. The token every device derives from the pool key is accepted by `POST /jobs`, which
+runs the command it is given: a compromised device runs commands on every machine in the pool.
 
 ## What held
 
@@ -141,7 +141,7 @@ did not contain it.
 
 ## The red-team command used the real home (found and fixed)
 
-`python -m poolhouse.redteam run` ran its fleet daemon and attacks in whatever `POOLHOUSE_HOME` was current. Run by hand it quarantined `127.0.0.1` in the real sentinel store (30 forged requests) and left a decoy `.env`, `cluster.key.old` and `credentials.toml.bak` in the real `~/.poolhouse`. The tests were isolated, so the suite did not show it. The run now swaps `POOLHOUSE_HOME` for a directory inside its scratch space from before the daemon starts (`redteam.lab.own_home`), and `tests/test_redteam_lab_home.py` runs the command with a throwaway `HOME` and fails if anything appears under it.
+`python -m poolhouse.redteam run` ran its fleet daemon and attacks in whatever `POOLHOUSE_HOME` was current. Run by hand it quarantined `127.0.0.1` in the real sentinel store (30 forged requests) and left a decoy `.env`, `pool.key.old` and `credentials.toml.bak` in the real `~/.poolhouse`. The tests were isolated, so the suite did not show it. The run now swaps `POOLHOUSE_HOME` for a directory inside its scratch space from before the daemon starts (`redteam.lab.own_home`), and `tests/test_redteam_lab_home.py` runs the command with a throwaway `HOME` and fails if anything appears under it.
 
 ## The pointer prompt put the raw state between its tags (found and fixed)
 

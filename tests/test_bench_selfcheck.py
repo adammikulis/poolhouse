@@ -354,7 +354,7 @@ def test_a_raw_serve_arg_passes_the_self_check_for_the_real_preflight_to_judge(t
     assert "ub2048" in said or said
 
 
-def test_a_fleet_sweep_passes_the_self_check_on_the_line_a_peer_would_run(monkeypatch, capsys,
+def test_a_fleet_sweep_passes_the_self_check_on_the_line_a_member_would_run(monkeypatch, capsys,
                                                                          tmp_path):
     import poolhouse.lock
     from poolhouse.bench import ops
@@ -364,7 +364,7 @@ def test_a_fleet_sweep_passes_the_self_check_on_the_line_a_peer_would_run(monkey
 
     monkeypatch.setattr(poolhouse.lock, "only_one", taken)
     monkeypatch.setattr(ops, "fleet_planned", lambda *a, **k: ops.Fleeted())
-    assert bench.main(["sweep", "--fleet", "--peers", "box", "--serve", "tiny.gguf", "--smoke",
+    assert bench.main(["sweep", "--fleet", "--members", "box", "--serve", "tiny.gguf", "--smoke",
                        "--kept", str(tmp_path / "runs.ladybug")]) == 0
     said = capsys.readouterr().out
     assert said.splitlines()[0].startswith("selfcheck: ok (") and "FAILED" not in said
@@ -373,5 +373,5 @@ def test_a_fleet_sweep_passes_the_self_check_on_the_line_a_peer_would_run(monkey
 def test_a_fleet_sweep_with_no_command_line_is_refused_in_plain_words(capsys):
     from argparse import Namespace
 
-    assert bench._fleet_sweep(Namespace(serve=["m.gguf"], peers="", kept="x")) == 2
+    assert bench._fleet_sweep(Namespace(serve=["m.gguf"], members="", kept="x")) == 2
     assert "this run has none" in capsys.readouterr().err

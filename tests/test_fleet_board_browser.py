@@ -31,7 +31,7 @@ def test_person_channel_thread_dm_drafts_and_live_reply(board, playwright):  # n
     from playwright.sync_api import expect
 
     server, node, worker = board
-    me = person.seat(Path.cwd(), node.client)
+    me = person.session(Path.cwd(), node.client)
     server.ui.settings.setup_done = True
     worker.post('#general', 'note', '<img src=x> Native sensors are ready.')
     with playwright.chromium.launch(headless=True) as browser:

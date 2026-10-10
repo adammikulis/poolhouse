@@ -6,15 +6,15 @@ from test_fleet_initial_setup import initial
 from test_fleet_ui import Serving, no_release_lookup
 from test_workspace_board_ui import browser
 
-from poolhouse.fleet import automatic_clusters
-from poolhouse.fleet.discovery import mint_cluster
+from poolhouse.fleet import automatic_pools
+from poolhouse.fleet.discovery import mint_pool
 
 __all__ = ["browser", "no_release_lookup"]
 
 
 @pytest.fixture
 def device(tmp_path, monkeypatch):
-    monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: [])
+    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
     served = Serving(tmp_path, secure=False)
     try:
         yield served
@@ -34,7 +34,7 @@ DELAY_SESSION = """
       window.bootstrapFinished = true;
       return response;
     }
-    if (path === '/ui/room' || path === '/ui/workspace/jobs' || path === '/ui/peers') {
+    if (path === '/ui/room' || path === '/ui/workspace/jobs' || path === '/ui/members') {
       window.bootstrapRequests.push({path, negotiated:!!window.bootstrapFinished});
     }
     return request(path, options);
@@ -50,25 +50,25 @@ def test_delayed_ticket_redemption_orders_eager_requests_and_expiry_asks_for_the
     page = browser.new_page()
     try:
         page.add_init_script(DELAY_SESSION)
-        page.goto(f"http://127.0.0.1:{device.port}/ui/#cluster")
+        page.goto(f"http://127.0.0.1:{device.port}/ui/#pool")
         page.wait_for_function("() => window.bootstrapPending === true")
         cancelled = page.evaluate("""async () => {
           const control = new AbortController();
-          const pending = fleetModel.api('/ui/peers', {signal:control.signal});
+          const pending = fleetModel.api('/ui/members', {signal:control.signal});
           control.abort();
           try { await pending; return false; }
           catch (error) { return error.name === 'AbortError'; }
         }""")
         assert cancelled
         assert page.evaluate("bootstrapRequests.length") == 0
-        page.wait_for_function("() => fleetModel.route === 'cluster'")
+        page.wait_for_function("() => fleetModel.route === 'pool'")
         page.wait_for_function("() => bootstrapRequests.some(r => r.path === '/ui/room') && bootstrapRequests.some(r => r.path === '/ui/workspace/jobs')")
         assert page.evaluate("bootstrapRequests.every(r => r.negotiated)")
         with device.ui.sessions._lock:
             for session in device.ui.sessions._sessions.values():
                 session.expires_at = 0
         status = page.evaluate("""async () => {
-          const result = await fleetModel.api('/ui/peers');
+          const result = await fleetModel.api('/ui/members');
           fleetModel.refused(result);
           return result.status;
         }""")
@@ -83,12 +83,12 @@ def test_delayed_ticket_redemption_orders_eager_requests_and_expiry_asks_for_the
 @pytest.mark.parametrize("mode,expected", [("first", "first-run"), ("prod", "sign-in")])
 def test_bootstrap_preserves_setup_and_password_routes(device, browser, mode, expected):
     if mode == "prod":
-        mint_cluster("private", device.keyfile, mode="prod")
+        mint_pool("private", device.keyfile, mode="prod")
         device.ui.settings.setup_done = True
     page = browser.new_page()
     try:
-        page.goto(f"http://127.0.0.1:{device.port}/ui/#cluster")
+        page.goto(f"http://127.0.0.1:{device.port}/ui/#pool")
         page.wait_for_function(f"() => fleetModel.route === '{expected}'")
-        assert page.evaluate("fleetModel.requestedRoute") == "cluster"
+        assert page.evaluate("fleetModel.requestedRoute") == "pool"
     finally:
         page.close()

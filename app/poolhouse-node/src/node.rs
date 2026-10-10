@@ -30,7 +30,7 @@ use crate::subs::Subs;
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
 
-/// One hosted board and the names registered on it.
+/// One board this node holds and the names registered on it.
 pub struct Hosted {
     pub board: Board,
     pub names: Registry,

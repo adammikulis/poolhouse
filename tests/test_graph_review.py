@@ -102,12 +102,12 @@ def test_refusing_marks_the_proposal_and_touches_nothing_else(tmp_path):
         assert {n["id"] for n in held.read()["nodes"]} == {n["id"] for n in GRAPH["nodes"]}
 
 
-def test_a_journal_is_written_first_and_undo_takes_it_back(tmp_path):
-    """The journal is what a rebuild applies over fresh extractions; an edit the store
-    would not take is still in it, and undo edits only the journal."""
+def test_a_log_is_written_first_and_undo_takes_it_back(tmp_path):
+    """The edit log is what a rebuild applies over fresh extractions; an edit the store
+    would not take is still in it, and undo edits only the edit log."""
     def fold(edit, held):
         if edit["op"] == "remove_relation":
-            return "remove_relation is not something this journal can say"
+            return "remove_relation is not something this edit log can say"
         held.setdefault("taken", []).append(edit["op"])
         return None
 
@@ -116,15 +116,15 @@ def test_a_journal_is_written_first_and_undo_takes_it_back(tmp_path):
 
     write_json(tmp_path / "proposals.json", proposal())
     queue = Queue(tmp_path / "proposals.json", store=tmp_path / "missing.ladybug",
-                  journal=(tmp_path / "journal.json", fold, unfold))
+                  edit_log=(tmp_path / "edit_log.json", fold, unfold))
     problems = queue.act(KEY, "accept")
-    assert problems == ["remove_relation is not something this journal can say"]
-    assert read_json(tmp_path / "journal.json", {}) == {
+    assert problems == ["remove_relation is not something this edit log can say"]
+    assert read_json(tmp_path / "edit_log.json", {}) == {
         "taken": ["set_attr", "rename", "remove_edge", "merge_nodes"]}
     assert read_json(tmp_path / "proposals.json", {})[KEY]["status"] == "accepted"
 
     assert queue.act(KEY, "undo") == []
-    assert read_json(tmp_path / "journal.json", {}) == {"taken": []}
+    assert read_json(tmp_path / "edit_log.json", {}) == {"taken": []}
     assert read_json(tmp_path / "proposals.json", {})[KEY]["status"] == "proposed"
 
 

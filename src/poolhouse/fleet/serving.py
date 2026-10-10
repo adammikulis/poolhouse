@@ -348,7 +348,7 @@ def _name(model: str) -> str:
 class Endpoint:
     """A model server on some machine, reachable through that machine's daemon."""
 
-    peer: str
+    member: str
     base_url: str
     token: str
     models: tuple[str, ...] = ()
@@ -374,7 +374,7 @@ def discover_serving(key: bytes, *, model: str = "", timeout_s: float = 2.0,
             models = tuple(served.get("models") or ())
             if model and not any(model.lower() in m.lower() for m in models):
                 continue
-            out.append(Endpoint(peer=beacon.name, base_url=beacon.base_url,
+            out.append(Endpoint(member=beacon.name, base_url=beacon.base_url,
                                 token=token, models=models,
                                 slots=int(served.get("slots") or 1),
                                 free=beacon.free))

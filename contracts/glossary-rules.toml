@@ -1,0 +1,410 @@
+# How scripts/nomenclature.py rewrites a tree to docs/glossary.md. Data only; the script reads it.
+# Words are cut at underscores and camelCase boundaries before they are looked up here.
+
+# a revoke part is a removal when one of these is within three parts of it (revoked_device, member_revoke)
+revoke_near = ["device", "devices", "member", "members", "machine", "machines", "pool", "pools"]
+
+[family]
+revoke = ["revoke", "revokes", "revoked", "revoking"]
+pair = ["pair", "pairs", "paired", "pairing", "pairings", "unpaired", "unpair"]
+cluster = ["cluster", "clusters", "clustered"]
+journal = ["journal", "journals", "journaled", "journaling"]
+mesh = ["mesh", "meshes"]
+peer = ["peer", "peers"]
+seat = ["seat", "seats"]
+
+[stems]
+revoke = "remove"
+revokes = "removes"
+revoked = "removed"
+revoking = "removing"
+pair = "join"
+pairs = "joins"
+paired = "joined"
+pairing = "joining"
+pairings = "joins"
+unpaired = "unjoined"
+unpair = "remove"
+cluster = "pool"
+clusters = "pools"
+clustered = "pooled"
+journal = "log"
+journals = "logs"
+journaled = "logged"
+journaling = "logging"
+mesh = "replica"
+meshes = "replicas"
+peer = "member"
+peers = "members"
+seat = "session"
+seats = "sessions"
+
+[kind_stems.markdown]
+peer = "device"
+peers = "devices"
+
+[overrides]
+project_board_routes = "board_routes"
+ProjectBoardRoutes = "BoardRoutes"
+project_board_name = "board_name_for"
+project_board = "board_for"
+_project_board = "_board_for"
+peerfirst = "memberfirst"
+peerbook = "memberbook"
+peerlearn = "memberlearn"
+pairable = "joinable"
+Journals = "DeviceLogs"
+journal_merge = "device_logs_merge"
+Seat = "HarnessSession"
+TestSeat = "TestHarnessSession"
+join_cluster = "join_pool_by_passphrase"
+PairError = "JoinCodeError"
+PairingClient = "JoinCodeClient"
+PairingServer = "JoinCodeServer"
+pair_accept = "add_device"
+pair_start = "join_pool"
+pair_secure = "join_with_code"
+cmd_pair = "cmd_join_with_code"
+pairing_open = "join_code_open"
+pairing_expires_in_s = "join_code_expires_in_s"
+pairing_until_ms = "join_code_until_ms"
+pairing_step = "join_code_step"
+
+[renames]
+"src/poolhouse/workspace/journal.py" = "src/poolhouse/workspace/device_logs.py"
+"src/poolhouse/workspace/journal_merge.py" = "src/poolhouse/workspace/device_logs_merge.py"
+"tests/test_journal.py" = "tests/test_device_logs.py"
+"docs/mesh-board.md" = "docs/board-replication.md"
+"app/poolhouse-node/src/pairing.rs" = "app/poolhouse-node/src/join_code.rs"
+"src/poolhouse/fleet/onboard/pairing.py" = "src/poolhouse/fleet/onboard/join_code.py"
+"tests/test_onboard_pairing.py" = "tests/test_onboard_join_code.py"
+"tests/test_peer_pairing.py" = "tests/test_join_by_code.py"
+
+[[literal]]
+old = "test_onboard_pairing"
+new = "test_onboard_join_code"
+
+[[literal]]
+old = "test_peer_pairing"
+new = "test_join_by_code"
+
+[[literal]]
+old = "SPAKE2 (`pairing`)"
+new = "SPAKE2 (`join_code`)"
+
+[[literal]]
+old = "poolhouse-pair/v1"
+new = "poolhouse-join-code/v1"
+
+[[literal]]
+old = "crate::pairing"
+new = "crate::join_code"
+
+[[literal]]
+old = "pub mod pairing;"
+new = "pub mod join_code;"
+
+[[literal]]
+old = "onboard.pairing"
+new = "onboard.join_code"
+
+[[literal]]
+old = "onboard/pairing.py"
+new = "onboard/join_code.py"
+
+[[literal]]
+old = "from .pairing import"
+new = "from .join_code import"
+
+[[literal]]
+old = "pairing.rs"
+new = "join_code.rs"
+
+[[literal]]
+old = "pairing.py"
+new = "join_code.py"
+
+[[literal]]
+old = '"pairing"'
+new = '"join-code"'
+
+[[literal]]
+old = "'pairing'"
+new = "'join-code'"
+
+[[literal]]
+old = "(`pairing`"
+new = "(`join-code`"
+
+[[literal]]
+old = "(``pairing``"
+new = "(``join-code``"
+
+[[literal]]
+old = "(`pairing` or"
+new = "(`join-code` or"
+
+[[literal]]
+old = "`host_approval`, `pairing`,"
+new = "`host_approval`, `join-code`,"
+
+[[literal]]
+old = "fleet-pairing"
+new = "fleet-join-code"
+
+[[literal]]
+old = '"pair"'
+new = '"join-with-code"'
+paths = ["src/poolhouse/fleet/onboard/cli.py", "src/poolhouse/node_join.py", "tests/test_onboard_cli.py", "tests/test_peer_pairing.py", "tests/test_device_setup.py"]
+
+[[literal]]
+old = '"listen"'
+new = '"add-device"'
+paths = ["src/poolhouse/fleet/onboard/cli.py", "tests/test_onboard_cli.py", "tests/test_peer_pairing.py"]
+
+[[literal]]
+old = '"revoke"'
+new = '"remove"'
+paths = ["src/poolhouse/fleet/onboard/cli.py", "tests/test_onboard_cli.py", "tests/test_peer_pairing.py"]
+
+[[literal]]
+old = 'poolhouse cluster pair'
+new = 'poolhouse pool join-with-code'
+
+[[literal]]
+old = 'poolhouse-cluster pair'
+new = 'poolhouse-pool join-with-code'
+
+[[literal]]
+old = 'poolhouse-pool pair'
+new = 'poolhouse-pool join-with-code'
+
+[[literal]]
+old = 'poolhouse cluster listen'
+new = 'poolhouse pool add-device'
+
+[[literal]]
+old = 'poolhouse-cluster listen'
+new = 'poolhouse-pool add-device'
+
+[[literal]]
+old = 'node_join pair'
+new = 'node_join join-with-code'
+
+[[literal]]
+old = '`pair --mine`'
+new = '`join-with-code --mine`'
+
+[[literal]]
+old = '(`accept` and `pair`)'
+new = '(`accept` and `join-with-code`)'
+
+[[literal]]
+old = '`pair` says so'
+new = '`join-with-code` says so'
+
+[[literal]]
+old = 'fuzz_pair'
+new = 'fuzz_join_code'
+
+[[literal]]
+old = 'pair --host'
+new = 'join-with-code --host'
+
+[[literal]]
+old = 'dev-cluster'
+new = 'automatic-pool'
+
+[[literal]]
+old = 'Prod clusters require'
+new = 'Pools in prod mode require'
+
+[[literal]]
+old = 'Dev clusters'
+new = 'pools'
+
+[[literal]]
+old = 'Dev cluster'
+new = 'pool'
+
+[[literal]]
+old = 'Dev pool'
+new = 'pool'
+
+[[literal]]
+old = 'workspace.journal import'
+new = 'workspace.device_logs import'
+
+[[literal]]
+old = 'workspace import journal'
+new = 'workspace import device_logs'
+
+[[literal]]
+old = 'journal.py'
+new = 'device_logs.py'
+
+[[literal]]
+old = 'test_journal.py'
+new = 'test_device_logs.py'
+
+[[literal]]
+old = 'mesh-board.md'
+new = 'board-replication.md'
+
+[[literal]]
+old = 'mesh-board'
+new = 'board-replication'
+
+[[literal]]
+old = 'poolhouse-peers members'
+new = 'poolhouse-members roster'
+
+[[literal]]
+old = 'poolhouse peers members'
+new = 'poolhouse members roster'
+
+[[literal]]
+old = 'poolhouse-pool peers'
+new = 'poolhouse-pool model-sources'
+
+[[literal]]
+old = 'poolhouse pool peers'
+new = 'poolhouse pool model-sources'
+
+[[literal]]
+old = 'poolhouse cluster peers'
+new = 'poolhouse pool model-sources'
+
+[[literal]]
+old = 'poolhouse-cluster peers'
+new = 'poolhouse-pool model-sources'
+
+[[literal]]
+old = 'peer-to-peer'
+new = 'device-to-device'
+
+[[literal]]
+old = 'Peer-to-peer'
+new = 'Device-to-device'
+
+[[literal]]
+old = 'peer-first'
+new = 'member-first'
+
+[[literal]]
+old = 'Peer-first'
+new = 'Member-first'
+
+[[literal]]
+old = '"peers"'
+new = '"model-sources"'
+paths = ["src/poolhouse/fleet/onboard/cli.py", "tests/test_onboard_cli.py", "tests/test_peer_pairing.py", "tests/test_peer_first.py", "tests/test_onboard_sharing.py"]
+
+[[phrase]]
+family = "board-kind"
+pattern = '\bproject boards\b'
+new = 'boards'
+
+[[phrase]]
+family = "board-kind"
+pattern = '\bproject board\b'
+new = 'board'
+
+[[phrase]]
+family = "revoke"
+pattern = '\brevoke\b(?=[ `]{1,3}(?:(?:a|an|the|this|that|every|one|another|any|each|its|their|your|his|her|stolen|lost|compromised|old) ){0,2}(?:device|member|machine|pool|laptop)s?\b)'
+new = 'remove'
+
+[[phrase]]
+family = "revoke"
+pattern = '\brevokes\b(?=[ `]{1,3}(?:(?:a|an|the|this|that|every|one|another|any|each|its|their|your|his|her|stolen|lost|compromised|old) ){0,2}(?:device|member|machine|pool|laptop)s?\b)'
+new = 'removes'
+
+[[phrase]]
+family = "revoke"
+pattern = '\brevoked\b(?=[ `]{1,3}(?:(?:a|an|the|this|that|every|one|another|any|each|its|their|your|his|her|stolen|lost|compromised|old) ){0,2}(?:device|member|machine|pool|laptop)s?\b)'
+new = 'removed'
+
+[[phrase]]
+family = "revoke"
+pattern = '\brevoking\b(?=[ `]{1,3}(?:(?:a|an|the|this|that|every|one|another|any|each|its|their|your|his|her|stolen|lost|compromised|old) ){0,2}(?:device|member|machine|pool|laptop)s?\b)'
+new = 'removing'
+
+[[phrase]]
+family = "revoke"
+pattern = '\b((?:device|member|machine)s? (?:is |was |are |were |gets? |got )?)revoked\b'
+new = '\1removed'
+
+[[phrase]]
+family = "pair"
+pattern = '\bpaired[ -](?:device|machine|peer|member|host|box)(s?)\b'
+new = 'member\1'
+
+[[phrase]]
+family = "pair"
+pattern = '\ban unpaired\b'
+new = 'a non-member'
+kinds = ["markdown", "html"]
+
+[[phrase]]
+family = "pair"
+pattern = '\bunpaired\b'
+new = 'non-member'
+kinds = ["markdown", "html"]
+
+[[phrase]]
+family = "pair"
+pattern = '\bpairing (codes?)\b'
+new = 'join \1'
+
+[[phrase]]
+family = "pair"
+pattern = '\b(a|the|another|each|every|one|this|that|first|whole|new) pairing\b'
+new = '\1 join'
+
+[[phrase]]
+family = "pair"
+pattern = '\bpair with\b'
+new = 'join'
+
+[[phrase]]
+family = "pair"
+pattern = '\bpairs with\b'
+new = 'joins'
+
+[[phrase]]
+family = "pair"
+pattern = '\bto pair\b'
+new = 'to join'
+
+# Phrases the scan refuses although each word alone is ordinary. `family` is the name an allowlist entry uses.
+
+[[gate]]
+family = "board-kind"
+pattern = '\bhost(?:ed)?[ _-]boards?\b'
+say = "a board is the same on every member that holds it; there is no host board"
+
+[[gate]]
+family = "board-kind"
+pattern = '\bremote[ _-]boards?\b'
+say = "a board is the same on every member that holds it; there is no remote board"
+
+[[gate]]
+family = "board-kind"
+pattern = '(?:\bproject[ _-]boards?\b|ProjectBoard)'
+say = "every board belongs to a project; say board"
+
+[[gate]]
+family = "home-pool"
+pattern = '\b(?:home|dev|prod|development|production)[ _-](?:pool|cluster)s?\b'
+say = "there is one kind of pool; dev and prod are modes of admission, not kinds of pool"
+
+[[gate]]
+family = "revoke"
+pattern = '\brevok(?:e|es|ed|ing)\b[ \w`]{0,12}\b(?:device|member|machine|pool|laptop)s?\b'
+say = "remove a member; revoke only a key, token or grant"
+
+[[gate]]
+family = "revoke"
+pattern = '\b(?:device|member|machine)s? (?:is |was |are |were |gets? |got )?revoked\b'
+say = "remove a member; revoke only a key, token or grant"

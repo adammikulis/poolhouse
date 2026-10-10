@@ -102,10 +102,10 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
 
     worker_id = kit.ws.auth(worker).id
     worker_label = metadata(kit.ws.registry, worker_id)['display_name']
-    peer = sidebar.locator(f'button[title="{worker_id}"]')
-    expect(peer).to_contain_text(worker_label)
-    expect(peer).to_have_attribute('title', worker_id)
-    peer.click()
+    member = sidebar.locator(f'button[title="{worker_id}"]')
+    expect(member).to_contain_text(worker_label)
+    expect(member).to_have_attribute('title', worker_id)
+    member.click()
     assert board.evaluate('(node) => node.target().to') == worker_id
     expect(board.locator('.msg pre')).to_contain_text('Review the experiment criteria.')
     expect(editor).to_be_in_viewport()
@@ -130,12 +130,12 @@ def test_project_selection_never_falls_back_to_local_board(chat_browser):
 
     def unavailable(route):
         seen.append(route.request.url)
-        route.fulfill(status=503, json={'error': 'Project Board identity is unavailable.'})
+        route.fulfill(status=503, json={'error': 'Board identity is unavailable.'})
 
     page.route(f'**/ui/projects/{project}/board/**', unavailable)
     page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     expect(page.get_by_label('Workspace', exact=True)).to_have_value(project)
-    expect(page.locator('#conversation-channels')).to_contain_text('Project Board identity is unavailable')
+    expect(page.locator('#conversation-channels')).to_contain_text('Board identity is unavailable')
     assert seen and all(f'/ui/projects/{project}/board/' in url for url in seen)
     assert page.locator('chat-view ml-board').get_attribute('endpoint') == f'/ui/projects/{project}/board'
     assert page.get_by_label('Workspace', exact=True).input_value() != 'local'
@@ -252,7 +252,7 @@ def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, m
     owner = tokens.read_file(tokens.directory(ws.base) / tokens.OWNER_FILE)
     worker = ws.mint(owner, 'team-demo-helper')
     ws.send(worker, '#general', 'note', 'The team experiment is ready.')
-    monkeypatch.setattr(project_client, 'peers', lambda ui: [])
+    monkeypatch.setattr(project_client, 'members', lambda ui: [])
     monkeypatch.setattr(project_source, 'build', lambda *args: pytest.fail('Board chooser published source'))
     served, page = chat_browser
     served.ui.projects, served.ui.workspaces = registry, host

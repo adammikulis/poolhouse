@@ -1,11 +1,11 @@
-"""Local setup joins a live cluster from a person-selected recovery file."""
+"""Local setup joins a live pool from a person-selected recovery file."""
 
 from __future__ import annotations
 
 import contextlib
 
 from . import recovery
-from .discovery import DiscoveryError, adopt, discover, in_cluster, require_name
+from .discovery import DiscoveryError, adopt, discover, in_pool, require_name
 
 
 class SetupRecoveryRoutes:
@@ -13,10 +13,10 @@ class SetupRecoveryRoutes:
         if self.path != "/ui/setup/recovery" or self.method != "POST":
             return super().public_route()
         ui = self.ui
-        if in_cluster(ui.cluster_key_path) and not ui.authed(self.cookie):
-            self.send(401, {"error": "sign in before joining another cluster"})
+        if in_pool(ui.pool_key_path) and not ui.authed(self.cookie):
+            self.send(401, {"error": "sign in before joining another pool"})
             return True
-        why = self._may_setup() if not in_cluster(ui.cluster_key_path) else ""
+        why = self._may_setup() if not in_pool(ui.pool_key_path) else ""
         if why:
             self.send(403, {"error": why})
             return True
@@ -26,14 +26,14 @@ class SetupRecoveryRoutes:
                 raise DiscoveryError("recovery upload must be at most 12000 bytes")
             req = self.body()
             if not isinstance(req, dict) or set(req) != {"group", "recovery"}:
-                raise DiscoveryError("select a cluster and its recovery file")
+                raise DiscoveryError("select a pool and its recovery file")
             member = recovery.parse_recovery(req["recovery"])
             if member.group != require_name(req["group"]):
-                raise DiscoveryError("recovery file belongs to a different cluster")
+                raise DiscoveryError("recovery file belongs to a different pool")
             with ui.join_guard():
                 if not discover(member.key, timeout_s=1.5, port=ui.discovery_port):
-                    raise DiscoveryError("no live cluster authenticated this recovery file")
-                adopt(member, ui.cluster_key_path)
+                    raise DiscoveryError("no live pool authenticated this recovery file")
+                adopt(member, ui.pool_key_path)
         except (DiscoveryError, ValueError, OSError) as exc:
             self.send(400, {"error": str(exc)})
             return True

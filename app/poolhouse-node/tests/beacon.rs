@@ -136,14 +136,14 @@ fn a_device_with_members_answers_only_its_own_pool_and_a_secure_one_answers_nobo
     let pa = udp_port();
     let a = device_with(cfg_with(beacon(pa, &[])));
     let (member, z, y) = (device(), device(), device());
-    a.pair_secure(&member);
+    a.join_with_code(&member);
     a.set_policy("open");
     z.set_policy("open");
     y.set_policy("open");
     forge_beacon(pa, &z, "0000000000000001");
     std::thread::sleep(Duration::from_millis(500));
     assert!(!a.is_member(&z.fp()), "a device that has members does not follow a smaller pool id");
-    member.pair_secure(&z);
+    member.join_with_code(&z);
     assert_eq!(z.pool(), a.pool(), "z is in a's pool through another member, which a has not heard of yet");
     forge_beacon(pa, &z, &a.pool());
     eventually("a beacon of the pool's own id from an open device to be answered", 10, || a.is_member(&z.fp()) && z.is_member(&a.fp()));

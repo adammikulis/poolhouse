@@ -111,18 +111,18 @@ def _claim(c: sessions.Claim) -> Claim:
 class Board:
     """The caller's session on one board of this device's node; made by `connect`."""
 
-    def __init__(self, seat: sessions.Session) -> None:
-        self._seat = seat
+    def __init__(self, session: sessions.Session) -> None:
+        self._session = session
 
     @property
     def name(self) -> str:
         """This session's name on the board."""
-        return self._seat.name
+        return self._session.name
 
     @property
     def id(self) -> str:
         """The board's id: the project's."""
-        return self._seat.board
+        return self._session.board
 
     def send(self, to: str, body: str, *, kind: str = "note", subject: str = "", reply_to: str = "") -> str:
         """Write a message to one session (``to`` is its name) or to ``#general``; the new message's ref.
@@ -131,29 +131,29 @@ class Board:
         """
         if kind not in KINDS:
             raise ValueError(f"kind is one of {', '.join(KINDS)}")
-        sent = self._seat.post(to, kind, body, subject=subject, reply_id=reply_to)
+        sent = self._session.post(to, kind, body, subject=subject, reply_id=reply_to)
         return str(sent["id"]).rsplit(":", 1)[-1]
 
     def announce(self, kind: str, text: str) -> str:
         """Write a one-line announcement every session sees: kind is joined, milestone, done or blocked."""
         if kind not in ANNOUNCE_KINDS or "\n" in text:
             raise ValueError(f"an announcement is one line of kind {', '.join(ANNOUNCE_KINDS)}")
-        return str(self._seat.post(ANNOUNCE, kind, text, subject=kind)["id"]).rsplit(":", 1)[-1]
+        return str(self._session.post(ANNOUNCE, kind, text, subject=kind)["id"]).rsplit(":", 1)[-1]
 
     def inbox(self, *, ack: bool = False) -> list[Message]:
         """Messages to this session not yet read; with ``ack`` they are marked read."""
-        page = self._seat.read(self._seat.cursor("inbox"), inbox=True)
+        page = self._session.read(self._session.cursor("inbox"), inbox=True)
         if ack and page.entries:
-            self._seat.keep("inbox", page.cursor)
+            self._session.keep("inbox", page.cursor)
         return [_message(e) for e in page.entries]
 
     def dm(self, other: str, *, limit: int = 50) -> list[Message]:
         """The messages between this session and ``other``, oldest first."""
-        return [_message(e) for e in self._seat.read(conversation=other, limit=limit).entries]
+        return [_message(e) for e in self._session.read(conversation=other, limit=limit).entries]
 
     def thread(self, ref: str, *, limit: int = 500) -> list[Message]:
         """The message ``ref`` and every reply to it, directly or through another reply."""
-        every = self._seat.read(kind="message", limit=limit).entries
+        every = self._session.read(kind="message", limit=limit).entries
         keep = {ref}
         out = []
         for e in every:
@@ -174,49 +174,49 @@ class Board:
     def add_note(self, kind: str, title: str, body: str, *, tags: tuple[str, ...] = ()) -> str:
         """Write a note; its ref."""
         extra = {"tags": list(tags)} if tags else {}
-        return str(self._seat.note_add(kind, title, body, **extra).get("id", ""))
+        return str(self._session.note_add(kind, title, body, **extra).get("id", ""))
 
     def notes(self, query: str = "", *, kind: str = "", limit: int = 10) -> list[Note]:
         """Notes matching ``query`` (all when empty), newest first."""
         return [Note(n.ref, n.kind, n.title, n.body, n.author, tuple(n.tags), n.trust, n.stale)
-                for n in self._seat.notes(query=query, kind=kind, limit=limit)]
+                for n in self._session.notes(query=query, kind=kind, limit=limit)]
 
     def claim(self, kind: str, key: str, *, ttl_s: int = 0) -> Claim:
         """Take a claim on a branch, worktree, area, port or server; `poolhouse.Conflict` when another session holds it.
 
         The claim lapses after ``ttl_s`` seconds (the node's default when 0) unless renewed with `renew`.
         """
-        return _claim(self._seat.claim(kind, key, ttl_s=ttl_s))
+        return _claim(self._session.claim(kind, key, ttl_s=ttl_s))
 
     def release(self, kind: str, key: str) -> bool:
         """Give a claim up; True when this session held it."""
-        return self._seat.release(kind, key)
+        return self._session.release(kind, key)
 
     def claims(self, kind: str = "") -> list[Claim]:
         """Every claim on the board (of ``kind`` when given), with its owner."""
-        return [_claim(c) for c in self._seat.claims(kind)]
+        return [_claim(c) for c in self._session.claims(kind)]
 
     def renew(self, ttl_s: int) -> list[Claim]:
         """Extend every claim this session holds by ``ttl_s`` seconds."""
-        return [_claim(c) for c in self._seat.renew_claims(ttl_s)]
+        return [_claim(c) for c in self._session.renew_claims(ttl_s)]
 
     def agents(self, *, retired: bool = False) -> list[Agent]:
         """The sessions registered on the board."""
-        return [Agent(a.name, a.parent, a.model, a.harness, a.retired) for a in self._seat.agents(retired)]
+        return [Agent(a.name, a.parent, a.model, a.harness, a.retired) for a in self._session.agents(retired)]
 
     def tasks(self, state: str = "") -> list[Task]:
         """The tasks of the board, newest first; only those in ``state`` when given."""
-        found = Tasks(self._seat).list()["tasks"]
+        found = Tasks(self._session).list()["tasks"]
         return [_task(t) for t in found if not state or t["state"] == state]
 
     def task(self, ref: str) -> Task:
         """One task by its ref."""
-        return _task(Tasks(self._seat).get(ref))
+        return _task(Tasks(self._session).get(ref))
 
     def add_task(self, title: str, acceptance: tuple[str, ...] | list[str], *, description: str = "", source_key: str = "") -> Task:
         """Put a task on the board; the same ``source_key`` from the same session names the same task."""
         spec = {"title": title, "acceptance": list(acceptance), "description": description, "source_key": source_key}
-        return _task(Tasks(self._seat).create(spec))
+        return _task(Tasks(self._session).create(spec))
 
     def review_task(self, ref: str, accepted: bool, reason: str, checks: dict[str, bool]) -> Task:
         """Decide a submitted task as an independent session: ``checks`` names each check you ran and whether it passed.
@@ -224,24 +224,24 @@ class Board:
         Accepting needs every acceptance criterion among the passing checks; the worker never reviews its own task.
         """
         listed = [{"name": name, "passed": passed} for name, passed in checks.items()]
-        Tasks(self._seat).review(ref, {"accepted": accepted, "reason": reason, "checks": listed})
+        Tasks(self._session).review(ref, {"accepted": accepted, "reason": reason, "checks": listed})
         return self.task(ref)
 
     def link(self, to: str, *, channels: tuple[str, ...] = (), mode: str = "ro") -> dict[str, object]:
         """Let the sessions of board ``to`` use ``channels`` of this one (all when none) read-only (``ro``) or read-write."""
-        return dict(self._seat.call("link", to=to, channels=list(channels), mode=mode))
+        return dict(self._session.call("link", to=to, channels=list(channels), mode=mode))
 
     def links(self) -> list[dict[str, object]]:
         """The links this board shares or uses."""
-        return list(self._seat.call("links"))
+        return list(self._session.call("links"))
 
     def unlink(self, link_id: str) -> None:
         """Revoke a link at once."""
-        self._seat.call("unlink", id=link_id)
+        self._session.call("unlink", id=link_id)
 
     def projects(self) -> list[dict[str, object]]:
         """The projects this device's node knows (each project is a board)."""
-        return list(self._seat.call("project_list"))
+        return list(self._session.call("project_list"))
 
 
 def connect(*, agent: str = "", token_file: str = "", board: str = "", cwd: str | Path | None = None) -> Board:

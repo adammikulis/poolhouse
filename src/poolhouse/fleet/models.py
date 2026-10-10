@@ -227,7 +227,7 @@ class Models:
         return [{**m.public(), **model_components.inventory(m.path)} for m in self.all()]
 
     def beacon(self, limit: int = 24) -> dict[str, Any]:
-        """The models for the beacon, and how many this machine holds. A peer reads the
+        """The models for the beacon, and how many this machine holds. A member reads the
         ones past ``limit`` from ``/models``."""
         held = self.all()
         return {"models": [m.public() for m in held[:limit]],
@@ -237,7 +237,7 @@ class Models:
     # -- getting one ----------------------------------------------------
     def where(self, name: str, key: bytes, *, timeout_s: float = 2.0
               ) -> list[tuple[str, str, int]]:
-        """Machines on this network holding a model. (peer, base_url, size)."""
+        """Machines on this network holding a model. (member, base_url, size)."""
         from .discovery import discover
 
         needle = name.strip().lower()
@@ -265,11 +265,11 @@ class Models:
                 f"{name} is not on this machine, and automatic downloading is off")
 
         if key is not None and policy != "internet":
-            for peer_name, base_url, _size in self.where(name, key):
+            for member_name, base_url, _size in self.where(name, key):
                 if on_note:
-                    on_note(f"Copying {name} from {peer_name}")
+                    on_note(f"Copying {name} from {member_name}")
                 try:
-                    return self._from_peer(name, base_url, key, on_progress)
+                    return self._from_member(name, base_url, key, on_progress)
                 except (ModelError, OSError):
                     continue
 
@@ -282,13 +282,13 @@ class Models:
             on_note(f"Downloading {name}")
         return self._from_internet(name, source, on_progress)
 
-    def _from_peer(self, name: str, base_url: str, key: bytes,
+    def _from_member(self, name: str, base_url: str, key: bytes,
                    on_progress: Any) -> Model:
         from .discovery import derive_token
-        from .remote import Peer
+        from .remote import Member
 
-        peer = Peer(base_url, derive_token(key))
-        holds = peer.models()
+        member = Member(base_url, derive_token(key))
+        holds = member.models()
         holds += [component for row in list(holds) for component in row.get("components", [])]
         wanted = name.strip().lower()
         match = next((m for m in holds
@@ -305,7 +305,7 @@ class Models:
         if Path(fname).suffix.lower() not in hub.WEIGHT_SUFFIXES:
             raise ModelError(f"{base_url} offered {fname!r}, which is not a weights file")
         target = self.store / fname
-        peer.pull(str(match["name"]), target, on_progress=on_progress,
+        member.pull(str(match["name"]), target, on_progress=on_progress,
                   route="/models/")
         _require_weights(target, fname)
         stat = target.stat()
@@ -408,7 +408,7 @@ class Models:
         policy = self.sources()
         if policy not in ("internet", "lan", "both"):
             raise ModelError("Choose download sources before getting an MTP head.")
-        if policy != "internet" and key is not None and self._draft_from_peers(model, beside, key, on_progress):
+        if policy != "internet" and key is not None and self._draft_from_members(model, beside, key, on_progress):
             return beside
         if policy == "lan":
             raise ModelError("No machine on your LAN has this MTP head; Internet downloads are disabled.")
@@ -417,17 +417,17 @@ class Models:
             promote(got.path, beside)
         return beside
 
-    def _draft_from_peers(self, model: Model, beside: Path, key: bytes,
+    def _draft_from_members(self, model: Model, beside: Path, key: bytes,
                           on_progress: Any) -> bool:
         """Ask the machines holding ``model`` for the draft that sits beside it."""
         from .discovery import derive_token
-        from .remote import Peer, PeerError
+        from .remote import Member, MemberError
 
         for _name, base_url, _size in self.where(model.name, key):
             try:
-                Peer(base_url, derive_token(key)).pull(
+                Member(base_url, derive_token(key)).pull(
                     beside.name, beside, on_progress=on_progress, route="/models/")
-            except (PeerError, OSError):
+            except (MemberError, OSError):
                 continue
             return True
         return False

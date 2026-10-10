@@ -22,7 +22,7 @@ pub struct Tables {
     pub keys: BTreeMap<String, Pin>,
     /// Origins whose own copy was refused, with the reason.
     pub damaged: BTreeMap<String, String>,
-    /// For each paired device fingerprint, how much of this device's log it holds.
+    /// For each member fingerprint, how much of this device's log it holds.
     pub acks: BTreeMap<String, u64>,
     /// Device fingerprint to the origin it writes.
     pub peers: BTreeMap<String, String>,

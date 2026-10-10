@@ -1,12 +1,12 @@
-"""Files from peers: served in ranges, fetched in chunks from several machines at once.
+"""Files from members: served in ranges, fetched in chunks from several machines at once.
 
-A peer is a source of bytes and nothing more. Size, digest and chunking come from the
+A member is a source of bytes and nothing more. Size, digest and chunking come from the
 manifest that verified under the pinned key; a chunk is kept only if it hashes to the digest
-listed for it, a peer that sends a wrong one is dropped, and the finished file is hashed whole
+listed for it, a member that sends a wrong one is dropped, and the finished file is hashed whole
 before it is moved to staging (not installed: the caller's scan and quarantine step,
 ``on_staged``, decides). Resumable: chunks verified earlier are hashed again from disk before
 they are trusted. The whole file plus a reserve must fit on disk before a byte is asked for.
-Who may have which file is `sharing.py`: ``never`` files are not asked of a peer, ``owner`` files
+Who may have which file is `sharing.py`: ``never`` files are not asked of a member, ``owner`` files
 go only to the owner's own devices with the licence acceptance on record.
 """
 
@@ -42,8 +42,20 @@ from .sharing import NEVER, OPEN, Access, Licences, decide
 from .throughput import Limiter, Rolling
 from .web import Call, Listener, Reply, json_reply
 
-__all__ = ["Cancelled", "Downloader", "NotShareable", "PeerSource", "Settings", "Share", "ShareServer",
-           "TooSlow", "TransferError", "Withheld", "fetch_manifest", "mac_gate"]
+__all__ = [
+    "Cancelled",
+    "Downloader",
+    "MemberSource",
+    "NotShareable",
+    "Settings",
+    "Share",
+    "ShareServer",
+    "TooSlow",
+    "TransferError",
+    "Withheld",
+    "fetch_manifest",
+    "mac_gate",
+]
 
 API = "/onboard/v1"
 RESERVE = 1 << 30
@@ -55,7 +67,7 @@ class TransferError(RuntimeError):
 
 
 class NotShareable(TransferError):
-    """The file may not be passed between peers; ``source`` is where its owner says to get it."""
+    """The file may not be passed between members; ``source`` is where its owner says to get it."""
 
     def __init__(self, name: str, source: str) -> None:
         super().__init__(f"{name} may not be shared between machines" +
@@ -68,11 +80,11 @@ class Cancelled(TransferError):
 
 
 class TooSlow(TransferError):
-    """The peers together stayed under the floor for a whole window."""
+    """The members together stayed under the floor for a whole window."""
 
 
 class Withheld(TransferError):
-    """A peer refused the file under the owner's sharing rules (not a lie: it is not struck)."""
+    """A member refused the file under the owner's sharing rules (not a lie: it is not struck)."""
 
 
 # -- serving -----------------------------------------------------------------------------
@@ -95,13 +107,13 @@ class Share:
     roots: tuple[Path, ...] = ()
 
 
-def mac_gate(cluster_secret: str, devices: Callable[[], Iterable[Device]] = lambda: (),
+def mac_gate(pool_secret: str, devices: Callable[[], Iterable[Device]] = lambda: (),
              ) -> Callable[[str, str, Any, str], Access | None]:
-    """The fleet's own authentication as the gate a `ShareServer` asks, with each paired
-    device able to sign with a key of its own: a request signed by the cluster secret alone is
+    """The fleet's own authentication as the gate a `ShareServer` asks, with each joined
+    device able to sign with a key of its own: a request signed by the pool secret alone is
     a member with no device identity; one signed by a device's key says which device it is."""
     def secrets_now() -> list[str]:
-        return [cluster_secret, *(macauth.derive(base64.urlsafe_b64decode(d.secret))
+        return [pool_secret, *(macauth.derive(base64.urlsafe_b64decode(d.secret))
                                   for d in devices() if d.secret and d.status == "active")]
 
     auth = macauth.Authenticator(secrets_now)
@@ -238,7 +250,7 @@ class ShareServer:
 
 # -- fetching ----------------------------------------------------------------------------
 @dataclass(slots=True)
-class PeerSource:
+class MemberSource:
     """A machine to fetch from: ``base_url`` (``https://host:port``), the MAC ``secret`` its
     requests are signed with (empty for a source that takes none), and the TLS ``context``
     that trusts that machine's one certificate."""
@@ -252,16 +264,16 @@ class PeerSource:
     """Answers that were wrong, as against merely missing."""
     banned: bool = field(default=False, repr=False)
     limit_bps: float = 0.0
-    """The most bytes a second to ask of this peer (0: no limit)."""
+    """The most bytes a second to ask of this member (0: no limit)."""
     streams: int = 0
-    """The most requests in flight at once to this peer (0: the transfer's setting)."""
+    """The most requests in flight at once to this member (0: the transfer's setting)."""
     limiter: Limiter | None = field(default=None, repr=False, init=False)
     slots: threading.Semaphore | None = field(default=None, repr=False, init=False)
     accepted: dict[str, str] = field(default_factory=dict, repr=False, init=False)
-    """Who accepted the licence of the last gated file this peer served, and when (what the
-    peer said; it is a record of what was relied on, not a proof)."""
+    """Who accepted the licence of the last gated file this member served, and when (what the
+    member said; it is a record of what was relied on, not a proof)."""
     moved: list[float] = field(default_factory=lambda: [0.0, 0.0], repr=False, init=False)
-    """``[bytes, seconds]`` this peer has delivered, for the rate kept in the peer book."""
+    """``[bytes, seconds]`` this member has delivered, for the rate kept in the member book."""
 
     def __post_init__(self) -> None:
         if self.limit_bps > 0:
@@ -270,11 +282,11 @@ class PeerSource:
             self.slots = threading.Semaphore(self.streams)
         parts = urllib.parse.urlsplit(self.base_url)
         if parts.scheme == "https" and self.context is None:
-            raise TransferError("a peer is reached over TLS pinned to its certificate")
+            raise TransferError("a member is reached over TLS pinned to its certificate")
         if parts.scheme not in ("https", "http"):
-            raise TransferError(f"a peer is reached over https, not {parts.scheme or 'nothing'}")
+            raise TransferError(f"a member is reached over https, not {parts.scheme or 'nothing'}")
         if parts.scheme == "http" and (parts.hostname or "") not in ("127.0.0.1", "::1", "localhost"):
-            raise TransferError("plain http is for a peer on this machine only")
+            raise TransferError("plain http is for a member on this machine only")
 
 
 def _plain(text: str) -> str:
@@ -294,7 +306,7 @@ class Settings:
     """Bytes that must stay free beyond the file."""
     workers: int = 4
     strikes: int = 2
-    """Wrong answers from one peer before it is dropped."""
+    """Wrong answers from one member before it is dropped."""
     timeout: float = 20.0
     free: Callable[[Path], int] = _disk_free
     bus: Bus = BUS
@@ -307,23 +319,23 @@ class Settings:
     ``window_s`` ends it with `TooSlow`, so the caller can go elsewhere."""
     window_s: float = 10.0
     streams: int = 2
-    """Requests in flight at once to one peer, unless the peer has its own limit."""
+    """Requests in flight at once to one member, unless the member has its own limit."""
 
 
-def fetch_manifest(peer: PeerSource, timeout: float = 20.0) -> bytes:
-    """The signed manifest a peer serves, as bytes; the caller verifies it."""
-    url = f"{peer.base_url}{API}/manifest"
+def fetch_manifest(member: MemberSource, timeout: float = 20.0) -> bytes:
+    """The signed manifest a member serves, as bytes; the caller verifies it."""
+    url = f"{member.base_url}{API}/manifest"
     parts = urllib.parse.urlsplit(url)
     require_local_url(url)
-    headers = macauth.sign(peer.secret, "GET", url, None) if peer.secret else {}
+    headers = macauth.sign(member.secret, "GET", url, None) if member.secret else {}
     conn = http.client.HTTPSConnection(parts.hostname or "", parts.port, timeout=timeout,
-                                       context=peer.context) if parts.scheme == "https" \
+                                       context=member.context) if parts.scheme == "https" \
         else http.client.HTTPConnection(parts.hostname or "", parts.port, timeout=timeout)
     try:
         conn.request("GET", parts.path, headers=headers)
         response = conn.getresponse()
         if response.status != 200:
-            raise TransferError(f"{peer.name or peer.base_url} answered {response.status} "
+            raise TransferError(f"{member.name or member.base_url} answered {response.status} "
                                 "for the manifest")
         return response.read(8 * 1024 * 1024 + 1)
     finally:
@@ -332,10 +344,10 @@ def fetch_manifest(peer: PeerSource, timeout: float = 20.0) -> bytes:
 
 
 class Downloader:
-    def __init__(self, manifest: Manifest, peers: list[PeerSource], staging: Path, *,
+    def __init__(self, manifest: Manifest, members: list[MemberSource], staging: Path, *,
                  settings: Settings | None = None,
                  on_staged: Callable[[Path, Entry], None] | None = None) -> None:
-        self.manifest, self.peers, self.staging = manifest, list(peers), Path(staging)
+        self.manifest, self.members, self.staging = manifest, list(members), Path(staging)
         self.cfg = settings or Settings()
         self.bus, self.on_staged = self.cfg.bus, on_staged
         self._lock = threading.Lock()
@@ -346,8 +358,8 @@ class Downloader:
         entry = self.manifest.entry(safe_filename(name))
         if entry.sharing == NEVER:
             raise NotShareable(entry.name, entry.source)
-        if not self.peers:
-            raise TransferError("no peer to fetch from")
+        if not self.members:
+            raise TransferError("no member to fetch from")
         self.staging.mkdir(parents=True, exist_ok=True, mode=0o700)
         part, state = self.staging / f"{entry.name}.part", self.staging / f"{entry.name}.part.json"
         done = self._resume(entry, part, state)
@@ -408,7 +420,7 @@ class Downloader:
                 except queue.Empty:
                     return
                 try:
-                    data, peer = self._chunk(entry, index)
+                    data, member = self._chunk(entry, index)
                 except TransferError as exc:
                     failure.append(exc)
                     return
@@ -421,7 +433,7 @@ class Downloader:
                     window.add(len(data))
                     if self.cfg.progress is not None:
                         self.cfg.progress(min(got[0], entry.size))
-                    who = peer.name or peer.base_url
+                    who = member.name or member.base_url
                     self.fetched_from[who] = self.fetched_from.get(who, 0) + len(data)
                     if len(done) % 16 == 0:
                         self._remember(entry, state, done)
@@ -463,76 +475,76 @@ class Downloader:
         return good
 
     # -- one chunk --
-    def _chunk(self, entry: Entry, index: int) -> tuple[bytes, PeerSource]:
+    def _chunk(self, entry: Entry, index: int) -> tuple[bytes, MemberSource]:
         start = index * entry.chunk_size
         want = min(entry.chunk_size, entry.size - start)
-        order = self.peers[index % len(self.peers):] + self.peers[:index % len(self.peers)]
+        order = self.members[index % len(self.members):] + self.members[:index % len(self.members)]
         withheld = ""
-        for peer in order:
-            if peer.banned:
+        for member in order:
+            if member.banned:
                 continue
             try:
-                data = self._get(peer, entry, start, want)
+                data = self._get(member, entry, start, want)
             except (OSError, http.client.HTTPException, ssl.SSLError) as exc:
-                self._strike(peer, entry, f"unreachable: {type(exc).__name__}", hard=False)
+                self._strike(member, entry, f"unreachable: {type(exc).__name__}", hard=False)
                 continue
             except Withheld as exc:
                 withheld = str(exc)
                 continue
             except TransferError as exc:
-                self._strike(peer, entry, str(exc), hard=True)
+                self._strike(member, entry, str(exc), hard=True)
                 continue
             if hashlib.sha256(data).hexdigest() != entry.chunks[index]:
                 self.bus.emit("onboard.transfer.bad_chunk", "critical", "",
-                              file=entry.name, chunk=index, peer=peer.name or peer.base_url)
-                self._strike(peer, entry, "sent a chunk that fails its digest", hard=True)
+                              file=entry.name, chunk=index, member=member.name or member.base_url)
+                self._strike(member, entry, "sent a chunk that fails its digest", hard=True)
                 continue
-            return data, peer
+            return data, member
         if withheld:
             raise Withheld(f"{entry.name}: {withheld}")
-        raise TransferError(f"{entry.name}: no peer could supply chunk {index}")
+        raise TransferError(f"{entry.name}: no member could supply chunk {index}")
 
-    def _strike(self, peer: PeerSource, entry: Entry, why: str, *, hard: bool) -> None:
+    def _strike(self, member: MemberSource, entry: Entry, why: str, *, hard: bool) -> None:
         with self._lock:
-            peer.strikes += 1
+            member.strikes += 1
             if hard:
-                peer.lies += 1
-            if (peer.lies >= self.cfg.strikes or peer.strikes >= 3 * self.cfg.strikes) \
-                    and not peer.banned:
-                peer.banned = True
-                self.bus.emit("onboard.transfer.peer_dropped", "warning", "",
-                              peer=peer.name or peer.base_url, file=entry.name, reason=why)
+                member.lies += 1
+            if (member.lies >= self.cfg.strikes or member.strikes >= 3 * self.cfg.strikes) \
+                    and not member.banned:
+                member.banned = True
+                self.bus.emit("onboard.transfer.member_dropped", "warning", "",
+                              member=member.name or member.base_url, file=entry.name, reason=why)
 
-    def _get(self, peer: PeerSource, entry: Entry, start: int, want: int) -> bytes:
-        """One ranged request, within the peer's stream and bandwidth limits; what it delivered
-        and how long it took is added to ``peer.moved``."""
-        if peer.slots is None:
+    def _get(self, member: MemberSource, entry: Entry, start: int, want: int) -> bytes:
+        """One ranged request, within the member's stream and bandwidth limits; what it delivered
+        and how long it took is added to ``member.moved``."""
+        if member.slots is None:
             with self._lock:
-                if peer.slots is None:
-                    peer.slots = threading.Semaphore(max(1, self.cfg.streams))
-        with peer.slots:
-            if peer.limiter is not None:
-                peer.limiter.wait(want, self._stopped)
+                if member.slots is None:
+                    member.slots = threading.Semaphore(max(1, self.cfg.streams))
+        with member.slots:
+            if member.limiter is not None:
+                member.limiter.wait(want, self._stopped)
             began = time.monotonic()
-            data = self._request(peer, entry, start, want)
+            data = self._request(member, entry, start, want)
             with self._lock:
-                peer.moved[0] += len(data)
-                peer.moved[1] += time.monotonic() - began
+                member.moved[0] += len(data)
+                member.moved[1] += time.monotonic() - began
             return data
 
     def _stopped(self) -> bool:
         return self.cfg.cancel is not None and self.cfg.cancel()
 
-    def _request(self, peer: PeerSource, entry: Entry, start: int, want: int) -> bytes:
-        url = f"{peer.base_url}{API}/files/{urllib.parse.quote(entry.name)}"
+    def _request(self, member: MemberSource, entry: Entry, start: int, want: int) -> bytes:
+        url = f"{member.base_url}{API}/files/{urllib.parse.quote(entry.name)}"
         parts = urllib.parse.urlsplit(url)
         require_local_url(url)
         headers = {"Range": f"bytes={start}-{start + want - 1}"}
-        if peer.secret:
-            headers.update(macauth.sign(peer.secret, "GET", url, None))
+        if member.secret:
+            headers.update(macauth.sign(member.secret, "GET", url, None))
         if parts.scheme == "https":
             conn: http.client.HTTPConnection = http.client.HTTPSConnection(
-                parts.hostname or "", parts.port, timeout=self.cfg.timeout, context=peer.context)
+                parts.hostname or "", parts.port, timeout=self.cfg.timeout, context=member.context)
         else:
             conn = http.client.HTTPConnection(parts.hostname or "", parts.port,
                                               timeout=self.cfg.timeout)
@@ -554,7 +566,7 @@ class Downloader:
             by, at = response.getheader("X-Licence-Accepted-By"), response.getheader(
                 "X-Licence-Accepted-At")
             if by:
-                peer.accepted = {"by": _plain(by), "at": _plain(at or "")}
+                member.accepted = {"by": _plain(by), "at": _plain(at or "")}
         finally:
             with contextlib.suppress(OSError):
                 conn.close()

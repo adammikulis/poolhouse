@@ -35,9 +35,9 @@ committed at the time of reading), `worktree-agent-a359e808db0d18e70` (`docs/ser
   `work_quality_review`, `work_rating`, `work_usage`, `work_agent`, `work_task_reference`. Capped at
   5000 evidence and 5000 contribution nodes. [V `reputation/sealed.py`, `reputation/work.py`]
 - **Source-risk ledger.** The same package and sealed file family, kinds `host`, `url`, `hash`,
-  `peer`, ... with events (`denial`, `scan_hit`, `injection_flagged`, `hash_change`, ...), a 6 hour
+  `device`, ... with events (`denial`, `scan_hit`, `injection_flagged`, `hash_change`, ...), a 6 hour
   short term, a 30 day half-life, states `good/watch/bad`. [D `docs/reputation.md`]
-  A workspace sender is the kind `peer`, key `workspace:<id>`. [V `workspace/standing.py`]
+  A workspace sender is the kind `device`, key `workspace:<id>`. [V `workspace/standing.py`]
 - **Workspace audit and board logs.** Hash-chained JSON lines (`sha256(prev + body)`), `verify(anchor)`. [V `workspace/chain.py`, `service.audit_verify`]
 - **Coordination graph.** `coordination.db` holds tasks, proposals, reviews, `work-credit-reference`
   and family/device account edges. [V `workspace/task_credit.py`, `family_accounts.py`]
@@ -139,7 +139,7 @@ review verifies the work whoever wrote it. [analysis]
 |---|---|---|---|---|
 | L1 | Registered identity with a project grant. | The person's mint and grant. [V `mint`, `enforcement`] | None. | to L0 |
 | L2 | Model state `verified` and the identity is bound to a live broker allocation or a device account. | Registry plus broker lease. [V `modelid`, `resource_allocations`] | None: no count and no wait. A landing without independent review is not possible at L2. | Any item in 3.4, or a reviewer-confirmed false claim, drops to L1. |
-| L3 | At least 5 accepted tasks, from at least 2 distinct reviewers, in the last 60 days, at least 1 review rated 70 or more on quality, with reliability at least 80 with its sample count shown, **and** no demotion event in 30 days. Starting values, to be tuned from data. | Reviewers independent of the worker and of each other; one of them a person, or a project-granted peer on a different device account. | Evidence older than 60 days stops counting toward entry; it does not erase standing already held unless inactivity exceeds 90 days, which returns the agent to L2 until one new accepted task. | Any item in 3.4 drops to L2 at once; two in 30 days drop to L1. |
+| L3 | At least 5 accepted tasks, from at least 2 distinct reviewers, in the last 60 days, at least 1 review rated 70 or more on quality, with reliability at least 80 with its sample count shown, **and** no demotion event in 30 days. Starting values, to be tuned from data. | Reviewers independent of the worker and of each other; one of them a person, or a project-granted device on a different device account. | Evidence older than 60 days stops counting toward entry; it does not erase standing already held unless inactivity exceeds 90 days, which returns the agent to L2 until one new accepted task. | Any item in 3.4 drops to L2 at once; two in 30 days drop to L1. |
 | L4 | Not available. | Person only. | n/a | n/a |
 
 The 60 day, 5 task and 2 reviewer figures are proposals; the tier fits the existing Beta reliability
@@ -200,9 +200,9 @@ unlocks; the order of the M rows is the ranking: M1, M2, M3, M4, M5, M7, M6.
 | **M2. Keyed or externally anchored heads**: sign the audit-chain head and ledger head with a key outside the agent's reach and keep the last N heads where an agent cannot write. | Missing (unkeyed SHA-256 chain; no rollback guard) | Unlocks trusting any agent-visible log as evidence and detecting rollback; makes automatic suspension safe because it cannot be rewritten away. |
 | **M3. Per-identity cap record** read by every verb (the L-level, pause, expiry), written only by a person or the coordinator, visible live. | Missing | The control surface itself; without it levels are advisory. |
 | **M4. Claim-vs-result comparison** for checks a worker states: store the worker's claimed pass beside the reviewer's check, score a mismatch as a forged claim. | Missing | Unlocks the "forged claim" demotion and a test-honesty signal at near-zero cost. |
-| **M5. Event writers into the ledger** from hook guards, `auth.denied`, claim steals, revert detection. | Missing | Gives signals to demote on; each is a single event kind in the existing `peer` kind. |
+| **M5. Event writers into the ledger** from hook guards, `auth.denied`, claim steals, revert detection. | Missing | Gives signals to demote on; each is a single event kind in the existing `device` kind. |
 | **M6. Token-use anomaly**: record the process (pid, start time) that first presented a token and refuse or flag a second concurrent one. | Missing; `claims` already compare holder pids. [V `claims.py` `_holder_alive`] | Catches a copied bearer token. Lower gain. |
-| **M7. Reviewer pairing measure**: share of an agent's accepted reviews from one reviewer; reviewer leniency (acceptance rate versus later revert). | Missing | Unlocks L3 safely against collusion. |
+| **M7. Reviewer concentration measure**: share of an agent's accepted reviews from one reviewer; reviewer leniency (acceptance rate versus later revert). | Missing | Unlocks L3 safely against collusion. |
 
 Dropped as friction without catching forgery: minimum waiting periods before L2; mandatory second
 reviewer for ordinary work; re-confirmation prompts on grant use; per-commit written justifications.
@@ -220,7 +220,7 @@ None of these reads the ledger, and none has a standing input; they stay at thei
   flag, force pushes, remote deletion, `--all`, `--tags`. [D `CLAUDE.md` "Hooks and settings"]
   Release approval is the only authorizable kind and is made by the structured approval question.
   [D `docs/person-delegation.md` header]
-- **Keystore and secrets.** The keystore, cluster passphrase and token, signing keys, `sudoers`, and
+- **Keystore and secrets.** The keystore, pool passphrase and token, signing keys, `sudoers`, and
   the OS privilege prompt are a person's regardless of registry. [D `AGENTS.md`]
 - **The authority registry.** `person` gates pass only a person at a terminal; a helper or child
   identity never passes a `delegated` gate; `POOLHOUSE_AUTHORITY_FLOOR=person` only tightens.
@@ -249,7 +249,7 @@ risk [D `docs/reputation.md`]. Proposed: [analysis]
 
 ### 5.2 The sealed record
 
-- Each level change is one `peer`-kind ledger event with `from`, `to`, `reason`, evidence ids, and the
+- Each level change is one `member`-kind ledger event with `from`, `to`, `reason`, evidence ids, and the
   actor (rule, coordinator or person); appended, never edited. [analysis]
 - Evidence stays in the existing sealed work graph. Level state is **derived** from evidence plus
   caps, as balances already are ("derived from that evidence rather than a separate balance file").
@@ -281,7 +281,7 @@ Do not add a second table: use the same sealed graph.
 | Case | What happens today [V] | Defence in this design |
 |---|---|---|
 | **Sybil: many new identities to farm standing** | Minting needs a person (or a lead for helper agents); ids are unique per workspace. [V `identity.py` `MINTS`] Helper children are bound to the parent token tree. | Standing never accrues to the parent from a child's own review. Rate-limit lead mints per window and show the mint count; the L3 rule counts distinct reviewers who are not that identity's own spawn. L2 default means a fresh identity is not trying to earn anything for ordinary work. |
-| **Collusion: reviewer and author** | The worker cannot review itself; same-device-account pairs are refused when enrolled; open mode allows any registered project member other than the worker. [V `taskboard.py`] | M7 reviewer concentration and leniency; L3 needs a reviewer who is a person or a project-granted peer on a different device account; reviewer rating contributions are weighted down when a reviewer's accepted work is later reverted (M1). `strict` enforcement gives person-set grants. |
+| **Collusion: reviewer and author** | The worker cannot review itself; a reviewer and author on the same device account are refused when enrolled; open mode allows any registered project member other than the worker. [V `taskboard.py`] | M7 reviewer concentration and leniency; L3 needs a reviewer who is a person or a project-granted device on a different device account; reviewer rating contributions are weighted down when a reviewer's accepted work is later reverted (M1). `strict` enforcement gives person-set grants. |
 | **Model upgrade resets or inherits standing** | The agent identity (`work_agent`) is unchanged by a model change and keeps its evidence. Local families bind to a family account and a "family switch does not rebucket"; hosted models have no family account; on `03d09c55` the per-model-runtime view is keyed by exact model plus runtime plus artifact/device, so an upgrade starts a new row there. [V `family_accounts.py`, `work_dimensions.py`] | Level follows the **family account where one exists, otherwise the agent identity**, consistent with AGENTS.md. A new exact model in a known family keeps the family standing but L3 requires one accepted task on the new model before L3 coordination is re-granted (a distinct-model check, not a wait); a new family starts at L2. The per-model view is reported, not used to reset. Needs a decision (Q3). |
 | **Compromised agent** | A stolen token acts as the identity, up to its caps and its parent's. Revocation kills it and children. [V `identity.authenticate`, `service.revoke`] | Brakes (3.5); M6 detects a second user; M2 prevents history rewriting; the fixed rules in section 4 mean even a top-standing compromised agent cannot push `main`, read the keystore or act as the person. Landings need independent review, so the blast radius at L2 is a reviewed change. |
 | **Ledger poisoning by a reviewer** | The reviewer chooses ratings and bonuses. | M7 leniency; a person can void an award with an appended correction event, not an edit. |
@@ -295,7 +295,7 @@ Sizes: S under a day, M one to three days, L more. [analysis]
 | 1 | M3: per-identity cap record, read by a single `ws._may` path, written through `enforcement`-style person/lead verbs, shown in Fleet. | M | The levels exist; pause works. |
 | 2 | M1: landing record at the integration step (`workspace/task_integration.py`, `integration_git.py` already integrate) writing identity, reviewer, tips. Also revert detection. | M | Revert signal, L3 safety, coordinator tie-break key. |
 | 3 | M4: store claimed-vs-independent check results on the proposal/review; mismatch event. | S | Test honesty and forged-claim demotion. |
-| 4 | M5: event writers from the Bash and edit guards, `auth.denied`, claim steals into the `peer` kind. | M | Security-finding signal. |
+| 4 | M5: event writers from the Bash and edit guards, `auth.denied`, claim steals into the `device` kind. | M | Security-finding signal. |
 | 5 | Level derivation and demotion engine over the existing graph, plus the brake events and sentinel notice. | M | Automatic suspension. |
 | 6 | M2: signed, anchored heads; rollback guard on the sealed ledger. | M to L (needs a key placement decision) | Safe automatic action; evidence for the commercial pool. |
 | 7 | Land `work_dimensions` and attribution from `03d09c55` and decide model-upgrade policy. | S (landing) | Per-model views. |
@@ -311,7 +311,7 @@ attribution, and calls out `work_dimensions` as unlanded. [D `docs/service.md` o
 (M1, which for providers is a verified job result), the per-identity cap record (M3, which for a
 consumer or provider is a quota and a suspension), the event writers (M5), and the overlap-view
 rule that one award is never counted twice. The difference: the private pool trusts the person who
-paired it, the open market trusts nobody, so M2, M6 and redundant verification are required there and
+built it, the open market trusts nobody, so M2, M6 and redundant verification are required there and
 only "wanted" here. Keep one ledger; do not fork a "market reputation".
 
 ## 9. Owner decisions (2026-10-08)

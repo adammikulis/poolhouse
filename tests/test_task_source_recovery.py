@@ -102,11 +102,11 @@ def test_prepared_rebind_resumes_after_worker_file_interruption(stopped, monkeyp
     result = recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Resume source recovery')
     assert result['verified']
     with GraphStore(kit.base / 'coordination.db') as graph:
-        journals = graph.nodes('source-recovery')
-        assert len(journals) == 1 and journals[0]['attrs']['state'] == 'committed'
+        logs = graph.nodes('source-recovery')
+        assert len(logs) == 1 and logs[0]['attrs']['state'] == 'committed'
 
 
-def test_failed_graph_update_restores_worker_and_resumes_prepared_journal(stopped, monkeypatch):
+def test_failed_graph_update_restores_worker_and_resumes_prepared_log(stopped, monkeypatch):
     kit = stopped
     original, real_save = localagent.load(kit.ws, 'native-worker'), recovery.save
     def fail(graph, kind, row):
@@ -148,7 +148,7 @@ def test_authenticated_revocation_waits_for_source_transaction(stopped, monkeypa
     ready, finished = kit.base / 'revoke-ready', kit.base / 'revoke-finished'
     processes = []
     actual = recovery._apply
-    def competing(ws, journal, runner, scopes):
+    def competing(ws, log, runner, scopes):
         code = """import os, sys
 from pathlib import Path
 from poolhouse.workspace.service import Workspace
@@ -167,7 +167,7 @@ Path(sys.argv[4]).write_text('finished')
         assert ready.exists() and process.poll() is None
         time.sleep(0.05)
         assert not finished.exists()
-        actual(ws, journal, runner, scopes)
+        actual(ws, log, runner, scopes)
         assert not finished.exists()
     monkeypatch.setattr(recovery, '_apply', competing)
     try:
@@ -204,8 +204,8 @@ def test_cancelled_graph_update_restores_worker_and_preserves_pending_scope(stop
     assert after['state'] == before['state'] and after['checkpoints'] == before['checkpoints']
     with GraphStore(kit.base / 'coordination.db') as graph:
         assert record(graph, scope_id, 'task-worktree') == original_scope
-        journals = graph.nodes('source-recovery')
-        assert len(journals) == 1 and journals[0]['attrs']['state'] == 'prepared'
+        logs = graph.nodes('source-recovery')
+        assert len(logs) == 1 and logs[0]['attrs']['state'] == 'prepared'
     monkeypatch.setattr(recovery, 'save', real_save)
     assert recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Resume source recovery')['verified']
 

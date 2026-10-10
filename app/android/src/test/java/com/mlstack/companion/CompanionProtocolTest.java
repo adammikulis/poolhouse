@@ -37,7 +37,7 @@ public final class CompanionProtocolTest {
         }
         equal("https://192.168.1.2:8770", Invite.parse(link(invite()), 1000).endpoint);
         rejects(() -> Invite.parse(link(invite().put("kind", "computer")), 1000));
-        rejects(() -> Invite.parse(link(invite().put("cluster_key", "x")), 1000));
+        rejects(() -> Invite.parse(link(invite().put("pool_key", "x")), 1000));
         rejects(() -> Invite.parse(link(invite().put("expires", 1601)), 1000));
         rejects(() -> Invite.parse(link(invite().put("expires", 1000)), 1000));
         rejects(() -> Invite.parse(link(invite().put("endpoint", "http://127.0.0.1:8770")), 1000));

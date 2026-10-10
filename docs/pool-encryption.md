@@ -9,13 +9,13 @@ the OS keystore through `keyring`, or the Android keystore.
 ## 1. Findings in one paragraph
 
 The fleet daemon (device to device, and phone to device) is in good shape: pinned TLS, signed and sealed
-requests, no CA. The gaps are elsewhere. (a) The per-device journal mesh (`/workspace/v1/mesh/pull|push`)
-**does not exist**; `docs/mesh-board.md` says "nothing is implemented" and `grep` finds no such route, so
-today's board is a host-and-clients project board, not a replicated mesh. (b) Authentication between
-devices rests on one **shared cluster key** per cluster, so there is no per-device identity on most
-routes, no forward secrecy in the sealing layer, and no way to revoke one device without rekeying.
-(c) Several stores at rest are plaintext: the cluster key itself, the TLS private key, job records and
-logs, saved conversations, workspace tokens, the project-board graph. (d) File, model and `/infer`
+requests, no CA. The gaps are elsewhere. (a) The per-device log replica (`/workspace/v1/replica/pull|push`)
+**does not exist**; `docs/board-replication.md` says "nothing is implemented" and `grep` finds no such route, so
+today's board is a host-and-clients board, not a replicated board. (b) Authentication between
+devices rests on one **shared pool key** per pool, so there is no per-device identity on most
+routes, no forward secrecy in the sealing layer, and no way to remove one device without rekeying.
+(c) Several stores at rest are plaintext: the pool key itself, the TLS private key, job records and
+logs, saved conversations, workspace tokens, the board graph. (d) File, model and `/infer`
 streams are signed but not sealed; they rely on the transport.
 
 ## 2. The table (verified in code)
@@ -31,18 +31,18 @@ the client by a MAC over the request, not by a client certificate and not bound 
 |---|---|---|---|---|---|
 | Fleet daemon, any non-loopback listener (`fleet/daemon.py:listen`, `fleet/tls.py`) | TLS 1.3 only (changed by slice 1) | Server: pinned certificate. Client: its own certificate, which must be an active member (slice 2, section 10), plus the MAC | stdlib `ssl`; ECDSA P-256 self-signed, ten year lifetime (slice 2: an identity, not a session credential); `cryptography` makes it, else the `openssl` binary | `cert.pem`/`key.pem` 0600 in the daemon's identity dir, plaintext on disk | (the TLS-off switch is gone.) Key at rest unencrypted |
 | Loopback listener (`127.0.0.1:8770`) | plaintext HTTP by design | MAC or session | n/a | n/a | In scope only for the same-machine threat (section 3) |
-| Request and response bodies on `/workspace/v1/*`, `/jobs`, work dispatch, board/note/DM routes (`http.build_request`, `fleet/api.py:_unsealed`) | sealed inside TLS | Request is signed (method, target, host, body, 120 s window, nonce); answer is sealed with the request nonce and status as AAD | HMAC-SHA256, HKDF-SHA256 written with stdlib `hmac`/`hashlib` (`macauth.derive`, `keystore.hkdf`); AES-256-GCM, random 96 bit nonce (`sealing.py`) via `cryptography` | Key derived from the cluster key (`/workspace/v1/*` also accepts per-device secrets, `fleet/device_auth.py`) | No forward secrecy: a leaked cluster or device secret opens every captured body. Nonce cache is in memory (resets on restart; the 120 s window bounds it). `Sealed.open` accepts an unsealed answer when status >= 400, empty body or non-JSON, so streams and errors are not sealed |
-| Fleet job dispatch (`POST /jobs`) | as above | cluster MAC | as above | cluster key | Job argv and env travel sealed; job results and logs are fetched through the same sealed JSON, but log streaming is not sealed |
-| Model requests, `/infer/*` proxy (`fleet/api.py:_proxy`) | sealed request body; streamed answer is TLS only | cluster or device MAC | as above | as above | Streamed tokens are not sealed by the application (`docs/fleet.md:315`). The proxy hop to the model server is plaintext loopback, and the model server sees plaintext prompts |
-| Board messages, notes, DMs (project-board RPC, `workspace/remote.py`, `coordinator.py`) | sealed; response refused unless sealed (`remote.py:75`) | per-agent token plus device MAC | as above | agent token files (plaintext, restricted) | Encrypted to the host device, not to the addressee. The board host reads every DM and note. `remote.py` accepts an `http://` LAN project host: then no TLS, only sealing, and the host is trusted only because cluster discovery matched it |
+| Request and response bodies on `/workspace/v1/*`, `/jobs`, work dispatch, board/note/DM routes (`http.build_request`, `fleet/api.py:_unsealed`) | sealed inside TLS | Request is signed (method, target, host, body, 120 s window, nonce); answer is sealed with the request nonce and status as AAD | HMAC-SHA256, HKDF-SHA256 written with stdlib `hmac`/`hashlib` (`macauth.derive`, `keystore.hkdf`); AES-256-GCM, random 96 bit nonce (`sealing.py`) via `cryptography` | Key derived from the pool key (`/workspace/v1/*` also accepts per-device secrets, `fleet/device_auth.py`) | No forward secrecy: a leaked pool or device secret opens every captured body. Nonce cache is in memory (resets on restart; the 120 s window bounds it). `Sealed.open` accepts an unsealed answer when status >= 400, empty body or non-JSON, so streams and errors are not sealed |
+| Fleet job dispatch (`POST /jobs`) | as above | pool MAC | as above | pool key | Job argv and env travel sealed; job results and logs are fetched through the same sealed JSON, but log streaming is not sealed |
+| Model requests, `/infer/*` proxy (`fleet/api.py:_proxy`) | sealed request body; streamed answer is TLS only | pool or device MAC | as above | as above | Streamed tokens are not sealed by the application (`docs/fleet.md:315`). The proxy hop to the model server is plaintext loopback, and the model server sees plaintext prompts |
+| Board messages, notes, DMs (board RPC, `workspace/remote.py`, `coordinator.py`) | sealed; response refused unless sealed (`remote.py:75`) | per-agent token plus device MAC | as above | agent token files (plaintext, restricted) | Encrypted to the host device, not to the addressee. The board host reads every DM and note. `remote.py` accepts an `http://` LAN project host: then no TLS, only sealing, and the host is trusted only because pool discovery matched it |
 | Board listener and `/ui` routes (`workspace/boardroute.py`, `fleet/ui.py`) | `/ui` on a LAN is TLS-only (`--ui-from-lan`); loopback is plaintext | Passphrase sign-in; same-origin and Origin checks (`boardroute._checked`) | cookie session | session in memory | Passphrase travels inside TLS only; no second factor. Loopback session is exposed to a same-user process (out of scope) |
-| Mesh journal exchange `/workspace/v1/mesh/pull|push` | **not implemented** | designed: pinned TLS plus signed journals (`docs/mesh-board.md:281`) | designed | designed | The whole mesh is design only. Ship it with the plan in section 5, not without |
+| Replica log exchange `/workspace/v1/replica/pull|push` | **not implemented** | designed: pinned TLS plus signed logs (`docs/board-replication.md:281`) | designed | designed | The whole replica is design only. Ship it with the plan in section 5, not without |
 | Remote worker controls (`workspace/remote_host.py`, `remote_workers.py`) | as the board RPC: sealed, MAC | agent token | as above | agent tokens | Same as board |
 | Test job results and logs (`workspace/testruns.py`, `activity/reuse.py`) | local files; remote fetch sealed JSON | hash-chained entries (unkeyed hashing) | sha-256 hashes | none | Integrity only; contents plaintext on disk |
-| Model weights and file transfer (`fleet/onboard/transfer.py`, `fleet/files.py`) | TLS to the pinned peer; ranged chunks | Manifest signed with Ed25519 (`fleet/onboard/signing.py`), each chunk sha256-checked | `cryptography` Ed25519 | signing key wrapped under the OS keystore | **Signed, not sealed**: with TLS off the weights are readable on the wire. Fine otherwise; weights are not secret except private fine-tunes (section 5, slice 6) |
-| Pairing handshake (`fleet/onboard/pake.py`, `pairing.py`) | TLS to an unverified certificate, then SPAKE2 whose identities are both certificate fingerprints; confirmations HMAC-SHA256; the cluster key is sent sealed under the exchange key | Mutual, by the six digit code, three tries, 120 s | `spake2` (python-spake2), `cryptography` | Cluster key lands in `clusters.json` plaintext | Sound design. Result is a shared cluster key, not a per-device identity |
-| Signed-sealed fleet capabilities ("sealed" in `workspace/remote.py`, `sealing.py`) | sealed + signed bodies | see above | AES-256-GCM | derived from cluster key | Capability confidentiality equals cluster-key custody; a guest with the key is a full member (section 7) |
-| Beacons (UDP 8773) | sealed under a key derived from the cluster key | the seal is the authentication | AES-256-GCM | cluster key | The one unsealed datagram is the join-by-name request and answer. Beacon carries the certificate to pin, so a holder of the cluster key can forge a beacon: the cluster key is the root of trust |
+| Model weights and file transfer (`fleet/onboard/transfer.py`, `fleet/files.py`) | TLS to the pinned device; ranged chunks | Manifest signed with Ed25519 (`fleet/onboard/signing.py`), each chunk sha256-checked | `cryptography` Ed25519 | signing key wrapped under the OS keystore | **Signed, not sealed**: with TLS off the weights are readable on the wire. Fine otherwise; weights are not secret except private fine-tunes (section 5, slice 6) |
+| Joining handshake (`fleet/onboard/pake.py`, `join_code.py`) | TLS to an unverified certificate, then SPAKE2 whose identities are both certificate fingerprints; confirmations HMAC-SHA256; the pool key is sent sealed under the exchange key | Mutual, by the six digit code, three tries, 120 s | `spake2` (python-spake2), `cryptography` | Pool key lands in `pools.json` plaintext | Sound design. Result is a shared pool key, not a per-device identity |
+| Signed-sealed fleet capabilities ("sealed" in `workspace/remote.py`, `sealing.py`) | sealed + signed bodies | see above | AES-256-GCM | derived from pool key | Capability confidentiality equals pool-key custody; a guest with the key is a full member (section 7) |
+| Beacons (UDP 8773) | sealed under a key derived from the pool key | the seal is the authentication | AES-256-GCM | pool key | The one unsealed datagram is the join-by-name request and answer. Beacon carries the certificate to pin, so a holder of the pool key can forge a beacon: the pool key is the root of trust |
 | Phone app (`app/android/.../PinnedHttps.java`) | TLS 1.3/1.2 to a pinned certificate; `usesCleartextTraffic=false` | server pinned; client by enrolment secret | platform JSSE | enrolment sealed with AES-GCM in the Android keystore (`DeviceVault.java`) | Good. No hardware-backed attestation requested |
 | Desktop app (Tauri) | opens only the local UI; tests refuse other origins | n/a | n/a | n/a | n/a |
 | Tailscale and other overlays | not trusted by design: the daemon uses its own TLS and pins; `lan.py` allows 100.64.0.0/10 and fd7a:115c:a1e0::/48 as local | as the daemon | WireGuard under it | Tailscale's | Correct. Keep: encrypt inside the transport (section 6) |
@@ -52,15 +52,15 @@ the client by a MAC over the request, not by a client certificate and not bound 
 | Store | Today | Primitive | Key custody | Gap |
 |---|---|---|---|---|
 | Memory store, `requests` store, `reputation` graph, activity log, workspace posted-files store | encrypted (`memory/vault.py`, `reputation/sealed.py`, `activity/log.py`, `workspace/filestore.py`) | AES-256-GCM, `cryptography` | HKDF subkey of a 32 byte master in the OS keystore (`keystore.py`); passphrase+scrypt mode when headless | Good where attended. Background processes never create the master |
-| Cluster key (`~/.poolhouse/cluster.key`, `clusters.json`) | **plaintext**, 0600 (`private_file`) | none | file | Root of all fleet trust sits in a file. The recovery file and passphrase are kept in the keystore (`fleet/recovery.py`) but the key itself is not |
+| Pool key (`~/.poolhouse/pool.key`, `pools.json`) | **plaintext**, 0600 (`private_file`) | none | file | Root of all fleet trust sits in a file. The recovery file and passphrase are kept in the keystore (`fleet/recovery.py`) but the key itself is not |
 | Fleet TLS private key (`cert.pem`, `key.pem`) | **plaintext**, 0600, symlink and ACL checks (`tls.py`) | none | file | Same |
-| Cluster signing key (Ed25519) | wrapped | AES-256-GCM under keystore subkey `fleet-signing`; headless: scrypt + ChaCha20-Poly1305 | keystore or passphrase | Good |
+| Pool signing key (Ed25519) | wrapped | AES-256-GCM under keystore subkey `fleet-signing`; headless: scrypt + ChaCha20-Poly1305 | keystore or passphrase | Good |
 | Credentials | encrypted when stored with `--keychain` | keystore `wrap` | keystore | Others live in the environment or file by the user's choice |
 | Board graph (`workspace/board_graph.py`, `graphlog.py`, ladybug store), conversations (`fleet/conversation_graph.py`), person log (`person_store.py`) | **no encryption found in code**; hash chain (unkeyed) or "sealed" meaning HMAC | none | none | Messages, DMs, notes and chat history are plaintext at rest on every device that holds them |
 | Job records and logs (`fleet/jobs.py` writes `job.json`, `log`) | **plaintext** | none | none | Command lines and output of every job, including remote dispatch, on disk |
 | Sentinel events (`sentinel/sealed.py`) | HMAC only | HMAC-SHA256 | key beside the file | Tamper-evident, not confidential |
 | Workspace token files (`workspace/tokens.py`) | plaintext, restricted perms, sentinel-registered | none | file | Agent capability tokens |
-| Journal replica | does not exist yet | planned in `mesh-board.md:450` | planned: device key | Specify in slice 3 |
+| Log replica | does not exist yet | planned in `board-replication.md:450` | planned: device key | Specify in slice 3 |
 | Backups and bundles | no backup writer found that encrypts; the recovery file (`fleet/recovery.py`) is the one export, passphrase-derived | scrypt (check KDF params in slice 1) | passphrase | Anything a person copies from `~/.poolhouse` is plaintext |
 
 Keystore usage: `keystore.py` is the only importer of `keyring`; unattended processes never create the
@@ -74,7 +74,7 @@ None made. The three candidates were checked: `lan.py` `require_local` calls `al
 reads backwards, behaviour is right: it refuses public addresses); every `http://` use in `src/` is
 loopback or the explicit LAN project-host opt-in; every pinned context sets `CERT_REQUIRED`, loads only
 the pinned certificate and disables hostname checks on purpose. `TLSv1_2` as the minimum
-(`tls.py:179,189`, `pairing.py:284`, `bootstrap.py:53`) is not a bug: a P-256 certificate only gets ECDHE
+(`tls.py:179,189`, `join_code.py:284`, `bootstrap.py:53`) is not a bug: a P-256 certificate only gets ECDHE
 suites, and the phone sets 1.3 then 1.2. The owner has decided to raise the floor to 1.3 with mutual authentication (section 8.1).
 
 ## 3. Threat model
@@ -82,8 +82,8 @@ suites, and the phone sets 1.3 then 1.2. The owner has decided to raise the floo
 | Adversary | In scope? | What defends today | What the plan adds |
 |---|---|---|---|
 | Passive LAN or Wi-Fi observer | In | Pinned TLS (ECDHE, forward secret at the TLS layer) + sealed bodies. Failure only with `POOLHOUSE_FLEET_TLS=off` or an `http://` LAN project host | Remove TLS-off; seal streams (slices 1, 2b) |
-| Active malicious device on the LAN, not paired | In | Pinned certificates, no first-use trust; MAC with nonce; SPAKE2 pairing; `lan.py` | Nothing structural |
-| Malicious or compromised paired device (holds the cluster key) | In, partly. Today it can read and forge everything in the cluster | None: one shared key | Per-device keys, revocation, E2E to addressee (slices 2, 2b, 4, 5) |
+| Active malicious device on the LAN, not joined | In | Pinned certificates, no first-use trust; MAC with nonce; SPAKE2 joining; `lan.py` | Nothing structural |
+| Malicious or compromised member (holds the pool key) | In, partly. Today it can read and forge everything in the pool | None: one shared key | Per-device keys, revocation, E2E to addressee (slices 2, 2b, 4, 5) |
 | Network operator or overlay (Tailscale coordination server, relay) | In | Transport never trusted | Keep |
 | Stolen or lost powered-off disk | In | Memory, requests, reputation, activity, files, signing key are encrypted under the keystore | Encrypt the rest (slice 3) |
 | Stolen unlocked laptop or a live session | Out | Needs OS lock and disk encryption (FileVault, BitLocker, LUKS); the OS keystore releases the master to the logged-in user | State in `SECURITY.md` |
@@ -104,15 +104,15 @@ pinned, same `ssl` module.** No new dependency and no protocol written here.
 Required changes, all configuration of `ssl`:
 
 - `minimum_version = TLSv1_3` for pool links (not for the loopback listener or bootstrap), `CERT_REQUIRED`
-  on the server context plus `load_verify_locations(cadata=<paired device certs>)`.
+  on the server context plus `load_verify_locations(cadata=<member certs>)`.
 - Every device has **its own certificate** (it already does, per daemon) listed in a per-device membership
-  record, replacing "the cluster key holder is trusted". Server accepts a client only if its certificate
-  is a paired, unrevoked one.
+  record, replacing "the pool key holder is trusted". Server accepts a client only if its certificate
+  is a joined, unrevoked one.
 - Channel binding: the request MAC includes the TLS exporter value (`SSLSocket` does not expose
-  exporters in the stdlib; if that stays true, bind with the peer certificate fingerprint in the MAC
-  input instead, which closes relay by a different paired device).
+  exporters in the stdlib; if that stays true, bind with the device certificate fingerprint in the MAC
+  input instead, which closes relay by a different member).
 - Application sealing stays as the second layer for bodies that cross a relay (see below), and moves
-  from a shared-key derivation to a per-pair key (slice 5).
+  from a shared-key derivation to a per-join key (slice 5).
 - Replay: keep the 120 s window and nonce cache; persist the cache's high-water timestamp so a restart
   cannot reopen the window; the TLS 1.3 handshake itself resists replay except 0-RTT, which `ssl`
   does not enable. Do not enable early data.
@@ -128,31 +128,31 @@ tests against real sockets and real files, not mocks (`AGENTS.md`).
 
 | # | Slice | Closes | Size | Depends on | Notes |
 |---|---|---|---|---|---|
-| 1 | **Make unencrypted impossible by default.** `POOLHOUSE_FLEET_TLS=off` and `http://` LAN project hosts removed (decision 8.1), loopback http only; seal `/infer` streams and file chunks (framed AES-GCM, per-chunk nonce counter, AAD = request nonce and chunk index); pairing recovery file KDF parameters reviewed | passive observer in every configuration; streamed tokens | M | none | Sealing streams costs CPU at weight-transfer rates; measure on a 20 GB file before deciding to seal weights (private fine-tunes only) |
-| 2 | **Per-device keys and identities, membership record and revocation** (decision 8.1). Each device has its own identity key and a device record (device id, certificate fingerprint, status) in a signed membership log (`mesh-board.md:275`, `member-add`, revocation) or a simple host-signed list as step one; request authority moves from the cluster key to these. Cluster key stays for beacon sealing only | malicious paired device acting as another; revocation by device | L | 1 | Precedes slice 2b: a certificate cannot be pinned to an identity that does not exist yet |
+| 1 | **Make unencrypted impossible by default.** `POOLHOUSE_FLEET_TLS=off` and `http://` LAN project hosts removed (decision 8.1), loopback http only; seal `/infer` streams and file chunks (framed AES-GCM, per-chunk nonce counter, AAD = request nonce and chunk index); joining recovery file KDF parameters reviewed | passive observer in every configuration; streamed tokens | M | none | Sealing streams costs CPU at weight-transfer rates; measure on a 20 GB file before deciding to seal weights (private fine-tunes only) |
+| 2 | **Per-device keys and identities, membership record and revocation** (decision 8.1). Each device has its own identity key and a device record (device id, certificate fingerprint, status) in a signed membership log (`board-replication.md:275`, `member-add`, revocation) or a simple host-signed list as step one; request authority moves from the pool key to these. Pool key stays for beacon sealing only | malicious member acting as another; revocation by device | L | 1 | Precedes slice 2b: a certificate cannot be pinned to an identity that does not exist yet |
 | 2b | **Mutual TLS 1.3 with pinned per-device certificates** as the floor on every pool link. `server_context` requests the client certificate; request MAC covers the client certificate fingerprint; TLS 1.2 refused | MAC not tied to channel; downgrade | M | 2 | Android below API 29 is refused (decision 8.1) |
-| 3 | **Encrypt the plaintext stores** under keystore subkeys with `keystore.wrap` / the memory vault pattern: board graph, conversations, person log, job records and logs, workspace tokens, cluster key, TLS key. A device with no OS keystore uses the passphrase-wrapped key file of decision 8.1; no 0600 plaintext fallback | stolen disk | M per store, L together | none; reuse `memory/vault.py` | Each store gets a migration (as `memory/migrate.py`). The cluster and TLS keys are the first two: move the file contents into a wrapped blob |
+| 3 | **Encrypt the plaintext stores** under keystore subkeys with `keystore.wrap` / the memory vault pattern: board graph, conversations, person log, job records and logs, workspace tokens, pool key, TLS key. A device with no OS keystore uses the passphrase-wrapped key file of decision 8.1; no 0600 plaintext fallback | stolen disk | M per store, L together | none; reuse `memory/vault.py` | Each store gets a migration (as `memory/migrate.py`). The pool and TLS keys are the first two: move the file contents into a wrapped blob |
 | 4 | **End-to-end DMs and notes.** Payload encrypted to the addressee device's X25519 key (HPKE as in section 4), key published in the signed membership record; sender signs with its Ed25519 key. The host stores and relays ciphertext plus metadata (from, to, time, size, board). Group posts to a board stay readable by members: encrypt to a per-board key rotated on membership change | board host and relay learn nothing of DMs; compromised host | L | 2, a per-device Ed25519 identity (exists: `fleet/onboard/signing.py`) | Search, recall and agent reading of DMs happen on the addressee device only; the host cannot index them. Federated search of DMs is lost, by design |
-| 5 | **Per-pair sealing keys.** Replace "cluster key derives everything" with an X25519 key agreement between device certificates' keys (ephemeral on each connection), sealing stays AES-256-GCM, MAC key from the same agreement | forward secrecy and compartmentalisation for the sealed layer | M | 2b | With mutual TLS 1.3 this is partly redundant; do it only for traffic that crosses a relay or the board host |
-| 6 | **Journal replica at rest and mesh transport** (when the mesh lands): per-device journals signed with the device Ed25519 key (integrity), replica encrypted at rest with a keystore subkey (`mesh-board.md:450`), transport mTLS from slice 2b, entries addressed to a device encrypted as in slice 4, entries all members read stay signed-only | the mesh nonexistent today; stolen disk | L, part of the mesh work | 2, 2b, 3 | Do not build the mesh transport before slices 2, 2b and 3 |
-| 7 | **Rotation and revocation.** Revoking a device: signed record, peers refuse its certificate at the next handshake, per-board keys and the cluster beacon key rotated on the next membership change, device certs rotate on the existing 30 day renewal and the beacon carries the new one signed by the old. Key compromise runbook | stolen paired device | M | 2, 2b, 4 | Beacon key rotation breaks discovery for offline devices until they rejoin: accept, document |
+| 5 | **Per-join sealing keys.** Replace "pool key derives everything" with an X25519 key agreement between device certificates' keys (ephemeral on each connection), sealing stays AES-256-GCM, MAC key from the same agreement | forward secrecy and compartmentalisation for the sealed layer | M | 2b | With mutual TLS 1.3 this is partly redundant; do it only for traffic that crosses a relay or the board host |
+| 6 | **Log replica at rest and replica transport** (when the replica lands): per-device logs signed with the device Ed25519 key (integrity), replica encrypted at rest with a keystore subkey (`board-replication.md:450`), transport mTLS from slice 2b, entries addressed to a device encrypted as in slice 4, entries all members read stay signed-only | the replica nonexistent today; stolen disk | L, part of the replica work | 2, 2b, 3 | Do not build the replica transport before slices 2, 2b and 3 |
+| 7 | **Rotation and revocation.** Removing a device: signed record, devices refuse its certificate at the next handshake, per-board keys and the pool beacon key rotated on the next membership change, device certs rotate on the existing 30 day renewal and the beacon carries the new one signed by the old. Key compromise runbook | stolen member | M | 2, 2b, 4 | Beacon key rotation breaks discovery for offline devices until they rejoin: accept, document |
 | 8 | **Hardware-backed keys where attended**: Secure Enclave (macOS), TPM 2.0 (Windows/Linux) for the device identity key, so the key cannot be copied off the disk. Windows uses CNG, macOS `kSecAttrTokenIDSecureEnclave` through `keyring` extension or `cryptography`'s lack of support is the dependency question | key copied by a same-user process (partially) | L | 2 | No vetted Python wrapper is already a dependency; may need a native helper. Not for the first release. **Secure Enclave half: blocked until the product takes off** (a signed app with the keychain entitlement needs a paid Apple developer account, section 8.1); unblocked alternative on macOS: the keystore-wrapped key or the passphrase-wrapped key file. The TPM half (Windows/Linux) is not affected |
 
 What stays **signed-only**, and why encryption would add nothing: beacons' public half and presence
-announcements (the point is to be discovered; the seal under the cluster key is for passive observers,
+announcements (the point is to be discovered; the seal under the pool key is for passive observers,
 and a holder of the key can read it either way); the signed release and tracked-commit signatures and
-model manifests (public artefacts verifiable by anyone); per-device journal rows that every member must
+model manifests (public artefacts verifiable by anyone); per-device log rows that every member must
 read (membership changes, revocations, task state, claims, public board posts), where the signature gives
 integrity and origin, and encrypting to every member costs per-recipient wrapping for no confidentiality
 gain inside the pool. Open weights downloaded from the internet are likewise hash- and manifest-verified,
-not secret. Confidentiality for these comes from TLS to the peer, not from payload encryption.
+not secret. Confidentiality for these comes from TLS to the device, not from payload encryption.
 
 ## 6. Transports
 
 Encrypt inside the transport; the transport is never trusted (Tailscale/WireGuard, a relay, a hotel
 network, a phone hotspot). The device certificate is pinned from the signed membership record and not
 from an address; a Tailscale address is just another way to reach the same pinned TLS endpoint
-(`lan.py` already allows it). A relay forwards TLS records it cannot read and signed journal rows; it
+(`lan.py` already allows it). A relay forwards TLS records it cannot read and signed log rows; it
 never sees plaintext and never holds a key. Do not rely on Tailscale ACLs for authorisation: they say
 which machine, not which person or tenant.
 
@@ -163,12 +163,12 @@ devices; the owner must not see that work. And in reverse, the guest must not se
 
 ### 7.1 What today's design gives a guest, honestly
 
-Nothing like isolation. A joiner receives the **cluster key** (`fleet/onboard/pake.py` path), which
+Nothing like isolation. A joiner receives the **pool key** (`fleet/onboard/pake.py` path), which
 derives the request secret, the seal key and the beacon key. That makes a guest a full member: it reads
-every sealed body on the LAN it can capture, can sign requests as any device that uses the cluster
+every sealed body on the LAN it can capture, can sign requests as any device that uses the pool
 secret, and `/workspace/v1/*` device secrets are the only per-device credential. No `guest` pool role
 exists (`grep -w guest` finds only unrelated sandbox/guard uses). Board channels have no read scoping
-for devices. So section 7 is a **requirement for slice 2 and 7**, and the roles below are new.
+for members. So section 7 is a **requirement for slice 2 and 7**, and the roles below are new.
 
 ### 7.2 What software can and cannot do on a machine the owner controls
 
@@ -184,7 +184,7 @@ Guest payloads, logs, results and prompts are encrypted to **the guest's key and
 sandbox's key**, and never decrypted into anything the owner's tooling renders.
 
 - **Identity and role.** Guest gets its own device certificate and membership record with `role: guest`
-  and a `valid_until`. It never receives the cluster key; it receives a per-pair key (slice 5) for each
+  and a `valid_until`. It never receives the pool key; it receives a per-join key (slice 5) for each
   device it uses. A guest capability is scoped (`workspace/task_caps.py`-style, project/tenant
   bound): submit job, read own job, read own result. No read of owner boards, channels, DMs, notes,
   conversations, memory, activity log or other guests' jobs. The board enforces that on the server by
@@ -261,7 +261,7 @@ the guest can verify. What exists and what does not:
 
 Tenant isolation is the same coin: the guest gets a `guest` role certificate, per-tenant namespaces for
 jobs, caches and results, no read of owner channels, DMs, notes, conversations, memory or activity log,
-no cluster key, no filesystem access outside its scratch, no network by default, no access to the owner's
+no pool key, no filesystem access outside its scratch, no network by default, no access to the owner's
 loopback services (the model server and broker run on loopback and are reachable by a process of the
 same OS user; the guest runs as another user and in a sandbox with `net` denied except the granted one),
 and rate limits and quotas for resource use (`workspace/rates.py`, `limits.py`). Revocation (slice 7)
@@ -271,7 +271,7 @@ ends the guest immediately at the next handshake and kills running jobs, discard
 
 | # | Slice | Size | Depends on |
 |---|---|---|---|
-| G1 | `guest` role in the membership record, scoped capabilities, board-side tenant filter, no cluster key for guests; the one shared guest channel (guests see each other there, nothing else of the owner); leak tests that plant a marker in every owner-visible sink | M | 2 |
+| G1 | `guest` role in the membership record, scoped capabilities, board-side tenant filter, no pool key for guests; the one shared guest channel (guests see each other there, nothing else of the owner); leak tests that plant a marker in every owner-visible sink | M | 2 |
 | G2 | Per-tenant sandbox user and encrypted ephemeral scratch, key only in the job process, crypto-erase at the end | L | G1, 3 |
 | G3 | Encrypted submission and results (HPKE to sandbox key / guest key) | M | G1, 4 |
 | G4 | Per-tenant keyed result and prompt caches; cache off for guest model requests unless a per-tenant server instance | M | G1 |
@@ -283,11 +283,11 @@ Decisions taken on 2026-10-08 are in section 8.1. No question is open.
 
 ### 8.1 Decisions (2026-10-08)
 
-**Per-device keys and identities replace the shared cluster key, with per-device revocation.** Decided: each
+**Per-device keys and identities replace the shared pool key, with per-device revocation.** Decided: each
 device has its own key and identity, recorded in a signed membership record; request authority rests on
-those, and a device can be revoked alone. The cluster key stays, if at all, for beacon discovery only.
-Rejected: keeping the shared key and adding per-pair sealing only, because every paired device would still
-read and forge everything in the cluster and a lost device would mean re-keying all of them; and "pools are one
+those, and a device can be revoked alone. The pool key stays, if at all, for beacon discovery only.
+Rejected: keeping the shared key and adding per-join sealing only, because every member would still
+read and forge everything in the pool and a lost device would mean re-keying all of them; and "pools are one
 person's devices, so neither", because a stolen phone or laptop is the likeliest event.
 
 **TLS 1.3 with mutual authentication and pinned per-device certificates is the floor.** Decided: pool links
@@ -334,7 +334,7 @@ reproducible builds, as more machinery than the owner wants to run for a path no
 
 **Constraint (2026-10-08): nothing on the plan depends on a paid Apple developer account until the product
 takes off.** The owner has no such account and will not get one before then. Everything that needs one is
-marked "blocked until the product takes off" in this note, `docs/home-pool.md`, `docs/service.md`,
+marked "blocked until the product takes off" in this note, `docs/pool.md`, `docs/service.md`,
 `docs/darkbloom-comparison.md` and `HANDOFF.md`, with the unblocked alternative: Level 1 guest tenancy only,
 keystore-wrapped or passphrase-wrapped keys on macOS instead of a Secure Enclave app, unsigned local Mac
 builds on the owner's own devices, the phone as a PWA over HTTPS over Tailscale, the Android app sideloaded.
@@ -357,8 +357,8 @@ is superseded by this section.
 - **Done.** `POOLHOUSE_FLEET_TLS` and `tls.disabled` are removed. `LimitedServer` refuses to be built on an
   address beyond this machine without a TLS context, so a plain listener on the LAN cannot exist; a plain
   connection from another address is dropped. Every pool context (`server_context`, `member_context`,
-  `pinned_context`, the pairing and install clients) has `minimum_version = TLSv1_3`; the Android client
-  offers 1.3 only. A beacon with no certificate is ignored unless it is on this machine. `Peer`,
+  `pinned_context`, the join and install clients) has `minimum_version = TLSv1_3`; the Android client
+  offers 1.3 only. A beacon with no certificate is ignored unless it is on this machine. `Device`,
   `RemoteWorkspace` and a project's `board_host` accept `https://`, or `http://` on this machine only; the
   join client refuses a plain-HTTP daemon off this machine. Tests: `tests/test_fleet_wire_floor.py` (a relay
   keeps every byte of a request with a planted marker: none of it is plain and the version is TLS 1.3; plain
@@ -370,49 +370,49 @@ is superseded by this section.
 ### The second slice (and the mutual-TLS half of 2b), done
 
 - A device is its certificate (`fleet/tls.py`, now valid ten years so that its fingerprint is a stable
-  identity; replacing it is a new pairing). A cluster's record of devices is `fleet/membership.py`
-  (`Roster`: one file per cluster, named for the key's hash, 0600, locked, atomically written; a row whose
+  identity; replacing it is a new join). A pool's record of devices is `fleet/membership.py`
+  (`Roster`: one file per pool, named for the key's hash, 0600, locked, atomically written; a row whose
   fingerprint is not the hash of its certificate is dropped on load; `revoked` is sticky and wins every
   merge; a revoked certificate cannot be enrolled again). `fleet/pool_roster.py` (`Pool`) is the view over
-  every cluster the machine is in.
+  every pool the machine is in.
 - **Mutual TLS.** The daemon's TLS context (`tls.member_context`) asks every client for a certificate and
   completes the handshake only with an active member's; it is rebuilt whenever a record changes, so a revoked
   device fails its next handshake. A client context presents this machine's certificate (`tls.local`, or the
   daemon's own via `tls.present`).
 - **Request authority.** `fleet/callers.py` is the per-request check: a TLS caller must show a current member's
   certificate (else 403, even on a connection opened before the revocation), and a request signed with a
-  cluster's secret must come from a member of that cluster. A caller with no certificate (a phone, a browser)
-  may use only a device's own enrolment secret on `/workspace/v1/*`, never a cluster secret. The cluster key
+  pool's secret must come from a member of that pool. A caller with no certificate (a phone, a browser)
+  may use only a device's own enrolment secret on `/workspace/v1/*`, never a pool secret. The pool key
   remains the secret that signs and seals request bodies and seals beacons; it is no longer enough to be
   served. `GET /fleet/v1/self` says which device the daemon took a caller to be.
 - **Everywhere a device is checked.** The TLS handshake, every request, discovery (`discover` pins and returns
   only beacons whose certificate is an active member and un-pins a revoked one; `enrolled=False` is for the
   person choosing whom to enrol), the membership exchange route, and the sync loop (it talks only to enrolled
-  peers).
+  devices).
 - **Spreading.** `POST /fleet/v1/members` merges a member's record and answers with the receiver's;
-  `membership_sync` pushes at once on enrolment and revocation and every 20 s each daemon asks its peers.
-- **Joining.** Pairing lists each side's certificate in the other's record (the asker's certificate is checked
+  `membership_sync` pushes at once on enrolment and revocation and every 20 s each daemon asks its members.
+- **Joining.** Joining lists each side's certificate in the other's record (the asker's certificate is checked
   against the fingerprint the SPAKE2 exchange bound). The passphrase join binds the joiner's certificate as
   its SPAKE2 identity (it was the fixed string `joiner`), the automatic Development join and a computer
-  invitation carry it too, and each joiner lists the machine that admitted it. A cluster joined from a
-  recovery file, or before this change, has only itself in its record: `poolhouse-peers members adopt` lists the
-  machines that answer for the cluster with their fingerprints for a person to compare, `members add` enrols
-  one by certificate, `members revoke` puts one out (all three need a person at a terminal), and the daemon
-  says at start which clusters are still alone.
-- **Migration.** There is no automatic migration of trust: a daemon starting on an existing cluster enrols
-  only itself, so its peers refuse it until they are paired again or adopted by a person. The owner is the
+  invitation carry it too, and each joiner lists the machine that admitted it. A pool joined from a
+  recovery file, or before this change, has only itself in its record: `poolhouse-members roster adopt` lists the
+  machines that answer for the pool with their fingerprints for a person to compare, `roster add` enrols
+  one by certificate, `roster remove` puts one out (all three need a person at a terminal), and the daemon
+  says at start which pools are still alone.
+- **Migration.** There is no automatic migration of trust: a daemon starting on an existing pool enrols
+  only itself, so its devices refuse it until they are joined again or adopted by a person. The owner is the
   only user.
 - **Tests.** `tests/test_pool_membership.py`: real TLS sockets and the real daemon handler on temp roots; two
-  devices with different keys told apart; an unpaired device refused; a revoked device refused at its next
-  request on a live session and at its next handshake; a revoked device out of every check; a stale peer
+  devices with different keys told apart; a non-member device refused; a removed device refused at its next
+  request on a live session and at its next handshake; a removed device out of every check; a stale device
   cannot revive one; a downgrade to TLS 1.2 refused; a wrong or one-byte-changed server pin refused; a
   tampered roster row dropped; a beacon that was never enrolled not pinned; a caller with no certificate cannot
-  use the cluster secret; a member of another cluster cannot use this cluster's secret.
+  use the pool secret; a member of another pool cannot use this pool's secret.
 
 ### Left
 
-Slice 1's stream and chunk sealing; slice 3 (the cluster key and TLS key are still plaintext files, now
+Slice 1's stream and chunk sealing; slice 3 (the pool key and TLS key are still plaintext files, now
 joined by the roster); the channel-bound MAC of 2b (the certificate is checked on the same TLS session as
 the request, but the MAC does not yet cover its fingerprint); slices 4 to 8 and G1 to G5; rotating the
-cluster key on revocation (a revoked device still holds it); a real multi-device run, which this work could not
+pool key on revocation (a removed device still holds it); a real multi-device run, which this work could not
 do.

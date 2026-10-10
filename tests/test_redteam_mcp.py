@@ -218,7 +218,7 @@ def test_the_tool_arguments_are_checked_against_the_declared_types(spawned):
                             ("serve_up", {"model": "m", "escalate": "yes"}),
                             ("serve_up", {}), ("bench_run", {"argv": ["a", 7]}),
                             ("models_find", {"words": "x", "limit": "3"}),
-                            ("fleet_peers", {"timeout_s": "2"})):
+                            ("fleet_members", {"timeout_s": "2"})):
         answer = mcp.call(name, arguments)
         assert answer["isError"], (name, arguments)
     assert spawned.commands == []
@@ -226,5 +226,5 @@ def test_the_tool_arguments_are_checked_against_the_declared_types(spawned):
 
 
 def test_a_number_may_be_given_to_a_float_argument(tmp_path):
-    mcp.checked(mcp.fleet_peers, {"timeout_s": 2})
-    mcp.checked(mcp.fleet_peers, {"timeout_s": 2.5})
+    mcp.checked(mcp.fleet_members, {"timeout_s": 2})
+    mcp.checked(mcp.fleet_members, {"timeout_s": 2.5})

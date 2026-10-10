@@ -150,7 +150,7 @@ def test_native_reservation_uses_actual_remote_capability_api(setup, monkeypatch
 
     remote = RemoteWorkspace.__new__(RemoteWorkspace)
     remote.host, remote.project_id, remote.base = setup.remote.host, setup.remote.project_id, setup.remote.base
-    remote.cluster = 'fixture-cluster'
+    remote.pool = 'fixture-pool'
     capability = 'mlws1.worker.fixture-agent-capability'
     tokens.store(remote.base, 'worker', capability)
     requests = []
@@ -328,7 +328,7 @@ def direct_cli(tmp_path, monkeypatch):
     monkeypatch.setattr(harness_remote.project_connection, 'selected', lambda: None)
     monkeypatch.setattr(harness_remote.limits, 'root', lambda: tmp_path / 'physical')
     args = SimpleNamespace(action='claim', arguments=['branch', 'worker/change'], host=remote.host,
-                           project_id=remote.project_id, cluster_key='', cluster='', name='', agent='worker',
+                           project_id=remote.project_id, pool_key='', pool='', name='', agent='worker',
                            token_file='', model='', harness='', note='lifecycle', project_root=str(tmp_path), ttl=0)
     return args, calls
 

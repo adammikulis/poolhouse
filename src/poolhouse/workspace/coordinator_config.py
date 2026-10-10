@@ -1,4 +1,4 @@
-"""Explicit cluster coordinator routing retained by each device."""
+"""Explicit pool coordinator routing retained by each device."""
 
 from urllib.parse import urlsplit
 
@@ -22,11 +22,11 @@ def load(base):
 def validate_endpoint(endpoint):
     parts = urlsplit(endpoint)
     if parts.username or parts.password or parts.path not in ('', '/') or parts.query or parts.fragment:
-        raise Denied('the coordinator endpoint is an enrolled cluster origin')
+        raise Denied('the coordinator endpoint is an enrolled pool origin')
     if not parts.hostname or parts.scheme not in ('http', 'https'):
         raise Denied('the coordinator endpoint is HTTP or HTTPS')
     if parts.scheme != 'https' and parts.hostname not in ('127.0.0.1', '::1', 'localhost'):
-        raise Denied('a remote coordinator requires encrypted cluster transport')
+        raise Denied('a remote coordinator requires encrypted pool transport')
 
 
 def save(base, document):

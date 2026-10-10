@@ -18,23 +18,23 @@ from poolhouse.http import Server, ServerError, open_stream
 from . import pausing, recovery
 from .discovery import (
     DiscoveryError,
-    cluster_group,
     derive_token,
     discover,
     leave,
-    load_cluster_key,
+    load_pool_key,
     memberships,
     named_apart,
+    pool_group,
     require_name,
 )
 from .launch_secret import LaunchSecret
 from .onboard.joining import (
     DEFAULT_JOIN_OPTIONS,
     JoinOptions,
-    cluster_action,
     join_by_passphrase,
     join_existing,
     matches,
+    pool_action,
 )
 from .page import FIT_ONLY
 from .routes import ASSETS, UI_HEADER, asset_bytes, routes, write, write_json
@@ -83,8 +83,8 @@ def _scraped(source: str) -> dict[str, Any]:
 class UI:
     """Route handling for ``/ui/*``. Holds the session store and the login throttle."""
 
-    def __init__(self, *, name: str = "", cluster_key_path: Path | str | None = None,
-                 peer_port: int = 8770, setup_token: str = "",
+    def __init__(self, *, name: str = "", pool_key_path: Path | str | None = None,
+                 member_port: int = 8770, setup_token: str = "",
                  on_join: Any | None = None) -> None:
         self.runner: Any = None
         self.parts: Any = None
@@ -115,8 +115,8 @@ class UI:
         """``(str) -> str``: renames this machine now. Set by the daemon that owns it."""
         self.name = name
         self.on_join = on_join
-        self.cluster_key_path = cluster_key_path
-        self.peer_port = peer_port
+        self.pool_key_path = pool_key_path
+        self.member_port = member_port
         self.setup_token = setup_token
         self.sessions = Sessions()
         self.throttle = Throttle()
@@ -127,7 +127,7 @@ class UI:
         self.audit: Callable[..., None] | None = None
         """``(event, **fields)``: appends a row to the audit chain; the workspaces' audit when unset."""
         self._join_lock = threading.Lock()
-        self._peers: tuple[float, list[dict[str, Any]]] = (0.0, [])
+        self._members: tuple[float, list[dict[str, Any]]] = (0.0, [])
         self.setup_jobs = None
         self._setup_jobs_lock = threading.Lock()
 
@@ -147,7 +147,7 @@ class UI:
         if self.setup_token and token and _same(token, self.setup_token):
             return ""
         return ("refused: set this machine up on the machine itself, or over ssh with "
-                "'poolhouse-peers setup'. A daemon that has not joined a cluster has no "
+                "'poolhouse-members setup'. A daemon that has not joined a pool has no "
                 "password to check, so the first person to reach this page would own "
                 "the box. Start it with --setup-from-lan to allow this deliberately.")
 
@@ -167,13 +167,13 @@ class UI:
 
     # -- state -----------------------------------------------------------
     def state(self) -> dict[str, Any]:
-        selected = memberships(self.cluster_key_path)
+        selected = memberships(self.pool_key_path)
         joined = bool(selected)
-        mode = selected[0].mode if selected else getattr(self.settings, "cluster_mode", "") or "dev"
+        mode = selected[0].mode if selected else getattr(self.settings, "pool_mode", "") or "dev"
         done = bool(self.settings and self.settings.setup_done)
-        return {"in_cluster": joined, "name": self.name,
-                "group": cluster_group(self.cluster_key_path) if joined else None,
-                "needs_password": joined, "cluster_mode": mode,
+        return {"in_pool": joined, "name": self.name,
+                "group": pool_group(self.pool_key_path) if joined else None,
+                "needs_password": joined, "pool_mode": mode,
                 "selection": getattr(selected[0], "selection", "automatic") if selected else "automatic",
                 "needs_setup": not done}
 
@@ -186,44 +186,44 @@ class UI:
         return self.state()
 
     def leave(self, group: str) -> list[Any]:
-        """Drop a cluster and its stored passphrase; the clusters left."""
-        recovery.forget(group, self.cluster_key_path)
-        return leave(group, self.cluster_key_path)
+        """Drop a pool and its stored passphrase; the pools left."""
+        recovery.forget(group, self.pool_key_path)
+        return leave(group, self.pool_key_path)
 
     def rejoined(self) -> None:
-        """The set of clusters changed: advertise on the new one, drop the old."""
-        self._peers = (0.0, [])
+        """The set of pools changed: advertise on the new one, drop the old."""
+        self._members = (0.0, [])
         if self.on_join is not None:
             with contextlib.suppress(Exception):
                 self.on_join()
 
     def itself(self) -> dict[str, Any]:
-        """This machine as a peer row, for a screen counting machines before any
+        """This machine as a member row, for a screen counting machines before any
         other one is on the network."""
         status = self.runner.status() if self.runner is not None else {}
         slots = int(status.get("slots") or 1)
-        return {"name": self.name, "port": self.peer_port, "machine": machine_id(),
+        return {"name": self.name, "port": self.member_port, "machine": machine_id(),
                 "device": self.report() if callable(self.report) else {},
                 "busy": bool(status.get("busy")), "queued": int(status.get("queued") or 0),
                 "slots": slots, "free": int(status.get("free", slots)),
                 "host": "127.0.0.1", "hostname": "",
-                "base_url": f"http://127.0.0.1:{self.peer_port}",
+                "base_url": f"http://127.0.0.1:{self.member_port}",
                 "display_url": self.projects.host if self.projects is not None else "",
-                "is_self": True, "clusters": []}
+                "is_self": True, "pools": []}
 
-    def peers(self, *, force: bool = False) -> list[dict[str, Any]]:
+    def members(self, *, force: bool = False) -> list[dict[str, Any]]:
         """Everyone on the LAN, cached briefly. The browser cannot do this itself."""
-        age, cached = self._peers
+        age, cached = self._members
         if not force and time.time() - age < DISCOVER_CACHE_S:
             return cached
-        joined = memberships(self.cluster_key_path)
+        joined = memberships(self.pool_key_path)
         if not joined:
             return [self.itself()]
-        # One machine in two of your clusters is one machine, listed once, with the
-        # clusters you share with it. Each cluster is advertised separately, so the
+        # One machine in two of your pools is one machine, listed once, with the
+        # pools you share with it. Each pool is advertised separately, so the
         # same daemon answers on each with a beacon of its own.
         local = self.itself()
-        local["clusters"] = [member.group for member in joined]
+        local["pools"] = [member.group for member in joined]
         by_address: dict[str, dict[str, Any]] = {local["machine"]: local}
         for member in joined:
             for beacon in discover(member.key, timeout_s=1.5, port=self.discovery_port):
@@ -235,19 +235,19 @@ class UI:
                     row["base_url"] = beacon.base_url
                     row["called"] = beacon.name
                     row["is_self"] = beacon.machine == machine_id()
-                    row["clusters"] = []
+                    row["pools"] = []
                     by_address[identity] = row
-                if member.group not in row["clusters"]:
-                    row["clusters"].append(member.group)
+                if member.group not in row["pools"]:
+                    row["pools"].append(member.group)
         found = sorted(named_apart(list(by_address.values())),
                        key=lambda r: (not r["is_self"], r["name"]))
-        self._peers = (time.time(), found)
+        self._members = (time.time(), found)
         return found
 
     # -- actions ---------------------------------------------------------
     @contextlib.contextmanager
     def join_guard(self) -> Iterator[None]:
-        """Serialize cluster membership changes without waiting on another handshake."""
+        """Serialize pool membership changes without waiting on another handshake."""
         if not self._join_lock.acquire(blocking=False):
             raise DiscoveryError("another join is in progress; try again")
         try:
@@ -257,7 +257,7 @@ class UI:
 
     def join(self, passphrase: str, group: str, source: str, *,
              options: JoinOptions = DEFAULT_JOIN_OPTIONS, origin: str = "") -> tuple[dict[str, Any], str]:
-        """Join a cluster and open a session carrying ``origin``. Returns ``(state, session id)``."""
+        """Join a pool and open a session carrying ``origin``. Returns ``(state, session id)``."""
         group = require_name(group)
         held = self.throttle.blocked_for(source)
         if held:
@@ -265,18 +265,18 @@ class UI:
         try:
             with self.join_guard():
                 if options.action is not None:
-                    cluster_action(options.action, passphrase, group, self.cluster_key_path,
+                    pool_action(options.action, passphrase, group, self.pool_key_path,
                                    options=replace(options, port=options.port if options.port is not None else self.discovery_port))
                 else:
                     joiner = join_existing if options.existing else join_by_passphrase
-                    joiner(passphrase, group, self.cluster_key_path,
+                    joiner(passphrase, group, self.pool_key_path,
                            options=replace(options, port=options.port if options.port is not None else self.discovery_port))
-                recovery.remember(passphrase, group, self.cluster_key_path)
+                recovery.remember(passphrase, group, self.pool_key_path)
         except DiscoveryError:
             self.throttle.failed(source)
             raise
         self.throttle.succeeded(source)
-        self._peers = (0.0, [])
+        self._members = (0.0, [])
         if self.on_join is not None:
             with contextlib.suppress(Exception):
                 self.on_join()
@@ -366,26 +366,26 @@ class UI:
 
     # -- the fleet, and a sweep over it ----------------------------------
     def fleet(self) -> dict[str, Any]:
-        """The peers as `join.describe` rows -- serving, room, busy, commit -- and the
+        """The members as `join.describe` rows -- serving, room, busy, commit -- and the
         models they hold between them, which is what a sweep can be built from."""
         from .discovery import Beacon
         from .join import describe
 
         rows = []
-        for row in self.peers():
+        for row in self.members():
             beacon = Beacon(name=str(row.get("name") or ""), port=int(row.get("port") or 8770),
                             device=dict(row.get("device") or {}), busy=bool(row.get("busy")),
                             queued=int(row.get("queued") or 0), slots=int(row.get("slots") or 1),
                             free=int(row.get("free", 1)), host=str(row.get("host") or ""),
                             hostname=str(row.get("hostname") or ""),
                             machine=str(row.get("machine") or ""))
-            rows.append({**describe(beacon, clusters=row.get("clusters") or [],
+            rows.append({**describe(beacon, pools=row.get("pools") or [],
                                     self_machine=machine_id()),
                          "display_url": str(row.get("display_url") or ""),
                          "called": str(row.get("called") or row["name"])})
         models = sorted({m for r in rows for m in r["models"]})
-        return {"peers": rows, "models": models, "self": self.name,
-                "group": cluster_group(self.cluster_key_path), "bench": self.bench_state()}
+        return {"members": rows, "models": models, "self": self.name,
+                "group": pool_group(self.pool_key_path), "bench": self.bench_state()}
 
     def join_fleet(self, *, passphrase: str = "", group: str = "", persist: bool = False,
                    name: str = "") -> dict[str, Any]:
@@ -393,26 +393,26 @@ class UI:
         from .join import join_machine
 
         def enrol(words: str, named: str) -> None:
-            join_by_passphrase(words, named, self.cluster_key_path)
+            join_by_passphrase(words, named, self.pool_key_path)
             self.rejoined()
 
         said: list[str] = []
         joined = join_machine(name=name or self.name, passphrase=passphrase, group=group,
-                              persist=persist, port=self.peer_port,
+                              persist=persist, port=self.member_port,
                               root=self.root or default_root(),
-                              cluster_key_path=self.cluster_key_path, enrol=enrol,
+                              pool_key_path=self.pool_key_path, enrol=enrol,
                               persist_with=self.persist_with, say=said.append,
                               discovery_port=self.discovery_port)
-        self._peers = (0.0, [])
+        self._members = (0.0, [])
         return {**joined.public(), "said": said}
 
     def with_self(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """The peers, with this machine among them even if its own beacon was not heard."""
+        """The members, with this machine among them even if its own beacon was not heard."""
         if any(r.get("is_self") for r in rows):
             return rows
-        return [{"name": self.name, "clusters": [m.group for m in
-                                                 memberships(self.cluster_key_path)],
-                 "base_url": f"http://127.0.0.1:{self.peer_port}", "is_self": True},
+        return [{"name": self.name, "pools": [m.group for m in
+                                                 memberships(self.pool_key_path)],
+                 "base_url": f"http://127.0.0.1:{self.member_port}", "is_self": True},
                 *rows]
 
     def pause_fleet(self, *, resume: bool = False, minutes: float | None = None,
@@ -420,9 +420,9 @@ class UI:
         """Pause or resume every machine this one can see, and what each of them said."""
         answers = pausing.pause_fleet(
             pausing.Fanout(self.root or default_root(), resume=resume, minutes=minutes,
-                   reason=reason, cluster_key_path=self.cluster_key_path),
-            self.with_self(self.peers(force=True)))
-        self._peers = (0.0, [])
+                   reason=reason, pool_key_path=self.pool_key_path),
+            self.with_self(self.members(force=True)))
+        self._members = (0.0, [])
         return {"machines": [a.public() for a in answers],
                 "reached": sum(1 for a in answers if a.ok), "total": len(answers)}
 
@@ -586,7 +586,7 @@ class UI:
         if ticket:
             return self._redeem(source, ticket)
 
-        key = load_cluster_key(self.cluster_key_path)
+        key = load_pool_key(self.pool_key_path)
         if key is None:
             return None
 
@@ -605,8 +605,8 @@ class UI:
         if not self.throttle.acquire():
             raise DiscoveryError("busy checking another passphrase; try again")
         try:
-            ok = matches(passphrase, group or cluster_group(self.cluster_key_path) or "",
-                         self.cluster_key_path)
+            ok = matches(passphrase, group or pool_group(self.pool_key_path) or "",
+                         self.pool_key_path)
         finally:
             self.throttle.release()
         if not ok:
@@ -627,7 +627,7 @@ class UI:
             self.record("session.refused", reason="ticket", source=source)
             return None
         state = self.state()
-        if kind == "launch-secret" and state["in_cluster"] and state["cluster_mode"] == "prod":
+        if kind == "launch-secret" and state["in_pool"] and state["pool_mode"] == "prod":
             self.record("session.refused", reason="production-needs-passphrase", source=source)
             return None
         self.redeem_throttle.succeeded(source)
@@ -674,8 +674,8 @@ def serve_page(*, port: int = 0, name: str = "", host: str = "127.0.0.1") -> Any
     """A loopback-only server over `routes` alone -- what ``poolhouse-serve fit --ui`` puts up.
 
     The same ``UI`` object and the same route table the daemon mounts, with nothing else
-    on it: no jobs, no models, no peers, and a cluster key path that deliberately does not
-    exist, so a machine that *is* in a cluster is not asked to sign in to look at its own
+    on it: no jobs, no models, no members, and a pool key path that deliberately does not
+    exist, so a machine that *is* in a pool is not asked to sign in to look at its own
     measurements. It binds loopback, which is what makes that safe: `may_setup` lets this
     machine in and there is no address anyone else could reach.
 
@@ -686,7 +686,7 @@ def serve_page(*, port: int = 0, name: str = "", host: str = "127.0.0.1") -> Any
     import tempfile
 
     ui = UI(name=name or _platform.node() or "this machine",
-            cluster_key_path=Path(tempfile.gettempdir()) / "poolhouse-fit-no-cluster")
+            pool_key_path=Path(tempfile.gettempdir()) / "poolhouse-fit-no-pool")
     ui.parts = FIT_ONLY
     handler = type("FitHandler", (_Loopback,), {"ui": ui})
     return Server((host, port), handler)

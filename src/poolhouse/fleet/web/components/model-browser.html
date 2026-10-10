@@ -184,7 +184,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
         detail.replaceChildren(el("span", {}, name), el("span", { class: "why" },
           this.source === "network" ? (chosen.local
             ? `This machine · ${size(chosen)}${loading ? " · loading model" : active ? " · running" : ""}`
-            : `On ${(chosen.peers || []).join(", ")} · ${size(chosen)}`)
+            : `On ${(chosen.members || []).join(", ")} · ${size(chosen)}`)
           : `${size(chosen)} weights${chosen.draft_ref ? ` + ${Number.isFinite(draftGB) ? `${draftGB.toFixed(1)} GB` : 'size unknown'} MTP head · ${Number.isFinite(total) ? `${total.toFixed(1)} GB total download` : "total size unknown"}` : ""}`),
           ...M.kids(chosen.estimated_context ? el("span", { class: "why" },
             `Estimated up to ${M.ctxWords(chosen.estimated_context)} at Q8 KV; other apps reduce available memory.`) : null,

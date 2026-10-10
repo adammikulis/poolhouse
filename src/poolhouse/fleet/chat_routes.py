@@ -6,7 +6,7 @@ from poolhouse import agent_dependency
 
 from .chat import find, reply_parts, targets
 from .conversation_routes import ConversationRoutes
-from .discovery import derive_token, load_cluster_key
+from .discovery import derive_token, load_pool_key
 
 __all__ = ["ChatRoutes"]
 
@@ -21,8 +21,8 @@ class ChatRoutes(ConversationRoutes):
 
     def _chat(self) -> bool:
         ui = self.ui
-        key = load_cluster_key(ui.cluster_key_path)
-        available = targets(ui.peers() if key is not None else [], ui.serving,
+        key = load_pool_key(ui.pool_key_path)
+        available = targets(ui.members() if key is not None else [], ui.serving,
                             derive_token(key) if key else "")
         if self.method == "GET":
             problem = agent_dependency.problem()
@@ -72,7 +72,7 @@ class ChatRoutes(ConversationRoutes):
             handler.send_response(200)
             handler.send_header("Content-Type", "text/event-stream")
             handler.send_header("Cache-Control", "no-store")
-            handler.send_header("X-Poolhouse-Peer", target.peer or "")
+            handler.send_header("X-Poolhouse-Member", target.member or "")
             handler.send_header("X-Poolhouse-Model", target.model)
             handler.send_header("Connection", "close")
             handler.end_headers()

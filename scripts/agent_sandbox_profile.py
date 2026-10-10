@@ -29,7 +29,7 @@ SCRUBBED_ENV = (
 STATE_DENY_READ = (
     "workspace/tokens", "workspace/local-agents", "workspace/device-accounts.db",
     "workspace/device-accounts.db.shadow", "workspace/invites.json", "workspace/shared-invites.json",
-    "workspace-remote", "keystore", "server-keys.json", "cluster.key.old", "cluster.json",
+    "workspace-remote", "keystore", "server-keys.json", "pool.key.old", "pool.json",
     "credentials.endpoint", "credentials.toml.bak", "onboard",
 )
 STATE_ALLOW_READ = ("workspace/tokens/claude-code",)

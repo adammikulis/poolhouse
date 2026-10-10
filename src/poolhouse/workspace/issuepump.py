@@ -205,7 +205,7 @@ def run(argv=None):
     ws = Workspace()
     bound = os.environ.get(tokens.AGENT_ENV)
     if bound and bound != actor:
-        raise Denied("the producer identity differs from the process's bound workspace seat")
+        raise Denied("the producer identity differs from the process's bound workspace session")
     agent = la.load(ws, name)
     if agent is None:
         raise ValueError("the coding worker no longer exists")

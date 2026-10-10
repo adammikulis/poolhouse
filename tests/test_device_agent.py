@@ -1,4 +1,4 @@
-"""Device account enrollment binds authentic local seats independently of models."""
+"""Device account enrollment binds authentic local sessions independently of models."""
 from dataclasses import replace
 
 import pytest
@@ -57,7 +57,7 @@ def test_person_start_binds_model_independent_default(tmp_path, monkeypatch):
     assert account_for(kit.ws, got.name) == account
 
 
-def test_saved_delegated_coding_seat_survives_model_restart(tmp_path, monkeypatch):
+def test_saved_delegated_coding_session_survives_model_restart(tmp_path, monkeypatch):
     from test_workspace_local_agent import PICK, sleeper
 
     from poolhouse.workspace import localprofile, localstart

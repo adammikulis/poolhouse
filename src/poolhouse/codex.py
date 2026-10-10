@@ -90,14 +90,14 @@ def environment(home: Path, base: Mapping[str, str] | None = None, key: str = ""
 
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
            run_codex: Callable[..., int] | None = None,
-           seat_factory: Callable[..., Any] | None = None) -> int:
+           session_factory: Callable[..., Any] | None = None) -> int:
     """Lease the model, run ``codex`` inside the lease with this run's home, return its exit code."""
     words = list(sys.argv[1:] if argv is None else argv)
     ours, extra = (words[: words.index("--")], words[words.index("--") + 1:]) \
         if "--" in words else (words, [])
     args = harnessing.parser("codex", "Codex", DEFAULT_PORT, DEFAULT_SLOTS).parse_args(ours)
     provenance.told(args.lease_for)
-    args.seat_factory = seat_factory
+    args.session_factory = session_factory
     binary = args.codex or shutil.which("codex") or ""
     if not binary:
         say("error: no `codex` on PATH; install Codex or pass --codex PATH")
@@ -133,16 +133,16 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
 
 
 
-def workspace_config(seat) -> str:
-    """The assigned-seat MCP settings, or empty for a parent-managed inbox task."""
-    if seat.managed_inbox:
+def workspace_config(session) -> str:
+    """The assigned-session MCP settings, or empty for a parent-managed inbox task."""
+    if session.managed_inbox:
         return ""
     workspace = ["", "[mcp_servers.workspace]", f"command = {_q(sys.executable)}",
          'args = ["-m", "poolhouse.mcp", "--builtin", "--workspace-only"]',
          "startup_timeout_sec = 30", "required = true", "[mcp_servers.workspace.env]"]
     workspace += [f"{name} = {_q(value)}" for name, value in {
-        TOKEN_ENV: tokens.load(seat.base, seat.name),
-        "POOLHOUSE_HOME": str(seat.base.parent), "POOLHOUSE_WORKSPACE_HOME": str(seat.base),
+        TOKEN_ENV: tokens.load(session.base, session.name),
+        "POOLHOUSE_HOME": str(session.base.parent), "POOLHOUSE_WORKSPACE_HOME": str(session.base),
         "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
         "POOLHOUSE_AGENT": "1", "POOLHOUSE_NONINTERACTIVE": "1"}.items()]
     return "\n".join(workspace) + "\n"
@@ -155,8 +155,8 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     try:
         with harnessing.opened(args, "codex", served, say) as run:
             path = run.files.write("config.toml", config_toml(base_url, alias, window,
-                                    (run.pre, run.post, harnessing.WAIT_S)) + workspace_config(run.seat))
-            extra_brief = "" if run.seat.managed_inbox else (
+                                    (run.pre, run.post, harnessing.WAIT_S)) + workspace_config(run.session))
+            extra_brief = "" if run.session.managed_inbox else (
                 "\nUse the workspace MCP tools for inbox/send/thread/claim. They already carry your "
                 "assigned identity; never use shell workspace commands inside the coding sandbox.\n")
             run.files.write("AGENTS.md", run.brief + extra_brief)

@@ -23,15 +23,15 @@ def _create(tasks, body, project):
     return {**made, 'project': project} if project is not None else made
 
 
-def _post(seat, body, project):
-    tasks = Tasks(seat)
+def _post(session, body, project):
+    tasks = Tasks(session)
     action = body.get('action', 'create')
     if action == 'create' and set(body) <= {'action', 'spec'}:
         return _create(tasks, body, project)
     if action == 'review' and set(body) == {'action', 'id', 'decision'}:
-        return task_outcomes.seat_review(seat, body['id'], body['decision'])
+        return task_outcomes.session_review(session, body['id'], body['decision'])
     if action == 'credit' and set(body) == {'action', 'id'}:
-        return {'credit': task_outcomes.seat_credit(seat, body['id'])}
+        return {'credit': task_outcomes.session_credit(session, body['id'])}
     if action in ('resume', 'recover') and set(body) == {'action', 'id', 'reason'}:
         return getattr(tasks, action)(body['id'], body['reason'])
     raise ValueError('tasks accept create, independent review, resume or recovery requests')
@@ -50,12 +50,12 @@ def route(request, *, prefix="/ui/tasks", root=None, project=None) -> bool:
         request.send(refused[0], json.loads(refused[2]))
         return True
     try:
-        seat = person.seat(Path(root) if root else Path.cwd())
+        session = person.session(Path(root) if root else Path.cwd())
         if request.method == 'GET':
             ident = request.asked('id', '')
-            result = Tasks(seat).get(ident) if ident else Tasks(seat).list()
+            result = Tasks(session).get(ident) if ident else Tasks(session).list()
         else:
-            result = _post(seat, object_body(request), project)
+            result = _post(session, object_body(request), project)
         request.send(200, result)
     except client.Denied as error:
         request.send(403, {'error': str(error)})

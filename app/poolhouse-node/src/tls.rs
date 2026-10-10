@@ -1,9 +1,9 @@
 //! TLS 1.3 and nothing else, with a pinned self-signed certificate per device on both sides.
 //!
 //! No certificate authority and no first-use trust. A client trusts the one certificate it was
-//! told to (`expect`), or, to pair, any certificate that the exchange afterwards binds to a
+//! told to (`expect`), or, to join, any certificate that the exchange afterwards binds to a
 //! code. A server asks every client for a certificate and refuses the handshake of one the pool
-//! has revoked; an unknown one completes the handshake and may only pair or join, which the
+//! has revoked; an unknown one completes the handshake and may only join with a code or join under `open`, which the
 //! request check enforces on every request.
 
 use std::io::{Read, Write};
@@ -119,7 +119,7 @@ pub fn server_config(me: &Identity, standing: StandingFn) -> Result<Arc<ServerCo
 }
 
 /// The client side: TLS 1.3 only, showing ``me``, accepting only the certificate with
-/// fingerprint ``expect`` (any, when pairing: the exchange then authenticates it).
+/// fingerprint ``expect`` (any, when joining with a code: the exchange then authenticates it).
 pub fn client_config(me: &Identity, expect: Option<&str>) -> Result<Arc<ClientConfig>> {
     let p = provider();
     let pin = Pin { expect: expect.map(str::to_string), algs: p.signature_verification_algorithms };

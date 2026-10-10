@@ -20,16 +20,16 @@ from poolhouse.fleet.discovery import (
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.pool_roster import Pool
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.workspace import localagent, localloop, localmodel, remote_workers, tokens
 from poolhouse.workspace.remote import RemoteWorkspace
 from poolhouse.workspace.remote_host import WorkspaceHost
 from poolhouse.workspace.service import Workspace
 
 PROJECT = 'a' * 32
-CLUSTER = 'development'
+POOL = 'development'
 KEY = base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=")
-CLUSTER_ID = hashlib.sha256(KEY).hexdigest()
+POOL_ID = hashlib.sha256(KEY).hexdigest()
 
 
 def _server(root, machine, projects):
@@ -41,32 +41,32 @@ def _server(root, machine, projects):
     ident = tls.identity(root / machine / 'tls', machine)
     pool = Pool()
     for one in (ident, tls.local()):          # the daemon itself, and this machine as its client
-        pool.enrol(CLUSTER, one.beacon, machine, 'test')
+        pool.enrol(POOL, one.beacon, machine, 'test')
     daemon.members = pool
     server = LimitedServer((discovery.primary_ip(), 0), api.make_handler(daemon),
                            tls=tls.member_context(ident, pool))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     beacon = Beacon(name=machine, machine=machine, host=discovery.primary_ip(), port=server.server_port, cert=ident.beacon)
-    peer = Peer(beacon.base_url, derive_token(KEY), beacon=beacon)
+    member = Member(beacon.base_url, derive_token(KEY), beacon=beacon)
     http.pin(urlsplit(beacon.base_url).netloc, tls.pinned_context(ident.beacon))
-    return daemon, server, runner, peer
+    return daemon, server, runner, member
 
 
 def _membership(root):
-    keyfile = root / 'cluster.key'
+    keyfile = root / 'pool.key'
     keyfile.write_bytes(KEY)
     keyfile.chmod(0o600)
-    _write_memberships([Membership(CLUSTER, KEY, mode='dev')], keyfile)
+    _write_memberships([Membership(POOL, KEY, mode='dev')], keyfile)
     return keyfile
 
 
 @pytest.fixture
 def devices(tmp_path, monkeypatch):
-    monkeypatch.setenv('POOLHOUSE_CLUSTER_KEY', str(_membership(tmp_path)))
+    monkeypatch.setenv('POOLHOUSE_POOL_KEY', str(_membership(tmp_path)))
     monkeypatch.setattr('poolhouse.home.state', lambda *parts: tmp_path / 'device-a' / 'state' / '/'.join(parts))
     monkeypatch.setattr('poolhouse.home.device_id', lambda: 'device-b')
     monkeypatch.setattr('poolhouse.home.machine_id', lambda: remote_workers.home.device_id())
-    roots, servers, runners, peers, spawned = {}, [], [], [], []
+    roots, servers, runners, members, spawned = {}, [], [], [], []
     project = SimpleNamespace(name='sample', board_host='', root='')
     class Projects:
         def __init__(self, machine):
@@ -88,7 +88,7 @@ def devices(tmp_path, monkeypatch):
             daemon, server, runner, node = _server(tmp_path, machine, Projects(machine))
             runners.append(runner)
             servers.append(server)
-            peers.append(node)
+            members.append(node)
             beacon = node.beacon
             if machine == 'device-a':
                 project.board_host = beacon.base_url
@@ -96,7 +96,7 @@ def devices(tmp_path, monkeypatch):
                 authority.prepare(PROJECT)
             else:
                 target_projects = daemon.projects
-        monkeypatch.setattr(Peer, 'discover', lambda **kwargs: peers)
+        monkeypatch.setattr(Member, 'discover', lambda **kwargs: members)
         actual_remote = RemoteWorkspace
         def target_remote(*args, **kwargs):
             result = actual_remote(*args, **kwargs)
@@ -112,23 +112,23 @@ def devices(tmp_path, monkeypatch):
         monkeypatch.setattr('poolhouse.workspace.localprofile.admit', lambda *args: ('', ''))
         monkeypatch.setattr(remote_workers.jobs, 'detach', lambda module, args, **kwargs:
                             spawned.append((module, args, kwargs)) or SimpleNamespace(pid=0, log=kwargs['log']))
-        caller = actual_remote(peers[0].base_url, PROJECT, cluster=CLUSTER)
+        caller = actual_remote(members[0].base_url, PROJECT, pool=POOL)
         enrolled = caller.enroll('test-caller', model='test-runtime', harness='test-harness')
         caller_token = tokens.load(caller.base, enrolled['id'])
-        target = actual_remote(peers[1].base_url, PROJECT, cluster=CLUSTER)
-        body = {'agent_token': caller_token, 'cluster': CLUSTER, 'cluster_id': CLUSTER_ID,
+        target = actual_remote(members[1].base_url, PROJECT, pool=POOL)
+        body = {'agent_token': caller_token, 'pool': POOL, 'pool_id': POOL_ID,
                 'name': 'local-qwen', 'ctx': 32768, 'max_output_tokens': 1234}
         yield SimpleNamespace(caller=caller, token=caller_token, target=target, body=body,
                               local=local, authority=authority, target_projects=target_projects,
-                              spawned=spawned, roots=roots, peers=peers, project=project, keyfile=tmp_path / 'cluster.key')
+                              spawned=spawned, roots=roots, members=members, project=project, keyfile=tmp_path / 'pool.key')
     finally:
         for server in servers:
             server.shutdown()
             server.server_close()
         for runner in runners:
             runner.shutdown()
-        for peer in peers:
-            http.pin(urlsplit(peer.base_url).netloc, None)
+        for member in members:
+            http.pin(urlsplit(member.base_url).netloc, None)
 
 
 def test_tls_launch_and_local_loop_exchange_on_the_board(devices):
@@ -147,19 +147,19 @@ def test_tls_launch_and_local_loop_exchange_on_the_board(devices):
     worker = remote_workers.BoardWorker(state.local, record)
     assert worker.base == state.local.base
     assert worker.auth(worker.worker_token(agent)).id == result['identity']
-    state.caller.call('send', state.token, result['identity'], 'question', 'Report the project Board identity')
+    state.caller.call('send', state.token, result['identity'], 'question', 'Report the board identity')
     cancel, executed = threading.Event(), []
     def execute(agent, row, why, stopped):
         executed.append(row)
         cancel.set()
-        return 'answer', 'Worker replied from the project Board', 1
+        return 'answer', 'Worker replied from the board', 1
     settings = localloop.Settings(cancel=cancel, execute=execute,
                                  serve=lambda agent: localloop.Held(None, {'id': 'test-lease'}))
     assert localloop.run(worker, 'local-qwen', settings) == 0
     assert len(executed) == 1
     replies = state.caller.call('inbox', state.token, ack=False, raw=True)
     assert any(row['from'] == result['identity'] and row['type'] == 'answer'
-               and 'project Board' in row['raw'] for row in replies)
+               and 'board' in row['raw'] for row in replies)
     assert state.local.inbox(tokens.load(state.local.base, agent.identity), ack=False) == []
 
 
@@ -173,13 +173,13 @@ def test_remote_launch_refuses_paths_and_invalid_budgets(devices, field, value):
 
 
 @pytest.mark.redteam
-@pytest.mark.parametrize('mode', ['prod', 'invalid-cluster', 'invalid-agent', 'unsealed'])
+@pytest.mark.parametrize('mode', ['prod', 'invalid-pool', 'invalid-agent', 'unsealed'])
 def test_remote_launch_requires_dev_sealed_transport_and_project_capability(devices, monkeypatch, mode):
     body = dict(devices.body)
     if mode == 'prod':
-        monkeypatch.setattr(project_enrollment, 'memberships', lambda path: [Membership(CLUSTER, KEY, mode='prod')])
-    elif mode == 'invalid-cluster':
-        body['cluster_id'] = 'b' * 64
+        monkeypatch.setattr(project_enrollment, 'memberships', lambda path: [Membership(POOL, KEY, mode='prod')])
+    elif mode == 'invalid-pool':
+        body['pool_id'] = 'b' * 64
     elif mode == 'invalid-agent':
         body['agent_token'] = 'mlws1.no-such-agent.invalid'
     if mode == 'unsealed':
@@ -215,7 +215,7 @@ def test_cli_discovers_target_without_a_saved_project_connection(devices, monkey
     discovered = []
     def attach(root):
         discovered.append(root)
-        return {'host': state.caller.host, 'project_id': PROJECT, 'cluster': CLUSTER}
+        return {'host': state.caller.host, 'project_id': PROJECT, 'pool': POOL}
     monkeypatch.setattr(remote_workers.automatic_connection, 'discover', attach)
     monkeypatch.setattr(remote_workers.home, 'device_id', lambda: 'device-a')
     helper_name = 'lan-launch-device-a'
@@ -227,7 +227,7 @@ def test_cli_discovers_target_without_a_saved_project_connection(devices, monkey
     result = remote_workers.run(args)
     assert result['identity'].startswith('lan-device-b-')
     assert result['requested_by'] == helper_name
-    helper = RemoteWorkspace(state.caller.host, PROJECT, cluster=CLUSTER)
+    helper = RemoteWorkspace(state.caller.host, PROJECT, pool=POOL)
     helper_token = tokens.load(helper.base, helper_name)
     rows = helper.call('thread', helper_token, result['task_seq'])
     assert rows[0]['from'] == helper_name and rows[0]['to'] == result['identity']
@@ -254,13 +254,13 @@ def test_valid_capability_for_another_project_cannot_launch_a_worker(devices):
 @pytest.mark.redteam
 def test_target_must_have_the_registered_project(devices):
     with pytest.raises(PermissionError):
-        RemoteWorkspace(devices.target.host, 'b' * 32, cluster=CLUSTER)._request('worker', devices.body)
+        RemoteWorkspace(devices.target.host, 'b' * 32, pool=POOL)._request('worker', devices.body)
     assert not devices.spawned
 
 
 def test_suffixed_worker_identity_is_reused_after_first_enrollment(devices):
     ws = devices.authority.workspace(PROJECT)
-    scope = {'key': PROJECT, 'name': 'sample', 'cluster': CLUSTER, 'cluster_id': CLUSTER_ID}
+    scope = {'key': PROJECT, 'name': 'sample', 'pool': POOL, 'pool_id': POOL_ID}
     occupied, _ = ws.registry.enroll_project('worker-alias', scope, 3600)
     first = remote_workers.credential(devices.caller, occupied, 'Qwen3.8-test', 'device-a')
     actor = devices.caller.call('whoami', first)['id']
@@ -314,20 +314,20 @@ def test_generic_adapter_does_not_supply_a_worker_token_hook(devices):
     assert loop.token != devices.token
 
 
-def _rotate_cluster(state, group=CLUSTER):
+def _rotate_pool(state, group=POOL):
     key = base64.urlsafe_b64encode(bytes(reversed(range(32)))).rstrip(b'=')
     state.keyfile.write_bytes(key)
     _write_memberships([Membership(group, key, mode='dev')], state.keyfile)
     pool = Pool(state.keyfile)
-    for peer in state.peers:
-        peer.token = derive_token(key)
-        pool.enrol(group, peer.beacon.cert, peer.beacon.name, 'test')
+    for member in state.members:
+        member.token = derive_token(key)
+        pool.enrol(group, member.beacon.cert, member.beacon.name, 'test')
     pool.enrol(group, tls.local().beacon, 'client', 'test')
     return hashlib.sha256(key).hexdigest()
 
 
 @pytest.mark.parametrize('legacy', [False, True])
-@pytest.mark.parametrize('group', [CLUSTER, 'converged-development'])
+@pytest.mark.parametrize('group', [POOL, 'converged-development'])
 def test_worker_alias_renews_after_dev_key_rotation_without_changing_identity(devices, legacy, group):
     from poolhouse.graph.store import GraphStore
     before = remote_workers.credential(devices.caller, 'rotating-worker', 'Qwen3.8-test', 'device-a')
@@ -336,17 +336,17 @@ def test_worker_alias_renews_after_dev_key_rotation_without_changing_identity(de
         with GraphStore(devices.caller.base / 'worker-identities.db') as graph:
             node = next(row for row in graph.nodes('worker-identity') if row['attrs']['identity'] == identity)
             attrs = dict(node['attrs'])
-            attrs.pop('cluster_id')
+            attrs.pop('pool_id')
             graph.upsert_node({**node, 'attrs': attrs})
-    cluster_id = _rotate_cluster(devices, group)
-    current = RemoteWorkspace(devices.caller.host, PROJECT, cluster=group)
+    pool_id = _rotate_pool(devices, group)
+    current = RemoteWorkspace(devices.caller.host, PROJECT, pool=group)
     after = remote_workers.credential(current, 'rotating-worker', 'Qwen3.8-test', 'device-a')
     assert after == before
     who = current.call('whoami', after)
-    assert who['id'] == identity and who['project']['cluster_id'] == cluster_id
+    assert who['id'] == identity and who['project']['pool_id'] == pool_id
     with GraphStore(current.base / 'worker-identities.db') as graph:
         assert next(row['attrs'] for row in graph.nodes('worker-identity')
-                    if row['attrs']['identity'] == identity)['cluster_id'] == cluster_id
+                    if row['attrs']['identity'] == identity)['pool_id'] == pool_id
 
 
 @pytest.mark.redteam
@@ -358,37 +358,37 @@ def test_rekey_cannot_restore_a_revoked_worker(devices):
     records[identity]['revoked'] = True
     ws.registry._save(records)
     before = ws.registry.ids()
-    _rotate_cluster(devices)
-    current = RemoteWorkspace(devices.caller.host, PROJECT, cluster=CLUSTER)
+    _rotate_pool(devices)
+    current = RemoteWorkspace(devices.caller.host, PROJECT, pool=POOL)
     with pytest.raises(PermissionError):
         remote_workers.credential(current, 'revoked-worker', 'Qwen3.8-test', 'device-a')
     assert ws.registry.ids() == before
 
 
-@pytest.mark.parametrize('group', [CLUSTER, 'converged-development'])
+@pytest.mark.parametrize('group', [POOL, 'converged-development'])
 def test_live_board_worker_refreshes_tls_transport_and_sidecar_after_rekey(devices, group):
     result = devices.target._request('worker', devices.body)
     from poolhouse.files import read_json
     path = localagent.folder(devices.local) / 'local-qwen.remote.json'
     worker = remote_workers.BoardWorker(devices.local, read_json(path, {}))
     old_token = worker.token
-    cluster_id = _rotate_cluster(devices, group)
-    current = RemoteWorkspace(devices.caller.host, PROJECT, cluster=group)
+    pool_id = _rotate_pool(devices, group)
+    current = RemoteWorkspace(devices.caller.host, PROJECT, pool=group)
     current.renew('test-caller')
-    current.call('send', devices.token, result['identity'], 'question', 'Report after the cluster refresh')
+    current.call('send', devices.token, result['identity'], 'question', 'Report after the pool refresh')
     rows = worker.wait(old_token, 0, raw=True)
-    assert any('cluster refresh' in row['raw'] for row in rows)
+    assert any('pool refresh' in row['raw'] for row in rows)
     worker.send(old_token, 'test-caller', 'answer', 'Same worker after the refresh', reply_to=rows[0]['seq'])
     assert any('Same worker' in row['raw'] for row in current.call('inbox', devices.token, raw=True))
     assert worker.auth(old_token).id == result['identity'] and worker.token == old_token
-    assert read_json(path, {})['cluster_id'] == cluster_id
+    assert read_json(path, {})['pool_id'] == pool_id
     assert len(devices.spawned) == 1
 
 
 @pytest.mark.redteam
 def test_explicit_missing_cli_identity_cannot_enroll_a_replacement(devices, monkeypatch):
     monkeypatch.setattr(remote_workers, 'selected', lambda root: {'host': devices.caller.host,
-                        'project_id': PROJECT, 'cluster': CLUSTER})
+                        'project_id': PROJECT, 'pool': POOL})
     monkeypatch.setattr(remote_workers.home, 'device_id', lambda: 'device-a')
     args = SimpleNamespace(project=str(devices.roots['device-a']), device='device-b', agent='missing-caller',
                            name='missing-qwen', model='auto', effort='off', max_effort='medium',
@@ -404,11 +404,11 @@ def test_restarted_worker_renews_saved_scope_after_dev_group_convergence(devices
     result = devices.target._request('worker', devices.body)
     path = localagent.folder(devices.local) / 'local-qwen.remote.json'
     record = read_json(path, {})
-    cluster_id = _rotate_cluster(devices, 'converged-development')
+    pool_id = _rotate_pool(devices, 'converged-development')
     worker = remote_workers.BoardWorker(devices.local, record)
     assert worker.auth(worker.token).id == result['identity']
-    assert read_json(path, {})['cluster'] == 'converged-development'
-    assert read_json(path, {})['cluster_id'] == cluster_id
+    assert read_json(path, {})['pool'] == 'converged-development'
+    assert read_json(path, {})['pool_id'] == pool_id
     assert len(devices.spawned) == 1
 
 
@@ -418,8 +418,8 @@ def test_running_worker_cannot_adopt_another_board_certificate_during_rekey(devi
     devices.target._request('worker', devices.body)
     path = localagent.folder(devices.local) / 'local-qwen.remote.json'
     worker = remote_workers.BoardWorker(devices.local, read_json(path, {}))
-    _rotate_cluster(devices)
-    devices.peers[0].beacon.cert = devices.peers[1].beacon.cert
+    _rotate_pool(devices)
+    devices.members[0].beacon.cert = devices.members[1].beacon.cert
     with pytest.raises(PermissionError, match='cannot switch'):
         worker.auth(worker.token)
 
@@ -427,12 +427,12 @@ def test_running_worker_cannot_adopt_another_board_certificate_during_rekey(devi
 def test_self_lan_authority_uses_the_signed_loopback_certificate(devices, monkeypatch):
     state = devices
     monkeypatch.setattr(remote_workers.home, 'machine_id', lambda: 'device-a')
-    authority_peer = state.peers[0]
-    monkeypatch.setattr(authority_peer, 'base_url', f'https://127.0.0.1:{authority_peer.beacon.port}')
-    lan_host = f'https://{discovery.primary_ip()}:{authority_peer.beacon.port}'
+    authority_member = state.members[0]
+    monkeypatch.setattr(authority_member, 'base_url', f'https://127.0.0.1:{authority_member.beacon.port}')
+    lan_host = f'https://{discovery.primary_ip()}:{authority_member.beacon.port}'
     state.project.board_host = lan_host
-    caller = RemoteWorkspace(lan_host, PROJECT, cluster=CLUSTER)
-    assert caller.device_cert == authority_peer.beacon.cert
+    caller = RemoteWorkspace(lan_host, PROJECT, pool=POOL)
+    assert caller.device_cert == authority_member.beacon.cert
     assert caller.call('whoami', state.token)['id'] == 'test-caller'
     result = caller._request('worker', state.body)
     assert result['identity'].startswith('lan-device-a-')
@@ -445,15 +445,15 @@ def test_self_lan_authority_uses_the_signed_loopback_certificate(devices, monkey
 def test_self_lan_alias_rejects_unbound_endpoints(devices, monkeypatch, wrong):
     state = devices
     monkeypatch.setattr(remote_workers.home, 'machine_id', lambda: 'device-a')
-    node = state.peers[0]
+    node = state.members[0]
     cert = node.beacon.cert if wrong != 'certificate' else ''
     beacon = SimpleNamespace(machine='other-node' if wrong == 'machine' else 'device-a', cert=cert)
     observed = SimpleNamespace(base_url=f'https://127.0.0.1:{node.beacon.port}', beacon=beacon)
-    monkeypatch.setattr(Peer, 'discover', lambda **kwargs: [observed])
+    monkeypatch.setattr(Member, 'discover', lambda **kwargs: [observed])
     host = '192.168.99.99' if wrong == 'address' else discovery.primary_ip()
     port = node.beacon.port + (1 if wrong == 'port' else 0)
     with pytest.raises(PermissionError, match='authenticated'):
-        RemoteWorkspace(f'https://{host}:{port}', PROJECT, cluster=CLUSTER)
+        RemoteWorkspace(f'https://{host}:{port}', PROJECT, pool=POOL)
 
 
 @pytest.mark.redteam
@@ -462,7 +462,7 @@ def test_cli_excludes_own_logical_node_with_a_distinct_physical_identity(devices
     monkeypatch.setattr(remote_workers.home, 'machine_id', lambda: 'device-a')
     monkeypatch.setattr(remote_workers.home, 'device_id', lambda: 'f' * 64)
     monkeypatch.setattr(remote_workers, 'selected', lambda root:
-                        {'host': state.caller.host, 'project_id': PROJECT, 'cluster': CLUSTER})
+                        {'host': state.caller.host, 'project_id': PROJECT, 'pool': POOL})
     args = SimpleNamespace(project=str(state.roots['device-a']), device='device-a', agent='')
     with pytest.raises(PermissionError, match='select one discovered remote device'):
         remote_workers.run(args)
@@ -473,13 +473,13 @@ def test_cli_excludes_own_logical_node_with_a_distinct_physical_identity(devices
 def test_self_lan_alias_transport_refuses_another_signed_certificate(devices, monkeypatch):
     state = devices
     monkeypatch.setattr(remote_workers.home, 'machine_id', lambda: 'device-a')
-    node = state.peers[0]
+    node = state.members[0]
     forged = SimpleNamespace(base_url=f'https://127.0.0.1:{node.beacon.port}',
-                             beacon=SimpleNamespace(machine='device-a', cert=state.peers[1].beacon.cert))
-    monkeypatch.setattr(Peer, 'discover', lambda **kwargs: [forged])
+                             beacon=SimpleNamespace(machine='device-a', cert=state.members[1].beacon.cert))
+    monkeypatch.setattr(Member, 'discover', lambda **kwargs: [forged])
     host = f'https://{discovery.primary_ip()}:{node.beacon.port}'
     try:
-        caller = RemoteWorkspace(host, PROJECT, cluster=CLUSTER)
+        caller = RemoteWorkspace(host, PROJECT, pool=POOL)
         with pytest.raises(PermissionError, match='CERTIFICATE_VERIFY_FAILED'):
             caller.call('whoami', state.token)
         assert not state.spawned
@@ -491,7 +491,7 @@ def test_self_lan_alias_transport_refuses_another_signed_certificate(devices, mo
 @pytest.mark.parametrize('binding', ['absent', 'certificate', 'machine', 'userinfo', 'path'])
 def test_exact_endpoint_requires_a_signed_device_origin(devices, binding):
     from poolhouse.fleet.remote import device_address
-    node = devices.peers[0]
+    node = devices.members[0]
     beacon = SimpleNamespace(machine=node.beacon.machine, cert=node.beacon.cert)
     host = node.base_url
     if binding == 'absent':
@@ -532,7 +532,7 @@ def test_tls_worker_normalizes_model_claim_and_preserves_full_runtime_reference(
 
 def test_remote_none_and_large_explicit_task_limits_preserve_shape():
     from poolhouse.workspace import remote_workers
-    body = {"cluster": "dev", "cluster_id": "id", "max_output_tokens": None,
+    body = {"pool": "dev", "pool_id": "id", "max_output_tokens": None,
             "task_caps": {"seconds": 200000, "rounds": None}}
     assert remote_workers._settings(body, ("dev", "id")) == "local-qwen"
     for caps in ({"calls": True}, {"seconds": float("inf")}, {"unknown": None}):

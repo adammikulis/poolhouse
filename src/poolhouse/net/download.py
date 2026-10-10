@@ -353,7 +353,7 @@ def _pin_pulled(final: Path, kind: str, want: Want, digest: str, arrival: Arriva
 
 def accept(staged: Path, dest: Path | str, want: Want, source: str,
            pipeline: Pipeline | None = None) -> provenance.Provenance:
-    """A file that arrived by another road (a paired device on this network, ``source``
+    """A file that arrived by another road (a member on this network, ``source``
     names it) put through the checks a download passes, with the same hold for one that fails
     and the same promotion. ``want.sha256`` is the pin and must come from a source other than
     the one that sent the bytes. The staged file is consumed."""

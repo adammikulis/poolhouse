@@ -14,12 +14,12 @@ from poolhouse.fleet.discovery import Membership, derive_token
 from poolhouse.fleet.invite_routes import ui_route
 from poolhouse.fleet.invites import Invitations, decode, proof
 
-CLUSTER_KEY = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=")
+POOL_KEY = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=")
 
 
 @pytest.fixture
 def enrolled():
-    members = [Membership("lab", CLUSTER_KEY)]
+    members = [Membership("lab", POOL_KEY)]
     store = Invitations(lambda: members, lambda: ("https://192.168.2.59:8770", "a" * 64))
     clock = [1000]
     store.clock = lambda: clock[0]
@@ -39,7 +39,7 @@ def test_android_grant_contains_only_scoped_session(enrolled):
     assert grant["capabilities"] == ["fleet.status", "chat"]
     assert len(grant["device_id"]) == 32 and len(decode(grant["token"])) == 32
     assert store.authorize(grant["token"])["group"] == "lab"
-    assert CLUSTER_KEY not in json.dumps(grant).encode()
+    assert POOL_KEY not in json.dumps(grant).encode()
     assert grant["token"] not in repr(store.devices)
     assert "token" not in store.active_devices()[0]
 
@@ -95,7 +95,7 @@ def test_status_omits_computer_capabilities_paths_and_secrets(enrolled):
     assert not companion_routes.answer(ui(store), request)
 
 
-@pytest.mark.parametrize("change", ["plain", "public", "missing", "cluster", "revoked"])
+@pytest.mark.parametrize("change", ["plain", "public", "missing", "pool", "revoked"])
 def test_route_authentication_refuses_inappropriate_authority(enrolled, change):
     store, grant, _, _ = enrolled
     request = handler(grant)
@@ -105,8 +105,8 @@ def test_route_authentication_refuses_inappropriate_authority(enrolled, change):
         request.client_address = ("8.8.8.8", 4)
     if change == "missing":
         request.headers = {}
-    if change == "cluster":
-        request.headers = {"Authorization": "Bearer " + derive_token(CLUSTER_KEY)}
+    if change == "pool":
+        request.headers = {"Authorization": "Bearer " + derive_token(POOL_KEY)}
     if change == "revoked":
         store.revoke(grant["device_id"])
     assert companion_routes.answer(ui(store), request)
@@ -269,7 +269,7 @@ def test_android_device_controls_reject_foreign_authority_without_revocation(enr
 def test_tailnet_address_enrolls_and_connects_but_public_does_not(enrolled, address, accepted):
     store, grant, _, _ = enrolled
     host = f"[{address}]" if ":" in address else address
-    tailnet = Invitations(lambda: [Membership("lab", CLUSTER_KEY)], lambda: (f"https://{host}:8770", "a" * 64))
+    tailnet = Invitations(lambda: [Membership("lab", POOL_KEY)], lambda: (f"https://{host}:8770", "a" * 64))
     if accepted:
         assert tailnet.mint("lab", "android")["invite"]
     else:

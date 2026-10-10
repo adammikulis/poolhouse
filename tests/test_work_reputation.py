@@ -107,7 +107,7 @@ def test_person_reputation_route_is_read_only_and_session_guarded(work, tmp_path
     server = signed(Serving(tmp_path))
     try:
         assert server.call('/ui/work-reputation/standings', ui_header=False)[0] == 403
-        monkeypatch.setattr(routes, 'in_cluster', lambda _: True)
+        monkeypatch.setattr(routes, 'in_pool', lambda _: True)
         assert server.call('/ui/work-reputation/standings', cookie='')[0] == 401
         cookie = server.ui.sessions.cookie_header(server.ui.sessions.open('person', 'launch-ticket'))
         assert server.call('/ui/work-reputation/standings', method='POST', body={}, cookie=cookie)[0] == 405

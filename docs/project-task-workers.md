@@ -5,7 +5,7 @@ they do not start jobs. An authenticated registered parent runs
 `poolhouse-workspace agent schedule WORKER_NAME --agent PARENT`, and the maintained coding
 launcher runs `poolhouse.workspace.localcoding` for the saved worker identity.
 
-The scheduler renews the existing delegated seat within the parent's authority and configured
+The scheduler renews the existing delegated session within the parent's authority and configured
 TTL. It selects queued tasks whose dependencies are independently accepted and whose model
 and capability requirements match the actual broker grant and configured worker. Blocked tasks
 require authorized resumption; the scheduler does not retry them automatically.

@@ -1,4 +1,4 @@
-"""Tailscale detection through a real executable on PATH, and how a paired device is reached
+"""Tailscale detection through a real executable on PATH, and how a member is reached
 over a tailnet. No Tailscale is needed: the executable is a script that prints canned output."""
 
 import argparse
@@ -13,13 +13,13 @@ from onboard_support import Recorder, identity, info, requests
 
 from poolhouse.fleet import tailnet, tls
 from poolhouse.fleet.onboard import cli
+from poolhouse.fleet.onboard.join_code import fingerprint_of
 from poolhouse.fleet.onboard.lan import NotLocal, in_tailnet, require_local
 from poolhouse.fleet.onboard.nearby import decode
-from poolhouse.fleet.onboard.pairing import fingerprint_of
 from poolhouse.fleet.onboard.requests import Devices
 from poolhouse.fleet.onboard.routes import Route, learn, pinned_probe, reach, resolve
 
-ME, PEER = "100.64.0.1", "100.100.5.7"
+ME, MEMBER = "100.64.0.1", "100.100.5.7"
 FP = "ab" * 32
 
 
@@ -27,9 +27,9 @@ def status(**more):
     doc = {"BackendState": "Running", "AuthURL": "https://login.tailscale.com/a/SECRETURL",
            "TailscaleIPs": [ME, "fd7a:115c:a1e0::1"],
            "Self": {"HostName": "laptop", "TailscaleIPs": [ME], "PrivateKey": "privkey:SECRET"},
-           "Peer": {"nodekey:SECRET": {"HostName": "kitchen-pi",
+           "Member": {"nodekey:SECRET": {"HostName": "kitchen-pi",
                                        "DNSName": "kitchen-pi.tail1.ts.net.",
-                                       "TailscaleIPs": [PEER, "fd7a:115c:a1e0::7"], "Online": True,
+                                       "TailscaleIPs": [MEMBER, "fd7a:115c:a1e0::7"], "Online": True,
                                        "Key": "SECRETKEY"},
                     "nodekey:2": {"HostName": "attic", "DNSName": "attic.tail1.ts.net.",
                                   "TailscaleIPs": ["100.100.5.8"], "Online": False}}}
@@ -69,15 +69,15 @@ def fake(tmp_path, monkeypatch):
     return Script()
 
 
-def test_a_running_client_gives_the_addresses_and_the_peers(fake):
+def test_a_running_client_gives_the_addresses_and_the_members(fake):
     fake.say(status())
     net = tailnet.detect()
     assert net.installed and net.up and net.state == "Running"
     assert net.addresses == (ME, "fd7a:115c:a1e0::1") and net.name == "laptop"
-    kitchen, attic = net.peers
+    kitchen, attic = net.members
     assert (kitchen.name, kitchen.dns_name, kitchen.online) == (
         "kitchen-pi", "kitchen-pi.tail1.ts.net", True)
-    assert kitchen.addresses == (PEER, "fd7a:115c:a1e0::7") and attic.online is False
+    assert kitchen.addresses == (MEMBER, "fd7a:115c:a1e0::7") and attic.online is False
     assert fake.argv() == ["status --json"]
 
 
@@ -85,7 +85,7 @@ def test_a_running_client_gives_the_addresses_and_the_peers(fake):
 def test_a_client_that_is_not_connected_is_down(fake, state):
     fake.say(status(BackendState=state))
     net = tailnet.detect()
-    assert net.installed and not net.up and net.addresses == () and net.peers == ()
+    assert net.installed and not net.up and net.addresses == () and net.members == ()
 
 
 def test_no_client_is_not_installed(fake, tmp_path, monkeypatch):
@@ -107,11 +107,11 @@ def test_malformed_output_is_down(fake, raw):
 
 def test_a_public_address_is_dropped(fake):
     doc = status()
-    doc["Peer"]["nodekey:SECRET"]["TailscaleIPs"] = ["8.8.8.8", PEER, "2606:4700::1111"]
-    doc["Peer"]["nodekey:2"]["TailscaleIPs"] = ["1.1.1.1"]
+    doc["Member"]["nodekey:SECRET"]["TailscaleIPs"] = ["8.8.8.8", MEMBER, "2606:4700::1111"]
+    doc["Member"]["nodekey:2"]["TailscaleIPs"] = ["1.1.1.1"]
     fake.say(doc)
     net = tailnet.detect()
-    assert [p.addresses for p in net.peers] == [(PEER,)]
+    assert [p.addresses for p in net.members] == [(MEMBER,)]
     assert "8.8.8.8" not in repr(net)
 
 
@@ -122,12 +122,12 @@ def test_a_public_self_address_means_down(fake):
 
 def test_hostile_names_are_neutralised(fake):
     doc = status()
-    doc["Peer"]["nodekey:SECRET"]["HostName"] = "pi\x1b[31m\nrm -rf /;$(reboot)`id`‮"
-    doc["Peer"]["nodekey:SECRET"]["DNSName"] = "a b;rm.ts.net."
+    doc["Member"]["nodekey:SECRET"]["HostName"] = "pi\x1b[31m\nrm -rf /;$(reboot)`id`‮"
+    doc["Member"]["nodekey:SECRET"]["DNSName"] = "a b;rm.ts.net."
     fake.say(doc)
-    peer = tailnet.detect().peers[0]
-    assert all(ch.isalnum() or ch in "._- " for ch in peer.name)
-    assert peer.dns_name == ""
+    member = tailnet.detect().members[0]
+    assert all(ch.isalnum() or ch in "._- " for ch in member.name)
+    assert member.dns_name == ""
 
 
 def test_output_over_the_cap_is_ignored(fake):
@@ -142,16 +142,16 @@ def test_a_slow_client_times_out(fake):
     assert not net.up and net.state == "unavailable"
 
 
-def test_many_peers_and_addresses_are_bounded(fake):
+def test_many_members_and_addresses_are_bounded(fake):
     doc = status()
-    doc["Peer"] = {f"k{i}": {"HostName": f"h{i}", "Online": True,
+    doc["Member"] = {f"k{i}": {"HostName": f"h{i}", "Online": True,
                              "TailscaleIPs": [f"100.65.{i // 250}.{i % 250 + 1}"]
                              + [f"100.66.0.{j}" for j in range(1, 12)]}
                    for i in range(600)}
     fake.say(doc)
     net = tailnet.detect()
-    assert len(net.peers) == tailnet.MOST_PEERS
-    assert all(len(p.addresses) <= tailnet.MOST_ADDRESSES for p in net.peers)
+    assert len(net.members) == tailnet.MOST_MEMBERS
+    assert all(len(p.addresses) <= tailnet.MOST_ADDRESSES for p in net.members)
 
 
 def test_only_read_only_subcommands_are_ever_run(fake):
@@ -181,10 +181,10 @@ def test_secrets_never_reach_the_child_or_the_result_or_the_log(fake, monkeypatc
 def test_names_resolve_only_through_what_status_reported(fake):
     fake.say(status())
     net = tailnet.detect()
-    assert net.peer_named("kitchen-pi").addresses[0] == PEER
-    assert net.peer_named("KITCHEN-PI.tail1.ts.net.").addresses[0] == PEER
-    assert net.peer_named("example.com") is None and net.peer_named("") is None
-    assert tailnet.Tailnet(peers=net.peers).peer_named("kitchen-pi") is None
+    assert net.member_named("kitchen-pi").addresses[0] == MEMBER
+    assert net.member_named("KITCHEN-PI.tail1.ts.net.").addresses[0] == MEMBER
+    assert net.member_named("example.com") is None and net.member_named("") is None
+    assert tailnet.Tailnet(members=net.members).member_named("kitchen-pi") is None
 
 
 def test_tailnet_ranges():
@@ -203,12 +203,12 @@ def device(tmp_path, *, address="192.168.1.20", name="kitchen-pi", hostname="kit
     rq = requests(tmp_path, rec)
     r = rq.submit(info(fp, name=name, hostname=hostname), address)
     rq.accept(r.id, mine=True)
-    rq.paired(r.id, shared_cluster_key=False)
+    rq.joined(r.id, shared_pool_key=False)
     return Devices(tmp_path / "devices.json", bus=rec.bus)
 
 
 def seen(answers):
-    """A probe that answers for the (address, fingerprint) pairs in ``answers``."""
+    """A probe that answers for the (address, fingerprint) joins in ``answers``."""
     asked = []
 
     def probe(address, port, fingerprint):
@@ -232,23 +232,23 @@ def test_a_device_on_the_network_is_lan_and_the_tailnet_is_not_asked(tmp_path):
 
 def test_a_device_off_the_network_is_reached_over_the_tailnet(tmp_path):
     devices = device(tmp_path)
-    got = reach(devices.all()[0], up(), 8772, seen({(PEER, FP)}))
-    assert (got.route, got.address) == (Route.TAILNET, PEER)
+    got = reach(devices.all()[0], up(), 8772, seen({(MEMBER, FP)}))
+    assert (got.route, got.address) == (Route.TAILNET, MEMBER)
 
 
 def test_the_certificate_decides_not_the_name(tmp_path):
     devices = device(tmp_path)
-    got = reach(devices.all()[0], up(), 8772, seen({(PEER, "cd" * 32)}))
+    got = reach(devices.all()[0], up(), 8772, seen({(MEMBER, "cd" * 32)}))
     assert got.route is Route.UNREACHABLE
 
 
-def test_an_offline_peer_or_a_down_tailnet_is_unreachable(tmp_path):
+def test_an_offline_member_or_a_down_tailnet_is_unreachable(tmp_path):
     attic = device(tmp_path, name="attic", hostname="attic").all()[0]
     assert reach(attic, up(), 8772, seen({("100.100.5.8", FP)})).route is Route.UNREACHABLE
     kitchen = device(tmp_path / "b").all()[0]
     stopped = up(BackendState="Stopped")
-    assert reach(kitchen, stopped, 8772, seen({(PEER, FP)})).route is Route.UNREACHABLE
-    assert reach(kitchen, tailnet.Tailnet(), 8772, seen({(PEER, FP)})).route is Route.UNREACHABLE
+    assert reach(kitchen, stopped, 8772, seen({(MEMBER, FP)})).route is Route.UNREACHABLE
+    assert reach(kitchen, tailnet.Tailnet(), 8772, seen({(MEMBER, FP)})).route is Route.UNREACHABLE
 
 
 def test_without_tailscale_only_the_network_is_tried(tmp_path):
@@ -258,12 +258,12 @@ def test_without_tailscale_only_the_network_is_tried(tmp_path):
     assert probe.asked == ["192.168.1.20"]
 
 
-def test_a_device_paired_over_the_tailnet_remembers_the_address(tmp_path):
-    d = device(tmp_path, address=PEER).all()[0]
-    assert d.tailnet_address == PEER
-    assert reach(d, tailnet.Tailnet(), 8772, seen({(PEER, FP)})).route is Route.UNREACHABLE
-    got = reach(d, up(), 8772, seen({(PEER, FP)}))
-    assert (got.route, got.address) == (Route.TAILNET, PEER)
+def test_a_device_joined_over_the_tailnet_remembers_the_address(tmp_path):
+    d = device(tmp_path, address=MEMBER).all()[0]
+    assert d.tailnet_address == MEMBER
+    assert reach(d, tailnet.Tailnet(), 8772, seen({(MEMBER, FP)})).route is Route.UNREACHABLE
+    got = reach(d, up(), 8772, seen({(MEMBER, FP)}))
+    assert (got.route, got.address) == (Route.TAILNET, MEMBER)
 
 
 def test_a_public_address_is_never_a_route(tmp_path):
@@ -275,15 +275,15 @@ def test_a_public_address_is_never_a_route(tmp_path):
 
 def test_learning_stores_only_an_address_whose_certificate_matches(tmp_path):
     devices = device(tmp_path)
-    assert learn(devices, up(), 8772, seen({(PEER, "cd" * 32)})) == []
+    assert learn(devices, up(), 8772, seen({(MEMBER, "cd" * 32)})) == []
     assert devices.all()[0].tailnet_address == ""
-    assert learn(devices, up(), 8772, seen({(PEER, FP)})) == [FP]
-    assert devices.all()[0].tailnet_address == PEER
+    assert learn(devices, up(), 8772, seen({(MEMBER, FP)})) == [FP]
+    assert devices.all()[0].tailnet_address == MEMBER
 
 
 def test_an_announcement_cannot_set_a_tailnet_address(tmp_path):
     devices = device(tmp_path)
-    forged = decode(json.dumps({"v": 1, "kind": "pair-open", "name": "kitchen-pi",
+    forged = decode(json.dumps({"v": 1, "kind": "join-open", "name": "kitchen-pi",
                                 "hostname": "x", "model": "m", "port": 8772,
                                 "fingerprint": FP}).encode(), "100.99.9.9", 0.0)
     assert forged.address == "100.99.9.9"
@@ -292,18 +292,18 @@ def test_an_announcement_cannot_set_a_tailnet_address(tmp_path):
         with pytest.raises(ValueError, match="not taken from"):
             devices.learn_tailnet(FP, "100.99.9.9", source=source)
     with pytest.raises(ValueError, match="not a tailnet"):
-        devices.learn_tailnet(FP, "8.8.8.8", source="pairing")
+        devices.learn_tailnet(FP, "8.8.8.8", source="join-code")
     with pytest.raises(KeyError):
-        devices.learn_tailnet("ef" * 32, "100.99.9.9", source="pairing")
+        devices.learn_tailnet("ef" * 32, "100.99.9.9", source="join-code")
     assert devices.all()[0].tailnet_address == ""
-    devices.learn_tailnet(FP, "100.99.9.9", source="pairing")
+    devices.learn_tailnet(FP, "100.99.9.9", source="join-code")
     assert devices.all()[0].tailnet_address == "100.99.9.9"
 
 
 def test_a_device_name_resolves_to_the_address_that_answers(tmp_path):
     devices = device(tmp_path)
-    probe = seen({(PEER, FP)})
-    assert resolve("Kitchen-Pi", 8772, devices, up, probe) == PEER
+    probe = seen({(MEMBER, FP)})
+    assert resolve("Kitchen-Pi", 8772, devices, up, probe) == MEMBER
 
     def never():
         raise AssertionError("the tailnet was asked about an address")
@@ -313,7 +313,7 @@ def test_a_device_name_resolves_to_the_address_that_answers(tmp_path):
 
 
 def test_the_probe_checks_the_pinned_certificate_on_a_real_server(tmp_path):
-    ident = identity(tmp_path, "peer")
+    ident = identity(tmp_path, "member")
     server = tls.server_context(ident)
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))

@@ -19,7 +19,7 @@ from poolhouse import home, sentinel
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.remote import Peer, PeerError
+from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.http import Server
 from poolhouse.sentinel import State, human, watch
 from poolhouse.sentinel.cli import status as security_status
@@ -230,7 +230,7 @@ def test_a_fresh_heartbeat_from_a_process_that_is_gone_is_not_armed(tmp_path):
     assert watch.scanner_state(tmp_path, now)["armed"]          # the same beat from a live process is armed
 
 
-def test_the_fleet_daemon_quarantines_a_peer_that_forges_requests(tmp_path):
+def test_the_fleet_daemon_quarantines_a_member_that_forges_requests(tmp_path):
     root = tmp_path / "traind"
     (root / "files").mkdir(parents=True)
     token = load_or_create_token(root)
@@ -239,13 +239,13 @@ def test_the_fleet_daemon_quarantines_a_peer_that_forges_requests(tmp_path):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{httpd.server_address[1]}"
     try:
-        forger = Peer(url, "not-the-token")
+        forger = Member(url, "not-the-token")
         for _ in range(60):
-            with pytest.raises(PeerError):
+            with pytest.raises(MemberError):
                 forger.jobs()
-        assert sentinel.default().store.state_of("peer", "127.0.0.1") == State.QUARANTINED
-        with pytest.raises(PeerError, match=r"quarantined|locked|429|401"):
-            Peer(url, token).jobs()
+        assert sentinel.default().store.state_of("member", "127.0.0.1") == State.QUARANTINED
+        with pytest.raises(MemberError, match=r"quarantined|locked|429|401"):
+            Member(url, token).jobs()
     finally:
         runner.shutdown()
         httpd.shutdown()

@@ -7,25 +7,25 @@ from uuid import uuid4
 
 from poolhouse import home, http, macauth, private_path
 from poolhouse.fleet import tls
-from poolhouse.fleet.discovery import DiscoveryError, load_cluster_key
+from poolhouse.fleet.discovery import DiscoveryError, load_pool_key
 from poolhouse.fleet.onboard.requests import Devices
-from poolhouse.fleet.remote import Peer
+from poolhouse.fleet.remote import Member
 from poolhouse.graph.store import GraphStore
-from poolhouse.hub.peerbook import PeerBook
+from poolhouse.hub.memberbook import MemberBook
 from poolhouse.workspace import coordinator_config, device_metadata, tokens
 from poolhouse.workspace.chain import held
 from poolhouse.workspace.identity import Denied
 
 
 class Remote:
-    def __init__(self, config, peer):
-        self.config, self.peer = config, peer
+    def __init__(self, config, member):
+        self.config, self.member = config, member
 
     def command(self, argv, token, *, request_id=''):
         payload = {'workspace': self.config['workspace'], 'request_id': request_id or uuid4().hex,
                    'argv': argv}
         try:
-            _status, body, _headers = self.peer._request(
+            _status, body, _headers = self.member._request(
                 'POST', '/workspace/v1/call', data=json.dumps(payload).encode(),
                 headers={'Content-Type': 'application/json', 'X-Poolhouse-Workspace-Token': token})
         except http.ServerError as error:
@@ -37,7 +37,7 @@ class Remote:
         return result['result']
 
     def join(self, base, code, name, model='', harness=''):
-        result = self.peer._json('POST', '/workspace/v1/join',
+        result = self.member._json('POST', '/workspace/v1/join',
                                  {'workspace': self.config['workspace'], 'code': code,
                                   'name': name, 'model': model, 'harness': harness})
         if result.get('workspace') != self.config['workspace']:
@@ -60,7 +60,7 @@ class Remote:
             payload = {'workspace': self.config['workspace'], 'name': name,
                        'model': model, 'harness': harness, 'project': project or {},
                        'device': device_metadata.current()}
-            _status, body, _headers = self.peer._request(
+            _status, body, _headers = self.member._request(
                 'POST', '/workspace/v1/ensure', data=json.dumps(payload).encode(),
                 headers={'Content-Type': 'application/json',
                          'X-Poolhouse-Workspace-Token': credential})
@@ -73,23 +73,23 @@ class Remote:
             return result['agent']
 
 
-def _paired_rows():
+def _joined_rows():
     directory = home.state('onboard')
     active = {device.fingerprint for device in Devices(directory / 'devices.json').all()
               if device.status == 'active'}
-    return [row for row in PeerBook(directory / 'peers.json').rows()
-            if row.get('source') == 'pairing' and row.get('fingerprint') in active
+    return [row for row in MemberBook(directory / 'members.json').rows()
+            if row.get('source') == 'join-code' and row.get('fingerprint') in active
             and row.get('certificate') and row.get('device_secret')]
 
 
-def _device_peer(config):
-    rows = [row for row in _paired_rows() if row.get('certificate') == config.get('cert')]
+def _device_member(config):
+    rows = [row for row in _joined_rows() if row.get('certificate') == config.get('cert')]
     if len(rows) != 1:
-        raise Denied('the coordinator has no unique active paired device credential')
+        raise Denied('the coordinator has no unique active member credential')
     row = rows[0]
     secret = macauth.derive(base64.urlsafe_b64decode(row['device_secret']))
     http.pin(urlsplit(config['endpoint']).netloc, tls.pinned_context(row['certificate']))
-    return Peer(config['endpoint'], secret, timeout=30)
+    return Member(config['endpoint'], secret, timeout=30)
 
 
 def client(base):
@@ -101,56 +101,56 @@ def _client(base):
     config = coordinator_config.load(base)
     if not config and (base / 'remote-sessions.db').exists():
         raise Denied('the workspace coordinator selection is missing for an existing remote session')
-    if not config and load_cluster_key() is not None:
-        candidates = [(peer, info) for peer, info in discover()]
+    if not config and load_pool_key() is not None:
+        candidates = [(member, info) for member, info in discover()]
         if len(candidates) > 1:
             raise Denied('several trusted coordinators are advertised; workspace routing is ambiguous')
         if not candidates:
             return None
-        peer, info = candidates[0]
-        selected = {'mode': 'remote', 'workspace': info['workspace'], 'name': peer.name,
-                    'endpoint': peer.base_url, 'cert': peer.beacon.cert if peer.beacon else ''}
+        member, info = candidates[0]
+        selected = {'mode': 'remote', 'workspace': info['workspace'], 'name': member.name,
+                    'endpoint': member.base_url, 'cert': member.beacon.cert if member.beacon else ''}
         coordinator_config.validate_endpoint(selected['endpoint'])
-        _device_peer(selected)
+        _device_member(selected)
         config = coordinator_config.save(base, selected)
     if config.get('mode') != 'remote':
         return None
     try:
-        peer = _device_peer(config)
+        member = _device_member(config)
     except Denied:
         try:
             found = discover()
         except (DiscoveryError, http.ServerError, OSError) as error:
             raise Denied('the selected coordinator device proof is unavailable') from error
-        candidates = [(peer, info) for peer, info in found
+        candidates = [(member, info) for member, info in found
                       if info.get('workspace') == config['workspace']
-                      and peer.base_url.rstrip('/') == config['endpoint'].rstrip('/')
-                      and (not config.get('name') or peer.name == config['name'])]
+                      and member.base_url.rstrip('/') == config['endpoint'].rstrip('/')
+                      and (not config.get('name') or member.name == config['name'])]
         if len(candidates) != 1:
             raise Denied('the selected coordinator has no unique current enrolled device proof') from None
         advertised, _info = candidates[0]
         selected = {**config, 'cert': advertised.beacon.cert if advertised.beacon else ''}
-        peer = _device_peer(selected)
+        member = _device_member(selected)
         config = coordinator_config.save(base, selected)
-    return Remote(config, peer)
+    return Remote(config, member)
 
 
 def discover():
-    if not _paired_rows():
+    if not _joined_rows():
         return []
     candidates = []
-    for peer in Peer.discover(timeout_s=2, timeout=2):
+    for member in Member.discover(timeout_s=2, timeout=2):
         try:
-            coordinator_config.validate_endpoint(peer.base_url)
-            device = _device_peer({'endpoint': peer.base_url,
-                                   'cert': peer.beacon.cert if peer.beacon else ''})
+            coordinator_config.validate_endpoint(member.base_url)
+            device = _device_member({'endpoint': member.base_url,
+                                   'cert': member.beacon.cert if member.beacon else ''})
             _status, body, _headers = device._request('GET', '/workspace/v1/info',
                                                      timeout=2, retry=http.ONCE)
             info = json.loads(body)
         except (Denied, http.ServerError, ValueError, OSError):
             continue
         if isinstance(info, dict) and info.get('authority') == 'coordinator' and info.get('protocol') == 1:
-            candidates.append((peer, info))
+            candidates.append((member, info))
     return candidates
 
 
@@ -160,19 +160,19 @@ def connect(base, name):
 
 
 def _connect(base, name, *, replace=False):
-    candidates = [(peer, info) for peer, info in discover() if not name or peer.name == name]
+    candidates = [(member, info) for member, info in discover() if not name or member.name == name]
     if len(candidates) != 1:
         raise Denied('select one advertised coordinator by its device name; none or several matched')
-    peer, info = candidates[0]
-    coordinator_config.validate_endpoint(peer.base_url)
+    member, info = candidates[0]
+    coordinator_config.validate_endpoint(member.base_url)
     selected = {'mode': 'remote', 'workspace': info['workspace'],
-                'name': peer.name, 'endpoint': peer.base_url,
-                'cert': peer.beacon.cert if peer.beacon else ''}
+                'name': member.name, 'endpoint': member.base_url,
+                'cert': member.beacon.cert if member.beacon else ''}
     current = coordinator_config.load(base)
     if current and not replace and any(current.get(key) != selected[key]
                                       for key in ('mode', 'workspace', 'endpoint')):
         raise Denied('the selected coordinator cannot replace an existing workspace authority')
-    _device_peer(selected)
+    _device_member(selected)
     return coordinator_config.save(base, selected)
 
 

@@ -12,7 +12,7 @@ OLD, NEW = "a" * 40, "b" * 40
 AUDIT: list = []
 
 
-def member(seq, *, name="peer", state="newer", fix="", me=False):
+def member(seq, *, name="member", state="newer", fix="", me=False):
     return {"fingerprint": name * 20, "name": name, "status": "active", "self": me, "build": "b" * 7, "build_seq": seq,
             "build_state": state, "fix": fix, "wire": 1}
 
@@ -151,8 +151,8 @@ def test_a_process_an_agent_started_asks_for_the_background_build_and_is_tried_a
     assert started.action == "started" and runtime_store.read_state()["update"]["fails"] == 1
 
 
-def test_an_incompatible_member_is_shown_with_the_exact_fix_in_status_doctor_and_peers():
-    fix = "run `poolhouse runtime ensure` on peer"
+def test_an_incompatible_member_is_shown_with_the_exact_fix_in_status_doctor_and_members():
+    fix = "run `poolhouse runtime ensure` on member"
     shown = pool(5, theirs=5, wire_fix=fix)
     shown["members"][1]["build_state"] = "needs update"
     shown["build"]["state"] = "needs update"

@@ -71,15 +71,15 @@ train-mlx = ["poolhouse[train,mlx]", "mlx-lm>=0.31.3", "huggingface_hub>=1.32"]
 train-lora = ["poolhouse[train,torch,transformers]", "peft>=0.21.0"]
 # a daemon on the LAN makes its own TLS certificate with this (or with openssl on PATH)
 fleet-tls = ["cryptography>=50"]
-# verifying the signature on a release or a tracked commit (`poolhouse-cluster` updates)
+# verifying the signature on a release or a tracked commit (`poolhouse-pool` updates)
 fleet-update = ["cryptography>=50"]
-# adding a machine with a short code (`poolhouse-cluster listen` / `pair`): SPAKE2 from the
+# adding a machine with a short code (`poolhouse-pool add-device` / `join-with-code`): SPAKE2 from the
 # maintained `spake2` package, Ed25519 signing from cryptography, the signing key in the OS
 # keystore through `keyring`
 fleet-onboard = ["cryptography>=50", "spake2>=0.9", "keyring>=24", "py-machineid", "qrcode"]
 coordinator = ["py-machineid"]
 # `poolhouse-speech`: faster-whisper transcribes, piper speaks. A piper voice is a
-# pair of files named by POOLHOUSE_PIPER_VOICE; `poolhouse-speech providers` says what
+# model file and config file named by POOLHOUSE_PIPER_VOICE; `poolhouse-speech providers` says what
 # each engine still wants
 speech = ["faster-whisper>=1.2.1", "piper-tts>=1.8.0"]
 audio = ["poolhouse[speech]", "imageio-ffmpeg>=0.6,<1", "torchaudio>=2.11"]
@@ -167,9 +167,9 @@ poolhouse = "poolhouse.cli:main"
 poolhouse-traind = "poolhouse.cli.daemon:main"
 # the macOS identity of the LAN node: build Poolhouse.app, ask for Local Network permission
 poolhouse-node = "poolhouse.node_permission:main"
-poolhouse-peers = "poolhouse.fleet.peers:main"
-# one command makes this machine a peer: checks, llama-server, passphrase, daemon, announce
-poolhouse-cluster = "poolhouse.fleet.join:main"
+poolhouse-members = "poolhouse.fleet.members:main"
+# one command makes this machine a member: checks, llama-server, passphrase, daemon, announce
+poolhouse-pool = "poolhouse.fleet.join:main"
 # the same functions the commands call, as MCP tools over stdio, for an agent to drive
 poolhouse-mcp = "poolhouse.mcp:main"
 poolhouse-train-run = "poolhouse.train.run:main"
@@ -220,7 +220,7 @@ poolhouse-graph = "poolhouse.graph.serve:main"
 poolhouse-chat = "poolhouse.chat:main"
 # what the chat agent remembers across sessions: list, add, forget, export
 poolhouse-memory = "poolhouse.memory.cli:main"
-# how every source (host, URL, peer, repository, hash) has behaved: list, show, forget, export
+# how every source (host, URL, member, repository, hash) has behaved: list, show, forget, export
 poolhouse-reputation = "poolhouse.reputation.cli:main"
 # the activity log: what agents, people and the stack did, read-only
 poolhouse-log = "poolhouse.activity.cli:main"
@@ -340,7 +340,7 @@ reportUnsupportedDunderAll = "error"
 reportUnusedCoroutine = "error"
 reportUnusedExcept = "error"
 
-[project.entry-points."poolhouse.peer_routes"]
+[project.entry-points."poolhouse.member_routes"]
 workspace = "poolhouse.workspace.coordinator:route"
 
 [project.entry-points."poolhouse.ui_routes"]

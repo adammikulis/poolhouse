@@ -1,4 +1,4 @@
-"""Single-use cluster invitations and challenge proofs."""
+"""Single-use pool invitations and challenge proofs."""
 from __future__ import annotations
 
 import base64
@@ -38,7 +38,7 @@ class Invitations:
         self.members = members
         self.origin = origin
         self.enrol = enrol
-        """``enrol(group, certificate, name)`` lists a computer that redeemed an invitation as a device of the cluster."""
+        """``enrol(group, certificate, name)`` lists a computer that redeemed an invitation as a device of the pool."""
         self.clock = time.time
         self.lock = threading.Lock()
         self.rows: dict[str, dict[str, Any]] = {}
@@ -63,12 +63,12 @@ class Invitations:
 
     def mint(self, group: str, kind: str = "computer") -> dict[str, Any]:
         if not isinstance(group, str) or not 1 <= len(group) <= 128:
-            raise ValueError("a bounded cluster name is required")
+            raise ValueError("a bounded pool name is required")
         if kind not in {"computer", "android"}:
             raise ValueError("choose an owned computer or Android device")
         member = next((m for m in self.members() if m.group == group), None)
         if member is None:
-            raise ValueError("choose a cluster this computer belongs to")
+            raise ValueError("choose a pool this computer belongs to")
         endpoint, fingerprint = self.origin()
         url = urllib.parse.urlsplit(endpoint)
         address = ipaddress.ip_address(url.hostname or "")
@@ -146,7 +146,7 @@ class Invitations:
                 raise ValueError("Android device name is too long")
             member = next((m for m in self.members() if m.group == row["group"]), None)
             if member is None or not hmac.compare_digest(hashlib.sha256(member.key).digest(), row["binding"]):
-                raise ValueError("cluster membership changed")
+                raise ValueError("pool membership changed")
             if self.origin() != (row["endpoint"], row["fingerprint"]):
                 raise ValueError("listener certificate changed")
             challenges = row["challenges"]
@@ -184,7 +184,7 @@ class Invitations:
         if row["kind"] != "android":
             return {"kind": "computer", "group": member.group, "key": member.key.decode(), "mode": member.mode}
         if len(self.devices) >= 128:
-            raise ValueError("revoke an Android device before enrolling another")
+            raise ValueError("remove the Android device before adding another")
         ident, token = secrets.token_hex(16), encode(secrets.token_bytes(32))
         expires = int(self.clock()) + 3600
         endpoint, fingerprint = self.origin()

@@ -26,7 +26,7 @@ board = ph.board.register("me")              # this project's board, shared by b
 board.send("#general", "second device is in", kind="status")
 ```
 
-The same from the shell: `poolhouse-peers ls`, `poolhouse-workspace send '#general' status "second device is in"`,
+The same from the shell: `poolhouse-members ls`, `poolhouse-workspace send '#general' status "second device is in"`,
 `poolhouse-workspace inbox`. The whole Python surface is in [docs/api.md](docs/api.md); migrating from the old package name, see
 [docs/api-migration.md](docs/api-migration.md).
 
@@ -39,7 +39,7 @@ every public callable is typed and documented, and `py.typed` is shipped. Everyt
 internal and may change in any release.
 
 ```
-$ poolhouse-peers ls
+$ poolhouse-members ls
 NAME             URL                          FREE    STATE      DEVICE
 gpubox           http://192.168.2.27:8770     0/1     busy       NVIDIA GeForce RTX 4090  6.2/24.0 GB free
 radeon           http://192.168.2.31:8770     1/1     idle       AMD Radeon RX 7900 XTX  22.1/24.0 GB free
@@ -49,7 +49,7 @@ pi-rack          http://192.168.2.51:8770     5/6     busy +2    16 cpu
 
 Everything runs on your own hardware. Nothing leaves the network.
 
-![The cluster view](docs/images/cluster.jpg)
+![The pool view](docs/images/pool.jpg)
 
 - **Chat from any machine.** The one with the card runs the model; the laptop talks to
   it. A machine that installs nothing extra still gets to use it, and conversations are
@@ -64,14 +64,14 @@ Everything runs on your own hardware. Nothing leaves the network.
   not skipped.
 - **Your machine stays yours.** Block out working hours, or hit pause when you start a
   game — the run stops, requeues, and picks up from its last checkpoint. Pause the whole
-  cluster and a machine that was switched off takes the pause when it comes back.
+  pool and a machine that was switched off takes the pause when it comes back.
 - **Train without writing code.** Pick what you want it to learn, point it at your
   files, and it runs. Or drive it from Python if you would rather.
 - **Not only text.** A model with a projector is handed the pictures themselves, and a
   recording is transcribed on whichever machine is free. It checks a model can see
   before it believes what it says about a page.
 - **Mixed hardware is the normal case.** NVIDIA, AMD ROCm, Apple silicon and plain CPUs
-  in one cluster, each reporting its own temperature, clocks and throttle state.
+  in one pool, each reporting its own temperature, clocks and throttle state.
 - **An agent that asks first.** `poolhouse-chat` operates Poolhouse for you under a role
   (`read-only`, `approve-first` or `plan-and-go`): reads run, anything that starts, stops, downloads or
   measures asks, and each question offers Allow this time, Always allow or Never allow.
@@ -88,21 +88,21 @@ Everything runs on your own hardware. Nothing leaves the network.
 
 ## Ask Qwen on another device to review documentation
 
-From this Git checkout, use the shared Dev pool and project Board:
+From this Git checkout, use the shared pool and board:
 
 ```sh
-poolhouse-peers ls
+poolhouse-members ls
 poolhouse-workspace remote-agent --device DEVICE_NAME --json \
   --max-output-tokens 4096 --max-rounds 12 --max-tool-calls 30 \
   --max-model-calls 24 --max-task-seconds 600 \
   --task "Read AGENTS.md, README.md and docs/workspace.md. Recommend documentation changes with file references, priorities and evidence. Do not edit files."
 ```
 
-Replace `DEVICE_NAME` with the other device's name from `poolhouse-peers ls`; omit
-`--device` when there is only one remote device. Both devices need running Dev cluster
+Replace `DEVICE_NAME` with the other device's name from `poolhouse-members ls`; omit
+`--device` when there is only one remote device. Both devices need running pool
 services; the target needs a registered checkout of this project and a downloaded Qwen.
 The broker admits the model on that device and the worker receives the task on the shared
-project Board. No invitation or credential copy is needed.
+board. No invitation or credential copy is needed.
 
 Keep the returned `requested_by` (launcher), `identity` (worker), `model` and `task_seq`.
 Use those returned values to read the answer:
@@ -123,8 +123,8 @@ messages, limits and troubleshooting.
 Treat every network, page, model file and model reply as untrusted. Fetches go through one
 pipeline with a host allow-list, size caps, hash pins and checks, and a quarantine for what
 fails; model servers start only through the machine's broker; the daemon is on loopback until
-a machine joins a cluster and is TLS with signed requests beyond it; one operating-system
-keystore item protects memory, the cluster signing key and stored credentials; and a watcher
+a machine joins a pool and is TLS with signed requests beyond it; one operating-system
+keystore item protects memory, the pool signing key and stored credentials; and a watcher
 (sentinel) holds what changed or was forged until a person releases it at a terminal or from
 one dialog. An agent's process cannot do the things reserved to a person. These defences
 reduce what a fooled model can do; they do not make it impossible. Read
@@ -172,11 +172,11 @@ answers every prompt without a terminal to type at.
 
 ## Starting it
 
-Make this machine a peer, and see who else answers:
+Make this machine a device, and see who else answers:
 
 ```
-poolhouse-cluster join --persist
-poolhouse-cluster status
+poolhouse-pool join --persist
+poolhouse-pool status
 ```
 
 Put a model up and talk to it:
@@ -273,7 +273,7 @@ faster-whisper, whisper.cpp, Whisper through transformers, piper, kokoro, the op
 system's own voice, Silero and an energy detector that needs nothing installed --
 `providers` says which could run here and which is picked when none is named, and
 `regions FILE` gives the seconds somebody is speaking. Audio is anything ffmpeg reads,
-a video file's track included. A peer transcribes what it is sent, so the hearing happens
+a video file's track included. A device transcribes what it is sent, so the hearing happens
 on whichever machine is free rather than the one you are typing at.
 
 ## The rest of it
@@ -284,7 +284,7 @@ on whichever machine is free rather than the one you are typing at.
 | [Installing](docs/install.md) | the four modes, the one model cache per machine, Windows, and an install a script drives |
 | [The agent workspace](docs/workspace.md) | one bus for the agents on a machine: messages, boards and threads, subscriptions, notes, claims, and a read-only Board page for you |
 | [The commands](docs/commands.md) | every `poolhouse-<command>`, what it takes and what it prints |
-| [Clusters](docs/fleet.md) | joining, placing people across machines, following a branch, and running work on peers from Python |
+| [Pools](docs/fleet.md) | joining, placing people across machines, following a branch, and running work on devices from Python |
 | [Finding and serving a model](docs/serving.md) | one manager per machine, the settings each model scored best with, how many people fit in a card, llama.cpp builds and draft heads |
 | [Working with a graph](docs/graph.md) | the six things a model is given instead of the graph, how a question is asked, and a conversation of any length |
 | [Documents into a graph](docs/ingest.md) | a book read section by section, with the page and the model behind every claim |

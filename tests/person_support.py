@@ -42,9 +42,9 @@ def human(prompt: str, prompt_id: str, **fields) -> dict:
             "message": {"role": "user", "content": prompt}, **fields}
 
 
-def peer(prompt: str, prompt_id: str) -> dict:
+def member(prompt: str, prompt_id: str) -> dict:
     """A user entry another agent wrote."""
-    return {**human(prompt, prompt_id), "promptSource": "system", "turnOrigin": "peer"}
+    return {**human(prompt, prompt_id), "promptSource": "system", "turnOrigin": "member"}
 
 
 def notification(prompt: str, prompt_id: str) -> dict:

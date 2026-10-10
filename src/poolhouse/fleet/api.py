@@ -1,6 +1,6 @@
 """Every route the daemon answers on the LAN. `make_handler` builds the request handler
 the HTTP server runs: jobs, files, models, availability, bench, serving, speech, the
-peer-to-peer fetches, and a proxy in front of a model server on this machine's loopback.
+device-to-device fetches, and a proxy in front of a model server on this machine's loopback.
 The ``/ui/*`` paths are handed to `fleet.routes` through the `fleet.ui.UI` it was given.
 """
 
@@ -46,7 +46,7 @@ from .availability import Availability, parse_window
 from .daemon_control import protected
 from .deciding import MAX_REQUEST, Deciding
 from .device import device_report
-from .discovery import load_cluster_key, memberships
+from .discovery import load_pool_key, memberships
 from .files import (
     DIGEST_HEADER,
     FILE_CHUNK,
@@ -107,8 +107,8 @@ class Daemon:
     schedule_path: Path | None = None
     serving: Serving | None = None
     models: Models | None = None
-    cluster_key_path: Path | str | None = None
-    cluster_mode: str | None = None
+    pool_key_path: Path | str | None = None
+    pool_mode: str | None = None
     tokens: Callable[[], set[str]] | None = None
     devices: Callable[[], list] = lambda: []
     bench: BenchHost | None = None
@@ -120,7 +120,7 @@ class Daemon:
     joining: Joining | None = None
     """Answers a machine that asks to join with the passphrase; without it the join routes are off."""
     members: Pool | None = None
-    """Which devices are in this daemon's clusters; by default the record beside ``cluster_key_path``."""
+    """Which devices are in this daemon's pools; by default the record beside ``pool_key_path``."""
     command: Callable[[list[str]], list[str]] = commands.allowed
     """Which argv a ``POST /jobs`` may run, and in what form; raises ValueError to refuse."""
 
@@ -135,11 +135,11 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
     runner, files_root, token, name = daemon.runner, daemon.files_root, daemon.token, daemon.name
     report, fetcher, ui, schedule = daemon.report, daemon.fetcher, daemon.ui, daemon.schedule
     on_paused, schedule_path, serving = daemon.on_paused, daemon.schedule_path, daemon.serving
-    models, cluster_key_path, tokens = daemon.models, daemon.cluster_key_path, daemon.tokens
+    models, pool_key_path, tokens = daemon.models, daemon.pool_key_path, daemon.tokens
     bench, hosting, decide = daemon.bench, daemon.hosting, daemon.decide
     ui_from_lan = daemon.ui_from_lan
     joining, command = daemon.joining, daemon.command
-    roster = daemon.members or Pool(cluster_key_path)
+    roster = daemon.members or Pool(pool_key_path)
 
     def secrets_now() -> set[str]:
         """Every secret this machine answers to, read at request time."""
@@ -147,7 +147,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
         return {one for one in (own, *(tokens() if tokens else ())) if one}
 
     screen = callers.Screen(secrets_now, lambda: [device_auth.secret(device) for device in daemon.devices()],
-                            roster, cluster_key_path, lambda auth: watch_authenticator(auth, sentinel.armed(), Verdict))
+                            roster, pool_key_path, lambda auth: watch_authenticator(auth, sentinel.armed(), Verdict))
 
     class Handler(Limited, BaseHTTPRequestHandler):
         server_version = "poolhouse-traind/0.1"
@@ -226,7 +226,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                         return
                     remaining -= len(chunk)
 
-        _peer = ""
+        _member = ""
 
         def _guard(self, body: bytes | None = None) -> bool:
             """Whether this request is signed by a secret this machine answers to, and when it
@@ -235,7 +235,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             self._workspace_device = None
             self._workspace_projects = daemon.projects
             seen = screen.check(self, body)
-            verdict, self._peer = seen.verdict, seen.peer
+            verdict, self._member = seen.verdict, seen.member
             if seen.refusal is not None:
                 self.close_connection = seen.kind == callers.STRANGER
                 self._send(seen.refusal[0], {"error": seen.refusal[1]})
@@ -410,7 +410,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             return True
 
         def _extension(self, body=None) -> bool:
-            for entry in entry_points(group='poolhouse.peer_routes'):
+            for entry in entry_points(group='poolhouse.member_routes'):
                 if self.path.split('?')[0].startswith('/' + entry.name + '/'):
                     return bool(entry.load()(self, body))
             return False
@@ -439,18 +439,18 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if member_answer(self, roster, "GET", path, None):
                 return
             if project_routes.answer(self, daemon.projects, parsed,
-                                     cluster_key_path=cluster_key_path) or self._extension():
+                                     pool_key_path=pool_key_path) or self._extension():
                 return
             if path == "/health":
                 status = runner.status()
                 sched = schedule.public() if schedule is not None else None
                 if sched is not None and not sched["available"]:
                     status = {**status, "free": 0}
-                joined = memberships(cluster_key_path)
+                joined = memberships(pool_key_path)
                 root = getattr(daemon.ui, "root", None)
                 proof = app_identity.prove(root, self.headers.get(app_identity.HEADER, "")) if root else ""
                 self._send(200, {"ok": True, "name": self._name(), **({"proof": proof} if proof else {}),
-                                 "cluster_mode": daemon.cluster_mode or (joined[0].mode if joined else "dev"), **status, **report(),
+                                 "pool_mode": daemon.pool_mode or (joined[0].mode if joined else "dev"), **status, **report(),
                                  **({"availability": sched} if sched else {}),
                                  **({"serving": serving.public()} if serving is not None
                                     else {})})
@@ -554,7 +554,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             m = re.match(r"^/fetch/([^/]+)$", path)
             if m:
                 if fetcher is None:
-                    self._send(501, {"error": "peer-to-peer fetch is not enabled"})
+                    self._send(501, {"error": "device-to-device fetch is not enabled"})
                     return
                 fetch = fetcher.fetches.get(m.group(1))
                 if fetch is None:
@@ -564,7 +564,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if path == "/fetch":
                 if fetcher is None:
-                    self._send(501, {"error": "peer-to-peer fetch is not enabled"})
+                    self._send(501, {"error": "device-to-device fetch is not enabled"})
                     return
                 self._send(200, {"fetches": [f.public() for f in
                                              list(fetcher.fetches.values())],
@@ -627,7 +627,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if member_answer(self, roster, "POST", self.path.split("?")[0], body):
                 return
-            if project_routes.register(self, daemon.projects, cluster_key_path, body):
+            if project_routes.register(self, daemon.projects, pool_key_path, body):
                 return
             try:
                 if self._workspace(body or b"{}"):
@@ -649,7 +649,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             return got
 
         def _workspace(self, body: bytes) -> bool:
-            return project_workers.answer(self, daemon.workspaces, body, cluster_key_path)
+            return project_workers.answer(self, daemon.workspaces, body, pool_key_path)
 
         def _route_post(self, body: bytes) -> None:
             parsed = urllib.parse.urlparse(self.path)
@@ -726,7 +726,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 try:
                     got = models.ensure(str(req.get("name") or ""),
                                         source=str(req.get("source") or ""),
-                                        key=load_cluster_key(cluster_key_path),
+                                        key=load_pool_key(pool_key_path),
                                         autodownload=bool(req.get("autodownload", True)))
                 except (ModelError, ValueError) as e:
                     self._send(400, {"error": str(e)})
@@ -775,19 +775,19 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
         def _post_fetch(self, body, parsed):
             if parsed.path == "/fetch":
                 if fetcher is None:
-                    self._send(501, {"error": "peer-to-peer fetch is not enabled"})
+                    self._send(501, {"error": "device-to-device fetch is not enabled"})
                     return
                 try:
                     req = self._object(body)
                     if "from_url" in req or "url" in req or "token" in req:
-                        self._send(400, {"error": "name the source peer, not a URL: a "
+                        self._send(400, {"error": "name the source member, not a URL: a "
                                                   "route that fetches any URL it is "
                                                   "given is a forgery primitive"})
                         return
-                    source = str(req.get("peer") or "")
+                    source = str(req.get("member") or "")
                     relpath = str(req.get("relpath") or "")
                     if not source or not relpath:
-                        raise DaemonError("both 'peer' and 'relpath' are required")
+                        raise DaemonError("both 'member' and 'relpath' are required")
                     fetch = fetcher.start(source=source, relpath=relpath,
                                           to=str(req.get("to") or relpath),
                                           sha256=str(req.get("sha256") or ""))

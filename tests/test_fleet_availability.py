@@ -124,13 +124,13 @@ class TestPause:
 
 
 class TestReservations:
-    def test_a_peer_can_hold_a_box(self):
+    def test_a_member_can_hold_a_box(self):
         a = Availability()
         a.reserve("gpubox", 60)
         assert not a.may_start("someone else")[0]
         assert a.may_start("gpubox")[0]
 
-    def test_two_peers_cannot_hold_the_same_box(self):
+    def test_two_members_cannot_hold_the_same_box(self):
         a = Availability()
         a.reserve("gpubox", 60)
         with pytest.raises(PermissionError, match="gpubox"):

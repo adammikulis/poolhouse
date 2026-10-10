@@ -1,7 +1,7 @@
-"""Where a model that came from a paired device came from, and whose licence acceptance it relied on.
+"""Where a model that came from a member came from, and whose licence acceptance it relied on.
 
-An append-only local record (``<state>/onboard/peer-downloads.jsonl``, one JSON object per line,
-never rewritten): when a file arrives from a peer, one line says who (the peer, by name and
+An append-only local record (``<state>/onboard/member-downloads.jsonl``, one JSON object per line,
+never rewritten): when a file arrives from a member, one line says who (the member, by name and
 certificate fingerprint), when, which file (name, size, sha256) and, for a gated model, the
 acceptance of its licence on the serving device that this download relied on (who accepted and
 when, as that device reported it). ``poolhouse-models list`` shows it. It is a record for the
@@ -22,7 +22,7 @@ __all__ = ["latest", "read", "record"]
 
 
 def _path(path: Path | str | None) -> Path:
-    return Path(path) if path else home.state("onboard", "peer-downloads.jsonl")
+    return Path(path) if path else home.state("onboard", "member-downloads.jsonl")
 
 
 def record(row: dict[str, Any], path: Path | str | None = None) -> dict[str, Any]:
@@ -54,7 +54,7 @@ def read(path: Path | str | None = None) -> list[dict[str, Any]]:
 
 
 def latest(name: str, size: int, path: Path | str | None = None) -> dict[str, Any] | None:
-    """The newest line for a file of this name and size, or None when it was not got from a peer."""
+    """The newest line for a file of this name and size, or None when it was not got from a member."""
     for row in reversed(read(path)):
         if row.get("file") == name and row.get("size") == size:
             return row

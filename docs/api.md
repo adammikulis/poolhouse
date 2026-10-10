@@ -243,7 +243,7 @@ have, and arrives as an addition.
 | Name | Intended shape |
 |---|---|
 | `ph.pool.capacities()` | The `Capacity` of every member, not only this device; needs the nodes to publish it to the pool. |
-| `ph.jobs.submit(spec, *, on=None)` / `ph.jobs.run(...)` | Dispatch a job to a pool device (or the best free one) under a lease, and follow it: `Job.state`, `Job.result()`, `Job.cancel()`. `ph.test.run` is its first instance. Today fleet jobs run through the cluster daemon, not the pool's node. |
+| `ph.jobs.submit(spec, *, on=None)` / `ph.jobs.run(...)` | Dispatch a job to a pool device (or the best free one) under a lease, and follow it: `Job.state`, `Job.result()`, `Job.cancel()`. `ph.test.run` is its first instance. Today fleet jobs run through the pool daemon, not the pool's node. |
 | `ph.trust.standing(agent)` | Read-only view of an agent's earned standing and grants. |
 | `ph.pool.flags` | The sentinel and feature flags of the pool, per device. |
 

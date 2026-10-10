@@ -8,7 +8,7 @@ projects-view .panel { background:var(--bg-raised); border:1px solid var(--line)
 projects-view .panel h2 { margin-top:0; font-size:1.286rem; }
 projects-view #project-list .model-row { display:block; padding:calc(14px * var(--ui-density,1)) 0; border-bottom:1px solid var(--line); }
 projects-view #project-list button { margin:10px 0 0; width:100%; }
-projects-view #project-board { min-height:400px; }
+projects-view #board-panel { min-height:400px; }
 projects-view .project-message { padding:calc(14px * var(--ui-density,1)) 0; border-top:1px solid var(--line); }
 projects-view #project-agents p { border:1px solid var(--line); padding:calc(12px * var(--ui-density,1)); border-radius:10px; }
 projects-view .project-access-settings { margin:24px 0; padding:calc(16px * var(--ui-density,1)); border:1px solid var(--line); border-radius:12px; }
@@ -26,15 +26,15 @@ projects-view #project-command { white-space:pre-wrap; overflow-wrap:anywhere; }
       <p class="hint">Sharing publishes the tracked source snapshot. Agent access is a separate step.</p>
     </section>
     <section class="panel"><h2>Shared projects</h2><div id="project-list"></div></section></aside>
-    <div><section class="panel" id="project-empty"><h2 data-t="projects.pick">Select a project</h2><p class="hint">Choose a shared project to see its agents, source, and team activity. Share a local project to start working across your pool.</p></section><section class="panel" id="project-board" hidden>
-      <h2 id="project-title"></h2><p id="project-authority"></p><p id="project-board-state" role="status"></p>
+    <div><section class="panel" id="project-empty"><h2 data-t="projects.pick">Select a project</h2><p class="hint">Choose a shared project to see its agents, source, and team activity. Share a local project to start working across your pool.</p></section><section class="panel" id="board-panel" hidden>
+      <h2 id="project-title"></h2><p id="project-authority"></p><p id="board-state-note" role="status"></p>
       <p id="project-source"></p>
       <button id="project-checkout">Get source on this device</button>
       <p id="project-checkout-state" role="status"></p>
       <details class="project-access-settings"><summary>Connect an agent &amp; source access</summary><h3>Connect an agent</h3><label for="project-agent-label">Agent label (optional)</label>
-      <p class="hint">Devices in a Dev cluster join this project's Board automatically when they run a workspace command inside its checkout. Prod clusters require device approval.</p>
+      <p class="hint">Devices in a pool join this project's Board automatically when they run a workspace command inside its checkout. Pools in prod mode require device approval.</p>
       <input id="project-agent-label" placeholder="For example, Mac reviewer">
-      <label id="project-host-choice" hidden><input type="checkbox" id="project-host-board"> Host this project's board on this device</label>
+      <label id="project-host-choice" hidden><input type="checkbox" id="project-keep-board"> Keep this project's board on this device</label>
       <button id="project-invite">Create agent access code</button>
       <div id="project-access" hidden><p id="project-access-hint"></p>
         <pre id="project-command"></pre><button id="project-copy">Copy access details</button>
@@ -56,14 +56,14 @@ projects-view #project-command { white-space:pre-wrap; overflow-wrap:anywhere; }
       this.candidate = this.querySelector('#project-candidate');
       this.share = this.querySelector('#project-share');
       this.rows = this.querySelector('#project-list');
-      this.board = this.querySelector('#project-board');
+      this.board = this.querySelector('#board-panel');
       this.share.onclick = async () => {
         const result = await this.action('/ui/projects', {action: 'share', candidate_id: this.candidate.value});
         if (result?.ok) await this.draw();
       };
       this.querySelector('#project-checkout').onclick = () => this.checkout();
       this.querySelector('#project-invite').onclick = () => this.invite();
-      this.querySelector('#project-host-board').onchange = () => this.loadBoard();
+      this.querySelector('#project-keep-board').onchange = () => this.loadBoard();
       this.querySelector('#project-copy').onclick = async () => {
         try { await navigator.clipboard.writeText(this.querySelector('#project-command').textContent); this.note.textContent = 'Command copied'; }
         catch { this.note.textContent = 'Select and copy the command above.'; }
@@ -90,11 +90,11 @@ projects-view #project-command { white-space:pre-wrap; overflow-wrap:anywhere; }
           if ([...this.candidate.options].some(p => p.value === selected)) this.candidate.value = selected;
           this.share.disabled = !this.candidate.value;
           this.rows.replaceChildren(...this.projects.map(p => el('div', {class: 'model-row'},
-            el('div', {}, el('b', {}, p.name), el('p', {class: 'hint'}, `${p.is_self ? 'This device' : p.peer || p.host || 'Pool device'} · ${p.state || 'Shared'}`)),
+            el('div', {}, el('b', {}, p.name), el('p', {class: 'hint'}, `${p.is_self ? 'This device' : p.member || p.host || 'Pool device'} · ${p.state || 'Shared'}`)),
             el('button', {onclick: () => this.select(p)}, 'Open project'))));
           if (!this.projects.length) this.rows.append(el('p', {class: 'hint'}, 'No shared projects found yet.'));
           for (const d of result.devices || []) if (d.state === 'upgrade_required' || d.error) {
-            this.rows.append(el('p', {class: 'hint'}, `${d.name || d.peer}: ${d.error || 'Update Poolhouse on this device to share projects.'}`));
+            this.rows.append(el('p', {class: 'hint'}, `${d.name || d.member}: ${d.error || 'Update Poolhouse on this device to share projects.'}`));
           }
         }
         if (this.selected) await this.loadBoard();
@@ -108,8 +108,8 @@ projects-view #project-command { white-space:pre-wrap; overflow-wrap:anywhere; }
       this.querySelector("#project-empty").hidden = true;
       this.querySelector('#project-title').textContent = project.name;
       this.querySelector('#project-authority').textContent = `Board authority: ${project.board_host || 'unconfigured'}`;
-      this.querySelector('#project-source').textContent = `Source available on ${project.is_self ? 'this device' : project.source_host || project.host || project.peer || 'a pool device'}`;
-      this.querySelector('#project-host-board').checked = false;
+      this.querySelector('#project-source').textContent = `Source available on ${project.is_self ? 'this device' : project.source_host || project.host || project.member || 'a pool device'}`;
+      this.querySelector('#project-keep-board').checked = false;
       this.querySelector('#project-access').hidden = true;
       this.querySelector('#project-command').textContent = '';
       this.querySelector('#project-checkout').hidden = !!project.is_self;
@@ -125,9 +125,9 @@ projects-view #project-command { white-space:pre-wrap; overflow-wrap:anywhere; }
       const available = result.ok && !['conflict', 'upgrade_required', 'connection_required'].includes(result.state || project.state);
       this.querySelector('#project-host-choice').hidden = result.state !== 'unconfigured';
       this.querySelector('#project-invite').disabled = !available || this.busy
-        || (result.state === 'unconfigured' && !this.querySelector('#project-host-board').checked);
+        || (result.state === 'unconfigured' && !this.querySelector('#project-keep-board').checked);
       this.querySelector('#project-checkout').disabled = this.busy || ['conflict', 'upgrade_required'].includes(result.state || project.state);
-      this.querySelector('#project-board-state').textContent = !available
+      this.querySelector('#board-state-note').textContent = !available
         ? result.state === 'connection_required'
           ? `Connect to the existing board on ${result.board_host || project.board_host}. Create agent access on the authority device.`
           : result.error || (project.state === 'conflict' ? 'Project authority conflict. Resolve it before connecting agents.' : 'Shared board unavailable. Update or reconnect the authority device.')
@@ -168,7 +168,7 @@ projects-view #project-command { white-space:pre-wrap; overflow-wrap:anywhere; }
 
     async checkout() {
       const project = this.selected;
-      const result = await this.action(`/ui/projects/${encodeURIComponent(project.id)}/checkout`, {peer: project.peer || project.host || ''});
+      const result = await this.action(`/ui/projects/${encodeURIComponent(project.id)}/checkout`, {member: project.member || project.host || ''});
       if (result?.ok && this.selected === project) this.querySelector('#project-checkout-state').textContent =
         `Source ready at ${result.checkout}. Connect an agent separately to join the shared board.`;
     }
@@ -180,12 +180,12 @@ projects-view #project-command { white-space:pre-wrap; overflow-wrap:anywhere; }
       if (result?.ok && this.selected === project) {
         this.querySelector('#project-access').hidden = false;
         this.querySelector('#project-access-hint').textContent = result.command
-          ? /\b(NAME|MODEL|HARNESS|HOST_URL|CLUSTER)\b/.test(result.command)
+          ? /\b(NAME|MODEL|HARNESS|HOST_URL|POOL)\b/.test(result.command)
             ? 'Replace the uppercase placeholders with the agent name, model, harness and pool, and the authority address if needed. Run it on the agent\'s device within ten minutes.'
             : 'Run this on the agent\'s device. The code expires after ten minutes.'
           : 'Project-scoped access code. Use it with workspace remote join on the agent\'s device. It expires after ten minutes.';
         this.querySelector('#project-command').textContent = result.command || result.code || '';
-        this.querySelector('#project-board-state').textContent = 'Access code ready. Waiting for the agent to connect.';
+        this.querySelector('#board-state-note').textContent = 'Access code ready. Waiting for the agent to connect.';
       }
     }
   }

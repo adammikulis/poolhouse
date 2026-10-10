@@ -57,7 +57,7 @@ class Bus(Subscribers):
             try:
                 fn(event)
             except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError):
-                # a subscriber must not stop a pairing
+                # a subscriber must not stop a join
                 logger.exception("onboard subscriber failed")
         return event
 

@@ -69,7 +69,7 @@ default"]
 Attacker positions: **N** hostile device on the same network segment; **L** hostile process on the
 same machine; **M** a member that was honest and is now compromised. `open` = a device is enrolled on
 first contact from the segment, fingerprint recorded, revocation sticky, beacons signed and carrying a
-pool id. [V node.md "Pairing", `beacon.rs`]
+pool id. [V node.md "Joining", `beacon.rs`]
 
 What the node already does, so it is not repeated as a gap: beacons are signed, at most 1024 bytes and
 valid 60 s; a bad signature, stale time, loopback or multicast address is dropped; a non-member beacon
@@ -92,9 +92,9 @@ merge; sync is bounded to 400 rows, 2 MiB and 16 origins a request; per-board qu
 | 9 | Clock skew games | N, M | Beacons are bounded to +-60 s; foreign rows to +5 min; the Python authenticator has a 120 s window. A member can set its HLC ahead to order itself first (first claim in the total order wins a target). | Skew is held back at 5 min but not counted or reported; an HLC far in the past is not examined. |
 | 10 | Malformed or oversized frames | N, L | Local frames 1 MiB, peer frames 4 MiB, beacons 1 KiB; unknown fields do not parse; length prefix read once. | Not yet fuzzed; a length prefix of 4 MiB sent and then withheld ties a thread for 30 s. [analysis] |
 | 11 | Slow-loris | N | 30 s read timeout per frame; one thread per connection by the accept loop. | No cap on concurrent unauthenticated connections or per-source concurrency. [analysis, `net.rs` accept loop reads as thread-per-conn] |
-| 12 | Impersonating a revoked device with a new key | N | A new key is a new fingerprint; `enrol` accepts it under `open`. The revoked name is just a label (name is control-char-stripped, 80 chars, not unique). | Under `open`, revocation is defeated by re-joining. The sentinel must link successors (same name, same address, same host key hints) and carry the revocation reason forward. |
+| 12 | Impersonating a removed device with a new key | N | A new key is a new fingerprint; `enrol` accepts it under `open`. The revoked name is just a label (name is control-char-stripped, 80 chars, not unique). | Under `open`, revocation is defeated by re-joining. The sentinel must link successors (same name, same address, same host key hints) and carry the revocation reason forward. |
 | 13 | Rogue DHCP or mDNS name | N | Nothing is matched by name; the dial is pinned to a fingerprint. A rogue DHCP server can route a member's address to the attacker, but the TLS pin fails. [V `beacon.rs`: "never matched by name"] | Only denial: the attacker can make a member's address unreachable. Report address flapping; do not trust it. |
-| 14 | Hostile local process reaching the node socket | L | Socket is 0600 in a 0700 dir; `SO_PEERCRED` / `getpeereid` refuses another uid; tokens are stored as SHA-256; the Grants stub lets any registered session act. [V node.md "Local API"] | Same-uid processes (any agent or tool the user runs) are inside the line. Membership methods (`set_join_policy`, `member_revoke`, `pair_start`) need the owner-only grant, which is a stub today. This is the item that must land before `open` ships. |
+| 14 | Hostile local process reaching the node socket | L | Socket is 0600 in a 0700 dir; `SO_PEERCRED` / `getpeereid` refuses another uid; tokens are stored as SHA-256; the Grants stub lets any registered session act. [V node.md "Local API"] | Same-uid processes (any agent or tool the user runs) are inside the line. Membership methods (`set_join_policy`, `member_remove`, `join_pool`) need the owner-only grant, which is a stub today. This is the item that must land before `open` ships. |
 | 15 | Fake `hello` claiming a policy to bait a joiner | N | A joiner reads `policy` from the peer's `hello` and then offers its certificate. A rogue pool at the same segment can collect certificates (public data) and learn this device's name. | Low impact; but a lone device joining the first `open` pool it hears is a hijack: the rule is "alone and the beacon's pool id sorts before its own". [V `net.rs` comment, node.md] An attacker picks a pool id that sorts first, so a **new device with `open` can be captured into a hostile pool**. |
 
 Item 15 matters most for a user: a fresh laptop joins the strangers' pool in the coffee shop. `open`
@@ -106,7 +106,7 @@ What `open` must never allow, whatever else is decided: [analysis]
 2. Such a device making a link, adding a source or a project, or setting policy.
 3. Enrolment without a durable, sealed audit entry naming fingerprint, address, time and by-whom.
 4. A revoked fingerprint, or a device the sentinel linked to one, returning silently.
-5. A lone device adopting a pool without the person being told which pool and which devices.
+5. A lone device adopting a pool without the person being told which pool and which members.
 6. Any decision the person cannot see afterwards, or cannot undo with one action.
 7. Enrolment while the sentinel is off or dead (fail closed: no heartbeat, no new `open` enrolments).
 
@@ -123,14 +123,14 @@ additive. [V `membership.py Device.read`; analysis] `quarantined` is a flag on a
 
 | Capability | Unknown | Probation | Active | Quarantined |
 |---|---|---|---|---|
-| `hello`, `join_open`, pairing frames | yes | no | no | no |
+| `hello`, `join_open`, joining frames | yes | no | no | no |
 | `members` (read the roster) | no | read, own row only | yes | no |
 | sync boards it is **invited** to | no | yes | all boards both hold | no |
 | sync other boards | no | no | yes | no |
 | acquire exclusive lease, GPU, model slot | no | no (counted resources only, small) | yes | no |
 | coordinator role, tiers, leases for others | no | no | per trust ledger | no |
 | `link`, `project_add`, `source_add`, grants, policy | no | no | owner-only grant | no |
-| revoke another device, merge membership rows | no | no | active only | no |
+| remove another device, merge membership rows | no | no | active only | no |
 | rows per minute, bytes per hour | n/a | capped (below) | pool quota | 0 |
 
 Invitation is a board entry (`kind: audit`, `event: invite`, `subject: fingerprint`, `board`) written
@@ -167,7 +167,7 @@ Each emits a `Finding` through the existing path (`Sentinel.handle` -> policy ->
 | forged entries | a signed row whose hash or head fails; `damaged` from the owning device | reliable (forgery), high confidence |
 | replay | an old head or row presented as new; a beacon older than its high-water mark for that key | reliable |
 | clock skew | HLC beyond +5 min, or beacon ts beyond +-60 s, repeatedly | reliable as a fact; usually a clock, counted low (as `PeerWatch` "clock" is) |
-| successor of a revoked device | new fingerprint with the same name, address or host within the window after a revocation | heuristic |
+| successor of a removed device | new fingerprint with the same name, address or host within the window after a revocation | heuristic |
 | lone adopter | a device that was alone adopting a pool | reliable as an event; always notified |
 
 The node counts and rate-limits; it does not decide. It exposes these as counters and an event stream
@@ -180,7 +180,7 @@ on the socket (section 4) so the sentinel needs no packet access. [analysis]
 | 0 note | single clock or malformed beacon | event only | none needed |
 | 1 throttle | rate or quota hit, flapping | node halves the device's caps for an hour | decays |
 | 2 pause intake | enrolment rate over the segment threshold | node stops accepting `join_open` for that segment; existing members unaffected | timer, or the person |
-| 3 quarantine | protocol violation repeated, duplicate fingerprint, successor of a revoked device, a probationer's quota hit twice | device stays connected but receives and gives nothing; standing `quarantined`; its rows are held, not merged | person releases (HumanGrant) |
+| 3 quarantine | protocol violation repeated, duplicate fingerprint, successor of a removed device, a probationer's quota hit twice | device stays connected but receives and gives nothing; standing `quarantined`; its rows are held, not merged | person releases (HumanGrant) |
 | 4 auto-revoke | proven forgery (bad head or hash from the owner of the origin), proven replay of a signed frame, a second device forging the same fingerprint's signature | `revoked`, sticky, spreads by `members` | none (new certificate only) |
 | 5 close | the pool-wide count or rate is in a flood | policy flips to `secure` and the person is told | the person flips back |
 
@@ -198,7 +198,7 @@ posts a board entry and a notice (3.5). [analysis]
 - The sentinel mirrors the entry into its own chained log (`events.log`), so a tail removed on one side
   shows on the other. [analysis]
 - A notice goes to the person through the existing heads-up (single-flight dialog, fixed sentences),
-  extended with `device_joined`, `device_quarantined`, `device_revoked`, `open_paused`. `explain.WHY`
+  extended with `device_joined`, `device_quarantined`, `device_removed`, `open_paused`. `explain.WHY`
   gets one sentence per kind, and `tests/test_sentinel_explain.py` already fails if one is missing.
   [V `explain.py`/test; analysis]
 - A new device is told once, on the first enrolment of the day, in one line ("<name> joined from
@@ -267,7 +267,7 @@ Enrolment fails closed, running does not. [analysis; heartbeat shape V `watch.sc
 | per-state capability table, invitations | Rust `peer.rs`, `rules.rs`/`grants.rs` | one place a request is allowed |
 | rate caps, quotas, frame limits, timeouts, connection caps | Rust `wire.rs`, `net.rs`, `beacon.rs` | must hold with Python dead |
 | counters, event stream, `device_note` / `device_state` methods | Rust `api.rs` | the sentinel's sensors and actuators |
-| detectors, windows, thresholds, successor linking | Python `sentinel/devices.py` (new) | analysis changes often; reuses `Windows`, `Finding`, `policy.decide` |
+| detectors, windows, thresholds, successor linking | Python `sentinel/members.py` (new) | analysis changes often; reuses `Windows`, `Finding`, `policy.decide` |
 | decisions: throttle, quarantine, revoke, pause, promote | Python via node calls | node verifies standing allows the call |
 | notices, dialog, `explain.WHY` | Python `heads_up.py`, `explain.py` | already single-flight |
 | audit entry | written by the node, mirrored by the sentinel | tail removal visible on both |
@@ -306,12 +306,12 @@ instruction) through converters `base64`, `confusables`, `zero_width`, enrolled 
 real node; evidence is that the notice shown to the person carries the escaped, cut name, and that no
 held name reaches a model context unscreened. (b) a hostile board entry (note, message) from a
 probationer, evidence is it is foreign-labelled and held by the screen. New scenario file
-`scenarios/devices.py`, with a `Responder` that drives a local node over its socket. [analysis]
+`scenarios/members.py`, with a `Responder` that drives a local node over its socket. [analysis]
 
 **5.2 Protocol fuzzing against the Rust node.** `cargo-fuzz` targets: `fuzz_frame` (length prefix and
 body for local and peer framing, with the 30 s timeout replaced by an injected clock), `fuzz_beacon`
 (`beacon::decode`), `fuzz_row` (`row::parse` / board entry decoding), `fuzz_members` (the
-`members` merge), `fuzz_pair` (SPAKE2 message and confirm). Invariants: never panic, never allocate
+`members` merge), `fuzz_join_code` (SPAKE2 message and confirm). Invariants: never panic, never allocate
 past the cap, never produce an entry that fails re-encode round-trip, never accept a row whose hash
 differs. Seed corpora from the node's own tests. [analysis]
 
@@ -325,7 +325,7 @@ differs. Seed corpora from the node's own tests. [analysis]
 | enrol then flood posts | throttled at the caps; rows over cap refused `quota`; no board data outside invites readable; grade 1 then 3 |
 | enrol then try `link`, `source_add`, lease, GPU, coordinator | each `denied: probation`, with the audit entry; none changes state |
 | probationer forges a row for another origin | `damaged` marks only when the owner sends it; relay copies never mark; sentinel finding on the sender; auto-revoke only for the owner |
-| revoked device returns with a new key and same name | `successor` finding, grade 3, not silent; the old fingerprint still refused |
+| removed device returns with a new key and same name | `successor` finding, grade 3, not silent; the old fingerprint still refused |
 | compromised member (active) floods | grade 1-3 reach it identically; caps in the node bound the damage |
 | clock skew +10 min HLC | rows held back from the view; `clock_skew` count; no ordering change in the claim table |
 | frame length prefix 4 MiB then silence, x500 connections | per-source and global concurrency caps; threads bounded; timeout closes; `slow_connection` count |
@@ -346,18 +346,18 @@ Sizes: S under 150 lines of code plus tests, M 150 to 500, L over 500.
 
 | # | Slice | Size | Tests to write | Depends on |
 |---|---|---|---|---|
-| 1 | Owner-only grants in the node (replace the `Grants` stub for membership methods) | M | a same-uid session without the grant is `denied` for `set_join_policy`, `member_revoke`, `pair_start`, `link`, `project_add`; with it, allowed | node network branch |
+| 1 | Owner-only grants in the node (replace the `Grants` stub for membership methods) | M | a same-uid session without the grant is `denied` for `set_join_policy`, `member_remove`, `join_pool`, `link`, `project_add`; with it, allowed | node network branch |
 | 2 | Probation status and capability table (Rust): membership row, per-state checks in `peer.rs`, invitations as board entries | L | each cell of 3.1; `merge` keeps `revoked` terminal; round trip through `pool.json`; old Python reader still parses | 1 |
 | 3 | Python reader understands `probation`/`quarantined` (`fleet/membership.py`, `pool_roster.py`) | S | a roster with a probationer is not "active" anywhere callers check; `Device.read` round trip | none (do before 2 ships) |
 | 4 | Node limits: beacon and dial rate, enrolment cap per segment and pool-wide, concurrent connections, per-device caps, `busy` reply | M | flood tests on loopback; caps never exceeded under 8 threads | 2 |
 | 5 | Node counters and event stream (`device_events`, `device_state`) and the narrowing-only sentinel token | M | the sentinel token can narrow, cannot promote; a counter per detector input | 2 |
-| 6 | Sentinel `devices.py`: detectors in 3.3 on the existing `Windows`, `Finding` and policy path; subject `device`/`segment`; `explain.WHY` and heads-up kinds | M | each detector on a synthetic clock (as `rates.py` is tested); false-alarm corpus: 500 honest enrolments and syncs produce nothing above `notice` | 5 |
+| 6 | Sentinel `members.py`: detectors in 3.3 on the existing `Windows`, `Finding` and policy path; subject `device`/`segment`; `explain.WHY` and heads-up kinds | M | each detector on a synthetic clock (as `rates.py` is tested); false-alarm corpus: 500 honest enrolments and syncs produce nothing above `notice` | 5 |
 | 7 | Graded responses and promotion rules, audit entries written and mirrored | M | each grade; `guarded` never exceeds grade 2 on heuristics; promotion only with a live heartbeat | 2, 5, 6 |
 | 8 | The brake: CLI verbs (HumanGrant), Fleet page buttons, next-request effect | M | verb then the very next request refused; an agent marker refuses; page button calls the same route | 2 |
 | 9 | Lone-adopter confirmation | S | a lone device does not adopt without confirmation; confirmation by id | 2 |
 | 10 | Trust-ledger link: device account evidence, promotion by evidence, standing-grant | M | clean syncs raise the ledger state; a fault drops it; the grant is scoped and revocable | 7, earned-trust slices |
 | 11 | Fuzz targets in `app/poolhouse-node/fuzz` | M | the five targets, run for a fixed iteration count in CI, long runs by hand | node network branch |
-| 12 | Red-team scenarios (`redteam/scenarios/devices.py`) and the scenario table above as tests | L | each row of 5.2 | 2 to 8 |
+| 12 | Red-team scenarios (`redteam/scenarios/members.py`) and the scenario table above as tests | L | each row of 5.2 | 2 to 8 |
 | 13 | Sentinel as a node-socket client and heartbeat check by the node | M | kill the sentinel: enrolment closes in three intervals; restart: it reopens | 5 |
 
 The order that makes `open` shippable: 1, 3, 2, 4, 5, 13, 6, 7, 8, 9, then 11 and 12 as the gate.

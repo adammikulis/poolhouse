@@ -1,6 +1,6 @@
 """Hostile test-shard requests against a real device: nothing but a named test file may run, and only the pool's members ask.
 
-Two node processes on loopback, paired. Each refusal is checked where it happens (the answer the asker gets) and
+Two node processes on loopback, joined. Each refusal is checked where it happens (the answer the asker gets) and
 on the device afterwards: no folder for the refused shard, no executor, and the marker a shipped test would
 write is absent. What reaches the executor (the contents of the tree) is checked by the executor itself, so a
 hostile tree is a finished shard with exit 70, never a run.
@@ -14,7 +14,7 @@ import secrets
 import tarfile
 
 import pytest
-from testfarm_kit import enable, jobs_on, peer, until
+from testfarm_kit import enable, jobs_on, member, until
 
 from poolhouse import node_health
 from poolhouse.board import session as board_session
@@ -72,7 +72,7 @@ def finished_with_70(shards: Shards, fp: str, request: dict) -> dict:
 def test_a_path_outside_the_plain_test_files_is_refused(pool, name):
     _a, b, shards, _tree = pool
     enable(b)
-    fp = peer(_a)["fingerprint"]
+    fp = member(_a)["fingerprint"]
     request = uploaded(shards, fp, b"x" * 64, files=[name])
     refused(shards, fp, "shard_start", **request)
     assert shards.call(fp, "shard_status", id=request["id"])["state"] == "uploading", "it never started"
@@ -84,7 +84,7 @@ def test_a_path_outside_the_plain_test_files_is_refused(pool, name):
 def test_a_file_list_that_is_not_a_short_list_of_distinct_names_is_refused(pool, files):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     request = uploaded(shards, fp, b"x" * 64, files=files)
     refused(shards, fp, "shard_start", **request)
     assert shards.call(fp, "shard_status", id=request["id"])["state"] == "uploading"
@@ -93,7 +93,7 @@ def test_a_file_list_that_is_not_a_short_list_of_distinct_names_is_refused(pool,
 def test_a_file_that_is_not_in_the_shipped_tree_is_refused(pool):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     data = archive([("tests/test_a.py", tarfile.REGTYPE, b"x = 1\n")])
     result = finished_with_70(shards, fp, uploaded(shards, fp, data, files=["tests/test_missing.py"]))
     assert "is not in the shipped tree" in result["output_tail"]
@@ -104,7 +104,7 @@ def test_a_file_that_is_not_in_the_shipped_tree_is_refused(pool):
 def test_a_malformed_id_or_digest_is_refused(pool, bad, value):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     request = uploaded(shards, fp, b"x" * 64)
     refused(shards, fp, "shard_start", **{**request, bad: value})
     assert shards.call(fp, "shard_status", id=request["id"])["state"] == "uploading", "the real shard is untouched"
@@ -114,7 +114,7 @@ def test_a_malformed_id_or_digest_is_refused(pool, bad, value):
 def test_extra_fields_are_refused_whatever_they_say(pool, field):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     request = uploaded(shards, fp, b"x" * 64, **{field: ["rm", "-rf", "/"] if field == "argv" else "1"})
     refused(shards, fp, "shard_start", **request)
     refused(shards, fp, "shard_put", id=secrets.token_hex(16), offset=0, data="00", **{field: "1"})
@@ -126,7 +126,7 @@ def test_extra_fields_are_refused_whatever_they_say(pool, field):
 def test_a_time_limit_outside_the_allowed_range_is_refused(pool, seconds):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     request = uploaded(shards, fp, b"x" * 64, timeout_s=seconds)
     refused(shards, fp, "shard_start", **request)
     assert shards.call(fp, "shard_status", id=request["id"])["state"] == "uploading"
@@ -135,7 +135,7 @@ def test_a_time_limit_outside_the_allowed_range_is_refused(pool, seconds):
 def test_a_tree_that_does_not_match_its_digest_is_refused(pool):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     request = uploaded(shards, fp, b"x" * 64, tree_sha256=hashlib.sha256(b"something else").hexdigest())
     refused(shards, fp, "shard_start", "does not match its digest", **request)
     refused(shards, fp, "shard_status", "no such shard", id=request["id"])
@@ -153,7 +153,7 @@ def test_a_tree_that_does_not_match_its_digest_is_refused(pool):
 def test_a_tree_with_anything_but_plain_shipped_files_is_refused(pool, members):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     data = archive([("tests/test_a.py", tarfile.REGTYPE, b"x\n"), *members])
     result = finished_with_70(shards, fp, uploaded(shards, fp, data))
     assert "stub ran" not in result["output_tail"]
@@ -163,7 +163,7 @@ def test_a_tree_with_anything_but_plain_shipped_files_is_refused(pool, members):
 def test_a_tree_that_inflates_past_the_limit_is_refused(pool):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     bomb = archive([("tests/test_a.py", tarfile.REGTYPE, b"\0" * (300 << 20))])
     assert len(bomb) < 1 << 20
     result = finished_with_70(shards, fp, uploaded(shards, fp, bomb))
@@ -173,7 +173,7 @@ def test_a_tree_that_inflates_past_the_limit_is_refused(pool):
 def test_an_oversized_or_malformed_body_is_refused(pool):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     for bad in ("xyz", "0", "", "zz" * 8, "00" * (256 * 1024 + 1)):
         refused(shards, fp, "shard_put", id=GOOD_ID, offset=0, data=bad)
     assert jobs_on(b) == 0, "none of those opened an upload"
@@ -188,7 +188,7 @@ def test_an_oversized_or_malformed_body_is_refused(pool):
 def test_a_replayed_shard_id_is_refused_and_runs_once(pool):
     a, b, shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     shard = shards.send(fp, tree, "all", ["tests/test_a.py"], 60)
     assert shards.wait(fp, shard, timeout_s=60, poll_s=0.2)["exit"] == 0
     refused(shards, fp, "shard_put", id=shard, offset=0, data="00")
@@ -199,7 +199,7 @@ def test_a_replayed_shard_id_is_refused_and_runs_once(pool):
 def test_a_shard_past_the_running_cap_is_refused(pool):
     a, b, shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     held = [shards.send(fp, tree, "all", ["tests/test_hang.py"], 600) for _ in range(2)]
     until("both to run", 30, lambda: shards.capability(fp)["free"] == 0)
     with pytest.raises(ShardError, match="2 shards are already running"):
@@ -211,7 +211,7 @@ def test_a_shard_past_the_running_cap_is_refused(pool):
 
 def test_a_device_with_shards_off_runs_nothing_and_says_so(pool):
     a, b, shards, tree = pool
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     refused(shards, fp, "shard_put", "off on this device", id=GOOD_ID, offset=0, data="00")
     refused(shards, fp, "shard_start", "off on this device", **start_request(b"x"))
     with pytest.raises(ShardError, match="off on this device"):
@@ -219,15 +219,15 @@ def test_a_device_with_shards_off_runs_nothing_and_says_so(pool):
     assert shards.capability(fp)["accepts"] is False and jobs_on(b) == 0
 
 
-def test_a_paired_device_that_is_not_marked_as_the_owners_is_refused(pool, third):
+def test_a_joined_device_that_is_not_marked_as_the_owners_is_refused(pool, third):
     """Being the owner's device is standing in the pool: a device put out of it asks nothing, however it got in."""
     a, b, _shards, _tree = pool
     enable(b)
-    code = b.call("pair_accept", token=b.token)
-    third.call("pair_start", token=third.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
-    ours, fp_b = Shards(seat(third)), peer(a)["fingerprint"]
+    code = b.call("add_device", token=b.token)
+    third.call("join_pool", token=third.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
+    ours, fp_b = Shards(session(third)), member(a)["fingerprint"]
     assert ours.capability(fp_b)["accepts"] is False, "a member is answered, and told it is not allowed"
-    b.call("member_revoke", token=b.token, fingerprint=node_health.call(third.state, "pool_status")["fingerprint"])
+    b.call("member_remove", token=b.token, fingerprint=node_health.call(third.state, "pool_status")["fingerprint"])
     with pytest.raises(ShardError):
         ours.capability(fp_b)
     with pytest.raises(ShardError):
@@ -235,21 +235,21 @@ def test_a_paired_device_that_is_not_marked_as_the_owners_is_refused(pool, third
     assert jobs_on(b) == 0
 
 
-def test_a_peer_that_is_not_paired_is_refused_before_anything_is_read(pool, third):
+def test_a_member_that_is_not_joined_is_refused_before_anything_is_read(pool, third):
     a, b, _shards, _tree = pool
     enable(b)
-    stranger = Shards(seat(third))
+    stranger = Shards(session(third))
     with pytest.raises(ShardError, match="no other active device"):
-        stranger.call(peer(a)["fingerprint"], "shard_put", id=GOOD_ID, offset=0, data="00")
+        stranger.call(member(a)["fingerprint"], "shard_put", id=GOOD_ID, offset=0, data="00")
     assert jobs_on(b) == 0
 
 
-def test_the_cluster_secret_is_not_a_paired_device(pool, third):
+def test_the_pool_secret_is_not_a_joined_device(pool, third):
     """A session token of the pool, held by a device that is not in it, opens nothing: tokens belong to one node."""
     a, b, _shards, _tree = pool
     enable(b)
     with pytest.raises(NodeError):
-        third.call("shard_call", token=a.token, device=peer(a)["fingerprint"], op="shard_caps", args={})
+        third.call("shard_call", token=a.token, device=member(a)["fingerprint"], op="shard_caps", args={})
     with pytest.raises(NodeError):
         third.call("shard_consent", token=a.token, enabled=True, python="/usr/bin/python3", repo="/")
     assert jobs_on(b) == 0
@@ -259,13 +259,13 @@ def test_the_cluster_secret_is_not_a_paired_device(pool, third):
 def test_an_unknown_or_hostile_shard_id_has_no_result(pool, shard_id):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     refused(shards, fp, "shard_status", id=shard_id)
     refused(shards, fp, "shard_cancel", id=shard_id)
     assert jobs_on(b) == 0
 
 
-def seat(device):
+def session(device):
     """A device's own registered session."""
     return board_session.Session(device.client, "demo", device.token)
 
@@ -274,9 +274,9 @@ def test_a_member_that_is_not_on_the_allowed_list_is_refused_every_op_but_the_qu
     """Joining the pool, however it happened (a code, or `open` on the same network), does not let a device run anything here."""
     a, b, _shards, _tree = pool
     enable(b)
-    code = b.call("pair_accept", token=b.token)
-    third.call("pair_start", token=third.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
-    ours, fp_b = Shards(seat(third)), peer(a)["fingerprint"]
+    code = b.call("add_device", token=b.token)
+    third.call("join_pool", token=third.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
+    ours, fp_b = Shards(session(third)), member(a)["fingerprint"]
     asked = ours.capability(fp_b)
     assert asked["accepts"] is False and asked["allowed"] is False
     for op, args in [("shard_put", {"id": GOOD_ID, "offset": 0, "data": "00"}), ("shard_start", start_request(b"x")),

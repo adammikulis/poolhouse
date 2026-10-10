@@ -134,10 +134,10 @@ def test_other_control_instance_never_requests_shutdown(device):
     assert not stopped.is_set()
 
 
-def test_cluster_or_unsigned_identity_cannot_replace_daemon(device):
+def test_pool_or_unsigned_identity_cannot_replace_daemon(device):
     _root, port, control, _busy, stopped, _active, _release = device
     body = json.dumps({'instance': control.instance}).encode()
-    for token in ('', 'mac:unrelated-cluster'):
+    for token in ('', 'mac:unrelated-pool'):
         with pytest.raises(ServerError):
             request_json(f'http://127.0.0.1:{port}{ROUTE}', method='POST', payload=json.loads(body), token=token)
     assert not stopped.is_set()

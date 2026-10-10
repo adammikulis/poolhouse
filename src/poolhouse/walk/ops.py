@@ -1,6 +1,6 @@
 """Walking a page: open it, press what is there, screenshot it, read what it says.
 
-`fleet` walks the daemon's interface -- the first-run steps, then cluster, chat, models,
+`fleet` walks the daemon's interface -- the first-run steps, then pool, chat, models,
 settings and fit. `graph` walks the rendered graph page's panes. Both take a `Walk` and
 give back one `Stop` per screen: its text, its screenshot and every console error it
 raised. The browser comes from `poolhouse.scrape.browser`.
@@ -28,7 +28,7 @@ class WalkFailed(RuntimeError):
 
 FLEET_STEPS: tuple[tuple[str, str, str], ...] = (
     ("name", "", "Set up this machine"),
-    ("clusters", "Continue", "Clusters"),
+    ("pools", "Continue", "Pools"),
     ("job", "Continue", "What should this machine do?"),
     ("start", "Continue", "When should it start?"),
     ("run", "Continue", "What should it be able to do?"),
@@ -40,7 +40,7 @@ FLEET_STEPS: tuple[tuple[str, str, str], ...] = (
 FLEET_WRITES = "run"
 """The first step reached by a button that saves this machine's preferences."""
 
-FLEET_VIEWS = ("cluster", "chat", "models", "settings", "fit")
+FLEET_VIEWS = ("pool", "chat", "models", "settings", "fit")
 """The screens behind the nav bar, by the id of each one's root element."""
 
 FLEET = (*(name for name, _, _ in FLEET_STEPS), "sign-in", *FLEET_VIEWS)
@@ -286,13 +286,13 @@ def _sign_in(walker: Walker) -> str:
     page = walker.page
     if page.locator("#signin").is_hidden():
         if walker.wants("sign-in"):
-            walker.skip("sign-in", "this machine is in no cluster; nothing asks for a "
+            walker.skip("sign-in", "this machine is in no pool; nothing asks for a "
                                    "passphrase")
     else:
         if walker.wants("sign-in"):
             walker.stop("sign-in", "#signin")
         if not walker.what.passphrase:
-            return "this cluster wants its passphrase; --passphrase signs in"
+            return "this pool wants its passphrase; --passphrase signs in"
         try:
             _signed(page, walker.what.passphrase)
         except walker.failure as exc:

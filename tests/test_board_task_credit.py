@@ -24,7 +24,7 @@ def ledger(tmp_path):
     held.sealed.close()
 
 
-def seat(board, who) -> Session:
+def session(board, who) -> Session:
     return board.node.session(who)
 
 
@@ -35,7 +35,7 @@ def reviewed(board, decision=None):
 
 
 def standing(board, who, ledger):
-    return work_reputation.standings_on(seat(board, who), ledger=ledger)
+    return work_reputation.standings_on(session(board, who), ledger=ledger)
 
 
 def test_review_earns_once_from_independent_checks_not_worker_claims(board, ledger):
@@ -45,7 +45,7 @@ def test_review_earns_once_from_independent_checks_not_worker_claims(board, ledg
         'review': {'quality': 90, 'reliability': 100, 'reason': 'Independent inspection passed.'},
         'verified_usage': {'source': 'Independent task review', 'tokens_in': None,
                            'tokens_out': 24, 'wall_seconds': 2.0}})
-    lead = seat(board, board.lead)
+    lead = session(board, board.lead)
     first = task_credit.verify_on_board(lead, board.task['id'], ledger=ledger)
     again = task_credit.verify_on_board(lead, board.task['id'], ledger=ledger)
     assert first['credited'] and not again['credited'] and first['id'] == again['id']
@@ -69,7 +69,7 @@ def test_worker_and_unrelated_verifier_cannot_award_completion(board, ledger):
     reviewed(board)
     for who in (board.worker, board.other):
         with pytest.raises(Denied):
-            task_credit.verify_on_board(seat(board, who), board.task['id'], ledger=ledger)
+            task_credit.verify_on_board(session(board, who), board.task['id'], ledger=ledger)
     with pytest.raises(Denied):
         task_credit.verify_on_board(Session(board.node.client, board.node.board, ''), board.task['id'], ledger=ledger)
     assert ledger.standings(board.node.board) == []
@@ -79,7 +79,7 @@ def test_worker_and_unrelated_verifier_cannot_award_completion(board, ledger):
 def test_rejected_and_infrastructure_reviews_award_nothing_and_rate_fairly(board, ledger, outcome, expected):
     reviewed(board, {'accepted': False, 'outcome': outcome, 'reason': 'Independent rejected or blocked outcome.',
                      'checks': [{'name': 'Replay passes', 'passed': False}]})
-    result = task_credit.verify_on_board(seat(board, board.lead), board.task['id'], ledger=ledger)
+    result = task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
     assert not result['credited']
     row = standing(board, board.worker, ledger)['own']
     assert row['economy']['balance'] == 0 and row['work_reputation']['reliability'] == expected
@@ -112,7 +112,7 @@ def test_concurrent_award_and_outcome_record_once(board, ledger):
     def award(_):
         sealed = SealedGraph(ledger.sealed.path, keys=ledger.sealed.keys)
         try:
-            return task_credit.verify_on_board(seat(board, board.lead), board.task['id'],
+            return task_credit.verify_on_board(session(board, board.lead), board.task['id'],
                                            ledger=WorkLedger(sealed))['credited']
         finally:
             sealed.close()
@@ -126,7 +126,7 @@ def test_concurrent_award_and_outcome_record_once(board, ledger):
 @pytest.mark.parametrize('model, balance', [('Qwen3.8-27B', 20), ('gemma', 10)])
 def test_awards_follow_verified_model_family_not_device_or_worker_label(board, ledger, model, balance):
     reviewed(board)
-    task_credit.verify_on_board(seat(board, board.lead), board.task['id'], ledger=ledger)
+    task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
     second = board.node.member('second-model', parent=board.lead)
     lease = model_lease(board.node, second, model)
     task = board.tasks(board.lead).create({**board.spec, 'source_key': 'repo:demo/sim:issue:43'})
@@ -137,7 +137,7 @@ def test_awards_follow_verified_model_family_not_device_or_worker_label(board, l
                              'checks': [{'name': 'Worker claims tests', 'passed': True}],
                              'provenance': {'model': 'forged-qwen-label', 'runtime': 'Codex'}})
     board.tasks(board.lead).review(task['id'], accepted())
-    task_credit.verify_on_board(seat(board, board.lead), task['id'], ledger=ledger)
+    task_credit.verify_on_board(session(board, board.lead), task['id'], ledger=ledger)
     row = standing(board, second, ledger)['own']
     members = balance // 10
     assert row['economy']['balance'] == balance and row['verified_tasks'] == members
@@ -152,21 +152,21 @@ def test_awards_follow_verified_model_family_not_device_or_worker_label(board, l
 
 
 @pytest.mark.redteam
-def test_designated_peer_review_awards_the_reviewer_and_only_the_reviewer_records_it(board, ledger):
-    peer = board.node.member('review-peer')
+def test_designated_member_review_awards_the_reviewer_and_only_the_reviewer_records_it(board, ledger):
+    member = board.node.member('review-member')
     board.tasks(board.lead).set_mode('strict')
-    task = board.tasks(board.lead).create({**board.spec, 'reviewers': [peer.name], 'assignees': [board.worker.name],
-                                           'source_key': 'independent-peer'})
+    task = board.tasks(board.lead).create({**board.spec, 'reviewers': [member.name], 'assignees': [board.worker.name],
+                                           'source_key': 'independent-member'})
     allocation = board.tasks(board.lead).assign(task['id'], board.worker.name, board.lease, ['coding'])
     work = board.tasks(board.worker)
     work.claim(task['id'], allocation['allocation_id'])
     work.submit(task['id'], {'artifacts': {'reviewed.json': 'd' * 64},
                              'checks': [{'name': 'Worker claims acceptance', 'passed': True}]})
-    board.tasks(peer).review(task['id'], accepted())
-    result = task_credit.verify_on_board(seat(board, peer), task['id'], ledger=ledger)
-    assert result['credited'] and result['verifier'] == peer.name
+    board.tasks(member).review(task['id'], accepted())
+    result = task_credit.verify_on_board(session(board, member), task['id'], ledger=ledger)
+    assert result['credited'] and result['verifier'] == member.name
     with pytest.raises(Denied):
-        task_credit.verify_on_board(seat(board, board.lead), task['id'], ledger=ledger)
+        task_credit.verify_on_board(session(board, board.lead), task['id'], ledger=ledger)
     assert standing(board, board.worker, ledger)['own']['economy']['balance'] == 10
 
 
@@ -177,7 +177,7 @@ def test_model_switch_binds_live_family_without_moving_historical_awards(board, 
     board.tasks(board.worker).submit(board.task['id'], {'artifacts': {'replay.json': 'a' * 64},
                                                         'checks': [{'name': 'Worker claim', 'passed': True}]})
     board.tasks(board.lead).review(board.task['id'], accepted())
-    award = task_credit.verify_on_board(seat(board, board.lead), board.task['id'], ledger=ledger)
+    award = task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
     lease = model_lease(board.node, board.worker, 'gemma')
     task = board.tasks(board.lead).create({**board.spec, 'source_key': 'model-switch'})
     allocation = board.tasks(board.lead).assign(task['id'], board.worker.name, lease, ['coding'])
@@ -196,7 +196,7 @@ def test_accepted_native_task_earns_nothing_before_integration_completes(board, 
     proposed(board)
     board.tasks(board.lead).review(board.task['id'], accepted())
     with pytest.raises(Denied, match='completed task'):
-        task_credit.verify_on_board(seat(board, board.lead), board.task['id'], ledger=ledger)
+        task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
     assert ledger.standings(board.node.board) == []
 
 
@@ -205,7 +205,7 @@ def test_the_reputation_tool_reads_the_boards_own_standings(board, ledger, monke
     from poolhouse.workspace import tools
 
     reviewed(board)
-    task_credit.verify_on_board(seat(board, board.lead), board.task['id'], ledger=ledger)
+    task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
     monkeypatch.setattr(work_reputation, 'WorkLedger', lambda: ledger)
     monkeypatch.setenv(AGENT_ENV, board.worker.name)
     assert tools.workspace_reputation()['own']['verified_tasks'] == 1

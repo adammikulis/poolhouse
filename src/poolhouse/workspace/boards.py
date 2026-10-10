@@ -14,7 +14,7 @@ from poolhouse.workspace.chain import held
 from poolhouse.workspace.graphlog import GraphLog
 
 __all__ = ["ANNOUNCE", "ANNOUNCE_KINDS", "ANNOUNCE_MARK", "GENERAL", "MODES", "STYPES", "Boards",
-           "project_board_name"]
+           "board_name_for"]
 
 GENERAL = "#general"
 ANNOUNCE = "#announcements"
@@ -25,7 +25,7 @@ STYPES = ("board", "thread", "agent", "kind", "mentions")
 VERSION = 1
 
 
-def project_board_name(project: dict[str, str]) -> str:
+def board_name_for(project: dict[str, str]) -> str:
     """The board name for a recorded project: ``#`` and its cleaned, lowercased name."""
     name = re.sub(r"[^a-z0-9._-]+", "-", project.get("name", "").lower()).strip("._-")
     return "#" + (name or "project")[:40]
@@ -59,7 +59,7 @@ class Boards:
         """Hold the boards lock for a check-then-write."""
         return held(self.guard)
 
-    def project_board(self, project: dict[str, str]) -> str:
+    def board_for(self, project: dict[str, str]) -> str:
         """The board for ``project`` (creating it when there is none), by its key."""
         key = project.get("key", "")
         with self.locked():
@@ -67,7 +67,7 @@ class Boards:
             for name, b in boards.items():
                 if key and b["project"] == key:
                     return name
-            name = project_board_name(project)
+            name = board_name_for(project)
             if name in boards:
                 name = f"{name[:33]}-{hashlib.sha256(key.encode()).hexdigest()[:6]}"
             if name in boards:

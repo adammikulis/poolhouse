@@ -19,11 +19,11 @@ fn origin_of(d: &Dev) -> String {
     d.node.lock().unwrap().boards["demo"].board.origin().to_string()
 }
 
-/// Three paired devices that all hold `demo`, each with its own session.
+/// Three members that all hold `demo`, each with its own session.
 fn trio() -> [(Dev, String); 3] {
     let (a, b, c) = (device(), device(), device());
-    a.pair_secure(&b);
-    a.pair_secure(&c);
+    a.join_with_code(&b);
+    a.join_with_code(&c);
     sync(&b, &a);
     sync(&c, &a);
     // Distinct session ids: a foreign row from a name that is also a local session's is refused.

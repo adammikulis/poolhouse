@@ -1,4 +1,4 @@
-"""A client of one authoritative shared project board."""
+"""A client of one authoritative shared board."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from urllib.parse import urlsplit
 
 from poolhouse import home, http, private_path, sealing
 from poolhouse.fleet import tls
-from poolhouse.fleet.discovery import derive_token, load_cluster_key, memberships
+from poolhouse.fleet.discovery import derive_token, load_pool_key, memberships
 from poolhouse.fleet.onboard.lan import require_local_url, secure_scheme
-from poolhouse.fleet.remote import Peer, device_address, primary_ip, same_machine_host
+from poolhouse.fleet.remote import Member, device_address, primary_ip, same_machine_host
 from poolhouse.graph.store import GraphStore
 from poolhouse.http import ServerError, open_stream
 from poolhouse.workspace import coordinator_client, device_metadata, tokens
@@ -47,8 +47,8 @@ def _adopt(source: Path, target: Path) -> None:
 class RemoteWorkspace:
     """Keep a private agent capability for a selected project host."""
 
-    def __init__(self, host: str, project_id: str, *, cluster_key: Path | None = None,
-                 cluster: str = "") -> None:
+    def __init__(self, host: str, project_id: str, *, pool_key: Path | None = None,
+                 pool: str = "") -> None:
         parts = urlsplit(host)
         if (not secure_scheme(host) or not parts.hostname or parts.username
                 or parts.password or parts.query or parts.fragment or parts.path not in {"", "/"}):
@@ -57,28 +57,28 @@ class RemoteWorkspace:
             raise ValueError("invalid shared project ID")
         require_local_url(host)
         self.host, self.project_id = host.rstrip("/"), project_id
-        self.cluster_key = str(cluster_key) if cluster_key else ""
+        self.pool_key = str(pool_key) if pool_key else ""
         self.endpoint = f"{self.host}/workspace/v1/projects/{project_id}"
-        rows = memberships(cluster_key)
-        if cluster:
-            rows = [row for row in rows if row.group == cluster]
+        rows = memberships(pool_key)
+        if pool:
+            rows = [row for row in rows if row.group == pool]
             if len(rows) != 1:
-                raise Denied("select a cluster this device has joined")
+                raise Denied("select a pool this device has joined")
         elif len(rows) > 1:
-            raise Denied("select this project's cluster with --cluster NAME")
-        key = rows[0].key if rows else load_cluster_key(cluster_key)
+            raise Denied("select this project's pool with --pool NAME")
+        key = rows[0].key if rows else load_pool_key(pool_key)
         if key is None:
-            raise Denied("join the host's cluster before attaching its project board")
-        self.cluster = rows[0].group if rows else cluster
+            raise Denied("join the host's pool before attaching its board")
+        self.pool = rows[0].group if rows else pool
         self.mode = rows[0].mode if rows else "prod"
-        self.cluster_id = hashlib.sha256(key).hexdigest()
+        self.pool_id = hashlib.sha256(key).hexdigest()
         self.fleet_token = derive_token(key)
         self.device_cert = ""
         if parts.scheme == "https":
-            peers = Peer.discover(key=key, timeout_s=2)
-            matched = [peer for peer in peers if device_address(peer, self.host)]
+            members = Member.discover(key=key, timeout_s=2)
+            matched = [member for member in members if device_address(member, self.host)]
             if len(matched) != 1:
-                raise BoardUnavailable("the project host was not authenticated by cluster discovery; check its address and cluster")
+                raise BoardUnavailable("the project host was not authenticated by pool discovery; check its address and pool")
             self.device_cert = matched[0].beacon.cert if matched[0].beacon else ""
             if self.device_cert:
                 http.pin(parts.netloc, tls.pinned_context(self.device_cert))
@@ -90,7 +90,7 @@ class RemoteWorkspace:
     def _request(self, action: str, payload: dict) -> dict:
         def guard(url: str) -> str:
             if url != f"{self.endpoint}/{action}":
-                raise Denied("a project board cannot redirect agent capabilities")
+                raise Denied("a board cannot redirect agent capabilities")
             require_local_url(url)
             return url
         url = guard(f"{self.endpoint}/{action}")
@@ -99,25 +99,25 @@ class RemoteWorkspace:
                              token=self._transport(action, payload), timeout=30, guard=guard,
                              headers={"Content-Type": "application/json", sealing.HEADER: "2"}) as response:
                 if not response.headers.get(sealing.HEADER):
-                    raise Denied("project board response was not authenticated and sealed")
+                    raise Denied("board response was not authenticated and sealed")
                 limit = 512 * 1024
                 wire_limit = limit + sealing.NONCE_BYTES + 16
                 raw = response.read(wire_limit + 1)
                 if len(raw) > wire_limit:
-                    raise ValueError("project board response exceeds the size limit")
+                    raise ValueError("board response exceeds the size limit")
                 opened = response.sealed.open(response.status, response.headers, raw)
                 if len(opened) > limit:
-                    raise ValueError("project board response exceeds the size limit")
+                    raise ValueError("board response exceeds the size limit")
                 result = json.loads(opened)
                 if not isinstance(result, dict):
-                    raise ValueError("project board returned no object")
+                    raise ValueError("board returned no object")
                 return result
         except ServerError as exc:
             if exc.status in {404, 501}:
-                raise BoardUnavailable("this host has no shared project board endpoint; upgrade or select its board host") from exc
+                raise BoardUnavailable("this host has no shared board endpoint; upgrade or select its board host") from exc
             # a refusal the board answered (400, 429...) is the board's word; no answer is an outage
             outage = exc.status is None or exc.status >= 500
-            raise (BoardUnavailable if outage else Denied)(f"project board unavailable: {exc}") from exc
+            raise (BoardUnavailable if outage else Denied)(f"board unavailable: {exc}") from exc
 
     def join(self, code: str, name: str, *, model: str = "", harness: str = "") -> dict:
         self._prepare_storage()
@@ -132,7 +132,7 @@ class RemoteWorkspace:
         """Save a newly issued private Dev project agent capability."""
         self._prepare_storage()
         result = self._request("enroll", {"name": name, "model": model,
-                                          "harness": harness, "cluster": self.cluster, "cluster_id": self.cluster_id,
+                                          "harness": harness, "pool": self.pool, "pool_id": self.pool_id,
                                           "device": device_metadata.current()})
         name, token = str(result["id"]), str(result["token"])
         if result.get("project_id") != self.project_id:
@@ -142,7 +142,7 @@ class RemoteWorkspace:
                 "token_file": str(path), "state": "connected"}
 
     def renew(self, agent: str) -> dict:
-        """Renew the existing private automatic capability for the current Dev cluster."""
+        """Renew the existing private automatic capability for the current pool."""
         if self.mode != "dev" or not self.device_cert:
             raise Denied("agent renewal requires its authenticated Dev project authority")
         self._prepare_storage()
@@ -150,16 +150,16 @@ class RemoteWorkspace:
         self._safe_storage(lock)
         with held(lock):
             token = tokens.load(self.base, agent)
-            result = self._request("renew", {"agent_token": token, "cluster": self.cluster,
-                                             "cluster_id": self.cluster_id, "device": device_metadata.current()})
+            result = self._request("renew", {"agent_token": token, "pool": self.pool,
+                                             "pool_id": self.pool_id, "device": device_metadata.current()})
             if (result.get("id") != agent or result.get("project_id") != self.project_id
-                    or result.get("cluster_id") != self.cluster_id):
-                raise Denied("agent renewal returned another identity or project cluster")
+                    or result.get("pool_id") != self.pool_id):
+                raise Denied("agent renewal returned another identity or project pool")
             return result
 
     def call(self, operation: str, token: str, *args, **kwargs):
         return self._request("board", {"agent_token": token, "operation": operation,
-                                       "args": list(args), "kwargs": kwargs, "cluster": self.cluster})["result"]
+                                       "args": list(args), "kwargs": kwargs, "pool": self.pool})["result"]
 
     def delegate(self, parent: str, name: str) -> dict:
         """Store a private bounded child capability delegated by the selected parent."""
@@ -285,5 +285,5 @@ class RemoteWorkspace:
         return self.fleet_token
 
     def _device_transport(self) -> str:
-        return coordinator_client._device_peer(
+        return coordinator_client._device_member(
             {"endpoint": self.host, "cert": self.device_cert}).token

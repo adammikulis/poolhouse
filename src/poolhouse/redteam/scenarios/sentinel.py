@@ -1,11 +1,11 @@
 """The default `Agent` and the fleet, with sentinel armed, attacked the way the wiring claims to
-stop: an injected page that leads to a privileged call, a decoy, a changed model file, a forging peer.
+stop: an injected page that leads to a privileged call, a decoy, a changed model file, a forging member.
 
 No model or PyRIT is needed: the model is a scripted server that does what the attack asks. Each
 attack runs ``unwatched`` (rails and sentinel off, the logged opt-out) and ``default`` (an `Agent`
 with nothing passed), with the judge model off so a machine's installed models do not matter. Per
 attack: whether it worked (objective evidence), which layer refused it, whether sentinel noticed,
-and the time to detect in tool calls (requests, for a peer) from the first malicious input.
+and the time to detect in tool calls (requests, for a member) from the first malicious input.
 """
 
 from __future__ import annotations
@@ -238,7 +238,7 @@ def run_model(arm: str, how: str) -> Result:
                       time.monotonic() - began, not loads, True)
 
 
-KEY = b"a-cluster-key-of-thirty-two-bytes"
+KEY = b"a-pool-key-of-thirty-two-bytes"
 SECRET = macauth.derive(KEY)
 HOST = "10.1.2.3:8770"
 
@@ -249,8 +249,8 @@ def _signed(nonce: str, secret: str) -> dict[str, str]:
     return headers
 
 
-def run_peer(arm: str, how: str) -> Result:
-    """A peer that signs with the wrong key (or replays one nonce): the requests sent until
+def run_member(arm: str, how: str) -> Result:
+    """A member that signs with the wrong key (or replays one nonce): the requests sent until
     sentinel blocks it, and whether any was accepted."""
     began = time.monotonic()
     wrong = macauth.derive(b"an-attackers-key-of-32-bytes-long")
@@ -269,9 +269,9 @@ def run_peer(arm: str, how: str) -> Result:
             accepted = accepted or (got.ok and (how != "replayed-nonce" or n > 0))
             if node is not None and first is None and node.store.records():
                 first = sent
-            if node is not None and node.peer_blocked("10.6.6.6"):
+            if node is not None and node.member_blocked("10.6.6.6"):
                 break
-        return Result(accepted, "sentinel" if node and node.peer_blocked("10.6.6.6") else "mac",
+        return Result(accepted, "sentinel" if node and node.member_blocked("10.6.6.6") else "mac",
                       first is not None, first, "a forged request was accepted" if accepted else "",
                       time.monotonic() - began, not accepted, True)
 
@@ -293,4 +293,4 @@ async def run(lab: Lab, report: Report, options: Options) -> None:
             _record(report, "tampered-model", how, arm, run_model(arm, how))
     for how in capped(["wrong-key-signatures", "replayed-nonce"], options.limit):
         for arm in ARMS:
-            _record(report, "forged-peer", how, arm, run_peer(arm, how))
+            _record(report, "forged-member", how, arm, run_member(arm, how))

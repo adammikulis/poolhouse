@@ -1,5 +1,5 @@
 //! The network side of the node: the one TLS listener, the beacon, the sync loop, and the local
-//! API calls that reach other machines (`pair_accept`, `pair_start`, `sync_now`).
+//! API calls that reach other machines (`add_device`, `join_pool`, `sync_now`).
 //!
 //! The node's lock is never held across network I/O: a request takes it, decides, and lets go.
 
@@ -20,7 +20,7 @@ use crate::fsutil::{sha256_hex, unhex};
 use crate::membership::{Device, Policy, Standing, Status};
 use crate::netsync::sync_all;
 use crate::node::Node;
-use crate::pairing::{context_for, new_code, Session, Window};
+use crate::join_code::{context_for, new_code, Session, Window};
 use crate::peer::{self, PeerClient};
 use crate::poolapi::{authorize, NETWORK};
 use crate::poolops::wall_ms;
@@ -283,7 +283,7 @@ impl Net {
     /// under its policy `open`; the device is enrolled here and this one there.
     pub fn join_open(&self, addr: SocketAddr, expect: &str) -> Result<()> {
         if !crate::netif::on_segment(addr.ip()) {
-            return Err(Error::Denied(format!("{} is not on a network this device is on; a device joins without a code only from the same network, so pair with a code", addr.ip())));
+            return Err(Error::Denied(format!("{} is not on a network this device is on; a device joins without a code only from the same network, so use a join code", addr.ip())));
         }
         let mut c = PeerClient::connect(&self.me, addr, Some(expect))?;
         let name = locked(&self.node)?.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
@@ -327,13 +327,13 @@ impl Net {
         Ok(())
     }
 
-    // -- pairing ----------------------------------------------------------
-    /// The server half of pairing, run under the node lock by `peer::dispatch`.
-    pub fn pairing_step(&self, node: &mut Node, der: &[u8], op: &str, req: &Value) -> Result<Value> {
+    // -- join code ----------------------------------------------------------
+    /// The server half of the join-code exchange, run under the node lock by `peer::dispatch`.
+    pub fn join_code_step(&self, node: &mut Node, der: &[u8], op: &str, req: &Value) -> Result<Value> {
         let fp = crate::cert::cert_fingerprint(der);
         let mut window = locked(&self.window)?;
-        let w = window.as_mut().filter(|w| w.open(wall_ms())).ok_or_else(|| Error::Denied("this device is not taking a pairing".into()))?;
-        if op == "pair_exchange" {
+        let w = window.as_mut().filter(|w| w.open(wall_ms())).ok_or_else(|| Error::Denied("this device is not accepting a join code".into()))?;
+        if op == "join_exchange" {
             let nonce = req.get("nonce").and_then(Value::as_str).filter(|n| n.len() <= 64).ok_or_else(|| Error::Invalid("a nonce is sent".into()))?;
             let name = req.get("name").and_then(Value::as_str).unwrap_or("").to_string();
             let mut s = Session::start(false, &w.code, &context_for(nonce), &node.cert.fingerprint(), &fp);
@@ -352,19 +352,19 @@ impl Net {
             let left = w.failed();
             if !left {
                 *window = None;
-                node.facts.pairing_until_ms = 0;
+                node.facts.join_code_until_ms = 0;
             }
-            return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the pairing is closed".into() }));
+            return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the join-code window is closed".into() }));
         }
-        node.enrol_device(der, &name, "pairing")?;
+        node.enrol_device(der, &name, "join-code")?;
         let grant = json!({"v": 1, "pool": node.members.id, "rows": node.members.export(), "policy": peer::policy_json(node)}).to_string().into_bytes();
         *window = None;
-        node.facts.pairing_until_ms = 0;
+        node.facts.join_code_until_ms = 0;
         Ok(json!({"confirmation": session.confirmation()?, "grant": crate::fsutil::hex(&grant), "tag": session.seal(&grant)?}))
     }
 
-    /// Open a pairing window: returns the code (``passphrase`` when given) and seconds it lasts.
-    pub fn pair_accept(&self, passphrase: &str, ttl_s: u64) -> Result<Value> {
+    /// Open a join-code window: returns the code (``passphrase`` when given) and seconds it lasts.
+    pub fn add_device(&self, passphrase: &str, ttl_s: u64) -> Result<Value> {
         let code = if passphrase.is_empty() { new_code()? } else { passphrase.to_string() };
         if code.len() < 6 || code.len() > 200 {
             return Err(Error::Invalid("a passphrase is 6 to 200 characters".into()));
@@ -372,13 +372,13 @@ impl Net {
         let until = wall_ms() + ttl_s.clamp(1, 600) * 1000;
         let mut node = locked(&self.node)?;
         *locked(&self.window)? = Some(Window::new(&code, until));
-        node.facts.pairing_until_ms = until;
+        node.facts.join_code_until_ms = until;
         Ok(json!({"code": code, "expires_in_s": ttl_s.clamp(1, 600), "port": self.port, "fingerprint": self.me.fingerprint()}))
     }
 
-    /// Pair with the device at ``addr`` using its code (without one, join its pool under policy
+    /// Join the device at ``addr`` using its code (without one, join its pool under policy
     /// `open`, which needs its certificate fingerprint); this device must be alone in its pool.
-    pub fn pair_start(&self, addr: SocketAddr, passphrase: &str, fingerprint: &str) -> Result<Value> {
+    pub fn join_pool(&self, addr: SocketAddr, passphrase: &str, fingerprint: &str) -> Result<Value> {
         let (alone, name) = {
             let n = locked(&self.node)?;
             (n.members.alone(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
@@ -396,9 +396,9 @@ impl Net {
         let mut c = PeerClient::connect(&self.me, addr, None)?;
         let nonce = crate::fsutil::random_hex(16)?;
         let mut s = Session::start(true, passphrase, &context_for(&nonce), &self.me.fingerprint(), &c.fingerprint);
-        let reply = c.call(&json!({"op": "pair_exchange", "message": s.message(), "nonce": nonce, "name": name}))?;
+        let reply = c.call(&json!({"op": "join_exchange", "message": s.message(), "nonce": nonce, "name": name}))?;
         s.receive(reply["message"].as_str().unwrap_or(""))?;
-        let reply = c.call(&json!({"op": "pair_confirm", "confirmation": s.confirmation()?, "port": self.port}))?;
+        let reply = c.call(&json!({"op": "join_confirm", "confirmation": s.confirmation()?, "port": self.port}))?;
         if !s.check(reply["confirmation"].as_str().unwrap_or("")) {
             return Err(Error::Denied("the device did not prove it knew the code".into()));
         }
@@ -407,7 +407,7 @@ impl Net {
             return Err(Error::Denied("the grant does not carry the exchange's tag".into()));
         }
         let grant: Value = serde_json::from_slice(&grant)?;
-        self.adopt(&c, &grant, addr, "pairing")?;
+        self.adopt(&c, &grant, addr, "join-code")?;
         let ask = peer::hello_request(&*locked(&self.node)?);
         if let Ok(hello) = c.call(&ask) {
             locked(&self.node)?.observe_build(&c.fingerprint, &hello);
@@ -492,8 +492,8 @@ impl Net {
             authorize(&node, &c.token, &c.method)?;
         }
         match c.method.as_str() {
-            "pair_accept" => self.pair_accept(&text("passphrase"), number("ttl_s", 120)),
-            "pair_start" => self.pair_start(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
+            "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120)),
+            "join_pool" => self.join_pool(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
             "shard_call" => self.shard_call(c),
             _ => Ok(json!({"reached": self.sync_once()?})),
         }

@@ -6,7 +6,7 @@ name: redteam
 # than the baseline to notice one (time to detect). It runs only the scenarios that need no model and
 # are deterministic (extraction: what text a page reader hands the model; fleet: the daemon's real
 # request handler; sentinel: the default Agent with sentinel armed, a decoy, a changed model file and
-# a forging peer, against a scripted model). The measurement against a real model (chat, loop,
+# a forging member, against a scripted model). The measurement against a real model (chat, loop,
 # compaction, isolation) is run by hand and compared with `compare`.
 on:
   workflow_dispatch:

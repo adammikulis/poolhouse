@@ -40,7 +40,7 @@ def test_a_new_agent_has_no_subscriptions_and_its_inbox_holds_no_board_traffic(k
     ws = kit.ws
     _, a = joined(kit, "newbie")
     _, b = joined(kit, "other")
-    ws.send(b, "#app", "note", "chatter on the project board")
+    ws.send(b, "#app", "note", "chatter on the board")
     ws.send(b, "#general", "note", "chatter on general")
     ws.announce(b, "milestone", "built the thing")
     assert ws.board.subs(a) == []

@@ -89,7 +89,7 @@ def test_an_injected_instruction_posted_to_a_board_is_held_and_never_shown_to_a_
     assert ws.board.digest(b)["text"].startswith("<untrusted")
 
 
-def test_an_agent_cannot_read_another_board_or_pair_through_any_command(kit):
+def test_an_agent_cannot_read_another_board_or_join_through_any_command(kit):
     ws, a, b, m = kit.ws, kit.tokens["alice"], kit.tokens["bob"], kit.tokens["mallory"]
     ws.board.create(a, "#vault", private=True)
     root = ws.send(a, "#vault", "note", "SECRETBOARD", subject="SECRETSUBJECT")
@@ -166,17 +166,17 @@ def trio(workspace_node):
     return node
 
 
-def heard(seat):
+def heard(session):
     """What the board holds: its entries by kind and the rooms the person sees."""
-    return seat.status()["entries"], [r["name"] for r in seat.rooms()]
+    return session.status()["entries"], [r["name"] for r in session.rooms()]
 
 
 @pytest.fixture
 def route(trio, monkeypatch):
-    """The Board page's listener over the person's session on the node: ``call(path, ...)``, with ``call.seat``."""
+    """The Board page's listener over the person's session on the node: ``call(path, ...)``, with ``call.session``."""
     monkeypatch.setattr(node_launch, "default_state", lambda: trio.state)
-    seat = person.seat(Path.cwd(), trio.client)
-    server = boardroute.serve(lambda: person.seat(Path.cwd(), trio.client))
+    session = person.session(Path.cwd(), trio.client)
+    server = boardroute.serve(lambda: person.session(Path.cwd(), trio.client))
     server.start()
     port = server.port
 
@@ -189,7 +189,7 @@ def route(trio, monkeypatch):
         conn.close()
         return out
 
-    call.port, call.seat, call.server = port, seat, server
+    call.port, call.session, call.server = port, session, server
     yield call
     server.stop()
 
@@ -198,7 +198,7 @@ def test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal(trio
     alice = trio.session(trio.alice)
     alice.room("create", "#ops")
     alice.post("#ops", "note", "hello")
-    before = heard(route.seat)
+    before = heard(route.session)
     for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS"):
         for path in ("/board/boards", "/board/messages?board=%23ops", "/board/subscribe", "/"):
             assert route(path, method, {"Content-Type": "application/json"}, b'{"board":"#x"}')[0] in (405, 501)
@@ -210,25 +210,25 @@ def test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal(trio
                  "/board/thread?root=" + "9" * 400, "/board/dm?a=../x&b=y", "/board/../../etc/passwd",
                  "/ui/ml-ui/%2e%2e/%2e%2e/etc/passwd", "/ui/ml-ui/../daemon.py"):
         assert route(path)[0] in (400, 403, 404)
-    assert heard(route.seat) == before
+    assert heard(route.session) == before
 
 
 def test_the_route_answers_a_burst_with_bounded_bodies_and_never_a_token(trio, route):
     alice = trio.session(trio.alice)
     alice.room("create", "#ops")
-    route.seat.room("join", "#ops")
+    route.session.room("join", "#ops")
     for _ in range(30):
         alice.post("#ops", "note", "z" * 16000)
     status, body = route("/board/messages?board=%23ops&limit=200")
     assert status in (200, 502) and len(body) <= boardroute.MAX_BODY
     for text in (route("/board/boards")[1], body, route("/")[1]):
-        for secret in (route.seat.token, trio.alice.token, trio.bob.token, trio.mallory.token):
+        for secret in (route.session.token, trio.alice.token, trio.bob.token, trio.mallory.token):
             assert secret.encode() not in text
 
 
 def test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it(trio, route):
     trio.session(trio.alice).room("create", "#vault", private=True)
-    before = heard(route.seat)
+    before = heard(route.session)
     own = {"Origin": f"http://127.0.0.1:{route.port}", "Content-Type": "application/json"}
     doc = json.dumps({"to": "#vault", "body": "forged"})
     attacks = [
@@ -244,8 +244,8 @@ def test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it(tri
     for headers, body in attacks:
         status, _ = route("/board/post", "POST", headers, body)
         assert status in (400, 403, 421), headers
-    assert heard(route.seat) == before
-    assert route.seat.read(channel="#vault").entries == []
+    assert heard(route.session) == before
+    assert route.session.read(channel="#vault").entries == []
 
 
 def test_a_post_cannot_borrow_another_identity_or_smuggle_options(trio, route):
@@ -254,7 +254,7 @@ def test_a_post_cannot_borrow_another_identity_or_smuggle_options(trio, route):
         body = json.dumps({"to": "#general", "body": "who am i", **extra})
         status, _ = route("/board/post", "POST", own, body)
         assert status == 400
-    assert route.seat.read(channel="#general", kind="message").entries == []
+    assert route.session.read(channel="#general", kind="message").entries == []
 
 
 def test_following_and_the_live_route_give_an_agent_nothing_it_could_not_already_read(trio, route):
@@ -268,7 +268,7 @@ def test_following_and_the_live_route_give_an_agent_nothing_it_could_not_already
 def test_the_route_answers_nobody_without_the_session_the_listener_made(trio, route):
     trio.session(trio.alice).room("create", "#ops")
     server = route.server
-    before = heard(route.seat)
+    before = heard(route.session)
 
     def ask(path, method="GET", cookie="", body=None):
         conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
@@ -283,7 +283,7 @@ def test_the_route_answers_nobody_without_the_session_the_listener_made(trio, ro
     for cookie in ("", "ml_session=guess", "ml_session="):
         assert ask("/board/boards", cookie=cookie)[0] == 401
         assert ask("/board/post", "POST", cookie, post)[0] == 401
-    assert heard(route.seat) == before
+    assert heard(route.session) == before
     for path in ("/", "/?session=guess", "/?session="):
         status, cookie, _ = ask(path)
         assert status == 200 and cookie is None

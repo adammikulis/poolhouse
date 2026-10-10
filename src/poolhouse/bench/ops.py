@@ -2,7 +2,7 @@
 
 The `Config` a ``--serve``'d model is measured in (`measured_run`, `swept`,
 `serving_fields`), the store a graph is prepared in (`prepare`), what a store holds for
-`show` to print (`kept_for`), and the jobs a ``sweep --fleet`` spreads over the peers
+`show` to print (`kept_for`), and the jobs a ``sweep --fleet`` spreads over the members
 (`fleet_planned`, `fleet_measure`). `poolhouse.bench.run` parses and prints;
 `Refused` carries what a command says when it will not act.
 """
@@ -20,7 +20,7 @@ from poolhouse import bench, lock
 from poolhouse.bench.askings import sampling_from
 from poolhouse.bench.counting import PER_QUESTION
 from poolhouse.bench.keep import _commit
-from poolhouse.bench.peer_runs import gather
+from poolhouse.bench.member_runs import gather
 from poolhouse.bench.record import of
 from poolhouse.bench.score import derived
 from poolhouse.bench.show import NOT_ANSWERING
@@ -58,7 +58,7 @@ class Kept:
 
 @dataclass(frozen=True, slots=True)
 class Fleeted:
-    """The jobs a ``sweep --fleet`` would dispatch, one `fleet.measuring.Job` per peer, and
+    """The jobs a ``sweep --fleet`` would dispatch, one `fleet.measuring.Job` per member, and
     the plan lines that say where each model goes."""
 
     jobs: dict[Any, Any] = field(default_factory=dict)
@@ -216,18 +216,18 @@ def serving_fields(args: Any) -> dict[str, Any]:
     return out
 
 
-# The flags `sweep --fleet` takes off the line before handing it to a peer: what is about
-# this machine's session, not about the measuring -- a peer keeps its own runs in its own
+# The flags `sweep --fleet` takes off the line before handing it to a member: what is about
+# this machine's session, not about the measuring -- a member keeps its own runs in its own
 # store, under its own detached process, so `--kept`, like `--detach` and `--no-queue`,
 # is never on a job's argv (`fleet.measuring.Job` refuses it).
-_NOT_FOR_A_PEER = ("--fleet", "--detach", "--no-queue")
-_NOT_FOR_A_PEER_VALUED = ("--peers", "--serve", "--serve-draft", "--kept",
+_NOT_FOR_A_MEMBER = ("--fleet", "--detach", "--no-queue")
+_NOT_FOR_A_MEMBER_VALUED = ("--members", "--serve", "--serve-draft", "--kept",
                           *measuring.SHIPPED)
 
 
 def _stripped(argv: Sequence[str]) -> tuple[list[str], list[str]]:
-    """``argv`` minus what a peer never sees -- ``--fleet``, ``--detach``, ``--no-queue``,
-    every ``--peers``, ``--serve``, ``--serve-draft``, ``--kept`` and `measuring.SHIPPED`
+    """``argv`` minus what a member never sees -- ``--fleet``, ``--detach``, ``--no-queue``,
+    every ``--members``, ``--serve``, ``--serve-draft``, ``--kept`` and `measuring.SHIPPED`
     flag -- and the ``--serve-draft`` values it carried, in the order they were given."""
     rest: list[str] = []
     skip = False
@@ -235,10 +235,10 @@ def _stripped(argv: Sequence[str]) -> tuple[list[str], list[str]]:
         if skip:
             skip = False
             continue
-        if word in _NOT_FOR_A_PEER:
+        if word in _NOT_FOR_A_MEMBER:
             continue
         flag, sep, _value = word.partition("=")
-        if flag in _NOT_FOR_A_PEER_VALUED:
+        if flag in _NOT_FOR_A_MEMBER_VALUED:
             if not sep:
                 skip = True
             continue
@@ -274,37 +274,37 @@ def _values_of(argv: Sequence[str], flag: str) -> list[str]:
     return out
 
 
-def _discovered(peers: Sequence[str]) -> dict[str, Any]:
-    """Every peer on this machine's cluster(s), by name, narrowed to ``peers`` when named.
+def _discovered(members: Sequence[str]) -> dict[str, Any]:
+    """Every member on this machine's pool(s), by name, narrowed to ``members`` when named.
 
-    `Refused` when a name in ``peers`` answered to no daemon, or when discovery found
+    `Refused` when a name in ``members`` answered to no daemon, or when discovery found
     nobody at all.
     """
-    clients = pausing.peer_clients(join.peers())
-    if peers:
-        wanted = {str(p) for p in peers}
+    clients = pausing.member_clients(join.members())
+    if members:
+        wanted = {str(p) for p in members}
         named = {name: client for name, client in clients.items() if name in wanted}
         absent = sorted(wanted - set(named))
         if absent:
-            raise Refused(f"error: --peers named {', '.join(absent)}, which no daemon on "
-                          f"this cluster answered to"
+            raise Refused(f"error: --members named {', '.join(absent)}, which no daemon on "
+                          f"this pool answered to"
                           + (f" (found: {', '.join(sorted(clients))})" if clients else ""))
         clients = named
     if not clients:
-        raise Refused("error: no peer answered discovery; is another machine running "
-                      "'poolhouse-cluster join'?")
+        raise Refused("error: no member answered discovery; is another machine running "
+                      "'poolhouse-pool join'?")
     return clients
 
 
 def fleet_planned(argv: Sequence[str], models: Sequence[str], *,
-                  peers: Sequence[str] = ()) -> Fleeted:
+                  members: Sequence[str] = ()) -> Fleeted:
     """The fleet's plan for ``models``, and the jobs it dispatches.
 
-    Peers are this machine's own discovery (`poolhouse.fleet.join.peers`, turned into
-    `remote.Peer` clients the way `poolhouse.fleet.pausing.peer_clients` does), narrowed to
-    ``peers`` by name when given. `poolhouse.fleet.sweeps.plan` then places each model,
+    Members are this machine's own discovery (`poolhouse.fleet.join.members`, turned into
+    `remote.Member` clients the way `poolhouse.fleet.pausing.member_clients` does), narrowed to
+    ``members`` by name when given. `poolhouse.fleet.sweeps.plan` then places each model,
     largest first, and `poolhouse.fleet.measuring.jobs_from` turns the placement into one
-    `Job` per peer. A peer on another commit is refused before anything is dispatched.
+    `Job` per member. A member on another commit is refused before anything is dispatched.
     """
     if not models:
         raise Refused("error: --fleet spreads --serve models over the fleet; pass --serve "
@@ -312,24 +312,24 @@ def fleet_planned(argv: Sequence[str], models: Sequence[str], *,
     stores = [v for v in _values_of(argv, "--store") if v]
     if stores:
         raise Refused(f"error: --store {stores[-1]} is a graph store on this machine, and a "
-                      f"peer cannot read it; each peer uses the store its own 'poolhouse-bench "
+                      f"member cannot read it; each member uses the store its own 'poolhouse-bench "
                       f"prepare' built, or none with --store ''")
     mine = _commit()
     if not mine:
         raise Refused("error: --fleet needs to know this checkout's commit, and git would "
                       "not say")
-    clients = _discovered(peers)
+    clients = _discovered(members)
     ordered = sorted(clients.items())
-    by_peer = {peer: name for name, peer in ordered}
+    by_member = {member: name for name, member in ordered}
     planned = sweeps.plan(models, [client for _, client in ordered])
     lines = [f"plan: {len(models)} model(s) on commit {mine} over "
              + ", ".join(name for name, _ in ordered)]
     mismatched: list[str] = []
-    for peer, assigned in planned.items():
+    for member, assigned in planned.items():
         if not assigned:
             continue
-        name = by_peer.get(peer, getattr(peer, "name", str(peer)))
-        theirs = str(sweeps._health_of(peer).get("bench_commit") or "")
+        name = by_member.get(member, getattr(member, "name", str(member)))
+        theirs = str(sweeps._health_of(member).get("bench_commit") or "")
         for model in assigned:
             lines.append(f"  {model} -> {name}" + (f" ({theirs})" if theirs else ""))
         if theirs and not measuring.same_commit(mine, theirs):
@@ -337,7 +337,7 @@ def fleet_planned(argv: Sequence[str], models: Sequence[str], *,
     for model, why in planned.unplaced:
         lines.append(f"  {model} -> unplaced: {why}")
     if mismatched:
-        raise Refused("error: " + "; ".join(mismatched) + "; a peer measuring other code "
+        raise Refused("error: " + "; ".join(mismatched) + "; a member measuring other code "
                       "is refused, and its daemon would refuse too", *lines)
     rest, heads = _stripped(argv)
     drafts = {model: heads[n] for n, model in enumerate(models) if n < len(heads)}
@@ -347,7 +347,7 @@ def fleet_planned(argv: Sequence[str], models: Sequence[str], *,
 
 
 def fleet_measure(jobs: Mapping[Any, Any], *, into: str | Path) -> None:
-    """Dispatch ``jobs`` (one per peer) over the fleet, wait for them, and gather their
+    """Dispatch ``jobs`` (one per member) over the fleet, wait for them, and gather their
     runs into ``into`` under this machine's measuring lock."""
     handles = sweeps.dispatch(dict(jobs))
     sweeps.wait(handles)

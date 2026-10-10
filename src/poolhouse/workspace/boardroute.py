@@ -58,8 +58,8 @@ class Request:
     body: bytes = b""
 
 
-def respond(seat: Callable[[], Session], req: Request) -> Reply:
-    """The answer to one request; ``seat`` is the person's session on the board, made when the request is allowed."""
+def respond(session: Callable[[], Session], req: Request) -> Reply:
+    """The answer to one request; ``session`` is the person's session on the board, made when the request is allowed."""
     parts = urlsplit(req.target)
     refused = checked(req.method, req.headers, req.port, parts.path in (PREFIX + "post", PREFIX + "ack"))
     if refused:
@@ -69,7 +69,7 @@ def respond(seat: Callable[[], Session], req: Request) -> Reply:
     if not parts.path.startswith(PREFIX):
         return reply(404, {"error": "no such route"})
     try:
-        s = seat()
+        s = session()
         query = parse_qs(parts.query, max_num_fields=8)
         route = parts.path[len(PREFIX):]
         if req.method == "POST":
@@ -194,8 +194,8 @@ class _Route:
     person's browser session is a secret made here; only a browser that opened the page with it
     holds the cookie the Board route requires."""
 
-    def __init__(self, seat: Callable[[], Session]) -> None:
-        self.seat = seat
+    def __init__(self, session: Callable[[], Session]) -> None:
+        self.session = session
         self.port = 0
         self.session = secrets.token_urlsafe(24)
 
@@ -210,7 +210,7 @@ class _Route:
         body = call.body(POST_MAX) if call.method == "POST" and 0 < wanted <= POST_MAX else b""
         req = Request(call.method, call.path, headers, self.port, session_ok(headers, self.session), body)
         board = urlsplit(call.path).path.startswith(PREFIX)
-        status, headers, body = respond(self.seat, req) if board else _page(req)
+        status, headers, body = respond(self.session, req) if board else _page(req)
         if status == 200 and not board and self.opened_with_session(call):
             headers["Set-Cookie"] = f"{COOKIE}={self.session}; HttpOnly; SameSite=Strict; Path=/"
         kind = headers.pop("Content-Type", "application/octet-stream")
@@ -224,11 +224,11 @@ PAGE = """<!doctype html><meta charset="utf-8"><title>Board</title>
 <script type="module" src="/ui/ml-ui/ml-ui.js"></script>"""
 
 
-def serve(seat: Callable[[], Session], port: int = 0, *, routes: Callable[[Callable[[], Session]], _Route] = _Route) -> Listener:
+def serve(session: Callable[[], Session], port: int = 0, *, routes: Callable[[Callable[[], Session]], _Route] = _Route) -> Listener:
     """A loopback listener for the Board page and its route; the caller calls ``start`` and
     ``stop``, and ``listener.session`` is the secret a browser opens the page with
     (``/?session=...``) to hold the cookie the route requires."""
-    route = routes(seat)
+    route = routes(session)
     listener = Listener(route, ("127.0.0.1", port))
     route.port = listener.port
     listener.session = route.session  # type: ignore[attr-defined]

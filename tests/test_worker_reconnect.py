@@ -14,7 +14,7 @@ def outage(status):
     try:
         raise ServerError('fixture outage', status=status)
     except ServerError as cause:
-        error = Denied('project board unavailable')
+        error = Denied('board unavailable')
         error.__cause__ = cause
         return error
 

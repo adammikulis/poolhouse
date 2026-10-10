@@ -25,7 +25,7 @@ def test_cli_discovers_unconfigured_dev_board_before_legacy_attachment(monkeypat
     assert cli._project_connection() is choice
 
 
-def test_remote_coordinator_discovers_dev_project_board(monkeypatch):
+def test_remote_coordinator_discovers_dev_board(monkeypatch):
     monkeypatch.setattr(project_connection, "selected", lambda cwd: None)
     monkeypatch.setattr(cli.coordinator_config, "load", lambda base: {"mode": "remote"})
     choice = {"host": "https://board.invalid", "automatic": True}
@@ -87,16 +87,16 @@ def test_board_registration_waits_until_visible_singletons_converge(monkeypatch,
     identity = hashlib.sha256(member.key).hexdigest()
     monkeypatch.setattr(automatic_connection, "memberships", lambda path: [member])
     monkeypatch.setattr(automatic_connection, "identity", lambda root: "a" * 32)
-    monkeypatch.setattr(automatic_connection.automatic_clusters, "ensure", lambda *a, **kw: member)
-    snapshots = iter([[('', {"cluster_id": 'old-cluster'})], [('', {"cluster_id": identity})]])
+    monkeypatch.setattr(automatic_connection.automatic_pools, "ensure", lambda *a, **kw: member)
+    snapshots = iter([[('', {"pool_id": 'old-pool'})], [('', {"pool_id": identity})]])
     checks = []
     def offers(port):
         checks.append(True)
         return next(snapshots)
-    monkeypatch.setattr(automatic_connection.automatic_clusters, "offers", offers)
+    monkeypatch.setattr(automatic_connection.automatic_pools, "offers", offers)
     monkeypatch.setattr(automatic_connection.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(automatic_connection, "_register", lambda *a: checks.append("registered"))
-    monkeypatch.setattr(automatic_connection.Peer, "discover", lambda **kw: [])
+    monkeypatch.setattr(automatic_connection.Member, "discover", lambda **kw: [])
     assert automatic_connection.discover(tmp_path) is None
     assert checks == [True, True, "registered"]
 
@@ -105,8 +105,8 @@ def test_unsettled_devices_never_register_or_claim_board(monkeypatch, tmp_path):
     member = SimpleNamespace(key=b"winner", group="development", mode="dev", selection="automatic")
     monkeypatch.setattr(automatic_connection, "memberships", lambda path: [member])
     monkeypatch.setattr(automatic_connection, "identity", lambda root: "a" * 32)
-    monkeypatch.setattr(automatic_connection.automatic_clusters, "ensure", lambda *a, **kw: member)
-    monkeypatch.setattr(automatic_connection.automatic_clusters, "offers", lambda port: [('', {"cluster_id": 'other'})])
+    monkeypatch.setattr(automatic_connection.automatic_pools, "ensure", lambda *a, **kw: member)
+    monkeypatch.setattr(automatic_connection.automatic_pools, "offers", lambda port: [('', {"pool_id": 'other'})])
     monkeypatch.setattr(automatic_connection, "ADMISSION_SECONDS", 0)
     monkeypatch.setattr(automatic_connection, "_register", lambda *a: pytest.fail("unsettled registration"))
     with pytest.raises(Denied, match="converged"):
@@ -182,13 +182,13 @@ def _dev_device(state, number, checkout, udp, *, default_profile=False):
     from poolhouse.http import Server
     from poolhouse.workspace.remote_host import WorkspaceHost
 
-    keyfile = state / "cluster.key"
-    member = discovery.mint_cluster("development", keyfile, selection="automatic")
+    keyfile = state / "pool.key"
+    member = discovery.mint_pool("development", keyfile, selection="automatic")
     files = state / "files"
     files.mkdir(parents=True)
     runner = JobRunner(state / "jobs", files)
     daemon = Daemon(runner, files, discovery.derive_token(member.key),
-                    **({} if default_profile else {"cluster_key_path": keyfile}))
+                    **({} if default_profile else {"pool_key_path": keyfile}))
     daemon.tokens = lambda: {discovery.derive_token(row.key) for row in discovery.memberships(keyfile)}
     registry = ProjectRegistry(state / "fleet", f"node-{number}")
     daemon.projects, daemon.workspaces = registry, WorkspaceHost(registry)
@@ -209,29 +209,29 @@ def _dev_device(state, number, checkout, udp, *, default_profile=False):
         threading.Thread(target=server.serve_forever, daemon=True).start()
     beacon = discovery.Beacon(name=f"node-{number}", machine=f"node-{number}",
                               port=secured.server_port, cert=cert.beacon)
-    advertiser = discovery.Advertiser(beacon, member.key, cluster=member.group,
+    advertiser = discovery.Advertiser(beacon, member.key, pool=member.group,
                                       port=udp, interval_s=30).start()
     return SimpleNamespace(state=state, checkout=checkout, keyfile=keyfile, daemon=daemon,
                            local_port=local.server_port, advertiser=advertiser, servers=servers, runner=runner)
 
 
 def _start_convergence(device):
-    from poolhouse.fleet import automatic_clusters, discovery
+    from poolhouse.fleet import automatic_pools, discovery
     stop = threading.Event()
     def refresh():
         device.advertiser.key = discovery.memberships(device.keyfile)[0].key
-    thread = threading.Thread(target=automatic_clusters.converge,
+    thread = threading.Thread(target=automatic_pools.converge,
                               args=(stop, refresh, device.keyfile), kwargs={"interval_s": 0.1}, daemon=True)
     thread.start()
     return stop, thread
 
 
 @pytest.fixture
-def dev_pair(repository, tmp_path, monkeypatch):
+def dev_join(repository, tmp_path, monkeypatch):
     from poolhouse import http
-    from poolhouse.fleet import automatic_clusters, discovery
+    from poolhouse.fleet import automatic_pools, discovery
     from poolhouse.fleet.projects import identity
-    from poolhouse.fleet.remote import Peer
+    from poolhouse.fleet.remote import Member
 
     original_destinations = discovery._destinations
     monkeypatch.setattr(discovery, "_destinations", lambda group, port: [
@@ -241,10 +241,10 @@ def dev_pair(repository, tmp_path, monkeypatch):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", 0))
         udp = probe.getsockname()[1]
-    original_discover, original_offers = Peer.discover, automatic_clusters.offers
-    monkeypatch.setattr(Peer, "discover", lambda **kw: original_discover(
+    original_discover, original_offers = Member.discover, automatic_pools.offers
+    monkeypatch.setattr(Member, "discover", lambda **kw: original_discover(
         **{**kw, "port": udp, "timeout_s": 0.3}))
-    monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: original_offers(udp))
+    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: original_offers(udp))
     devices, convergence = [], []
     http._PINNED.clear()
     try:
@@ -268,13 +268,13 @@ def dev_pair(repository, tmp_path, monkeypatch):
 
 
 @pytest.mark.slow
-def test_two_device_states_share_board_over_real_udp_and_tls_without_codes(dev_pair, monkeypatch):
+def test_two_device_states_share_board_over_real_udp_and_tls_without_codes(dev_join, monkeypatch):
     from poolhouse.fleet import discovery
-    devices, project_id = dev_pair
+    devices, project_id = dev_join
     actors = []
     for device in devices:
         monkeypatch.setenv("POOLHOUSE_HOME", str(device.state / "client"))
-        monkeypatch.setenv("POOLHOUSE_CLUSTER_KEY", str(device.keyfile))
+        monkeypatch.setenv("POOLHOUSE_POOL_KEY", str(device.keyfile))
         monkeypatch.setattr(automatic_connection, "HTTP_PORT", device.local_port)
         monkeypatch.chdir(device.checkout)
         args = SimpleNamespace(agent="worker", token_file="", model="", harness="")
@@ -303,35 +303,35 @@ def test_two_device_states_share_board_over_real_udp_and_tls_without_codes(dev_p
 @pytest.mark.parametrize("mode", ["dev", "prod"])
 def test_default_profile_catalogue_and_automatic_board_use_real_udp_and_tls(repository, tmp_path, monkeypatch, mode):
     from poolhouse import http
-    from poolhouse.fleet import automatic_clusters, discovery, tls
+    from poolhouse.fleet import automatic_pools, discovery, tls
     from poolhouse.fleet.pool_roster import Pool
     from poolhouse.fleet.projects import identity
-    from poolhouse.fleet.remote import Peer
+    from poolhouse.fleet.remote import Member
     original_destinations = discovery._destinations
     monkeypatch.setattr(discovery, "_destinations", lambda group, port: [
         (address, interface) for address, interface in original_destinations(group, port)
         if address[0] != discovery.LOOPBACK and interface != discovery.LOOPBACK])
     state = tmp_path / "default-device"
     monkeypatch.setenv("POOLHOUSE_HOME", str(state))
-    monkeypatch.delenv("POOLHOUSE_CLUSTER_KEY", raising=False)
+    monkeypatch.delenv("POOLHOUSE_POOL_KEY", raising=False)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", 0))
         udp = probe.getsockname()[1]
-    original_discover = Peer.discover
-    original_offers = automatic_clusters.offers
-    monkeypatch.setattr(Peer, "discover", lambda **kw: original_discover(
+    original_discover = Member.discover
+    original_offers = automatic_pools.offers
+    monkeypatch.setattr(Member, "discover", lambda **kw: original_discover(
         **{**kw, "port": udp, "timeout_s": 0.3}))
-    monkeypatch.setattr(automatic_clusters, "offers", lambda port=None: original_offers(udp))
+    monkeypatch.setattr(automatic_pools, "offers", lambda port=None: original_offers(udp))
     device = _dev_device(state, 0, repository, udp, default_profile=True)
     if mode == "prod":
-        minted = discovery.mint_cluster("development", mode="prod")
+        minted = discovery.mint_pool("development", mode="prod")
         device.advertiser.key = minted.key
-        pool = Pool(device.keyfile)    # a new cluster key is a new roster: enrol the node and this machine in it
+        pool = Pool(device.keyfile)    # a new pool key is a new roster: enrol the node and this machine in it
         for one in (tls.identity(device.state / "tls", "node-0"), tls.local()):
             pool.enrol(minted.group, one.beacon, "node-0", "test")
     http._PINNED.clear()
     try:
-        assert device.daemon.cluster_key_path is None
+        assert device.daemon.pool_key_path is None
         assert discovery.key_path() == device.keyfile
         monkeypatch.setattr(automatic_connection, "HTTP_PORT", device.local_port)
         project_id = identity(repository)
@@ -341,13 +341,13 @@ def test_default_profile_catalogue_and_automatic_board_use_real_udp_and_tls(repo
         if mode == "prod":
             assert found is None
             member = discovery.memberships()[0]
-            peers = Peer.discover(key=member.key, group=member.group)
-            assert peers
-            assert all(automatic_connection.catalogue(node)["boards"] == [] for node in peers)
+            members = Member.discover(key=member.key, group=member.group)
+            assert members
+            assert all(automatic_connection.catalogue(node)["boards"] == [] for node in members)
             return
         assert found is not None
         assert found["project_id"] == project_id
-        assert found["cluster_key"] == ""
+        assert found["pool_key"] == ""
         assert device.daemon.projects.get(project_id).root == str(repository)
         _exchange_default_board(repository, project_id)
     finally:
@@ -447,7 +447,7 @@ def test_saved_git_grant_refuses_another_repository(repository, tmp_path, monkey
 
 @pytest.mark.slow
 @pytest.mark.parametrize('expired', [False, True])
-def test_claude_first_command_and_saved_codex_session_share_dev_without_pairing(dev_pair, monkeypatch, expired):
+def test_claude_first_command_and_saved_codex_session_share_dev_without_joining(dev_join, monkeypatch, expired):
     import json
     import os
     import subprocess
@@ -456,16 +456,16 @@ def test_claude_first_command_and_saved_codex_session_share_dev_without_pairing(
 
     from poolhouse.workspace import coordinator_client, guide, project, tokens
 
-    devices, project_id = dev_pair
+    devices, project_id = dev_join
     device = devices[0]
     monkeypatch.setenv('POOLHOUSE_HOME', str(device.state / 'client'))
     monkeypatch.setenv('POOLHOUSE_WORKSPACE_HOME', str(device.state / 'own-workspace'))
-    monkeypatch.setenv('POOLHOUSE_CLUSTER_KEY', str(device.keyfile))
+    monkeypatch.setenv('POOLHOUSE_POOL_KEY', str(device.keyfile))
     monkeypatch.setenv('POOLHOUSE_DISCOVERY_PORT', str(device.advertiser.port))
     monkeypatch.setenv('CODEX_THREAD_ID', 'existing-main-session')
     monkeypatch.setattr(automatic_connection, 'HTTP_PORT', device.local_port)
     monkeypatch.chdir(device.checkout)
-    monkeypatch.setattr(coordinator_client, '_device_peer', lambda *a: pytest.fail('paired-device credential'))
+    monkeypatch.setattr(coordinator_client, '_device_member', lambda *a: pytest.fail('member credential'))
     codex_args = SimpleNamespace(agent='codex', token_file='')
     codex_board, codex_token = cli._context(codex_args)
     if expired:
@@ -481,7 +481,7 @@ original_destinations = discovery._destinations
 discovery._destinations = lambda group, port: [(address, interface) for address, interface in original_destinations(group, port) if address[0] != discovery.LOOPBACK and interface != discovery.LOOPBACK]
 def forbidden(*args, **kwargs):
     raise AssertionError("legacy credential or host path")
-coordinator_client._device_peer = forbidden
+coordinator_client._device_member = forbidden
 automatic_connection.HTTP_PORT = int(sys.argv[1])
 raise SystemExit(cli.main(["whoami", "--agent", "claude", "--json"]))
 '''
@@ -535,14 +535,14 @@ def test_different_dev_local_actor_cannot_escape_existing_authority(repository, 
     monkeypatch.setattr(automatic_connection, 'selected', lambda *a, **kw: None)
     monkeypatch.setattr(automatic_connection, 'discover', lambda *a: pytest.fail('discovery after rejected actor'))
     connection = {'host': 'https://board.invalid', 'project_id': 'a' * 32,
-                  'cluster': 'development', 'root': str(repository)}
+                  'pool': 'development', 'root': str(repository)}
     with pytest.raises(Denied):
         automatic_connection._other_local_actor(SimpleNamespace(agent='claude'), connection,
                                                 lambda args: token, lambda: local, 'claude')
 
 
 def test_binding_explicit_capability_cannot_swap_same_project_actor(monkeypatch, tmp_path):
-    remote = SimpleNamespace(mode='prod', project_id='a' * 32, cluster_key='',
+    remote = SimpleNamespace(mode='prod', project_id='a' * 32, pool_key='',
                              call=lambda *args: {'id': 'codex', 'role': 'agent', 'project': {'key': 'a' * 32}})
     monkeypatch.setattr(project_connection, 'selected', lambda *a, **kw: None)
     with pytest.raises(Denied, match='another agent'):

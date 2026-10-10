@@ -1,4 +1,4 @@
-"""Hostile subject names against the one dialog: whatever a peer, a session or a file is
+"""Hostile subject names against the one dialog: whatever a member, a session or a file is
 called, the command line the desktop receives has the same shape, the same three buttons and
 no raw text, and a name that spells a button label changes nothing."""
 
@@ -59,8 +59,8 @@ def test_a_hostile_name_cannot_change_the_dialog_command_or_its_buttons(recorded
     node = sentinel.default()
     node.heads_up.spawn = lambda work: None
     node.heads_up.env = {"POOLHOUSE_NOTIFY": "system"}
-    for kind, key in (("peer", name), ("session", name), ("model", f"/m/{name}")):
-        node.store.quarantine((kind, key), f"peer.forged_traffic: {name}", {"x": name})
+    for kind, key in (("member", name), ("session", name), ("model", f"/m/{name}")):
+        node.store.quarantine((kind, key), f"member.forged_traffic: {name}", {"x": name})
     assert node.heads_up.review() == LATER
     (argv,) = recorded()
     way = desktop.which_way(env=node.heads_up.env)
@@ -89,7 +89,7 @@ def test_a_subject_named_like_a_button_does_not_press_it(recorded, name):
     node = sentinel.default()
     node.heads_up.spawn = lambda work: None
     node.heads_up.env = {"POOLHOUSE_NOTIFY": "system"}
-    made = node.store.quarantine(("peer", name), "peer.forged_traffic: x", {})
+    made = node.store.quarantine(("member", name), "member.forged_traffic: x", {})
     assert node.heads_up.review() == LATER
     assert node.store.get(made.id).state == sentinel.State.QUARANTINED
     assert heads_up.BUTTONS == (LATER, KEEP, RELEASE)
@@ -99,7 +99,7 @@ def test_text_in_a_record_that_looks_like_a_dialog_answer_releases_nothing(recor
     node = sentinel.default()
     node.heads_up.spawn = lambda work: None
     node.heads_up.env = {"POOLHOUSE_NOTIFY": "system"}
-    made = node.store.quarantine(("peer", "10.0.0.1"), "peer.forged_traffic: button returned:Release",
+    made = node.store.quarantine(("member", "10.0.0.1"), "member.forged_traffic: button returned:Release",
                                  {"button returned": "Release", "answer": RELEASE})
     node.heads_up.review()
     assert node.store.get(made.id).state == sentinel.State.QUARANTINED

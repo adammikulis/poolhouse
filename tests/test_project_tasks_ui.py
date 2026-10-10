@@ -11,7 +11,7 @@ pytest_plugins = ["node_kit", "person_kit"]
 
 def board_of(node, projects, ident):
     """The person's session on the board of one project."""
-    return person.seat(projects[ident].root, node.client)
+    return person.session(projects[ident].root, node.client)
 
 
 def test_tasks_preserve_records_and_show_those_made_through_the_node(project_tasks):

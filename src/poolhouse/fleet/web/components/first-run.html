@@ -1,4 +1,4 @@
-<!-- first-run: naming this machine, joining a cluster, and what it should be able to do -->
+<!-- first-run: naming this machine, joining a pool, and what it should be able to do -->
 <template>
   <div class="centre" id="first-run" hidden><div class="card" id="first-run-card"></div></div>
 </template>
@@ -36,7 +36,7 @@ first-run button { margin-top: 12px; }
         this.stepper.steps = Array.from({ length: STAGES }, (_, i) => ({ id: String(i), title: stageName(i) }));
         this.summary.textContent = M.t("wizard.summary", { at: this.state.step + 1, total: STAGES, name: stageName(this.state.step) });
       });
-      this.state = { step: 0, name: "", group: "", pass: "", clusters: [],
+      this.state = { step: 0, name: "", group: "", pass: "", pools: [],
                      libraries: null, suggest: null, prefs: null, install: null };
       M.onRoute((route) => {
         const on = route === "first-run";
@@ -69,7 +69,7 @@ first-run button { margin-top: 12px; }
     paint() {
       const s = this.state.step;
       if (s === 0) return this.nameStep();
-      if (s === 1) return this.clustersStep();
+      if (s === 1) return this.poolsStep();
       if (s === 2) return this.jobStep();
       if (s === 3) return this.startStep();
       if (s === 4) return this.sourceStep();
@@ -85,8 +85,8 @@ first-run button { margin-top: 12px; }
       const name = el("input", { type: "text", value: st.name, id: "n" });
       const mode = el("select", { id: "device-mode" },
         el("option", { value: "dev" }, "Dev — automatically connect trusted devices on this network"),
-        el("option", { value: "prod" }, "Prod — connect only to clusters you explicitly join"));
-      mode.value = st.mode || this.setup.cluster_mode || "dev";
+        el("option", { value: "prod" }, "Prod — connect only to pools you explicitly join"));
+      mode.value = st.mode || this.setup.pool_mode || "dev";
       const note = el("div", { role: "status" });
       this.show(
         this.steps(0),
@@ -102,49 +102,49 @@ first-run button { margin-top: 12px; }
           st.name = name.value.trim() || this.setup.name;
           st.mode = mode.value;
           const result = await api("/ui/setup/initial", { method: "POST",
-            body: JSON.stringify({ name: st.name, cluster_mode: st.mode }) });
+            body: JSON.stringify({ name: st.name, pool_mode: st.mode }) });
           if (result.error || !result.ok) { note.textContent = result.error || "Could not save setup."; return; }
           this.setup = result;
           this.go(1);
         } }, "Continue"), note);
     }
 
-    async clustersStep() {
+    async poolsStep() {
       const st = this.state;
-      const current = (await api("/ui/clusters")).clusters || [];
+      const current = (await api("/ui/pools")).pools || [];
       const rows = el("div");
       const draw = (list) => {
-        st.clusters = list;
+        st.pools = list;
         rows.replaceChildren(...list.map((c, i) =>
           el("div", { class: "row" },
             el("span", {}, el("b", {}, c.group),
-              el("span", { class: "why" }, i === 0 ? "Primary cluster" : "Also joined")),
+              el("span", { class: "why" }, i === 0 ? "Primary pool" : "Also joined")),
             el("button", { class: "ghost small", onclick: async () => {
-              const left = await api("/ui/clusters", { method: "DELETE",
+              const left = await api("/ui/pools", { method: "DELETE",
                 body: JSON.stringify({ group: c.group }) });
-              draw(left.clusters || []);
+              draw(left.pools || []);
             } }, "Leave"))));
       };
       const manual = el("div");
-      const manualForm = () => manual.replaceChildren(M.clusterForm({ endpoint: "/ui/setup/join",
-        clusterMode: st.mode, group: current[0]?.group || "default",
+      const manualForm = () => manual.replaceChildren(M.poolForm({ endpoint: "/ui/setup/join",
+        poolMode: st.mode, group: current[0]?.group || "default",
         onComplete: async () => { this.setup = await api("/ui/setup");
-          draw((await api("/ui/clusters")).clusters || []); } }));
+          draw((await api("/ui/pools")).pools || []); } }));
       const automatic = st.mode === "dev";
       if (!automatic || this.setup.selection === "manual") manualForm();
-      this.show(this.steps(1, () => this.go(0)), el("h1", { "data-t": "wizard.pool" }, "Clusters"),
+      this.show(this.steps(1, () => this.go(0)), el("h1", { "data-t": "wizard.pool" }, "Pools"),
         el("p", { class: "sub" }, automatic
-          ? "Automatic connection is the default for trusted devices on this network. You can also pair with a cluster manually."
-          : "Join an explicitly admitted cluster with an invitation or its name and passphrase."),
+          ? "Automatic connection is the default for trusted devices on this network. You can also join a pool manually."
+          : "Join an explicitly admitted pool with an invitation or its name and passphrase."),
         rows,
         automatic ? el("button", { class: "ghost", onclick: async () => {
           const result = await api("/ui/setup/initial", { method: "POST", body: JSON.stringify({
-            name: st.name, cluster_mode: "dev", automatic: true }) });
+            name: st.name, pool_mode: "dev", automatic: true }) });
           if (result.error) { manual.textContent = result.error; return; }
           this.setup = result; manual.replaceChildren();
-          draw((await api("/ui/clusters")).clusters || []);
+          draw((await api("/ui/pools")).pools || []);
         } }, "Connect automatically") : null,
-        automatic ? el("button", { class: "ghost", onclick: manualForm }, "Pair manually") : null,
+        automatic ? el("button", { class: "ghost", onclick: manualForm }, "Join manually") : null,
         manual, el("button", { onclick: () => this.go(2) }, "Continue"));
       draw(current);
     }
@@ -266,8 +266,8 @@ first-run button { margin-top: 12px; }
       const note = el("div", { role: "status" });
       const go = el("button", { disabled: "1" }, "Save and continue");
       const choices = [["internet", "Internet only", "Download models from their online source."],
-        ["lan", "LAN only", "Copy models and MTP heads from your cluster. No Internet fallback."],
-        ["both", "Both", "Try your cluster first, then the Internet."]];
+        ["lan", "LAN only", "Copy models and MTP heads from your pool. No Internet fallback."],
+        ["both", "Both", "Try your pool first, then the Internet."]];
       const rows = choices.map(([value, label, why]) => {
         const input = el("input", { type: "radio", name: "download-sources", value,
           id: `source-${value}`, ...(kept.sources === value ? { checked: "1" } : {}) });
@@ -405,7 +405,7 @@ first-run button { margin-top: 12px; }
         el("div", { class: "cap" }, el("span", {}, "CLOSING THE WINDOW")),
         ...[["", "Ask me each time"],
             ["background", "Keep running so the others can still reach it"],
-            ["quit", "Quit and leave the cluster"]].map(([value, label]) => {
+            ["quit", "Quit and leave the pool"]].map(([value, label]) => {
           const id = `close_${value || "ask"}`;
           const input = el("input", { type: "radio", name: "onclose", id,
                                       ...(value === kept.onClose ? { checked: "1" } : {}) });
@@ -435,13 +435,13 @@ first-run button { margin-top: 12px; }
       const saved = await api("/ui/setup/done", { method: "POST" });
       if (!saved.ok || saved.error) return this.show(el("div", { class: "err", role: "alert" }, saved.error || "Could not finish setup. Try again."),
         el("button", { onclick: () => this.doneStep() }, "Retry"));
-      const joined = st.clusters[0];
+      const joined = st.pools[0];
       const open = el("button", { onclick: () => location.reload() },
-        joined ? "Open the cluster" : "Open Poolhouse");
+        joined ? "Open the pool" : "Open Poolhouse");
       const ssh = el("div", { class: "aside" },
         el("div", { class: "hint" },
           "A machine with no screen — a server, a Pi — is set up over ssh instead:"),
-        el("pre", { class: "cmd" }, "poolhouse-peers setup"));
+        el("pre", { class: "cmd" }, "poolhouse-members setup"));
 
       if (!joined) {
         return this.show(
@@ -451,7 +451,7 @@ first-run button { margin-top: 12px; }
             "It is on its own: it will run models and train here, and nothing else on your "
             + "network can see it."),
           el("p", { class: "hint" },
-            "Join a cluster whenever you like, from the Cluster screen."),
+            "Join a pool whenever you like, from the Pool screen."),
           open, ssh);
       }
 
@@ -459,14 +459,14 @@ first-run button { margin-top: 12px; }
         el("span", { class: "spin" }), " Watching for other machines…");
       const found = el("div");
       const poll = async () => {
-        const r = await api("/ui/setup/peers");
-        const others = (r.peers || []).filter((p) => !p.is_self);
+        const r = await api("/ui/setup/members");
+        const others = (r.members || []).filter((p) => !p.is_self);
         if (others.length) {
           looking.remove();
           open.remove();
           found.replaceChildren(
             el("div", { class: "ok" }, `Found ${others.map((p) => p.name).join(", ")}.`),
-            el("button", { onclick: () => location.reload() }, "Open the cluster"));
+            el("button", { onclick: () => location.reload() }, "Open the pool"));
           return;
         }
         setTimeout(poll, 3000);
@@ -485,9 +485,9 @@ first-run button { margin-top: 12px; }
           step(1, "Install Poolhouse", "The same installer you used here."),
           step(2, "Open it", "It asks the same questions there."),
           step(3, st.mode === "dev" && this.setup.selection !== "manual"
-            ? "Choose Dev" : "Join the same cluster", st.mode === "dev" && this.setup.selection !== "manual"
+            ? "Choose Dev" : "Join the same pool", st.mode === "dev" && this.setup.selection !== "manual"
             ? "Trusted devices on the same network connect automatically."
-            : "Use its invitation or the same cluster name and passphrase.")),
+            : "Use its invitation or the same pool name and passphrase.")),
         el("p", { class: "hint" },
           "They find each other on their own. Nothing else to configure."),
         looking, found, ssh, open);

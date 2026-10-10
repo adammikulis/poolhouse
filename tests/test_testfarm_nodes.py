@@ -17,20 +17,20 @@ import time
 
 import pytest
 import test_on
-from testfarm_kit import BOARD, enable, go, gone, jobs_on, peer, until
+from testfarm_kit import BOARD, enable, go, gone, jobs_on, member, until
 
 from poolhouse import features, features_cli, node_launch
 from poolhouse.fleet import shard_split, shard_tree
 from poolhouse.testfarm import consent, devices
 from poolhouse.testfarm.client import ShardError, Shards, choose
 
-pytest_plugins = ("testfarm_kit",)  # the `pool` fixture: two paired node processes
+pytest_plugins = ("testfarm_kit",)  # the `pool` fixture: two joined node processes
 pytestmark = pytest.mark.slow
 
 
 def test_a_device_nobody_enabled_takes_nothing_and_is_listed_with_why(pool, capsys):
     a, _b, shards, tree = pool
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     caps = shards.capability(fp)
     assert caps["accepts"] is False and "testfarm.consent" in caps["reason"]
     with pytest.raises(ShardError, match="off on this device"):
@@ -44,7 +44,7 @@ def test_a_device_nobody_enabled_takes_nothing_and_is_listed_with_why(pool, caps
 
 def test_the_person_turns_a_device_on_names_whose_tests_it_takes_and_off_stops_the_next_upload(pool, monkeypatch, capsys):
     a, b, shards, _tree = pool
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     monkeypatch.setenv("POOLHOUSE_HOME", str(b.root))
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", b.token)
     assert consent.run(["on"]) == 1 and "experimental feature" in capsys.readouterr().out
@@ -58,7 +58,7 @@ def test_the_person_turns_a_device_on_names_whose_tests_it_takes_and_off_stops_t
     assert asked["accepts"] is False and asked["allowed"] is False and "consent allow" in asked["reason"]
     monkeypatch.setenv("POOLHOUSE_HOME", str(b.root))
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", b.token)
-    named = peer(b)["name"]
+    named = member(b)["name"]
     assert consent.run(["allow", named]) == 0 and "takes tests from 1 device" in capsys.readouterr().out
     monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", a.token)
@@ -76,7 +76,7 @@ def test_the_person_turns_a_device_on_names_whose_tests_it_takes_and_off_stops_t
 def test_disabling_the_feature_switches_the_node_off_too(pool, monkeypatch, capsys):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     assert shards.capability(fp)["accepts"] is True
     monkeypatch.setenv("POOLHOUSE_HOME", str(b.root))
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", b.token)
@@ -91,10 +91,10 @@ def test_disabling_the_feature_switches_the_node_off_too(pool, monkeypatch, caps
 def test_files_run_on_the_device_in_the_shape_of_a_local_run_and_the_pass_is_reused_once_per_content(pool, capsys):
     a, b, _shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     assert go(fp, tree, ["tests/test_a.py", "tests/test_b.py"]) == 0
     out = capsys.readouterr().out
-    assert f"+ ran on {peer(a)['name']}: {sys.platform}, python 3.13" in out and "2 passed in" in out
+    assert f"+ ran on {member(a)['name']}: {sys.platform}, python 3.13" in out and "2 passed in" in out
     assert jobs_on(b) == 1
     assert go(fp, tree, ["tests/test_a.py", "tests/test_b.py"]) == 0
     assert "every test file passed there with this content (2 reused)" in capsys.readouterr().out
@@ -112,7 +112,7 @@ def test_files_run_on_the_device_in_the_shape_of_a_local_run_and_the_pass_is_reu
 def test_a_failing_file_is_reported_with_its_message_and_is_not_kept_as_a_pass(pool, capsys):
     a, b, _shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     assert go(fp, tree, ["tests/test_a.py", "tests/test_fail.py"]) == 1
     assert "FAILED tests/test_fail.py::test_fail::test_one - boom: expected 1" in capsys.readouterr().out
     assert go(fp, tree, ["tests/test_a.py", "tests/test_fail.py"]) == 1
@@ -123,7 +123,7 @@ def test_a_failing_file_is_reported_with_its_message_and_is_not_kept_as_a_pass(p
 def test_the_gate_and_a_whole_tier_run_there_with_no_file_list(pool, capsys):
     a, b, _shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     assert go(fp, tree, [], tier="gate") == 0 and go(fp, tree, [], tier="full") == 0
     assert "2 passed" in capsys.readouterr().out
 
@@ -131,7 +131,7 @@ def test_the_gate_and_a_whole_tier_run_there_with_no_file_list(pool, capsys):
 def test_a_tree_that_escapes_its_folder_is_refused_by_the_executor_on_the_device(pool, tmp_path):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     evil = tmp_path / "evil.tgz"
     with tarfile.open(evil, "w:gz") as tar:
         for name in ("tests/test_a.py", "../../escape.py"):
@@ -150,7 +150,7 @@ def test_a_tree_that_escapes_its_folder_is_refused_by_the_executor_on_the_device
 def test_cancel_ends_the_runner_and_the_child_it_started(pool):
     a, b, shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     shard = shards.send(fp, tree, "all", ["tests/test_hang.py"], 600)
     pids = tree.parent / "pids"
     until("the runner to write its pids", 60, pids.exists)
@@ -167,7 +167,7 @@ def test_cancel_ends_the_runner_and_the_child_it_started(pool):
 def test_at_most_two_run_at_once_and_a_third_is_told_to_wait(pool):
     a, b, shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     held = [shards.send(fp, tree, "all", ["tests/test_hang.py"], 600) for _ in range(2)]
     until("both to run", 30, lambda: shards.capability(fp)["free"] == 0)
     with pytest.raises(ShardError, match="2 shards are already running"):
@@ -180,7 +180,7 @@ def test_at_most_two_run_at_once_and_a_third_is_told_to_wait(pool):
 def test_a_requester_cannot_name_who_asks_and_only_the_node_ops_exist(pool):
     a, b, shards, _tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     with pytest.raises(ShardError, match="not an argument"):
         shards.call(fp, "shard_caps", by="claude-lead")
     with pytest.raises(ShardError, match="op is one of"):
@@ -191,7 +191,7 @@ def test_a_requester_cannot_name_who_asks_and_only_the_node_ops_exist(pool):
 
 def test_devices_are_chosen_by_name_or_fingerprint_and_a_shared_name_must_be_told_apart(pool):
     a, *_ = pool
-    one = peer(a)
+    one = member(a)
     assert choose(one["fingerprint"], [one]) == [one] and choose("all", [one]) == [one]
     with pytest.raises(ShardError, match="no active pool device"):
         choose("nobody", [one])
@@ -204,7 +204,7 @@ def test_devices_are_chosen_by_name_or_fingerprint_and_a_shared_name_must_be_tol
 def test_a_pack_larger_than_a_request_may_carry_is_refused_before_anything_is_sent(pool, tmp_path, monkeypatch):
     a, b, shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     monkeypatch.setattr(shard_tree, "MOST_PACKED", 100)
     with pytest.raises(ShardError, match="at most"):
         shards.send(fp, tree, "all", ["tests/test_a.py"], 60)
@@ -214,7 +214,7 @@ def test_a_pack_larger_than_a_request_may_carry_is_refused_before_anything_is_se
 def test_a_device_that_cannot_be_reached_is_an_error_not_a_hang(pool, capsys):
     a, b, shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     node_launch.stop_node(b.state)
     began = time.monotonic()
     with pytest.raises(ShardError):
@@ -227,7 +227,7 @@ def test_a_device_that_cannot_be_reached_is_an_error_not_a_hang(pool, capsys):
 def test_split_gives_this_machine_and_the_device_a_share_each_and_learns_durations(pool, monkeypatch, capsys):
     a, b, _shards, tree = pool
     enable(b)
-    fp = peer(a)["fingerprint"]
+    fp = member(a)["fingerprint"]
     (tree / "tests" / "test_mac.py").write_text("import sys\nONLY = sys.platform == 'darwin'\n", encoding="utf-8")
     kept = []
     monkeypatch.setattr(test_on, "local", lambda root, tier, files: kept.append(files) or 0)

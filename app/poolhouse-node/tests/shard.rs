@@ -110,7 +110,7 @@ fn rig() -> Rig {
     std::fs::create_dir_all(&executor).unwrap();
     std::fs::write(executor.join("shard_exec.py"), "# the stub never reads this\n").unwrap();
     let (a, b) = (device(), device());
-    a.pair_secure(&b);
+    a.join_with_code(&b);
     Rig { a, b, tools }
 }
 
@@ -194,10 +194,10 @@ fn only_pool_members_reach_the_shard_ops_and_a_revoked_one_is_put_out_at_its_nex
     }
     assert!(!job_dir(&rig, &id(2)).exists());
     let c = device();
-    rig.a.pair_secure(&c);
+    rig.a.join_with_code(&c);
     let mut member = PeerClient::connect(&c.net.me, rig.a.addr(), Some(&rig.a.fp())).unwrap();
     assert_eq!(member.call(&json!({"op": "shard_caps"})).unwrap()["accepts"], false, "a member of the pool is answered");
-    rig.a.ok("member_revoke", "", &rig.a.token, json!({"fingerprint": c.fp()}));
+    rig.a.ok("member_remove", "", &rig.a.token, json!({"fingerprint": c.fp()}));
     assert!(matches!(member.call(&json!({"op": "shard_caps"})), Err(Error::Denied(_))), "revoked on the connection it already held");
 }
 
@@ -210,7 +210,7 @@ fn the_requester_is_the_certificate_never_a_field_of_the_request() {
     let local = rig.a.call("shard_call", "", &rig.a.token, json!({"device": rig.b.fp(), "op": "shard_status", "args": {"id": i, "by": "claude-lead", "op": "shard_put"}}));
     assert_eq!(local["error"]["code"], "denied", "a caller cannot name who asks: {local}");
     let c = device();
-    rig.a.pair_secure(&c);
+    rig.a.join_with_code(&c);
     rig.b.ok("sync_now", "", &rig.b.token, json!({}));
     rig.b.ok("shard_consent", "", &rig.b.token, json!({"allow": [c.fp()]}));
     let mut other = PeerClient::connect(&c.net.me, rig.b.addr(), Some(&rig.b.fp())).unwrap();
@@ -390,10 +390,10 @@ fn kit_identity(seed: u8) -> Identity {
 
 // -- the allowed list ---------------------------------------------------------
 
-/// A third device paired into b's pool, and a client of b as it.
+/// A third device joined into b's pool, and a client of b as it.
 fn member_of_b(rig: &Rig) -> (Dev, PeerClient) {
     let c = device();
-    rig.b.pair_secure(&c);
+    rig.b.join_with_code(&c);
     let client = PeerClient::connect(&c.net.me, rig.b.addr(), Some(&rig.b.fp())).unwrap();
     (c, client)
 }
@@ -449,7 +449,7 @@ fn putting_a_member_out_of_the_pool_takes_it_off_the_allowed_list() {
     let (c, mut client) = member_of_b(&rig);
     rig.b.ok("shard_consent", "", &rig.b.token, json!({"allow": [c.fp()]}));
     assert_eq!(rig.b.ok("shard_consent", "", "", json!({}))["allowed"].as_array().unwrap().len(), 2);
-    rig.b.ok("member_revoke", "", &rig.b.token, json!({"fingerprint": c.fp()}));
+    rig.b.ok("member_remove", "", &rig.b.token, json!({"fingerprint": c.fp()}));
     let left = rig.b.ok("shard_consent", "", "", json!({}));
     assert_eq!(left["allowed"], json!([rig.a.fp()]), "only the device still in the pool is left");
     assert!(client.call(&json!({"op": "shard_caps"})).is_err(), "and it is refused at its next request");

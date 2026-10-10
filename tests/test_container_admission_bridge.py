@@ -166,7 +166,7 @@ def test_simultaneous_close_is_idempotent_and_data_after_close_is_refused():
     streams = [os.fdopen(fd, "rb" if index in (0, 2) else "wb", buffering=0)
                for index, fd in enumerate((reader_read, reader_write, writer_read, writer_write))]
     pump = bridge.Pump(streams[0], streams[3])
-    channel, peer = socket.socketpair()
+    channel, member = socket.socketpair()
     try:
         pump.last_id = 1
         pump.add(1, channel)
@@ -180,7 +180,7 @@ def test_simultaneous_close_is_idempotent_and_data_after_close_is_refused():
         pump.selector.close()
         pump.wake_read.close()
         pump.wake_write.close()
-        peer.close()
+        member.close()
         for stream in streams:
             stream.close()
 
@@ -231,16 +231,16 @@ def test_client_cancel_preserves_other_live_channels():
     streams = [os.fdopen(fd, "rb" if index in (0, 2) else "wb", buffering=0)
                for index, fd in enumerate((reader_read, reader_write, writer_read, writer_write))]
     pump = bridge.Pump(streams[0], streams[3])
-    first, first_peer = socket.socketpair()
-    second, second_peer = socket.socketpair()
+    first, first_member = socket.socketpair()
+    second, second_member = socket.socketpair()
     try:
         pump.add(1, first)
         pump.add(2, second)
-        first_peer.close()
+        first_member.close()
         pump.pending[1].extend(b"response")
         pump.channel_event(1, selectors.EVENT_WRITE)
         assert 1 not in pump.channels and 2 in pump.channels
-        second_peer.sendall(b"still live")
+        second_member.sendall(b"still live")
         pump.channel_event(2, selectors.EVENT_READ)
         assert b'"id":2' in pump.outgoing
     finally:
@@ -249,6 +249,6 @@ def test_client_cancel_preserves_other_live_channels():
         pump.selector.close()
         pump.wake_read.close()
         pump.wake_write.close()
-        second_peer.close()
+        second_member.close()
         for stream in streams:
             stream.close()

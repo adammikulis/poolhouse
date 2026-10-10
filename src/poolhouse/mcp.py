@@ -351,14 +351,14 @@ def bench_show(last: int = 0, since: str = "", extract: bool = False,
     return summarised(got.speed if speed else got.extracted if extract else got.answering)
 
 
-def fleet_peers(timeout_s: float = 2.0) -> list[dict[str, Any]]:
-    """Every peer on the LAN holding this machine's cluster key: what each serves, its
-    room, whether it is busy or measuring, and its commit (``poolhouse-cluster status``)."""
-    from poolhouse.fleet.join import peers
+def fleet_members(timeout_s: float = 2.0) -> list[dict[str, Any]]:
+    """Every member on the LAN holding this machine's pool key: what each serves, its
+    room, whether it is busy or measuring, and its commit (``poolhouse-pool status``)."""
+    from poolhouse.fleet.join import members
     from poolhouse.fleet.launch import already_running
 
     me = already_running() or {}
-    return peers(timeout_s=timeout_s, self_machine=str(me.get("machine") or ""))
+    return members(timeout_s=timeout_s, self_machine=str(me.get("machine") or ""))
 
 
 def world_make(kind: str = "company", size: str = "small", seed: int = 0,
@@ -471,7 +471,7 @@ _TOOLS: list[Tool] = [
          bench_history),
     Tool("bench_show", "Every benchmark run kept, as records: what was served, how "
          "it was asked, what it scored and what it cost.", bench_show),
-    Tool("fleet_peers", "Every peer on the LAN: serving, room, busy, commit.", fleet_peers),
+    Tool("fleet_members", "Every member on the LAN: serving, room, busy, commit.", fleet_members),
     Tool("world_make", "Invent an organised group as a graph with people who could talk.",
          world_make),
     Tool("setup_look", "The machine facts serving depends on, with a fix for each.",
@@ -497,7 +497,7 @@ _HINTS: dict[str, dict[str, bool]] = {
     "serve_status": READS, "models_find": _hints(read_only=True, idempotent=True, open_world=True),
     "models_files": _hints(read_only=True, idempotent=True, open_world=True),
     "bench_status": READS, "bench_history": READS, "bench_show": READS,
-    "fleet_peers": READS, "setup_look": READS, "doctor": READS, "speech_providers": READS,
+    "fleet_members": READS, "setup_look": READS, "doctor": READS, "speech_providers": READS,
     "speech_transcribe": READS,
     "serve_up": _hints(read_only=False, idempotent=True, open_world=True),
     "serve_down": _hints(read_only=False, destructive=True, idempotent=True),

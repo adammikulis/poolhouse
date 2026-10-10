@@ -113,7 +113,7 @@ def test_local_recovery_cannot_replace_a_device_session(base, ws, tmp_path):
     found = project.describe(str(tmp_path))
     guide.agent_connect(ws, "worker", found)
     agents = ws.registry._load()
-    agents["worker"]["session_device"] = "paired-device-fingerprint"
+    agents["worker"]["session_device"] = "member-fingerprint"
     ws.registry._save(agents)
     before = ws.registry._load()["worker"].copy()
     (tokens.directory(base) / "worker").unlink()
@@ -699,7 +699,7 @@ def test_join_carries_the_project_and_whoami_status_and_inbox_show_it(base, ws, 
     where = repo(tmp_path / "board", "https://example.test/o/board.git")
     plain = project.describe(str(where))
     code = ws.invites.create("", 600.0, plain)
-    assert "connected for project board" in onboard.snippet("", code, "", plain["name"])
+    assert "connected for board" in onboard.snippet("", code, "", plain["name"])
     onboard.join(ws, code, "codex")
     assert ws.registry.info("codex")["project"] == plain
     ws.send(tokens.load(base, "codex"), "lead", "status", "hi")
@@ -793,7 +793,7 @@ def test_hosted_code_only_paste_selects_the_authenticated_coordinator(base, ws, 
     visible = capsys.readouterr().out
     assert "--coordinator 'Mac coordinator'" in visible
     assert copied[0] in visible
-    assert 'does not grant cluster membership' in visible
+    assert 'does not grant pool membership' in visible
     assert 'Nobody joined' not in visible
 
 

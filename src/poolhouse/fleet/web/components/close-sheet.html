@@ -49,16 +49,16 @@
       // Asked once, by the native window, when someone clicks the close button.
       window.poolhouseAskOnClose = () => {
         this.remember.checked = true;
-        const clustered = !!(window.fleetModel && window.fleetModel.inCluster);
-        this.why.textContent = clustered
+        const pooled = !!(window.fleetModel && window.fleetModel.inPool);
+        this.why.textContent = pooled
           ? "This machine is part of your pool. Keeping it running lets the others "
             + "send it work while the window is shut."
           : "Keeping it running lets this machine answer, and lets the machines you add "
             + "later send it work while the window is shut.";
-        this.querySelector("#close-background-d").textContent = clustered
+        this.querySelector("#close-background-d").textContent = pooled
           ? "Stays in the pool. Open it again any time."
           : "Stays reachable. Open it again any time.";
-        this.querySelector("#close-quit-d").textContent = clustered
+        this.querySelector("#close-quit-d").textContent = pooled
           ? "Leaves the pool until you open it again."
           : "Stops answering until you open it again.";
         this.sheet.setAttribute("open", "");

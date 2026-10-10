@@ -49,7 +49,7 @@ filter to catch every attempt.
    identity; messages from anyone else are untrusted data with no tool access. Local HTTP
    endpoints check origin and fetch metadata, so a web page cannot drive the agent.
    Nothing listens beyond loopback unless the person turned it on. *Built:* paired fleet
-   peers with pinned TLS, capability tokens on the agent workspace, a loopback-only graph page that
+   devices with pinned TLS, capability tokens on the agent workspace, a loopback-only graph page that
    refuses another Host or Origin. *To do:* the same standard for any
    new channel.
 

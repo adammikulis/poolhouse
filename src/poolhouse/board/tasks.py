@@ -28,11 +28,11 @@ def _checkpoint(value: Any) -> dict[str, str]:
 class Tasks:
     """Create, claim, work, submit, review and land the tasks of the session's board."""
 
-    def __init__(self, seat: Session) -> None:
-        self.seat = seat
+    def __init__(self, session: Session) -> None:
+        self.session = session
 
     def _call(self, method: str, **params: Any) -> Any:
-        return taskspec.seconds(self.seat.call(method, **params))
+        return taskspec.seconds(self.session.call(method, **params))
 
     def create(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Make a task, or return the one this session already made under the same source key."""
@@ -56,7 +56,7 @@ class Tasks:
 
     def watchers(self, ident: str) -> list[str]:
         """The sessions that follow the task."""
-        return list(self.seat.call("task_watchers", task=ident)["watchers"])
+        return list(self.session.call("task_watchers", task=ident)["watchers"])
 
     def assign(self, ident: str, worker: str, lease: str, capabilities: list[str] | tuple[str, ...] = ()) -> dict[str, Any]:
         """Give ``worker`` the task on the model lease ``lease`` it holds; the allocation the worker then claims."""
@@ -102,11 +102,11 @@ class Tasks:
 
     def mode(self) -> dict[str, Any]:
         """The enforcement mode of the board: `open` or `strict`."""
-        return dict(self.seat.call("task_mode"))
+        return dict(self.session.call("task_mode"))
 
     def set_mode(self, mode: str) -> dict[str, Any]:
         """Change the mode; a person, or a session with no parent holding the grant."""
-        return dict(self.seat.call("task_mode", mode=mode))
+        return dict(self.session.call("task_mode", mode=mode))
 
     def scope(self, ident: str, scope: dict[str, Any]) -> dict[str, Any]:
         """Record the checkout reserved for the task, whose landing then completes it."""

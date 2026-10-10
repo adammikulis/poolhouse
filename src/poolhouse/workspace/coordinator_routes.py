@@ -28,7 +28,7 @@ def status(base):
         return {**visible, 'shared': True, 'connected': True}
     try:
         remote = coordinator_client.client(base)
-        info = remote.peer._json('GET', '/workspace/v1/info')
+        info = remote.member._json('GET', '/workspace/v1/info')
         connected = info.get('workspace') == config['workspace'] and info.get('authority') == 'coordinator'
     except (ServerError, Denied, ValueError, OSError):
         connected = False
@@ -66,8 +66,8 @@ def route(request):
     try:
         if request.method == 'GET':
             if request.asked('discover') == '1':
-                result = {'coordinators': [{'name': peer.name, 'endpoint': peer.base_url, **info}
-                                           for peer, info in coordinator_client.discover()]}
+                result = {'coordinators': [{'name': member.name, 'endpoint': member.base_url, **info}
+                                           for member, info in coordinator_client.discover()]}
             else:
                 result = status(base)
         elif request.method == 'POST':
@@ -96,5 +96,5 @@ def route(request):
     except Denied:
         request.send(403, {'error': 'coordinator selection or authority refused'})
     except (ValueError, ServerError, OSError):
-        request.send(503, {'error': 'coordinator unavailable; pairing and workspace setup remain unchanged'})
+        request.send(503, {'error': 'coordinator unavailable; joining and workspace setup remain unchanged'})
     return True

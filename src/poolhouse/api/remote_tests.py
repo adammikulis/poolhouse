@@ -57,11 +57,11 @@ class Result:
 
 def devices() -> list[Device]:
     """The other devices of the pool and whether each takes tests from this one."""
-    seat = Shards(_node.session())
+    session = Shards(_node.session())
     out = []
     for one in pool_devices():
         try:
-            caps = seat.capability(one["fingerprint"])
+            caps = session.capability(one["fingerprint"])
         except ShardError as exc:
             caps = {"accepts": False, "reason": f"did not answer: {exc}"}
         system = caps.get("platform", {})
@@ -84,12 +84,12 @@ def run(tier: str, *, on: str, root: str | Path = ".", files: tuple[str, ...] = 
     if not features.enabled(FEATURE):
         raise errors.Error(f"remote tests are off here; a person turns them on with `poolhouse features enable {FEATURE}`")
     chosen = choose(on, pool_devices())[0]
-    seat = Shards(_node.session())
-    caps = seat.capability(chosen["fingerprint"])
+    session = Shards(_node.session())
+    caps = session.capability(chosen["fingerprint"])
     if not caps["accepts"]:
         raise errors.Error(f"{chosen['name']} does not take tests: {caps.get('reason', '')}")
-    shard = seat.send(chosen["fingerprint"], Path(root).resolve(), tier, list(files), timeout_s)
-    got = seat.wait(chosen["fingerprint"], shard, timeout_s=timeout_s + 180)
+    shard = session.send(chosen["fingerprint"], Path(root).resolve(), tier, list(files), timeout_s)
+    got = session.wait(chosen["fingerprint"], shard, timeout_s=timeout_s + 180)
     n = report.counts(got)
     return Result(chosen["name"], tier, int(got["exit"]), n["passed"], n["failed"] + n["error"], n["skipped"],
                   float(got["wall_s"]), tuple(f["nodeid"] for f in got["failures"]), report.summary(got))

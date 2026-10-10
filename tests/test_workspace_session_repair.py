@@ -16,7 +16,7 @@ def test_agent_connect_completes_initial_project_membership(base, ws, tmp_path, 
     tokens.store(base, "worker", token)
     ws.registry.record_model("worker", "test-model", "test-harness", "claimed")
     if board_exists:
-        ws.board.store.project_board(found)
+        ws.board.store.board_for(found)
     for _ in range(2):
         assert guide.agent_connect(ws, "worker", found)["state"] == "connected"
     boards, _ = ws.board.store.state()
@@ -33,7 +33,7 @@ def test_agent_connect_preserves_explicit_project_leave(base, ws, tmp_path):
     found = project.describe(str(tmp_path))
     guide.agent_connect(ws, "worker", found)
     token = tokens.load(base, "worker")
-    board = ws.board.store.project_board(found)
+    board = ws.board.store.board_for(found)
     ws.board.leave(token, board)
     with pytest.raises(Denied, match="no membership"):
         guide.agent_connect(ws, "worker", found)
@@ -51,7 +51,7 @@ def test_agent_connect_never_repairs_foreign_membership(base, ws, tmp_path, auth
     if authority == "invited":
         agents["worker"]["minted_by"] = "project-host"
     else:
-        agents["worker"]["session_device"] = "paired-device-fingerprint"
+        agents["worker"]["session_device"] = "member-fingerprint"
     ws.registry._save(agents)
     before = ws.board.store.log.rows()
     with pytest.raises(Denied, match="no membership"):

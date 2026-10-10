@@ -5,8 +5,8 @@ import ssl
 import pytest
 
 from poolhouse.fleet.onboard import transfer
+from poolhouse.fleet.onboard.join_code import JoinCodeClient, JoinCodeError
 from poolhouse.fleet.onboard.lan import NotLocal, require_local
-from poolhouse.fleet.onboard.pairing import PairError, PairingClient
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "192.168.1.20", "10.1.2.3", "172.16.0.9",
@@ -21,22 +21,22 @@ def test_a_public_address_is_refused(host):
         require_local(host, 8772)
 
 
-def test_pairing_with_a_public_address_is_refused_before_a_connection():
-    with pytest.raises(PairError, match="public internet"):
-        PairingClient("8.8.8.8", 8772, fingerprint="ab" * 32, timeout=0.5)._call("GET", "/x")
+def test_joining_with_a_public_address_is_refused_before_a_connection():
+    with pytest.raises(JoinCodeError, match="public internet"):
+        JoinCodeClient("8.8.8.8", 8772, fingerprint="ab" * 32, timeout=0.5)._call("GET", "/x")
 
 
-def test_fetching_from_a_public_peer_is_refused_before_a_connection():
-    peer = transfer.PeerSource("https://8.8.8.8:8772", "", ssl.create_default_context())
+def test_fetching_from_a_public_member_is_refused_before_a_connection():
+    member = transfer.MemberSource("https://8.8.8.8:8772", "", ssl.create_default_context())
     with pytest.raises(NotLocal):
-        transfer.fetch_manifest(peer, timeout=0.5)
+        transfer.fetch_manifest(member, timeout=0.5)
 
 
-def test_a_peer_needs_pinned_tls_and_plain_http_is_for_this_machine_only():
+def test_a_member_needs_pinned_tls_and_plain_http_is_for_this_machine_only():
     with pytest.raises(transfer.TransferError, match="pinned"):
-        transfer.PeerSource("https://192.168.1.2:8772")
+        transfer.MemberSource("https://192.168.1.2:8772")
     with pytest.raises(transfer.TransferError, match="this machine only"):
-        transfer.PeerSource("http://192.168.1.2:8772")
+        transfer.MemberSource("http://192.168.1.2:8772")
     with pytest.raises(transfer.TransferError, match="https"):
-        transfer.PeerSource("ftp://192.168.1.2")
-    transfer.PeerSource("http://127.0.0.1:8772")
+        transfer.MemberSource("ftp://192.168.1.2")
+    transfer.MemberSource("http://127.0.0.1:8772")

@@ -34,7 +34,7 @@ class Pin:
     source: str
     pinned_at: float
     origin: str = ""
-    """Where a pulled file came from (its URL, or ``peer:<name>``); empty for other pins."""
+    """Where a pulled file came from (its URL, or ``member:<name>``); empty for other pins."""
     digest_from: str = ""
     """``expected`` when the digest is one the download was verified against (the Hub's, the
     release's, a signed manifest's); ``computed`` when it is that of the bytes as they arrived."""

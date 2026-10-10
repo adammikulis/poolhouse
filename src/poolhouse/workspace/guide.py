@@ -128,10 +128,10 @@ def _offer(ws: Workspace, hint: str, plan: Plan, talk: Talk) -> str:
     config = coordinator_config.load(ws.base)
     if plan.remote and config.get("mode") != "host":
         raise ValueError("activate hosting first: run `poolhouse-workspace coordinator host` in your "
-                         "person terminal; then pair the receiving device into the same cluster")
+                         "person terminal; then join the receiving device into the same pool")
     offers = []
     if config.get("mode") == "host":
-        offers = [(peer, info) for peer, info in coordinator_client.discover()
+        offers = [(member, info) for member, info in coordinator_client.discover()
                   if info.get("workspace") == config["workspace"]]
         if len(offers) != 1:
             raise ValueError("the hosted workspace needs one advertised coordinator before sharing a code")
@@ -147,8 +147,8 @@ def _offer(ws: Workspace, hint: str, plan: Plan, talk: Talk) -> str:
         block = block.replace(f"join {code} --name",
                               f"join {code} --coordinator {shlex.quote(offers[0][0].name)} "
                               f"--workspace {shlex.quote(config['workspace'])} --name")
-        block = ("First enroll this device in the same cluster using person-approved pairing. "
-                 "This agent code does not grant cluster membership. Use PowerShell for this command on Windows.\n" + block)
+        block = ("First enroll this device in the same pool using person-approved joining. "
+                 "This agent code does not grant pool membership. Use PowerShell for this command on Windows.\n" + block)
     if plan.code_only or plan.wait_s <= 0:
         say(block)
     if talk.copy(block):
@@ -235,7 +235,7 @@ def agent_connect(ws: Workspace, name: str, found: dict[str, str]) -> dict[str, 
         boards, _ = ws.board.store.state()
         if not any(board["project"] == found["key"] and (who.parent or who.id) in board["members"]
                    for board in boards.values()):
-            raise Denied("this identity has no membership in the project board")
+            raise Denied("this identity has no membership in the board")
         return {"id": who.id, "project": scope["name"], "state": "connected"}
 
 

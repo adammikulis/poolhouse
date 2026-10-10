@@ -126,10 +126,10 @@ def test_a_missing_firewall_rule_after_the_prompt_is_not_ready_with_the_fix(monk
     assert "NOT READY" in capsys.readouterr().err
 
 
-def test_pairing_without_a_code_is_refused_before_the_node_is_asked(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv(node_join.PAIR_CODE_ENV, raising=False)
-    assert node_join.main(["pair", "--host", "192.0.2.1", "--state", str(tmp_path)]) == 1
-    assert node_join.PAIR_CODE_ENV in capsys.readouterr().err
+def test_joining_without_a_code_is_refused_before_the_node_is_asked(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv(node_join.JOIN_CODE_ENV, raising=False)
+    assert node_join.main(["join-with-code", "--host", "192.0.2.1", "--state", str(tmp_path)]) == 1
+    assert node_join.JOIN_CODE_ENV in capsys.readouterr().err
 
 
 def _recorded(monkeypatch, stdout=""):

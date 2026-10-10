@@ -78,7 +78,7 @@ def _token() -> str:
     return token
 
 
-def _seat() -> session.Session:
+def _session() -> session.Session:
     """The calling agent's session on the board of its directory."""
     return session.connect()
 
@@ -90,7 +90,7 @@ def workspace_status() -> dict[str, Any]:
 
 def workspace_reputation(agent: str = "", offset: int = 0) -> dict[str, Any]:
     """Your own and team independently verified completion scores and evidence. Read only."""
-    return work_reputation.standings_on(_seat(), agent=agent, offset=offset)
+    return work_reputation.standings_on(_session(), agent=agent, offset=offset)
 
 
 def _held(out: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -245,42 +245,42 @@ def workspace_file_save(handle: str, path: str) -> dict[str, Any]:
 
 def workspace_tasks() -> dict[str, Any]:
     """List authorized tasks and verified progress metrics."""
-    return Tasks(_seat()).list()
+    return Tasks(_session()).list()
 
 
 def workspace_task(id: str) -> dict[str, Any]:
     """Read an authorized task, its lease, checkpoints and review evidence."""
-    return Tasks(_seat()).get(id)
+    return Tasks(_session()).get(id)
 
 
 def workspace_task_claim(id: str, allocation_id: str) -> dict[str, Any]:
     """Claim a queued task using its existing trusted resource allocation."""
-    return Tasks(_seat()).claim(id, allocation_id)
+    return Tasks(_session()).claim(id, allocation_id)
 
 
 def workspace_task_heartbeat(id: str) -> dict[str, Any]:
     """Renew your active task lease while its resource remains valid."""
-    return Tasks(_seat()).heartbeat(id)
+    return Tasks(_session()).heartbeat(id)
 
 
 def workspace_task_checkpoint(id: str, value: dict[str, Any]) -> dict[str, Any]:
     """Save a bounded checkpoint for your active task."""
-    return Tasks(_seat()).checkpoint(id, value)
+    return Tasks(_session()).checkpoint(id, value)
 
 
 def workspace_task_submit(id: str, value: dict[str, Any]) -> dict[str, Any]:
     """Submit immutable artifact hashes and claimed checks for independent review."""
-    return Tasks(_seat()).submit(id, value)
+    return Tasks(_session()).submit(id, value)
 
 
 def workspace_task_review(id: str, decision: dict[str, Any]) -> dict[str, Any]:
     """Record an authorized independent review and its outcome credit status."""
-    return task_outcomes.seat_review(_seat(), id, decision)
+    return task_outcomes.session_review(_session(), id, decision)
 
 
 def workspace_task_credit(id: str) -> dict[str, Any]:
     """Retry authorized credit recording for an immutable reviewed outcome."""
-    return task_outcomes.seat_credit(_seat(), id)
+    return task_outcomes.session_credit(_session(), id)
 
 
 def workspace_task_integrate(id: str) -> dict[str, Any]:

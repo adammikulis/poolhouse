@@ -30,7 +30,7 @@ _ROLE_WORDS = "|".join(re.escape(n) for n in (*ROLE_NAMES, *LEGACY_ROLE_NAMES))
 
 READ = frozenset({
     "serve_status", "models_find", "models_files", "bench_status", "bench_history", "bench_show",
-    "fleet_peers", "setup_look", "doctor", "models_on_disk", "ollama_models", "jobs_status",
+    "fleet_members", "setup_look", "doctor", "models_on_disk", "ollama_models", "jobs_status",
     "jobs_wait", "review_view"})
 """Tools that only look. They run without asking."""
 

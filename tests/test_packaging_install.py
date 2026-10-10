@@ -68,7 +68,7 @@ def test_both_installers_offer_every_mode(mode):
 
 
 @pytest.mark.parametrize("command", ["poolhouse-serve", "poolhouse-setup", "poolhouse-models",
-                                     "poolhouse-cluster", "poolhouse-doctor"])
+                                     "poolhouse-pool", "poolhouse-doctor"])
 def test_the_installers_call_the_commands_rather_than_redoing_them(command):
     """Sizing a machine, building llama.cpp, fetching a model and joining a fleet are each
     a command already. A shell reimplementation is a second answer that goes stale the

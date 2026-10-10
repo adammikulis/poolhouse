@@ -13,13 +13,13 @@
 #   --uninstall takes it off, and leaves the model cache alone
 #
 # Every step past the install is a poolhouse command, not shell: `poolhouse-serve build`,
-# `poolhouse-setup`, `poolhouse-models fetch`, `poolhouse-cluster join`, `poolhouse-doctor`.
+# `poolhouse-setup`, `poolhouse-models fetch`, `poolhouse-pool join`, `poolhouse-doctor`.
 # Nothing here reimplements what one of those already does.
 #
 # Answer every prompt with the environment and it runs unattended (a machine with no
 # terminal is never prompted at all):
 #   POOLHOUSE_MODE=app|headless|dev|system   POOLHOUSE_NAME=<this machine>
-#   POOLHOUSE_PASSPHRASE=<the words every machine shares>   POOLHOUSE_CLUSTER=<group>
+#   POOLHOUSE_PASSPHRASE=<the words every machine shares>   POOLHOUSE_POOL=<group>
 #   POOLHOUSE_MODELS=auto|default|none|<word>   POOLHOUSE_ADOPT_CACHE=yes|no
 #   POOLHOUSE_REF=main|v1.2.3   POOLHOUSE_BUILD=release|source
 #   POOLHOUSE_OFFLINE_ZIP=/path/to.zip   POOLHOUSE_OFFLINE_MODELS=/dir   (no network at all)
@@ -243,7 +243,7 @@ link_scripts() {
   TO="${POOLHOUSE_DEST:-$HOME/.local/bin}"
   [ "$MODE" = system ] && TO="${POOLHOUSE_DEST:-/usr/local/bin}"
   mkdir -p "$TO" 2>/dev/null || true
-  for name in poolhouse poolhouse-traind poolhouse-cluster poolhouse-peers poolhouse-serve \
+  for name in poolhouse poolhouse-traind poolhouse-pool poolhouse-members poolhouse-serve \
               poolhouse-models poolhouse-bench poolhouse-setup poolhouse-doctor poolhouse-mcp; do
     [ -x "$FROM/$name" ] || continue
     ln -sf "$FROM/$name" "$TO/$name" 2>/dev/null || true
@@ -383,19 +383,19 @@ fetch_models() {
 
 join_fleet() {
   step "joining the fleet"
-  [ -x "$BIN/poolhouse-cluster" ] || { say "skipped: no poolhouse-cluster"; return 0; }
+  [ -x "$BIN/poolhouse-pool" ] || { say "skipped: no poolhouse-pool"; return 0; }
   set -- join --persist
   [ -n "${POOLHOUSE_NAME:-}" ] && set -- "$@" --name "$POOLHOUSE_NAME"
-  [ -n "${POOLHOUSE_CLUSTER:-}" ] && set -- "$@" --group "$POOLHOUSE_CLUSTER"
+  [ -n "${POOLHOUSE_POOL:-}" ] && set -- "$@" --group "$POOLHOUSE_POOL"
   [ -n "$TRACK" ] && set -- "$@" --track "$TRACK"
   if [ -n "${POOLHOUSE_PASSPHRASE:-}" ]; then
     set -- "$@" --passphrase "$POOLHOUSE_PASSPHRASE"
   elif ! interactive; then
     say "no passphrase, and no terminal to ask at. Set POOLHOUSE_PASSPHRASE and re-run,"
-    say "or run:  poolhouse-cluster join --persist"
+    say "or run:  poolhouse-pool join --persist"
     return 0
   fi
-  "$BIN/poolhouse-cluster" "$@" || say "  join did not finish; 'poolhouse-cluster join' retries"
+  "$BIN/poolhouse-pool" "$@" || say "  join did not finish; 'poolhouse-pool join' retries"
 }
 
 what_came_with_it() {

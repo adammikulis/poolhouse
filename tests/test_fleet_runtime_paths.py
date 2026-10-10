@@ -74,7 +74,7 @@ def test_daemon_routes_roots_before_startup_services(tmp_path, monkeypatch):
         assert lease_file() == root / "state" / "servers.json"
         raise StartupObserved
 
-    monkeypatch.setattr(daemon, "load_cluster_key", inspect_startup)
+    monkeypatch.setattr(daemon, "load_pool_key", inspect_startup)
     with pytest.raises(StartupObserved):
         daemon.serve(daemon.DaemonOptions(root=root, announce=False, web=False))
 
@@ -105,7 +105,7 @@ def test_person_startup_displays_token(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize('first', ['launch', 'join'])
-def test_launcher_and_cluster_cli_import_in_a_fresh_process(first):
+def test_launcher_and_pool_cli_import_in_a_fresh_process(first):
     import os
     import subprocess
     import sys

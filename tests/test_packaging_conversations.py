@@ -100,7 +100,7 @@ def sign_in(port, root):
 def running(binary, root, port, environment, log_path):
     with log_path.open("w") as log:
         process = subprocess.Popen([str(binary), "--root", str(root), "--port", str(port), "--no-browser",
-                                    "--no-announce", "--cluster-key", str(root / "cluster.key")],
+                                    "--no-announce", "--pool-key", str(root / "pool.key")],
                                    stdout=log, stderr=log, env=environment)
         try:
             deadline = time.monotonic() + 30

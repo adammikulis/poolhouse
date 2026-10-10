@@ -22,7 +22,7 @@ from poolhouse.fleet.conversation_types import safe
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.workspace import coding_events, localeffort, localstart, project
-from poolhouse.workspace.harness_seat import Seat
+from poolhouse.workspace.harness_session import HarnessSession
 from poolhouse.workspace.service import Workspace
 
 MAX_EVENT = 1048576
@@ -154,10 +154,10 @@ class Manager:
             threading.Thread(target=turn.cancel, daemon=True).start()
         return self.status(cid)
 
-    def _seat(self, name, folder, parent, say):
+    def _session(self, name, folder, parent, say):
         ws = Workspace()
         localstart._mint(ws, name, project.describe(str(folder)))
-        return Seat(name, minted=True, base=ws.base)
+        return HarnessSession(name, minted=True, base=ws.base)
 
     def _run(self, turn: Turn, conversation, prompt: str) -> None:
         settings = conversation.settings
@@ -195,7 +195,7 @@ class Manager:
                     if settings["effort"] == "auto" else localeffort.clamp(settings["effort"], settings["max_effort"]))
             result = coding.launch_coding_agent(conversation.model, settings["role"] or roles.DEFAULT,
                 settings["project"], harness=harness, context=settings["context"], draft=settings.get("draft", "auto"), name=f"chat-{conversation.id}",
-                harness_args=args, seat_factory=self._seat, say=lambda text: turn.emit({"status": text}),
+                harness_args=args, session_factory=self._session, say=lambda text: turn.emit({"status": text}),
                 **{f"run_{harness}": lambda command, env: self._process(turn, command, env, (home, harness, prompt, settings["project"]))},
                 **launch_options)
             if result and not turn.cancelled.is_set():

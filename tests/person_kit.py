@@ -15,7 +15,7 @@ from test_fleet_ui import Serving
 from poolhouse import node_launch
 from poolhouse.board import person, place, session as board_session
 from poolhouse.fleet import extension_routes
-from poolhouse.fleet.project_board_routes import ProjectBoardRoutes
+from poolhouse.fleet.board_routes import BoardRoutes
 from poolhouse.fleet.routes import Base
 from poolhouse.fleet.session import Sessions
 from poolhouse.workspace import task_routes
@@ -37,12 +37,12 @@ def tasks_ui(workspace_node, monkeypatch, tmp_path):
         server.close()
 
 
-def person_seat(node):
+def person_session(node):
     """The person's session on the node's board, as the daemon holds it."""
-    return person.seat(Path.cwd(), node.client)
+    return person.session(Path.cwd(), node.client)
 
 
-class Page(ProjectBoardRoutes, Base):
+class Page(BoardRoutes, Base):
     """One request to the project routes of the UI, answered into ``handler``."""
 
     def send(self, status, payload, extra=None):

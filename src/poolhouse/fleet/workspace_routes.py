@@ -31,7 +31,7 @@ PURPOSES = {
     "memory": "Inspect, add, confirm, link, forget and export agent memory facts.",
     "surface": "Inspect retrieval and extraction surfaces.", "walk": "Traverse and inspect graph data.",
     "decide": "Ask closed questions, calibrate and evaluate decision models.",
-    "peers": "Discover peers and transfer files.", "fleet": "Coordinate machines and shared workloads.",
+    "members": "Discover members and transfer files.", "fleet": "Coordinate machines and shared workloads.",
     "bench": "Measure model accuracy, throughput and resource use.", "models": "Discover, download and inspect models.",
     "gym": "Run, train and evaluate simulator policies.", "train-run": "Train a supervised recipe.",
     "train-tools": "Prepare and train tool-calling models.", "train-decider": "Fine-tune decision models.",
@@ -85,7 +85,7 @@ class WorkspaceRoutes:
             path = safe_relpath(root, field(req, "path", str, ""))
             content = field(req, "text", str, "")
             if len(content.encode()) > 10_000_000:
-                raise ValueError("Dataset upload limit is 10 MB; use poolhouse-peers for larger files.")
+                raise ValueError("Dataset upload limit is 10 MB; use poolhouse-members for larger files.")
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("x", encoding="utf-8", newline="") as target:
                 target.write(content)

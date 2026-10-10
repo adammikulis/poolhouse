@@ -1,11 +1,11 @@
 # Onboarding devices on the local network
 
-Select **Join existing cluster**, then enter its name and passphrase. A failed search
-leaves this machine's memberships unchanged. **Create new cluster** starts a separate
-cluster and refuses to replace one already joined here. The name is required; the
-screen selects this machine's primary cluster, or `default` on an unjoined machine.
-From the terminal, join with `poolhouse-peers setup --group NAME`; add `--create` only
-when starting a new cluster.
+Select **Join existing pool**, then enter its name and passphrase. A failed search
+leaves this machine's memberships unchanged. **Create new pool** starts a separate
+pool and refuses to replace one already joined here. The name is required; the
+screen selects this machine's primary pool, or `default` on an unjoined machine.
+From the terminal, join with `poolhouse-members setup --group NAME`; add `--create` only
+when starting a new pool.
 
 The first-run wizard offers a model download alongside the optional model server.
 Choose a model, tick its download box, and select **Install and continue** to accept.
@@ -37,7 +37,7 @@ Branch `agent/lan-onboarding`, which builds on `agent/hardening` (signed request
 loopback by default) and changes none of it.
 
 The request: find new devices on my network without downloading Poolhouse by hand, ask the
-device's owner to accept, then fetch Poolhouse peer to peer and connect.
+device's owner to accept, then fetch Poolhouse device to device and connect.
 
 ## Decision record
 
@@ -55,7 +55,7 @@ device's owner to accept, then fetch Poolhouse peer to peer and connect.
    level: `open`, `owner` (a gated model: only the owner's own devices, only after their licence
    acceptance is on record) or `never`. Credentials never travel.
 6. **The signing key is generated on the controller, kept in the OS keystore (`keyring`), and
-   differs from the cluster key.** Signing is automatic; export, rotation and revocation need a
+   differs from the pool key.** Signing is automatic; export, rotation and revocation need a
    person at a terminal. Manifests last days.
 7. **The owner answers a dialog with buttons** (Decline, Accept as mine, Accept as someone
    else's); the code is in a second dialog after an Accept. Tests never raise a real one.
@@ -68,7 +68,7 @@ device's owner to accept, then fetch Poolhouse peer to peer and connect.
 
 | The new device has | What can be done | By whom |
 |---|---|---|
-| Poolhouse already | find it on the LAN, ask its owner on its own screen, pair with a short code, join the cluster | automatic, with a person saying yes |
+| Poolhouse already | find it on the LAN, ask its owner on its own screen, join a short code, join the pool | automatic, with a person saying yes |
 | nothing | **nothing can be pushed to it.** A machine that runs no agent of ours has no door; installing software on it without its owner doing something is what malware does, and Poolhouse will not do it | the owner of the new device, opt in |
 | nothing, owner willing | open an address on it, run one command, or hand it a file bundle, or let us install over SSH with the owner's own keys | see "Machines with nothing installed" |
 
@@ -89,8 +89,8 @@ new device                                    owner's device (listening)
  |-- SPAKE2 message (identities: both certificate fingerprints) ---->
  |<-- Y                                                          3 tries, then the request is dead
  |-- confirmation (proves the code) ------------------------->   checks it first
- |<-- confirmation, grant (cluster key, certificate, signing key), tag
- |  verifies the confirmation and the tag, joins the cluster, pins the certificate
+ |<-- confirmation, grant (pool key, certificate, signing key), tag
+ |  verifies the confirmation and the tag, joins the pool, pins the certificate
 ```
 
 ### Discovery
@@ -111,11 +111,11 @@ The Windows firewall point is the real argument for mDNS and is why the seam exi
 decision for the owner (below). An announcement is unauthenticated, so it is a hint: the
 address is the datagram's source, text is cleaned to one printable line, the list is capped at
 64 machines and 4 per source address, and entries age out after 30 s. A forged announcement can
-put a wrong name in the list; it cannot get anybody paired.
+put a wrong name in the list; it cannot get anybody joined.
 
 ### The request and the notification
 
-A machine opens pairing deliberately (`poolhouse cluster listen --for 10m`); by default nothing
+A machine opens joining deliberately (`poolhouse pool add-device --for 10m`); by default nothing
 listens. A request carries name, hostname, model and the fingerprint of the certificate the new
 device's daemon will serve. The owner sees all of it, plus the address the request came from and
 the fingerprint of the certificate the new device was *seen* to present.
@@ -141,11 +141,11 @@ The owner is asked with **real buttons**, not told to run a command (`onboard/no
 no default) and stored with the device. It is shown in `requests` and `nearby`, and it is what
 the sharing levels read.
 
-**The pairing code is never in the first dialog**, and a test suite never raises a real
+**The join code is never in the first dialog**, and a test suite never raises a real
 dialog: `tests/conftest.py` sets `POOLHOUSE_NOTIFY=console` for the session and puts shims named
 `osascript`, `notify-send`, `zenity` and `kdialog` first on PATH (child processes inherit them);
 a shim records and fails, and the run fails if anything was recorded. The owner's report that
-tests opened Script Editor was this bug: `pick()` ignored any switch and every `listen` process
+tests opened Script Editor was this bug: `pick()` ignored any switch and every `add-device` process
 in the CLI tests used the real notifier.
 
 ### Choosing how the code is checked
@@ -200,11 +200,11 @@ the server field too) all fail the confirmation. Properties, each tested:
   with probability 3 in 10^6.
 
 The library is an optional dependency behind the `fleet-onboard` extra (`pip install
-'Poolhouse[fleet-onboard]'`: `cryptography`, `spake2`, `keyring`); without it, `listen` fails at
-once and `pair` says so, naming the extra.
+'Poolhouse[fleet-onboard]'`: `cryptography`, `spake2`, `keyring`); without it, `add-device` fails at
+once and `join-with-code` says so, naming the extra.
 
-What the owner is really approving: the default grant is the cluster key. **A cluster member is
-fully trusted** (`docs/security.md`), so `listen --no-cluster` pairs a device without it.
+What the owner is really approving: the default grant is the pool key. **A pool member is
+fully trusted** (`docs/security.md`), so `add-device --no-pool` adds a device without it.
 Accepting a request is not enough to give anything away: the code must also be read to the device.
 
 ### Limits against spam and abuse
@@ -218,7 +218,7 @@ Accepting a request is not enough to give anything away: the code must also be r
 | requests per address in 10 minutes | 5 |
 | requests waiting for an answer, overall | 8 |
 | wait after a decline | 60 s; three declines in an hour block that fingerprint for an hour |
-| wait after a failed pairing | 15 min |
+| wait after a failed joining | 15 min |
 | bad requests (unknown id, bad body) per address | 20 a minute, then 2 minutes locked out (`macauth.Lockout`) |
 | request body | 16 KiB; connections 64 (`framing.LimitedServer`) |
 
@@ -227,19 +227,19 @@ sent when a request is created, once.
 
 ### Revocation
 
-`poolhouse cluster revoke NAME-OR-FINGERPRINT` marks the device revoked: it cannot ask again, and
-the key it signs file requests with (issued at pairing, one per device) stops working, so the
-owner's machine serves it nothing. **It cannot take back the cluster key** the device was given.
-`poolhouse-peers members revoke FINGERPRINT` is the per-device revocation: the device's certificate is put out
-of the cluster record and every member refuses it from its next handshake and request. The re-keying flow (mint a new key,
+`poolhouse pool remove NAME-OR-FINGERPRINT` marks the device removed: it cannot ask again, and
+the key it signs file requests with (issued at joining, one per device) stops working, so the
+owner's machine serves it nothing. **It cannot take back the pool key** the device was given.
+`poolhouse-members roster remove FINGERPRINT` is the per-device removal: the device's certificate is put out
+of the pool record and every member refuses it from its next handshake and request. The re-keying flow (mint a new key,
 hand it to each remaining member over its pinned, signed channel) is designed and not
-built. A device-only pairing (`--no-cluster`) has no cluster key to take back.
+built. A device-only joining (`--no-pool`) has no pool key to take back.
 
 ## Machines with nothing installed
 
 Nobody pushes software to them. Opt-in paths, ranked by ease and then by safety:
 
-1. **An address on the LAN** (`poolhouse cluster bootstrap --share DIR`). The controller serves for
+1. **An address on the LAN** (`poolhouse pool bootstrap --share DIR`). The controller serves for
    ten minutes, over HTTPS with a certificate made for the offer, an unguessable address
    `https://IP:PORT/b/TOKEN/#fp=CERT-FINGERPRINT` (`--advertise` names the address to print). The
    owner types it (or scans it as a QR code: drawing one needs a library, not built; the string
@@ -255,8 +255,8 @@ Nobody pushes software to them. Opt-in paths, ranked by ease and then by safety:
    * `pip` fetches the wheel's dependencies from the package index under normal certificate
      checks and **without hashes**; a hash-locked requirements file in the manifest closes
      this (designed, not built).
-   * Offers carry program files only: models and the cluster key are refused (tested).
-2. **SSH install** (`poolhouse cluster bootstrap --ssh [user@]host --share DIR`, built, owner
+   * Offers carry program files only: models and the pool key are refused (tested).
+2. **SSH install** (`poolhouse pool bootstrap --ssh [user@]host --share DIR`, built, owner
    initiated, its own flag, never automatic). Properties, each a test:
    * the system `ssh` with the owner's keys, agent and config; `BatchMode=yes`, so a password is
      never asked for or seen; `StrictHostKeyChecking=yes` always, never `no`; no agent, X11 or
@@ -278,7 +278,7 @@ Nobody pushes software to them. Opt-in paths, ranked by ease and then by safety:
      tests; a pure-Python verifier would have been home-made crypto), that the key is the one
      the owner named, expiry, and the size and SHA-256 of every file, and that no other file came;
      only then a per-user venv (`~/.poolhouse/venv`, no sudo, no system Python touched) and
-     `pip install`; it then starts `poolhouse-cluster listen` so the normal pairing flow with a
+     `pip install`; it then starts `poolhouse-pool add-device` so the normal joining flow with a
      code and pinned TLS completes. Models are not copied;
    * nothing is fetched from the internet by the remote side except pip's dependencies (the
      same gap as above); macOS and Linux targets only, Windows OpenSSH designed not built;
@@ -293,19 +293,19 @@ Nobody pushes software to them. Opt-in paths, ranked by ease and then by safety:
 All three verify with the same two ingredients: a pinned channel or a typed digest, and a
 manifest whose files' hashes are checked before anything runs. None is `curl | sh`.
 
-## Peer to peer distribution
+## Device to device distribution
 
-Once a device has paired it holds the cluster key, the certificate of the machine that took it
-in, the cluster's signing public key, and a file-request key of its own. `onboard/transfer.py`:
+Once a device has joined it holds the pool key, the certificate of the machine that took it
+in, the pool's signing public key, and a file-request key of its own. `onboard/transfer.py`:
 
-* Any peer serves the signed manifest and, in ranges of one chunk, the files in it
+* Any device serves the signed manifest and, in ranges of one chunk, the files in it
   (`GET /onboard/v1/files/NAME`, `Range` required, signed by `macauth`, over the pinned
   certificate; `ShareServer`). A request signed with a device's own key says which device asks;
-  one signed with only the cluster key is a member with no device identity.
-* `Downloader` takes a manifest verified under the pinned key and a list of peers and fetches
+  one signed with only the pool key is a member with no device identity.
+* `Downloader` takes a manifest verified under the pinned key and a list of devices and fetches
   chunks from several at once. Every chunk is checked against its listed SHA-256 before it is
-  kept; a peer that sends one that does not match is dropped after a second such answer, a
-  `critical` event is raised and the chunk is fetched from another peer; if no peer is left
+  kept; a device that sends one that does not match is dropped after a second such answer, a
+  `critical` event is raised and the chunk is fetched from another device; if no device is left
   nothing is staged. The finished file is hashed whole again.
 * Resumable: verified chunks are listed beside the partial file and each is hashed from disk
   before it is trusted on the next run. Disk: the file plus a 1 GiB reserve must be free first.
@@ -318,8 +318,8 @@ entry, so changing it breaks the signature):
 
 | level | who gets it | for |
 |---|---|---|
-| `open` | any paired peer | programs, ungated models |
-| `owner` | only a device the owner marked **mine** at pairing, and only once the owner's acceptance of that file's licence is on record (who, when, licence id, URL) | gated or licence-restricted models |
+| `open` | any member | programs, ungated models |
+| `owner` | only a device the owner marked **mine** at joining, and only once the owner's acceptance of that file's licence is on record (who, when, licence id, URL) | gated or licence-restricted models |
 | `never` | nobody; each device downloads it itself from the entry's `source` | licences that forbid copies |
 
 The owner who accepted a licence may put the model on their device #2; another person's device
@@ -330,17 +330,17 @@ is asked; it is `open` only when it is known not to be gated and not to forbid c
 (`classify`). A manifest entry that does not say is read as `owner`. **Credentials (a Hub token,
 an API key) are never copied between devices**: they are not files in a manifest or a field in
 a grant, and a test fails if any onboarding module mentions one. The server refuses with a reason
-(`403`), the client reports it without counting it against the peer, and `onboard.transfer.withheld`
+(`403`), the client reports it without counting it against the device, and `onboard.transfer.withheld`
 is raised.
 
 Never from an unauthenticated source: the manifest must verify under the pinned key (signature,
-expiry, serial no lower than the last seen, entry names through `safenames`), and the peers are
-cluster members over pinned TLS.
+expiry, serial no lower than the last seen, entry names through `safenames`), and the devices are
+pool members over pinned TLS.
 
 ## Signing keys
 
-One Ed25519 key per cluster, generated on the controller on first use, **separate from the
-cluster key** (losing one is not losing the other). `onboard/signing.py`:
+One Ed25519 key per pool, generated on the controller on first use, **separate from the
+pool key** (losing one is not losing the other). `onboard/signing.py`:
 
 * **Wrapped under the keystore master key by default** (`docs/keystore.md`): the key sits in
   `signing.key.wrapped` in the state directory, sealed under the `fleet-signing` subkey for that
@@ -354,12 +354,12 @@ cluster key** (losing one is not losing the other). `onboard/signing.py`:
 * **Export, rotation and revocation need a person at a terminal** (a human grant that follows
   sentinel's rule: stdin and stdout are terminals, no agent marker in the environment, the
   person types the key id back; it is kept as `onboard/human.py` until sentinel is merged).
-  The commands are `Poolhouse cluster devices [--learn] [--port P]                         paired devices: lan, tailnet or unreachable; Tailscale found or not
-Poolhouse cluster signing show|export|rotate|revoke|confirm|accept`. An agent
+  The commands are `Poolhouse pool devices [--learn] [--port P]                         members: lan, tailnet or unreachable; Tailscale found or not
+Poolhouse pool signing show|export|rotate|revoke|confirm|accept`. An agent
   has no path to the key.
 * **Manifests are short-lived** (3 days) and carry a serial that may not go backwards.
-* **New devices pin the public key at pairing**; its fingerprint is printed on both machines
-  (`accept` and `pair`) so a person can compare them. **Rotation is announced**, not applied:
+* **New devices pin the public key at joining**; its fingerprint is printed on both machines
+  (`accept` and `join-with-code`) so a person can compare them. **Rotation is announced**, not applied:
   the old key signs a statement naming the new one, manifests carry the chain, and a member
   that sees a manifest signed by the successor reports `RotationAnnounced` and waits for `signing
   accept` (a human step) before it pins the new key. Revoked key ids travel in manifests.
@@ -380,18 +380,18 @@ or index publishes, through `httpguard`; a model through the guarded download an
 
 | Threat | Defence | Tested |
 |---|---|---|
-| Rogue device pretends to be a peer | pairing needs a code the owner reads out after accepting; members authenticate by signed requests over pinned TLS | yes |
-| MITM during pairing | both certificate fingerprints in the SPAKE2 transcript; unverified handshake is acceptable only because of that; relay with a rewritten server field fails | yes |
+| Rogue device pretends to be a member | joining needs a code the owner reads out after accepting; members authenticate by signed requests over pinned TLS | yes |
+| MITM during joining | both certificate fingerprints in the SPAKE2 transcript; unverified handshake is acceptable only because of that; relay with a rewritten server field fails | yes |
 | Replay of a join request or confirmation | nonce and id per request, an exchange is used once (409), a request id is single-use | yes |
 | Notification spam / DoS | one active request per fingerprint and address, windows, caps, declines and failures make a device wait; quiet refusals | yes |
-| Poisoned file from a peer | signed manifest, chunk and whole-file hashes, peer dropped, nothing staged on failure, then the caller's scan and sentinel | yes (scan hook seam only) |
+| Poisoned file from a device | signed manifest, chunk and whole-file hashes, device dropped, nothing staged on failure, then the caller's scan and sentinel | yes (scan hook seam only) |
 | Code brute force | PAKE (no offline test), 3 tries, then closed and the device waits | yes |
 | Accidental acceptance | the request shows name, hostname, model, address, fingerprint; accepting alone gives nothing until the code is read out | partly (text asserted; a person is not) |
 | Hostile text in a name | one printable line, 64 characters, passed as an argument to `osascript`/`notify-send`; HTML escaped on the offer page | yes |
 | Rogue or flooding announcements | hints only; caps per source and overall; age out | yes |
-| Pairing over plain HTTP | refused (403) even from loopback | yes |
+| Joining over plain HTTP | refused (403) even from loopback | yes |
 | Path tricks in manifests and requests | `safenames` on every name; `safe_join` resolves symlinks; no suffix ranges | yes |
-| Stolen device | revoke blocks re-pairing; the cluster key must be rotated (not built) | partly |
+| Stolen device | removing it blocks re-joining; the pool key must be rotated (not built) | partly |
 | Wrong signing key | pinned key only; expiry; serial rollback; key revocation list | yes |
 | A device of another person gets a gated model | `owner` level needs a device marked mine and the licence acceptance on record; the field is signed | yes |
 | A stolen signing key | keystore, short expiry, serial, rotation announced and accepted by a person, revocation list | yes (the keystore does not stop code running as the user) |
@@ -405,31 +405,31 @@ A compromised owner machine or signing key; physical access; what the upstream p
 or model host serve before the controller checked it; timing side channels in the pure Python
 PAKE library (rate-limited and interactive; see above); IPv6 and multi-subnet
 networks (TTL 1, IPv4); the internet; the Windows toast and Windows SSH targets; a web interface panel; phone
-platforms; QR rendering; the cluster re-key flow; a hardware signing key; hash-locked dependency
+platforms; QR rendering; the pool re-key flow; a hardware signing key; hash-locked dependency
 install; mDNS.
 
 ## What is built
 
 | Part | State |
 |---|---|
-| SPAKE2 pairing from the `spake2` package; three tries; confirmations in the right order | built, tested over real TLS sockets |
+| SPAKE2 joining from the `spake2` package; three tries; confirmations in the right order | built, tested over real TLS sockets |
 | Request state machine, limits, devices ledger (whose device, its file-request key), revoke | built, tested on real files, one test with a second process |
 | Discovery announce / browse, injectable transport, real UDP on loopback | built; multicast and broadcast on a real LAN not verified |
 | Dialog with buttons (macOS), second dialog for the code | built; scripts compile under the real `osacompile`; the click is read by a fake `osascript` in a three-process test; a real dialog only in the opt-in manual test |
 | Dialog on Linux (`notify-send` actions, `zenity`) | argv and parsing only, no Linux desktop |
-| Signed manifest (Ed25519), chunked and resumable multi-peer download, scan hook, sharing levels | built, two server processes on loopback, with pinned TLS |
+| Signed manifest (Ed25519), chunked and resumable multi-member download, scan hook, sharing levels | built, two server processes on loopback, with pinned TLS |
 | Signing key in the OS keystore, encrypted-file fallback, human-only export / rotate / revoke, confirm mode | built; the keystore is exercised through a real `keyring` backend over a file (the real Keychain is never touched by tests) |
 | Bootstrap offer, pinned installer | built; installer run as a separate process; `curl --pinnedpubkey` checked against the real `curl` |
 | SSH install | built; tested with recording shims for the argv, with the remote script run for real against a sandbox HOME, and a real venv install; **not run against a real sshd or another machine** (opt-in test exists) |
-| CLI (`nearby listen pair requests accept decline revoke bootstrap share fetch signing`, all `--json`) | built; end-to-end tests across separate processes |
+| CLI (`nearby add-device join-with-code requests accept decline remove bootstrap share fetch signing`, all `--json`) | built; end-to-end tests across separate processes |
 | Sentinel events | emitted for each step (list below); the adapter below was run against the real sentinel on a throwaway merge of `agent/sentinel-integ` earlier in this work |
-| QR drawing, mDNS, Windows toast and SSH target, cluster re-key, hardware signing key, web panel, hashed dependencies | designed only |
+| QR drawing, mDNS, Windows toast and SSH target, pool re-key, hardware signing key, web panel, hashed dependencies | designed only |
 
 Events (all on `onboard.events.BUS`; `Event(kind, severity, subject, evidence)`):
-`onboard.request.received|accepted|declined|expired|refused`, `onboard.pair.wrong_code` (warning),
-`onboard.pair.locked` (critical), `onboard.pair.succeeded`, `onboard.revoked`,
+`onboard.request.received|accepted|declined|expired|refused`, `onboard.join.wrong_code` (warning),
+`onboard.join.locked` (critical), `onboard.join.succeeded`, `onboard.revoked`,
 `onboard.notify.failed`, `onboard.nearby.flood`, `onboard.transfer.bad_chunk` (critical),
-`onboard.transfer.bad_file` (critical), `onboard.transfer.peer_dropped`,
+`onboard.transfer.bad_file` (critical), `onboard.transfer.member_dropped`,
 `onboard.transfer.withheld`, `onboard.transfer.staged`, `onboard.bootstrap.offered`,
 `onboard.bootstrap.refused`, `onboard.signing.created|signed|exported|rotated|revoked|file_fallback`,
 `onboard.ssh.started|hostkey_confirmed|hostkey_refused|copied|verified|installed|listening|failed`.
@@ -444,14 +444,14 @@ def watch_onboarding(bus, sentinel, Event, Severity):
 
 ### Gaps that matter when this is folded into the daemon
 
-* The pairing listener and the file server run on **their own ports with their own certificate**
+* The join listener and the file server run on **their own ports with their own certificate**
   (`<state>/onboard/tls`). In the finished design these routes live on the daemon's port under
   `/onboard/v1/`, with the daemon's certificate, so the certificate in a grant is the one the
-  beacons carry. `trust.json` records the pairing partner's certificate and `fetch` uses it, but
+  beacons carry. `trust.json` records the join partner's certificate and `fetch` uses it, but
   discovery does not yet consume it.
-* `fetch` takes one peer (the machine it paired with). `Downloader` takes any number of peers and
+* `fetch` takes one device (the machine it joined with). `Downloader` takes any number of devices and
   is tested with two; learning the others' certificates from beacons is the daemon-side work.
-* One shared handler (`onboard/web.py`) serves pairing, sharing and the offer; it costs the repo's
+* One shared handler (`onboard/web.py`) serves joining, sharing and the offer; it costs the repo's
   `http-servers` budget one handler. See "Decisions".
 * `cryptography` is required; `spake2` and `keyring` are the other two members of the
   `fleet-onboard` extra.
@@ -460,8 +460,8 @@ def watch_onboarding(bus, sentinel, Event, Severity):
 
 ## Devices on other networks (Tailscale)
 
-If this machine already runs Tailscale, a paired device that is not on the local network is
-reached over the tailnet. The tailnet is a route and nothing else: pairing, the pinned
+If this machine already runs Tailscale, a member that is not on the local network is
+reached over the tailnet. The tailnet is a route and nothing else: joining, the pinned
 certificate, the signed manifest and the signed requests decide who is trusted, exactly as on a
 LAN, and no port is opened to the public internet.
 
@@ -469,25 +469,25 @@ LAN, and no port is opened to the public internet.
   `PATH`, or the macOS app's copy) and runs `tailscale status --json`, never anything else (a
   test records the arguments of every call). Output is capped at 1 MiB and 3 seconds, the child
   gets the environment without secret-looking variables, and only these fields are copied out:
-  state, this device's tailnet addresses, and per peer its host name, MagicDNS name, tailnet
+  state, this device's tailnet addresses, and per device its host name, MagicDNS name, tailnet
   addresses and online flag. Auth URLs, keys and tokens in the output are never read into a
   result or a log. An address outside 100.64.0.0/10 and fd7a:115c:a1e0::/48 is dropped; names
   are reduced to printable text.
-- **Reaching a device** (`fleet/onboard/routes.py`): the address it was paired from is tried
+- **Reaching a device** (`fleet/onboard/routes.py`): the address it was joined from is tried
   first (`lan`), then its tailnet address (`tailnet`), then nothing (`unreachable`). Each try
   is a TLS connection that must present the device's pinned certificate, after the usual check
   that the address is not public (`lan.py`; tailnet ranges pass, public addresses never do).
-  A tailnet peer is a candidate when it is online and goes by the device's name; a peer that
+  A tailnet device is a candidate when it is online and goes by the device's name; a device that
   merely has the same name but another certificate is not reached.
-- **Where a tailnet address comes from.** From the pairing exchange (a device that paired over
-  the tailnet), or from `fleet devices --learn`: a status peer is stored for a device only after
+- **Where a tailnet address comes from.** From the join exchange (a device that joined over
+  the tailnet), or from `fleet devices --learn`: a status device is stored for a device only after
   its certificate matched there. An announcement (`nearby`) never sets one; `learn_tailnet`
   refuses any other source.
-- **Names.** `fleet fetch NAME --from DEVICE:PORT` accepts the name of a paired device. Names
-  are looked up in the peer list `tailscale status` reported and nowhere else: no DNS query for
+- **Names.** `fleet fetch NAME --from DEVICE:PORT` accepts the name of a member. Names
+  are looked up in the device list `tailscale status` reported and nowhere else: no DNS query for
   an arbitrary name is made.
-- **Where the tailnet is used.** Every path to a paired device goes through `routes.py`: peer-first
-  model downloads (a row from pairing names its device; the route is chosen when the pull starts),
+- **Where the tailnet is used.** Every path to a member goes through `routes.py`: member-first
+  model downloads (a row from joining names its device; the route is chosen when the pull starts),
   `fleet fetch`, the `bootstrap --ssh` target and `fleet nearby`. In each, a public address is
   refused and a TCP-only path (SSH) leans on the host key the owner confirmed.
 - **Without Tailscale** nothing changes: no command is run when `fleet devices` or `fetch`
@@ -502,7 +502,7 @@ identity (the pinned certificate and the signed requests are what is checked). O
 
 257 tests in 15 `tests/test_onboard_*.py` files (3 skipped by default: a localhost sshd, a real
 dialog, and Linux-only paths), about 80 s with the slow ones on a loaded laptop, all against real
-sockets, files and processes: TLS handshakes on loopback, a relay that terminates TLS, two peer
+sockets, files and processes: TLS handshakes on loopback, a relay that terminates TLS, two device
 processes serving one file (one poisoned), a separate process running the installer, the real
 `curl --pinnedpubkey`, the real `ssh-keygen -Y verify` and `osacompile`, the remote install
 script run for real in a sandbox HOME including a real venv, and three or four CLI processes in
@@ -524,48 +524,48 @@ patterns reject it too), payload file names (read again through `safe_filename`)
 size check (the SHA-256 follows). The first campaign's three equivalent survivors (the context in the old transcript, the
 Content-Range check and the length check on a chunk) are the same kind; all are left in as depth.
 
-## Pairing and the peer book
+## Joining and the device book
 
-Pairing also tells each side how to reach the other's `fleet share`, so model downloads can ask
-that device first with no `fleet peers add` (docs/model-discovery.md, "Peers first"). The accepting
-machine's grant carries its share port (`listen --share-port`, default 8773; `--no-share` for none),
+Joining also tells each side how to reach the other's `fleet share`, so model downloads can ask
+that device first with no `fleet devices add` (docs/model-discovery.md, "Devices first"). The accepting
+machine's grant carries its share port (`add-device --share-port`, default 8773; `--no-share` for none),
 its certificate, its manifest signing key and the request key for the asking device; the asking
 machine sends an offer with the same four things the other way, sealed under the exchange's key
 (`pake.Session.seal`; an offer whose tag does not verify is refused and nothing is stored). The
 certificate in either must be the one the exchange bound to the code, or no row is made. Rows go to
-`<state>/onboard/peers.json`; the asking side also records the accepting machine in its device list
-so that machine's requests are recognised (`pair --mine` marks it as yours, which is what lets it
-be given a gated model). `revoke` removes the device's rows. Where the paired device is reached
+`<state>/onboard/members.json`; the asking side also records the accepting machine in its device list
+so that machine's requests are recognised (`join-with-code --mine` marks it as yours, which is what lets it
+be given a gated model). `remove` removes the device's rows. Where the member is reached
 (this network, then its tailnet address) is `routes.py`, also for `bootstrap --ssh` (the SSH host
-key is still what proves the machine) and `nearby` (a paired device that no beacon reached but
+key is still what proves the machine) and `nearby` (a member that no beacon reached but
 whose pinned certificate answers on its tailnet address is listed with route `tailnet`).
 
 ## Commands
 
 ```
-poolhouse cluster listen [--for 10m] [--port 8772] [--no-cluster]    open pairing here; asks with a dialog
-poolhouse cluster requests                                            what is waiting
-poolhouse cluster accept ID --mine|--other | decline ID               answer; accept prints the code
-poolhouse cluster nearby                                              who is open to pairing
-poolhouse cluster pair --host H [--port P] [--code C]                 ask to join
-poolhouse cluster revoke NAME-OR-FINGERPRINT
-poolhouse cluster bootstrap --share DIR [--valid 10m]                 offer poolhouse on an address
-poolhouse cluster bootstrap --ssh [user@]host --share DIR [--dry-run] [--host-key-fingerprint SHA256:...]
-poolhouse cluster share --dir DIR [--sharing NAME=open|owner|never] [--licence NAME=ID,URL] [--source NAME=URL]
-poolhouse cluster share --models [--models-dir DIR ...] [--port 8773]  serve the model store
-poolhouse cluster peers [list|add|remove|on|off|limit]                the devices a model pull asks first
-poolhouse cluster fetch NAME... --from HOST:PORT                      fetch into staging (not installed)
-poolhouse cluster signing show|export FILE|rotate|revoke KEYID|confirm on|off|accept
+poolhouse pool add-device [--for 10m] [--port 8772] [--no-pool]    open joining here; asks with a dialog
+poolhouse pool requests                                            what is waiting
+poolhouse pool accept ID --mine|--other | decline ID               answer; accept prints the code
+poolhouse pool nearby                                              who is open to joining
+poolhouse pool join-with-code --host H [--port P] [--code C]                 ask to join
+poolhouse pool remove NAME-OR-FINGERPRINT
+poolhouse pool bootstrap --share DIR [--valid 10m]                 offer poolhouse on an address
+poolhouse pool bootstrap --ssh [user@]host --share DIR [--dry-run] [--host-key-fingerprint SHA256:...]
+poolhouse pool share --dir DIR [--sharing NAME=open|owner|never] [--licence NAME=ID,URL] [--source NAME=URL]
+poolhouse pool share --models [--models-dir DIR ...] [--port 8773]  serve the model store
+poolhouse pool model-sources [list|add|remove|on|off|limit]                the devices a model pull asks first
+poolhouse pool fetch NAME... --from HOST:PORT                      fetch into staging (not installed)
+poolhouse pool signing show|export FILE|rotate|revoke KEYID|confirm on|off|accept
 ```
 
 All take `--json` and `--state DIR`. State is under `<state root>/onboard` (requests, devices,
-licences, this machine's pairing certificate, the public half of the signing key), every file
+licences, this machine's joining certificate, the public half of the signing key), every file
 private; the signing key itself is in the OS keystore. `POOLHOUSE_NOTIFY=system|console|off` picks
 how the owner is asked.
 
 ## Decisions for the owner
 
-1. **Signing key** (decided: keystore, separate from the cluster key, signing automatic, human-only
+1. **Signing key** (decided: keystore, separate from the pool key, signing automatic, human-only
    export / rotation / revocation, short manifests, high-assurance mode available). Still yours:
    whether to turn confirm-before-signing on by default, and when to build the hardware-key path.
    The honest limit: code running as you can use the keystore unless the OS prompts.
@@ -573,8 +573,8 @@ how the owner is asked.
    Recommended: ship it with the terminal command as the authoritative one; QR left out.
 3. **SSH install** is built, owner-initiated and off unless `--ssh` is given. It was tested
    without a real sshd; run it once on a spare machine with `--dry-run` first.
-4. **Grant by default**: cluster key (every member is fully trusted) or device-only. As built
-   the owner chooses with `--no-cluster`; the default gives the key.
+4. **Grant by default**: pool key (every member is fully trusted) or device-only. As built
+   the owner chooses with `--no-pool`; the default gives the key.
 5. **mDNS as an extra** (`poolhouse[discover]`) to avoid the Windows firewall step, or stdlib only.
 6. **Budgets.** `http-servers` allows two handlers; onboarding adds one (`onboard/web.py`).
    Folding these routes into the daemon's handler is the clean answer and touches

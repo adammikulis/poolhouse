@@ -1,4 +1,4 @@
-"""Authenticated same-project Board selection."""
+"""Authenticated same-board selection."""
 
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -14,7 +14,7 @@ from poolhouse.workspace.identity import Denied
 PROJECT = "a" * 32
 
 
-def peer(machine, host=""):
+def member(machine, host=""):
     address = f"https://{machine}:8770"
     row = {"id": PROJECT, "name": "sample", "machine": machine,
            "board_host": host}
@@ -31,13 +31,13 @@ def found(monkeypatch):
     monkeypatch.setattr(automatic, "memberships", lambda path: [
         SimpleNamespace(group="development", key=b"key", mode="dev")])
     monkeypatch.setattr(automatic, "settle", lambda member, *args: member)
-    monkeypatch.setattr(automatic.Peer, "discover", lambda **kwargs: nodes)
+    monkeypatch.setattr(automatic.Member, "discover", lambda **kwargs: nodes)
     monkeypatch.setattr(automatic, "catalogue", lambda node, **kwargs: node.document)
     return nodes
 
 
 def test_unconfigured_boards_choose_one_stable_device(found, tmp_path):
-    found.extend([peer("node-b"), peer("node-a")])
+    found.extend([member("node-b"), member("node-a")])
     result = automatic.discover(tmp_path)
     assert result["host"] == "https://node-a:8770"
     found.reverse()
@@ -45,27 +45,27 @@ def test_unconfigured_boards_choose_one_stable_device(found, tmp_path):
 
 
 def test_existing_authority_is_preserved(found, tmp_path):
-    found.extend([peer("node-a"), peer("node-b", "https://node-b:8770")])
+    found.extend([member("node-a"), member("node-b", "https://node-b:8770")])
     assert automatic.discover(tmp_path)["host"] == "https://node-b:8770"
 
 
 @pytest.mark.redteam
 def test_competing_authorities_are_refused(found, tmp_path):
-    found.extend([peer("node-a", "https://node-a:8770"),
-                  peer("node-b", "https://node-b:8770")])
+    found.extend([member("node-a", "https://node-a:8770"),
+                  member("node-b", "https://node-b:8770")])
     with pytest.raises(Denied, match="competing"):
         automatic.discover(tmp_path)
 
 
 @pytest.mark.redteam
-def test_advertised_authority_address_requires_matching_authenticated_peer(found, tmp_path):
-    found.append(peer("node-a", "https://node-b:8770"))
+def test_advertised_authority_address_requires_matching_authenticated_member(found, tmp_path):
+    found.append(member("node-a", "https://node-b:8770"))
     with pytest.raises(Denied, match="address"):
         automatic.discover(tmp_path)
 
 
 def test_local_authority_accepts_its_lan_origin_from_loopback_discovery(found, tmp_path, monkeypatch):
-    node = peer("node-a", "https://192.168.40.2:8770")
+    node = member("node-a", "https://192.168.40.2:8770")
     node.base_url = "https://127.0.0.1:8770"
     found.append(node)
     monkeypatch.setattr(fleet_remote, "primary_ip", lambda: "192.168.40.2")
@@ -76,7 +76,7 @@ def test_local_authority_accepts_its_lan_origin_from_loopback_discovery(found, t
                                     "http://192.168.40.2:8770", "https://192.168.40.2:8770/other",
                                     "https://user@192.168.40.2:8770"])
 def test_local_origin_alias_requires_same_device_and_tls_port(found, tmp_path, monkeypatch, origin):
-    node = peer("node-a", origin)
+    node = member("node-a", origin)
     node.base_url = "https://127.0.0.1:8770"
     found.append(node)
     monkeypatch.setattr(fleet_remote, "primary_ip", lambda: "192.168.40.2")
@@ -86,7 +86,7 @@ def test_local_origin_alias_requires_same_device_and_tls_port(found, tmp_path, m
 
 @pytest.mark.redteam
 def test_catalogue_machine_cannot_spoof_authenticated_device(found, tmp_path):
-    node = peer("node-a")
+    node = member("node-a")
     node.document["machine"] = "node-b"
     found.append(node)
     with pytest.raises(Denied, match="authenticated device"):
@@ -96,18 +96,18 @@ def test_catalogue_machine_cannot_spoof_authenticated_device(found, tmp_path):
 def test_prod_does_not_discover_automatic_boards(found, tmp_path, monkeypatch):
     monkeypatch.setattr(automatic, "memberships", lambda path: [
         SimpleNamespace(group="production", key=b"key", mode="prod")])
-    found.append(peer("node-a"))
+    found.append(member("node-a"))
     assert automatic.discover(tmp_path) is None
 
 
 def test_missing_selected_authority_does_not_elect_replacement(found, tmp_path):
-    found.append(peer("node-a", "https://node-b:8770"))
+    found.append(member("node-a", "https://node-b:8770"))
     with pytest.raises(Denied, match="exactly one"):
         automatic.discover(tmp_path)
 
 
 def test_enrollment_binds_returned_agent_identity(found, tmp_path, monkeypatch):
-    found.append(peer("node-a"))
+    found.append(member("node-a"))
     monkeypatch.setattr(automatic, "selected", lambda root: None)
     events = []
     class Remote:
@@ -117,8 +117,8 @@ def test_enrollment_binds_returned_agent_identity(found, tmp_path, monkeypatch):
             events.append((name, kwargs))
             return {"id": "worker-1"}
     monkeypatch.setattr(automatic, "RemoteWorkspace", Remote)
-    monkeypatch.setattr(automatic, "bind", lambda remote, root, agent, cluster, **kwargs: {
-        "host": remote.host, "agent": agent, "cluster": cluster})
+    monkeypatch.setattr(automatic, "bind", lambda remote, root, agent, pool, **kwargs: {
+        "host": remote.host, "agent": agent, "pool": pool})
     result = automatic.connect(tmp_path, "worker", claim=("test-model", "codex"))
     assert result["agent"] == "worker-1"
     assert events == [("worker", {"model": "test-model", "harness": "codex"})]
@@ -126,13 +126,13 @@ def test_enrollment_binds_returned_agent_identity(found, tmp_path, monkeypatch):
 
 @pytest.mark.redteam
 def test_discovery_bounds_authenticated_candidates(found, tmp_path):
-    found.extend(peer(f"node-{number}") for number in range(automatic.MAX_PEERS + 1))
+    found.extend(member(f"node-{number}") for number in range(automatic.MAX_MEMBERS + 1))
     with pytest.raises(Denied, match="device limit"):
         automatic.discover(tmp_path)
 
 
 def test_discovery_refuses_elapsed_budget(found, tmp_path, monkeypatch):
-    found.append(peer("node-a"))
+    found.append(member("node-a"))
     times = iter((0.0, automatic.DISCOVERY_SECONDS + 1))
     monkeypatch.setattr(automatic.time, "monotonic", lambda: next(times))
     with pytest.raises(Denied, match="time limit"):
@@ -141,7 +141,7 @@ def test_discovery_refuses_elapsed_budget(found, tmp_path, monkeypatch):
 
 @pytest.fixture
 def startup_remote(found, tmp_path, monkeypatch):
-    found.append(peer("node-a"))
+    found.append(member("node-a"))
     monkeypatch.setattr(automatic.worktreerules, "checkouts", lambda root: (root, root / ".git"))
     monkeypatch.setattr(automatic, "selected", lambda root: None)
     monkeypatch.setattr(automatic.person, "marked", lambda: "")
@@ -162,15 +162,15 @@ def startup_remote(found, tmp_path, monkeypatch):
             events.append((operation, token))
             return {"id": "connected-parent", "role": "agent"}
     monkeypatch.setattr(automatic, "RemoteWorkspace", Remote)
-    monkeypatch.setattr(automatic, "bind", lambda remote, root, agent, cluster: events.append(("bind", agent)))
+    monkeypatch.setattr(automatic, "bind", lambda remote, root, agent, pool: events.append(("bind", agent)))
     return events
 
 
 def test_native_person_start_creates_durable_parent_and_revocable_child(startup_remote, tmp_path):
-    seat = automatic.startup(tmp_path, "worker", claim=("test-model", "codex"))
-    assert seat.name == "native-parent/worker"
-    assert seat.remote is not None
-    assert seat.lifecycle_base == seat.remote.base
+    session = automatic.startup(tmp_path, "worker", claim=("test-model", "codex"))
+    assert session.name == "native-parent/worker"
+    assert session.remote is not None
+    assert session.lifecycle_base == session.remote.base
     assert startup_remote == [("enroll", "native-worker", "test-model", "codex"),
                               ("bind", "native-parent"),
                               ("delegate", "native-parent", "worker")]
@@ -188,9 +188,9 @@ def test_native_agent_start_delegates_from_its_authenticated_project_parent(star
     monkeypatch.setattr(automatic.person, "marked", lambda: "POOLHOUSE_AGENT")
     monkeypatch.setattr(automatic, "selected", lambda root: {
         "host": "https://node-a:8770", "project_id": PROJECT,
-        "cluster": "development", "agent": "connected-parent"})
-    seat = automatic.startup(tmp_path, "worker", "connected-parent")
-    assert seat.name == "connected-parent/worker"
+        "pool": "development", "agent": "connected-parent"})
+    session = automatic.startup(tmp_path, "worker", "connected-parent")
+    assert session.name == "connected-parent/worker"
     assert startup_remote[-1] == ("delegate", "connected-parent", "worker")
     assert not any(event[0] == "enroll" for event in startup_remote)
 
@@ -200,7 +200,7 @@ def test_native_agent_cannot_select_another_connected_parent(startup_remote, tmp
     monkeypatch.setattr(automatic.person, "marked", lambda: "POOLHOUSE_AGENT")
     monkeypatch.setattr(automatic, "selected", lambda root: {
         "host": "https://node-a:8770", "project_id": PROJECT,
-        "cluster": "development", "agent": "connected-parent"})
+        "pool": "development", "agent": "connected-parent"})
     with pytest.raises(Denied, match="parent does not match"):
         automatic.startup(tmp_path, "worker", "foreign-parent")
     assert startup_remote == []
@@ -241,14 +241,14 @@ def test_local_registration_refuses_hostile_response(tmp_path, monkeypatch, atta
 def test_secondary_dev_membership_cannot_override_active_prod(monkeypatch):
     monkeypatch.setattr(automatic, 'memberships', lambda path: [
         SimpleNamespace(group='production', mode='prod'), SimpleNamespace(group='development', mode='dev')])
-    assert not automatic._active_dev({'cluster': 'development'})
-    assert not automatic._active_dev({'cluster': 'production'})
+    assert not automatic._active_dev({'pool': 'development'})
+    assert not automatic._active_dev({'pool': 'production'})
 
 
 @pytest.mark.parametrize("stored", [{}, {"authority_machine": "retired-device"}])
 def test_saved_selection_without_an_authority_machine_attaches(tmp_path, monkeypatch, stored):
     selection = {"host": "https://node-a:8770", "project_id": PROJECT, "agent": "",
-                 "cluster": "development", "cluster_key": "", **stored}
+                 "pool": "development", "pool_key": "", **stored}
     monkeypatch.setattr(automatic, "selected", lambda root: selection)
     events = []
     class Remote:
@@ -258,6 +258,6 @@ def test_saved_selection_without_an_authority_machine_attaches(tmp_path, monkeyp
             events.append((name, kwargs))
             return {"id": name}
     monkeypatch.setattr(automatic, "RemoteWorkspace", Remote)
-    monkeypatch.setattr(automatic, "bind", lambda remote, root, agent, cluster, **kwargs: {"agent": agent})
+    monkeypatch.setattr(automatic, "bind", lambda remote, root, agent, pool, **kwargs: {"agent": agent})
     assert automatic.attach(tmp_path, "claude", selection) == {"agent": "claude"}
     assert events == [("claude", {"model": "", "harness": ""})]

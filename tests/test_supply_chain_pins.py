@@ -133,15 +133,15 @@ def test_a_download_that_fails_the_format_check_records_no_pin(tmp_path, site, p
     assert pins() == {}
 
 
-def test_a_file_from_a_paired_device_is_pinned_with_its_peer(tmp_path, pipe):
+def test_a_file_from_a_joined_device_is_pinned_with_its_member(tmp_path, pipe):
     body = gguf_bytes(extra=2048)
     staged = tmp_path / "stage" / "p.gguf"
     staged.parent.mkdir()
     staged.write_bytes(body)
     final = tmp_path / "models" / "p.gguf"
-    accept(staged, final, net.Want(sha256=SHA(body)), "peer:desk", pipe)
+    accept(staged, final, net.Want(sha256=SHA(body)), "member:desk", pipe)
     pin = pins()[str(final)]
-    assert pin.origin == "peer:desk" and pin.source == "pull" and pin.sha256 == SHA(body)
+    assert pin.origin == "member:desk" and pin.source == "pull" and pin.sha256 == SHA(body)
 
 
 def test_hub_pull_pins_every_shard(monkeypatch, tmp_path):
@@ -154,7 +154,7 @@ def test_hub_pull_pins_every_shard(monkeypatch, tmp_path):
     monkeypatch.setattr(http, "check", lambda url: url)
     with fake_hub(repos) as hub_:
         hub_.point(monkeypatch)
-        first = hub.pull("hf:maker/big-GGUF/Q4/big-00001-of-00002.gguf", peers=False)
+        first = hub.pull("hf:maker/big-GGUF/Q4/big-00001-of-00002.gguf", members=False)
     held = pins()
     for name, body in repos["maker/big-GGUF"].items():
         link = first.parent.parent / name
@@ -168,7 +168,7 @@ def test_hub_pull_pins_every_shard(monkeypatch, tmp_path):
 
 # -- signed manifests at load --------------------------------------------------------------
 def pin_owner_key(signer: Signer) -> bytes:
-    """What pairing does: the owner's key lands in the onboarding state (trust.json)."""
+    """What joining does: the owner's key lands in the onboarding state (trust.json)."""
     folder = home.state("onboard")
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "trust.json").write_text(json.dumps(
@@ -262,7 +262,7 @@ def test_a_stored_list_whose_key_is_no_longer_pinned_stops_counting(tmp_path):
     body = gguf_bytes(extra=300)
     path.write_bytes(body + b"!")
     TrustedLists().ingest(listing(signer, 2, entry_for(path, body)), key)
-    (home.state("onboard") / "trust.json").unlink()      # the person un-paired
+    (home.state("onboard") / "trust.json").unlink()      # the person un-joined
     assert load(path) == ""
 
 

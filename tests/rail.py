@@ -5,7 +5,7 @@ GROUP_OF = {
     "chat": "conversations", "board": "conversations",
     "models": "studio", "training": "studio", "gym": "studio", "benchmarks": "studio", "data": "studio",
     "tasks": "work", "projects": "work", "tools": "work", "knowledge": "work", "history": "work",
-    "cluster": "pool", "fit": "pool",
+    "pool": "pool", "fit": "pool",
 }
 
 

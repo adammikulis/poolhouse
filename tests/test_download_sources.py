@@ -22,15 +22,15 @@ def test_model_policy_refuses_online_fallback(tmp_path, policy):
 def test_internet_only_never_discovers_or_copies_from_lan(tmp_path):
     store = Models([tmp_path], tmp_path, sources=lambda: 'internet')
     expected = Model('missing.gguf', tmp_path / 'missing.gguf', 1, 0)
-    with patch.object(store, 'where') as peers, patch.object(store, '_from_internet', return_value=expected):
+    with patch.object(store, 'where') as members, patch.object(store, '_from_internet', return_value=expected):
         assert store.ensure('missing.gguf', source='hf:fixture/model', key=b'key') is expected
-    peers.assert_not_called()
+    members.assert_not_called()
 
 
 def test_lan_only_head_cannot_fall_back_to_internet(tmp_path):
     store = Models([tmp_path], tmp_path, sources=lambda: 'lan')
     model = Model('model.gguf', tmp_path / 'model.gguf', 1, 0)
-    with (patch.object(store, '_draft_from_peers', return_value=False), patch.object(store, '_from_internet') as online,
+    with (patch.object(store, '_draft_from_members', return_value=False), patch.object(store, '_from_internet') as online,
           pytest.raises(ModelError, match='MTP head; Internet downloads are disabled')):
         store.ensure_draft(model, 'hf:fixture/head', key=b'key')
     online.assert_not_called()

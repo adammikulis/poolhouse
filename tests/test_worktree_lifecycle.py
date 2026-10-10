@@ -185,10 +185,10 @@ def test_launcher_refuses_success_without_done_announcement(setup, monkeypatch):
     from poolhouse import harnessid, harnessing
     kit = setup
     claim(kit)
-    seat = harnessid.Seat('worker', base=kit.base)
+    session = harnessid.HarnessSession('worker', base=kit.base)
     args = argparse.Namespace(project=str(kit.checkout), parent='', name='worker',
                               role='plan-and-go', orders_from='owner',
-                              seat_factory=lambda *args: seat)
+                              session_factory=lambda *args: session)
     messages = []
     with pytest.raises(ValueError, match='verified cleanup'), \
             harnessing.opened(args, 'codex', ('http://127.0.0.1:9', 'fixture', 0), messages.append):
@@ -264,10 +264,10 @@ def test_launcher_exception_reports_pending_scope_and_preserves_failure(setup):
     from poolhouse import harnessid, harnessing
     kit = setup
     claim(kit)
-    seat = harnessid.Seat('worker', base=kit.base)
+    session = harnessid.HarnessSession('worker', base=kit.base)
     args = argparse.Namespace(project=str(kit.checkout), parent='', name='worker',
                               role='plan-and-go', orders_from='owner',
-                              seat_factory=lambda *args: seat)
+                              session_factory=lambda *args: session)
     messages = []
     with pytest.raises(OSError, match='fixture process failed'), \
             harnessing.opened(args, 'codex', ('http://127.0.0.1:9', 'fixture', 0), messages.append):
@@ -295,14 +295,14 @@ def test_launcher_exception_survives_failed_exit_inspection(setup, monkeypatch):
 
     from poolhouse import harnessid, harnessing
     kit = setup
-    seat = harnessid.Seat('worker', base=kit.base)
+    session = harnessid.HarnessSession('worker', base=kit.base)
     args = argparse.Namespace(project=str(kit.checkout), parent='', name='worker',
                               role='plan-and-go', orders_from='owner',
-                              seat_factory=lambda *args: seat)
+                              session_factory=lambda *args: session)
     messages = []
     with pytest.raises(OSError, match='fixture process failed'), \
             harnessing.opened(args, 'codex', ('http://127.0.0.1:9', 'fixture', 0), messages.append):
-        monkeypatch.setattr(harnessid.Seat, 'pending_worktrees',
+        monkeypatch.setattr(harnessid.HarnessSession, 'pending_worktrees',
                             lambda self: (_ for _ in ()).throw(RuntimeError('fixture inspection failed')))
         raise OSError('fixture process failed')
     assert any('checkout inspection failed:' in line for line in messages)

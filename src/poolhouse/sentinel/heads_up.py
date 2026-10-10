@@ -44,7 +44,7 @@ SETTLE_S = 2.0
 
 NEEDS_PERSON = frozenset({
     "integrity.content_changed", "integrity.binary_mismatch", "integrity.manifest_mismatch",
-    "integrity.link_retargeted", "peer.forged_traffic", "honey.token_seen", "honey.path_named",
+    "integrity.link_retargeted", "member.forged_traffic", "honey.token_seen", "honey.path_named",
     "honey.tool_called", "honey.endpoint_hit", "guard.tainted", "guard.tainted_text",
 })
 """Finding kinds whose quarantine can only be judged by a person; every other quarantine is

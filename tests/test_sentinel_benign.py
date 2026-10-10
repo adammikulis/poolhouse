@@ -1,4 +1,4 @@
-"""Sentinel on benign traces: real documents, steady peers, ordinary file churn. Nothing here
+"""Sentinel on benign traces: real documents, steady members, ordinary file churn. Nothing here
 may be quarantined or watched."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import pytest
 
 from poolhouse.sentinel import Mode, Sentinel, State
 from poolhouse.sentinel.honey import Honey
-from poolhouse.sentinel.rates import PeerLimits, PeerWatch
+from poolhouse.sentinel.rates import MemberLimits, MemberWatch
 
 # a fixed corpus: this test used to read docs/*.md, so editing a document changed which tool mix the random
 # draws produced and could tip a heuristic over its threshold for reasons unrelated to the code under test
@@ -20,7 +20,7 @@ PARAGRAPHS = [
     for n, (thing, measure, where) in enumerate(
         (a, b, c) for a in ("server", "broker", "benchmark", "estimator", "catalogue")
         for b in ("memory use", "token rate", "queue depth", "load time")
-        for c in ("the first device", "a paired device", "the local machine"))
+        for c in ("the first device", "a member", "the local machine"))
 ]
 TOOLS = ["models_find", "serve_status", "read_file", "web_search", "bench_run", "jobs_status"]
 
@@ -46,7 +46,7 @@ def test_a_day_of_ordinary_use_quarantines_nothing_even_in_enforce_mode(node, tm
         files.append(path)
 
     clock = [0.0]
-    node.peers = PeerWatch(PeerLimits(), clock=lambda: clock[0])
+    node.members = MemberWatch(MemberLimits(), clock=lambda: clock[0])
     handled = screened = calls = 0
     for step in range(3000):
         clock[0] += 1.0
@@ -57,9 +57,9 @@ def test_a_day_of_ordinary_use_quarantines_nothing_even_in_enforce_mode(node, tm
         assert node.screen_call(rng.choice(TOOLS), {"path": f"/data/f{step}.txt"},
                                 session=session, caller=f"agent-{step % 3}") == ""
         calls += 1
-        peer = f"10.0.0.{step % 5}"
+        member = f"10.0.0.{step % 5}"
         outcome = "bad_sig" if step % 997 == 0 else "ok"
-        node.handle_all([node.peers.note(peer, outcome)])
+        node.handle_all([node.members.note(member, outcome)])
         handled += 1
         if step % 250 == 0:
             victim = rng.choice(files)
@@ -68,16 +68,16 @@ def test_a_day_of_ordinary_use_quarantines_nothing_even_in_enforce_mode(node, tm
             assert node.scan(deep=step % 500 == 0) == []
     held = node.store.records(state=State.QUARANTINED)
     watched = node.store.records(state=State.WATCH)
-    print(f"benign day: {screened} screened, {calls} tool calls, {handled} peer requests, "
+    print(f"benign day: {screened} screened, {calls} tool calls, {handled} member requests, "
           f"{len(held)} quarantined, {len(watched)} watched")
     assert held == []
     assert watched == []
     assert node.status()["log_ok"] is True
 
 
-def test_peers_that_retry_after_a_slow_start_are_only_watched(tmp_path):
+def test_members_that_retry_after_a_slow_start_are_only_watched(tmp_path):
     clock = [0.0]
-    watch = PeerWatch(PeerLimits(), clock=lambda: clock[0])
+    watch = MemberWatch(MemberLimits(), clock=lambda: clock[0])
     found = []
     for _ in range(4):
         clock[0] += 2

@@ -29,8 +29,8 @@ def context(actor, cwd, roots, *, require_claim=True):
         if not found or any(found.get(key) != selected.get(key) for key in ('host', 'project_id')):
             raise Denied('native roots must belong to the selected project')
     remote = project_connection.RemoteWorkspace(
-        selected['host'], selected['project_id'], cluster=selected.get('cluster', ''),
-        cluster_key=Path(selected['cluster_key']) if selected.get('cluster_key') else None)
+        selected['host'], selected['project_id'], pool=selected.get('pool', ''),
+        pool_key=Path(selected['pool_key']) if selected.get('pool_key') else None)
     info = remote.call('whoami', remote.token(agent=actor))
     if info.get('id') != actor or info.get('role') != AGENT or info.get('project', {}).get('key') != remote.project_id:
         raise Denied('native ownership requires the launcher-bound agent identity')

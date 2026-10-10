@@ -1,6 +1,6 @@
 """The web interface, against a real daemon on a real socket.
 
-The dangerous route here is first-run setup: a daemon that has not joined a cluster has
+The dangerous route here is first-run setup: a daemon that has not joined a pool has
 no credential to check, and the setup route can create one -- so whoever reaches it first
 owns the machine. Those guards are the bulk of what is tested, and they are tested by
 making real requests from real addresses rather than by asserting on a function's return.
@@ -23,15 +23,15 @@ from launch_support import arm, disarm
 from poolhouse.fleet import tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
-from poolhouse.fleet.discovery import in_cluster, primary_ip
+from poolhouse.fleet.discovery import in_pool, primary_ip
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.onboard.pairing import unverified_context
+from poolhouse.fleet.onboard.join_code import unverified_context
 from poolhouse.fleet.session import Sessions, Throttle, parse_cookie
 from poolhouse.fleet.ui import UI, asset_bytes
 from poolhouse.http import Server
-from tests.cluster_support import a_keystore  # noqa: F401
 from tests.keystore_support import counting  # noqa: F401
+from tests.pool_support import a_keystore  # noqa: F401
 
 
 def _maybe_json(raw: bytes) -> dict:
@@ -63,7 +63,7 @@ def the_passphrase_is_kept(a_keystore):  # noqa: F811
 
 @pytest.fixture(autouse=True)
 def nobody_else_is_on_the_network(monkeypatch):
-    """No existing cluster answers the test discovery socket."""
+    """No existing pool answers the test discovery socket."""
     from poolhouse.fleet.onboard import joining
 
     monkeypatch.setattr(joining, "find_joiners", lambda *a, **k: [])
@@ -84,10 +84,10 @@ class Serving:
         root = tmp_path / "traind"
         self.files = root / "files"
         self.files.mkdir(parents=True)
-        self.keyfile = tmp_path / "cluster.key"
+        self.keyfile = tmp_path / "pool.key"
         token = load_or_create_token(root)
         self.runner = JobRunner(root, self.files)
-        self.ui = UI(name=name, cluster_key_path=self.keyfile,
+        self.ui = UI(name=name, pool_key_path=self.keyfile,
                      setup_token=setup_token)
         from poolhouse.fleet.settings import Settings
         self.ui.runner = self.runner
@@ -110,13 +110,13 @@ class Serving:
         self.httpd = LimitedServer(
             ("127.0.0.1", self.port), tls=context,
             handler=make_handler(Daemon(self.runner, self.files, token, name, ui=self.ui,
-                         schedule=schedule, tokens=self._cluster_tokens,
-                         cluster_key_path=self.keyfile, ui_from_lan=True,
+                         schedule=schedule, tokens=self._pool_tokens,
+                         pool_key_path=self.keyfile, ui_from_lan=True,
                          schedule_path=(root / "availability.json") if schedule else None)))
         self.lan_httpd = None
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
-    def _cluster_tokens(self):
+    def _pool_tokens(self):
         """Every token this daemon answers to, the way the real one works it out."""
         from poolhouse.fleet.discovery import derive_token, memberships
 
@@ -257,8 +257,8 @@ class TestFirstRunIsNotUpForGrabs:
         status, body, _ = serving.call("/ui/setup/join", method="POST",
                                        body={"mode": "create", "passphrase": WORDS, "group": "home"})
         assert status == 200, body
-        assert body["in_cluster"] is True and body["group"] == "home"
-        assert in_cluster(serving.keyfile)
+        assert body["in_pool"] is True and body["group"] == "home"
+        assert in_pool(serving.keyfile)
 
     def test_setup_is_refused_from_another_machine(self, serving):
         """Whoever reaches an unjoined daemon first would own it. Being on the LAN is
@@ -268,7 +268,7 @@ class TestFirstRunIsNotUpForGrabs:
                                        host=primary_ip())
         assert status == 403
         assert "ssh" in body["error"]
-        assert not in_cluster(serving.keyfile)
+        assert not in_pool(serving.keyfile)
 
     def test_a_request_addressed_to_a_hostname_is_refused(self, serving):
         """DNS rebinding: a page anywhere can point a domain at 127.0.0.1 and POST to
@@ -278,7 +278,7 @@ class TestFirstRunIsNotUpForGrabs:
             headers={"Host": f"evil.example.com:{serving.port}"})
         assert status == 403
         assert "hostname" in body["error"]
-        assert not in_cluster(serving.keyfile)
+        assert not in_pool(serving.keyfile)
 
     def test_the_api_is_unreachable_without_the_ui_header(self, serving):
         """A cross-origin form, image or link cannot set a custom header without a
@@ -286,7 +286,7 @@ class TestFirstRunIsNotUpForGrabs:
         status, body, _ = serving.call("/ui/setup", ui_header=False)
         assert status == 403 and "header" in body["error"]
 
-    def test_rejoining_needs_a_session_once_the_box_is_in_a_cluster(self, serving):
+    def test_rejoining_needs_a_session_once_the_box_is_in_a_pool(self, serving):
         serving.call("/ui/setup/join", method="POST",
                      body={"mode": "create", "passphrase": WORDS, "group": "home"})
         status, body, _ = serving.call("/ui/setup/join", method="POST",
@@ -329,14 +329,14 @@ class TestThePassphraseNeverCrossesPlainHttp:
         assert status == 200 and "Set-Cookie" in headers
 
 
-class TestExplicitClusterActions:
-    def test_a_missing_name_is_refused_without_creating_a_cluster(self, serving):
+class TestExplicitPoolActions:
+    def test_a_missing_name_is_refused_without_creating_a_pool(self, serving):
         status, body, _ = serving.call("/ui/setup/join", method="POST",
                                        body={"passphrase": WORDS, "mode": "create"})
-        assert status == 400 and "cluster name" in body["error"]
-        assert not in_cluster(serving.keyfile)
+        assert status == 400 and "pool name" in body["error"]
+        assert not in_pool(serving.keyfile)
 
-    def test_recreating_a_local_cluster_preserves_its_key(self, serving):
+    def test_recreating_a_local_pool_preserves_its_key(self, serving):
         from poolhouse.fleet.discovery import memberships
 
         status, body, headers = serving.call("/ui/setup/join", method="POST",
@@ -344,21 +344,21 @@ class TestExplicitClusterActions:
         assert status == 200, body
         cookie = headers["Set-Cookie"].split(";")[0]
         first = memberships(serving.keyfile)[0]
-        status, body, _ = serving.call("/ui/clusters", method="POST", cookie=cookie,
+        status, body, _ = serving.call("/ui/pools", method="POST", cookie=cookie,
             body={"passphrase": "different words", "group": "home", "mode": "create"})
         assert status == 400 and "already belongs" in body["error"]
         assert memberships(serving.keyfile)[0].key == first.key
 
-    def test_joining_an_unseen_cluster_creates_no_key(self, serving):
+    def test_joining_an_unseen_pool_creates_no_key(self, serving):
         status, body, _ = serving.call("/ui/setup/join", method="POST",
             body={"passphrase": WORDS, "group": "home", "mode": "join"})
         assert status == 400 and "No machine" in body["error"]
-        assert not in_cluster(serving.keyfile)
+        assert not in_pool(serving.keyfile)
 
 
-# -- a machine in no cluster ---------------------------------------------
+# -- a machine in no pool ---------------------------------------------
 class TestOnItsOwn:
-    """Joining a cluster is optional. A machine that skipped it has no password, so it
+    """Joining a pool is optional. A machine that skipped it has no password, so it
     answers to itself and to nobody else."""
 
     def finished(self, serving):
@@ -370,7 +370,7 @@ class TestOnItsOwn:
         assert serving.call("/ui/setup")[1]["needs_setup"] is True
         assert self.finished(serving)["needs_setup"] is False
         assert serving.call("/ui/setup")[1]["needs_setup"] is False
-        assert not in_cluster(serving.keyfile)
+        assert not in_pool(serving.keyfile)
 
     def test_finishing_is_remembered_between_runs(self, serving):
         from poolhouse.fleet.settings import Settings
@@ -378,18 +378,18 @@ class TestOnItsOwn:
         self.finished(serving)
         assert Settings.load(serving.ui.settings_path).setup_done is True
 
-    def test_the_cluster_screen_counts_the_machine_it_is_running_on(self, serving):
+    def test_the_pool_screen_counts_the_machine_it_is_running_on(self, serving):
         """A machine that joined nothing is still a machine, with slots and a card.
         Counting only the beacons on the network showed it '0 machines'."""
         self.finished(serving)
 
-        status, body, _ = serving.call("/ui/peers")
+        status, body, _ = serving.call("/ui/members")
 
         assert status == 200, body
-        assert [row["name"] for row in body["peers"]] == [serving.ui.name]
-        assert body["peers"][0]["is_self"] is True
-        assert body["peers"][0]["slots"] == 1
-        assert body["peers"][0]["device"]["cpus"] == 8
+        assert [row["name"] for row in body["members"]] == [serving.ui.name]
+        assert body["members"][0]["is_self"] is True
+        assert body["members"][0]["slots"] == 1
+        assert body["members"][0]["device"]["cpus"] == 8
 
     def test_there_is_no_password_to_ask_for(self, serving):
         assert serving.call("/ui/setup")[1]["needs_password"] is False
@@ -421,7 +421,7 @@ class TestOnItsOwn:
         assert status == 403
         assert serving.call("/ui/setup")[1]["needs_setup"] is True
 
-    def test_a_cluster_puts_the_password_back(self, serving):
+    def test_a_pool_puts_the_password_back(self, serving):
         self.finished(serving)
         serving.call("/ui/setup/join", method="POST",
                      body={"mode": "create", "passphrase": WORDS, "group": "home"})
@@ -474,15 +474,15 @@ class TestSignIn:
         assert status == 429
         assert "0s" not in body["error"], "refusing while saying 'wait 0s' reads as a bug"
 
-    def test_the_cluster_cannot_be_browsed_without_signing_in(self, joined):
-        status, _, _ = joined.call("/ui/peers")
+    def test_the_pool_cannot_be_browsed_without_signing_in(self, joined):
+        status, _, _ = joined.call("/ui/members")
         assert status == 401
 
-    def test_a_session_opens_the_cluster_view(self, joined):
+    def test_a_session_opens_the_pool_view(self, joined):
         _, _, headers = joined.call("/ui/session", method="POST",
                                     body={"passphrase": WORDS, "group": "home"})
         cookie = headers["Set-Cookie"].split(";")[0]
-        status, body, _ = joined.call("/ui/peers", cookie=cookie)
+        status, body, _ = joined.call("/ui/members", cookie=cookie)
         assert status == 200
         assert body["group"] == "home"
 
@@ -526,7 +526,7 @@ class TestSignIn:
                                     body={"passphrase": WORDS, "group": "home"})
         cookie = headers["Set-Cookie"].split(";")[0]
         joined.call("/ui/session", method="DELETE", cookie=cookie)
-        status, _, _ = joined.call("/ui/peers", cookie=cookie)
+        status, _, _ = joined.call("/ui/members", cookie=cookie)
         assert status == 401
 
     def test_the_ui_cookie_does_not_work_on_the_job_api(self, joined):
@@ -1038,7 +1038,7 @@ class TestUpdates:
     def test_a_pip_install_is_told_to_update_with_pip(self, tmp_path):
         from poolhouse.fleet.ui import UI
 
-        ui = UI(name="x", cluster_key_path=tmp_path / "k")
+        ui = UI(name="x", pool_key_path=tmp_path / "k")
         got = ui.install_update()
         assert not got["ok"] and "pip" in got["error"]
 
@@ -1196,7 +1196,7 @@ class TestTheBenchOnThePage:
     """`UI.bench_state` is the bench half of `/ui/fleet`: what `poolhouse-bench status` says."""
 
     def _ui(self, tmp_path):
-        return UI(name="studio", cluster_key_path=tmp_path / "cluster.key")
+        return UI(name="studio", pool_key_path=tmp_path / "pool.key")
 
     def test_an_idle_machine_reports_the_bench_with_nothing_measuring(self, tmp_path,
                                                                      monkeypatch):
@@ -1243,7 +1243,7 @@ class TestTheBenchOnThePage:
     def test_the_fleet_view_carries_the_same_bench_state(self, tmp_path, monkeypatch):
         monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "bench"))
         ui = self._ui(tmp_path)
-        monkeypatch.setattr(ui, "peers", lambda *a, **k: [])
+        monkeypatch.setattr(ui, "members", lambda *a, **k: [])
 
         view = ui.fleet()
         assert view["bench"] == ui.bench_state()

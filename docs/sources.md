@@ -2,7 +2,7 @@
 
 Status: design, 2026-10-09; companion to `docs/sentinel-open-join.md` and `docs/flags.md`. Owner:
 "record hostile sources and any other relevant info so blocking can be automatic." Folds in GitHub issue
-#42 (open, milestone 0.2): "Reputation for sources (IP, host, peer, repo, hash), long-term and
+#42 (open, milestone 0.2): "Reputation for sources (IP, host, device, repo, hash), long-term and
 short-term, divergence alert". Tags: **[V path]** read in code (Python at `ca4eb9b1`; Rust node on
 `worktree-agent-afbbf438d36e5c356`); **[D doc]**; **[analysis]** proposal. Nothing in sections 2 to 7 is
 built.
@@ -14,17 +14,17 @@ sharing. [V `src/poolhouse/reputation/`, `docs/reputation.md`]
 
 | #42 asks for | State |
 |---|---|
-| per-user encrypted store of sources (IP, host, peer, URL, hash) with events | built: sealed `graph.enc`, key in the OS keystore, 1000 sources, 20 events each [V] |
+| per-user encrypted store of sources (IP, host, device, URL, hash) with events | built: sealed `graph.enc`, key in the OS keystore, 1000 sources, 20 events each [V] |
 | long-term reputation (weeks) | built: 30-day half-life, floored at 0.5 (watch) or 1.0 (bad) [V `model.py LONG_HALF_LIFE_S`] |
 | short-term reputation (hours) | built: sum of event weights in 6 h [V `SHORT_WINDOW_S`] |
 | divergence alert | built: an established source (10 clean runs, 3 days) with short term >= 1 steps to watch at once; one notice through the single-flight dialog; unknown misbehaving source is just bad [V `model.py`, `notice.py`, `hooks.py`] |
 | recovery needs clean runs, not waiting | built: 10 clean runs for watch, 3x for bad; `forget` is human-only [V] |
 | only tightens; only observations move a score | built: `net.Policy.admit` raises `Distrusted`; no score function takes text [D `docs/reputation.md`] |
 | CLI | built: `poolhouse-reputation list|show|forget|export|stats`, person only [V] |
-| observation points | built for `net.Pipeline`, `net.download`, `PeerWatch.note` (addresses), `web.read` [D] |
+| observation points | built for `net.Pipeline`, `net.download`, `DeviceWatch.note` (addresses), `web.read` [D] |
 | signed sharing across the user's own machines, as hearsay | **missing** |
 | the Rust node as an observer or an enforcer | **missing**: `accept_loop` takes every TCP connection and spawns a thread before TLS, with no source check, rate or cap; beacon intake has none either [V `net.rs` lines 73 to 103, `beacon.rs`] |
-| MAC, mDNS name, certificate fingerprint, banner, ASN, interface, expiry rule, blocklist, allowlist | **missing** (traits: cert/key, IP range, redirect, hash, shape are recorded for web sources; not for LAN peers) [V `docs/reputation.md`] |
+| MAC, mDNS name, certificate fingerprint, banner, ASN, interface, expiry rule, blocklist, allowlist | **missing** (traits: cert/key, IP range, redirect, hash, shape are recorded for web sources; not for LAN devices) [V `docs/reputation.md`] |
 
 So this design **extends the existing ledger** rather than adding a second one, and moves the part that
 must run before TLS into the node. [analysis]
@@ -46,7 +46,7 @@ Python ledger; the entry is the **published, summarised** form. [analysis]
 | `short`, `long` | the two scores of reputation.md (6 h sum, 30-day half-life) so a reader sees both |
 | `state` | `watching`, `throttled`, `blocked`, `cleared` |
 | `expires` | ms; see 2.1 |
-| `set_by` | `detector`, `person`, `coordinator` or `peer` (a hearsay import), with the device and detector |
+| `set_by` | `detector`, `person`, `coordinator` or `device` (a hearsay import), with the device and detector |
 | `scope` | `local` or `pool`; a `local` row is never synced; the CLI and panel show it in a column |
 
 Transitions: `watching -> throttled -> blocked -> cleared`, any state to `cleared` by a person, and
@@ -71,10 +71,10 @@ The node enforces; the Python sentinel decides and records (open-join section 4)
 
 | Where | Check | Cost |
 |---|---|---|
-| `accept_loop`, **before TLS** and before a thread is spawned | peer IP against the allowlist, then the blocklist (a sorted CIDR table, binary search), then a per-source and a global cap on concurrent and per-minute connections; a blocked source is closed with no reply and counted | O(log n); no handshake |
+| `accept_loop`, **before TLS** and before a thread is spawned | device IP against the allowlist, then the blocklist (a sorted CIDR table, binary search), then a per-source and a global cap on concurrent and per-minute connections; a blocked source is closed with no reply and counted | O(log n); no handshake |
 | beacon intake, before signature check | source IP against the blocklist and a per-source token bucket (default 10 a minute, burst 20); over it: drop and count | a hash lookup; saves the Ed25519 verify |
 | after TLS | the client's certificate fingerprint against blocked fingerprints and device keys | at handshake |
-| peer frame loop | a malformed or over-limit frame closes the connection and counts against the source and fingerprint | existing parse path |
+| device frame loop | a malformed or over-limit frame closes the connection and counts against the source and fingerprint | existing parse path |
 | `join_open` | per-source and per-segment attempt cap (open-join 3.4 grade 2) | counter |
 
 **What the node writes.** Counters per source in memory (a bounded LRU of 4096), flushed as a `source`
@@ -83,9 +83,9 @@ board's log, so a restart reloads them from disk; a block is never memory-only. 
 is crash-safe, node.md]
 
 **Who may write the blocklist.** The node accepts `blocked` rows from (a) the person's grant, (b) the
-sentinel token, which may only add `watching`, `throttled`, `blocked` rows (narrowing), (c) a pool peer
-as hearsay: a peer's `blocked` row is imported as `throttled` and becomes `blocked` here only when this
-device has its own matching evidence or the peer row is `proven` with evidence this device can verify
+sentinel token, which may only add `watching`, `throttled`, `blocked` rows (narrowing), (c) a pool device
+as hearsay: a device's `blocked` row is imported as `throttled` and becomes `blocked` here only when this
+device has its own matching evidence or the device row is `proven` with evidence this device can verify
 (a signature or hash). One device cannot block the pool on its word alone. [analysis]
 
 ### 3.1 Never block the owner (safe mode)
@@ -127,15 +127,15 @@ subject. Thresholds are starting values. [analysis]
 | `beacon_flood` | beacons per source above the bucket, oversized or malformed beacons | 30 in a minute | 300 in a minute: `throttled` only (UDP, 3.1 rule 3) |
 | `forged_entry` | a signed row or head that fails its hash or signature, from the owner of the origin | n/a | `proven`, 7 days |
 | `port_scan` | connections to the listener or a decoy port that close without a handshake, from one source across 5 or more distinct local ports (needs a decoy or a counted refused-connection source) | 5 ports in a minute | 20 ports in a minute |
-| `join_attempt` | repeated `join_open` or pairing attempts, wrong pairing codes | 5 in 10 min | 15 in 10 min; a third wrong code in one pairing window: `blocked` for that window |
-| `rate_hit` | quota or rate replies on the peer API from a non-member | 10 in a minute | 60 in a minute |
+| `join_attempt` | repeated `join_open` or joining attempts, wrong join codes | 5 in 10 min | 15 in 10 min; a third wrong code in one join window: `blocked` for that window |
+| `rate_hit` | quota or rate replies on the device API from a non-member | 10 in a minute | 60 in a minute |
 | `cert_change` | the same source or name with a new certificate or key (ledger event `cert_or_key_change`) | note | divergence notice only |
 | `successor` | a new fingerprint appearing right after a revocation from the same address | note | never auto-blocks; goes to a flag (open-join 3.3) |
 
-`PeerWatch` today maps outcomes `bad_sig`, `replay`, `clock`, `locked`, `oversize`, `unsigned` to the
+`DeviceWatch` today maps outcomes `bad_sig`, `replay`, `clock`, `locked`, `oversize`, `unsigned` to the
 same ledger; those become the Python side of these codes, so one vocabulary is kept. [V `rates.py`]
 
-Hearsay from a pool peer is marked in `set_by` and in the CLI; it never moves a score by itself (only
+Hearsay from a pool device is marked in `set_by` and in the CLI; it never moves a score by itself (only
 this device's observations do, as reputation.md requires). [D `docs/reputation.md`; issue #42 "hearsay"]
 
 ## 5. Privacy and retention
@@ -187,7 +187,7 @@ poolhouse sources safe-mode on|off
 | Piece | State |
 |---|---|
 | local ledger with short/long scores, divergence, recovery, notice, `poolhouse-reputation` | implemented [V] |
-| `PeerWatch` for HTTP peers | implemented [V] |
+| `DeviceWatch` for HTTP devices | implemented [V] |
 | sealed per-user store | implemented [V] |
 | `source` entry kind, traits, expiry, scope | missing |
 | node: accept-time and beacon-time source checks, caps, blocklist/allowlist, LRU counters | missing |
@@ -205,9 +205,9 @@ poolhouse sources safe-mode on|off
 | S3 | `source` row kind, persistence in the board log, expiry and decay, reload after SIGKILL | M | a block survives a kill and restart; expiry lifts it; retention removes rows | F1 (flags.md), node |
 | S4 | Safe-mode rules (3.1): never-block set, wide CIDR and NAT downgrade, UDP-only throttle, lockout limits, node-entered safe mode | M | a spoofed UDP flood from a member's address blocks nothing; 100 spoofed-then-answered sources hit the limit and the person is told | S1, S3 |
 | S5 | Node detectors and counters (4), exposed on the socket | M | each detector at threshold and one below; honest sync traffic raises nothing | S1, S2 |
-| S6 | Sentinel `sources.py`: reads counters, writes ledger events and rows, divergence for LAN peers (certificate/key change trait), notices | M | the divergence cases of #42 acceptance 1 on a real node: long-clean peer with a new cert goes to `watching`, one dialog | S3, S5 |
+| S6 | Sentinel `sources.py`: reads counters, writes ledger events and rows, divergence for LAN devices (certificate/key change trait), notices | M | the divergence cases of #42 acceptance 1 on a real node: long-clean device with a new cert goes to `watching`, one dialog | S3, S5 |
 | S7 | CLI `sources`, panel, `digest --status`, explain sentences | M | `HumanGrant` and agent-marker refusals; block takes effect on the next accept | S3 |
-| S8 | Hearsay import and promotion by local evidence; scope column | S | a peer's `blocked` row is `throttled` here; with a verifiable `proven` row, blocked | S3, S6 |
+| S8 | Hearsay import and promotion by local evidence; scope column | S | a device's `blocked` row is `throttled` here; with a verifiable `proven` row, blocked | S3, S6 |
 | S9 | Privacy: retention job, redaction rows, MAC toggle, canary-grep for the pool log | S | a row older than 30 days is gone; a grep of the local store finds no address | S3 |
 | S10 | Red-team: spoof the owner's address to get it blocked, fill the table, scan the ports, race a restart against a block, split an attack across many addresses, name-based evasion (new key per attempt) | M | each leaves the owner's devices connected and produces the evidence line | S1 to S7 |
 
@@ -226,14 +226,14 @@ A flag is about a **subject that is a known identity** (an agent, a device in th
 
 1. **Heuristic block length.** (a) 1 hour, doubling to 24 h on repeats [recommended]; (b) 15 minutes;
    (c) 24 hours at once.
-2. **May a pool peer's evidence block here?** (a) Only if this device can verify it or has its own
-   matching events [recommended]; (b) a peer's block applies after a quorum of two; (c) never, local only.
+2. **May a pool device's evidence block here?** (a) Only if this device can verify it or has its own
+   matching events [recommended]; (b) a device's block applies after a quorum of two; (c) never, local only.
 3. **Are MAC addresses recorded at all?** (a) Yes, on the same segment, with a toggle [recommended];
    (b) no.
 4. **Retention.** (a) 30 days after last seen [recommended]; (b) 7 days; (c) 90 days.
 5. **Auto-block cap.** (a) 8 new an hour, 64 active [recommended]; (b) 2 an hour; (c) no cap.
 
-Location, ASN and cluster alerts, and privacy and jurisdiction, are in `docs/sources-location.md`.
+Location, ASN and pool alerts, and privacy and jurisdiction, are in `docs/sources-location.md`.
 
 ## 10. Not verified
 

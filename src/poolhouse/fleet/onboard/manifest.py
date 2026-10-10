@@ -1,9 +1,9 @@
-"""The signed list of what a cluster hands to a new machine.
+"""The signed list of what a pool hands to a new machine.
 
 A manifest names files (the wheel, a source archive, model files) with sizes, SHA-256
 digests and per-chunk digests, and says which may be handed on to other machines. It is
-signed with an Ed25519 key that belongs to the cluster; a new machine learns the public key
-during pairing and from then on accepts file lists only if they verify under it. The
+signed with an Ed25519 key that belongs to the pool; a new machine learns the public key
+during joining and from then on accepts file lists only if they verify under it. The
 signature is what lets a file travel through a machine that is not trusted to be honest. The
 signer lists only what it has checked itself (a wheel against the index's digest, a model
 through the guarded download and scan), so a signature says "the controller vouches for these
@@ -166,7 +166,7 @@ class Carried:
 
 
 class Signer:
-    """The cluster's signing key: makes entries and signs manifests."""
+    """The pool's signing key: makes entries and signs manifests."""
 
     def __init__(self, private: Any) -> None:
         self._private = private
@@ -278,7 +278,7 @@ class RotationAnnounced(ManifestError):
 
     def __init__(self, new_public: bytes) -> None:
         super().__init__(f"the signing key was rotated to {key_fingerprint(new_public)}; a "
-                         "person must accept it (poolhouse cluster signing accept)")
+                         "person must accept it (poolhouse pool signing accept)")
         self.new_public = new_public
 
 

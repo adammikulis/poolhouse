@@ -1,4 +1,4 @@
-"""The seam between the places that see a source behave (net, peers) and the reputation
+"""The seam between the places that see a source behave (net, members) and the reputation
 ledger: calls that do nothing until a ledger is installed."""
 
 from __future__ import annotations

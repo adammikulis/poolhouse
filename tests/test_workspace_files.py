@@ -116,7 +116,7 @@ def test_a_file_is_read_only_by_those_who_may_read_its_message(kit):
     assert CANARY in ws.files.read_text(t["bob"], h)["text"]
 
 
-def test_a_direct_message_file_is_private_to_the_pair_and_the_person(kit):
+def test_a_direct_message_file_is_private_to_the_join_and_the_person(kit):
     ws, t = kit.ws, kit.tokens
     h = attach(kit, "alice", "bob")["file"]
     assert CANARY in ws.files.read_text(t["bob"], h)["text"]

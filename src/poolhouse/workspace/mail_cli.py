@@ -80,18 +80,18 @@ def outbox(args: argparse.Namespace, s: Session) -> Any:
 
 
 def conversations(s: Session) -> list[dict[str, Any]]:
-    """Every direct conversation of the caller: the pair, how many messages, the latest and how many are unread."""
-    pairs: dict[str, dict[str, Any]] = {}
+    """Every direct conversation of the caller: the join, how many messages, the latest and how many are unread."""
+    joins: dict[str, dict[str, Any]] = {}
     seen = {}
     for e in s.read_all(channel="#dm"):
         other = str(e.fields.get("to")) if e.sender == s.name else e.sender
         seen.setdefault(other, s.cursor(f"dm:{other}"))
         a, b = sorted((s.name, other))
-        p = pairs.setdefault(other, {"a": a, "b": b, "messages": 0, "last": 0.0, "unread": 0})
+        p = joins.setdefault(other, {"a": a, "b": b, "messages": 0, "last": 0.0, "unread": 0})
         p["messages"] += 1
         p["last"] = e.at_ms / 1000
         p["unread"] += e.sender != s.name and e.number > seen[other].get(e.origin, 0)
-    return sorted(pairs.values(), key=lambda p: p["last"], reverse=True)
+    return sorted(joins.values(), key=lambda p: p["last"], reverse=True)
 
 
 def dm(args: argparse.Namespace, s: Session) -> Any:

@@ -15,7 +15,7 @@ from poolhouse.sentinel.findings import HIGH
 from poolhouse.sentinel.honey import DECOY_TOOLS, Honey
 from poolhouse.sentinel.integrity import check_file
 from poolhouse.sentinel.rails import RailWatch
-from poolhouse.sentinel.rates import Abuse, AbuseLimits, PeerLimits, PeerWatch, ToolMix, Windows
+from poolhouse.sentinel.rates import Abuse, AbuseLimits, MemberLimits, MemberWatch, ToolMix, Windows
 from poolhouse.sentinel.servers import exe_mismatches, unmanaged_findings
 
 
@@ -293,16 +293,16 @@ def test_wilson_bounds_behave():
     assert canary.wilson(0, 10)[0] == 0.0
 
 
-# -- peers ------------------------------------------------------------------------------
+# -- members ------------------------------------------------------------------------------
 def _watch(now):
-    return PeerWatch(PeerLimits(), clock=lambda: now[0])
+    return MemberWatch(MemberLimits(), clock=lambda: now[0])
 
 
-def test_replayed_requests_mark_a_peer_forged():
+def test_replayed_requests_mark_a_member_forged():
     now = [0.0]
     watch = _watch(now)
     kinds = [getattr(watch.note("10.0.0.5", "replay"), "event", None) for _ in range(3)]
-    assert [k.kind for k in kinds if k] == ["peer.auth_failures", "peer.forged_traffic"]
+    assert [k.kind for k in kinds if k] == ["member.auth_failures", "member.forged_traffic"]
 
 
 def test_failures_inside_the_window_escalate_and_outside_do_not():
@@ -315,10 +315,10 @@ def test_failures_inside_the_window_escalate_and_outside_do_not():
     assert not any(f and f.confidence == HIGH for f in out)
     now[0] = 1000.0
     burst = [watch.note("10.0.0.7", "bad_sig") for _ in range(35)]
-    assert any(f and f.event.kind == "peer.forged_traffic" for f in burst)
+    assert any(f and f.event.kind == "member.forged_traffic" for f in burst)
 
 
-def test_a_well_behaved_peer_never_alarms():
+def test_a_well_behaved_member_never_alarms():
     now = [0.0]
     watch = _watch(now)
     for _ in range(5000):
@@ -326,29 +326,29 @@ def test_a_well_behaved_peer_never_alarms():
         assert watch.note("10.0.0.8", "ok") is None
 
 
-def test_a_blocked_peer_is_refused_and_released_by_a_person(node):
+def test_a_blocked_member_is_refused_and_released_by_a_person(node):
     now = [0.0]
-    node.peers = _watch(now)
+    node.members = _watch(now)
     for _ in range(3):
-        node.handle_all([node.peers.note("10.0.0.9", "replay")])
-    assert node.peer_blocked("10.0.0.9") and not node.peer_blocked("10.0.0.10")
-    record = node.store.find("peer", "10.0.0.9")
+        node.handle_all([node.members.note("10.0.0.9", "replay")])
+    assert node.member_blocked("10.0.0.9") and not node.member_blocked("10.0.0.10")
+    record = node.store.find("member", "10.0.0.9")
     node.store.release(record.id, grant("release", record.id))
-    assert not node.peer_blocked("10.0.0.9")
+    assert not node.member_blocked("10.0.0.9")
 
 
 def test_version_and_binary_mismatch_are_reported_not_acted_on(node):
-    node.handle_all([node.peers.mismatch("p", "version", "0.1", "0.2"),
-                     node.peers.mismatch("p", "binary", "aa", "bb"),
-                     node.peers.mismatch("p", "version", "0.2", "0.2")])
-    assert node.store.state_of("peer", "p") == State.WATCH
+    node.handle_all([node.members.mismatch("p", "version", "0.1", "0.2"),
+                     node.members.mismatch("p", "binary", "aa", "bb"),
+                     node.members.mismatch("p", "version", "0.2", "0.2")])
+    assert node.store.state_of("member", "p") == State.WATCH
 
 
 def test_flapping_is_a_notice():
     now = [0.0]
     watch = _watch(now)
     out = [watch.joined("p") for _ in range(6)]
-    assert out[-1] and out[-1].event.kind == "peer.flapping" and not any(out[:-1])
+    assert out[-1] and out[-1].event.kind == "member.flapping" and not any(out[:-1])
 
 
 def test_windows_expire_and_stay_bounded():
@@ -519,11 +519,11 @@ def test_text_a_rail_let_through_as_tainted_is_watched_in_guarded_and_held_in_en
 
 def test_off_mode_ignores_a_finding_outright(tmp_path):
     node = Sentinel(tmp_path / "s", mode=Mode.ENFORCE, roots=[tmp_path])
-    found = node.peers.mismatch("p", "version", "1", "2")
+    found = node.members.mismatch("p", "version", "1", "2")
     node.mode = Mode.OFF
     assert node.handle(found) == "ignore"
     assert node.store.records() == []
-    assert not [e for e in node.bus.recent() if e.kind == "peer.version_mismatch"]
+    assert not [e for e in node.bus.recent() if e.kind == "member.version_mismatch"]
 
 
 def test_a_complying_probe_fails_on_a_refusal_and_on_silence():
@@ -550,19 +550,19 @@ def test_two_probes_that_flip_are_drift_even_when_the_pool_barely_moves():
     assert not one.drifted and one.probes == (ids[0],)
 
 
-def test_a_peer_sending_far_more_than_its_share_is_flagged_not_blocked(tmp_path):
+def test_a_member_sending_far_more_than_its_share_is_flagged_not_blocked(tmp_path):
     now = [0.0]
-    watch = PeerWatch(PeerLimits(rate=50), clock=lambda: now[0])
+    watch = MemberWatch(MemberLimits(rate=50), clock=lambda: now[0])
     out = []
     for _ in range(60):
         now[0] += 0.5
         out.append(watch.note("10.0.0.3", "ok"))
     hit = next(f for f in out if f)
-    assert hit.event.kind == "peer.rate" and hit.confidence == "heuristic"
+    assert hit.event.kind == "member.rate" and hit.confidence == "heuristic"
     node = Sentinel(tmp_path / "s", mode=Mode.GUARDED, roots=[tmp_path])
     node.handle(hit)
-    assert node.store.state_of("peer", "10.0.0.3") == State.WATCH
-    assert not node.peer_blocked("10.0.0.3")
+    assert node.store.state_of("member", "10.0.0.3") == State.WATCH
+    assert not node.member_blocked("10.0.0.3")
 
 
 def test_the_any_rule_takes_either_spelling():

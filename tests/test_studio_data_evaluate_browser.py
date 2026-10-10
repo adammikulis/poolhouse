@@ -75,7 +75,7 @@ def test_evaluate_selection_review_status_and_recorded_results(tmp_path, monkeyp
     served.ui.settings.setup_done = True
     fleet = {
         'models': ['sample-qwen.gguf'],
-        'peers': [{'name': 'studio', 'is_self': True, 'models': ['sample-qwen.gguf']}],
+        'members': [{'name': 'studio', 'is_self': True, 'models': ['sample-qwen.gguf']}],
     }
     monkeypatch.setattr(served.ui, 'fleet', lambda: fleet)
     monkeypatch.setattr(served.ui, 'bench_state', lambda: {
@@ -120,7 +120,7 @@ def test_studio_surfaces_follow_theme_and_keep_text_contrast(tmp_path, monkeypat
     served.files.joinpath('examples.jsonl').write_text('{"prompt":"Sample"}\n')
     monkeypatch.setattr(served.ui, 'fleet', lambda: {
         'models': ['sample-qwen.gguf'],
-        'peers': [{'name': 'studio', 'is_self': True, 'models': ['sample-qwen.gguf']}],
+        'members': [{'name': 'studio', 'is_self': True, 'models': ['sample-qwen.gguf']}],
     })
     try:
         with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:

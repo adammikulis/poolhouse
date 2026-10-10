@@ -115,7 +115,7 @@ keystore master is never put in the environment.
   /grant:r <user>:(OI)(CI)F`, so SYSTEM, Administrators and Users inherit nothing. If `icacls` fails
   or `USERNAME` is unset the keystore logs a warning and the directory keeps its inherited access.
   Only the mocked call is tested; a real ACL is not read back (see the audit, section 5).
-- `credentials.json` and the cluster passphrase file are changed under `<file>.lock` (`lock.rewriting`),
+- `credentials.json` and the pool passphrase file are changed under `<file>.lock` (`lock.rewriting`),
   so two commands at once both land. A holder that does not let go in 10 seconds makes the next
   command fail with a plain message (`CredentialError`; the passphrase save says it was not saved).
 

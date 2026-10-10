@@ -686,7 +686,7 @@ def test_runtime_variant_mapping_is_explicit_and_mixed_selection_is_union(monkey
     normal = next(iter(holder.RUNTIME_PROBES))
     slow = "tests/test_holder_protocol.py::test_slow_independent_verification_is_cancelled_without_waiting_or_orphaning"
     stale = "tests/test_holder_protocol.py::test_completed_preparation_cannot_extend_a_changed_broker_generation"
-    plain = "tests/test_holder_protocol.py::test_actual_kernel_peer_is_the_connected_owned_child"
+    plain = "tests/test_holder_protocol.py::test_actual_kernel_member_is_the_connected_owned_child"
     assert holder.required_variants([normal]) == {"normal"}
     assert holder.required_variants([slow + "[slow]", stale]) == {"slow", "stale"}
     assert holder.required_variants([normal, slow, stale]) == {"normal", "slow", "stale"}

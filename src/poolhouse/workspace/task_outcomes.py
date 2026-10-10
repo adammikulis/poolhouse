@@ -31,12 +31,12 @@ def credit(ws, token, ident):
     return _recorded(lambda: task_credit.verify_task(ws, token, ident))
 
 
-def seat_review(s: Session, ident, decision):
+def session_review(s: Session, ident, decision):
     """Review a task of the session's board and record its credit."""
     result = Tasks(s).review(ident, decision)
-    return {**result, 'credit': seat_credit(s, ident)}
+    return {**result, 'credit': session_credit(s, ident)}
 
 
-def seat_credit(s: Session, ident):
+def session_credit(s: Session, ident):
     """Record the credit of a reviewed task of the session's board."""
     return _recorded(lambda: task_credit.verify_on_board(s, ident))

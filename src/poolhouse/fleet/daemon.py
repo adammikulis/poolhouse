@@ -32,13 +32,13 @@ from poolhouse.serve.reclaim import watching
 from poolhouse.speech import service as speech
 
 from . import (
-    automatic_clusters,
+    automatic_pools,
     autostart,
     autostart_check,
     autostart_guard,
-    cluster_modes,
     invite_client,
     invite_routes,
+    pool_modes,
     runtime_repair,
     tls,
     updates as updating,
@@ -55,7 +55,7 @@ from .discovery import (
     DiscoveryError,
     derive_token,
     key_path,
-    load_cluster_key,
+    load_pool_key,
     memberships,
 )
 from .environment import Environment
@@ -68,7 +68,7 @@ from .measuring import BenchHost, bench_home as bench_home_beside
 from .membership_sync import admit, start as start_syncing
 from .models import Downloads, Models
 from .onboard.joining import PLAIN, Joining
-from .pausing import ADOPT_S, adopt_pause, peer_pause
+from .pausing import ADOPT_S, adopt_pause, member_pause
 from .pool_roster import Pool
 from .projects import ProjectRegistry, lan_host, local_candidates
 from .runtime_paths import announce_token, configure as configure_runtime_paths, default_root
@@ -89,10 +89,10 @@ def bind_address(host: str | None, *, lan: bool, joined: bool) -> str:
 
 
 def load_or_create_token(
-    root: Path, cluster_key: bytes | None = None, *, profile: Path | str | None = None,
+    root: Path, pool_key: bytes | None = None, *, profile: Path | str | None = None,
     rotate: bool = False
 ) -> str:
-    """Return the owner-only machine token for the selected cluster profile."""
+    """Return the owner-only machine token for the selected pool profile."""
     p = root / "token"
     if profile is not None:
         identity = str(home.expand(profile).resolve()).encode()
@@ -101,8 +101,8 @@ def load_or_create_token(
         if p.parent.is_symlink() or p.is_symlink():
             raise ValueError("machine token profile paths cannot be symbolic links")
         p.parent.chmod(0o700)
-    if cluster_key is not None:
-        tok = derive_token(cluster_key)
+    if pool_key is not None:
+        tok = derive_token(pool_key)
     elif not rotate and p.exists() and p.read_text().strip().startswith(macauth.PREFIX):
         private_file(p)
         return p.read_text().strip()
@@ -141,8 +141,8 @@ class DaemonOptions:
     ui_from_lan: bool = False
     name: str = ""
     announce: bool = True
-    cluster_key_path: Path | str | None = None
-    cluster_mode: str | None = None
+    pool_key_path: Path | str | None = None
+    pool_mode: str | None = None
     device_report: Callable[[], dict[str, Any]] | None = None
     slots: int = 1
     labels: Iterable[str] = ()
@@ -167,8 +167,8 @@ class DaemonRuntime:
         self.ui_from_lan = options.ui_from_lan
         self.name = options.name
         self.announce = options.announce
-        self.cluster_key_path = options.cluster_key_path
-        self.cluster_mode = options.cluster_mode
+        self.pool_key_path = options.pool_key_path
+        self.pool_mode = options.pool_mode
         self.device_report = options.device_report
         self.slots = options.slots
         self.labels = options.labels
@@ -191,30 +191,30 @@ class DaemonRuntime:
         self.files_root.mkdir(exist_ok=True)
         self.settings_path = self.root / "settings.json"
         self.settings = Settings.load(self.settings_path)
-        self.selected = memberships(self.cluster_key_path)
-        self.effective_mode = cluster_modes.validate(
-            self.cluster_mode or (self.selected[0].mode if self.selected else self.settings.cluster_mode or "dev")
+        self.selected = memberships(self.pool_key_path)
+        self.effective_mode = pool_modes.validate(
+            self.pool_mode or (self.selected[0].mode if self.selected else self.settings.pool_mode or "dev")
         )
         if self.selected and self.selected[0].mode != self.effective_mode:
             raise DiscoveryError(
-                "select a cluster with the requested mode before starting this daemon"
+                "select a pool with the requested mode before starting this daemon"
             )
         pending = (self.web and self.initial_setup and not self.selected
-                   and not self.settings.cluster_mode and not self.cluster_mode)
-        saved_prod = not self.selected and self.settings.cluster_mode == "prod" and not self.cluster_mode
+                   and not self.settings.pool_mode and not self.pool_mode)
+        saved_prod = not self.selected and self.settings.pool_mode == "prod" and not self.pool_mode
         if self.announce and not pending and not saved_prod:
-            self.selected_member = automatic_clusters.ensure(
-                self.cluster_key_path, mode=self.effective_mode
+            self.selected_member = automatic_pools.ensure(
+                self.pool_key_path, mode=self.effective_mode
             )
             self.effective_mode = self.selected_member.mode
-        say(cluster_modes.notice(self.effective_mode))
-        self.key = load_cluster_key(self.cluster_key_path)
+        say(pool_modes.notice(self.effective_mode))
+        self.key = load_pool_key(self.pool_key_path)
         self.token = load_or_create_token(
             self.root,
             self.key,
-            profile=self.cluster_key_path or os.environ.get("POOLHOUSE_CLUSTER_KEY"),
+            profile=self.pool_key_path or os.environ.get("POOLHOUSE_POOL_KEY"),
         )
-        self.name = self.name or os.environ.get("POOLHOUSE_PEER_NAME") or self.settings.name or socket.gethostname()
+        self.name = self.name or os.environ.get("POOLHOUSE_MEMBER_NAME") or self.settings.name or socket.gethostname()
         if self.slots == 1 and self.settings.slots != 1:
             self.slots = self.settings.slots
         if not self.labels and self.settings.labels:
@@ -230,11 +230,11 @@ class DaemonRuntime:
         if self.busy_hours or self.free_hours:
             self.schedule.save(self.schedule_path)
         self.taken = adopt_pause(
-            self.schedule, peer_pause(self.cluster_key_path, timeout_s=ADOPT_S)
+            self.schedule, member_pause(self.pool_key_path, timeout_s=ADOPT_S)
         )
         if self.taken is not None:
             self.schedule.save(self.schedule_path)
-            say(f"  paused with the cluster: {self.taken.said()}")
+            say(f"  paused with the pool: {self.taken.said()}")
         self.settings.slots = self.slots
         self.settings.labels = [s.strip() for s in self.labels if s and s.strip()]
         self.settings.on_paused = self.on_paused
@@ -278,8 +278,8 @@ class DaemonRuntime:
                 self.setup_token = secrets.token_urlsafe(9)
             self.interface = UI(
                 name=self.name,
-                cluster_key_path=self.cluster_key_path,
-                peer_port=self.port,
+                pool_key_path=self.pool_key_path,
+                member_port=self.port,
                 setup_token=self.setup_token,
             )
             self.interface.launch = LaunchSecret(self.root, self.port)
@@ -296,7 +296,7 @@ class DaemonRuntime:
             lan_host(self.port),
         )
         self.workspaces = workspace_host(self.projects, self.workspace_factory)
-        self.members = Pool(self.cluster_key_path)
+        self.members = Pool(self.pool_key_path)
         self.daemon = Daemon(
                 self.runner,
                 self.files_root,
@@ -312,8 +312,8 @@ class DaemonRuntime:
                 schedule_path=self.schedule_path,
                 serving=self.serving,
                 models=self.models,
-                cluster_key_path=self.cluster_key_path,
-                cluster_mode=self.effective_mode,
+                pool_key_path=self.pool_key_path,
+                pool_mode=self.effective_mode,
                 tokens=self.every_token,
                 devices=lambda: Devices(home.state("onboard", "devices.json")).all(),
                 bench=self.bench_host,
@@ -321,7 +321,7 @@ class DaemonRuntime:
                 decide=Deciding(self.serving),
                 ui_from_lan=self.ui_from_lan or self.setup_from_lan,
                 launcher_control=lambda: self.control,
-                joining=Joining(lambda: memberships(self.cluster_key_path), self.fingerprint,
+                joining=Joining(lambda: memberships(self.pool_key_path), self.fingerprint,
                                 enrol=lambda group, cert, name: admit(self.members, group, cert, name)),
                 members=self.members,
             )
@@ -333,7 +333,7 @@ class DaemonRuntime:
         self.cert: tls.Identity | None = None
         if self.interface is not None:
             self.interface.invitations = Invitations(
-                lambda: memberships(self.cluster_key_path),
+                lambda: memberships(self.pool_key_path),
                 lambda: (lan_host(self.port), self.fingerprint()),
                 enrol=lambda group, cert, name: admit(self.members, group, cert, name),
             )
@@ -379,7 +379,7 @@ class DaemonRuntime:
     def configure_interface(self) -> None:
         if self.interface is not None:
             self.interface.rename = self.rename
-            self.interface.on_join = self.joined_a_cluster
+            self.interface.on_join = self.joined_a_pool
             self.interface.runner = self.runner
             self.interface.schedule = self.schedule
             self.interface.settings = self.settings
@@ -405,9 +405,9 @@ class DaemonRuntime:
         )
         say(f"  name  {self.name}")
         self.members.ensure_self(self.identity, self.name)
-        for member in memberships(self.cluster_key_path):
+        for member in memberships(self.pool_key_path):
             alone = member.group in self.members.alone()
-            say(f"  cluster {member.group}" + ("  (no other device enrolled: pair, or 'poolhouse-peers members adopt')" if alone else ""))
+            say(f"  pool {member.group}" + ("  (no other device enrolled: join, or 'poolhouse-members roster adopt')" if alone else ""))
         say(f"  root  {self.root}")
         say(f"  bench {self.measuring_home}")
         say(f"  slots {self.slots}")
@@ -420,14 +420,14 @@ class DaemonRuntime:
             say(f"  labels {' '.join(self.labels)}")
         if self.advertiser is not None:
             say(
-                f"  peers announcing on {self.advertiser.group}:{self.advertiser.port} (key {key_path(self.cluster_key_path)})"
+                f"  members announcing on {self.advertiser.group}:{self.advertiser.port} (key {key_path(self.pool_key_path)})"
             )
-            say("  token derived from the cluster key -- peers compute it themselves")
+            say("  token derived from the pool key -- members compute it themselves")
         elif self.key is None:
             announce_token(self.token)
-            say(f"  discovery OFF: no cluster key at {key_path(self.cluster_key_path)}")
+            say(f"  discovery OFF: no pool key at {key_path(self.pool_key_path)}")
             if self.interface is None:
-                say("  run 'poolhouse-peers setup' to join one")
+                say("  run 'poolhouse-members setup' to join one")
         say(f"  device {json.dumps(self.report())}")
         if self.slots > 1:
             say(
@@ -438,11 +438,11 @@ class DaemonRuntime:
             say(f"  open   http://{self.shown}:{self.port}/ui/")
             if self.key is None:
                 say(
-                    "  this machine has not joined a cluster yet -- open the address above ON THIS MACHINE to set it up"
+                    "  this machine has not joined a pool yet -- open the address above ON THIS MACHINE to set it up"
                 )
                 if self.setup_token:
                     say(f"  setup from the LAN with this one-time code: {self.setup_token}")
-        say("  EVERY MACHINE IN THIS CLUSTER CAN RUN COMMANDS HERE. Trusted LAN only.", flush=True)
+        say("  EVERY MACHINE IN THIS POOL CAN RUN COMMANDS HERE. Trusted LAN only.", flush=True)
 
     def run(self) -> None:
         on_quit(self._quit)
@@ -456,9 +456,9 @@ class DaemonRuntime:
         self.convergence = None
         if self.announce and self.effective_mode == "dev":
             self.convergence = threading.Thread(
-                target=automatic_clusters.converge,
-                args=(self.convergence_stop, self.start_announcing, self.cluster_key_path),
-                name="development-cluster-convergence",
+                target=automatic_pools.converge,
+                args=(self.convergence_stop, self.start_announcing, self.pool_key_path),
+                name="automatic-pool-convergence",
                 daemon=True,
             )
             self.convergence.start()
@@ -525,8 +525,8 @@ class DaemonRuntime:
         }
 
     def every_token(self) -> set[str]:
-        """Every token this machine answers to, one per cluster it is in."""
-        return {derive_token(m.key) for m in memberships(self.cluster_key_path)}
+        """Every token this machine answers to, one per pool it is in."""
+        return {derive_token(m.key) for m in memberships(self.pool_key_path)}
 
     def fingerprint(self) -> str:
         offered = self.served_cert()
@@ -540,7 +540,7 @@ class DaemonRuntime:
         return self.cert
 
     def served_cert(self) -> str:
-        """The certificate peers should pin: this daemon's, if it listens beyond this machine."""
+        """The certificate members should pin: this daemon's, if it listens beyond this machine."""
         return "" if self.listening == LOOPBACK else self.identity().beacon
 
     def listen(self, address: str) -> LimitedServer:
@@ -566,9 +566,9 @@ class DaemonRuntime:
         }
 
     def start_announcing(self) -> None:
-        """Advertise on every cluster this machine is in, and stop on any it left."""
+        """Advertise on every pool this machine is in, and stop on any it left."""
         with self.announcement_lock:
-            joined = {m.group: m for m in memberships(self.cluster_key_path)}
+            joined = {m.group: m for m in memberships(self.pool_key_path)}
             self.members.ensure_self(self.identity, self.name)
             for group in [g for g in self.advertisers if g not in joined]:
                 with contextlib.suppress(Exception):
@@ -595,27 +595,27 @@ class DaemonRuntime:
                     machine=self.bench_host.machine,
                 )
                 try:
-                    tell = Advertiser(beacon, member.key, cluster=group, refresh=self.refresh)
+                    tell = Advertiser(beacon, member.key, pool=group, refresh=self.refresh)
                     tell.mode = member.mode
                     tell.joinable = member.mode == "dev" or bool(member.join)
                     self.advertisers[group] = tell.start()
                 except DiscoveryError as exc:
                     say(f"  discovery OFF for {group}: {exc}")
-            self.reconcile_cluster(next(iter(joined.values()), None))
+            self.reconcile_pool(next(iter(joined.values()), None))
 
-    def reconcile_cluster(self, first) -> None:
+    def reconcile_pool(self, first) -> None:
         if first is not None:
             self.key = first.key
             self.fetcher.key = first.key
             self.token = load_or_create_token(
                 self.root,
                 first.key,
-                profile=self.cluster_key_path or os.environ.get("POOLHOUSE_CLUSTER_KEY"),
+                profile=self.pool_key_path or os.environ.get("POOLHOUSE_POOL_KEY"),
             )
             self.advertiser = self.advertisers.get(first.group)
         else:
             self.token = load_or_create_token(
-                self.root, profile=self.cluster_key_path or os.environ.get("POOLHOUSE_CLUSTER_KEY"),
+                self.root, profile=self.pool_key_path or os.environ.get("POOLHOUSE_POOL_KEY"),
                 rotate=self.key is not None,
             )
             self.key = None
@@ -635,16 +635,16 @@ class DaemonRuntime:
             one.beacon.name = called
         return called
 
-    def joined_a_cluster(self) -> None:
-        """Announce, and listen on the network now that peers are meant to reach this."""
-        selected = memberships(self.cluster_key_path)
-        self.effective_mode = selected[0].mode if selected else self.settings.cluster_mode or "dev"
-        self.daemon.cluster_mode = self.effective_mode
+    def joined_a_pool(self) -> None:
+        """Announce, and listen on the network now that members are meant to reach this."""
+        selected = memberships(self.pool_key_path)
+        self.effective_mode = selected[0].mode if selected else self.settings.pool_mode or "dev"
+        self.daemon.pool_mode = self.effective_mode
         self.start_announcing()
         if not selected:
             return
         for member in selected:
-            say(f"  joined cluster {member.group!r}")
+            say(f"  joined pool {member.group!r}")
         if not self.host and self.listening == LOOPBACK:
             self.widen.set()
             self.httpd.shutdown()
@@ -670,7 +670,7 @@ def serve(options: DaemonOptions) -> None:
 
 
 def _stop_advertisers(advertisers: dict[str, Any]) -> None:
-    """Stop every cluster's advertiser and empty the mapping."""
+    """Stop every pool's advertiser and empty the mapping."""
     for one in list(advertisers.values()):
         with contextlib.suppress(Exception):
             one.stop()
@@ -686,7 +686,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
             say(f"  {done.path}")
         if done.note:
             say(f"  {done.note}")
-        say("  starting now; 'poolhouse-peers ls' from another machine should list it")
+        say("  starting now; 'poolhouse-members ls' from another machine should list it")
         return 0
     warn("not installed")
     if done.note:
@@ -721,7 +721,7 @@ def run(
         "--host",
         default=None,
         help="the address to listen on (default: this machine only, or every "
-        "interface when --lan is given or this machine is in a cluster)",
+        "interface when --lan is given or this machine is in a pool)",
     )
     ap.add_argument(
         "--lan",
@@ -738,22 +738,22 @@ def run(
     ap.add_argument(
         "--name",
         default="",
-        help="how this box identifies itself to peers "
-        "(default: $POOLHOUSE_PEER_NAME, else the hostname)",
+        help="how this box identifies itself to members "
+        "(default: $POOLHOUSE_MEMBER_NAME, else the hostname)",
     )
     ap.add_argument(
-        "--cluster-key",
+        "--pool-key",
         default=None,
-        help="path to the cluster key (default: ~/.poolhouse/cluster.key)",
+        help="path to the pool key (default: ~/.poolhouse/pool.key)",
     )
     ap.add_argument(
         "--mode",
         choices=("dev", "prod"),
         default=None,
-        help="cluster admission mode (default: existing cluster mode, otherwise dev)",
+        help="pool admission mode (default: existing pool mode, otherwise dev)",
     )
     ap.add_argument(
-        "--no-announce", action="store_true", help="serve, but stay invisible to peer discovery"
+        "--no-announce", action="store_true", help="serve, but stay invisible to member discovery"
     )
     ap.add_argument(
         "--busy",
@@ -784,7 +784,7 @@ def run(
     ap.add_argument(
         "--setup-from-lan",
         action="store_true",
-        help="on a machine that has not joined a cluster, allow first-run "
+        help="on a machine that has not joined a pool, allow first-run "
         "setup from another machine using the one-time code printed "
         "at startup. For a headless box you cannot open a browser on.",
     )
@@ -792,7 +792,7 @@ def run(
         "--fetch-slots",
         type=int,
         default=2,
-        help="concurrent peer-to-peer file transfers (default 2). Not job "
+        help="concurrent device-to-device file transfers (default 2). Not job "
         "slots: a transfer is I/O against another box, not compute, "
         "and must not occupy a training slot.",
     )
@@ -875,8 +875,8 @@ def run(
             lan=a.lan,
             ui_from_lan=a.ui_from_lan,
             announce=not a.no_announce,
-            cluster_key_path=a.cluster_key,
-            cluster_mode=a.mode,
+            pool_key_path=a.pool_key,
+            pool_mode=a.mode,
             slots=a.slots,
             device_report=report if probes else None,
             labels=a.label or os.environ.get("POOLHOUSE_LABELS", "").split(","),

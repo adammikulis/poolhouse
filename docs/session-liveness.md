@@ -105,7 +105,7 @@ Facts from code. "Blocks" means what a stale entry stops another agent doing.
 ### (f) The board service
 
 - The "coordinator" in `coordinator*.py`/`coordination.py` is the board RPC *service*: a device
-  whose `coordinator.json` has `mode: host` answers `/workspace/v1/*` on the Fleet peer server
+  whose `coordinator.json` has `mode: host` answers `/workspace/v1/*` on the Fleet device server
   (`coordinator.py:28-34`), others are `remote`. `workspace_id` is the stable workspace node
   (`coordination.py:8-19`). It is configured by the person, not elected, and has no failover:
   remote devices fail explicitly with no local fallback (docs/workspace.md, "Explicit shared
@@ -339,7 +339,7 @@ Announcement: `announce milestone "coordinator: <display> promoted, epoch 8 (pre
   The lease and the board have one writer by construction; what is not designed here is failover
   of the board host (open question 1).
 - **Eligible session joins while another is coordinating:** no preemption, except for tier
-  demotion (section 5.4). A joining peer becomes a candidate for the next vacancy.
+  demotion (section 5.4). A joining device becomes a candidate for the next vacancy.
 
 ### Person designation and revocation
 
