@@ -80,7 +80,7 @@ class TasksView extends HTMLElement{
   const projects=new Map();for(const row of result.workspaces||[])if(!projects.has(row.id)||row.is_self)projects.set(row.id,row);
   this.projects=[...projects.values()];const selected=this.project.value;
   this.project.replaceChildren(E('option',{value:''},'Choose a project'),...this.projects.map(row=>E('option',{value:row.id},row.name)));
-  this.project.value=this.projects.some(row=>row.id===selected)?selected:(this.projects.find(row=>row.local_authority&&row.board_host)?.id||'');
+  this.project.value=this.projects.some(row=>row.id===selected)?selected:(this.projects.find(row=>row.local_authority)?.id||'');
   this.projectsLoaded=true;
  }
  async load(){

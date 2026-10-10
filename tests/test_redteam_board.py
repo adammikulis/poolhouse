@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 from workspace_kit import Kit, clean_env, cli
 
+from poolhouse import node_launch
+from poolhouse.board import person
 from poolhouse.board.client import NodeError
 from poolhouse.testing import injection_corpus as corpus
 from poolhouse.workspace import Denied, Refused, boardroute, tokens
@@ -158,8 +160,23 @@ def test_a_delegate_reads_only_what_its_parent_belongs_to(kit):
 
 
 @pytest.fixture
-def route(kit):
-    server = boardroute.serve(kit.ws)
+def trio(workspace_node):
+    node = workspace_node
+    node.alice, node.bob, node.mallory = (node.member(n) for n in ("alice", "bob", "mallory"))
+    return node
+
+
+def heard(session):
+    """What the board holds: its entries by kind and the rooms the person sees."""
+    return session.status()["entries"], [r["name"] for r in session.rooms()]
+
+
+@pytest.fixture
+def route(trio, monkeypatch):
+    """The Board page's listener over the person's session on the node: ``call(path, ...)``, with ``call.session``."""
+    monkeypatch.setattr(node_launch, "default_state", lambda: trio.state)
+    session = person.session(Path.cwd(), trio.client)
+    server = boardroute.serve(lambda: person.session(Path.cwd(), trio.client))
     server.start()
     port = server.port
 
@@ -172,16 +189,16 @@ def route(kit):
         conn.close()
         return out
 
-    call.port = port
+    call.port, call.session, call.server = port, session, server
     yield call
     server.stop()
 
 
-def test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal(kit, route):
-    ws, a = kit.ws, kit.tokens["alice"]
-    ws.board.create(a, "#ops")
-    ws.send(a, "#ops", "note", "hello")
-    before = (ws.bus.log.head(), ws.board.store.log.head(), tree(kit.base))
+def test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal(trio, route):
+    alice = trio.session(trio.alice)
+    alice.room("create", "#ops")
+    alice.post("#ops", "note", "hello")
+    before = heard(route.session)
     for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS"):
         for path in ("/board/boards", "/board/messages?board=%23ops", "/board/subscribe", "/"):
             assert route(path, method, {"Content-Type": "application/json"}, b'{"board":"#x"}')[0] in (405, 501)
@@ -193,25 +210,25 @@ def test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal(kit,
                  "/board/thread?root=" + "9" * 400, "/board/dm?a=../x&b=y", "/board/../../etc/passwd",
                  "/ui/ml-ui/%2e%2e/%2e%2e/etc/passwd", "/ui/ml-ui/../daemon.py"):
         assert route(path)[0] in (400, 403, 404)
-    assert (ws.bus.log.head(), ws.board.store.log.head(), tree(kit.base)) == before
+    assert heard(route.session) == before
 
 
-def test_the_route_answers_a_burst_with_bounded_bodies_and_never_a_token(kit, route):
-    ws, a = kit.ws, kit.tokens["alice"]
-    ws.board.create(a, "#ops")
+def test_the_route_answers_a_burst_with_bounded_bodies_and_never_a_token(trio, route):
+    alice = trio.session(trio.alice)
+    alice.room("create", "#ops")
+    route.session.room("join", "#ops")
     for _ in range(30):
-        ws.send(a, "#ops", "note", "z" * 16000)
+        alice.post("#ops", "note", "z" * 16000)
     status, body = route("/board/messages?board=%23ops&limit=200")
     assert status in (200, 502) and len(body) <= boardroute.MAX_BODY
     for text in (route("/board/boards")[1], body, route("/")[1]):
-        for secret in (kit.owner, *kit.tokens.values()):
+        for secret in (route.session.token, trio.alice.token, trio.bob.token, trio.mallory.token):
             assert secret.encode() not in text
 
 
-def test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it(kit, route):
-    ws = kit.ws
-    ws.board.create(kit.tokens["alice"], "#vault", private=True)
-    before = (ws.bus.log.head(), ws.board.store.log.head())
+def test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it(trio, route):
+    trio.session(trio.alice).room("create", "#vault", private=True)
+    before = heard(route.session)
     own = {"Origin": f"http://127.0.0.1:{route.port}", "Content-Type": "application/json"}
     doc = json.dumps({"to": "#vault", "body": "forged"})
     attacks = [
@@ -227,35 +244,31 @@ def test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it(kit
     for headers, body in attacks:
         status, _ = route("/board/post", "POST", headers, body)
         assert status in (400, 403, 421), headers
-    assert (ws.bus.log.head(), ws.board.store.log.head()) == before
+    assert heard(route.session) == before
+    assert route.session.read(channel="#vault").entries == []
 
 
-def test_a_post_cannot_borrow_another_identity_or_smuggle_options(kit, route):
+def test_a_post_cannot_borrow_another_identity_or_smuggle_options(trio, route):
     own = {"Origin": f"http://127.0.0.1:{route.port}", "Content-Type": "application/json"}
-    for extra in ({"from": "alice"}, {"role": "lead"}, {"token": kit.tokens["alice"]}, {"label": "x"}):
+    for extra in ({"from": "alice"}, {"role": "lead"}, {"token": trio.alice.token}, {"label": "x"}):
         body = json.dumps({"to": "#general", "body": "who am i", **extra})
         status, _ = route("/board/post", "POST", own, body)
         assert status == 400
-    posted = kit.ws.board.ui_read(kit.owner, "#general")["messages"]
-    assert posted == []
+    assert route.session.read(channel="#general", kind="message").entries == []
 
 
-def test_following_and_the_live_route_give_an_agent_nothing_it_could_not_already_read(kit, route):
-    ws, a, b = kit.ws, kit.tokens["alice"], kit.tokens["bob"]
-    ws.board.create(a, "#vault", private=True)
-    ws.send(a, "#vault", "note", "SECRETBOARD")
-    assert cli(kit.base, b, "chat", "--board", "#vault", env_extra={"CLAUDECODE": "1"}).returncode == 3
-    with pytest.raises(Denied):
-        ws.news(b, 0, 0)
+def test_following_and_the_live_route_give_an_agent_nothing_it_could_not_already_read(trio, route):
+    alice = trio.session(trio.alice)
+    alice.room("create", "#vault", private=True)
+    alice.post("#vault", "note", "SECRETBOARD")
     assert "SECRET" not in route("/board/wait?after=0&timeout=1")[1].decode()
+    assert "SECRET" not in route("/board/messages?board=%23vault")[1].decode()
 
 
-def test_the_route_answers_nobody_without_the_session_the_listener_made(kit):
-    ws, a = kit.ws, kit.tokens["alice"]
-    ws.board.create(a, "#ops")
-    server = boardroute.serve(kit.ws)
-    server.start()
-    before = (ws.bus.log.head(), ws.board.store.log.head())
+def test_the_route_answers_nobody_without_the_session_the_listener_made(trio, route):
+    trio.session(trio.alice).room("create", "#ops")
+    server = route.server
+    before = heard(route.session)
 
     def ask(path, method="GET", cookie="", body=None):
         conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
@@ -266,27 +279,17 @@ def test_the_route_answers_nobody_without_the_session_the_listener_made(kit):
         conn.close()
         return out
 
-    try:
-        post = json.dumps({"to": "#ops", "body": "forged"}).encode()
-        for cookie in ("", "ml_session=guess", "ml_session="):
-            assert ask("/board/boards", cookie=cookie)[0] == 401
-            assert ask("/board/post", "POST", cookie, post)[0] == 401
-        assert (ws.bus.log.head(), ws.board.store.log.head()) == before
-        for path in ("/", "/?session=guess", "/?session="):
-            status, cookie, _ = ask(path)
-            assert status == 200 and cookie is None
-        status, cookie, _ = ask(f"/?session={server.session}")
-        assert status == 200 and cookie.startswith(f"ml_session={server.session};") and "HttpOnly" in cookie
-        assert ask("/board/boards", cookie=f"ml_session={server.session}")[0] == 200
-    finally:
-        server.stop()
-
-
-@pytest.fixture
-def trio(workspace_node):
-    node = workspace_node
-    node.alice, node.bob, node.mallory = (node.member(n) for n in ("alice", "bob", "mallory"))
-    return node
+    post = json.dumps({"to": "#ops", "body": "forged"}).encode()
+    for cookie in ("", "ml_session=guess", "ml_session="):
+        assert ask("/board/boards", cookie=cookie)[0] == 401
+        assert ask("/board/post", "POST", cookie, post)[0] == 401
+    assert heard(route.session) == before
+    for path in ("/", "/?session=guess", "/?session="):
+        status, cookie, _ = ask(path)
+        assert status == 200 and cookie is None
+    status, cookie, _ = ask(f"/?session={server.session}")
+    assert status == 200 and cookie.startswith(f"ml_session={server.session};") and "HttpOnly" in cookie
+    assert ask("/board/boards", cookie=f"ml_session={server.session}")[0] == 200
 
 
 @pytest.mark.parametrize("name", NAMES)

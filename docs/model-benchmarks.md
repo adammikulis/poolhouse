@@ -168,6 +168,27 @@ Haiku 5.5 is cheaper than Sonnet 5.5 at every accuracy up to about 72%: xhigh be
 medium, and max matches Sonnet high at about 45% of its cost. Above 73% only Sonnet reaches.
 `CLAUDE.md`, "Subagent model order", sets the delegation rule from this.
 
+### 2.6 Terminal-Bench 4.0: accuracy against cost per attempt (owner's chart, 2026-10-10)
+
+Source: a chart the owner supplied (score in percent against cost per attempt in USD, log scale). The
+numbers were read off the plot and are approximate, to about two points and the nearest step of cost. It
+is a terminal-agent benchmark, not this repository's work.
+
+| model | effort | score | cost per attempt |
+| --- | --- | --- | --- |
+| Sonnet 5.5 | low | 20% | $0.7 |
+| Sonnet 5.5 | medium | 29% | $0.8 |
+| Sonnet 5.5 | high | 43% | $1.9 |
+| Sonnet 5.5 | xhigh | 61% | $5.3 |
+| Sonnet 5.5 | max | 70% | $13 |
+| Opus 5.5 | five steps, lowest to highest | 39%, 47%, 58%, 64%, 65% | $1.3, $1.9, $3, $3.9, $5 |
+| Opus 5.5 | two highest steps | 66%, 65% | $7.5, $11.5 |
+
+Reading it: Opus reaches about 64% at $3.9, which is cheaper than Sonnet xhigh at 61% for $5.3, and above
+about $4 Opus flattens near 65% and falls at its top effort. Sonnet at max (70% for $13) is the highest
+point on the chart and beats Opus at its top effort, but it costs about 2.5 times Sonnet xhigh for about nine
+more points. `CLAUDE.md`, "Subagent effort", sets the delegation rule from this: avoid max.
+
 ## 3. What to launch when
 
 Cheapest adequate tier, using the repo order: Haiku 5.5 for read-only lookup and for ratchet-lowering with a named

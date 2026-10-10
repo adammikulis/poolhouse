@@ -176,3 +176,66 @@ def test_a_file_derived_from_another_is_found_by_it_and_a_listing_is_bounded(tea
     assert len(json.loads(run(team, lead, "file", "list", "--all", "--json").stdout)) == 14
     by = json.loads(run(team, lead, "file", "list", "--by", team.bob.name, "--json").stdout)
     assert by == []
+
+
+# -- the person's page ------------------------------------------------------------------------
+@pytest.fixture
+def page(team, monkeypatch):
+    import http.client
+
+    import keyring
+    from onboard_support import FileKeyring
+
+    from poolhouse import node_launch
+    from poolhouse.board import person
+    from poolhouse.workspace import boardroute
+
+    monkeypatch.setenv("POOLHOUSE_TEST_KEYRING", team.keys["POOLHOUSE_TEST_KEYRING"])
+    previous = keyring.get_keyring()
+    keyring.set_keyring(FileKeyring())
+    monkeypatch.setattr(node_launch, "default_state", lambda: team.state)
+    server = boardroute.serve(lambda: person.session(Path.cwd(), team.client), 0)
+    server.start()
+
+    def call(path):
+        conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=10)
+        conn.request("GET", path, headers={"Cookie": f"ml_session={server.session}"})
+        r = conn.getresponse()
+        body = r.read()
+        conn.close()
+        return r.status, {k.lower(): v for k, v in r.getheaders()}, body
+    yield call
+    server.stop()
+    keyring.set_keyring(previous)
+
+
+def test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered(team, page):
+    h = put(team, team.lead, "a b<c>.html", b"<script>alert(1)</script> hello\n", "--to", "#ops")["file"]
+    page("/board/messages?board=%23ops")  # looking at an open room joins the person to it
+    status, headers, body = page(f"/board/file?id={h}")
+    assert status == 200, body
+    assert body == b"<script>alert(1)</script> hello\n"
+    assert headers["content-type"].startswith("text/plain")
+    assert headers["content-disposition"].startswith("attachment; filename=\"") and "<" not in headers["content-disposition"]
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["content-security-policy"] == "default-src 'none'"
+
+
+def test_the_page_shows_a_binary_file_as_name_size_and_hash_only(team, page):
+    import hashlib
+    png = b"\x89PNG\r\n\x1a\n" + b"1" * 40
+    h = put(team, team.lead, "shot.png", png, "--to", "#ops")["file"]
+    page("/board/messages?board=%23ops")
+    status, headers, body = page(f"/board/file?id={h}")
+    doc = json.loads(body)
+    assert status == 200 and headers["content-type"].startswith("application/json")
+    assert doc == {"name": "shot.png", "size": len(png), "type": "png", "sha256": hashlib.sha256(png).hexdigest()}
+
+
+def test_the_page_answers_an_unknown_file_with_a_refusal_and_lists_the_file_on_its_message(team, page):
+    assert page("/board/file?id=" + "0" * 12)[0] == 403
+    assert page("/board/file?id=../../x")[0] == 403
+    put(team, team.lead, "n.txt", TEXT, "--to", "#ops")
+    _, _, body = page("/board/messages?board=%23ops")
+    row = json.loads(body)["messages"][-1]
+    assert row["file"]["name"] == "n.txt" and row["type"] == "file"

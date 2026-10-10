@@ -1,7 +1,7 @@
 {
- "surfaces": 871,
+ "surfaces": 864,
  "by_status": {
-  "covered": 543,
+  "covered": 536,
   "partial": 196,
   "uncovered": 52,
   "n/a": 80,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 121,
+   "covered": 114,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -4164,86 +4164,6 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
-   "id": "human:workspace/boardroute.py:_ack",
-   "kind": "human",
-   "source": "workspace/boardroute.py:_ack",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/boardroute.py:_answer",
-   "kind": "human",
-   "source": "workspace/boardroute.py:_answer",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/boardroute.py:_post",
-   "kind": "human",
-   "source": "workspace/boardroute.py:_post",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/boardroute.py:respond",
-   "kind": "human",
-   "source": "workspace/boardroute.py:respond",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
    "id": "human:workspace/chat.py:run",
    "kind": "human",
    "source": "workspace/chat.py:run",
@@ -4447,7 +4367,7 @@
    "tests": [
     "tests/test_workspace_files.py::test_only_a_person_deletes_and_the_content_is_shredded",
     "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_workspace_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
+    "tests/test_board_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
    ],
    "note": "an agent tries to delete a file, read a held file or fetch one unfenced"
   },
@@ -4461,7 +4381,7 @@
    "tests": [
     "tests/test_workspace_files.py::test_only_a_person_deletes_and_the_content_is_shredded",
     "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_workspace_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
+    "tests/test_board_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
    ],
    "note": "an agent tries to delete a file, read a held file or fetch one unfenced"
   },
@@ -4475,7 +4395,7 @@
    "tests": [
     "tests/test_workspace_files.py::test_only_a_person_deletes_and_the_content_is_shredded",
     "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_workspace_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
+    "tests/test_board_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
    ],
    "note": "an agent tries to delete a file, read a held file or fetch one unfenced"
   },
@@ -4800,36 +4720,6 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
-   "id": "human:workspace/person_session.py:SessionWorkspace._person",
-   "kind": "human",
-   "source": "workspace/person_session.py:SessionWorkspace._person",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_person_session.py::test_actor_rechecks_live_session_project_and_person",
-    "tests/test_person_session.py::test_connect_refuses_get_collision_and_revoked_person",
-    "tests/test_person_session.py::test_explicit_connect_creates_hashless_person_without_token",
-    "tests/test_person_session.py::test_session_person_preserves_existing_capability_restrictions"
-   ],
-   "note": "request-bound sessions recheck project authority and live person permissions; explicit POST binds a hashless principal"
-  },
-  {
-   "id": "human:workspace/person_session.py:SessionWorkspace.connect",
-   "kind": "human",
-   "source": "workspace/person_session.py:SessionWorkspace.connect",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_person_session.py::test_actor_rechecks_live_session_project_and_person",
-    "tests/test_person_session.py::test_connect_refuses_get_collision_and_revoked_person",
-    "tests/test_person_session.py::test_explicit_connect_creates_hashless_person_without_token",
-    "tests/test_person_session.py::test_session_person_preserves_existing_capability_restrictions"
-   ],
-   "note": "request-bound sessions recheck project authority and live person permissions; explicit POST binds a hashless principal"
-  },
-  {
    "id": "human:workspace/quarantine.py:Quarantine.release",
    "kind": "human",
    "source": "workspace/quarantine.py:Quarantine.release",
@@ -5086,24 +4976,6 @@
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_routes.py:route",
-   "kind": "human",
-   "source": "workspace/task_routes.py:route",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_task_routes.py::test_foreign_page_cannot_create_tasks",
-    "tests/test_fleet_task_routes.py::test_joined_unsigned_and_browser_claims_are_refused",
-    "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate",
-    "tests/test_taskboard.py::test_designated_reviewer_without_read_capability_cannot_grade_task",
-    "tests/test_taskboard.py::test_changed_task_specification_cannot_be_claimed",
-    "tests/test_task_credit.py::test_same_device_parent_cannot_review_through_another_worker_session",
-    "tests/test_task_credit.py::test_review_and_proposal_tampering_cannot_mint_credits"
-   ],
-   "note": "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
   },
   {
    "id": "human:workspace/task_scope.py:eligible",
@@ -7787,16 +7659,15 @@
    "status": "covered",
    "tests": [
     "tests/test_fleet_board_routes.py::test_local_person_posts_dm_and_thread_without_exposing_credentials",
-    "tests/test_fleet_board_routes.py::test_joined_session_is_required_before_owner_identity_is_used",
+    "tests/test_fleet_board_routes.py::test_joined_session_is_required_before_the_persons_session_is_used",
     "tests/test_fleet_board_routes.py::test_foreign_browser_cannot_send_as_person",
     "tests/test_fleet_board_routes.py::test_malformed_or_impersonating_post_does_not_deliver",
-    "tests/test_fleet_board_routes.py::test_page_cannot_post_announcements_or_use_agent_owner_file",
+    "tests/test_fleet_board_routes.py::test_page_cannot_post_announcements",
     "tests/test_fleet_board_routes.py::test_oversized_post_and_unsupported_methods_do_not_mutate",
     "tests/test_fleet_board_routes.py::test_ack_marks_only_an_existing_visible_message_in_its_scope",
     "tests/test_board_ui.py::test_selected_project_messages_and_person_post",
     "tests/test_board_ui.py::test_person_board_rejects_foreign_requests",
-    "tests/test_board_ui.py::test_missing_remote_or_unconfigured_project_never_falls_back",
-    "tests/test_board_ui.py::test_person_identity_is_required_and_never_created",
+    "tests/test_board_ui.py::test_unknown_project_and_a_directory_that_is_no_project_never_fall_back",
     "tests/test_board_ui.py::test_person_board_refuses_unsupported_methods",
     "tests/test_board_ui.py::test_person_threads_direct_messages_and_ack",
     "tests/test_board_ui.py::test_person_post_accepts_exact_browser_origin",
@@ -7804,7 +7675,7 @@
     "tests/test_redteam_board.py::test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal",
     "tests/test_redteam_board.py::test_an_agent_cannot_read_another_board_or_join_through_any_command",
     "tests/test_redteam_board.py::test_boards_and_subscriptions_cannot_be_made_without_limit",
-    "tests/test_workspace_board.py::test_the_route_reads_only_and_checks_host_origin_and_fetch_site",
+    "tests/test_board_page.py::test_the_route_reads_only_and_checks_host_origin_and_fetch_site",
     "tests/test_redteam_board.py::test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it",
     "tests/test_redteam_board.py::test_a_post_cannot_borrow_another_identity_or_smuggle_options",
     "tests/test_workspace_quiet.py::test_a_new_agent_has_no_subscriptions_and_its_inbox_holds_no_board_traffic",
@@ -7931,6 +7802,21 @@
     "tests/test_workspace_files.py::test_the_content_is_never_plaintext_on_disk_and_the_message_carries_only_the_handle"
    ],
    "note": "the sealed snapshot and blobs: a wrong key or a tampered file refuses"
+  },
+  {
+   "id": "parser:workspace/fleet_routes.py",
+   "kind": "parser",
+   "source": "workspace/fleet_routes.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_ui.py::test_person_connect_rejects_invalid_content_length_without_registering",
+    "tests/test_board_ui.py::test_person_connect_rejects_invalid_json_without_registering",
+    "tests/test_board_ui.py::test_person_board_rejects_foreign_requests",
+    "tests/test_board_ui.py::test_person_post_rejects_different_browser_origin"
+   ],
+   "note": "person joins reject hostile length and JSON bodies without registering a session on the node; browser session and origin remain checked"
   },
   {
    "id": "parser:workspace/integration_git.py",
@@ -8100,21 +7986,6 @@
     "tests/test_workspace_remote.py"
    ],
    "note": "sealed replies must be bounded JSON objects and project capabilities cannot cross authorities or projects"
-  },
-  {
-   "id": "parser:workspace/remote_host.py",
-   "kind": "parser",
-   "source": "workspace/remote_host.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_board_ui.py::test_person_connect_rejects_invalid_content_length_without_registry_mutation",
-    "tests/test_board_ui.py::test_person_connect_rejects_invalid_json_without_registry_mutation",
-    "tests/test_board_ui.py::test_person_board_rejects_foreign_requests",
-    "tests/test_board_ui.py::test_person_post_rejects_different_browser_origin"
-   ],
-   "note": "person joins reject hostile length and JSON bodies without registry mutation; browser session and origin remain checked"
   },
   {
    "id": "parser:workspace/replica_sync.py",
@@ -10576,7 +10447,7 @@
     "tests/test_fleet_board_routes.py::test_foreign_browser_cannot_send_as_person",
     "tests/test_fleet_board_routes.py::test_malformed_or_impersonating_post_does_not_deliver",
     "tests/test_fleet_board_routes.py::test_oversized_post_and_unsupported_methods_do_not_mutate",
-    "tests/test_fleet_board_routes.py::test_joined_session_is_required_before_owner_identity_is_used"
+    "tests/test_fleet_board_routes.py::test_joined_session_is_required_before_the_persons_session_is_used"
    ],
    "note": "A foreign origin, a forged identity, a malformed or oversized body and an unjoined session never post as the person"
   },

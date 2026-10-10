@@ -28,3 +28,6 @@
 /src/poolhouse/person.py @adammikulis
 /src/poolhouse/worktreerules.py @adammikulis
 /src/poolhouse/workspace/person_*.py @adammikulis
+/src/poolhouse/board/person.py @adammikulis
+/src/poolhouse/fleet/same_page.py @adammikulis
+/src/poolhouse/workspace/board_page.py @adammikulis

@@ -7,14 +7,19 @@ browser marks same-origin and a JSON body; a token in a header is not read at al
 
 from __future__ import annotations
 
+import functools
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from poolhouse import coding, roles
+from poolhouse.board import person
+from poolhouse.board.session import Session
 from poolhouse.fleet.onboard.web import Call, Listener, Reply as WebReply
+from poolhouse.fleet.same_page import Reply, checked, reply
 from poolhouse.graph.guard import host_ok, refusal
 from poolhouse.workspace import (
     boardroute,
@@ -27,7 +32,7 @@ from poolhouse.workspace import (
     localstart as ls,
     plain,
 )
-from poolhouse.workspace.boardroute import COOKIE, Reply, Request, _checked, _json, session_ok
+from poolhouse.workspace.boardroute import COOKIE, Request, session_ok
 from poolhouse.workspace.identity import Denied
 from poolhouse.workspace.service import Workspace
 
@@ -42,14 +47,14 @@ STOP_WAIT_S = 10.0
 def _post_refusal(req: Request) -> Reply | None:
     found = refusal("POST", dict(req.headers), req.port)
     if found:
-        return _json(found[0], {"error": found[1]})
+        return reply(found[0], {"error": found[1]})
     origin = req.headers.get("origin")
     if origin is None or not (urlsplit(origin).scheme == "http" and host_ok(urlsplit(origin).netloc, req.port)):
-        return _json(403, {"error": "a request from another origin"})
+        return reply(403, {"error": "a request from another origin"})
     if req.headers.get("sec-fetch-site", "same-origin") != "same-origin":
-        return _json(403, {"error": "a request from another site"})
+        return reply(403, {"error": "a request from another site"})
     if not req.signed_in:
-        return _json(401, {"error": "only the person's own browser session starts or stops an agent"})
+        return reply(401, {"error": "only the person's own browser session starts or stops an agent"})
     return None
 
 
@@ -120,20 +125,20 @@ def respond(ws: Workspace, req: Request, body: bytes = b"") -> Reply:
     """The answer to one request under ``/agents/``: GET ``list`` and ``model``; POST ``start`` and ``stop``."""
     path = urlsplit(req.target).path
     if not path.startswith(PREFIX):
-        return _json(404, {"error": "no such route"})
+        return reply(404, {"error": "no such route"})
     route = path[len(PREFIX):]
     try:
         if req.method == "POST":
             bad = _post_refusal(req)
-            return bad or _json(*_write(ws, route, body))
-        bad = _checked(req.method, req.headers, req.port)
-        return bad or _json(200, _read(ws, route))
+            return bad or reply(*_write(ws, route, body))
+        bad = checked(req.method, req.headers, req.port)
+        return bad or reply(200, _read(ws, route))
     except Denied as err:
-        return _json(403, {"error": plain.line(err, 200)})
+        return reply(403, {"error": plain.line(err, 200)})
     except (ValueError, KeyError) as err:
-        return _json(400, {"error": plain.line(err, 200)})
+        return reply(400, {"error": plain.line(err, 200)})
     except OSError as err:
-        return _json(500, {"error": plain.line(err, 200)})
+        return reply(500, {"error": plain.line(err, 200)})
 
 
 
@@ -147,6 +152,10 @@ AGENTS_PAGE = """<!doctype html><meta charset="utf-8"><title>Agents</title>
 class _Route(boardroute._Route):
     """The Board's route with the Agents routes and page added; its start and stop routes need the
     same session cookie as the Board route."""
+
+    def __init__(self, ws: Workspace, session: Callable[[], Session]) -> None:
+        super().__init__(session)
+        self.ws = ws
 
     def __call__(self, call: Call) -> WebReply:
         headers = {k.lower(): v for k, v in call.headers.items()}
@@ -171,4 +180,4 @@ class _Route(boardroute._Route):
 def serve(ws: Workspace, port: int = 0) -> Listener:
     """A loopback listener for the Board and Agents pages and routes; ``listener.session`` is the
     secret the person's browser presents (open ``/agents?session=...`` once)."""
-    return boardroute.serve(ws, port, routes=_Route)
+    return boardroute.serve(lambda: person.session(Path.cwd()), port, routes=functools.partial(_Route, ws))

@@ -3,7 +3,6 @@ read-only route, against the real bus, real files and a real socket."""
 
 from __future__ import annotations
 
-import http.client
 import json
 import threading
 import time
@@ -12,7 +11,7 @@ from pathlib import Path
 import pytest
 from workspace_kit import Kit, clean_env
 
-from poolhouse.workspace import Denied, Refused, boardroute, onboard, tokens
+from poolhouse.workspace import Denied, Refused, onboard, tokens
 from poolhouse.workspace.boards import ANNOUNCE, GENERAL
 
 
@@ -354,72 +353,6 @@ def test_delegates_share_their_parents_send_window(kit):
     assert sent == 6
     assert sorted(p.name for p in (kit.base / "rates").glob("*.txt")) == ["alice.txt", "alice~k0.txt",
                                                                              "alice~k1.txt", "alice~k2.txt"]
-
-
-# -- the route -----------------------------------------------------------------------------------------
-@pytest.fixture
-def route(kit):
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    server = boardroute.serve(kit.ws)
-    server.start()
-    port = server.port
-
-    def call(path, method="GET", headers=None):
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        conn.request(method, path, headers={"Cookie": f"ml_session={server.session}", **(headers or {})})
-        r = conn.getresponse()
-        body = r.read()
-        conn.close()
-        return r.status, dict(r.getheaders()), body
-
-    call.port = port
-    yield call
-    server.stop()
-
-
-def test_the_route_serves_the_person_every_board_and_conversation_as_plain_json(kit, route):
-    ws, t = kit.ws, kit.tokens
-    ws.board.create(t["alice"], "#ops", private=True)
-    root = send(kit, "alice", "#ops", "x‮<img src=x onerror=alert(1)>" + "y" * 9000, subject="<b>s</b>")
-    send(kit, "alice", "bob", "dm text")
-    status, headers, body = route("/board/boards")
-    assert status == 200 and "no-store" in headers["Cache-Control"]
-    assert [b["name"] for b in json.loads(body)["boards"]] == ["#announcements", "#general", "#ops"]
-    _, _, body = route("/board/messages?board=%23ops")
-    msg = json.loads(body)["messages"][0]
-    assert msg["truncated"] and len(msg["body"]) == 4000 and "‮" not in msg["body"]
-    assert msg["subject"] == "<b>s</b>"
-    assert json.loads(route(f"/board/thread?root={root['seq']}")[2])["messages"][0]["seq"] == root["seq"]
-    assert json.loads(route("/board/threads?board=%23ops")[2])["threads"][0]["root"] == root["seq"]
-    assert len(json.loads(route("/board/dm?a=alice&b=bob")[2])["messages"]) == 1
-    assert json.loads(route("/board/dms")[2])["conversations"][0]["messages"] == 1
-    everything = b"".join(route(p)[2] for p in ("/board/boards", "/board/messages?board=%23ops"))
-    for secret in (kit.owner, t["alice"], t["bob"]):
-        assert secret.encode() not in everything
-    assert kit.owner.encode() not in route("/")[2]
-
-
-def test_the_route_reads_only_and_checks_host_origin_and_fetch_site(kit, route):
-    for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS"):
-        assert route("/board/boards", method)[0] in (405, 501)
-    assert route("/board/boards", headers={"Host": "evil.example"})[0] == 421
-    assert route("/board/boards", headers={"Host": f"localhost:{route.port + 1}"})[0] == 421
-    assert route("/board/boards", headers={"Sec-Fetch-Site": "cross-site"})[0] == 403
-    assert route("/board/boards", headers={"Origin": "http://evil.example"})[0] == 403
-    assert route("/board/boards", headers={"Sec-Fetch-Site": "same-origin"})[0] == 200
-    assert route("/board/boards", headers={"Origin": f"http://127.0.0.1:{route.port}"})[0] == 200
-    assert route("/board/messages?board=%23..%2Fx")[0] == 400
-    assert route("/board/messages?board=%23nothing")[0] == 403
-    assert route("/board/unknown")[0] == 400
-    assert route("/ui/ml-ui/../daemon.py")[0] == 404
-
-
-def test_the_route_without_a_signed_in_person_answers_401_and_without_an_identity_503(kit):
-    port = 1
-    assert boardroute.respond(kit.ws, boardroute.Request("GET", "/board/boards", {"host": f"127.0.0.1:{port}"},
-                                                  port, signed_in=False))[0] == 401
-    assert boardroute.respond(kit.ws, boardroute.Request("GET", "/board/boards", {"host": f"127.0.0.1:{port}"},
-                                                  port))[0] == 503
 
 
 # -- the command line ----------------------------------------------------------------------------------

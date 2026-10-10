@@ -1,7 +1,6 @@
 """Read-only inspection of registered application and dataset graphs."""
 
 from contextlib import nullcontext
-from itertools import islice
 from pathlib import Path
 
 from poolhouse import lock
@@ -87,20 +86,7 @@ class KnowledgeRoutes:
             base = Path(conversations.root)
             if (base / "conversations.db").is_file():
                 sources["app:conversations"] = (base / "conversations.db", base / "conversations.lock", "Conversations and models")
-        projects = getattr(self.ui, "projects", None)
-        if projects is not None and self._local_person():
-            for project in islice(projects.boards(), 200):
-                if not projects.hosts(project["board_host"]):
-                    continue
-                base = projects.workspace_base(project["id"])
-                if (base / "coordination.db").is_file():
-                    key = "project:" + project["id"] + ":coordination"
-                    sources[key] = (base / "coordination.db", base / "coordination.lock", project["name"] + " · tasks and coordination")
         return sources
-
-    def _local_person(self):
-        return (self.client_ip in {"127.0.0.1", "::1"} and self.ui.authed(self.cookie)
-                and self.ui.host_ok(self.host_header))
 
     def _stores(self, root, sources):
         relative, entries, truncated = self.asked("path"), [], False

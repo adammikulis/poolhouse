@@ -35,6 +35,7 @@ class Entry:
     fields: dict[str, Any]
     at_ms: int
     gone: bool = False
+    counter: int = 0
 
     @property
     def text(self) -> str:
@@ -131,7 +132,7 @@ class Registration:
 def _entry(raw: dict[str, Any]) -> Entry:
     seq = str(raw["seq"])
     return Entry(raw["id"], seq if not raw["foreign"] else raw["id"], raw["kind"], raw["sender"], raw["foreign"],
-                 raw["channel"], raw["fields"], int(raw["hlc"][0]), bool(raw.get("gone", False)))
+                 raw["channel"], raw["fields"], int(raw["hlc"][0]), bool(raw.get("gone", False)), int(raw["hlc"][1]))
 
 
 def _agent(raw: dict[str, Any]) -> Agent:
