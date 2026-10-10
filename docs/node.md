@@ -50,9 +50,8 @@ row before), `hlc` (wall ms, counter, origin), `kind`, `actor`, `idem`, `body`, 
 Bodies hold integers, text, booleans, arrays and objects; fractions are refused so the hash never
 depends on a float format.
 
-Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit` and `landing` are folded into the view now; `task`
-and `reputation_event` are in the schema so a later log still parses, and a foreign entry of those kinds
-is not shown yet. `head` is a signature row, never shown.
+Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `room` and `task` are folded into the view now;
+`reputation_event` is in the schema so a later log still parses, and a foreign entry of that kind is not shown yet. `head` is a signature row, never shown.
 
 - **Crash safety.** Append is one write plus `fsync`; it returns when the row is on disk. On open, a
   last line without its newline was never acknowledged and is cut off (a torn write from `kill -9`);
@@ -269,6 +268,27 @@ is a session with no parent holding the grant `land_trust`, the device must be a
 one, and the change is an audit entry (`land.trust`, `land.untrust`). Even for a listed device the runner
 re-derives the standing of the requester and every reviewer from this device's own registrations at landing
 time, so a request from a session registered only on another device does not land here yet.
+
+**The task board** is the `task` entries of the board (channel `#tasks`), one kind with an `op` field: `create` (title,
+description, acceptance criteria, `deps`, `capabilities`, `limits` of `model`, `max_wall_s` and `max_retries`, a
+`source_key`, `assignees`, `reviewers`), `watch`, `assign`, `claim`, `checkpoint`, `submit`, `review`, `block`, `ready`
+(a recovery or a resumption), `enforce` (the mode), `scope`, `record` and `complete`. `task_list` and `task_get` fold them
+into tasks named `task-N` (the entry id from another device); a task is `queued`, `working`, `review`, `accepted`,
+`completed`, `rejected` or `blocked`, and each step moves it only from the state that allows it. The node stamps every
+entry with the caller's name and the time, and checks the rest before it writes: a session of this board only, a worker
+needs an `assign` entry that names it and a model lease of this device's table that it still holds (`task_assign`, by the
+worker's parent, by the task's maker when the worker is named in its assignees, or by a session with no parent that holds
+`task_authority` for itself), and `task_claim` takes the claim lease `task` of the task for two minutes at a time, which
+`task_beat` renews and a lost worker lets lapse; an expired lease is recovered by a qualified reviewer (`task_ready`), which
+spends a retry, and a blocked task is resumed the same way. A submission is stamped with the model of the lease and the
+worker's own registration; a review names the exact proposal and hash and needs every acceptance criterion passed by an
+independent check. The worker never reviews its own task. In `open` mode (the default) any other session of the board
+reviews; in `strict` mode only a person (a session with no parent that holds `task_authority`), a designated reviewer, or the
+task's maker when it is the worker's parent. `task_mode` shows the mode and a person sets it. A task with a `scope` (a
+checkout reserved for it) stays `accepted` after its review until `task_complete` records its landing; the host's
+integration records are kept on the task with `task_record`. Followers (`task_watch`) hear each state change as a direct
+`status` message from whoever changed it. Only the entries of this device and of a device on the landing list count; the
+others are shown under `foreign_ignored`. The `task` claim kind is the node's own: `claim` refuses it and `claims` does not list it.
 
 **Stubs.** Two checks wait for the trust ledger and are stubs that allow: the grants (`Grants::allows`, used by
 `note_verify`, the pool actions, `land_trust` and `land_control`, so until the ledger exists every session with no
@@ -544,8 +564,7 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
 - Python lease clients (the serve broker, `gate.py` tickets, `testslots` permits, fleet `JobRunner` slots,
   `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
-  device, the rest of the entry kinds (`task`,
-  `reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"), owner-only
+  device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"), owner-only
   grants (the `Grants` stub allows every registered session; links and project sources have the same
   gap), rebuilding the graph index from entries.
 - Pools of two or more members do not merge: a device that already has members refuses to join another

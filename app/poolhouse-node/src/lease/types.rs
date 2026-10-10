@@ -7,8 +7,8 @@ use crate::row::{is_line, valid_name};
 
 /// The device this node is authoritative for.
 pub const LOCAL: &str = "local";
-/// Claim kinds, as `src/poolhouse/workspace/claims.py` names them (`install` is new).
-pub const CLAIM_KINDS: [&str; 6] = ["worktree", "branch", "area", "port", "server", "install"];
+/// Claim kinds, as `src/poolhouse/workspace/claims.py` names them (`install` and `task` are new; `task` is the node's own, taken by a task claim).
+pub const CLAIM_KINDS: [&str; 7] = ["worktree", "branch", "area", "port", "server", "install", "task"];
 pub const MAX_RESOURCES: usize = 8;
 
 fn local() -> String {

@@ -32,7 +32,7 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 fn kind_of<'a>(p: &'a Map<String, Value>, required: bool) -> Result<&'a str> {
     let kind = text(p, "kind")?;
-    if kind.is_empty() && !required || CLAIM_KINDS.contains(&kind) {
+    if kind.is_empty() && !required || CLAIM_KINDS.contains(&kind) && kind != "task" {
         Ok(kind)
     } else {
         Err(Error::Invalid("a claim kind is worktree, branch, area, port, server or install".into()))
@@ -143,7 +143,7 @@ fn claims(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     for l in node.leases.table.leases.iter().filter(|l| l.state == State::Held && l.board == board) {
         for r in &l.resources {
             if let Resource::Claim { kind: k, name } = r {
-                if kind.is_empty() || kind == k {
+                if (kind.is_empty() || kind == k) && k != "task" {
                     out.push(show(node, l, k, name, board));
                 }
             }

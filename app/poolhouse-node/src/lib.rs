@@ -47,6 +47,7 @@ pub mod shard;
 pub mod state;
 pub mod subs;
 pub mod sync;
+pub mod tasks;
 pub mod sys;
 pub mod tls;
 pub mod wire;
