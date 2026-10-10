@@ -60,8 +60,9 @@ repeat report as new work. The branch and worktree stay; only the agent ends.
 
 ## The heartbeat
 
-A lead keeps a recurring heartbeat prompt, at most 45 minutes apart, for the whole life of its session
-(the prompt cache goes cold at 60), and recreates it at each session start and every seven days. It is a
+A lead keeps a heartbeat prompt firing every 55 minutes for the whole life of its session (the prompt cache goes
+cold at 60), as a chain of one-shot cron jobs where each firing schedules the next, and recreates it at each
+session start. It is a
 standard part of driving this project and is never deleted when the queue empties: each firing does real
 work or ends in one line. The prompt and the rules are in docs/heartbeat.md.
 
