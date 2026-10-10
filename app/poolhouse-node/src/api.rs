@@ -31,7 +31,7 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
         m => return crate::poolapi::params(m).or_else(|| crate::lease::rpc::params_for(m)).or_else(|| crate::sessions::params_for(m))
             .or_else(|| crate::claims::params_for(m)).or_else(|| crate::landing::params_for(m)).or_else(|| crate::notes::params_for(m))
             .or_else(|| crate::mail::params_for(m)).or_else(|| crate::quarantine::params_for(m))
-            .or_else(|| crate::rooms::params_for(m)).or_else(|| crate::subs::params_for(m)).or_else(|| crate::files::params_for(m)),
+            .or_else(|| crate::rooms::params_for(m)).or_else(|| crate::subs::params_for(m)).or_else(|| crate::files::params_for(m)).or_else(|| crate::scratch::params_for(m)),
     })
 }
 
@@ -201,6 +201,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         m if crate::rooms::METHODS.contains(&m) => crate::rooms::call(node, m, board, token, p),
         m if crate::subs::METHODS.contains(&m) => crate::subs::call(node, m, board, token, p),
         m if crate::files::METHODS.contains(&m) => crate::files::call(node, m, board, token, p),
+        m if crate::scratch::METHODS.contains(&m) => crate::scratch::call(node, m, board, token, p),
         m if crate::quarantine::METHODS.contains(&m) => crate::quarantine::call(node, m, board, token, p),
         "links" => node.access(token, board, false).map(|_| json!(node.links.all().iter().filter(|l| l.from == board || l.to == board).collect::<Vec<_>>())),
         "shutdown" => node.access(token, board, false).map(|_| {

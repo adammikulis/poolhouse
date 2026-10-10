@@ -52,6 +52,7 @@ from poolhouse.workspace import (
     remote_workers,
     render,
     rooms_cli,
+    scratch_cli,
     session_name,
     task_integration,
     task_outcomes,
@@ -339,16 +340,6 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      lambda a, w, t: person_view.listing(a.limit, a.session)),
     ("sync", "exchange journals with the paired devices (a person or lead)", [],
      lambda a, w, t: mesh_sync.run(w, t)),
-    ("scratch-new", "make a scratch folder", [
-        flag("name"), flag("--ttl-hours", type=float, default=0.0)],
-     lambda a, w, t: {"path": w.scratch_new(t, a.name, a.ttl_hours * 3600)}),
-    ("scratch-ls", "scratch folders with size and expiry", [FOR_AGENT],
-     lambda a, w, t: w.scratch_ls(t, _agent_named(w, a.for_agent))),
-    ("scratch-path", "a path inside a folder, refused if it escapes", [
-        flag("name"), flag("relative", nargs="?", default=""), FOR_AGENT],
-     lambda a, w, t: {"path": w.scratch_path(t, a.name, a.relative, _agent_named(w, a.for_agent))}),
-    ("scratch-rm", "delete a scratch folder", [flag("name"), FOR_AGENT],
-     lambda a, w, t: {"removed": w.scratch_rm(t, a.name, _agent_named(w, a.for_agent))}),
     ("worktrees", "inspect or clean your landed coding checkout scopes",
      [flag("--cleanup", default="", help="remove an owned landed checkout and record its cleanup proof")], _worktrees),
     ("audit-verify", "whether every log's chain holds", [flag("--anchor", default="")],
@@ -383,7 +374,7 @@ def _guarded(run: Callable[[argparse.Namespace], int | None]) -> Callable[[argpa
 def _narrowed(args: argparse.Namespace, ws: Any, result: Any) -> Any:
     """``result`` cut to the records of ``--for-agent``; scratch commands apply it themselves."""
     name = getattr(args, "for_agent", "")
-    if not name or args.cmd.startswith("scratch"):
+    if not name:
         return result
     return agent_filter.narrow(result, _agent_named(ws, name))
 
@@ -466,7 +457,7 @@ for _name, _help, _options, _handler in BARE:
                           *_options])
 for _name, _help, _options, _handler in TABLE:
     COMMANDS.add(_name, _runner(_handler), help=_help, options=[*COMMON, *_options])
-for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE):
+for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 
 

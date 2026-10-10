@@ -254,6 +254,23 @@ class Session:
         """Shred a file's bytes; only a session with that grant may."""
         return dict(self.call("file_delete", handle=handle))
 
+    def scratch_new(self, folder: str, ttl_s: int = 0) -> str:
+        """Make a private scratch folder; its absolute path."""
+        return str(self.call("scratch_new", folder=folder, **({"ttl_s": ttl_s} if ttl_s else {}))["path"])
+
+    def scratch_ls(self, owner: str = "") -> list[dict[str, Any]]:
+        """The scratch folders of this session, or of a session below it, with size and expiry."""
+        return list(self.call("scratch_ls", **({"owner": owner} if owner else {}))["folders"])
+
+    def scratch_path(self, folder: str, relative: str = "", owner: str = "") -> str:
+        """A path inside a scratch folder; refused when it would leave it."""
+        params = {k: v for k, v in (("relative", relative), ("owner", owner)) if v}
+        return str(self.call("scratch_path", folder=folder, **params)["path"])
+
+    def scratch_rm(self, folder: str, owner: str = "") -> bool:
+        """Delete a scratch folder; whether there was one."""
+        return bool(self.call("scratch_rm", folder=folder, **({"owner": owner} if owner else {}))["removed"])
+
     def head(self) -> dict[str, int]:
         """The cursor of now: a read since it returns only what is written after."""
         return dict(self.call("read", head=True)["cursor"])

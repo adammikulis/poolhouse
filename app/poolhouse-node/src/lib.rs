@@ -39,6 +39,7 @@ pub mod registry;
 pub mod row;
 pub mod rooms;
 pub mod rules;
+pub mod scratch;
 pub mod sessions;
 pub mod server;
 pub mod shard;
