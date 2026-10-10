@@ -1,15 +1,17 @@
 # The lead's heartbeat
 
-A lead session keeps a heartbeat for as long as it is alive: a recurring prompt, at most 45 minutes apart
+A lead session keeps a heartbeat for as long as it is alive: a prompt that fires every 55 minutes
 (the prompt cache goes cold at 60), so a lead never sits idle while a worker has finished, a branch is
 ready or a message is waiting, and its cache stays warm as a by-product. It is a standard part of how this
 project is driven, not something to tear down when the queue empties.
 
 ## Creating it
 
-Cron jobs are session-only and expire after seven days, so the lead recreates the heartbeat at the start of
-every session (and after a week) with the `CronCreate` tool: a recurring job at an off-minute such as
-`11,41 * * * *` (every thirty minutes, never at :00 or :30) and the prompt below.
+Cron cannot express a 55-minute period, so the heartbeat is a chain of one-shot `CronCreate` jobs: each firing
+ends by scheduling the next one 55 minutes ahead (`recurring: false`, a pinned minute, hour, day and month, never
+at :00 or :30). Jobs are session-only, so the lead creates the first one at the start of every session, and a
+firing that finds no pending heartbeat in `CronList` recreates it. The prompt is below, plus the closing
+instruction to schedule the next firing.
 
 ## The prompt
 

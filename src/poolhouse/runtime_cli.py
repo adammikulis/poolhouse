@@ -11,8 +11,10 @@ from pathlib import Path
 
 from poolhouse import (
     authority,
+    build_update,
     jobs,
     node_launch,
+    node_pool,
     runtime,
     runtime_board,
     runtime_coalesce,
@@ -110,6 +112,8 @@ def _ensure(args: argparse.Namespace) -> int:
         if args.background:
             raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground, at a terminal")
         human.mint("deploy an unmerged commit", args.ref)
+    if not args.background and not args.no_update and not args.allow_unmerged:
+        _caught_up(args)
     plan = plan_from(args)
     if args.background:
         settled = runtime_deploy.settled(plan)
@@ -127,6 +131,28 @@ def _ensure(args: argparse.Namespace) -> int:
     if args.settle and not args.now:
         return _settled(args)
     return 0 if _run(args, plan).ok else 1
+
+
+def _caught_up(args: argparse.Namespace) -> None:
+    """Bring a device that is behind its pool onto the pool's build before anything else (`poolhouse.build_update`)."""
+    result = build_update.update_once(agent=args.agent)
+    if result.action not in ("current", "no-node", "off"):
+        say(f"build {result.action}: {result.detail}")
+
+
+def _update(args: argparse.Namespace) -> int:
+    result = build_update.update_once(agent=args.agent)
+    say(f"build {result.action}: {result.detail}".strip() if not args.json else json.dumps({"action": result.action, "detail": result.detail, "target": result.target}))
+    return 1 if result.action == "failed" else 0
+
+
+def _pin(args: argparse.Namespace) -> int:
+    on = args.cmd == "pin"
+    runtime_trust.authorize(args.cmd)
+    build_update.pin(on)
+    runtime_trust.audit(args.cmd, "", "pinned" if on else "unpinned", agent=args.agent)
+    say("this device's build is pinned: it will not update itself" if on else "this device follows its pool's newest build again")
+    return 0
 
 
 def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.Outcome:
@@ -224,6 +250,7 @@ def status_lines(plan: runtime_deploy.Plan) -> list[str]:
         failure = record["last_failure"]
         lines.append(f"last failure {failure.get('commit', '')[:7]}: {failure.get('detail', '')[-300:]}")
     lines.append(node_line())
+    lines += [line for line in (node_pool.build_line(node_pool.status()), build_update.last_line()) if line]
     if _building():
         lines.append(f"building     {_building()}")
     if row.get("prefix"):
@@ -282,7 +309,13 @@ GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the sel
     flag("--force-build", action="store_true", help="build again at once after a failed build (needs an agent)"),
     flag("--now", action="store_true", help="skip the stability delay before a background build"),
     flag("--settle", action="store_true", help="wait until the tip has been unchanged for a few minutes, then build only the newest tip"),
-    flag("--background", action="store_true", help="return at once; build in a detached process")])
+    flag("--background", action="store_true", help="return at once; build in a detached process"),
+    flag("--no-update", action="store_true", help="do not first bring a device that is behind its pool onto the pool's build")])
+GROUP.add("update", _reported(_update), help="bring this device onto the newest build its pool runs, when it is behind and nothing is in the way",
+          options=[flag("--agent", default=""), flag("--json", action="store_true")])
+for _word, _about in (("pin", "keep this device on its current build: it stops updating itself and is shown as pinned"),
+                      ("unpin", "let this device follow its pool's newest build again")):
+    GROUP.add(_word, _reported(_pin), help=_about, options=[flag("--agent", default="")])
 GROUP.add("status", _reported(_status), help="show the selected runtime, the fallbacks kept and unmanaged trees",
           options=[*COMMON, flag("--json", action="store_true")])
 GROUP.add("rollback", _reported(_rollback), help="select the newest earlier verified runtime (needs an agent)",

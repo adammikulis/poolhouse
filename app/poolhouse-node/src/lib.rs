@@ -5,6 +5,7 @@
 pub mod api;
 pub mod beacon;
 pub mod board;
+pub mod build;
 pub mod cert;
 pub mod claims;
 pub mod client;

@@ -186,7 +186,7 @@ fn status(node: &mut Node, token: &str, board: &str) -> Result<Value> {
 fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
         "hello" => Ok(json!({"v": API_VERSION, "node": "poolhouse-node", "version": env!("CARGO_PKG_VERSION"),
-                             "pid": std::process::id(), "fingerprint": node.fingerprint()})),
+                             "pid": std::process::id(), "fingerprint": node.fingerprint(), "build": node.build.id, "build_seq": node.build.seq, "wire": node.build.wire})),
         "register" => node.register(board, (!token.is_empty()).then_some(token), str_of(p, "model")?, str_of(p, "harness")?, str_of(p, "session")?),
         "status" => status(node, token, board),
         "post" => post(node, token, board, p),

@@ -81,9 +81,27 @@ fn net_config(args: &[String]) -> Result<Option<NetConfig>, String> {
     Ok(Some(NetConfig { listen: addr(listen)?, beacon, sync_every, project, settle: settle.unwrap_or(SETTLE) }))
 }
 
+/// The build this node advertises: `--build-id`, `--build-seq`, `--wire-version` and `--pinned` over the environment.
+fn set_build(node: &mut poolhouse_node::node::Node, args: &[String]) -> Result<(), String> {
+    let number = |name: &str| flag(args, name).map(|n| n.parse::<u64>().map_err(|e| format!("{name}: {e}"))).transpose();
+    if let Some(id) = flag(args, "--build-id") {
+        node.build.id = id.chars().take(64).collect();
+    }
+    if let Some(seq) = number("--build-seq")? {
+        node.build.seq = seq;
+    }
+    if let Some(wire) = number("--wire-version")? {
+        node.build.wire = u32::try_from(wire).map_err(|e| e.to_string())?;
+    }
+    node.build.pinned |= args.iter().any(|a| a == "--pinned");
+    Ok(())
+}
+
 fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let config = net_config(args)?;
     let mut server = Server::bind(state).map_err(|e| e.to_string())?;
+    let shared = server.node();
+    set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
     if let Some(config) = config {
         let net = Net::start(server.node(), config).map_err(|e| e.to_string())?;
         server = server.attach(net);
