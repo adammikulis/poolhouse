@@ -10,15 +10,19 @@ use crate::fold::Entry;
 use crate::node::Node;
 use crate::row::{is_line, Kind};
 
-pub const METHODS: [&str; 7] = ["land_request", "land_review", "land_cancel", "land_brake", "land_state", "land_beat", "land_queue"];
+pub const METHODS: [&str; 8] = ["land_request", "land_review", "land_cancel", "land_brake", "land_state", "land_beat", "land_queue", "land_trust"];
 const EVENTS: [&str; 7] = ["request", "review", "cancel", "pause", "resume", "state", "beat"];
 const OPEN: [&str; 3] = ["queued", "needs-review", "running"];
 const STATES: [&str; 9] = ["queued", "needs-review", "running", "landed", "landed-unpushed", "failed", "needs-human", "refused", "cancelled"];
 const TERMINAL: [&str; 7] = ["landed", "landed-unpushed", "failed", "needs-human", "refused", "cancelled", "superseded"];
 const MAX_SELECTORS: usize = 64;
 const MAX_TEXT: usize = 400;
+const MAX_LINEAGE: usize = 32;
 /// The grant a session needs, besides having no parent, to pause, resume or cancel for others.
 pub const CONTROL: &str = "land_control";
+/// The grant a session needs, besides having no parent, to name another device whose landing entries count.
+pub const TRUST: &str = "land_trust";
+const MOST_IGNORED: usize = 50;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -29,6 +33,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "land_state" => &["req", "status", "detail", "evidence"],
         "land_beat" => &["what"],
         "land_queue" => &[],
+        "land_trust" => &["device", "trusted"],
         _ => return None,
     })
 }
@@ -91,11 +96,34 @@ pub fn check(map: &Map<String, Value>) -> Result<()> {
         "state" if !STATES.contains(&status.as_str()) => return bad("a request moves to a known state"),
         _ => {}
     }
+    match map.get("standing") {
+        None => {}
+        Some(Value::Object(st)) if matches!(ev.as_str(), "request" | "review") && st.len() <= 6 && standing_fits(st) => {}
+        _ => return bad("a stamped standing is the sender's name, parent, ancestors, model and model state"),
+    }
     match map.get("evidence") {
         None => Ok(()),
         Some(Value::Object(e)) if e.len() <= 8 && e.values().all(|v| v.is_boolean() || v.is_i64() || v.as_str().is_some_and(|s| s.len() <= 300 && is_line(s))) => Ok(()),
         _ => bad("evidence is at most eight short facts"),
     }
+}
+
+/// Whether a stamped standing holds only short lines and a short list of ancestors.
+fn standing_fits(st: &Map<String, Value>) -> bool {
+    let short = |v: &Value| v.as_str().is_some_and(|t| t.len() <= 256 && is_line(t));
+    st.iter().all(|(k, v)| match k.as_str() {
+        "name" | "parent" | "model" | "model_state" => short(v),
+        "ancestors" => v.as_array().is_some_and(|a| a.len() <= MAX_LINEAGE && a.iter().all(short)),
+        _ => false,
+    })
+}
+
+/// One review as recorded: who, what verdict, when, and the standing the node stamped on it.
+struct Review {
+    by: String,
+    verdict: String,
+    at: u64,
+    standing: Value,
 }
 
 struct Req {
@@ -111,7 +139,8 @@ struct Req {
     status: String,
     detail: String,
     evidence: Value,
-    reviews: Vec<(String, String, u64)>,
+    standing: Value,
+    reviews: Vec<Review>,
 }
 
 #[derive(Default)]
@@ -120,6 +149,9 @@ struct Queue {
     paused: bool,
     paused_by: String,
     beat: Option<(String, String, u64)>,
+    /// The latest entries of devices this device does not trust, kept in the view and counted for nothing.
+    ignored: Vec<Value>,
+    ignored_total: usize,
 }
 
 fn field(e: &Entry, key: &str) -> String {
@@ -127,6 +159,14 @@ fn field(e: &Entry, key: &str) -> String {
 }
 
 impl Queue {
+    fn ignore(&mut self, e: &Entry, device: &str) {
+        self.ignored_total += 1;
+        if self.ignored.len() == MOST_IGNORED {
+            self.ignored.remove(0);
+        }
+        self.ignored.push(json!({"entry": e.id, "ev": field(e, "ev"), "by": e.sender, "device": device, "ts_ms": e.hlc.0}));
+    }
+
     fn apply(&mut self, e: &Entry, own: &str) {
         let ev = field(e, "ev");
         if ev == "request" {
@@ -137,7 +177,8 @@ impl Queue {
             self.reqs.push(Req {
                 id: e.id.clone(), shown: shown_id(e, own), by: e.sender.clone(), at: e.hlc.0, branch: field(e, "branch"), sha: field(e, "sha"),
                 target: field(e, "target"), selectors: e.fields.get("selectors").cloned().unwrap_or(json!([])), replaces: field(e, "replaces"),
-                status: "needs-review".into(), detail: "no independent review yet".into(), evidence: json!({}), reviews: Vec::new(),
+                status: "needs-review".into(), detail: "no independent review yet".into(), evidence: json!({}), standing: e.fields.get("standing").cloned().unwrap_or(Value::Null),
+                reviews: Vec::new(),
             });
             return;
         }
@@ -154,8 +195,10 @@ impl Queue {
         }
         match ev.as_str() {
             "review" => {
-                req.reviews.retain(|r| r.0 != e.sender);
-                req.reviews.push((e.sender.clone(), field(e, "verdict"), e.hlc.0));
+                req.reviews.retain(|r| r.by != e.sender);
+                req.reviews.push(Review {
+                    by: e.sender.clone(), verdict: field(e, "verdict"), at: e.hlc.0, standing: e.fields.get("standing").cloned().unwrap_or(Value::Null),
+                });
                 refresh(req);
             }
             "cancel" => (req.status, req.detail) = ("cancelled".into(), format!("cancelled by {}", e.sender)),
@@ -174,7 +217,7 @@ fn shown_id(e: &Entry, own: &str) -> String {
 
 fn refresh(req: &mut Req) {
     if req.status == "queued" || req.status == "needs-review" {
-        let accepted = req.reviews.iter().any(|r| r.1 == "accept") && !req.reviews.iter().any(|r| r.1 == "reject");
+        let accepted = req.reviews.iter().any(|r| r.verdict == "accept") && !req.reviews.iter().any(|r| r.verdict == "reject");
         (req.status, req.detail) = if accepted { ("queued".into(), String::new()) } else { ("needs-review".into(), "no independent review yet".into()) };
     }
 }
@@ -183,17 +226,22 @@ fn fold(node: &mut Node, board: &str) -> Result<(Queue, String, u64)> {
     let entries = node.view(board)?;
     let host = node.host(board)?;
     let (own, now) = (host.board.origin().to_string(), host.board.now_ms());
+    let writers = crate::landtrust::writers(node, board)?;
     let mut queue = Queue::default();
     for e in entries.iter().filter(|e| e.kind == Kind::Landing) {
-        queue.apply(e, &own);
+        if e.origin == own || writers.trusted.contains(&e.origin) {
+            queue.apply(e, &own);
+        } else {
+            queue.ignore(e, writers.shown.get(&e.origin).map_or("an unknown device", String::as_str));
+        }
     }
     Ok((queue, own, now))
 }
 
 fn show(r: &Req) -> Value {
-    let reviews: Map<String, Value> = r.reviews.iter().map(|(n, v, t)| (n.clone(), json!({"verdict": v, "ts_ms": t}))).collect();
+    let reviews: Map<String, Value> = r.reviews.iter().map(|v| (v.by.clone(), json!({"verdict": v.verdict, "ts_ms": v.at, "standing": v.standing}))).collect();
     json!({"id": r.shown, "entry": r.id, "branch": r.branch, "sha": r.sha, "target": r.target, "selectors": r.selectors, "replaces": r.replaces,
-           "by": r.by, "ts_ms": r.at, "status": r.status, "detail": r.detail, "evidence": r.evidence, "reviews": reviews})
+           "by": r.by, "ts_ms": r.at, "standing": r.standing, "status": r.status, "detail": r.detail, "evidence": r.evidence, "reviews": reviews})
 }
 
 fn text<'a>(p: &'a Map<String, Value>, key: &str) -> &'a str {
@@ -204,6 +252,20 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> &'a str {
 fn related(node: &mut Node, board: &str, a: &str, b: &str) -> Result<bool> {
     let names = &node.host(board)?.names;
     Ok(a == b || names.descendants(a).iter().any(|n| n == b) || names.descendants(b).iter().any(|n| n == a))
+}
+
+/// What the node knows of ``name`` now, stamped on the entry it writes: the name, the parent, every ancestor, and
+/// the model with how far it is believed. Later, the runner asks about this and not about who is still registered.
+fn stamp(node: &mut Node, board: &str, name: &str) -> Result<Value> {
+    let names = &node.host(board)?.names;
+    let ident = names.get(name).ok_or_else(|| Error::Denied("no such session".into()))?;
+    let mut ancestors: Vec<String> = Vec::new();
+    let mut up = ident.parent.clone();
+    while !up.is_empty() && !ancestors.contains(&up) && ancestors.len() < MAX_LINEAGE {
+        ancestors.push(up.clone());
+        up = names.get(&up).map(|i| i.parent.clone()).unwrap_or_default();
+    }
+    Ok(json!({"name": name, "parent": ident.parent, "ancestors": ancestors, "model": ident.model, "model_state": ident.model_state}))
 }
 
 /// Whether ``actor`` may steer landing on ``target``: it holds the target's runner claim, or it is a
@@ -260,6 +322,7 @@ fn request(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
     }
     body.insert("target".into(), json!(target));
     body.insert("selectors".into(), p.get("selectors").cloned().unwrap_or(Value::Null));
+    body.insert("standing".into(), stamp(node, board, &actor)?);
     let done = write(node, board, &actor, Value::Object(body))?;
     audit(node, board, &actor, "land.request", &format!("land-{}", done["seq"]), &format!("{}@{}", text(p, "branch"), text(p, "sha")))?;
     Ok(json!({"id": format!("land-{}", done["seq"]), "branch": text(p, "branch"), "sha": text(p, "sha"), "status": "needs-review"}))
@@ -275,8 +338,8 @@ fn review(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     if text(p, "sha") != req.sha {
         return Err(Error::Invalid(format!("{} is for {}, not {}; review the exact commit", req.shown, req.sha, text(p, "sha"))));
     }
-    let body = json!({"ev": "review", "req": req.id, "sha": req.sha, "verdict": text(p, "verdict")});
-    let (shown, verdict) = (req.shown.clone(), text(p, "verdict").to_string());
+    let (shown, verdict, id, tip) = (req.shown.clone(), text(p, "verdict").to_string(), req.id.clone(), req.sha.clone());
+    let body = json!({"ev": "review", "req": id, "sha": tip, "verdict": verdict, "standing": stamp(node, board, &actor)?});
     write(node, board, &actor, body)?;
     audit(node, board, &actor, "land.review", &shown, &verdict)?;
     Ok(json!({"id": shown, "verdict": verdict}))
@@ -334,6 +397,27 @@ fn beat(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Re
     Ok(json!({"beat": true}))
 }
 
+/// The branch claims another device holds on the branches this device lands onto (a request's target, or a branch its
+/// runner holds). The runner's own claim is held among this device's sessions only, so these are listed and ignored.
+fn foreign_claims(node: &mut Node, board: &str, targets: &[String]) -> Result<Vec<Value>> {
+    let entries = node.view(board)?;
+    let writers = crate::landtrust::writers(node, board)?;
+    let mut keys: Vec<String> = targets.to_vec();
+    let prefix = format!("{board}/");
+    for l in node.leases.table.leases.iter().filter(|l| l.board == board && l.local) {
+        keys.extend(l.resources.iter().filter_map(|r| match r {
+            crate::lease::types::Resource::Claim { kind, name } if kind == "branch" => name.strip_prefix(&prefix).map(String::from),
+            _ => None,
+        }));
+    }
+    let held = crate::lease::merge::view(&entries);
+    Ok(held.exclusive.iter().filter(|(_, h)| h.foreign).filter_map(|((_, key), h)| {
+        let branch = key.strip_prefix("claim:branch:")?.strip_prefix(&prefix)?;
+        let shown = writers.shown.get(&h.origin).map_or("an unknown device", String::as_str);
+        keys.iter().any(|k| k == branch).then(|| json!({"branch": branch, "holder": h.holder, "device": shown, "status": "foreign, ignored"}))
+    }).collect())
+}
+
 fn queue(node: &mut Node, board: &str, token: &str) -> Result<Value> {
     let access = node.access(token, board, false)?;
     if access.channels.as_ref().is_some_and(|c| !c.iter().any(|x| x == "#landing")) {
@@ -341,7 +425,35 @@ fn queue(node: &mut Node, board: &str, token: &str) -> Result<Value> {
     }
     let (queue, _, now) = fold(node, board)?;
     let beat = queue.beat.as_ref().map(|(by, what, at)| json!({"by": by, "what": what, "age_s": now.saturating_sub(*at) / 1000}));
-    Ok(json!({"requests": queue.reqs.iter().map(show).collect::<Vec<_>>(), "paused": queue.paused, "paused_by": queue.paused_by, "beat": beat}))
+    let targets: Vec<String> = queue.reqs.iter().map(|r| r.target.clone()).collect();
+    let claims = foreign_claims(node, board, &targets)?;
+    let trusted: Vec<String> = node.land_trust.devices(&node.members.id).into_iter().collect();
+    Ok(json!({"requests": queue.reqs.iter().map(show).collect::<Vec<_>>(), "paused": queue.paused, "paused_by": queue.paused_by, "beat": beat,
+              "foreign": {"total": queue.ignored_total, "latest": queue.ignored, "status": "foreign, ignored"}, "foreign_claims": claims, "trusted_devices": trusted}))
+}
+
+/// Name a device whose landing entries this device counts, or stop counting them: a session with no parent
+/// that holds the grant ``land_trust``, recorded on the board.
+fn trust(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let actor = member(node, token, board)?;
+    let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("the token is not known".into()))?;
+    if !node.host(board)?.names.get(&actor).is_some_and(|i| i.parent.is_empty()) || !node.grants.allows(&holder, TRUST) {
+        return Err(Error::Denied("only a session with no parent that holds the grant land_trust names the devices whose landing entries count".into()));
+    }
+    let on = p.get("trusted").and_then(Value::as_bool).ok_or_else(|| Error::Invalid("trusted is true or false".into()))?;
+    let fingerprint = text(p, "device");
+    let device = node.members.get(fingerprint).cloned();
+    if on && !device.as_ref().is_some_and(|d| d.status == crate::membership::Status::Active) {
+        return Err(Error::Invalid("only an active member of this pool is trusted to land".into()));
+    }
+    if fingerprint == node.cert.fingerprint() {
+        return Err(Error::Invalid("this device's own entries always count".into()));
+    }
+    let pool = node.members.id.clone();
+    let changed = node.land_trust.set(&pool, fingerprint, on)?;
+    let name = device.map(|d| d.name).unwrap_or_default();
+    audit(node, board, &actor, if on { "land.trust" } else { "land.untrust" }, fingerprint, &name)?;
+    Ok(json!({"device": fingerprint, "trusted": on, "changed": changed}))
 }
 
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
@@ -352,6 +464,7 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         "land_brake" => brake(node, board, token, p),
         "land_state" => state(node, board, token, p),
         "land_beat" => beat(node, board, token, p),
+        "land_trust" => trust(node, board, token, p),
         _ => queue(node, board, token),
     }
 }

@@ -20,6 +20,7 @@ use crate::fold::{self, check_local, Context, Entry};
 use crate::fsutil::private_dir;
 use crate::identity::{Holder, Ident, ModelState, Registry, Tokens};
 use crate::lease::Leases;
+use crate::landtrust::LandTrust;
 use crate::links::Links;
 use crate::quarantine::Quarantine;
 use crate::registry::Projects;
@@ -46,6 +47,8 @@ pub struct Node {
     /// The pool this device belongs to and its record of the devices in it.
     pub members: Pool,
     pub grants: Box<dyn Grants>,
+    /// The other devices whose landing entries this device counts; empty by default.
+    pub land_trust: LandTrust,
     pub facts: Facts,
     pub boards: BTreeMap<String, Hosted>,
     pub tokens: Tokens,
@@ -74,7 +77,7 @@ impl Node {
         let members = Pool::open(&dir.join("pool.json"))?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let mut node = Node {
-            dir: dir.into(), pool: String::new(), cert, members, grants: Box::new(StubGrants), facts, key, boards: BTreeMap::new(),
+            dir: dir.into(), pool: String::new(), cert, members, grants: Box::new(StubGrants), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?,
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
@@ -229,5 +232,5 @@ impl Node {
 /// The body of an identity entry.
 pub fn identity_body(name: &str, i: &Ident) -> Result<Value> {
     Ok(json!({"name": name, "parent": i.parent, "family": i.family, "model": i.model, "model_state": serde_json::to_value(i.model_state)?,
-              "harness": i.harness, "retired": i.retired}))
+              "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason}))
 }

@@ -274,3 +274,10 @@ def test_the_consent_command_line_reads_devices_and_options():
 def test_everyone_is_not_a_device_to_allow():
     with pytest.raises(ShardError, match="one by one"):
         consent.fingerprints(["all"])
+
+
+def test_test_devices_help_names_its_arguments(capsys):
+    with pytest.raises(SystemExit) as left:
+        devices.command(["--help"])
+    out = capsys.readouterr().out
+    assert left.value.code == 0 and "poolhouse-test-devices" in out and "device" in out and "--json" in out
