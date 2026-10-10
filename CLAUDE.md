@@ -43,6 +43,28 @@ Use Sonnet 5.5 (`claude-sonnet-5-5`) for any other work that writes or reviews c
 asks. The evidence is in docs/model-benchmarks.md. Select within that order using the capability
 rules in AGENTS.md, "The main session and its agents".
 
+## Subagent effort
+
+Set the effort of every subagent from the task, with the Agent tool's `effort` argument (this section is the
+instruction that allows it). Effort is a cost lever before the model is: on the owner's Terminal-Bench chart
+(docs/model-benchmarks.md, 2.6) Sonnet 5.5 goes 20, 29, 43, 61, 70 percent from low to max at about $0.7, $0.8,
+$1.9, $5.3 and $13 per attempt, so each step up is real accuracy and real cost. **Avoid max** (owner,
+2026-10-10): it is about 2.5 times the cost of xhigh for about nine points, and a failure at xhigh is
+resolved first by a sharper brief, then by a second look, and only then by max.
+
+| Task | Model and effort |
+| --- | --- |
+| Read-only search, summaries, lookups | Haiku, `xhigh` (see the model order above) |
+| Narrow mechanical edits, a budget ratchet with its named metric | Haiku `xhigh`, or Sonnet `low` or `medium` |
+| A well-specified branch: code plus the tests that fail first, additive wiring | Sonnet `high` (the default) |
+| Conflict-heavy merges, cross-module refactors, protocol or node changes, anything that touches many files | Sonnet `xhigh` |
+| Security-adjacent work (authorization, grants, guards, red-team), design decisions, the hardest debugging | Sonnet `xhigh`, reviewed by a second agent |
+| xhigh failed review twice, or a design the lead cannot settle | Sonnet `max`, or Opus at a mid effort: Opus peaks near 65 percent from about $4, so its top effort adds cost and no points |
+
+A reviewer subagent runs one effort step below the worker it checks, never above it, because reading is cheaper
+than writing and its job is to disagree on evidence. Record a repeated failure of a kind of task at an effort
+in docs/model-benchmarks.md, not only here.
+
 ## Subagents and the Agent tool
 
 The Agent tool's worktree isolation provides the worktree half of a subagent brief; the brief
