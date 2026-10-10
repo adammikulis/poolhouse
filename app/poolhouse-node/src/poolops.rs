@@ -81,17 +81,20 @@ impl crate::node::Node {
         let now = wall_ms();
         let members: Vec<Value> = self.members.devices().iter().map(|d| {
             let f = self.facts.peers.get(&d.fingerprint);
-            json!({
+            let mut row = json!({
                 "fingerprint": d.fingerprint, "name": d.name, "status": d.status, "since": d.at, "by": d.by, "self": d.fingerprint == me,
                 "connected": f.is_some_and(|f| f.sessions > 0), "addr": f.and_then(|f| f.addr.clone()),
                 "last_seen_ms": f.map_or(0, |f| f.last_seen_ms), "last_sync_ms": f.map_or(0, |f| f.last_sync_ms),
                 "last_error": f.map(|f| f.last_error.clone()).unwrap_or_default(),
-            })
+            });
+            let build = if d.fingerprint == me { json!({"build": self.build.id, "build_seq": self.build.seq, "wire": self.build.wire, "build_state": "self", "fix": ""}) } else { self.member_build(&d.fingerprint, &d.name) };
+            row.as_object_mut().expect("an object").extend(build.as_object().cloned().unwrap_or_default());
+            row
         }).collect();
         json!({
             "pool": self.members.id, "project": self.members.project, "policy": self.members.policy.name(), "fingerprint": me, "listen": self.facts.listen,
             "beacon": self.facts.beacon, "pairing_open": self.facts.pairing_until_ms > now,
-            "pairing_expires_in_s": self.facts.pairing_until_ms.saturating_sub(now) / 1000, "members": members,
+            "pairing_expires_in_s": self.facts.pairing_until_ms.saturating_sub(now) / 1000, "members": members, "build": self.build_status(),
         })
     }
 }

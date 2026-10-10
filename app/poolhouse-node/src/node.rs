@@ -53,6 +53,8 @@ pub struct Node {
     pub leases: Leases,
     pub stop: Arc<AtomicBool>,
     pub started: Instant,
+    /// The build this device runs and advertises (`build`).
+    pub build: crate::build::Build,
 }
 
 /// What a request is allowed to touch, decided from its token and the board it names.
@@ -77,6 +79,7 @@ impl Node {
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?,
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
+            build: crate::build::Build::from_env(),
         };
         let root = dir.join("boards");
         if root.is_dir() {

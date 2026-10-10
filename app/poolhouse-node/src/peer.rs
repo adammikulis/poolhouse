@@ -7,7 +7,7 @@
 //!
 //! | op | who | what |
 //! |---|---|---|
-//! | `hello` | anyone not revoked | pool id, join policy, fingerprints; the boards held, to members |
+//! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version; the boards held, to members |
 //! | `join_open` | anyone, under policy `open` | enrol the caller; reply with the pool record |
 //! | `pair_exchange`, `pair_confirm` | anyone, while pairing is open | SPAKE2 (`pairing`) |
 //! | `members` | members | swap pool records |
@@ -66,8 +66,17 @@ pub fn take_policy(node: &mut Node, v: &Value) -> Result<()> {
 
 fn hello(node: &Node, standing: Standing) -> Value {
     let boards: Vec<&String> = if standing == Standing::Active { node.boards.keys().collect() } else { Vec::new() };
-    json!({"pool": node.members.id, "policy": node.members.policy.name(), "fingerprint": node.cert.fingerprint(), "project": node.members.project,
-           "board_fingerprint": crate::device::fingerprint(&node.key), "member": standing == Standing::Active, "boards": boards})
+    let mut out = json!({"pool": node.members.id, "policy": node.members.policy.name(), "fingerprint": node.cert.fingerprint(), "project": node.members.project,
+           "board_fingerprint": crate::device::fingerprint(&node.key), "member": standing == Standing::Active, "boards": boards});
+    out.as_object_mut().expect("an object").extend(node.build.json().as_object().cloned().unwrap_or_default());
+    out
+}
+
+/// The hello a device sends: its own build, so the peer learns it too.
+pub fn hello_request(node: &Node) -> Value {
+    let mut out = json!({"op": "hello"});
+    out.as_object_mut().expect("an object").extend(node.build.json().as_object().cloned().unwrap_or_default());
+    out
 }
 
 fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr) -> Result<Value> {
@@ -153,7 +162,10 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
     let bfp = board_fingerprint(der)?;
     let op = text(req, "op")?;
     match (op, standing) {
-        ("hello", _) => Ok(hello(node, standing)),
+        ("hello", _) => {
+            node.observe_build(&fp, req);
+            Ok(hello(node, standing))
+        }
         ("join_open", Standing::Unknown) => join_open(node, der, req, ip),
         ("pair_exchange" | "pair_confirm", Standing::Unknown) => net.pairing_step(node, der, op, req),
         ("join_open" | "pair_exchange" | "pair_confirm", _) => Err(Error::Denied("this device is already a member".into())),
@@ -163,7 +175,12 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
         ("vector", _) => vector(node, &bfp, req),
         ("pull", _) => pull(node, &bfp, req),
         ("push", _) => push(node, &bfp, req),
-        (op, _) if crate::shard::OPS.contains(&op) => net.shards.handle(node, &fp, op, req),
+        (op, _) if crate::shard::OPS.contains(&op) => {
+            if matches!(op, "shard_put" | "shard_start") {
+                node.work_gate()?;
+            }
+            net.shards.handle(node, &fp, op, req)
+        }
         _ => Err(Error::Invalid("unknown op".into())),
     }
 }

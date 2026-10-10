@@ -16,6 +16,8 @@ pub struct PeerFacts {
     pub sessions: usize,
     pub last_sync_ms: u64,
     pub last_error: String,
+    /// The build this peer last reported; None until it has been asked.
+    pub seen: Option<crate::build::Seen>,
 }
 
 pub struct Facts {
