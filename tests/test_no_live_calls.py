@@ -151,7 +151,8 @@ def run_in(tmp_path: Path, env: dict[str, str]) -> subprocess.CompletedProcess[s
     assert here in conftest, "the copied conftest must be told where the repository is"
     conftest = conftest.replace(here, f"REPO = Path({str(TESTS.parent)!r})", 1)  # the copy sits in a temp directory
     (tmp_path / "conftest.py").write_text(conftest, encoding="utf-8")
-    (tmp_path / "heavy-modules.txt").write_text("", encoding="utf-8")
+    for listing in ("heavy-modules.txt", "seatbelt-modules.txt"):
+        (tmp_path / listing).write_text("", encoding="utf-8")
     return subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-s", "-n", "0", "-p", "no:cacheprovider",
          "--rootdir", str(tmp_path), "-c", str(TESTS.parent / "pyproject.toml"), str(tmp_path)],

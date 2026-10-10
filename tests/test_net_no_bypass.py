@@ -34,6 +34,9 @@ PIPELINE = ("net/",)
 ALLOWED: dict[str, str] = {
     "http.py": "the client for model servers on this machine and network; urllib lives here",
     "httpguard.py": "the guarded connection the pipeline is built on",
+    "build_update.py": "its one hand-run git fetch is from an origin that is a directory on this machine "
+                       "(Path(url).is_dir()); every other origin goes through fleet/updates.check_remote "
+                       "and its git_in, which runs net/git and its host policy",
     "fleet/serving.py": "a port check on loopback",
     "fleet/invite_client.py": "single-use LAN invitation; every resolved address is checked, the selected sockaddr is frozen and TLS is pinned before HTTP",
     "fleet/project_client.py": "sealed project source from a LAN member; exact redirects and require_local_url at every request",

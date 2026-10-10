@@ -41,9 +41,11 @@ def __getattr__(name: str) -> Any:
         from importlib.metadata import PackageNotFoundError, version
 
         try:
-            return version("poolhouse")
+            found = version("poolhouse")
         except PackageNotFoundError:
-            return "0+unknown"
+            found = "0+unknown"
+        globals()["__version__"] = found  # read once: later reads import nothing
+        return found
     raise AttributeError(f"module 'poolhouse' has no attribute {name!r}")
 
 

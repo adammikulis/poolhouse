@@ -28,6 +28,7 @@ def run_script(*args: str) -> tuple[int, dict]:
     return done.returncode, json.loads(done.stdout)
 
 
+@pytest.mark.slow
 def test_a_small_run_delivers_everything_in_one_verifiable_chain_with_one_master_create():
     code, out = run_script("--agents", "6", "--messages", "4", "--drain", "30")
     assert code == 0 and out["pass"] is True and out["missed"] == [], (out["missed"], out["budgets"], out["send_s"], out["delivery_s"], out["cpu_s_per_agent_per_message"])
@@ -38,6 +39,7 @@ def test_a_small_run_delivers_everything_in_one_verifiable_chain_with_one_master
     assert out["machine"]["cpus"] and out["date"]
 
 
+@pytest.mark.slow
 def test_the_shipped_rate_limit_shows_up_as_counted_failures_not_a_failed_run():
     code, out = run_script("--agents", "3", "--messages", "34", "--drain", "10", "--default-limits")
     # The limit is 28 sends in a 60 second window: a host so slow that the run outlasts half a

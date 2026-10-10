@@ -226,7 +226,7 @@ def child(spec: dict[str, Any]) -> dict[str, Any]:
 def run(agents: int = 30, messages: int = 20, *, default_limits: bool = False,
         drain_s: float = 60.0, workdir: Path | None = None) -> dict[str, Any]:
     """Run the load and return the report, including ``pass`` and ``missed``."""
-    root = Path(workdir or tempfile.mkdtemp(prefix="poolhouse-load-"))
+    root = Path(workdir or tempfile.mkdtemp(prefix="poolhouse-load-")).resolve()  # the registry refuses a symlinked ancestor (/var on macOS)
     home, base, ring, go = root / "home", root / "ws", root / "ring.json", root / "go"
     os.environ["POOLHOUSE_HOME"] = str(home)
     for marker in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_WORKSPACE_TOKEN"):

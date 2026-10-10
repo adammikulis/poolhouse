@@ -36,7 +36,7 @@ def _preset(ws: Workspace, token: str, who: str, name: str, scope: str) -> dict[
                *_flip(ws, who, sorted(set(authority.GATES) - keep), authority.PERSON, (scope, name))]
     key = scope or project.describe().get('key', '')
     mode = 'strict' if name == 'prod' else 'open'
-    report = enforcement_check.check(ws, key) if mode == 'strict' else None
+    report = enforcement_check.check_project(ws, key) if mode == 'strict' else None
     return {'preset': name, 'changes': [c for c in changes if c['from'] != c['to']],
             'enforcement': enforcement.set_mode(ws, token, key, mode), **({'preflight': report} if report else {})}
 
