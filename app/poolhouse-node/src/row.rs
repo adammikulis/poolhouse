@@ -14,7 +14,7 @@ pub const GENESIS: &str = "00000000000000000000000000000000000000000000000000000
 pub const MAX_ROW_BYTES: usize = 128 * 1024;
 const MAX_DEPTH: usize = 16;
 
-/// What an entry is. Only message, note, verify, identity, lease, audit and landing are folded so far; the others
+/// What an entry is. Only message, note, verify, identity, lease, audit, landing and room are folded so far; the others
 /// are part of the schema so a log written later still parses.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -28,6 +28,8 @@ pub enum Kind {
     Landing,
     Identity,
     Audit,
+    /// A named room of the board made, joined, left or added to.
+    Room,
     ReputationEvent,
     /// A lease granted or ended on a device: what its table says it holds.
     Lease,

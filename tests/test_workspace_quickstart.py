@@ -131,7 +131,7 @@ def test_person_initialization_after_agent_bootstrap(base, ws, tmp_path):
 
 
 def test_cli_first_command_initializes_agent_automatically(base, ws, tmp_path):
-    result = child(["outbox", "--agent", "worker"], base, POOLHOUSE_NONINTERACTIVE="1")
+    result = child(["audit-head", "--agent", "worker"], base, POOLHOUSE_NONINTERACTIVE="1")
     assert result.returncode == 0, result.stderr
     assert ws.registry.info("worker")["role"] == "agent"
     assert not (tokens.directory(base) / tokens.OWNER_FILE).exists()
@@ -268,8 +268,8 @@ def test_a_token_file_readable_by_others_is_refused(base, ws, mode):
 
 def test_agent_env_and_flag_find_the_right_token_and_one_cannot_pose_as_another(base, ws):
     run_setup(ws)
-    assert child(["outbox", "--json"], base, POOLHOUSE_WORKSPACE_AGENT="codex").returncode == 0
-    assert child(["outbox", "--json", "--agent", "lead"], base).returncode == 0
+    assert child(["audit-head", "--json"], base, POOLHOUSE_WORKSPACE_AGENT="codex").returncode == 0
+    assert child(["audit-head", "--json", "--agent", "lead"], base).returncode == 0
     scope = project.describe()
     owner = ws.auth(tokens.read_file(tokens.directory(base) / tokens.OWNER_FILE))
     for name in ("codex", "lead"):
@@ -278,12 +278,12 @@ def test_agent_env_and_flag_find_the_right_token_and_one_cannot_pose_as_another(
     before = ws.registry._load()
     assert before["codex"]["minted_by"] != "local-account"
     (base / "tokens" / "codex").write_text((base / "tokens" / "lead").read_text())
-    swapped = child(["outbox", "--agent", "codex"], base)
+    swapped = child(["audit-head", "--agent", "codex"], base)
     assert swapped.returncode == 3 and "another agent" in swapped.stderr
     assert ws.registry._load() == before
     token_files = {path.name: path.read_bytes() for path in tokens.directory(base).iterdir()}
     for name in ("../lead", ".owner"):
-        bad_id = child(["outbox", "--agent", name], base)
+        bad_id = child(["audit-head", "--agent", name], base)
         assert bad_id.returncode == 2 and "not a usable agent id" in bad_id.stderr
     assert ws.registry._load() == before
     assert {path.name: path.read_bytes() for path in tokens.directory(base).iterdir()} == token_files

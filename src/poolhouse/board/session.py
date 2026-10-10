@@ -196,24 +196,51 @@ class Session:
         """Entries after ``since``; the page's cursor is the ``since`` of the next read of this question.
 
         ``filters`` are ``kind``, ``channel``, ``by`` (a sender), ``limit``, ``inbox`` (messages to this
-        session), ``conversation`` (messages between this session and one other) and ``thread`` (a
-        message and every reply to it or to a reply)."""
+        session and what its subscriptions send there), ``digest`` (what its digest subscriptions collected),
+        ``mentions`` (messages that name this session), ``conversation`` (messages between this session
+        and one other) and ``thread`` (a message and every reply to it or to a reply). ``head`` reads
+        nothing and answers the cursor of now."""
         params = {("with" if k == "conversation" else k): v for k, v in filters.items() if v}
         if since:
             params["since"] = since
         got = self.call("read", **params)
         return Page([_entry(e) for e in got["entries"]], got["cursor"])
 
-    def read_all(self, **filters: Any) -> list[Entry]:
-        """Every entry the question matches, read a page at a time, oldest first."""
+    def read_all(self, since: dict[str, int] | None = None, **filters: Any) -> list[Entry]:
+        """Every entry the question matches after ``since``, read a page at a time, oldest first."""
         found: list[Entry] = []
-        cursor: dict[str, int] = {}
+        cursor: dict[str, int] = dict(since or {})
         while True:
             page = self.read(cursor, limit=PAGE, **filters)
             found += page.entries
             if len(page.entries) < PAGE:
                 return found
             cursor = page.cursor
+
+    def head(self) -> dict[str, int]:
+        """The cursor of now: a read since it returns only what is written after."""
+        return dict(self.call("read", head=True)["cursor"])
+
+    def rooms(self) -> list[dict[str, Any]]:
+        """The rooms this session may see, with whether it is a member."""
+        return list(self.call("rooms")["rooms"])
+
+    def room(self, op: str, name: str, who: str = "", title: str = "", private: bool = False) -> dict[str, Any]:
+        """Make, join, leave or add ``who`` to the room ``name``."""
+        params = {k: v for k, v in (("who", who), ("title", title), ("private", private)) if v}
+        return dict(self.call("room", op=op, room=name, **params))
+
+    def subscribe(self, stype: str, target: str = "", mode: str = "inbox", force: bool = False) -> dict[str, Any]:
+        """Choose what reaches this session's inbox or digest: a room, thread, sender, kind or mentions."""
+        return dict(self.call("subscribe", stype=stype, target=target, mode=mode, **({"force": True} if force else {})))
+
+    def unsubscribe(self, stype: str, target: str = "") -> dict[str, Any]:
+        """Drop one subscription; the messages stay."""
+        return dict(self.call("unsubscribe", stype=stype, target=target))
+
+    def subs(self) -> list[dict[str, Any]]:
+        """This session's subscriptions."""
+        return list(self.call("subs")["subs"])
 
     def outbox(self, limit: int = 0) -> list[Sent]:
         """The messages this session sent, oldest first, each `synced` or `provisional`."""

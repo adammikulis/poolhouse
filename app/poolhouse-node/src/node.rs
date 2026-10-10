@@ -24,6 +24,7 @@ use crate::links::Links;
 use crate::quarantine::Quarantine;
 use crate::registry::Projects;
 use crate::row::{valid_name, Kind};
+use crate::subs::Subs;
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
@@ -33,6 +34,7 @@ pub struct Hosted {
     pub board: Board,
     pub names: Registry,
     pub quarantine: Quarantine,
+    pub subs: Subs,
 }
 
 pub struct Node {
@@ -105,7 +107,8 @@ impl Node {
             let board = Board::open(&dir.join("log"), id, &self.pool, self.key.clone())?;
             let names = Registry::open(&dir.join("names.json"))?;
             let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
-            self.boards.insert(id.into(), Hosted { board, names, quarantine });
+            let subs = Subs::open(&dir.join("subs.json"))?;
+            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs });
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
     }
@@ -187,6 +190,9 @@ impl Node {
             if !self.can_receive(board, to)? {
                 return Err(Error::Denied(format!("{to} is not a session of this board")));
             }
+        }
+        if kind == Kind::Message {
+            crate::rooms::check_post(self, board, &access.actor, fields)?;
         }
         let mut body = fields.clone();
         body.insert(if kind == Kind::Note { "author" } else { "from" }.into(), Value::String(access.actor.clone()));

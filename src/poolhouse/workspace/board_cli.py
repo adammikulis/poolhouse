@@ -13,7 +13,7 @@ from typing import Any
 from poolhouse import trees, trees_notice
 from poolhouse.board import credentials, session
 from poolhouse.board.client import Conflict, NodeError
-from poolhouse.board.session import Native, Session
+from poolhouse.board.session import Entry, Native, Session
 from poolhouse.command import flag
 from poolhouse.log import say, warn
 from poolhouse.workspace import (
@@ -104,7 +104,7 @@ def screened(what: str, *texts: str) -> None:
 
 def rollup(s: Session, ack: bool) -> str:
     """The newest few unseen announcements as one fenced block, or an empty string."""
-    page = s.read(s.cursor("announce"), channel=ANNOUNCE)
+    page = s.read(s.cursor("announce"), channel=ANNOUNCE, digest=True)
     fresh = [e for e in page.entries if e.sender != s.name]
     if ack and page.entries:
         s.keep("announce", page.cursor)
@@ -125,7 +125,7 @@ def unanswered(s: Session) -> list[dict[str, Any]]:
     owed = []
     for e in s.read(inbox=True).entries:
         age = now - e.at_ms / 1000
-        if e.fields.get("type") not in nudge.URGENT or age < older_s:
+        if e.fields.get("type") not in nudge.URGENT or age < older_s or e.fields.get("to") != s.name:
             continue
         if not any(m.at_ms > e.at_ms and (m.fields.get("to") == e.sender or m.fields.get("reply_id") == e.ref) for m in sent):
             owed.append({"seq": e.ref, "from": e.sender, "type": e.fields.get("type"), "age_s": age,
@@ -224,7 +224,7 @@ def owed_text(s: Session, announcements: int = 0) -> str:
 def attend(args: argparse.Namespace, s: Session) -> Any:
     """What is unanswered for you and how many announcements are new; nothing when neither."""
     text = owed_text(s)
-    new = len([e for e in s.read(s.cursor("announce"), channel=ANNOUNCE).entries if e.sender != s.name])
+    new = len([e for e in s.read(s.cursor("announce"), channel=ANNOUNCE, digest=True).entries if e.sender != s.name])
     if new:
         text = (text + "\n" if text else "") + f"{new} new announcements (`poolhouse-workspace inbox` shows them)."
     return {"authority": "none", "text": text} if text else ""
@@ -240,10 +240,53 @@ def tree_lines() -> list[str]:
         return []
 
 
+def _held_line(e: Entry, records: dict[str, dict[str, Any]], width: int) -> str:
+    """The text of ``e`` for a summary line: a placeholder while it is held."""
+    held = records.get(e.id)
+    if held and held["state"] == "quarantined":
+        return inbound.PLACEHOLDER.format(qid=held["qid"], why=", ".join(held["flags"]))
+    return data_line(e.text, width)
+
+
+def collected(s: Session, ack: bool) -> str:
+    """What the digest subscriptions collected, one line for each thread of each room, as one fenced block."""
+    page = s.read(s.cursor("digest"), digest=True)
+    rows = [e for e in page.entries if e.channel != ANNOUNCE]
+    if ack and page.entries:
+        s.keep("digest", page.cursor)
+    records = inbound.hold(s, rows)
+    groups: dict[tuple[str, str], list[Entry]] = {}
+    for e in rows:
+        groups.setdefault((e.channel, str(e.fields.get("thread_id") or e.id)), []).append(e)
+    lines = [f"{room} thread {items[0].ref if items[0].id == root else root} {data_line(items[0].fields.get('subject', ''), 60)!r}: "
+             f"{len(items)} new, last from {items[-1].sender}: {_held_line(items[-1], records, 100)}"
+             for (room, root), items in sorted(groups.items(), key=lambda g: g[1][-1].at_ms)]
+    cap = limits.load(limits.root()).digest_lines
+    shown = lines[-cap:]
+    if len(lines) > cap:
+        shown.insert(0, f"({len(lines) - cap} older threads omitted)")
+    return render.block(shown, "digest") if shown else ""
+
+
+def thread_digest(s: Session, root: str) -> str:
+    """A thread in a few lines: its first message and the newest replies."""
+    rows = s.read_all(thread=root)
+    head, replies = rows[0], rows[1:]
+    recent, records = replies[-5:], inbound.hold(s, rows[:1] + replies[-5:])
+    lines = [f"[{head.ref}] {head.sender}: {_held_line(head, records, 300)}"]
+    if len(replies) > len(recent):
+        lines.append(f"({len(replies) - len(recent)} earlier replies omitted)")
+    lines += [f"[{e.ref}] {e.sender}: {_held_line(e, records, 200)}" for e in recent]
+    return render.block(lines, f"thread#{root}")
+
+
 def digest(args: argparse.Namespace, s: Session) -> Any:
-    """What is new: the announcements; with --status, your active subagents, their claims and what you owe."""
+    """What is new: the announcements and what digest subscriptions collected; --thread N one thread; with
+    --status, your active subagents, their claims and what you owe."""
+    if args.thread:
+        return {"authority": "none", "text": thread_digest(s, args.thread)}
     if not args.status:
-        text = rollup(s, args.ack)
+        text = "\n".join(part for part in (rollup(s, args.ack), collected(s, args.ack)) if part)
         return {"authority": "none", "text": text or "nothing new"}
     return {"authority": "none", "text": render.block([*attention.status_lines(s, owed=unanswered(s)), *tree_lines()], "status")}
 
@@ -314,7 +357,7 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
         *READ, FOR_AGENT, flag("--children", action="store_true", help="only messages from your delegates")], inbox),
     ("attention", "what is unanswered for you and how many announcements are new; nothing when neither", [], attend),
     ("digest", "what is new since you last looked; --status for your subagents, their claims and what you owe", [
-        FOR_AGENT, flag("--ack", action="store_true"),
+        FOR_AGENT, flag("--ack", action="store_true"), flag("--thread", default="", help="a thread by its number: its first message and newest replies"),
         flag("--status", action="store_true", help="your active subagents, their claims and what is unanswered for you")],
      digest),
     ("brief", "print the short brief for the spawned subagent you run as (--agent NAME), to paste into its prompt",

@@ -172,7 +172,7 @@ def test_status_lists_a_leads_active_subagents_claims_and_owed_answers(board, tm
     taken = run(first.name, 'claim', 'branch', f'{first.name}/x')
     assert taken.returncode == 0, taken.stderr
     seq = ask(board)
-    text = board_cli.digest(argparse.Namespace(status=True, ack=False), later(board, board.lead, HOUR))['text']
+    text = board_cli.digest(argparse.Namespace(status=True, ack=False, thread=''), later(board, board.lead, HOUR))['text']
     assert 'Active subagents (1)' in text and f'{first.name}: milestone 1h ago, claims branch:{first.name}/x' in text
     assert second.name not in text and f'[{seq}] question from {board.alice.name}' in text
     shown = run(board.lead.name, 'digest', '--status')

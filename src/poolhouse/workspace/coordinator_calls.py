@@ -9,8 +9,8 @@ from poolhouse.workspace.chain import held
 from poolhouse.workspace.identity import HUMAN, Denied
 from poolhouse.workspace.taskboard import TaskBoard
 
-READS = frozenset({'thread', 'outbox', 'status', 'tasks', 'task', 'audit-verify', 'audit-head'})
-WRITES = frozenset({'ack', 'task-create', 'task-claim', 'task-credit', 'task-review', 'task-heartbeat', 'task-checkpoint', 'task-submit'})
+READS = frozenset({'status', 'tasks', 'task', 'audit-verify', 'audit-head'})
+WRITES = frozenset({'task-create', 'task-claim', 'task-credit', 'task-review', 'task-heartbeat', 'task-checkpoint', 'task-submit'})
 REQUEST_ID = re.compile(r'[a-f0-9]{32}')
 MAX_OUTCOME = 256 * 1024
 MAX_CACHED = 10000
@@ -34,11 +34,6 @@ def prepare(ws, token, argv, parser, handlers):
     args.json = True
     if any(getattr(args, field, '') == '-' for field in ('body', 'text', 'payload')):
         raise ValueError('remote command text is supplied in the bounded request')
-    if argv[0] == 'send':
-        ws._message_rights(who, {'to': args.to, 'subject': args.subject, 'body': args.body,
-                                'reply_to': args.reply_to, 'thread': 0}, False)
-    if argv[0] == 'announce':
-        ws._screen(who, 'send', ws.limits.body_bytes, args.text)
     if argv[0].startswith('task') and argv[0] not in ('tasks', 'task-create'):
         TaskBoard(ws).get(token, args.id)
         if argv[0] == 'task-review':
@@ -55,8 +50,6 @@ def execute(ws, token, document, parser, handlers):
     if type(request_id) is not str or not REQUEST_ID.fullmatch(request_id):
         raise ValueError('a stable request ID is required')
     who, args, handler = prepare(ws, token, argv, parser, handlers)
-    if argv[0] in ('claim', 'release', 'who') and args.kind not in ('branch', 'area'):
-        raise Denied('device-local resource claims require a verified paired-device namespace')
     if argv[0] in READS:
         return handler(args, ws, token)
     digest = hashlib.sha256(json.dumps(argv, ensure_ascii=True).encode()).hexdigest()

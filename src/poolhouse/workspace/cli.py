@@ -8,9 +8,7 @@ import os
 import signal
 import sys
 import threading
-import time
 from collections.abc import Callable
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +51,7 @@ from poolhouse.workspace import (
     remote_task_client,
     remote_workers,
     render,
+    rooms_cli,
     session_name,
     task_integration,
     task_outcomes,
@@ -61,11 +60,9 @@ from poolhouse.workspace import (
     worktree_lifecycle,
 )
 from poolhouse.workspace.boardapi import Follow
-from poolhouse.workspace.boards import MODES, STYPES
-from poolhouse.workspace.bus import TYPES
 from poolhouse.workspace.chain import ChainBroken
 from poolhouse.workspace.claims import Conflict
-from poolhouse.workspace.cli_options import COMMON, FOR_AGENT, NODE_COMMON, WIDEN
+from poolhouse.workspace.cli_options import COMMON, FOR_AGENT, NODE_COMMON
 from poolhouse.workspace.coordination import workspace_id
 from poolhouse.workspace.identity import AGENT_MARKERS, ROLES, TOKEN_ENV, BoardUnavailable, Denied
 from poolhouse.workspace.rates import RateLimited
@@ -137,32 +134,6 @@ def _context(args: argparse.Namespace, connection=_CONNECTION_UNSET):
         who = remote.call("whoami", token)
         project_connection.bind(remote, Path(connection["root"]), who["id"], connection.get("cluster", ""))
     return project_connection.BoardWorkspace(remote, token), token
-
-
-def _watch(args: argparse.Namespace, ws: Workspace, token: str) -> int:
-    """Print each batch of new messages as it arrives; 0 after one batch with --once, 3 when
-    the timeout passes with nothing."""
-    began = time.monotonic()
-    scope = {k: v for k, v in (("board", args.board), ("thread", args.thread), ("dm", args.dm)) if v}
-    if len(scope) > 1:
-        raise ValueError("watch one of --board, --thread or --dm")
-    spec = Follow(**scope, after=args.since, timeout_s=5.0)
-    while True:
-        left = args.timeout - (time.monotonic() - began) if args.timeout else 5.0
-        if args.timeout and left <= 0:
-            return 3
-        if scope:
-            got = ws.follow(token, replace(spec, timeout_s=min(5.0, left)), CANCELLED.is_set)
-            spec, batch = replace(spec, after=got["seq"]), got["messages"]
-        else:
-            batch = ws.wait(token, min(5.0, left), ack=True, cancel=CANCELLED.is_set,
-                            limit=args.limit, widen=args.all)
-        for item in batch:
-            render.show(args, item)
-            sys.stdout.flush()
-        render.held_note(batch)
-        if batch and args.once:
-            return 0
 
 
 def _mint(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
@@ -251,35 +222,6 @@ def _chat(args: argparse.Namespace, ws: Workspace) -> int:
     chat.run(ws, token, Follow(board=args.board, dm=args.to, backlog=args.backlog),
              chat.Console(sys.stdin, say, CANCELLED))
     return 0
-
-
-BOARD_ACTIONS = ("list", "read", "post", "threads", "create", "add", "mentions")
-
-
-def _board(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
-    b, name, rest = ws.board, args.name, args.rest
-    if args.action == "list":
-        return b.list(token)
-    if args.action == "mentions":
-        return b.mentions(token, args.limit or 50)
-    if not name:
-        raise ValueError(f"board {args.action} needs a board name such as #general")
-    if args.action == "read":
-        return b.read(token, name, args.limit, args.after, not args.no_mark)
-    if args.action == "threads":
-        return b.threads(token, name, args.limit or 50)
-    if args.action == "create":
-        return b.create(token, name, private=args.private, title=" ".join(rest))
-    if not rest:
-        raise ValueError(f"board {args.action} needs one more argument")
-    if args.action == "add":
-        return b.add(token, name, rest[0])
-    return ws.send(token, name, args.type, render.body(" ".join(rest)), subject=args.subject,
-                   reply_to=args.reply_to)
-
-
-def _subscribe(args: argparse.Namespace, ws: Workspace, token: str) -> Any:
-    return ws.board.subscribe(token, args.type, args.target, args.mode, args.force)
 
 
 def _ttl(text: str) -> float:
@@ -392,28 +334,6 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
     ("task-integrate", "gate, land and clean an independently accepted committed native task", [flag("id")],
      lambda a, w, t: task_integration.integrate(w, t, a.id)),
     *task_source_recovery.TABLE,
-    ("board", "boards: list, read NAME, post NAME TEXT, threads NAME, create NAME [TITLE], add NAME AGENT, mentions", [
-        flag("action", choices=BOARD_ACTIONS), flag("name", nargs="?", default=""),
-        flag("rest", nargs="*"), flag("--type", choices=TYPES, default="note"),
-        flag("--subject", default=""), flag("--reply-to", type=int, default=0),
-        flag("--limit", type=int, default=0, help="read: how many (default: a few, cut short)"),
-        flag("--after", type=int, default=0),
-        flag("--private", action="store_true", help="create: only people you add can join"),
-        flag("--no-mark", action="store_true", help="read: leave the board's unread count"), FOR_AGENT],
-     _board),
-    ("join-board", "join an open board", [flag("name")], lambda a, w, t: w.board.join(t, a.name)),
-    ("leave-board", "leave a board", [flag("name")], lambda a, w, t: w.board.leave(t, a.name)),
-    ("subscribe", "choose what reaches your inbox: board, thread, agent, kind or mentions", [
-        flag("type", choices=STYPES), flag("target", nargs="?", default=""),
-        flag("--mode", choices=MODES, default="inbox",
-             help="inbox, digest (summarised by `digest`) or silent (kept, never delivered)"),
-        flag("--force", action="store_true",
-             help="accept more than a few inbox subscriptions, each one more context")],
-     _subscribe),
-    ("unsubscribe", "drop a subscription; messages stay", [
-        flag("type", choices=STYPES), flag("target", nargs="?", default="")],
-     lambda a, w, t: w.board.unsubscribe(t, a.type, a.target)),
-    ("subs", "your subscriptions", [], lambda a, w, t: w.board.subs(t)),
     ("attestations", "what the harness hooks recorded the person saying, as person-attestations; read-only", [
         flag("--session", default=""), flag("--limit", type=int, default=50)],
      lambda a, w, t: person_view.listing(a.limit, a.session)),
@@ -505,18 +425,6 @@ def _runner(handler: Handler) -> Callable[[argparse.Namespace], int]:
     return _guarded(run)
 
 
-def _watching(args: argparse.Namespace) -> int:
-    if coordinator_config.load(limits.root()).get("mode") == "remote":
-        raise Denied("this watcher is local-only; use coordinator inbox polling")
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            signal.signal(sig, lambda *_: CANCELLED.set())
-        except ValueError:
-            break
-    ws, token = _context(args)
-    return _watch(args, ws, token)
-
-
 COMMANDS = Group(
     "poolhouse-workspace",
     "Agents coordinate here: messages, shared notes, scratch folders and who owns what. "
@@ -562,7 +470,7 @@ for _name, _help, _options, _handler in BARE:
                           *_options])
 for _name, _help, _options, _handler in TABLE:
     COMMANDS.add(_name, _runner(_handler), help=_help, options=[*COMMON, *_options])
-for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE):
+for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 
 
@@ -599,16 +507,9 @@ COMMANDS.add("nudge", board_cli.guarded(board_cli.nudging),
              help="print one line summarising what waits for you (nothing when nothing does); for hooks",
              options=[*NODE_COMMON, flag("--hook", default="", choices=("", *nudge.EVENTS),
                                     help="print the JSON a Claude Code hook of this kind expects")])
-COMMANDS.add("watch", _guarded(_watching),
+COMMANDS.add("watch", board_cli.guarded(rooms_cli.watching),
              help="print messages as they arrive; --once exits after one",
-             options=[*COMMON, *WIDEN, flag("--once", action="store_true"),
-                      flag("--board", default="", help="follow one board without a subscription"),
-                      flag("--thread", type=int, default=0, help="follow one thread"),
-                      flag("--dm", default="", help="follow your conversation with this agent"),
-                      flag("--since", type=int, default=-1,
-                           help="with --board/--thread/--dm: start after this message (default: from now)"),
-                      flag("--timeout", type=float, default=0.0,
-                           help="stop after this many seconds (exit 3 if nothing came)")])
+             options=[*NODE_COMMON, *rooms_cli.WATCH])
 main = COMMANDS.run
 
 

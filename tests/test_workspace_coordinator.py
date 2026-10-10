@@ -90,8 +90,7 @@ def test_real_distribution_registration_and_two_roots_share_messages_tasks_claim
     from importlib.metadata import entry_points
     assert any(entry.value == 'poolhouse.workspace.coordinator:route'
                for entry in entry_points(group='poolhouse.peer_routes'))
-    sent = shared.ws.send(shared.alice, 'bob', 'task', 'Inspect shared state')
-    assert shared.remote.command(['outbox'], shared.alice)[0]['seq'] == sent['seq']
+    assert shared.remote.command(['audit-head'], shared.alice)['head'] == shared.ws.audit_log.head()
     spec = {'title': 'Shared task', 'description': 'Read coordinator graph', 'acceptance': ['Exact graph state'],
             'project': {}, 'capabilities': [], 'limits': {}, 'source_key': 'two-device-proof'}
     task = shared.remote.command(['task-create', json.dumps(spec)], shared.alice)
@@ -162,7 +161,7 @@ def test_existing_invitation_enrolls_remote_agent_without_person_credentials(sha
     invite = shared.ws.invites.create('windows', 60, {})
     name = shared.remote.join(shared.device, invite, 'windows', 'model-a', 'codex')
     token = tokens.load(shared.device, name)
-    assert shared.remote.command(['outbox'], token) == []
+    assert shared.remote.command(['audit-head'], token)['head']
     assert shared.ws.auth(token).id == name
     assert shared.ws.auth(token).role == 'agent'
     assert not (shared.device / 'agents.json').exists()
@@ -171,15 +170,17 @@ def test_existing_invitation_enrolls_remote_agent_without_person_credentials(sha
 
 
 def test_declared_cli_arguments_roundtrip_without_credentials(shared):
-    sent = shared.ws.send(shared.bob, 'alice', 'status', 'read me')
-    args = cli.COMMANDS.parser().parse_args(['ack', str(sent['seq']), '--agent', 'alice', '--request-id', 'a' * 32])
+    spec = {'title': 'Round trip', 'description': 'd', 'acceptance': ['a'], 'project': {}, 'capabilities': [],
+            'limits': {}, 'source_key': 'roundtrip'}
+    args = cli.COMMANDS.parser().parse_args(['task-create', json.dumps(spec), '--agent', 'alice', '--request-id', 'a' * 32])
     from poolhouse.workspace.coordinator_client import argv_for
     options = next(options for name, _help, options, _fn in cli.TABLE if name == args.cmd)
     argv = argv_for(args, [*cli.COMMON, *options])
     assert '--agent' not in argv and '--token-file' not in argv and '--request-id' not in argv
     got = shared.remote.command(argv, shared.alice, request_id=args.request_id)
-    assert got['cursor'] == sent['seq'] and shared.ws.bus.cursor('alice') == sent['seq'], 'acked as the token holder'
-    assert shared.ws.bus.cursor('bob') == 0
+    made = TaskBoard(shared.ws).get(shared.alice, got['id'])
+    assert made['id'] == got['id'], 'the call made this task'
+    assert made['created_by'] == 'alice', 'created as the token holder, whatever the argv said'
 
 
 def test_installed_cli_on_second_device_reads_shared_state_without_local_fallback(shared, installed_metadata):
@@ -215,14 +216,17 @@ def test_remote_mcp_never_falls_back_to_local_workspace(tmp_path, monkeypatch, t
     assert not (base / 'registry.json').exists()
 
 
-@pytest.mark.parametrize('handler', ['_watching'])
+@pytest.mark.parametrize('handler', ['watching'])
 def test_remote_watchers_refuse_before_opening_a_local_board(tmp_path, monkeypatch, handler):
+    from poolhouse.workspace import board_cli, rooms_cli
+
     base = clean_env(monkeypatch, tmp_path)
     coordinator_config.save(base, {'mode': 'remote', 'workspace': 'workspace:' + 'a' * 32,
                                      'endpoint': 'https://coordinator.example:8770'})
-    with pytest.raises(Denied, match='local-only'):
-        getattr(cli, handler)(None)
-    assert not (base / 'registry.json').exists()
+    monkeypatch.setattr(board_cli, 'connect', lambda args: (_ for _ in ()).throw(Denied('the node is not reachable')))
+    with pytest.raises(Denied, match='not reachable'):
+        getattr(rooms_cli, handler)(SimpleNamespace(room='', thread='', dm='', since=-1, timeout=0.0))
+    assert not (base / 'registry.json').exists(), 'a watcher reads its own node and never opens the old local board'
 
 
 @pytest.mark.redteam

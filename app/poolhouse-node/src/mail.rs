@@ -50,6 +50,10 @@ pub fn link_reply(node: &mut Node, token: &str, board: &str, fields: &mut Map<St
     if !parent.readable_by(&access.actor) || access.channels.as_ref().is_some_and(|c| !c.contains(&parent.channel)) {
         return Err(Error::Denied("the sender is not a participant in the referenced thread".into()));
     }
+    let to = fields.get("to").and_then(Value::as_str).unwrap_or("");
+    if parent.channel.starts_with('#') && crate::fold::valid_room(&parent.channel) && parent.channel != to {
+        return Err(Error::Invalid(format!("message {reply} is not on {to}")));
+    }
     fields.insert("thread_id".into(), json!(thread_root(&parent)));
     Ok(())
 }

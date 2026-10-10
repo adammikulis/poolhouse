@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 import pytest
-from workspace_kit import Kit, clean_env, cli
+from workspace_kit import Kit, clean_env
 
 from poolhouse.workspace import Denied, Refused, boardroute, onboard, tokens
 from poolhouse.workspace.boards import ANNOUNCE, GENERAL
@@ -423,33 +423,6 @@ def test_the_route_without_a_signed_in_person_answers_401_and_without_an_identit
 
 
 # -- the command line ----------------------------------------------------------------------------------
-def test_the_commands_drive_boards_dms_subscriptions_and_status(kit):
-    a, b = kit.tokens["alice"], kit.tokens["bob"]
-    run = lambda tok, *argv: cli(kit.base, tok, *argv)  # noqa: E731
-    assert run(a, "board", "create", "#ops", "Operations").returncode == 0
-    assert run(b, "join-board", "#ops").returncode == 0
-    posted = run(a, "board", "post", "#ops", "hello", "board", "--subject", "greeting", "--json")
-    assert posted.returncode == 0 and json.loads(posted.stdout)["to"] == "#ops"
-    listing = run(b, "board", "list")
-    assert "#ops" in listing.stdout and listing.stdout.count("<untrusted") == 1
-    threads = run(b, "board", "threads", "#ops").stdout
-    assert "greeting" in threads and "1 unread" in threads
-    assert "hello board" in run(b, "board", "read", "#ops").stdout
-    assert run(b, "board", "read", "#ops", "--json").returncode == 0
-    denied = run(kit.tokens["carol"], "board", "read", "#ops")
-    assert denied.returncode == 3 and "hello" not in denied.stdout + denied.stderr
-    assert run(b, "dm", "alice", "a private hello").returncode == 0
-    assert "a private hello" in run(a, "dm", "bob").stdout
-    assert run(kit.tokens["carol"], "dm", "bob", "--between", "alice").returncode == 3
-    assert run(b, "subscribe", "kind", "question", "--mode", "digest").returncode == 0
-    assert "kind question -> digest" in run(b, "subs").stdout
-    assert run(b, "unsubscribe", "kind", "question").returncode == 0
-    assert run(b, "subscribe", "dm", "alice").returncode == 2
-    status = json.loads(run(b, "status", "--json").stdout)
-    assert {"name": "#ops", "unread": 0, "member": True} in status["boards"]
-    assert "board list" in onboard.snippet("bob")
-
-
 def test_a_subscription_never_delivers_from_a_board_the_subscriber_cannot_read(kit):
     ws, t = kit.ws, kit.tokens
     ws.board.create(t["alice"], "#vault", private=True)

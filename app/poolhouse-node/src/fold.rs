@@ -25,6 +25,8 @@ const VERIFY_KEYS: [&str; 4] = ["note", "exit", "cmd", "out_sha"];
 const LEASE_KEYS: [&str; 3] = ["lease", "action", "resources"];
 const LEASE_ACTIONS: [&str; 5] = ["acquire", "release", "expire", "dead", "abandon"];
 const AUDIT_KEYS: [&str; 3] = ["event", "subject", "detail"];
+const ROOM_KEYS: [&str; 5] = ["op", "room", "who", "title", "open"];
+const ROOM_OPS: [&str; 4] = ["create", "join", "leave", "add"];
 const LANDING_KEYS: [&str; 13] = ["ev", "branch", "sha", "target", "selectors", "replaces", "req", "verdict", "status", "detail", "evidence", "reason", "what"];
 pub const BODY_BYTES: usize = 64 * 1024;
 const NOTES_PER_SENDER: usize = 200;
@@ -38,6 +40,8 @@ pub struct Entry {
     pub hlc: (u64, u64),
     pub kind: Kind,
     pub sender: String,
+    /// The name the writer's own log carries, without the `@dN` label of a foreign origin.
+    pub actor: String,
     pub foreign: bool,
     pub channel: String,
     pub fields: Map<String, Value>,
@@ -60,13 +64,30 @@ pub struct Context<'a> {
     pub is_local: &'a dyn Fn(&str) -> bool,
 }
 
+/// Channels that are not rooms: a room is never named like one of these.
+pub const FIXED_CHANNELS: [&str; 10] = [GENERAL, ANNOUNCE, DIRECT, "#notes", "#leases", "#landing", "#identity", "#audit", "#other", "#rooms"];
+
+/// Whether ``name`` can be a room: `#` and a short lower-case word that is no fixed channel.
+pub fn valid_room(name: &str) -> bool {
+    let word = name.strip_prefix('#').unwrap_or("");
+    let bytes = word.as_bytes();
+    !FIXED_CHANNELS.contains(&name)
+        && !word.is_empty()
+        && word.len() <= 40
+        && bytes.first().is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && bytes.iter().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-'))
+        && !word.contains("..")
+}
+
 /// The channel a kind of entry belongs to, the unit a board link names.
 pub fn channel_of(kind: Kind, fields: &Map<String, Value>) -> String {
     match kind {
         Kind::Message => match fields.get("to").and_then(Value::as_str).unwrap_or(GENERAL) {
             to @ (GENERAL | ANNOUNCE) => to.to_string(),
+            to if to.starts_with('#') => to.to_string(),
             _ => DIRECT.into(),
         },
+        Kind::Room => "#rooms".into(),
         Kind::Note | Kind::Verify => "#notes".into(),
         Kind::Lease => "#leases".into(),
         Kind::Landing => "#landing".into(),
@@ -120,7 +141,7 @@ fn message(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<S
     let (to, kind) = (text(&map, "to", 64, true)?.to_string(), text(&map, "type", 32, true)?.to_string());
     let announce = to == ANNOUNCE;
     let direct = to != GENERAL && !announce && valid_name(&to);
-    if !((to == GENERAL || direct) && MESSAGE_TYPES.contains(&kind.as_str()) || announce && ANNOUNCE_TYPES.contains(&kind.as_str())) {
+    if !((to == GENERAL || direct || valid_room(&to)) && MESSAGE_TYPES.contains(&kind.as_str()) || announce && ANNOUNCE_TYPES.contains(&kind.as_str())) {
         return reject("the post is not an announcement, a #general message or a message to one session");
     }
     line(&map, "subject", 200)?;
@@ -216,6 +237,22 @@ fn audit(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<Str
     Ok((who, map))
 }
 
+fn room(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {
+    let map = only(&row.body, &ROOM_KEYS)?;
+    let who = sender(row, None, ctx, foreign)?;
+    if !ROOM_OPS.contains(&text(&map, "op", 8, true)?) || !valid_room(text(&map, "room", 48, true)?) {
+        return reject("a room entry names a room and what happened to it");
+    }
+    line(&map, "title", 60)?;
+    if !line(&map, "who", 48)?.is_empty() && !valid_actor(text(&map, "who", 48, true)?) {
+        return reject("who is a session name");
+    }
+    if map.get("open").is_some_and(|o| !o.is_boolean()) {
+        return reject("open is true or false");
+    }
+    Ok((who, map))
+}
+
 fn landing(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {
     let map = only(&row.body, &LANDING_KEYS)?;
     let who = sender(row, None, ctx, foreign)?;
@@ -233,11 +270,12 @@ fn entry(row: &Row, ctx: &mut Context) -> Result<Entry> {
         Kind::Audit => audit(row, ctx, foreign)?,
         Kind::Lease => lease(row, ctx, foreign)?,
         Kind::Landing => landing(row, ctx, foreign)?,
+        Kind::Room => room(row, ctx, foreign)?,
         _ => return reject("this kind of entry is not accepted yet"),
     };
     Ok(Entry {
         id: row.id(), origin: row.origin.clone(), seq: row.seq, hlc: (row.hlc.0, row.hlc.1), kind: row.kind,
-        sender: who, foreign, channel: channel_of(row.kind, &fields), fields,
+        sender: who, actor: row.actor.clone(), foreign, channel: channel_of(row.kind, &fields), fields,
     })
 }
 
