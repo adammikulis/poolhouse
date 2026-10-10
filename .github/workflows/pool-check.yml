@@ -5,6 +5,16 @@ name: pool-check
 # loopback and the runner's own virtual switch. docs/pool-check.md says what each job proves and what none can.
 on:
   workflow_dispatch:
+  push:
+    branches: [0.3dev]
+    paths:
+      - "app/poolhouse-node/**"
+      - "src/poolhouse/node*.py"
+      - "src/poolhouse/testfarm/**"
+      - "src/poolhouse/board/**"
+      - "tests/pool_check/**"
+      - "scripts/pool-check"
+      - ".github/workflows/pool-check.yml"
   pull_request:
     paths:
       - "app/poolhouse-node/**"
