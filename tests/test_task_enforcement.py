@@ -1,11 +1,9 @@
 """The per-project enforcement mode: open by default, strict restores the delegated-authority checks."""
 
-import json
-
 import pytest
 from taskboard_kit import accepted, board as _board_fixture, proposed
 
-from poolhouse.workspace import enforcement, enforcement_check, task_scope
+from poolhouse.workspace import enforcement, task_scope
 from poolhouse.workspace.identity import Denied
 
 board = _board_fixture
@@ -72,25 +70,6 @@ def test_accepted_review_stays_valid_after_promotion(board):
     assert board.board.assert_reviewer(board.agent('peer2'), board.task['id'])['id'] == board.task['id']
 
 
-def test_check_lists_what_strict_would_strand_without_changing_the_mode(board):
-    task(board, 'peer-claimable')
-    task(board, 'designated', assignees=[board.worker_id])
-    report = enforcement_check.check(board.ws, '')
-    kinds = {(row['kind'], row['task']) for row in report['stranded']}
-    assert ('unassigned', board.task['id']) in kinds
-    assert {row['kind'] for row in report['stranded']} == {'unassigned', 'designated'}
-    assert report['mode'] == 'open' and not report['clear']
-    assert enforcement.current(board.ws, '')['mode'] == 'open'
-
-
-def test_accepted_review_by_a_peer_is_reported(board):
-    proposed(board)
-    board.board.review(board.agent('peer'), board.task['id'], accepted())
-    assert board.board.get(board.parent, board.task['id'])['state'] == 'accepted'
-    stranded = enforcement_check.check(board.ws, '')['stranded']
-    assert [row['kind'] for row in stranded if row['task'] == board.task['id']] == ['review']
-
-
 def test_lead_promotes_and_demotes_and_every_change_is_audited(board):
     first = enforcement.set_mode(board.ws, board.parent, '', 'strict')
     assert first['from'] == 'open' and enforcement.mode(board.ws, {}) == 'strict'
@@ -113,17 +92,3 @@ def test_the_modes_are_per_project(board):
     assert enforcement.mode(board.ws, {'key': 'alpha'}) == 'strict'
     assert enforcement.mode(board.ws, {'key': 'beta'}) == 'open'
     assert enforcement.mode(board.ws, {}) == 'open'
-
-
-def test_cli_promote_demote_and_check(board):
-    from workspace_kit import cli
-    token = board.parent
-    run = cli(board.ws.base, token, 'enforcement', 'check', '--project', 'p', '--json')
-    assert run.returncode == 0, run.stderr
-    shown = json.loads(run.stdout)
-    assert shown['mode'] == 'open' and shown['clear']
-    promoted = json.loads(cli(board.ws.base, token, 'enforcement', 'promote', '--project', 'p', '--json').stdout)
-    assert promoted['mode'] == 'strict' and promoted['from'] == 'open' and promoted['preflight']['clear']
-    assert json.loads(cli(board.ws.base, token, 'enforcement', '--project', 'p', '--json').stdout)['mode'] == 'strict'
-    demoted = json.loads(cli(board.ws.base, token, 'enforcement', 'demote', '--project', 'p', '--json').stdout)
-    assert demoted['mode'] == 'open' and demoted['from'] == 'strict'

@@ -1,68 +1,20 @@
-"""Actor and execution views of reviewed outcomes and existing award references."""
+"""Actor and execution views of reviewed outcomes, read from the ledger that recorded them."""
 
 from collections import defaultdict
 
-from poolhouse.graph.store import GraphStore
+from poolhouse.board.taskspec import fingerprint
 from poolhouse.reputation import economy
-from poolhouse.workspace.chain import held
-from poolhouse.workspace.task_schema import SPEC_FIELDS, fingerprint
 
 
-def receipt(ws, result):
-    """Link an existing independently recorded award to its review."""
-    ident = 'work-credit-reference:' + result['completion']
-    attrs = {key: result[key] for key in
-             ('agent', 'workspace', 'completion', 'proposal_id', 'proposal_hash', 'completion_hash', 'id')}
-    attrs['award'] = result.get('award') if result.get('outcome') == 'accepted' else None
-    with held(ws.base / 'coordination.lock'), GraphStore(ws.base / 'coordination.db') as graph:
-        graph.upsert_node({'id': ident, 'kind': 'work-credit-reference',
-                           'label': result['completion'], 'attrs': attrs})
-        graph.upsert_edge({'source': ident, 'target': result['completion'], 'rel': 'records-credit'})
-
-
-def _checked(row, field):
-    return fingerprint({key: value for key, value in row.items() if key != field}) == row.get(field)
-
-
-def _bound(task, proposal, review, workspace):
-    return task.get('workspace') == workspace and _checked(review, 'review_hash') \
-        and _checked(proposal, 'proposal_hash') \
-        and fingerprint({key: task.get(key) for key in SPEC_FIELDS}) == task.get('spec_hash') \
-        and proposal.get('task') == review.get('task') == task.get('id') \
-        and proposal.get('worker') == review.get('worker') != review.get('verifier') \
-        and proposal.get('provenance', {}).get('actor', proposal.get('worker')) == proposal.get('worker') \
-        and review.get('proposal_hash') == proposal.get('proposal_hash')
-
-
-def _outcomes(ws, workspace):
-    with held(ws.base / 'coordination.lock'), GraphStore(ws.base / 'coordination.db') as graph:
-        tasks = {node['id']: node['attrs'] for node in graph.nodes('task')}
-        proposals = {node['id']: node['attrs'] for node in graph.nodes('proposal')}
-        references = {node['attrs']['completion']: node['attrs'] for node in graph.nodes('work-credit-reference')}
-        reviews = [node['attrs'] for node in graph.nodes('review')]
+def _outcomes(team):
+    """Each reviewed attempt of ``team`` (the ledger's standings) with the award its review earned, if it earned one."""
     result = []
-    for review in reviews:
-        task = tasks.get(review['task'], {})
-        proposal = proposals.get(review['proposal_id'], {})
-        if not _bound(task, proposal, review, workspace):
-            continue
-        if review['outcome'] == 'accepted' and task.get('state') != 'completed':
-            continue
-        provenance = proposal.get('provenance', {})
-        row = {**review, 'agent': proposal['worker'], 'source': 'taskboard',
-               'verified_at': review['reviewed_at'], 'provenance': provenance,
-               'family_account': proposal.get('family_account'), 'award': None,
-               'artifacts': proposal['artifacts'], 'task_limits': task['limits']}
-        if measured := review.get('verified_usage'):
-            row['usage'] = {'source': measured.get('source', 'Independent task review'),
-                            **{key: measured.get(key) for key in ('tokens_in', 'tokens_out', 'wall_seconds')}}
-        reference = references.get(review['id'])
-        if reference and all(reference.get(key) == value for key, value in {
-                'agent': proposal['worker'], 'workspace': workspace, 'completion': review['id'],
-                'proposal_id': proposal['id'], 'completion_hash': review['review_hash'],
-                'proposal_hash': proposal['proposal_hash']}.items()):
-            row.update(award=reference['award'], evidence_id=reference['id'])
-        result.append(row)
+    for row in team:
+        awards = {item['completion']: item for item in row['evidence']}
+        for item in row.get('contributions', []):
+            award = awards.get(item['completion'])
+            result.append({**item, 'provenance': item.get('provenance') or {}, 'source': 'taskboard',
+                           'award': award['award'] if award else None, 'evidence_id': award['id'] if award else None})
     return result
 
 
@@ -82,17 +34,16 @@ def _rows(groups, kind, offset):
     return result
 
 
-def views(ws, workspace, *, agent='', offset=0):
+def views(team, *, agent='', offset=0):
     """Derive reputation dimensions without recording scores or additional awards."""
     agents, models = defaultdict(list), defaultdict(list)
-    for item in _outcomes(ws, workspace):
+    for item in _outcomes(team):
         if agent and item['agent'] != agent:
             continue
         agents[item['agent']].append(item)
         provenance = item['provenance']
-        model, runtime = provenance.get('model'), provenance.get('runtime')
         artifact = provenance.get('artifact') or {}
-        identity = fingerprint({'model': model, 'runtime': runtime,
+        identity = fingerprint({'model': provenance.get('model'), 'runtime': provenance.get('runtime'),
                                 'model_source': provenance.get('model_source', 'unknown'),
                                 'artifact': artifact.get('id'),
                                 'device': None if artifact.get('id') else provenance.get('device_id'),

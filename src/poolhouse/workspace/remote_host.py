@@ -16,7 +16,6 @@ from poolhouse.workspace import (
     fleet_routes,
     limits,
     onboard,
-    remote_tasks,
     remote_workers,
     spawn,
     task_routes,
@@ -312,10 +311,6 @@ class WorkspaceHost:
             raise Denied("agent capability has no read permission")
         if operation == "work.reputation":
             result = _reputation(ws, token, args, kwargs)
-        elif operation == "task.command":
-            if len(args) != 1 or kwargs:
-                raise ValueError("task operation takes one typed command")
-            result = remote_tasks.command(ws, token, self.projects.get(project_id), args[0])
         elif operation in {"native.reserve", "native.release", "native.heartbeat"}:
             ws._may(who, "claim")
             with held(ws.registry.path.with_name("agents.lock")):

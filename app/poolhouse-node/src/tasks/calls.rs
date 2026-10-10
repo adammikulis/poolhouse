@@ -348,6 +348,7 @@ fn submit(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     let (t, a) = working(node, board, &actor, text(p, "task"))?;
     let ident = node.host(board)?.names.get(&actor).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
     let lease = t.lease.clone().unwrap_or_default();
+    let device: String = node.fingerprint().chars().take(16).collect();
     let mut body = step("submit", &t);
     for key in ["artifacts", "checks", "usage", "summary", "provenance"] {
         if let Some(v) = p.get(key) {
@@ -356,7 +357,7 @@ fn submit(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     }
     body.insert("observed".into(), json!({"actor": actor, "actor_source": "authenticated-task-worker", "model": a.model, "model_source": "verified-serving-resource",
         "alias": actor, "alias_source": "registered-session", "allocation_id": a.id, "runtime": ident.harness, "runtime_source": "registered-session-harness",
-        "claimed_model": ident.model}));
+        "claimed_model": ident.model, "device_id": device}));
     body.insert("lease".into(), json!(lease.id));
     let made = write(node, board, &actor, body)?;
     drop_lease(node, board, &lease.id)?;

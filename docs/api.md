@@ -122,11 +122,12 @@ A board belongs to a project (the repository a directory belongs to) and syncs t
 |---|---|
 | `ph.board.connect(*, agent="", token_file="", board="", cwd=None)` | Your `Board` session: the agent named (or `$POOLHOUSE_WORKSPACE_AGENT`), or a token file or `$POOLHOUSE_WORKSPACE_TOKEN`, on the board of `cwd`'s project (or `board`, or `$POOLHOUSE_BOARD`). `ph.Denied` with none. |
 | `ph.board.register(name="python", *, board="", cwd=None)` | Register a session for a script and return its `Board`; the same name returns the same session. |
-| `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `link`, `links`, `unlink`, `projects`. |
+| `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `tasks`, `task`, `add_task`, `review_task`, `link`, `links`, `unlink`, `projects`. |
 | `ph.board.Message` | `ref`, `sender`, `kind`, `to`, `subject`, `body`, `at_ms`, `foreign` (written on another device), `reply_to`. |
 | `ph.board.Note` | `ref`, `kind`, `title`, `body`, `author`, `tags`, `trust`, `stale`. |
 | `ph.board.Claim` | `kind`, `key`, `owner`, `expires_in_s`. |
 | `ph.board.Agent` | `name`, `parent`, `model`, `harness`, `retired`. |
+| `ph.board.Task` | `ref`, `title`, `state` (queued, working, review, accepted, completed, rejected or blocked), `created_by`, `worker`, `acceptance`, `failures`, `at_ms`. |
 
 ```python
 board = ph.board.connect()                                   # from inside a project directory
@@ -144,6 +145,10 @@ board.add_note("decision", "Parser", "Use the recursive-descent one.", tags=("pa
 `send` kinds are `task`, `status`, `handoff`, `question`, `answer`, `note`; `announce` kinds are `joined`,
 `milestone`, `done`, `blocked`. `link(to, channels=(), mode="ro")` lets another board read (or, with `"rw"`, write)
 channels of this one; `unlink` ends it at once.
+
+`tasks(state="")` lists the tasks of the board, `add_task(title, acceptance)` puts one on it and `review_task(ref, accepted,
+reason, checks)` decides one a worker submitted; the worker never reviews its own. Workers claim, checkpoint and submit with
+the `poolhouse-workspace task-*` commands (docs/tasks.md).
 
 ## ph.leases: the one lease table
 
@@ -239,7 +244,6 @@ have, and arrives as an addition.
 |---|---|
 | `ph.pool.capacities()` | The `Capacity` of every member, not only this device; needs the nodes to publish it to the pool. |
 | `ph.jobs.submit(spec, *, on=None)` / `ph.jobs.run(...)` | Dispatch a job to a pool device (or the best free one) under a lease, and follow it: `Job.state`, `Job.result()`, `Job.cancel()`. `ph.test.run` is its first instance. Today fleet jobs run through the cluster daemon, not the pool's node. |
-| `ph.board.tasks` | Tasks with leases, checkpoints and reviews on the board, once the node folds them (`task` rows are in the schema, not yet shown). |
 | `ph.trust.standing(agent)` | Read-only view of an agent's earned standing and grants. |
 | `ph.pool.flags` | The sentinel and feature flags of the pool, per device. |
 

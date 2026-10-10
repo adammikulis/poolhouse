@@ -173,19 +173,16 @@ def test_reputation_read_requires_valid_token_and_read_capability(work):
 
 
 @pytest.mark.redteam
-def test_local_and_mcp_tools_read_reputation_and_task_frame_contains_team_awareness(work, monkeypatch):
-    from poolhouse.workspace import localloop, localtools, tools, work_reputation
-    from poolhouse.workspace.identity import TOKEN_ENV
+def test_local_tools_read_reputation_and_task_frame_contains_team_awareness(work, monkeypatch):
+    from poolhouse.workspace import localloop, localtools, work_reputation
 
     _historical(work)
     monkeypatch.setattr(work_reputation, 'WorkLedger', lambda: work.ledger)
-    monkeypatch.setenv(TOKEN_ENV, work.child)
     state = localtools.TaskState()
     extension = localtools.workspace_extension(work.ws, work.child, work.agent_id, state, lambda _: True)
     functions = {schema['function']['name']: call for schema, call in extension.tools()}
     result = functions['workspace_reputation']()
     assert result['own']['verified_tasks'] == 1 and 'workspace_reputation' in extension.reads
-    assert tools.workspace_reputation()['own']['verified_tasks'] == 1
     assert not any('verify' in name or 'award' in name for name in functions)
     frame = localloop._frame({'seq': work.task['seq'], 'from': 'lead', 'text': 'Inspect the simulator.'},
                             'parent', work_reputation.brief(work.ws, work.child))

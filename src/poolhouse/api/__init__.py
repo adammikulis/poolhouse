@@ -26,7 +26,7 @@ ERRORS = ("Error", "NotRunning", "Denied", "Conflict")
 SURFACE: dict[str, tuple[str, ...]] = {
     "pool": ("status", "members", "policy", "set_policy", "listen", "add_device", "join", "remove", "sync", "capacity",
              "Pool", "Member", "Capacity"),
-    "board": ("connect", "register", "Board", "Message", "Note", "Claim", "Agent"),
+    "board": ("connect", "register", "Board", "Message", "Note", "Claim", "Agent", "Task"),
     "leases": ("view", "acquire", "wait", "renew", "release", "cpu_slots", "memory_mb", "gpu", "model_slot", "claim", "LeaseRecord"),
     "test": ("devices", "run", "Device", "Result"),
     "models": ("pull", "path", "cache_dir"),
@@ -36,5 +36,5 @@ SURFACE: dict[str, tuple[str, ...]] = {
 }
 """The public names of each namespace. Only these are promised; everything else reachable is private."""
 
-PLANNED = ("pool.capacities", "jobs.submit", "jobs.run", "board.tasks", "trust.standing", "pool.flags")
+PLANNED = ("pool.capacities", "jobs.submit", "jobs.run", "trust.standing", "pool.flags")
 """Named in docs/api.md as planned: they do not exist yet and importing them fails."""

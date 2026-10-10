@@ -9,9 +9,9 @@ import sys
 import types
 from typing import Any
 
-from poolhouse.board.public import Agent, Board, Claim, Message, Note, connect, register
+from poolhouse.board.public import Agent, Board, Claim, Message, Note, Task, connect, register
 
-__all__ = ["Agent", "Board", "Claim", "Message", "Note", "connect", "register"]
+__all__ = ["Agent", "Board", "Claim", "Message", "Note", "Task", "connect", "register"]
 
 
 class _CallableBoard(types.ModuleType):

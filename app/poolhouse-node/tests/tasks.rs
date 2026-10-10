@@ -242,6 +242,23 @@ fn review_authority_follows_the_mode_the_board_runs_in() {
 }
 
 #[test]
+fn an_unassigned_task_is_open_to_a_peers_worker_only_while_the_board_is_open_or_a_person_made_it() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let t = team(&mut n);
+    let by_peer = id_of(make(&mut n, &t.other.1, json!({"source_key": "peers"})));
+    let by_parent = id_of(make(&mut n, &t.lead.1, json!({"source_key": "parents"})));
+    let ask = |n: &mut Node, task: &str| req(n, "task_assign", "demo", &t.lead.1, json!({"task": task, "worker": t.kid.0, "lease": t.model}));
+    ok(ask(&mut n, &by_peer));
+    ok(req(&mut n, "task_mode", "demo", &t.lead.1, json!({"mode": "strict"})));
+    n.grants = Box::new(Nobody);
+    let refused = ask(&mut n, &by_peer);
+    assert_eq!(code(&refused), "denied");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("eligible"), "{refused}");
+    ok(ask(&mut n, &by_parent));
+}
+
+#[test]
 fn a_designated_reviewer_judges_in_strict_mode_and_the_worker_never_does() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());

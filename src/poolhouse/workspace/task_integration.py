@@ -5,13 +5,13 @@ import subprocess
 from pathlib import Path
 from uuid import uuid4
 
+from poolhouse.board.taskspec import fingerprint, review_decision
 from poolhouse.graph.store import GraphStore
 from poolhouse.workspace import integration_git as repo, integration_staging, worktree_lifecycle
 from poolhouse.workspace.chain import held
 from poolhouse.workspace.claims import Conflict
 from poolhouse.workspace.identity import HUMAN, Denied, Identity
 from poolhouse.workspace.task_graph import link, record, save
-from poolhouse.workspace.task_schema import fingerprint, review_decision
 from poolhouse.workspace.taskboard import TaskBoard
 
 

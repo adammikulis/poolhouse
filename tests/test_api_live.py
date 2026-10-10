@@ -155,6 +155,30 @@ def test_remote_tests_refuse_what_is_off_and_name_what_is_wrong(mine, tmp_path):
         ph.test.run("fast", on="x")
 
 
+def test_tasks_are_put_on_the_board_worked_by_another_session_and_reviewed_through_ph_board(mine):
+    from poolhouse.board.tasks import Tasks
+
+    lead, other = mine.member("lead"), mine.member("other")
+    worker = mine.member("worker", parent=lead)
+    board, reviewer = ph.board.connect(agent=lead.name), ph.board.connect(agent=other.name)
+    made = board.add_task("Replay the capture", ["Replay passes"], description="Collect a replay.", source_key="issue-42")
+    assert isinstance(made, ph.board.Task) and (made.title, made.state, made.created_by, made.worker) == ("Replay the capture", "queued", lead.name, "")
+    assert board.add_task("Replay the capture", ["Replay passes"], description="Collect a replay.", source_key="issue-42").ref == made.ref
+    lease = mine.session(worker).call("lease_acquire", resources=[{"type": "model_slot", "model": "qwen3"}], ttl_s=600)["id"]
+    allocation = Tasks(mine.session(lead)).assign(made.ref, worker.name, lease)["allocation_id"]
+    working = Tasks(mine.session(worker))
+    working.claim(made.ref, allocation)
+    assert [t.state for t in board.tasks("working")] == ["working"] and board.tasks("queued") == []
+    working.submit(made.ref, {"artifacts": {"replay.json": "a" * 64}, "checks": [{"name": "Own check", "passed": True}]})
+    assert board.task(made.ref).state == "review"
+    with pytest.raises(ph.Denied):
+        ph.board.connect(agent=worker.name).review_task(made.ref, True, "my own work", {"Replay passes": True})
+    with pytest.raises(ValueError, match="independent passing"):
+        reviewer.review_task(made.ref, True, "not every criterion", {"Something else": True})
+    done = reviewer.review_task(made.ref, True, "replayed it myself", {"Replay passes": True})
+    assert (done.state, done.worker) == ("completed", worker.name) and [t.ref for t in reviewer.tasks()] == [made.ref]
+
+
 def test_the_returned_types_are_the_documented_dataclasses(mine):
     one = mine.member("typed")
     registered = ph.board.register("script")

@@ -1,4 +1,4 @@
-"""Bounded task specifications, proposals and independent review decisions."""
+"""Bounded task specifications, proposals and independent review decisions, and the node's shape of them."""
 
 from __future__ import annotations
 
@@ -11,8 +11,10 @@ from typing import Any
 from poolhouse.reputation.economy import assessment
 
 DIGEST = re.compile(r'^[0-9a-f]{64}$')
-TASK_ID = re.compile(r'^task:[0-9a-f]{32}$')
+TASK_ID = re.compile(r'^(task:[0-9a-f]{32}|task-[0-9]+|[a-z0-9][a-z0-9._-]*:[0-9a-f]{32}:[0-9]+)$')
 SPEC_FIELDS = frozenset({'title', 'description', 'acceptance', 'deps', 'capabilities', 'limits', 'source_key', 'assignees', 'reviewers', 'project'})
+BOARD_FIELDS = SPEC_FIELDS - {'project'}
+TIMES = frozenset({'at', 'created_at', 'started_at', 'blocked_at', 'heartbeat_at', 'deadline', 'reviewed_at', 'updated_at', 'as_of'})
 
 
 def fingerprint(value: Any) -> str:
@@ -139,3 +141,38 @@ def review_decision(value: Any, acceptance: list[str], artifacts: dict[str, str]
         if name in value:
             result[name] = value[name]
     return result
+
+
+def wire_usage(value: dict[str, Any]) -> dict[str, Any]:
+    """``value`` with its wall seconds as whole milliseconds, since a board entry holds no fractions."""
+    out = {k: v for k, v in value.items() if k != 'wall_seconds'}
+    if value.get('wall_seconds') is not None:
+        out['wall_ms'] = round(value['wall_seconds'] * 1000)
+    return out
+
+
+def wire_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    """A validated specification as the node takes it: an unset wall limit left out, a set one in whole seconds."""
+    if spec['project']:
+        raise ValueError('a task belongs to the board it is made on; it names no project')
+    limits = {k: v for k, v in spec['limits'].items() if v is not None}
+    if 'max_wall_s' in limits:
+        limits['max_wall_s'] = math.ceil(limits['max_wall_s'])
+    return {**{k: v for k, v in spec.items() if k != 'project'}, 'limits': limits}
+
+
+def seconds(value: Any) -> Any:
+    """What the node answered with its times in seconds and its wall times as seconds, for readers that count in seconds."""
+    if isinstance(value, list):
+        return [seconds(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    out = {}
+    for key, item in value.items():
+        if key in TIMES and type(item) is int:
+            out[key] = item / 1000
+        elif key == 'wall_ms':
+            out['wall_seconds'] = item / 1000
+        else:
+            out[key] = seconds(item)
+    return out

@@ -58,8 +58,6 @@ def test_same_actor_switches_model_without_rewriting_receipts_or_duplicating_cre
     assert not again['credited'] and again['id'] == second['id']
     assert sum(row['economy']['balance'] for row in result['team']) == 20
     assert len(ledger.sealed.graph().nodes('work_award')) == 2
-    with GraphStore(board.base / 'coordination.db') as graph:
-        assert len(graph.nodes('work-credit-reference')) == 2
 
 
 @pytest.mark.parametrize('outcome,samples', [('rejected', 1), ('blocked_infrastructure', 0)])
@@ -84,37 +82,6 @@ def test_unknown_artifact_and_runtime_are_not_promoted_from_a_local_filename():
     assert result['artifact']['source'] == 'unknown' and result['artifact']['id'] is None
     assert result['broker_runtime']['source'] == 'unknown'
     assert result['alias_source'] == 'unknown' and result['alias'] is None
-
-
-@pytest.mark.redteam
-@pytest.mark.parametrize('field,value', [('agent', 'foreign-actor'), ('workspace', 'foreign-workspace'),
-                                         ('proposal_id', 'foreign-proposal'), ('completion', 'foreign-review')])
-def test_award_reference_cannot_credit_a_different_actor_or_review(board, ledger, field, value):
-    reviewed(board)
-    task_credit.verify_task(board.ws, board.parent, board.task['id'], ledger=ledger)
-    with GraphStore(board.base / 'coordination.db') as graph:
-        node = graph.nodes('work-credit-reference')[0]
-        graph.upsert_node({**node, 'attrs': {**node['attrs'], field: value}})
-    result = work_reputation.standings(board.ws, board.child, ledger=ledger)['dimensions']
-    for kind in ('agents', 'models'):
-        assert result[kind][0]['verified_tasks'] == 0
-        assert result[kind][0]['economy']['balance'] == 0
-    assert len(ledger.sealed.graph().nodes('work_award')) == 1
-
-
-@pytest.mark.redteam
-def test_review_cannot_attribute_a_hashed_proposal_to_another_worker(board, ledger):
-    from poolhouse.workspace.task_schema import fingerprint
-
-    reviewed(board)
-    task_credit.verify_task(board.ws, board.parent, board.task['id'], ledger=ledger)
-    with GraphStore(board.base / 'coordination.db') as graph:
-        node = graph.nodes('review')[0]
-        changed = {**node['attrs'], 'worker': 'foreign-worker'}
-        changed['review_hash'] = fingerprint({key: value for key, value in changed.items() if key != 'review_hash'})
-        graph.upsert_node({**node, 'attrs': changed})
-    result = work_reputation.standings(board.ws, board.child, ledger=ledger)['dimensions']
-    assert not result['agents'] and not result['models']
 
 
 @pytest.mark.slow

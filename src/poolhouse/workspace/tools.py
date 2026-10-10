@@ -7,6 +7,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from poolhouse.board import session
+from poolhouse.board.tasks import Tasks
 from poolhouse.workspace import (
     coordinator_config,
     limits,
@@ -18,7 +20,6 @@ from poolhouse.workspace import (
 from poolhouse.workspace.files import Attachment, Where, read_source
 from poolhouse.workspace.identity import TOKEN_ENV, Denied
 from poolhouse.workspace.service import Workspace
-from poolhouse.workspace.taskboard import TaskBoard
 
 __all__ = ["HINTS", "NAMES"]
 
@@ -77,6 +78,11 @@ def _token() -> str:
     return token
 
 
+def _seat() -> session.Session:
+    """The calling agent's session on the board of its directory."""
+    return session.connect()
+
+
 def workspace_status() -> dict[str, Any]:
     """Counts, live claims and the test-slot queue. Read only."""
     return _workspace().status()
@@ -84,7 +90,7 @@ def workspace_status() -> dict[str, Any]:
 
 def workspace_reputation(agent: str = "", offset: int = 0) -> dict[str, Any]:
     """Your own and team independently verified completion scores and evidence. Read only."""
-    return work_reputation.standings(_workspace(), _token(), agent=agent, offset=offset)
+    return work_reputation.standings_on(_seat(), agent=agent, offset=offset)
 
 
 def _held(out: Any, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -239,42 +245,42 @@ def workspace_file_save(handle: str, path: str) -> dict[str, Any]:
 
 def workspace_tasks() -> dict[str, Any]:
     """List authorized tasks and verified progress metrics."""
-    return TaskBoard(_workspace()).list(_token())
+    return Tasks(_seat()).list()
 
 
 def workspace_task(id: str) -> dict[str, Any]:
     """Read an authorized task, its lease, checkpoints and review evidence."""
-    return TaskBoard(_workspace()).get(_token(), id)
+    return Tasks(_seat()).get(id)
 
 
 def workspace_task_claim(id: str, allocation_id: str) -> dict[str, Any]:
     """Claim a queued task using its existing trusted resource allocation."""
-    return TaskBoard(_workspace()).claim(_token(), id, allocation_id)
+    return Tasks(_seat()).claim(id, allocation_id)
 
 
 def workspace_task_heartbeat(id: str) -> dict[str, Any]:
     """Renew your active task lease while its resource remains valid."""
-    return TaskBoard(_workspace()).heartbeat(_token(), id)
+    return Tasks(_seat()).heartbeat(id)
 
 
 def workspace_task_checkpoint(id: str, value: dict[str, Any]) -> dict[str, Any]:
     """Save a bounded checkpoint for your active task."""
-    return TaskBoard(_workspace()).checkpoint(_token(), id, value)
+    return Tasks(_seat()).checkpoint(id, value)
 
 
 def workspace_task_submit(id: str, value: dict[str, Any]) -> dict[str, Any]:
     """Submit immutable artifact hashes and claimed checks for independent review."""
-    return TaskBoard(_workspace()).submit(_token(), id, value)
+    return Tasks(_seat()).submit(id, value)
 
 
 def workspace_task_review(id: str, decision: dict[str, Any]) -> dict[str, Any]:
     """Record an authorized independent review and its outcome credit status."""
-    return task_outcomes.review(_workspace(), _token(), id, decision)
+    return task_outcomes.seat_review(_seat(), id, decision)
 
 
 def workspace_task_credit(id: str) -> dict[str, Any]:
     """Retry authorized credit recording for an immutable reviewed outcome."""
-    return task_outcomes.credit(_workspace(), _token(), id)
+    return task_outcomes.seat_credit(_seat(), id)
 
 
 def workspace_task_integrate(id: str) -> dict[str, Any]:

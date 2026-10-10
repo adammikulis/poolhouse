@@ -13,8 +13,9 @@ from pathlib import Path
 
 from poolhouse.board import place, session as sessions
 from poolhouse.board.client import Client
+from poolhouse.board.tasks import Tasks
 
-__all__ = ["Agent", "Board", "Claim", "Message", "Note", "connect"]
+__all__ = ["Agent", "Board", "Claim", "Message", "Note", "Task", "connect"]
 
 ANNOUNCE = "#announcements"
 ANNOUNCE_KINDS = ("joined", "milestone", "done", "blocked")
@@ -73,6 +74,28 @@ class Agent:
     model: str
     harness: str
     retired: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Task:
+    """A task of the board: what was asked, who holds it, and where it stands."""
+
+    ref: str
+    """Short id (``task-3``); pass it to `Board.task` and `Board.review_task`."""
+    title: str
+    state: str
+    """queued, working, review, accepted, completed, rejected or blocked."""
+    created_by: str
+    worker: str
+    """The session working it, empty while it is queued."""
+    acceptance: tuple[str, ...]
+    failures: int
+    at_ms: int
+
+
+def _task(raw: dict[str, object]) -> Task:
+    return Task(str(raw["id"]), str(raw["title"]), str(raw["state"]), str(raw["created_by"]), str(raw["worker"]),
+                tuple(raw["acceptance"]), int(raw["failures"]), round(float(raw["created_at"]) * 1000))  # type: ignore[arg-type]
 
 
 def _message(e: sessions.Entry) -> Message:
@@ -180,6 +203,29 @@ class Board:
     def agents(self, *, retired: bool = False) -> list[Agent]:
         """The sessions registered on the board."""
         return [Agent(a.name, a.parent, a.model, a.harness, a.retired) for a in self._seat.agents(retired)]
+
+    def tasks(self, state: str = "") -> list[Task]:
+        """The tasks of the board, newest first; only those in ``state`` when given."""
+        found = Tasks(self._seat).list()["tasks"]
+        return [_task(t) for t in found if not state or t["state"] == state]
+
+    def task(self, ref: str) -> Task:
+        """One task by its ref."""
+        return _task(Tasks(self._seat).get(ref))
+
+    def add_task(self, title: str, acceptance: tuple[str, ...] | list[str], *, description: str = "", source_key: str = "") -> Task:
+        """Put a task on the board; the same ``source_key`` from the same session names the same task."""
+        spec = {"title": title, "acceptance": list(acceptance), "description": description, "source_key": source_key}
+        return _task(Tasks(self._seat).create(spec))
+
+    def review_task(self, ref: str, accepted: bool, reason: str, checks: dict[str, bool]) -> Task:
+        """Decide a submitted task as an independent session: ``checks`` names each check you ran and whether it passed.
+
+        Accepting needs every acceptance criterion among the passing checks; the worker never reviews its own task.
+        """
+        listed = [{"name": name, "passed": passed} for name, passed in checks.items()]
+        Tasks(self._seat).review(ref, {"accepted": accepted, "reason": reason, "checks": listed})
+        return self.task(ref)
 
     def link(self, to: str, *, channels: tuple[str, ...] = (), mode: str = "ro") -> dict[str, object]:
         """Let the sessions of board ``to`` use ``channels`` of this one (all when none) read-only (``ro``) or read-write."""

@@ -29,7 +29,6 @@ from poolhouse.workspace import (
     cli_setup,
     coordinator_client,
     coordinator_config,
-    enforcement_cli,
     filecli,
     guide,
     harness_remote,
@@ -47,15 +46,14 @@ from poolhouse.workspace import (
     project,
     project_connection,
     remote_cli,
-    remote_task_client,
     remote_workers,
     render,
     rooms_cli,
     scratch_cli,
     session_name,
     status_cli,
+    task_cli,
     task_integration,
-    task_outcomes,
     task_source_recovery,
     tokens,
     worktree_lifecycle,
@@ -63,13 +61,12 @@ from poolhouse.workspace import (
 from poolhouse.workspace.boardapi import Follow
 from poolhouse.workspace.chain import ChainBroken
 from poolhouse.workspace.claims import Conflict
-from poolhouse.workspace.cli_options import COMMON, FOR_AGENT, NODE_COMMON
+from poolhouse.workspace.cli_options import COMMON, NODE_COMMON
 from poolhouse.workspace.coordination import workspace_id
 from poolhouse.workspace.identity import AGENT_MARKERS, ROLES, TOKEN_ENV, BoardUnavailable, Denied
 from poolhouse.workspace.rates import RateLimited
 from poolhouse.workspace.screen import Refused
 from poolhouse.workspace.service import Workspace
-from poolhouse.workspace.taskboard import TaskBoard
 
 __all__ = ["COMMANDS", "main"]
 
@@ -303,35 +300,12 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
         flag("--name", default="", help="an id to suggest in the paste block for the new agent; the board checks it again when the agent joins"),
         flag("--ttl", default="10m", help="how long the code works, e.g. 10m (at most 30m)"),
         flag("--uses", type=int, default=1, help="how many agents may join with it (at most 3)")], _invite),
-    ("enforcement", "show, check, set, promote or demote a project's task enforcement mode (open or strict)",
-     enforcement_cli.OPTIONS, enforcement_cli.run),
     ("authority", "show, set or preset which gates a lead agent may pass instead of a person (preset dev|prod)",
      authority_cli.OPTIONS, authority_cli.run),
-    ("task-create", "create a project task in your existing project grant", [flag("payload")],
-     lambda a, w, t: TaskBoard(w).create(t, json.loads(render.body(a.payload)))),
-    ("tasks", "authorized project tasks and progress metrics", [FOR_AGENT], lambda a, w, t: TaskBoard(w).list(t)),
-    ("task", "task lease, checkpoints, proposal and independent review", [flag("id")],
-     lambda a, w, t: TaskBoard(w).get(t, a.id)),
-    ("task-subscribe", "receive inbox status changes for a task", [flag("id")],
-     lambda a, w, t: TaskBoard(w).subscribe(t, a.id)),
-    ("task-unsubscribe", "stop inbox status changes for a task", [flag("id")],
-     lambda a, w, t: TaskBoard(w).unsubscribe(t, a.id)),
     ("issue-subscribe", "receive inbox status changes for a GitHub issue", [flag("ref", metavar="OWNER/REPO#NUMBER")],
      lambda a, w, t: backlog.subscribe_issue(w, t, a.ref)),
     ("issue-unsubscribe", "stop inbox status changes for a GitHub issue", [flag("ref", metavar="OWNER/REPO#NUMBER")],
      lambda a, w, t: backlog.subscribe_issue(w, t, a.ref, False)),
-    ("task-claim", "claim a queued task with an existing trusted allocation", [flag("id"), flag("allocation_id")],
-     lambda a, w, t: TaskBoard(w).claim(t, a.id, a.allocation_id)),
-    ("task-heartbeat", "renew your active project task lease", [flag("id")],
-     lambda a, w, t: TaskBoard(w).heartbeat(t, a.id)),
-    ("task-checkpoint", "save your active task checkpoint (JSON or - for stdin)", [flag("id"), flag("payload")],
-     lambda a, w, t: TaskBoard(w).checkpoint(t, a.id, json.loads(render.body(a.payload)))),
-    ("task-submit", "submit immutable artifact hashes for review (JSON or -)", [flag("id"), flag("payload")],
-     lambda a, w, t: TaskBoard(w).submit(t, a.id, json.loads(render.body(a.payload)))),
-    ("task-review", "independently review an authorized task (JSON or -)", [flag("id"), flag("payload")],
-     lambda a, w, t: task_outcomes.review(w, t, a.id, json.loads(render.body(a.payload)))),
-    ("task-credit", "retry recording an authorized immutable outcome", [flag("id")],
-     lambda a, w, t: task_outcomes.credit(w, t, a.id)),
     ("task-integrate", "gate, land and clean an independently accepted committed native task", [flag("id")],
      lambda a, w, t: task_integration.integrate(w, t, a.id)),
     *task_source_recovery.TABLE,
@@ -385,8 +359,8 @@ def _runner(handler: Handler) -> Callable[[argparse.Namespace], int]:
     def run(args: argparse.Namespace) -> int:
         connection = _project_connection()
         remote = None if connection else coordinator_client.client(limits.root())
-        if args.cmd in ('task-dematerialize', 'task-rebind-source') and (remote or connection):
-            raise Denied('native task checkout recovery runs only on its local coordinator')
+        if args.cmd in ('task-integrate', 'task-dematerialize', 'task-rebind-source') and (remote or connection):
+            raise Denied('native task integration and checkout recovery run only on its local coordinator')
         if remote:
             options = next(options for name, _help, options, _fn in TABLE if name == args.cmd)
             for field in ('body', 'text', 'payload'):
@@ -398,9 +372,7 @@ def _runner(handler: Handler) -> Callable[[argparse.Namespace], int]:
             ws, token = _context(args, connection)
             if isinstance(ws, Workspace) and handler is not _init:
                 ws.registry._record_device(ws.auth(token).id, onboard.device_metadata.current())
-            if isinstance(ws, project_connection.BoardWorkspace) and args.cmd.startswith('task'):
-                result = remote_task_client.command(ws.remote, token, args)
-            elif isinstance(ws, project_connection.BoardWorkspace) and args.cmd == 'worktrees':
+            if isinstance(ws, project_connection.BoardWorkspace) and args.cmd == 'worktrees':
                 result = harness_remote.cli_command(ws.remote, token, args)
             else:
                 result = _narrowed(args, ws, handler(args, ws, token))
@@ -455,7 +427,7 @@ for _name, _help, _options, _handler in BARE:
                           *_options])
 for _name, _help, _options, _handler in TABLE:
     COMMANDS.add(_name, _runner(_handler), help=_help, options=[*COMMON, *_options])
-for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE, *status_cli.TABLE):
+for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE, *status_cli.TABLE, *task_cli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 
 

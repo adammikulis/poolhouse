@@ -279,7 +279,8 @@ note = "Native coordinator graphs and Fleet sockets reject self-review, same-dev
 match = ["mcp-tool:workspace_reputation"]
 status = "covered"
 tests = ["tests/test_work_reputation.py::test_reputation_read_requires_valid_token_and_read_capability",
-         "tests/test_work_reputation.py::test_local_and_mcp_tools_read_reputation_and_task_frame_contains_team_awareness"]
+         "tests/test_work_reputation.py::test_local_tools_read_reputation_and_task_frame_contains_team_awareness",
+         "tests/test_board_task_credit.py::test_the_reputation_tool_reads_the_boards_own_standings"]
 note = "Reputation reads use the authenticated caller token and delegated read capability; local and MCP tools expose evidence without any self-award operation"
 
 [[group]]
