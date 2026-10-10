@@ -15,7 +15,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from poolhouse import agent_hooks, bench, checks, hook_diagnostics, hookcheck
+from poolhouse import agent_hooks, bench, checks, hook_diagnostics, hookcheck, node_pool
 from poolhouse.bench.underway import measuring, measuring_file
 from poolhouse.checks import Finding, ask
 from poolhouse.command import Group, flag, option
@@ -408,7 +408,7 @@ def _findings(args) -> int:
     if args.action == "hooks":
         return hook_diagnostics.inspect(args)
     say("poolhouse: the repositories and the working state\n")
-    findings = agent_hooks.findings() + look_checkouts(
+    findings = agent_hooks.findings() + node_pool.build_findings() + look_checkouts(
         repositories(args.repo) if args.repo else None,
         bench_home=Path(args.bench_home).expanduser() if args.bench_home else None)
     ask(findings, yes=args.yes)

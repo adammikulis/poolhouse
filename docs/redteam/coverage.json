@@ -1,7 +1,7 @@
 {
- "surfaces": 868,
+ "surfaces": 872,
  "by_status": {
-  "covered": 540,
+  "covered": 544,
   "partial": 196,
   "uncovered": 52,
   "n/a": 80,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 83,
+   "covered": 87,
    "partial": 59,
    "uncovered": 0,
    "n/a": 2,
@@ -10829,6 +10829,58 @@
     "tests/test_redteam_board_client.py::test_a_directory_named_like_an_option_or_a_command_is_only_a_path_to_git"
    ],
    "note": "the repository path is a value of git -C, never an option or a shell word; a hostile directory name resolves to no board"
+  },
+  {
+   "id": "spawn:build_update.py:count",
+   "kind": "spawn",
+   "source": "build_update.py:count",
+   "trust": "arguments built from model output, peer messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_build_update.py::test_a_hostile_origin_address_or_branch_name_never_reaches_git",
+    "tests/test_build_update.py::test_a_hostile_build_id_is_never_passed_to_the_node_or_to_git"
+   ],
+   "note": "the argv is fixed; the origin address and branch name are checked before git sees them, a commit must be 40 hex characters, and what a peer reports about its build is only ever shown"
+  },
+  {
+   "id": "spawn:build_update.py:fast_forward",
+   "kind": "spawn",
+   "source": "build_update.py:fast_forward",
+   "trust": "arguments built from model output, peer messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_build_update.py::test_a_hostile_origin_address_or_branch_name_never_reaches_git",
+    "tests/test_build_update.py::test_a_hostile_build_id_is_never_passed_to_the_node_or_to_git"
+   ],
+   "note": "the argv is fixed; the origin address and branch name are checked before git sees them, a commit must be 40 hex characters, and what a peer reports about its build is only ever shown"
+  },
+  {
+   "id": "spawn:build_update.py:rebuild",
+   "kind": "spawn",
+   "source": "build_update.py:rebuild",
+   "trust": "arguments built from model output, peer messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_build_update.py::test_a_hostile_origin_address_or_branch_name_never_reaches_git",
+    "tests/test_build_update.py::test_a_hostile_build_id_is_never_passed_to_the_node_or_to_git"
+   ],
+   "note": "the argv is fixed; the origin address and branch name are checked before git sees them, a commit must be 40 hex characters, and what a peer reports about its build is only ever shown"
+  },
+  {
+   "id": "spawn:build_update.py:reselect",
+   "kind": "spawn",
+   "source": "build_update.py:reselect",
+   "trust": "arguments built from model output, peer messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_build_update.py::test_a_hostile_origin_address_or_branch_name_never_reaches_git",
+    "tests/test_build_update.py::test_a_hostile_build_id_is_never_passed_to_the_node_or_to_git"
+   ],
+   "note": "the argv is fixed; the origin address and branch name are checked before git sees them, a commit must be 40 hex characters, and what a peer reports about its build is only ever shown"
   },
   {
    "id": "spawn:checks.py:ask",

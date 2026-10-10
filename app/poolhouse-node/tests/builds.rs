@@ -97,6 +97,14 @@ fn a_peer_on_another_wire_version_is_shown_needing_an_update_with_the_fix_and_is
 }
 
 #[test]
+fn pool_status_counts_the_leases_so_an_updater_can_tell_whether_the_device_may_be_interrupted() {
+    let a = device();
+    assert_eq!(a.status()["leases"], json!({"held": 0, "queued": 0}));
+    assert_eq!(gpu(&a)["ok"], true);
+    assert_eq!(a.status()["leases"]["held"], 1);
+}
+
+#[test]
 fn a_peer_with_no_build_fields_is_an_older_wire_and_shown_needing_an_update() {
     let (a, b) = pair();
     a.node.lock().unwrap().observe_build(&b.fp(), &json!({"pool": "x"}));

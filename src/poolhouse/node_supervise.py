@@ -14,8 +14,9 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from poolhouse import node_app, node_binary, runtime, win32
+from poolhouse import build_update, node_app, node_binary, runtime, win32
 from poolhouse.files import read_json, write_json
+from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, only_one
 from poolhouse.node_health import node_stop_event, state_key
 from poolhouse.platform import is_windows, start_process
@@ -89,7 +90,7 @@ def _program(binary: Path, sha: str, extra: list[str]) -> Path:
 
 def _spawn(state: Path, binary: Path, sha: str, extra: list[str]) -> subprocess.Popen:
     with (state / LOG).open("ab") as out:
-        child = start_process([str(_program(binary, sha, extra)), "run", "--state", str(state), *extra], stdin=subprocess.DEVNULL, stdout=out,
+        child = start_process([str(_program(binary, sha, extra)), "run", "--state", str(state), *extra, *build_update.node_args()], stdin=subprocess.DEVNULL, stdout=out,
                               stderr=subprocess.STDOUT)
     before = running(state)
     previous = before.get("previous") if before.get("sha256") == sha else {"binary": before.get("binary"), "sha256": before.get("sha256")}
@@ -126,6 +127,8 @@ def supervise(state: Path, extra: list[str] | None = None) -> int:
     stopping, close = _stop_requests(state)
     try:
         with only_one(state / LOCK, wait=False, note="node supervisor"):
+            if state == state_root("node") and os.environ.get(build_update.OFF_ENV) != "off":
+                build_update.watch(state, stopping)  # the device's own node keeps itself on the pool's newest build
             return _loop(state, extra or [], stopping)
     except Busy:
         return 1

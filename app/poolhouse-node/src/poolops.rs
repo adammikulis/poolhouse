@@ -95,6 +95,7 @@ impl crate::node::Node {
             "pool": self.members.id, "project": self.members.project, "policy": self.members.policy.name(), "fingerprint": me, "listen": self.facts.listen,
             "beacon": self.facts.beacon, "pairing_open": self.facts.pairing_until_ms > now,
             "pairing_expires_in_s": self.facts.pairing_until_ms.saturating_sub(now) / 1000, "members": members, "build": self.build_status(),
+            "leases": {"held": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Held).count(), "queued": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Queued).count()},
         })
     }
 }

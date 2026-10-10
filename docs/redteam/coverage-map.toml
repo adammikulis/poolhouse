@@ -743,6 +743,13 @@ tests = ["tests/test_redteam_devbranch.py"]
 note = "the argv is fixed and the checkout path is one argument; the environment value is returned as text, never run, and a protected branch name is refused"
 
 [[group]]
+match = ["spawn:build_update.py:count", "spawn:build_update.py:fast_forward", "spawn:build_update.py:rebuild", "spawn:build_update.py:reselect"]
+status = "covered"
+tests = ["tests/test_build_update.py::test_a_hostile_origin_address_or_branch_name_never_reaches_git",
+         "tests/test_build_update.py::test_a_hostile_build_id_is_never_passed_to_the_node_or_to_git"]
+note = "the argv is fixed; the origin address and branch name are checked before git sees them, a commit must be 40 hex characters, and what a peer reports about its build is only ever shown"
+
+[[group]]
 match = ["spawn:net/git.py:blobs", "spawn:net/git.py:source_index"]
 status = "covered"
 tests = ["tests/test_project_source.py"]
