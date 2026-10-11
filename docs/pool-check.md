@@ -38,7 +38,7 @@ multicast to the machine it runs on, so discovery by beacon is not exercised.
 ### The rig is the person of its pool
 
 A node allows a session nothing beyond its own board's messages, notes, claims and leases until a person's key grants it (docs/node.md,
-"Standing grants"), so a rig that drove a pool as a bare agent session was refused on its first `set_join_policy` and `add_device`. The rig
+"Standing grants"), so a rig that drove a pool as a bare agent session was refused on its first `add_device`. The rig
 now does what a person does, through the node's real paths and nothing else (`tests/pool_check/person.py`):
 
 * It makes one Ed25519 key for the run, in memory. The key is never written beside a node, never put in a keystore and never the account's;
@@ -46,7 +46,7 @@ now does what a person does, through the node's real paths and nothing else (`te
 * For each device it leaves the hash of a one-time secret in that node's own temporary state directory, the way `grants-setup` does
   (`grants.expect_enrolment`, run on the device by `wire.py expect-enrol`), and enrols the key through the node's `person_enroll` with the secret.
 * It signs each grant through `grant_issue`, for the rig's named sessions on that device only (the device's own fingerprint), for six hours:
-  `set_join_policy`, `add_device`, `join_pool`, `member_remove`, `sync_now` and `pool_create` to the session on the `pool` board that the steps join and
+  `add_device`, `join_pool`, `member_remove`, `sync_now` and `pool_create` to the session on the `pool` board that the steps join and
   remove through, and `shard_call` and `shard_consent` to the session of the `demo` board that sends and receives test runs. Nothing else is
   granted, so a step that needs another action fails with the node's own refusal until the rig's person grants it.
 * A node binds each token to the processes that registered it and lets it spend a grant only from a process that shares them (docs/node.md,

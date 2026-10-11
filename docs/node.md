@@ -209,7 +209,6 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `shutdown` | board, token | | `{stopping}` |
 | `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, `governance` ("Who governs a pool") and each member with `status` (`active`, `revoked` or `left`), `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none` or `self`) with `reach_hint` (the exact fix when it is not direct) and `network` (`wsl-nat`, `wsl-mirrored` or empty, as the member's hello said) |
 | `member_remove` | token with the grant `member_remove` | `fingerprint` | `{fingerprint, status}`; in a governed pool an act of the admins ("Who governs a pool") |
-| `set_join_policy` | token with the grant `set_join_policy` | `policy` (`open` or `secure`) | `{policy, changed}` in a legacy pool; in a governed pool `invalid` with the sentence "A pool's join policy never changes in place; reissue the pool to change it." |
 | `pool_create` | token with the grant `pool_create` | `title`, `policy` (default `secure`), `project` | `{pool, name, policy, epoch}`: founds the governed pool of this device, which must be alone in its pool |
 | `pool_leave` | token with the grant `pool_leave` | | the `leave` act this device signed with its own key |
 | `pool_propose` | token with the grant `admin_manage` | `kind`, `body` | `{act, status, have, need, why}`: makes the act and signs it with the keys this device's signer holds that count |
@@ -398,7 +397,7 @@ API, for itself or anyone, and a `grant` entry any writer puts on the board with
 allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
 ("Key custody" below says exactly what that does and does not protect).
 
-**The registry.** Twenty actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
+**The registry.** Nineteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `add_device`, `join_pool`,
 `sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release`,
 `file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave` and `admin_manage`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
@@ -480,7 +479,7 @@ against a key enrolled here, and the action may travel: `task_authority`, `note_
 pool actions, `land_trust`, `land_control`, `shard_consent`, `quarantine_release`, `file_delete`) are granted on the device they apply to.
 A revocation or a use from a device this one does not trust changes nothing.
 
-**Where it is checked.** `member_remove` (resource: the fingerprint), `set_join_policy` (the policy), `add_device`, `join_pool` (the
+**Where it is checked.** `member_remove` (resource: the fingerprint), `add_device`, `join_pool` (the
 host), `sync_now`, `shard_call` (the device), `shard_consent`, `pool_create` (the title), `pool_leave` and `admin_manage` (the kind of act, or
 `cosign`) before they run; a grant lets a session ask, and an admin's signature is what makes a governing act true for everyone; `land_trust` (the fingerprint) and `land_control`
 (the target branch, `*` for pause and resume) in the landing queue, besides having no parent; `task_authority` (the task, or `mode`)
@@ -715,10 +714,10 @@ listener is the one network port.
   so the device shows as not connected. A member that has not heard of the removal yet still syncs with the removed device and
   passes on what it takes; the entries the removed device wrote in that window are refused by every device that holds the removal,
   whoever relays them ("Who governs a pool", the log cut of a removal). Changes are written to the board `pool` as audit entries;
-  the record is the authority. A pool is **governed** (below) or **legacy** (`pool.json`): in either, nothing a member sends in an
-  ordinary exchange adds a device, removes one or moves the join policy.
-- **Join policy**: one pool attribute, `open` or `secure` (default `secure`). In a governed pool it is part of the charter and never
-  changes; in a legacy pool only this device's own `set_join_policy` (a grant) and the join that made this device a member write it.
+  the record is the authority. A device is **unfounded** (a pool of one that has no charter, no id and no admins, kept in memory) or in a
+  **governed** pool (below): nothing a member sends in an ordinary exchange adds a device, removes one or moves the join policy.
+- **Join policy**: one pool attribute, `open` or `secure` (default `secure`). It is part of the charter and never
+  changes in place (there is no method that moves it; a reissue is the way).
 - **Peer ops** (`peer.rs`, frames up to 4 MiB): `hello`, `join_open`, `join_exchange`, `join_confirm` for
   a non-member; `members` (the builds members report; no row and no policy in it is read), `acts` (the signed acts of a governed
   pool, "Who governs a pool"), `boards`, `vector`, `pull`, `push` for a member. `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` (members only)
@@ -773,7 +772,7 @@ the multicast group and each network's broadcast address (`netif.rs` reads the i
 a segment), each beacon advertising the address of the interface it leaves by. Open join is accepted from, and dialled
 to, an address inside a subnet of this machine only. `pool_status` adds `beacon_sent|heard|own|rejected`, the last send
 error and `last_join`: a node that sends but never hears its own beacon is blocked by the system (macOS Local Network,
-a firewall, WSL2 NAT). `python -m poolhouse.node_join join --policy open|secure` starts it that way after showing what
+a firewall, WSL2 NAT). `python -m poolhouse.node_join join` starts it that way after showing what
 it does and getting a yes (`--yes` for a script), and `scripts/pool-join-check` walks every step on one device and prints
 the fix for the first that fails.
 
@@ -852,10 +851,13 @@ pool, through admin keys; a device never does, and the one thing a member device
   granted by the name of the pool the act founds and refuses a charter with no strong admin key, which nobody could admit a device
   under.
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
-- **Legacy mode.** A device with a `pool.json` and no `pools/<id>/` keeps its pool and its sync exactly as before, except that a
-  member's rows, removals and policy are ignored (the record changes only by this device's own API, the grants, and the joins it makes);
-  `pool_status` says `governance.mode: legacy` with `needs_migration` when the pool has members, and the new methods answer "This
-  device's pool needs a one-time upgrade; ask the owner to approve it." Nothing migrates on its own.
+- **The unfounded pool of one.** A fresh device (no `pools/<id>/`) is its own only member: `pool_status` says `governance.mode:
+  unfounded` with an empty `pool`, nothing is written, it needs no signer to exist and it admits nobody (`add_device` answers "This
+  device is not in a pool yet; make one, or join one."). It joins a pool with a code or an open pool it hears, or founds one
+  (`pool_create`, or `pool_draft_found` and `pool_found` with a key outside the node). A device never founds a pool by itself.
+- **An old-format pool is refused.** A state directory with a `pool.json` makes the node refuse to start with one message, "this
+  device is in an old-format pool: create a new pool"; there is no legacy mode, no migration and no shim. Move `pool.json` out of the
+  state directory and the device is unfounded again.
 
 ## Poolhouse.app: the node's identity on macOS
 
@@ -1008,9 +1010,7 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   user-presence prompt for the person key, a lineage on each request that a token carries as proof of who holds it rather than only
   checked at the spend of a grant, the lineage of a registrant on Windows (`GetNamedPipeClientProcessId`), a screen that asks the person the
   signing question itself so the UI daemon can sign, rebuilding the graph index from entries.
-- Pools do not merge: a device that is in a governed pool, or that has members, refuses to join another pool; a device alone in a
-  pool no admin governs may join one. A device in several pools, reissue (`set_join_policy` is refused in a governed pool, and the
-  way to change a policy is a reissue), migration of a legacy pool, the recovery key's time lock and succession, and a signer
+- Pools do not merge: a device that is in a governed pool, or that has members, refuses to join another pool; a device in no pool may join one. A device in several pools, reissue (the way to change a policy), the recovery key's time lock and succession, and a signer
   that asks a person's phone are the later slices of `docs/pools-and-serving.md`.
 - The head signature still uses an empty pool id as its domain (`Node.pool`); the pool id lives in
   `pool.json` and the beacon. Moving it into the head would need a re-sign when a device joins.
