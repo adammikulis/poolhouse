@@ -73,3 +73,25 @@ fn a_granted_pool_action_can_be_used_only_as_often_as_it_was_granted() {
     assert_eq!(d.call("set_join_policy", "", &token, json!({"policy": "open"}))["ok"], true);
     assert_eq!(d.call("set_join_policy", "", &token, json!({"policy": "open"}))["error"]["code"], "denied", "one use was granted");
 }
+
+#[test]
+fn a_grant_held_on_one_board_is_not_used_on_another_board_through_a_link() {
+    let d = device();
+    let (lead, lead_token) = d.session("boarda", "lead");
+    d.allow("boarda", &lead_token, &lead, &["note_verify", "quarantine_release", "file_delete"]);
+    let (_, other_token) = d.session("boardb", "other");
+    let note = d.ok("post", "boardb", &other_token, json!({"kind": "note", "fields": {"nkind": "fact", "title": "t", "body": "b", "verify_cmd": "echo hi"}}));
+    let id = note["seq"].to_string();
+    d.ok("link", "boardb", &other_token, json!({"to": "boarda", "channels": [], "mode": "rw"}));
+    let reached = |method: &str, params: Value| d.call(method, "boardb", &lead_token, params);
+    for (method, params) in [("note_verify", json!({"note": id, "exit": 0, "out_sha": "ab".repeat(32)})), ("quarantine_release", json!({"qid": "q-nothing"})),
+                             ("file_delete", json!({"handle": "0".repeat(12)}))] {
+        let reply = reached(method, params);
+        assert_eq!(reply["error"]["code"], "denied", "{method}: the grant on boarda does not reach boardb: {reply}");
+        assert!(reply["error"].get("grant").is_none(), "{method}: no grant on boardb would be named for a board the session does not hold a token for: {reply}");
+    }
+    let log = d.ok("grant_log", "boarda", &lead_token, json!({"limit": 200}))["log"].clone();
+    assert!(log.as_array().unwrap().iter().all(|e| e["op"] != "use"), "boarda's grants were not spent on boardb: {log}");
+    let notes = d.ok("notes", "boardb", &other_token, json!({}));
+    assert_eq!(notes["notes"][0]["trust"], "agent-claimed", "boardb's note was not verified: {notes}");
+}

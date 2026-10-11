@@ -123,6 +123,7 @@ fn list(node: &mut Node, board: &str, token: &str) -> Result<Value> {
 
 fn release(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
+    access.of_board(board, "releases a held entry")?;
     let qid = p.get("qid").and_then(Value::as_str).unwrap_or("");
     let message = "this session may not release a held entry";
     if !crate::grants::holds(node, &access.holder, RELEASE, &Scope::on(qid))? {

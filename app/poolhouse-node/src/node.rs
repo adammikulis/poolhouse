@@ -75,6 +75,17 @@ pub struct Access {
     pub channels: Option<Vec<String>>,
 }
 
+impl Access {
+    /// Refuse a session that reaches ``board`` through a link: ``what`` is only done by a session registered on ``board``.
+    pub fn of_board(&self, board: &str, what: &str) -> Result<()> {
+        if self.holder.board == board {
+            Ok(())
+        } else {
+            Err(Error::Denied(format!("only a session of this board {what}")))
+        }
+    }
+}
+
 impl Node {
     /// Open the node whose state lives in ``dir`` (a directory only its owner can enter).
     pub fn open(dir: &Path) -> Result<Node> {

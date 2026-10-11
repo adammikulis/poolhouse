@@ -158,6 +158,7 @@ fn get(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
 
 fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
+    access.of_board(board, "deletes a file")?;
     let handle = text(p, "handle")?;
     if !is_hex(handle, 12) {
         return Err(Error::Invalid("a file handle is 12 hex characters".into()));

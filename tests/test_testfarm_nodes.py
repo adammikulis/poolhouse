@@ -17,7 +17,17 @@ import time
 
 import pytest
 import test_on
-from testfarm_kit import BOARD, enable, go, gone, jobs_on, member, until
+from testfarm_kit import (
+    BOARD,
+    devices as started,
+    enable,
+    go,
+    gone,
+    jobs_on,
+    member,
+    skip_unless_possible,
+    until,
+)
 
 from poolhouse import features, features_cli, node_launch
 from poolhouse.fleet import shard_split, shard_tree
@@ -26,6 +36,17 @@ from poolhouse.testfarm.client import ShardError, Shards, choose
 
 pytest_plugins = ("testfarm_kit",)  # the `pool` fixture: two joined node processes
 pytestmark = pytest.mark.slow
+
+
+def test_a_setup_that_fails_stops_the_nodes_it_started(node_binary):
+    skip_unless_possible()
+    pids = []
+    with pytest.raises(RuntimeError, match="the join was refused"), started(node_binary, "a", "b") as (a, b):
+        pids = [json.loads((d.state / "node-run.json").read_text())["pid"] for d in (a, b)]
+        assert not any(gone(pid) for pid in pids)
+        raise RuntimeError("the join was refused")
+    assert len(pids) == 2
+    until("the nodes of the failed setup to be gone", 15, lambda: all(gone(pid) for pid in pids))
 
 
 def test_a_device_nobody_enabled_takes_nothing_and_is_listed_with_why(pool, capsys):

@@ -158,6 +158,7 @@ pub fn resolve_supersedes(node: &mut Node, board: &str, fields: &mut Map<String,
 
 fn verify(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
+    access.of_board(board, "records a note verification")?;
     let (notes, origin, now) = notes_of(node, board)?;
     let id = resolve(board, &origin, p.get("note").and_then(Value::as_str).unwrap_or(""));
     let message = "this session may not record a note verification";

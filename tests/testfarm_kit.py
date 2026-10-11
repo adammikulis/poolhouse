@@ -8,11 +8,13 @@ makes a node C, alone in a pool of its own, for the tests that need a stranger.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import shutil
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,23 +72,14 @@ def join(a: Device, b: Device) -> None:
     b.call("join_pool", token=b.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
 
 
-@pytest.fixture
-def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
-    """Two members; this process is device A's session. Returns (a, b, shards, tree root)."""
-    skip_unless_possible()
-    a, b = start(node_binary, "a"), start(node_binary, "b")
-    join(a, b)
-    for name in STRIPPED:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
-    monkeypatch.setenv("POOLHOUSE_BOARD", BOARD)
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", a.token)
-    monkeypatch.setenv("DEV_TEST_REUSE_DIR", str(tmp_path / "reuse"))
-    features.switch("remote-tests", True)  # this machine (device A's root) has the experimental feature on
-    tree = make_tree(tmp_path / "tree", tmp_path / "pids")
-    made = [a, b]
+@contextlib.contextmanager
+def devices(binary: Path, *names: str) -> Iterator[list[Device]]:
+    """Nodes started one after another, each stopped and its root removed when the block ends, whichever step of the setup failed."""
+    made: list[Device] = []
     try:
-        yield a, b, Shards(board_session.Session(a.client, BOARD, a.token)), tree
+        for name in names:
+            made.append(start(binary, name))
+        yield made
     finally:
         for one in made:
             node_launch.stop_node(one.state)
@@ -94,15 +87,28 @@ def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
 
 
 @pytest.fixture
+def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
+    """Two members; this process is device A's session. Returns (a, b, shards, tree root)."""
+    skip_unless_possible()
+    with devices(node_binary, "a", "b") as (a, b):
+        join(a, b)
+        for name in STRIPPED:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
+        monkeypatch.setenv("POOLHOUSE_BOARD", BOARD)
+        monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", a.token)
+        monkeypatch.setenv("DEV_TEST_REUSE_DIR", str(tmp_path / "reuse"))
+        features.switch("remote-tests", True)  # this machine (device A's root) has the experimental feature on
+        tree = make_tree(tmp_path / "tree", tmp_path / "pids")
+        yield a, b, Shards(board_session.Session(a.client, BOARD, a.token)), tree
+
+
+@pytest.fixture
 def third(node_binary):  # noqa: F811
     """A node C alone in a pool of its own, started on demand; its device and the way to stop it."""
     skip_unless_possible()
-    c = start(node_binary, "c")
-    try:
+    with devices(node_binary, "c") as (c,):
         yield c
-    finally:
-        node_launch.stop_node(c.state)
-        shutil.rmtree(c.root, ignore_errors=True)
 
 
 def enable(b: Device) -> None:

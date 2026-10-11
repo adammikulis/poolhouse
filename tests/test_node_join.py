@@ -10,9 +10,13 @@ import time
 from pathlib import Path
 
 import pytest
+from node_kit import allow
 
 from poolhouse import node_join, node_join_check, node_launch
-from poolhouse.node_health import call
+from poolhouse.board import session as board_session
+from poolhouse.board.client import Client
+from poolhouse.fleet.onboard.manifest import Signer
+from poolhouse.node_health import Refused, call
 from tests import test_node_launch as launch
 
 pytestmark = pytest.mark.slow
@@ -48,6 +52,13 @@ def say(state: Path, text: str) -> str:
     return token
 
 
+def allowed(state: Path, person: Signer, *actions: str) -> None:
+    """The test person grants the pool session of the node at ``state`` (the one `node_join` acts as) what it names."""
+    token = node_join._token(state)
+    client = Client(state)
+    allow(board_session.Session(client, node_join.BOARD, token, client.call("whoami", node_join.BOARD, token)["name"]), person, *actions)
+
+
 def bodies(state: Path, token: str) -> list[str]:
     rows = call(state, "read", {"kind": "message", "limit": 100}, board="demo", token=token)["entries"]
     return sorted(r["fields"]["body"] for r in rows)
@@ -57,6 +68,11 @@ def test_two_nodes_enrol_each_other_under_open_share_a_board_and_a_revoked_one_s
     a, b = two_devices(home, built)
     try:
         ta, tb = say(a, "from a"), say(b, "from b")
+        with pytest.raises(Refused, match="grant"):
+            node_join.set_policy(a, "open")
+        person = Signer.generate()
+        allowed(a, person, "set_join_policy", "member_remove")
+        allowed(b, Signer.generate(), "set_join_policy")
         node_join.set_policy(a, "open")
         node_join.set_policy(b, "open")
         waited("both to list each other", lambda: node_join.others(node_join.status(a)) and node_join.others(node_join.status(b)), 30)

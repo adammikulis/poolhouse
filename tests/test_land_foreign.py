@@ -3,7 +3,6 @@ for a commit that exists in the local repository, and this device's runner lands
 
 from __future__ import annotations
 
-import shutil
 import time
 
 import pytest
@@ -15,7 +14,6 @@ from node_kit import (  # noqa: F401  (a fixture the one below uses)
     node_binary,
 )
 
-from poolhouse import node_launch
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Denied
 from poolhouse.workspace import landing
@@ -25,19 +23,13 @@ from poolhouse.workspace import landing
 def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
     """Two joined nodes on loopback; this device (a) runs the landing world, the other (b) is a member of its pool."""
     kit.skip_unless_possible()
-    a, b = kit.start(node_binary, "a"), kit.start(node_binary, "b")
-    kit.join(a, b)
-    for name in STRIPPED:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
-    monkeypatch.setenv("POOLHOUSE_BOARD", kit.BOARD)
-    world = World(monkeypatch, tmp_path, WorkspaceNode(a.state, a.client, node_binary, person=a.person))
-    try:
-        yield world, a, b
-    finally:
-        for one in (a, b):
-            node_launch.stop_node(one.state)
-            shutil.rmtree(one.root, ignore_errors=True)
+    with kit.devices(node_binary, "a", "b") as (a, b):
+        kit.join(a, b)
+        for name in STRIPPED:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
+        monkeypatch.setenv("POOLHOUSE_BOARD", kit.BOARD)
+        yield World(monkeypatch, tmp_path, WorkspaceNode(a.state, a.client, node_binary, person=a.person)), a, b
 
 
 def other(b, name: str, model: str) -> board_session.Session:
