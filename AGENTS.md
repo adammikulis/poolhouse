@@ -939,6 +939,18 @@ ours with its own arguments, an environment variable that flips one of our param
 that says where its graph keeps its pointers, its copy and kinds handed to our page. When an app
 needs more than that, the missing piece is a command or a parameter here.
 
+### Options and recommendations are ranked by what is correct
+
+When an agent puts a choice to the owner or to another agent (a question, a plan, a report that
+recommends), it orders the options by what is correct for the product: security, intent,
+long-term cost. It never orders or marks "Recommended" by how easy an option is to build, and
+never drops an option for being more work. Effort and cost are stated as facts beside an option,
+never as its rank. Before recommending, the agent asks whether the first option weakens a guard,
+a test or a boundary; if it does, it is not the recommendation and is named as the weaker one.
+A guard is never loosened (a wider allowlist, an excused path, a skipped check) to turn a gate
+green: the cause is fixed, and a change that narrows a guard goes to the owner as a decision with
+the correct option first.
+
 ## 6. Safety
 
 ### An agent is never a human
