@@ -24,8 +24,8 @@
   - Merging with `worktree-agent-a6db85690baf91182` (the removal-race fix: `is_active` checks, `locked_for` in `net.rs` and `netsync.rs`) is expected to conflict in those two files; keep its checks.
   - From the second attack review (2026-10-11), kept and not fixed: a `leave` and an `admit` of one device are ordered by the signer's `at_ms`, which a device chooses, so a device can order its own leave against an admin's later admit; `pool_leave` takes the device out of `can_join_other`, so a device that left cannot join another pool until its state directory is replaced; the `how` label of a delegate's admit is the delegate's own word and shows in the roster as written; admin acts are never pruned, so a long-lived pool's `join_payload` can pass the 256 KB a join message holds and refuse a joiner whole (it says so); `gov/clock` measures awake time with `Instant`, which on Windows does not run while the machine sleeps, so a hold there can be longer than its hours.
   - Legacy pools are deleted (2026-10-11, branch of the legacy deletion): a fresh node is the unfounded pool of one (no signer needed,
-    nothing written, `governance.mode: unfounded`), a `pool.json` is refused with "this device is in an old-format pool: create a new
-    pool", and `set_join_policy`, `needs_migration`, `settle`, the beacon's `lone` flag and the 16-character pool id are gone.
+    nothing written, `governance.mode: unfounded`), a `pool.json` is renamed to `pool.json.old-format` with the line "this device was in an old-format pool: it now
+    starts unfounded; create a new pool" and the node keeps serving its boards, and `set_join_policy`, `needs_migration`, `settle`, the beacon's `lone` flag and the 16-character pool id are gone.
     Left, in this order: (1) `docs/api.md` section "Under the `open` policy (the default)" and the Python quickstart still describe a
     device founding an open pool by itself; rewrite them to the governed path once `docs/phone-approval.md` slice P1 gives the Python
     side a signer; (2) the Python test `tests/test_node_join.py` two-node open join was deleted, and `ph.pool.listen` now only turns the

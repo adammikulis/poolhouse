@@ -467,7 +467,9 @@ impl Node {
     /// How this device's pool is governed, as `pool_status` shows it.
     pub fn gov_view(&self) -> Value {
         let Some(g) = self.members.gov() else {
-            return json!({"mode": "unfounded", "say": "This device is a pool of one with no admins; ask me to make a pool when you want others to join it."});
+            let old = &self.members.retired;
+            let say = if old.is_empty() { "This device is a pool of one with no admins; ask me to make a pool when you want others to join it.".to_string() } else { format!("{} The old file is {old}.", crate::membership::OLD_FORMAT) };
+            return json!({"mode": "unfounded", "say": say, "old_format_file": old});
         };
         let (s, now) = (g.state(), g.clock.now_ms());
         let latest = s.chain.latest();

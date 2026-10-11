@@ -104,12 +104,32 @@ fn a_fresh_node_is_the_unfounded_pool_of_one_and_needs_no_signer_to_exist() {
 }
 
 #[test]
-fn a_state_directory_with_a_pool_json_of_the_old_format_is_refused_with_one_plain_message() {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("pool.json"), br#"{"v":1,"pool":"0123456789abcdef","policy":"secure","devices":[]}"#).unwrap();
-    let refused = Node::open(dir.path()).err().expect("an old-format pool is refused");
-    assert_eq!(refused.to_string(), "denied: this device is in an old-format pool: create a new pool");
-    assert!(dir.path().join("pool.json").exists(), "the node changes nothing in it");
+fn a_pool_json_of_the_old_format_or_of_no_format_is_set_aside_and_the_node_starts_unfounded_with_its_boards() {
+    let old_pool = br#"{"v":1,"pool":"0123456789abcdef","policy":"secure","devices":[]}"#;
+    for (i, content) in [old_pool.as_slice(), b"\x00\xff not json at all {{{".as_slice()].into_iter().enumerate() {
+        let dir = tempfile::tempdir().unwrap();
+        let token = {
+            let mut n = Node::open(dir.path()).unwrap();
+            let (name, token) = kit::session(&mut n, "demo", "a");
+            kit::allow(&mut n, "demo", &token, &name, &[]);
+            kit::ok(kit::post(&mut n, "demo", &token, "kept across the old pool"));
+            token
+        };
+        std::fs::write(dir.path().join("pool.json"), content).unwrap();
+        std::fs::write(dir.path().join("pool.json.old-format"), b"an earlier one").unwrap();
+        let mut n = Node::open(dir.path()).expect("the node is up, not refused");
+        assert!(!dir.path().join("pool.json").exists());
+        assert_eq!(std::fs::read(dir.path().join("pool.json.old-format.1")).unwrap(), content, "case {i}: renamed, never deleted, and the earlier file is untouched");
+        assert_eq!(std::fs::read(dir.path().join("pool.json.old-format")).unwrap(), b"an earlier one");
+        let entries = kit::ok(kit::req(&mut n, "read", "demo", &token, json!({"limit": 100})));
+        assert_eq!(kit::texts(&entries["entries"]), vec!["kept across the old pool"], "the board is served as before");
+        let view = kit::ok(kit::req(&mut n, "pool_status", "", "", json!({})));
+        assert_eq!((view["governance"]["mode"].as_str(), view["pool"].as_str()), (Some("unfounded"), Some("")));
+        assert_eq!(view["governance"]["old_format_file"], "pool.json.old-format.1");
+        assert!(view["governance"]["say"].as_str().unwrap().contains("old-format pool: it now starts unfounded; create a new pool"));
+        drop(n);
+        assert!(Node::open(dir.path()).is_ok(), "and it opens again as it was");
+    }
 }
 
 // -- convergence and removal ---------------------------------------------------------------------------------------------

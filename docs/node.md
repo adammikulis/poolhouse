@@ -855,9 +855,11 @@ pool, through admin keys; a device never does, and the one thing a member device
   unfounded` with an empty `pool`, nothing is written, it needs no signer to exist and it admits nobody (`add_device` answers "This
   device is not in a pool yet; make one, or join one."). It joins a pool with a code or an open pool it hears, or founds one
   (`pool_create`, or `pool_draft_found` and `pool_found` with a key outside the node). A device never founds a pool by itself.
-- **An old-format pool is refused.** A state directory with a `pool.json` makes the node refuse to start with one message, "this
-  device is in an old-format pool: create a new pool"; there is no legacy mode, no migration and no shim. Move `pool.json` out of the
-  state directory and the device is unfounded again.
+- **An old-format pool is set aside, not refused.** A state directory with a `pool.json` makes the node rename it (never delete it) to
+  `pool.json.old-format` (`.1`, `.2` ... when that name exists), print one line, "this device was in an old-format pool: it now starts
+  unfounded; create a new pool", and start as the unfounded pool of one, whatever the file held (it is never read). Every board it
+  holds is served as before; only the pool features (join, sync with members) wait until a new pool is founded. `pool_status` says
+  `governance.old_format_file`. There is no legacy mode, no migration and no shim.
 
 ## Poolhouse.app: the node's identity on macOS
 

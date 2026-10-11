@@ -21,8 +21,24 @@ use crate::error::{Error, Result};
 use crate::fsutil::{hex, unhex};
 use crate::gov::pool::GovPool;
 
-/// What a device that finds a `pool.json` of the old format is told: there is no migration, the device makes a new pool.
-pub const OLD_FORMAT: &str = "this device is in an old-format pool: create a new pool";
+/// What a device that finds a `pool.json` of the old format says once: there is no migration, the device makes a new pool.
+pub const OLD_FORMAT: &str = "this device was in an old-format pool: it now starts unfounded; create a new pool";
+
+/// The name an old-format `pool.json` is renamed to: `pool.json.old-format`, then `.old-format.1`, `.2` and so on.
+const SET_ASIDE: &str = "pool.json.old-format";
+
+/// Rename the `pool.json` of ``root`` (whatever it holds: it is never read) out of the way, never deleting it, and say so once; the
+/// name it now has, or empty when there was none.
+fn set_aside_old_format(root: &Path) -> Result<String> {
+    let old = root.join("pool.json");
+    if !old.exists() {
+        return Ok(String::new());
+    }
+    let name = std::iter::once(SET_ASIDE.to_string()).chain((1..).map(|n| format!("{SET_ASIDE}.{n}"))).find(|n| !root.join(n).exists()).expect("a free name");
+    std::fs::rename(&old, root.join(&name))?;
+    eprintln!("{OLD_FORMAT}");
+    Ok(name)
+}
 
 /// How a new device gets in.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,30 +117,30 @@ pub struct Pool {
     pub project: String,
     devices: BTreeMap<String, Device>,
     gov: Option<GovPool>,
+    /// The name an old-format `pool.json` was renamed to at this start, or empty.
+    pub retired: String,
 }
 
 impl Pool {
     /// Open the pool of the state directory ``root``: the governed pool kept under `pools/`, or the unfounded pool of one when there
-    /// is none. A `pool.json` of the old format is refused (`OLD_FORMAT`).
+    /// is none. A `pool.json` of the old format is renamed aside and the device starts as it would fresh (`OLD_FORMAT`).
     pub fn load(root: &Path) -> Result<Pool> {
         let mut held: Vec<PathBuf> = match std::fs::read_dir(root.join("pools")) {
             Ok(entries) => entries.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.join("charter.json").is_file()).collect(),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(e.into()),
         };
-        if root.join("pool.json").exists() {
-            return Err(Error::say("denied", OLD_FORMAT, "approval", "ask-owner"));
-        }
+        let retired = set_aside_old_format(root)?;
         match held.len() {
-            0 => Ok(Pool { id: String::new(), policy: Policy::Secure, project: String::new(), devices: BTreeMap::new(), gov: None }),
-            1 => Ok(Pool::governed(GovPool::load(&held.remove(0))?)),
+            0 => Ok(Pool { id: String::new(), policy: Policy::Secure, project: String::new(), devices: BTreeMap::new(), gov: None, retired }),
+            1 => Ok(Pool { retired, ..Pool::governed(GovPool::load(&held.remove(0))?) }),
             _ => Err(Error::Damaged("this build holds one pool, and this directory holds several".into())),
         }
     }
 
     /// A pool governed by ``gov``, with the record this device keeps of its members read from it.
     pub fn governed(gov: GovPool) -> Pool {
-        let mut pool = Pool { id: String::new(), policy: Policy::Secure, project: String::new(), devices: BTreeMap::new(), gov: Some(gov) };
+        let mut pool = Pool { id: String::new(), policy: Policy::Secure, project: String::new(), devices: BTreeMap::new(), gov: Some(gov), retired: String::new() };
         pool.refresh();
         pool
     }
