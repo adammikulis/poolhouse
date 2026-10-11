@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 
+import node_attribution
 import psutil
 import pytest
 from conftest import changed_files, file_mtimes
@@ -227,6 +228,14 @@ def test_a_node_run_file_with_another_start_time_excuses_nothing(served):
     foreign_changes(served)
     served.put("node/node-run.json", {"pid": served.pids[0], "started_at": time.time() - 3600})
     assert watch.judge(ALL) == (set(), {})
+
+
+def test_a_table_too_large_to_read_places_nothing(served, monkeypatch):
+    monkeypatch.setattr(node_attribution, "LARGEST", 600)
+    watch = NodeWatch(served.root)
+    assert watch.before.names["demo"] is not None
+    (served.root / NAMES).write_text(json.dumps({"agent-aaaaaa": ident([served.agent], seen=9)}) + " " * 700)
+    assert watch.judge([NAMES]) == (set(), {})
 
 
 def test_paths_outside_the_node_directory_are_left_alone(served):
