@@ -29,6 +29,7 @@ if __name__ == "__main__":
     hook_bootstrap.stage("imports")
 
 from poolhouse import harness_claims, platform, requests
+from poolhouse.errors import Denied
 from poolhouse.harnesspolicy import (
     Decision,
     _shell_line,
@@ -38,9 +39,7 @@ from poolhouse.harnesspolicy import (
 )
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
-from poolhouse.workspace import harness_remote, notification_reader, tokens, worktree_lifecycle
-from poolhouse.workspace.identity import BoardUnavailable, Denied
-from poolhouse.workspace.service import Workspace
+from poolhouse.workspace import limits, worktree_lifecycle
 
 __all__ = ["FAILURES", "WAIT_S", "Rail", "nudge", "post", "pre", "run"]
 
@@ -48,7 +47,8 @@ WAIT_S = 300.0
 CLEANUP_RESERVE_S = 1.5
 NUDGE_S = hook_bootstrap.POST_SECONDS - CLEANUP_RESERVE_S
 NUDGE_MOST = 500
-FAILURES = (OSError, ValueError, TypeError, KeyError, AttributeError, LookupError, RuntimeError)
+NOTIFIER = "poolhouse.workspace.notification_reader"
+FAILURES = (Denied, OSError, ValueError, TypeError, KeyError, AttributeError, LookupError, RuntimeError)
 HOOK_EVENTS = {"pre": "PreToolUse", "post": "PostToolUse", "stop": "Stop"}
 
 
@@ -89,7 +89,6 @@ class Rail:
     roots: Sequence[str] = ()
     protected: Sequence[str] = ()
     wait_s: float = WAIT_S
-    session_id: str = ""
 
 
 def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None) -> dict[str, Any]:
@@ -103,7 +102,7 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
         inputs = args if isinstance(args, dict) else None
         try:
             ownership = harness_claims.conflict(name, inputs, str(payload.get('cwd') or (roots[0] if roots else Path.cwd())), agent, roots)
-        except BoardUnavailable as error:  # no board to ask: local work goes on, with a warning
+        except harness_claims.BoardUnavailable as error:  # no board to ask: local work goes on, with a warning
             ownership = ""
             warning = f" (ownership not checked: {hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())})"
         decision = (Decision('deny', 'destructive', ownership) if ownership else None) or (primary_decision(name, inputs, str(payload.get("cwd", "")))
@@ -128,7 +127,7 @@ def _owned_answer(payload, rail, event, reason):
         harness_claims.reserve(str(payload.get('tool_name', '')), payload.get('tool_input'),
                                str(payload.get('cwd') or (rail.roots[0] if rail.roots else Path.cwd())),
                                rail.agent, rail.roots)
-    except BoardUnavailable as error:
+    except harness_claims.BoardUnavailable as error:
         note = hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())
         return _answer(event, 'allow', f"{reason} (ownership not recorded: {note})")
     except FAILURES as error:
@@ -155,9 +154,8 @@ def nudge(agent: str, rail: Rail | None = None, *, board=None) -> str:
     """Return unread metadata and redacted advisory failure references."""
     try:
         timeout = min(NUDGE_S, max(0.05, hook_bootstrap.remaining() - CLEANUP_RESERVE_S))
-        done = _reader_run([sys.executable, "-m", notification_reader.__name__, agent,
-                            str(rail.roots[0] if rail and rail.roots else Path.cwd()),
-                            rail.session_id if rail else ""], capture_output=True, text=True,
+        done = _reader_run([sys.executable, "-m", NOTIFIER, agent,
+                            str(rail.roots[0] if rail and rail.roots else Path.cwd())], capture_output=True, text=True,
                            timeout=timeout, check=False, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired as error:
         partial = error.stdout or ""
@@ -192,18 +190,7 @@ def post(agent: str, rail: Rail | None = None) -> dict[str, Any]:
 def stop(rail: Rail) -> dict[str, Any]:
     """Block an authenticated harness completion until its recorded checkouts are cleaned."""
     try:
-        board = harness_remote.context(rail.agent, rail.roots[0], rail.roots, require_claim=False)
-        if board:
-            harness_remote.require_clean(*board)
-            return {}
-        ws = Workspace()
-        who = ws.auth(tokens.load(ws.base, rail.agent))
-        if who.id != rail.agent:
-            raise Denied('completion requires the launcher-bound identity')
-        worktree_lifecycle.require_clean(ws.base, who.id, within=tuple(rail.roots))
-    except BoardUnavailable as error:  # nothing to check completion against: record it, never block
-        hook_diagnostics.record(error, "stop", "completion", metadata=hook_bootstrap.timings())
-        return {}
+        worktree_lifecycle.require_clean(limits.root(), rail.agent, within=tuple(rail.roots))
     except (Denied, OSError, RuntimeError) as error:
         return {"decision": "block", "reason": hook_diagnostics.record(error, "stop", "completion", metadata=hook_bootstrap.timings())}
     return {}
@@ -237,8 +224,7 @@ def run(argv: Sequence[str] | None = None, stdin: IO[str] | None = None,
         hook_bootstrap.metadata(payload)
         agent = opts.get("agent", ["harness"])[-1]
         rail = Rail(opts.get("role", ["read-only"])[-1], agent, opts.get("root") or [str(payload.get("cwd", ""))],
-                    opts.get("protect", []), float(opts.get("wait", [WAIT_S])[-1]),
-                    str(payload.get("session_id", "")) if event == "post" else "")
+                    opts.get("protect", []), float(opts.get("wait", [WAIT_S])[-1]))
         stage = event
         hook_bootstrap.stage(stage)
         out = pre(payload, rail) if event == "pre" else stop(rail) if event == "stop" else post(agent, rail)
