@@ -181,7 +181,9 @@ pub fn announce(node: &mut Node, a: &Approval) {
     if targets.is_empty() {
         return;
     }
-    let _ = node.fatigue.record_push(quiet, now);
+    let by = if a.session.is_empty() { String::new() } else { format!("session:{}/{}", a.board, a.session) };
+    let _ = node.fatigue.record_push(quiet, &by, now);
+    let _ = node.approvals.update(&a.id, |x| x.notified = true);
     for t in targets {
         let sealed = crate::fsutil::unhex(&t.p256dh).zip(crate::fsutil::unhex(&t.auth)).ok_or(()).and_then(|(key, auth)| push::seal(body.as_bytes(), &key, &auth).map_err(|_| ()));
         if let Ok(sealed) = sealed {

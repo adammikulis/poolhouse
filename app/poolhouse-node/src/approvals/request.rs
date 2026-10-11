@@ -13,7 +13,7 @@ use crate::approvals::context::{AskFacts, Context};
 use crate::approvals::decide::{agent_view, audit, sweep};
 use crate::approvals::fatigue::{self, kind_of, same, Delivery, Standing, SILENT, URGENT};
 use crate::approvals::flags::{for_grants, Asked};
-use crate::approvals::{summary, Approval, GRANTS, HELD, MOST_PENDING, MOST_PENDING_PER_SESSION, MOST_REQUESTS, PENDING, REQUEST_WINDOW_MS};
+use crate::approvals::{summary, Approval, CANCELLED, EXPIRED, GRANTS, HELD, MOST_PENDING, MOST_PENDING_PER_SESSION, MOST_REQUESTS, PENDING, REQUEST_WINDOW_MS};
 use crate::error::{Error, Result};
 use crate::fsutil::random_hex;
 use crate::node::Node;
@@ -133,6 +133,8 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
         Standing::Held { key, .. } => Some(key),
         Standing::Free => None,
     };
+    let reask = node.fatigue.rules.reask_ms;
+    let repeated = node.approvals.all().iter().any(|a| a.same == same && matches!(a.state.as_str(), CANCELLED | EXPIRED) && now.saturating_sub(a.decided_ms) < reask);
     let rate = format!("approval {board}/{name}");
     if !node.rates.permits(&rate, MOST_REQUESTS, Duration::from_millis(REQUEST_WINDOW_MS)) {
         return Err(Error::Quota(format!("{MOST_REQUESTS} requests in ten minutes is the most one session may make; try again later.")));
@@ -176,8 +178,13 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
         None => {
             let live: Vec<&Approval> = node.approvals.all().iter().filter(|a| a.pending() && a.urgency == URGENT).collect();
             let mine = live.iter().filter(|a| a.board == board && a.session == name).count();
-            let delivery = Delivery { trusted: friend, prompted: &ctx.prompted, requester_urgent: mine, all_urgent: live.len(), pushes: node.fatigue.pushes_this_hour(now) };
-            fatigue::urgency(&node.fatigue.rules, &delivery)
+            let delivery = Delivery { trusted: friend, prompted: &ctx.prompted, requester_urgent: mine, all_urgent: live.len(), pushes: node.fatigue.pushes_this_hour(now),
+                                      requester_pushes: node.fatigue.pushes_by(&who.keys[0], now) };
+            match fatigue::urgency(&node.fatigue.rules, &delivery) {
+                // The same request again soon after it was withdrawn or ran out is listed, not pushed again.
+                (URGENT, _) if repeated => (SILENT, false),
+                other => other,
+            }
         }
     };
     let approval = Approval {

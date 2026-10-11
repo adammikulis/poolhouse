@@ -3,7 +3,8 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::approvals::decide::{agent_view, audit, decide, sweep, view, Decision};
+use crate::approvals::decide::{agent_view, audit, count_against, decide, sweep, view, Decision};
+use crate::approvals::fatigue::Cause;
 use crate::approvals::{challenge, request, Approval, CANCELLED, DEFAULT_TTL_MS, MAX_TTL_MS, MIN_TTL_MS};
 use crate::error::{Error, Result};
 use crate::grants::spec::{check_resource, grantable};
@@ -133,6 +134,10 @@ fn cancel(node: &mut Node, board: &str, token: &str, id: &str) -> Result<Value> 
         x.decided_ms = now;
     })?;
     audit(node, "approval.cancelled", &a, "withdrawn by the session");
+    if a.notified {
+        // Withdrawing a request the person was told about is a decline of it, so asking and withdrawing again and again holds the requester.
+        count_against(node, &a, Cause::Cancel)?;
+    }
     let done = node.approvals.get(id).cloned().unwrap_or(a);
     Ok(agent_view(node, &done))
 }

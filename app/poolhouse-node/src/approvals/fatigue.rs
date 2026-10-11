@@ -47,7 +47,11 @@ pub struct Rules {
     pub urgent_per_requester: usize,
     pub urgent_pending: usize,
     pub pushes_per_hour: usize,
+    /// The pushes one requester may use of them in an hour, so one session cannot spend the hour's pushes and silence honest requests.
+    pub pushes_per_requester: usize,
     pub quiet_per_hour: usize,
+    /// How long after one was withdrawn or ran out the same request is made without a push.
+    pub reask_ms: u64,
     /// Requests one held requester may have kept back.
     pub most_held: usize,
 }
@@ -56,7 +60,7 @@ impl Default for Rules {
     fn default() -> Rules {
         Rules {
             window_ms: DAY_MS, declined_ms: 30 * DAY_MS, backoff_ms: 30_000, hold_after: [2, 5, 20], hold_steps_ms: [HOUR_MS, 4 * HOUR_MS, DAY_MS],
-            suspend_ms: DAY_MS, block_ms: DAY_MS, urgent_per_requester: 3, urgent_pending: 8, pushes_per_hour: 10, quiet_per_hour: 4, most_held: 8,
+            suspend_ms: DAY_MS, block_ms: DAY_MS, urgent_per_requester: 3, urgent_pending: 8, pushes_per_hour: 10, pushes_per_requester: 3, quiet_per_hour: 4, reask_ms: 10 * 60 * 1000, most_held: 8,
         }
     }
 }
@@ -142,7 +146,8 @@ struct Declined {
 struct File {
     entries: BTreeMap<String, Entry>,
     declined: Vec<Declined>,
-    pushes: Vec<u64>,
+    /// When each push of the last hour went out, and for whom (a requester's key, empty for a phone's own request).
+    pushes: Vec<(u64, String)>,
     quiet: Vec<u64>,
 }
 
@@ -195,7 +200,7 @@ impl Fatigue {
             e.holds.retain(|(at, _)| now.saturating_sub(*at) < window);
         }
         self.file.declined.retain(|d| now.saturating_sub(d.at_ms) < declined);
-        self.file.pushes.retain(|at| now.saturating_sub(*at) < HOUR_MS);
+        self.file.pushes.retain(|(at, _)| now.saturating_sub(*at) < HOUR_MS);
         self.file.quiet.retain(|at| now.saturating_sub(*at) < HOUR_MS);
     }
 
@@ -367,8 +372,15 @@ impl Fatigue {
         self.file.quiet.len()
     }
 
-    pub fn record_push(&mut self, quiet: bool, now: u64) -> Result<()> {
-        if quiet { self.file.quiet.push(now) } else { self.file.pushes.push(now) }
+    /// How many pushes the requester ``key`` used in the last hour.
+    pub fn pushes_by(&mut self, key: &str, now: u64) -> usize {
+        self.prune(now);
+        self.file.pushes.iter().filter(|(_, by)| by == key).count()
+    }
+
+    /// A push went out for the requester ``by`` (empty when no session asked).
+    pub fn record_push(&mut self, quiet: bool, by: &str, now: u64) -> Result<()> {
+        if quiet { self.file.quiet.push(now) } else { self.file.pushes.push((now, by.to_string())) }
         self.save()
     }
 }
@@ -381,6 +393,8 @@ pub struct Delivery<'a> {
     pub requester_urgent: usize,
     pub all_urgent: usize,
     pub pushes: usize,
+    /// How many of the hour's pushes this requester used.
+    pub requester_pushes: usize,
 }
 
 /// How loudly a request is delivered, and whether it was made quiet only because a cap was reached (so the overflow is summarised).
@@ -388,7 +402,7 @@ pub fn urgency(rules: &Rules, d: &Delivery) -> (&'static str, bool) {
     if !d.trusted || d.prompted == "no" {
         return (SILENT, false);
     }
-    if d.requester_urgent >= rules.urgent_per_requester || d.all_urgent >= rules.urgent_pending || d.pushes >= rules.pushes_per_hour {
+    if d.requester_urgent >= rules.urgent_per_requester || d.all_urgent >= rules.urgent_pending || d.pushes >= rules.pushes_per_hour || d.requester_pushes >= rules.pushes_per_requester {
         return (SILENT, true);
     }
     (URGENT, false)
@@ -528,7 +542,7 @@ mod tests {
     #[test]
     fn urgency_never_interrupts_for_a_stranger_an_unprompted_ask_or_past_a_cap() {
         let rules = Rules::default();
-        let ok = Delivery { trusted: true, prompted: "unknown", requester_urgent: 0, all_urgent: 0, pushes: 0 };
+        let ok = Delivery { trusted: true, prompted: "unknown", requester_urgent: 0, all_urgent: 0, pushes: 0, requester_pushes: 0 };
         assert_eq!(urgency(&rules, &ok), (URGENT, false));
         assert_eq!(urgency(&rules, &Delivery { prompted: "yes", ..ok }), (URGENT, false));
         assert_eq!(urgency(&rules, &Delivery { trusted: false, ..ok }), (SILENT, false));
@@ -536,5 +550,6 @@ mod tests {
         assert_eq!(urgency(&rules, &Delivery { requester_urgent: 3, ..ok }), (SILENT, true));
         assert_eq!(urgency(&rules, &Delivery { all_urgent: 8, ..ok }), (SILENT, true));
         assert_eq!(urgency(&rules, &Delivery { pushes: 10, ..ok }), (SILENT, true));
+        assert_eq!(urgency(&rules, &Delivery { requester_pushes: 3, ..ok }), (SILENT, true));
     }
 }

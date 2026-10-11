@@ -251,6 +251,67 @@ fn a_suspension_takes_the_grants_of_the_one_session_that_earned_it_and_no_other(
 }
 
 #[test]
+fn withdrawing_a_request_the_person_was_pushed_counts_as_a_decline_and_withdrawing_one_never_pushed_does_not() {
+    let (rig, _phone) = setup();
+    let (_, token) = rig.session("demo", "agent-1");
+    for i in 0..2 {
+        let made = ok(rig.ask("demo", &token, json!([ask("link_read", &format!("a>b{i}"))]), json!({})));
+        ok(rig.call("approval_cancel", "demo", &token, json!({"id": made["id"]})));
+    }
+    let next = ok(rig.ask("demo", &token, json!([ask("link_read", "a>b9")]), json!({})));
+    assert_eq!(next["state"], "held", "two requests withdrawn after the person was told hold the requester like two declines: {next}");
+
+    let (quiet, other) = setup();
+    told(&quiet, Facts { prompted: Some(false), ..Facts::unrecorded() });
+    let (_, token) = quiet.session("demo", "agent-2");
+    for i in 0..3 {
+        let made = ok(quiet.ask("demo", &token, json!([ask("link_read", &format!("a>b{i}"))]), json!({})));
+        assert_eq!(made["urgency"], "silent");
+        ok(quiet.call("approval_cancel", "demo", &token, json!({"id": made["id"]})));
+    }
+    let again = ok(quiet.ask("demo", &token, json!([ask("link_read", "a>b9")]), json!({})));
+    assert_eq!(again["state"], "pending", "a request nobody was told about costs nothing to withdraw: {again}");
+    drop(other);
+}
+
+#[test]
+fn one_session_cannot_spend_the_hours_pushes_and_silence_the_honest_ones() {
+    let (rig, _phone) = setup();
+    {
+        let mut n = rig.node.lock().unwrap();
+        n.fatigue.rules.hold_after = [100, 100, 100];
+        n.fatigue.rules.pushes_per_hour = 4;
+    }
+    let (_, spender) = rig.session("demo", "spender");
+    for i in 0..6 {
+        let made = ok(rig.ask("demo", &spender, json!([ask("link_read", &format!("x>y{i}"))]), json!({})));
+        ok(rig.call("approval_cancel", "demo", &spender, json!({"id": made["id"]})));
+    }
+    let (_, honest) = rig.session("demo", "honest");
+    let made = ok(rig.ask("demo", &honest, json!([ask("sync_now", "*")]), json!({})));
+    assert_eq!(made["urgency"], "urgent", "the spender used its own budget of pushes, not the hour's: {made}");
+    assert_eq!(rig.pushed.sent().len(), 3 + 1 + 1, "three for the spender, one quiet notice that the rest wait in the list, one for the honest session");
+}
+
+#[test]
+fn the_same_request_asked_again_soon_after_it_was_withdrawn_or_ran_out_does_not_push_again() {
+    let (rig, _phone) = setup();
+    rig.node.lock().unwrap().fatigue.rules.hold_after = [100, 100, 100];
+    let (_, token) = rig.session("demo", "agent-1");
+    let first = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})));
+    ok(rig.call("approval_cancel", "demo", &token, json!({"id": first["id"]})));
+    let again = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({"note": "again"})));
+    assert_eq!((again["state"].as_str(), again["urgency"].as_str()), (Some("pending"), Some("silent")), "{again}");
+    assert_ne!(again["id"], first["id"]);
+    assert_eq!(rig.pushed.sent().len(), 1, "the person was told once, not once for each time it was asked");
+    let other = ok(rig.ask("demo", &token, json!([ask("sync_now", "*"), ask("link_read", "a>b")]), json!({})));
+    assert_eq!(other["urgency"], "urgent", "a different request is a different request");
+    rig.node.lock().unwrap().approvals.update(other["id"].as_str().unwrap(), |a| a.expires_ms = 1).unwrap();
+    let ran_out = ok(rig.ask("demo", &token, json!([ask("sync_now", "*"), ask("link_read", "a>b")]), json!({"note": "once more"})));
+    assert_eq!(ran_out["urgency"], "silent", "nor does one that ran out: {ran_out}");
+}
+
+#[test]
 fn quiet_notices_are_capped_too_so_many_holds_cannot_buzz_the_phone_either() {
     let (rig, phone) = setup();
     rig.node.lock().unwrap().fatigue.rules.quiet_per_hour = 1;

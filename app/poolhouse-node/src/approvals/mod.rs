@@ -111,6 +111,9 @@ pub struct Approval {
     /// While the request is held, the level of the ledger that holds its requester (`fatigue::requester`).
     #[serde(default)]
     pub held_by: String,
+    /// Whether a push told the person about it: withdrawing a request the person was told of is not free.
+    #[serde(default)]
+    pub notified: bool,
 }
 
 fn urgent() -> String {
@@ -124,7 +127,7 @@ impl Approval {
             id: String::new(), kind: String::new(), board: String::new(), session: String::new(), action: Value::Null, text: String::new(), title: String::new(),
             risk: String::new(), nonce: String::new(), created_ms: 0, expires_ms: 0, state: PENDING.into(), decided_ms: 0, decided_by: String::new(),
             reason: String::new(), grants: Vec::new(), seq: 0, context: Context::default(), pick_code: String::new(), urgency: urgent(), retries: 0,
-            same: String::new(), source: String::new(), held_by: String::new(),
+            same: String::new(), source: String::new(), held_by: String::new(), notified: false,
         }
     }
 
