@@ -6,6 +6,7 @@ import pytest
 
 from poolhouse.decide.fetch import Pin, locate
 from poolhouse.decide.types import BackendUnavailable, DecideError
+from poolhouse.hub import hfstore
 from tests.web_site import Site
 
 REV = "a" * 40
@@ -14,6 +15,22 @@ BODY = b'{"head_type": "pointer"}'
 
 def pin(name="lora/adapter_config.json", body=BODY):
     return Pin("owner/repo", REV, name, hashlib.sha256(body).hexdigest(), len(body))
+
+
+@pytest.fixture(autouse=True)
+def hub_cache(monkeypatch, tmp_path):
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hub"))
+    return tmp_path / "hub"
+
+
+def laid_out_by_hf(hub_cache, name="lora/adapter_config.json", body=BODY):
+    """The file as the Hub cache's own tooling lays it out: a blob named by its object id, and a link."""
+    root = hub_cache / "models--owner--repo"
+    blob = root / "blobs" / hashlib.sha1(b"blob %d\0" % len(body) + body, usedforsecurity=False).hexdigest()
+    blob.parent.mkdir(parents=True, exist_ok=True)
+    blob.write_bytes(body)
+    hfstore.link(root / "snapshots" / REV / name, blob)
+    return root / "snapshots" / REV / name
 
 
 @pytest.fixture
@@ -37,6 +54,29 @@ def test_a_pinned_file_lands_in_the_repositorys_own_layout_and_is_not_fetched_tw
     assert got.parent.name == "lora" and got.parent.parent.name == REV
     assert locate(pin(), download=True) == got
     assert len(hub.hits) == 1
+
+
+def test_a_pinned_file_is_a_blob_of_the_hub_cache_with_a_link_in_the_commits_snapshot(hub, hub_cache):
+    got = locate(pin(), download=True)
+    blob = hub_cache / "models--owner--repo" / "blobs" / hashlib.sha256(BODY).hexdigest()
+    assert hfstore.identify(got) == ("owner/repo", REV, "lora/adapter_config.json")
+    assert got.is_symlink() and got.resolve() == blob.resolve() and blob.read_bytes() == BODY
+
+
+def test_a_file_the_hub_cache_already_holds_is_used_without_a_download(hub, hub_cache):
+    placed = laid_out_by_hf(hub_cache)
+    assert locate(pin()) == placed
+    assert locate(pin(), download=True) == placed
+    assert hub.hits == []
+
+
+def test_a_file_in_the_hub_cache_that_is_not_the_pinned_one_is_replaced_by_a_download(hub, hub_cache):
+    placed = laid_out_by_hf(hub_cache, body=b'{"head_type": "evil!!"}')
+    with pytest.raises(BackendUnavailable):
+        locate(pin())
+    got = locate(pin(), download=True)
+    assert got == placed and got.read_bytes() == BODY
+    assert locate(pin()) == placed
 
 
 def test_a_file_that_is_not_the_pinned_one_is_held_and_never_kept(hub):
