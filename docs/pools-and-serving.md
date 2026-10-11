@@ -189,11 +189,11 @@ for none); a `device` signature is accepted only where the table says so; `at_ms
 Anything else is refused and recorded with its reason, never applied. Heartbeats (1.6) travel in the same exchange and are not
 stored.
 
-**Time (fix: no backdating, no spoofed clock).** Every hold, delay, window and expiry is measured on **each device by its own
+**Time.** Every hold, delay, window and expiry is measured on **each device by its own
 monotonic clock from the first moment that device saw the act**, saved at checkpoints and across restarts. The wall clock and the
 signer's `at_ms` are never read for a delay: an act backdated by its signer, or a device whose clock a network source moved
-forward, shortens nothing. A device counts the time it is awake; a hold that ends while a device is off ends for it when it wakes
-and has seen no `cancel`.
+forward, shortens nothing. A device counts only the time it is awake, so a hold never ends early for a device that was off: it ends
+after the full hold has run on that device with no `cancel` seen.
 
 **Order, forks and last admin.**
 
