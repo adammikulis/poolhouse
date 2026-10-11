@@ -40,6 +40,9 @@ def test_a_device_nobody_enabled_takes_nothing_and_is_listed_with_why(pool, caps
     assert devices.command(["--json"]) == 0
     (row,) = json.loads(capsys.readouterr().out)
     assert row["caps"]["accepts"] is False and row["fingerprint"] == fp
+    assert devices.command([]) == 0
+    listed = capsys.readouterr().out
+    assert "test shards are off on this device" in listed and "testfarm.consent on" in listed
 
 
 def test_the_device_list_says_how_each_member_is_reached_by_real_nodes(pool, capsys):

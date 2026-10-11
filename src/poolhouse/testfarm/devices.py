@@ -50,7 +50,7 @@ def table(rows: list[dict]) -> list[str]:
     lines = [f"{'DEVICE':<20} {'REACH':<8} {'PLATFORM':<34} {'SLOTS':<6} {'TAKES TESTS':<12} LAST RESULT"]
     for row in rows:
         caps = row["caps"]
-        platform = report.where(caps["platform"]) if "platform" in caps else "-"
+        platform = report.where(caps["platform"], caps.get("python")) if "platform" in caps else "-"
         slots = f"{caps['free']}/{caps['most_active']}" if "free" in caps else "-"
         takes = "yes" if caps["accepts"] else "no"
         lines.append(f"{row['name']:<20} {row.get('reach', 'unknown'):<8} {platform:<34} {slots:<6} {takes:<12} {last_line(row['last'])}")

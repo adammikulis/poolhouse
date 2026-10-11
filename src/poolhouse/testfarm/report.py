@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 
-def where(platform: dict) -> str:
-    """``linux (WSL), python 3.13.5, 16 cpus``: a Linux that is WSL is not the Windows around it."""
+def where(platform: dict, python: str | None = None) -> str:
+    """``linux (WSL), python 3.13.5, 16 cpus``: a Linux that is WSL is not the Windows around it.
+
+    A result carries its python in the platform; a node's answer to what it takes holds the python
+    beside the platform, and none while shards are off, so that part is then left out.
+    """
     system = f"{platform['system']} (WSL)" if platform.get("wsl") else platform["system"]
-    return f"{system}, python {platform['python']}, {platform['cpus']} cpus"
+    version = platform.get("python") or python
+    parts = [system, f"python {version}"] if version else [system]
+    return ", ".join([*parts, f"{platform['cpus']} cpus"])
 
 
 def counts(result: dict) -> dict[str, int]:

@@ -224,6 +224,27 @@ def test_the_device_table_says_why_a_device_takes_nothing():
     assert "off-box" in text and "test shards are off on this device" in text
 
 
+def node_platform(wsl: bool = False) -> dict:
+    """The platform a node answers shard_caps with: no python in it, which the answer holds beside it."""
+    return {"system": "linux", "machine": "x86_64", "cpus": 16, "wsl": wsl}
+
+
+def test_a_device_whose_shards_are_off_is_listed_with_the_fix_not_a_key_error():
+    off = "test shards are off on this device; its person turns them on (python -m poolhouse.testfarm.consent on)"
+    caps = {"accepts": False, "reason": off, "platform": node_platform(True), "python": None, "name": "wsl-box",
+            "allowed": False, "fingerprint": "a" * 64, "active": 0, "most_active": 4, "free": 4}
+    lines = devices.table([{"name": "wsl-box", "reach": "direct", "reach_hint": "", "caps": caps, "last": {}}])
+    text = "\n".join(lines)
+    assert "linux (WSL), 16 cpus" in text and "no " in lines[1] and off in text
+    assert "python None" not in text and "python unknown" not in text
+
+
+def test_a_device_that_takes_tests_shows_the_python_its_node_reports_beside_the_platform():
+    caps = {"accepts": True, "reason": "", "platform": node_platform(), "python": "3.13.5", "free": 3, "most_active": 4}
+    (_, row) = devices.table([{"name": "box", "reach": "direct", "caps": caps, "last": {}}])
+    assert "linux, python 3.13.5, 16 cpus" in row and "3/4" in row
+
+
 def test_the_device_table_says_how_each_device_is_reached_and_the_fix_when_it_is_not_directly():
     fix = "no member can dial it yet: have it dial a member, or give it an address"
     shut = {"accepts": False, "reason": "did not answer"}
