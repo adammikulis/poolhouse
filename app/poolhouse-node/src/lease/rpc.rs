@@ -115,7 +115,9 @@ fn acquire(node: &mut Node, board: &str, who: &str, p: &Map<String, Value>) -> R
     let resources: Vec<Resource> = serde_json::from_value(p.get("resources").cloned().unwrap_or(Value::Null))
         .map_err(|e| Error::Invalid(format!("resources is a list of typed resources: {e}")))?;
     resources.iter().try_for_each(authority)?;
-    node.work_gate()?;
+    if !p.get("quiet").and_then(Value::as_bool).unwrap_or(false) {
+        node.work_gate()?;
+    }
     let class = match p.get("class").and_then(Value::as_str) {
         None | Some("interactive") => Class::Interactive,
         Some("background") => Class::Background,

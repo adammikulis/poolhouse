@@ -604,7 +604,7 @@ different parties and wait for each other, the same tag for the same resources i
 party of its own. A program that serves many callers (the serve broker, one generation at a time per request) holds
 them all under one session by giving each its own tag. A **quiet** lease (`quiet: true`, only for the GPU and a
 `server` claim, which a request takes and gives back many times a second) is granted and ended without a board
-entry. A holder may pass `pid`: the node records the
+entry, and is not refused while the device is catching up: it only orders a request to a server already running here. A holder may pass `pid`: the node records the
 process start time and drops the lease when the process is gone, a zombie, or started at another
 moment (a reused pid). A `remote` holder has no pid and lives by expiry. Every lease expires
 `ttl_s` after the last renewal; a queued request not polled for `queue_patience_s` is dropped. The
