@@ -146,6 +146,22 @@ fn a_log_of_a_removed_device_that_no_removal_names_stands_as_far_as_this_device_
 }
 
 #[test]
+fn a_cut_holds_for_a_log_even_when_this_device_does_not_know_which_key_was_removed() {
+    let (dir_a, dir_c) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let mut a = Board::open(dir_a.path(), "demo", "pool", kit::key(1)).unwrap();
+    let mut c = Board::open(dir_c.path(), "demo", "pool", kit::key(2)).unwrap();
+    note(&mut c, "one");
+    exchange(&mut a, &mut c).unwrap();
+    let origin = c.origin().to_string();
+    let held = a.rows(&origin).len() as u64;
+    a.cut(&origin, held).unwrap();
+    note(&mut c, "two");
+    let report = exchange(&mut a, &mut c).unwrap();
+    assert_eq!(a.rows(&origin).len() as u64, held, "nothing past the cut is taken, whoever the key was");
+    assert!(report.refused.contains_key(&origin), "{report:?}");
+}
+
+#[test]
 fn two_removals_of_one_device_that_name_different_points_stand_at_the_least() {
     let (_d, mut g) = pool(&[strong(1, "ann")], poolhouse_node::membership::Policy::Secure);
     let victim = ident(40);
