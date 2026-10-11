@@ -4,10 +4,36 @@ from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 
+import psutil
+import pytest
 from conftest import changed_files, file_mtimes, truncated_logs
 
 LOG = "llama-server-8080.log"
+
+
+def forget_stand_ins():
+    """Empty the cache `psutil.process_iter` keeps of process objects, so a stand-in process type made by a test is not served to a later one."""
+    if clear := getattr(psutil.process_iter, "cache_clear", None):
+        clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_stand_in_process_outlives_its_test():
+    yield
+    forget_stand_ins()
+
+
+def test_process_objects_made_from_a_stand_in_type_are_forgotten(monkeypatch):
+    forget_stand_ins()
+    with monkeypatch.context() as patched:
+        patched.setattr(psutil, "Process", lambda pid: SimpleNamespace(pid=pid))
+        assert list(psutil.process_iter())
+    with pytest.raises(AttributeError):
+        list(psutil.process_iter(["pid"]))
+    forget_stand_ins()
+    assert list(psutil.process_iter(["pid"]))
 
 
 def test_a_log_that_grew_is_a_live_server():
