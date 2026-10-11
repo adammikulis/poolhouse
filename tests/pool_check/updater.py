@@ -52,23 +52,26 @@ def make_repos(root: Path) -> tuple[Path, str, str]:
     return checkout, old, git("rev-parse", "HEAD", cwd=other)
 
 
-def wait_for_restart(state: Path, old_pid: int, seconds: float = 60.0, ask: Callable[..., dict] = node_health.call) -> int:
-    """Wait until a node other than ``old_pid`` answers on ``state``; its pid.
+def wait_for_restart(state: Path, old_pid: int, seconds: float = 60.0, ask: Callable[..., dict] = node_health.call) -> dict:
+    """Wait until a node other than ``old_pid`` answers on ``state`` and knows a member on a newer build; its `pool_status`.
 
     The node's supervisor restarts the node whenever the runtime selection (`selected.json`) changes, and the selection is written here to
-    make the device a checkout one commit behind: a question put to the node in that moment meets the old node closing or no node at all.
+    make the device a checkout one commit behind: a question put to the node in that moment meets the old node closing or no node at all,
+    and the new node knows the builds of its members only after it has synced with them once.
     """
     end, seen = time.monotonic() + seconds, "no node answered"
     while time.monotonic() < end:
         try:
-            pid = int(ask(state, "hello")["pid"])
-            if pid != old_pid:
-                return pid
-            seen = f"the node is still {old_pid}"
+            if int(ask(state, "hello")["pid"]) == old_pid:
+                seen = f"the node is still {old_pid}"
+            elif build_update.newest(pool := ask(state, "pool_status")) is None:
+                seen = "the new node knows of no member on a newer build yet"
+            else:
+                return pool
         except (OSError, ValueError) as exc:
             seen = f"{type(exc).__name__}: {exc}"
         time.sleep(0.2)
-    raise RuntimeError(f"the supervisor did not restart the node after the selection changed: {seen}")
+    raise RuntimeError(f"the supervisor did not bring the node back with the pool's builds known after the selection changed: {seen}")
 
 
 def main(argv: list[str] | None = None) -> int:
