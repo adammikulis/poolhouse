@@ -69,7 +69,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
         "phone_offer" => {
             let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session asks for a code for a phone.".into()))?;
             if node.persons.is_empty() {
-                return Err(Error::Denied("The first phone is added by a person at the computer with `poolhouse-workspace phone add`; this works once one phone or key is added.".into()));
+                return Err(Error::Denied("The first phone is added with `poolhouse-workspace phone add`, after a yes at the prompt of this computer; this works once one phone or key is added.".into()));
             }
             let (asker, now) = (format!("{}/{}", holder.board, holder.name), node.now_ms());
             if let Some(until) = node.fatigue.refused_key(&format!("offer:{asker}"), now) {
@@ -82,7 +82,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
             if node.phone_port == 0 {
                 return Err(Error::Invalid("This device is not listening for phones; `poolhouse-workspace phone add` turns that on.".into()));
             }
-            if offer_is_live(&node.dir, node.now_ms()) {
+            if offer_is_live(node, node.now_ms()) {
                 return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
             }
             let key = format!("phone offer {}/{}", holder.board, holder.name);
@@ -90,7 +90,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
                 return Err(Error::Quota(format!("{MOST_OFFERS_PER_HOUR} codes an hour is the most one session asks for; try again later.")));
             }
             node.rates.record(&key, Duration::from_secs(3600));
-            let secret = make_offer_for(&node.dir, node.now_ms(), &format!("the session {} on board {}", holder.name, holder.board), &asker)?;
+            let secret = make_offer_for(node, now, &format!("the session {} on board {}", holder.name, holder.board), &asker)?;
             Ok(info(node, &secret))
         }
         "phone_remove" => {

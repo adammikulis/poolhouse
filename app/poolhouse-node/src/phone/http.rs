@@ -98,7 +98,7 @@ fn wait(node: &Mutex<Node>, me: &str, p: &Map<String, Value>) -> Result<Value> {
 
 /// A code for a further phone, asked for by the phone ``id``; the request to approve the phone it adds says which phone made the code.
 fn offer(node: &mut Node, id: &str) -> Result<Value> {
-    if offer_is_live(&node.dir, node.now_ms()) {
+    if offer_is_live(node, node.now_ms()) {
         return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
     }
     let key = format!("phone offer {id}");
@@ -107,7 +107,8 @@ fn offer(node: &mut Node, id: &str) -> Result<Value> {
     }
     node.rates.record(&key, Duration::from_secs(3600));
     let by = format!("the phone {}", node.phones.get(id).map(|f| f.name.clone()).unwrap_or_default());
-    let secret = make_offer_by(&node.dir, node.now_ms(), &by)?;
+    let now = node.now_ms();
+    let secret = make_offer_by(node, now, &by)?;
     let expires = node.now_ms() + crate::phone::enrol::OFFER_TTL_MS;
     Ok(json!({"link": crate::phone::calls::link(node, &secret, expires), "expires_ms": expires}))
 }

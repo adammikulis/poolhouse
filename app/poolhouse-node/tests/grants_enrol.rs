@@ -1,23 +1,18 @@
-//! Who may put a person key on a node and who may take one off: the first key needs the one-time secret a person's command
-//! at a terminal leaves, so a session that registered first enrols nothing, and a key is removed only by an enrolled key.
+//! Who may put a person key on a node and who may take one off: the first key needs the one-time secret the operating system's
+//! prompt makes when the person says yes, so a session that registered first enrols nothing, and a key is removed only by an enrolled key.
 
 mod kit;
 
 use ed25519_dalek::SigningKey;
-use kit::grants::{agent, enrolled, expect_enrolment, now_ms, person, third, Person, Spec};
+use kit::grants::{agent, enrolled, first_secret, now_ms, person, third, Person, Spec};
 use kit::*;
 use poolhouse_node::fsutil::sha256_hex;
-use poolhouse_node::grants::person::SECRET_FILE;
 use poolhouse_node::grants::{check, Scope};
 use poolhouse_node::identity::Holder;
 use serde_json::{json, Value};
 use tempfile::tempdir;
 
 const GID: &str = "g-00000000000000c1";
-
-fn leave(dir: &std::path::Path, secret: &str, at_ms: u64) {
-    std::fs::write(dir.join(SECRET_FILE), json!({"sha256": sha256_hex(secret.as_bytes()), "at_ms": at_ms}).to_string()).unwrap();
-}
 
 fn with_secret(who: &Person, about: &str, secret: &str) -> Value {
     let mut params = who.enrolment(about, None);
@@ -39,7 +34,7 @@ fn a_session_that_registered_first_cannot_enrol_its_own_key_grant_itself_and_loc
     let mut planted = with_secret(&key, "the agent", "mine");
     planted["sha256"] = json!(sha256_hex(b"mine"));
     assert_eq!(code(&req(&mut n, "person_enroll", "", &evil_token, planted)), "invalid", "no request sets the hash a secret is checked against");
-    assert!(!dir.path().join(SECRET_FILE).exists() && held(&mut n).is_empty());
+    assert!(held(&mut n).is_empty());
 
     let want = Spec::session(&evil, "set_join_policy");
     assert_eq!(code(&key.issue(&mut caller(&mut n), "demo", &evil_token, GID, &want)), "denied", "a grant signed by a key nobody enrolled");
@@ -51,29 +46,43 @@ fn a_session_that_registered_first_cannot_enrol_its_own_key_grant_itself_and_loc
 }
 
 #[test]
-fn the_secret_is_single_use_short_lived_and_spent_by_a_wrong_guess() {
+fn the_secret_is_single_use_and_spent_by_a_wrong_guess() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, token) = session(&mut n, "demo", "a");
-    let secret = expect_enrolment(dir.path());
+    let secret = first_secret(&mut caller(&mut n), &token, "key");
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&agent(), "x", "not-it"))), "denied");
-    assert!(!dir.path().join(SECRET_FILE).exists(), "a wrong guess spends the secret");
-    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", &secret))), "denied", "so the right one is refused after it");
-
-    leave(dir.path(), "old", now_ms() - 11 * 60_000);
-    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", "old"))), "denied", "ten minutes is as long as it lasts");
-    leave(dir.path(), "early", now_ms() + 3_600_000);
-    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", "early"))), "denied", "a hash dated ahead is no secret");
-    leave(dir.path(), "", now_ms());
+    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", &secret))), "denied", "a wrong guess spends the secret, so the right one is refused after it");
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", ""))), "denied", "an empty secret is none");
     assert!(held(&mut n).is_empty());
 
-    let secret = expect_enrolment(dir.path());
+    let secret = first_secret(&mut caller(&mut n), &token, "key");
     ok(req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", &secret)));
-    assert!(!dir.path().join(SECRET_FILE).exists(), "the secret is gone once it enrolled a key");
+    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", &secret))), "denied", "the secret is gone once it enrolled a key");
 
-    expect_enrolment(dir.path());
+    let refused = req(&mut n, "presence_ask", "", &token, json!({"purpose": "key"}));
+    assert_eq!(code(&refused), "denied", "a node that holds a key asks for the key's approval, not for this prompt: {refused}");
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&agent(), "x", "anything"))), "denied", "a node that holds a key asks for the key's approval, not a secret");
+}
+
+#[test]
+fn the_secret_is_never_in_a_file_and_only_the_session_that_asked_reads_it() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, mine) = session(&mut n, "demo", "a");
+    let (_, theirs) = session(&mut n, "demo", "b");
+    let asked = ok(req(&mut n, "presence_ask", "", &mine, json!({"purpose": "key", "about": "the first key"})));
+    let secret = asked["secret"].as_str().expect("a test build says yes at once").to_string();
+    assert_eq!((asked["state"].as_str(), asked["purpose"].as_str()), (Some("confirmed"), Some("key")), "{asked}");
+    let others = ok(req(&mut n, "presence_status", "", &theirs, json!({})));
+    assert_eq!((others["state"].as_str(), others["secret"].is_null()), (Some("none"), true), "another session reads nothing: {others}");
+    let again = ok(req(&mut n, "presence_status", "", &mine, json!({})));
+    assert!(again["secret"].is_null(), "the asker reads it once: {again}");
+    assert_eq!(again["presence"], "unattended", "and the node says which kind of prompt it has");
+    let found: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().filter(|e| e.path().is_file()).filter(|e| std::fs::read_to_string(e.path()).is_ok_and(|text| text.contains(&secret) || text.contains(&sha256_hex(secret.as_bytes())))).collect();
+    assert!(found.is_empty(), "no file of the node holds the secret or its hash: {found:?}");
+    assert_eq!(code(&req(&mut n, "presence_ask", "", "", json!({"purpose": "key"}))), "denied", "a request with no session asks nothing");
+    assert_eq!(code(&req(&mut n, "presence_ask", "", &theirs, json!({"purpose": "everything"}))), "invalid");
 }
 
 #[test]
@@ -112,18 +121,10 @@ fn a_key_is_removed_only_by_an_enrolled_key_and_the_last_key_stays() {
 }
 
 #[test]
-fn a_damaged_secret_file_and_hostile_removals_change_nothing() {
+fn hostile_removals_change_nothing() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, token) = session(&mut n, "demo", "a");
-    let big = "x".repeat(5_000_000);
-    for junk in ["", "{", "[]", "null", r#"{"sha256": 5, "at_ms": 1}"#, r#"{"sha256": "zz", "at_ms": "now"}"#, r#"{"sha256": "00", "at_ms": -1}"#, &big] {
-        std::fs::write(dir.path().join(SECRET_FILE), junk).unwrap();
-        assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", junk))), "denied", "{}", &junk[..junk.len().min(40)]);
-        assert!(!dir.path().join(SECRET_FILE).exists());
-    }
-    assert!(held(&mut n).is_empty());
-
     enrolled(dir.path(), &mut caller(&mut n), &token);
     let (first, second) = (person(), agent());
     let device = n.cert.fingerprint();

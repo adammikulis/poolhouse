@@ -149,11 +149,11 @@ impl Person {
         json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "anchor": anchor, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
     }
 
-    /// Enrol this key on the node ``call`` reaches (its state directory is ``dir``), carried by the session ``token``, with
-    /// the one-time secret a person's command at a terminal would have left there.
-    pub fn enroll(&self, dir: &Path, call: Call, token: &str) -> Value {
+    /// Enrol this key on the node ``call`` reaches, carried by the session ``token``, with the one-time secret the prompt of the
+    /// operating system makes (a test build says yes to it at once).
+    pub fn enroll(&self, _dir: &Path, call: Call, token: &str) -> Value {
         let mut params = self.enrolment("a test person", None);
-        params["secret"] = json!(expect_enrolment(dir));
+        params["secret"] = json!(first_secret(call, token, "key"));
         call("person_enroll", "", token, params)
     }
 
@@ -241,13 +241,14 @@ pub fn gid_of(name: &str, action: &str) -> String {
     format!("g-{}", &sha256_hex(format!("{name} {action}").as_bytes())[..20])
 }
 
-/// Leave in the state directory ``dir`` what a person's command at a terminal leaves for the first enrolment: the hash of a
-/// fresh secret, which is returned.
-pub fn expect_enrolment(dir: &Path) -> String {
-    let secret = format!("secret-{}", sha256_hex(&now_ms().to_be_bytes()));
-    let hash = json!({"sha256": sha256_hex(secret.as_bytes()), "at_ms": now_ms()});
-    std::fs::write(dir.join("enroll_secret.json"), hash.to_string()).unwrap();
-    secret
+/// Ask the prompt of the operating system, which a test build answers yes to at once, for the one-time secret the first key
+/// (``purpose`` `key`) or the first phone (`phone`) is added with, as the session ``token``.
+pub fn first_secret(call: Call, token: &str, purpose: &str) -> String {
+    let asked = call("presence_ask", "", token, json!({"purpose": purpose}));
+    assert_eq!(asked["ok"], true, "ask the prompt: {asked}");
+    let said = if asked["result"]["state"] == "confirmed" { asked } else { call("presence_status", "", token, json!({})) };
+    assert_eq!(said["result"]["state"], "confirmed", "the person said yes: {said}");
+    said["result"]["secret"].as_str().expect("the secret comes once").to_string()
 }
 
 /// Enrol the test person on the node ``call`` reaches (its state directory is ``dir``), unless it already is.

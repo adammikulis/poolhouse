@@ -38,7 +38,7 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
             .or_else(|| crate::claims::params_for(m)).or_else(|| crate::events::params_for(m)).or_else(|| crate::landing::params_for(m)).or_else(|| crate::notes::params_for(m))
             .or_else(|| crate::mail::params_for(m)).or_else(|| crate::quarantine::params_for(m))
             .or_else(|| crate::tasks::params_for(m)).or_else(|| crate::rooms::params_for(m)).or_else(|| crate::subs::params_for(m)).or_else(|| crate::files::params_for(m)).or_else(|| crate::scratch::params_for(m))
-            .or_else(|| crate::grants::calls::params_for(m)).or_else(|| crate::approvals::calls::params_for(m)).or_else(|| crate::phone::calls::params_for(m)),
+            .or_else(|| crate::grants::calls::params_for(m)).or_else(|| crate::approvals::calls::params_for(m)).or_else(|| crate::phone::calls::params_for(m)).or_else(|| crate::presence::params_for(m)),
     })
 }
 
@@ -264,6 +264,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         m if crate::grants::calls::METHODS.contains(&m) => crate::grants::calls::call(node, m, board, token, p, peer),
         m if crate::approvals::calls::METHODS.contains(&m) => crate::approvals::calls::call(node, m, board, token, p),
         m if crate::phone::calls::METHODS.contains(&m) => crate::phone::calls::call(node, m, token, p),
+        m if crate::presence::METHODS.contains(&m) => crate::presence::call(node, m, token, p),
         "links" => node.access(token, board, false).map(|_| json!(node.links.all().iter().filter(|l| l.from == board || l.to == board).collect::<Vec<_>>())),
         "shutdown" => node.access(token, board, false).map(|_| {
             node.stop.store(true, Ordering::SeqCst);
@@ -320,7 +321,7 @@ pub fn parse(request: &Value) -> Result<Call> {
     }
     let (board, token) = (str_of(map, "board")?, str_of(map, "token")?);
     if board.is_empty() && !matches!(method, "hello" | "status" | "lineage" | "project_add" | "source_add" | "project_list" | "project_resolve") && !crate::poolapi::handles(method) && !crate::grants::calls::boardless(method)
-        && !crate::approvals::calls::boardless(method) && !crate::phone::calls::boardless(method) {
+        && !crate::approvals::calls::boardless(method) && !crate::phone::calls::boardless(method) && !crate::presence::boardless(method) {
         return Err(Error::Invalid("this method names a board".into()));
     }
     Ok(Call { method: method.into(), board: board.into(), token: token.into(), params })

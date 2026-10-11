@@ -1,16 +1,14 @@
 //! Adding a phone: the one-time code, and what a phone sends when it scans one.
 //!
-//! The code is a random secret whose hash a person's command leaves beside `persons.json` (`phone_offer.json`), as `grants-setup` does
-//! for the first key, or that the node leaves when asked once a key exists, saying who asked. The first phone is enrolled on the
-//! strength of the code, the proof that its key made the request, and a time within five minutes. Every later phone waits for a key
-//! the node holds to approve it, so a code that someone else saw adds nothing by itself, and a code a session made says so on the
-//! request.
+//! The code is a random secret whose hash the node keeps in its memory (never a file): the first phone's is made when the person says
+//! yes to the operating system's own prompt (`presence`), a further phone's when a person's key or a session asks once a key exists,
+//! saying who asked. The first phone is enrolled on the strength of the code, the proof that its key made the request, and a time
+//! within five minutes. Every later phone waits for a key the node holds to approve it, so a code that someone else saw adds nothing
+//! by itself, and a code a session made says so on the request.
 
 use std::net::IpAddr;
-use std::path::Path;
 use std::time::Duration;
 
-use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use crate::approvals::content::phone_text;
@@ -20,15 +18,15 @@ use crate::approvals::fatigue::{requester, Standing, HOUR_MS, SILENT};
 use crate::approvals::request::classify;
 use crate::approvals::{summary, Approval, CANCELLED, DENIED, EXPIRED, FAILED, PENDING as APPROVAL_PENDING, PHONE_ADD};
 use crate::error::{Error, Result};
-use crate::fsutil::{random_hex, sha256_hex, write_atomic};
+use crate::fsutil::{random_hex, sha256_hex};
 use crate::grants::person::{fingerprint_of, verifies_p256, P256};
 use crate::grants::spec::SKEW_MS;
 use crate::node::Node;
 use crate::phone::{words, Phone, Push, ACTIVE, PENDING};
 use crate::poolops::POOL_BOARD;
+use crate::presence::Purpose;
 use crate::row::canonical;
 
-pub const OFFER_FILE: &str = "phone_offer.json";
 /// How long a code is good for.
 pub const OFFER_TTL_MS: u64 = 10 * 60 * 1000;
 /// The wrong codes one address may try in ten minutes. A code is 256 random bits, so the count only keeps a noisy address quiet: it
@@ -38,18 +36,6 @@ const WRONG_WINDOW: Duration = Duration::from_secs(600);
 const ADD_DOMAIN: &str = "poolhouse/phone-add/v1\n";
 /// How long a phone that waits for approval is kept before it is dropped.
 const WAIT_MS: u64 = 15 * 60 * 1000;
-
-#[derive(Deserialize)]
-struct Offer {
-    sha256: String,
-    at_ms: u64,
-    /// Who asked for the code through the node, empty when a person's command at the computer left it.
-    #[serde(default)]
-    made_by: String,
-    /// The session that asked (`board/name`), empty when a person or a phone did.
-    #[serde(default)]
-    by: String,
-}
 
 fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
@@ -68,53 +54,72 @@ pub fn b64url(bytes: &[u8]) -> String {
     out
 }
 
-/// Leave a one-time code for the next phone, made by a person's command at the computer, and return its secret (the caller puts it in
-/// the code a person scans).
-pub fn make_offer(dir: &Path, now_ms: u64) -> Result<String> {
-    make_offer_by(dir, now_ms, "")
+/// A one-time code for a further phone, kept in the node's memory: a program that can write the state directory cannot leave one.
+#[derive(Clone)]
+pub struct Offer {
+    sha256: String,
+    at_ms: u64,
+    /// Who asked for the code through the node in words, empty when a person did with a key.
+    made_by: String,
+    /// The session that asked (`board/name`), empty when a person or a phone did.
+    by: String,
 }
 
-/// Leave a one-time code that ``made_by`` asked for (a session or a phone; empty for a person at the computer): the request to approve
-/// the phone it adds says so.
-pub fn make_offer_by(dir: &Path, now_ms: u64, made_by: &str) -> Result<String> {
-    make_offer_for(dir, now_ms, made_by, "")
+/// Make a one-time code for the next phone that a person's key asked for (no one is named on the request), and return its secret (the
+/// caller puts it in the code a person scans).
+pub fn make_offer(node: &mut Node, now_ms: u64) -> Result<String> {
+    make_offer_by(node, now_ms, "")
+}
+
+/// Make a one-time code that ``made_by`` asked for (a session or a phone; empty for a person): the request to approve the phone it adds says so.
+pub fn make_offer_by(node: &mut Node, now_ms: u64, made_by: &str) -> Result<String> {
+    make_offer_for(node, now_ms, made_by, "")
 }
 
 /// The same for a code a session (`by`, as `board/name`) asked for: a phone that is not approved counts against that session.
-pub fn make_offer_for(dir: &Path, now_ms: u64, made_by: &str, by: &str) -> Result<String> {
+pub fn make_offer_for(node: &mut Node, now_ms: u64, made_by: &str, by: &str) -> Result<String> {
     let mut raw = [0u8; 32];
     getrandom::fill(&mut raw).map_err(|e| std::io::Error::other(e.to_string()))?;
     let secret = b64url(&raw);
-    write_atomic(&dir.join(OFFER_FILE), &serde_json::to_vec(&json!({"sha256": sha256_hex(secret.as_bytes()), "at_ms": now_ms, "made_by": made_by, "by": by}))?)?;
+    node.offer = Some(Offer { sha256: sha256_hex(secret.as_bytes()), at_ms: now_ms, made_by: made_by.into(), by: by.into() });
     Ok(secret)
 }
 
-fn read_offer(dir: &Path) -> Option<Offer> {
-    std::fs::read(dir.join(OFFER_FILE)).ok().and_then(|b| serde_json::from_slice::<Offer>(&b).ok())
-}
-
 /// Whether a code is waiting to be scanned: one a person is showing is not replaced by one a session asked for.
-pub fn offer_is_live(dir: &Path, now_ms: u64) -> bool {
-    read_offer(dir).is_some_and(|o| now_ms >= o.at_ms && now_ms - o.at_ms <= OFFER_TTL_MS)
+pub fn offer_is_live(node: &Node, now_ms: u64) -> bool {
+    node.offer.as_ref().is_some_and(|o| now_ms >= o.at_ms && now_ms - o.at_ms <= OFFER_TTL_MS)
 }
 
 /// Spend the code ``secret`` that ``ip`` sent: it is good once, for ten minutes. A wrong code is counted against the address that sent
-/// it and never ends the offer. Whoever made the code is returned, empty for a person at the computer.
+/// it and never ends the offer. Whoever made the code is returned, empty for a person. The first phone is added with the secret the
+/// operating system's prompt made (`presence`), and with no other.
 fn spend_offer(node: &mut Node, ip: IpAddr, secret: &str, now_ms: u64) -> Result<(String, String)> {
-    let offer = read_offer(&node.dir).ok_or_else(|| Error::Denied("No phone is being added right now: ask for a new code.".into()))?;
-    if now_ms < offer.at_ms || now_ms - offer.at_ms > OFFER_TTL_MS {
-        let _ = std::fs::remove_file(node.dir.join(OFFER_FILE));
-        return Err(Error::Denied("That code has expired; ask for a new one.".into()));
-    }
+    let first = node.persons.is_empty();
     let tries = format!("phone code {ip}");
     if !node.rates.permits(&tries, WRONG_CODES, WRONG_WINDOW) {
         return Err(Error::Quota("Too many wrong codes came from this address; wait ten minutes.".into()));
+    }
+    if first {
+        if !node.firsts.offered(Purpose::Phone, now_ms) {
+            return Err(Error::Denied("No phone is being added right now: run `poolhouse-workspace phone add` and say yes at the prompt of this computer.".into()));
+        }
+        if !node.firsts.matches(Purpose::Phone, secret, now_ms) {
+            node.rates.record(&tries, WRONG_WINDOW);
+            return Err(Error::Denied("That code was not made for this device.".into()));
+        }
+        node.firsts.spend();
+        return Ok((String::new(), String::new()));
+    }
+    let offer = node.offer.clone().ok_or_else(|| Error::Denied("No phone is being added right now: ask for a new code.".into()))?;
+    if now_ms < offer.at_ms || now_ms - offer.at_ms > OFFER_TTL_MS {
+        node.offer = None;
+        return Err(Error::Denied("That code has expired; ask for a new one.".into()));
     }
     if secret.is_empty() || !same(&offer.sha256, &sha256_hex(secret.as_bytes())) {
         node.rates.record(&tries, WRONG_WINDOW);
         return Err(Error::Denied("That code was not made for this device.".into()));
     }
-    let _ = std::fs::remove_file(node.dir.join(OFFER_FILE));
+    node.offer = None;
     Ok((offer.made_by, offer.by))
 }
 
@@ -180,9 +185,6 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     }
     let (id, token) = (format!("ph-{}", random_hex(6)?), random_hex(32)?);
     let first = node.persons.is_empty();
-    if first && !made_by.is_empty() {
-        return Err(Error::Denied("A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`.".into()));
-    }
     if !first {
         brakes(node, &by, now)?;
     }

@@ -8,6 +8,7 @@ use poolhouse_node::approvals::challenge;
 use poolhouse_node::fsutil::{hex, sha256_hex};
 use poolhouse_node::node::Node;
 use poolhouse_node::phone::enrol::{add_bytes, make_offer};
+use super::grants::first_secret;
 use poolhouse_node::phone::push::{decrypt_with, Recording};
 use ring::agreement::{agree_ephemeral, EphemeralPrivateKey, UnparsedPublicKey, ECDH_P256};
 use ring::rand::SystemRandom;
@@ -144,10 +145,20 @@ impl Rig {
         self.node.lock().unwrap().cert.fingerprint()
     }
 
-    /// Add ``phone``: with the code a person's command leaves (the first) or the code the node makes, then, for a later phone, the approval
-    /// of ``by``, an added phone.
+    /// A one-time code for the next phone: for the first, the secret the prompt of the operating system makes (a test build says yes at
+    /// once); for a later one, what the node makes when a person's key asks.
+    pub fn offer(&self) -> String {
+        if !self.node.lock().unwrap().persons.is_empty() {
+            return make_offer(&mut self.node.lock().unwrap(), now()).unwrap();
+        }
+        let (_, token) = self.session("demo", "first-phone-setup");
+        first_secret(&mut |m, b, t, p| self.call(m, b, t, p), &token, "phone")
+    }
+
+    /// Add ``phone``: with the code the first phone's prompt makes or the code the node makes, then, for a later phone, the approval of
+    /// ``by``, an added phone.
     pub fn add(&self, phone: &mut FakePhone, by: Option<&FakePhone>) {
-        let secret = make_offer(self.dir.path(), now()).unwrap();
+        let secret = self.offer();
         let (status, reply) = self.phone("POST", "add", "", phone.add_body(&self.device(), &secret));
         assert_eq!((status, &reply["ok"]), (200, &json!(true)), "{reply}");
         phone.token = reply["result"]["token"].as_str().unwrap().into();

@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use kit::phone::{ask, FakePhone};
 use kit::*;
 use poolhouse_node::fsutil::sha256_hex;
-use poolhouse_node::phone::enrol::make_offer;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{ring, verify_tls13_signature};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
@@ -84,7 +83,8 @@ fn a_phone_is_added_and_decides_over_tls_against_the_one_pinned_certificate() {
     assert!(call(addr, client(&sha256_hex(b"another certificate"), false), "GET /phone/v1/hello HTTP/1.1\r\nHost: x\r\n", b"").is_err(), "a phone pins one certificate and nothing else");
     assert!(call(addr, client(&pin, true), "GET /phone/v1/hello HTTP/1.1\r\nHost: x\r\n", b"").is_err(), "TLS 1.2 is not spoken");
 
-    let secret = make_offer(dir.path(), kit::phone::now()).unwrap();
+    let (_, setup) = session(&mut node.lock().unwrap(), "demo", "setup");
+    let secret = kit::grants::first_secret(&mut |m, b, t, p| req(&mut node.lock().unwrap(), m, b, t, p), &setup, "phone");
     let mut phone = FakePhone::new("Pixel");
     let body = phone.add_body(&device, &secret).to_string();
     let (status, added) = call(addr, client(&pin, false), &post("add", ""), body.as_bytes()).unwrap();

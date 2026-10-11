@@ -133,7 +133,7 @@ fn a_phone_that_was_removed_can_no_longer_approve_and_its_key_is_not_added_again
     let refused = rig.phone("POST", "decide", "", first.decision(&seen, "approve")).1;
     assert_eq!(message(&refused), "That phone was removed from this device and can no longer approve.", "{refused}");
     assert_eq!(rig.phone("POST", "list", &first.token, json!({})).0, 401, "a removed phone's token reads nothing");
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let (_, reply) = rig.phone("POST", "add", "", first.add_body(&rig.device(), &secret));
     assert!(message(&reply).contains("was removed from this device"), "{reply}");
     assert!(!live(&rig, &name, "add_device", "*"));
@@ -419,7 +419,7 @@ fn a_request_too_large_for_a_push_sends_only_its_title_and_the_phone_fetches_the
 fn a_phone_added_by_a_code_is_one_time_and_a_later_phone_waits_for_approval() {
     let rig = Rig::new();
     let (mut first, mut second) = (FakePhone::new("Pixel"), FakePhone::new("Tablet"));
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let wrong = rig.phone("POST", "add", "", first.add_body(&rig.device(), "not-the-code")).1;
     assert_eq!(message(&wrong), "That code was not made for this device.");
     assert_eq!(held(&mut rig.node.lock().unwrap()).len(), 0);
@@ -443,7 +443,7 @@ fn a_phone_waiting_for_approval_reads_nothing_and_a_denied_one_is_dropped() {
     let rig = Rig::new();
     let (mut first, second) = (FakePhone::new("Pixel"), FakePhone::new("Tablet"));
     rig.add(&mut first, None);
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let added = rig.phone("POST", "add", "", second.add_body(&rig.device(), &secret)).1["result"].clone();
     let token = added["token"].as_str().unwrap();
     assert_eq!(rig.phone("POST", "status", token, json!({})).1["result"]["state"], "pending");
@@ -461,7 +461,7 @@ fn a_phone_waiting_for_approval_reads_nothing_and_a_denied_one_is_dropped() {
 fn an_agent_can_ask_for_a_code_for_a_phone_only_once_a_key_exists() {
     let rig = Rig::new();
     let (_, token) = rig.session("demo", "agent-1");
-    assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("The first phone is added by a person at the computer"));
+    assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("The first phone is added with `poolhouse-workspace phone add`"));
     let mut first = FakePhone::new("Pixel");
     rig.add(&mut first, None);
     assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("not listening for phones"), "nothing listens until a person's command turned it on");
@@ -469,7 +469,7 @@ fn an_agent_can_ask_for_a_code_for_a_phone_only_once_a_key_exists() {
     let offer = ok(rig.call("phone_offer", "", &token, json!({})));
     assert!(offer["link"].as_str().unwrap().starts_with("poolhouse://add-phone?data="));
     assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("already waiting to be scanned"), "a code that is waiting is not replaced");
-    let scanned = || std::fs::remove_file(rig.dir.path().join(poolhouse_node::phone::enrol::OFFER_FILE)).unwrap();
+    let scanned = || rig.node.lock().unwrap().offer = None;
     for _ in 0..2 {
         scanned();
         ok(rig.call("phone_offer", "", &token, json!({})));
@@ -487,7 +487,7 @@ fn a_code_a_person_is_showing_is_not_replaced_by_one_an_agent_asks_for() {
     rig.add(&mut first, None);
     rig.node.lock().unwrap().phone_port = 7449;
     let (_, token) = rig.session("demo", "agent-1");
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     assert!(message(&rig.call("phone_offer", "", &token, json!({}))).contains("already waiting to be scanned"));
     let second = FakePhone::new("Tablet");
     assert_eq!(rig.phone("POST", "add", "", second.add_body(&rig.device(), &secret)).1["ok"], true, "the person's code still works");
@@ -512,7 +512,7 @@ fn a_code_a_session_made_says_so_on_the_request_to_approve_its_phone_and_a_perso
 
     let seen = rig.get(&first, added["approval"].as_str().unwrap());
     assert_eq!(rig.phone("POST", "decide", "", first.decision(&seen, "approve")).1["ok"], true, "the first phone approves the one a session's code added, so the next can ask");
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let by_hand = rig.phone("POST", "add", "", FakePhone::new("Tablet").add_body(&rig.device(), &secret)).1["result"].clone();
     let text = rig.get(&first, by_hand["approval"].as_str().unwrap())["text"].as_str().unwrap().to_string();
     assert!(!text.contains("made by"), "a code a person made at the computer carries no such line: {text}");
@@ -521,16 +521,16 @@ fn a_code_a_session_made_says_so_on_the_request_to_approve_its_phone_and_a_perso
 #[test]
 fn a_session_cannot_use_a_code_it_made_to_add_the_first_phone() {
     let rig = Rig::new();
-    let secret = poolhouse_node::phone::enrol::make_offer_by(rig.dir.path(), kit::phone::now(), "the session agent-1 on board demo").unwrap();
+    let secret = poolhouse_node::phone::enrol::make_offer_by(&mut rig.node.lock().unwrap(), kit::phone::now(), "the session agent-1 on board demo").unwrap();
     let refused = rig.phone("POST", "add", "", FakePhone::new("Pixel").add_body(&rig.device(), &secret)).1;
-    assert!(message(&refused).contains("cannot add the first phone"), "{refused}");
+    assert!(message(&refused).contains("No phone is being added right now"), "the first phone is added with what the prompt of the computer made, and with nothing else: {refused}");
     assert!(rig.node.lock().unwrap().persons.is_empty(), "no key was added");
 }
 
 #[test]
 fn wrong_codes_from_one_address_never_cancel_the_code_and_the_next_address_is_not_held_up() {
     let rig = Rig::new();
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let (stranger, phone_at) = (IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 99)), IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 7)));
     for _ in 0..10 {
         let wrong = rig.phone_from(stranger, "POST", "add", "", FakePhone::new("Pixel").add_body(&rig.device(), "not-the-code")).1;
@@ -563,7 +563,7 @@ fn a_phone_whose_key_differs_from_the_one_the_request_named_is_not_added() {
     let rig = Rig::new();
     let (mut first, second) = (FakePhone::new("Pixel"), FakePhone::new("Tablet"));
     rig.add(&mut first, None);
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let added = rig.phone("POST", "add", "", second.add_body(&rig.device(), &secret)).1["result"].clone();
     let id = added["approval"].as_str().unwrap();
     rig.node.lock().unwrap().approvals.update(id, |a| a.action["key"] = json!("00".repeat(65))).unwrap();

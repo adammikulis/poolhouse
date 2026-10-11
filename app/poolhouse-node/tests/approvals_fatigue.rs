@@ -439,7 +439,7 @@ fn secret_of_link(offer: &Value) -> String {
 #[test]
 fn a_phone_that_waits_for_approval_shows_its_own_screen_a_number_and_the_approving_phone_must_pick_it() {
     let (rig, first) = setup();
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let second = FakePhone::new("Tablet");
     let added = rig.phone("POST", "add", "", second.add_body(&rig.device(), &secret)).1["result"].clone();
     let number = added["number"].as_str().unwrap().to_string();
@@ -462,7 +462,7 @@ fn a_phone_that_waits_for_approval_shows_its_own_screen_a_number_and_the_approvi
 #[test]
 fn only_one_phone_waits_to_be_added_and_a_phone_that_was_not_approved_keeps_the_next_away_for_an_hour() {
     let (rig, first) = setup();
-    let offer = || poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let offer = || rig.offer();
     let second = FakePhone::new("Tablet");
     let added = rig.phone("POST", "add", "", second.add_body(&rig.device(), &offer())).1["result"].clone();
     let waiting = rig.phone("POST", "add", "", FakePhone::new("Watch").add_body(&rig.device(), &offer())).1;
@@ -690,7 +690,7 @@ fn deny_and_block_on_the_request_itself_blocks_that_session_and_no_other() {
 #[test]
 fn a_block_is_offered_only_where_the_text_says_so() {
     let (rig, phone) = setup();
-    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let secret = rig.offer();
     let mut second = FakePhone::new("Tablet");
     let added = rig.phone("POST", "add", "", second.add_body(&rig.device(), &secret)).1["result"].clone();
     second.token = added["token"].as_str().unwrap().into();

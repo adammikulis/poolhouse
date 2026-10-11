@@ -6,6 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[features]
+# For tests only: the prompt of the operating system that the first key and the first phone need answers yes at once. Never in a build a person installs.
+unattended = []
+
 [lib]
 name = "poolhouse_node"
 path = "src/lib.rs"
@@ -36,6 +40,7 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_IO", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
+poolhouse-node = { path = ".", features = ["unattended"] }
 proptest = "1"
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
 tempfile = "3"

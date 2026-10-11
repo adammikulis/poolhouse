@@ -38,6 +38,7 @@ pub mod peer;
 pub mod phone;
 pub mod poolapi;
 pub mod poolops;
+pub mod presence;
 pub mod probe;
 pub mod project;
 pub mod projectid;
