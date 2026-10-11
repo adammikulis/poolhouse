@@ -392,6 +392,20 @@ fn a_no_from_the_person_is_respected_for_ten_minutes_and_each_refusal_is_one_pla
 }
 
 #[test]
+fn a_person_is_asked_at_most_twelve_times_in_ten_minutes() {
+    let a = device();
+    found(&a, person(ANN, "ann"), "secure");
+    let remove = |n: usize| a.call("member_remove", "", &a.token, json!({"fingerprint": format!("{n:064x}")}));
+    for n in 0..11 {
+        assert_eq!(remove(n)["ok"], true, "ask {n}");
+    }
+    let refused = remove(11);
+    assert_eq!(refused["ok"], false, "{refused}");
+    assert_eq!((refused["error"]["needs"].as_str(), refused["error"]["then"].as_str()), (Some("time"), Some("wait")));
+    assert!(refused["error"]["say"].as_str().unwrap().len() <= 160);
+}
+
+#[test]
 fn a_pool_is_not_founded_on_weak_keys_alone_and_nothing_is_left_half_made() {
     let a = device();
     let legacy = a.pool();

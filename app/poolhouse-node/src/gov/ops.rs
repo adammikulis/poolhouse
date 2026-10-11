@@ -23,8 +23,10 @@ use super::pool::{ActStatus, GovPool, Ingest};
 use super::signer::{KeyBinding, Signer, SignerKey};
 
 const MOST_REPLIES: usize = 8;
-/// How long a person's no to a kind of act is respected before the same kind is asked again.
+/// How long a person's no to a kind of act is respected before the same kind is asked again, and the window in which a person is
+/// asked at most `MOST_ASKS` times: requests do not go on until the person accepts from exhaustion.
 const COOLDOWN: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+const MOST_ASKS: usize = 12;
 
 fn upgrade() -> Error {
     Error::say("denied", "This device's pool needs a one-time upgrade; ask the owner to approve it.", "approval", "ask-owner")
@@ -150,6 +152,10 @@ impl Node {
         if self.declined.get(kind).is_some_and(|at| at.elapsed() < COOLDOWN) {
             return Err(Error::say("denied", "You said no a moment ago, so I will not ask again for ten minutes.", "time", "wait"));
         }
+        if !self.rates.permits("pool-ask", MOST_ASKS, COOLDOWN) {
+            return Err(Error::say("denied", "I have asked you a lot in the last few minutes, so I will wait before asking again.", "time", "wait"));
+        }
+        self.rates.record("pool-ask", COOLDOWN);
         let out = f(self);
         if let Err(Error::Say { needs: "approval", then: "stop", .. }) = &out {
             self.declined.insert(kind.to_string(), std::time::Instant::now());
