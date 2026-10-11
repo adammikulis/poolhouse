@@ -95,7 +95,7 @@ member can be removed.
 | Name | Contract |
 |---|---|
 | `ph.pool.status()` | The `Pool` of this device: id, project, policy, address it listens on, and every member. |
-| `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`. |
+| `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
 | `ph.pool.set_policy(new)` | Set it; returns the policy now in force. |
 | `ph.pool.listen(join_policy="open", *, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |

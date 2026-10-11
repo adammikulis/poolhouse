@@ -11,7 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = [ROOT / "CHANGELOG.md", ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
-SOURCE_DIRS = ["src", "scripts", "packaging", "app/src", "app/src-tauri/src", "contracts"]
+SOURCE_DIRS = ["src", "scripts", "packaging", "app/src", "app/src-tauri/src", "contracts", "tests/pool_check"]
+"""`tests/pool_check` is the code of the `scripts/pool-check` command, which reads POOLHOUSE_POOL_CHECK."""
 SOURCE_FILES = ["pyproject.toml"]
 TEXT = {".py", ".rs", ".ts", ".tsx", ".js", ".sh", ".ps1", ".toml", ".json", ".yml", ".yaml", ".nsi", ".cmd", ".md", ""}
 NAME = re.compile(r"\bPOOLHOUSE_[A-Z0-9_]*[A-Z0-9]\b")

@@ -53,7 +53,7 @@
  "models.path": "(repo: 'str', file: 'str') -> 'Path | None'",
  "models.pull": "(repo: 'str', file: 'str') -> 'Path'",
  "pool.Capacity": "(device: 'str', cpu_cores: 'int', cpu_slots: 'int', cpu_slots_leased: 'int', memory_bytes: 'int', memory_available_bytes: 'int', accelerators: 'tuple[str, ...]', accelerator_memory_bytes: 'int', unified_memory: 'bool', leases_held: 'int', leases_queued: 'int') -> None",
- "pool.Member": "(name: 'str', fingerprint: 'str', active: 'bool', this_device: 'bool', connected: 'bool', address: 'str', last_seen_ms: 'int', last_sync_ms: 'int', last_error: 'str' = '') -> None",
+ "pool.Member": "(name: 'str', fingerprint: 'str', active: 'bool', this_device: 'bool', connected: 'bool', address: 'str', last_seen_ms: 'int', last_sync_ms: 'int', last_error: 'str' = '', reach: 'str' = 'unknown', reach_hint: 'str' = '') -> None",
  "pool.Pool": "(id: 'str', project: 'str', policy: 'str', fingerprint: 'str', listening: 'str', joining_open: 'bool', members: 'tuple[Member, ...]' = <factory>) -> None",
  "pool.add_device": "(ttl_s: 'int' = 300) -> 'dict[str, object]'",
  "pool.capacity": "() -> 'Capacity'",
