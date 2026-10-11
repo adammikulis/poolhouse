@@ -11,6 +11,7 @@ pub mod claims;
 pub mod client;
 pub mod device;
 pub mod error;
+pub mod events;
 pub mod facts;
 pub mod files;
 pub mod fold;

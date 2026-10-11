@@ -239,6 +239,10 @@ def workspace_extension(s: Session, state: TaskState, obeyed: Callable[[str], bo
         ceiling = state.ceiling
         if le.clamp(level, ceiling) != level:
             return {"set": False, "error": f"the person set a ceiling of {ceiling}; {level} is above it"}
+        try:
+            s.audit("agent.effort", level, f"ceiling {ceiling}, {len(str(reason))} reason characters")
+        except (NodeError, OSError) as err:
+            return {"set": False, "error": plain.line(err, 200)}
         state.effort = level
         return {"set": True, "effort": level, "takes_effect": "the next task"}
 

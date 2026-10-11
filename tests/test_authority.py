@@ -223,6 +223,16 @@ def test_a_helper_identity_cannot_set_or_preset(board):
     assert not flips()
 
 
+def test_a_helper_refused_a_change_of_authority_leaves_an_audit_entry_on_the_board(board):
+    for call in (args("set", "person", "ALL"), args("preset", "prod", project="alpha")):
+        with pytest.raises(Denied):
+            authority_cli.run(call, board.child)
+    told = [(e.sender, e.fields["subject"]) for e in board.parent.read_all(kind="audit") if e.fields["event"] == "authority.set_denied"]
+    assert told == [(board.child.name, "set person ALL"), (board.child.name, "preset prod")]
+    authority_cli.run(args("set", "person", "sentinel"), board.parent)
+    assert len([e for e in board.parent.read_all(kind="audit") if e.fields["event"] == "authority.set_denied"]) == 2
+
+
 def test_a_bad_command_is_refused_with_a_message(board):
     for call in (args("set", "maybe", "ALL"), args("set", "person"), args("set", "person", "nope"), args("preset", "x"),
                  args("preset")):

@@ -198,6 +198,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `quarantine_list` | board, token | | `{items}` of the entries the caller may read |
 | `quarantine_release` | token with the grant `quarantine_release` | `qid` | `{item}`; writes an audit entry |
 | `claim`, `reserve`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `resources` (`[{kind, key}]`, one to 128), `ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{claims: [{changed, claim}]}` / `{kind, key, released}` / `{claims}` |
+| `audit_event` | board, token | `event` (`agent.effort` or `authority.set_denied`), `subject`, `detail` (one clean line each, at most 300 characters) | `{recorded}`; writes an audit entry under the caller's name and counts as one of its sends; any other event is `invalid` |
 | `notes` | board, token | `ref, query, kind, all, limit` | `{notes}` |
 | `note_verify` | board, token | `note, exit, out_sha` | `{notes: [the note]}` |
 | `link`, `unlink`, `links` | board, token with the grant `link_read` or `link_write` (make), `link_remove` (end) | `to, channels, mode` / `id` | the link |

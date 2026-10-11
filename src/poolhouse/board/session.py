@@ -342,6 +342,10 @@ class Session:
     def note_verify(self, ref: str, exit_code: int, out_sha: str) -> Note:
         return _note(self.call("note_verify", note=ref, exit=exit_code, out_sha=out_sha)["notes"][0])
 
+    def audit(self, event: str, subject: str, detail: str = "") -> None:
+        """Tell the board of an event of this session: ``event`` is `agent.effort` or `authority.set_denied`."""
+        self.call("audit_event", event=event, subject=subject, detail=detail)
+
     def claim(self, kind: str, key: str, ttl_s: int = 0, pid: int = 0, local: bool = False) -> Claim:
         """Take a claim; `Conflict` when another session holds it. A ``local`` claim waits only for this device's
         sessions: a pool-wide claim another device holds on the key does not keep it from being granted."""

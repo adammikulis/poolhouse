@@ -101,9 +101,9 @@ fn too_fast(who: &Holder, what: &str) -> Error {
     Error::Quota(format!("{} wrote {what} as fast as it may: try again in a minute", who.name))
 }
 
-/// Refuse a claim sent faster than ``who`` may send; `sent` counts it once it was made.
-pub fn check_send(node: &mut Node, who: &Holder) -> Result<()> {
-    if may_send(node, who) { Ok(()) } else { Err(too_fast(who, "claims")) }
+/// Refuse a write of ``what`` (claims, events) sent faster than ``who`` may send; `sent` counts it once it was made.
+pub fn check_send(node: &mut Node, who: &Holder, what: &str) -> Result<()> {
+    if may_send(node, who) { Ok(()) } else { Err(too_fast(who, what)) }
 }
 
 /// Count one write by ``who`` that was made.

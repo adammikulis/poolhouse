@@ -619,6 +619,15 @@ def test_the_model_raises_its_own_effort_within_the_ceiling_from_the_next_task_o
     assert status_of(kit)["effort"] == "medium"
 
 
+def test_a_change_of_effort_is_told_to_the_board_and_one_refused_above_the_ceiling_is_not(kit):
+    rig = run_tasks(kit, Script([("set_effort", {"level": "medium", "reason": "hard"}), done("one")]), ["first"])
+    told = lambda: [e for e in kit.person.read_all(kind="audit") if e.fields["event"] == "agent.effort"]  # noqa: E731
+    assert [(e.sender, e.fields["subject"]) for e in told()] == [(rig.identity, "medium")]
+    assert "ceiling medium" in told()[0].fields["detail"] and "4 reason characters" in told()[0].fields["detail"]
+    run_tasks(kit, Script([("set_effort", {"level": "high"}), done("two")]), ["second"])
+    assert len(told()) == 1
+
+
 def test_asking_above_the_ceiling_is_refused_with_the_ceiling_and_nothing_changes(kit):
     model = Script([("set_effort", {"level": "high"}), done("one"), done("two")])
     run_tasks(kit, model, ["first", "second"])
