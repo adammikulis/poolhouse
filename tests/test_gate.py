@@ -2,7 +2,7 @@
 
 The servers here are real HTTP servers in this process that record the window in which each
 generation was running; the callers are separate Python processes sending through
-`poolhouse.http`, the path every consumer uses.
+`poolhouse.http`, the path every consumer uses, and the line is the lease table of a real node.
 """
 
 from __future__ import annotations
@@ -20,9 +20,11 @@ from typing import NamedTuple
 
 import pytest
 
-from poolhouse import gate, home
+from poolhouse import gate, home, leasetable
 from poolhouse.http import Server, ServerError, request_json
 from poolhouse.serve.process import kill_process_tree
+
+pytest_plugins = ["node_kit"]
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 HOLD_S = 0.3
@@ -84,7 +86,7 @@ def register(*servers: Recorder, device: str = "gpu") -> None:
 
 
 @pytest.fixture
-def servers():
+def servers(workspace_node):
     made: list[Recorder] = []
 
     def make(n: int = 2, hold_s: float = HOLD_S) -> list[Recorder]:
@@ -149,24 +151,6 @@ def test_requests_sent_at_the_same_instant_never_overlap(servers):
     assert len(windows) == 12 and overlap(windows) <= 0.0
 
 
-def test_a_ticket_sorts_after_every_ticket_already_in_the_line_even_when_the_clock_went_back(
-        monkeypatch, tmp_path):
-    import itertools
-
-    clock = itertools.count(10**18, -1000)
-    monkeypatch.setattr(gate.time, "time_ns", lambda: next(clock))
-    line = tmp_path / "line"
-    line.mkdir()
-    first = gate._take_ticket(line, "http://127.0.0.1:1")
-    second = gate._take_ticket(line, "http://127.0.0.1:1")
-    try:
-        assert first[0] < second[0]
-        assert gate._ahead(line, second[0]) == [first[0]]
-    finally:
-        for name, fd in (first, second):
-            gate._drop(line, name, fd)
-
-
 def test_parallel_requests_are_an_explicit_opt_out_and_do_overlap(servers):
     first, second = servers(2)
     env = {gate.ENV_PARALLEL: "1"}
@@ -175,9 +159,9 @@ def test_parallel_requests_are_an_explicit_opt_out_and_do_overlap(servers):
 
 
 def test_requests_are_served_in_the_order_they_arrived(servers):
-    first, second = servers(2)
+    first, second = servers(2, hold_s=1.0)
     base = time.time() + 3.0
-    run_all([together([first.url, second.url][i % 2], str(i), base + 0.3 * i) for i in range(4)])
+    run_all([together([first.url, second.url][i % 2], str(i), base + 0.5 * i) for i in range(4)])
     order = [who for _, _, who in sorted(first.windows + second.windows)]
     assert order == ["0", "1", "2", "3"]
 
@@ -355,3 +339,100 @@ def test_conversations_measured_in_flight_together_are_sent_in_parallel(servers,
     finally:
         kill_process_tree(held.process.pid, grace_s=0.1)
         held.process.wait(timeout=10)
+
+
+def test_a_turn_is_a_quiet_lease_of_the_nodes_table_that_belongs_to_its_process(servers):
+    (one,) = servers(1, hold_s=0.01)
+    held = holder(one.url)
+    try:
+        table = leasetable.default()
+        turns = [row for row in table.listing()["leases"] if row["tag"].startswith("turn.")]
+        assert [(row["state"], row["quiet"], row["pid"]) for row in turns] == [("held", True, held.pid)]
+        assert turns[0]["resources"] == [{"type": "gpu", "device": "local"}]
+        assert table.call("read", kind="lease")["entries"] == [], "a turn leaves nothing on the board"
+    finally:
+        kill_process_tree(held.process.pid, grace_s=0.1)
+        held.process.wait(timeout=10)
+
+
+def test_a_request_that_is_cancelled_while_it_waits_leaves_the_line(servers):
+    (one,) = servers(1, hold_s=0.01)
+    held = holder(one.url)
+    try:
+        stop = threading.Event()
+        threading.Timer(0.5, stop.set).start()
+        with pytest.raises(gate.QueueTimeout, match="cancelled"), gate.turn(one.url, cancelled=stop.is_set):
+            pytest.fail("the turn was never granted")
+        assert [row["pid"] for row in gate.snapshot()["gpu"]] == [held.pid], "the cancelled request is not left queued"
+    finally:
+        kill_process_tree(held.process.pid, grace_s=0.1)
+        held.process.wait(timeout=10)
+
+
+def test_a_device_the_table_cannot_be_asked_about_is_not_sent_to(servers, monkeypatch):
+    (one,) = servers(1, hold_s=0.01)
+
+    class Down(leasetable.Table):
+        def acquire(self, *_args, **_kwargs):
+            raise OSError("no socket")
+
+    monkeypatch.setattr(leasetable, "default", lambda: Down())
+    with pytest.raises(ServerError) as why:
+        request_json(one.url, payload={}, timeout=5)
+    assert why.value.status == 429 and "gpu" in str(why.value) and one.windows == []
+
+
+def test_a_turn_that_runs_longer_than_its_lease_lasts_keeps_it_by_renewing(servers, monkeypatch):
+    (one,) = servers(1, hold_s=0.01)
+    monkeypatch.setattr(gate, "LEASE_S", 2)
+    monkeypatch.setattr(gate, "RENEW_S", 0.4)
+    got: list[BaseException | None] = []
+
+    def second() -> None:
+        try:
+            with gate.turn(one.url, wait_s=3.5):
+                got.append(None)
+        except gate.QueueTimeout as why:
+            got.append(why)
+
+    with gate.turn(one.url):
+        waiter = threading.Thread(target=second)
+        waiter.start()
+        time.sleep(4.5)
+    waiter.join(timeout=10)
+    assert len(got) == 1 and isinstance(got[0], gate.QueueTimeout), "the lease did not run out under a turn that was still running"
+
+
+def test_a_turn_that_cannot_be_given_back_ends_by_itself_and_the_line_goes_on(servers, monkeypatch, caplog):
+    (one,) = servers(1, hold_s=0.01)
+    monkeypatch.setattr(gate, "LEASE_S", 2)
+    monkeypatch.setattr(gate, "RENEW_S", 60.0)
+    tried: list[str] = []
+
+    def refuses(self, lease):
+        tried.append(lease)
+        raise OSError("the node did not answer")
+
+    with monkeypatch.context() as broken, caplog.at_level("WARNING", logger="poolhouse.gate"):
+        broken.setattr(leasetable.Table, "release", refuses)
+        with gate.turn(one.url):
+            pass
+    assert len(tried) == 3 and "was not given back" in caplog.text
+    began = time.monotonic()
+    with gate.turn(one.url, wait_s=10):
+        waited = time.monotonic() - began
+    assert 0.3 < waited < 6, "the next request had its turn when the lease ran out"
+
+
+def test_a_turn_that_is_over_leaves_no_thread_renewing_its_lease(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with gate.turn(one.url):
+        pass
+    time.sleep(0.3)
+    before = threading.active_count()
+    with gate.turn(one.url):
+        assert threading.active_count() == before + 1, "the renewer of the turn's lease"
+    deadline = time.monotonic() + 3
+    while threading.active_count() > before and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert threading.active_count() == before, "the renewer stopped when the turn ended"

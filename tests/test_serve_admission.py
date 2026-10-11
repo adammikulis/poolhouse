@@ -1,8 +1,8 @@
-"""A server starts when the servers up and this one fit the memory this machine allows.
+"""A server starts when the servers up and this one fit the memory this machine allows, which the node's lease table holds.
 
 The backends here start a real child process per server and put a real HTTP server on the
 port, so the registry records live pids, `release` stops a real process, and a leaked server
-is a process that is still there.
+is a process that is still there. The lease table is a real node's.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import limits
+from poolhouse import leasetable, limits
 from poolhouse.serve import admission
 from poolhouse.serve.backend import LlamaServerBackend, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.leases import recorded_servers
@@ -25,6 +25,10 @@ from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists
 from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
 from poolhouse.testing.registry import record_server
+from poolhouse.ui.verdict import THRESHOLDS
+
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
 
 GIB = 1024 ** 3
 SRC = str(Path(__file__).resolve().parent.parent / "src")
@@ -99,9 +103,7 @@ def test_servers_that_fit_run_together_and_a_third_that_does_not_is_refused(
     held.say = told.append
 
     a = held.lease(spec(first))
-    assert not any("yellow" in line for line in told), "one server on ten GiB is green"
     b = held.lease(spec(second))
-    assert any("yellow" in line for line in told), "8.2 of 10 GiB is said to be yellow"
     assert a.port != b.port and pid_exists(a.pid) and pid_exists(b.pid)
 
     began = time.monotonic()
@@ -109,7 +111,7 @@ def test_servers_that_fit_run_together_and_a_third_that_does_not_is_refused(
         held.lease(spec(third))
     said = str(why.value)
     assert 0.9 <= time.monotonic() - began < 5.0, "it waited for memory before refusing"
-    assert "red" in said and "m0.gguf" in said and "m1.gguf" in said
+    assert "this server needs" in said and "m0.gguf" in said and "m1.gguf" in said
     assert len(backend.started) == 2
     assert sorted(recorded_servers(tmp_path / "servers.json")) == sorted([a.port, b.port])
 
@@ -129,26 +131,29 @@ def test_a_start_that_would_be_red_goes_ahead_when_memory_comes_free(tmp_path, b
     assert pid_exists(c.pid) and len(backend.started) == 3
 
 
-def test_dead_records_do_not_count_against_the_memory(tmp_path, backend, machine):
-    dead = subprocess.Popen(["true"])
-    dead.wait()
-    state = tmp_path / "servers.json"
-    record_server(state, free_port(), model="big.gguf", pid=dead.pid, owner_pid=dead.pid,
-                  est_bytes=9 * GIB)
-    record_server(state, free_port(), model="starting.gguf", pid=None, owner_pid=dead.pid,
-                  pending=True, est_bytes=9 * GIB)
+def test_a_lease_of_a_process_that_has_ended_does_not_count_against_the_memory(
+        tmp_path, backend, machine, serve_leases):
+    gone = subprocess.Popen(["sleep", "120"])
+    serve_leases.budget(admission.budget_mb())
+    serve_leases.acquire([leasetable.memory(9 * 1024)], leasetable.Terms(tag="server.1", pid=gone.pid))
+    with pytest.raises(admission.AdmissionRefused):
+        manager(tmp_path, backend).lease(spec(weights(tmp_path, "m.gguf", 3.6)))
+    gone.kill()
+    gone.wait()
 
     info = manager(tmp_path, backend).lease(spec(weights(tmp_path, "m.gguf", 3.6)))
     assert pid_exists(info.pid)
 
 
 def test_a_server_left_by_a_process_that_has_gone_is_stopped_to_make_room(
-        tmp_path, backend, machine):
+        tmp_path, backend, machine, serve_leases):
     left = subprocess.Popen(["sleep", "120"])
     gone = subprocess.Popen(["true"])
     gone.wait()
-    record_server(tmp_path / "servers.json", free_port(), model="leaked.gguf", pid=left.pid,
-                  owner_pid=gone.pid, est_bytes=9 * GIB)
+    port = free_port()
+    record_server(tmp_path / "servers.json", port, model="leaked.gguf", pid=left.pid, owner_pid=gone.pid)
+    serve_leases.budget(admission.budget_mb())
+    serve_leases.acquire([leasetable.memory(9 * 1024)], leasetable.Terms(tag=admission.tag_of(port), pid=left.pid))
     told: list[str] = []
     held = manager(tmp_path, backend)
     held.say = told.append
@@ -163,10 +168,12 @@ def test_a_server_left_by_a_process_that_has_gone_is_stopped_to_make_room(
         left.wait()
 
 
-def test_a_server_whose_owner_is_alive_is_never_stopped_for_room(tmp_path, backend, machine):
+def test_a_server_whose_owner_is_alive_is_never_stopped_for_room(tmp_path, backend, machine, serve_leases):
     held_by_someone = subprocess.Popen(["sleep", "120"])
-    record_server(tmp_path / "servers.json", free_port(), model="held.gguf",
-                  pid=held_by_someone.pid, owner_pid=os.getpid(), est_bytes=9 * GIB)
+    port = free_port()
+    record_server(tmp_path / "servers.json", port, model="held.gguf", pid=held_by_someone.pid, owner_pid=os.getpid())
+    serve_leases.budget(admission.budget_mb())
+    serve_leases.acquire([leasetable.memory(9 * 1024)], leasetable.Terms(tag=admission.tag_of(port), pid=held_by_someone.pid))
     try:
         with pytest.raises(admission.AdmissionRefused):
             manager(tmp_path, backend).lease(spec(weights(tmp_path, "m.gguf", 3.6)))
@@ -267,7 +274,7 @@ def test_two_processes_that_do_not_fit_together_do_not_both_start(tmp_path, mach
     server_pid = int(holder.stdout.readline())
     mine = ServerManager(LlamaServerBackend(binary=binary))
     try:
-        with pytest.raises(admission.AdmissionRefused, match="red"):
+        with pytest.raises(admission.AdmissionRefused, match="this server needs"):
             mine.lease(ServerSpec(model=second, port=free_port(), context=512),
                        preflight=False, timeout=60)
         assert pid_exists(server_pid)
@@ -286,13 +293,13 @@ def test_two_processes_that_do_not_fit_together_do_not_both_start(tmp_path, mach
         mine.stop_all()
 
 
-def test_the_rating_follows_the_thresholds():
-    assert [admission.rate(share, 100) for share in (0, 79, 80, 94, 95, 200)] == [
-        "green", "green", "yellow", "yellow", "red", "red"]
-    assert admission.rate(10**12, 0) == "green", "a machine that will not say its memory is not refused"
+def test_the_budget_is_the_red_share_of_what_the_machine_allows(machine):
+    assert admission.budget_mb() == int(10 * 1024 * THRESHOLDS.red_at)
+    limits.changed(memory_bytes=0)
+    assert admission.budget_mb() > 0, "no limit given: the machine's own memory"
 
 
-def test_admission_the_estimator_and_the_bars_share_one_pair_of_thresholds():
+def test_the_estimator_and_the_bars_share_one_pair_of_thresholds():
     import json
 
     from poolhouse import ui
@@ -301,11 +308,10 @@ def test_admission_the_estimator_and_the_bars_share_one_pair_of_thresholds():
 
     shipped = json.loads((ui.assets_dir() / "verdict.json").read_text(encoding="utf-8"))
     wanted = (shipped["yellow_at"], shipped["red_at"])
-    assert wanted == (admission.YELLOW_AT, admission.RED_AT)
+    assert wanted == (THRESHOLDS.yellow_at, THRESHOLDS.red_at)
     assert wanted == (estimate.YELLOW_AT, estimate.RED_AT)
     for share in (0.0, 0.5, 0.79, 0.8, 0.9, 0.94, 0.95, 1.2):
-        assert (admission.rate(share * 100, 100) == estimate.rating(share)
-                == verdict.verdict_of(share, 1.0)), share
+        assert estimate.rating(share) == verdict.verdict_of(share, 1.0), share
 
 
 @pytest.mark.parametrize("field, asked", [

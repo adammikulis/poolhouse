@@ -91,7 +91,8 @@ def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wa
     except Busy as exc:
         raise NodeUnavailable(f"another client is still starting the node: {exc}") from exc
     if said is None:
-        raise NodeUnavailable(f"the node did not answer within {wait_s:.0f}s; see {state / node_supervise.LOG}")
+        why = node_supervise.refusal(state, wait_s + 30)
+        raise NodeUnavailable(f"the node did not answer within {wait_s:.0f}s{f': {why}' if why else ''}; see {state / node_supervise.LOG}")
     return said
 
 

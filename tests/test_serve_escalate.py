@@ -22,6 +22,9 @@ from poolhouse.serve.manager import ServerManager
 from poolhouse.testing.fakes import FakeBackend, FakeLlamaServer, Served
 from poolhouse.testing.registry import record_server
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 MODEL = "quince-2b.gguf"
 SUMMARY = "a summary"
 

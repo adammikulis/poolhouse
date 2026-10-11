@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytest_plugins = ["serve_node"]
+
 mx = pytest.importorskip("mlx.core", reason="poolhouse[spec]")
 pytest.importorskip("tokenizers", reason="pip install tokenizers")
 pytest.importorskip("mlx_lm.models.qwen3_5",
@@ -114,8 +116,8 @@ def test_a_streamed_failure_reaches_the_client_as_an_error(weights: Path,
 
 
 @pytest.mark.slow
-def test_a_lease_on_mlx_weights_starts_the_tree_server_and_it_answers(weights: Path,
-                                                                     cache_home: Path) -> None:
+def test_a_lease_on_mlx_weights_starts_the_tree_server_and_it_answers(weights: Path, cache_home: Path,
+                                                                     serve_leases) -> None:
     manager = ServerManager(state_file=cache_home / "servers.json")
     spec = ServerSpec(model=str(weights), port=free_port(), context=512, draft="ngram",
                       spec_draft_max=8)

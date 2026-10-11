@@ -33,6 +33,9 @@ from poolhouse.serve.ports import free_port
 from poolhouse.testing import FakeLlamaServer, FakePreflight, Served
 from poolhouse.testing.registry import record_server
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 MODEL = "tinyfixture-4B-Q4_K_M.gguf"
 
 
@@ -349,7 +352,7 @@ class TestTellingTheFleet:
         instance = serving()
         assert cli.main(["up", MODEL, "--port", str(instance.port)]) == 0
         assert [s.port for s in self.beacon(root).all()] == [instance.port]
-        assert root.is_relative_to(tmp_path)
+        assert root.is_relative_to(home.home())
 
     def test_taking_it_down_withdraws_it(self, state, tmp_path):
         """A registration outlives its server, and the beacon then points at a dead port."""

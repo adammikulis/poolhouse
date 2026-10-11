@@ -101,4 +101,4 @@ def adopt_entry(port: int, seen: Examined) -> dict[str, Any]:
     the process ends, and marked ``unmanaged`` so nothing poolhouse does stops it."""
     return {"port": port, "pid": seen.pid, "backend": "llama.cpp", "model": seen.model,
             "owner_pid": seen.pid, "base_url": f"http://{DEFAULT_HOST}:{port}",
-            "device": seen.device, "est_bytes": seen.rss, "unmanaged": True}
+            "device": seen.device, "est_mb": -(-seen.rss // admission.MIB), "unmanaged": True}

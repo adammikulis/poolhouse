@@ -42,7 +42,7 @@ pub fn capped(l: &Lease, all: &[Lease], cfg: &Config, now: u64) -> bool {
     }
     l.resources.iter().any(|r| {
         let Resource::CpuSlots { device, count } = r else { return false };
-        let short_around = all.iter().any(|o| o.class == Class::Interactive && o.holder != l.holder && cpu_on(o, device).next().is_some());
+        let short_around = all.iter().any(|o| o.class == Class::Interactive && o.party() != l.party() && cpu_on(o, device).next().is_some());
         if !short_around {
             return false;
         }

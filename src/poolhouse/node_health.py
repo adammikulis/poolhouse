@@ -22,11 +22,13 @@ MAX_FRAME = 1 << 20
 
 
 class Refused(ValueError):
-    """The node refused a request; ``grant`` names what a person's key would sign to allow it, when a missing grant is why."""
+    """The node refused a request; ``code`` is its word for why (``denied``, ``invalid``, ``quota``), and ``grant`` names what a
+    person's key would sign to allow it, when a missing grant is why."""
 
-    def __init__(self, message: str, grant: dict | None = None) -> None:
+    def __init__(self, message: str, grant: dict | None = None, code: str = "") -> None:
         super().__init__(message)
         self.grant = grant
+        self.code = code
 
 
 def key_of(text: str) -> str:
@@ -121,16 +123,25 @@ def exchange(state: Path, body: bytes, timeout: float = TIMEOUT_S) -> bytes:
     return (_exchange_pipe if is_windows() else _exchange_socket)(state, struct.pack(">I", len(body)) + body, timeout)
 
 
-def call(state: Path, method: str, params: dict | None = None, *, board: str = "", token: str = "") -> dict:
-    """One request to the node of ``state``; the result, or OSError/ValueError when it is dead or refuses."""
+def request_body(method: str, params: dict | None = None, *, board: str = "", token: str = "") -> bytes:
+    """The body of a request of ``method`` to a node."""
     request = {"v": API_VERSION, "id": 1, "method": method, "params": params or {}}
     request.update({key: value for key, value in (("board", board), ("token", token)) if value})
-    body = json.dumps(request).encode()
-    reply = json.loads(exchange(state, body))
+    return json.dumps(request).encode()
+
+
+def result_of(body: bytes) -> dict:
+    """The result in a node's reply, or `Refused` when the reply says it was."""
+    reply = json.loads(body)
     if reply.get("ok") is not True:
         error = reply.get("error") or {}
-        raise Refused(str(error.get("message", "refused")), error.get("grant"))
+        raise Refused(str(error.get("message", "refused")), error.get("grant"), str(error.get("code", "")))
     return reply["result"]
+
+
+def call(state: Path, method: str, params: dict | None = None, *, board: str = "", token: str = "") -> dict:
+    """One request to the node of ``state``; the result, or OSError/ValueError when it is dead or refuses."""
+    return result_of(exchange(state, request_body(method, params, board=board, token=token)))
 
 
 def node_health(state: Path) -> dict | None:

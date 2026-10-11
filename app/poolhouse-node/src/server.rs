@@ -8,6 +8,7 @@ use std::time::Duration;
 use serde_json::json;
 
 use crate::api::{handle, API_VERSION};
+use crate::device::Supplied;
 use crate::error::{Error, Result};
 use crate::fsutil::private_dir;
 use crate::lineage::Peer;
@@ -34,9 +35,14 @@ pub struct Server {
 impl Server {
     /// Take the single-instance lock of ``state`` and bind the socket; `Denied` when another node runs.
     pub fn bind(state: &Path) -> Result<Server> {
+        Server::bind_with(state, None)
+    }
+
+    /// `bind` for the device ``supplied`` is the key of (`Node::open_with`).
+    pub fn bind_with(state: &Path, supplied: Option<&Supplied>) -> Result<Server> {
         private_dir(state)?;
         let instance = try_lock(&state.join(INSTANCE_LOCK))?.ok_or_else(|| Error::Denied("a node already runs on this state directory".into()))?;
-        let node = Node::open(state)?;
+        let node = Node::open_with(state, supplied)?;
         let listener = Listener::bind(state)?;
         crate::sys::watch_stop(state, node.stop.clone());
         Ok(Server { node: Arc::new(Mutex::new(node)), listener, allowed: Principal::me()?, net: None, _instance: instance })

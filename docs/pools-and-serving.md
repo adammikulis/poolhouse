@@ -559,6 +559,26 @@ reissue**, started only by an explicit call, never by the node on start, and **i
 | 13 | Migration | Legacy mode keeps syncing but ignores member removals, policy and unknown rows; one originator; handshaken devices only; keys enrolled first | 1.14 | `reissue.rs` |
 | 14 | Cross-pool | Beacons rotate and seal; tokens bound to one pool; the least permissive right wins; origin cap counts live origins; bucketed timing | 4.2, 6.3, 7.4 | `pools.rs`, `board_share.rs` |
 
+### 1.16 What slice 1 must carry from the removal review (2026-10-11)
+
+Today a device that records a removal stops exchanging with the removed device (`docs/node.md`, "Membership"), but a member that has not
+heard of the removal still syncs with it, and the entries it takes are kept and relayed: `sync::take` and `Board::ingest` check a row's
+signature and chain, never whether its origin belongs to a removed device. `app/poolhouse-node/tests/removal.rs`
+(`rows_of_a_removed_device_relayed_by_an_unaware_member_are_still_taken`) pins that behaviour, and slice 1 flips it. Two requirements:
+
+* **F1: a removal carries a cut of the removed device's logs.** The act that removes a member (`remove`) lists, for each log origin of
+  the removed device, the tip (sequence and hash) the remover holds, as `admin_remove` does for a key's acts (1.5, "Removing a key
+  carries a cut"). Every receiver refuses the rows of such an origin past the cut, **whoever relays them**: a relayed row carries no
+  authority of its own, so a member that already removed the device and a member that has not heard yet end with the same rows. The
+  pinned test then asserts the opposite (the relayed row is refused), and a second test shows a row up to the cut still arrives by a relay
+  that has not heard.
+* **F2: a removal retracts what the removed key admitted.** While other members were unaware of a removal, the removed device could
+  enrol devices (rows of the `members` exchange today, `admit` acts in slice 1), and those devices would stay members after it. The
+  removal must be able to name them: an `admit` by the removed key that is not in its cut is void on every device, whenever it arrives,
+  and the devices it admitted before the cut go to the person's review list (keep or drop) with the removed key's name and the check
+  words of each, never silently kept. A test removes a device that enrolled a stranger while another member was unaware, and ends with
+  the stranger not a member on any device.
+
 ## 2. Operated by agents, approved by a tap
 
 Requirements. The mechanism (the enrolment of the person key by QR, the signed approval, the push, the phone and screen paths) is
@@ -1177,6 +1197,29 @@ screen has the stop button without a grant. Removing a member ends its calls at 
   pools' calls.
 * Hard floors hold: one thing on the GPU at a time (the `gpu` lease), agents are never people, no `act_as_person`, no second GPU
   grant, and a model call cannot reach a person's credential.
+
+### 7.7 Routing goes only to devices that were really admitted
+
+A fake device (a Sybil enrolled through a member's rows, a cloned identity, an unreviewed open joiner, a removed device still
+believed in by an unaware member) captures whatever is routed to it: prompts, files, test shards, results. So routing is part of
+the membership rules, not a separate feature (owner, 2026-10-11: preventing fake devices is crucial because any compute or traffic
+routed to them can be captured):
+
+* **Route only to active members whose admit is a valid act** (admin- or delegate-signed, verified by the sender, not a row a
+  member relayed). A device whose admit is unverified, retracted or cut is never a target of a job, shard, prompt, file or lease
+  grant, whatever its certificate says.
+* **Probation.** A newly admitted device receives no prompts, files, shards or jobs until the device owner's own policy says so:
+  by default only the person's own enrolled devices receive anything; a device joined by `open` or by a delegate is listed but
+  receives nothing until a person approves it for serving (one line in the review list, no extra step for the person's own
+  devices).
+* **Check at send time and again at the reply.** Standing is re-read when the request is sent and when the reply is taken
+  (section 1.5 cut rule); a device removed between the two has its reply refused and the work redone elsewhere.
+* **Identity continuity.** Two live addresses presenting one fingerprint, a fingerprint whose key is not the keystore-held key
+  enrolled for it, or a name that changes owner mid-session stop routing to that device at once and flag the admins.
+* **Sealed where possible.** What can be sealed to a specific device key (files, results, prompts for a device the person owns)
+  is sealed to that key, so a device that merely holds a copied certificate cannot read it; the rest is stated in 7.6.
+* **Test.** A Sybil device enrolled while members were unaware receives nothing, and nothing is routed to it after its admitter
+  is removed; a cloned device identity is not routed to; mutation: the active/probation check deleted must turn the tests red.
 
 ## 8. Finding a served model: the public API
 

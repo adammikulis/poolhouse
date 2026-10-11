@@ -16,6 +16,9 @@ from poolhouse.serve.serving import Config, Serving
 from poolhouse.testing.fakes import fake_llama_binary
 from poolhouse.workspace import localloop, localmodel
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 def test_installed_selection_keeps_snapshot_path_instead_of_hub_alias(tmp_path):
     blob = tmp_path / "blob"

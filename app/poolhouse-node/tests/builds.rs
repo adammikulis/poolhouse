@@ -67,6 +67,18 @@ fn a_catching_up_device_takes_no_lease_until_it_is_current() {
 }
 
 #[test]
+fn a_catching_up_device_still_orders_the_requests_to_a_server_it_already_runs() {
+    let (a, b) = join();
+    build(&a, "aaaa", 5, 1);
+    build(&b, "bbbb", 9, 1);
+    a.net.sync_once(true).unwrap();
+    assert_eq!(gpu(&a)["ok"], false, "a lease for work is refused");
+    let turn = a.call("lease_acquire", "demo", &a.token, json!({"resources": [{"type": "gpu"}], "tag": "turn", "quiet": true}));
+    assert_eq!(turn["ok"], true, "{turn}");
+    assert_eq!(turn["result"]["state"], "held");
+}
+
+#[test]
 fn a_pinned_stale_device_still_takes_work_and_is_shown_pinned() {
     let (a, b) = join();
     build(&a, "aaaa", 5, 1);

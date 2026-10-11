@@ -13,6 +13,9 @@ import pytest
 from poolhouse.serve import Measuring, ServerInfo, ServerManager, ServerSpec, free_port
 from poolhouse.testing.registry import record_server
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 class _Backend:
     """Records what it was asked to start; never starts anything."""

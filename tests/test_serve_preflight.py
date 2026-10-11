@@ -23,6 +23,9 @@ from poolhouse.serve.preflight import Preflight, PreflightFailed, read_gguf_head
 from poolhouse.testing.fakes import fake_llama_binary
 from tests.conftest import leased
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 @pytest.fixture(autouse=True)
 def _no_source_table(monkeypatch, tmp_path):

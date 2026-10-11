@@ -11,6 +11,9 @@ from pathlib import Path
 import psutil
 import pytest
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 REPO = Path(__file__).resolve().parent.parent
 
 HOST = """

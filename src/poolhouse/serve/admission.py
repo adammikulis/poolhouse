@@ -1,24 +1,24 @@
-"""Whether a machine can hold one more model server, judged from the lease registry.
+"""What a model server asks of this device, and what the node's lease table gives it: memory and a slot for the model.
 
-Every server on the registry, and every unmanaged one found running, is charged what it
-takes: the estimate recorded when it was admitted, else its weights on disk. The server asked
-for is charged the same way, and the sum is rated against the memory this machine allows
-(`poolhouse.hub.room`): green under 80 percent, yellow to 95, red beyond. Red waits for room
-and then refuses. Servers are not counted or limited otherwise; any number may be up while
-they fit.
-
-A server runs on the device ``gpu``, or on ``cpu`` when it offloads no layer or says so. `poolhouse.gate` queues the requests of a device.
+A server about to start is a lease of the node (`poolhouse.leasetable`) tagged with its port: the memory it will take
+(`estimate_bytes`: the weights, the draft and projector files, the KV cache read off the GGUF header and a fixed allowance for the
+runtime) and its slot (`slot_name`). The node holds the machine's budget, the red share of what `poolhouse.hub.room` allows,
+queues a start that does not fit beside the servers up, refuses one that could never fit, and ends the lease when the process it
+is bound to ends. A server runs on the device ``gpu``, or on ``cpu`` when it offloads no layer or says so. `poolhouse.gate` queues
+the requests of a device.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import struct
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from poolhouse import hub, leasetable
+from poolhouse.node_health import Refused
 from poolhouse.serve import kvcache
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.preflight import (
@@ -30,57 +30,40 @@ from poolhouse.serve.preflight import (
 )
 from poolhouse.serve.process import pid_exists
 from poolhouse.serve.weights import weight_of
-from poolhouse.ui.verdict import THRESHOLDS, verdict_of
+from poolhouse.ui.verdict import THRESHOLDS
 
 __all__ = [
     "ENV_WAIT",
-    "RED_AT",
-    "YELLOW_AT",
+    "KEEP_S",
     "AdmissionRefused",
-    "Verdict",
-    "charge",
-    "check",
+    "ask",
+    "budget_mb",
+    "committed",
     "compatible",
     "device_of",
     "estimate_bytes",
+    "free_bytes",
+    "keep",
     "live",
-    "rate",
+    "said",
+    "slot_name",
+    "tag_of",
+    "wait_s",
 ]
 
 ENV_WAIT = "POOLHOUSE_ADMISSION_WAIT_S"
 """Seconds a start waits for memory to come free before it is refused."""
 
 DEFAULT_WAIT_S = 60.0
-YELLOW_AT = THRESHOLDS.yellow_at
-RED_AT = THRESHOLDS.red_at
 WEIGHTS_OVERHEAD = 1.1
-"""Share of a model's weights taken on top of them when nothing better is known."""
+"""Share of a model's weights taken on top of them for a server found running with no estimate recorded."""
+KEEP_S = 120
+"""How long the lease of a server lasts without a renewal."""
+MIB = 1 << 20
 
 
 class AdmissionRefused(ServerFailed):
     """The servers up, and this one, would not fit in the memory this machine allows."""
-
-
-@dataclass(frozen=True)
-class Verdict:
-    """The rating of a machine with one more server on it."""
-
-    rating: str
-    wanted: int
-    committed: int
-    budget: int
-    holders: tuple[str, ...] = ()
-
-    @property
-    def total(self) -> int:
-        return self.wanted + self.committed
-
-    def said(self) -> str:
-        gib = 1024 ** 3
-        held = "; ".join(self.holders) or "nothing else"
-        return (f"{self.rating}: this server needs {self.wanted / gib:.1f} GiB beside "
-                f"{self.committed / gib:.1f} GiB already taken, {self.total / gib:.1f} of "
-                f"{self.budget / gib:.1f} GiB this machine allows ({held})")
 
 
 def wait_s() -> float:
@@ -89,6 +72,11 @@ def wait_s() -> float:
         return float(os.environ.get(ENV_WAIT) or DEFAULT_WAIT_S)
     except ValueError:
         return DEFAULT_WAIT_S
+
+
+def budget_mb() -> int:
+    """The memory the node admits servers against: the red share of what this machine allows a model, in MiB; 0 when that is not known."""
+    return int(hub.room() / MIB * THRESHOLDS.red_at)
 
 
 def device_of(settings: ServerSpec | Mapping[str, Any]) -> str:
@@ -128,14 +116,6 @@ def estimate_bytes(spec: ServerSpec) -> int:
             + draft_kv_estimate_bytes(spec) + RUNTIME_ALLOWANCE_BYTES)
 
 
-def charge(entry: Mapping[str, Any]) -> int:
-    """What a registry entry holds: its recorded estimate, else its weights on disk."""
-    recorded = entry.get("est_bytes")
-    if isinstance(recorded, int) and recorded > 0:
-        return recorded
-    return int(_size(str(entry.get("model") or "")) * WEIGHTS_OVERHEAD)
-
-
 def live(entry: Mapping[str, Any]) -> bool:
     """Whether a registry entry is a server that is up or about to be: its process exists,
     or it is a start in progress whose owner exists."""
@@ -143,34 +123,6 @@ def live(entry: Mapping[str, Any]) -> bool:
     if isinstance(pid, int):
         return pid_exists(pid)
     return bool(entry.get("pending")) and isinstance(owner, int) and pid_exists(owner)
-
-
-def rate(total: int, budget: int) -> str:
-    """``green``, ``yellow`` or ``red`` for ``total`` bytes against ``budget``; green when
-    the budget is unknown."""
-    return verdict_of(total, budget) if budget > 0 else "green"
-
-
-def check(spec: ServerSpec, records: Mapping[int, Mapping[str, Any]], *, budget: int,
-          unmanaged: Iterable[Mapping[str, Any]] = ()) -> Verdict:
-    """The rating with ``spec`` added to the live servers in ``records`` (keyed by port;
-    ``spec``'s own port is replaced) and to the ``unmanaged`` servers running beside them."""
-    holders: list[str] = []
-    committed = 0
-    for port, entry in records.items():
-        if port == spec.port or not live(entry):
-            continue
-        took = charge(entry)
-        committed += took
-        holders.append(f"port {port} {Path(str(entry.get('model') or '')).name} "
-                       f"{took / 1024 ** 3:.1f} GiB")
-    for proc in unmanaged:
-        took = int(proc.get("rss") or 0)
-        committed += took
-        holders.append(f"unmanaged pid {proc.get('pid')} port {proc.get('port')} "
-                       f"{took / 1024 ** 3:.1f} GiB")
-    wanted = estimate_bytes(spec)
-    return Verdict(rate(wanted + committed, budget), wanted, committed, budget, tuple(holders))
 
 
 def pending_serves(spec: ServerSpec, entry: Mapping[str, Any]) -> bool:
@@ -205,3 +157,73 @@ def compatible(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]
         if asked and (not loaded or Path(asked).resolve() != Path(loaded).resolve()):
             return False
     return not (spec.mmproj and not entry.get("mmproj"))
+
+
+def tag_of(port: int) -> str:
+    """The tag of the lease of the server on ``port``."""
+    return f"server.{port}"
+
+
+def slot_name(model: str | Path, port: int) -> str:
+    """The name the model slot of a server has: the model's file name and its port, apart from the names a worker's slot has."""
+    return f"serve:{Path(str(model)).name}@{port}"
+
+
+def ask(table: leasetable.Table, spec: ServerSpec, est_bytes: int, *, pid: int, ttl_s: int) -> dict[str, Any]:
+    """The lease of the memory and the slot a server of ``spec`` needs, bound to the process ``pid`` and kept ``ttl_s`` seconds
+    between renewals; `AdmissionRefused` when the node says it can never fit or takes no work."""
+    table.budget(budget_mb())
+    resources = [leasetable.memory(-(-est_bytes // MIB)),
+                 leasetable.slot(slot_name(spec.model, spec.port), context=int(spec.context),
+                                 parallel=int(spec.parallel or 1), draft=Path(str(spec.draft or "")).name)]
+    try:
+        return table.acquire(resources, leasetable.Terms(tag=tag_of(spec.port), pid=pid, ttl_s=ttl_s))
+    except Refused as why:
+        raise AdmissionRefused(f"port {spec.port}: {why}") from why
+
+
+def keep(table: leasetable.Table, port: int, entry: Mapping[str, Any]) -> None:
+    """Renew the lease of the live server on ``port`` that ``entry`` records; one the node no longer holds is taken again, bound to
+    the server's process, when the budget has room for it."""
+    lease, pid, model = str(entry.get("lease") or ""), int(entry.get("pid") or 0), str(entry.get("model") or "")
+    if lease:
+        try:
+            table.renew(lease, ttl_s=KEEP_S)
+            return
+        except Refused:
+            pass
+    mb = int(entry.get("est_mb") or 0) or max(1, round(_size(model) * WEIGHTS_OVERHEAD / MIB))
+    slot = leasetable.slot(slot_name(model, port), context=int(entry.get("context") or 0), parallel=int(entry.get("parallel") or 1),
+                           draft=Path(str(entry.get("draft") or "")).name)
+    with contextlib.suppress(Refused):
+        table.acquire([leasetable.memory(mb), slot], leasetable.Terms(tag=tag_of(port), pid=pid, ttl_s=KEEP_S, wait=False))
+
+
+def committed(listing: Mapping[str, Any]) -> tuple[int, list[str]]:
+    """The MiB the held leases of a lease listing take and a line for each that takes some."""
+    total, lines = 0, []
+    for one in listing["leases"]:
+        mb = sum(int(r["mb"]) for r in one["resources"] if r["type"] == "memory_mb")
+        if one["state"] != "held" or not mb:
+            continue
+        total += mb
+        named = next((str(r["model"]) for r in one["resources"] if r["type"] == "model_slot"), one.get("tag") or "another lease")
+        lines.append(f"{named} {mb / 1024:.1f} GiB")
+    return total, lines
+
+
+def free_bytes(table: leasetable.Table) -> int | None:
+    """The bytes of the memory budget no lease holds, or None when there is no budget."""
+    listing = table.listing()
+    budget = int(listing["config"]["memory_mb"])
+    return max(0, budget - committed(listing)[0]) * MIB if budget else None
+
+
+def said(table: leasetable.Table, est_bytes: int) -> str:
+    """Why a start waits for memory, in words."""
+    listing = table.listing()
+    total, lines = committed(listing)
+    budget = int(listing["config"]["memory_mb"])
+    gib = 1024 ** 3
+    return (f"this server needs {est_bytes / gib:.1f} GiB beside {total / 1024:.1f} GiB already taken, of the "
+            f"{budget / 1024:.1f} GiB this machine allows ({'; '.join(lines) or 'nothing else'})")

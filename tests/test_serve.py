@@ -45,6 +45,9 @@ from poolhouse.testing.fakes import (
 from poolhouse.testing.registry import record_server
 from tests.conftest import leased
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 def wait_until_exited(pid: int, *, timeout: float = 10.0) -> None:
     """Block until ``pid`` has exited and is waiting to be reaped, without reaping it.

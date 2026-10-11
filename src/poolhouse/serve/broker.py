@@ -28,7 +28,6 @@ from typing import Any
 from poolhouse import activity, gate
 from poolhouse.client import is_healthy, reported_models, serving_params
 from poolhouse.files import read_json, write_json
-from poolhouse.hub import free_memory
 from poolhouse.serve import (
     admission,
     canaries,
@@ -39,9 +38,10 @@ from poolhouse.serve import (
     unmanaged,
 )
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
+from poolhouse.serve.broker_holds import MODEL_START, POLL_S, BrokerHolds
 from poolhouse.serve.events import Caller, Growth
 from poolhouse.serve.leases import recorded_servers
-from poolhouse.serve.manager import ASKING, BESIDE_HEADROOM, Measuring, ServerManager, Starting
+from poolhouse.serve.manager import ASKING, Measuring, ServerManager, Starting
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import PreflightFailed
@@ -52,9 +52,7 @@ from poolhouse.serve.weights import weight_of
 __all__ = ["Ask", "Broker", "BrokerError", "Grant", "Held", "Waiting"]
 
 IDLE_S = 600.0
-POLL_S = 0.5
 _SPEC_FIELDS = frozenset(f.name for f in dataclasses.fields(ServerSpec)) - {"model", "port"}
-_MODEL_START = "gpu-model-start:"
 
 
 _QUANT = re.compile(r"(?i)(?<![a-z0-9])((?:IQ|Q)\d(?:_[A-Z0-9]+)*|BF16|F16|F32)(?![a-z0-9])")
@@ -246,14 +244,15 @@ class Grant:
         return dataclasses.asdict(self)
 
 
-class Broker:
+class Broker(BrokerHolds):
     """Every model server on this machine, who holds each one, and who is waiting."""
 
     def __init__(self, manager: ServerManager | None = None, *, idle_s: float = IDLE_S,
-                 room: Callable[[], int | None] = free_memory,
+                 room: Callable[[], int | None] | None = None,
                  alive: Callable[[int | None], bool] = pid_exists,
                  scan: Callable[[], list[dict]] = every_server) -> None:
         self.manager = manager or ServerManager()
+        self.table = self.manager.table
         self.scan = scan
         #: whether a server's slots are processing, asked before an idle one is stopped
         self.busy: Callable[[str], bool | None] = busy_now
@@ -264,7 +263,8 @@ class Broker:
         self.history_file = self.manager.state_file.with_name("lease-history.ladybug")
         self._ended: list[tuple[str, str, dict[str, Any]]] = []
         self.idle_s = idle_s
-        self.room = room
+        #: the bytes of the memory budget no lease holds, or None when there is no budget
+        self.room = room or (lambda: admission.free_bytes(self.table))
         self.alive = alive
         self.servers: dict[int, Held] = {}
         self.managers: dict[str, ServerManager] = {}
@@ -315,7 +315,7 @@ class Broker:
     def _reserve_model_start(self, pid: int, model: str, timeout: float | None) -> str:
         """Reserve a native model start until its server lease is recorded."""
         deadline = time.monotonic() + (600 if timeout is None else timeout)
-        reservation = _MODEL_START + uuid.uuid4().hex
+        reservation = MODEL_START + uuid.uuid4().hex
         with self._cond:
             while (held := self.claims.get("gpu-training")) and self.alive(held["pid"]):
                 left = deadline - time.monotonic()
@@ -549,15 +549,15 @@ class Broker:
         spare = sorted((h for h in self.servers.values() if h.ours and not h.loading
                         and not h.holders and h not in evict),
                        key=lambda h: h.idle_since)
-        while need > (room + freed) * BESIDE_HEADROOM and spare:
+        while need > room + freed and spare:
             evict.append(spare.pop(0))
             freed += evict[-1].weight
-        if need <= (room + freed) * BESIDE_HEADROOM:
+        if need <= room + freed:
             return None, evict, ""
         held = [h for h in self.servers.values() if h.holders or h.loading]
         if not held:
             return None, evict, ""
-        return None, [], (f"{ask.models[0]} needs {need >> 20} MiB and {room >> 20} MiB is "
+        return None, [], (f"{ask.models[0]} needs {need >> 20} MiB and {room >> 20} MiB of the budget is "
                           f"free; " + "; ".join(self._held_said(h) for h in held))
 
     @staticmethod
@@ -654,63 +654,6 @@ class Broker:
         self._stop(held)
         return {"stopped": True, "port": port, "model": held.model}
 
-    # ------------------------------------------------------------------ claims
-    def claim(self, name: str, pid: int, info: Mapping[str, Any], *,
-              timeout: float = 0.0) -> dict[str, Any]:
-        """Hold ``name`` for ``pid``, or say who holds it. Waits up to ``timeout`` for it."""
-        deadline = time.monotonic() + timeout
-        if name == "gpu-training":
-            self.adopt()
-        with self._cond:
-            while True:
-                held = self.claims.get(name)
-                busy = next((server for server in self.servers.values()
-                             if server.loading or server.unmanaged or server.holders), None) if name == "gpu-training" else None
-                starting = next((value for key, value in self.claims.items()
-                                 if key.startswith(_MODEL_START) and self.alive(value["pid"])), None) if name == "gpu-training" else None
-                if busy is None and starting is None and (held is None or held["pid"] == pid or not self.alive(held["pid"])):
-                    self.claims[name] = {"pid": pid, "info": dict(info), "since": time.time()}
-                    return {"granted": True, **self.claims[name]}
-                if busy is not None:
-                    holder = next(iter(busy.holders.values()), (busy.pid or 0, "loading model"))
-                    held = {"pid": holder[0], "info": {"purpose": self._held_said(busy)}, "since": time.time()}
-                elif starting is not None:
-                    held = starting
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    return {"granted": False, **held}
-                self._cond.wait(min(left, POLL_S))
-
-    def unclaim(self, name: str, pid: int) -> bool:
-        """Let go of ``name`` if ``pid`` holds it."""
-        with self._cond:
-            held = self.claims.get(name)
-            if held is None or held["pid"] != pid:
-                return False
-            del self.claims[name]
-            self._cond.notify_all()
-            return True
-
-    # ------------------------------------------------------------------ cores
-    def take_cores(self, pid: int, want: int) -> dict[str, Any]:
-        """Cores for ``pid`` to run tests on: ``want`` at most, what is free at least one.
-
-        Never refuses and never waits -- a suite that cannot have what it asked for runs
-        narrower rather than queueing.
-        """
-        with self._cond:
-            self.cores = {k: v for k, v in self.cores.items() if self.alive(v[0])}
-            taken = sum(cores for _, cores, _ in self.cores.values())
-            cores = max(1, min(max(1, want), self.cpus - taken))
-            lease = uuid.uuid4().hex
-            self.cores[lease] = (pid, cores, time.time())
-            return {"lease": lease, "cores": cores, "cpus": self.cpus, "taken": taken}
-
-    def give_back_cores(self, lease: str) -> bool:
-        """Let go of a core grant. False when nothing held it."""
-        with self._cond:
-            return self.cores.pop(lease, None) is not None
-
     # ------------------------------------------------------------------ upkeep
     def reap(self) -> list[Held]:
         """Drop every lease, wait and claim whose pid has ended, forget servers that have
@@ -758,6 +701,7 @@ class Broker:
             pid, owner = entry.get("pid"), entry.get("owner_pid")
             if not (isinstance(pid, int) and self.alive(pid)):
                 continue
+            admission.keep(self.table, port, entry)
             was = kept.get(port, {})
             holders = {lease: (int(who[0]), str(who[1])) for lease, who in (was.get("holders") or {}).items()
                        if self.alive(int(who[0]))}
@@ -776,6 +720,8 @@ class Broker:
         for proc in self.scan():
             if proc["port"] not in known and not proc["defunct"]:
                 taken = self._take_in(proc)
+                if not taken:
+                    self._counted(proc)
                 if not taken and proc["port"] not in self._unmanaged_told:
                     self._unmanaged_told.add(proc["port"])
                     guarded.unmanaged_seen([proc])

@@ -85,6 +85,30 @@ def test_the_updater_rig_waits_for_the_node_the_supervisor_restarts_and_for_it_t
         updater.wait_for_restart(tmp_path, 7, seconds=0.5, ask=lambda _s, m: {"pid": 7} if m == "hello" else alone)
 
 
+def test_the_removal_failure_says_who_holds_the_entry_and_reads_the_fields_the_node_reports():
+    from pool_check import steps_members
+
+    class Member:
+        def __init__(self, name: str, row: dict, held: bool) -> None:
+            self.name, self.row, self.held = name, row, held
+
+        def members(self) -> list[dict]:
+            return [self.row]
+
+        def bodies(self) -> list[str]:
+            return ["written after removal"] if self.held else []
+
+    class Victim:
+        name, fingerprint = "linux2", "f" * 64
+
+    row = {"fingerprint": "f" * 64, "status": "revoked", "addr": "127.0.0.1:5", "connected": True, "reach": "none", "last_seen_ms": 111, "last_sync_ms": 222, "last_error": "an error"}
+    victim = Victim()
+    text = steps_members._what_each_knows([Member("linux", row, True), Member("linux1", {**row, "addr": None}, False)], victim, {"linux recorded it": 0.4})
+    assert "held by ['linux']" in text
+    assert all(str(row[key]) in text for key in ("status", "addr", "last_seen_ms", "last_sync_ms", "last_error"))
+    assert "'linux recorded it': 0.4" in text
+
+
 def test_a_command_in_wsl_carries_its_environment_because_wsl_passes_none():
     argv = wsl_argv("Ubuntu-24.04", "/root/poolhouse", ["python", "x.py"], {"POOLHOUSE_HOME": "/tmp/pcw", "A": "b"})
     assert argv == ["wsl.exe", "-d", "Ubuntu-24.04", "--cd", "/root/poolhouse", "--", "env", "POOLHOUSE_HOME=/tmp/pcw", "A=b", "python", "x.py"]

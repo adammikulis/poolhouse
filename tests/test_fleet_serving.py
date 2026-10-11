@@ -21,6 +21,9 @@ from poolhouse.fleet.serving import Endpoint, ServeSettings, Serving, answers
 from poolhouse.http import Server, build_request
 from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 def free_port() -> int:
     with socket.socket() as s:

@@ -8,6 +8,7 @@ parse results and build command lines, and open no sockets.
 
     poolhouse node permission [--seconds N]
     poolhouse node build [--binary PATH] [--icon SVG]
+    poolhouse node key [--migrate]
 """
 
 from __future__ import annotations
@@ -19,9 +20,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-from poolhouse import node_app
+from poolhouse import node_app, node_health, node_key, node_launch
 from poolhouse.command import Group, flag
 from poolhouse.log import say, warn
+from poolhouse.sentinel import human
 
 GRANTED, DENIED, NOT_ASKED = "GRANTED", "DENIED", "NOT ASKED"
 SECONDS = 30
@@ -100,9 +102,41 @@ def _permission_command(args) -> int:
     return 0 if permission(args.seconds) == GRANTED else 1
 
 
+WHERE = {"keystore": "the keystore", "passphrase": "a file under a passphrase (weak)", "file": "a file (weak)", "none": "no key yet", "unknown": "an unknown place"}
+
+
+def _key_command(args) -> int:
+    """``poolhouse node key [--migrate]``: say where the device key is kept; with ``--migrate``, move it out of its file."""
+    state = Path(args.state) if args.state else node_launch.default_state()
+    if not args.migrate:
+        say(f"the device key is kept in {WHERE.get(node_key.status(state)['custody'], 'an unknown place')}")
+        return 0
+    try:
+        human.require_person("move the device key")
+        moved = node_key.migrate(state)
+    except (human.HumanRequired, OSError) as why:
+        warn(f"node key: {why}")
+        return 2
+    if not moved["moved"]:
+        say(moved["why"])
+        return 0
+    say(f"the device key is now kept in {WHERE[moved['custody']]}; a backup or copy of this device's files made before now still holds the old key file")
+    if node_health.node_health(state) is not None:
+        try:
+            node_launch.stop_node(state)
+            node_launch.ensure_node(state)
+        except OSError as why:
+            warn(f"node key: the key moved, and the node did not start again: {why}")
+            return 1
+    return 0
+
+
 GROUP = Group("poolhouse.node_permission", "The macOS identity of the LAN node: build it, and ask for Local Network permission.")
 GROUP.add("permission", _permission_command, help="ask macOS for Local Network permission for Poolhouse and say the answer",
           options=[flag("--seconds", type=int, default=SECONDS, help="how long the probe waits to hear itself")])
+GROUP.add("key", _key_command, help="say where the device key is kept; --migrate moves it out of its file into the keystore",
+          options=[flag("--state", default="", help="the node's state directory (default: the machine's)"),
+                   flag("--migrate", action="store_true", help="move the key (a person at a terminal)")])
 GROUP.add("build", node_app.build_command, help="build and sign Poolhouse.app from the node binary", options=[
     flag("--binary", default="", help="the node binary (default: the selected runtime's)"),
     flag("--icon", default="", help="an SVG for the icon (default: the Poolhouse mark)")])

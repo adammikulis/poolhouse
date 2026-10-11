@@ -13,6 +13,9 @@ from poolhouse.serve.leases import orphaned, same_process
 from poolhouse.serve.process import cmdline_digest, pid_exists, started_at
 from poolhouse.testing import fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 def _sleeper(*extra):
     return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)", *extra])

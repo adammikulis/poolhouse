@@ -32,6 +32,14 @@ tests = ["tests/test_testfarm.py::test_a_job_that_breaks_a_rule_is_refused_and_n
 note = "the argv is built by the receiving executor from the test runner, the tier and validated file names; the sender supplies no argv, environment or working directory, a refused job starts nothing, and the node (app/poolhouse-node/tests/shard.rs) refuses a sender that is not a pool member, a device with shards off, and every malformed request before the executor exists"
 
 [[group]]
+match = ["spawn:leasetable.py:Table._start"]
+status = "covered"
+count = 1
+tests = ["tests/test_leasetable.py::test_a_state_directory_named_like_an_option_or_a_command_is_one_argument_of_the_command_that_starts_the_node",
+         "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"]
+note = "the argv is fixed words and the state directory as the value of one --state= argument, never through a shell; a directory named like an option or a command is still one argument"
+
+[[group]]
 match = ["spawn:fleet/shard_tree.py:tracked_paths"]
 status = "covered"
 count = 1
