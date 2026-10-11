@@ -22,12 +22,16 @@ fn locked(node: &Mutex<Node>) -> Result<MutexGuard<'_, Node>> {
     node.lock().map_err(|_| Error::Damaged("node poisoned".into()))
 }
 
+fn removed() -> Error {
+    Error::Denied("that device was put out of the pool; nothing more is exchanged with it".into())
+}
+
 /// The node's lock, taken only while the device ``peer`` is still an active member: once this device has recorded a removal, nothing more
 /// is sent to or taken from the removed device, on a connection opened before it or from a reply that arrives after it.
 fn locked_for<'a>(node: &'a Mutex<Node>, peer: &str) -> Result<MutexGuard<'a, Node>> {
     let n = locked(node)?;
     if !n.members.is_active(peer) {
-        return Err(Error::Denied("that device was put out of the pool; nothing more is exchanged with it".into()));
+        return Err(removed());
     }
     Ok(n)
 }
@@ -57,6 +61,9 @@ pub fn take_members(node: &Mutex<Node>, from: &str, reply: &Value) -> Result<usi
     let rows = reply.get("rows").and_then(Value::as_array).ok_or_else(|| Error::Invalid("rows is a list".into()))?;
     let mut n = locked_for(node, from)?;
     let changed = n.members.merge(rows, from)?;
+    if !n.members.is_active(from) {
+        return Err(removed());
+    }
     if let Some(p) = reply.get("policy") {
         take_policy(&mut n, p)?;
     }

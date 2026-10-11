@@ -119,6 +119,22 @@ fn a_member_removed_while_it_is_being_dialed_is_not_recorded_as_a_failed_dial() 
     assert_eq!(a.member(&b.fp()).unwrap()["last_error"], "", "the refusal to talk to a removed member was recorded against it");
 }
 
+#[test]
+fn a_reply_that_removes_its_own_sender_sets_no_policy() {
+    let (a, b) = (device(), device());
+    a.join_with_code(&b);
+    let mut live = PeerClient::connect(&a.net.me, b.addr(), Some(&b.fp())).unwrap();
+    let mut reply = live.call(&json!({"op": "members", "pool": a.pool(), "rows": []})).unwrap();
+    for row in reply["rows"].as_array_mut().unwrap().iter_mut().filter(|r| r["fingerprint"] == b.fp()) {
+        row["status"] = json!("revoked");
+    }
+    reply["policy"] = json!({"policy": "open", "at": 4_000_000_000_000u64, "by": "zzz"});
+    let got = netsync::take_members(&a.node, &b.fp(), &reply);
+    assert!(matches!(got, Err(Error::Denied(_))), "{got:?}");
+    assert_eq!(a.member(&b.fp()).unwrap()["status"], "revoked", "the record in the reply is applied");
+    assert_eq!(a.status()["policy"], "secure", "a device the reply removed set the pool's join policy");
+}
+
 /// The documented limit (docs/node.md, Membership): a row of a removed device's log that a member relays is taken like any relayed row,
 /// whether or not the receiver has removed that device. The removal design (docs/pools-and-serving.md, slice 1) refuses such rows
 /// past a cut recorded with the removal, and this test then asserts the opposite.
