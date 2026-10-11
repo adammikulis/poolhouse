@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::act::Act;
 use super::pool::GovPool;
-use super::{ADMIN_ACTS_PER_KEYS, MAX_ACTS, MAX_ADMIN_ACTS, MAX_ADMITS};
+use super::{ADMIN_ACTS_PER_KEYS, MAX_ACTS, MAX_ADMIN_ACTS};
 
 /// Admits signed by a device that stand nowhere, held at once, and how many of one device's and of its leaves.
 pub const MOST_JUNK: usize = 1024;
@@ -120,7 +120,7 @@ impl GovPool {
         if self.acts.len() >= MAX_ACTS && !self.drop_oldest_junk() {
             return Err("this pool holds as many acts as it will".into());
         }
-        if act.kind == "admit" && self.admits_live >= MAX_ADMITS {
+        if act.kind == "admit" && !super::admit_fits(!act.admin_keys().is_empty(), self.admits_live) {
             return Err("this pool holds as many admits as it will".into());
         }
         if act.is_chain() {

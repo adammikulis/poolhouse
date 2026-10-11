@@ -59,7 +59,15 @@ pub const DELEGATE_DAYS: i64 = 30;
 pub const DELEGATE_PER_HOUR: usize = 3;
 pub const DELEGATE_PER_DAY: usize = 10;
 pub const OPEN_PER_HOUR: usize = 5;
+/// How many admits all of an open pool's members together may sign in an hour: one member's five an hour, and the members the pool
+/// has taken in each with five of their own, would otherwise grow without end.
+pub const OPEN_POOL_PER_HOUR: usize = 10;
 pub const HOUR_MS: i64 = 3_600_000;
 pub const DAY_MS: i64 = 24 * HOUR_MS;
+/// Whether a pool holding ``live`` admits has room for one more that ``admin_signed`` says an admin signed: an admin's admit is a
+/// person's decision and is always taken, so a flood of the devices' own admits can never keep a person from admitting a device.
+pub fn admit_fits(admin_signed: bool, live: usize) -> bool {
+    admin_signed || live < MAX_ADMITS
+}
 /// The first-sight time of an act a device took inside a join it made: its holds were over before this device was there.
 pub const SETTLED: i64 = i64::MIN / 4;

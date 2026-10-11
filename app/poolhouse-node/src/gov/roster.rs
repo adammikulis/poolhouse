@@ -14,7 +14,7 @@ use super::act::Act;
 use super::body::{self, Admit, Body};
 use super::chain::{Chain, Seen};
 use super::charter::Class;
-use super::{DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, SETTLED};
+use super::{DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, OPEN_POOL_PER_HOUR, SETTLED};
 
 /// A device an admin act lets sign `admit`.
 #[derive(Clone, Debug)]
@@ -223,9 +223,15 @@ fn over_rate(ok: &[&Candidate], by: &BTreeMap<String, String>, seen: &Seen, now:
         }
     }
     let mut dropped = BTreeSet::new();
+    let members: Vec<(i64, String)> = per.iter().filter(|(who, _)| who.starts_with("member")).flat_map(|(_, list)| list.clone()).collect();
+    per.insert("members of the pool".into(), members);
     for (who, mut list) in per {
         list.sort();
-        let (per_hour, per_day) = if who.starts_with("delegate") { (DELEGATE_PER_HOUR, DELEGATE_PER_DAY) } else { (OPEN_PER_HOUR, usize::MAX) };
+        let (per_hour, per_day) = match who.as_str() {
+            "members of the pool" => (OPEN_POOL_PER_HOUR, usize::MAX),
+            w if w.starts_with("delegate") => (DELEGATE_PER_HOUR, DELEGATE_PER_DAY),
+            _ => (OPEN_PER_HOUR, usize::MAX),
+        };
         let mut kept: Vec<i64> = Vec::new();
         for (at, id) in list.into_iter().filter(|(at, _)| *at != SETTLED) {
             let within = |span: i64| kept.iter().filter(|k| at.saturating_sub(**k) < span).count();

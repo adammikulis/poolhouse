@@ -408,13 +408,14 @@ fn a_removed_admins_flood_of_acts_for_an_old_epoch_evicts_no_act_of_the_admins_t
 }
 
 #[test]
-fn a_pool_holds_four_thousand_admits_and_no_more() {
+fn a_pool_takes_the_admits_a_persons_key_signed_past_the_four_thousand_it_holds_of_the_devices_own() {
     let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
     let one = ident(20);
     let acts: Vec<_> = (0..4100).map(|_| admit(&g, &one, &[A])).collect();
     g.ingest_many(acts, wall_ms(), false);
-    assert_eq!(g.acts().values().filter(|a| a.kind == "admit").count(), poolhouse_node::gov::MAX_ADMITS);
+    assert_eq!(g.acts().values().filter(|a| a.kind == "admit").count(), 4100, "an admit an admin signed is never refused for room: a flood of the devices' own admits cannot keep a person from admitting a device");
     assert!(is_member(&g, &one));
+    assert!(poolhouse_node::gov::admit_fits(false, poolhouse_node::gov::MAX_ADMITS - 1) && !poolhouse_node::gov::admit_fits(false, poolhouse_node::gov::MAX_ADMITS));
 }
 
 #[test]

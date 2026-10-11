@@ -273,3 +273,28 @@ fn a_cut_nothing_in_the_pool_supports_any_more_is_lifted_and_the_log_is_fetched_
     meet(&a, &b);
     assert_eq!(held(&a, &honest), before, "the log is fetched again past the lifted cut");
 }
+
+#[test]
+fn the_members_of_an_open_pool_together_may_admit_only_so_many_devices_an_hour_and_an_admin_always_may() {
+    let (_d, mut g) = pool(&[strong(1, "ann")], poolhouse_node::membership::Policy::Open);
+    let members: Vec<u8> = vec![20, 21, 22];
+    for m in &members {
+        put_admit(&mut g, &ident(*m), &[1]);
+    }
+    let mut taken = Vec::new();
+    for (n, m) in members.iter().enumerate() {
+        for k in 0..5u8 {
+            let guest = ident(100 + (n as u8) * 10 + k);
+            let mut act = g.new_act("admit", admit_body(&guest, "guest", "open", "segment"), poolhouse_node::poolops::wall_ms()).unwrap();
+            device_sign(&mut act, *m);
+            take(&mut g, act);
+            taken.push(guest);
+        }
+    }
+    let live = taken.iter().filter(|d| is_member(&g, d)).count();
+    assert_eq!(live, poolhouse_node::gov::OPEN_POOL_PER_HOUR, "three members with five admits each are fifteen, and the pool takes {} an hour", poolhouse_node::gov::OPEN_POOL_PER_HOUR);
+    let admin_guest = ident(200);
+    put_admit(&mut g, &admin_guest, &[1]);
+    assert!(is_member(&g, &admin_guest), "an admin admits whatever the members did");
+    assert!(poolhouse_node::gov::admit_fits(true, poolhouse_node::gov::MAX_ADMITS) && !poolhouse_node::gov::admit_fits(false, poolhouse_node::gov::MAX_ADMITS));
+}
