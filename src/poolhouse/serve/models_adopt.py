@@ -116,7 +116,7 @@ def _progress(folder: adopt.Folder, apply: bool) -> Callable[[adopt.Row], None]:
 def _point_main(folder: adopt.Folder, rows: list[adopt.Row], *, asked: bool) -> None:
     """``refs/main`` names the folder's commit when the Hub says ``main`` is that commit and nothing else
     names one."""
-    if not asked or not any(row.action in ("link", "have") for row in rows):
+    if not asked or not any(row.action in ("link", "have", "adopted") for row in rows):
         return
     if (hfstore.repo_root(folder.repo) / "refs" / "main").exists():
         return

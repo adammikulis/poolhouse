@@ -310,3 +310,21 @@ def test_a_decide_folder_that_lacks_a_file_the_hub_lists_is_not_told_to_pull(mac
     report = models_adopt.run(apply=False)
     part = next(part for part in report.parts if part.repo == sup.DECIDER)
     assert part.notes == []
+
+
+def test_main_is_named_for_a_folder_whose_files_all_were_in_the_cache(machine):
+    models_adopt.run(apply=True)
+    assert (hfstore.repo_root(sup.BASE) / "refs" / "main").read_text() == machine.rev[sup.BASE]
+    assert (hfstore.repo_root(sup.DECIDER) / "refs" / "main").read_text() == machine.rev[sup.DECIDER]
+
+
+def test_main_is_not_named_when_nothing_was_linked_or_the_hub_was_not_asked(machine):
+    for path in machine.decider.rglob("*"):
+        if path.is_file():
+            path.unlink()
+    (machine.decider / "odd.txt").write_text("x")
+    models_adopt.run(apply=True, offline=True)
+    assert not list(hfstore.repo_root(sup.VIEW).glob("refs/main"))
+    models_adopt.run(apply=True)
+    assert not (hfstore.repo_root(sup.DECIDER) / "refs" / "main").exists()
+    assert (hfstore.repo_root(sup.VIEW) / "refs" / "main").exists()
