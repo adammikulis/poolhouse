@@ -99,13 +99,14 @@ def _telemetry_metadata(wheel: Path) -> None:
 
 def node(out: Path = DIST) -> Path:
     """Build the release `poolhouse-node` for this machine into ``out``/node (dist by default), named by target, with its SHA-256 beside it.
+    The build goes to cargo's target folder (``CARGO_TARGET_DIR``, else ``app/target``).
 
     A runtime build (`poolhouse runtime ensure`) compiles the node from its own commit and records the same checksum in the
     runtime tree; this is the standalone copy a bundle or a release asset carries. On Windows it is `poolhouse-node.exe`.
     """
     suffix = ".exe" if sys.platform == "win32" else ""
     run(["cargo", "build", "--release", "--locked", "-p", "poolhouse-node"], cwd=APP)
-    made = APP / "target" / "release" / f"poolhouse-node{suffix}"
+    made = Path(os.environ.get("CARGO_TARGET_DIR") or APP / "target") / "release" / f"poolhouse-node{suffix}"
     if not made.is_file():
         raise SystemExit(f"cargo wrote no poolhouse-node{suffix}")
     into = out / "node" / f"poolhouse-node-{target_triple()}{suffix}"

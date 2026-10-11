@@ -2,8 +2,7 @@
 
 Import `node_binary` and `workspace_node` into a test module to use them. The state directory is
 under /tmp with a short name because a Unix socket path is limited to about 100 characters, which
-a pytest `tmp_path` can exceed. The node binary is built once per session with
-``cargo build -p poolhouse-node``.
+a pytest `tmp_path` can exceed. The node binary is the one the runner built before the run (``scripts/testnode.py``).
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ import fcntl
 import json
 import os
 import pty
-import pwd
 import select
 import shutil
 import subprocess
@@ -25,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import testnode
 
 from poolhouse import node_binary as node_binary_module, node_launch, node_supervise
 from poolhouse.board import (
@@ -47,28 +46,20 @@ TYPED = {"new signing key: ": PASSPHRASE, "signing key passphrase: ": PASSPHRASE
 """What a person types at the terminal: the passphrase of the key file when asked, and yes to each signature."""
 
 
-def _cargo_env() -> tuple[str, dict[str, str]]:
-    """The cargo binary and an environment where it finds the account's toolchain (HOME is moved in tests)."""
-    account = Path(pwd.getpwuid(os.getuid()).pw_dir)
-    found = shutil.which("cargo") or str(account / ".cargo" / "bin" / "cargo")
-    return found, {**os.environ, "HOME": str(account)}
+def runner_binary() -> Path:
+    """The node binary the runner built before this run (``scripts/testnode.py``); a run the runner did not start has none."""
+    named = os.environ.get(testnode.ENV, "")
+    if not named or not Path(named).is_file():
+        pytest.fail(f"the node binary is built by the runner before a run, and {testnode.ENV} names none ({named or 'unset'}): "
+                    "run the tests with `scripts/test`", pytrace=False)
+    return Path(named)
 
 
 @pytest.fixture(scope="session")
 def node_binary(tmp_path_factory) -> Path:
-    """The node binary, built once for the session (and once across parallel workers), and copied to a folder of
-    this session's own: another worker's build rewrites the built file, and a test reading it then finds none."""
-    cargo, env = _cargo_env()
-    target = ROOT / "app" / "target"
-    target.mkdir(parents=True, exist_ok=True)
-    with (target / ".test-build.lock").open("w") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        done = subprocess.run([cargo, "build", "-p", "poolhouse-node"], cwd=ROOT / "app", env=env, capture_output=True,
-                              text=True, check=False)
-        if done.returncode:
-            pytest.fail(f"cargo build -p poolhouse-node failed:\n{done.stderr[-2000:]}", pytrace=False)
-        mine = tmp_path_factory.mktemp("node") / "poolhouse-node"
-        shutil.copy2(target / "debug" / "poolhouse-node", mine)
+    """The runner's node binary, copied to a folder of this session's own."""
+    mine = tmp_path_factory.mktemp("node") / "poolhouse-node"
+    shutil.copy2(runner_binary(), mine)
     return mine
 
 

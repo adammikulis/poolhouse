@@ -91,6 +91,11 @@ jobs:
         if: steps.ready.outputs.ok == 'true'
         run: python packaging/build.py
 
+      # The node fixture starts the binary this step builds; a pytest run that is not started by scripts/test names it.
+      - name: build the node the tests start
+        if: steps.ready.outputs.ok == 'true'
+        run: echo "DEV_TEST_NODE_BINARY=$(python scripts/testnode.py build)" >> "$GITHUB_ENV"
+
       - name: tests
         if: steps.ready.outputs.ok == 'true'
         run: python -m pytest tests/ -q -rfE --tb=short --durations=25 ${{ matrix.pytest }}
@@ -128,6 +133,9 @@ jobs:
 
       - name: build the wheels the environment test installs
         run: python packaging/build.py
+
+      - name: build the node the tests start
+        run: echo "DEV_TEST_NODE_BINARY=$(python scripts/testnode.py build)" >> "$GITHUB_ENV"
 
       - name: tests
         run: |
