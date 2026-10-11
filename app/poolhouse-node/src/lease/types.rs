@@ -14,6 +14,8 @@ pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
 pub const MAX_RESOURCES: usize = 8;
 /// The longest tag a request names itself with.
 pub const MAX_TAG: usize = 64;
+/// The longest a quiet lease lasts between renewals: a request takes one for the time it runs.
+pub const QUIET_MAX_TTL_S: u64 = 600;
 /// How long after it was granted a claim may be kept by renewals.
 pub const MAX_CLAIM_LIFETIME_S: u64 = 8 * 3600;
 
@@ -271,6 +273,16 @@ impl Default for Config {
             cpu_slots: cores, memory_mb: 0, max_wait_s: 600, background_share_percent: 50, unknown_background_s: 180,
             queue_patience_s: 60, default_ttl_s: 300, max_ttl_s: 86_400,
         }
+    }
+}
+
+impl Config {
+    /// The settings in a configuration file; None when it does not parse or holds a value the table cannot run on (a longest lease of
+    /// no seconds, a share of more than all).
+    pub fn parse(bytes: &[u8]) -> Option<Config> {
+        let doc: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+        let cfg: Config = doc.is_object().then(|| serde_json::from_value(doc).ok()).flatten()?;
+        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100).then_some(cfg)
     }
 }
 

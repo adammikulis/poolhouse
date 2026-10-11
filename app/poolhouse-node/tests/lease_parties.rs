@@ -152,3 +152,66 @@ fn a_gpu_lease_folds_no_board_and_a_pool_wide_claim_still_does() {
     ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [{"type": "claim", "kind": "branch", "name": "main"}]})));
     assert!(n.folds > folds, "a branch claim waits behind what other devices hold, which the board says");
 }
+
+#[test]
+fn a_quiet_lease_lasts_minutes_between_renewals_however_long_it_asks() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut n = Node::open(dir.path()).unwrap();
+    let t = session(&mut n, "demo", "broker").1;
+    let lease = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "q", "quiet": true, "ttl_s": 86400})));
+    assert_eq!(lease["ttl_s"], 600);
+    let renewed = ok(req(&mut n, "lease_renew", "demo", &t, json!({"id": lease["id"], "ttl_s": 86400})));
+    assert_eq!(renewed["ttl_s"], 600);
+    let loud = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [{"type": "claim", "kind": "port", "name": "9001"}], "ttl_s": 7200})));
+    assert_eq!(loud["ttl_s"], 7200, "only a quiet lease is held to minutes");
+}
+
+#[test]
+fn a_config_the_table_cannot_run_on_changes_nothing_and_none_at_start_is_the_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut n = Node::open(dir.path()).unwrap();
+    let t = session(&mut n, "demo", "a").1;
+    std::fs::write(dir.path().join("lease-config.json"), json!({"memory_mb": 500}).to_string()).unwrap();
+    assert_eq!(ok(req(&mut n, "lease_list", "demo", &t, json!({})))["config"]["memory_mb"], 500);
+    for bad in [json!({"max_ttl_s": 0}), json!({"background_share_percent": 101}), json!({"no_such_field": 1}), json!([1])] {
+        std::fs::write(dir.path().join("lease-config.json"), bad.to_string()).unwrap();
+        let listed = ok(req(&mut n, "lease_list", "demo", &t, json!({})));
+        assert_eq!(listed["config"]["memory_mb"], 500, "{bad} changed the settings");
+        let lease = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "x"})));
+        ok(req(&mut n, "lease_release", "demo", &t, json!({"id": lease["id"]})));
+    }
+    std::fs::remove_file(dir.path().join("lease-config.json")).unwrap();
+    assert_eq!(ok(req(&mut n, "lease_list", "demo", &t, json!({})))["config"]["memory_mb"], 0, "a file that is gone sets the defaults");
+    drop(n);
+    std::fs::write(dir.path().join("lease-config.json"), json!({"max_ttl_s": 0}).to_string()).unwrap();
+    let mut again = Node::open(dir.path()).unwrap();
+    let t = session(&mut again, "demo", "b").1;
+    assert_eq!(ok(req(&mut again, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "ttl_s": 5})))["state"], "held");
+}
+
+#[test]
+fn a_table_that_changed_only_by_a_request_in_flight_is_not_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut n = Node::open(dir.path()).unwrap();
+    let t = session(&mut n, "demo", "broker").1;
+    let file = dir.path().join("leases.json");
+    let kept = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [{"type": "claim", "kind": "port", "name": "9001"}], "tag": "p"})));
+    let before = std::fs::read(&file).unwrap();
+    for i in 0..3 {
+        let turn = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": format!("t{i}"), "quiet": true})));
+        ok(req(&mut n, "lease_renew", "demo", &t, json!({"id": turn["id"]})));
+        ok(req(&mut n, "lease_release", "demo", &t, json!({"id": turn["id"]})));
+    }
+    assert_eq!(std::fs::read(&file).unwrap(), before, "turns wrote nothing");
+    ok(req(&mut n, "lease_release", "demo", &t, json!({"id": kept["id"]})));
+    assert_ne!(std::fs::read(&file).unwrap(), before, "an ordinary lease's end is written");
+    let holding = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "held", "quiet": true})));
+    ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [{"type": "claim", "kind": "port", "name": "9002"}], "tag": "p2"})));
+    drop(n);
+    let mut restarted = Node::open(dir.path()).unwrap();
+    let after = session(&mut restarted, "demo", "after").1;
+    let listed = ok(req(&mut restarted, "lease_list", "demo", &after, json!({})));
+    let ids: Vec<&Value> = listed["leases"].as_array().unwrap().iter().map(|l| &l["id"]).collect();
+    assert!(!ids.contains(&&holding["id"]), "a request in flight does not outlive the node");
+    assert_eq!(ids.len(), 1);
+}

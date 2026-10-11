@@ -18,7 +18,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::Result;
 use crate::fsutil::write_atomic;
 use table::{Event, Foreign, Table};
-use types::Config;
+use serde_json::json;
+use types::{Config, Lease};
 
 pub const TABLE_FILE: &str = "leases.json";
 pub const CONFIG_FILE: &str = "lease-config.json";
@@ -34,6 +35,8 @@ pub struct Leases {
     config_path: PathBuf,
     /// The bytes of the configuration file the settings came from; None when there was none.
     config_raw: Option<Vec<u8>>,
+    /// The leases the file holds, serialised: a change that leaves them as they are writes nothing.
+    saved: Vec<u8>,
     pub clock: Box<dyn Fn() -> u64 + Send>,
 }
 
@@ -47,15 +50,14 @@ impl Leases {
             Err(e) => Err(e),
         };
         let config_raw = read(CONFIG_FILE)?;
-        let cfg = match &config_raw {
-            Some(bytes) => serde_json::from_slice(bytes)?,
-            None => Config::default(),
-        };
-        let table = match read(TABLE_FILE)? {
+        let cfg = config_raw.as_deref().and_then(Config::parse).unwrap_or_default();
+        let mut table: Table = match read(TABLE_FILE)? {
             Some(bytes) => serde_json::from_slice(&bytes)?,
             None => Table::default(),
         };
-        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, clock: Box::new(wall_ms) })
+        table.next_seq = table.next_seq.max(table.leases.iter().map(|l| l.seq).max().map_or(0, |s| s + 1));
+        let saved = serde_json::to_vec(&table.leases)?;
+        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms) })
     }
 
     /// Take the settings from the configuration file again when its bytes are not the ones they came from: a file that is gone
@@ -70,7 +72,7 @@ impl Leases {
             return;
         }
         let fresh = match &raw {
-            Some(bytes) => serde_json::from_slice::<Config>(bytes).ok(),
+            Some(bytes) => Config::parse(bytes),
             None => Some(Config::default()),
         };
         self.config_raw = raw;
@@ -83,8 +85,18 @@ impl Leases {
         (self.clock)()
     }
 
-    pub fn save(&self) -> Result<()> {
-        write_atomic(&self.path, &serde_json::to_vec(&self.table)?)
+    /// Write the table when its leases changed. A quiet lease is a request in flight, which ends with its process, so it is kept in
+    /// memory and a table that changed only by one is not written.
+    pub fn save(&mut self) -> Result<()> {
+        let kept: Vec<&Lease> = self.table.leases.iter().filter(|l| !l.quiet).collect();
+        let content = serde_json::to_vec(&kept)?;
+        if content == self.saved {
+            return Ok(());
+        }
+        let file = serde_json::to_vec(&json!({"leases": kept, "next_seq": self.table.next_seq}))?;
+        write_atomic(&self.path, &file)?;
+        self.saved = content;
+        Ok(())
     }
 
     /// Drop the dead and the expired, grant what the freed resources allow, and save when

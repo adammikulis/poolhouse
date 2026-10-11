@@ -66,7 +66,8 @@ fn lines(l: &Lease) -> Vec<String> {
 /// Whether the lease an event is about asked to leave no board entry.
 fn quiet(event: &Event) -> bool {
     match event {
-        Event::Granted(l) | Event::Ended(l, _) | Event::Takeover { to: l, .. } => l.quiet,
+        Event::Granted(l) | Event::Ended(l, _) => l.quiet,
+        Event::Takeover { to, .. } => to.quiet,
     }
 }
 
@@ -79,7 +80,7 @@ pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
             Event::Ended(..) => continue,
             Event::Takeover { from, why, to } => {
                 let detail = format!("took the resources of {} ({} {}) for {}", from.holder, from.id, why.word(), to.id);
-                (to, Kind::Audit, json!({"event": "lease_takeover", "subject": to.id, "detail": detail}))
+                (&**to, Kind::Audit, json!({"event": "lease_takeover", "subject": to.id, "detail": detail}))
             }
         };
         node.host(&l.board)?.board.append(kind, &l.name, body, "")?;
