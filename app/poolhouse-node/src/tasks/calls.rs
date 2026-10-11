@@ -494,14 +494,31 @@ fn landing_hand(node: &mut Node, board: &str, actor: &str, t: &Task) -> Result<b
     exercised(node, board, actor, &t.id)
 }
 
-/// Whether ``actor`` is a worker this task was assigned to or its parent: before the worker claims, the parent reserves the
+/// The assignments of ``t`` that stand now: while it is queued, those whose lease is still a live grant of the worker's model; once a
+/// worker holds it, the one that worker claimed it with; none after it ended or while no worker holds it for another reason.
+fn standing(node: &mut Node, board: &str, t: &Task) -> Result<Vec<Assign>> {
+    let mut out = Vec::new();
+    for a in &t.assigns {
+        let stands = match t.state.as_str() {
+            QUEUED => grant_live(node, board, &a.worker, a).is_ok(),
+            WORKING | BLOCKED | REVIEW => a.worker == t.worker && t.lease.as_ref().is_none_or(|l| l.assign == a.id),
+            _ => false,
+        };
+        if stands {
+            out.push(a.clone());
+        }
+    }
+    Ok(out)
+}
+
+/// Whether ``actor`` is a worker this task stands assigned to or its parent: before the worker claims, the parent reserves the
 /// checkout (the scope) and records the allocation it made, and the worker records its checkout.
 fn sponsors(node: &mut Node, board: &str, actor: &str, t: &Task, method: &str, p: &Map<String, Value>) -> Result<bool> {
     let scope = method == "task_scope";
     if !scope && !(method == "task_record" && text(p, "kind") == "allocation") {
         return Ok(false);
     }
-    for a in &t.assigns {
+    for a in standing(node, board, t)? {
         if scope && a.worker == actor || parent_of(node, board, &a.worker)? == actor {
             return Ok(true);
         }

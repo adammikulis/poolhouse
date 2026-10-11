@@ -502,6 +502,58 @@ fn the_parent_of_an_assigned_worker_reserves_its_checkout_before_the_worker_clai
     assert_eq!((held["scope"]["state"].clone(), held["allocations"][0]["execution_config"]["harness"].clone()), (json!("active"), json!("pi")));
 }
 
+/// A lease of the model slot of ``model`` for the session behind ``token``.
+fn slot(n: &mut Node, token: &str, model: &str) -> String {
+    ok(req(n, "lease_acquire", "demo", token, json!({"resources": [{"type": "model_slot", "model": model}], "ttl_s": 5000})))["id"].as_str().unwrap().to_string()
+}
+
+/// ``by`` assigns ``task`` to ``worker`` on ``lease``; the allocation id.
+fn assigned_on(n: &mut Node, by: &str, worker: &str, lease: &str, task: &str) -> String {
+    let got = ok(req(n, "task_assign", "demo", by, json!({"task": task, "worker": worker, "lease": lease, "capabilities": ["coding"]})));
+    got["allocation_id"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn a_worker_and_its_parent_sponsor_a_task_only_through_an_assignment_that_stands() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let t = team(&mut n);
+    let boss = session(&mut n, "demo", "boss");
+    let made = ok(req(&mut n, "register", "demo", &boss.1, json!({"model": "qwen3-small", "harness": "pi", "session": "kid2"})));
+    let kid2 = (made["name"].as_str().unwrap().to_string(), made["token"].as_str().unwrap().to_string());
+    let kid2_model = slot(&mut n, &kid2.1, "qwen3-small");
+    let scope = |task: &str| json!({"task": task, "scope": {"state": "reserved"}});
+    let allocation = |task: &str, rid: &str| json!({"task": task, "kind": "allocation", "rid": rid, "record": {"execution_config": {"harness": "pi"}}});
+    lose_authority(&mut n, &t);
+
+    let ended = id_of(make(&mut n, &t.other.1, json!({"source_key": "grant-ended"})));
+    let first = assigned_on(&mut n, &t.lead.1, &t.kid.0, &t.model, &ended);
+    ok(req(&mut n, "task_scope", "demo", &t.lead.1, scope(&ended)));
+    ok(req(&mut n, "task_scope", "demo", &t.kid.1, scope(&ended)));
+    ok(req(&mut n, "lease_release", "demo", &t.kid.1, json!({"id": t.model})));
+    for (who, name) in [(&t.lead.1, "the parent"), (&t.kid.1, "the worker")] {
+        assert_eq!(code(&req(&mut n, "task_scope", "demo", who, scope(&ended))), "denied", "{name} of an assignment whose grant ended");
+    }
+    assert_eq!(code(&req(&mut n, "task_record", "demo", &t.lead.1, allocation(&ended, &first))), "denied");
+    let renewed = slot(&mut n, &t.kid.1, "qwen3");
+    assigned_on(&mut n, &t.lead.1, &t.kid.0, &renewed, &ended);
+    ok(req(&mut n, "task_scope", "demo", &t.lead.1, scope(&ended)));
+
+    let claimed = id_of(make(&mut n, &t.other.1, json!({"source_key": "claimed-by-one"})));
+    let mine = assigned_on(&mut n, &t.lead.1, &t.kid.0, &renewed, &claimed);
+    let theirs = assigned_on(&mut n, &boss.1, &kid2.0, &kid2_model, &claimed);
+    ok(req(&mut n, "task_scope", "demo", &boss.1, scope(&claimed)));
+    ok(req(&mut n, "task_record", "demo", &boss.1, allocation(&claimed, &theirs)));
+    ok(req(&mut n, "task_scope", "demo", &kid2.1, scope(&claimed)));
+    ok(claim(&mut n, &t, &claimed, &mine));
+    for (who, name) in [(&boss.1, "the parent"), (&kid2.1, "the worker")] {
+        assert_eq!(code(&req(&mut n, "task_scope", "demo", who, scope(&claimed))), "denied", "{name} of an assignment another worker's claim passed over");
+    }
+    assert_eq!(code(&req(&mut n, "task_record", "demo", &boss.1, allocation(&claimed, &theirs))), "denied");
+    ok(req(&mut n, "task_scope", "demo", &t.lead.1, scope(&claimed)));
+    ok(req(&mut n, "task_scope", "demo", &t.kid.1, scope(&claimed)));
+}
+
 #[test]
 fn a_task_is_scoped_to_its_board_and_the_node_never_takes_a_sender_from_the_request() {
     let dir = tempdir().unwrap();
