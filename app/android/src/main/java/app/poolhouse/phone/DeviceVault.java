@@ -1,4 +1,4 @@
-package com.mlstack.companion;
+package app.poolhouse.phone;
 
 import android.app.KeyguardManager;
 import android.content.Context;
@@ -31,7 +31,7 @@ final class DeviceVault {
         this.file = new AtomicFile(new File(context.getNoBackupFilesDir(), "device-grant"));
     }
 
-    boolean enrolled() { return file.getBaseFile().exists(); }
+    boolean saved() { return file.getBaseFile().exists(); }
 
     void prepare() throws Exception {
         KeyguardManager lock = context.getSystemService(KeyguardManager.class);
@@ -41,7 +41,7 @@ final class DeviceVault {
             throw new IllegalStateException("Set a device PIN, pattern or password before connecting.");
         }
         if (!keys().containsAlias(ALIAS)) {
-            if (enrolled()) throw new IllegalStateException("The saved key was lost. Remove the saved connection and enroll again.");
+            if (saved()) throw new IllegalStateException("The saved key was lost. Remove the saved connection and set up chat again.");
             KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
             generator.init(new KeyGenParameterSpec.Builder(ALIAS,
                     KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
@@ -80,12 +80,12 @@ final class DeviceVault {
     }
 
     JSONObject open() throws Exception {
-        if (file.getBaseFile().length() > 32768) throw new IllegalStateException("Saved enrollment is invalid.");
+        if (file.getBaseFile().length() > 32768) throw new IllegalStateException("Saved chat connection is invalid.");
         byte[] encrypted = file.readFully();
-        if (encrypted.length > 32768) throw new IllegalStateException("Saved enrollment is invalid.");
+        if (encrypted.length > 32768) throw new IllegalStateException("Saved chat connection is invalid.");
         JSONObject sealed = new JSONObject(new String(encrypted, StandardCharsets.UTF_8));
         byte[] iv = Base64.getDecoder().decode(sealed.getString("iv"));
-        if (iv.length != 12) throw new IllegalStateException("Saved enrollment is invalid.");
+        if (iv.length != 12) throw new IllegalStateException("Saved chat connection is invalid.");
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, (SecretKey) keys().getKey(ALIAS, null), new GCMParameterSpec(128, iv));
         cipher.updateAAD(AAD);

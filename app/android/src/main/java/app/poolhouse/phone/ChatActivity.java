@@ -1,4 +1,4 @@
-package com.mlstack.companion;
+package app.poolhouse.phone;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class MainActivity extends Activity {
+public final class ChatActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private DeviceVault vault;
     private LinearLayout content;
@@ -50,7 +50,7 @@ public final class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         readIntent(intent);
-        if (visible && !vault.enrolled()) enrollment();
+        if (visible && !vault.saved()) setup();
     }
 
     private void readIntent(Intent intent) {
@@ -63,7 +63,7 @@ public final class MainActivity extends Activity {
         super.onStart();
         visible = true;
         grant = null;
-        if (vault.enrolled()) locked(); else enrollment();
+        if (vault.saved()) locked(); else setup();
     }
 
     @Override public void onStop() {
@@ -128,22 +128,22 @@ public final class MainActivity extends Activity {
         return button;
     }
 
-    private void enrollment() {
-        page("Connect your phone", "On your computer, create an Android invite. Scan its QR code or paste the invite here.");
-        invitation = input("Android invite", true);
+    private void setup() {
+        page("Chat with your computer", "On your computer, show the chat link in Fleet. Scan its QR code or paste the link here.");
+        invitation = input("Chat link", true);
         if (received != null) { invitation.setText(received); received = null; }
         EditText name = input("Phone name", false);
         name.setText("Android phone");
         button("Scan QR code", () -> startActivityForResult(new Intent(this, ScanActivity.class), 7));
-        button("Connect", () -> enroll(invitation.getText().toString(), name.getText().toString().trim()));
+        button("Connect", () -> setUp(invitation.getText().toString(), name.getText().toString().trim()));
         text("Your fingerprint, supported face unlock or device PIN protects the saved connection. The app never receives your biometric data or PIN.", 14);
     }
 
     @Override public void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
         if (code == 7 && result == RESULT_OK && data != null) {
-            received = data.getStringExtra("invite");
-            if (received != null && received.length() <= 8192 && !vault.enrolled()) enrollment();
+            received = data.getStringExtra("link");
+            if (received != null && received.length() <= 8192 && !vault.saved()) setup();
             else received = null;
         }
     }
@@ -153,7 +153,7 @@ public final class MainActivity extends Activity {
     private void authenticate(String title, CheckedAction accepted) {
         try { vault.prepare(); }
         catch (Exception failure) {
-            notice.setText("Set a device PIN, pattern or password to protect this connection. If a saved key was invalidated, remove the saved connection and enroll again.");
+            notice.setText("Set a device PIN, pattern or password to protect this connection. If a saved key was invalidated, remove the saved connection and set up chat again.");
             return;
         }
         if (authentication != null) authentication.cancel();
@@ -167,7 +167,7 @@ public final class MainActivity extends Activity {
                 if (!visible || epoch != generation) return;
                 authentication = null;
                 try { accepted.run(); }
-                catch (Exception failure) { grant = null; notice.setText("The saved connection could not be unlocked. Remove it and ask for a new Android invite."); }
+                catch (Exception failure) { grant = null; notice.setText("The saved connection could not be unlocked. Remove it and show a new chat link on your computer."); }
             }
             @Override public void onAuthenticationError(int error, CharSequence message) {
                 if (visible && epoch == generation) notice.setText("Connection remains locked. Try unlocking again when you are ready.");
@@ -175,20 +175,20 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void enroll(String text, String name) {
-        final Invite invite;
-        try { invite = Invite.parse(text, System.currentTimeMillis() / 1000); vault.prepare(); }
-        catch (Exception failure) { notice.setText("Check the Android invite and your device lock, then try again."); return; }
+    private void setUp(String text, String name) {
+        final ChatLink link;
+        try { link = ChatLink.parse(text, System.currentTimeMillis() / 1000); vault.prepare(); }
+        catch (Exception failure) { notice.setText("Check the chat link and your device lock, then try again."); return; }
         final long epoch = ++generation;
         notice.setText("Verifying your computer...");
         invitation.setText("");
         worker.execute(() -> {
-            JSONObject enrolled = null;
+            JSONObject answered = null;
             try (PinnedHttps client = new PinnedHttps()) {
                 connection = client;
                 if (!visible || epoch != generation) return;
-                enrolled = Enrollment.redeem(client, invite, name, System.currentTimeMillis() / 1000);
-                JSONObject verified = enrolled;
+                answered = ChatSetup.redeem(client, link, name, System.currentTimeMillis() / 1000);
+                JSONObject verified = answered;
                 runOnUiThread(() -> {
                     if (!visible || epoch != generation) return;
                     authenticate("Save your poolhouse connection", () -> {
@@ -198,8 +198,8 @@ public final class MainActivity extends Activity {
                     });
                 });
             } catch (Exception failure) {
-                runOnUiThread(() -> { if (visible && epoch == generation) notice.setText("Enrollment could not be verified. Check that your computer is reachable or ask for a new Android invite."); });
-            } finally { Arrays.fill(invite.secret, (byte) 0); connection = null; }
+                runOnUiThread(() -> { if (visible && epoch == generation) notice.setText("The chat setup could not be verified. Check that your computer is reachable or show a new chat link."); });
+            } finally { Arrays.fill(link.secret, (byte) 0); connection = null; }
         });
     }
 
@@ -207,15 +207,15 @@ public final class MainActivity extends Activity {
         page("poolhouse", "Your connection is locked.");
         button("Unlock", () -> authenticate("Unlock poolhouse", () -> {
             JSONObject opened = vault.open();
-            Enrollment.validate(opened, System.currentTimeMillis() / 1000);
+            ChatSetup.validate(opened, System.currentTimeMillis() / 1000);
             grant = opened;
             dashboard();
         }));
         button("Remove saved connection", () -> new AlertDialog.Builder(this)
                 .setTitle("Remove this phone's saved connection?")
-                .setMessage("You will need a new Android invite to connect again. Your computer can revoke this phone in its device list.")
+                .setMessage("You will need a new chat link to connect again. Your computer can remove this phone from its device list.")
                 .setNegativeButton("Keep", null).setPositiveButton("Remove", (dialog, which) -> {
-                    try { vault.forget(); generation++; grant = null; enrollment(); }
+                    try { vault.forget(); generation++; grant = null; setup(); }
                     catch (Exception failure) { notice.setText("The saved connection could not be removed."); }
                 }).show());
     }
@@ -230,7 +230,7 @@ public final class MainActivity extends Activity {
             try (PinnedHttps client = new PinnedHttps()) {
                 connection = client;
                 if (!visible || epoch != generation || grant != session) return;
-                Enrollment.validate(session, System.currentTimeMillis() / 1000);
+                ChatSetup.validate(session, System.currentTimeMillis() / 1000);
                 byte[] payload = body == null ? new byte[0] : body.toString().getBytes(StandardCharsets.UTF_8);
                 boolean streaming = path.equals("/companion/v1/chat");
                 byte[] raw = client.request(session.getString("endpoint"), session.getString("fingerprint"),
@@ -251,7 +251,7 @@ public final class MainActivity extends Activity {
                     catch (Exception failure) { notice.setText("The computer returned an unsupported response."); }
                 });
             } catch (SecurityException refused) {
-                runOnUiThread(() -> { if (visible && epoch == generation) { grant = null; locked(); notice.setText("This connection expired or was revoked. Ask for a new Android invite."); } });
+                runOnUiThread(() -> { if (visible && epoch == generation) { grant = null; locked(); notice.setText("This connection expired or was removed. Show a new chat link on your computer."); } });
             } catch (Exception failure) {
                 runOnUiThread(() -> { if (visible && epoch == generation) notice.setText("Your computer is unavailable. Check that it is open and this phone is on the same network."); });
             } finally { connection = null; }

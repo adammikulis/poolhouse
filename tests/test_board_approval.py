@@ -35,6 +35,10 @@ def test_the_bytes_and_signature_another_implementation_made_are_the_ones_this_o
     public.verify(bytes.fromhex(file["approve_signature"]), file["approve_bytes"].encode(), ec.ECDSA(hashes.SHA256()))
     assert hashlib.sha256(bytes.fromhex(file["key"]["public"])).hexdigest() == key
     assert "ASK 2: Share the board demo with the board lab, read and write." in file["challenge"]["text"]
+    add = file["add"]["body"]
+    proof = {"op": "phone_add", "node": file["add"]["node"], "name": add["name"], "key": add["key"], "push": add["p256dh"], "auth": add["auth"], "at_ms": add["at_ms"]}
+    assert ("poolhouse/phone-add/v1\n" + grants.canonical(proof)) == file["add"]["proof_bytes"]
+    public.verify(bytes.fromhex(file["add"]["proof_signature"]), file["add"]["proof_bytes"].encode(), ec.ECDSA(hashes.SHA256()))
 
 
 def test_what_the_person_is_asked_at_a_terminal_is_the_request_itself():

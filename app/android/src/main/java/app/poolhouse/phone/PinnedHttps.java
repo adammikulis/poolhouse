@@ -1,4 +1,4 @@
-package com.mlstack.companion;
+package app.poolhouse.phone;
 
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
@@ -43,7 +43,7 @@ final class PinnedHttps implements AutoCloseable {
         if (addresses.length == 0) throw new IllegalArgumentException("The device has no local address.");
         for (InetAddress address : addresses) {
             if (!local(address) || NetworkInterface.getByInetAddress(address) != null) {
-                throw new IllegalArgumentException("Companion connections require another device on your local network.");
+                throw new IllegalArgumentException("A phone connects only to a device on your local network.");
             }
         }
     }
@@ -156,7 +156,7 @@ final class PinnedHttps implements AutoCloseable {
             String key = header.substring(0, colon).toLowerCase(Locale.ROOT);
             if (headers.put(key, header.substring(colon + 1).trim()) != null) throw new IllegalArgumentException("Repeated device response header.");
         }
-        if (code == 401 || code == 403) throw new SecurityException("This phone connection expired or was revoked. Ask for a new Android invite.");
+        if (code == 401 || code == 403) throw new SecurityException("This phone connection expired or was removed. Set it up again.");
         if (code < 200 || code >= 300) throw new IllegalArgumentException("The device refused the request (" + code + ").");
         if (headers.containsKey("transfer-encoding") && headers.containsKey("content-length")) throw new IllegalArgumentException("Ambiguous device response framing.");
         if ("chunked".equalsIgnoreCase(headers.get("transfer-encoding"))) {

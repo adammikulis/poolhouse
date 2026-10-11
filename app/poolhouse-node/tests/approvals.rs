@@ -523,4 +523,9 @@ fn the_vectors_a_second_implementation_made_are_the_bytes_and_the_signature_this
     assert_eq!(String::from_utf8(deny.clone()).unwrap(), file["deny_bytes"].as_str().unwrap());
     assert!(poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &deny, file["deny_signature"].as_str().unwrap()));
     assert!(!poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &deny, file["approve_signature"].as_str().unwrap()), "an approval is not a deny");
+    let add = &file["add"];
+    let body = add["body"].as_object().unwrap();
+    let proof = poolhouse_node::phone::enrol::add_bytes(add["node"].as_str().unwrap(), body);
+    assert_eq!(String::from_utf8(proof.clone()).unwrap(), add["proof_bytes"].as_str().unwrap(), "a phone's proof of its own addition is the same bytes");
+    assert!(poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &proof, add["proof_signature"].as_str().unwrap()));
 }

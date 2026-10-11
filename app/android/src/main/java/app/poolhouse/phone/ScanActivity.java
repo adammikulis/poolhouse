@@ -1,4 +1,4 @@
-package com.mlstack.companion;
+package app.poolhouse.phone;
 
 import android.Manifest;
 import android.app.Activity;
@@ -53,14 +53,14 @@ public final class ScanActivity extends Activity implements TextureView.SurfaceT
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         message = new TextView(this);
-        message.setText("Scan the Android invite shown on your computer. Camera images stay on this phone.");
+        message.setText("Scan the code shown on your computer. Camera images stay on this phone.");
         message.setPadding(24, 24, 24, 24);
         column.addView(message);
         preview = new TextureView(this);
         preview.setSurfaceTextureListener(this);
         column.addView(preview, new LinearLayout.LayoutParams(-1, 0, 1));
         Button back = new Button(this);
-        back.setText("Return to paste invite");
+        back.setText("Paste the link instead");
         back.setOnClickListener(view -> finish());
         column.addView(back);
         setContentView(column);
@@ -81,10 +81,10 @@ public final class ScanActivity extends Activity implements TextureView.SurfaceT
         super.onRequestPermissionsResult(code, permissions, results);
         if (code == 1 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
             if (preview.isAvailable()) open();
-        } else message.setText("Camera access was declined. You can paste the invite instead.");
+        } else message.setText("Camera access was declined. You can paste the link instead.");
     }
 
-    private void fail() { runOnUiThread(() -> message.setText("The camera is unavailable. Return and paste the invite instead.")); }
+    private void fail() { runOnUiThread(() -> message.setText("The camera is unavailable. Go back and paste the link instead.")); }
 
     private void open() {
         if (finished || camera != null || checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return;
@@ -159,14 +159,14 @@ public final class ScanActivity extends Activity implements TextureView.SurfaceT
             BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(new PlanarYUVLuminanceSource(
                     luminance, width, height, 0, 0, width, height, false)));
             String text = new QRCodeReader().decode(bitmap, Map.of(DecodeHintType.TRY_HARDER, true)).getText();
-            if (text.length() <= 8192 && text.startsWith("poolhouse://enroll?data=")) {
+            if (text.length() <= 8192 && (text.startsWith("poolhouse://enroll?data=") || text.startsWith(AddLink.PREFIX))) {
                 finished = true;
                 runOnUiThread(() -> {
-                    setResult(RESULT_OK, new Intent().putExtra("invite", text));
+                    setResult(RESULT_OK, new Intent().putExtra("link", text));
                     finish();
                 });
             }
-        } catch (com.google.zxing.ReaderException notAReadableInvite) { }
+        } catch (com.google.zxing.ReaderException notAReadableCode) { }
         catch (Exception failure) { if (!finished) fail(); }
     }
 

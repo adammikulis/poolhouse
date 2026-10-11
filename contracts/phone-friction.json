@@ -1,0 +1,6 @@
+{
+ "about": "The steps a person takes with the phone, counted the way docs/phone-approval.md (\"The friction budget\") lists them. The app's ApprovalFlow and tests/test_phone_friction.py check these numbers; a step is added only with a one-line reason in the document.",
+ "first_run": 3,
+ "approve_routine": 2,
+ "approve_sensitive": 3
+}

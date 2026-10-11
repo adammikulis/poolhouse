@@ -1,4 +1,4 @@
-package com.mlstack.companion;
+package app.poolhouse.phone;
 
 import java.io.ByteArrayInputStream;
 import java.net.InetAddress;
@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.json.JSONObject;
 
-public final class CompanionProtocolTest {
+public final class PhoneProtocolTest {
     interface Check { void run() throws Exception; }
     static void rejects(Check check) throws Exception {
         try { check.run(); } catch (IllegalArgumentException | SecurityException expected) { return; }
@@ -20,7 +20,7 @@ public final class CompanionProtocolTest {
         return "poolhouse://enroll?data=" + Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(data.toString().getBytes(StandardCharsets.UTF_8));
     }
-    static JSONObject invite() throws Exception {
+    static JSONObject chatLink() throws Exception {
         return new JSONObject().put("v", 1).put("kind", "android")
                 .put("endpoint", "https://192.168.1.2:8770").put("fingerprint", "a".repeat(64))
                 .put("id", "b".repeat(32)).put("secret", Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32]))
@@ -35,14 +35,14 @@ public final class CompanionProtocolTest {
                 rejects(() -> PinnedHttps.requireLocal(new InetAddress[] {address}));
             }
         }
-        equal("https://192.168.1.2:8770", Invite.parse(link(invite()), 1000).endpoint);
-        rejects(() -> Invite.parse(link(invite().put("kind", "computer")), 1000));
-        rejects(() -> Invite.parse(link(invite().put("pool_key", "x")), 1000));
-        rejects(() -> Invite.parse(link(invite().put("expires", 1601)), 1000));
-        rejects(() -> Invite.parse(link(invite().put("expires", 1000)), 1000));
-        rejects(() -> Invite.parse(link(invite().put("endpoint", "http://127.0.0.1:8770")), 1000));
-        rejects(() -> Invite.parse(link(invite().put("endpoint", "https://user@127.0.0.1:8770")), 1000));
-        rejects(() -> Invite.parse(link(invite()) + "&secret=x", 1000));
+        equal("https://192.168.1.2:8770", ChatLink.parse(link(chatLink()), 1000).endpoint);
+        rejects(() -> ChatLink.parse(link(chatLink().put("kind", "computer")), 1000));
+        rejects(() -> ChatLink.parse(link(chatLink().put("pool_key", "x")), 1000));
+        rejects(() -> ChatLink.parse(link(chatLink().put("expires", 1601)), 1000));
+        rejects(() -> ChatLink.parse(link(chatLink().put("expires", 1000)), 1000));
+        rejects(() -> ChatLink.parse(link(chatLink().put("endpoint", "http://127.0.0.1:8770")), 1000));
+        rejects(() -> ChatLink.parse(link(chatLink().put("endpoint", "https://user@127.0.0.1:8770")), 1000));
+        rejects(() -> ChatLink.parse(link(chatLink()) + "&secret=x", 1000));
         equal(true, PinnedHttps.local(InetAddress.getByName("192.168.1.2")));
         equal(true, PinnedHttps.local(InetAddress.getByName("100.64.0.1")));
         equal(true, PinnedHttps.local(InetAddress.getByName("fd00::1")));
@@ -71,7 +71,7 @@ public final class CompanionProtocolTest {
         byte[] key = new byte[20]; java.util.Arrays.fill(key, (byte) 0xaa);
         byte[] message = new byte[50]; java.util.Arrays.fill(message, (byte) 0xdd);
         equal("773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe",
-                Enrollment.hmac(key, message));
-        System.out.println("Companion protocol checks passed.");
+                ChatSetup.hmac(key, message));
+        System.out.println("Chat link protocol checks passed.");
     }
 }

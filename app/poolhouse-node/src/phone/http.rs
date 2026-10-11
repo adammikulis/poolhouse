@@ -101,6 +101,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
     let now = n.now_ms();
     n.phones.touch(id, now)?;
     match op {
+        "status" => Ok(json!({"state": ACTIVE})),
         "list" => Ok(list(&mut n, id)),
         "get" => n.approvals.get(text(p, "id")).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
         "phones" => Ok(json!({"phones": n.phones.all().filter(|f| f.state != crate::phone::REMOVED).map(|f| shown(f, id)).collect::<Vec<_>>()})),
