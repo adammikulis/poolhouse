@@ -144,3 +144,48 @@ fn a_device_that_left_is_not_a_member_and_an_admit_brings_it_back_and_a_removed_
     assert!(is_removed(&g, &gone), "a removed certificate never comes back");
     let _ = Strength::Strong;
 }
+
+#[test]
+fn a_removed_member_signs_no_open_admit() {
+    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let member = ident(20);
+    put_admit(&mut g, &member, &[A]);
+    advance(&mut g, 10);
+    put(&mut g, "remove", json!({"fingerprint": member.fingerprint()}), &[A]);
+    let guest = ident(30);
+    device_admit(&mut g, 20, &guest, "segment");
+    assert!(is_removed(&g, &member) && !is_member(&g, &guest), "a device put out of the pool admits nobody");
+}
+
+#[test]
+fn a_device_that_left_signs_no_admit_after_it_left() {
+    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let member = ident(20);
+    put_admit(&mut g, &member, &[A]);
+    let (before, after) = (ident(30), ident(31));
+    device_admit(&mut g, 20, &before, "segment");
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let mut leave = g.new_act("leave", json!({"fingerprint": member.fingerprint()}), wall_ms()).unwrap();
+    device_sign(&mut leave, 20);
+    take(&mut g, leave);
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    device_admit(&mut g, 20, &after, "segment");
+    assert!(is_member(&g, &before), "it admitted this one while it was a member");
+    assert!(!is_member(&g, &after), "a device that has left admits nobody");
+}
+
+#[test]
+fn a_delegate_made_by_a_key_that_is_removed_without_its_act_in_the_cut_admits_nobody() {
+    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben"), strong(3, "cy")], Policy::Secure);
+    let delegate = ident(20);
+    put_admit(&mut g, &delegate, &[A]);
+    put(&mut g, "delegate", json!({"fingerprint": delegate.fingerprint()}), &[B, 3]);
+    let guest = ident(30);
+    device_admit(&mut g, 20, &guest, "");
+    assert!(is_member(&g, &guest), "while the delegate act stands");
+    put(&mut g, "admin_remove", json!({"key": public(3), "cut": []}), &[A, B]);
+    advance(&mut g, 25 * HOUR);
+    assert!(!admins(&g).contains(&public(3)));
+    assert!(!is_member(&g, &guest), "the delegate act lost the signature of the key that was removed, and one person is not enough to make a delegate");
+    assert!(g.state().roster.delegates.is_empty());
+}

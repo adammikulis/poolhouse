@@ -150,7 +150,7 @@ fn standing<'a>(cands: &'a [Candidate], cx: &Facts, gone: &BTreeSet<String>, lim
     while progress {
         progress = false;
         waiting.retain(|c| {
-            let Some(signer) = c.signer.as_ref().filter(|s| active.contains(*s)) else { return true };
+            let Some(signer) = c.signer.as_ref().filter(|s| active.contains(*s) && cx.member_at(s, c.at_ms)) else { return true };
             let kind = if cx.open && c.admit.via == "segment" { "member" } else if c.admit.via.is_empty() && cx.delegate_at(signer, &c.id) { "delegate" } else { return true };
             by.insert(c.id.clone(), format!("{kind} {signer}"));
             active.insert(c.fingerprint.clone());
@@ -165,6 +165,8 @@ fn standing<'a>(cands: &'a [Candidate], cx: &Facts, gone: &BTreeSet<String>, lim
 /// The per-signer facts the admits are judged by.
 struct Facts {
     open: bool,
+    /// For each device, its admits and leaves by the time they were signed: whether it was a member at a given time.
+    life: BTreeMap<String, Vec<(u64, String, bool)>>,
     windows: BTreeMap<String, Vec<(i64, i64)>>,
     seen: BTreeMap<String, i64>,
     admin_ok: BTreeSet<String>,
@@ -172,6 +174,11 @@ struct Facts {
 }
 
 impl Facts {
+    /// Whether ``device`` was a member at ``at_ms``, by the last of its admits and leaves signed by then; a device with neither is.
+    fn member_at(&self, device: &str, at_ms: u64) -> bool {
+        self.life.get(device).and_then(|events| events.iter().rev().find(|(t, _, _)| *t <= at_ms)).is_none_or(|(_, _, joined)| *joined)
+    }
+
     /// Whether ``device`` was a delegate when this device first saw the admit ``id``.
     fn delegate_at(&self, device: &str, id: &str) -> bool {
         let at = self.seen.get(id).copied().unwrap_or(0);
@@ -219,7 +226,15 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64)
     delegates(chain, acts, seen, now, &mut out);
     let cands = candidates(acts);
     let seen_of: BTreeMap<String, i64> = cands.iter().map(|c| (c.id.clone(), seen.get(&c.id).copied().unwrap_or(now))).collect();
-    let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, windows: out.windows.clone(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
+    let mut life: BTreeMap<String, Vec<(u64, String, bool)>> = BTreeMap::new();
+    for c in &cands {
+        life.entry(c.fingerprint.clone()).or_default().push((c.at_ms, c.id.clone(), true));
+    }
+    for (fp, at, id) in leaves(&cands.iter().map(|c| c.fingerprint.clone()).collect(), acts) {
+        life.entry(fp).or_default().push((at, id, false));
+    }
+    life.values_mut().for_each(|events| events.sort());
+    let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, life, windows: out.windows.clone(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
     for c in &cands {
         if let Some(a) = acts.get(&c.id).filter(|a| !chain.signers(&c.id, a).is_empty()) {
             match verdict(&c.id, a, None, chain, false) {

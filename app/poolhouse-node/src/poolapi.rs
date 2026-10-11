@@ -29,6 +29,8 @@ pub fn params(method: &str) -> Option<&'static [&'static str]> {
         "pool_propose" => &["kind", "body"],
         "pool_cosign" => &["act"],
         "pool_submit" => &["act"],
+        "pool_draft" => &["kind", "body"],
+        "pool_found" => &["act"],
         "add_device" => &["passphrase", "ttl_s"],
         "join_pool" => &["host", "port", "passphrase", "fingerprint"],
         "shard_call" => &["device", "op", "args"],
@@ -113,6 +115,11 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             authorize(node, token, method, "*")?;
             node.pool_leave()
         }
+        "pool_found" => {
+            authorize(node, token, "pool_create", "*")?;
+            node.pool_found(p.get("act").unwrap_or(&Value::Null))
+        }
+        "pool_draft" => node.pool_draft(text(p, "kind")?, p.get("body").cloned().unwrap_or(Value::Null)),
         "pool_propose" => {
             let kind = text(p, "kind")?;
             authorize(node, token, "admin_manage", kind)?;

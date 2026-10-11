@@ -215,6 +215,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_propose` | token with the grant `admin_manage` | `kind`, `body` | `{act, status, have, need, why}`: makes the act and signs it with the keys this device's signer holds that count |
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
 | `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
+| `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
+| `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the device is a member once an admit signed for it is submitted |
 | `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s` | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
 | `sync_now` | token with the grant `sync_now` | | `{reached}` |
@@ -811,7 +813,10 @@ pool, through admin keys; a device never does, and the one thing a member device
   strong admin; by a live delegate (a device an admin act lets sign `admit` for 30 days, at most 3 an hour and 10 a day by the order
   this device first saw the admits); in an open pool by any member's own device key with `via: segment`, at most 5 an hour. A device
   that does not hold its key in a keystore (`Node::key_binding`; no keystore yet) signs no delegate admit, so a copy of its state
-  directory signs none, and every delegate admit is written to the pool board as `delegate_admit`. `remove` is sticky; `leave` is the
+  directory signs none, and every delegate admit is written to the pool board as `delegate_admit`. A device that joins is handed the
+  founding act, the admin-set acts in effect (their holds were over before it came), the live delegates' acts and the acts that
+  stand; it takes the admin-set acts and the rest as settled, so the rates of a delegate do not refuse admits that were made before
+  it came. A device that has left, or was removed, signs no admit. `remove` is sticky; `leave` is the
   device's own signature and a later `admit` undoes it.
 - **Keeping it** (`gov/pool.rs`): `pools/<id>/` holds `charter.json`, `acts.json`, `seen.json` and `refused.json`. Caps: 4,096 admits,
   256 admin-set acts (the oldest that never took effect make room), 8,192 acts.
@@ -820,7 +825,8 @@ pool, through admin keys; a device never does, and the one thing a member device
   and what was pushed is checked by the receiver from the keys it holds, whoever carried it. A request reads at most 64 pages.
 - **Signing** (`gov/signer.rs`, `gov/ops.rs`): the node holds no person key. An act that needs a person's signature is put to a
   `Signer` (the phone approval, when it exists, and a rig's in-memory key for tests); the typed-yes person key path signs outside the
-  node and hands the act back through `pool_submit`. A no from the person is respected for ten minutes for that kind of act.
+  node: `pool_draft` makes the act and the bytes to sign, `pool_found` and `pool_submit` take the signed act back. A no from the
+  person is respected for ten minutes for that kind of act.
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
 - **Legacy mode.** A device with a `pool.json` and no `pools/<id>/` keeps its pool and its sync exactly as before, except that a
   member's rows, removals and policy are ignored (the record changes only by this device's own API, the grants, and the joins it makes);

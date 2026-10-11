@@ -341,15 +341,15 @@ impl Net {
     fn adopt_governed(&self, c: &PeerClient, reply: &Value, addr: SocketAddr) -> Result<()> {
         let read = |key: &str| -> Result<Vec<crate::gov::act::Act>> { serde_json::from_value(reply[key].clone()).map_err(|_| Error::Invalid(format!("{key} is a list of acts"))) };
         let found: crate::gov::act::Act = serde_json::from_value(reply["found"].clone()).map_err(|_| Error::Invalid("found is an act".into()))?;
-        let (settled, rest) = (read("settled")?, read("acts")?);
+        let (settled, delegates, rest) = (read("settled")?, read("delegates")?, read("acts")?);
         let mut node = locked(&self.node)?;
         if reply["pool"].as_str() != Some(found.pool.as_str()) {
             return Err(Error::Denied("the pool the device named is not the pool its founding act makes".into()));
         }
         if node.members.gov().is_some_and(|g| g.id == found.pool) {
-            node.gov_ingest_many(rest, false)?;
+            node.gov_ingest_many(delegates.into_iter().chain(rest).collect(), false)?;
         } else {
-            node.adopt_governed(found, settled, rest)?;
+            node.adopt_governed(found, settled, delegates, rest)?;
         }
         node.facts.set_addr(&c.fingerprint, &addr.to_string())?;
         node.facts.peer(&c.fingerprint).last_seen_ms = wall_ms();

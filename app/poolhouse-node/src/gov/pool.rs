@@ -69,6 +69,14 @@ pub struct State {
     pub roster: Roster,
 }
 
+/// What a device that joins is handed (`GovPool::join_payload`).
+pub struct JoinPayload {
+    pub found: Act,
+    pub settled: Vec<Act>,
+    pub delegates: Vec<Act>,
+    pub acts: Vec<Act>,
+}
+
 pub struct GovPool {
     dir: PathBuf,
     pub id: String,
@@ -473,20 +481,24 @@ impl GovPool {
     }
 
     /// What a device that joins (``joiner``, by the fingerprint of its certificate) is handed: the founding act, the admin-set acts
-    /// that are in effect here (their holds were over before it arrived), the act that admitted it and the other acts that
-    /// stand, as many as fit in ``budget`` bytes.
-    pub fn join_payload(&self, budget: usize, joiner: &str) -> (Act, Vec<Act>, Vec<Act>) {
-        let chain = &self.state.chain;
+    /// that are in effect here (their holds were over before it arrived), the acts of the delegates that are live here (which run
+    /// from the moment the joiner first sees them), the act that admitted the joiner and the other acts that stand, as many as fit
+    /// in ``budget`` bytes.
+    pub fn join_payload(&self, budget: usize, joiner: &str) -> JoinPayload {
+        let (chain, roster) = (&self.state.chain, &self.state.roster);
         let settled: Vec<Act> = chain.applied.iter().filter_map(|id| self.acts.get(id)).cloned().collect();
-        let mut rest: Vec<Act> = self.state.roster.admitted_by.get(joiner).and_then(|id| self.acts.get(id)).cloned().into_iter().collect();
-        let mut bytes = rest.iter().map(GovPool::weight).sum::<usize>();
-        for a in self.acts.iter().filter(|(id, a)| !a.is_chain() && self.status(id) == ActStatus::Effective && !matches!(a.kind.as_str(), "cancel" | "veto")).map(|(_, a)| a) {
+        let live = |a: &Act| a.kind == "delegate" && a.body["fingerprint"].as_str().is_some_and(|d| roster.delegates.contains_key(d));
+        let delegates: Vec<Act> = self.acts.values().filter(|a| live(a)).take(PAGE_ACTS).cloned().collect();
+        let mut acts: Vec<Act> = roster.admitted_by.get(joiner).and_then(|id| self.acts.get(id)).cloned().into_iter().collect();
+        let mut bytes = acts.iter().map(GovPool::weight).sum::<usize>();
+        let standing = |id: &String, a: &Act| !a.is_chain() && !matches!(a.kind.as_str(), "cancel" | "veto" | "delegate" | "delegate_end") && self.status(id) == ActStatus::Effective;
+        for a in self.acts.iter().filter(|(id, a)| standing(id, a)).map(|(_, a)| a) {
             bytes += GovPool::weight(a);
-            if bytes > budget || rest.len() >= PAGE_ACTS {
+            if bytes > budget || acts.len() >= PAGE_ACTS {
                 break;
             }
-            rest.push(a.clone());
+            acts.push(a.clone());
         }
-        (self.found.clone(), settled, rest)
+        JoinPayload { found: self.found.clone(), settled, delegates, acts }
     }
 }

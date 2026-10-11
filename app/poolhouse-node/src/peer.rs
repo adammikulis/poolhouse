@@ -84,8 +84,8 @@ const JOIN_BYTES: usize = 256 * 1024;
 pub fn record_json(node: &Node, joiner: &str) -> Value {
     match node.members.gov() {
         Some(g) => {
-            let (found, settled, acts) = g.join_payload(JOIN_BYTES, joiner);
-            json!({"pool": g.id, "found": found, "settled": settled, "acts": acts})
+            let p = g.join_payload(JOIN_BYTES, joiner);
+            json!({"pool": g.id, "found": p.found, "settled": p.settled, "delegates": p.delegates, "acts": p.acts})
         }
         None => json!({"pool": node.members.id, "rows": node.members.export(), "policy": policy_json(node)}),
     }

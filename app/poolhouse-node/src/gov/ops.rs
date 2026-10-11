@@ -241,15 +241,7 @@ impl Node {
         }
         charter.check_founding().map_err(|e| declined(&e.to_string()))?;
         let found = Act::new(&charter.pool_id(), 1, "found", charter.body(), now, "")?;
-        let (old, legacy) = (self.members.id.clone(), self.dir.join("pool.json"));
-        let pool = GovPool::create(&self.dir, found)?;
-        if legacy.is_file() {
-            let retired = self.dir.join("pools").join("retired");
-            private_dir(&retired)?;
-            std::fs::rename(&legacy, retired.join(format!("legacy-{old}.json")))?;
-        }
-        let id = pool.id.clone();
-        self.members = Pool::governed(&self.dir, pool);
+        let id = self.start_pool(found)?;
         self.gov_admit(&self.cert.der.clone(), &crate::poolops::host_name(), "found")?;
         self.record_event("pool_created", &id, &format!("{} ({})", name.chars().take(40).collect::<String>(), policy.name()))?;
         Ok(json!({"pool": id, "name": name, "policy": policy.name(), "epoch": 1}))
@@ -327,13 +319,9 @@ impl Node {
     }
 
     /// Make an act of ``kind`` for the pool and sign it with the keys this device's signer holds that count.
-    pub fn pool_propose(&mut self, kind: &str, mut body: Value) -> Result<Value> {
+    pub fn pool_propose(&mut self, kind: &str, body: Value) -> Result<Value> {
         let signer = self.signer.clone();
-        if kind == "admin_remove" && body.get("cut").is_none() {
-            let key = body["key"].as_str().unwrap_or("").to_string();
-            let cut: Vec<String> = self.members.gov().map(|g| g.acts().iter().filter(|(_, a)| a.admin_keys().contains(&key.as_str())).map(|(id, _)| id.clone()).collect()).unwrap_or_default();
-            body["cut"] = json!(cut);
-        }
+        let body = self.with_cut(kind, body);
         self.asking(kind, |n| n.with_gov(|g, wall| propose(g, signer.as_ref(), kind, body, wall)))
     }
 
@@ -373,14 +361,15 @@ impl Node {
 
     /// Become a member of the governed pool ``found`` founded, which the device that admitted this one described: the admin-set acts
     /// in effect there (``settled``) and the rest that stand. This device must be in it, and must not be in a pool of its own.
-    pub fn adopt_governed(&mut self, found: Act, settled: Vec<Act>, rest: Vec<Act>) -> Result<()> {
+    pub fn adopt_governed(&mut self, found: Act, settled: Vec<Act>, delegates: Vec<Act>, rest: Vec<Act>) -> Result<()> {
         if !self.members.can_join_other() {
             return Err(Error::Denied("a device that already has members does not change pool".into()));
         }
-        let (old, legacy, wall) = (self.members.id.clone(), self.dir.join("pool.json"), wall_ms());
+        let (old, wall) = (self.members.id.clone(), wall_ms());
         let mut pool = GovPool::create(&self.dir, found)?;
         pool.ingest_many(settled, wall, true);
-        pool.ingest_many(rest, wall, false);
+        pool.ingest_many(delegates, wall, false);
+        pool.ingest_many(rest, wall, true);
         if !pool.devices().get(&self.cert.fingerprint()).is_some_and(|d| d.status == Status::Active) {
             let dir = pool.dir().to_path_buf();
             drop(pool);
@@ -388,13 +377,66 @@ impl Node {
             return Err(Error::Denied("the pool does not list this device".into()));
         }
         pool.save()?;
+        self.retire_legacy(&old)?;
+        self.members = Pool::governed(&self.dir, pool);
+        Ok(())
+    }
+
+    /// Keep the `pool.json` of the pool of one this device had, under `pools/retired/`, once it is in a governed pool.
+    fn retire_legacy(&self, old: &str) -> Result<()> {
+        let legacy = self.dir.join("pool.json");
         if legacy.is_file() {
             let retired = self.dir.join("pools").join("retired");
             private_dir(&retired)?;
             std::fs::rename(&legacy, retired.join(format!("legacy-{old}.json")))?;
         }
-        self.members = Pool::governed(&self.dir, pool);
         Ok(())
+    }
+
+    /// Start the governed pool of the founding act ``found``, which this device may do while it is alone in a pool no admin governs.
+    fn start_pool(&mut self, found: Act) -> Result<String> {
+        if !self.members.is_legacy() {
+            return Err(declined("This device already runs a pool; leave it before making another."));
+        }
+        if !self.members.alone() {
+            return Err(upgrade());
+        }
+        let old = self.members.id.clone();
+        let pool = GovPool::create(&self.dir, found)?;
+        self.retire_legacy(&old)?;
+        let id = pool.id.clone();
+        self.members = Pool::governed(&self.dir, pool);
+        Ok(id)
+    }
+
+    /// Found the pool of an act a person's keys signed elsewhere (each key's acceptance is inside its charter). The device is not
+    /// a member until an admit signed for it is submitted.
+    pub fn pool_found(&mut self, act: &Value) -> Result<Value> {
+        let found: Act = serde_json::from_value(act.clone()).map_err(|e| Error::Invalid(format!("that is not an act: {}", e.to_string().chars().take(80).collect::<String>())))?;
+        let charter = super::pool::founding(&found).map_err(|e| declined(&e.to_string()))?;
+        let id = self.start_pool(found)?;
+        self.record_event("pool_created", &id, &format!("{} ({})", charter.name.chars().take(40).collect::<String>(), charter.policy.name()))?;
+        Ok(json!({"pool": id, "name": charter.name, "policy": charter.policy.name(), "epoch": 1}))
+    }
+
+    /// The act of ``kind`` this device's pool would take next, with the bytes a person's key signs and what the person is shown: for
+    /// a key that signs elsewhere and hands the act back through `pool_submit`.
+    pub fn pool_draft(&mut self, kind: &str, body: Value) -> Result<Value> {
+        let body = self.with_cut(kind, body);
+        let g = self.members.gov().ok_or_else(upgrade)?;
+        let act = g.new_act(kind, body, wall_ms())?;
+        super::body::parse(&act).map_err(|e| declined(&e.to_string()))?;
+        Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": describe(&act, &g.devices())}))
+    }
+
+    /// An `admin_remove` that names no cut keeps every act of that key this device holds.
+    fn with_cut(&self, kind: &str, mut body: Value) -> Value {
+        if kind == "admin_remove" && body.get("cut").is_none() {
+            let key = body["key"].as_str().unwrap_or("").to_string();
+            let cut: Vec<String> = self.members.gov().map(|g| g.acts().iter().filter(|(_, a)| a.admin_keys().contains(&key.as_str())).map(|(id, _)| id.clone()).collect()).unwrap_or_default();
+            body["cut"] = json!(cut);
+        }
+        body
     }
 
     /// How this device's pool is governed, as `pool_status` shows it.

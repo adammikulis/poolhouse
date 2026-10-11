@@ -291,6 +291,27 @@ fn an_act_a_person_signed_with_a_key_of_their_own_is_submitted_without_any_signe
     assert_eq!(b.member(&victim.fingerprint()).map(|m| m["status"].clone()), Some(json!("revoked")));
 }
 
+#[test]
+fn a_pool_is_founded_drafted_and_signed_by_a_key_outside_the_node_with_no_signer_on_it() {
+    let (a, b) = (device(), device());
+    let charter = charter(&[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    let founded = a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
+    assert_eq!(founded["pool"], charter.pool_id().as_str());
+    assert!(!a.is_member(&a.fp()), "the pool exists and the device is not yet in it");
+    let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&a.net.me, "this-device", "found", "")}));
+    let mut admit: Act = serde_json::from_value(draft["act"].clone()).unwrap();
+    assert_eq!(draft["sign_bytes"], poolhouse_node::fsutil::hex(&admit.sign_bytes()).as_str(), "the bytes a person's key signs are the act's");
+    assert!(draft["summary"].as_str().unwrap().contains("this-device"));
+    sign(&mut admit, ANN);
+    assert_eq!(a.ok("pool_submit", "", &a.token, json!({"act": admit}))["status"], "effective");
+    assert!(a.is_member(&a.fp()));
+    let again = a.call("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
+    assert_eq!(again["ok"], false, "a device that runs a pool does not found a second");
+    let refused = a.call("pool_found", "", &a.token, json!({"act": {"v": 1}}));
+    assert_eq!(refused["ok"], false);
+    let _ = b;
+}
+
 // -- the delegate ----------------------------------------------------------------------------------------------------------
 
 #[test]
