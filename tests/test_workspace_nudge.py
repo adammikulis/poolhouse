@@ -7,7 +7,6 @@ import os
 import re
 
 import pytest
-from workspace_kit import cli as old_cli
 
 from poolhouse import node_supervise
 from poolhouse.workspace import board_cli, nudge
@@ -120,8 +119,25 @@ def test_hooks_print_nothing_and_exit_zero_when_the_node_cannot_be_reached(kit):
     assert plain.returncode == 3
 
 
-def test_the_installer_is_for_a_person(tmp_path):
-    out = old_cli(tmp_path / "ws", "", "install-hooks", "--settings", str(tmp_path / "s.json"), env_extra={"CLAUDECODE": "1"})
+def test_the_nudge_is_silent_when_empty_a_line_when_not_and_never_shows_text_or_acks(kit):
+    alice, bob = kit.alice, kit.bob
+    assert kit.cli("nudge", who=bob).stdout == ""
+    kit.cli("announce", "done", "announcements wait for nobody", who=alice)
+    assert kit.cli("nudge", who=bob).stdout == ""
+    say(kit, alice, bob, "task", "SECRET-BODY do it")
+    first = kit.cli("nudge", who=bob)
+    assert first.returncode == 0 and first.stderr == ""
+    assert re.fullmatch(rf"workspace: 1 waiting for you \(1 task; from {alice.name}; oldest [0-9]+s\)\. "
+                        r"A direct task is waiting on you: run poolhouse-workspace inbox now and "
+                        r"answer it\n", first.stdout)
+    assert "SECRET" not in first.stdout
+    assert kit.cli("nudge", who=bob).stdout.startswith("workspace: 1 waiting for you")
+    assert kit.cli("inbox", "--ack", who=bob).stdout.count("task from ") == 1
+    assert kit.cli("nudge", who=bob).stdout == ""
+
+
+def test_the_installer_is_for_a_person(kit, tmp_path):
+    out = kit.cli("install-hooks", "--settings", str(tmp_path / "s.json"), env={"CLAUDECODE": "1"})
     assert out.returncode == 3 and not (tmp_path / "s.json").exists()
 
 

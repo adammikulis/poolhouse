@@ -26,9 +26,10 @@ from person_support import (
     tip,
 )
 
+from poolhouse.board.client import NodeError
 from poolhouse.workspace import person_ancestry, person_store
-from poolhouse.workspace.graphlog import GraphLog
 
+pytest_plugins = ["node_kit"]
 AGENT = {"CLAUDECODE": "1"}
 
 
@@ -302,12 +303,17 @@ def test_no_console_script_names_the_record_writers():
     assert not re.search(r"person_(record|hook|auth|release)", (ROOT / "pyproject.toml").read_text())
 
 
-def test_the_board_append_refuses_a_person_attestation_from_every_caller(tmp_path):
-    log = GraphLog(tmp_path, "boards")
-    for body in ({"kind": "person-attestation"}, {"kind": "msg", "type": "person-attestation"},
-                 {"kind": "msg", "attestation": "person-attestation"}):
-        with pytest.raises(PermissionError):
-            log.append(body)
+def test_the_node_refuses_a_person_attestation_from_every_session(workspace_node):
+    session = workspace_node.session(workspace_node.member("main-1"))
+    message = {"to": "#general", "body": "x", "subject": ""}
+    for params in ({"kind": person_store.ATTESTATION, "fields": message},
+                   {"kind": "message", "fields": {**message, "type": person_store.ATTESTATION}},
+                   {"kind": "message", "fields": {**message, "type": "status", "attestation": person_store.ATTESTATION}},
+                   {"kind": "note", "fields": {"nkind": person_store.ATTESTATION, "title": "t", "body": "x"}}):
+        with pytest.raises(NodeError):
+            session.call("post", **params)
+    assert session.status()["entries"].get(person_store.ATTESTATION, 0) == 0
+    assert session.read(kind="message").entries == [] and session.notes() == []
 
 
 def test_the_board_view_shows_the_record_as_attested_by_the_hook_and_never_as_a_person(world, monkeypatch):

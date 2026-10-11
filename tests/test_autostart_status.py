@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 from autostart_support import Recorder, environment, seams, staged, write_launcher
-from workspace_kit import Kit, clean_env
 
 from poolhouse import home
 from poolhouse.fleet import autostart_check, autostart_guard, autostart_ledger
@@ -19,7 +18,9 @@ from poolhouse.fleet.autostart_apply import install
 from poolhouse.fleet.autostart_manifest import launcher_problem
 from poolhouse.fleet.autostart_prepare import platform_of
 from poolhouse.lock import only_one
-from poolhouse.workspace import autostart_status
+from poolhouse.workspace import autostart_status, board_cli
+
+pytest_plugins = ["node_kit"]
 
 
 @pytest.fixture
@@ -149,24 +150,24 @@ def test_the_cli_reports_and_verify_fails_unless_current(tmp_path, user, monkeyp
         assert json.loads(done.stdout)["state"] == "not-prepared"
 
 
-def test_workspace_status_shows_the_state_and_posts_one_line_per_drift(tmp_path, user, monkeypatch):
+def test_workspace_status_shows_the_state_and_posts_one_line_per_drift(tmp_path, user, workspace_node):
     installed(tmp_path)
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    token = kit.agent("worker")
+    worker = workspace_node.session(workspace_node.member("worker"))
 
     def announce(kind, text):
-        return kit.ws.announce(token, kind, text)
+        return board_cli.announced(worker, kind, text)
     first = autostart_status.fields(announce)
     spent = autostart_ledger.read()["reported"]
     again = autostart_status.fields(announce)
     assert autostart_ledger.read()["reported"] == spent != {}
     assert first["autostart"]["state"] == "drifted" == again["autostart"]["state"]
-    lines = [m for m in kit.ws.bus.outbox("worker", 50) if "autostart drifted" in json.dumps(m)]
+    lines = [sent for sent in worker.outbox() if "autostart drifted" in sent.entry.text]
     assert len(lines) == 1
     posted = autostart_ledger.read()["reported"]["at"]
     later = autostart_status.fields(announce, now=posted + autostart_status.REPEAT_S + 1)
     assert autostart_ledger.read()["reported"]["at"] == posted + autostart_status.REPEAT_S + 1
     assert later["autostart"]["reasons"]
+    assert len([sent for sent in worker.outbox() if "autostart drifted" in sent.entry.text]) == 2
 
 
 def test_the_device_report_names_the_state(tmp_path, user):

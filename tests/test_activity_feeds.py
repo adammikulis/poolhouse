@@ -3,10 +3,10 @@ body text reaches the log. Real chat, rules, workspace, ledger, broker, download
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
-from workspace_kit import Kit, clean_env
 
 from poolhouse import bench, net, sentinel
 from poolhouse.activity import feeds, writer
@@ -123,12 +123,20 @@ def test_attaching_twice_does_not_double_every_event(person):
 
 
 # -- workspace ------------------------------------------------------------------------------------------------
-def test_workspace_messages_and_claims_are_recorded_by_metadata_without_the_body(person, monkeypatch, tmp_path):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    alpha, beta = kit.agent("alpha"), kit.agent("beta")
-    kit.ws.send(alpha, "beta", "handoff", BODY)
-    kit.ws.claim(beta, "branch", "feat/x")
-    assert feeds.workspace_sync(kit.base) >= 3
+def audit_rows(base: Path, *rows: dict) -> None:
+    """Append ``rows`` to the workspace audit file the feed reads, numbering each after the last."""
+    path = base / "audit.jsonl"
+    numbered = len(path.read_text().splitlines()) if path.exists() else 0
+    with path.open("a") as handle:
+        for number, row in enumerate(rows, numbered + 1):
+            handle.write(json.dumps({"v": 1, "seq": number, "ts": 1_800_000_000.0 + number, **row}) + "\n")
+
+
+def test_workspace_messages_and_claims_are_recorded_by_metadata_without_the_body(person, tmp_path):
+    audit_rows(tmp_path, {"event": "agent.minted", "who": "owner", "name": "alpha"},
+               {"event": "message", "who": "alpha", "msg": 1, "to": "beta", "type": "handoff", "thread": 0, "size": len(BODY)},
+               {"event": "claim", "who": "beta", "kind": "branch", "key": "feat/x"})
+    assert feeds.workspace_sync(tmp_path) == 3
     msg = next(e for e in entries() if e.kind == "workspace.message")
     assert msg.actor.endswith("alpha") or "alpha" in msg.actor
     assert msg.refs["to"] == "beta" and msg.meta["type"] == "handoff" and msg.meta["size"] == len(BODY)
@@ -138,14 +146,22 @@ def test_workspace_messages_and_claims_are_recorded_by_metadata_without_the_body
     assert CANARY.encode() not in on_disk(writer.directory())
 
 
-def test_a_second_sync_writes_only_what_is_new(person, monkeypatch, tmp_path):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    alpha = kit.agent("alpha")
-    kit.agent("beta")
-    first = feeds.workspace_sync(kit.base)
-    assert first >= 2 and feeds.workspace_sync(kit.base) == 0
-    kit.ws.send(alpha, "beta", "status", "x")
-    assert feeds.workspace_sync(kit.base) == 1
+def test_a_second_sync_writes_only_what_is_new(person, tmp_path):
+    audit_rows(tmp_path, {"event": "agent.minted", "who": "owner", "name": "alpha"},
+               {"event": "agent.minted", "who": "owner", "name": "beta"})
+    first = feeds.workspace_sync(tmp_path)
+    assert first == 2 and feeds.workspace_sync(tmp_path) == 0
+    audit_rows(tmp_path, {"event": "message", "who": "alpha", "msg": 1, "to": "beta", "type": "status", "size": 1})
+    assert feeds.workspace_sync(tmp_path) == 1
+
+
+def test_a_message_row_without_its_size_says_the_payload_is_unavailable_and_never_carries_a_body(person, tmp_path):
+    audit_rows(tmp_path, {"event": "message", "who": "alpha", "msg": 1, "to": "beta", "type": "handoff", "body": BODY})
+    assert feeds.workspace_sync(tmp_path) == 1
+    msg = next(entry for entry in entries() if entry.kind == "workspace.message")
+    assert msg.meta["payload"] == "metadata-unavailable" and "size" not in msg.meta
+    assert BODY not in " ".join(repr(entry) for entry in entries())
+    assert CANARY.encode() not in on_disk(writer.directory())
 
 
 # -- reputation, leases, downloads, bench -------------------------------------------------------------------
@@ -192,15 +208,3 @@ def test_a_kept_bench_run_records_command_label_and_where_it_is_kept(person, tmp
     assert (e.subject, e.outcome, e.refs["key"], e.meta["rows"], e.meta["model"]) == (
         "trial", "kept", key, 1, "qwen-q4.gguf")
     assert BODY not in repr(e) and CANARY.encode() not in on_disk(writer.directory())
-
-
-def test_workspace_sync_keeps_audited_size_after_payload_expires(person, monkeypatch, tmp_path):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    alpha = kit.agent("alpha")
-    kit.agent("beta")
-    kit.ws.send(alpha, "beta", "handoff", BODY)
-    assert kit.ws.bus.log.prune_prefix(lambda row: True) == 1
-    feeds.workspace_sync(kit.base)
-    msg = next(entry for entry in entries() if entry.kind == "workspace.message")
-    assert msg.meta["size"] == len(BODY)
-    assert BODY not in " ".join(repr(entry) for entry in entries())

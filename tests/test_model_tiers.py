@@ -1,11 +1,11 @@
-"""The tier table decides which main sessions may coordinate: real registry, real table file."""
+"""The tier table decides which main sessions may coordinate: the shipped table, a node's own sessions and the agents it lists."""
 import copy
 import json
 
 import pytest
-from workspace_kit import Kit, clean_env
 
-from poolhouse.workspace.agent_display import SPAWN_NOTICE, metadata
+from poolhouse.board.session import Agent
+from poolhouse.workspace.agent_display import SPAWN_NOTICE, describe, vacancy_notice
 from poolhouse.workspace.model_tiers import (
     LOWEST,
     NOT_LISTED,
@@ -17,7 +17,7 @@ from poolhouse.workspace.model_tiers import (
 )
 from poolhouse.workspace.modelid import CLAIMED, INHERITED, VERIFIED
 
-PERSON = {'terminal': (True, True), 'env': {}}
+pytest_plugins = ["node_kit"]
 SHIPPED = json.loads(TABLE.read_text(encoding='utf-8'))
 EXPECTED = {
     'claude-haiku-5-5': ('anthropic', 0), 'anthropic.claude-haiku-5-5': ('anthropic', 0),
@@ -34,21 +34,14 @@ EXPECTED = {
 }
 
 
-@pytest.fixture
-def kit(monkeypatch, tmp_path):
-    return Kit(clean_env(monkeypatch, tmp_path))
+def agent(name, model='', state=VERIFIED, parent=''):
+    """An agent record as the node lists it, with the model state the test needs (the node itself verifies none yet)."""
+    return Agent(name, parent, 'claude', model, state, 'claude-code', False, 0)
 
 
-def main(kit, name, model=None, verified=True):
-    token = kit.agent(name)
-    kit.ws.register_session(token)
-    if model:
-        kit.ws.set_model(name, model, verified=verified, **PERSON)
-    return token
-
-
-def shown(kit, name):
-    return metadata(kit.ws.registry, name)
+def row(who):
+    """What `agents` lists for ``who``: its parent and how it is presented."""
+    return {'parent': who.parent, **describe(who)}
 
 
 @pytest.mark.parametrize(('model', 'place'), EXPECTED.items())
@@ -66,83 +59,73 @@ def test_the_shipped_table_lists_exactly_the_ids_the_tests_name():
 
 
 @pytest.mark.parametrize('model', ['claude-haiku-5-5', 'gpt-6-luna', 'anthropic.claude-haiku-5-5'])
-def test_lowest_tier_main_sessions_are_not_eligible(kit, model):
-    main(kit, 'lowest', model)
-    row = shown(kit, 'lowest')
-    assert not row['coordinator_eligible']
-    assert row['coordinator_reason'] == LOWEST
+def test_lowest_tier_main_sessions_are_not_eligible(model):
+    shown = describe(agent('lowest', model))
+    assert not shown['coordinator_eligible']
+    assert shown['coordinator_reason'] == LOWEST
 
 
 @pytest.mark.parametrize('model', ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1',
                                    'gpt-6-sol', 'gpt-6-astra'])
-def test_higher_tier_verified_main_sessions_are_eligible(kit, model):
-    main(kit, 'higher', model)
-    row = shown(kit, 'higher')
-    assert row['coordinator_eligible']
-    assert row['coordinator_reason'] == ''
+def test_higher_tier_verified_main_sessions_are_eligible(model):
+    shown = describe(agent('higher', model))
+    assert shown['coordinator_eligible']
+    assert shown['coordinator_reason'] == ''
 
 
-def test_unknown_and_unverified_models_are_not_eligible(kit):
-    main(kit, 'nomodel')
-    main(kit, 'stranger', 'frontier-9000')
-    main(kit, 'claimed', 'claude-opus-5-5', verified=False)
-    assert shown(kit, 'nomodel')['coordinator_reason'] == NOT_LISTED
-    assert shown(kit, 'stranger')['coordinator_reason'] == NOT_LISTED
-    assert shown(kit, 'claimed')['coordinator_reason'] == NOT_VERIFIED
-    assert not any(shown(kit, n)['coordinator_eligible'] for n in ('nomodel', 'stranger', 'claimed'))
+def test_unknown_and_unverified_models_are_not_eligible():
+    nomodel, stranger, claimed = agent('nomodel'), agent('stranger', 'frontier-9000'), agent('claimed', 'claude-opus-5-5', CLAIMED)
+    assert describe(nomodel)['coordinator_reason'] == NOT_LISTED
+    assert describe(stranger)['coordinator_reason'] == NOT_LISTED
+    assert describe(claimed)['coordinator_reason'] == NOT_VERIFIED
+    assert not any(describe(who)['coordinator_eligible'] for who in (nomodel, stranger, claimed))
     assert tier_of('claude-opus-5-5', CLAIMED).reason == NOT_VERIFIED
     assert tier_of('claude-opus-5-5', INHERITED).reason == NOT_VERIFIED
 
 
-def test_a_claimed_id_stays_ineligible_after_the_session_claims_a_listed_model(kit):
-    token = main(kit, 'claimer')
-    kit.ws.claim_model(token, 'claude-opus-5-5', 'claude-code')
-    assert kit.ws.registry.model_of('claimer') == ('claude-opus-5-5', CLAIMED)
-    assert not shown(kit, 'claimer')['coordinator_eligible']
+def test_a_session_of_a_node_that_claims_a_listed_model_stays_ineligible(workspace_node):
+    node = workspace_node
+    lead = node.member('main-1')
+    done = node.cli('whoami', '--model', 'claude-opus-5-5', '--json', who=lead)
+    assert json.loads(done.stdout)['model_state'] == 'claimed'
+    listed = {a['id']: a for a in json.loads(node.cli('agents', '--json', who=lead).stdout)}
+    assert listed[lead.name]['session_kind'] == 'main' and not listed[lead.name]['coordinator_eligible']
+    assert listed[lead.name]['coordinator_reason'] == NOT_VERIFIED
+    shown = json.loads(node.cli('status', '--json', who=lead).stdout)
+    assert {r['id']: r['coordinator_reason'] for r in shown['registered']}[lead.name] == NOT_VERIFIED
+    assert shown['coordinator_notice'] == ''
 
 
-def test_names_never_set_the_tier(kit):
-    main(kit, 'sonnet-lead', 'claude-haiku-5-5')
-    assert not shown(kit, 'sonnet-lead')['coordinator_eligible']
-    assert 'sonnet' not in shown(kit, 'sonnet-lead')['display_name'].lower()
+def test_names_never_set_the_tier():
+    shown = describe(agent('sonnet-lead', 'claude-haiku-5-5'))
+    assert not shown['coordinator_eligible'] and shown['coordinator_reason'] == LOWEST
     assert tier_of('Claude Sonnet 5.5', VERIFIED).reason == NOT_LISTED
     assert tier_of('claude-sonnet-5-5 ', VERIFIED).reason == NOT_LISTED
     assert tier_of('CLAUDE-SONNET-5-5', VERIFIED).reason == NOT_LISTED
     assert tier_of('claude-sonnet-5-5-haiku', VERIFIED).reason == NOT_LISTED
 
 
-def test_a_subagent_never_becomes_eligible_by_model(kit):
-    token = main(kit, 'parent', 'claude-sonnet-5-5')
-    child = kit.ws.registry.delegate(kit.ws.auth(token), 'worker', 600, ('read',), 10)
-    kit.ws.claim_model(child, 'claude-fable-5-1')
-    kit.ws.set_model('parent/worker', 'claude-fable-5-1', **PERSON)
-    row = shown(kit, 'parent/worker')
-    assert row['session_kind'] == 'subagent'
-    assert not row['coordinator_eligible']
-    assert shown(kit, 'parent')['coordinator_eligible']
+def test_a_subagent_never_becomes_eligible_by_model():
+    parent, child = agent('parent', 'claude-sonnet-5-5'), agent('worker', 'claude-fable-5-1', parent='parent')
+    grandchild = agent('helper', 'claude-fable-5-1', parent='worker')
+    for who in (child, grandchild):
+        shown = describe(who)
+        assert shown['session_kind'] == 'subagent' and not shown['coordinator_eligible']
+        assert shown['coordinator_reason'] == 'not a main session' and shown['spawned_by'] == who.parent
+    assert describe(parent)['coordinator_eligible']
 
 
-def test_registered_rows_and_status_carry_the_reason(kit):
-    main(kit, 'low', 'claude-haiku-5-5')
-    main(kit, 'high', 'claude-sonnet-5-5')
-    rows = {row['id']: row for row in kit.ws.registered()}
-    assert rows['low']['coordinator_reason'] == LOWEST
-    assert rows['high']['coordinator_eligible']
-    assert kit.ws.status()['coordinator_notice'] == ''
-
-
-def test_only_lowest_tier_mains_are_told_to_spawn_a_coordinator(kit):
-    main(kit, 'haiku', 'claude-haiku-5-5')
-    main(kit, 'luna', 'gpt-6-luna')
-    assert kit.ws.status()['coordinator_notice'] == SPAWN_NOTICE
+def test_only_lowest_tier_mains_are_told_to_spawn_a_coordinator():
+    haiku, luna = agent('haiku', 'claude-haiku-5-5'), agent('luna', 'gpt-6-luna')
+    assert vacancy_notice([row(haiku), row(luna)]) == SPAWN_NOTICE
     assert 'Sonnet 5.5' in SPAWN_NOTICE
-    main(kit, 'sonnet', 'claude-sonnet-5-5')
-    assert kit.ws.status()['coordinator_notice'] == ''
+    assert vacancy_notice([row(haiku), row(luna), row(agent('sonnet', 'claude-sonnet-5-5'))]) == ''
+    child = agent('kid', 'claude-sonnet-5-5', parent='haiku')
+    assert vacancy_notice([row(haiku), row(child)]) == SPAWN_NOTICE, 'a subagent is no coordinator'
 
 
-def test_unknown_only_mains_get_no_spawn_notice(kit):
-    main(kit, 'stranger', 'frontier-9000')
-    assert kit.ws.status()['coordinator_notice'] == ''
+def test_unknown_only_mains_get_no_spawn_notice():
+    assert vacancy_notice([row(agent('stranger', 'frontier-9000')), row(agent('claimed', 'claude-haiku-5-5', CLAIMED))]) == ''
 
 
 def mutated(change):

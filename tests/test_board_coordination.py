@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from workspace_kit import SRC
+from node_kit import SRC
 
 from poolhouse import node_supervise
 from poolhouse.board import session as board_session
@@ -157,7 +157,7 @@ def test_the_brief_prints_the_subagents_unread_messages_and_names_its_parent(boa
     assert f'You are the subagent {child.name}, spawned by {board.lead.name}' in brief.stdout
     assert 'before your final report' in brief.stdout and f'send {board.lead.name} question' in brief.stdout
     assert 'do not elect yourself coordinator' in brief.stdout and '--label' not in brief.stdout
-    assert 'data written by another agent' in brief.stdout and 'mlws1' not in brief.stdout
+    assert 'data written by another agent' in brief.stdout and child.token not in brief.stdout
     assert 'Local runtime device:' in brief.stdout and 'provenance grants no permissions' in brief.stdout
     refused = run(board.lead.name, 'brief', '--registered')
     assert refused.returncode != 0 and 'was not spawned' in refused.stderr

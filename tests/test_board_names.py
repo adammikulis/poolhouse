@@ -8,7 +8,6 @@ from poolhouse import board_names
 from poolhouse.graph.store import GraphStore
 from poolhouse.memory import vault
 from poolhouse.reputation.sealed import SealedGraph
-from poolhouse.workspace.claims import Claims
 
 AUTHORITY = "a" * 32
 OLD_OWNER = f"canonical:{AUTHORITY}:codex-fixture"
@@ -42,7 +41,7 @@ def test_an_old_backlog_store_reads_the_same_through_the_new_names(tmp_path):
         graph.close()
 
 
-def test_an_old_sealed_evidence_store_and_claims_file_read_through_the_new_names(tmp_path):
+def test_an_old_sealed_evidence_store_reads_through_the_new_names(tmp_path):
     keys = vault.PassphraseKeys(lambda _: "isolated names key")
     sealed = SealedGraph(tmp_path / "rep" / "graph.enc", keys=keys)
     sealed.edit(lambda g: g.upsert_node({
@@ -54,12 +53,14 @@ def test_an_old_sealed_evidence_store_and_claims_file_read_through_the_new_names
     attrs = reopened.graph().nodes("work_evidence")[0]["attrs"]
     assert attrs == {"source": "taskboard", "nested": [{"source": "taskboard"}]}
     reopened.close()
+
+
+def test_an_old_claims_file_reads_through_the_new_owner_prefix(tmp_path):
     path = tmp_path / "claims.json"
     path.write_text(json.dumps({"version": 1, "claims": {
         "branch:x": {"kind": "branch", "key": "x", "owner": OLD_OWNER, "pid": 0, "since": 1.0,
                      "expires": 9e12, "note": ""}}}))
-    store = Claims(tmp_path, 60.0)
-    assert store._load()["branch:x"]["owner"] == NEW_OWNER
+    assert board_names.migrate_claims(path) == 1
     assert json.loads(path.read_text())["claims"]["branch:x"]["owner"] == NEW_OWNER
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 __all__ = ["CLAIMED", "HISTORY_MAX", "INHERITED", "UNKNOWN", "VERIFIED", "clean_harness",
-           "clean_model", "describe"]
+           "clean_model", "describe", "safe"]
 
 VERIFIED, CLAIMED, INHERITED = "verified", "claimed", "inherited"
 UNKNOWN = "model unknown"
@@ -29,6 +29,12 @@ def clean_harness(text: str) -> str:
     return text
 
 
+def safe(model: str) -> str:
+    """``model`` when it is a model id, else empty: the node keeps any clean line a session claims, a reader shows only ids."""
+    return model if MODEL.fullmatch(model) else ""
+
+
 def describe(model: str, state: str) -> str:
     """``model, state`` for a header, or ``model unknown``."""
-    return f"{model}, {state}" if model else UNKNOWN
+    shown = safe(model)
+    return f"{shown}, {state}" if shown else UNKNOWN
