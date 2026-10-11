@@ -44,7 +44,8 @@ def rows(pool: dict) -> list[dict]:
     """One row per active member of a pool status: name, fingerprint, address, whether it is this machine or connected."""
     return [{"name": m.get("name") or m["fingerprint"][:12], "fingerprint": m["fingerprint"], "addr": m.get("addr") or "",
              "state": "this machine" if m.get("self") else "connected" if m.get("connected") else "known",
-            "build": str(m.get("build", ""))[:7], "build_state": m.get("build_state", "unknown"), "fix": m.get("fix", "")}
+            "build": str(m.get("build", ""))[:7], "build_state": m.get("build_state", "unknown"), "fix": m.get("fix", ""),
+            "reach": m.get("reach", "unknown"), "reach_hint": m.get("reach_hint", "")}
             for m in pool.get("members", []) if m.get("status") == "active"]
 
 
@@ -54,9 +55,10 @@ def render(pool: dict, *, as_json: bool) -> str:
         return json.dumps({"pool": pool.get("pool"), "project": pool.get("project"), "policy": pool.get("policy"),
                            "build": pool.get("build"), "members": rows(pool)}, indent=2)
     lines = [f"pool {pool.get('pool')}  project {pool.get('project') or '-'}  join policy {pool.get('policy')}",
-             f"{'NAME':<20} {'STATE':<13} {'ADDRESS':<24} {'BUILD':<8} {'BUILD STATE':<13} FINGERPRINT"]
-    lines += [f"{r['name']:<20} {r['state']:<13} {r['addr']:<24} {r['build'] or '-':<8} {r['build_state']:<13} {r['fingerprint'][:16]}" for r in rows(pool)]
+             f"{'NAME':<20} {'STATE':<13} {'REACH':<8} {'ADDRESS':<24} {'BUILD':<8} {'BUILD STATE':<13} FINGERPRINT"]
+    lines += [f"{r['name']:<20} {r['state']:<13} {r['reach']:<8} {r['addr']:<24} {r['build'] or '-':<8} {r['build_state']:<13} {r['fingerprint'][:16]}" for r in rows(pool)]
     lines += [f"{r['name']}: {r['fix']}" for r in rows(pool) if r["fix"]]
+    lines += [f"{r['name']}: {r['reach_hint']}" for r in rows(pool) if r["reach_hint"]]
     return "\n".join(lines)
 
 
@@ -74,6 +76,18 @@ def member_lines(pool: dict) -> list[str]:
     return [f"  {m.get('name') or str(m.get('fingerprint', ''))[:12]:<18} {m.get('build_state', 'unknown'):<13} {str(m.get('build', ''))[:7]} (#{m.get('build_seq', 0)})"
             + (f"  fix: {m['fix']}" if m.get("fix") else "")
             for m in pool.get("members", []) if m.get("status") == "active" and not m.get("self") and m.get("build_state") not in ("current",)]
+
+
+def reach_lines(pool: dict | None) -> list[str]:
+    """One line per member this device does not reach directly, with the exact fix: what `runtime status` adds to the build line."""
+    return [f"reach        {r['name']}: {r['reach']}" + (f" ({r['reach_hint']})" if r["reach_hint"] else "")
+            for r in rows(pool or {}) if r["reach"] not in ("direct", "self")]
+
+
+def reach_findings(pool: dict | None) -> list[Finding]:
+    """The doctor's rows for how each other member is reached: `none` is a failure with its fix, `channel` passes and says what limits it."""
+    return [Finding(name=f"reach: {r['name']}", good=r["reach"] in ("direct", "channel"), said=r["reach"], note=r["reach_hint"])
+            for r in rows(pool or {}) if r["state"] != "this machine"]
 
 
 def build_findings(pool: dict | None = None) -> list[Finding]:

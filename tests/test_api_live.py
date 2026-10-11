@@ -76,6 +76,7 @@ def test_a_pool_of_one_lists_this_device_and_capacity(mine):
     pool = ph.pool.status()
     assert pool.policy in ("open", "secure") and pool.id and pool.listening == ""
     assert [m.this_device for m in ph.pool.members()] == [True] and ph.pool.policy() == pool.policy
+    assert [(m.reach, m.reach_hint) for m in ph.pool.members()] == [("self", "")], "a member's reach is how this device gets to it; this device is `self`"
     cap = ph.pool.capacity()
     assert cap.cpu_cores >= 1 and cap.cpu_slots >= 1 and cap.memory_bytes > 0 and cap.leases_held == 0
     with pytest.raises(ph.Error, match="agreed=True"):

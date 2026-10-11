@@ -81,7 +81,9 @@ impl crate::node::Node {
         let now = wall_ms();
         let members: Vec<Value> = self.members.devices().iter().map(|d| {
             let f = self.facts.peers.get(&d.fingerprint);
+            let (reach, hint) = if d.status == crate::membership::Status::Active { crate::reach::of(d.fingerprint == me, f) } else { ("none", String::new()) };
             let mut row = json!({
+                "reach": reach, "reach_hint": hint, "network": if d.fingerprint == me { self.network.as_str() } else { f.map_or("", |f| f.network.as_str()) },
                 "fingerprint": d.fingerprint, "name": d.name, "status": d.status, "since": d.at, "by": d.by, "self": d.fingerprint == me,
                 "connected": f.is_some_and(|f| f.sessions > 0), "addr": f.and_then(|f| f.addr.clone()),
                 "last_seen_ms": f.map_or(0, |f| f.last_seen_ms), "last_sync_ms": f.map_or(0, |f| f.last_sync_ms),

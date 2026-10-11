@@ -77,6 +77,13 @@ def test_wsl_in_nat_mode_or_with_an_unmirrored_config_ends_the_plan_at_a_restart
     assert not any(".wslconfig" in s for s in device_setup.plan(needs(kind="mac", config_change=True)))
 
 
+def test_the_wsl_plan_says_mirrored_is_the_recommended_setting_and_why():
+    text = "\n".join(device_setup.plan(needs(kind="wsl", mode="nat", config_change=True)))
+    assert "recommended" in text and "shares the Windows network" in text and "reach it directly" in text and "hear its beacons" in text
+    assert "mirrored networking takes effect" in text
+    assert "recommended" not in "\n".join(device_setup.plan(needs(kind="windows", firewall_missing=True)))
+
+
 @pytest.mark.parametrize("platform, version, kind", [
     ("win32", "", "windows"), ("darwin", "", "mac"), ("linux", "Linux 5.15 microsoft-standard-WSL2", "wsl"), ("linux", "Linux 6.1 generic", "linux")])
 def test_the_kind_of_machine_comes_from_the_platform_and_the_kernel(platform, version, kind):

@@ -57,7 +57,7 @@ multicast to the machine it runs on, so discovery by beacon is not exercised.
 | `crash-mid-sync` | the node of a device is killed with SIGKILL while 1500 entries are arriving; the supervisor restarts it and it ends with all of them and no damaged log |
 | `tests-on-device` | `scripts/test --on` (the real `test_on` code) sends a tiny tree to a Linux device: refused until its person enables the feature and names the sender, then a test file that asserts it is Linux passes there; a device not named is refused |
 | `tests-on-undialable` | a request for tests on a member the sender has no address for ends with the reason and the fix |
-| `nat-board`, `nat-claims`, `nat-build`, `nat-tests`, `nat-removal`, `nat-setup-plan` | the device behind NAT (`--wsl`), below |
+| `nat-board`, `nat-claims`, `nat-build`, `nat-tests`, `nat-reach`, `nat-removal`, `nat-setup-plan` | the device behind NAT (`--wsl`), below |
 | `chain-of-dials` | in a chain of five, where only neighbours have each other's address, every entry still reaches every device |
 
 ### The device behind NAT (`--wsl`)
@@ -80,6 +80,12 @@ What the pool does with a device that can only dial out:
 * **Landing and leases** are board entries, so they follow sync and need no inbound dial.
 * **Which members can reach it** is the members it dials: a join gives it one address (the member it joined), so a member it never
   dialed cannot send it requests. Entries and builds still reach and leave it through the members in between.
+* **How each member is reached is shown.** Every member row says `direct` (this device dialed it and it answered), `channel` (it is
+  reached only over the connection it opened), `none` or `self`, with the exact fix when it is not direct; for a device that reads as
+  WSL2 on a private range the fix is mirrored networking (docs/windows-wsl.md). This is `nat-reach`; `nat-setup-plan` checks that the
+  plan recommends mirrored networking.
+* **Mirrored mode is untested by CI.** The `--wsl` container and every WSL job of CI are the NAT case (a GitHub runner's WSL is in NAT
+  mode). WSL's mirrored mode, where the device shares the Windows network and is dialed like any other, has not been run by this rig.
 
 ## What it found that the loopback tests did not
 
@@ -151,14 +157,14 @@ All five jobs were green on runs 38098615088 and 38099163909 (2026-10-11).
 
 | job | devices | ran | skipped, and why |
 |---|---|---|---|
-| `native on ubuntu-latest` | three nodes on one Linux runner | every step that fits three native devices | `partition-heal` (needs Docker), the six `nat-*` steps (need `--wsl`), `chain-of-dials` (needs five devices) |
+| `native on ubuntu-latest` | three nodes on one Linux runner | every step that fits three native devices | `partition-heal` (needs Docker), the seven `nat-*` steps (need `--wsl`), `chain-of-dials` (needs five devices) |
 | `native on macos-latest` | three nodes on one macOS (arm64) runner | the same | the same; the node, its Unix socket, `getpeereid`, the supervisor and the updater's real `git` on macOS |
 | `native on windows-latest` | three nodes on one Windows runner | the same | the same; the named pipe, its access rule, the Windows supervisor and the updater's real `git` on Windows |
 | `native in WSL Ubuntu on a Windows runner` | three nodes inside a real Ubuntu 24.04 WSL2 distribution | the same | the same; a WSL2 kernel and the node built and installed inside it |
 | `a Windows device and a WSL device of one runner in one pool` | a Windows node and a node in WSL, joined: the WSL device reaches Windows at the address of the Windows side of the virtual switch (read from the default route), Windows reaches WSL at `127.0.0.1` (localhost forwarding) | `join-open`, `join-secure`, `join-wrong-code`, `members-listed`, `entries-converge`, `direct-message`, `claim-pool-wide`, `lease-queues`, `build-update`, `join-order`, `crash-mid-sync`, `tests-on-device` (12 of 12) | `build-stale`, `build-wire`, `member-removal`, `cert-swap`, `tests-on-undialable` (each needs three devices), plus the same Docker-only and NAT steps |
 
 What none of them proves, beyond "What it cannot show": a removal, a swapped certificate and a stale device among *three* members across
-the Windows and WSL boundary (the pair has two devices); WSL's mirrored networking mode (the runner is in NAT mode); and a Windows machine
+the Windows and WSL boundary (that job has two devices); WSL's mirrored networking mode (the runner is in NAT mode, so the CI WSL job is the NAT case and mirrored mode is untested by CI); and a Windows machine
 that is not a CI runner (a laptop's firewall profile, a VPN). A runner's loopback and virtual switch are not a LAN.
 
 ### What the first real runs found
@@ -171,8 +177,8 @@ Run 38092844765 failed three jobs; each was a defect of the rig, not of the node
   the updater's report hid the reason. The updater now says why no node answered (`node_pool.ask`), and the rig waits until a new node
   answers and knows a member on a newer build again (a restarted node learns builds only by syncing).
 * **The Windows and WSL job passed `--wsl-distro` and two more flags the script did not take.** `scripts/pool-check` now takes them, and a
-  test parses every `scripts/pool-check` line of the workflow with the script's own parser, so the two cannot drift again. A pair of devices
-  also counts as two devices (it was counted as three, so three-device steps ran on two and failed), the Windows address in WSL is read from
+  test parses every `scripts/pool-check` line of the workflow with the script's own parser, so the two cannot drift again. A job with two devices
+  is also counted as two (it was counted as three, so three-device steps ran on two and failed), the Windows address in WSL is read from
   the route (the first line `wsl.exe` prints can be a proxy warning, which was taken as a host name), and the checkout path of the WSL
   device is spelled as a Linux path when the rig runs on Windows.
 * **`member-removal` in WSL: `linux took an entry from the removed linux2`.** Not reproduced: the step passed in every later run of the same

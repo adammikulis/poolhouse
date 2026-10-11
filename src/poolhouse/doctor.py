@@ -408,7 +408,8 @@ def _findings(args) -> int:
     if args.action == "hooks":
         return hook_diagnostics.inspect(args)
     say("poolhouse: the repositories and the working state\n")
-    findings = agent_hooks.findings() + node_pool.build_findings() + look_checkouts(
+    pool = node_pool.status()
+    findings = agent_hooks.findings() + node_pool.build_findings(pool) + node_pool.reach_findings(pool) + look_checkouts(
         repositories(args.repo) if args.repo else None,
         bench_home=Path(args.bench_home).expanduser() if args.bench_home else None)
     ask(findings, yes=args.yes)

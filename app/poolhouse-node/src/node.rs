@@ -59,6 +59,8 @@ pub struct Node {
     pub started: Instant,
     /// The build this device runs and advertises (`build`).
     pub build: crate::build::Build,
+    /// How this machine is attached to the network (`netif::network`), told to every peer in the hello so it can say how to reach this device.
+    pub network: String,
 }
 
 /// What a request is allowed to touch, decided from its token and the board it names.
@@ -83,7 +85,7 @@ impl Node {
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?,
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
-            build: crate::build::Build::from_env(),
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(),
         };
         let root = dir.join("boards");
         if root.is_dir() {

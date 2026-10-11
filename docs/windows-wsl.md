@@ -68,6 +68,44 @@ python -m poolhouse.device_setup --yes
    Windows the suite runs inside WSL (docs/windows-runtime.md); use the WSL checkout. Another device's agent can also
    run tests here with `--on` once you turn it on (the last section).
 
+## WSL networking: mirrored is the recommended setting
+
+A WSL device should run in **mirrored** mode. WSL then shares the Windows network (the same address as Windows), so other devices
+dial it directly and its beacons are heard on the network. In the default **NAT** mode WSL sits on a private network of its own
+(`172.16.0.0/12`) that no other device can dial or broadcast to. NAT mode still works, because a device that cannot be dialed
+connects out to a member and keeps that connection open for the member to send requests down (docs/node.md, "Reaching a device
+nothing can dial"); but only the members it dialed can do so, and nothing finds it by beacon.
+
+| | mirrored (recommended) | NAT (the WSL default) |
+| --- | --- | --- |
+| a member dials the device | yes, at the Windows address and port 7447 | no; only the members the device dials reach it |
+| beacons (UDP 7448) | sent and heard on the Windows network: discovery and `open` joining work | not heard from, or sent to, the network; join with a code, dialing a member's address |
+| tests run here by another device (`scripts/test --on`) | any member can send them | only members the device dialed can; any other is told it "has not connected to this device" |
+| tests run on other devices | works | works |
+| landing, leases, claims, board entries | follow sync, work | follow sync, work (the device dials out and swaps both ways) |
+
+To change it, in Windows (`%UserProfile%\.wslconfig`; the file is created if there is none):
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+then in PowerShell run `wsl --shutdown` and start WSL again (Windows 11 22H2 or newer). Or run, on the WSL device,
+`python -m poolhouse.device_setup --yes`, which writes that setting (keeping the old file beside it), adds the Windows firewall
+rules and restarts WSL (`--dry-run` lists these first). If other devices still cannot dial it, allow inbound traffic to the WSL
+virtual machine in an administrator PowerShell: `Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow`.
+
+The pool says how each member is reached: `poolhouse-members ls` has a `REACH` column and `ph.pool.members()` has `reach` and
+`reach_hint`. `direct`: this device dialed the member and it answered. `channel`: this device cannot dial it; it is reached over the
+connection it opened. `none`: no address answers and no connection is open (`no member can dial it yet: have it dial a member, or
+give it an address`). A WSL device in NAT mode that is not `direct` gets the fix as its hint: `this device looks like WSL2 behind NAT:
+set networkingMode=mirrored in .wslconfig and run wsl --shutdown, or run python -m poolhouse.device_setup --yes on it`. The same hints
+are in `poolhouse-doctor` and `poolhouse runtime status`.
+
+CI covers only the NAT case (a GitHub runner's WSL is in NAT mode); mirrored mode has not been run by the pool check
+(docs/pool-check.md).
+
 ## Secure pools
 
 Under policy `secure` nothing enrols without a join code. The Mac makes one and the Windows device uses it. The

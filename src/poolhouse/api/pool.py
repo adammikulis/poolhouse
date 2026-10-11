@@ -36,6 +36,12 @@ class Member:
     last_sync_ms: int
     """When the boards of the two devices last agreed (milliseconds since the epoch); 0 when never."""
     last_error: str = ""
+    reach: str = "unknown"
+    """How this device reaches it: ``direct`` (it dialed the member and it answered), ``channel`` (the member dials this device
+    and requests go down its open connection), ``none`` (no address answers and no connection is open), ``self``; ``unknown``
+    when the node is older than the field."""
+    reach_hint: str = ""
+    """The exact fix when ``reach`` is not ``direct``; empty otherwise."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +80,8 @@ def _member(raw: dict) -> Member:
     name = raw.get("name") or str(raw["fingerprint"])[:12]
     return Member(str(name), str(raw["fingerprint"]), raw.get("status") == "active", bool(raw.get("self")),
                   bool(raw.get("connected")), str(raw.get("addr") or ""), int(raw.get("last_seen_ms") or 0),
-                  int(raw.get("last_sync_ms") or 0), str(raw.get("last_error") or ""))
+                  int(raw.get("last_sync_ms") or 0), str(raw.get("last_error") or ""), str(raw.get("reach") or "unknown"),
+                  str(raw.get("reach_hint") or ""))
 
 
 def status() -> Pool:

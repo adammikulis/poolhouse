@@ -54,6 +54,7 @@ STEPS = [
     ("nat-claims", steps_nat.a_claim_and_a_lease_agree_with_the_nat_device),
     ("nat-build", steps_nat.the_mac_device_sees_the_build_of_the_nat_device),
     ("nat-tests", steps_nat.tests_on_the_nat_device_say_what_they_need),
+    ("nat-reach", steps_nat.the_members_say_how_they_reach_the_nat_device),
     ("nat-removal", steps_nat.removal_reaches_the_nat_device),
     ("nat-setup-plan", steps_nat.the_wsl_setup_plan_names_the_nat_fixes),
     ("chain-of-dials", steps_members.sync_follows_the_chain_of_dials),

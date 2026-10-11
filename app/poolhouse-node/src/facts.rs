@@ -21,6 +21,10 @@ pub struct PeerFacts {
     /// Dials to this peer that failed in a row, and the time before which none is made (a peer nothing can reach is not dialed every cycle).
     pub fails: u32,
     pub retry_at_ms: u64,
+    /// True while this peer keeps a connection open to us for requests to go down (it cannot be dialed).
+    pub channel: bool,
+    /// How the peer said it is attached to the network (`netif::network`): `wsl-nat`, `wsl-mirrored` or empty.
+    pub network: String,
 }
 
 pub struct Facts {

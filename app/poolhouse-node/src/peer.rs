@@ -7,7 +7,7 @@
 //!
 //! | op | who | what |
 //! |---|---|---|
-//! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version; the boards held, to members |
+//! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version, how the device is attached to the network (`network`); the boards held, to members |
 //! | `join_open` | anyone, under policy `open` | enrol the caller; reply with the pool record |
 //! | `join_exchange`, `join_confirm` | anyone, while a join code is open | SPAKE2 (`join_code`) |
 //! | `members` | members | swap pool records |
@@ -68,14 +68,14 @@ pub fn take_policy(node: &mut Node, v: &Value) -> Result<()> {
 fn hello(node: &Node, standing: Standing) -> Value {
     let boards: Vec<&String> = if standing == Standing::Active { node.boards.keys().collect() } else { Vec::new() };
     let mut out = json!({"pool": node.members.id, "policy": node.members.policy.name(), "fingerprint": node.cert.fingerprint(), "project": node.members.project,
-           "board_fingerprint": crate::device::fingerprint(&node.key), "member": standing == Standing::Active, "boards": boards});
+           "board_fingerprint": crate::device::fingerprint(&node.key), "member": standing == Standing::Active, "boards": boards, "network": node.network});
     out.as_object_mut().expect("an object").extend(node.build.json().as_object().cloned().unwrap_or_default());
     out
 }
 
 /// The hello a device sends: its own build, so the peer learns it too.
 pub fn hello_request(node: &Node) -> Value {
-    let mut out = json!({"op": "hello"});
+    let mut out = json!({"op": "hello", "network": node.network});
     out.as_object_mut().expect("an object").extend(node.build.json().as_object().cloned().unwrap_or_default());
     out
 }

@@ -37,6 +37,7 @@ pub mod probe;
 pub mod project;
 pub mod projectid;
 pub mod quarantine;
+pub mod reach;
 pub mod registry;
 pub mod row;
 pub mod rooms;

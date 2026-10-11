@@ -505,12 +505,21 @@ impl Net {
         if replaced.is_some() {
             self.session_closed(&fp);
         }
+        self.mark_channel(&fp, true);
+    }
+
+    /// Record in the peer's facts whether it keeps a connection open to this device (`pool_status` says `channel`).
+    fn mark_channel(&self, fp: &str, open: bool) {
+        if let Ok(mut n) = self.node.lock() {
+            n.facts.peer(fp).channel = open;
+        }
     }
 
     fn drop_reverse(&self, fp: &str, link: &Arc<Mutex<PeerClient>>) {
         let removed = self.reverse.lock().ok().is_some_and(|mut m| m.get(fp).is_some_and(|l| Arc::ptr_eq(l, link)) && m.remove(fp).is_some());
         if removed {
             self.session_closed(fp);
+            self.mark_channel(fp, false);
         }
     }
 

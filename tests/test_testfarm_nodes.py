@@ -42,6 +42,15 @@ def test_a_device_nobody_enabled_takes_nothing_and_is_listed_with_why(pool, caps
     assert row["caps"]["accepts"] is False and row["fingerprint"] == fp
 
 
+def test_the_device_list_says_how_each_member_is_reached_by_real_nodes(pool, capsys):
+    a, _b, _shards, _tree = pool
+    a.call("sync_now", token=a.token)
+    assert member(a)["reach"] == "direct" and member(a)["reach_hint"] == ""
+    assert devices.command(["--json"]) == 0
+    (row,) = json.loads(capsys.readouterr().out)
+    assert (row["reach"], row["reach_hint"]) == ("direct", "")
+
+
 def test_the_person_turns_a_device_on_names_whose_tests_it_takes_and_off_stops_the_next_upload(pool, monkeypatch, capsys):
     a, b, shards, _tree = pool
     fp = member(a)["fingerprint"]

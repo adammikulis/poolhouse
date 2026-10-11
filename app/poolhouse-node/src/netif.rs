@@ -87,3 +87,29 @@ pub fn on_segment_of(ip: IpAddr, known: &[Iface]) -> bool {
         IpAddr::V6(v6) => v6.is_loopback(),
     }
 }
+
+/// How this machine is attached to the network, for a member that wants to know how to reach it: `wsl-nat` (WSL2 on the private range
+/// Hyper-V's NAT hands out: nothing can dial in), `wsl-mirrored` (WSL2 on the Windows network itself), or empty (not WSL).
+pub fn network_of(kernel: &str, route: Option<Ipv4Addr>) -> &'static str {
+    let nat = route.is_some_and(|ip| ip.octets()[0] == 172 && (16..32).contains(&ip.octets()[1]));
+    match (kernel.to_ascii_lowercase().contains("microsoft"), nat) {
+        (false, _) => "",
+        (true, true) => "wsl-nat",
+        (true, false) => "wsl-mirrored",
+    }
+}
+
+/// This machine's address on the network its default route uses (nothing is sent), when it has one.
+fn route_address() -> Option<Ipv4Addr> {
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    probe.connect("192.0.2.1:9").ok()?;
+    match probe.local_addr().ok()?.ip() {
+        IpAddr::V4(v4) => Some(v4),
+        IpAddr::V6(_) => None,
+    }
+}
+
+/// `network_of` for this machine; empty where there is no `/proc/version` to read (macOS, Windows).
+pub fn network() -> &'static str {
+    std::fs::read_to_string("/proc/version").map_or("", |kernel| network_of(&kernel, route_address()))
+}

@@ -224,6 +224,16 @@ def test_the_device_table_says_why_a_device_takes_nothing():
     assert "off-box" in text and "test shards are off on this device" in text
 
 
+def test_the_device_table_says_how_each_device_is_reached_and_the_fix_when_it_is_not_directly():
+    fix = "no member can dial it yet: have it dial a member, or give it an address"
+    shut = {"accepts": False, "reason": "did not answer"}
+    rows = [{"name": "mac", "reach": "direct", "reach_hint": "", "caps": shut, "last": {}},
+            {"name": "wsl-box", "reach": "none", "reach_hint": fix, "caps": shut, "last": {}}]
+    lines = devices.table(rows)
+    assert "REACH" in lines[0] and "direct" in lines[1] and "none" in "".join(lines[3:])
+    assert sum(fix in line for line in lines) == 1, "the fix is printed once, under the device it is for"
+
+
 # -- the command line ---------------------------------------------------------
 
 @pytest.mark.parametrize("rest", [["--rootdir=/"], ["-k", "x"], ["tests/test_a.py::test_one"], ["../tests/test_a.py"], ["scripts/test"],

@@ -145,7 +145,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
 | `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
-| `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error` |
+| `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none` or `self`) with `reach_hint` (the exact fix when it is not direct) and `network` (`wsl-nat`, `wsl-mirrored` or empty, as the member's hello said) |
 | `member_remove` | token with the grant | `fingerprint` | `{fingerprint, status}` |
 | `set_join_policy` | token with the grant | `policy` (`open` or `secure`) | `{policy, changed}` |
 | `add_device` | token with the grant | `passphrase` (else a six-digit code is made), `ttl_s` | `{code, expires_in_s, port, fingerprint}` |
@@ -415,6 +415,12 @@ listener is the one network port.
   (`Net::call_member`: test shards today), and the device answers them as it answers any peer, from the certificate the member
   showed. A member that is revoked is not sent anything; a channel that fails is dropped and the member's address, if any, is
   dialed. A device behind NAT is therefore reachable by the members it dials, which are the members whose address it holds.
+  `pool_status` says which of these holds for each member as `reach` (`reach.rs`): `direct` when this device dialed it and it
+  answered, `channel` when it is reached only over the connection it opened, `none` when no address answers and no connection
+  is open, `self` for this device; `reach_hint` is the exact fix when it is not `direct`, and says "WSL2 behind NAT" (set
+  `networkingMode=mirrored`) for a member whose hello reported `network: wsl-nat` (WSL, with a route address in 172.16.0.0/12).
+  CI proves the NAT case only: its runner is NAT, so mirrored mode (WSL on the Windows network, dialable like any device) is
+  untested by CI (docs/pool-check.md).
 - **Discovery** (`beacon.rs`). One UDP datagram with the pool id, the device fingerprint, an address and
   a port, signed with the device key and valid for a minute; sent to the multicast group on a configurable
   port. Never matched by name. Loopback, unspecified and multicast addresses are never advertised (a

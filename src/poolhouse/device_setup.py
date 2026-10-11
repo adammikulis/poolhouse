@@ -101,9 +101,10 @@ def plan(needs: Needs, *, port: int = node_join.DEFAULT_PORT, beacon: int = node
     if needs.firewall_missing:
         steps.append(f"add Windows inbound allow rules for TCP {port} and UDP {beacon} (one Windows administrator prompt: press Yes)")
     if needs.kind == "wsl" and needs.config_change:
-        steps.append("write networkingMode=mirrored to the Windows user's .wslconfig (the old file is kept beside it)")
+        steps.append("write networkingMode=mirrored to the Windows user's .wslconfig (the old file is kept beside it): the recommended WSL setting, "
+                     "because WSL then shares the Windows network, so other devices reach it directly and hear its beacons")
     if needs.restart_wsl:
-        steps.append("restart WSL, which ends this session; run the same command again afterwards")
+        steps.append("restart WSL (mirrored networking takes effect then), which ends this session; run the same command again afterwards")
         return steps
     steps.append({"runtime": "use the node of the selected runtime", "found": f"use the node binary at {needs.source.path}",
                   "build": "build the node with cargo (a few minutes)",

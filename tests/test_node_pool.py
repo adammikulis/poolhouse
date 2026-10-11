@@ -78,3 +78,52 @@ def test_under_the_test_suite_the_devices_own_node_starts_local_and_never_on_the
     monkeypatch.setattr(node_launch, "_start_supervisor", lambda state, words: seen.append(words))
     node_launch.ensure_node(None, wait_s=1)
     assert seen == [[]], "no --lan: a node a test starts is reachable from this machine only"
+
+
+WSL_FIX = "this device looks like WSL2 behind NAT: set networkingMode=mirrored in .wslconfig and run wsl --shutdown, or run `python -m poolhouse.device_setup --yes` on it"
+NONE_FIX = "no member can dial it yet: have it dial a member, or give it an address"
+
+
+def reaching(**states):
+    """A pool of this device and one member per ``name=(reach, hint)``."""
+    members = [{"fingerprint": "a" * 64, "name": "desk", "status": "active", "self": True, "reach": "self", "reach_hint": "", "addr": None}]
+    members += [{"fingerprint": f"{i:02x}" * 32, "name": name, "status": "active", "self": False, "connected": reach == "channel",
+                 "addr": "192.0.2.9:7447" if reach == "direct" else None, "reach": reach, "reach_hint": hint}
+                for i, (name, (reach, hint)) in enumerate(states.items(), start=1)]
+    return {"pool": "0123456789abcdef", "project": "", "policy": "open", "members": members}
+
+
+SHOWN = reaching(laptop=("direct", ""), wsl=("channel", WSL_FIX), lost=("none", NONE_FIX))
+
+
+def test_every_member_row_says_how_it_is_reached_and_what_to_do_when_it_is_not_direct():
+    rows = {r["name"]: r for r in node_pool.rows(SHOWN)}
+    assert [(n, r["reach"]) for n, r in rows.items()] == [("desk", "self"), ("laptop", "direct"), ("wsl", "channel"), ("lost", "none")]
+    assert rows["laptop"]["reach_hint"] == "" and rows["wsl"]["reach_hint"] == WSL_FIX and rows["lost"]["reach_hint"] == NONE_FIX
+    assert [m["reach"] for m in json.loads(node_pool.render(SHOWN, as_json=True))["members"]] == ["self", "direct", "channel", "none"]
+
+
+def test_a_node_that_does_not_say_how_a_member_is_reached_is_shown_as_unknown_not_as_direct():
+    assert {r["reach"] for r in node_pool.rows(POOL)} == {"unknown"}
+
+
+def test_the_members_table_has_a_reach_column_and_one_line_with_the_fix_for_each_member_not_reached_directly():
+    text = node_pool.render(SHOWN, as_json=False)
+    header, *body = text.splitlines()[1:]
+    column = header.index("REACH")
+    assert column < header.index("ADDRESS") and [line[column:].split()[0] for line in body[:4]] == ["self", "direct", "channel", "none"]
+    assert f"wsl: {WSL_FIX}" in text and f"lost: {NONE_FIX}" in text and "laptop:" not in text
+
+
+def test_runtime_status_lists_the_members_not_reached_directly_with_their_fix():
+    lines = node_pool.reach_lines(SHOWN)
+    assert lines == [f"reach        wsl: channel ({WSL_FIX})", f"reach        lost: none ({NONE_FIX})"]
+    assert node_pool.reach_lines(None) == [] and node_pool.reach_lines(reaching(laptop=("direct", ""))) == []
+
+
+def test_the_doctor_fails_a_member_nothing_reaches_and_passes_one_reached_over_its_channel_with_the_note():
+    found = {f.name: f for f in node_pool.reach_findings(SHOWN)}
+    assert list(found) == ["reach: laptop", "reach: wsl", "reach: lost"], "this device is not a finding about itself"
+    assert [f.good for f in found.values()] == [True, True, False]
+    assert found["reach: wsl"].note == WSL_FIX and found["reach: lost"].note == NONE_FIX and found["reach: lost"].said == "none"
+    assert node_pool.reach_findings(None) == []

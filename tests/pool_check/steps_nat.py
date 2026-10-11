@@ -82,6 +82,19 @@ def tests_on_the_nat_device_say_what_they_need(world: World) -> str:
     return f"passed on {nat.name} in {took:.0f}s"
 
 
+def the_members_say_how_they_reach_the_nat_device(world: World) -> str:
+    """The first device reaches the NAT'd device only over the connection it opened (`channel`) and prints the WSL fix; the NAT'd device reaches the first device `direct`."""
+    nat = _pool_with_nat(world)
+    mac = world.first
+
+    def row(device: Device, fingerprint: str) -> dict:
+        return next(m for m in device.members() if m["fingerprint"] == fingerprint)
+    seen = eventually(lambda: row(mac, nat.fingerprint) if row(mac, nat.fingerprint)["reach"] == "channel" else None, 60, f"{mac.name} to reach {nat.name} over its channel")
+    assert seen["network"] == "wsl-nat" and "networkingMode=mirrored" in seen["reach_hint"] and "wsl --shutdown" in seen["reach_hint"], seen
+    eventually(lambda: row(nat, mac.fingerprint)["reach"] == "direct", 60, f"{nat.name} to reach {mac.name} directly")
+    return f"{mac.name} -> {nat.name}: {seen['reach']} ({seen['network']}); {nat.name} -> {mac.name}: direct"
+
+
 def removal_reaches_the_nat_device(world: World) -> None:
     """When the first device removes the NAT'd device, its next dial is refused by every member it can reach."""
     nat = _pool_with_nat(world)
@@ -100,6 +113,6 @@ def the_wsl_setup_plan_names_the_nat_fixes(world: World) -> str:
     done = nat.run(["python", "-m", "poolhouse.device_setup", "--dry-run"], check=False)
     plan = done.stdout
     assert done.returncode == 0, f"the dry run failed: {done.stdout}\n{done.stderr}"
-    for want in ("add Windows inbound allow rules for TCP", "networkingMode=mirrored", "restart WSL"):
+    for want in ("add Windows inbound allow rules for TCP", "networkingMode=mirrored", "restart WSL", "recommended", "reach it directly"):
         assert want in plan, f"the plan lacks {want!r}:\n{plan}\n{done.stderr}"
     return "plan lines: " + " | ".join(line.strip("- ").strip() for line in plan.splitlines() if line.strip())

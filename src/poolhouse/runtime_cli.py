@@ -250,7 +250,8 @@ def status_lines(plan: runtime_deploy.Plan) -> list[str]:
         failure = record["last_failure"]
         lines.append(f"last failure {failure.get('commit', '')[:7]}: {failure.get('detail', '')[-300:]}")
     lines.append(node_line())
-    lines += [line for line in (node_pool.build_line(node_pool.status()), build_update.last_line()) if line]
+    pool = node_pool.status()
+    lines += [line for line in (node_pool.build_line(pool), build_update.last_line(), *node_pool.reach_lines(pool)) if line]
     if _building():
         lines.append(f"building     {_building()}")
     if row.get("prefix"):

@@ -117,10 +117,12 @@ impl Node {
         }
     }
 
-    /// Remember the build the active member ``fp`` reported.
+    /// Remember the build, and how it is attached to the network, that the active member ``fp`` reported.
     pub fn observe_build(&mut self, fp: &str, said: &Value) {
         if self.members.is_active(fp) {
-            self.facts.peer(fp).seen = Some(Seen::read(said));
+            let peer = self.facts.peer(fp);
+            peer.seen = Some(Seen::read(said));
+            peer.network = said.get("network").and_then(Value::as_str).unwrap_or("").chars().take(16).collect();
         }
     }
 
