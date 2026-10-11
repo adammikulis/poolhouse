@@ -507,9 +507,6 @@ impl Net {
         if let Some(slot) = locked(&self.attaching)?.get_mut(fp) {
             *slot = c.closer();
         }
-        if !self.is_member(fp) {
-            return Ok(());
-        }
         c.call(&json!({"op": "attach"}))?;
         self.session_opened(fp);
         let ended = c.serve(self, addr.ip());

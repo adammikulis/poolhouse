@@ -36,6 +36,32 @@ fn the_connection_this_device_keeps_open_to_a_member_is_closed_when_the_member_i
     eventually("a to close its connection to b", 10, || !connected(&a, &b));
 }
 
+/// ``a`` keeps a connection open to each of ``b`` and ``c``.
+fn hub_with_two_attached_members() -> (Dev, Dev, Dev) {
+    let (a, b, c) = (device(), device(), device());
+    a.join_with_code(&b);
+    a.join_with_code(&c);
+    a.net.sync_once(true).unwrap();
+    eventually("a to keep a connection open to c", 10, || connected(&a, &c));
+    (a, b, c)
+}
+
+#[test]
+fn the_end_of_a_sync_cycle_closes_the_connection_to_a_member_that_cycle_learned_was_removed() {
+    let (a, b, c) = hub_with_two_attached_members();
+    remove(&b, &c);
+    a.net.sync_once(true).unwrap();
+    eventually("a to close its connection to c", 10, || !connected(&a, &c));
+}
+
+#[test]
+fn serving_a_member_that_carries_a_removal_closes_the_connection_to_the_removed_device() {
+    let (a, b, c) = hub_with_two_attached_members();
+    remove(&b, &c);
+    b.net.sync_once(true).unwrap();
+    eventually("a to close its connection to c", 10, || !connected(&a, &c));
+}
+
 #[test]
 fn a_connection_is_not_opened_to_a_member_removed_before_the_attach_thread_starts() {
     let (a, b) = (device(), device());
