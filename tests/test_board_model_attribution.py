@@ -4,8 +4,9 @@ import pytest
 from task_kit import accepted, board as board_fixture, model_lease
 from test_board_task_credit import ledger as ledger_fixture, reviewed, session, standing
 
-from poolhouse.workspace import task_credit
-from poolhouse.workspace.task_provenance import snapshot
+from poolhouse import node_launch
+from poolhouse.board.client import Invalid
+from poolhouse.workspace import task_credit, work_reputation
 
 pytest_plugins = ["node_kit"]
 board = board_fixture
@@ -63,13 +64,32 @@ def test_unaccepted_dimensions_keep_existing_review_policy_without_awards(board,
     assert not ledger.sealed.graph().nodes('work_award')
 
 
-def test_unknown_artifact_and_runtime_are_not_promoted_from_a_local_filename():
-    resource = {'model': '/device/models/same.gguf', 'allocation_id': 'allocation:known'}
-    result = snapshot('authenticated-worker', resource)
-    assert result['model'] == resource['model'] and result['actor'] == 'authenticated-worker'
-    assert result['artifact']['source'] == 'unknown' and result['artifact']['id'] is None
-    assert result['broker_runtime']['source'] == 'unknown'
-    assert result['alias_source'] == 'unknown' and result['alias'] is None
+def test_a_local_filename_and_a_claimed_artifact_or_runtime_are_not_promoted_to_a_verified_execution(board, ledger):
+    forged = {'artifact': {'id': 'sha256:' + 'f' * 64, 'source': 'verified'}, 'broker_runtime': {'source': 'verified', 'id': 'forged'}}
+    claim = {'model': '/elsewhere/forged.gguf', 'runtime': 'forged'}
+    lease = model_lease(board.node, board.worker, '/device/models/same.gguf')
+    task = board.tasks(board.lead).create({**board.spec, 'source_key': 'local-file'})
+    allocation = board.tasks(board.lead).assign(task['id'], board.worker.name, lease, ['coding'])
+    board.tasks(board.worker).claim(task['id'], allocation['allocation_id'])
+    with pytest.raises(Invalid, match='provenance'):
+        board.node.client.call('task_submit', board.node.board, board.worker.token, task=task['id'],
+                               artifacts={'local.json': 'e' * 64}, checks=[{'name': 'Worker claims tests', 'passed': True}],
+                               provenance={**claim, **forged})
+    assert board.tasks(board.lead).get(task['id'])['state'] == 'working'
+    proposal = board.tasks(board.worker).submit(task['id'], {'artifacts': {'local.json': 'e' * 64},
+        'checks': [{'name': 'Worker claims tests', 'passed': True}], 'provenance': claim})
+    assert proposal['claimed_provenance'] == claim
+    seen = proposal['provenance']
+    assert seen['model'] == '/device/models/same.gguf' and seen['model_source'] == 'verified-serving-resource'
+    assert seen['actor'] == seen['alias'] == board.worker.name and seen['runtime'] == 'claude-code'
+    board.tasks(board.lead).review(task['id'], accepted())
+    award = task_credit.verify_on_board(session(board, board.lead), task['id'], ledger=ledger)
+    assert 'artifact' not in award['provenance'] and 'broker_runtime' not in award['provenance']
+    rows = standing(board, board.worker, ledger)['dimensions']['models']
+    row = next(item for item in rows if item['model'] == '/device/models/same.gguf')
+    assert row['artifact'] is None and row['broker_runtime'] is None
+    assert (row['model_source'], row['runtime_source']) == ('verified-serving-resource', 'registered-session-harness')
+    assert not [item for item in rows if item['model'] == '/elsewhere/forged.gguf' or item['runtime'] == 'forged']
 
 
 @pytest.mark.slow
@@ -77,16 +97,10 @@ def test_history_filters_actor_exact_runtime_and_family_over_the_same_review(boa
     from playwright.sync_api import expect
     from test_fleet_ui import Serving
 
-    from poolhouse.workspace import tokens, work_reputation
-    from poolhouse.workspace.service import Workspace
-
     reviewed(board)
     task_credit.verify_on_board(session(board, board.lead), board.task['id'], ledger=ledger)
-    ws = Workspace(tmp_path / 'ws')
-    tokens.store(ws.base, tokens.OWNER_FILE, ws.init('owner'))
-    monkeypatch.setattr(work_reputation, 'Workspace', lambda: ws)
+    monkeypatch.setattr(node_launch, 'default_state', lambda: board.node.state)
     monkeypatch.setattr(work_reputation, 'WorkLedger', lambda: ledger)
-    monkeypatch.setattr(work_reputation, 'scope', lambda _: board.node.board)
     server = Serving(tmp_path)
     server.ui.settings.setup_done = True
     try:
