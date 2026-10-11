@@ -70,3 +70,13 @@ def test_the_daemon_binds_loopback_under_a_test_even_told_to_join_the_lan(clean)
     real_home(clean)
     assert bind_address(None, lan=True, joined=False) == ALL_INTERFACES
     assert bind_address("192.0.2.7", lan=False, joined=False) == "192.0.2.7", "an address a person typed is theirs"
+
+
+def test_the_beacon_goes_to_loopback_alone_and_its_socket_is_bound_there_with_no_group(clean):
+    from poolhouse.fleet import discovery
+
+    assert discovery._destinations(discovery.default_group(), 9) == [(("127.0.0.1", 9), "")]
+    with discovery._socket(broadcast=True, bind=("", 0), group=discovery.default_group()) as sock:
+        assert sock.getsockname()[0] == "127.0.0.1"
+    real_home(clean)
+    assert len(discovery._destinations(discovery.default_group(), 9)) == 4, "the real home keeps multicast, broadcast and loopback"
