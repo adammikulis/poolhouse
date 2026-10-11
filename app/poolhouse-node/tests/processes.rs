@@ -79,7 +79,7 @@ fn free_udp() -> u16 {
 
 fn loopback_args(bind: u16, to: u16) -> Vec<String> {
     ["--listen", "127.0.0.1:0", "--beacon-bind", &format!("127.0.0.1:{bind}"), "--beacon-send", &format!("127.0.0.1:{to}"),
-     "--advertise", "127.0.0.1", "--allow-loopback", "--sync-ms", "300"].iter().map(|s| s.to_string()).collect()
+     "--advertise", "127.0.0.1", "--allow-loopback", "--sync-ms", "300", "--no-project"].iter().map(|s| s.to_string()).collect()
 }
 
 fn converge(a: &Proc, b: &Proc) {
@@ -128,7 +128,7 @@ fn two_processes_join_by_multicast_beacon_on_the_loopback_interface() {
     let beacon_port = free_udp();
     let args = || {
         ["--listen", "127.0.0.1:0", "--beacon-bind", &format!("0.0.0.0:{beacon_port}"), "--beacon-send", &format!("239.255.116.1:{beacon_port}"),
-         "--multicast-if", "127.0.0.1", "--advertise", "127.0.0.1", "--allow-loopback", "--sync-ms", "300"].iter().map(|s| s.to_string()).collect::<Vec<_>>()
+         "--multicast-if", "127.0.0.1", "--advertise", "127.0.0.1", "--allow-loopback", "--sync-ms", "300", "--no-project"].iter().map(|s| s.to_string()).collect::<Vec<_>>()
     };
     let a = Proc::start(&args(), "x");
     let b = Proc::start(&args(), "y");
