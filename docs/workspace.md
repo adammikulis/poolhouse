@@ -230,6 +230,12 @@ Message types are `task`, `status`, `handoff`, `question`, `answer`, `claim`, `r
 `attach`). Note kinds are `decision`, `rule`, `fact` and `question`. Claim kinds are `branch`, `worktree`, `port`,
 `server`, `install` and `area`.
 
+**What is owed.** `attention`, `inbox` and `digest --status` list a direct `question`, `task`, `handoff` or `blocked`
+sent to you, older than the owner's `owed_after_s`, that you have not answered (you wrote to its sender, or in reply,
+after it). A request from a session that was retired (a subagent that stopped) and that you have read, by `ack` or by
+`dm` showing it, is closed and left out, so stale handoffs do not hide live questions; an unread one stays until you read
+it.
+
 There is no sync command: the node dials the members of the pool each cycle and swaps the boards both hold in both
 directions ([docs/node.md](node.md), its section on the pool). Every entry is in the device's signed log at once.
 `outbox` lists what you sent with a `sync` field: `provisional` until every device that has synced the board holds

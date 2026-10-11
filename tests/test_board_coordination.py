@@ -16,7 +16,7 @@ from node_kit import SRC
 
 from poolhouse import node_supervise
 from poolhouse.board import session as board_session
-from poolhouse.workspace import agent_display, board_cli, limits
+from poolhouse.workspace import agent_display, board_cli, limits, mail_cli
 
 pytest_plugins = ["node_kit"]
 HOOKS = Path(__file__).resolve().parents[1] / 'scripts/hooks'
@@ -111,6 +111,20 @@ def test_a_request_to_a_subagent_is_addressed_to_its_name_and_is_not_the_leads(b
     board.session(board.alice).post(child.name, 'question', 'is it done')
     plain = ask(board)
     assert owed(board) == [plain]
+
+
+def test_a_read_request_of_a_retired_sender_is_no_longer_owed_and_an_unread_one_is(board, tmp_path):
+    child = start(board, spawn_events(tmp_path, nested=False)['child'])
+    kid = board.session(child)
+    read = kid.post(board.lead.name, 'handoff', 'over to you', subject='handoff')['id'].rsplit(':', 1)[-1]
+    live = ask(board)
+    unread = kid.post(board.lead.name, 'question', 'may I land', subject='question')['id'].rsplit(':', 1)[-1]
+    kid.retire()
+    assert owed(board) == [read, live, unread]
+    mail_cli.ack(argparse.Namespace(ref=read), later(board, board.lead, HOUR))
+    assert owed(board) == [live, unread], 'a read request of a retired sender is closed'
+    mail_cli.ack(argparse.Namespace(ref=live), later(board, board.lead, HOUR))
+    assert owed(board) == [live, unread], 'a live sender stays owed once read, and an unread request of a retired one too'
 
 
 def test_inbox_shows_what_is_owed_and_attention_prints_it(board, capsys):

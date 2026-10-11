@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any
 from poolhouse.workspace.plain import data_line
 
 if TYPE_CHECKING:
-    from poolhouse.board.session import Session
+    from poolhouse.board.session import Entry, Session
 
-__all__ = ["ACTIVE_S", "age", "owed_lines", "status_lines", "workers"]
+__all__ = ["ACTIVE_S", "age", "closed", "owed_lines", "status_lines", "workers"]
 
 ACTIVE_S = 12 * 3600.0
 SHOWN = 8
@@ -27,6 +27,18 @@ def owed_lines(owed: list[dict[str, Any]]) -> list[str]:
     lines = [f"[{o['seq']}] {o['type']} from {o['from']}, unanswered {age(o['age_s'])}: {o['subject']}"
              for o in sorted(owed, key=lambda o: -o["age_s"])[:SHOWN]]
     return [*lines, f"(+{len(owed) - SHOWN} more)"] if len(owed) > SHOWN else lines
+
+
+def closed(s: Session, entries: list[Entry]) -> set[str]:
+    """The ids of the ``entries`` sent by a retired session that this session has read (acked, or shown by `dm`).
+
+    A retired session never reads again, so a request of one that was seen is closed and only an unread one
+    still needs somebody's attention.
+    """
+    gone = {a.name for a in s.agents(retired=True) if a.retired}
+    mine = [e for e in entries if e.sender in gone]
+    cursors = {q: s.cursor(q) for q in {"inbox", *(f"dm:{e.sender}" for e in mine)}}
+    return {e.id for e in mine if any(e.number <= cursors[q].get(e.origin, 0) for q in ("inbox", f"dm:{e.sender}"))}
 
 
 def workers(s: Session) -> dict[str, Any]:
