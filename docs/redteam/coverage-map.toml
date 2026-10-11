@@ -1306,6 +1306,13 @@ status = "covered"
 tests = ["tests/test_onboard_manifest.py", "tests/test_join_by_code.py", "tests/test_onboard_join_code.py"]
 
 [[group]]
+match = ["parser:hub/adopt.py", "parser:hub/derived.py"]
+status = "covered"
+count = 2
+tests = ["tests/test_redteam_adopt.py"]
+note = "download records, indexes, provenance files and links in an old folder or a derived repository are read back; a hand-edited or planted one vouches for nothing, moves nothing and removes nothing"
+
+[[group]]
 match = ["parser:hub/hfstore.py"]
 status = "covered"
 count = 1

@@ -14,7 +14,6 @@ is listed. Progress is appended to ``<state>/models-migrate.log``; a cut-off run
 
 from __future__ import annotations
 
-import errno
 import json
 import os
 import shutil
@@ -40,10 +39,6 @@ PARTIAL = (".part", ".incomplete", ".linking")
 def old_store() -> Path:
     """The folder models used to be kept in."""
     return home.state("models")
-
-
-def log_file() -> Path:
-    return home.state(LOG)
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,21 +108,6 @@ def scan(root: Path) -> tuple[list[Item], list[str]]:
     return items, odd
 
 
-def _volume(path: Path) -> Path:
-    while not path.exists() and path != path.parent:
-        path = path.parent
-    return path
-
-
-def _cache_problem(cache: Path) -> str:
-    """Why the hub cache cannot be written, or '': judged off the nearest folder that exists, so a plan
-    creates nothing."""
-    near = _volume(cache)
-    if not near.is_dir() or not os.access(near, os.W_OK | os.X_OK):
-        return f"the hub cache {cache} cannot be written ({near} is not a writable folder)"
-    return ""
-
-
 def broker_models() -> list[str]:
     """The model of every server the broker holds; none when no broker answers."""
     try:
@@ -150,9 +130,10 @@ def leased(root: Path, models: list[str]) -> list[str]:
     return sorted(held)
 
 
-def _log(lines: list[str]) -> None:
+def append_log(name: str, lines: list[str]) -> None:
+    """Append ``lines`` with a time to ``<state>/<name>``, the log a command keeps of what it did."""
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
-    where = log_file()
+    where = home.state(name)
     where.parent.mkdir(parents=True, exist_ok=True)
     with where.open("a", encoding="utf-8") as out:
         out.writelines(f"{stamp} {line}\n" for line in lines)
@@ -170,11 +151,11 @@ def plan(root: Path, cache: Path, models: list[str]) -> Report:
     if held:
         report.blocked.append("a model server holds " + ", ".join(held)
                               + "; stop it (poolhouse-serve leases lists them) and run again")
-    problem = _cache_problem(cache)
+    problem = hfstore.cache_problem(cache)
     if problem:
         report.blocked.append(problem)
-    same = root.stat().st_dev == _volume(cache).stat().st_dev
-    free = shutil.disk_usage(_volume(cache)).free
+    same = root.stat().st_dev == hfstore.volume(cache).stat().st_dev
+    free = shutil.disk_usage(hfstore.volume(cache)).free
     report.notes.append("same volume: each file is linked into the cache and the old name removed; "
                         "no extra disk" if same else
                         f"another volume: each file is copied then removed; the cache has "
@@ -193,46 +174,6 @@ def _digest_problem(item: Item, one: remote.RemoteFile) -> str:
     return "" if actual == wanted else f"{item.rel} differs from the digest the Hub lists"
 
 
-def _digest_of(path: Path, name: str) -> str:
-    """``path``'s digest in the form ``name`` is written in: sha256 for an LFS file, else the object id."""
-    return files.sha256_file(path) if len(name) == 64 else hfstore.git_blob_sha1(path, path.stat().st_size)
-
-
-def _existing(blob: Path, item: Item, name: str) -> str:
-    """``'have'`` when the blob already in the cache is these bytes, else why it is not."""
-    if blob.stat().st_size == item.size and _digest_of(blob, name) == name:
-        return "have"
-    return f"{blob.name[:12]} is in the cache with other bytes; it is not replaced"
-
-
-def _into_blobs(item: Item, blob: Path, name: str) -> str:
-    """Put the file's bytes at ``blob`` without ever replacing one: ``'new'``, ``'have'`` when a blob
-    of that name was already there and is the same bytes, or the reason it could not be."""
-    blob.parent.mkdir(parents=True, exist_ok=True)
-    if blob.exists():
-        return _existing(blob, item, name)
-    try:
-        os.link(item.path, blob)
-        return "new"
-    except FileExistsError:
-        return _existing(blob, item, name)
-    except OSError as exc:
-        if exc.errno not in (errno.EXDEV, errno.EPERM, errno.EMLINK, errno.ENOTSUP):
-            raise
-    staged = blob.with_name(f"{blob.name}.{os.getpid()}.incomplete")
-    try:
-        shutil.copyfile(item.path, staged)
-        if _digest_of(staged, name) != name:
-            return f"the copy of {item.rel} did not hash to {name[:12]}"
-        try:
-            os.link(staged, blob)
-        except FileExistsError:
-            return _existing(blob, item, name)
-        return "new"
-    finally:
-        staged.unlink(missing_ok=True)
-
-
 def place(item: Item, one: remote.RemoteFile | None, commit: str, cache: Path) -> tuple[str, str]:
     """Move one file into the cache. Returns ``(outcome, why)``: ``new`` or ``have`` when done, else
     ``left`` and the reason; the old file is removed only after the link reads back right."""
@@ -244,7 +185,7 @@ def place(item: Item, one: remote.RemoteFile | None, commit: str, cache: Path) -
         if problem:
             return "left", problem
         root = cache / f"models--{item.repo.replace('/', '--')}"
-        got = _into_blobs(item, root / "blobs" / name, name)
+        got = hfstore.into_blobs(item.path, root / "blobs" / name, name)
         if got not in ("new", "have"):
             return "left", got
         target = root / "snapshots" / commit / item.rel
@@ -262,15 +203,6 @@ def _repo_state(repo: str) -> tuple[str, dict[str, remote.RemoteFile]]:
     return commit, {f.path: f for f in remote.listing(repo, commit)}
 
 
-def _tidy(root: Path) -> None:
-    """Remove the folders the move emptied, and the old store itself when nothing is left in it."""
-    for here, _dirs, _names in os.walk(root, topdown=False):
-        try:
-            Path(here).rmdir()
-        except OSError:
-            continue
-
-
 def _one_repo(repo: str, items: list[Item], cache: Path, report: Report) -> None:
     try:
         commit, listed = _repo_state(repo)
@@ -281,12 +213,12 @@ def _one_repo(repo: str, items: list[Item], cache: Path, report: Report) -> None
         outcome, why = place(item, listed.get(item.rel), commit, cache)
         if outcome == "left":
             report.left.append(f"{item.path}: {why}")
-            _log([f"left {item.path}: {why}"])
+            append_log(LOG, [f"left {item.path}: {why}"])
             continue
         report.moved += 1
         report.deduped += outcome == "have"
         report.moved_bytes += item.size
-        _log([f"{'deduplicated' if outcome == 'have' else 'moved'} {item.path} -> {repo}@{commit[:8]}/{item.rel}"])
+        append_log(LOG, [f"{'deduplicated' if outcome == 'have' else 'moved'} {item.path} -> {repo}@{commit[:8]}/{item.rel}"])
     if report.moved and not (hfstore.repo_root(repo) / "refs" / "main").exists():
         hfstore.point_ref(repo, "main", commit)
 
@@ -301,14 +233,14 @@ def migrate(*, apply: bool, models: Callable[[], list[str]] = broker_models) -> 
     report.mode, report.left = "run", []
     items, odd = scan(root)
     report.left += odd
-    _log([f"run: {len(items)} file(s) from {root} into {cache}"])
+    append_log(LOG, [f"run: {len(items)} file(s) from {root} into {cache}"])
     grouped: dict[str, list[Item]] = {}
     for item in items:
         grouped.setdefault(item.repo, []).append(item)
     for repo, rows in grouped.items():
         _one_repo(repo, rows, cache, report)
-    _tidy(root)
-    _log([f"done: moved {report.moved}, left {len(report.left)}"])
+    hfstore.tidy(root)
+    append_log(LOG, [f"done: moved {report.moved}, left {len(report.left)}"])
     return report
 
 

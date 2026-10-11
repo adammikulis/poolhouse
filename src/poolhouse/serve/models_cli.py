@@ -10,11 +10,11 @@ from collections.abc import Callable
 from poolhouse import hub
 from poolhouse.hub import cli as hub_cli, hf_cache, origins
 from poolhouse.log import say, warn
-from poolhouse.serve import estimate as est, models_migrate, suggest as pick
+from poolhouse.serve import estimate as est, models_adopt, models_migrate, suggest as pick
 from poolhouse.units import human_bytes
 
 COMMANDS = ("list", "where", "info", "which", "fit", "suggest", "pull", "snapshot", "search",
-            "recommend", "machine", "migrate")
+            "recommend", "machine", "migrate", "adopt")
 
 
 def _emit(args: argparse.Namespace, payload: object, text: Callable[[], None]) -> int:
@@ -75,6 +75,10 @@ def add(sub: argparse._SubParsersAction) -> None:
     make("machine", "the memory this machine has for a model")
     make("migrate", "move the old <state>/models store into the Hugging Face hub cache: plan, then run",
          arg="action")
+    adopt = make("adopt", "take the models kept outside the hub cache (the decider, the weights views, the "
+                 "drafters) into it: plan, then run", arg="action")
+    adopt.add_argument("--offline", action="store_true",
+                       help="do not ask the Hub: vouch for files by their download record or their structure")
 
 
 def _table(rows: list[list[str]], head: list[str]) -> None:
@@ -240,6 +244,10 @@ def _migrate(args: argparse.Namespace) -> int:
     return models_migrate.command(args.action, as_json=args.json)
 
 
+def _adopt(args: argparse.Namespace) -> int:
+    return models_adopt.command(args.action, as_json=args.json, offline=args.offline)
+
+
 def _snapshot(args: argparse.Namespace) -> int:
     path = hf_cache.fetch(args.repo, revision=args.revision, repo_type=args.repo_type)
     return _emit(args, {"repo": args.repo, "repo_type": args.repo_type,
@@ -251,7 +259,7 @@ def _snapshot(args: argparse.Namespace) -> int:
 RUN: dict[str, Callable[[argparse.Namespace], int]] = {
     "list": _list, "where": _where, "info": _info, "which": _which, "fit": _fit,
     "suggest": _suggest, "pull": _pull, "search": _search, "recommend": _recommend,
-    "machine": _machine, "snapshot": _snapshot, "migrate": _migrate,
+    "machine": _machine, "snapshot": _snapshot, "migrate": _migrate, "adopt": _adopt,
 }
 
 
