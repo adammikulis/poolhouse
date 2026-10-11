@@ -2,8 +2,6 @@ mod kit;
 
 use kit::*;
 use poolhouse_node::fsutil::{hex, sha256_hex};
-use poolhouse_node::grants::Grants;
-use poolhouse_node::identity::Holder;
 use poolhouse_node::node::Node;
 use poolhouse_node::sync::exchange_nodes;
 use serde_json::{json, Value};
@@ -90,13 +88,6 @@ fn an_upload_is_checked_chunk_by_chunk_and_a_file_message_must_name_a_stored_blo
     ok(attach(&mut n, &at, "#general", meta(&blob, &blob[..12], true)));
 }
 
-struct Refusing;
-impl Grants for Refusing {
-    fn allows(&self, _: &Holder, action: &str) -> bool {
-        action != "file_delete"
-    }
-}
-
 #[test]
 fn deleting_a_file_shreds_its_bytes_keeps_its_messages_and_needs_the_grant() {
     let dir = tempdir().unwrap();
@@ -107,9 +98,8 @@ fn deleting_a_file_shreds_its_bytes_keeps_its_messages_and_needs_the_grant() {
     ok(attach(&mut n, &at, &bob, meta(&blob, &handle, true)));
     let path = dir.path().join("boards/demo/files/blobs").join(format!("{blob}.bin"));
     assert!(path.exists());
-    n.grants = Box::new(Refusing);
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle}))), "denied");
-    n.grants = Box::new(poolhouse_node::grants::StubGrants);
+    allow(&mut n, "demo", &bt, &bob, &["file_delete"]);
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": "0123456789ab"}))), "invalid", "no such file");
     assert_eq!(code(&req(&mut n, "file_delete", "demo", &bt, json!({"handle": "short"}))), "invalid");
     assert_eq!(ok(req(&mut n, "file_delete", "demo", &bt, json!({"handle": handle})))["shredded"], 1);

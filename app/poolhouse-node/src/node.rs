@@ -12,7 +12,8 @@ use serde_json::{json, Map, Value};
 use crate::board::Board;
 use crate::cert::{self, Identity as CertIdentity};
 use crate::facts::Facts;
-use crate::grants::{Grants, StubGrants};
+use crate::grants::book::Book;
+use crate::grants::person::Persons;
 use crate::membership::Pool;
 use crate::device::{fingerprint, load_or_create};
 use crate::error::{Error, Result};
@@ -36,6 +37,7 @@ pub struct Hosted {
     pub names: Registry,
     pub quarantine: Quarantine,
     pub subs: Subs,
+    pub book: Book,
 }
 
 pub struct Node {
@@ -46,7 +48,8 @@ pub struct Node {
     pub cert: CertIdentity,
     /// The pool this device belongs to and its record of the devices in it.
     pub members: Pool,
-    pub grants: Box<dyn Grants>,
+    /// The keys of the person, whose signature makes a grant count.
+    pub persons: Persons,
     /// The other devices whose landing entries this device counts; empty by default.
     pub land_trust: LandTrust,
     pub facts: Facts,
@@ -81,7 +84,7 @@ impl Node {
         let members = Pool::open(&dir.join("pool.json"))?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let mut node = Node {
-            dir: dir.into(), pool: String::new(), cert, members, grants: Box::new(StubGrants), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
+            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?,
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
@@ -116,7 +119,7 @@ impl Node {
             let names = Registry::open(&dir.join("names.json"))?;
             let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
             let subs = Subs::open(&dir.join("subs.json"))?;
-            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs });
+            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs, book: Book::default() });
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
     }

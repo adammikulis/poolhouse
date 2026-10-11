@@ -111,11 +111,15 @@ fn only_the_holder_of_the_branch_claim_records_states_and_a_landed_request_does_
 fn cancel_is_for_the_requester_the_runner_or_a_parentless_session_and_a_helper_cannot_pause() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((_, at), (_, bt), (_, lead)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"), session(&mut n, "demo", "lead"));
+    let ((_, at), (b, bt), (lead_name, lead)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"), session(&mut n, "demo", "lead"));
     let (_, kid) = child_of(&mut n, &lead, "kid");
     let id = id_of(ask(&mut n, &at, "c", &sha(5)));
     assert_eq!(code(&req(&mut n, "land_cancel", "demo", &kid, json!({"req": id}))), "denied", "a subagent cancels only its own");
     assert_eq!(code(&req(&mut n, "land_brake", "demo", &kid, json!({"pause": true}))), "denied");
+    assert_eq!(code(&req(&mut n, "land_brake", "demo", &bt, json!({"pause": true}))), "denied", "having no parent is not enough without a grant");
+    allow(&mut n, "demo", &bt, &b, &["land_control"]);
+    allow(&mut n, "demo", &lead, &lead_name, &["land_control"]);
+    assert_eq!(code(&req(&mut n, "land_brake", "demo", &kid, json!({"pause": true}))), "denied", "a grant to its parent is not a grant to a subagent");
     ok(req(&mut n, "land_brake", "demo", &bt, json!({"pause": true, "reason": "checking"})));
     assert_eq!(queue(&mut n, &at)["paused"], true);
     ok(req(&mut n, "land_brake", "demo", &lead, json!({"pause": false})));

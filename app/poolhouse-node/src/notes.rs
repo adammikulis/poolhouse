@@ -9,6 +9,7 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fold::Entry;
+use crate::grants::Scope;
 use crate::node::Node;
 use crate::row::Kind;
 
@@ -157,11 +158,12 @@ pub fn resolve_supersedes(node: &mut Node, board: &str, fields: &mut Map<String,
 
 fn verify(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
-    if !node.grants.allows(&access.holder, "note_verify") {
-        return Err(Error::Denied("this session may not record a note verification".into()));
-    }
     let (notes, origin, now) = notes_of(node, board)?;
     let id = resolve(board, &origin, p.get("note").and_then(Value::as_str).unwrap_or(""));
+    let message = "this session may not record a note verification";
+    if !crate::grants::holds(node, &access.holder, "note_verify", &Scope::on(&id))? {
+        return Err(crate::grants::refused_for(node, token, "note_verify", &id, message));
+    }
     let note = notes.get(&id).ok_or_else(|| Error::Invalid("no such note".into()))?;
     let cmd = str_field(&note.entry, "verify_cmd").to_string();
     if cmd.is_empty() {
@@ -170,6 +172,9 @@ fn verify(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     let exit = p.get("exit").and_then(Value::as_i64).ok_or_else(|| Error::Invalid("exit is the command's exit code".into()))?;
     let body = json!({"note": id, "exit": exit, "cmd": cmd, "out_sha": p.get("out_sha").and_then(Value::as_str).unwrap_or("")});
     crate::fold::check_local(Kind::Verify, &access.actor, &body, "")?;
+    if !crate::grants::check(node, &access.holder, "note_verify", &Scope::on(&id))? {
+        return Err(crate::grants::refused_for(node, token, "note_verify", &id, message));
+    }
     node.host(board)?.board.append(Kind::Verify, &access.actor, body, "")?;
     let (notes, origin, _) = notes_of(node, board)?;
     Ok(json!({"notes": [show(&notes[&id], &origin, now)]}))

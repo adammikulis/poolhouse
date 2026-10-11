@@ -84,8 +84,10 @@ fn messages(p: &Proc, token: &str) -> usize {
 fn a_node_killed_with_sigkill_while_taking_rows_recovers_and_converges() {
     const ROWS: usize = 900;
     let (a, mut b) = (Proc::new(), Proc::new());
-    let (_, at, a_origin) = register(&a, "writer-a");
-    let (_, bt, _) = register(&b, "writer-b");
+    let (an, at, a_origin) = register(&a, "writer-a");
+    let (bn, bt, _) = register(&b, "writer-b");
+    kit::grants::allow_process(a.state.path(), "demo", &at, &an, &["add_device"]);
+    kit::grants::allow_process(b.state.path(), "demo", &bt, &bn, &["join_pool", "sync_now"]);
     for i in 0..ROWS {
         a.call("post", "demo", &at, json!({"kind": "message", "fields": {"type": "status", "body": format!("a row {i}")}}));
     }

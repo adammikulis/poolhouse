@@ -15,6 +15,9 @@ pub enum Error {
     Invalid(String),
     /// The caller is not who it needs to be.
     Denied(String),
+    /// A session holds no grant for what it asked to do; `grant` names the action, the resource, the session and the
+    /// device, so a person's client can sign one for exactly that.
+    NoGrant { message: String, grant: serde_json::Value },
     /// The disk said no.
     Io(std::io::Error),
 }
@@ -29,7 +32,7 @@ impl Error {
             Error::Gap(_) => "gap",
             Error::Quota(_) => "quota",
             Error::Invalid(_) => "invalid",
-            Error::Denied(_) => "denied",
+            Error::Denied(_) | Error::NoGrant { .. } => "denied",
             Error::Io(_) => "io",
         }
     }
@@ -38,7 +41,7 @@ impl Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Damaged(m) | Error::Gap(m) | Error::Quota(m) | Error::Invalid(m) | Error::Denied(m) => {
+            Error::Damaged(m) | Error::Gap(m) | Error::Quota(m) | Error::Invalid(m) | Error::Denied(m) | Error::NoGrant { message: m, .. } => {
                 write!(f, "{}: {m}", self.code())
             }
             Error::Io(e) => write!(f, "io: {e}"),

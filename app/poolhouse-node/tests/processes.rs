@@ -30,7 +30,9 @@ impl Proc {
             .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log).spawn().unwrap();
         let mut p = Proc { child, dir, token: String::new() };
         eventually("the node to answer", 15, || Client::connect(&p.state()).is_ok());
-        p.token = p.call("register", "demo", "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": session}))["token"].as_str().unwrap().into();
+        let made = p.call("register", "demo", "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": session}));
+        p.token = made["token"].as_str().unwrap().into();
+        kit::grants::allow_process(&p.state(), "demo", &p.token, made["name"].as_str().unwrap(), &[]);
         p
     }
 

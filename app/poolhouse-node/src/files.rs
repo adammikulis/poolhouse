@@ -13,6 +13,7 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fold::Entry;
+use crate::grants::Scope;
 use crate::fsutil::{hex, private_dir, sha256_hex, unhex, write_atomic};
 use crate::node::Node;
 use crate::row::{is_line, Kind};
@@ -157,16 +158,20 @@ fn get(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
 
 fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
-    if !node.grants.allows(&access.holder, DELETE) {
-        return Err(Error::Denied("this session may not delete a file".into()));
-    }
     let handle = text(p, "handle")?;
     if !is_hex(handle, 12) {
         return Err(Error::Invalid("a file handle is 12 hex characters".into()));
     }
+    let message = "this session may not delete a file";
+    if !crate::grants::holds(node, &access.holder, DELETE, &Scope::on(handle))? {
+        return Err(crate::grants::refused_for(node, token, DELETE, handle, message));
+    }
     let blobs: BTreeSet<String> = node.view(board)?.iter().filter_map(|e| e.fields.get("file")).filter(|f| f["id"] == handle).filter_map(|f| f["blob"].as_str().map(String::from)).collect();
     if blobs.is_empty() {
         return Err(Error::Invalid("no such file".into()));
+    }
+    if !crate::grants::check(node, &access.holder, DELETE, &Scope::on(handle))? {
+        return Err(crate::grants::refused_for(node, token, DELETE, handle, message));
     }
     let base = dir(node, board);
     let mut shredded = 0;

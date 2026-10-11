@@ -31,7 +31,7 @@ built and tested alone. The shipping section below puts it in every runtime and 
   makes `link {to, channels, mode}` and the sessions of `to` may then use the named channels (none
   named = the whole board) of `from`, read-only (`ro`) or read-write (`rw`). Channels are
   `#general`, `#announcements` (messages by their `to`), `#notes` (notes and their verifications),
-  `#leases` (claims), `#identity`, `#audit`. Messages to one session are on `#dm`, which a link never
+  `#leases` (claims), `#identity`, `#audit`, `#grants`. Messages to one session are on `#dm`, which a link never
   shares (see "Direct messages"). A linked session writes as `name@its-board`. `unlink {id}` revokes it at once. Making
   and revoking a link writes an audit entry on both boards. Links are node-local for now, and any
   session of the sharing board may make one; the owner-only grant arrives with the trust ledger.
@@ -50,7 +50,7 @@ row before), `hlc` (wall ms, counter, origin), `kind`, `actor`, `idem`, `body`, 
 Bodies hold integers, text, booleans, arrays and objects; fractions are refused so the hash never
 depends on a float format.
 
-Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `room` and `task` are folded into the view now;
+Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `room`, `task` and `grant` are folded into the view now;
 `reputation_event` is in the schema so a later log still parses, and a foreign entry of that kind is not shown yet. `head` is a signature row, never shown.
 
 - **Crash safety.** Append is one write plus `fsync`; it returns when the row is on disk. On open, a
@@ -146,18 +146,21 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
 | `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none` or `self`) with `reach_hint` (the exact fix when it is not direct) and `network` (`wsl-nat`, `wsl-mirrored` or empty, as the member's hello said) |
-| `member_remove` | token with the grant | `fingerprint` | `{fingerprint, status}` |
-| `set_join_policy` | token with the grant | `policy` (`open` or `secure`) | `{policy, changed}` |
-| `add_device` | token with the grant | `passphrase` (else a six-digit code is made), `ttl_s` | `{code, expires_in_s, port, fingerprint}` |
-| `join_pool` | token with the grant | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
-| `sync_now` | token with the grant | | `{reached}` |
-| `shard_call` | token with the grant | `device` (name or fingerprint), `op`, `args` | the device's answer to one test-shard op (docs/test-farm.md); the node adds `op` and the session as `by`, and refuses `op`/`by` in `args` |
-| `shard_consent` | (token with the grant to change) | `enabled`, `python`, `repo` | `{enabled, python, repo, by, at_ms}`; turning it on or off writes an audit entry to the pool board; shards are off until a person turns them on at that device |
+| `member_remove` | token with the grant `member_remove` | `fingerprint` | `{fingerprint, status}` |
+| `set_join_policy` | token with the grant `set_join_policy` | `policy` (`open` or `secure`) | `{policy, changed}` |
+| `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s` | `{code, expires_in_s, port, fingerprint}` |
+| `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
+| `sync_now` | token with the grant `sync_now` | | `{reached}` |
+| `shard_call` | token with the grant `shard_call` | `device` (name or fingerprint), `op`, `args` | the device's answer to one test-shard op (docs/test-farm.md); the node adds `op` and the session as `by`, and refuses `op`/`by` in `args` |
+| `shard_consent` | (token with the grant `shard_consent` to change) | `enabled`, `python`, `repo` | `{enabled, python, repo, by, at_ms}`; turning it on or off writes an audit entry to the pool board; shards are off until a person turns them on at that device |
 
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
+| `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
+| `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
+| `person_enroll`, `person_keys` | token (enrol), none (keys) | `public, about, at_ms, proof, by, approval` | `{fingerprint, keys}` / the enrolled person keys |
 
-The grant check is `grants::Grants` (the standing-grant system comes later); the stub lets any
-registered local session act, and a node can be given a stricter one. The network methods
+A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
+device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
 (`add_device`, `join_pool`, `sync_now`) run without the node's lock held, so a slow peer blocks no
 other request.
 
@@ -290,15 +293,77 @@ integration records are kept on the task with `task_record`. Followers (`task_wa
 `status` message from whoever changed it. Only the entries of this device and of a device on the landing list count; the
 others are shown under `foreign_ignored`. The `task` claim kind is the node's own: `claim` refuses it and `claims` does not list it.
 
-**Stubs.** Two checks wait for the trust ledger and are stubs that allow: the grants (`Grants::allows`, used by
-`note_verify`, the pool actions, `land_trust` and `land_control`, so until the ledger exists every session with no
-parent holds `land_trust` and `land_control` on this device) and model verification (no session is ever `verified`,
-so `landing.eligible` reads a listed model id as claimed).
+**Stubs.** One check waits for the trust ledger and is a stub that allows nothing: model verification (no session is ever
+`verified`, so `landing.eligible` reads a listed model id as claimed, and a grant naming a verified model or a verified class
+holds for nobody yet).
 
 The Rust client (`client::Client`, `client::ensure_running`) finds a dead socket, takes
 `start.lock` (single-flight, so callers queue and the second finds the first's node), spawns
 `poolhouse-node run --state DIR` in its own process group, and polls `hello`. State is the logs on
 disk, so a killed node restarts with every committed entry and every token.
+
+## Standing grants
+
+Nothing a session may do beyond reading and writing its own board's messages, notes, claims and leases is allowed until a
+grant names it. A grant is a `grant` entry on the board (channel `#grants`) that a person signed once; the node never
+reads a grant that a person key enrolled on it did not sign, so an agent cannot issue one, for itself or anyone, and a
+`grant` entry any writer puts on the board without that signature is listed as ignored and allows nothing.
+
+**The registry.** Thirteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
+`sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release` and
+`file_delete`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
+use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
+`keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
+owner's release authorization (docs/person-delegation.md); the GPU is leased one holder at a time (the Leases section).
+
+**An entry.** `op: issue` carries `gid` (`g-` and 16 to 32 hex digits, never reused on a board), `to` (`{kind: session, name}`,
+`{kind: class, family, main (default true), verified (default false)}` or `{kind: account, model}`; a class names the sessions
+whose model id says that family, an account those whose model the node verified), `action`, `scope` (`board` (the board
+the entry is on), `device` (a certificate fingerprint or `*`) and `resource` (an exact name, `*`, or a prefix before a final `*`;
+no `..`, plain ASCII)), `at_ms` and `until_ms` (at most 366 days apart), optional `uses` and `conditions` (`{review: true}`:
+each use needs an independent review behind it, which no call site supplies yet, so such a grant is refused everywhere), the
+`person` key's fingerprint and `sig`. `op: revoke` names a `gid`; `op: use` is written by the node for every use. The signature
+is Ed25519 over `poolhouse/grant/v1` and a line break, then the canonical JSON of the body without `sig` (including `op` and
+`board`); bodies are plain ASCII so Rust and Python canonicalise alike. `at_ms` must be within five minutes of the node's clock
+when it is issued, so a captured request cannot be replayed later, and a repeated `gid` is refused.
+
+**Who may sign.** The keys enrolled in `persons.json`. `person_enroll` takes `public`, `about`, `at_ms`, `proof` (the key's own signature
+over the enrolment) and, once a key is enrolled, `by` and `approval` (an enrolled key's signature over the same bytes), so a
+second key is added only by the first. The private half lives in the person's keystore (`board.person_key`, the same keystore
+and file fallback as the pool's signing key) and a process an agent started does not open it. The first key on a node is enrolled
+by whoever asks first and the enrolment is written to the pool board: enrol it at setup, before any agent runs.
+
+**What counts.** `grants::check(node, holder, action, scope)` answers true, and writes the use, only for a live grant: this
+board, this device (or `*`), a resource the pattern covers, a session or class the grant names (a class never covers a subagent
+unless `main` is false), before `until_ms`, with uses left, not revoked. `holds` asks without spending. An entry written on
+another device counts only when that device is on this device's landing trust list and still a member, the signature verifies
+against a key enrolled here, and the action may travel: `task_authority`, `note_verify`, `sync_now` and `shard_call`. The rest (the
+pool actions, `land_trust`, `land_control`, `shard_consent`, `quarantine_release`, `file_delete`) are granted on the device they apply to.
+A revocation or a use from a device this one does not trust changes nothing.
+
+**Where it is checked.** `member_remove` (resource: the fingerprint), `set_join_policy` (the policy), `add_device`, `join_pool` (the
+host), `sync_now`, `shard_call` (the device) and `shard_consent` before they run; `land_trust` (the fingerprint) and `land_control`
+(the target branch, `*` for pause and resume) in the landing queue, besides having no parent; `task_authority` (the task, or `mode`)
+wherever a session with no parent acts for the person (assign, review in strict mode, block, recover, set the mode, record a
+landing), spent only where it is what lets the call through; `note_verify` (the note), `quarantine_release` (the held id) and
+`file_delete` (the handle). The use is on the board as a `use` entry naming the grant, the session, the action and the target.
+
+**Commands.** `poolhouse-workspace grant ACTION --to NAME|--class FAMILY|--account MODEL --scope RESOURCE --until 30d [--uses N]`,
+`revoke-grant ID`, `grants` (who holds what, and its state), `grant-log` (issues, revocations and uses), `grants-setup` (below),
+`person-proof` and `person-enroll` (carry a key from another device). The five that make or end a grant or a key need a person at a terminal with the key;
+`grants` and `grant-log` are for any session, and the public `ph.board.Board.grants()` is planned (docs/api.md). A refusal for want of a grant names it; a command a person runs, and the person's own
+screen, sign that grant for one use and two minutes and ask again, and an agent's process does not.
+
+**The first-run bundle.** `grants-setup` enrols the person's key if the node holds none, prints the exact list and, on a typed
+`yes` (or `--yes`), signs one grant per line for the main sessions of the lead's model family on this device, 30 days each:
+`land_control`, `task_authority`, `shard_consent`, `sync_now`, `shard_call`, and `note_verify` for subagents too. Nothing else:
+the pool actions, `land_trust`, `quarantine_release` and `file_delete` stay with the person's own commands and screen. Each is
+revoked by its id.
+
+**Limits.** Registration is open, so a grant that names a session, a family or a model is held by whatever registers as it: a
+person-signed grant stops an agent making authority, not an agent claiming a name. Closing registration is the identity
+slice. The first enrolment on a node is trust on first use. The person key's custody is the keystore: a same-user process that removes the agent markers and gets a terminal can ask the keystore for it, which the operating system's prompt (and `poolhouse-security unlock`) gates, and on a machine with no keystore it is a passphrase file. The trust ledger (levels from outcomes, suspension on forgery
+signals, credit to a model-and-version account) is not built; a grant is the only thing that widens what a session may do.
 
 ## Leases
 
@@ -540,8 +605,9 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 ## The person's session (the UI)
 
 The UI daemon acts for the person through one session of its own per board, `poolhouse.board.person.session(root)`: a
-parentless session registered under the harness `poolhouse-ui` and the model `person`, which the node's grant check
-(a session with no parent) treats as the person. Its token is kept in the daemon's private client folder
+parentless session registered under the harness `poolhouse-ui` and the model `person`. It holds no grant of its own: when the
+node refuses a call of the page for want of one, the person's key (kept beside the node, opened only for a screen the person is
+sitting at) signs a grant for that one use (`board.person_key`). Its token is kept in the daemon's private client folder
 (`<state>/client/<board>/`), never in a page; a page's request is checked (loopback, credentialed launch session, same
 origin) and then answered by that session. `root` is a project's checkout: `place.resolve` makes it the board, so a
 directory that is no project is refused (`403`) and never given another project's board. The Tasks page
@@ -616,8 +682,8 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
   device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"), owner-only
-  grants (the `Grants` stub allows every registered session; links and project sources have the same
-  gap), rebuilding the graph index from entries.
+  the owner-only grant of links and project sources (any session of a board makes a link, and `project_add` needs no token),
+  rebuilding the graph index from entries.
 - Pools of two or more members do not merge: a device that already has members refuses to join another
   pool (`Pool::adopt`).
 - The head signature still uses an empty pool id as its domain (`Node.pool`); the pool id lives in

@@ -19,6 +19,7 @@ def team(workspace_node):
     node = workspace_node
     node.lead = node.member("main-1")
     node.bob = node.member("bob")
+    node.allow(node.lead, "note_verify")
     return node
 
 

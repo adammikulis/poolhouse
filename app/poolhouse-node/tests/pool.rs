@@ -157,23 +157,14 @@ fn join_policy_open_enrols_a_device_that_names_the_fingerprint() {
 
 #[test]
 fn the_policy_is_switched_by_a_session_with_the_grant_and_spreads() {
-    use poolhouse_node::grants::Grants;
-    use poolhouse_node::identity::Holder;
-    struct Nobody;
-    impl Grants for Nobody {
-        fn allows(&self, _: &Holder, _: &str) -> bool {
-            false
-        }
-    }
     let (a, b) = (device(), device());
     a.join_with_code(&b);
     let no_token = a.call("set_join_policy", "", "", json!({"policy": "open"}));
     assert_eq!(no_token["error"]["code"], "denied");
-    a.node.lock().unwrap().grants = Box::new(Nobody);
-    let denied = a.call("set_join_policy", "", &a.token, json!({"policy": "open"}));
+    let (_, plain) = a.session("demo", "plain");
+    let denied = a.call("set_join_policy", "", &plain, json!({"policy": "open"}));
     assert_eq!(denied["error"]["code"], "denied", "{denied}");
     assert_eq!(a.status()["policy"], "secure");
-    a.node.lock().unwrap().grants = Box::new(poolhouse_node::grants::StubGrants);
     assert_eq!(a.call("set_join_policy", "", &a.token, json!({"policy": "bogus"}))["error"]["code"], "invalid");
     a.set_policy("open");
     b.ok("sync_now", "", &b.token, json!({}));

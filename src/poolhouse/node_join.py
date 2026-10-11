@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from poolhouse import node_binary, node_pool, node_supervise
+from poolhouse.board import person_key
 from poolhouse.command import Group, flag
 from poolhouse.log import say, warn
 from poolhouse.node_health import call, node_health
@@ -83,11 +84,17 @@ def _token(state: Path) -> str:
     return call(state, "register", {"model": "claude-sonnet-5-5", "harness": "poolhouse-pool", "session": SESSION}, board=BOARD)["token"]
 
 
+def _act(state: Path, method: str, params: dict) -> dict:
+    """``method`` as the pool session; a person at a terminal who holds a key allows what the node says is missing."""
+    token = _token(state)
+    return person_key.retrying(state, token, lambda: call(state, method, params, token=token))
+
+
 def set_policy(state: Path, policy: str) -> dict:
     """Set the join policy of this device's pool; `open` or `secure`."""
     if policy not in POLICIES:
         raise PoolError(f"the join policy is open or secure, not {policy!r}")
-    return call(state, "set_join_policy", {"policy": policy}, token=_token(state))
+    return _act(state, "set_join_policy", {"policy": policy})
 
 
 def _wants_restart(state: Path, port: int) -> bool:
@@ -156,14 +163,14 @@ GROUP.add("join", _run(_join),
              flag("--yes", action="store_true", help="agree to turning the network on without being asked"),
              flag("--binary", default="", help="run this poolhouse-node binary instead of the selected runtime's")])
 def _invite(state: Path, a) -> dict:
-    return call(state, "add_device", {"ttl_s": a.ttl}, token=_token(state))
+    return _act(state, "add_device", {"ttl_s": a.ttl})
 
 
 def _join_with_code(state: Path, a) -> dict:
     code = a.code or os.environ.get(JOIN_CODE_ENV, "")
     if not code:
         raise PoolError(f"give the code the other device printed: --code, or {JOIN_CODE_ENV} in the environment")
-    return call(state, "join_pool", {"host": a.host, "port": a.port, "passphrase": code}, token=_token(state))
+    return _act(state, "join_pool", {"host": a.host, "port": a.port, "passphrase": code})
 
 
 GROUP.add("invite", _run(_invite), help="make a short-lived join code for another device to join this pool with (policy secure)",

@@ -1,8 +1,6 @@
 mod kit;
 
 use kit::*;
-use poolhouse_node::grants::Grants;
-use poolhouse_node::identity::Holder;
 use poolhouse_node::node::Node;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -32,6 +30,7 @@ struct Team {
 
 fn team(n: &mut Node) -> Team {
     let lead = session(n, "demo", "lead");
+    allow(n, "demo", &lead.1, &lead.0, &["task_authority"]);
     let made = ok(req(n, "register", "demo", &lead.1, json!({"model": "qwen3", "harness": "pi", "session": "kid"})));
     let kid = (made["name"].as_str().unwrap().to_string(), made["token"].as_str().unwrap().to_string());
     let model = ok(req(n, "lease_acquire", "demo", &kid.1, json!({"resources": [{"type": "model_slot", "model": "qwen3"}], "ttl_s": 5000})))["id"].as_str().unwrap().to_string();
@@ -97,12 +96,9 @@ fn proposed(n: &mut Node, t: &Team, key: &str) -> String {
     task
 }
 
-struct Nobody;
-
-impl Grants for Nobody {
-    fn allows(&self, _holder: &Holder, _action: &str) -> bool {
-        false
-    }
+/// The person takes the lead's task authority back.
+fn lose_authority(n: &mut Node, t: &Team) {
+    revoke(n, "demo", &t.lead.1, &t.lead.0, "task_authority");
 }
 
 #[test]
@@ -170,7 +166,7 @@ fn a_task_with_a_scope_stays_accepted_until_its_landing_completes_it() {
     let metrics = ok(req(&mut n, "task_list", "demo", &t.lead.1, json!({})));
     assert_eq!((metrics["metrics"]["verified_outcomes"].clone(), metrics["overview"]["awaiting_integration"].clone()), (json!(0), json!(1)));
     let outsider = session(&mut n, "demo", "outsider");
-    n.grants = Box::new(Nobody);
+    lose_authority(&mut n, &t);
     assert_eq!(code(&req(&mut n, "task_complete", "demo", &outsider.1, json!({"task": task, "landed": "f".repeat(40)}))), "denied", "a session with no hand in the task records no landing");
 }
 
@@ -228,7 +224,7 @@ fn review_authority_follows_the_mode_the_board_runs_in() {
     assert_eq!(ok(judge(&mut n, &t.other.1, &task, accepted()))["verifier"], json!(t.other.0), "in open mode any other member reviews");
     ok(req(&mut n, "task_mode", "demo", &t.lead.1, json!({"mode": "strict"})));
     assert_eq!(code(&req(&mut n, "task_mode", "demo", &t.lead.1, json!({"mode": "loose"}))), "invalid");
-    n.grants = Box::new(Nobody);
+    lose_authority(&mut n, &t);
     assert_eq!(code(&req(&mut n, "task_mode", "demo", &t.lead.1, json!({"mode": "open"}))), "denied", "only a person sets the mode");
     let strict = proposed(&mut n, &t, "strict");
     for (who, token) in [("self", &t.kid.1), ("unrelated", &t.other.1)] {
@@ -251,7 +247,7 @@ fn an_unassigned_task_is_open_to_a_peers_worker_only_while_the_board_is_open_or_
     let ask = |n: &mut Node, task: &str| req(n, "task_assign", "demo", &t.lead.1, json!({"task": task, "worker": t.kid.0, "lease": t.model}));
     ok(ask(&mut n, &by_peer));
     ok(req(&mut n, "task_mode", "demo", &t.lead.1, json!({"mode": "strict"})));
-    n.grants = Box::new(Nobody);
+    lose_authority(&mut n, &t);
     let refused = ask(&mut n, &by_peer);
     assert_eq!(code(&refused), "denied");
     assert!(refused["error"]["message"].as_str().unwrap().contains("eligible"), "{refused}");
@@ -264,7 +260,7 @@ fn a_designated_reviewer_judges_in_strict_mode_and_the_worker_never_does() {
     let mut n = node(dir.path());
     let t = team(&mut n);
     ok(req(&mut n, "task_mode", "demo", &t.lead.1, json!({"mode": "strict"})));
-    n.grants = Box::new(Nobody);
+    lose_authority(&mut n, &t);
     let task = id_of(make(&mut n, &t.lead.1, json!({"source_key": "peer", "reviewers": [t.other.0]})));
     let a = assign(&mut n, &t, &task);
     ok(claim(&mut n, &t, &task, &a));
@@ -363,7 +359,7 @@ fn a_blockage_counts_its_elapsed_time_and_releases_the_lease() {
     let mut n = node(dir.path());
     let clock = clocked(&mut n);
     let t = team(&mut n);
-    n.grants = Box::new(Nobody);
+    lose_authority(&mut n, &t);
     let task = id_of(make(&mut n, &t.lead.1, json!({})));
     let a = assign(&mut n, &t, &task);
     ok(claim(&mut n, &t, &task, &a));
@@ -406,7 +402,7 @@ fn integration_records_are_kept_by_the_task_and_only_those_with_a_hand_in_it_wri
     submit(&mut n, &t, &task);
     ok(judge(&mut n, &t.other.1, &task, accepted()));
     let outsider = session(&mut n, "demo", "outsider");
-    n.grants = Box::new(Nobody);
+    lose_authority(&mut n, &t);
     let record = json!({"task": task, "kind": "integration", "rid": "integration:1", "record": {"state": "candidate", "commit": "c".repeat(40)}});
     assert_eq!(code(&req(&mut n, "task_record", "demo", &outsider.1, record.clone())), "denied");
     ok(req(&mut n, "task_record", "demo", &t.lead.1, record));

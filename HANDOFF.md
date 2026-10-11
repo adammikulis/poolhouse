@@ -8,6 +8,15 @@
 - Triage the remaining failures from the October 6 macOS background full red-team run at `920cf217`: 130 failed, 30 errors, 13,729 passed, 364 skipped. Re-run the remaining Board latency, serving, training, gym and fixture failures after scoped setup, pairing and installer repairs. Evidence: `/private/tmp/dev-final-background-full.log`, `/private/tmp/dev-full-failures.txt` and `/private/tmp/poolhouse-full-lifecycle-project-diagnosis.md`. Linux testing remains owner-paused.
 - Verify an authenticated connection and a Board message/reply with the other physical device after separate Dev profile activation. Local discovery and browser checks do not establish this roundtrip.
 
+## Standing grants (2026-10-10)
+
+- A person approves the lead's grants once on each device after the node is swapped: `poolhouse-workspace grants-setup --family claude` at a terminal (the exact list is printed). Until then no agent session holds `land_control`, `task_authority`, `shard_consent`, `sync_now`, `shard_call` or `note_verify`; the pool actions, `land_trust`, `quarantine_release` and `file_delete` work only for a command a person runs at a terminal, or the person's screen, which sign a one-use grant with the person's key.
+- Registration is open, so a grant that names a session, a family or a model is held by whatever registers as it. A person-signed grant stops an agent making authority, not an agent claiming a name; authenticating `register` is the identity slice (docs/node.md, "Standing grants", Limits).
+- The trust ledger is not built: levels from reviewed outcomes, credit to a model-and-version account, automatic suspension on forgery signals, and the node's own `verified` model state (docs/earned-trust.md sections 3 and 9). A grant naming a verified model or a verified class holds for nobody until the node verifies models.
+- `link`, `unlink`, `project_add` and `source_add` are still open to any session of a board (`project_add` needs no token); they have no grant action yet.
+- A second device's person key is enrolled with `person-proof` there and `person-enroll` here; until then a grant written there is listed as ignored. The first key on a node is enrolled by whoever asks first (trust on first use), so `grants-setup` runs before any agent does.
+- `ph.board.Board.grants()` is planned in docs/api.md; nothing public issues or revokes a grant.
+
 ## Overnight landing run (2026-10-08 to 2026-10-09, lead claude-828605)
 
 Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a green gate: gate made read-only and incremental (`173e52f1`), reranker (`efaccdfe`), measuring scheduler (`d92d5634`), keystore audit F-1..F-7 (`4fa7686d`), admission queue of 128 and the keystore_guard layer (`e3761c51`), admission failure runs unscheduled (`f405f6b3`), result-cache fix (`3bb493a0`), selector precision (`80e3c389`), ccache (`7c0ffdb3`), restart idle-retry and the recovery test (`d80d7621`), UI publication stack with chat capabilities (`ae9dcca0`).

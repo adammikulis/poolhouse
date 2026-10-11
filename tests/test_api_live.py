@@ -6,7 +6,7 @@ from __future__ import annotations
 import struct
 
 import pytest
-from node_kit import BOARD
+from node_kit import BOARD, allow
 from test_serve_up_is_a_lease import (  # noqa: F401 - the fake-binary machine of the serve tests
     Q4_K_XL,
     gguf,
@@ -15,6 +15,7 @@ from test_serve_up_is_a_lease import (  # noqa: F401 - the fake-binary machine o
 
 import poolhouse as ph
 from poolhouse import node_launch
+from poolhouse.api import _node
 from poolhouse.testing.fakehub import fake_hub
 
 pytest_plugins = ["node_kit"]
@@ -88,6 +89,9 @@ def test_a_pool_of_one_lists_this_device_and_capacity(mine):
 
 
 def test_the_policy_changes_and_a_member_that_is_not_there_cannot_be_joined_by_a_wrong_code(mine):
+    with pytest.raises(ph.Denied):
+        ph.pool.set_policy("secure")
+    allow(_node.session(), mine.person, "set_join_policy", "join_pool")
     assert ph.pool.set_policy("secure") == "secure" and ph.pool.policy() == "secure"
     assert ph.pool.set_policy("open") == "open"
     with pytest.raises(ph.Error):

@@ -7,6 +7,7 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fold::Entry;
+use crate::grants::Scope;
 use crate::node::Node;
 use crate::row::{is_line, Kind};
 
@@ -269,14 +270,14 @@ fn stamp(node: &mut Node, board: &str, name: &str) -> Result<Value> {
 }
 
 /// Whether ``actor`` may steer landing on ``target``: it holds the target's runner claim, or it is a
-/// session with no parent that the grants allow.
+/// session with no parent that holds the grant `land_control` for the target.
 fn controls(node: &mut Node, board: &str, token: &str, actor: &str, target: &str) -> Result<bool> {
     if crate::claims::owner(node, board, "branch", target)?.as_deref() == Some(actor) {
         return Ok(true);
     }
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("the token is not known".into()))?;
     let top = node.host(board)?.names.get(actor).is_some_and(|i| i.parent.is_empty());
-    Ok(top && node.grants.allows(&holder, CONTROL))
+    Ok(top && crate::grants::check(node, &holder, CONTROL, &Scope::on(if target.is_empty() { "*" } else { target }))?)
 }
 
 fn write(node: &mut Node, board: &str, actor: &str, body: Value) -> Result<Value> {
@@ -350,7 +351,8 @@ fn cancel(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     let (queue, own, _) = fold(node, board)?;
     let req = open_request(&queue, &own, board, text(p, "req"), false)?;
     if req.by != actor && !controls(node, board, token, &actor, &req.target)? {
-        return Err(Error::Denied("only the requester, the runner or a controlling session cancels a request".into()));
+        let target = req.target.clone();
+        return Err(crate::grants::refused_for(node, token, CONTROL, &target, "only the requester, the runner or a controlling session cancels a request"));
     }
     let (shown, id) = (req.shown.clone(), req.id.clone());
     write(node, board, &actor, json!({"ev": "cancel", "req": id}))?;
@@ -363,7 +365,7 @@ fn brake(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     let pause = p.get("pause").and_then(Value::as_bool).ok_or_else(|| Error::Invalid("pause is true or false".into()))?;
     let target = crate::claims::owned_branch(node, board, &actor)?;
     if target.is_none() && !controls(node, board, token, &actor, "")? {
-        return Err(Error::Denied("only the runner or a controlling session pauses or resumes landing".into()));
+        return Err(crate::grants::refused_for(node, token, CONTROL, "*", "only the runner or a controlling session pauses or resumes landing"));
     }
     let event = if pause { "pause" } else { "resume" };
     write(node, board, &actor, json!({"ev": event, "reason": text(p, "reason")}))?;
@@ -437,17 +439,22 @@ fn queue(node: &mut Node, board: &str, token: &str) -> Result<Value> {
 fn trust(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let actor = member(node, token, board)?;
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("the token is not known".into()))?;
-    if !node.host(board)?.names.get(&actor).is_some_and(|i| i.parent.is_empty()) || !node.grants.allows(&holder, TRUST) {
-        return Err(Error::Denied("only a session with no parent that holds the grant land_trust names the devices whose landing entries count".into()));
+    let top = node.host(board)?.names.get(&actor).is_some_and(|i| i.parent.is_empty());
+    let message = "only a session with no parent that holds the grant land_trust names the devices whose landing entries count";
+    let fingerprint = text(p, "device");
+    if !top || !crate::grants::holds(node, &holder, TRUST, &Scope::on(fingerprint))? {
+        return Err(crate::grants::refused_for(node, token, TRUST, fingerprint, message));
     }
     let on = p.get("trusted").and_then(Value::as_bool).ok_or_else(|| Error::Invalid("trusted is true or false".into()))?;
-    let fingerprint = text(p, "device");
     let device = node.members.get(fingerprint).cloned();
     if on && !device.as_ref().is_some_and(|d| d.status == crate::membership::Status::Active) {
         return Err(Error::Invalid("only an active member of this pool is trusted to land".into()));
     }
     if fingerprint == node.cert.fingerprint() {
         return Err(Error::Invalid("this device's own entries always count".into()));
+    }
+    if !crate::grants::check(node, &holder, TRUST, &Scope::on(fingerprint))? {
+        return Err(crate::grants::refused_for(node, token, TRUST, fingerprint, message));
     }
     let pool = node.members.id.clone();
     let changed = node.land_trust.set(&pool, fingerprint, on)?;

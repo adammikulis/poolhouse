@@ -31,7 +31,7 @@ def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
     monkeypatch.setenv("POOLHOUSE_BOARD", kit.BOARD)
-    world = World(monkeypatch, tmp_path, WorkspaceNode(a.state, a.client, node_binary))
+    world = World(monkeypatch, tmp_path, WorkspaceNode(a.state, a.client, node_binary, person=a.person))
     try:
         yield world, a, b
     finally:
@@ -79,6 +79,9 @@ def test_a_pool_member_lands_nothing_here_until_named_and_not_again_once_removed
     assert (world.origin_head(), world.local_head()) == before
 
     (device,) = kit.pool_devices(a.state)
+    with pytest.raises(Denied):
+        landing.trust(world.who["carol"], device["fingerprint"])
+    world.node.allow(world.members["carol"], "land_trust")
     landing.trust(world.who["carol"], device["fingerprint"])
     counted = landing.fold(world.lead)
     assert [r["status"] for r in counted.requests.values()] == ["queued"], "the same sequence counts once the device is named"

@@ -36,5 +36,5 @@ SURFACE: dict[str, tuple[str, ...]] = {
 }
 """The public names of each namespace. Only these are promised; everything else reachable is private."""
 
-PLANNED = ("pool.capacities", "jobs.submit", "jobs.run", "trust.standing", "pool.flags")
+PLANNED = ("pool.capacities", "jobs.submit", "jobs.run", "trust.standing", "pool.flags", "board.Board.grants")
 """Named in docs/api.md as planned: they do not exist yet and importing them fails."""

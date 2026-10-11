@@ -5,16 +5,17 @@ from __future__ import annotations
 from typing import Any
 
 from poolhouse import errors, node_health, node_launch
-from poolhouse.board import client, session as board_session
+from poolhouse.board import client, person_key, session as board_session
 
 __all__ = ["call", "session"]
 
 
 def call(method: str, params: dict[str, Any] | None = None, *, token: str = "") -> dict[str, Any]:
     """One request to this device's node (started when it is not running); raises `NotRunning` or `Error`."""
+    state = node_launch.default_state()
     try:
-        node_launch.ensure_node(node_launch.default_state())
-        return node_health.call(node_launch.default_state(), method, params, token=token)
+        node_launch.ensure_node(state)
+        return person_key.retrying(state, token, lambda: node_health.call(state, method, params, token=token))
     except OSError as exc:
         raise errors.NotRunning(f"no node answered on this device ({exc}); run `poolhouse` to start it") from None
     except ValueError as exc:

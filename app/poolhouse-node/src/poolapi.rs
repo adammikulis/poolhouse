@@ -2,12 +2,13 @@
 //! network ones (`add_device`, `join_pool`, `sync_now`) which `net::Net` answers.
 //!
 //! Reading the pool needs no token (the socket is the owner's); changing it needs a registered
-//! session that holds the grant (`grants::Grants`).
+//! session that holds the grant (`grants::check`), which writes the use to the board.
 
 use serde_json::{json, Map, Value};
 
 use crate::cert::valid_fingerprint;
 use crate::error::{Error, Result};
+use crate::grants::Scope;
 use crate::identity::Holder;
 use crate::membership::Policy;
 use crate::node::Node;
@@ -33,11 +34,11 @@ pub fn handles(method: &str) -> bool {
     params(method).is_some()
 }
 
-/// The session behind ``token``, if it holds the grant for ``action``.
-pub fn authorize(node: &Node, token: &str, action: &str) -> Result<Holder> {
+/// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; the use is written to its board.
+pub fn authorize(node: &mut Node, token: &str, action: &str, resource: &str) -> Result<Holder> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session is needed".into()))?;
-    if !node.grants.allows(&holder, action) {
-        return Err(Error::Denied(format!("this session does not hold the grant for {action}")));
+    if !crate::grants::check(node, &holder, action, &Scope::on(resource))? {
+        return Err(crate::grants::refused_for(node, token, action, resource, &format!("this session does not hold the grant for {action}")));
     }
     Ok(holder)
 }
@@ -54,8 +55,8 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
     match method {
         "pool_status" => Ok(node.pool_status()),
         "member_remove" => {
-            let who = authorize(node, token, method)?;
             let fingerprint = text(p, "fingerprint")?;
+            let who = authorize(node, token, method, fingerprint)?;
             if !valid_fingerprint(fingerprint) {
                 return Err(Error::Invalid("a device is named by its fingerprint, 64 hex digits".into()));
             }
@@ -69,7 +70,7 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             Ok(json!({"fingerprint": device.fingerprint, "status": device.status}))
         }
         "set_join_policy" => {
-            let who = authorize(node, token, method)?;
+            let who = authorize(node, token, method, text(p, "policy")?)?;
             let policy = Policy::parse(text(p, "policy")?)?;
             let changed = node.change_policy(policy, &format!("{}/{}", who.board, who.name))?;
             Ok(json!({"policy": policy.name(), "changed": changed}))

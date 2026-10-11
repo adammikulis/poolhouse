@@ -30,6 +30,7 @@ from poolhouse.workspace import (
     coordinator_client,
     coordinator_config,
     filecli,
+    grants_cli,
     guide,
     harness_remote,
     hooks_cli,
@@ -429,6 +430,10 @@ for _name, _help, _options, _handler in TABLE:
     COMMANDS.add(_name, _runner(_handler), help=_help, options=[*COMMON, *_options])
 for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE, *status_cli.TABLE, *task_cli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
+for _name, _help, _options, _handler in grants_cli.TABLE:
+    COMMANDS.add(_name, grants_cli.reader(_handler), help=_help, options=[*NODE_COMMON, *_options])
+for _name, _help, _options, _handler in grants_cli.PERSON:
+    COMMANDS.add(_name, grants_cli.person_runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 
 
 def _coordinator(args):

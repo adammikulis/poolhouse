@@ -18,12 +18,13 @@ from pathlib import Path
 
 import pytest
 import test_on
-from node_kit import STRIPPED, node_binary  # noqa: F401  (a fixture the ones below use)
+from node_kit import STRIPPED, allow, node_binary  # noqa: F401  (a fixture the ones below use)
 from testfarm_tree import make_tree
 
 from poolhouse import features, node_binary as node_binary_module, node_launch, node_supervise
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Client
+from poolhouse.fleet.onboard.manifest import Signer
 from poolhouse.testfarm.client import Shards, pool_devices
 
 BOARD = "demo"
@@ -36,6 +37,9 @@ class Device:
     state: Path
     client: Client
     token: str
+    name: str = ""
+    person: Signer | None = None
+    """The test person who granted this device's session what it may do."""
 
     def call(self, method: str, board: str = "", token: str = "", **params):
         return self.client.call(method, board, token, **params)
@@ -50,7 +54,9 @@ def start(binary: Path, name: str) -> Device:
     node_launch.ensure_node(state, extra=["--listen", "127.0.0.1:0"])
     client = Client(state)
     got = client.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session=name)
-    return Device(root, state, client, got["token"])
+    person = Signer.generate()
+    allow(board_session.Session(client, BOARD, got["token"], got["name"]), person)
+    return Device(root, state, client, got["token"], got["name"], person)
 
 
 def skip_unless_possible() -> None:

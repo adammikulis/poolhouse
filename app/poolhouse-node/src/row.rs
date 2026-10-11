@@ -14,7 +14,7 @@ pub const GENESIS: &str = "00000000000000000000000000000000000000000000000000000
 pub const MAX_ROW_BYTES: usize = 128 * 1024;
 const MAX_DEPTH: usize = 16;
 
-/// What an entry is. Only message, note, verify, identity, lease, audit, landing and room are folded so far; the others
+/// What an entry is. Only message, note, verify, identity, lease, audit, landing, room, task and grant are folded so far; the others
 /// are part of the schema so a log written later still parses.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -33,6 +33,8 @@ pub enum Kind {
     ReputationEvent,
     /// A lease granted or ended on a device: what its table says it holds.
     Lease,
+    /// A standing grant a person signed, its revocation, or one use of it.
+    Grant,
     /// A signature over the row before it; part of the log, never of the view.
     Head,
 }

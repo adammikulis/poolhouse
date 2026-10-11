@@ -592,9 +592,10 @@ impl Net {
     fn network(&self, c: &Call) -> Result<Value> {
         let text = |k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         let number = |k: &str, d: u64| c.params.get(k).and_then(Value::as_u64).unwrap_or(d);
-        {
-            let node = locked(&self.node)?;
-            authorize(&node, &c.token, &c.method)?;
+        if c.method != "shard_call" {
+            let resource = if c.method == "join_pool" { text("host") } else { "*".into() };
+            let mut node = locked(&self.node)?;
+            authorize(&mut node, &c.token, &c.method, &resource)?;
         }
         match c.method.as_str() {
             "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120)),
@@ -621,8 +622,8 @@ impl Net {
         }
         shard::host::passable(&request)?;
         let (fp, addr, by) = {
-            let node = locked(&self.node)?;
-            let who = authorize(&node, &c.token, "shard_call")?;
+            let mut node = locked(&self.node)?;
+            let who = authorize(&mut node, &c.token, "shard_call", name)?;
             let (fp, addr) = self.device_named(&node, name)?;
             (fp, addr, format!("{}/{}", who.board, who.name))
         };

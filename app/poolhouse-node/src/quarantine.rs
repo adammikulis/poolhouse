@@ -14,6 +14,7 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fold::Entry;
+use crate::grants::Scope;
 use crate::fsutil::write_atomic;
 use crate::node::Node;
 use crate::row::{is_line, Kind};
@@ -122,10 +123,17 @@ fn list(node: &mut Node, board: &str, token: &str) -> Result<Value> {
 
 fn release(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
-    if !node.grants.allows(&access.holder, RELEASE) {
-        return Err(Error::Denied("this session may not release a held entry".into()));
-    }
     let qid = p.get("qid").and_then(Value::as_str).unwrap_or("");
+    let message = "this session may not release a held entry";
+    if !crate::grants::holds(node, &access.holder, RELEASE, &Scope::on(qid))? {
+        return Err(crate::grants::refused_for(node, token, RELEASE, qid, message));
+    }
+    if !node.host(board)?.quarantine.items.values().any(|i| i.qid == qid) {
+        return Err(Error::Invalid(format!("nothing is held as {qid}")));
+    }
+    if !crate::grants::check(node, &access.holder, RELEASE, &Scope::on(qid))? {
+        return Err(crate::grants::refused_for(node, token, RELEASE, qid, message));
+    }
     let entries = node.view(board)?;
     let hosted = node.host(board)?;
     let now = hosted.board.now_ms();

@@ -17,6 +17,7 @@ def team(workspace_node):
     node.lead = node.member("main-1")
     node.bob = node.member("bob")
     node.carol = node.member("carol")
+    node.keep_person_key(node.lead)
     return node
 
 

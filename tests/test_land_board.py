@@ -131,6 +131,8 @@ def test_pause_and_resume_gate_the_runner_and_a_helper_may_not(world):
     helper = world.node.session(world.node.member("helper", parent=world.members["bob"]))
     with pytest.raises(Denied):
         landing.brake(helper, True)
+    for name in ("bob", "carol"):
+        world.node.allow(world.members[name], "land_control")
     landing.brake(world.who["carol"], True, "checking something")
     assert world.runner.once()["status"] == "paused"
     assert world.status(rid) == "queued"

@@ -31,7 +31,9 @@ pub fn device_with(cfg: NetConfig) -> Dev {
     let node = Arc::new(Mutex::new(Node::open(dir.path()).unwrap()));
     let net = Net::start(node.clone(), cfg).unwrap();
     let mut d = Dev { dir, node, net, token: String::new() };
-    d.token = d.session("demo", "main").1;
+    let (name, token) = d.session("demo", "main");
+    d.allow("demo", &token, &name, &[]);
+    d.token = token;
     d
 }
 
@@ -82,6 +84,13 @@ impl Dev {
     pub fn session(&self, board: &str, id: &str) -> (String, String) {
         let r = self.ok("register", board, "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": id}));
         (r["name"].as_str().unwrap().into(), r["token"].as_str().unwrap().into())
+    }
+
+    /// The test person grants the session ``name`` of ``board`` (``token`` is its own) the actions ``only`` names, or all of them.
+    pub fn allow(&self, board: &str, token: &str, name: &str, only: &[&str]) {
+        let mut call = |m: &str, b: &str, t: &str, p: Value| self.call(m, b, t, p);
+        super::grants::enrolled(&mut call, token);
+        super::grants::person().allow(&mut call, board, token, name, only);
     }
 
     pub fn say(&self, board: &str, token: &str, text: &str) {

@@ -1,6 +1,6 @@
 # Earned trust: delegated control from the reputation ledger
 
-Status: design, 2026-10-08. Nothing in sections 3 to 7 is built. Owner statements this note serves:
+Status: design, 2026-10-08. Nothing in sections 3 to 7 is built, except the standing grants the levels would widen (the node refuses what no grant names, a person's key signs each grant, every use is on the board): docs/node.md, "Standing grants". The ledger, the levels and the suspension are the next slice. Owner statements this note serves:
 "the whole point of having a trust/reputation ledger is so agents can be trusted", and "we're
 eventually going to have to give agents more control over things as projects get larger. doing it in
 a trusted, observable manner where we can hit the brakes is what's key." Added principle: give agents

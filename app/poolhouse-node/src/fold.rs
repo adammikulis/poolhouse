@@ -25,6 +25,7 @@ const VERIFY_KEYS: [&str; 4] = ["note", "exit", "cmd", "out_sha"];
 const LEASE_KEYS: [&str; 3] = ["lease", "action", "resources"];
 const LEASE_ACTIONS: [&str; 5] = ["acquire", "release", "expire", "dead", "abandon"];
 const AUDIT_KEYS: [&str; 3] = ["event", "subject", "detail"];
+const GRANT_KEYS: [&str; 15] = ["op", "board", "gid", "to", "action", "scope", "at_ms", "until_ms", "uses", "conditions", "person", "sig", "reason", "target", "user"];
 const ROOM_KEYS: [&str; 5] = ["op", "room", "who", "title", "open"];
 const ROOM_OPS: [&str; 4] = ["create", "join", "leave", "add"];
 const LANDING_KEYS: [&str; 14] = ["ev", "branch", "sha", "target", "selectors", "replaces", "req", "verdict", "status", "detail", "evidence", "reason", "what", "standing"];
@@ -65,7 +66,7 @@ pub struct Context<'a> {
 }
 
 /// Channels that are not rooms: a room is never named like one of these.
-pub const FIXED_CHANNELS: [&str; 11] = [GENERAL, ANNOUNCE, DIRECT, "#notes", "#leases", "#landing", "#identity", "#audit", "#other", "#rooms", "#tasks"];
+pub const FIXED_CHANNELS: [&str; 12] = [GENERAL, ANNOUNCE, DIRECT, "#notes", "#leases", "#landing", "#identity", "#audit", "#other", "#rooms", "#tasks", "#grants"];
 
 /// Whether ``name`` can be a room: `#` and a short lower-case word that is no fixed channel.
 pub fn valid_room(name: &str) -> bool {
@@ -92,6 +93,7 @@ pub fn channel_of(kind: Kind, fields: &Map<String, Value>) -> String {
         Kind::Lease => "#leases".into(),
         Kind::Landing => "#landing".into(),
         Kind::Task => "#tasks".into(),
+        Kind::Grant => "#grants".into(),
         Kind::Identity => "#identity".into(),
         Kind::Audit => "#audit".into(),
         _ => "#other".into(),
@@ -276,6 +278,13 @@ fn task(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<Stri
     Ok((who, map))
 }
 
+fn grant(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<String, Value>)> {
+    let map = only(&row.body, &GRANT_KEYS)?;
+    let who = sender(row, None, ctx, foreign)?;
+    crate::grants::spec::check_entry(&map)?;
+    Ok((who, map))
+}
+
 fn entry(row: &Row, ctx: &mut Context) -> Result<Entry> {
     let foreign = row.origin != ctx.own_origin;
     let (who, fields) = match row.kind {
@@ -288,6 +297,7 @@ fn entry(row: &Row, ctx: &mut Context) -> Result<Entry> {
         Kind::Landing => landing(row, ctx, foreign)?,
         Kind::Room => room(row, ctx, foreign)?,
         Kind::Task => task(row, ctx, foreign)?,
+        Kind::Grant => grant(row, ctx, foreign)?,
         _ => return reject("this kind of entry is not accepted yet"),
     };
     Ok(Entry {

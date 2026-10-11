@@ -21,6 +21,7 @@ def team(workspace_node, tmp_path):
     node.keys = {"PYTHON_KEYRING_BACKEND": "onboard_support.FileKeyring", "POOLHOUSE_TEST_KEYRING": str(tmp_path / "keyring.json"),
                  "PYTHONPATH": f"{SRC}:{HERE}"}
     node.lead, node.bob, node.carol = node.member("main-1"), node.member("bob"), node.member("carol")
+    node.keep_person_key(node.lead)
     node.work = tmp_path / "work"
     node.work.mkdir()
     node.cli("board", "create", "#ops", who=node.lead)

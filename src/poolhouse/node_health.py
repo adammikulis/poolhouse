@@ -21,6 +21,14 @@ TIMEOUT_S = 2.0
 MAX_FRAME = 1 << 20
 
 
+class Refused(ValueError):
+    """The node refused a request; ``grant`` names what a person's key would sign to allow it, when a missing grant is why."""
+
+    def __init__(self, message: str, grant: dict | None = None) -> None:
+        super().__init__(message)
+        self.grant = grant
+
+
 def key_of(text: str) -> str:
     """The 32 hex characters that name a state directory's pipe and stop event: the SHA-256 of its absolute path with
     backslashes, lower case, no `\\\\?\\` prefix and no trailing separator. `poolhouse-node`'s `sys::key_of` computes the same."""
@@ -120,7 +128,8 @@ def call(state: Path, method: str, params: dict | None = None, *, board: str = "
     body = json.dumps(request).encode()
     reply = json.loads(exchange(state, body))
     if reply.get("ok") is not True:
-        raise ValueError(str((reply.get("error") or {}).get("message", "refused")))
+        error = reply.get("error") or {}
+        raise Refused(str(error.get("message", "refused")), error.get("grant"))
     return reply["result"]
 
 

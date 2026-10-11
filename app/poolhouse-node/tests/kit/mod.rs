@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod grants;
 pub mod netkit;
 
 use ed25519_dalek::SigningKey;
@@ -86,4 +87,18 @@ pub fn session(node: &mut Node, board: &str, id: &str) -> (String, String) {
 
 pub fn post(node: &mut Node, board: &str, token: &str, text: &str) -> Value {
     req(node, "post", board, token, json!({"kind": "message", "fields": {"type": "status", "body": text}}))
+}
+
+/// Enrol the test person on an in-process node and grant the session ``name`` of ``board`` (``token`` is its own) the actions ``only`` names, or all.
+pub fn allow(node: &mut Node, board: &str, token: &str, name: &str, only: &[&str]) {
+    let mut call = |m: &str, b: &str, t: &str, p: Value| req(node, m, b, t, p);
+    grants::enrolled(&mut call, token);
+    grants::person().allow(&mut call, board, token, name, only);
+}
+
+/// The test person revokes the grant of ``action`` that `allow` gave the session ``name`` (``token`` is any session of ``board``).
+pub fn revoke(node: &mut Node, board: &str, token: &str, name: &str, action: &str) {
+    let mut call = |m: &str, b: &str, t: &str, p: Value| req(node, m, b, t, p);
+    let reply = grants::person().revoke(&mut call, board, token, &grants::gid_of(name, action));
+    assert_eq!(reply["ok"], true, "revoke {action} of {name}: {reply}");
 }

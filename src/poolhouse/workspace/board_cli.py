@@ -10,9 +10,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import trees, trees_notice
-from poolhouse.board import credentials, session
-from poolhouse.board.client import Conflict, NodeError
+from poolhouse import node_launch, trees, trees_notice
+from poolhouse.board import credentials, person_key, session
+from poolhouse.board.client import Client, Conflict, NodeError
 from poolhouse.board.session import Entry, Native, Session
 from poolhouse.command import flag
 from poolhouse.log import say, warn
@@ -72,8 +72,10 @@ def guarded(run: Callable[[argparse.Namespace], int | None]) -> Callable[[argpar
 
 
 def connect(args: argparse.Namespace) -> Session:
-    """The caller's session on the board its directory belongs to."""
-    return session.connect(token_file=args.token_file, agent=args.agent, board=args.board)
+    """The caller's session on the board its directory belongs to. A person at a terminal who keeps a key allows what the
+    node refuses for want of a grant."""
+    state = node_launch.default_state()
+    return session.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=Client(state, person=person_key.provider(state)))
 
 
 def runner(handler: Handler) -> Callable[[argparse.Namespace], int]:

@@ -6,6 +6,7 @@ use super::fold::{fold, Assign, Board, Task, ACCEPTED, BLOCKED, QUEUED, REVIEW, 
 use super::show;
 use super::{HEARTBEAT_S, MAX_TASKS};
 use crate::error::{Error, Result};
+use crate::grants::Scope;
 use crate::identity::Holder;
 use crate::lease::rpc;
 use crate::lease::table::{Event, Why};
@@ -39,10 +40,16 @@ fn parent_of(node: &mut Node, board: &str, name: &str) -> Result<String> {
     Ok(node.host(board)?.names.get(name).map(|i| i.parent.clone()).unwrap_or_default())
 }
 
-/// Whether ``name`` stands in for the person: a session with no parent that holds the task authority grant.
+/// Whether ``name`` stands in for the person: a session with no parent that holds the task authority grant. Nothing is spent.
 fn person(node: &mut Node, board: &str, name: &str) -> Result<bool> {
     let top = node.host(board)?.names.get(name).is_some_and(|i| i.parent.is_empty() && !i.retired);
-    Ok(top && node.grants.allows(&Holder { board: board.into(), name: name.into() }, super::AUTHORITY))
+    Ok(top && crate::grants::holds(node, &Holder { board: board.into(), name: name.into() }, super::AUTHORITY, &Scope::on(board))?)
+}
+
+/// Like `person`, for where the person's authority is what lets ``name`` through: the use of the grant on ``what`` is written to the board.
+fn exercised(node: &mut Node, board: &str, name: &str, what: &str) -> Result<bool> {
+    let top = node.host(board)?.names.get(name).is_some_and(|i| i.parent.is_empty() && !i.retired);
+    Ok(top && crate::grants::check(node, &Holder { board: board.into(), name: name.into() }, super::AUTHORITY, &Scope::on(what))?)
 }
 
 fn write(node: &mut Node, board: &str, actor: &str, mut body: Map<String, Value>) -> Result<Value> {
@@ -115,10 +122,10 @@ fn qualifies(node: &mut Node, board: &str, who: &str, t: &Task, mode: &str) -> R
     if who == t.worker {
         return Ok(false);
     }
-    if person(node, board, who)? || mode == "open" {
+    if mode == "open" || t.list("reviewers").iter().any(|r| r == who) || who == t.by && parent_of(node, board, &t.worker)? == who {
         return Ok(true);
     }
-    Ok(t.list("reviewers").iter().any(|r| r == who) || who == t.by && parent_of(node, board, &t.worker)? == who)
+    exercised(node, board, who, &t.id)
 }
 
 /// The assignment ``asked`` of ``t``, a number of this device or an entry id.
@@ -247,9 +254,9 @@ fn assign(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     }
     let by_parent = parent == actor;
     let by_maker = actor == t.by && t.list("assignees").contains(&worker) && actor != worker;
-    let by_self = actor == worker && person(node, board, &actor)?;
+    let by_self = !by_parent && !by_maker && actor == worker && exercised(node, board, &actor, &t.id)?;
     if !(by_parent || by_maker || by_self) {
-        return denied("only the registered worker parent, the task creator of an explicitly assigned worker or a person assigns a task");
+        return Err(crate::grants::refused_for(node, token, super::AUTHORITY, &t.id, "only the registered worker parent, the task creator of an explicitly assigned worker or a person assigns a task"));
     }
     if t.state != QUEUED || !eligible(node, board, &worker, &t, &b.mode)? {
         return denied("the worker must be eligible for the queued task");
@@ -374,7 +381,8 @@ fn review(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         return invalid("the task has no proposal awaiting independent review");
     }
     if !qualifies(node, board, &actor, &t, &mode_of(&b, &t))? {
-        return denied(if b.mode == "strict" { "independent review requires person or existing delegated project authority" } else { "independent review requires a person or a registered member other than the worker" });
+        let why = if b.mode == "strict" { "independent review requires person or existing delegated project authority" } else { "independent review requires a person or a registered member other than the worker" };
+        return Err(crate::grants::refused_for(node, token, super::AUTHORITY, &t.id, why));
     }
     let accepted = p.get("accepted").and_then(Value::as_bool).ok_or_else(|| Error::Invalid("review requires a boolean accepted decision".into()))?;
     let outcome = if text(p, "outcome").is_empty() { if accepted { "accepted" } else { "rejected" } } else { text(p, "outcome") };
@@ -408,8 +416,8 @@ fn block(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     let t = find(&b, text(p, "task"))?.clone();
     let kind = if text(p, "kind").is_empty() { "infrastructure" } else { text(p, "kind") };
     let parent = parent_of(node, board, &t.worker)?;
-    if actor != t.worker && !person(node, board, &actor)? && !(actor == t.by && t.by == parent) {
-        return denied("only the worker, person or actual task parent may record blockage");
+    if actor != t.worker && !(actor == t.by && t.by == parent) && !exercised(node, board, &actor, &t.id)? {
+        return Err(crate::grants::refused_for(node, token, super::AUTHORITY, &t.id, "only the worker, person or actual task parent may record blockage"));
     }
     if !matches!(t.state.as_str(), WORKING | REVIEW) {
         return invalid("only an active task may be blocked");
@@ -431,7 +439,7 @@ fn ready(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     let t = find(&b, text(p, "task"))?.clone();
     let expired = p.get("expired").and_then(Value::as_bool).unwrap_or(false);
     if !qualifies(node, board, &actor, &t, &mode_of(&b, &t))? {
-        return denied("independent review requires a person or a registered member other than the worker");
+        return Err(crate::grants::refused_for(node, token, super::AUTHORITY, &t.id, "independent review requires a person or a registered member other than the worker"));
     }
     let live = t.lease.as_ref().is_some_and(|l| l.active && b.held.contains(&l.id));
     if expired && t.state != WORKING {
@@ -464,8 +472,8 @@ fn mode(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Re
     if asked.is_empty() {
         return Ok(json!({"mode": b.mode, "set_by": b.mode_by}));
     }
-    if !person(node, board, &actor)? {
-        return denied("only a lead or a person sets the task enforcement mode, not a helper");
+    if !exercised(node, board, &actor, "mode")? {
+        return Err(crate::grants::refused_for(node, token, super::AUTHORITY, "mode", "only a lead or a person sets the task enforcement mode, not a helper"));
     }
     let mut body = Map::new();
     body.insert("op".into(), json!("enforce"));
@@ -480,7 +488,10 @@ fn mode(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Re
 fn landing_hand(node: &mut Node, board: &str, actor: &str, t: &Task) -> Result<bool> {
     let verifier = t.review().and_then(|r| r["verifier"].as_str()).unwrap_or("").to_string();
     let parent = parent_of(node, board, &t.worker)?;
-    Ok([&t.worker, &t.by, &verifier, &parent].iter().any(|n| !n.is_empty() && n.as_str() == actor) || person(node, board, actor)?)
+    if [&t.worker, &t.by, &verifier, &parent].iter().any(|n| !n.is_empty() && n.as_str() == actor) {
+        return Ok(true);
+    }
+    exercised(node, board, actor, &t.id)
 }
 
 fn host_step(node: &mut Node, board: &str, token: &str, method: &str, p: &Map<String, Value>) -> Result<Value> {
@@ -488,7 +499,7 @@ fn host_step(node: &mut Node, board: &str, token: &str, method: &str, p: &Map<St
     let b = fold(node, board)?;
     let t = find(&b, text(p, "task"))?.clone();
     if !(landing_hand(node, board, &actor, &t)? || method == "task_scope" && t.list("assignees").contains(&actor)) {
-        return denied("only the task worker, registered parent, creator or independent reviewer may record its execution scope or integration");
+        return Err(crate::grants::refused_for(node, token, super::AUTHORITY, &t.id, "only the task worker, registered parent, creator or independent reviewer may record its execution scope or integration"));
     }
     let mut body = step(&method["task_".len()..], &t);
     match method {

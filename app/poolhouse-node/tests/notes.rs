@@ -1,8 +1,6 @@
 mod kit;
 
 use kit::*;
-use poolhouse_node::grants::Grants;
-use poolhouse_node::identity::Holder;
 use poolhouse_node::node::Node;
 use serde_json::{json, Value};
 use tempfile::tempdir;
@@ -72,7 +70,9 @@ fn a_verification_stores_the_notes_own_command_and_makes_it_test_verified() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (checker, token) = session(&mut n, "demo", "a");
-    let (_, liar) = session(&mut n, "demo", "b");
+    let (liar_name, liar) = session(&mut n, "demo", "b");
+    allow(&mut n, "demo", &token, &checker, &["note_verify"]);
+    allow(&mut n, "demo", &liar, &liar_name, &["note_verify"]);
     let id = ok(note(&mut n, &token, json!({"verify_cmd": "ls /tmp"})))["seq"].to_string();
     assert_eq!(code(&req(&mut n, "note_verify", "demo", &token, json!({"note": "999", "exit": 0, "out_sha": SHA}))), "invalid");
     assert_eq!(code(&req(&mut n, "note_verify", "demo", &token, json!({"note": id, "exit": 0, "out_sha": "short"}))), "invalid");
@@ -95,7 +95,8 @@ fn a_verification_stores_the_notes_own_command_and_makes_it_test_verified() {
 fn a_verified_note_is_not_replaced_by_a_claimed_one() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let (_, token) = session(&mut n, "demo", "a");
+    let (name, token) = session(&mut n, "demo", "a");
+    allow(&mut n, "demo", &token, &name, &["note_verify"]);
     let id = ok(note(&mut n, &token, json!({"verify_cmd": "true"})))["seq"].to_string();
     ok(req(&mut n, "note_verify", "demo", &token, json!({"note": id, "exit": 0, "out_sha": SHA})));
     assert_eq!(code(&note(&mut n, &token, json!({"title": "better", "supersedes": [id]}))), "denied");
@@ -103,18 +104,10 @@ fn a_verified_note_is_not_replaced_by_a_claimed_one() {
     ok(note(&mut n, &token, json!({"title": "better", "supersedes": [id]})));
 }
 
-struct Nobody;
-impl Grants for Nobody {
-    fn allows(&self, _: &Holder, action: &str) -> bool {
-        action != "note_verify"
-    }
-}
-
 #[test]
 fn recording_a_verification_is_a_grant() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    n.grants = Box::new(Nobody);
     let (_, token) = session(&mut n, "demo", "a");
     let id = ok(note(&mut n, &token, json!({"verify_cmd": "true"})))["seq"].to_string();
     assert_eq!(code(&req(&mut n, "note_verify", "demo", &token, json!({"note": id, "exit": 0, "out_sha": SHA}))), "denied");

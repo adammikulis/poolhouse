@@ -45,9 +45,15 @@ fn fingerprints(p: &Map<String, Value>, key: &str) -> Result<Vec<String>> {
 /// `shard_consent`: show the state; with `enabled`, turn shards on or off and write it to the pool board.
 pub fn consent_call(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let mut saved = consent::load(&node.dir)?;
+    let (allow, deny) = (fingerprints(p, "allow")?, fingerprints(p, "deny")?);
+    let by = if p.contains_key("enabled") || !allow.is_empty() || !deny.is_empty() {
+        let who = authorize(node, token, "shard_consent", "*")?;
+        format!("{}/{}", who.board, who.name)
+    } else {
+        String::new()
+    };
     if let Some(on) = p.get("enabled") {
         let on = on.as_bool().ok_or_else(|| Error::Invalid("enabled is true or false".into()))?;
-        let who = authorize(node, token, "shard_consent")?;
         let text = |k: &str, old: &str| p.get(k).and_then(Value::as_str).map_or_else(|| old.to_string(), String::from);
         if on {
             let (python, repo) = (text("python", &saved.python), text("repo", &saved.repo));
@@ -55,14 +61,11 @@ pub fn consent_call(node: &mut Node, token: &str, p: &Map<String, Value>) -> Res
             runtime::python_version(&python)?;
             (saved.python, saved.repo) = (python, repo);
         }
-        (saved.enabled, saved.by, saved.at_ms) = (on, format!("{}/{}", who.board, who.name), wall_ms());
+        (saved.enabled, saved.by, saved.at_ms) = (on, by.clone(), wall_ms());
         consent::save(&node.dir, &saved)?;
         node.record_event("shard_consent", if on { "on" } else { "off" }, &format!("by {}; python {}; repo {}", saved.by, saved.python, saved.repo))?;
     }
-    let (allow, deny) = (fingerprints(p, "allow")?, fingerprints(p, "deny")?);
     if !allow.is_empty() || !deny.is_empty() {
-        let who = authorize(node, token, "shard_consent")?;
-        let by = format!("{}/{}", who.board, who.name);
         for fp in &allow {
             if *fp == node.cert.fingerprint() || !node.members.is_active(fp) {
                 return Err(Error::Invalid("only another active member of this pool is allowed".into()));

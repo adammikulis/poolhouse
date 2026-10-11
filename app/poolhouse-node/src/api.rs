@@ -31,7 +31,8 @@ fn params_for(method: &str) -> Option<&'static [&'static str]> {
         m => return crate::poolapi::params(m).or_else(|| crate::lease::rpc::params_for(m)).or_else(|| crate::sessions::params_for(m))
             .or_else(|| crate::claims::params_for(m)).or_else(|| crate::landing::params_for(m)).or_else(|| crate::notes::params_for(m))
             .or_else(|| crate::mail::params_for(m)).or_else(|| crate::quarantine::params_for(m))
-            .or_else(|| crate::tasks::params_for(m)).or_else(|| crate::rooms::params_for(m)).or_else(|| crate::subs::params_for(m)).or_else(|| crate::files::params_for(m)).or_else(|| crate::scratch::params_for(m)),
+            .or_else(|| crate::tasks::params_for(m)).or_else(|| crate::rooms::params_for(m)).or_else(|| crate::subs::params_for(m)).or_else(|| crate::files::params_for(m)).or_else(|| crate::scratch::params_for(m))
+            .or_else(|| crate::grants::calls::params_for(m)),
     })
 }
 
@@ -208,6 +209,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         m if crate::files::METHODS.contains(&m) => crate::files::call(node, m, board, token, p),
         m if crate::scratch::METHODS.contains(&m) => crate::scratch::call(node, m, board, token, p),
         m if crate::quarantine::METHODS.contains(&m) => crate::quarantine::call(node, m, board, token, p),
+        m if crate::grants::calls::METHODS.contains(&m) => crate::grants::calls::call(node, m, board, token, p),
         "links" => node.access(token, board, false).map(|_| json!(node.links.all().iter().filter(|l| l.from == board || l.to == board).collect::<Vec<_>>())),
         "shutdown" => node.access(token, board, false).map(|_| {
             node.stop.store(true, Ordering::SeqCst);
@@ -227,7 +229,13 @@ pub fn respond(request: &Value, result: Result<Value>) -> Value {
     let id = request.get("id").cloned().unwrap_or(Value::Null);
     match result {
         Ok(result) => json!({"v": API_VERSION, "id": id, "ok": true, "result": result}),
-        Err(e) => json!({"v": API_VERSION, "id": id, "ok": false, "error": {"code": e.code(), "message": e.to_string()}}),
+        Err(e) => {
+            let mut error = json!({"code": e.code(), "message": e.to_string()});
+            if let Error::NoGrant { grant, .. } = &e {
+                error["grant"] = grant.clone();
+            }
+            json!({"v": API_VERSION, "id": id, "ok": false, "error": error})
+        }
     }
 }
 
@@ -257,7 +265,7 @@ pub fn parse(request: &Value) -> Result<Call> {
         return Err(Error::Invalid(format!("unknown param {}", k.chars().take(40).collect::<String>())));
     }
     let (board, token) = (str_of(map, "board")?, str_of(map, "token")?);
-    if board.is_empty() && !matches!(method, "hello" | "status" | "project_add" | "source_add" | "project_list" | "project_resolve") && !crate::poolapi::handles(method) {
+    if board.is_empty() && !matches!(method, "hello" | "status" | "project_add" | "source_add" | "project_list" | "project_resolve") && !crate::poolapi::handles(method) && !crate::grants::calls::boardless(method) {
         return Err(Error::Invalid("this method names a board".into()));
     }
     Ok(Call { method: method.into(), board: board.into(), token: token.into(), params })

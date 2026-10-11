@@ -1,8 +1,6 @@
 mod kit;
 
 use kit::*;
-use poolhouse_node::grants::Grants;
-use poolhouse_node::identity::Holder;
 use poolhouse_node::node::Node;
 use poolhouse_node::sync::exchange_nodes;
 use serde_json::{json, Value};
@@ -92,13 +90,6 @@ fn the_outbox_lists_what_the_caller_sent_and_says_which_messages_every_syncing_d
     assert_eq!(code(&req(&mut a, "outbox", "demo", "", json!({}))), "denied");
 }
 
-struct Nobody;
-impl Grants for Nobody {
-    fn allows(&self, _: &Holder, action: &str) -> bool {
-        action != "quarantine_release"
-    }
-}
-
 fn hold(n: &mut Node, token: &str, id: &str, flags: Value) -> Value {
     req(n, "quarantine_hold", "demo", token, json!({"entries": [{"id": id, "flags": flags}]}))
 }
@@ -119,6 +110,8 @@ fn a_flagged_entry_is_held_once_listed_without_its_text_and_released_by_a_sessio
     assert_eq!(code(&hold(&mut n, &ct, &id, json!(["override"]))), "denied", "a session that cannot read the message cannot hold it");
     assert_eq!(code(&hold(&mut n, &bt, &id, json!([]))), "invalid");
     assert_eq!(code(&hold(&mut n, &bt, "demo:x:1", json!(["a"]))), "invalid");
+    assert_eq!(code(&req(&mut n, "quarantine_release", "demo", &bt, json!({"qid": "q1"}))), "denied", "no grant, no release");
+    allow(&mut n, "demo", &bt, &bob, &["quarantine_release"]);
     assert_eq!(code(&req(&mut n, "quarantine_release", "demo", &bt, json!({"qid": "q9"}))), "invalid");
     let freed = ok(req(&mut n, "quarantine_release", "demo", &bt, json!({"qid": "q1"})))["item"].clone();
     assert_eq!((freed["state"].clone(), freed["released_by"].clone()), (json!("released"), json!(bob)));
@@ -134,7 +127,6 @@ fn releasing_a_held_entry_is_a_grant_and_the_record_survives_a_restart() {
     let ((_, at), (bob, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
     let id = ok(say_to(&mut n, &at, &bob, "x", json!({})))["id"].as_str().unwrap().to_string();
     ok(hold(&mut n, &bt, &id, json!(["override"])));
-    n.grants = Box::new(Nobody);
     assert_eq!(code(&req(&mut n, "quarantine_release", "demo", &bt, json!({"qid": "q1"}))), "denied");
     drop(n);
     let mut again = node(dir.path());
