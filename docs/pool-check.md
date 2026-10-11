@@ -115,7 +115,8 @@ prints which device has an address for which). The cost of a member nothing can 
 
 * **Windows.** Docker cannot run Windows. The Windows named pipe, ACLs, the Windows firewall and the supervisor on Windows are covered
   only by the `windows-latest` jobs of `.github/workflows/pool-check.yml` (a native pool, and the Windows device and a WSL
-  device of one runner joined), and those have to run on GitHub.
+  device of one runner joined), and those have to run on GitHub. They have: the Windows node, its named pipe and every step that fits
+  passed there (see "In CI").
 * **A real WSL2 kernel and its networking modes.** The `--wsl` device is an Ubuntu container: `uname -r` (and so `platform.release()`,
   which the test farm's WSL marking reads) still says the container's kernel; mirrored mode in `.wslconfig`, Hyper-V's firewall, the
   Windows firewall prompt and Windows processes are not here. The `windows-and-wsl` CI job runs a real WSL distribution beside a real
@@ -143,4 +144,39 @@ removes it).
 `.github/workflows/pool-check.yml` runs the same steps without Docker: `native` on ubuntu, macos and windows runners (every device a node
 on the runner); `wsl` on a Windows runner (a real Ubuntu WSL distribution with the nodes inside it); and `windows-and-wsl`, where a Windows
 node and a WSL node of the same runner are joined, which is the Windows and WSL situation of the owner's own device. They run on a pull
-request that touches the node, the test farm or the rig, and on demand.
+request that touches the node, the test farm or the rig, on a push to `0.3dev` that does, and on demand.
+All five jobs were green on runs 38098615088 and 38099163909 (2026-10-11).
+
+### What each job proves
+
+| job | devices | ran | skipped, and why |
+|---|---|---|---|
+| `native on ubuntu-latest` | three nodes on one Linux runner | every step that fits three native devices | `partition-heal` (needs Docker), the six `nat-*` steps (need `--wsl`), `chain-of-dials` (needs five devices) |
+| `native on macos-latest` | three nodes on one macOS (arm64) runner | the same | the same; the node, its Unix socket, `getpeereid`, the supervisor and the updater's real `git` on macOS |
+| `native on windows-latest` | three nodes on one Windows runner | the same | the same; the named pipe, its access rule, the Windows supervisor and the updater's real `git` on Windows |
+| `native in WSL Ubuntu on a Windows runner` | three nodes inside a real Ubuntu 24.04 WSL2 distribution | the same | the same; a WSL2 kernel and the node built and installed inside it |
+| `a Windows device and a WSL device of one runner in one pool` | a Windows node and a node in WSL, joined: the WSL device reaches Windows at the address of the Windows side of the virtual switch (read from the default route), Windows reaches WSL at `127.0.0.1` (localhost forwarding) | `join-open`, `join-secure`, `join-wrong-code`, `members-listed`, `entries-converge`, `direct-message`, `claim-pool-wide`, `lease-queues`, `build-update`, `join-order`, `crash-mid-sync`, `tests-on-device` (12 of 12) | `build-stale`, `build-wire`, `member-removal`, `cert-swap`, `tests-on-undialable` (each needs three devices), plus the same Docker-only and NAT steps |
+
+What none of them proves, beyond "What it cannot show": a removal, a swapped certificate and a stale device among *three* members across
+the Windows and WSL boundary (the pair has two devices); WSL's mirrored networking mode (the runner is in NAT mode); and a Windows machine
+that is not a CI runner (a laptop's firewall profile, a VPN). A runner's loopback and virtual switch are not a LAN.
+
+### What the first real runs found
+
+Run 38092844765 failed three jobs; each was a defect of the rig, not of the node, except the one that is still open:
+
+* **`build-update` on macOS (`no node answers`).** The step writes the runtime selection (`selected.json`) to make the device a checkout one
+  commit behind, and the node's supervisor restarts the node whenever that file changes, so the updater's first question to the node met
+  the old node closing (`the node closed the connection`) or no node. Linux and Windows won the race, a loaded macOS runner lost it, and
+  the updater's report hid the reason. The updater now says why no node answered (`node_pool.ask`), and the rig waits until a new node
+  answers and knows a member on a newer build again (a restarted node learns builds only by syncing).
+* **The Windows and WSL job passed `--wsl-distro` and two more flags the script did not take.** `scripts/pool-check` now takes them, and a
+  test parses every `scripts/pool-check` line of the workflow with the script's own parser, so the two cannot drift again. A pair of devices
+  also counts as two devices (it was counted as three, so three-device steps ran on two and failed), the Windows address in WSL is read from
+  the route (the first line `wsl.exe` prints can be a proxy warning, which was taken as a host name), and the checkout path of the WSL
+  device is spelled as a Linux path when the rig runs on Windows.
+* **`member-removal` in WSL: `linux took an entry from the removed linux2`.** Not reproduced: the step passed in every later run of the same
+  job and, on a Mac, seven times unloaded and four times with three busy processes per core. The step's refusal check accepts any error from
+  the probe as a refusal, so a transient error can end the wait before a member has learned of the removal; the failure message now says
+  what each member says of the removed device (standing, address, last error), so the next occurrence names its cause. Until it recurs with
+  that output, this is an open question, not a fixed defect.
