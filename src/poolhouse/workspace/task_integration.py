@@ -174,6 +174,9 @@ class DevelopmentIntegration:
                 raise Denied('the current child worktree claim requires its registered parent to return it')
             self.s.release('worktree', str(self.source), held_by=worker)
             self.s.release('branch', self.worktree['branch'], held_by=worker)
+            for held in self.s.claims('area'):
+                if held.owner == worker and Path(held.key).is_relative_to(self.source):
+                    self.s.release('area', held.key, held_by=worker)
             _event(self.s, self.base, self.record, 'scope_returned', scope_owner=self.s.name, worker=worker)
             owner = ''
         if owner not in ('', self.s.name):

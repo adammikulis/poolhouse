@@ -78,6 +78,7 @@ def test_recovery_refuses_live_or_unique_work(inactive, monkeypatch, kind):
         kit.parent.release('worktree', str(target), held_by=kit.worker_id)
         kit.reviewer.claim('worktree', str(target))
     elif kind == 'area':
+        kit.parent.release('worktree', str(target), held_by=kit.worker_id)
         kit.parent.claim('area', str(target / 'code.py'))
     elif kind in ('dirty', 'ignored'):
         (target / ('code.py' if kind == 'dirty' else '.private-state')).write_text('preserve\n')

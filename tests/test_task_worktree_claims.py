@@ -8,7 +8,9 @@ from node_kit import node_binary, workspace_node  # noqa: F401
 from taskboard_kit import board, worker_on  # noqa: F401
 
 from poolhouse import harnesshook
+from poolhouse.board.client import Conflict
 from poolhouse.board.tasks import Tasks
+from poolhouse.errors import Denied
 from poolhouse.net import git
 from poolhouse.workspace import localagent, task_scheduler, task_worktrees
 
@@ -65,12 +67,25 @@ def test_the_worker_that_claimed_its_task_holds_the_checkout_and_only_it_may_edi
 
 def test_a_claim_of_the_parent_on_a_file_of_the_checkout_refuses_the_worker(native_task):
     board = native_task  # noqa: F811
-    work(board)
     board.parent.claim('area', str(board.project / 'code.py'))
-    assert edit(board, board.worker_id) == 'deny'
-    assert (board.project / 'code.py').read_text() == 'ORIGINAL = True\n'
+    board.work.claim(board.task['id'], board.allocation['allocation_id'])
+    with pytest.raises(Denied, match=board.lead.name):
+        task_worktrees.activate(board.child, board.work.get(board.task['id']))
+    assert not [c for c in board.child.claims() if c.kind == 'worktree']
     board.parent.release('area', str(board.project / 'code.py'))
+    task_worktrees.activate(board.child, board.work.get(board.task['id']))
     assert edit(board, board.worker_id) == 'allow'
+    assert (board.project / 'code.py').read_text() == 'UPDATED = True\n'
+
+
+def test_a_file_of_the_checkout_cannot_be_claimed_by_the_parent_while_the_worker_holds_the_checkout(native_task):
+    board = native_task  # noqa: F811
+    work(board)
+    with pytest.raises(Conflict, match=board.worker_id):
+        board.parent.claim('area', str(board.project / 'code.py'))
+    assert not [c for c in board.parent.claims() if c.owner == board.lead.name and c.kind == 'area']
+    assert edit(board, board.worker_id) == 'allow'
+    assert (board.project / 'code.py').read_text() == 'UPDATED = True\n'
 
 
 def test_a_checkout_nobody_claimed_yet_is_not_held_for_the_assigned_worker(native_task):
