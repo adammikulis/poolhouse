@@ -97,11 +97,11 @@ member can be removed.
 | `ph.pool.status()` | The `Pool` of this device: id, project, policy, address it listens on, and every member. |
 | `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
-| `ph.pool.set_policy(new)` | Set it; returns the policy now in force. |
+| `ph.pool.set_policy(new)` | Set it; returns the policy now in force. A governed pool (`docs/node.md`, "Who governs a pool") refuses it with "A pool's join policy never changes in place; reissue the pool to change it." |
 | `ph.pool.listen(join_policy="open", *, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |
 | `ph.pool.add_device(ttl_s=300)` | Make the short-lived code another device joins with (policy `secure`). |
 | `ph.pool.join(host, code, *, port=7447)` | Join the pool of the device at `host` with its code. |
-| `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. |
+| `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. In a governed pool it is an act of the pool's admins, signed by a person's key; a device's word alone removes nobody. |
 | `ph.pool.sync()` | Exchange board entries with every connected member now. |
 | `ph.pool.capacity()` | `Capacity` of this device: cores, CPU slots and how many are leased, memory and what is free, accelerators and their memory, leases held and queued. |
 | `ph.pool.Pool`, `ph.pool.Member`, `ph.pool.Capacity` | The frozen dataclasses above. |

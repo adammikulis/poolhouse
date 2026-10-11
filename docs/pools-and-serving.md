@@ -1,6 +1,8 @@
 # Pools, governance, serving and shared boards
 
-Design, 2026-10-11. Nothing in this document is built. It replaces the single-pool assumption of `docs/node.md` (the section on
+Design, 2026-10-11. Slice 1 (governance core, section 11) is built in `app/poolhouse-node/src/gov/` and described as built in
+`docs/node.md`, "Who governs a pool"; the rest of this document is not built. Where the code differs from the design as first
+written, the text below says what the code does. It replaces the single-pool assumption of `docs/node.md` (the section on
 the pool) and adds three things the product needs: a device that belongs to several pools, a device that serves a local model to
 several pools, and a board that more than one pool holds. It starts with the question every other part depends on: who is allowed
 to change a pool.
@@ -161,8 +163,9 @@ A pool has no key of its own and no secret shared by its members. Nothing in a m
 ### 1.5 Acts
 
 Every act is `{v, pool, epoch, kind, body, at_ms, nonce, prev, signatures: [{kind: admin|device, key, sig}]}`, signed over
-`poolhouse/pool-act/v1` and a line break and the canonical JSON of everything but the signatures. `prev` is the hash of the latest
-admin-set act the signer knew. The member record (`roster.json`) is a view folded from the acts; it is not an input and a `members`
+`poolhouse/pool-act/v1` and a line break and the canonical JSON of everything but the signatures. `prev` is the hash of the charter in force that the
+signer knew (an epoch's charter is derived from the acts, so its hash is the same on every device that applied the same acts, whatever order a
+hold ended in). The member record (`roster.json`) is a view folded from the acts; it is not an input and a `members`
 row is never believed again. A **hold** is a delay before an act takes effect, in which any strong admin may `cancel` it.
 
 | Kind | Signed by | Effect | Hold, replay, limits |
@@ -190,7 +193,10 @@ Anything else is refused and recorded with its reason, never applied. Heartbeats
 stored.
 
 **Time.** Every hold, delay, window and expiry is measured on **each device by its own
-monotonic clock from the first moment that device saw the act**, saved at checkpoints and across restarts. The wall clock and the
+monotonic clock from the first moment that device had the act with every signature it needs** (an act signed by one of two required people
+and completed three days later is held from the completion, so a thief with all the signatures but one gets no head start), saved at
+checkpoints and across restarts. An act that is complete on a device only after the first act of its step has run its hold arrives too
+late to join or contest that step there, so a late arrival cannot reopen a step that is already in effect. The wall clock and the
 signer's `at_ms` are never read for a delay: an act backdated by its signer, or a device whose clock a network source moved
 forward, shortens nothing. A device counts only the time it is awake, so a hold never ends early for a device that was off: it ends
 after the full hold has run on that device with no `cancel` seen.
@@ -216,12 +222,15 @@ after the full hold has run on that device with no `cancel` seen.
 key that is not in the cut is void on every device, whenever it arrives. A stolen key cannot keep a signed act in a drawer and
 release it after the key is removed.
 
-**Limits and paging.** Acts replicate in the `acts` member op in pages of at most 256 acts (`{pool, have: <hashes of the last 4,096>,
-page}`), each act at most 16 KiB, a page at most 2 MiB so it fits the 4 MiB frame. Caps per pool: 4,096 live `admit` entries, 256
+**Limits and paging.** Acts replicate in the `acts` member op in pages of at most 256 acts (`{pool, have: <tokens of the last 4,096 acts held>,
+page, push}`, a token being an act's id and a tag of who has signed it, so a signature added later to an act already held is passed on),
+each act at most 16 KiB, a page at most 2 MiB so it fits the 4 MiB frame. Caps per pool: 4,096 live `admit` entries, 256
 admin-set acts, 1 pending `handoff`, 1 pending `recover`, 1 pending `succession`. There are no stored tickets: a join window is
 ephemeral and lives in the memory of the device that opened it, and the delegate's `admit` is the only trace. Rates: knocks 5 a
 minute per source address and 30 a minute in all, at most 3 pending; one pending sensitive approval per pool; after a decline the
-same kind of request from the same session waits 10 minutes.
+same kind of request waits 10 minutes (slice 1 keeps this per device and kind, since it has no session of the phone to name).
+A device that catches up after being off counts the admits it first sees at once, so it refuses those past the rate of a delegate
+or an open member that others took when they came; that is the cost of counting by first sight.
 
 The last admin cannot be removed, nor the set left below the sensitive threshold; ending a pool's governance is a reissue.
 
@@ -307,8 +316,9 @@ over by being there.
 
 ### 1.9 Changing the join policy is a reissue
 
-`set_join_policy` is removed. The node answers it with `invalid: a pool's join policy never changes in place; reissue the pool to
-change it`, and no grant can name it. To go from open to secure (or the reverse) an admin reissues the pool.
+`set_join_policy` is removed. The node answers it, in a governed pool, with `invalid: A pool's join policy never changes in place;
+reissue the pool to change it.`, whatever grant is held; a legacy pool (1.14) keeps its local, grant-guarded `set_join_policy` until
+it is migrated, because removals and the policy are the local API's alone there. To go from open to secure (or the reverse) an admin reissues the pool.
 
 **The agent flow** (the owner says "make this pool secure"):
 
@@ -840,7 +850,7 @@ id may enter its signatures, and the old note "the head signature uses an empty 
 
 **Grants** gain `scope.pool`: an id, `*`, or `admin:<key fingerprint>` (the pools whose admin set holds that key). A grant that names
 a pool-level action is spent only for the pool in the call's context. The registry changes: removed `set_join_policy`; kept `shard_consent` (its per-device allow
-list, 1.7); added `pool_create`, `pool_leave`, `pool_reissue`, `pool_migrate`, `admin_manage`, `board_share`, `board_leave`,
+list, 1.7); added `pool_create`, `pool_leave` and `admin_manage` (slice 1), `pool_reissue`, `pool_migrate`, `board_share`, `board_leave`,
 `board_bind`, `board_rebind`, `serve_offer`, `serve_call`, `inbound_consent` (model calls). A grant lets a session **ask**; an admin signature is what makes a
 governing act true for everyone; both are needed, and the first-run bundle (section 2) is how a person gives the first without a
 tap per act. Pool-level audit entries (member added, uses of pool-level grants, offers) are written to the pool's own history
@@ -852,12 +862,12 @@ board, never to a shared board.
 |---|---|---|
 | `pool_list` | none | every pool: id, name, policy, member count, this device's role, boards, offers |
 | `pool_status {pool}` | none | members with reach, governance state (admins, thresholds, pending recover or succession), per-pool limits |
-| `pool_create {name, policy, discovery}` | grant `pool_create` | the pool; approval for the founding charter |
+| `pool_create {title, policy, project}` | grant `pool_create` | the pool; approval for the founding charter (`title`, since `name` is a field the API refuses on every request to keep a caller from naming a sender; `discovery` arrives with slice 4; a charter of weak keys alone is refused) |
 | `pool_leave {pool}` | grant `pool_leave` | this device leaves (`leave` act) |
 | `add_device {pool, ttl_s}`, `join_pool {pool?, host, port, passphrase, fingerprint}` | grants `add_device`, `join_pool` | as today, per pool; a device in other pools joins as a new pool record |
 | `member_remove {pool, fingerprint}` | grant `member_remove` | asks for the admin act; one tap |
 | `pool_reissue {pool, policy, keep}` | grant `pool_reissue` | draft and approval (1.9) |
-| `admin_list`, `admin_add`, `admin_remove` | `admin_manage` | admins and their state |
+| `admin_list`, `admin_add`, `admin_remove` | `admin_manage` | admins and their state; slice 1 has `pool_propose {kind, body}` (make an act and sign it with the keys this device's signer holds), `pool_cosign {act}` (add this signer's signatures to an act the pool holds) and `pool_submit {act}` (take an act signed elsewhere; the signatures are the authority) |
 | `pool_migrate` | grant `pool_migrate` | 1.14 |
 | `sync_now {pool}`, `shard_call {pool, device, ...}`, `capacity {pool}` | as today | per pool; ambiguity is a plain question |
 
