@@ -154,6 +154,35 @@ revision's) stays where it is and is listed, and the command exits 1. Everything
 `<state>/models-migrate.log`; a cut-off run is finished by the next, and a second run finds nothing to do.
 Files outside an `owner/repo` folder and half-written `.part` files are listed and never moved.
 
+### Adopting the models kept outside the cache
+
+Three places keep models in a layout of their own: the decider's pinned files
+(`<cache>/decide/snapshots/<owner--repo>/<commit>/`), the weights views of checkpoints whose PLE table is read in
+place (`<cache>/spec/weights/models--<owner>--<repo>-<commit>/`) and the quantized drafters
+(`<cache>/spec/dflash`, `<cache>/spec/mtp`). `poolhouse-models adopt plan` verifies every file and prints what
+would be linked into the hub cache, which files are byte-for-byte duplicates of bytes the cache already holds
+(their old names are removed by `run`), which stay (a derived file, not the Hub's bytes) and which are refused,
+with `extra disk 0 B`: files are linked on the cache's volume, never copied, and a file on another volume is
+refused. A file is vouched for by the Hub's listing (sha256 or object id and size), else by the record its
+download left, else (a weights file only) by its structure and the tensors its index maps to it; a file nothing
+vouches for stays where it is. An old name is removed only after the cache's copy reads back as the same inode or
+the same bytes, and a cache file with other bytes is never replaced. `poolhouse-models adopt run` does exactly
+what the plan said, appends to `<state>/models-adopt.log`, finishes a cut-off run on the next call and names
+`refs/main` only when the Hub says `main` is the adopted commit. `--offline` does not ask the Hub.
+
+A weights view keeps its names: its weight files become links of the same inodes as the cache's blobs, and
+what is not the Hub's (`config.json` and the index with the PLE tensors removed, `EXTERNAL_PLE.json`,
+`ple-store.json`) stays in the view, which the engine finds at the same path. The cache's snapshot of that
+commit still lacks the files the view did not hold (the PLE-only shards, the Hub's `config.json` and index);
+`poolhouse-models pull hf:<repo>@<commit>` fetches only those.
+
+A quantized drafter is not on the Hub. It is kept as `poolhouse-derived/<owner>.<repo>.<recipe>` (for example
+`models--poolhouse-derived--PixelML.Qwen3.8-Flash-Next-NVFP4-DFlash.mlx-q4-g64`), `snapshots/<revision>/weights.safetensors`
+with a `provenance.json` naming the source repository, commit and file, the recipe and where it came from. The
+revision is a 40-character id computed from those, so any tool naming the repository and revision reads the same
+file; a repository holding no `config.json` is not listed as a model. The decider's pinned files are read from and
+downloaded into their own repository's snapshot of the pinned commit.
+
 ### Devices first
 
 By default a pull asks the devices you joined before it goes to the Hub, on the local network

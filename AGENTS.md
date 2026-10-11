@@ -214,6 +214,12 @@ which, in one line.
 A work in progress: no prompt, schema, serving default, pin, name, signature or file layout is frozen, and none is worth
 keeping in a shape that is wrong.
 
+**Never hold up code for legacy pools or old data** (owner, standing order, 2026-10-11): there are no production users and the
+repo moves too fast. A change that makes an old pool, old state file, old wire format or old build unsupported is landed as
+written: no legacy mode, no migration path, no mixed-build shim, no compatibility step in a gate or rig. The old thing is
+refused with one plain message and the device makes a new pool or fresh state. A review finding that is only about an old
+format is closed by deleting the old code.
+
 - Never keep bad code to keep something green (a test, a hash, a budget, a kept benchmark, a caller that would otherwise
   have to change). If the right shape breaks one, change the shape, then fix what broke: update the fixture in the same
   commit, say which kept runs stop being comparable, and write what needs re-measuring where the next person reads it.

@@ -18,7 +18,7 @@ import mlx.nn as nn
 import numpy as np
 from mlx.utils import tree_flatten
 
-from poolhouse import home
+from poolhouse.hub import derived
 from poolhouse.spec.drafters import Budget
 from poolhouse.spec.drafters.dflash_model import DFlashConfig, DFlashDraftModel
 from poolhouse.spec.drafters.vocab import sub_head
@@ -65,7 +65,7 @@ def _config(path: Path) -> DFlashConfig:
 
 
 def load_dflash(path: Path, bits: int = 4) -> tuple[DFlashDraftModel, DFlashConfig]:
-    """The drafter, quantized to ``bits``; the quantized weights are cached on first load."""
+    """The drafter, quantized to ``bits``; the quantized weights are kept in the hub cache (`derived`)."""
     config = _config(path)
     model = DFlashDraftModel(config)
 
@@ -73,8 +73,9 @@ def load_dflash(path: Path, bits: int = 4) -> tuple[DFlashDraftModel, DFlashConf
         return isinstance(module, nn.Linear) and "_conv" not in name \
             and "candidate_selector" not in name
 
-    cached = home.cache("spec", "dflash", f"{path.name}-{bits}bit.safetensors")
-    if bits and cached.is_file():
+    source, recipe = derived.source_of(path), f"mlx-q{bits}-g64"
+    cached = derived.lookup(source, recipe) if bits else None
+    if cached:
         nn.quantize(model, group_size=64, bits=bits, class_predicate=linear)
         model.load_weights(list(mx.load(str(cached)).items()))
     else:
@@ -85,8 +86,8 @@ def load_dflash(path: Path, bits: int = 4) -> tuple[DFlashDraftModel, DFlashConf
         if bits:
             nn.quantize(model, group_size=64, bits=bits, class_predicate=linear)
             mx.eval(model.parameters())
-            cached.parent.mkdir(parents=True, exist_ok=True)
-            mx.save_safetensors(str(cached), dict(tree_flatten(model.parameters())))
+            derived.save(source, recipe, lambda stage: mx.save_safetensors(
+                str(stage), dict(tree_flatten(model.parameters()))))
     mx.eval(model.parameters())
     return model, config
 

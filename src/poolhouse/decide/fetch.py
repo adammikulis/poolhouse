@@ -1,5 +1,5 @@
 """Pinned model files: each is a repository, a commit, a size and a SHA-256, and nothing is
-used that does not match all four."""
+used that does not match all four. They are kept in the Hugging Face hub cache (`poolhouse.hub.hfstore`)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from poolhouse import home, net
 from poolhouse.decide.types import BackendUnavailable, DecideError
 from poolhouse.files import sha256_file, write_json
 from poolhouse.httpguard import Refused
+from poolhouse.hub import hfstore
 from poolhouse.safenames import safe_filename
 
 
@@ -59,12 +60,26 @@ def _url(pin: Pin) -> str:
 
 
 def _where(pin: Pin) -> Path:
-    """Where the verified copy of ``pin`` lives: the repository's own layout under its pinned
-    revision, so files that belong together (a config beside its weights, an adapter folder) sit
+    """Where ``pin`` is in the hub cache: its repository's snapshot of the pinned commit, laid out as the
+    repository is, so files that belong together (a config beside its weights, an adapter folder) sit
     together as a loader expects."""
-    return home.cache("decide", "snapshots", safe_filename(pin.repo.replace("/", "--")),
-                      safe_filename(pin.revision), *(safe_filename(part)
-                                                      for part in pin.filename.split("/")))
+    folder = hfstore.repo_root(pin.repo) / "snapshots" / safe_filename(pin.revision)
+    return folder.joinpath(*(safe_filename(part) for part in pin.filename.split("/")))
+
+
+def _fetch(pin: Pin, path: Path) -> None:
+    """Download ``pin`` through the net pipeline into the repository's blobs and link it at ``path``."""
+    blob = hfstore.repo_root(pin.repo) / "blobs" / pin.sha256
+    want = net.Want(sha256=pin.sha256, size=pin.size, require_digest=True,
+                    max_bytes=pin.size + (1 << 20), purpose="decide model")
+    try:
+        net.download(_url(pin), blob, want)
+    except net.Blocked as exc:
+        raise DecideError(f"{pin.repo}/{pin.filename} does not match its pinned size and "
+                          f"hash; the file was held: {exc}") from None
+    except (Refused, OSError) as exc:
+        raise DecideError(f"{pin.repo}/{pin.filename} could not be fetched: {exc}") from None
+    hfstore.link(path, blob)
 
 
 def locate(pin: Pin, *, download: bool = False) -> Path:
@@ -72,25 +87,16 @@ def locate(pin: Pin, *, download: bool = False) -> Path:
 
     The download goes through the net pipeline (allow-listed host, pinned size and SHA-256,
     format check, scan); a file that fails any check is held, never kept, and `DecideError` is
-    raised.
+    raised. A file in the cache that is not the pinned bytes is not served: it is replaced by a download,
+    or `BackendUnavailable` says to fetch.
     """
     path = _where(pin)
-    if not path.is_file():
+    if not (path.is_file() and _verified(pin, path)):
         if not download:
             raise BackendUnavailable(
                 f"{pin.repo}/{pin.filename} is not downloaded; "
                 "run `poolhouse decide fetch` to download it")
-        want = net.Want(sha256=pin.sha256, size=pin.size, require_digest=True,
-                        max_bytes=pin.size + (1 << 20), purpose="decide model")
-        try:
-            net.download(_url(pin), path, want)
-        except net.Blocked as exc:
-            raise DecideError(f"{pin.repo}/{pin.filename} does not match its pinned size and "
-                              f"hash; the file was held: {exc}") from None
-        except (Refused, OSError) as exc:
-            raise DecideError(f"{pin.repo}/{pin.filename} could not be fetched: {exc}") from None
-    if not _verified(pin, path):
-        path.unlink(missing_ok=True)
-        raise DecideError(f"{pin.repo}/{pin.filename} does not match its pinned size and hash; "
-                          "the file was removed")
+        _fetch(pin, path)
+        if not _verified(pin, path):
+            raise DecideError(f"{pin.repo}/{pin.filename} does not match its pinned size and hash")
     return path
