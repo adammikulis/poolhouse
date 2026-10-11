@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use poolhouse_node::beacon::BeaconConfig;
-use poolhouse_node::lineage::Peer;
 use poolhouse_node::net::{Net, NetConfig};
 use poolhouse_node::node::Node;
 use serde_json::{json, Value};
@@ -73,7 +72,7 @@ impl Dev {
         if !token.is_empty() {
             r["token"] = json!(token);
         }
-        self.net.call(&r, &Peer::none())
+        self.net.call(&r, &super::me())
     }
 
     pub fn ok(&self, method: &str, board: &str, token: &str, params: Value) -> Value {

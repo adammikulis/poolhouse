@@ -55,8 +55,8 @@ def test_a_second_key_is_enrolled_only_with_the_approval_of_the_first(team):
     proof = board_grants.enrolment(other, "a second device")
     with pytest.raises(Denied):
         board_grants.enrol(team.client, team.kid.token, proof)
-    device = board_grants.listing(team.session(team.lead)).device
-    approved = board_grants.approve(proof, team.person, node=device)
+    here = board_grants.here(team.client)
+    approved = board_grants.approve(proof, team.person, here)
     done = board_grants.enrol(team.client, team.kid.token, approved)
     assert done["keys"] == 2
     issued(team, team.lead, board_grants.Want("land_trust", {"kind": "session", "name": team.lead.name}), key=other)
@@ -64,7 +64,7 @@ def test_a_second_key_is_enrolled_only_with_the_approval_of_the_first(team):
     with pytest.raises(Denied, match="used already"):
         board_grants.enrol(team.client, team.kid.token, approved)
     with pytest.raises(Denied, match="for this node"):
-        board_grants.enrol(team.client, team.kid.token, board_grants.approve(proof, team.person, node="ab" * 32))
+        board_grants.enrol(team.client, team.kid.token, board_grants.approve(proof, team.person, board_grants.Where("ab" * 32, here.anchor)))
 
 
 def test_the_kit_text_of_a_grant_is_plain_ascii(team):
@@ -86,8 +86,8 @@ def test_a_refusal_names_the_grant_and_a_person_at_a_terminal_signs_it_for_one_u
     with pytest.raises(Denied) as refused:
         call()
     assert refused.value.grant["action"] == "set_join_policy" and refused.value.grant["name"] == plain.name
-    team.client.person = lambda token, hint: board_grants.issue(team.session(plain), team.person, board_grants.Want(
-        hint["action"], {"kind": "session", "name": hint["name"]}, hint["resource"], hint["device"], 120_000, 1)) is not None
+    team.client.person = lambda token, hint: token if board_grants.issue(team.session(plain), team.person, board_grants.Want(
+        hint["action"], {"kind": "session", "name": hint["name"]}, hint["resource"], hint["device"], 120_000, 1)) else ""
     assert team.client.call("set_join_policy", "", plain.token, policy="open")["policy"] == "open"
     team.client.person = None
     with pytest.raises(Denied):
@@ -102,7 +102,7 @@ def test_no_key_is_held_by_a_process_an_agent_started_or_with_no_terminal(team, 
     assert person_key.held(team.state) is None, "pytest has no terminal and no key is kept"
     monkeypatch.setenv("CLAUDECODE", "1")
     assert person_key.held(team.state, attended=True) is None
-    assert person_key.provider(team.state, attended=True)("a-token", {"action": "sync_now"}) is False
+    assert person_key.provider(team.state, attended=True)("a-token", {"action": "sync_now"}) == ""
     assert not keys.meta_path.exists()
 
 
@@ -124,6 +124,8 @@ def test_a_person_sets_up_the_lead_grants_once_and_every_item_is_revoked_by_its_
     assert lead.name in out and "for 7 days" in out and "land_control" in out and "act as a person key" in out
     for action in board_grants.DEFAULT_ACTIONS:
         assert action in out, out
+    assert set(board_grants.DEFAULT_ACTIONS) == {"land_control", "task_authority", "note_verify", "shard_call"}
+    assert "shard_consent" not in out and "sync_now" not in out, "what turns test shards on, and a sync, are granted by a person's own command"
     held = board_grants.listing(team.session(lead))
     assert sorted(g.action for g in held.grants) == sorted(board_grants.DEFAULT_ACTIONS)
     assert all(g.status == "live" and g.to["kind"] == "session" and g.to["name"] == lead.name for g in held.grants)

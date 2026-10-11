@@ -49,21 +49,23 @@ def _error(reply: dict[str, Any]) -> NodeError:
 class Client:
     """One node, reached on its socket; the node is started first when the socket is dead."""
 
-    def __init__(self, state: Path | None = None, *, person: Callable[[str, dict[str, Any]], bool] | None = None) -> None:
+    def __init__(self, state: Path | None = None, *, person: Callable[[str, dict[str, Any]], str] | None = None) -> None:
         self.state = state or node_launch.default_state()
         self.requests = 0
         self.person = person
-        """For a client a person is running: asked with the token and what a refusal named, it returns True once the person's key allowed it."""
+        """For a client a person is running: asked with the token and what a refusal named, it returns the token to send the request again
+        with once the person's key allowed it (an empty string when it did not)."""
 
     def call(self, method: str, board: str = "", token: str = "", **params: Any) -> Any:
         """Send one request and return its result; a refusal raises `NodeError`. A refusal for want of a grant is tried
-        once more when `person` allowed it."""
+        once more, with the token `person` returns, when it allowed it."""
         try:
             return self._send(method, board, token, params)
         except Denied as err:
-            if self.person is None or not token or not err.grant or not self.person(token, err.grant):
+            again = self.person(token, err.grant) if self.person is not None and token and err.grant else ""
+            if not again:
                 raise
-            return self._send(method, board, token, params)
+            return self._send(method, board, again, params)
 
     def _send(self, method: str, board: str, token: str, params: dict[str, Any]) -> Any:
         self.requests += 1

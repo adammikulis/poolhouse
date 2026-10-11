@@ -2,6 +2,8 @@
 
 pub mod grants;
 pub mod netkit;
+#[cfg(unix)]
+pub mod procs;
 
 use ed25519_dalek::SigningKey;
 use poolhouse_node::board::Board;
@@ -59,8 +61,13 @@ pub fn node(dir: &Path) -> Node {
     Node::open(dir).unwrap()
 }
 
+/// The process of this test: the peer of every request `req` makes, so the node reads the lineage of the test binary.
+pub fn me() -> Peer {
+    Peer { pid: Some(std::process::id()) }
+}
+
 pub fn req(node: &mut Node, method: &str, board: &str, token: &str, params: Value) -> Value {
-    req_from(node, &Peer::none(), method, board, token, params)
+    req_from(node, &me(), method, board, token, params)
 }
 
 /// A request made by the process ``peer``.
@@ -73,6 +80,16 @@ pub fn req_from(node: &mut Node, peer: &Peer, method: &str, board: &str, token: 
         r["token"] = json!(token);
     }
     poolhouse_node::api::handle(node, &r, peer)
+}
+
+/// How a test reaches the node it holds: every call from this process.
+pub fn caller(n: &mut Node) -> impl FnMut(&str, &str, &str, Value) -> Value + '_ {
+    move |m, b, t, p| req(n, m, b, t, p)
+}
+
+/// The fingerprints of the person keys the node holds.
+pub fn held(n: &mut Node) -> Vec<String> {
+    ok(req(n, "person_keys", "", "", json!({})))["keys"].as_array().unwrap().iter().map(|k| k["fingerprint"].as_str().unwrap().to_string()).collect()
 }
 
 pub fn ok(reply: Value) -> Value {

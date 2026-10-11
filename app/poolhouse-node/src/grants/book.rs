@@ -109,10 +109,7 @@ fn refusal(persons: &Persons, own: &str, row: &Row, issue: &Issue, map: &Map<Str
     }
     let sig = map.get("sig").and_then(Value::as_str).unwrap_or("");
     if !persons.signed(&issue.person, &signing_bytes(map), sig) {
-        return Some("not signed by a person key enrolled on this device");
-    }
-    if persons.removed_since(&issue.person, issue.at_ms.min(row.hlc.0)) {
-        return Some("signed before its person key was removed");
+        return Some(if persons.was_removed(&issue.person) { "signed by a person key that was removed from this device" } else { "not signed by a person key enrolled on this device" });
     }
     None
 }
@@ -161,7 +158,7 @@ pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
             },
             Some("revoke") if counted(&row.origin) => {
                 if let Ok(r) = parse_revoke(map) {
-                    if node.persons.signed(&r.person, &signing_bytes(map), map.get("sig").and_then(Value::as_str).unwrap_or("")) && !node.persons.removed_since(&r.person, r.at_ms.min(row.hlc.0)) {
+                    if node.persons.signed(&r.person, &signing_bytes(map), map.get("sig").and_then(Value::as_str).unwrap_or("")) {
                         revoked.entry(r.gid).or_insert(r.reason);
                     }
                 }

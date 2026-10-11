@@ -22,8 +22,8 @@ from poolhouse.board.session import Session
 from poolhouse.files import write_json
 from poolhouse.platform import private_file
 
-__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "approve", "canonical", "default_bundle", "describe", "duration_ms",
-           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "issue", "listing", "log", "rebind", "revoke",
+__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approve", "canonical", "default_bundle", "describe", "duration_ms",
+           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "here", "issue", "listing", "log", "rebind", "revoke",
            "sign_issue", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
@@ -142,17 +142,35 @@ def enrolment(key: Signs, about: str, *, now_ms: int | None = None) -> dict[str,
     return {k: v for k, v in body.items() if k != "op"} | {"proof": key.sign_bytes(ENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
-def approve(proof: dict[str, Any], approver: Signs, *, node: str, now_ms: int | None = None) -> dict[str, Any]:
-    """The proof of a new key with the approval of a key the node already holds: for the node ``node`` (its device
-    fingerprint) only, and good once, for five minutes."""
+@dataclass(frozen=True, slots=True)
+class Where:
+    """Where a person's signature is good: the node (its device fingerprint) and the terminal it is made in (``anchor``, the process
+    at the top of the signing process's lineage: the shell of the terminal)."""
+
+    node: str
+    anchor: dict[str, int]
+
+
+def here(client: Client) -> Where:
+    """The node ``client`` reaches and the terminal this process runs in, as the node reads them."""
+    lineage = client.call("lineage")["lineage"]
+    if not lineage:
+        raise ValueError("the node could not read the process this runs in, so a signature cannot be made for its terminal")
+    top = lineage[-1]
+    return Where(str(client.call("hello")["device"]), {"pid": int(top["pid"]), "start": int(top["start"])})
+
+
+def approve(proof: dict[str, Any], approver: Signs, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
+    """The proof of a new key with the approval of a key the node already holds: for the node and the terminal ``where`` names
+    only, and good once, for five minutes."""
     if not isinstance(proof, dict) or not {"public", "about", "at_ms", "proof"} <= proof.keys():
         raise ValueError("a carried key is what `person-proof` printed: public, about, at_ms and proof")
     at, by = _now_ms() if now_ms is None else now_ms, fingerprint(approver.public)
     body = {"op": "approve", "public": proof["public"], "about": proof["about"], "at_ms": proof["at_ms"], "approved_ms": at, "by": by,
-            "node": node, "nonce": secrets.token_hex(16)}
+            "node": where.node, "nonce": secrets.token_hex(16), "anchor": where.anchor}
     _plain(body)
     sig = approver.sign_bytes(APPROVE_DOMAIN + canonical(body).encode()).hex()
-    return {**proof, "by": by, "approved_ms": at, "nonce": body["nonce"], "approval": sig}
+    return {**proof, "by": by, "approved_ms": at, "nonce": body["nonce"], "anchor": where.anchor, "approval": sig}
 
 
 def expect_enrolment(state: Path, *, now_ms: int | None = None) -> str:
@@ -179,31 +197,35 @@ def enrol_first(client: Client, token: str, key: Signs, about: str) -> dict[str,
     return enrol(client, token, {**enrolment(key, about), "secret": secret})
 
 
-def sign_unenroll(key: Signs, fingerprint_: str, *, now_ms: int | None = None) -> dict[str, Any]:
-    """The `person_unenroll` params removing the enrolled key ``fingerprint_``, signed by ``key``, an enrolled key."""
+def sign_unenroll(key: Signs, fingerprint_: str, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
+    """The `person_unenroll` params removing the enrolled key ``fingerprint_`` from the node and for the terminal ``where`` names,
+    signed by ``key``, an enrolled key, and good once."""
     at, by = _now_ms() if now_ms is None else now_ms, fingerprint(key.public)
-    body = {"op": "unenroll", "fingerprint": fingerprint_, "by": by, "at_ms": at}
+    body = {"op": "unenroll", "fingerprint": fingerprint_, "by": by, "at_ms": at, "node": where.node, "nonce": secrets.token_hex(16), "anchor": where.anchor}
     _plain(body)
-    return {k: v for k, v in body.items() if k != "op"} | {"sig": key.sign_bytes(UNENROLL_DOMAIN + canonical(body).encode()).hex()}
+    sent = {k: v for k, v in body.items() if k not in ("op", "node")}
+    return sent | {"sig": key.sign_bytes(UNENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
-def sign_rebind(key: Signs, board: str, name: str, node: str, *, now_ms: int | None = None) -> dict[str, Any]:
-    """The `rebind` params moving the main session ``name`` of ``board`` to the process that sends them, on the node ``node``, signed by ``key``."""
-    body = {"op": "rebind", "board": board, "name": name, "node": node, "nonce": secrets.token_hex(16), "at_ms": _now_ms() if now_ms is None else now_ms}
+def sign_rebind(key: Signs, board: str, name: str, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
+    """The `rebind` params moving the main session ``name`` of ``board`` to the process that sends them, on the node and from the
+    terminal ``where`` names, signed by ``key``."""
+    body = {"op": "rebind", "board": board, "name": name, "node": where.node, "nonce": secrets.token_hex(16), "at_ms": _now_ms() if now_ms is None else now_ms,
+            "anchor": where.anchor}
     _plain(body)
-    return {"at_ms": body["at_ms"], "nonce": body["nonce"], "by": fingerprint(key.public), "sig": key.sign_bytes(REBIND_DOMAIN + canonical(body).encode()).hex()}
+    return {"at_ms": body["at_ms"], "nonce": body["nonce"], "anchor": where.anchor, "by": fingerprint(key.public),
+            "sig": key.sign_bytes(REBIND_DOMAIN + canonical(body).encode()).hex()}
 
 
 def rebind(client: Client, board: str, harness: str, session: str, key: Signs) -> dict[str, Any]:
     """Move the main session ``session`` of ``harness`` on ``board`` to this process's terminal, signed by ``key``; the tokens it held end."""
     name = str(client.call("session_lookup", board, harness=harness, session=session)["name"])
-    node = str(client.call("hello")["device"])
-    return dict(client.call("rebind", board, "", harness=harness, session=session, **sign_rebind(key, board, name, node)))
+    return dict(client.call("rebind", board, "", harness=harness, session=session, **sign_rebind(key, board, name, here(client))))
 
 
 def unenrol(client: Client, token: str, key: Signs, fingerprint_: str) -> dict[str, Any]:
     """Take the key ``fingerprint_`` off the node, signed by ``key``; the node keeps its last key."""
-    return dict(client.call("person_unenroll", "", token, **sign_unenroll(key, fingerprint_)))
+    return dict(client.call("person_unenroll", "", token, **sign_unenroll(key, fingerprint_, here(client))))
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,13 +271,11 @@ def log(session: Session, limit: int = 50) -> list[dict[str, Any]]:
     return list(session.call("grant_log", limit=limit)["log"])
 
 
-DEFAULT_ACTIONS = ("land_control", "task_authority", "shard_consent", "note_verify", "sync_now", "shard_call")
+DEFAULT_ACTIONS = ("land_control", "task_authority", "note_verify", "shard_call")
 DESCRIPTIONS = {
     "land_control": "pause, resume and cancel others' requests in the landing queue",
     "task_authority": "act for the person on tasks: assign, review in strict mode, set the enforcement mode, record a landing",
-    "shard_consent": "turn test shards on or off on this device and name the devices whose tests it takes",
     "note_verify": "record that the command of a note was run and what it printed (subagents included)",
-    "sync_now": "ask this device to sync the board with the pool now",
     "shard_call": "run tests on another device of the pool that allowed this device",
 }
 
@@ -332,12 +352,13 @@ def describe(data: bytes) -> str:
             return enrol_line(bytes.fromhex(body["public"]), body["about"])
         if domain + b"\n" == APPROVE_DOMAIN and body["op"] == "approve":
             return (f"{enrol_line(bytes.fromhex(body['public']), body['about'])} {body['node']}, approved by the key {body['by']}, "
-                    f"once, until {when(body['approved_ms'] + FRESH_MS)}")
+                    f"once, until {when(body['approved_ms'] + FRESH_MS)}, in the terminal whose shell is process {body['anchor']['pid']}")
         if domain + b"\n" == REBIND_DOMAIN and body["op"] == "rebind":
-            return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in, on the node {body['node']}, "
-                    f"and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")
-        if domain + b"\n" == UNENROLL_DOMAIN:
-            return f"take the person key {body['fingerprint']} off the node"
+            return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in (the shell is process "
+                    f"{body['anchor']['pid']}), on the node {body['node']}, and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")
+        if domain + b"\n" == UNENROLL_DOMAIN and body["op"] == "unenroll":
+            return (f"take the person key {body['fingerprint']} off the node {body['node']}, signed by the key {body['by']}, once, "
+                    f"until {when(body['at_ms'] + FRESH_MS)}, in the terminal whose shell is process {body['anchor']['pid']}")
     except (KeyError, TypeError, AttributeError, ValueError):
         pass
     raise ValueError("a person key signs a grant, the end of a grant, the enrolment or removal of a key, or the move of a session, and this is none of them")

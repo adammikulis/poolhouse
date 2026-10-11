@@ -15,9 +15,12 @@ fn resolve(n: &mut poolhouse_node::node::Node, path: &Path) -> serde_json::Value
     req(n, "project_resolve", "", "", json!({"path": path.to_str().unwrap()}))
 }
 
-/// ``id`` added as a project by a session of its own board.
+/// ``id`` added as a project by a session of its own board, which holds `source_add` when the place is not a git repository.
 fn add(n: &mut poolhouse_node::node::Node, id: &str, kind: &str, path: &Path) -> serde_json::Value {
-    let (_, token) = session(n, id, "placer");
+    let (name, token) = session(n, id, "placer");
+    if kind != "git" {
+        allow(n, id, &token, &name, &["source_add"]);
+    }
     add_as(n, &token, id, kind, path)
 }
 
@@ -89,7 +92,8 @@ fn a_place_is_never_inside_around_or_the_same_as_a_place_of_another_project() {
     ok(add(&mut n, "deep", "folder", &around));
     assert_eq!(code(&add(&mut n, "shallow", "folder", around.parent().unwrap())), "invalid", "and the place above one");
     assert_eq!(ok(resolve(&mut n, &inner))["board"], "mono", "a directory inside a project is that project's");
-    let (_, token) = session(&mut n, "mono", "second");
+    let (second, token) = session(&mut n, "mono", "second");
+    allow(&mut n, "mono", &token, &second, &["source_add"]);
     assert_eq!(code(&add_as(&mut n, &token, "mono", "folder", &inner)), "invalid", "an id is registered once");
     assert_eq!(code(&add_as(&mut n, &token, "BAD", "folder", &around)), "denied", "a session adds the project of its own board only");
     assert_eq!(code(&add(&mut n, "k", "dropbox", &inner)), "invalid");
@@ -107,7 +111,8 @@ fn a_project_is_added_by_a_session_of_its_own_board_a_few_a_minute() {
     let (mine, other) = (place("mine"), place("other"));
     assert_eq!(code(&add_as(&mut n, "", "mine", "folder", &mine)), "denied", "no session, no project");
     assert_eq!(code(&add_as(&mut n, "not-a-token", "mine", "folder", &mine)), "denied");
-    let (_, token) = session(&mut n, "mine", "s");
+    let (name, token) = session(&mut n, "mine", "s");
+    allow(&mut n, "mine", &token, &name, &["source_add"]);
     assert_eq!(code(&add_as(&mut n, &token, "other", "folder", &other)), "denied", "a session adds the project of its own board only");
     ok(add_as(&mut n, &token, "mine", "folder", &mine));
     for i in 0..9 {
@@ -140,4 +145,61 @@ fn only_a_session_of_the_project_adds_a_place_to_it() {
     allow(&mut n, "alpha", &alpha, &alpha_name, &["source_add"]);
     ok(source(&mut n, &alpha));
     assert_eq!(ok(resolve(&mut n, &extra))["board"], "alpha");
+}
+
+#[test]
+fn a_place_around_the_users_home_or_the_whole_disk_is_no_project() {
+    let state = tempdir().unwrap();
+    let mut n = node(state.path());
+    let home = poolhouse_node::sys::home_dir().canonicalize().unwrap();
+    let (name, token) = session(&mut n, "evil", "placer");
+    allow(&mut n, "evil", &token, &name, &["source_add"]);
+    for place in [Path::new("/"), home.as_path(), home.parent().unwrap()] {
+        let reply = add_as(&mut n, &token, "evil", "folder", place);
+        assert_eq!(code(&reply), "invalid", "{place:?}: {reply}");
+        assert!(reply["error"]["message"].as_str().unwrap().contains("home"), "{reply}");
+    }
+    assert!(ok(req(&mut n, "project_list", "", "", json!({}))).as_array().unwrap().is_empty(), "nothing was registered");
+    assert_eq!(code(&resolve(&mut n, &home)), "denied", "so no directory of the user's resolves to the board `evil`");
+}
+
+#[test]
+fn a_folder_that_holds_a_git_repository_of_its_own_is_not_one_place() {
+    let (state, work) = (tempdir().unwrap(), tempdir().unwrap());
+    let (broad, repo) = (work.path().join("everything"), work.path().join("everything/shop"));
+    std::fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["commit", "-q", "--allow-empty", "-m", "start"]);
+    let mut n = node(state.path());
+    let reply = add(&mut n, "wide", "folder", &broad);
+    assert_eq!(code(&reply), "invalid", "{reply}");
+    assert!(reply["error"]["message"].as_str().unwrap().contains("git repository"), "{reply}");
+    ok(add(&mut n, "shop", "git", &repo));
+    assert_eq!(ok(resolve(&mut n, &repo))["board"], "shop", "the repository is its own project");
+}
+
+#[test]
+fn a_place_that_is_not_a_git_repository_is_added_by_a_session_that_holds_source_add() {
+    let (state, work) = (tempdir().unwrap(), tempdir().unwrap());
+    let (docs, repo) = (work.path().join("docs"), work.path().join("shop"));
+    std::fs::create_dir_all(&docs).unwrap();
+    std::fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["commit", "-q", "--allow-empty", "-m", "start"]);
+    let mut n = node(state.path());
+    let (name, token) = session(&mut n, "specs", "placer");
+    let held = add_as(&mut n, &token, "specs", "folder", &docs);
+    assert_eq!((code(&held), held["error"]["grant"]["action"].clone(), held["error"]["grant"]["resource"].clone()), ("denied".to_string(), json!("source_add"), json!("specs")), "{held}");
+    assert_eq!(code(&resolve(&mut n, &docs)), "denied", "a refused project is not registered");
+    for kind in ["gdrive", "onedrive"] {
+        assert_eq!(code(&add_as(&mut n, &token, "specs", kind, &docs)), "denied", "{kind} is no git repository either");
+    }
+    let (_, git_token) = session(&mut n, "shop", "placer");
+    ok(add_as(&mut n, &git_token, "shop", "git", &repo));
+
+    allow(&mut n, "specs", &token, &name, &["source_add"]);
+    ok(add_as(&mut n, &token, "specs", "folder", &docs));
+    assert_eq!(ok(resolve(&mut n, &docs))["board"], "specs");
+    let log = ok(req(&mut n, "grant_log", "specs", &token, json!({"limit": 20})))["log"].clone();
+    assert!(log.as_array().unwrap().iter().any(|e| e["op"] == "use" && e["action"] == "source_add" && e["target"] == "specs"), "the use is on the board: {log}");
 }

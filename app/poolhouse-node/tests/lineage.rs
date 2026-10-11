@@ -5,70 +5,13 @@
 
 mod kit;
 
-use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, Stdio};
-
-use kit::grants::{enrolled, person};
+use kit::grants::{anchor_of, enrolled, person};
+use kit::procs::*;
 use kit::*;
 use poolhouse_node::lineage::Peer;
 use poolhouse_node::node::Node;
 use serde_json::{json, Value};
 use tempfile::tempdir;
-
-/// A process that does nothing for a while: in the session of this test, or (``own_terminal``) leading a session of its own
-/// with a controlling terminal, as a shell in another terminal does.
-fn process(own_terminal: bool) -> Child {
-    let mut slave = 0;
-    if own_terminal {
-        let mut master = 0;
-        // SAFETY: openpty fills two descriptors; the master stays open for the life of the test so the terminal does not hang up.
-        assert_eq!(unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) }, 0);
-    }
-    let mut command = Command::new("sleep");
-    command.arg("60").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-    if own_terminal {
-        // SAFETY: setsid and ioctl are async-signal-safe and run in the child before exec.
-        unsafe {
-            command.pre_exec(move || {
-                libc::setsid();
-                libc::ioctl(slave, libc::TIOCSCTTY as _, 0);
-                Ok(())
-            });
-        }
-    }
-    let child = command.spawn().unwrap();
-    if own_terminal {
-        // SAFETY: the descriptor came from openpty above and is closed once.
-        unsafe { libc::close(slave) };
-    }
-    child
-}
-
-/// A process in a session of its own with no terminal, as a harness starts each command it runs.
-fn detached() -> Child {
-    let mut command = Command::new("sleep");
-    command.arg("60").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-    // SAFETY: setsid is async-signal-safe and runs in the child before exec.
-    unsafe { command.pre_exec(|| { libc::setsid(); Ok(()) }) };
-    command.spawn().unwrap()
-}
-
-/// A process whose parent has gone, as a daemon's is, and its id.
-fn orphan() -> u32 {
-    let out = Command::new("sh").args(["-c", "sleep 60 >/dev/null 2>&1 & echo $!"]).output().unwrap();
-    String::from_utf8_lossy(&out.stdout).trim().parse().unwrap()
-}
-
-fn peer(child: &Child) -> Peer {
-    Peer { pid: Some(child.id()) }
-}
-
-fn done(mut children: Vec<Child>) {
-    for child in &mut children {
-        child.kill().unwrap();
-        child.wait().unwrap();
-    }
-}
 
 fn register(n: &mut Node, from: &Peer, session: &str, parent: &str) -> Value {
     req_from(n, from, "register", "demo", parent, json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": session}))
@@ -83,7 +26,7 @@ fn a_main_session_registers_again_only_from_the_lineage_it_came_from() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (inside, outside, harness) = (process(false), process(true), detached());
-    let me = Peer { pid: Some(std::process::id()) };
+    let me = me();
     let first = ok(register(&mut n, &me, "lead", ""));
     assert_eq!(first["created"], true);
     let from_a_command = ok(register(&mut n, &peer(&harness), "lead", ""));
@@ -114,7 +57,7 @@ fn a_refused_registration_ends_no_token_and_past_eight_the_oldest_but_the_first_
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let outside = process(true);
-    let me = Peer { pid: Some(std::process::id()) };
+    let me = me();
     let first = ok(register(&mut n, &me, "lead", ""));
     let original = first["token"].as_str().unwrap().to_string();
     for _ in 0..20 {
@@ -141,22 +84,27 @@ fn a_refused_registration_ends_no_token_and_past_eight_the_oldest_but_the_first_
 fn a_person_moves_a_session_to_the_terminal_they_are_at_and_the_move_is_used_once() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let (here, there) = (Peer { pid: Some(std::process::id()) }, process(true));
+    let (here, there) = (me(), process(true));
     let first = ok(register(&mut n, &here, "lead", ""));
     let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
     enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &token);
     let device = n.cert.fingerprint();
-    let params = person().rebind_params("claude-code", "lead", "demo", &name, &device);
+    let params = person().rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()));
 
     let stranger = kit::grants::Person { key: ed25519_dalek::SigningKey::from_bytes(&[0x44; 32]) };
-    let forged = stranger.rebind_params("claude-code", "lead", "demo", &name, &device);
+    let forged = stranger.rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()));
     assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", forged)), "denied", "a key nobody enrolled moves nothing");
-    let elsewhere = person().rebind_params("claude-code", "lead", "demo", &name, &"ab".repeat(32));
+    let elsewhere = person().rebind_params("claude-code", "lead", "demo", &name, &"ab".repeat(32), &anchor_of(there.id()));
     assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", elsewhere)), "denied", "an approval for another node moves nothing here");
     ok(register(&mut n, &here, "someone-else", ""));
-    let other_session = person().rebind_params("claude-code", "someone-else", "demo", &name, &device);
+    let other_session = person().rebind_params("claude-code", "someone-else", "demo", &name, &device, &anchor_of(there.id()));
     assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", other_session)), "denied", "an approval for one session moves no other");
     assert_eq!(code(&req_from(&mut n, &Peer::none(), "rebind", "demo", "", params.clone())), "denied", "no process behind the request, nowhere to move the session");
+    let signed_here = person().rebind_params("claude-code", "lead", "demo", &name, &device, &kit::grants::my_anchor());
+    assert_eq!(code(&req_from(&mut n, &peer(&there), "rebind", "demo", "", signed_here)), "denied", "an approval signed in one terminal moves the session to no other");
+    let mut unnamed = params.clone();
+    unnamed.as_object_mut().unwrap().remove("anchor");
+    assert_eq!(req_from(&mut n, &peer(&there), "rebind", "demo", "", unnamed)["ok"], false, "an approval names its terminal");
     assert_eq!(ok(who(&mut n, &token))["name"], name.as_str(), "none of that ended the lead's token");
 
     let moved = ok(req_from(&mut n, &peer(&there), "rebind", "demo", "", params.clone()));
@@ -175,10 +123,46 @@ fn a_person_moves_a_session_to_the_terminal_they_are_at_and_the_move_is_used_onc
 }
 
 #[test]
+fn the_node_tells_a_process_its_own_lineage_and_names_no_other() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let there = process(true);
+    let mine = ok(req(&mut n, "lineage", "", "", json!({})));
+    assert_eq!(mine["lineage"].as_array().unwrap().last().unwrap(), &kit::grants::my_anchor(), "the top of a lineage is the anchor a person signs for");
+    let theirs = ok(req_from(&mut n, &peer(&there), "lineage", "", "", json!({})));
+    assert_eq!(theirs["lineage"], json!([kit::grants::anchor_of(there.id())]), "a terminal's own shell is the whole of its lineage");
+    assert_eq!(code(&req(&mut n, "lineage", "", "", json!({"pid": 1}))), "invalid", "no request names the process it asks about");
+    assert_eq!(ok(req_from(&mut n, &Peer::none(), "lineage", "", "", json!({})))["lineage"], json!([]), "a request whose process cannot be read has none");
+    done(vec![there]);
+}
+
+#[test]
+fn a_move_is_used_once_even_after_the_node_restarts() {
+    let dir = tempdir().unwrap();
+    let there = process(true);
+    let (name, params) = {
+        let mut n = node(dir.path());
+        let first = ok(register(&mut n, &me(), "lead", ""));
+        let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
+        enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &token);
+        let params = person().rebind_params("claude-code", "lead", "demo", &name, &n.cert.fingerprint(), &anchor_of(there.id()));
+        ok(req_from(&mut n, &peer(&there), "rebind", "demo", "", params.clone()));
+        (name, params)
+    };
+    let mut n = node(dir.path());
+    let replay = req_from(&mut n, &peer(&there), "rebind", "demo", "", params);
+    assert_eq!(code(&replay), "denied", "a captured move is not good again because the node restarted: {replay}");
+    assert!(replay["error"]["message"].as_str().unwrap().contains("used already"), "{replay}");
+    let fresh = ok(register(&mut n, &peer(&there), "lead", ""));
+    assert_eq!(fresh["name"], name.as_str());
+    done(vec![there]);
+}
+
+#[test]
 fn a_subagent_registers_under_its_parent_and_a_retired_or_moved_name_is_not_a_subagent() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let (here, apart) = (Peer { pid: Some(std::process::id()) }, process(true));
+    let (here, apart) = (me(), process(true));
     let lead = ok(register(&mut n, &here, "lead", ""));
     let sub = ok(register(&mut n, &peer(&apart), "sub", lead["token"].as_str().unwrap()));
     assert_eq!(sub["parent"], lead["name"], "a subagent is registered by its parent's token, from any process");
@@ -209,18 +193,21 @@ fn the_peer_of_a_connection_is_the_process_that_connected() {
 fn hostile_params_to_a_move_change_nothing() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let (here, there) = (Peer { pid: Some(std::process::id()) }, process(true));
+    let (here, there) = (me(), process(true));
     let first = ok(register(&mut n, &here, "lead", ""));
     let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
     enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &token);
     let device = n.cert.fingerprint();
-    let good = person().rebind_params("claude-code", "lead", "demo", &name, &device);
+    let good = person().rebind_params("claude-code", "lead", "demo", &name, &device, &anchor_of(there.id()));
     let big = "x".repeat(200_000);
     let hostile = [("harness", json!(5)), ("harness", json!(big)), ("harness", json!("claude-code\nx")), ("session", json!(["lead"])), ("session", json!("../lead")),
                    ("at_ms", json!(-1)), ("at_ms", json!("now")), ("at_ms", json!(1.5)), ("at_ms", Value::Null), ("nonce", json!("short")),
                    ("nonce", json!("../../etc/passwd/aaaaaaaa")), ("nonce", json!(big)), ("nonce", json!(7)), ("by", json!("../persons")),
                    ("by", json!(big)), ("by", json!(5)), ("sig", json!("zz")), ("sig", json!("00".repeat(64))), ("sig", json!(["00"])),
-                   ("sig", json!(big)), ("admin", json!(true)), ("as", json!("person")), ("name", json!(name)), ("token", json!(token))];
+                   ("sig", json!(big)), ("admin", json!(true)), ("as", json!("person")), ("name", json!(name)), ("token", json!(token)),
+                   ("anchor", json!(5)), ("anchor", json!("there")), ("anchor", json!([1, 2])), ("anchor", Value::Null), ("anchor", json!({})), ("anchor", json!({"pid": 1})),
+                   ("anchor", json!({"pid": -1, "start": 1})), ("anchor", json!({"pid": 4_294_967_296u64, "start": 1})), ("anchor", json!({"pid": "1", "start": "1"})),
+                   ("anchor", json!({"pid": 1, "start": 1, "admin": true})), ("anchor", json!({"pid": 1, "start": 1.5}))];
     for (key, value) in hostile {
         let mut p = good.clone();
         p[key] = value;
@@ -236,23 +223,4 @@ fn hostile_params_to_a_move_change_nothing() {
     assert_eq!(code(&register(&mut n, &peer(&there), "lead", "")), "denied", "and nothing was moved");
     ok(register(&mut n, &here, "lead", ""));
     done(vec![there]);
-}
-
-#[test]
-fn a_session_registered_with_no_lineage_takes_the_first_one_that_registers_it_again() {
-    let dir = tempdir().unwrap();
-    let (inside, outside) = (process(false), process(true));
-    {
-        let mut n = node(dir.path());
-        ok(register(&mut n, &Peer::none(), "old", ""));
-    }
-    let mut n = node(dir.path());
-    let adopted = ok(register(&mut n, &peer(&outside), "old", ""));
-    assert_eq!(adopted["created"], false, "a name from before lineages were kept registers for whoever asks first");
-    assert_eq!(code(&register(&mut n, &peer(&inside), "old", "")), "denied", "and from then on only from there");
-    assert_eq!(ok(register(&mut n, &peer(&outside), "old", ""))["name"], adopted["name"]);
-    drop(n);
-    let mut n = node(dir.path());
-    assert_eq!(code(&register(&mut n, &peer(&inside), "old", "")), "denied", "the lineage outlasts a restart of the node");
-    done(vec![inside, outside]);
 }

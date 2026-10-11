@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import node_launch, trees, trees_notice
-from poolhouse.board import credentials, person_key, session
+from poolhouse.board import credentials, person, person_key, session
 from poolhouse.board.client import Client, Conflict, NodeError
 from poolhouse.board.session import Entry, Native, Session
 from poolhouse.command import flag
@@ -75,7 +75,7 @@ def connect(args: argparse.Namespace) -> Session:
     """The caller's session on the board its directory belongs to. A person at a terminal who keeps a key allows what the
     node refuses for want of a grant."""
     state = node_launch.default_state()
-    return session.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=Client(state, person=person_key.provider(state)))
+    return session.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=Client(state, person=person_key.provider(state, acting=person.acting(state))))
 
 
 def runner(handler: Handler) -> Callable[[argparse.Namespace], int]:

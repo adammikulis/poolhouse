@@ -21,6 +21,7 @@ use serde_json::json;
 
 use crate::error::{Error, Result};
 use crate::identity::{Holder, ModelState, Registry};
+use crate::lineage::{shares, ENFORCED};
 use crate::node::Node;
 use crate::row::Kind;
 
@@ -72,7 +73,18 @@ pub fn names(registry: &Registry, name: &str, to: &Grantee) -> bool {
     }
 }
 
-/// The id of the live grant that lets ``holder`` take ``action`` on ``scope`` now, if one does.
+/// Whether the process asking may spend what ``holder`` holds: the token it presented was registered from a lineage it shares. A
+/// token that names no lineage, or another session than ``holder``, or no request at all, is not held to it here.
+fn lineage_allows(node: &Node, holder: &Holder) -> bool {
+    if !ENFORCED {
+        return true;
+    }
+    let ask = &node.asking;
+    node.tokens.bound(&ask.token).is_none_or(|(who, bound)| who != holder || shares(bound, &ask.peer.lineage()))
+}
+
+/// The id of the live grant that lets ``holder`` take ``action`` on ``scope`` now, if one does and the token asking is used from
+/// the lineage that registered it.
 pub fn find(node: &mut Node, holder: &Holder, action: &str, scope: &Scope) -> Result<Option<String>> {
     grantable(action)?;
     if node.host(&holder.board)?.names.get(&holder.name).is_none_or(|i| i.retired) {
@@ -81,11 +93,16 @@ pub fn find(node: &mut Node, holder: &Holder, action: &str, scope: &Scope) -> Re
     let device = node.cert.fingerprint();
     let standing = book::standing(node, &holder.board)?;
     let registry = &node.host(&holder.board)?.names;
-    Ok(standing.grants.iter().find(|g| {
+    let found = standing.grants.iter().find(|g| {
         let (i, p) = (&g.issue, &g.issue.place);
         g.status == "live" && i.action == action && names(registry, &holder.name, &i.to) && p.board == holder.board && (p.device == "*" || p.device == device)
             && covers(&p.resource, scope.resource) && (!i.review || scope.reviewed)
-    }).map(|g| g.issue.gid.clone()))
+    }).map(|g| g.issue.gid.clone());
+    if found.is_some() && !lineage_allows(node, holder) {
+        node.asking.lineage_refused = true;
+        return Ok(None);
+    }
+    Ok(found)
 }
 
 /// Whether ``holder`` holds a grant for ``action`` on ``scope``; nothing is spent or written.
@@ -107,6 +124,11 @@ pub fn check(node: &mut Node, holder: &Holder, action: &str, scope: &Scope) -> R
 /// The refusal for the session behind ``token`` that holds no grant for ``action`` on ``resource``: ``message`` says why, and the
 /// error names what a person's client would sign to allow it.
 pub fn refused_for(node: &Node, token: &str, action: &str, resource: &str, message: &str) -> Error {
+    if node.asking.lineage_refused {
+        return Error::Denied(format!("{message}: the grant is held, but this token was registered from another terminal or process tree than the one \
+                                      using it now, and a token spends a grant only where it was registered; a person moves the session to this terminal \
+                                      with `poolhouse-workspace rebind HARNESS SESSION` (a typed yes), which ends the tokens it holds"));
+    }
     match node.tokens.resolve(token) {
         Some(h) => Error::NoGrant {
             message: message.into(),

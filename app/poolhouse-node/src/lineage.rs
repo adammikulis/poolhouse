@@ -7,9 +7,14 @@
 //! process that double-forks and is left to the system's first process has no parents to share. The processes are read from
 //! the operating system by the peer id of the socket, so a request cannot name its own. Windows does not report the peer
 //! yet: there nothing is recorded and nothing is refused (`ENFORCED`).
+//!
+//! Every token is bound to the lineage that registered it, and a grant is spent only by a request from a process that shares
+//! it (`Asking`). A lineage is also what the limits of `limits::Rates` are kept under.
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
+use crate::error::{Error, Result};
 use crate::lease::live::inspect;
 use crate::sys::Stream;
 
@@ -22,6 +27,42 @@ const MOST_ANCHORS: usize = 32;
 pub struct Anchor {
     pub pid: u32,
     pub start: u64,
+}
+
+impl Anchor {
+    /// The anchor a person signed, from the param `anchor`: an object of a process id and a start time, nothing else.
+    pub fn signed(p: &Map<String, Value>) -> Result<Anchor> {
+        let shape = || Error::Invalid("anchor is the terminal's process: {pid, start}".into());
+        let map = p.get("anchor").and_then(Value::as_object).filter(|m| m.len() == 2).ok_or_else(shape)?;
+        let pid = map.get("pid").and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()).ok_or_else(shape)?;
+        Ok(Anchor { pid, start: map.get("start").and_then(Value::as_u64).ok_or_else(shape)? })
+    }
+
+    /// The anchor as the body a person signs holds it.
+    pub fn body(&self) -> Value {
+        serde_json::json!({"pid": self.pid, "start": self.start})
+    }
+}
+
+/// The key a lineage's limits are kept under: its top process, the shell of its terminal or the app that started it.
+pub fn limit_key(lineage: &[Anchor]) -> String {
+    lineage.last().map_or_else(|| "unknown".to_string(), |a| format!("{}-{}", a.pid, a.start))
+}
+
+/// Who is asking, as the grant checks of the request being answered need it: the token it presented, as the node keeps it,
+/// and the process that sent it. Reset after every request.
+#[derive(Default)]
+pub struct Asking {
+    pub token: String,
+    pub peer: Peer,
+    /// Set when a grant would have let the request through but the token was registered from another lineage.
+    pub lineage_refused: bool,
+}
+
+impl Asking {
+    pub fn of(token: &str, peer: &Peer) -> Asking {
+        Asking { token: crate::identity::Tokens::key(token), peer: *peer, lineage_refused: false }
+    }
 }
 
 /// The process on the other end of a request, as far as the system says.

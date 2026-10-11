@@ -157,7 +157,7 @@ class WorkspaceNode:
         if board_grants.fingerprint(keys.public) in held:
             return keys
         if held:
-            board_grants.enrol(self.client, who.token, board_grants.approve(board_grants.enrolment(keys, "a test person"), self.person, node=board_grants.listing(self.session(who)).device))
+            board_grants.enrol(self.client, who.token, board_grants.approve(board_grants.enrolment(keys, "a test person"), self.person, board_grants.here(self.client)))
         else:
             board_grants.enrol_first(self.client, who.token, keys, "a test person")
         return keys

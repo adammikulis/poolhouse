@@ -145,7 +145,7 @@ def test_person_connect_rejects_invalid_content_length_without_registering(board
     call, node, projects, _ = board_for
     status, _ = board(call, 'connect', method='POST', raw=b'{}', headers={'Content-Length': length})
     assert status == expected
-    assert sessions.find(person.HARNESS, person.NATIVE_ID, cwd=Path(projects[PROJECT].root), client=node.client) == ''
+    assert sessions.find(person.HARNESS, person.native_id(), cwd=Path(projects[PROJECT].root), client=node.client) == ''
 
 
 @pytest.mark.parametrize('raw', [b'{', b'', b'null', b'[]', b'"person"', b'{"role":"human"}',
@@ -154,7 +154,7 @@ def test_person_connect_rejects_invalid_json_without_registering(board_for, raw)
     call, node, projects, _ = board_for
     status, _ = board(call, 'connect', method='POST', raw=raw)
     assert status == 400
-    assert sessions.find(person.HARNESS, person.NATIVE_ID, cwd=Path(projects[PROJECT].root), client=node.client) == ''
+    assert sessions.find(person.HARNESS, person.native_id(), cwd=Path(projects[PROJECT].root), client=node.client) == ''
 
 
 def test_person_connect_registers_the_persons_session_once(board_for):
@@ -167,7 +167,7 @@ def test_person_connect_registers_the_persons_session_once(board_for):
 def test_person_connect_is_an_explicit_post_and_holds_no_token_for_the_page(board_for):
     call, node, projects, _ = board_for
     assert board(call, 'connect')[0] == 405
-    assert sessions.find(person.HARNESS, person.NATIVE_ID, cwd=Path(projects[PROJECT].root), client=node.client) == ''
+    assert sessions.find(person.HARNESS, person.native_id(), cwd=Path(projects[PROJECT].root), client=node.client) == ''
     status, answer = board(call, 'connect', method='POST', body={})
     assert status == 200 and set(answer) == {'connected', 'name'}
     assert me(node, projects).token not in str(answer)

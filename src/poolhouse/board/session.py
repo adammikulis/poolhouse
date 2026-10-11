@@ -375,10 +375,26 @@ class Session:
         credentials.remember(self.client.state, self.board, self.name, question, cursor)
 
 
+def _own_token(client: Client, board: str, native: Native) -> str:
+    """The token this client keeps for the native session, or an empty string."""
+    try:
+        name = str(client.call("session_lookup", board, harness=native.harness, session=native.id)["name"])
+        return credentials.load(client.state, board, name)
+    except Denied:
+        return ""
+
+
 def register(client: Client, board: str, native: Native, parent_token: str = "") -> Registration:
     """Register a native session on ``board`` (as a subagent of ``parent_token``'s owner when given);
-    its token is kept in a private file for later commands."""
-    got = client.call("register", board, parent_token, model=native.model, harness=native.harness, session=native.id)
+    its token is kept in a private file for later commands. A session registered before keeps presenting its own token, which
+    is how the node takes a session it holds no lineage for."""
+    own = "" if parent_token else _own_token(client, board, native)
+    try:
+        got = client.call("register", board, parent_token or own, model=native.model, harness=native.harness, session=native.id)
+    except Denied:
+        if not own:
+            raise
+        got = client.call("register", board, "", model=native.model, harness=native.harness, session=native.id)
     credentials.store(client.state, board, got["name"], got["token"])
     return Registration(got["name"], got["token"], got["parent"], got["created"], board)
 

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Map, Value};
@@ -19,10 +19,10 @@ use crate::device::{fingerprint, load_or_create};
 use crate::error::{Error, Result};
 use crate::fold::{self, check_local, Context, Entry};
 use crate::fsutil::private_dir;
-use crate::identity::{Holder, Ident, ModelState, Registry, Tokens, Who};
+use crate::identity::{self, Holder, Ident, ModelState, Registry, Tokens, Who};
 use crate::lease::Leases;
 use crate::limits::Rates;
-use crate::lineage::Peer;
+use crate::lineage::{limit_key, Anchor, Asking, Peer};
 use crate::landtrust::LandTrust;
 use crate::links::Links;
 use crate::quarantine::Quarantine;
@@ -32,6 +32,12 @@ use crate::subs::Subs;
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
+/// How many boards a node hosts at most, how many sessions a lineage registers in a minute, and how many boards it creates in an hour.
+pub const MAX_BOARDS: usize = 256;
+const MOST_REGISTRATIONS_PER_MINUTE: usize = 60;
+const MOST_NEW_BOARDS_PER_HOUR: usize = 16;
+const MINUTE: Duration = Duration::from_secs(60);
+const HOUR: Duration = Duration::from_secs(3600);
 
 /// One board this node holds and the names registered on it.
 pub struct Hosted {
@@ -60,8 +66,10 @@ pub struct Node {
     pub links: Links,
     pub projects: Projects,
     pub leases: Leases,
-    /// How often a session or the node as a whole did what is limited (`limits`); not kept across a restart.
+    /// How often a lineage did what is limited (`limits`); not kept across a restart.
     pub rates: Rates,
+    /// Who is asking, while a request is answered (`lineage::Asking`).
+    pub asking: Asking,
     pub stop: Arc<AtomicBool>,
     pub started: Instant,
     /// The build this device runs and advertises (`build`).
@@ -109,7 +117,7 @@ impl Node {
         let mut node = Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(),
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
             build: crate::build::Build::from_env(), network: crate::netif::network().into(),
         };
@@ -169,28 +177,74 @@ impl Node {
         }
     }
 
+    /// The parent a registration names and the lineage its token is bound to. A token given makes the new session a subagent of the
+    /// token's owner, and the new token carries the owner's lineage; a token of the very session being registered proves the
+    /// registrant holds it (``true``) and registers it again as what it is.
+    fn parent_of(&self, board: &str, token: Option<&str>, who: (&str, &str), from: &[Anchor]) -> Result<(String, bool, Vec<Anchor>)> {
+        let Some(token) = token else { return Ok((String::new(), false, from.to_vec())) };
+        let Some(holder) = self.tokens.resolve(token).filter(|h| h.board == board) else {
+            return Err(Error::Denied("a parent must be a session of this board".into()));
+        };
+        let held = self.tokens.lineage_of(token).unwrap_or_default().to_vec();
+        let names = self.boards.get(board).map(|h| &h.names);
+        if names.and_then(|n| n.find(who.0, who.1)) != Some(holder.name.as_str()) {
+            return Ok((holder.name.clone(), false, held));
+        }
+        let parent = names.and_then(|n| n.get(&holder.name)).map(|i| i.parent.clone()).unwrap_or_default();
+        let bound = if parent.is_empty() { from.to_vec() } else { held };
+        Ok((parent, true, bound))
+    }
+
+    /// Drop the tokens of sessions idle for `identity::IDLE_MS` when the node holds as many as it will.
+    fn make_room_for_a_token(&mut self) -> Result<()> {
+        if self.tokens.len() < identity::MOST_TOKENS {
+            return Ok(());
+        }
+        let now = self.now_ms();
+        let idle: Vec<(String, String)> = self.boards.iter()
+            .flat_map(|(b, h)| h.names.all().iter().filter(|(_, i)| now.saturating_sub(i.seen_ms) > identity::IDLE_MS).map(move |(n, _)| (b.clone(), n.clone())))
+            .collect();
+        self.tokens.revoke_where(&|h| idle.iter().any(|(b, n)| *b == h.board && *n == h.name)).map(|_| ())
+    }
+
     /// Register a session on ``board`` (creating the board on first use) from the process ``peer``; a token given makes
     /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
-    /// the lineage it was registered from. Returns name, token, whether new.
+    /// the lineage it was registered from. A lineage registers sessions and creates boards a few times a minute and an hour,
+    /// and a node hosts a bounded number of boards. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
-        let parent = match parent_token {
-            None => String::new(),
-            Some(t) => match self.tokens.resolve(t) {
-                Some(h) if h.board == board => h.name.clone(),
-                _ => return Err(Error::Denied("a parent must be a session of this board".into())),
-            },
-        };
         let Native { model, harness, session } = native;
+        let (model, harness) = (identity::clean(model, 256)?, identity::clean(harness, 64)?);
+        if !valid_name(board) {
+            return Err(Error::Invalid("a board id is a short lower-case word".into()));
+        }
+        if session.is_empty() || harness.is_empty() {
+            return Err(Error::Denied("a session name needs the native harness and session id".into()));
+        }
+        let lineage = peer.lineage();
+        let (made, boards) = (format!("register {}", limit_key(&lineage)), format!("board {}", limit_key(&lineage)));
+        let new_board = !self.boards.contains_key(board);
+        if !self.rates.permits(&made, MOST_REGISTRATIONS_PER_MINUTE, MINUTE) {
+            return Err(Error::Quota("this process tree registers sessions as fast as it may: try again in a minute".into()));
+        }
+        if new_board && (self.boards.len() >= MAX_BOARDS || !self.rates.permits(&boards, MOST_NEW_BOARDS_PER_HOUR, HOUR)) {
+            return Err(Error::Quota("this process tree creates boards as fast as it may, or this node hosts as many as it will".into()));
+        }
+        let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
+        self.make_room_for_a_token()?;
         let inherited = model.trim().is_empty().then(|| self.boards.get(board).and_then(|h| h.names.get(&parent)).map(|p| p.model.clone())).flatten().unwrap_or_default();
-        let (model, state) = if inherited.is_empty() { (model, ModelState::Claimed) } else { (inherited.as_str(), ModelState::Inherited) };
+        let (model, state) = if inherited.is_empty() { (model, ModelState::Claimed) } else { (inherited, ModelState::Inherited) };
         let hosted = self.host(board)?;
         let now = hosted.board.now_ms();
-        let (name, created) = hosted.names.assign(Who { harness, session, parent: &parent }, model, state, now, &peer.lineage())?;
+        let (name, created) = hosted.names.assign(Who { harness: &harness, session, parent: &parent }, &model, state, now, &lineage, proven)?;
         if created {
             self.write_identity(board, &name)?;
         }
         let origin = self.host(board)?.board.origin().to_string();
-        let token = self.tokens.issue(board, &name)?;
+        let token = self.tokens.issue(board, &name, &bound)?;
+        self.rates.record(&made, MINUTE);
+        if new_board {
+            self.rates.record(&boards, HOUR);
+        }
         Ok(json!({"name": name, "token": token, "created": created, "parent": parent, "board": board, "origin": origin}))
     }
 

@@ -23,6 +23,17 @@ pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
 }
 
+/// The top of the lineage of the process ``pid`` as the node reads it: the terminal shell (or the app) a person signs for.
+pub fn anchor_of(pid: u32) -> Value {
+    let lineage = poolhouse_node::lineage::of(pid);
+    serde_json::to_value(lineage.last().expect("a running process has a lineage")).unwrap()
+}
+
+/// The anchor of this test process, which is the peer of every request `req` makes.
+pub fn my_anchor() -> Value {
+    anchor_of(std::process::id())
+}
+
 /// One grant a test asks the person to sign.
 #[derive(Clone)]
 pub struct Spec {
@@ -78,6 +89,16 @@ pub fn person() -> Person {
     Person { key: SigningKey::from_bytes(&[0x70; 32]) }
 }
 
+/// A second person key, such as a laptop's.
+pub fn agent() -> Person {
+    Person { key: SigningKey::from_bytes(&[0x21; 32]) }
+}
+
+/// A third person key.
+pub fn third() -> Person {
+    Person { key: SigningKey::from_bytes(&[0x22; 32]) }
+}
+
 fn plus(base: u64, delta: i64) -> u64 {
     base.checked_add_signed(delta).unwrap()
 }
@@ -98,28 +119,34 @@ impl Person {
     /// The enrolment parameters of this key, signed by itself and, when another key is already enrolled, approved by it for the
     /// node whose certificate fingerprint is the second of ``approver``.
     pub fn enrolment(&self, about: &str, approver: Option<(&Person, &str)>) -> Value {
+        self.enrolment_for(about, approver, &my_anchor())
+    }
+
+    /// `enrolment`, with the approval signed for the terminal named by ``anchor``.
+    pub fn enrolment_for(&self, about: &str, approver: Option<(&Person, &str)>, anchor: &Value) -> Value {
         let at = now_ms();
         let message = format!("poolhouse/person-enroll/v1\n{}", canonical(&json!({"op": "enroll", "public": self.public(), "about": about, "at_ms": at})));
         let mut params = json!({"public": self.public(), "about": about, "at_ms": at, "proof": hex(&self.key.sign(message.as_bytes()).to_bytes())});
         if let Some((a, node)) = approver {
             let (approved, nonce) = (now_ms(), fresh_nonce());
-            let body = json!({"op": "approve", "public": self.public(), "about": about, "at_ms": at, "approved_ms": approved, "by": a.fingerprint(), "node": node, "nonce": nonce});
+            let body = json!({"op": "approve", "public": self.public(), "about": about, "at_ms": at, "approved_ms": approved, "by": a.fingerprint(), "node": node, "nonce": nonce, "anchor": anchor});
             let bytes = format!("poolhouse/person-approve/v1\n{}", canonical(&body));
             params["by"] = json!(a.fingerprint());
             params["approved_ms"] = json!(approved);
             params["nonce"] = json!(nonce);
+            params["anchor"] = anchor.clone();
             params["approval"] = json!(hex(&a.key.sign(bytes.as_bytes()).to_bytes()));
         }
         params
     }
 
     /// The `rebind` params moving the session ``name`` of ``board`` (named by ``harness`` and ``session``), signed by this key for
-    /// the node whose certificate fingerprint is ``node``.
-    pub fn rebind_params(&self, harness: &str, session: &str, board: &str, name: &str, node: &str) -> Value {
+    /// the node whose certificate fingerprint is ``node`` and for the terminal named by ``anchor``.
+    pub fn rebind_params(&self, harness: &str, session: &str, board: &str, name: &str, node: &str, anchor: &Value) -> Value {
         let (at, nonce) = (now_ms(), fresh_nonce());
-        let body = json!({"op": "rebind", "board": board, "name": name, "node": node, "nonce": nonce, "at_ms": at});
+        let body = json!({"op": "rebind", "board": board, "name": name, "node": node, "nonce": nonce, "at_ms": at, "anchor": anchor});
         let bytes = format!("poolhouse/session-rebind/v1\n{}", canonical(&body));
-        json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
+        json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "anchor": anchor, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
     }
 
     /// Enrol this key on the node ``call`` reaches (its state directory is ``dir``), carried by the session ``token``, with
@@ -130,14 +157,20 @@ impl Person {
         call("person_enroll", "", token, params)
     }
 
-    /// The `person_unenroll` params removing the key ``fingerprint``, signed by this key at ``at_ms``.
-    pub fn unenroll_params_at(&self, fingerprint: &str, at_ms: u64) -> Value {
-        let message = format!("poolhouse/person-unenroll/v1\n{}", canonical(&json!({"op": "unenroll", "fingerprint": fingerprint, "by": self.fingerprint(), "at_ms": at_ms})));
-        json!({"fingerprint": fingerprint, "at_ms": at_ms, "by": self.fingerprint(), "sig": hex(&self.key.sign(message.as_bytes()).to_bytes())})
+    /// The `person_unenroll` params removing the key ``fingerprint`` from the node whose certificate fingerprint is ``node``,
+    /// signed by this key at ``at_ms`` with ``nonce``, for the terminal named by ``anchor``.
+    pub fn unenroll_params_with(&self, fingerprint: &str, node: &str, at_ms: u64, nonce: &str, anchor: &Value) -> Value {
+        let body = json!({"op": "unenroll", "fingerprint": fingerprint, "by": self.fingerprint(), "at_ms": at_ms, "node": node, "nonce": nonce, "anchor": anchor});
+        let message = format!("poolhouse/person-unenroll/v1\n{}", canonical(&body));
+        json!({"fingerprint": fingerprint, "at_ms": at_ms, "by": self.fingerprint(), "nonce": nonce, "anchor": anchor, "sig": hex(&self.key.sign(message.as_bytes()).to_bytes())})
     }
 
-    pub fn unenroll_params(&self, fingerprint: &str) -> Value {
-        self.unenroll_params_at(fingerprint, now_ms())
+    pub fn unenroll_params_at(&self, fingerprint: &str, node: &str, at_ms: u64) -> Value {
+        self.unenroll_params_with(fingerprint, node, at_ms, &fresh_nonce(), &my_anchor())
+    }
+
+    pub fn unenroll_params(&self, fingerprint: &str, node: &str) -> Value {
+        self.unenroll_params_at(fingerprint, node, now_ms())
     }
 
     /// The params of a request whose body (with its `op` and `board`) a test built by hand, signed by this key.

@@ -10,6 +10,7 @@ use crate::cert::valid_fingerprint;
 use crate::error::{Error, Result};
 use crate::grants::Scope;
 use crate::identity::Holder;
+use crate::lineage::{Asking, Peer};
 use crate::membership::Policy;
 use crate::node::Node;
 
@@ -34,13 +35,37 @@ pub fn handles(method: &str) -> bool {
     params(method).is_some()
 }
 
-/// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; the use is written to its board.
-pub fn authorize(node: &mut Node, token: &str, action: &str, resource: &str) -> Result<Holder> {
+/// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; nothing is spent. For what can still fail
+/// once it is allowed: `spend` the use after it was done.
+pub fn require(node: &mut Node, token: &str, action: &str, resource: &str) -> Result<Holder> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session is needed".into()))?;
-    if !crate::grants::check(node, &holder, action, &Scope::on(resource))? {
+    if !crate::grants::holds(node, &holder, action, &Scope::on(resource))? {
         return Err(crate::grants::refused_for(node, token, action, resource, &format!("this session does not hold the grant for {action}")));
     }
     Ok(holder)
+}
+
+/// Write the use of the grant ``holder`` holds for ``action`` on ``resource`` to its board.
+pub fn spend(node: &mut Node, token: &str, holder: &Holder, action: &str, resource: &str) -> Result<()> {
+    if !crate::grants::check(node, holder, action, &Scope::on(resource))? {
+        return Err(crate::grants::refused_for(node, token, action, resource, &format!("this session does not hold the grant for {action}")));
+    }
+    Ok(())
+}
+
+/// The session behind ``token``, if it holds a grant for ``action`` on ``resource``; the use is written to its board.
+pub fn authorize(node: &mut Node, token: &str, action: &str, resource: &str) -> Result<Holder> {
+    let holder = require(node, token, action, resource)?;
+    spend(node, token, &holder, action, resource)?;
+    Ok(holder)
+}
+
+/// `authorize` for a request the process ``peer`` made, outside the dispatch of the API (the methods that run without the node lock held).
+pub fn authorize_from(node: &mut Node, token: &str, peer: &Peer, action: &str, resource: &str) -> Result<Holder> {
+    node.asking = Asking::of(token, peer);
+    let held = authorize(node, token, action, resource);
+    node.asking = Asking::default();
+    held
 }
 
 fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {

@@ -15,6 +15,9 @@ use crate::lineage::{shares, Anchor, ENFORCED};
 pub const SHORT: usize = 6;
 pub const MAX_IDENTITIES: usize = 10_000;
 const MAX_TOKENS_PER_NAME: usize = 8;
+/// How many tokens a node keeps; when it is full, the tokens of sessions idle for `IDLE_MS` make room.
+pub const MOST_TOKENS: usize = 2048;
+pub const IDLE_MS: u64 = 30 * 24 * 3600 * 1000;
 
 /// The lower-case model family of an exact model id (`agent` when it names none).
 pub fn family_word(model: &str) -> &'static str {
@@ -186,8 +189,9 @@ impl Registry {
 
     /// The unique name of this session, recorded so no later session takes the same one. The
     /// same session always gets the same name back (``true`` when it is new), to a process of the lineage it was
-    /// registered from only; a session whose short suffix collides with another's gets a longer one.
-    pub fn assign(&mut self, who: Who, model: &str, state: ModelState, now_ms: u64, lineage: &[Anchor]) -> Result<(String, bool)> {
+    /// registered from only (``proven``: the request carried a valid token of that name); a session whose short suffix
+    /// collides with another's gets a longer one.
+    pub fn assign(&mut self, who: Who, model: &str, state: ModelState, now_ms: u64, lineage: &[Anchor], proven: bool) -> Result<(String, bool)> {
         let Who { harness, session, parent } = who;
         if session.is_empty() || harness.is_empty() {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
@@ -196,7 +200,7 @@ impl Registry {
         let model = clean(model, 256)?;
         let known = self.names.iter().find(|(_, i)| i.digest == full).map(|(n, _)| n.clone());
         if let Some(name) = known {
-            self.admit(&name, parent, lineage)?;
+            self.admit(&name, parent, lineage, proven)?;
             return Ok((name, false));
         }
         if self.names.len() >= MAX_IDENTITIES {
@@ -214,9 +218,10 @@ impl Registry {
     }
 
     /// Whether the session ``name`` may be registered again by a process of ``lineage`` under ``parent``: a retired session
-    /// never, a subagent only under its own parent, a main session only from the lineage it was registered from (a name
-    /// registered before lineages were kept takes the first one that asks).
-    fn admit(&mut self, name: &str, parent: &str, lineage: &[Anchor]) -> Result<()> {
+    /// never, a subagent only under its own parent, a main session only from the lineage it was registered from. A main
+    /// session with no lineage recorded (registered before lineages were kept, or by a process that could not be read) is taken
+    /// by a process that presents a token of that name (``proven``), and by nobody else until a person moves it.
+    fn admit(&mut self, name: &str, parent: &str, lineage: &[Anchor], proven: bool) -> Result<()> {
         let known = self.names.get_mut(name).expect("found above");
         if known.retired {
             return Err(Error::Denied(format!("{name} was retired; its session cannot register again")));
@@ -227,11 +232,16 @@ impl Registry {
         if !parent.is_empty() || !ENFORCED {
             return Ok(());
         }
-        if known.lineage.is_empty() && !lineage.is_empty() {
+        if known.lineage.is_empty() {
+            if !proven || lineage.is_empty() {
+                return Err(Error::Denied("this session has no process lineage recorded, so a process cannot be told from the one that registered it; \
+                                          a process that holds one of its tokens registers it again, or a person moves it to the terminal where it \
+                                          runs now with `poolhouse-workspace rebind HARNESS SESSION`, which ends the tokens it holds".into()));
+            }
             known.lineage = lineage.to_vec();
             return self.save();
         }
-        if known.lineage.is_empty() || shares(&known.lineage, lineage) {
+        if shares(&known.lineage, lineage) {
             return Ok(());
         }
         Err(Error::Denied("this session is registered from another process lineage (another terminal or program); a person moves it to the terminal \
@@ -264,13 +274,16 @@ pub struct Holder {
     pub name: String,
 }
 
-/// A token as the file keeps it: whose it is and when, in order of issue, it was made.
+/// A token as the file keeps it: whose it is, when in order of issue it was made, and the lineage it was registered from
+/// (empty when none was recorded: such a token spends no grant until a person moves its session).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 struct Held {
     #[serde(flatten)]
     holder: Holder,
     #[serde(default)]
     seq: u64,
+    #[serde(default)]
+    lineage: Vec<Anchor>,
 }
 
 /// The tokens of this node, kept as hashes in a file only its owner reads.
@@ -278,6 +291,7 @@ pub struct Tokens {
     path: PathBuf,
     held: BTreeMap<String, Held>,
     next: u64,
+    most: usize,
 }
 
 impl Tokens {
@@ -288,21 +302,25 @@ impl Tokens {
             Err(e) => return Err(e.into()),
         };
         let next = held.values().map(|h| h.seq).max().map_or(1, |n| n + 1);
-        Ok(Tokens { path: path.into(), held, next })
+        Ok(Tokens { path: path.into(), held, next, most: MOST_TOKENS })
     }
 
-    /// A fresh random token for ``board``/``name``, returned once and never stored. A name holds at most a few tokens; past
-    /// them the oldest goes, except the first the name was given, which only the end of the session (or a person's
-    /// `rebind`) takes away.
-    pub fn issue(&mut self, board: &str, name: &str) -> Result<String> {
+    /// A fresh random token for ``board``/``name`` bound to ``lineage``, returned once and never stored. A name holds at most a
+    /// few tokens; past them the oldest goes, except the first the name was given, which only the end of the session (or a
+    /// person's `rebind`) takes away. A node holds `MOST_TOKENS` at most.
+    pub fn issue(&mut self, board: &str, name: &str, lineage: &[Anchor]) -> Result<String> {
         let holder = Holder { board: board.into(), name: name.into() };
         let mut same: Vec<(u64, String)> = self.held.iter().filter(|(_, h)| h.holder == holder).map(|(k, h)| (h.seq, k.clone())).collect();
         same.sort();
-        for (_, old) in same.iter().skip(1).take((same.len() + 1).saturating_sub(MAX_TOKENS_PER_NAME)) {
+        let dropped = (same.len() + 1).saturating_sub(MAX_TOKENS_PER_NAME).min(same.len().saturating_sub(1));
+        if self.held.len() + 1 > self.most + dropped {
+            return Err(Error::Quota("this node holds as many tokens as it will".into()));
+        }
+        for (_, old) in same.iter().skip(1).take(dropped) {
             self.held.remove(old);
         }
         let token = random_hex(32)?;
-        self.held.insert(sha256_hex(token.as_bytes()), Held { holder, seq: self.next });
+        self.held.insert(Tokens::key(&token), Held { holder, seq: self.next, lineage: lineage.to_vec() });
         self.next += 1;
         write_atomic(&self.path, &serde_json::to_vec(&self.held)?)?;
         Ok(token)
@@ -321,6 +339,73 @@ impl Tokens {
 
     /// Who ``token`` belongs to.
     pub fn resolve(&self, token: &str) -> Option<&Holder> {
-        self.held.get(&sha256_hex(token.as_bytes())).map(|h| &h.holder)
+        self.held.get(&Tokens::key(token)).map(|h| &h.holder)
+    }
+
+    /// What a token is kept under: its hash.
+    pub fn key(token: &str) -> String {
+        sha256_hex(token.as_bytes())
+    }
+
+    /// Who the token kept under ``key`` belongs to, and the lineage it was registered from.
+    pub fn bound(&self, key: &str) -> Option<(&Holder, &[Anchor])> {
+        self.held.get(key).map(|h| (&h.holder, h.lineage.as_slice()))
+    }
+
+    /// The lineage ``token`` was registered from; empty when none was recorded.
+    pub fn lineage_of(&self, token: &str) -> Option<&[Anchor]> {
+        self.bound(&Tokens::key(token)).map(|(_, lineage)| lineage)
+    }
+
+    pub fn len(&self) -> usize {
+        self.held.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.held.is_empty()
+    }
+
+    /// Drop every token whose holder ``gone`` names; how many there were.
+    pub fn revoke_where(&mut self, gone: &dyn Fn(&Holder) -> bool) -> Result<usize> {
+        let before = self.held.len();
+        self.held.retain(|_, h| !gone(&h.holder));
+        let ended = before - self.held.len();
+        if ended > 0 {
+            write_atomic(&self.path, &serde_json::to_vec(&self.held)?)?;
+        }
+        Ok(ended)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_token_keeps_the_lineage_it_was_made_for_across_a_reopen_and_a_node_holds_a_bounded_number() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tokens.json");
+        let from = [Anchor { pid: 7, start: 9 }, Anchor { pid: 3, start: 1 }];
+        let mut tokens = Tokens::open(&path).unwrap();
+        tokens.most = 12;
+        let first = tokens.issue("demo", "claude-aaaaaa", &from).unwrap();
+        assert_eq!(tokens.lineage_of(&first), Some(&from[..]));
+        let again = Tokens::open(&path).unwrap();
+        assert_eq!(again.lineage_of(&first), Some(&from[..]), "the lineage outlasts a restart");
+        assert_eq!(again.bound(&Tokens::key(&first)).map(|(h, _)| h.name.as_str()), Some("claude-aaaaaa"));
+        for i in 1..12 {
+            tokens.issue("demo", &format!("claude-{i:06}"), &[]).unwrap();
+        }
+        assert!(matches!(tokens.issue("demo", "claude-one-more", &[]), Err(Error::Quota(_))), "a full node issues no more tokens");
+        assert_eq!(tokens.len(), 12);
+    }
+
+    #[test]
+    fn the_tokens_of_idle_sessions_are_dropped_by_a_predicate_and_the_rest_stay() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut tokens = Tokens::open(&dir.path().join("tokens.json")).unwrap();
+        let (keep, drop) = (tokens.issue("demo", "claude-aaaaaa", &[]).unwrap(), tokens.issue("demo", "claude-bbbbbb", &[]).unwrap());
+        assert_eq!(tokens.revoke_where(&|h| h.name == "claude-bbbbbb").unwrap(), 1);
+        assert!(tokens.resolve(&keep).is_some() && tokens.resolve(&drop).is_none());
     }
 }

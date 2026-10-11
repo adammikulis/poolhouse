@@ -4,6 +4,7 @@
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
+use crate::lineage::{Anchor, Peer};
 use crate::node::Node;
 use crate::row::{canonical, is_line, Kind, Row};
 use crate::rules::held_back;
@@ -25,8 +26,8 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "grant_revoke" => &["gid", "at_ms", "reason", "person", "sig"],
         "grants" => &[],
         "grant_log" => &["limit"],
-        "person_enroll" => &["public", "about", "at_ms", "proof", "by", "approval", "approved_ms", "nonce", "secret"],
-        "person_unenroll" => &["fingerprint", "at_ms", "by", "sig"],
+        "person_enroll" => &["public", "about", "at_ms", "proof", "by", "approval", "approved_ms", "nonce", "anchor", "secret"],
+        "person_unenroll" => &["fingerprint", "at_ms", "by", "nonce", "anchor", "sig"],
         "person_keys" => &[],
         _ => return None,
     })
@@ -159,18 +160,37 @@ fn enrolment(public: &str, about: &str, at_ms: u64) -> Vec<u8> {
     format!("{ENROLL_DOMAIN}{}", canonical(&json!({"op": "enroll", "public": public, "about": about, "at_ms": at_ms}))).into_bytes()
 }
 
-/// What an enrolled key signs to approve a new key on one node, once: the new key's proof, who approves, the node's own
-/// certificate fingerprint, the time and a nonce.
-fn approval(proof: &Map<String, Value>, by: &str, node: &str) -> Vec<u8> {
+/// What an enrolled key signs to approve a new key on one node, once, in one terminal: the new key's proof, who approves, the
+/// node's own certificate fingerprint, the time, a nonce and the terminal the approval was signed in.
+fn approval(proof: &Map<String, Value>, by: &str, node: &str, anchor: &Anchor) -> Vec<u8> {
     let field = |k: &str| proof.get(k).cloned().unwrap_or(Value::Null);
     let body = json!({"op": "approve", "public": field("public"), "about": field("about"), "at_ms": field("at_ms"), "approved_ms": field("approved_ms"),
-                      "by": by, "node": node, "nonce": field("nonce")});
+                      "by": by, "node": node, "nonce": field("nonce"), "anchor": anchor.body()});
     format!("{APPROVE_DOMAIN}{}", canonical(&body)).into_bytes()
 }
 
+/// Whether the process asking is in the terminal ``anchor`` names.
+fn in_terminal(peer: &Peer, anchor: &Anchor) -> Result<()> {
+    if peer.lineage().contains(anchor) {
+        Ok(())
+    } else {
+        Err(Error::Denied("that signature was made in another terminal than the one asking".into()))
+    }
+}
+
+/// A nonce of 16 to 64 letters and digits.
+fn nonce_of<'a>(p: &'a Map<String, Value>, what: &str) -> Result<&'a str> {
+    let nonce = text(p, "nonce")?;
+    if nonce.len() < 16 || nonce.len() > 64 || !nonce.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err(Error::Invalid(format!("{what} carries a nonce of 16 to 64 letters and digits")));
+    }
+    Ok(nonce)
+}
+
 /// Enrol a person key. The key signs its own enrolment. The first key also presents the one-time secret a person's command
-/// at a terminal left on this device; once a key is enrolled, an enrolled key approves each new one, for this node and once.
-fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
+/// at a terminal left on this device; once a key is enrolled, an enrolled key approves each new one, for this node, once, in
+/// the terminal it signed in.
+fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries a person key to enrol".into()))?;
     let (public, about) = (text(p, "public")?, text(p, "about")?);
     let at = fresh(node, p, "at_ms")?;
@@ -191,14 +211,12 @@ fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value>
             return Err(Error::Denied("an enrolled person key approves each new one, for this node".into()));
         }
         fresh(node, p, "approved_ms")?;
-        let nonce = text(p, "nonce")?;
-        if nonce.len() < 16 || nonce.len() > 64 || !nonce.bytes().all(|b| b.is_ascii_alphanumeric()) {
-            return Err(Error::Invalid("an approval carries a nonce of 16 to 64 letters and digits".into()));
+        let (nonce, anchor) = (nonce_of(p, "an approval")?, Anchor::signed(p)?);
+        if !node.persons.signed(by, &approval(p, by, &node.cert.fingerprint(), &anchor), text(p, "approval")?) {
+            return Err(Error::Denied("an enrolled person key approves each new one, for this node and the terminal it is made in".into()));
         }
-        if !node.persons.signed(by, &approval(p, by, &node.cert.fingerprint()), text(p, "approval")?) {
-            return Err(Error::Denied("an enrolled person key approves each new one, for this node".into()));
-        }
-        if !node.persons.once(nonce, node.now_ms()) {
+        in_terminal(peer, &anchor)?;
+        if !node.persons.once(nonce, node.now_ms())? {
             return Err(Error::Denied("that approval was used already".into()));
         }
     }
@@ -207,18 +225,26 @@ fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value>
     Ok(json!({"fingerprint": fingerprint, "keys": node.persons.all().len()}))
 }
 
-fn unenrolment(fingerprint: &str, by: &str, at_ms: u64) -> Vec<u8> {
-    format!("{UNENROLL_DOMAIN}{}", canonical(&json!({"op": "unenroll", "fingerprint": fingerprint, "by": by, "at_ms": at_ms}))).into_bytes()
+/// What an enrolled key signs to remove a key from one node, once, in one terminal: the key, who removes it, the time, the node's own
+/// certificate fingerprint, a nonce and the terminal the removal was signed in.
+fn unenrolment(fingerprint: &str, by: &str, at_ms: u64, device: &str, nonce: &str, anchor: &Anchor) -> Vec<u8> {
+    let body = json!({"op": "unenroll", "fingerprint": fingerprint, "by": by, "at_ms": at_ms, "node": device, "nonce": nonce, "anchor": anchor.body()});
+    format!("{UNENROLL_DOMAIN}{}", canonical(&body)).into_bytes()
 }
 
-/// Remove a person key: an enrolled key signs the removal. The last key stays; a key that is no longer enrolled signs
-/// no grant that counts.
-fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
+/// Remove a person key: an enrolled key signs the removal, for this node and once. The last key stays; a key that is removed
+/// is not enrolled again and signs no grant that counts.
+fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries the removal of a person key".into()))?;
     let (fingerprint, by) = (text(p, "fingerprint")?, text(p, "by")?);
     let at = fresh(node, p, "at_ms")?;
-    if !node.persons.signed(by, &unenrolment(fingerprint, by, at), text(p, "sig")?) {
-        return Err(Error::Denied("an enrolled person key signs the removal of a key".into()));
+    let (nonce, anchor) = (nonce_of(p, "a removal")?, Anchor::signed(p)?);
+    if !node.persons.signed(by, &unenrolment(fingerprint, by, at, &node.cert.fingerprint(), nonce, &anchor), text(p, "sig")?) {
+        return Err(Error::Denied("an enrolled person key signs the removal of a key, for this node and the terminal it is made in".into()));
+    }
+    in_terminal(peer, &anchor)?;
+    if !node.persons.once(nonce, node.now_ms())? {
+        return Err(Error::Denied("that removal was used already".into()));
     }
     let key = node.persons.remove(fingerprint, node.now_ms())?;
     node.record_event("person.unenroll", fingerprint, &format!("{}; signed by {by}; carried by {}/{}", key.label, holder.board, holder.name))?;
@@ -230,14 +256,14 @@ fn keys(node: &Node) -> Value {
     json!({"keys": keys})
 }
 
-pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     match method {
         "grant_issue" => issue(node, board, token, p),
         "grant_revoke" => revoke(node, board, token, p),
         "grants" => listing(node, board, token),
         "grant_log" => log(node, board, token, p),
-        "person_enroll" => enroll(node, token, p),
-        "person_unenroll" => unenroll(node, token, p),
+        "person_enroll" => enroll(node, token, p, peer),
+        "person_unenroll" => unenroll(node, token, p, peer),
         _ => Ok(keys(node)),
     }
 }

@@ -11,12 +11,12 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fold::Entry;
-use crate::lineage::Peer;
+use crate::lineage::{limit_key, Asking, Peer};
 use crate::node::{Native, Node, READ_DEFAULT, READ_MAX};
 use crate::row::{valid_name, Kind};
 
 pub const API_VERSION: u64 = 1;
-/// How many links one session makes in a minute, and how many projects a node takes in a minute.
+/// How many links and how many projects one lineage makes in a minute.
 const MOST_LINKS_PER_MINUTE: usize = 6;
 const MOST_PROJECTS_PER_MINUTE: usize = 10;
 const MINUTE: Duration = Duration::from_secs(60);
@@ -25,7 +25,7 @@ const FORBIDDEN: [&str; 9] = ["sender", "name", "parent", "label", "from", "auth
 
 fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
-        "hello" | "status" | "shutdown" | "links" => &[],
+        "hello" | "status" | "shutdown" | "links" | "lineage" => &[],
         "register" => &["model", "harness", "session"],
         "post" => &["kind", "idem", "fields"],
         "read" => &["since", "kind", "channel", "by", "limit", "inbox", "with", "thread", "digest", "mentions", "head", "files"],
@@ -132,13 +132,24 @@ fn post(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
     node.post(token, board, kind, &fields, str_of(p, "idem")?)
 }
 
-fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make: bool) -> Result<Value> {
+/// The refusal for a lineage that did ``what`` as often as it may.
+fn too_often(node: &mut Node, key: &str, most: usize, what: &str) -> Result<()> {
+    if node.rates.permits(key, most, MINUTE) {
+        return Ok(());
+    }
+    Err(Error::Quota(format!("this process tree {what} as fast as it may: try again in a minute")))
+}
+
+/// Make or end a link. What is done is checked first, the grant is spent once it was done, and the lineage's count goes up
+/// only for a link that was made.
+fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make: bool, peer: &Peer) -> Result<Value> {
     let access = node.access(token, board, true)?;
     if access.holder.board != board {
         return Err(Error::Denied("only a session of the sharing board makes or revokes its links".into()));
     }
     let by = format!("{}/{}", board, access.actor);
-    let done = if make {
+    let key = format!("link {}", limit_key(&peer.lineage()));
+    let (done, holder, action, resource) = if make {
         let channels: Vec<String> = serde_json::from_value(p.get("channels").cloned().unwrap_or(json!([])))
             .map_err(|_| Error::Invalid("channels is a list of #names".into()))?;
         let write = match str_of(p, "mode")? { "ro" | "" => false, "rw" => true, _ => return Err(Error::Invalid("mode is ro or rw".into())) };
@@ -147,16 +158,24 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
             return Err(Error::Invalid("a link goes to a board this node hosts".into()));
         }
         node.links.room_for(board)?;
-        if !node.rates.allow(&format!("link {by}"), MOST_LINKS_PER_MINUTE, MINUTE) {
-            return Err(Error::Quota("this session makes links as fast as it may: try again in a minute".into()));
-        }
-        crate::poolapi::authorize(node, token, if write { "link_write" } else { "link_read" }, &format!("{board}>{to}"))?;
-        node.links.add(board, to, channels, write, &by)?
+        let (action, resource) = (if write { "link_write" } else { "link_read" }, format!("{board}>{to}"));
+        let holder = crate::poolapi::require(node, token, action, &resource)?;
+        too_often(node, &key, MOST_LINKS_PER_MINUTE, "makes links")?;
+        (node.links.add(board, to, channels, write, &by)?, holder, action, resource)
     } else {
         let id = str_of(p, "id")?;
-        crate::poolapi::authorize(node, token, "link_remove", id)?;
-        node.links.revoke(board, id)?
+        let holder = crate::poolapi::require(node, token, "link_remove", id)?;
+        (node.links.revoke(board, id)?, holder, "link_remove", id.to_string())
     };
+    if let Err(e) = crate::poolapi::spend(node, token, &holder, action, &resource) {
+        if make {
+            let _ = node.links.revoke(board, &done.id);
+        }
+        return Err(e);
+    }
+    if make {
+        node.rates.record(&key, MINUTE);
+    }
     let detail = format!("{}>{} {} {}", done.from, done.to, if done.write { "rw" } else { "ro" }, done.channels.join(","));
     let event = if make { "link" } else { "unlink" };
     for side in [&done.from, &done.to] {
@@ -166,24 +185,27 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
     Ok(json!(done))
 }
 
-fn project(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+/// Add a project, or a place to one. A place that is not a git repository needs the grant `source_add` on the project; what is
+/// added is checked first, the grant is spent once it was added, and the lineage's count goes up only for a project that was made.
+fn project(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     let (id, kind, path) = (str_of(p, "id")?, str_of(p, "kind")?, str_of(p, "path")?);
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session adds a project or a place to one".into()))?;
     if holder.board != id {
         return Err(Error::Denied("only a session of a board adds its project or a place to it".into()));
     }
-    let done = match method {
-        "project_add" => {
-            if !node.rates.allow("project_add", MOST_PROJECTS_PER_MINUTE, MINUTE) {
-                return Err(Error::Quota("this node takes projects as fast as it may: try again in a minute".into()));
-            }
-            node.projects.add(id, kind, path)?
-        }
-        _ => {
-            crate::poolapi::authorize(node, token, "source_add", id)?;
-            node.projects.add_source(id, kind, path)?
-        }
-    };
+    let key = format!("project {}", limit_key(&peer.lineage()));
+    let made = method == "project_add";
+    let granted = (!made || (kind != "git" && crate::registry::KINDS.contains(&kind))).then(|| crate::poolapi::require(node, token, "source_add", id)).transpose()?;
+    if made {
+        too_often(node, &key, MOST_PROJECTS_PER_MINUTE, "takes projects")?;
+    }
+    let done = if made { node.projects.add(id, kind, path)? } else { node.projects.add_source(id, kind, path)? };
+    if let Some(holder) = granted {
+        crate::poolapi::spend(node, token, &holder, "source_add", id)?;
+    }
+    if made {
+        node.rates.record(&key, MINUTE);
+    }
     node.host(id)?;
     Ok(json!(done))
 }
@@ -216,8 +238,9 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         "status" => status(node, token, board),
         "post" => post(node, token, board, p),
         "read" => read(node, token, board, p),
-        "link" | "unlink" => link(node, token, board, p, method == "link"),
-        "project_add" | "source_add" => project(node, method, token, p),
+        "link" | "unlink" => link(node, token, board, p, method == "link", peer),
+        "project_add" | "source_add" => project(node, method, token, p, peer),
+        "lineage" => Ok(json!({"lineage": peer.lineage()})),
         "project_list" => Ok(json!(node.projects.all())),
         "project_resolve" => node.projects.resolve(str_of(p, "path")?).map(|p| json!({"board": p.id})),
         m if crate::poolapi::handles(m) => crate::poolapi::dispatch(node, m, token, p),
@@ -233,7 +256,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         m if crate::files::METHODS.contains(&m) => crate::files::call(node, m, board, token, p),
         m if crate::scratch::METHODS.contains(&m) => crate::scratch::call(node, m, board, token, p),
         m if crate::quarantine::METHODS.contains(&m) => crate::quarantine::call(node, m, board, token, p),
-        m if crate::grants::calls::METHODS.contains(&m) => crate::grants::calls::call(node, m, board, token, p),
+        m if crate::grants::calls::METHODS.contains(&m) => crate::grants::calls::call(node, m, board, token, p, peer),
         "links" => node.access(token, board, false).map(|_| json!(node.links.all().iter().filter(|l| l.from == board || l.to == board).collect::<Vec<_>>())),
         "shutdown" => node.access(token, board, false).map(|_| {
             node.stop.store(true, Ordering::SeqCst);
@@ -289,7 +312,7 @@ pub fn parse(request: &Value) -> Result<Call> {
         return Err(Error::Invalid(format!("unknown param {}", k.chars().take(40).collect::<String>())));
     }
     let (board, token) = (str_of(map, "board")?, str_of(map, "token")?);
-    if board.is_empty() && !matches!(method, "hello" | "status" | "project_add" | "source_add" | "project_list" | "project_resolve") && !crate::poolapi::handles(method) && !crate::grants::calls::boardless(method) {
+    if board.is_empty() && !matches!(method, "hello" | "status" | "lineage" | "project_add" | "source_add" | "project_list" | "project_resolve") && !crate::poolapi::handles(method) && !crate::grants::calls::boardless(method) {
         return Err(Error::Invalid("this method names a board".into()));
     }
     Ok(Call { method: method.into(), board: board.into(), token: token.into(), params })
@@ -297,7 +320,10 @@ pub fn parse(request: &Value) -> Result<Call> {
 
 fn run(node: &mut Node, request: &Value, peer: &Peer) -> Result<Value> {
     let c = parse(request)?;
-    let done = dispatch(node, &c.method, &c.board, &c.token, &c.params, peer)?;
+    node.asking = Asking::of(&c.token, peer);
+    let done = dispatch(node, &c.method, &c.board, &c.token, &c.params, peer);
+    node.asking = Asking::default();
+    let done = done?;
     if let Some(holder) = node.tokens.resolve(&c.token).cloned() {
         // a retired session's token is gone by now, so it is never marked active again
         let hosted = node.host(&holder.board)?;

@@ -18,7 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import person
+from poolhouse import errors, person
 from poolhouse.board import grants
 from poolhouse.fleet.onboard.signing import ConfirmedKeys, KeyStoreError
 from poolhouse.log import warn
@@ -69,19 +69,23 @@ def held(state: Path, *, attended: bool = False) -> ConfirmedKeys | None:
     return keys(state)
 
 
-def provider(state: Path, *, attended: bool = False) -> Callable[[str, dict[str, Any]], bool]:
-    """What a client asks after a refusal that names a missing grant: sign it for the session behind the token, when the person says yes."""
-    def allow(token: str, hint: dict[str, Any]) -> bool:
+def provider(state: Path, *, attended: bool = False, acting: Callable[[str], tuple[str, str]] | None = None) -> Callable[[str, dict[str, Any]], str]:
+    """What a client asks after a refusal that names a missing grant: sign it for one use when the person says yes. The grant is for
+    the session behind the token, or, with ``acting`` (a board to the name and token of the person's own session of this terminal on it),
+    for that session, since the token of another terminal's session spends no grant here. The token to send the request again with, or an
+    empty string."""
+    def allow(token: str, hint: dict[str, Any]) -> str:
         key = held(state, attended=attended)
         if key is None:
-            return False
-        want = grants.Want(hint["action"], {"kind": "session", "name": hint["name"]}, hint["resource"], hint["device"], LASTS_MS, 1)
+            return ""
         try:
-            call(state, "grant_issue", grants.sign_issue(key, hint["board"], want), board=hint["board"], token=token)
-        except (OSError, ValueError, RuntimeError) as err:
+            name, carrier = acting(hint["board"]) if acting is not None else (hint["name"], token)
+            want = grants.Want(hint["action"], {"kind": "session", "name": name}, hint["resource"], hint["device"], LASTS_MS, 1)
+            call(state, "grant_issue", grants.sign_issue(key, hint["board"], want), board=hint["board"], token=carrier)
+        except (OSError, ValueError, RuntimeError, errors.Error) as err:
             warn(f"grant: the person's key could not allow {hint['action']}: {err}")
-            return False
-        return True
+            return ""
+        return carrier
     return allow
 
 

@@ -5,7 +5,9 @@
 //! resolves to the project whose source contains it; a linked git worktree resolves through
 //! the repository's common directory. A directory that matches nothing is not part of any
 //! project, and is never given another project's board. A place is never inside or around a
-//! place of another project, so no project takes over where another's sessions land.
+//! place of another project, so no project takes over where another's sessions land. A place is
+//! never the user's home, a directory around it or the root of the disk, and a folder that is not
+//! a git repository never holds a repository of its own.
 
 use std::path::{Path, PathBuf};
 
@@ -54,6 +56,42 @@ pub fn git_root(dir: &Path) -> Option<PathBuf> {
     common.parent().map(Path::to_path_buf)
 }
 
+/// A place is never the user's home, a directory around it, or the root of the disk: it would hold every directory the user works in.
+fn refuse_broad(path: &Path) -> Result<()> {
+    let home = crate::sys::home_dir().canonicalize().ok();
+    if path.parent().is_none() || home.is_some_and(|h| h.starts_with(path)) {
+        return Err(Error::Invalid("a project's place is a directory below the user's home, never the home itself, a directory around it or the root of the disk".into()));
+    }
+    Ok(())
+}
+
+/// How deep and how many entries a folder is searched for a git repository of its own.
+const SCAN_DEPTH: usize = 3;
+const SCAN_ENTRIES: usize = 4000;
+
+/// A git repository below ``place`` (not ``place`` itself), found within a bounded search that does not follow links.
+fn nested_repository(place: &Path) -> Option<PathBuf> {
+    let (mut level, mut seen) = (vec![place.to_path_buf()], 0);
+    for _ in 0..=SCAN_DEPTH {
+        let mut next = Vec::new();
+        for dir in &level {
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                seen += 1;
+                let name = entry.file_name();
+                if seen > SCAN_ENTRIES || name == ".git" || name == "node_modules" || !entry.file_type().is_ok_and(|t| t.is_dir()) {
+                    continue;
+                }
+                if entry.path().join(".git").exists() {
+                    return Some(entry.path());
+                }
+                next.push(entry.path());
+            }
+        }
+        level = next;
+    }
+    None
+}
+
 impl Projects {
     pub fn open(path: &Path) -> Result<Projects> {
         let all = match std::fs::read(path) {
@@ -82,6 +120,12 @@ impl Projects {
         }
         let real = Path::new(path).canonicalize().map_err(|_| Error::Invalid("the source path does not exist".into()))?;
         let path = if kind == "git" { git_root(&real).ok_or_else(|| Error::Invalid("the path is not in a git repository".into()))? } else { real };
+        refuse_broad(&path)?;
+        if kind != "git" {
+            if let Some(repo) = nested_repository(&path) {
+                return Err(Error::Invalid(format!("that folder holds the git repository {}: add the repository as a project of its own", repo.display())));
+            }
+        }
         Ok(Source { kind: kind.into(), path })
     }
 

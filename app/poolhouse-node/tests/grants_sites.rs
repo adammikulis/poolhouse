@@ -74,6 +74,42 @@ fn a_granted_pool_action_can_be_used_only_as_often_as_it_was_granted() {
     assert_eq!(d.call("set_join_policy", "", &token, json!({"policy": "open"}))["error"]["code"], "denied", "one use was granted");
 }
 
+fn used(d: &Dev, board: &str, token: &str, gid: &str) -> u64 {
+    let all = d.ok("grants", board, token, json!({}));
+    all["grants"].as_array().unwrap().iter().find(|g| g["gid"] == gid).unwrap()["used"].as_u64().unwrap()
+}
+
+#[test]
+fn a_use_of_a_grant_is_spent_only_when_the_thing_it_allows_was_done() {
+    use kit::grants::{enrolled, person, Spec};
+    let d = device();
+    let (name, token) = d.session("boarda", "lead");
+    d.session("boardb", "x");
+    let mut call = |m: &str, b: &str, t: &str, p: Value| d.call(m, b, t, p);
+    enrolled(d.dir.path(), &mut call, &token);
+    for (gid, action) in [("g-00000000000000f2", "link_read"), ("g-00000000000000f3", "link_remove"), ("g-00000000000000f4", "source_add")] {
+        let reply = person().issue(&mut call, "boarda", &token, gid, &Spec::session(&name, action).uses(1));
+        assert_eq!(reply["ok"], true, "{reply}");
+    }
+
+    let bad = d.call("link", "boarda", &token, json!({"to": "boardb", "channels": ["no-hash"], "mode": "ro"}));
+    assert_eq!(bad["error"]["code"], "invalid", "{bad}");
+    assert_eq!(used(&d, "boarda", &token, "g-00000000000000f2"), 0, "a link that could not be made spent nothing");
+    let link = d.ok("link", "boarda", &token, json!({"to": "boardb", "channels": [], "mode": "ro"}));
+    assert_eq!(used(&d, "boarda", &token, "g-00000000000000f2"), 1, "the link that was made spent its one use");
+    assert_eq!(d.call("link", "boarda", &token, json!({"to": "boardb", "channels": [], "mode": "ro"}))["error"]["code"], "denied");
+
+    let gone = d.call("unlink", "boarda", &token, json!({"id": "link-99"}));
+    assert_eq!(gone["error"]["code"], "invalid", "{gone}");
+    assert_eq!(used(&d, "boarda", &token, "g-00000000000000f3"), 0, "ending a link that is not there spent nothing");
+    d.ok("unlink", "boarda", &token, json!({"id": link["id"]}));
+    assert_eq!(used(&d, "boarda", &token, "g-00000000000000f3"), 1);
+
+    let nowhere = d.call("source_add", "", &token, json!({"id": "boarda", "kind": "folder", "path": "/definitely/not/here"}));
+    assert_eq!(nowhere["error"]["code"], "invalid", "{nowhere}");
+    assert_eq!(used(&d, "boarda", &token, "g-00000000000000f4"), 0, "a place that is not there spent nothing");
+}
+
 #[test]
 fn a_grant_held_on_one_board_is_not_used_on_another_board_through_a_link() {
     let d = device();

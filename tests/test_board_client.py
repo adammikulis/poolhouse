@@ -14,7 +14,13 @@ import pytest
 from node_kit import BOARD
 
 from poolhouse import node_binary, node_supervise
-from poolhouse.board import client as board_client, credentials, place, session
+from poolhouse.board import (
+    client as board_client,
+    credentials,
+    grants as board_grants,
+    place,
+    session,
+)
 
 pytest_plugins = ["node_kit"]
 
@@ -142,7 +148,11 @@ def test_a_project_is_added_by_a_session_of_its_own_board_and_never_inside_or_ar
     reader = client.call("register", board, "", model="", harness="probe", session="p")["token"]
     placers = [a for a in client.call("agents", board, reader)["agents"] if a["harness"] == place.PLACER]
     assert len(placers) == 1 and placers[0]["parent"] == "", "the project was added by a session of its own board"
-    token = client.call("register", "inner-board", "", model="", harness=place.PLACER, session="again")["token"]
+    made = client.call("register", "inner-board", "", model="", harness=place.PLACER, session="again")
+    token = made["token"]
+    workspace_node.allow(workspace_node.member("lead"), "note_verify")
+    board_grants.issue(session.Session(client, "inner-board", token, made["name"]), workspace_node.person,
+                       board_grants.Want("source_add", {"kind": "session", "name": made["name"]}, "inner-board"))
     with pytest.raises(board_client.Invalid, match="is, is inside or holds a place of project"):
         client.call("project_add", "", token, id="inner-board", kind="folder", path=str(repo / "src"))
     with pytest.raises(board_client.Denied, match="registered session"):

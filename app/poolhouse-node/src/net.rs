@@ -23,7 +23,7 @@ use crate::netsync::sync_all;
 use crate::node::Node;
 use crate::join_code::{context_for, new_code, Session, Window};
 use crate::peer::{self, PeerClient};
-use crate::poolapi::{authorize, NETWORK};
+use crate::poolapi::{authorize_from, NETWORK};
 use crate::poolops::wall_ms;
 use crate::shard::{self, Shards};
 use crate::tls::{server_config, StandingFn};
@@ -578,7 +578,7 @@ impl Net {
     pub fn call(&self, request: &Value, peer: &Peer) -> Value {
         let parsed = parse(request);
         match parsed {
-            Ok(c) if NETWORK.contains(&c.method.as_str()) => respond(request, self.network(&c)),
+            Ok(c) if NETWORK.contains(&c.method.as_str()) => respond(request, self.network(&c, peer)),
             Ok(c) if c.method == "pool_status" => match self.node.lock() {
                 Ok(n) => respond(request, Ok(merged(n.pool_status(), self.network_facts()))),
                 Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
@@ -590,18 +590,18 @@ impl Net {
         }
     }
 
-    fn network(&self, c: &Call) -> Result<Value> {
+    fn network(&self, c: &Call, peer: &Peer) -> Result<Value> {
         let text = |k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         let number = |k: &str, d: u64| c.params.get(k).and_then(Value::as_u64).unwrap_or(d);
         if c.method != "shard_call" {
             let resource = if c.method == "join_pool" { text("host") } else { "*".into() };
             let mut node = locked(&self.node)?;
-            authorize(&mut node, &c.token, &c.method, &resource)?;
+            authorize_from(&mut node, &c.token, peer, &c.method, &resource)?;
         }
         match c.method.as_str() {
             "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120)),
             "join_pool" => self.join_pool(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
-            "shard_call" => self.shard_call(c),
+            "shard_call" => self.shard_call(c, peer),
             _ => Ok(json!({"reached": self.sync_once(true)?})),
         }
     }
@@ -610,7 +610,7 @@ impl Net {
     /// Pass one shard op to the pool member named by ``device`` (a name or a fingerprint). The
     /// node adds `op` and `by` (the session behind the token); the peer decides from the
     /// certificate this device shows, so neither the session nor an argument can claim another.
-    fn shard_call(&self, c: &Call) -> Result<Value> {
+    fn shard_call(&self, c: &Call, peer: &Peer) -> Result<Value> {
         let name = c.params.get("device").and_then(Value::as_str).unwrap_or("");
         let op = c.params.get("op").and_then(Value::as_str).unwrap_or("");
         let mut request = match c.params.get("args") {
@@ -624,7 +624,7 @@ impl Net {
         shard::host::passable(&request)?;
         let (fp, addr, by) = {
             let mut node = locked(&self.node)?;
-            let who = authorize(&mut node, &c.token, "shard_call", name)?;
+            let who = authorize_from(&mut node, &c.token, peer, "shard_call", name)?;
             let (fp, addr) = self.device_named(&node, name)?;
             (fp, addr, format!("{}/{}", who.board, who.name))
         };

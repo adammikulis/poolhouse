@@ -76,6 +76,37 @@ def test_another_terminal_session_does_not_get_a_token_for_a_registered_main_ses
     assert stranger["name"] != node.lead.name and "token" in stranger, "a session nobody registered yet registers from anywhere"
 
 
+SPEND = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "from poolhouse.board import credentials, session\n"
+    "from poolhouse.board.client import Client, Denied\n"
+    "state, board, name = Path(sys.argv[1]), sys.argv[2], sys.argv[3]\n"
+    "held = session.Session(Client(state), board, credentials.load(state, board, name), name)\n"
+    "out = {'whoami': held.whoami().name}\n"
+    "try:\n"
+    "    held.call('land_brake', pause=False)\n"
+    "    out['spent'] = True\n"
+    "except Denied as err:\n"
+    "    out['refused'] = str(err)\n"
+    "    out['hint'] = err.grant\n"
+    "print(json.dumps(out))\n"
+)
+
+
+def test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_grant(lead):
+    node = lead
+    node.allow(node.lead, "land_control")
+    args = (str(node.state), node.board, node.lead.name)
+    here = json.loads(child_output(SPEND, *args, node=node, own_terminal=False))
+    assert here == {"whoami": node.lead.name, "spent": True}, "the terminal that registered the session spends its grant"
+    apart = json.loads(child_output(SPEND, *args, node=node, own_terminal=True))
+    assert apart["whoami"] == node.lead.name, "a process of another terminal that read the file is the session for reading"
+    assert "spent" not in apart and "rebind" in apart["refused"] and apart["hint"] is None, apart
+    uses = [e for e in board_grants.log(node.session(node.lead)) if e["op"] == "use"]
+    assert len(uses) == 1, "only the use from the registering terminal was written"
+
+
 def test_a_session_holds_eight_tokens_and_past_them_the_oldest_but_the_first_goes(lead):
     node = lead
     native = board_session.Native("claude-sonnet-5-5", "claude-code", "lead")
@@ -95,6 +126,23 @@ def test_a_session_holds_eight_tokens_and_past_them_the_oldest_but_the_first_goe
     assert [whoami(t) for t in tokens[2:]] == [node.lead.name] * 6
 
 
+def test_a_move_signed_in_another_terminal_moves_nothing(lead):
+    node = lead
+    key = node.keep_person_key(node.lead)
+    code = (
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "from poolhouse.board import grants\n"
+        "from poolhouse.board.client import Client\n"
+        "print(json.dumps(grants.here(Client(Path(sys.argv[1]))).anchor))\n"
+    )
+    elsewhere = json.loads(child_output(code, str(node.state), node=node, own_terminal=True))
+    signed = board_grants.sign_rebind(key, node.board, node.lead.name, board_grants.Where(node.client.call("hello")["device"], elsewhere))
+    with pytest.raises(Denied, match="another terminal"):
+        node.client.call("rebind", node.board, "", harness="claude-code", session="lead", **signed)
+    assert node.session(node.lead).whoami().name == node.lead.name, "nothing was moved"
+
+
 def test_a_signed_move_carries_the_session_to_the_process_that_sends_it_and_ends_the_tokens_it_held(lead):
     node = lead
     key = node.keep_person_key(node.lead)
@@ -109,16 +157,16 @@ def test_a_signed_move_carries_the_session_to_the_process_that_sends_it_and_ends
 def test_a_captured_move_is_not_used_twice_and_is_for_one_node_and_one_session(lead):
     node = lead
     key = node.keep_person_key(node.lead)
-    device = node.session(node.lead).call("grants")["device"]
-    signed = board_grants.sign_rebind(key, node.board, node.lead.name, device)
+    here = board_grants.here(node.client)
+    signed = board_grants.sign_rebind(key, node.board, node.lead.name, here)
     sent = {"harness": "claude-code", "session": "lead", **signed}
     assert node.client.call("rebind", node.board, "", **sent)["moved"] is True
     with pytest.raises(Denied, match="used already"):
         node.client.call("rebind", node.board, "", **sent)
-    elsewhere = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, node.lead.name, "ab" * 32)}
+    elsewhere = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, node.lead.name, board_grants.Where("ab" * 32, here.anchor))}
     with pytest.raises(Denied, match="for this node"):
         node.client.call("rebind", node.board, "", **elsewhere)
-    stale = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, node.lead.name, device, now_ms=1)}
+    stale = {"harness": "claude-code", "session": "lead", **board_grants.sign_rebind(key, node.board, node.lead.name, here, now_ms=1)}
     with pytest.raises(Exception, match="five minutes"):
         node.client.call("rebind", node.board, "", **stale)
 

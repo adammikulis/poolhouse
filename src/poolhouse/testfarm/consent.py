@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from poolhouse import features, node_launch
-from poolhouse.board import person_key, session as board_session
+from poolhouse.board import person, person_key, session as board_session
 from poolhouse.board.client import Client, NodeError
 from poolhouse.log import say
 from poolhouse.testfarm.client import ShardError, choose, pool_devices
@@ -43,7 +43,7 @@ def fingerprints(named: list[str]) -> list[str]:
 def switch(action: str, python: str = "", repo: str = "", devices: list[str] | None = None) -> dict:
     """Apply ``action`` through this device's node; what the node now holds."""
     state = node_launch.default_state()
-    session = board_session.connect(client=Client(state, person=person_key.provider(state)))
+    session = board_session.connect(client=Client(state, person=person_key.provider(state, acting=person.acting(state))))
     params: dict = {"enabled": action == "on"} if action in ("on", "off") else {}
     if action == "on":
         params.update(python=python or sys.executable, repo=repo or own_checkout())
