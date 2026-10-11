@@ -40,6 +40,7 @@ from poolhouse.harnesspolicy import (
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.workspace import limits, worktree_lifecycle
+from poolhouse.workspace.harness_session import BoardUnavailable
 
 __all__ = ["FAILURES", "WAIT_S", "Rail", "nudge", "post", "pre", "run"]
 
@@ -102,7 +103,7 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
         inputs = args if isinstance(args, dict) else None
         try:
             ownership = harness_claims.conflict(name, inputs, str(payload.get('cwd') or (roots[0] if roots else Path.cwd())), agent, roots)
-        except harness_claims.BoardUnavailable as error:  # no board to ask: local work goes on, with a warning
+        except BoardUnavailable as error:  # no board to ask: local work goes on, with a warning
             ownership = ""
             warning = f" (ownership not checked: {hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())})"
         decision = (Decision('deny', 'destructive', ownership) if ownership else None) or (primary_decision(name, inputs, str(payload.get("cwd", "")))
@@ -127,7 +128,7 @@ def _owned_answer(payload, rail, event, reason):
         harness_claims.reserve(str(payload.get('tool_name', '')), payload.get('tool_input'),
                                str(payload.get('cwd') or (rail.roots[0] if rail.roots else Path.cwd())),
                                rail.agent, rail.roots)
-    except harness_claims.BoardUnavailable as error:
+    except BoardUnavailable as error:
         note = hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())
         return _answer(event, 'allow', f"{reason} (ownership not recorded: {note})")
     except FAILURES as error:

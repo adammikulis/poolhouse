@@ -1,108 +1,78 @@
-"""A coding harness's workspace agent identity and its lifecycle."""
+"""A coding harness's session on a board and its lifecycle."""
 from __future__ import annotations
 
-import threading
-from collections.abc import Callable
 from dataclasses import dataclass
 from http.client import HTTPException
 from pathlib import Path
-from types import SimpleNamespace
 
+from poolhouse import node_launch
+from poolhouse.board import credentials, place
+from poolhouse.board.client import Client, NodeError
+from poolhouse.board.session import Session
 from poolhouse.client.health import reported_models
-from poolhouse.workspace import harness_remote, onboard, profilehook, tokens, worktree_lifecycle
-from poolhouse.workspace.identity import AGENT, Denied, Identity
-from poolhouse.workspace.remote import RemoteWorkspace
-from poolhouse.workspace.service import Workspace
+from poolhouse.errors import Denied
+from poolhouse.workspace import worktree_lifecycle
 
-PROFILE_TIMEOUT = 2.0
+__all__ = ["BoardUnavailable", "HarnessSession", "session_of"]
+
+
+class BoardUnavailable(Denied):
+    """The board could not be reached or authenticated: local work carries on with a warning."""
+
+
+def session_of(actor, cwd):
+    """The session ``actor`` holds on the board of ``cwd``'s project. BoardUnavailable when the node or the token is not there;
+    Denied when the node refuses the token or it belongs to another session."""
+    try:
+        node = Client(node_launch.default_state())
+        board = place.resolve(node, Path(cwd))
+        token = credentials.load(node.state, board, actor)
+    except (NodeError, OSError) as error:
+        raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
+    s = Session(node, board, token)
+    try:
+        named = s.name
+    except NodeError as error:
+        raise Denied(f'the board refused the token of {actor}: {error}') from error
+    except OSError as error:
+        raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
+    if named != actor:
+        raise Denied(f'the token kept for {actor} belongs to {named}; ownership requires the launcher-bound identity')
+    return s
+
 
 @dataclass(slots=True)
 class HarnessSession:
-    """How a session appears on the workspace: ``name`` is the identity, ``minted`` says whether
-    the launcher created it (and so revokes it)."""
+    """How a harness appears on a board: ``name`` is its session, ``parent`` the session that started it and that
+    retires it when ``minted`` says the launcher made it, ``base`` the folder its checkouts are recorded in."""
 
     name: str
+    board: str = ""
     minted: bool = False
     base: Path | None = None
-    issuer: Identity | None = None
+    parent: Session | None = None
     managed_inbox: bool = False
     persistent: bool = False
-    record_claim: Callable[[str, str], object] | None = None
-    remote: RemoteWorkspace | None = None
-    lifecycle_base: Path | None = None
+    state: Path | None = None
 
     def flags(self) -> list[str]:
         """The workspace command flags this session's messages carry."""
         return ["--agent", self.name]
+
+    def session(self) -> Session:
+        """The session's own token on its board."""
+        node = Client(self.state or node_launch.default_state())
+        return Session(node, self.board, credentials.load(node.state, self.board, self.name), self.name)
 
     def record_model(self, alias: str, harness: str, server: str = "") -> bool:
         """Record a connected agent's model as claimed; False on an inactive session or refusal."""
         if not self.minted and not self.persistent:
             return False
         try:
-            if self.record_claim is not None:
-                if server and alias not in reported_models(server):
-                    return False
-                self.record_claim(Path(alias).name, harness)
-                return True
-            if self.remote is not None:
-                token = self.remote.token(agent=self.name)
-                who = self.remote.call("whoami", token)
-                if who.get("id") != self.name or who.get("role") != AGENT:
-                    return False
-                if server and alias not in reported_models(server):
-                    return False
-                self.remote.call("claim_model", token, Path(alias).name, harness)
-                return True
-            ws = Workspace(self.base)
-            if server:
-                who = ws.auth(tokens.load(ws.base, self.name))
-                if who.id != self.name or who.role != AGENT or alias not in reported_models(server):
-                    return False
-                ws.claim_model(tokens.load(ws.base, self.name), Path(alias).name, harness)
-            else:
-                ws.claim_model(tokens.load(ws.base, self.name), alias, harness)
-        except (Denied, ValueError, OSError, HTTPException):
-            return False
-        return True
-
-    def record_execution(self, args, harness: str, served: tuple, root: Path) -> bool:
-        """Start a bounded best-effort observation through the authenticated session."""
-        if not self.minted and not self.persistent:
-            return False
-        snapshot = SimpleNamespace(**{key: getattr(args, key, None) for key in
-                                      ('model', 'ctx', 'effort', 'max_output_tokens', 'max_turns')})
-        completed = threading.Event()
-        result = []
-
-        def observe():
-            try:
-                document = profilehook.launched(snapshot, harness, served)
-                result.append(self._record_execution(document, root))
-            except (OSError, ValueError, TypeError, RuntimeError):
-                result.append(False)
-            finally:
-                completed.set()
-
-        threading.Thread(target=observe, name='execution-profile-observer', daemon=True).start()
-        return completed.wait(PROFILE_TIMEOUT) and bool(result and result[0])
-
-    def _record_execution(self, document, root):
-        try:
-            if self.remote is not None:
-                token = self.remote.token(agent=self.name)
-                if self.remote.call('whoami', token).get('id') != self.name:
-                    return False
-                self.remote.call('record_execution_profile', token, document)
-            elif self.base is not None and self.record_claim is None:
-                ws = Workspace(self.base)
-                token = tokens.load(ws.base, self.name)
-                if ws.auth(token).id != self.name:
-                    return False
-                ws.record_execution_profile(token, document)
-            else:
-                profilehook.send(document, self.name, root, self.base)
-        except (Denied, ValueError, OSError, HTTPException, RuntimeError, TypeError):
+            if server and alias not in reported_models(server):
+                return False
+            self.session().whoami(Path(alias).name if server else alias, harness)
+        except (Denied, NodeError, ValueError, OSError, HTTPException):
             return False
         return True
 
@@ -119,24 +89,13 @@ class HarnessSession:
                 raise ValueError(str(error)) from error
 
     def revoke(self) -> bool:
-        """Stop the token working and delete its file; False when nothing was minted."""
-        if not self.minted or self.base is None:
+        """End the session the launcher made and delete its token file; False when nothing was minted."""
+        if not self.minted or self.parent is None:
             return False
-        if self.remote is not None:
-            try:
-                snapshot = harness_remote.revocation_snapshot(self.remote, self.name)
-                self.remote.self_revoke(self.name)
-                harness_remote.release_revoked(self.remote, self.name, snapshot)
-                return True
-            except (ValueError, Denied, OSError):
-                return False
-        ws = Workspace(self.base)
         try:
-            authority = self.issuer or onboard.SETUP
-            ws.registry.revoke(authority, self.name)
-            ws.audit("revoke", authority.id, agent=self.name)
-        except (ValueError, Denied):
+            self.parent.retire(self.name)
+        except (NodeError, OSError):
             return False
         finally:
-            (tokens.directory(ws.base) / self.name.replace("/", "~")).unlink(missing_ok=True)
+            credentials.forget(self.parent.client.state, self.board, self.name)
         return True

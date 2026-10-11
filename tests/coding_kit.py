@@ -28,12 +28,12 @@ def native_cli() -> None:
 
 
 def fixture_worker(root, cid, conversation, prompt, communication) -> None:
-    from poolhouse import coding
+    from poolhouse import coding, harnessid
     from poolhouse.workspace.coding_turns import worker
     def launch(model, role, project, **options):
         if prompt == "startup rejected":
             raise SystemExit(2)
-        session = options["session_factory"](options["name"], Path(project), "", lambda text: None)
+        session = harnessid.invite(options["name"], Path(project), "", lambda text: None)
         try:
             with tempfile.TemporaryDirectory() as private:
                 command = [sys.executable, str(Path(__file__)), *options["harness_args"]]

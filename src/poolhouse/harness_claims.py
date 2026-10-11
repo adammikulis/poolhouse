@@ -6,10 +6,9 @@ import shutil
 import stat
 from pathlib import Path
 
-from poolhouse import node_launch, worktreerules
-from poolhouse.board import credentials, place
-from poolhouse.board.client import Client, Conflict, NodeError
-from poolhouse.board.session import Session
+from poolhouse import worktreerules
+from poolhouse.board import place
+from poolhouse.board.client import Conflict, NodeError
 from poolhouse.errors import Denied
 from poolhouse.guard.destructive import classify
 from poolhouse.guard.shellscan import has_expansion, has_glob, segments
@@ -17,15 +16,12 @@ from poolhouse.harnesspolicy import CATALOG, SHELL_TOOLS, _shell_line
 from poolhouse.interventions import Call
 from poolhouse.workspace import limits, worktree_lifecycle
 from poolhouse.workspace.claim_keys import normal
+from poolhouse.workspace.harness_session import BoardUnavailable, session_of
 
 FILE_TOOLS = frozenset({'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'apply_patch'})
 FILE_COMMANDS = frozenset({'touch', 'mkdir', 'rm', 'rmdir', 'cp', 'mv', 'chmod', 'chown', 'tee'})
 CLAIM_S = 900
 PATHS = ('file', 'worktree', 'install')
-
-
-class BoardUnavailable(Denied):
-    """The board could not be reached or authenticated: local work carries on with a warning."""
 
 
 def _path(value, cwd):
@@ -111,27 +107,6 @@ def _nested(a, b):
 def _held(kind, key):
     """The claim a resource is kept as on the board: a file is a claim on its path as an area."""
     return ('area' if kind == 'file' else kind), normal(kind, key)
-
-
-def session_of(actor, cwd):
-    """The session ``actor`` holds on the board of ``cwd``'s project. BoardUnavailable when the node or the token is not there;
-    Denied when the node refuses the token or it belongs to another session."""
-    try:
-        node = Client(node_launch.default_state())
-        board = place.resolve(node, Path(cwd))
-        token = credentials.load(node.state, board, actor)
-    except (NodeError, OSError) as error:
-        raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
-    s = Session(node, board, token)
-    try:
-        named = s.name
-    except NodeError as error:
-        raise Denied(f'the board refused the token of {actor}: {error}') from error
-    except OSError as error:
-        raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
-    if named != actor:
-        raise Denied(f'the token kept for {actor} belongs to {named}; ownership requires the launcher-bound identity')
-    return s
 
 
 def conflict(name, args, cwd, actor, roots=()):
