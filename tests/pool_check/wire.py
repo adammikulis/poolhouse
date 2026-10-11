@@ -4,6 +4,9 @@
     python tests/pool_check/wire.py stop  --state DIR
     python tests/pool_check/wire.py call  --state DIR METHOD [--board B] [--token T] [--params JSON]
     python tests/pool_check/wire.py expect-enrol --state DIR
+    python tests/pool_check/wire.py phone-listen --state DIR
+    python tests/pool_check/wire.py phone-offer --state DIR
+    python tests/pool_check/wire.py phone --state DIR OP [--token T] [--body JSON] [--method GET]
 
 Every command prints one JSON line: ``{"ok": true, "result": ...}`` or ``{"ok": false, "code": ..., "error": ...}``. The rig runs
 this file the same way on both kinds of device (a subprocess on the Mac, `docker exec` in a container), so a device's node is
@@ -15,10 +18,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
+import ssl
 from pathlib import Path
+from typing import Any
 
 from poolhouse import node_binary, node_launch, node_supervise
-from poolhouse.board import grants
+from poolhouse.board import grants, phone
 from poolhouse.node_health import API_VERSION, exchange
 
 
@@ -45,6 +51,43 @@ def post_many(state: Path, session: tuple[str, str], count: int, size: int, pref
     return {"ok": True, "result": {"posted": count}}
 
 
+class Endpoint:
+    """The node's phone endpoint, reached over TLS 1.3 with the one certificate it made trusted and nothing else."""
+
+    def __init__(self, state: Path, port: int, host: str = "127.0.0.1") -> None:
+        self.port = port
+        self.host = host
+        self.pem = ssl.DER_cert_to_PEM_cert((Path(state) / "phone.cert").read_bytes())
+
+    def request(self, op: str, body: dict[str, Any] | None = None, *, token: str = "", method: str = "POST") -> tuple[int, dict[str, Any]]:
+        """One request: the status and the JSON of the reply."""
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+        context.check_hostname = False
+        context.load_verify_locations(cadata=self.pem)
+        payload = json.dumps(body or {}).encode()
+        auth = f"Authorization: Bearer {token}\r\n" if token else ""
+        head = f"{method} /phone/v1/{op} HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n{auth}Content-Length: {len(payload)}\r\nConnection: close\r\n\r\n"
+        with socket.create_connection((self.host, self.port), timeout=20) as raw, context.wrap_socket(raw, server_hostname="poolhouse-phone") as tls:
+            tls.sendall(head.encode() + payload)
+            got = b""
+            while chunk := tls.recv(65536):
+                got += chunk
+        return int(got.split(b" ", 2)[1]), json.loads(got.partition(b"\r\n\r\n")[2] or b"{}")
+
+    def ok(self, op: str, body: dict[str, Any] | None = None, *, token: str = "") -> dict[str, Any]:
+        """The result of a request that must succeed."""
+        status, reply = self.request(op, body, token=token)
+        assert reply.get("ok") is True, (status, reply)
+        return dict(reply["result"])
+
+
+def phone_call(state: Path, op: str, token: str, body: dict, method: str) -> dict:
+    """One request of a phone to the endpoint the node of ``state`` listens on, over TLS pinned to its certificate, made from this device: the status and the reply."""
+    status, reply = Endpoint(state, int(call(state, "phone_info")["result"]["port"])).request(op, body, token=token, method=method)
+    return {"ok": True, "result": {"status": status, "reply": reply}}
+
+
 def start(state: Path, binary: Path, args: list[str]) -> dict:
     """Pin ``binary`` for the node of ``state`` and start it under its supervisor with ``args``; its health."""
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -55,9 +98,14 @@ def start(state: Path, binary: Path, args: list[str]) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("start", "stop", "call", "post-many", "expect-enrol"):
+    for name in ("start", "stop", "call", "post-many", "expect-enrol", "phone-listen", "phone-offer", "phone"):
         one = sub.add_parser(name)
         one.add_argument("--state", required=True)
+        if name == "phone":
+            one.add_argument("op")
+            one.add_argument("--token", default="")
+            one.add_argument("--body", default="{}")
+            one.add_argument("--method", default="POST")
         if name == "start":
             one.add_argument("--binary", required=True)
             one.add_argument("--arg", action="append", default=[])
@@ -79,6 +127,13 @@ def main(argv: list[str] | None = None) -> int:
             out = start(state, Path(args.binary), [f"{a}" for a in args.arg])
         elif args.cmd == "expect-enrol":
             out = {"ok": True, "result": {"secret": grants.expect_enrolment(state)}}
+        elif args.cmd == "phone-listen":
+            phone.listen_on(state, "127.0.0.1:0")
+            out = {"ok": True, "result": {"listening": True}}
+        elif args.cmd == "phone-offer":
+            out = {"ok": True, "result": {"secret": phone.expect_phone(state)}}
+        elif args.cmd == "phone":
+            out = phone_call(state, args.op, args.token, json.loads(args.body), args.method)
         elif args.cmd == "post-many":
             out = post_many(state, (args.board, args.token), args.count, args.size, args.prefix)
         elif args.cmd == "stop":
