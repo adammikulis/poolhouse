@@ -21,7 +21,7 @@ def owned_files(monkeypatch):
     An editable install (what CI uses) lists no source files, so ownership is stated here
     rather than read from whichever install runs the suite.
     """
-    listed = ["poolhouse/workspace/localcoding.py", "poolhouse/workspace/remote_workers.py",
+    listed = ["poolhouse/workspace/localcoding.py",
               "poolhouse/workspace/issuepump.py", "poolhouse/serve/mlx_tree_server.py",
               "poolhouse/serve/_watchdog.py", "poolhouse/serve/socket_relay.py",
               "poolhouse/harnesshook.py"]
@@ -91,8 +91,8 @@ def test_identical_aliases_load_the_single_owned_console_target(monkeypatch):
     assert calls == ["poolhouse.serve.cli:main"]
 
 
-@pytest.mark.parametrize("module", ["poolhouse.workspace.localcoding", "poolhouse.workspace.remote_workers",
-                                     "poolhouse.workspace.issuepump", "poolhouse.serve.mlx_tree_server"])
+@pytest.mark.parametrize("module", ["poolhouse.workspace.localcoding", "poolhouse.workspace.issuepump",
+                                     "poolhouse.serve.mlx_tree_server"])
 def test_worker_modules_use_their_maintained_main_entrypoint(monkeypatch, owned_files, module):
     calls = []
     monkeypatch.setattr(sys, "argv", ["frozen-app"])
