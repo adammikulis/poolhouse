@@ -1,6 +1,9 @@
 # A device-to-device board for a pool of one to N devices
 
-Design note; nothing is implemented. It replaces the host-failover design and extends
+The node replaced the old file store this note starts from: per-device signed logs, the hybrid-clock merge, board sync
+and membership are built in `app/poolhouse-node` (`docs/node.md`, "Board entries", "Sync" and its section on the
+pool), and the code paths named below (`coordinator.json`, `coordination.db`, `board.db`, `agents.json`,
+`claims.json`) are gone; the rest is kept as the design record. It replaces the host-failover design and extends
 `docs/session-liveness.md` (presence, recovery, coordinator role), `docs/person-delegation.md` (approvals)
 and `docs/policy-distribution.md` (rules replicate as records; machine settings stay human-only). Line
 numbers: `0.2dev` at `f0fa485d`.

@@ -27,9 +27,10 @@ performance are not claimed anywhere.
 4. Fleet jobs cannot run tests. The daemon refuses every argv except `poolhouse-bench` and
    `python -m poolhouse.fleet.calibration` (`fleet/commands.py:allowed` [V]). The test broker and the reuse
    store are per device (section 2.1).
-5. The pool-wide board (logs, `replica_sync`, membership, derived coordinator) is a design note with no code:
-   `workspace/device_logs.py`, `replica_sync.py` and `landing.py` do not exist [V]. What runs today is one coordinator
-   device holding the board and the others reaching it.
+5. The pool-wide board is built by the node (`docs/node.md`): per-device signed logs, a hybrid-clock merge,
+   membership with removal, and a copy of every board on every member that takes part in it, in the Rust crate
+   `app/poolhouse-node` [V]. There is no coordinator device holding a board and no host to reach; the Python
+   `poolhouse-workspace` is a client of the node on its own device.
 
 ## 1. What works today for several home devices
 
@@ -56,24 +57,19 @@ performance are not claimed anywhere.
 
 ### 1.2 Signed logs
 
-Not built. `docs/board-replication.md` is the design (per-device append-only signed logs, hybrid logical clock,
-derived coordinator, membership as signed records) and says "nothing is implemented"; `device_logs.py`,
-`replica_sync.py`, `replica_fold.py`, `presence.py` and `membership.py` are absent from `src/poolhouse/workspace`
-[V]. What exists is the hash-chain `ChainLog` (`workspace/chain.py` [V]) and a per-origin bus merge
-(`workspace/board_graph_merge.py` [V]). Section 3 slice 6 is the first piece of the design.
+Built by the node (`docs/node.md`, "Board entries", "Sync" and its section on the pool): per-device append-only
+signed logs, a hybrid-clock merge, membership as signed records and board sync over pinned TLS. The files named in
+`docs/board-replication.md` (`device_logs.py`, `replica_sync.py`, `chain.py`, `board_graph_merge.py`) are gone from
+`src/poolhouse/workspace` [V]; that note is the design record the node implements.
 
-What stands in for it, one coordinator device:
+What runs today:
 
-- On the coordinator (a person): `poolhouse-workspace coordinator host`, `poolhouse-pool add-device --for 10m`;
-  elsewhere `poolhouse-pool join-with-code ...` then `poolhouse-workspace join CODE --coordinator FLEET_NAME --name N
-  --model EXACT_MODEL --harness codex` (`docs/workspace.md` "Explicit shared coordinator" [D]; the `join` and
-  `remote-agent` verbs registered in `workspace/cli.py` [V]).
-- A matching Git checkout on an enrolled Development device connects with no code: the first
-  `poolhouse-workspace` command registers the project and discovers its board (`docs/workspace.md` [D];
-  `workspace/automatic_connection.py` [V]).
-- Remote commands are bounded board operations only (`workspace/remote_protocol.py:METHODS` [V]); a lost
-  response is retried with `--request-id ID` (`coordinator_calls.py` [V], one day retention [D]).
-- No coordinator reachable means no fallback to a local copy (`coordinator_client.py` [D via board-replication.md]).
+- Each device's node holds the boards of the projects it takes part in and syncs the boards both members hold once
+  the devices are in one pool (`docs/node.md`, its section on the pool). A session registers on its own device's
+  node, so there is no host to join, no code or invitation to carry, and no fallback to choose between.
+- The first `poolhouse-workspace` command in a Git checkout registers the project on the device's node and resolves
+  its board (`docs/node.md`, "Boards, projects, links").
+- `outbox` says whether a message is `provisional` or `synced` (every device that has synced the board holds it).
 
 ### 1.3 Fleet jobs
 
@@ -83,9 +79,8 @@ What stands in for it, one coordinator device:
 - What a daemon will run: `poolhouse-bench` and `python -m poolhouse.fleet.calibration`, nothing else
   (`fleet/commands.py` [V]). A bench job is refused on a differing commit, a held `measuring.lock` or too little
   room (`fleet/sweeps.py`, `docs/fleet.md` [D]).
-- `poolhouse-workspace remote-agent --device NAME --task ...` starts a Board-message worker running a
-  downloaded Qwen on another Development device, admitted through that device's broker (`docs/workspace.md`
-  [D]; `workspace/remote_workers.py` [V]).
+- A local model is started on the device it runs on: `poolhouse-workspace agent start` there, admitted through that
+  device's broker (`docs/local-agent.md`). No command starts one on another device.
 - Uploads and downloads of files resume and are digest-verified (`docs/fleet.md` [D]).
 
 ### 1.4 Model serving leases
@@ -112,8 +107,9 @@ What stands in for it, one coordinator device:
   (`docs/test-reuse.md` [D]). The store is `~/.cache/test-reuse`, per user per device
   (`workspace/testruns.py:STORE_BASE` [V]); the key includes platform and machine, so a Mac pass is not a Linux
   pass.
-- Landing a batch: `scripts/land plan|run|finish` take branch names and a repository path and know nothing
-  of the board (`docs/landing-queue.md` [D]; `scripts/land_*.py` [V]).
+- Landing a batch: `scripts/land plan|run|finish` take branch names and a repository path; `scripts/land up` runs the
+  board-fed runner that lands the reviewed `land-request` entries of the board's queue (`docs/landing-queue.md`
+  [D]; `scripts/land --help` [V]).
 
 ### 1.6 Linux and WSL runner
 
@@ -155,9 +151,10 @@ Rank is by how much of the goal a missing item blocks, first item first.
    `measuring` and schedule windows [V] but nothing about test permit capacity, held GPU lease, branch checkouts
    present or WSL/Linux platform for tests. Needed: a `test` block in `Daemon.report()` (capacity from
    `testslots.py status`, platform key, checkout commits) so `Requires` can select on it.
-4. **Board-fed landing queue unbuilt.** `workspace/landing.py`, `scripts/land submit|watch` and the
-   `--entries FILE` extension to `land run` do not exist [V]; the four steps are listed in
-   `docs/landing-queue.md` [D]. Runs on one device first; it does not need the replica.
+4. **Board-fed landing queue.** Built on the node: `land-request`, `land-review` and `land-queue` write and read the
+   board's `landing` entries and `scripts/land up` is the runner (`docs/landing-queue.md` [D]; `docs/node.md`, "The
+   landing queue"). A device counts another device's landing entries only when its person put that device on the
+   landing list (`land-trust`), so the queue runs on one device unless the person extends it.
 5. **Cross-device broker coordination.** Test admission and the GPU lease are separate per device. A machine
    running a model needs the test broker to see the lease (heavy lane while a model holds the GPU). Today
    `docs/test-execution.md` [D] gates heavy tests by lane, not by lease.
@@ -230,9 +227,9 @@ Mostly present: workspace CLI and MCP exist (section 1.7). Gaps, ranked:
    serving reads (`mcp.py` [V]); missing tools: list devices with capability, request a lease on a device, submit
    or read a test job on a device, read the landing queue. Each takes the agent's own token (`_token()`
    in `workspace/tools.py` [V]); none takes a person credential.
-2. **Board access from another device needs coordinator enrollment per harness per device.** Done by invitation or
-   automatic project enrollment [D]; the claim that Codex and Claude on another device both work needs a live
-   proof on the owner's devices and is not asserted.
+2. **Board access from another device is the node's replication.** A harness on each device registers on that
+   device's node, with no invitation (`docs/node.md`); the claim that Codex and Claude on two devices both reach
+   one board needs a live proof on the owner's devices and is not asserted.
 3. **Rule for every new remote action.** The action is allowed to an agent only through a capability the
    agent's own token carries, minted by a person; a job that executes code on a device (2.1(1), 2.2(2))
    requires a person-recorded grant for that device and project. No path takes a phone credential and gives it
@@ -273,9 +270,9 @@ address is stored only after the certificate matched there.
   rely on it.
 - Binding: a joined daemon already binds `0.0.0.0` (`bind_address` [V]), so it is reachable on its tailnet
   address with no change. The not-yet-built "listen on the tailnet interface only" is listed as not done
-  [D onboarding.md]. The replica transport (`/workspace/v1/replica/pull|push` per `docs/board-replication.md`) would be
-  routes on that same listener, authenticated by the pinned certificate and by a row signature from the origin
-  device's key, so a relayed row is verified by the origin and not by the path or the tailnet.
+  [D onboarding.md]. The board's sync is the node's transport between members on its own listener (`docs/node.md`, its section on the pool),
+  authenticated by the pinned certificate and by a row signature from the origin device's key, so a relayed row is
+  verified by the origin and not by the path or the tailnet.
 - Verified gap: `Invitations.mint` requires `address.is_private`, and `companion_routes.answer` requires
   `source.is_private`; for `100.64.0.0/10` Python's `ipaddress` returns `is_private == False`
   (checked with `ipaddress.ip_address('100.101.1.2').is_private`), while `fd7a:115c:a1e0::/48` returns True.
@@ -305,10 +302,10 @@ branch landed before the next starts. Dependencies name slice numbers.
 |---|---|---|---|---|
 | 1 | `poolhouse-pool devices` shows the route per device (tailnet IPv4 admission in the companion and invite checks is already fixed) | S | none | `fleet/onboard/lan.py:in_tailnet`, `fleet/invites.py`, `companion_routes.py`; `tests/test_onboard_tailnet.py` |
 | 2 | Device capability block in `Daemon.report()` (test capacity, platform key, checkouts, awake/asleep) and a `Requires` filter on it | S-M | none | `fleet/pool.py`, `fleet/daemon.py:report`, `scripts/testslots.py status` |
-| 3 | Board-fed landing queue: `workspace/landing.py`, `scripts/land submit`, `land watch --once`, `land run --entries` | M | none (single device) | `docs/landing-queue.md`; `scripts/land_*.py`; `workspace/task_integration.py` |
+| 3 | Board-fed landing queue (built: `land-request`, `land-review`, `land-queue`, `scripts/land up`) | done | none (single device) | `docs/landing-queue.md`; `docs/node.md`; `workspace/task_integration.py` |
 | 4 | Phone person credential: device-key enrollment from the owner page, named capabilities, expiry, revoke, read-only status and board | M-L | 1 | `fleet/invites.py` `devices` and `_grant`, `companion_routes.py`, `docs/person-delegation.md` |
 | 5 | Remote test runner: a person-granted job kind for `scripts/test` on a named commit, result posted as evidence by the runner's own agent | L | 2, 3 | `fleet/commands.py`, `docs/test-execution.md`, `docs/test-reuse.md`, `workspace/testruns.py`; branches `docs/linux-wsl-current`, `fix/linux-admission-stdio-current`, `fix/linux-immutable-runner` to be reviewed first |
-| 6 | Replica board stage 1: logs for append-only streams (messages, notes) between two devices, outbox, remove agent-settable `host` | L | none, but ahead of any N>2 claim | `docs/board-replication.md` slice 1; `workspace/chain.py`, `board_graph_merge.py` |
+| 6 | Replica board: logs between devices, outbox, no agent-settable host (built by the node) | done | none, but ahead of any N>2 claim | `docs/node.md`; `docs/board-replication.md` (the design record) |
 | 7 | Lease through a remote broker under the asker's identity; `plan --apply` becomes a lease with reason | M | 2, 4 | `serve/broker_wire.py`, `serve/leases.py`, `fleet/api.py` `/serve` |
 | 8 | Phone capabilities: approve/deny, start/stop lease, submit test, read results | M | 4, 5, 7 | `docs/person-delegation.md` sections 7 and 12 |
 | 9 | Pool MCP tools: devices, lease request, test submit/read, landing queue, each with the agent's own token | M | 3, 5, 7 | `mcp.py`, `workspace/tools.py` |
@@ -317,9 +314,9 @@ branch landed before the next starts. Dependencies name slice numbers.
 | 12 | Wake and idle unload | M | 2, 7 | none exists; Wake-on-LAN needs the sleeping device's NIC settings, a person setting |
 
 Optional, never authority: the parked NATS bundle (`docs/nats-coordination-quickstart` and the
-`feat/nats-*`, `fix/nats-*` branches, listed by `git branch`) is one possible transport for slice 6; the
-replica note's pairwise signed logs do not require it, and a fix there depends on a review of those branches
-that this note did not make.
+`feat/nats-*`, `fix/nats-*` branches, listed by `git branch`) was one possible transport for slice 6, which the
+node's own transport between members now covers; a use for it would depend on a review of those branches that this note did
+not make.
 
 Slices 1, 2, 3 and 10 have no dependency on each other and can run in parallel. The phone path is 1 then 4 then 8
 (with 5 and 7 supplying the things it would command). Harness commanding is already usable for the board;
@@ -327,8 +324,8 @@ slice 9 completes it.
 
 ## 4. What the order assumes
 
-- The pool is a set of members with one coordinator device holding the board until slice 6 and the
-  later replica stages; no new always-on device is required for slices 1 to 5, 8 and 9 except the coordinator.
+- The pool is a set of members that each hold the boards they take part in; no device is the board's host, and no new
+  always-on device is required for slices 1 to 5, 8 and 9.
 - A phone credential is never an agent identity, never relayed by a model, and its minting needs the
   person at the host's own owner page. Nothing in this note adds an environment variable, flag or trusted
   agent role that skips that.
@@ -349,9 +346,9 @@ Each open question is one question, options with costs. Decisions already taken 
 2. **Remote access off the home network at all?** No: the pool stays at home, tailnet slices are optional.
    Yes via Tailscale (the transport decided in section 5.1): the ACL is yours to write, and the phone credential's expiry becomes
    more important. Not via any public port or Funnel in any option.
-3. **Which devices are always-on?** The coordinator device needs to be (it holds the board until the replica
-   exists); each always-on device needs the autostart install (a person action) and a decision on sleep. Cost of
-   making a laptop the coordinator: the board vanishes when it sleeps; cost of a desk machine: its power draw.
+3. **Which devices are always-on?** No device has to be: each member holds the board and syncs it when it is
+   reachable. A device that takes tasks, serves a model or runs tests while others sleep needs the autostart install
+   (a person action) and a decision on sleep. Cost of a desk machine: its power draw.
 4. **May a phone approve things, or only watch and chat?** Approve/deny (slice 8) lets a phone answer the
    structured approval question for `release-main`; the cost is that a lost, unlocked phone holds that power
    until revoked. Options: watch and chat only; approve with a biometric prompt per approval; approve for a
@@ -362,7 +359,7 @@ Each open question is one question, options with costs. Decisions already taken 
 6. **Which device may run tests for which project, and may a runner be reached by an agent without a fresh
    person grant each time?** Per-job grant is safest and slowest; a standing grant per device and project
    (expiring) is the middle; none is not acceptable for slice 5.
-7. **Does the NATS bundle get reviewed as a slice 6 transport, or is the pairwise log design the only path?**
+7. **Does the NATS bundle get reviewed as a transport, or is the node's own transport between members the only path?**
    Review costs a read of the parked branches; skipping costs nothing now and leaves the choice open.
 
 ### 5.1 Decisions (2026-10-08)

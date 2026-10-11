@@ -1,5 +1,10 @@
 # Work continuity when agents disappear
 
+The node replaced the file store this note was written against (`bus.py`, `identity.py`, `coordination.db`,
+`agents.json`, `session-names.json`): sessions, their names, tokens, parents and the board's replication are now the
+node's (`docs/node.md`, "Identity" and "Sync"), and the code paths named below are gone; the design is kept as the
+record.
+
 Status: design, 2026-10-08. Nothing in sections 3 to 9 is built. Owner requirement: "subagents/agents are going to disappear, we don't want the contents of their inboxes lost.
 somehow, we need to make new agents/subagents organically resume the work of ones that aren't there anymore."
 

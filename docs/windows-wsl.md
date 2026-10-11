@@ -125,11 +125,12 @@ commit, a file or a report; the pool does not keep it after use.
 
 Found by reading `docs/workspace.md`, `poolhouse.jobs` and the node's ops:
 
-- **Board messages across the pool** work: `send`, `inbox`, `thread`, `board read` reach the other device's sessions
-  once they share a pool. Use them to ask the agent on the other device to do something.
-- **`poolhouse-workspace remote-agent --device NAME`** starts a Board-message worker (a local Qwen) on another
-  device. Its operations are bounded coordination ones; it does not run tests or commands (docs/workspace.md,
-  "Explicit shared coordinator across devices").
+- **Board messages across the pool** work: every member holds the project's board, so `send`, `inbox`, `thread` and
+  `board read` reach the other device's sessions once the devices share a pool, with no invitation and no token to
+  carry (docs/node.md, "Sync"). Use them to ask the agent on the other device to do something. A session on this
+  device registers on this device's node; a message from another device shows its sender as `name@dN`.
+- **A local model** is started on the device it runs on, with `poolhouse-workspace agent start` there
+  (docs/local-agent.md). Nothing starts one on another device from here.
 - **`poolhouse-jobs`** runs long commands on the device you are on only.
 
 Running tests on another device is `scripts/test TIER --on DEVICE` (docs/test-farm.md). It needs the person to turn

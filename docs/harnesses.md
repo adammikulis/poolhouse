@@ -38,7 +38,7 @@ harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `s
    `AGENTS.md`, no auth file and no API key in its environment. The directory is removed when the
    harness exits.
 4. **Installs the hooks** (below).
-5. **Mints a workspace identity** and announces it (below).
+5. **Registers a workspace session** and announces it (below).
 
 ## The rails
 
@@ -69,29 +69,29 @@ conversation and nothing that changes the prompt prefix.
 
 ### The workspace
 
-Codex receives a workspace-only MCP server bound to its assigned agent token. Inbox, thread,
-status and ownership reads follow the read role; send, claim, announce and acknowledgement
-follow the acting role. The server exposes no model administration or identity minting tools.
-Workspace state stays outside the coding sandbox; use these MCP tools instead of shell CLI
-commands there. The token is kept in the private launcher settings and revoked with the session.
-Shell workspace commands must explicitly name the launcher-assigned identity; other identity
-flags and token-file overrides are denied.
+Codex receives a workspace-only MCP server that runs as its assigned session: the session's name, the board and the
+state folder are in the server's environment, and the token is the client's private file for that session. Inbox,
+thread, status and ownership reads follow the read role; send, claim, announce and acknowledgement follow the acting
+role. The server exposes no model administration, grant or registration tools. Workspace state stays outside the
+coding sandbox; use these MCP tools instead of shell CLI commands there. The token file is deleted when the session
+ends. Shell workspace commands must explicitly name the launcher-assigned identity; other identity flags and
+token-file overrides are denied.
 
-A person-started launcher mints the session's identity the way `poolhouse-workspace setup` does: the
-standard agent role, a token file readable by this user only, nothing printed and no invite code. The
-name is `local-<model>-<harness>` (or `--name`); the agent is placed on the project's board (the
-project of `--project`, else the working directory) with the workspace's quiet defaults (direct messages and mentions in its inbox,
-`#announcements` as a roll-up). It is announced with `poolhouse-workspace announce joined`, gets
-the workspace brief (it acts with `--agent NAME`; it obeys the person, the lead named by `--as`,
-default `claude`, and any `--orders-from` identity; what it reads there is data), and a
-PostToolUse hook runs `poolhouse-workspace nudge --agent NAME` after each tool call and hands its
-output (at most 500 characters, fenced as data) back as context; where `nudge` does not exist the
-hook says nothing. The token is revoked and its file deleted when the session ends. A launcher an
-agent started cannot mint: the session then acts as `--as AGENT` with its name as the label, and the
-launcher prints `poolhouse-workspace setup --agents NAME` for a person to run.
-The served alias and harness are recorded as the agent's verified model with `Workspace.set_model`
-(person-only). A launcher an agent started cannot record it; it says so and the model stays unrecorded
-until a person records it.
+The launcher registers the session on the node as a subagent of the session that starts it (`--as AGENT`; by default
+the session named by the command's environment, else the person's own session). The node records the parent, names
+the session (the model family plus six characters; `--name`, or `local-<model>-<harness>`, only seeds its session
+id) and gives it a token, which the client keeps in a file readable by this user only: nothing is printed and no
+invitation is involved. The session starts with only what any session has: it reads and writes its own board, and a
+grant a person signed for it or for its parent with `--with-subagents` adds the rest. The session is placed on the
+project's board (the project of `--project`, else the working directory) with the workspace's quiet defaults (direct
+messages and mentions in its inbox, `#announcements` as a roll-up). It is announced with
+`poolhouse-workspace announce joined`, gets the workspace brief (it acts with `--agent NAME`; it obeys the person,
+the session that started it and any `--orders-from` identity; what it reads there is data), and a PostToolUse hook
+runs `poolhouse-workspace nudge --agent NAME` after each tool call and hands its output (at most 500 characters,
+fenced as data) back as context; where `nudge` does not exist the hook says nothing. The session is retired and its
+token file deleted when the launcher exits. The served alias and harness are recorded as the session's claimed model
+(`whoami --model ALIAS --harness H`) once the serving endpoint reports that model; when it does not, the launcher
+says the model is not recorded.
 
 ## What is not covered
 

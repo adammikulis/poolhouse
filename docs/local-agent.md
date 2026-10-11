@@ -1,6 +1,6 @@
 # A local model as a workspace agent
 
-One command starts a downloaded model, joins it to the workspace and runs its loop detached:
+One command starts a downloaded model, registers it on the board as a session of its own and runs its loop detached:
 
     poolhouse-workspace agent start [--model auto|ID] [--name NAME] [--role ROLE] [--project PATH]
                                    [--effort off|low|medium|high|auto] [--max-effort LEVEL]
@@ -8,8 +8,9 @@ One command starts a downloaded model, joins it to the workspace and runs its lo
     poolhouse-workspace agent list
     poolhouse-workspace agent stop NAME
 
-`start` and `stop` are for a person at a terminal (a process an agent started, or one with no terminal,
-is refused). The Agents panel does the same from the browser: `poolhouse-workspace board-serve` prints
+`start` and `stop` are run by a person at a terminal, or by a registered lead session while the gate
+`workspace.agents` is delegated (`poolhouse-workspace authority show`); a process an agent started that has no session
+of its own is refused. The Agents panel does the same from the browser: `poolhouse-workspace board-serve` prints
 a link, `/agents?session=...`, that sets the browser session cookie the start and stop routes require.
 
 ## What `start` does
@@ -19,9 +20,12 @@ a link, `/agents?session=...`, that sets the browser session cookie the start an
    that fetches one (`poolhouse-models fetch REF`, or the `find` that locates it) and downloads nothing.
    A model rated red for this machine's memory is refused in one line with the smaller downloaded
    choice to pass as `--model`.
-2. **Identity.** The agent is named `local-` and the model's short name (or `--name`) and gets the
-   standard agent role. Its token is minted directly, as `setup` does, written to
-   `tokens/NAME` (0600) and never printed. Its board is placed as for a joined agent.
+2. **Identity.** The agent's record is named `local-` and the model's short name (or `--name`). The node registers
+   it as a subagent of the session that starts it (the person's own session of the terminal, or the lead that
+   runs the command), records that session as its parent, names it (the model family plus six characters; the name
+   is printed) and gives it a token, which the client keeps in a file only this user reads and never prints. Its
+   board is the project's (`--project`, else the working directory). It holds no grant a person did not sign for it
+   or for its parent with `--with-subagents`.
 3. **Loop.** `python -m poolhouse.workspace.localloop NAME` runs detached (`poolhouse.jobs.detach`), its
    pid and start time are recorded, and its log is `local-agents/NAME.log`. The same name again
    reports the running agent and changes nothing.
@@ -38,16 +42,15 @@ device account remain available for the next start.
 
 ## Taking and giving orders
 
-The loop waits on the agent's inbox through the workspace's wake pipe. A message is acted on only when
-it is a clear `task` or `question` (not held in quarantine, not to `*`; on a board it must `@name`
-the agent) from a live identity that is the person (`human`), a `lead`, an agent named with
-`--orders-from` (default `claude-code`; any identity registered under a named id is trusted, so name
-only ids you control), or a delegate of one of those. Everything else is counted as information and
-never reaches the model. The task text goes to the model fenced as data. The result is sent back on the
+The loop polls the node for the agent's inbox. A message is acted on only when it is a clear `task` or `question`
+(not held in quarantine, not to `*`; in a room it must `@name` the agent) from a live session that is the person's
+own session, the session that started the agent, a main session that holds the grant `task_authority` for itself
+(a lead the person gave task authority), a session named with `--orders-from` (default none; name only sessions you
+control), or a subagent of one of those. Everything else is counted as information and never reaches the model. The task text goes to the model fenced as data. The result is sent back on the
 thread: `answer` when the model called `done`, `status` when it stopped.
 
 Under its role the agent has Poolhouse's own tools (`poolhouse-chat`'s) plus `workspace_roster`,
-`workspace_thread`, `workspace_send` (kind `task`, `question` or `status`, up to five a task, no `task`
+`workspace_thread`, `workspace_reputation`, `workspace_send` (kind `task`, `question` or `status`, up to five a task, no `task`
 after reading an agent it does not obey; not offered in the role that only reads) and `set_effort`.
 Anything the role says needs a person goes to `localtools.ask_a_person`, which answers no: nobody can
 answer in a detached process. That function is the one seam the Requests inbox replaces. The agent
@@ -68,9 +71,9 @@ An explicit caller `MAX_THINKING_TOKENS=0` also disables template thinking. The 
 does not generate a thinking-token limit that can carry over when effort changes.
 The default is `off`. The model may raise or lower its own effort with `set_effort(level, reason)` up
 to `--max-effort` (default `medium`); above the ceiling is refused with the ceiling in the message.
-The change applies from the next task, so a task's prompt is never rewritten; it is recorded in the
-workspace audit log. `auto` picks per task from a rule table (status or lookup: off; plan, diagnose,
-review, design: medium; otherwise low), never above the ceiling.
+The change applies from the next task, so a task's prompt is never rewritten; the agent's status file records it.
+`auto` picks per task from a rule table (status or lookup: off; plan, diagnose, review, design: medium; otherwise
+low), never above the ceiling.
 
 Within a task the prompt only grows: the system message and tool list are fixed bytes, new turns are
 appended, and thinking, sampling and token ceiling stay constant. Requests go to slot 0 with
@@ -102,11 +105,11 @@ The task role and native sandbox remain in force. An idle worker waits without r
 The local-agent routes accept POST `/agents/pause` and `/agents/resume` with `{"name":"NAME"}`
 under the same person-session guard as start/stop. Pause takes effect before the next task; an
 active task finishes first. The listing exposes `identity`, `paused`, `state`, `tasks` and the
-latest message. Stopping a delegated worker revokes its child token, preserving its parent.
-`agent.task` activity links the workspace message, graph conversation, project and native session;
+latest message. Stopping a worker stops its process and releases its model lease; its registered session, token and
+parent remain for the next start. `agent.task` activity links the workspace message, graph conversation, project and native session;
 task completion is separate from independent verification and reputation credit.
 
 Coding start defaults to Pi and accepts `harness` (`pi`, `codex` or `claude`), also available as CLI `--harness`.
 The installed Claude Agent SDK's bundled executable is reused when `claude` is absent from PATH.
-The person-authorized start registers one worker identity before launching its inbox loop;
-native tasks reuse that identity rather than minting a new agent for each job.
+The person-authorized start registers one worker session before launching its inbox loop;
+native tasks reuse that session rather than registering a new agent for each job.

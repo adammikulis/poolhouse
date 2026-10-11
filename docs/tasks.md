@@ -20,25 +20,26 @@ board's id.
 
 The person's Tasks page is on the node too: the UI daemon reads and writes it as the person's own session on the board
 (`docs/node.md`, "The person's session"), so a task made by `task-create` and a task made on the page are the same row.
-The local project task workers (scheduler, worktrees, integration, source recovery) and `task-integrate` still use the
-workspace store described below until the local agent loop moves to the node.
+The local project task workers (scheduler, worktrees, integration, source recovery) and `task-integrate` run on the
+node as well: a worker is a registered session that holds a `model_slot` lease, its checkout, branch and baseline are
+the task's `scope`, and the integration, attempt, event, allocation and evidence records are kept on the task
+(`task_record`, `docs/project-task-workers.md`).
 
 Open **Tasks** in the main UI to inspect structured work. Search or filter by status, select
-an item, and inspect its account, physical device, authenticated worker, bound model,
+an item, and inspect its account, physical device, registered worker, bound model,
 resource lease, checkpoints, artifact hashes and independent reviews. The Board remains
 available for discussion; a discussion message does not acquire a task or resource lease.
 
-A person creates a task with a title and explicit acceptance criteria. The coordinator
-stores it in `coordination.db`, with task, device, worker, allocation, lease, checkpoint,
-proposal, artifact and review nodes linked by actual graph edges. A stable workspace node
-identifies this coordinator independently of its directory. A source key deduplicates an
-identical task; reusing it for a different specification is refused.
+A person creates a task with a title and explicit acceptance criteria (`task-create`, or the Tasks page). The node
+keeps it as `task` entries of the board, stamped with the session that wrote each one: the task, its assignments and
+allocations, leases, checkpoints, proposals, artifacts and reviews. A source key deduplicates an identical task;
+reusing it for a different specification is refused.
 
-Workers claim through the authenticated `TaskBoard.claim` service with a scheduler-issued
-allocation ID. The service checks registered authority, accepted dependencies, required
-capabilities and the actual live broker allocation before atomically acquiring the task.
-Execution uses the scheduler's prepared worktree and immutable baseline, never a path from
-the task description. Models and harnesses are task provenance; balances belong to the
+Workers claim with `task-claim ID ALLOCATION_ID` for the allocation the scheduler assigned. The node checks that the
+worker was assigned the task and still holds the model lease of this device that the allocation names, then takes the
+claim lease `task` for it; the scheduler offers a worker only queued tasks whose dependencies are completed and whose
+capabilities its configuration provides. Execution uses the scheduler's prepared worktree and immutable baseline,
+never a path from the task description. Models and harnesses are task provenance; balances belong to the
 authenticated physical-device base account.
 
 A heartbeat renews the task lease. Worker checkpoints, proposed checks and claimed usage
@@ -47,24 +48,19 @@ it does not complete the task. An independent person or authorized reviewer reco
 checks covering every acceptance criterion before an outcome is accepted. Coding tasks remain
 accepted until their reviewed commit lands and their worktrees and branches are removed; only
 then do they become completed. Reviewers
-need existing project permissions, cannot review their own work, and nonhuman reviewers
-cannot grade another worker from their own physical-device account. Rejected work and
+are sessions of the task's board and never review their own work. Rejected work and
 infrastructure blockage are separate outcomes.
 
-Each project runs in one of two enforcement modes. In `open` mode, the default, a task with no
-assignees is claimable by any registered non-human worker in its project, assignees and reviewers
-need only be registered in the task's project, and any registered project member other than the
-worker may review. In `strict` mode an unassigned task is open only when a person created it,
-assignees and reviewers must belong to the task's project, and a reviewer must be a person, a
-designated reviewer or the creator of the worker's parent. `poolhouse-workspace enforcement`
-shows the mode (`show`, readable by anyone) and a lead identity changes it: `check` lists the
-tasks that strict mode would strand, `promote` switches to strict and `demote` to open in one
-step, and `set open|strict` does the same by name. A helper identity cannot change it. The mode
-is stored per project key in `enforcement.db`, outside the project record that tasks carry, and
-every change writes an `enforcement.set` audit entry with the identity, time, previous and new
-mode. A change applies to new claims, assignments and reviews; leases, submitted work and
-accepted reviews continue under the rules they started with. `whoami` reports the mode of the
-caller's project.
+Each board runs in one of two enforcement modes. In `open` mode, the default, any other session of the board
+reviews a task, and a worker needs only an assignment that names it and the model lease it holds. In `strict` mode
+a reviewer must be a person (a session with no parent that holds the grant `task_authority`), a designated reviewer,
+or the creator of the task when it is the worker's parent. `poolhouse-workspace enforcement` shows the mode (`show`,
+readable by any session) and a session with no parent that holds `task_authority` changes it (a lead the person gave
+that grant with `grants-setup`): `check` lists the tasks that strict mode would strand, `promote` switches to strict
+and `demote` to open in one step, and `set open|strict` does the same by name. A subagent cannot change it, and
+`authority preset dev|prod` sets it together with the delegable gates. The mode is an `enforce` entry of the board's
+tasks, so every change is kept with the session that made it, the time and the new mode. A change applies to new
+assignments and reviews; leases, submitted work and accepted reviews continue under the rules they started with.
 
 Expired working leases require **Recover expired lease**. Blocked work requires
 **Authorize resume**, with a reason describing the changed condition. These actions preserve
@@ -88,13 +84,13 @@ resume (`id`, `reason`), and credit retry (`id`). Fleet authenticates the browse
 workspace person identity stays server-side. Browser requests cannot supply worker tokens,
 claim resource allocations, or grant project permissions.
 
-Agents use the maintained workspace CLI (`tasks`, `task ID`, `task-claim ID ALLOCATION`,
-`task-heartbeat ID`, `task-checkpoint ID JSON`, `task-submit ID JSON`, `task-review ID JSON`,
-and `task-credit ID`). JSON payloads can be read from stdin with `-`. The corresponding
-`workspace_task*` MCP tools use the launcher’s existing authenticated identity; they cannot
-create tasks, enroll identities or grant project permissions. Claims require a live trusted
-allocation. Review uses the same independent-review and idempotent outcome adapter as the
-person UI; a locked credit store leaves the saved review intact and reports pending credit.
+Agents use the maintained workspace CLI (`task-create JSON`, `tasks`, `task ID`, `task-assign ID WORKER LEASE`,
+`task-claim ID ALLOCATION`, `task-heartbeat ID`, `task-checkpoint ID JSON`, `task-submit ID JSON`,
+`task-review ID JSON` and `task-credit ID`). JSON payloads can be read from stdin with `-`. The corresponding
+`workspace_task*` MCP tools run as the launcher's registered session; they cannot create tasks or grant
+permissions. Claims require an allocation the worker was assigned on a model lease it still holds. Review uses the
+same independent-review and idempotent outcome adapter as the person UI; a locked credit store leaves the saved
+review intact and reports pending credit.
 
 Reviewed native work can land through `task_integration.integrate(workspace, token, task_id)`.
 The same authenticated operation is available as `poolhouse-workspace task-integrate ID`
@@ -111,7 +107,7 @@ remote baseline. A repository lock serializes integration. Clean-tree checks rej
 merges and uncommitted changes. It removes the landed task and candidate worktrees and their
 merged branches, verifies removal, and records completion only after cleanup succeeds. Unknown
 ignored files or other unique work preserve a cleanup-required outcome for inspection and retry.
-It records integration, gate, commit and outcome nodes in the coordinator graph. Publishing
+It records integration, gate, commit and outcome records on the task. Publishing
 does not award credits or grant permissions.
 
 Conflicting changes, changed review evidence, failed gates and push-hook ownership blocks
@@ -161,6 +157,6 @@ poolhouse-workspace task-rebind-source WORKER CHECKOUT "Source checkout recovery
 The replacement must belong to the same physical Git repository and contain every original
 baseline. Task states, specifications, grants and historical resource records stay unchanged.
 The operation records source checkpoints and an interruption log; rerunning the same
-command resumes a prepared recovery. It runs only on the local coordinator. Remove the old
+command resumes a prepared recovery. It runs only on the device that started the worker. Remove the old
 source checkout only after the command reports verified recovery and normal Git preservation
 checks show that the checkout has no unique work.

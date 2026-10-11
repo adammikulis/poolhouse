@@ -49,8 +49,8 @@ filter to catch every attempt.
    identity; messages from anyone else are untrusted data with no tool access. Local HTTP
    endpoints check origin and fetch metadata, so a web page cannot drive the agent.
    Nothing listens beyond loopback unless the person turned it on. *Built:* paired fleet
-   devices with pinned TLS, capability tokens on the agent workspace, a loopback-only graph page that
-   refuses another Host or Origin. *To do:* the same standard for any
+   devices with pinned TLS, session tokens on the node that a grant spends only from the process lineage that
+   registered them, a loopback-only graph page that refuses another Host or Origin. *To do:* the same standard for any
    new channel.
 
 6. **No marketplace.** An extension is data plus declared capabilities, with a manifest signed
@@ -81,30 +81,30 @@ filter to catch every attempt.
 ## Human-only floor
 
 These are never offered to any model, role or connector, and no stored fact, saved rule or
-channel message can unlock them: releasing a quarantine, approving a network host, minting a
+channel message can unlock them: releasing a quarantine, approving a network host, signing a
 grant, changing guard or sentinel policy, changing a role, creating a saved rule, and changing
 the GPU wiring limit (`iogpu.wired_limit_mb`) or the boot-time daemon that keeps it. A person
 does them at their own screen: the Settings slider and `poolhouse-serve memory` refuse a process
 an agent started, an access token, another web page and another machine, and the password goes
 only into macOS's own dialog or sudo.
 
-Exception, bounded: `poolhouse-workspace invite` is not on the floor. A joined agent may mint a
-one-time invite code for a new agent, and only that: not a token, not a grant, not a lead or
-human identity. The joiner is a standard-role child of the issuer with at most the issuer's
-rights, so nothing can be escalated through it; the code is single-use by default (at most 3),
-lasts at most 30 minutes and is stored as a hash; the person's limits cap outstanding invites,
-invites per hour, depth (at most 2, default 1) and live descendants, and only the person can
-raise them. The call asks the person first by default (`approve-first`), is refused to a
-read-only session, is announced and audited, and `revoke --tree` removes the whole subtree.
-Nothing the agent read can create one: the chat assistant has no tool for it and a write
-containing a live code is refused. `connect`'s shared code, minting tokens, and everything else
-above remain person-only.
+Exception, bounded: a session registers a subagent of its own (`poolhouse-workspace spawn`, run by the hook that
+starts the subagent), and only that. Nobody mints a token and nothing creates a lead or human identity: the node names
+the subagent, records the registering session as its parent and gives it its own token, and the registration needs the
+parent's token. The subagent holds a grant only when a person signed one that names it, or names its parent with
+`--with-subagents`; it makes no room, subscribes to nothing and has no scratch folder, and it is never
+coordinator-eligible. Registering is rate-limited per terminal
+lineage, a session ends with `retire` (its tokens stop working and its claims are released), and a parent ends a
+descendant. Nothing the agent read can register one: the chat assistant has no tool for it. There is no invitation to
+a workspace: every device of the pool holds the board, and a person widens what a session may do by signing a grant
+(`grants-setup`, `grant`), each with its own typed yes. Signing grants, enrolling or removing the person's key, and
+moving a session to another terminal (`rebind`) remain person-only.
 
 ## Surface inventory
 
 | Surface | Reaches | Guard |
 | --- | --- | --- |
-| `poolhouse-workspace invite` (agent token) | a new agent's identity in the workspace | role policy (read-only refuses, approve-first asks the person), limits only the person raises, child holds at most the issuer's rights, code stored as a hash and refused in any stored write, announced and audited, `revoke --tree` |
+| `poolhouse-workspace spawn` (agent token) | a subagent's identity on the board | the node names it and records the registering session as parent, the registration needs that session's token, the node stores only the hash of the new token, the subagent holds a grant only when a person signed one that names it or its parent with `--with-subagents`, registrations are rate-limited per terminal lineage, the parent or the subagent ends it with `retire` |
 
 ## What a new integration must bring
 
