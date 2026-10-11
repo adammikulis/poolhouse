@@ -1,142 +1,139 @@
 """Red team: no agent can obtain an identity for another actor or one that reads as a person.
 
-Real workspaces in temporary state, real child processes for the command line, no mocks.
+A real node, real child processes for the command line, no mocks. The node names every session and stamps every write
+from the token; a client has no verb that makes an identity for another actor.
 """
 
 from __future__ import annotations
 
 import ast
-import subprocess
-import sys
+import json
 from pathlib import Path
 
 import pytest
-from workspace_kit import Kit, clean_env
 
-from poolhouse.workspace import Denied, agent_display, onboard, tokens
-from poolhouse.workspace.cli import TABLE
-from poolhouse.workspace.identity import AGENT, HUMAN, LEAD, RESERVED, valid_name
+from poolhouse.board import grants as board_grants
+from poolhouse.board.client import NodeError
+from poolhouse.board.names import RESERVED, valid_name
+from poolhouse.fleet.onboard.manifest import Signer
+from poolhouse.workspace import agent_display
+from poolhouse.workspace.cli import COMMANDS
+
+pytest_plugins = ["node_kit"]
+pytestmark = pytest.mark.redteam
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-CREATING = {"adopt", "mint", "enroll_project", "bootstrap_agent", "_add", "init", "delegate"}
+SRC = ROOT / "src" / "poolhouse"
+REGISTERED_BY = {
+    "src/poolhouse/api/_node.py": {"register"},
+    "src/poolhouse/board/person.py": {"register"},
+    "src/poolhouse/board/place.py": {"register"},
+    "src/poolhouse/board/public.py": {"register"},
+    "src/poolhouse/board/session.py": {"register"},
+    "src/poolhouse/harnessid.py": {"register"},
+    "src/poolhouse/node_join.py": {"register"},
+    "src/poolhouse/node_join_check.py": {"register"},
+    "src/poolhouse/workspace/board_cli.py": {"register"},
+    "src/poolhouse/workspace/localstart.py": {"register"},
+}
+"""The reviewed places that ask the node to register a session: each registers the session of the process that asks."""
+NAMING = ("sender", "name", "parent", "label", "from", "author", "actor", "identity", "as")
+REMOVED_VERBS = ("delegate", "mint", "init", "invite", "join", "connect", "setup", "revoke", "sync", "coordinator", "remote")
+IDENTITY_VERBS = {"spawn", "agent", "rebind", "grants-setup"}
 
-ALLOWED = {
-    "src/poolhouse/workspace/agent_invites.py": {"adopt"},
-    "src/poolhouse/workspace/cli.py": {"init", "mint"},
-    "src/poolhouse/workspace/device_agent.py": {"_add", "mint"},
-    "src/poolhouse/workspace/guide.py": {"bootstrap_agent", "init"},
-    "src/poolhouse/workspace/identity.py": {"_add"},
-    "src/poolhouse/workspace/device_logs.py": {"_add"},  # appends a log row; it creates no identity
-    "src/poolhouse/workspace/localstart.py": {"mint"},
-    "src/poolhouse/workspace/onboard.py": {"adopt", "init", "mint"},
-    "src/poolhouse/workspace/remote_host.py": {"enroll_project", "init"},
-    "src/poolhouse/workspace/service.py": {"init", "mint"},
-    # a registered parent's own subagent, named by the board, under the parent's limits and expiry
-    "src/poolhouse/workspace/spawn.py": {"adopt"},
-}
-PENDING_REMOVAL = {
-    "src/poolhouse/harnessid.py": {"delegate"},
-    "src/poolhouse/workspace/automatic_connection.py": {"delegate"},
-    "src/poolhouse/workspace/localstart.py": {"delegate"},
-    "src/poolhouse/workspace/remote_host.py": {"delegate"},
-    "src/poolhouse/workspace/service.py": {"delegate"},
-}
-IDENTITY_VERBS = {"init", "mint", "join", "invite", "connect", "setup", "agent"}
+
+def _is_register(node: ast.Call) -> bool:
+    name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+    if name == "register" and "Native(" in ast.unparse(node):
+        return True
+    return name == "call" and any(isinstance(arg, ast.Constant) and arg.value == "register" for arg in node.args[:2])
 
 
 def call_sites() -> dict[str, set[str]]:
     found: dict[str, set[str]] = {}
-    paths = [*(SRC / "poolhouse" / "workspace").rglob("*.py"), SRC / "poolhouse" / "harnessid.py"]
-    for path in paths:
-        for node in ast.walk(ast.parse(path.read_text())):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in CREATING:
-                found.setdefault(path.relative_to(ROOT).as_posix(), set()).add(node.func.attr)
+    for path in SRC.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and _is_register(node):
+                found.setdefault(path.relative_to(ROOT).as_posix(), set()).add("register")
     return found
 
 
-def merged(*tables: dict[str, set[str]]) -> dict[str, set[str]]:
-    out: dict[str, set[str]] = {}
-    for table in tables:
-        for path, names in table.items():
-            out.setdefault(path, set()).update(names)
-    return out
+def sessions(node, who):
+    return sorted(a.name for a in node.session(who).agents(True))
 
 
-def test_identity_creating_call_sites_are_the_reviewed_ones():
-    assert call_sites() == merged(ALLOWED, PENDING_REMOVAL)
+def test_the_places_that_register_a_session_are_the_reviewed_ones():
+    assert call_sites() == REGISTERED_BY
 
 
-def test_the_command_line_has_no_verb_that_mints_for_another_actor():
-    verbs = {row[0]: row[1] for row in TABLE}
-    assert "delegate" not in verbs
+def test_the_command_line_has_no_verb_that_makes_an_identity_for_another_actor():
+    verbs = {c.name: getattr(c, "help", "") for c in COMMANDS.commands}
+    assert not set(REMOVED_VERBS) & set(verbs)
     risky = {name for name, text in verbs.items()
-             if any(word in text.lower() for word in ("mint", "child identity", "delegate", "new identity"))}
+             if any(word in text.lower() for word in ("mint", "child identity", "delegate", "new identity", "invite"))}
     assert risky <= IDENTITY_VERBS
 
 
-def test_the_removed_verb_is_refused_by_the_real_command(tmp_path, monkeypatch):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    worker = kit.agent("worker")
-    done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", "delegate", "kid", "--agent", "worker"],
-                          env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(SRC), "CLAUDECODE": "1",
-                               "POOLHOUSE_WORKSPACE_HOME": str(kit.base)},
-                          capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60, check=False)
+@pytest.mark.parametrize("verb", REMOVED_VERBS)
+def test_a_removed_identity_verb_is_refused_by_the_real_command_and_makes_no_session(workspace_node, verb):
+    node = workspace_node
+    worker = node.member("worker")
+    before = sessions(node, worker)
+    done = node.cli(verb, "kid", "--agent", worker.name, who=worker, env={"CLAUDECODE": "1"})
     assert done.returncode != 0
-    assert worker not in done.stdout
-    assert "worker/kid" not in kit.ws.registry.ids()
+    assert worker.token not in done.stdout + done.stderr
+    assert sessions(node, worker) == before
 
 
-@pytest.mark.parametrize("role", [HUMAN, LEAD, AGENT])
-def test_no_agent_or_lead_token_mints_any_role(tmp_path, monkeypatch, role):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    holders = {"agent": kit.agent("worker"), "lead": kit.agent("lead-1", "lead")}
-    for who, token in holders.items():
-        with pytest.raises(Denied):
-            kit.ws.mint(token, f"made-{who}-{role}", role)
-    assert not any(name.startswith("made-") for name in kit.ws.registry.ids())
+@pytest.mark.parametrize("field", NAMING)
+def test_a_registration_that_names_who_it_is_for_is_refused_and_makes_no_session(workspace_node, field):
+    node = workspace_node
+    worker = node.member("worker")
+    before = sessions(node, worker)
+    for token in ("", worker.token):
+        with pytest.raises(NodeError):
+            node.client.call("register", node.board, token, model="claude-sonnet-5-5", harness="claude-code",
+                             session="someone-else", **{field: "owner"})
+    assert sessions(node, worker) == before
 
 
-def test_an_invite_always_yields_a_standard_agent_whoever_issued_it(tmp_path, monkeypatch):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    kit.limits(sends_per_window=1000, announce_per_window=1000, agent_invite_ask="plan-and-go",
-               agent_invites_open=10, max_children=10)
-    monkeypatch.setenv("CLAUDECODE", "1")
-    for issuer_role, name in ((AGENT, "worker"), (LEAD, "lead-1")):
-        token = kit.agent(name, issuer_role)
-        made = kit.ws.invite(token, "member", 1800.0, 1)
-        record, = (r for r in kit.ws.invites._load()["invites"].values() if r["issuer"] == name)
-        assert not {"role", "roles"} & set(record)
-        joined = onboard.join(kit.ws, made["code"], f"member-{name}")
-        info = kit.ws.registry.info(joined)
-        assert info["role"] == AGENT and info["parent"] == name
-        assert kit.ws.auth(tokens.load(kit.base, joined)).trust == "agent-claimed"
+@pytest.mark.parametrize("model", ["human", "owner", "person", "poolhouse-ui", "workspace", "system"])
+def test_a_person_looking_model_is_named_by_the_node_as_an_agent_and_never_as_a_person(workspace_node, model):
+    node = workspace_node
+    made = node.member(f"claim-{model}", model=model, harness="claude-code")
+    assert valid_name(made.name) and made.name not in RESERVED and not made.name.startswith(("human", "owner", "person"))
+    row = next(a for a in node.session(made).agents() if a.name == made.name)
+    shown = agent_display.describe(row)
+    assert shown["session_kind"] == "main" and shown["display_name"] == made.name
 
 
-def test_no_registered_identity_other_than_a_person_renders_as_a_person(tmp_path, monkeypatch):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    worker = kit.agent("worker")
-    kit.agent("lead-1", "lead")
-    kid = kit.ws.delegate(worker, "kid")["id"]
-    for name in ("worker", "lead-1", kid):
-        shown = agent_display.metadata(kit.ws.registry, name)
-        assert shown["session_kind"] != "person"
-        assert kit.ws.registry.info(name)["role"] != HUMAN
-    assert kit.ws.registry.info("owner")["role"] == HUMAN
-
-
-@pytest.mark.parametrize("name", [*sorted(RESERVED), "Human", "OWNER"])
-def test_a_person_looking_identity_name_cannot_be_registered(tmp_path, monkeypatch, name):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
+@pytest.mark.parametrize("name", [*sorted(RESERVED), "Human", "OWNER", "../x", "a b"])
+def test_a_reserved_or_malformed_name_is_not_a_session_name(name):
     assert not valid_name(name)
-    with pytest.raises(ValueError):
-        kit.ws.mint(kit.owner, name, "agent")
 
 
-def test_a_second_person_cannot_be_created_from_an_agent_process(tmp_path, monkeypatch):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    monkeypatch.setenv("CLAUDECODE", "1")
-    with pytest.raises(Denied):
-        kit.ws.registry.init("another-person")
-    roles = [kit.ws.registry.info(name)["role"] for name in kit.ws.registry.ids()]
-    assert roles.count(HUMAN) == 1
+def test_a_subagent_is_a_standard_agent_of_its_parent_and_holds_none_of_its_grants(workspace_node):
+    node = workspace_node
+    worker = node.member("worker")
+    node.allow(worker, "note_verify")
+    kid = node.member("kid", parent=worker)
+    row = next(a for a in node.session(worker).agents() if a.name == kid.name)
+    shown = agent_display.describe(row)
+    assert (row.parent, row.model_state, shown["session_kind"]) == (worker.name, "claimed", "subagent")
+    assert shown["coordinator_eligible"] is False
+    assert [g.action for g in board_grants.listing(node.session(worker)).grants if g.mine] == ["note_verify"]
+    assert [g for g in board_grants.listing(node.session(kid)).grants if g.mine] == []
+
+
+def test_a_second_person_cannot_be_enrolled_from_an_agent_process(workspace_node):
+    node = workspace_node
+    worker = node.member("worker")
+    stranger = Signer.generate()
+    proof = board_grants.enrolment(stranger, "an agent that calls itself a person")
+    for extra in ({}, {"secret": "a guess"}, {"by": "x", "approval": "x", "approved_ms": 0, "nonce": "x", "anchor": "x"}):
+        with pytest.raises(NodeError):
+            node.client.call("person_enroll", node.board, worker.token, **proof, **extra)
+    assert not board_grants.listing(node.session(worker)).persons
+    marked = node.cli("grants-setup", "--session", worker.name, "--json", who=worker, env={"CLAUDECODE": "1"})
+    assert marked.returncode == 3 and "agent" in json.loads(marked.stdout)["error"]
+    assert not board_grants.listing(node.session(worker)).persons

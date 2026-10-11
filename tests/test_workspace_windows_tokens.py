@@ -46,6 +46,18 @@ def test_a_linked_token_folder_is_refused_and_nothing_is_written_through_it(tmp_
     assert list(elsewhere.iterdir()) == []
 
 
+@pytest.mark.skipif(os.name == "nt", reason="needs a POSIX symbolic link")
+def test_a_token_file_that_is_a_link_is_refused_when_read(tmp_path):
+    held = credentials.store(tmp_path, "demo", "agent", "a-token")
+    elsewhere = tmp_path / "elsewhere.token"
+    elsewhere.write_text("another-token\n")
+    elsewhere.chmod(0o600)
+    held.unlink()
+    held.symlink_to(elsewhere)
+    with pytest.raises(Denied):
+        credentials.load(tmp_path, "demo", "agent")
+
+
 @pytest.mark.skipif(os.name != "nt", reason="native Windows access control")
 def test_created_token_and_folder_are_private(tmp_path):
     held = "fixture-token-of-an-agent"

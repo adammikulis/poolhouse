@@ -1,94 +1,78 @@
-"""The per-project enforcement mode: open by default, strict restores the delegated-authority checks."""
+"""What a board's enforcement mode leaves alone and what it records, on a real node.
+
+tests/test_board_task_enforcement.py holds the preflight, the commands and the refusal of a helper; app/poolhouse-node/tests/tasks.rs
+holds who may claim and who may review in each mode.
+"""
 
 import pytest
-from taskboard_kit import accepted, board as _board_fixture, proposed
+from task_kit import accepted, board as _board_fixture, proposed
 
-from poolhouse.workspace import enforcement, task_scope
-from poolhouse.workspace.identity import Denied
+from poolhouse.board import session as sessions
+from poolhouse.board.tasks import Tasks
+from poolhouse.errors import Denied
 
+pytest_plugins = ["node_kit"]
 board = _board_fixture
 pytestmark = pytest.mark.redteam
 
+PROPOSAL = {'artifacts': {'replay.json': 'a' * 64}, 'checks': [{'name': 'Worker claims tests', 'passed': True}],
+            'summary': 'proposed', 'provenance': {'commit': 'abc123', 'environment': 'native-python',
+                                                  'model': 'qwen', 'runtime': 'Agents SDK'}}
+
+
+@pytest.fixture
+def granted(board):
+    """The team of tests/task_kit.py with the lead holding the grant a person gave it for the task authority."""
+    board.node.allow(board.lead, 'task_authority')
+    return board
+
 
 def mode(kit, new):
-    return enforcement.set_mode(kit.ws, kit.parent, '', new)
+    return kit.tasks(kit.lead).set_mode(new)
 
 
-def task(kit, key, **extra):
-    return kit.board.create(kit.parent, {**kit.spec, 'source_key': key, **extra})
+def audits(kit):
+    return [e for e in kit.node.session(kit.lead).read_all(kind='audit') if e.fields.get('event') == 'enforcement.set']
 
 
-def test_default_mode_is_open(board):
-    assert enforcement.current(board.ws, '') == {'project': '', 'mode': 'open'}
-    assert enforcement.mode(board.ws, {'key': 'anything'}) == 'open'
+def test_promotion_keeps_in_flight_work_running(granted):
+    granted.tasks(granted.worker).claim(granted.task['id'], granted.allocation['allocation_id'])
+    assert mode(granted, 'strict')['mode'] == 'strict'
+    granted.tasks(granted.worker).heartbeat(granted.task['id'])
+    granted.tasks(granted.worker).submit(granted.task['id'], PROPOSAL)
+    assert granted.tasks(granted.lead).get(granted.task['id'])['state'] == 'review'
 
 
-def test_unassigned_task_by_an_agent_is_claimable_by_members_only_when_open(board):
-    member = board.ws.auth(board.agent('member'))
-    open_task = task(board, 'unassigned')
-    assert task_scope.eligible(board.ws, member, open_task)
-    mode(board, 'strict')
-    assert not task_scope.eligible(board.ws, member, open_task)
-    assert task_scope.eligible(board.ws, board.ws.auth(board.child), open_task)
-    mode(board, 'open')
-    assert task_scope.eligible(board.ws, member, open_task)
+def test_an_accepted_review_stays_accepted_and_keeps_its_reviewer_after_promotion(granted):
+    granted.tasks(granted.lead).scope(granted.task['id'], {'state': 'reserved'})
+    proposed(granted)
+    member = granted.node.member('member', parent=granted.other)
+    granted.tasks(member).review(granted.task['id'], accepted())
+    mode(granted, 'strict')
+    kept = granted.tasks(granted.lead).get(granted.task['id'])
+    assert kept['state'] == 'accepted' and kept['review']['verifier'] == member.name
 
 
-def test_assignee_needs_the_task_project_only_when_strict(board):
-    assert task(board, 'open-assignee', assignees=[board.worker_id])['assignees'] == [board.worker_id]
-    mode(board, 'strict')
-    with pytest.raises(Denied):
-        task(board, 'strict-assignee', assignees=[board.worker_id])
-    assert task(board, 'strict-plain')['assignees'] == []
+def test_lead_promotes_and_demotes_and_every_change_is_recorded_on_the_board(granted):
+    first = mode(granted, 'strict')
+    assert first['from'] == 'open' and granted.tasks(granted.lead).mode()['mode'] == 'strict'
+    mode(granted, 'open')
+    assert [(e.sender, e.fields['subject'], e.fields['detail']) for e in audits(granted)] == [
+        (granted.lead.name, granted.node.board, f'{granted.node.board} open>strict'),
+        (granted.lead.name, granted.node.board, f'{granted.node.board} strict>open')]
+    assert granted.tasks(granted.lead).mode()['mode'] == 'open'
 
 
-def test_new_reviews_need_delegated_authority_only_when_strict(board):
-    proposed(board)
-    member = board.agent('member')
-    mode(board, 'strict')
-    with pytest.raises(Denied):
-        board.board.review(member, board.task['id'], accepted())
-    mode(board, 'open')
-    assert board.board.review(member, board.task['id'], accepted())['accepted']
+def test_a_helper_child_sets_nothing_and_leaves_no_record(granted):
+    with pytest.raises(Denied, match='lead or a person'):
+        granted.tasks(granted.worker).set_mode('strict')
+    assert granted.tasks(granted.lead).mode()['mode'] == 'open'
+    assert audits(granted) == []
 
 
-def test_promotion_keeps_in_flight_work_running(board):
-    board.board.claim(board.child, board.task['id'], board.allocation['allocation_id'])
-    mode(board, 'strict')
-    board.board.heartbeat(board.child, board.task['id'])
-    board.board.submit(board.child, board.task['id'], {
-        'artifacts': {'replay.json': 'a' * 64}, 'checks': [{'name': 'Worker claims tests', 'passed': True}],
-        'summary': 'proposed', 'provenance': {'commit': 'abc123', 'environment': 'native-python',
-                                              'model': 'qwen', 'runtime': 'Agents SDK'}})
-    assert board.board.get(board.parent, board.task['id'])['state'] == 'review'
-
-
-def test_accepted_review_stays_valid_after_promotion(board):
-    proposed(board)
-    board.board.review(board.agent('member'), board.task['id'], accepted())
-    mode(board, 'strict')
-    assert board.board.assert_reviewer(board.agent('member2'), board.task['id'])['id'] == board.task['id']
-
-
-def test_lead_promotes_and_demotes_and_every_change_is_audited(board):
-    first = enforcement.set_mode(board.ws, board.parent, '', 'strict')
-    assert first['from'] == 'open' and enforcement.mode(board.ws, {}) == 'strict'
-    enforcement.set_mode(board.ws, board.parent, '', 'open')
-    changes = [row for row in board.ws.audit_log.rows() if row['event'] == 'enforcement.set']
-    assert [(row['who'], row['project'], row['from'], row['to']) for row in changes] == [
-        ('lead', '', 'open', 'strict'), ('lead', '', 'strict', 'open')]
-    assert all(row['ts'] for row in changes)
-
-
-def test_a_helper_child_cannot_set_the_mode(board):
-    with pytest.raises(Denied):
-        enforcement.set_mode(board.ws, board.child, '', 'strict')
-    assert enforcement.mode(board.ws, {}) == 'open'
-    assert not [row for row in board.ws.audit_log.rows() if row['event'] == 'enforcement.set']
-
-
-def test_the_modes_are_per_project(board):
-    enforcement.set_mode(board.ws, board.parent, 'alpha', 'strict')
-    assert enforcement.mode(board.ws, {'key': 'alpha'}) == 'strict'
-    assert enforcement.mode(board.ws, {'key': 'beta'}) == 'open'
-    assert enforcement.mode(board.ws, {}) == 'open'
+def test_the_modes_are_per_board(granted):
+    elsewhere = sessions.register(granted.node.client, 'beta', sessions.Native('claude-sonnet-5-5', 'claude-code', 'beta-lead'))
+    beta = Tasks(sessions.Session(granted.node.client, 'beta', elsewhere.token, elsewhere.name))
+    mode(granted, 'strict')
+    assert granted.tasks(granted.lead).mode()['mode'] == 'strict'
+    assert beta.mode()['mode'] == 'open'

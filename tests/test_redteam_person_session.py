@@ -24,7 +24,6 @@ from poolhouse.fleet import session as session_module
 from poolhouse.fleet.launch_secret import HEADER, LaunchSecret
 from poolhouse.fleet.projects import ProjectRegistry, identity
 from poolhouse.net import git
-from poolhouse.workspace.remote_host import WorkspaceHost
 
 pytestmark = pytest.mark.redteam
 
@@ -36,21 +35,15 @@ pytest_plugins = ["node_kit"]
 def window(tmp_path, monkeypatch, workspace_node):
     monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
     monkeypatch.delenv("POOLHOUSE_BOARD")
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "machine-workspace"))
     checkout = tmp_path / "experiment"
     checkout.mkdir()
     git.run(["init"], cwd=checkout)
     git.run(["remote", "add", "origin", "https://code.example.invalid/team/person.git"], cwd=checkout)
-    registry = ProjectRegistry(tmp_path / "registry", "fixture-device", (checkout,), "http://127.0.0.1:8770")
-    project = identity(checkout)
-    host = WorkspaceHost(registry)
-    registry.claim_authority(project)
+    registry = ProjectRegistry(tmp_path / "registry", "fixture-device", (checkout,))
     server = Serving(tmp_path / "ui", secure=False)
     server.ui.settings.setup_done = True
-    server.ui.projects, server.ui.workspaces = registry, host
-    server.ui.audit = lambda event, **fields: server.rows.append({"event": event, **fields}) or host.audit(event, **fields)
-    server.project = project
-    server.workspace = host.workspace(project)
+    server.ui.projects = registry
+    server.project = identity(checkout)
     server.node = workspace_node
     server.checkout = checkout
     try:
@@ -61,7 +54,7 @@ def window(tmp_path, monkeypatch, workspace_node):
 
 def people(window) -> list[str]:
     """The names of the person's sessions on the project's board: none until the page connects."""
-    name = sessions.find(person.HARNESS, person.NATIVE_ID, cwd=window.checkout, client=window.node.client)
+    name = sessions.find(person.HARNESS, person.native_id(), cwd=window.checkout, client=window.node.client)
     return [name] if name else []
 
 
@@ -282,8 +275,8 @@ def gated(reply) -> bool:
     return status == 403 and any(gate in str(body.get("error", "")) for gate in GATES)
 
 
-@pytest.mark.parametrize("path", ["/ui/board/agents", "/ui/tasks", "/ui/coordination", "/ui/history/events",
-                                  "/ui/projects/PROJECT/board/agents"])
+@pytest.mark.parametrize("path", ["/ui/board/agents", "/ui/tasks", "/ui/history/events",
+                                  "/ui/projects/PROJECT/board/agents", "/ui/work-reputation/standings"])
 def test_the_routes_that_act_for_the_person_answer_only_a_credentialed_session(window, path):
     path = path.replace("PROJECT", window.project)
     bare = window.ui.sessions.open("setup")

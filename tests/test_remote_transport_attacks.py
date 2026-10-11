@@ -7,6 +7,7 @@ import socket
 import struct
 import tempfile
 import threading
+import time
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,6 +56,15 @@ def test_a_reply_longer_than_a_frame_is_refused_without_waiting_for_its_body(squ
     answer(struct.pack(">I", node_health.MAX_FRAME + 1))
     with pytest.raises(ValueError, match="oversized"):
         node_health.exchange(root, b"{}", 5)
+
+
+@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="needs a Unix socket")
+def test_a_listener_that_never_answers_ends_in_a_timeout_and_not_a_wait_without_end(squatter):
+    root, _ = squatter
+    started = time.monotonic()
+    with pytest.raises(OSError, match="timed out"):
+        node_health.exchange(root, b"{}", 0.5)
+    assert time.monotonic() - started < 5
 
 
 @pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="needs a Unix socket")

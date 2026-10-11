@@ -9,13 +9,15 @@ import pytest
 from taskboard_kit import board as _board_fixture
 
 from poolhouse import authority, chatpolicy
+from poolhouse.board.tasks import Tasks
+from poolhouse.errors import Denied
 from poolhouse.net import cli as net_cli
 from poolhouse.person import HumanRequired
 from poolhouse.sentinel import human
 from poolhouse.serve import wired, wired_apply
-from poolhouse.workspace import authority_cli, enforcement
-from poolhouse.workspace.identity import Denied
+from poolhouse.workspace import authority_cli
 
+pytest_plugins = ["node_kit"]
 board = _board_fixture
 LEAD = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": "claude-code"}
 
@@ -186,27 +188,28 @@ def args(action, *words, project=""):
     return argparse.Namespace(action=action, words=list(words), project=project)
 
 
-def events(kit, name):
-    return [row for row in kit.ws.audit_log.rows() if row["event"] == name]
+def flips():
+    return [row for row in authority.audit_rows() if row["event"] == "authority.set"]
 
 
 def test_show_set_and_preset_through_the_workspace_command(board):
-    shown = authority_cli.run(args("show"), board.ws, board.parent)
+    shown = authority_cli.run(args("show"), board.parent)
     assert {row["state"] for row in shown["gates"]} == {authority.DELEGATED}
-    done = authority_cli.run(args("set", "person", "sentinel", "serve.wired-limit"), board.ws, board.parent)
+    done = authority_cli.run(args("set", "person", "sentinel", "serve.wired-limit"), board.parent)
     assert {c["gate"] for c in done["changes"]} == {"sentinel.quarantine", "sentinel.policy", "serve.wired-limit"}
     assert authority.state_of("serve.wired-limit") == authority.PERSON
-    flip = events(board, "authority.set")[-1]
-    assert (flip["who"], flip["from"], flip["to"]) == ("lead", ["delegated"], "person")
+    flip = flips()[-1]
+    assert (flip["by"], flip["from"], flip["to"]) == (board.lead.name, ["delegated"], "person")
 
 
 def test_prod_makes_the_sensitive_gates_a_person_s_and_enforcement_strict_and_dev_undoes_both(board):
-    prod = authority_cli.run(args("preset", "prod", project="alpha"), board.ws, board.parent)
-    assert prod["enforcement"]["mode"] == "strict" and enforcement.mode(board.ws, {"key": "alpha"}) == "strict"
+    prod = authority_cli.run(args("preset", "prod", project="alpha"), board.parent)
+    assert prod["enforcement"]["mode"] == "strict" and Tasks(board.parent).mode()["mode"] == "strict"
+    assert prod["preflight"]["clear"] and prod["preflight"]["stranded"] == []
     assert authority.state_of("sentinel.quarantine", "alpha") == authority.PERSON
     assert authority.state_of("workspace.setup", "alpha") == authority.DELEGATED
-    dev = authority_cli.run(args("preset", "dev", project="alpha"), board.ws, board.parent)
-    assert dev["enforcement"]["mode"] == "open"
+    dev = authority_cli.run(args("preset", "dev", project="alpha"), board.parent)
+    assert dev["enforcement"]["mode"] == "open" and Tasks(board.parent).mode()["mode"] == "open"
     assert {row["state"] for row in authority.show("alpha")["gates"]} == {authority.DELEGATED}
     assert authority.show()["preset"] == "dev"
 
@@ -214,14 +217,14 @@ def test_prod_makes_the_sensitive_gates_a_person_s_and_enforcement_strict_and_de
 def test_a_helper_identity_cannot_set_or_preset(board):
     for call in (args("set", "person", "ALL"), args("preset", "prod", project="alpha")):
         with pytest.raises(Denied):
-            authority_cli.run(call, board.ws, board.child)
+            authority_cli.run(call, board.child)
     assert authority.state_of("sentinel.quarantine") == authority.DELEGATED
-    assert enforcement.mode(board.ws, {"key": "alpha"}) == "open"
-    assert not events(board, "authority.set")
+    assert Tasks(board.parent).mode()["mode"] == "open"
+    assert not flips()
 
 
 def test_a_bad_command_is_refused_with_a_message(board):
     for call in (args("set", "maybe", "ALL"), args("set", "person"), args("set", "person", "nope"), args("preset", "x"),
                  args("preset")):
         with pytest.raises(ValueError):
-            authority_cli.run(call, board.ws, board.parent)
+            authority_cli.run(call, board.parent)
