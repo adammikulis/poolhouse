@@ -55,6 +55,7 @@ fn a_connection_open_to_a_member_that_is_then_removed_carries_nothing_more_eithe
     assert!(matches!(got, Err(Error::Denied(_))), "{got:?}");
     assert!(!wa.holds("written by the removed device"), "the removed device's entry was taken over a connection opened before the removal");
     assert!(!wb.holds("written after the removal"), "an entry was sent to the removed device over a connection opened before the removal");
+    assert_eq!(b.member(&b.fp()).unwrap()["status"], "active", "the pool record was sent to the removed device over a connection opened before the removal");
 }
 
 #[test]
