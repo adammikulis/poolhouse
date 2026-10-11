@@ -517,9 +517,11 @@ serving broker continues to enforce its own live model and GPU leases. Ownership
 security reputation.
 
 `area` claims identify a source file or directory across linked Git worktrees. Supply an absolute path in your
-checkout; the claim resolves it to the repository's shared Git checkout and relative source path. Native file
-mutations reserve both the physical file and its repository-qualified source area. Editing the same source file in
-another worktree is refused, while disjoint files remain independently claimable. `install` claims identify an
+checkout; the claim resolves it to the repository's shared source area, spelled `<disk root>/.poolhouse-areas/<repository>/<relative
+path>` so it lies inside no checkout and a claim on a whole checkout (a shell command in the primary) never reaches it. Native file
+mutations reserve both the physical file and its source area. Editing the same source file in another worktree is refused,
+while disjoint files remain independently claimable, and a worker's edit in a linked worktree does not refuse a session working
+in the primary. `install` claims identify an
 absolute environment or target directory. These claims do not grant access to either path.
 
 ## Structured tasks

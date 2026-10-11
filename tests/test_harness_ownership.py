@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -158,8 +159,8 @@ def test_the_board_of_the_launcher_approved_project_is_the_boards_of_the_session
     harness_claims.reserve('Write', {'file_path': str(mine / 'a.py')}, str(mine), member.name, [str(mine)])
     with pytest.raises(Denied, match='board of the launcher-approved project'):
         harness_claims.reserve('Write', {'file_path': str(theirs / 'a.py')}, str(mine), member.name, [str(mine), str(theirs)])
-    assert held(board_session.Session(kit.node.client, board, member.token, member.name), member.name) == [
-        ('area', str(mine.resolve() / 'a.py'))]
+    assert held(board_session.Session(kit.node.client, board, member.token, member.name), member.name) == sorted([
+        ('area', str(mine.resolve() / 'a.py')), ('area', harness_claims.normal('area', str(mine / 'a.py')))])
 
 
 @pytest.mark.parametrize('command', ['echo x > "$TARGET"', 'touch *.py', 'touch $(pwd)/x'])
@@ -201,11 +202,24 @@ def test_separate_worktrees_share_source_area_but_allow_independent_files(kit, t
         harness_claims.reserve('Write', {'file_path': str(other / 'shared.py')}, str(other), kit.beta.name, [str(other)])
     harness_claims.reserve('Write', {'file_path': str(other / 'independent.py')}, str(other), kit.beta.name, [str(other)])
     shared = harness_claims.normal('area', str(other / 'shared.py'))
-    assert shared == str(kit.project.resolve() / 'shared.py')
+    assert shared == harness_claims.normal('area', str(kit.project / 'shared.py'))
+    assert not Path(shared).is_relative_to(kit.project.resolve()) and not Path(shared).is_relative_to(other.resolve())
     owner = next(c for c in kit.b.claims() if (c.kind, c.key) == ('area', shared))
     assert owner.owner == kit.alpha.name and owner.pid == os.getppid() and owner.expires_in_s > 0
     assert held(kit.b, kit.beta.name) == sorted([('area', str(other.resolve() / 'independent.py')),
-                                                 ('area', str(kit.project.resolve() / 'independent.py'))])
+                                                 ('area', harness_claims.normal('area', str(other / 'independent.py')))])
+
+
+def test_a_workers_edit_in_a_linked_worktree_does_not_refuse_the_lead_working_in_the_primary(kit, tmp_path):
+    initialised(kit.project)
+    other = tmp_path / 'other-worktree'
+    git.run(['worktree', 'add', '-b', 'worker/elsewhere', str(other)], cwd=kit.project)
+    harness_claims.reserve('Write', {'file_path': str(other / 'shared.py')}, str(other), kit.beta.name, [str(other)])
+    whole_checkout = {'command': 'touch *.py'}
+    assert ('worktree', str(kit.project)) in harness_claims.resources('Bash', whole_checkout, str(kit.project))
+    assert harness_claims.conflict('Bash', whole_checkout, str(kit.project), kit.alpha.name, [str(kit.project)]) == ''
+    harness_claims.reserve('Write', {'file_path': str(kit.project / 'mine.py')}, str(kit.project), kit.beta.name, [str(kit.project)])
+    assert kit.beta.name in harness_claims.conflict('Bash', whole_checkout, str(kit.project), kit.alpha.name, [str(kit.project)])
 
 
 def test_a_native_mutation_records_the_checkout_it_changes_for_the_session(kit, tmp_path):

@@ -23,6 +23,7 @@ from poolhouse.workspace import (
     localagent as la,
     worktree_lifecycle,
 )
+from poolhouse.workspace.claim_keys import shared_root
 
 __all__ = ["DevelopmentIntegration", "integrate", "public", "reviewed"]
 
@@ -155,6 +156,13 @@ class DevelopmentIntegration:
     def _claim(self, kind: str, key: str) -> None:
         self.s.claim(kind, key, ttl_s=CLAIM_S)
 
+    def _return_areas(self, worker: str) -> None:
+        """Release the areas ``worker`` holds in its checkout and, spelled as every worktree of the repository shares them, for it."""
+        shared = shared_root(self.primary)
+        for claim in self.s.claims('area'):
+            if claim.owner == worker and any(Path(claim.key).is_relative_to(under) for under in (self.source, shared)):
+                self.s.release('area', claim.key, held_by=worker)
+
     def prepare(self) -> None:
         if integration_staging.files(self.primary, self.commit) != self.preserved:
             raise Denied("primary preservation changed before integration")
@@ -174,11 +182,11 @@ class DevelopmentIntegration:
                 raise Denied('the current child worktree claim requires its registered parent to return it')
             self.s.release('worktree', str(self.source), held_by=worker)
             self.s.release('branch', self.worktree['branch'], held_by=worker)
-            for held in self.s.claims('area'):
-                if held.owner == worker and Path(held.key).is_relative_to(self.source):
-                    self.s.release('area', held.key, held_by=worker)
+            self._return_areas(worker)
             _event(self.s, self.base, self.record, 'scope_returned', scope_owner=self.s.name, worker=worker)
             owner = ''
+        elif self.s.name == _parent(self.s, worker):
+            self._return_areas(worker)
         if owner not in ('', self.s.name):
             raise Denied('the prepared task source is held by another session')
         self._claim('worktree', str(self.source))
