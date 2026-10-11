@@ -1,20 +1,26 @@
 """``ph.pool``: the pool of devices this device belongs to; who is in it, how it is joined, and what it can compute.
 
-A pool is the set of devices that trust one another. Every device starts as a pool of one. Another device
-JOINS it: under the `open` policy automatically when both are on the same network, under `secure` with a short
+A pool is the set of devices that trust one another. Every device starts as a pool of one that no person founded (`found` makes the
+pool, governed by the person's key). Another device JOINS it: under the `open` policy automatically when both are on the same network, under `secure` with a short
 code that `add_device` makes. A member is removed with `remove`. See docs/api.md.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from poolhouse import errors, hub, node_join, node_launch
 from poolhouse.api import _node
+from poolhouse.board import founding, presence
+from poolhouse.board.client import Client, NodeError
 
-__all__ = ["Capacity", "Member", "Pool", "add_device", "capacity", "join", "listen", "members", "policy", "remove",
-           "status", "sync"]
+__all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "listen", "members",
+           "policy", "remove", "status", "sync"]
+Refusal = founding.Refusal
+"""A call that needs the person: ``str`` is one sentence to pass on; ``needs`` (`approval`, `device`, `time`, `none`), ``where`` (where they
+tap or answer) and ``then`` (`wait`, `retry`, `ask-owner`, `stop`) say what happens next. A subclass of `ph.Denied`."""
 DEFAULT_PORT = 7447
 
 
@@ -55,6 +61,23 @@ class Pool:
     joining_open: bool
     """True while a code made by `add_device` can still be used."""
     members: tuple[Member, ...] = field(default_factory=tuple)
+    governance: str = "unfounded"
+    """``unfounded`` (a pool of one that no person founded: it admits nobody) or ``governed`` (a pool its admins' signed acts run)."""
+    name: str = ""
+    """The founded pool's name; empty while unfounded."""
+    missing: str = ""
+    """One sentence for the person on what this pool still needs from them (a pool, a strong key, a signature); empty when nothing."""
+
+
+@dataclass(frozen=True, slots=True)
+class Founding:
+    """What `found` did."""
+
+    pool: Pool
+    already: bool
+    """True when this device was in a founded pool already and nothing changed."""
+    say: str
+    """One sentence to tell the person."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,12 +105,27 @@ def _member(raw: dict) -> Member:
                   str(raw.get("reach_hint") or ""))
 
 
+def _missing(gov: dict) -> str:
+    """What a pool still needs from its person, as one sentence."""
+    if gov.get("mode") != "governed":
+        return str(gov.get("say") or "This device is in no pool yet; ask me to make one or to join one.")
+    if gov.get("dispute"):
+        return str(gov["dispute"]["say"])
+    if gov.get("weak_keys_only"):
+        return founding.NEEDS_PHONE
+    if gov.get("waiting_for_signers"):
+        return "A change to this pool is waiting for a signature from your phone."
+    return ""
+
+
 def status() -> Pool:
-    """The pool this device belongs to, with every member (removed ones too); starts this device's node if needed."""
+    """The pool this device belongs to, with every member (removed ones too) and what governs it; starts this device's node if needed."""
     raw = _node.call("pool_status")
+    gov = dict(raw.get("governance") or {})
     return Pool(str(raw["pool"]), str(raw.get("project") or ""), str(raw["policy"]), str(raw["fingerprint"]),
                 str(raw.get("listen") or ""), bool(raw.get("join_code_open")),
-                tuple(_member(m) for m in raw.get("members", [])))
+                tuple(_member(m) for m in raw.get("members", [])), "governed" if gov.get("mode") == "governed" else "unfounded",
+                str(gov.get("name") or ""), _missing(gov))
 
 
 def members(*, include_removed: bool = False) -> list[Member]:
@@ -122,11 +160,39 @@ def add_device(ttl_s: int = 300) -> dict[str, object]:
     return dict(_node.call("add_device", {"ttl_s": ttl_s}, token=_node.session().token))
 
 
-def join(host: str, code: str, *, port: int = DEFAULT_PORT) -> dict[str, object]:
-    """Join the pool of the device at ``host`` using the ``code`` its `add_device` made; this device becomes a member."""
-    if not code:
-        raise errors.Error("give the code the other device showed")
-    return dict(_node.call("join_pool", {"host": host, "port": port, "passphrase": code}, token=_node.session().token))
+def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: str = "") -> dict[str, object]:
+    """Join the pool of the device at ``host``; this device becomes a member.
+
+    A ``secure`` pool takes the ``code`` its `add_device` made. An ``open`` pool on this device's own network takes no code, only the
+    ``fingerprint`` of the device at ``host`` (64 hex digits, from its beacon). A device already in a pool does not change pool; if a
+    phone is linked, the grant to join is asked of it. Raises `Refusal`, whose message is one sentence for the person.
+    """
+    if not code and not fingerprint:
+        raise errors.Error("give the code the other device showed, or for an open pool the fingerprint of the device that answers")
+    session = _node.session()
+    params = {"host": host, "port": port, **({"passphrase": code} if code else {"fingerprint": fingerprint})}
+
+    def send() -> dict[str, object]:
+        return dict(session.client.call("join_pool", "", session.token, **params))
+
+    try:
+        return founding.with_card(session, send)
+    except NodeError as err:
+        raise founding.Refusal(str(err), needs="none", then="ask-owner") from None
+
+
+def found(name: str | None = None, policy: str = "secure", *, admin: founding.Admin | None = None,
+          say: Callable[[str], object] | None = None) -> Founding:
+    """Make this device's pool, governed by the person's key: the one step that turns a pool of one into a pool others can join.
+
+    ``policy`` is ``secure`` (devices join with a code, the default) or ``open`` (devices on this network join by themselves). The person
+    answers where only they can: the first key at the prompt this computer shows, the grant on the phone's card. The agent never signs
+    for them. A device that is in a founded pool says so and changes nothing. Raises `Refusal` (an `ph.Denied`) whose message is one
+    sentence an agent passes on, with ``needs``, ``where`` and ``then`` for what to do next.
+    ``say`` is told, while the call waits, where the person answers (a sentence for the agent to pass on).
+    """
+    made = founding.found_here(Client(node_launch.default_state()), name, policy, admin=admin, voice=presence.Voice(say=say or (lambda _text: None)))
+    return Founding(status(), made.already, made.say())
 
 
 def remove(device: str) -> Member:

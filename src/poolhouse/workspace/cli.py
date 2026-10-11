@@ -32,6 +32,7 @@ from poolhouse.workspace import (
     nudge,
     person_view,
     phone_cli,
+    pool_cli,
     render,
     rooms_cli,
     scratch_cli,
@@ -112,6 +113,8 @@ for _name, _help, _options, _handler in grants_cli.PERSON:
     COMMANDS.add(_name, grants_cli.person_runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 COMMANDS.add("approval", approval_cli.COMMAND, options=[*NODE_COMMON, *approval_cli.OPTIONS],
              help="ask a person's phone for grants (request), wait for the answer, read what became of it; a person answers with decide")
+COMMANDS.add("pool", pool_cli.COMMAND, options=[*NODE_COMMON, *pool_cli.OPTIONS],
+             help="found this device's pool for a person (found): the person answers on their phone or at this computer's prompt")
 COMMANDS.add("phone", phone_cli.COMMAND, options=[*NODE_COMMON, *phone_cli.OPTIONS],
              help="add the phone a person approves from (add: shows a code to scan), list the phones, remove one; add and remove are a person's")
 COMMANDS.add("nudge", board_cli.guarded(board_cli.nudging),

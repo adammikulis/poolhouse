@@ -80,6 +80,7 @@ asks the account's Keychain for a key (the updater step's activity log did, and 
 
 | step | what it proves |
 |---|---|
+| `found-by-api` | an agent founds the pool through the library's own founding code, `poolhouse.board.founding`, against the node as shipped: the key the rig's person typed yes for signs the charter and the first admit, a charter no key accepted founds nothing, this device is the pool's first member and a second call says "already in the pool" |
 | `join-open` | a pool founded `open`: a device on the same network joins with no code, admitted by the host's own key and recorded as joined by `open`; a device only reachable through NAT or loopback is refused with the reason |
 | `join-secure` | the first device founds a secure pool; every device joins with a join code once the person's key has signed its admit, one after another |
 | `join-wrong-code` | a device the person admitted that gives a wrong code is refused, and the right one is refused after three wrong tries (the window is closed) |

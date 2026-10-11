@@ -611,6 +611,30 @@ heard of the removal still syncs with it, and it used to take the entries the re
   review list that puts the devices a removed admin key admitted inside its cut to the person to keep or drop with the check words of
   each (slices 5 and 8); until then they stay members.
 
+### 1.17 The agent's founding path, as built (2026-10-11), and what remains
+
+`ph.pool.found(name, policy)` and `poolhouse-workspace pool found [NAME] [--policy open|secure]` (`src/poolhouse/board/founding.py`) are the Python
+client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`. The agent drafts the charter on the node, the person's key signs
+the acceptance and the first `admit` of this device outside the node, and the node takes them back; the node holds no key and the agent signs
+nothing. Order of what it asks of the person: (1) a linked phone is asked for the `pool_create` grant on its card (one tap; the card's number is
+told to the agent for its person); (2) with no phone, the first key goes in after the person says yes to the node's own question (the operating
+system's prompt on the real home), and that key signs the grant. A device already in a founded pool answers "This device is already in the pool
+X" and changes nothing. Every refusal is a `Refusal` (an `ph.Denied`): one sentence of at most 160 characters, what is needed, where the person
+taps and what the agent does next. The node writes the `pool_created` event to the pool board's audit.
+
+**What remains, exactly.** A pool needs a strong admin key (1.3), and no strong key can sign a charter yet: the phone's key is P-256 and signs
+approvals of grants only, a charter's admin key is Ed25519 (`gov/keys.rs`), and the node has no production `Signer` that asks the phone
+(`gov/signer.rs` holds the rig's). The key the first-key flow makes is kept in the account's keystore, which any process of the account can
+use, so it is `weak` (`founding.FIRST_KEY_STRENGTH`) and the call refuses it before the person is asked anything: "A pool needs a key that asks
+for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again." With a phone linked the sentence
+is "Your phone is linked, but it cannot sign a new pool's charter yet; update the Poolhouse app, then tell me again." The path is real
+and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's `found-by-api`) with a key the test made declared strong, as
+the rig's person always did. To close it: the phone signs a charter acceptance and an act (`alg: p256` admin keys, verified by
+`grants::person::verifies`, or an Ed25519 key in the phone's keystore with a per-signature prompt), and the node's `Signer` becomes the
+phone approval. Also not built: the card's text for `pool_create` (it falls to the node's default, "It is not an action this node knows the
+cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and the fingerprint of an open pool's member,
+or a code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
+
 ## 2. Operated by agents, approved by a tap
 
 Requirements. The mechanism (the enrolment of the person key by QR, the signed approval, the push, the phone and screen paths) is
