@@ -91,8 +91,9 @@ fn a_cycle_that_learns_of_a_removal_does_not_go_on_to_dial_the_removed_device() 
     let (a, b, c) = (device(), device(), device());
     a.join_with_code(&b);
     a.join_with_code(&c);
-    // `a` dials its members in the order of their fingerprints: the lower one is dialed first and carries the removal of the other.
-    let (revoker, victim) = if b.fp() < c.fp() { (&b, &c) } else { (&c, &b) };
+    // `a` dials its members in the order `pool_status` lists them: the first carries the removal of the second.
+    let listed: Vec<String> = a.status()["members"].as_array().unwrap().iter().filter(|m| m["self"] != true).map(|m| m["fingerprint"].as_str().unwrap().to_string()).collect();
+    let (revoker, victim) = if listed[0] == b.fp() { (&b, &c) } else { (&c, &b) };
     let (wa, wv) = (writer(&a, "a"), writer(victim, "victim"));
     remove(revoker, victim);
     wv.say("written by the removed device");
@@ -109,12 +110,18 @@ fn a_cycle_that_learns_of_a_removal_does_not_go_on_to_dial_the_removed_device() 
 fn a_member_removed_while_it_is_being_dialed_is_not_recorded_as_a_failed_dial() {
     let (a, b) = (device(), device());
     a.join_with_code(&b);
-    let stalled = b.node.lock().unwrap();
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    silent.set_nonblocking(true).unwrap();
+    a.node.lock().unwrap().facts.set_addr(&b.fp(), &silent.local_addr().unwrap().to_string()).unwrap();
     let net = a.net.clone();
     let dial = std::thread::spawn(move || net.sync_once(true).unwrap());
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    let mut held = None;
+    eventually("a to open a connection to the address it holds for b", 10, || {
+        held = silent.accept().ok().map(|(stream, _)| stream);
+        held.is_some()
+    });
     remove(&a, &b);
-    drop(stalled);
+    drop(held);
     assert_eq!(dial.join().unwrap(), 0, "a dial that ended on a removed member was counted as reached");
     assert_eq!(a.member(&b.fp()).unwrap()["last_error"], "", "the refusal to talk to a removed member was recorded against it");
 }
