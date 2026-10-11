@@ -98,7 +98,7 @@ def the_members_say_how_they_reach_the_nat_device(world: World) -> str:
 def removal_reaches_the_nat_device(world: World) -> None:
     """When the first device removes the NAT'd device, its next dial is refused by every member it can reach."""
     nat = _pool_with_nat(world)
-    world.first.admin("member_remove", fingerprint=nat.fingerprint)
+    world.remove(world.first, nat)
     nat.post("after removal")
     time.sleep(4)
     for device in world.devices:

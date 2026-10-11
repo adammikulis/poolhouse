@@ -46,7 +46,7 @@ now does what a person does, through the node's real paths and nothing else (`te
 * For each device it leaves the hash of a one-time secret in that node's own temporary state directory, the way `grants-setup` does
   (`grants.expect_enrolment`, run on the device by `wire.py expect-enrol`), and enrols the key through the node's `person_enroll` with the secret.
 * It signs each grant through `grant_issue`, for the rig's named sessions on that device only (the device's own fingerprint), for six hours:
-  `set_join_policy`, `add_device`, `join_pool`, `member_remove` and `sync_now` to the session on the `pool` board that the steps join and
+  `set_join_policy`, `add_device`, `join_pool`, `member_remove`, `sync_now` and `pool_create` to the session on the `pool` board that the steps join and
   remove through, and `shard_call` and `shard_consent` to the session of the `demo` board that sends and receives test runs. Nothing else is
   granted, so a step that needs another action fails with the node's own refusal until the rig's person grants it.
 * A node binds each token to the processes that registered it and lets it spend a grant only from a process that shares them (docs/node.md,
@@ -54,6 +54,19 @@ now does what a person does, through the node's real paths and nothing else (`te
   the node can read, so each device that is reached that way runs one process, `driver.py`, and every command of that device is its child
   (`driver_host.py`), as every command of a person's terminal is a child of its shell. Without it a session registered in one command spends
   nothing in the next.
+
+The same person is the admin of every pool the rig founds. A second key, also in memory and also the run's alone, is named in each charter; the
+node never holds it and carries no signer for it. Each governed step is the path a person's own key takes outside the node:
+
+* **Founding.** `pool_draft_found` gives the charter with blank acceptances and the bytes the key signs to accept it; the rig signs them and
+  hands the accepted charter back through `pool_found` (the grant `pool_create`). The device is a member once an admit signed for it is
+  submitted, so the rig admits the founder (`pool_draft`, sign, `pool_submit`; no grant, the signature is the authority).
+* **Joining.** Under `open` the joiner dials with the host's fingerprint and the host admits it with its own key. Under `secure` the rig reads
+  the joiner's certificate from its state directory (`wire.py cert`), has the admin key sign its admit, submits that to the host, opens the
+  window with `add_device` and `presigned` (the host holds no signer, so it cannot sign inside the exchange, and the window still admits
+  nothing an admin did not sign for) and the joiner gives the code.
+* **Removing.** A removal is a `remove` act signed by the admin key and submitted to one member; the others learn it by syncing.
+* **Policy.** A pool's join policy is chosen at founding and never changes in place, so no step moves it (`grants-gate` shows the refusal).
 
 What this does not exercise is the custody of a person's real key: the typed `yes` on the terminal device and the operating system's keystore.
 The rig's key signs without being asked, which is exactly what the node cannot tell apart from a person's key; those are the tests of
@@ -64,9 +77,9 @@ asks the account's Keychain for a key (the updater step's activity log did, and 
 
 | step | what it proves |
 |---|---|
-| `join-open` | under `open`, a device on the same network joins with no code and is recorded as joined by `open`; a device only reachable through NAT or loopback is refused with the reason |
-| `join-secure` | every device joins with a join code, one after another |
-| `join-wrong-code` | a wrong code is refused, and the right one is refused after three wrong tries |
+| `join-open` | a pool founded `open`: a device on the same network joins with no code, admitted by the host's own key and recorded as joined by `open`; a device only reachable through NAT or loopback is refused with the reason |
+| `join-secure` | the first device founds a secure pool; every device joins with a join code once the person's key has signed its admit, one after another |
+| `join-wrong-code` | a device the person admitted that gives a wrong code is refused, and the right one is refused after three wrong tries (the window is closed) |
 | `members-listed` | every device lists every other member by name and fingerprint, itself as `self`, with the address it dials where it has one |
 | `entries-converge` | an entry written on any device is on every device |
 | `direct-message` | a message to a session on another device reaches only that session |
@@ -76,9 +89,9 @@ asks the account's Keychain for a key (the updater step's activity log did, and 
 | `build-wire` | a device on another wire version is shown as needing an update with the command that fixes it |
 | `build-update` | the real updater on a stale device fetches a newer build from a local git origin (git is real; only the compile is replaced), moves the node onto it, and the pool then shows it current |
 | `join-order` | a chain forwards, a chain backwards and a star on the last device all end as one pool with one board |
-| `member-removal` | after one member removes another, every other member (not only the remover) refuses that device's next request, and nothing it writes afterwards reaches them |
+| `member-removal` | after a member takes the person's signed removal of another, every other member (not only the remover) refuses that device's next request, and nothing it writes afterwards reaches them |
 | `cert-swap` | a device that comes back at a member's address with a different certificate is refused by every member and by the pin of the members that dial it |
-| `grants-gate` | a session no person has granted is refused `add_device`, `set_join_policy` and `member_remove` with the missing grant named; under a person-signed grant of one use it adds a device once and is then refused; a standing grant works until it is revoked; a `member_remove` grant scoped to one fingerprint removes exactly that member |
+| `grants-gate` | in a governed pool a session no person has granted is refused `add_device`, `member_remove` and `pool_propose` with the missing grant named, and no grant moves the join policy; under a person-signed grant of one use it opens a window once and is then refused; a standing grant works until it is revoked; a `member_remove` grant scoped to one fingerprint still leaves the removal to the person's signature, and the signed removal takes effect |
 | `grants-key-removed` | a second person key, approved by the first for this node and this terminal, signs a grant that works; once the first key removes it, that grant stops, the first key's grants and the rig's session keep working, the removed key signs nothing new and cannot be enrolled again. Skipped where no node device reads which process asks (Windows) |
 | `partition-heal` | a device cut off from the network (`docker network disconnect`) writes and claims a branch, so does the rest; after healing every entry is everywhere and exactly one device holds the branch |
 | `crash-mid-sync` | the node of a device is killed with SIGKILL while 1500 entries are arriving; the supervisor restarts it and it ends with all of them and no damaged log |

@@ -7,6 +7,10 @@ a person does and nothing else: it leaves the hash of a one-time secret in the n
 key is an in-memory Ed25519 key that belongs to this run alone: it is never written beside a node, never in a keystore and never the key of
 the account, and nothing here is reachable from the node's own code or from a production path, so there is no switch for a node to honour.
 What the rig does not exercise is the custody of a person's real key: the typed `yes` on a terminal and the keystore (docs/pool-check.md).
+
+The same person is the admin of the pools the rig founds (`found`, `admit`, `remove`): a second key, also in memory and also the run's alone,
+named in each pool's charter. The node never holds it. It drafts an act (`pool_draft`, `pool_draft_found`), the rig signs the bytes it is given
+outside the node, and the node takes the signed act back (`pool_submit`, `pool_found`), as a person's own device would hand it one.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from poolhouse.fleet.onboard.manifest import Signer
 POOL = "pool"
 ABOUT = "the pool check's person"
 LASTS_MS = 6 * 3_600_000
-POOL_ACTIONS = ("set_join_policy", "add_device", "join_pool", "member_remove", "sync_now")
+POOL_ACTIONS = ("set_join_policy", "add_device", "join_pool", "member_remove", "sync_now", "pool_create")
 """What the rig's pool session does on each device: the pool calls every step makes."""
 SESSION_ACTIONS = ("shard_call", "shard_consent")
 """What the rig's session of the demo board does: send tests to another device, and (as the receiver) name who may."""
@@ -46,6 +50,7 @@ class RigPerson:
 
     def __init__(self) -> None:
         self.key = Signer.generate()
+        self.admin = Signer.generate()  # the admin key of the pools the rig founds: it signs acts outside every node
 
     @property
     def fingerprint(self) -> str:
@@ -110,3 +115,33 @@ class RigPerson:
         demo = Holder(device, BOARD, device.token, device.session)
         for action in SESSION_ACTIONS:
             self.allow(demo, action)
+
+    def signed(self, drafted: dict) -> dict:
+        """The act of a `pool_draft` reply with the admin key's signature over the bytes the node gave."""
+        act = dict(drafted["act"])
+        sig = self.admin.sign_bytes(bytes.fromhex(drafted["sign_bytes"])).hex()
+        act["signatures"] = sorted([*act["signatures"], {"kind": "admin", "key": self.admin.public.hex(), "sig": sig}], key=lambda s: (s["kind"], s["key"]))
+        return act
+
+    def found(self, device: Device, policy: str, title: str = "pool check") -> dict:
+        """``device`` founds a pool of ``policy`` governed by the admin key and is its first member: the charter is accepted by the key outside the node."""
+        keys = [{"key": self.admin.public.hex(), "person": "pool-check", "strength": "strong", "label": "the pool check's admin"}]
+        draft = device.admin("pool_draft_found", title=title, policy=policy, project="", keys=keys)
+        charter = draft["charter"]
+        for wanted in draft["accept"]:
+            accepting = next(k for k in charter["admins"] if k["key"] == wanted["key"])
+            accepting["acceptance"] = self.admin.sign_bytes(bytes.fromhex(wanted["sign_bytes"])).hex()
+        founded = device.admin("pool_found", charter=charter)
+        self.admit(device, device, "found")
+        return founded
+
+    def admit(self, host: Device, joiner: Device, how: str) -> dict:
+        """The admin key admits ``joiner`` (by the certificate in its state directory) to the pool ``host`` is in; the act is submitted to ``host``."""
+        der = joiner.certificate()
+        draft = host.admin("pool_draft", kind="admit", body={"cert": der, "name": joiner.name, "how": how, "via": ""})
+        return host.admin("pool_submit", act=self.signed(draft))
+
+    def remove_member(self, host: Device, fingerprint: str) -> dict:
+        """The admin key removes the member ``fingerprint`` from the pool ``host`` is in; the act is submitted to ``host``."""
+        draft = host.admin("pool_draft", kind="remove", body={"fingerprint": fingerprint})
+        return host.admin("pool_submit", act=self.signed(draft))

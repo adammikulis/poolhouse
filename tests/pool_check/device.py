@@ -135,6 +135,10 @@ class Device:
         """Delete files of the node's state directory by name or glob (what makes a device a new device on its next start)."""
         raise NotImplementedError
 
+    def delete_tree(self, name: str) -> None:
+        """Delete the directory ``name`` of the node's state directory."""
+        raise NotImplementedError
+
     def prepare_checkout(self) -> None:
         """Make the checkout the test farm runs in a git checkout (it is a copy of the tree in a container)."""
 
@@ -210,6 +214,10 @@ class Device:
     def admin(self, method: str, **params):
         """A pool call (join, policy, remove, sync) as this device's session on the `pool` board; the node allows it only under a grant."""
         return self.call(method, "", self.admin_session()[0], **params)
+
+    def certificate(self) -> str:
+        """The device's certificate (hex DER) as its node kept it in its state directory: what an admin's admit of this device names."""
+        return str(self.wire("cert", "--state", self.state_text)["result"]["cert"])
 
     def post(self, body: str, to: str = "#general", kind: str = "note") -> dict:
         return self.call("post", BOARD, kind="message", fields={"type": kind, "to": to, "body": body, "subject": ""})
@@ -303,6 +311,9 @@ class LocalDevice(Device):
             for found in Path(self.state_text).glob(pattern):
                 found.unlink(missing_ok=True)
 
+    def delete_tree(self, name):
+        shutil.rmtree(Path(self.state_text) / name, ignore_errors=True)
+
     def start_node(self, *more):
         args = ["--listen", self.listen_text(), "--sync-ms", SYNC_MS, *self.build_args, *self.extra, *more]
         flags = [f"--arg={a}" for a in args]
@@ -366,6 +377,9 @@ class ContainerDevice(Device):
 
     def delete_files(self, *names):
         self.box.exec("sh", "-c", "cd /pc/node && rm -f " + " ".join(names))
+
+    def delete_tree(self, name):
+        self.box.exec("rm", "-rf", f"{STATE}/{name}")
 
     def prepare_checkout(self):
         self.box.exec("sh", "-c", "cd /opt/poolhouse && git init -q . 2>/dev/null; true")
@@ -482,6 +496,9 @@ class WslHostedDevice(Device):
 
     def delete_files(self, *names):
         self.run(["sh", "-c", f"cd {self.state_text} && rm -f {' '.join(names)}"])
+
+    def delete_tree(self, name):
+        self.run(["rm", "-rf", f"{self.state_text}/{name}"])
 
     def prepare_checkout(self):
         self.run(["sh", "-c", "git rev-parse --git-dir >/dev/null 2>&1 || git init -q ."])
