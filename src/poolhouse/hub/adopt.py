@@ -79,7 +79,7 @@ def structure_problem(path: Path, rel: str = "", index: Path | None = None) -> s
     found = sniff.sniff(path)
     if not found.ok:
         return found.problems[0] if found.problems else "does not read as a whole file"
-    missing = _missing(path, rel, index) if index and index.is_file() and path.suffix == ".safetensors" else []
+    missing = _missing(path, rel, index) if index else []
     return f"lacks {len(missing)} tensors its index maps to it, such as {missing[0]}" if missing else ""
 
 

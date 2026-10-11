@@ -38,6 +38,8 @@ def test_two_files_are_the_same_only_when_every_byte_is(tmp_path):
     assert not hfstore.same_bytes(one, two)
     two.write_bytes(BODY[:-1])
     assert not hfstore.same_bytes(one, two)
+    two.write_bytes(BODY + b"\x00")
+    assert not hfstore.same_bytes(one, two)
     two.write_bytes(b"\x01" + BODY[1:])
     assert not hfstore.same_bytes(one, two)
 

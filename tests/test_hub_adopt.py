@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import files, http
-from poolhouse.hub import adopt, hfstore
+from poolhouse.hub import adopt, hfstore, remote
 from poolhouse.testing.fakehub import fake_hub
 
 HEAD = json.dumps({"w": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]}}).encode()
@@ -158,8 +158,31 @@ def test_a_run_cut_off_after_linking_is_finished_without_reading_the_bytes_again
     os.link(folder.path / "model.safetensors", blob)
     hfstore.link(root_of(tmp_path) / "snapshots" / REV / "model.safetensors", blob)
     monkeypatch.setattr(hfstore, "same_bytes", lambda *a, **k: pytest.fail("compared the bytes again"))
-    rows = adopt.take(folder, adopt.listing(folder)[0], apply=True)
+    listed = adopt.listing(folder)[0]
+    assert actions(adopt.take(folder, listed, apply=False))["model.safetensors"] == "have"
+    assert (folder.path / "model.safetensors").exists()
+    rows = adopt.take(folder, listed, apply=True)
     assert actions(rows)["model.safetensors"] == "have" and not (folder.path / "model.safetensors").exists()
+
+
+def test_a_file_the_hub_lists_without_a_digest_is_not_linked(server, tmp_path):
+    folder = make_folder(tmp_path, {"config.json": CONFIG})
+    rows = adopt.take(folder, {"config.json": remote.RemoteFile("config.json", len(CONFIG))}, apply=True)
+    assert rows[0].action == "blocked" and "no digest" in rows[0].why
+    assert (folder.path / "config.json").read_bytes() == CONFIG and not root_of(tmp_path).exists()
+
+
+def test_a_link_that_does_not_read_back_as_the_file_keeps_the_old_name(server, tmp_path, monkeypatch):
+    folder = make_folder(tmp_path, {"config.json": CONFIG})
+
+    def wrong(target, _blob):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"x" * len(CONFIG))
+
+    monkeypatch.setattr(hfstore, "link", wrong)
+    rows = adopt.take(folder, adopt.listing(folder)[0], apply=True)
+    assert rows[0].action == "blocked" and "does not read back" in rows[0].why
+    assert (folder.path / "config.json").read_bytes() == CONFIG
 
 
 def record(body: bytes, *, etag: str = "", kept: bool = True, **more) -> dict:
@@ -221,15 +244,26 @@ def test_a_shard_that_lacks_a_tensor_its_index_maps_to_it_is_not_vouched_for(ser
     index = json.dumps({"weight_map": {"w": "model.safetensors", "gone": "model.safetensors"}}).encode()
     folder = make_folder(tmp_path, {"model.safetensors": WEIGHTS, "model.safetensors.index.json": index})
     rows = {row.rel: row for row in adopt.take(folder, None, apply=False)}
-    assert rows["model.safetensors"].action == "blocked" and "lacks 1 tensors" in rows["model.safetensors"].why
+    assert rows["model.safetensors"].action == "blocked"
+    assert "lacks 1 tensors its index maps to it, such as gone" in rows["model.safetensors"].why
+
+
+def test_an_index_that_cannot_be_read_does_not_stop_a_whole_shard(server, tmp_path):
+    folder = make_folder(tmp_path, {"model.safetensors": WEIGHTS, "model.safetensors.index.json": b"not json"})
+    rows = {row.rel: row for row in adopt.take(folder, None, apply=False)}
+    assert rows["model.safetensors"].action == "link"
 
 
 def test_a_half_written_file_and_a_link_are_never_moved(server, tmp_path):
-    folder = make_folder(tmp_path, {**REPOS[REPO], "later.safetensors.part": b"x"})
-    (folder.path / "alias.json").symlink_to(folder.path / "config.json")
+    folder = make_folder(tmp_path, {"later.safetensors.part": b"x", "model.safetensors": WEIGHTS})
+    elsewhere = tmp_path / "elsewhere.json"
+    elsewhere.write_bytes(CONFIG)
+    (folder.path / "config.json").symlink_to(elsewhere)
     rows = {row.rel: row for row in adopt.take(folder, adopt.listing(folder)[0], apply=True)}
-    assert rows["later.safetensors.part"].action == rows["alias.json"].action == "blocked"
-    assert (folder.path / "later.safetensors.part").exists() and (folder.path / "alias.json").is_symlink()
+    for rel in ("later.safetensors.part", "config.json"):
+        assert (rows[rel].action, rows[rel].why) == ("blocked", "is not a finished file")
+    assert (folder.path / "later.safetensors.part").exists() and (folder.path / "config.json").is_symlink()
+    assert rows["model.safetensors"].action == "link"
 
 
 def test_another_volume_is_blocked_in_the_plan_and_in_the_run(server, tmp_path, monkeypatch):
