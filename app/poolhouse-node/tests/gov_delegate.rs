@@ -246,6 +246,50 @@ fn a_member_cannot_add_its_signature_to_the_leave_of_another_device() {
     assert_eq!(g.devices()[&goes.fingerprint()].status, poolhouse_node::membership::Status::Left, "the leave stands");
 }
 
+/// The pool opened again from its directory with the device made from ``seed`` having signed the act ``id`` as well, as a copy of
+/// the directory edited by hand would be: what the fold does with an act that was not taken through `ingest`.
+fn reopened_with_signature(g: &mut GovPool, id: &str, seed: u8) -> GovPool {
+    g.save().unwrap();
+    let path = g.dir().join("acts.json");
+    let mut doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    for held in doc["acts"].as_array_mut().unwrap() {
+        let mut act: Act = serde_json::from_value(held.clone()).unwrap();
+        if act.id() == id {
+            device_sign(&mut act, seed);
+            *held = serde_json::to_value(&act).unwrap();
+        }
+    }
+    std::fs::write(&path, serde_json::to_vec(&doc).unwrap()).unwrap();
+    GovPool::load(g.dir()).unwrap()
+}
+
+#[test]
+fn an_admit_held_with_a_second_device_signature_still_counts_for_the_delegate_that_signed_it() {
+    let (_d, mut g, delegate) = delegate_pool();
+    let plain_seed = seed_below(&delegate.fingerprint());
+    put_admit(&mut g, &ident(plain_seed), &[A]);
+    let guest = ident(31);
+    let mut act = g.new_act("admit", admit_body(&guest, "guest", "join-code", ""), wall_ms()).unwrap();
+    device_sign(&mut act, 20);
+    assert_eq!(take(&mut g, act.clone()), Ingest::Accepted);
+    let reopened = reopened_with_signature(&mut g, &act.id(), plain_seed);
+    assert_eq!(reopened.acts()[&act.id()].signatures.len(), 2);
+    assert!(is_member(&reopened, &guest), "the signer that may admit is the one counted");
+}
+
+#[test]
+fn a_leave_held_with_a_second_device_signature_is_still_the_leave_of_the_device_it_names() {
+    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (goes, other) = (ident(21), ident(22));
+    put_admit(&mut g, &goes, &[A]);
+    put_admit(&mut g, &other, &[A]);
+    let mut leave = g.new_act("leave", json!({"fingerprint": goes.fingerprint()}), wall_ms()).unwrap();
+    device_sign(&mut leave, 21);
+    assert_eq!(take(&mut g, leave.clone()), Ingest::Accepted);
+    let reopened = reopened_with_signature(&mut g, &leave.id(), 22);
+    assert_eq!(reopened.devices()[&goes.fingerprint()].status, poolhouse_node::membership::Status::Left);
+}
+
 #[test]
 fn a_delegate_end_ends_the_delegate_whatever_time_its_signer_put_on_either_act() {
     let (_d, mut g) = pool(&[strong(A, "ann"), kit::gov::weak(B, "ann")], Policy::Secure);
