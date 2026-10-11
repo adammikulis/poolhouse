@@ -6,8 +6,11 @@
 //! Everything else around it, which session asked and what happens next, can be done by an agent: the prompt is the one step that
 //! cannot. The secret lives in the node's memory, never in a file, so a program that can write the state directory cannot leave one.
 //!
-//! A node built with the `unattended` feature answers yes at once. That build is for tests only: it is never what a person installs
-//! (`scripts/testnode.py` and the pool check build it; `node_binary.build` does not), and it says so in `hello` and `phone_info`.
+//! There is no switch that turns the prompt off. A node asks with the operating system's own prompt where the system has one (`Os`) or,
+//! when it was started with `--presence terminal`, on the person's terminal device (`terminal::Terminal`); tests of this crate put their
+//! own `Presence` on `Node::firsts` (a library field no binary sets), and the pool check answers the terminal the way a person does.
+
+pub mod terminal;
 
 use std::process::{Child, Command, Stdio};
 
@@ -27,7 +30,7 @@ const MOST_ABOUT: usize = 60;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
-        "presence_ask" => &["purpose", "about"],
+        "presence_ask" => &["purpose", "about", "terminal"],
         "presence_status" => &[],
         _ => return None,
     })
@@ -78,10 +81,10 @@ pub trait Asking: Send {
 
 /// Where the question is put to the person.
 pub trait Presence: Send {
-    /// `os` for the operating system's own prompt, `unattended` for the test build's.
+    /// `os` for the operating system's own prompt, `terminal` for the person's terminal device.
     fn kind(&self) -> &'static str;
-    /// Open a prompt that says ``what``.
-    fn begin(&mut self, what: &str) -> Result<Box<dyn Asking>>;
+    /// Open a prompt that says ``what``; ``terminal`` is the terminal device the asker named, which only a terminal prompt uses.
+    fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>>;
 }
 
 /// The operating system's own prompt, run as a child process the node polls: it ends the prompt when it is dropped.
@@ -101,7 +104,7 @@ impl Drop for OsPrompt {
 }
 
 /// The text of a prompt as the system shows it: plain, short, with nothing in it a script could be written through.
-fn plain(what: &str) -> String {
+pub(crate) fn plain(what: &str) -> String {
     what.chars().filter(|c| c.is_ascii_alphanumeric() || " .,-/()".contains(*c)).take(160).collect()
 }
 
@@ -128,48 +131,42 @@ impl Presence for Os {
         "os"
     }
 
-    fn begin(&mut self, what: &str) -> Result<Box<dyn Asking>> {
+    fn begin(&mut self, what: &str, _terminal: &str) -> Result<Box<dyn Asking>> {
         let mut command = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with, so the first key or phone cannot be added here yet.".into()))?;
         let child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
         Ok(Box::new(OsPrompt(child)))
     }
 }
 
-/// For tests only: a person who always says yes.
-#[cfg(feature = "unattended")]
-pub struct AlwaysYes;
+/// How a node asks, chosen when it starts.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Mode {
+    /// The operating system's own prompt.
+    Os,
+    /// The person's terminal device, named by the asker and read by the node.
+    Terminal,
+}
 
-#[cfg(feature = "unattended")]
-struct Answered(bool);
+impl Mode {
+    pub fn parse(name: &str) -> Option<Mode> {
+        match name {
+            "auto" => Some(Mode::Os),
+            "terminal" => Some(Mode::Terminal),
+            _ => None,
+        }
+    }
 
-#[cfg(feature = "unattended")]
-impl Asking for Answered {
-    fn poll(&mut self) -> Option<bool> {
-        Some(self.0)
+    pub fn presence(self) -> Box<dyn Presence> {
+        match self {
+            Mode::Os => Box::new(Os),
+            Mode::Terminal => Box::new(terminal::Terminal),
+        }
     }
 }
 
-#[cfg(feature = "unattended")]
-impl Presence for AlwaysYes {
-    fn kind(&self) -> &'static str {
-        "unattended"
-    }
-
-    fn begin(&mut self, _what: &str) -> Result<Box<dyn Asking>> {
-        Ok(Box::new(Answered(true)))
-    }
-}
-
-/// The presence this build asks with.
+/// The presence a node asks with unless it was started with another.
 pub fn default_presence() -> Box<dyn Presence> {
-    #[cfg(feature = "unattended")]
-    {
-        Box::new(AlwaysYes)
-    }
-    #[cfg(not(feature = "unattended"))]
-    {
-        Box::new(Os)
-    }
+    Mode::Os.presence()
 }
 
 struct Pending {
@@ -211,7 +208,7 @@ impl Firsts {
     }
 
     /// Open a prompt for ``by`` (`board/name`): nothing is made until the person says yes.
-    pub fn ask(&mut self, purpose: Purpose, by: &str, about: &str, now: u64) -> Result<()> {
+    pub fn ask(&mut self, purpose: Purpose, by: &str, about: &str, terminal: &str, now: u64) -> Result<()> {
         if self.asking.as_ref().is_some_and(|p| p.by == by && p.purpose == purpose) {
             return Ok(());
         }
@@ -222,7 +219,7 @@ impl Firsts {
             return Err(Error::Quota("The person was asked a moment ago and did not say yes; wait a few minutes before asking again.".into()));
         }
         let what = format!("poolhouse: allow the session {by} to add {} to this computer?{}", purpose.words(), if about.is_empty() { String::new() } else { format!(" ({about})") });
-        let prompt = self.presence.begin(&what)?;
+        let prompt = self.presence.begin(&what, terminal)?;
         self.asking = Some(Pending { purpose, by: by.into(), started_ms: now, prompt });
         self.outcome = None;
         Ok(())
@@ -309,7 +306,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
             return Err(Error::Denied("A person key is enrolled already: a further key or phone is approved by one that is, not by this prompt.".into()));
         }
         let about: String = text(p, "about")?.chars().filter(|c| c.is_ascii_alphanumeric() || " .,-".contains(*c)).take(MOST_ABOUT).collect();
-        node.firsts.ask(purpose, &by, &about, now)?;
+        node.firsts.ask(purpose, &by, &about, text(p, "terminal")?, now)?;
     }
     let mut out = node.firsts.status(&by, now);
     if out["state"] == "confirmed" && out["purpose"] == "phone" && out["secret"].is_string() {
@@ -340,7 +337,7 @@ mod tests {
             "scripted"
         }
 
-        fn begin(&mut self, _: &str) -> Result<Box<dyn Asking>> {
+        fn begin(&mut self, _: &str, _: &str) -> Result<Box<dyn Asking>> {
             Ok(Box::new(Waiting(self.0.clone())))
         }
     }
@@ -353,7 +350,7 @@ mod tests {
     #[test]
     fn nothing_is_made_until_the_person_says_yes_and_only_the_asker_reads_it() {
         let (mut firsts, answer) = person();
-        firsts.ask(Purpose::Key, "demo/a", "", 1000).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", "", "", 1000).unwrap();
         assert_eq!(firsts.status("demo/a", 2000)["state"], "asking");
         assert_eq!(firsts.status("demo/b", 2000)["state"], "none", "another session does not even see the prompt");
         assert!(!firsts.take(Purpose::Key, "guess", 2000));
@@ -371,7 +368,7 @@ mod tests {
     fn a_guess_that_only_checks_never_spends_the_secret() {
         let (mut firsts, answer) = person();
         *answer.lock().unwrap() = Some(true);
-        firsts.ask(Purpose::Phone, "demo/a", "", 0).unwrap();
+        firsts.ask(Purpose::Phone, "demo/a", "", "", 0).unwrap();
         let secret = firsts.status("demo/a", 10)["secret"].as_str().unwrap().to_string();
         assert!(firsts.offered(Purpose::Phone, 20) && !firsts.offered(Purpose::Key, 20));
         assert!(!firsts.matches(Purpose::Phone, "guess", 20) && !firsts.matches(Purpose::Phone, "", 20) && !firsts.matches(Purpose::Key, &secret, 20));
@@ -384,11 +381,11 @@ mod tests {
     fn a_secret_adds_once_for_its_own_purpose_within_ten_minutes() {
         let (mut firsts, answer) = person();
         *answer.lock().unwrap() = Some(true);
-        firsts.ask(Purpose::Phone, "demo/a", "", 0).unwrap();
+        firsts.ask(Purpose::Phone, "demo/a", "", "", 0).unwrap();
         let secret = firsts.status("demo/a", 10)["secret"].as_str().unwrap().to_string();
         assert!(firsts.take(Purpose::Phone, &secret, 20));
         assert!(!firsts.take(Purpose::Phone, &secret, 30), "once");
-        firsts.ask(Purpose::Phone, "demo/a", "", 40).unwrap();
+        firsts.ask(Purpose::Phone, "demo/a", "", "", 40).unwrap();
         let late = firsts.status("demo/a", 50)["secret"].as_str().unwrap().to_string();
         assert!(!firsts.take(Purpose::Phone, &late, 50 + SECRET_FOR_MS + 1), "ten minutes");
     }
@@ -396,21 +393,21 @@ mod tests {
     #[test]
     fn a_no_or_no_answer_makes_nothing_and_keeps_the_node_from_asking_again_for_a_while() {
         let (mut firsts, answer) = person();
-        firsts.ask(Purpose::Key, "demo/a", "", 0).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", "", "", 0).unwrap();
         *answer.lock().unwrap() = Some(false);
         assert_eq!(firsts.status("demo/a", 10)["state"], "refused");
-        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", "", 20), Err(Error::Quota(_))), "a session cannot pester the person with prompts");
+        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", "", "", 20), Err(Error::Quota(_))), "a session cannot pester the person with prompts");
         *answer.lock().unwrap() = None;
-        firsts.ask(Purpose::Key, "demo/a", "", QUIET_MS + 100).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", "", "", QUIET_MS + 100).unwrap();
         assert_eq!(firsts.status("demo/a", QUIET_MS + ASK_FOR_MS + 200)["state"], "expired", "no answer in two minutes is a no");
     }
 
     #[test]
     fn one_prompt_is_open_at_a_time() {
         let (mut firsts, _) = person();
-        firsts.ask(Purpose::Key, "demo/a", "", 0).unwrap();
-        firsts.ask(Purpose::Key, "demo/a", "", 5).unwrap();
-        assert!(matches!(firsts.ask(Purpose::Phone, "demo/b", "", 10), Err(Error::Quota(_))));
+        firsts.ask(Purpose::Key, "demo/a", "", "", 0).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", "", "", 5).unwrap();
+        assert!(matches!(firsts.ask(Purpose::Phone, "demo/b", "", "", 10), Err(Error::Quota(_))));
     }
 
     #[test]

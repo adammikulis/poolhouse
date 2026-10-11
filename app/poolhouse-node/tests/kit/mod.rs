@@ -58,8 +58,33 @@ pub fn texts(entries: &Value) -> Vec<String> {
         .map(|e| e["fields"]["body"].as_str().unwrap().to_string()).collect()
 }
 
+/// A person who says yes to the question of the first key or phone at once: the test's stand-in for the operating system's prompt,
+/// put on the node of a test through the library field `Node::firsts`. No binary builds one.
+pub struct SaysYes;
+
+struct Yes;
+
+impl poolhouse_node::presence::Asking for Yes {
+    fn poll(&mut self) -> Option<bool> {
+        Some(true)
+    }
+}
+
+impl poolhouse_node::presence::Presence for SaysYes {
+    fn kind(&self) -> &'static str {
+        "test"
+    }
+
+    fn begin(&mut self, _what: &str, _terminal: &str) -> poolhouse_node::error::Result<Box<dyn poolhouse_node::presence::Asking>> {
+        Ok(Box::new(Yes))
+    }
+}
+
+/// A node on ``dir`` whose person says yes to the prompt of the first key or phone.
 pub fn node(dir: &Path) -> Node {
-    Node::open(dir).unwrap()
+    let mut node = Node::open(dir).unwrap();
+    node.firsts = poolhouse_node::presence::Firsts::new(Box::new(SaysYes));
+    node
 }
 
 /// The process of this test: the peer of every request `req` makes, so the node reads the lineage of the test binary.

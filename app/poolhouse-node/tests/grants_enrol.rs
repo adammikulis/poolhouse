@@ -72,13 +72,13 @@ fn the_secret_is_never_in_a_file_and_only_the_session_that_asked_reads_it() {
     let (_, mine) = session(&mut n, "demo", "a");
     let (_, theirs) = session(&mut n, "demo", "b");
     let asked = ok(req(&mut n, "presence_ask", "", &mine, json!({"purpose": "key", "about": "the first key"})));
-    let secret = asked["secret"].as_str().expect("a test build says yes at once").to_string();
+    let secret = asked["secret"].as_str().expect("the test person says yes at once").to_string();
     assert_eq!((asked["state"].as_str(), asked["purpose"].as_str()), (Some("confirmed"), Some("key")), "{asked}");
     let others = ok(req(&mut n, "presence_status", "", &theirs, json!({})));
     assert_eq!((others["state"].as_str(), others["secret"].is_null()), (Some("none"), true), "another session reads nothing: {others}");
     let again = ok(req(&mut n, "presence_status", "", &mine, json!({})));
     assert!(again["secret"].is_null(), "the asker reads it once: {again}");
-    assert_eq!(again["presence"], "unattended", "and the node says which kind of prompt it has");
+    assert_eq!(again["presence"], "test", "and the node says which kind of prompt it has");
     let found: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().filter(|e| e.path().is_file()).filter(|e| std::fs::read_to_string(e.path()).is_ok_and(|text| text.contains(&secret) || text.contains(&sha256_hex(secret.as_bytes())))).collect();
     assert!(found.is_empty(), "no file of the node holds the secret or its hash: {found:?}");
     assert_eq!(code(&req(&mut n, "presence_ask", "", "", json!({"purpose": "key"}))), "denied", "a request with no session asks nothing");
