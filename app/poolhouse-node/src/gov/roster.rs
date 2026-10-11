@@ -39,6 +39,9 @@ pub struct Roster {
     pub short: BTreeMap<String, (usize, usize, String)>,
     /// The ids of the admits that stand.
     pub standing: BTreeSet<String>,
+    /// For each log (board and origin) of a removed device that a removal names, how many of its entries stand: the least any
+    /// removal says.
+    pub log_cuts: BTreeMap<(String, String), u64>,
 }
 
 pub enum Verdict {
@@ -91,7 +94,12 @@ fn removals(chain: &Chain, acts: &BTreeMap<String, Act>, out: &mut Roster) -> BT
     for (id, a) in acts.iter().filter(|(_, a)| a.kind == "remove") {
         let Ok(Body::Remove(d)) = body::parse(a) else { continue };
         match verdict(id, a, Some(Class::Routine), chain, false) {
-            Verdict::Ok => drop(removed.entry(d.fingerprint).or_insert_with(|| id.clone())),
+            Verdict::Ok => {
+                for c in d.cut {
+                    out.log_cuts.entry((c.board, c.origin)).and_modify(|s| *s = (*s).min(c.seq)).or_insert(c.seq);
+                }
+                removed.entry(d.fingerprint).or_insert_with(|| id.clone());
+            }
             Verdict::Short(h, n, why) => drop(out.short.insert(id.clone(), (h, n, why))),
             Verdict::Void(why) => drop(out.void.insert(id.clone(), why)),
         }

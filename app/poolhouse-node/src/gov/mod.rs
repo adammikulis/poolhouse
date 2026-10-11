@@ -13,6 +13,7 @@
 //! | `act`, `body` | the signed act and the body of each kind |
 //! | `clock` | the awake time every hold is measured in |
 //! | `chain` | the admin-set acts one after the other: holds, cancels, vetoes, forks, disputes |
+//! | `logs` | what a removal does to the logs of the removed device on boards |
 //! | `roster` | the members, the removals and the delegates, with the rate caps |
 //! | `pool` | one pool on disk: acceptance of acts, the fold, paging |
 //! | `room` | how many acts of each kind a pool holds, and which go first |
@@ -26,6 +27,7 @@ pub mod chain;
 pub mod charter;
 pub mod clock;
 pub mod keys;
+pub mod logs;
 pub mod ops;
 pub mod pool;
 pub mod roster;

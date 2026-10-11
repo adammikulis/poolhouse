@@ -174,6 +174,7 @@ impl Node {
             let mut tally = Tally::default();
             tally.catch_up(&mut board, &names)?;
             self.boards.insert(id.into(), Hosted { board, names, quarantine, subs, book: Book::default(), tally });
+            self.apply_log_cuts(id)?;
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
     }

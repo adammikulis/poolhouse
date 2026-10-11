@@ -32,6 +32,8 @@ pub struct Tables {
     pub labels: BTreeMap<String, String>,
     /// The latest foreign rows that were not folded, with the reason.
     pub rejected: Vec<(String, String)>,
+    /// For an origin whose device was removed, how many of its entries stand: no later one is taken, whoever relays it.
+    pub cuts: BTreeMap<String, u64>,
 }
 
 pub struct State {

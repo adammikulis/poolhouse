@@ -6,6 +6,7 @@ use serde::de::DeserializeOwned;
 use crate::cert::{cert_fingerprint, parses, valid_fingerprint};
 use crate::error::{Error, Result};
 use crate::fsutil::unhex;
+use crate::row::{valid_name, valid_origin};
 
 use super::act::{valid_id, Act};
 use super::charter::{Charter, Mode, Unit};
@@ -14,6 +15,8 @@ use super::keys::{valid_public, AdminKey};
 /// How a device came in: `found` (the first device of a pool), `join-code`, `open`, `tap`, `delegate`, `handoff`.
 pub const HOW: [&str; 6] = ["found", "join-code", "open", "tap", "delegate", "handoff"];
 const MOST_CUT: usize = 256;
+/// The most logs one removal names.
+pub const MOST_LOG_CUTS: usize = 256;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -33,6 +36,24 @@ pub struct Admit {
 #[serde(deny_unknown_fields)]
 pub struct Device {
     pub fingerprint: String,
+}
+
+/// How much of one log of a board stands: the board, the origin that names the log, and its first ``seq`` entries.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct LogCut {
+    pub board: String,
+    pub origin: String,
+    pub seq: u64,
+}
+
+/// The removal of a device: its fingerprint, and for each log of it that the removing admin holds, how much of it stands.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct Removal {
+    pub fingerprint: String,
+    #[serde(default)]
+    pub cut: Vec<LogCut>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -85,7 +106,7 @@ pub struct SetMode {
 pub enum Body {
     Found(Box<Charter>),
     Admit(Admit),
-    Remove(Device),
+    Remove(Removal),
     Leave(Device),
     AdminAdd(Add),
     AdminRemove(Dismiss),
@@ -125,6 +146,13 @@ fn check_device(d: &Device) -> Result<()> {
     if valid_fingerprint(&d.fingerprint) { Ok(()) } else { bad("a device is named by its fingerprint, 64 hex digits") }
 }
 
+fn check_removal(r: &Removal) -> Result<()> {
+    if !valid_fingerprint(&r.fingerprint) || r.cut.len() > MOST_LOG_CUTS || !r.cut.iter().all(|c| valid_name(&c.board) && valid_origin(&c.origin)) {
+        return bad("a device is removed by its fingerprint, with the logs of it that were seen named by board and origin");
+    }
+    Ok(())
+}
+
 fn check_target(t: &Target) -> Result<()> {
     if valid_id(&t.act) { Ok(()) } else { bad("an act is named by its id, 64 hex digits") }
 }
@@ -145,11 +173,15 @@ pub fn parse(act: &Act) -> Result<Body> {
             check_admit(&a)?;
             Body::Admit(a)
         }
-        "remove" | "leave" | "delegate" | "delegate_end" => {
+        "remove" => {
+            let r: Removal = read(act)?;
+            check_removal(&r)?;
+            Body::Remove(r)
+        }
+        "leave" | "delegate" | "delegate_end" => {
             let d: Device = read(act)?;
             check_device(&d)?;
             match act.kind.as_str() {
-                "remove" => Body::Remove(d),
                 "leave" => Body::Leave(d),
                 "delegate" => Body::Delegate(d),
                 _ => Body::DelegateEnd(d),

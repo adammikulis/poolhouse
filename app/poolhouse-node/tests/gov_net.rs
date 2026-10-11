@@ -18,36 +18,17 @@ use poolhouse_node::poolops::wall_ms;
 use poolhouse_node::projectid::project_key;
 use serde_json::{json, Value};
 
-const ANN: u8 = 1;
-const BEN: u8 = 2;
 
 fn identity(seed: u8) -> Identity {
     let dir = tempfile::tempdir().unwrap();
     cert::load_or_create(dir.path(), &kit::key(seed)).unwrap()
 }
 
-fn sync(dev: &Dev) {
-    dev.ok("sync_now", "", &dev.token, json!({}));
-}
-
-fn link(from: &Dev, to: &Dev) -> PeerClient {
-    PeerClient::connect(&from.net.me, to.addr(), Some(&to.fp())).unwrap()
-}
 
 fn status_of(dev: &Dev, id: &str) -> String {
     format!("{:?}", dev.node.lock().unwrap().members.gov().unwrap().status(id))
 }
 
-/// `a` founds a secure pool for ann; `b` and `c` join it with codes from `a` and then hear of one another.
-fn pool_of_three() -> (Dev, Dev, Dev) {
-    let (a, b, c) = (device(), device(), device());
-    found(&a, person(ANN, "ann"), "secure");
-    a.join_with_code(&b);
-    a.join_with_code(&c);
-    sync(&b);
-    sync(&c);
-    (a, b, c)
-}
 
 // -- founding and joining ------------------------------------------------------------------------------------------------
 

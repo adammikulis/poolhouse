@@ -171,6 +171,7 @@ impl Node {
         let out = f(gov, wall_ms());
         gov.save()?;
         self.members.refresh();
+        self.apply_log_cuts("")?;
         self.note_roster(&before)?;
         out
     }
@@ -202,6 +203,7 @@ impl Node {
         }
         if due {
             self.members.refresh();
+            self.apply_log_cuts("")?;
             self.note_roster(&before)?;
         }
         Ok(due)
@@ -304,8 +306,8 @@ impl Node {
         if let Some(done) = self.members.get(fingerprint).filter(|d| d.status == Status::Revoked) {
             return Ok(done.clone());
         }
-        let signer = self.signer.clone();
-        self.asking("remove", |n| n.with_gov(|g, wall| propose(g, signer.as_ref(), "remove", json!({"fingerprint": fingerprint}), wall).map(|_| ())))?;
+        let (signer, body) = (self.signer.clone(), self.with_cut("remove", json!({"fingerprint": fingerprint})));
+        self.asking("remove", |n| n.with_gov(|g, wall| propose(g, signer.as_ref(), "remove", body, wall).map(|_| ())))?;
         match self.members.get(fingerprint) {
             Some(d) if d.status == Status::Revoked => Ok(d.clone()),
             _ => Err(declined("That removal needs more signatures before it takes effect.")),
@@ -435,8 +437,12 @@ impl Node {
         Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": describe(&act, &g.devices())}))
     }
 
-    /// An `admin_remove` that names no cut keeps every act of that key this device holds.
+    /// An `admin_remove` that names no cut keeps every act of that key this device holds. A `remove` names the logs of the device that
+    /// this device holds, whatever the caller says.
     fn with_cut(&self, kind: &str, mut body: Value) -> Value {
+        if kind == "remove" {
+            body["cut"] = json!(self.logs_of(body["fingerprint"].as_str().unwrap_or("")));
+        }
         if kind == "admin_remove" && body.get("cut").is_none() {
             let key = body["key"].as_str().unwrap_or("").to_string();
             let cut: Vec<String> = self.members.gov().map(|g| g.acts().iter().filter(|(_, a)| a.admin_keys().contains(&key.as_str())).map(|(id, _)| id.clone()).collect()).unwrap_or_default();
