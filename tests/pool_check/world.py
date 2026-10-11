@@ -20,6 +20,7 @@ from pool_check.device import (
     WslHostedDevice,
     free_port,
 )
+from pool_check.person import RigPerson
 
 JOIN_TTL_S = 120
 BUILD = ("fakebuild0000000000000000000000000000dead", 10)
@@ -62,6 +63,7 @@ class World:
     def __init__(self, layout: Layout) -> None:
         count, binary, image, run, wsl, native, hosted = (layout.count, layout.binary, layout.image, layout.run, layout.wsl, layout.native, layout.hosted)
         self.count, self.run, self.image, self.native = count, run, image, native or hosted is not None
+        self.person = RigPerson()
         self.net = None if native else dock.Net.make(run)
         self.nat = dock.Net.make(run, "-nat") if wsl else None
         self.wsl: list[WslDevice] = []
@@ -103,9 +105,10 @@ class World:
             build, seq = (builds or {}).get(index, BUILD)
             device.build_args = ["--build-id", build, "--build-seq", str(seq), *(["--wire-version", str(wire[index])] if wire and index in wire else [])]
             device.start_node()
-            device.token = device.admin_token = ""
+            device.token = device.admin_token = device.admin_name = ""
             device.register(f"dev{index}")
             eventually(lambda d=device: d.hello()["pid"], 15, f"{device.name}'s node to answer")
+            self.person.setup(device)
 
     def wipe(self, device: Device) -> None:
         """Stop the node of ``device`` and delete everything it kept."""
@@ -147,10 +150,12 @@ class World:
                 shutil.rmtree(device.root, ignore_errors=True)
         for device in [*self.others, *self.wsl]:
             if isinstance(device, ContainerDevice):
+                device.close()
                 device.box.remove()
             elif isinstance(device, WslHostedDevice):
                 with contextlib.suppress(RuntimeError, Refused):
                     device.stop_node()
+                device.close()
         for net in (self.net, self.nat):
             if net:
                 net.remove()

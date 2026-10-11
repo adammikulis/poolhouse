@@ -6,14 +6,17 @@ too (Docker Desktop, or any Docker). Neither is in a default tier: they are slow
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from pool_check import dock, rig
+from pool_check import dock, rig, wire
 from pool_check.device import WslDevice, wsl_argv
+from pool_check.driver_host import Driver
 from pool_check.report import Report, Skip
 from pool_check.world import eventually
 
@@ -87,6 +90,43 @@ def test_a_command_in_wsl_carries_its_environment_because_wsl_passes_none():
     assert argv == ["wsl.exe", "-d", "Ubuntu-24.04", "--cd", "/root/poolhouse", "--", "env", "POOLHOUSE_HOME=/tmp/pcw", "A=b", "python", "x.py"]
 
 
+def test_every_command_of_a_driven_device_is_a_child_of_one_process_so_a_token_can_spend_its_grants_in_all_of_them():
+    driver = Driver([sys.executable, str(Path(rig.__file__).with_name("driver.py"))])
+    try:
+        parent = "import os; print(os.getppid(), os.environ.get('RIG_MARK', ''))"
+        first = driver.run([sys.executable, "-c", parent], {"RIG_MARK": "one"}, 30)
+        second = driver.run([sys.executable, "-c", parent], {}, 30)
+        assert first.stdout.split() == [str(driver.proc.pid), "one"], "a command is not a child of the driver, or lost its environment"
+        assert second.stdout.split() == [str(driver.proc.pid)], "the second command is not a child of the same driver, or kept the first's environment"
+        slow = driver.run([sys.executable, "-c", "import time; time.sleep(30)"], {}, 1)
+        assert slow.returncode == -1 and "no answer in 1" in slow.stderr
+        missing = driver.run(["/no/such/program"], {}, 5)
+        assert missing.returncode == 127 and "FileNotFoundError" in missing.stderr
+        assert driver.run([sys.executable, "-c", "print('still answering')"], {}, 30).stdout.strip() == "still answering"
+    finally:
+        driver.close()
+    assert driver.proc.poll() is not None, "the driver outlived its input"
+
+
+def test_a_driver_that_ends_says_what_it_wrote(tmp_path):
+    broken = tmp_path / "broken.py"
+    broken.write_text("import sys; print('{\"ready\": true}', flush=True); sys.stderr.write('it fell over'); sys.exit(3)")
+    driver = Driver([sys.executable, str(broken)])
+    try:
+        with pytest.raises(RuntimeError, match="it fell over"):
+            driver.run(["true"], {}, 5)
+    finally:
+        driver.close()
+
+
+def test_the_rig_leaves_the_one_time_secret_of_a_person_key_in_the_node_state_the_way_grants_setup_does(tmp_path, capsys):
+    assert wire.main(["expect-enrol", "--state", str(tmp_path)]) == 0
+    secret = json.loads(capsys.readouterr().out)["result"]["secret"]
+    kept = json.loads((tmp_path / "enroll_secret.json").read_text())
+    assert kept["sha256"] == hashlib.sha256(secret.encode()).hexdigest() and set(kept) == {"sha256", "at_ms"}, "the node keeps the hash of the secret and the time, never the secret"
+    assert os.name == "nt" or (tmp_path / "enroll_secret.json").stat().st_mode & 0o077 == 0, "the file is the person's alone"
+
+
 def test_the_device_behind_nat_cannot_be_dialed_by_anything():
     from pool_check.device import Undialable
     nat = WslDevice(name="wsl9", port=1)
@@ -122,6 +162,14 @@ def test_three_native_devices_join_converge_and_refuse_a_removed_member(node_bin
     done = run_script("--platform", "native", "--devices", "3", "--binary", str(node_binary), "--only", "join-secure", "--only", "entries-converge", "--only", "member-removal", timeout=900)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "PASS  member-removal" in done.stdout
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(MODE not in ("native", "docker"), reason="set POOLHOUSE_POOL_CHECK=native (or docker) to start real nodes")
+def test_the_rig_plays_the_person_so_a_session_with_no_grant_is_refused_and_a_removed_key_stops_what_it_signed(node_binary):
+    done = run_script("--platform", "native", "--devices", "3", "--binary", str(node_binary), "--only", "grants-gate", "--only", "grants-key-removed", timeout=900)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "PASS  grants-gate" in done.stdout and ("PASS  grants-key-removed" in done.stdout or sys.platform == "win32")
 
 
 @pytest.mark.slow

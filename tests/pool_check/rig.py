@@ -17,6 +17,7 @@ from pathlib import Path
 from pool_check import (
     dock,
     steps_build,
+    steps_grants,
     steps_members,
     steps_nat,
     steps_pool,
@@ -46,6 +47,8 @@ STEPS = [
     ("join-order", steps_members.join_order_does_not_matter),
     ("member-removal", steps_members.a_removed_device_is_refused_by_every_member),
     ("cert-swap", steps_members.a_swapped_certificate_is_refused),
+    ("grants-gate", steps_grants.a_session_with_no_grant_is_refused_until_a_person_signs_one),
+    ("grants-key-removed", steps_grants.a_removed_key_stops_what_it_signed),
     ("partition-heal", steps_resilience.a_partition_heals_and_both_sides_merge),
     ("crash-mid-sync", steps_resilience.a_node_killed_mid_sync_resumes),
     ("tests-on-device", steps_tests.a_tiny_test_file_runs_on_a_linux_device),

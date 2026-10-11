@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePath, PurePosixPath
 
 from pool_check import dock
+from pool_check.driver_host import Driver
 
 ROOT = dock.ROOT
 BOARD = "demo"
@@ -33,6 +34,8 @@ AGENT_MARKERS = ("CODEX_THREAD_ID", "CODEX_SESSION_ID", "CLAUDECODE", "POOLHOUSE
                  "POOLHOUSE_WORKSPACE_DENYLIST", "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_BOARD", "POOLHOUSE_HOME")
 
 
+NO_REAL_KEYSTORE = "POOLHOUSE_NO_REAL_KEYSTORE"
+"""Set for every command of a device: the machine's own keystore (the account's Keychain on a Mac) reads as absent, so no device of a check asks for or keeps a key there."""
 ALL_INTERFACES = "0.0.0.0"  # noqa: S104 - a container listens on every interface of its own network namespace, a CI runner's node on its own
 PLATFORM_NAME = {"darwin": "mac", "win32": "windows"}.get(sys.platform, "linux")
 """What the device the rig runs on is called in reports."""
@@ -63,13 +66,34 @@ class Device:
     token: str = ""
     session: str = ""
     admin_token: str = ""
+    admin_name: str = ""
     extra: list[str] = field(default_factory=list)
+    driver: Driver | None = field(default=None, repr=False)
 
     state_text = ""
     build_args: list[str] = field(default_factory=list)
 
     def run(self, argv: list[str], env: dict[str, str] | None = None, timeout: float = 120, check: bool = True) -> subprocess.CompletedProcess[str]:
         raise NotImplementedError
+
+    def driver_argv(self) -> list[str]:
+        """The command that starts `driver.py` on a device whose commands cannot share a process lineage any other way."""
+        raise NotImplementedError
+
+    def driven(self, argv: list[str], env: dict[str, str], timeout: float, check: bool) -> subprocess.CompletedProcess[str]:
+        """``argv`` run as a child of this device's driver (driver.py says why), which is started on first use."""
+        if self.driver is None:
+            self.driver = Driver(self.driver_argv(), dock.account_environment())
+        done = self.driver.run(argv, env, timeout)
+        if check and done.returncode:
+            raise RuntimeError(f"{self.name}: {' '.join(argv)} exited {done.returncode}:\n{done.stdout[-1500:]}\n{done.stderr[-1500:]}")
+        return done
+
+    def close(self) -> None:
+        """End what the rig started on this device besides its node: the driver."""
+        if self.driver is not None:
+            self.driver.close()
+            self.driver = None
 
     def wire(self, *argv: str, check: bool = True) -> dict:
         """One `wire.py` command on this device; its JSON envelope."""
@@ -171,11 +195,21 @@ class Device:
         got = self.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session=session)
         self.token, self.session = got["token"], got["name"]
 
-    def admin(self, method: str, **params):
-        """A pool call (join, policy, remove, sync) as this device's session on the `pool` board, the one node_join uses."""
+    def admin_session(self) -> tuple[str, str]:
+        """This device's session on the `pool` board, the one node_join uses (registered on first use): its token and its name."""
         if not self.admin_token:
-            self.admin_token = self.call("register", "pool", "", model="claude-sonnet-5-5", harness="poolhouse-pool", session="pool-check")["token"]
-        return self.call(method, "", self.admin_token, **params)
+            got = self.call("register", "pool", "", model="claude-sonnet-5-5", harness="poolhouse-pool", session="pool-check")
+            self.admin_token, self.admin_name = got["token"], got["name"]
+        return self.admin_token, self.admin_name
+
+    def bare_session(self, board: str, session: str) -> tuple[str, str]:
+        """A further session on ``board`` that no person has granted anything: its token and its name."""
+        got = self.call("register", board, "", model="claude-sonnet-5-5", harness="poolhouse-pool", session=session)
+        return got["token"], got["name"]
+
+    def admin(self, method: str, **params):
+        """A pool call (join, policy, remove, sync) as this device's session on the `pool` board; the node allows it only under a grant."""
+        return self.call(method, "", self.admin_session()[0], **params)
 
     def post(self, body: str, to: str = "#general", kind: str = "note") -> dict:
         return self.call("post", BOARD, kind="message", fields={"type": kind, "to": to, "body": body, "subject": ""})
@@ -231,7 +265,7 @@ class LocalDevice(Device):
 
     def env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         base = {k: v for k, v in os.environ.items() if k not in AGENT_MARKERS}
-        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_NODE_LAN": "off", **(extra or {})}
+        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_NODE_LAN": "off", NO_REAL_KEYSTORE: "1", **(extra or {})}
 
     def run(self, argv, env=None, timeout=120, check=True):
         done = subprocess.run(argv, env=self.env(env), cwd=ROOT, capture_output=True, text=True, timeout=timeout, check=False)
@@ -298,11 +332,11 @@ class ContainerDevice(Device):
     def __post_init__(self) -> None:
         self.state_text = STATE
 
+    def driver_argv(self):
+        return ["docker", "exec", "-i", self.box.name, "python", f"{RIG}/pool_check/driver.py"]
+
     def run(self, argv, env=None, timeout=120, check=True):
-        done = self.box.exec(*argv, check=False, timeout=timeout, env={"POOLHOUSE_HOME": "/pc", "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": "", **(env or {})})
-        if check and done.returncode:
-            raise RuntimeError(f"{self.name}: {' '.join(argv)} exited {done.returncode}:\n{done.stdout[-1500:]}\n{done.stderr[-1500:]}")
-        return done
+        return self.driven(argv, {"POOLHOUSE_HOME": "/pc", "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": "", NO_REAL_KEYSTORE: "1", **(env or {})}, timeout, check)
 
     def script(self, name, *argv):
         return ["python", f"{RIG}/pool_check/{name}", *argv]
@@ -405,12 +439,11 @@ class WslHostedDevice(Device):
     def __post_init__(self) -> None:
         self.state_text = f"{self.home}/node"
 
+    def driver_argv(self):
+        return wsl_argv(self.distro, self.checkout, [*self.interpreter(), f"{self.checkout}/tests/pool_check/driver.py"], {"PYTHONPATH": f"{self.checkout}/src"})
+
     def run(self, argv, env=None, timeout=120, check=True):
-        full = {"POOLHOUSE_HOME": self.home, "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": f"{self.checkout}/src", **(env or {})}
-        done = subprocess.run(wsl_argv(self.distro, self.checkout, argv, full), capture_output=True, text=True, timeout=timeout, check=False)
-        if check and done.returncode:
-            raise RuntimeError(f"{self.name}: {' '.join(argv)} exited {done.returncode}:\n{done.stdout[-1500:]}\n{done.stderr[-1500:]}")
-        return done
+        return self.driven(argv, {"POOLHOUSE_HOME": self.home, "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": f"{self.checkout}/src", NO_REAL_KEYSTORE: "1", **(env or {})}, timeout, check)
 
     def windows_host(self) -> str:
         """The address of Windows as WSL sees it: the default route's gateway (NAT mode)."""

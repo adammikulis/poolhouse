@@ -35,6 +35,31 @@ Every node runs under the real supervisor (`node_launch`), is asked through its 
 (`add_device` and `join_pool`, which `python -m poolhouse.node_join` calls) with an explicit address: Docker Desktop cannot carry
 multicast to the machine it runs on, so discovery by beacon is not exercised.
 
+### The rig is the person of its pool
+
+A node allows a session nothing beyond its own board's messages, notes, claims and leases until a person's key grants it (docs/node.md,
+"Standing grants"), so a rig that drove a pool as a bare agent session was refused on its first `set_join_policy` and `add_device`. The rig
+now does what a person does, through the node's real paths and nothing else (`tests/pool_check/person.py`):
+
+* It makes one Ed25519 key for the run, in memory. The key is never written beside a node, never put in a keystore and never the account's;
+  there is no switch in the node or in any production path for it, and nothing in the node knows a rig is running.
+* For each device it leaves the hash of a one-time secret in that node's own temporary state directory, the way `grants-setup` does
+  (`grants.expect_enrolment`, run on the device by `wire.py expect-enrol`), and enrols the key through the node's `person_enroll` with the secret.
+* It signs each grant through `grant_issue`, for the rig's named sessions on that device only (the device's own fingerprint), for six hours:
+  `set_join_policy`, `add_device`, `join_pool`, `member_remove` and `sync_now` to the session on the `pool` board that the steps join and
+  remove through, and `shard_call` and `shard_consent` to the session of the `demo` board that sends and receives test runs. Nothing else is
+  granted, so a step that needs another action fails with the node's own refusal until the rig's person grants it.
+* A node binds each token to the processes that registered it and lets it spend a grant only from a process that shares them (docs/node.md,
+  "Identity"). The commands of this machine's devices are all children of the rig. A command run with `docker exec` or `wsl.exe` has no parent
+  the node can read, so each device that is reached that way runs one process, `driver.py`, and every command of that device is its child
+  (`driver_host.py`), as every command of a person's terminal is a child of its shell. Without it a session registered in one command spends
+  nothing in the next.
+
+What this does not exercise is the custody of a person's real key: the typed `yes` on the terminal device and the operating system's keystore.
+The rig's key signs without being asked, which is exactly what the node cannot tell apart from a person's key; those are the tests of
+`tests/test_board_person_key.py`, not of a pool. Every device of the rig also runs with `POOLHOUSE_NO_REAL_KEYSTORE=1`, so no device of a check
+asks the account's Keychain for a key (the updater step's activity log did, and on an owner's Mac that is a Keychain prompt).
+
 ## The steps
 
 | step | what it proves |
@@ -53,6 +78,8 @@ multicast to the machine it runs on, so discovery by beacon is not exercised.
 | `join-order` | a chain forwards, a chain backwards and a star on the last device all end as one pool with one board |
 | `member-removal` | after one member removes another, every other member (not only the remover) refuses that device's next request, and nothing it writes afterwards reaches them |
 | `cert-swap` | a device that comes back at a member's address with a different certificate is refused by every member and by the pin of the members that dial it |
+| `grants-gate` | a session no person has granted is refused `add_device`, `set_join_policy` and `member_remove` with the missing grant named; under a person-signed grant of one use it adds a device once and is then refused; a standing grant works until it is revoked; a `member_remove` grant scoped to one fingerprint removes exactly that member |
+| `grants-key-removed` | a second person key, approved by the first for this node and this terminal, signs a grant that works; once the first key removes it, that grant stops, the first key's grants and the rig's session keep working, the removed key signs nothing new and cannot be enrolled again. Skipped where no node device reads which process asks (Windows) |
 | `partition-heal` | a device cut off from the network (`docker network disconnect`) writes and claims a branch, so does the rest; after healing every entry is everywhere and exactly one device holds the branch |
 | `crash-mid-sync` | the node of a device is killed with SIGKILL while 1500 entries are arriving; the supervisor restarts it and it ends with all of them and no damaged log |
 | `tests-on-device` | `scripts/test --on` (the real `test_on` code) sends a tiny tree to a Linux device: refused until its person enables the feature and names the sender, then a test file that asserts it is Linux passes there; a device not named is refused |
@@ -119,6 +146,11 @@ prints which device has an address for which). The cost of a member nothing can 
 
 ## What it cannot show
 
+* **A person's own key.** The rig plays the person with an in-memory key that signs unasked; the typed `yes`, the terminal device and the
+  keystore of a real key are checked by `tests/test_board_person_key.py` and by the owner, not here. The Windows named pipe takes the
+  grants (`grants-gate` runs on it), but Windows reads no process lineage yet (docs/node.md, "Identity"), so a signature that names a
+  terminal (approving a second key, removing a key, `rebind`) cannot be made there and `grants-key-removed` is skipped on a Windows-only
+  pool; it runs on the WSL device of the Windows and WSL job.
 * **Windows.** Docker cannot run Windows. The Windows named pipe, ACLs, the Windows firewall and the supervisor on Windows are covered
   only by the `windows-latest` jobs of `.github/workflows/pool-check.yml` (a native pool, and the Windows device and a WSL
   device of one runner joined), and those have to run on GitHub. They have: the Windows node, its named pipe and every step that fits
