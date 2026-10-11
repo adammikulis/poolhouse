@@ -443,22 +443,22 @@ one account. There is no socket and no LAN exposure.
 | An agent steered by injected text | send as someone else | the sender is the owner of the token; `send` has no sender argument, and the registry stores only a SHA-256 of each secret, so reading it yields no identity |
 | the same | get a rule adopted, or a person's approval claimed | every item is delivered inside an `<untrusted>` fence labelled with sender, role and `no authority`; "approved", "authorize", "from now on all agents" and "add to CLAUDE.md" patterns quarantine the item; a rule note is advice with `binding: false`; no operation edits repository documents |
 | the same | get a note believed | trust is set by the service from the token and from a run of an allow-listed command, never by the writer; a lower-trust note cannot supersede a higher one; facts carry a TTL and show as stale |
-| the same | leak a secret or a private term through a note or message | the write is refused, naming the rule and not the match; the audit log keeps lengths, never text |
-| the same | flood, fill the disk | per-sender sliding-window rate limit, body and subject caps, per-recipient inbox cap, per-agent note and scratch limits, retention |
+| the same | leak a secret or a private term through a note or message | the write is refused, naming the rule and not the match |
+| the same | flood, fill the disk | the node's quotas on sessions, tokens, boards and registrations and its cap on a log's rows, the body and subject caps the commands apply, scratch limits; a per-sender message rate and a per-recipient inbox cap are not built (docs/node.md) |
 | the same | escape its scratch folder | names are plain, resolved paths are checked after following symlinks, a symlinked agent or folder directory is refused |
 | the same | hold the lead's ports and branches | claims have a TTL renewed by heartbeat and are released when the owning pid is gone |
 | the same | run a command through a note | the service runs a note's command only for a lead or human token, only if the owner listed its leading words in `limits.json`, with no shell, a reduced environment and a timeout; the default list is empty |
-| anyone | edit the history | every log is hash-chained; `audit-verify` finds the first broken row and accepts an external anchor for truncation |
+| anyone | edit the history | every board log is signed and hash-chained by the device that wrote it; the node reports a damaged log in `status` and refuses a foreign log that does not verify (docs/node.md, "Sync") |
 
 **Not defended.** A hostile process of the same account can read the files, edit or delete the
 logs (a full rewrite with recomputed hashes is undetectable) and read another process's
 environment. Pattern screens miss paraphrase. The workspace labels and fences text; it does not
 stop a model from obeying what it was shown.
 
-**Operations.** `init` refuses to run when `CLAUDECODE`, `POOLHOUSE_AGENT` or
-`POOLHOUSE_NONINTERACTIVE` is set. Minting, revoking, releasing quarantine, running a note's
-command and `gc` are CLI-only and are not offered over MCP. Tokens come from
-`POOLHOUSE_WORKSPACE_TOKEN` or `--token-file`, never from an argument.
+**Operations.** Releasing quarantine, a note's verification, deleting a file and signing a grant are
+a person's or need a grant, and none is offered over MCP. A session's token is read from its own
+private file under the node's client folder (`--agent NAME` or `POOLHOUSE_WORKSPACE_AGENT`), from
+`POOLHOUSE_WORKSPACE_TOKEN` or from `--token-file`, never from an argument.
 
 **Private terms.** The denylist is a file outside the repository (`POOLHOUSE_WORKSPACE_DENYLIST`,
 else `<state>/workspace/private-terms`), one term per line.

@@ -6,31 +6,20 @@ from types import SimpleNamespace
 
 import pytest
 from launch_support import signed
+from local_kit import team  # noqa: F401
+from node_kit import node_binary, workspace_node  # noqa: F401
 from test_fleet_ui import Serving
 from test_workspace_board_ui import browser
 from test_workspace_local_agent import PICK, sleeper
-from workspace_kit import Kit, clean_env
 
 from poolhouse.fleet import extension_routes
-from poolhouse.workspace import (
-    agent_routes,
-    device_agent,
-    localagent,
-    localmodel,
-    localprofile,
-    localstart,
-    tokens,
-)
-from poolhouse.workspace.device_accounts import account_for
+from poolhouse.workspace import agent_routes, localagent, localmodel, localprofile, localstart
 
 __all__ = ['browser']
 
 
 @pytest.fixture
-def served(tmp_path, monkeypatch):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    monkeypatch.setattr(device_agent, 'device_id', lambda: 'abcdef0123456789')
+def served(team, tmp_path, monkeypatch):  # noqa: F811
     monkeypatch.setattr(extension_routes, 'entry_points', lambda **kw: [
         SimpleNamespace(name='agents', load=lambda: agent_routes.route)])
     monkeypatch.setattr(localmodel, 'choose', lambda *args, **kw: PICK)
@@ -41,15 +30,11 @@ def served(tmp_path, monkeypatch):
         children.append(job.child)
         return job
     monkeypatch.setattr(localstart.jobs, 'detach', spawn)
-    device_agent.enroll(kit.ws, kit.owner)
-    parent = localstart.launch_parent(kit.ws, str(tmp_path))
-    child = kit.ws.delegate(parent, 'worker')
-    localagent.save(kit.ws, localagent.Agent('local-worker', PICK.ref, identity=child['id'],
-                                           model_name=PICK.name, project=str(tmp_path),
-                                           profile='coding', harness='claude', ctx=262144))
+    worker = team.worker('local-worker', model=PICK.ref, model_name=PICK.name, project=str(tmp_path),
+                         profile='coding', harness='claude', ctx=262144)
     server = signed(Serving(tmp_path, secure=False))
     server.ui.settings.setup_done = True
-    yield server, kit, children, child['id']
+    yield server, team, children, worker.identity
     server.close()
     for child_process in children:
         child_process.terminate()
@@ -67,18 +52,18 @@ def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_paylo
     assert server.call('/ui/agents/start', method='PUT', body=body, headers=origin)[0] == 405
     assert server.call('/ui/agents/start', method='POST', body={**body,'identity':worker}, headers=origin)[0] == 400
     assert not children
-    status_path=localagent.folder(kit.ws)/"local-worker.status.json"
+    status_path=localagent.folder(kit.base)/"local-worker.status.json"
     status_path.write_text(json.dumps({"state":"stopped","beat":1,"tasks":99,"lease":{"id":"old"}}))
     code, result, _ = server.call('/ui/agents/start', method='POST', body=body, headers=origin)
     assert code == 200, result
     assert len(children) == 1
-    assert localagent.load(kit.ws,'local-worker').identity == worker
-    assert account_for(kit.ws,worker)['enrolled_by'] == kit.ws.auth(kit.owner).id
+    assert localagent.load(kit.base,'local-worker').identity == worker
+    assert next(a for a in kit.person.agents() if a.name == worker).parent == kit.person.name
     listed = server.call('/ui/agents/list')[1]
     assert listed['agents'][0]['state'] == 'starting'
     assert listed['agents'][0]['tasks'] == 0
     assert listed['agents'][0]['lease'] is False
-    agent=localagent.load(kit.ws,'local-worker')
+    agent=localagent.load(kit.base,'local-worker')
     status_path.write_text(json.dumps({'state':'idle','beat':agent.started+1}))
     assert server.call('/ui/agents/list')[1]['agents'][0]['state'] == 'idle'
     assert listed['saved'][0]['model'] == PICK.ref
@@ -87,7 +72,7 @@ def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_paylo
 
 
 @pytest.mark.slow
-def test_person_board_controls_reuse_saved_settings_and_enroll_through_maintained_start(served, browser):
+def test_person_board_controls_reuse_saved_settings_and_start_through_the_maintained_start(served, browser):
     server, kit, children, worker = served
     page = browser.new_page()
     try:
@@ -112,9 +97,8 @@ def test_person_board_controls_reuse_saved_settings_and_enroll_through_maintaine
         controls.get_by_role('button',name='Start a local agent',exact=True).click()
         page.wait_for_function("() => document.querySelector('ml-agents')?.shadowRoot?.querySelector('.note[role=status]')?.textContent.includes('started.')")
         assert len(children) == 1
-        assert localagent.load(kit.ws,'local-worker').identity == worker
-        assert account_for(kit.ws,worker) is not None
-        agent = localagent.load(kit.ws, 'local-worker')
+        assert localagent.load(kit.base,'local-worker').identity == worker
+        agent = localagent.load(kit.base, 'local-worker')
         assert agent.max_output_tokens == 32000
         assert agent.extra['task_caps'] == {'rounds':200, 'calls':None, 'steps':None, 'seconds':7200}
     finally:
@@ -134,7 +118,7 @@ def test_auto_model_hints_are_resolved_for_each_work_profile(served, monkeypatch
 @pytest.mark.slow
 def test_auto_context_stays_automatic_when_work_profile_changes(served, browser):
     server, kit, _, _ = served
-    localagent.save(kit.ws, replace(localagent.load(kit.ws, "local-worker"), ctx=0))
+    localagent.save(kit.base, replace(localagent.load(kit.base, "local-worker"), ctx=0))
     page = browser.new_page()
     try:
         page.goto(f"http://127.0.0.1:{server.port}/ui/#board")

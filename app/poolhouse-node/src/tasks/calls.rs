@@ -494,11 +494,26 @@ fn landing_hand(node: &mut Node, board: &str, actor: &str, t: &Task) -> Result<b
     exercised(node, board, actor, &t.id)
 }
 
+/// Whether ``actor`` is a worker this task was assigned to or its parent: before the worker claims, the parent reserves the
+/// checkout (the scope) and records the allocation it made, and the worker records its checkout.
+fn sponsors(node: &mut Node, board: &str, actor: &str, t: &Task, method: &str, p: &Map<String, Value>) -> Result<bool> {
+    let scope = method == "task_scope";
+    if !scope && !(method == "task_record" && text(p, "kind") == "allocation") {
+        return Ok(false);
+    }
+    for a in &t.assigns {
+        if scope && a.worker == actor || parent_of(node, board, &a.worker)? == actor {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn host_step(node: &mut Node, board: &str, token: &str, method: &str, p: &Map<String, Value>) -> Result<Value> {
     let actor = member(node, token, board)?;
     let b = fold(node, board)?;
     let t = find(&b, text(p, "task"))?.clone();
-    if !(landing_hand(node, board, &actor, &t)? || method == "task_scope" && t.list("assignees").contains(&actor)) {
+    if !(landing_hand(node, board, &actor, &t)? || method == "task_scope" && t.list("assignees").contains(&actor) || sponsors(node, board, &actor, &t, method, p)?) {
         return Err(crate::grants::refused_for(node, token, super::AUTHORITY, &t.id, "only the task worker, registered parent, creator or independent reviewer may record its execution scope or integration"));
     }
     let mut body = step(&method["task_".len()..], &t);

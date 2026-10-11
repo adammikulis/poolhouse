@@ -1,107 +1,134 @@
-"""Registered parents allocate ready tasks to their enrolled local workers."""
+"""Registered parents allocate ready tasks to their local workers and land what is accepted."""
+
+from __future__ import annotations
 
 import os
+import sys
 import time
+from pathlib import Path
+from typing import Any
 
 from poolhouse import activity
-from poolhouse.graph.store import GraphStore
+from poolhouse.board.client import NodeError
+from poolhouse.board.session import Session
+from poolhouse.board.tasks import Tasks
+from poolhouse.errors import Denied
+from poolhouse.serve import broker_wire
 from poolhouse.serve.process import pid_exists, started_at
 from poolhouse.workspace import (
-    child_renewal,
     localagent as la,
-    resource_allocations,
+    localslot,
     task_authority,
     task_integration,
-    task_scope,
-    tokens,
+    task_worktrees,
 )
-from poolhouse.workspace.chain import held
-from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.task_graph import link, save
-from poolhouse.workspace.taskboard import TaskBoard
+
+__all__ = ["assign_next", "execution_config", "integrate_completed", "watch"]
+
+CONFIG = ('model', 'harness', 'ctx', 'effort', 'max_effort', 'max_output_tokens', 'role', 'profile', 'project')
 
 
-def assign_next(ws, parent_token: str, worker: str, broker_lease: str, *, task=""):
-    """Prepare and allocate the oldest eligible queued task without retrying blocked work."""
-    parent, child = ws.auth(parent_token), ws.auth(tokens.load(ws.base, worker))
-    if child.parent != parent.id:
-        task_authority.authorize(ws, parent_token, worker, task)
-    expiry = ws.registry.info(worker).get('expires', 0)
-    if child.parent == parent.id and expiry and expiry - ws.registry.clock() < ws.limits.child_ttl_s / 4:
-        child_renewal.renew(ws, parent_token, worker)
-    board = TaskBoard(ws)
-    runner = resource_allocations._worker(ws, worker)
-    grant = resource_allocations._grant(broker_lease, resource_allocations.broker_wire.status(start=False))
-    tasks = board.list(parent_token)['tasks']
-    ready = [row for row in tasks if (not task or row['id'] == task) and row['state'] == 'queued' and task_scope.eligible(ws, child, row)
+def execution_config(runner: la.Agent) -> dict[str, Any]:
+    """The part of a worker's saved configuration an allocation is made for."""
+    return {key: getattr(runner, key) for key in CONFIG}
+
+
+def _now() -> int:
+    return int(time.time() * 1000)
+
+
+def _runtime() -> Any:
+    try:
+        return broker_wire.status(start=False).get('runtime')
+    except (OSError, RuntimeError):
+        return None
+
+
+def _ready(tasks: list[dict[str, Any]], runner: la.Agent, parent: str, model: str, wanted: str) -> list[dict[str, Any]]:
+    """The queued tasks the worker may take, oldest first."""
+    found = [row for row in tasks if (not wanted or row['id'] == wanted) and row['state'] == 'queued'
              and all(dep['state'] == 'completed' for dep in row['dependencies'])
              and set(row['capabilities']) <= {runner.profile}
-             and row['limits'].get('model', grant['model']) == grant['model']]
-    if not ready:
+             and row['limits'].get('model', model) == model
+             and (runner.identity in row['assignees'] or row['created_by'] == parent or not row['assignees'])]
+    return sorted(found, key=lambda row: row['created_at'])
+
+
+def assign_next(s: Session, base: Path, worker: str, *, task: str = '') -> dict[str, Any] | None:
+    """Prepare and allocate the oldest eligible queued task without retrying blocked work; the allocation, or None."""
+    runner = task_authority.runner_of(base, s, worker)
+    slot = localslot.held(s, runner.identity)
+    if slot is None:
         return None
-    task = min(ready, key=lambda row: row['created_at'])
-    return resource_allocations.assign(ws, parent_token, worker, task['id'], broker_lease)
-
-
-
-def integrate_completed(ws, parent_token, worker):
-    """Attempt each independently accepted worker review once and preserve its outcome."""
-    parent = ws.auth(parent_token)
-    if ws.registry.info(worker).get('parent') != parent.id or not ws.registry.role_of(worker):
-        raise Denied('integration polling requires the registered worker parent')
-    board = TaskBoard(ws)
-    results = []
-    for summary in board.list(parent_token)['tasks']:
-        if summary['state'] != 'accepted' or summary.get('worker') != worker:
+    model = next(r['model'] for r in slot['resources'] if r['type'] == 'model_slot')
+    tasks = Tasks(s)
+    parent = next((a.parent for a in s.agents() if a.name == runner.identity), '')
+    for row in _ready(tasks.list()['tasks'], runner, parent, model, task):
+        try:
+            _, spec = task_authority.authorize(s, base, worker, row['id'])
+            scope = task_worktrees.plan(s.name, runner, spec) if runner.profile == 'coding' else None
+            allocation = tasks.assign(row['id'], runner.identity, slot['id'], [runner.profile])
+        except (Denied, ValueError):
             continue
-        task = board.get(parent_token, summary['id'])
+        if scope is not None:
+            tasks.scope(row['id'], scope)
+        provenance = {'execution_config': execution_config(runner), 'broker_runtime': _runtime(), 'worker': runner.identity,
+                      'interpreter': sys.executable, 'python': sys.version.split()[0], 'scheduler_pid': os.getpid()}
+        tasks.record(row['id'], 'allocation', allocation['allocation_id'], provenance)
+        return {**allocation, **provenance, 'project': (scope or {}).get('project', runner.project)}
+    return None
+
+
+def integrate_completed(s: Session, base: Path, worker: str) -> list[dict[str, Any]]:
+    """Attempt each independently accepted review of the worker's tasks once and preserve its outcome."""
+    runner = task_authority.runner_of(base, s, worker)
+    parent = next((a.parent for a in s.agents() if a.name == runner.identity), '')
+    if parent != s.name:
+        raise Denied('integration polling requires the registered worker parent')
+    tasks, results = Tasks(s), []
+    for summary in tasks.list()['tasks']:
+        if summary['state'] != 'accepted' or summary.get('worker') != runner.identity:
+            continue
+        task = tasks.get(summary['id'])
         review = task.get('review') or {}
         if not review.get('accepted') or review.get('outcome') != 'accepted':
             continue
         ident = 'integration-attempt:' + review['review_hash']
-        attempt = {'id': ident, 'task': task['id'], 'worker': worker, 'owner': parent.id,
-                   'review_hash': review['review_hash'], 'state': 'started', 'started': ws.clock(),
-                   'owner_pid': os.getpid(), 'owner_started': started_at(os.getpid())}
-        with held(ws.base / 'coordination.lock'), GraphStore(ws.base / 'coordination.db') as graph:
-            old = next((node['attrs'] for node in graph.nodes('integration-attempt') if node['id'] == ident), None)
-            if old:
-                live = bool(old.get('owner_pid') and old.get('owner_started')
-                            and pid_exists(old['owner_pid'])
-                            and started_at(old['owner_pid']) == old['owner_started'])
-                if old['state'] == 'started' and old['owner'] == parent.id and not live:
-                    outcome = {'state': 'blocked', 'reason':
-                        'The previous integration owner is no longer live; preserve and inspect its candidate before recovery.'}
-                    old.update(state='blocked', outcome=outcome, finished=ws.clock(), recovery_required=True)
-                    save(graph, 'integration-attempt', old)
-                    results.append(outcome)
-                continue
-            save(graph, 'integration-attempt', attempt)
-            link(graph, ident, task['id'], 'integrates-task')
-            link(graph, ident, review['id'], 'accepted-review')
+        old = next((row for row in task.get('integration_attempts', []) if row['id'] == ident), None)
+        if old:
+            live = bool(old.get('owner_pid') and old.get('owner_started') and pid_exists(old['owner_pid'])
+                        and int(started_at(old['owner_pid']) or 0) == old['owner_started'])
+            if old['state'] == 'started' and old['owner'] == s.name and not live:
+                outcome = {'state': 'blocked', 'reason':
+                           'The previous integration owner is no longer live; preserve and inspect its candidate before recovery.'}
+                tasks.record(task['id'], 'attempt', ident, {'state': 'blocked', 'outcome': outcome, 'finished': _now(),
+                                                            'recovery_required': True})
+                results.append(outcome)
+            continue
+        tasks.record(task['id'], 'attempt', ident, {'task': task['id'], 'worker': runner.identity, 'owner': s.name,
+                                                    'review_hash': review['review_hash'], 'state': 'started', 'started': _now(),
+                                                    'owner_pid': os.getpid(), 'owner_started': int(started_at(os.getpid()) or 0)})
         try:
-            outcome = task_integration.integrate(ws, parent_token, task['id'])
-        except (Denied, OSError, ValueError, RuntimeError) as error:
+            outcome = task_integration.integrate(s, base, task['id'])
+        except (NodeError, OSError, ValueError, RuntimeError) as error:
             outcome = {'state': 'blocked', 'reason': str(error)}
-        attempt.update(state=outcome['state'], outcome=outcome, finished=ws.clock())
-        with held(ws.base / 'coordination.lock'), GraphStore(ws.base / 'coordination.db') as graph:
-            save(graph, 'integration-attempt', attempt)
-        activity.record('agent.integration', actor=parent.id, subject=task['title'],
-                        outcome=attempt['state'], refs={'task': task['id'], 'worker': worker},
+        tasks.record(task['id'], 'attempt', ident, {'state': outcome['state'], 'outcome': task_integration.public(outcome, base), 'finished': _now()})
+        activity.record('agent.integration', actor=s.name, subject=task['title'], outcome=outcome['state'],
+                        refs={'task': task['id'], 'worker': runner.identity},
                         meta={'review_hash': review['review_hash'], 'reason': outcome.get('reason', '')})
         results.append(outcome)
     return results
 
 
-def watch(ws, parent_token, name, *, task=""):
-    """Continuously assign ready tasks using the registered parent's private token."""
-    while not la.stop_file(ws, name).exists():
-        agent = la.load(ws, name)
+def watch(s: Session, base: Path, name: str, *, task: str = '') -> int:
+    """Continuously assign ready tasks using the registered parent's own session."""
+    while not la.stop_file(base, name).exists():
+        agent = la.load(base, name)
         if agent is None:
             raise ValueError('the local worker is missing')
         if not task:
-            integrate_completed(ws, parent_token, agent.identity or agent.name)
-        status = la.status_of(ws, name)
-        if status.get('state') == 'idle' and status.get('lease', {}).get('id'):
-            assign_next(ws, parent_token, agent.identity or agent.name, status['lease']['id'], task=task)
+            integrate_completed(s, base, agent.identity)
+        if la.status_of(base, name).get('state') == 'idle':
+            assign_next(s, base, agent.identity, task=task)
         time.sleep(1)
     return 0

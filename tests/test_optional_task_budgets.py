@@ -45,19 +45,17 @@ def test_context_sizes_parse_k_and_profiles_carry_their_caps():
 
 
 def test_saved_explicit_old_default_values_remain_finite(tmp_path):
-    from poolhouse.workspace.service import Workspace
-    ws = Workspace(tmp_path)
     agent = la.Agent("worker", "model", max_output_tokens=8192,
                      extra={"explicit_output_limit": True, "explicit_task_limits": True,
                             "task_caps": {"rounds": 12, "calls": 30, "steps": 24, "seconds": 600.0}})
-    la.save(ws, agent)
-    saved = la.load(ws, agent.name)
+    la.save(tmp_path, agent)
+    saved = la.load(tmp_path, agent.name)
     assert saved.max_output_tokens == 8192
     assert localloop.caps_of(saved).seconds == 600
     agent.extra.pop("explicit_output_limit")
     agent.extra.pop("explicit_task_limits")
-    la.save(ws, agent)
-    saved = la.load(ws, agent.name)
+    la.save(tmp_path, agent)
+    saved = la.load(tmp_path, agent.name)
     assert saved.max_output_tokens is None
     assert localloop.caps_of(saved).seconds is None
 

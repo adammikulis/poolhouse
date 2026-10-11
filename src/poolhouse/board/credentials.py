@@ -7,20 +7,62 @@ next read of that question returns only what is new.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from poolhouse.board.client import Denied
 from poolhouse.files import read_json, write_json, writing
-from poolhouse.private_path import problem
+from poolhouse.private_path import problem, redirected, windows_mount
+from poolhouse.sentinel import human
+from poolhouse.windows_private import restrict, validate
 
-__all__ = ["cursors", "forget", "load", "private", "remember", "store"]
+__all__ = ["cursors", "forget", "load", "prepare", "private", "remember", "store"]
+
+
+def prepare(state: Path) -> Path:
+    """The client folder under the node's ``state``, made owner-only and registered with sentinel so no tool call names it;
+    ValueError when it is a symlink or reparse point, sits inside a git work tree or on a Windows-mounted filesystem."""
+    path = state / "client"
+    human.protect(path)
+    if os.name == "nt":
+        validate(state)
+        validate(path)
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        if redirected(info):
+            raise ValueError(f"{path} is a symlink or Windows reparse point")
+    real = path.resolve()
+    repo = next((p for p in (real, *real.parents) if (p / ".git").exists()), None)
+    if repo is not None:
+        raise ValueError(f"{path} resolves into the git work tree {repo}; keep the node's state out of it")
+    if windows_mount(path):
+        raise ValueError(f"{path} is on a Windows-mounted filesystem; keep session tokens under the WSL home directory")
+    if os.name != "nt":
+        why = problem(state)
+        if why not in {"", "missing"} and not why.startswith("mode "):
+            raise ValueError(f"{state}: {why}")
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name == "nt":
+        if redirected(state.lstat()):
+            raise ValueError(f"{state} is a symlink or Windows reparse point")
+        restrict(state)
+        restrict(path)
+    else:
+        path.chmod(0o700)
+    return path
 
 
 def _folder(state: Path, board: str) -> Path:
-    path = state / "client" / board
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    for parent in (path.parent, path):
-        parent.chmod(0o700)
+    path = prepare(state) / board
+    path.mkdir(exist_ok=True, mode=0o700)
+    if os.name == "nt":
+        restrict(path)
+    else:
+        path.chmod(0o700)
     return path
 
 
@@ -32,12 +74,17 @@ def private(state: Path, board: str, name: str) -> Path:
     return path
 
 
-def store(state: Path, board: str, name: str, token: str) -> Path:
-    """Write ``token`` for ``name`` on ``board``, atomically and readable by this user only."""
+def store(state: Path, board: str, name: str, token: str, parent: str = "") -> Path:
+    """Write ``token`` for ``name`` on ``board``, atomically and readable by this user only, and beside it the ``parent`` the
+    node named for the session (empty for a main session)."""
     target = _folder(state, board) / f"{name}.token"
-    with writing(target) as tmp:
-        tmp.write_text(token + "\n", encoding="utf-8")
-        tmp.chmod(0o600)
+    for path, text in ((target, token), (target.with_suffix(".parent"), parent)):
+        with writing(path) as tmp:
+            tmp.write_text(text + "\n", encoding="utf-8")
+            if os.name == "nt":
+                restrict(tmp)
+            else:
+                tmp.chmod(0o600)
     return target
 
 
@@ -68,3 +115,4 @@ def remember(state: Path, board: str, name: str, question: str, cursor: dict[str
 def forget(state: Path, board: str, name: str) -> None:
     """Delete the token file of a session whose token the node revoked."""
     (state / "client" / board / f"{name}.token").unlink(missing_ok=True)
+    (state / "client" / board / f"{name}.parent").unlink(missing_ok=True)

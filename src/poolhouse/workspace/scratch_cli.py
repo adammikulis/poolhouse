@@ -19,10 +19,14 @@ def _owner(args: argparse.Namespace, s: Session) -> str:
     return agent_filter.resolve(list(inbound.names(s)), named) if named else ""
 
 
+def made(s: Session, name: str, ttl_s: int = 0) -> dict[str, str]:
+    """Make a scratch folder that lasts ``ttl_s`` seconds (the owner's default when 0); its path."""
+    return {"path": s.scratch_new(name, ttl_s or int(limits.load(limits.root()).scratch_ttl_s))}
+
+
 def new(args: argparse.Namespace, s: Session) -> Any:
     """Make a scratch folder."""
-    ttl = int(args.ttl_hours * 3600) or int(limits.load(limits.root()).scratch_ttl_s)
-    return {"path": s.scratch_new(args.name, ttl)}
+    return made(s, args.name, int(args.ttl_hours * 3600))
 
 
 def listing(args: argparse.Namespace, s: Session) -> Any:

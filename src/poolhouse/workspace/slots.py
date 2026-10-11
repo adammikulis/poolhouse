@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
-from poolhouse.workspace.claims import alive
+from poolhouse.serve.process import pid_exists
 from poolhouse.workspace.screen import clean_label
 
 __all__ = ["SLOTS_ENV", "slots_dir", "testslots"]
@@ -49,7 +49,7 @@ def testslots(known: Callable[[str], object] | None = None) -> dict[str, list[di
             data = json.loads(path.read_text() or "{}")
         except (OSError, ValueError):
             continue
-        if not isinstance(data, dict) or not alive(_number(data.get("pid"))):
+        if not isinstance(data, dict) or not pid_exists(_number(data.get("pid"))):
             continue
         item = {"pid": _number(data.get("pid")), "label": clean_label(data.get("label", "")),
                 "granted": _number(data.get("granted")), "want": _number(data.get("want")),

@@ -120,6 +120,10 @@ The parent resource assignment reserves the task branch, path and committed deve
 baseline. Claiming the task creates that checkout; nested worktrees inside the primary
 checkout are refused. Worker loss or cancellation preserves its task scope for recovery,
 rather than deleting unfinished files or reporting completion.
+The worker takes the checkout's `worktree` and `branch` claims when it claims the task and holds them until its task
+lands or its parent recovers the checkout; the claims are not tied to the task lease, so a worker can still edit its
+checkout after it submits. Integration refuses a changed commit, a dirty checkout or an artifact hash other than the
+reviewed one, so work done after the review never lands.
 Independent reviewers can open **Review quality — advanced** to link a validated result,
 prevented regression or demonstrated impact to specific independently passed checks and
 submitted artifact hashes. The server applies fixed, bounded bonus tiers; the interface has

@@ -37,7 +37,7 @@ from typing import Any
 
 from poolhouse import private_path, win32
 
-__all__ = ["Busy", "held_by", "only_one", "release", "rewriting", "take"]
+__all__ = ["Busy", "held", "held_by", "only_one", "release", "rewriting", "take"]
 
 #: The byte locked on Windows. Past any pid text, so a reader is never refused by the lock.
 _LOCKED_BYTE = 1 << 30
@@ -153,6 +153,23 @@ def only_one(what: str | Path, *, wait: bool = True, timeout: float = 0.0,
                 release(handle)
         finally:
             os.close(handle)
+
+
+@contextmanager
+def held(path: str | Path, *, shared: bool = False) -> Iterator[None]:
+    """Hold the lock file ``path`` for the block, exclusively or ``shared``, polling every few milliseconds."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle = os.open(target, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        while not take(handle, shared=shared):
+            time.sleep(0.005)
+        try:
+            yield
+        finally:
+            release(handle)
+    finally:
+        os.close(handle)
 
 
 @contextmanager

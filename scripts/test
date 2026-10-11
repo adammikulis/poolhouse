@@ -70,8 +70,8 @@ import testtime
 from poolhouse.activity import reuse
 from poolhouse.devbranch import development_branch
 from poolhouse.activity.gate import Run, record_run, tree_hash
+from poolhouse.board.tasks import Tasks
 from poolhouse.workspace import testboard, testruns
-from poolhouse.workspace.taskboard import TaskBoard
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = development_branch(ROOT)
@@ -525,7 +525,7 @@ def subscribe(jobs: testjobs.Jobs, rest: list[str], args: argparse.Namespace) ->
     if session is None:
         raise testjobs.Refused("subscribe needs a workspace agent: run it as the identity the harness assigned")
     if args.task:
-        print(TaskBoard(session.ws).subscribe(session.token, args.task))
+        print(Tasks(session).subscribe(args.task))
         return 0
     thread = int(jobs.read(rest[0]).get("thread", 0)) if rest else 0
     if args.key:
@@ -610,9 +610,9 @@ def main(argv: list[str] | None = None) -> int:
     session = testboard.acting()
     REUSE["session"] = session
     if session is not None:
-        REUSE["agent"] = session.identity
-        REUSE["events"] = testboard.BoardEvents(session, (lambda: TaskBoard(session.ws).watchers(args.task)) if args.task else None)
-        os.environ["DEV_TEST_AGENT"] = json.dumps({**session.identity, "job": os.environ.get("DEV_TEST_JOB", "")})
+        REUSE["agent"] = testboard.identity(session)
+        REUSE["events"] = testboard.BoardEvents(session, (lambda: Tasks(session).watchers(args.task)) if args.task else None)
+        os.environ["DEV_TEST_AGENT"] = json.dumps({**REUSE["agent"], "job": os.environ.get("DEV_TEST_JOB", "")})
     else:
         os.environ.pop("DEV_TEST_AGENT", None)
     if args.on:

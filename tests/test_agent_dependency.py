@@ -20,7 +20,7 @@ def test_local_chat_refuses_before_spawn(monkeypatch, tmp_path):
     monkeypatch.setattr(localstart.la, "check_orders", lambda value: value)
     spawned = []
     with pytest.raises(localstart.Unavailable, match="agent runtime"):
-        localstart._start(SimpleNamespace(base=tmp_path), localstart.Ask(), spawn=lambda *a, **k: spawned.append(a))
+        localstart.start(SimpleNamespace(board="b"), localstart.Ask(), base=tmp_path, spawn=lambda *a, **k: spawned.append(a))
     assert not spawned
 
 
@@ -46,7 +46,7 @@ def test_missing_chat_sdk_does_not_change_coding_prerequisites(monkeypatch, tmp_
     monkeypatch.setattr(localstart.la, "check_orders", lambda value: value)
     monkeypatch.setattr(localstart.localmodel, "choose", lambda *a, **k: SimpleNamespace(ok=False, problem="no coding model", hint="download a model"))
     with pytest.raises(localstart.Unavailable, match="no coding model"):
-        localstart._start(SimpleNamespace(base=tmp_path), localstart.Ask(profile="coding"))
+        localstart.start(SimpleNamespace(board="b"), localstart.Ask(profile="coding"), base=tmp_path)
 
 
 @pytest.mark.slow

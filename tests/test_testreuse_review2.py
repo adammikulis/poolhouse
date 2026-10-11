@@ -11,12 +11,12 @@ from pathlib import Path
 import pytest
 import testreuse_key as keys
 import testreuse_store as storage
+from node_kit import node_binary, workspace_node  # noqa: F401  (fixtures)
 from taskboard_kit import board  # noqa: F401  (fixture)
 from test_testreuse import FILE, Recorder, hows, project  # noqa: F401  (fixture)
 from test_testreuse_review import attempt, kinds
 
-from poolhouse.graph.store import GraphStore
-from poolhouse.workspace import testboard, testruns
+from poolhouse.workspace import task_worktrees, testboard, testruns
 
 pytestmark = pytest.mark.slow
 HELPER = "src/poolhouse/helper.py"
@@ -87,9 +87,7 @@ def test_copying_a_symlink_without_following_it_works_under_the_plugin(project, 
 
 # -- N4: evidence names a clean commit whose tree it ran ----------------------------------------------------
 def checkout(kit) -> Path:
-    with GraphStore(kit.ws.base / "coordination.db") as graph:
-        return Path(next(n["attrs"]["project"] for n in graph.nodes("task-worktree")
-                         if n["attrs"].get("task") == kit.task["id"]))
+    return Path(kit.board.get(kit.task["id"])["scope"]["project"])
 
 
 def git(path: Path, *args: str) -> str:
@@ -107,8 +105,7 @@ def json_fields(kit) -> dict:
 
 
 def put(kit, base: Path, **over) -> str:
-    with GraphStore(kit.ws.base / "coordination.db") as graph:
-        scope = testruns.task_scope(graph, kit.task["id"])
+    scope = testruns.task_scope(kit.board.get(kit.task["id"])["scope"])
     fields = {**json_fields(kit), **over}
     return storage.Store(base / scope).put(fields, "pass" if fields["outcome"] == "pass" else "fail")
 
@@ -116,7 +113,8 @@ def put(kit, base: Path, **over) -> str:
 def start(kit, monkeypatch, tmp_path):
     base = tmp_path / "reuse"
     monkeypatch.setattr(testruns, "STORE_BASE", base)
-    kit.board.claim(kit.child, kit.task["id"], kit.allocation["allocation_id"])
+    kit.work.claim(kit.task["id"], kit.allocation["allocation_id"])
+    task_worktrees.activate(kit.child, kit.work.get(kit.task["id"]))
     return base
 
 
@@ -124,14 +122,14 @@ def test_a_clean_entry_for_the_named_commit_is_accepted_and_says_what_it_covers(
     base = start(board, monkeypatch, tmp_path)
     entry = put(board, base)
     head = git(checkout(board), "rev-parse", "HEAD")
-    saved = board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
+    saved = testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
     assert saved["test_evidence"][0]["covers"] == "tests/test_a.py only"
 
 
 def test_evidence_without_a_commit_is_refused(board, tmp_path, monkeypatch):
     base = start(board, monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="commit"):
-        board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": put(board, base)})
+        testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": put(board, base)})
 
 
 def test_an_entry_from_a_dirty_checkout_is_never_evidence(board, tmp_path, monkeypatch):
@@ -139,7 +137,7 @@ def test_an_entry_from_a_dirty_checkout_is_never_evidence(board, tmp_path, monke
     entry = put(board, base, clean=False)
     head = git(checkout(board), "rev-parse", "HEAD")
     with pytest.raises(ValueError, match="uncommitted"):
-        board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
+        testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
 
 
 def test_an_entry_whose_tree_is_not_the_commits_tree_is_refused(board, tmp_path, monkeypatch):
@@ -147,40 +145,26 @@ def test_an_entry_whose_tree_is_not_the_commits_tree_is_refused(board, tmp_path,
     entry = put(board, base, tree="t" * 40)
     head = git(checkout(board), "rev-parse", "HEAD")
     with pytest.raises(ValueError, match="tree"):
-        board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
+        testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
 
 
 # -- N5: notices and the session never raise out of a run ---------------------------------------------------
 class Boom:
-    base = Path("/nonexistent")
-
-    class bus:
-        @staticmethod
-        def get(seq):
-            raise ZeroDivisionError("bus")
-
-    class board:
-        @staticmethod
-        def list(token):
-            return [{"name": "#p", "project": True, "member": True}]
-
-        @staticmethod
-        def listeners(row):
-            raise ZeroDivisionError("listeners")
+    name = "alice"
 
     @staticmethod
-    def send(token, to, kind, body, **kw):
-        return {"seq": 3}
+    def post(*args, **kwargs):
+        raise ZeroDivisionError("post")
 
 
 def test_job_done_survives_any_error_from_the_board():
-    events = testboard.BoardEvents(testboard.Acting(Boom(), "t", {"id": "alice", "parent": ""}))
+    events = testboard.BoardEvents(Boom())
     events.job_done("j", {"argv": ["fast"]}, {"exit": 0}, 7)
     events.claimed("tests/x.py", "k" * 64)
 
 
 def test_acting_survives_any_error_from_the_workspace(monkeypatch):
-    monkeypatch.setattr(testboard.cli, "_context", lambda args: (_ for _ in ()).throw(ZeroDivisionError("x")))
+    monkeypatch.setattr(testboard.sessions, "connect", lambda: (_ for _ in ()).throw(ZeroDivisionError("x")))
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", "someone")
     assert testboard.acting() is None
 
@@ -239,15 +223,15 @@ def test_a_proposal_carries_the_verified_entries_it_cites(board, tmp_path, monke
     entry = put(board, base)
     head = git(checkout(board), "rev-parse", "HEAD")
     with pytest.raises(ValueError, match="at most 16"):
-        board.board.submit(board.child, board.task["id"], {**submission(head), "test_entries": "nope"})
-    proposal = board.board.submit(board.child, board.task["id"], {**submission(head), "test_entries": [entry]})
+        testruns.submit(board.work, board.task["id"], {**submission(head), "test_entries": "nope"})
+    proposal = testruns.submit(board.work, board.task["id"], {**submission(head), "test_entries": [entry]})
     assert [f["id"] for f in proposal["test_evidence"]] == [entry]
 
 
 def test_a_proposal_for_another_commit_cannot_cite_the_entry(board, tmp_path, monkeypatch):
     base = start(board, monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="commit"):
-        board.board.submit(board.child, board.task["id"], {**submission("f" * 40), "test_entries": [put(board, base)]})
+        testruns.submit(board.work, board.task["id"], {**submission("f" * 40), "test_entries": [put(board, base)]})
 
 
 def test_the_project_is_the_tasks_checkout_not_the_working_directory(board, tmp_path, monkeypatch):
@@ -255,7 +239,7 @@ def test_the_project_is_the_tasks_checkout_not_the_working_directory(board, tmp_
     entry = put(board, base)
     head = git(checkout(board), "rev-parse", "HEAD")
     monkeypatch.chdir(tmp_path)
-    saved = board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
+    saved = testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
     assert [f["id"] for f in saved["test_evidence"]] == [entry]
 
 
@@ -266,7 +250,7 @@ def test_an_entry_from_the_working_directorys_project_is_not_accepted(board, tmp
     monkeypatch.chdir(tmp_path)
     head = git(checkout(board), "rev-parse", "HEAD")
     with pytest.raises(ValueError, match="verifies"):
-        board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
+        testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
 
 
 def test_a_failing_entry_is_not_evidence_of_passing(board, tmp_path, monkeypatch):
@@ -274,7 +258,7 @@ def test_a_failing_entry_is_not_evidence_of_passing(board, tmp_path, monkeypatch
     entry = put(board, base, outcome="fail")
     head = git(checkout(board), "rev-parse", "HEAD")
     with pytest.raises(ValueError, match=r"verifies|pass"):
-        board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
+        testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
 
 
 def test_the_services_environment_does_not_choose_the_store(board, tmp_path, monkeypatch):
@@ -284,7 +268,7 @@ def test_the_services_environment_does_not_choose_the_store(board, tmp_path, mon
     monkeypatch.setenv("DEV_TEST_REUSE_DIR", str(forged))
     head = git(checkout(board), "rev-parse", "HEAD")
     with pytest.raises(ValueError, match="verifies"):
-        board.board.checkpoint(board.child, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
+        testruns.checkpoint(board.work, board.task["id"], {"summary": "ok", "test_entry": entry, "commit": head})
 
 
 def test_removing_a_temporary_directory_is_not_a_write_into_the_checkout(project, tmp_path):

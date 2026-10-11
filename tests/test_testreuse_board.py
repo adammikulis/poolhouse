@@ -1,5 +1,5 @@
-"""The test runner against a real temporary workspace: agent identity on leases, board threads and
-inbox notices, subscriptions, project scoping and runner entries as task evidence."""
+"""The test runner against a real node: agent identity on leases, board threads and inbox notices, subscriptions,
+board scoping and runner entries as task evidence."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 
 import pytest
-from taskboard_kit import board  # noqa: F401  (fixture)
-from workspace_kit import Kit, clean_env
+from local_kit import build
+from node_kit import node_binary, workspace_node  # noqa: F401  (fixtures)
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -19,46 +19,38 @@ sys.path.insert(0, str(SCRIPTS))
 import testreuse_store as storage  # noqa: E402
 
 from poolhouse.activity import reuse  # noqa: E402
-from poolhouse.workspace import onboard, slots, testboard, testruns, tokens  # noqa: E402
-from poolhouse.workspace.taskboard import TaskBoard  # noqa: E402
+from poolhouse.board import session as sessions  # noqa: E402
+from poolhouse.board.tasks import Tasks  # noqa: E402
+from poolhouse.workspace import slots, testboard, testruns  # noqa: E402
 
-PROJECT = {"key": "git@example.org:me/widgets.git", "name": "Widgets"}
 FILE = "tests/test_a.py"
 KEY = "ab12cd34ef56" + "0" * 52
 
 
 @pytest.fixture
-def team(monkeypatch, tmp_path):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    kit.limits(sends_per_window=1000)
-    tokens.prepare(kit.ws.base)
-    kit.sessions = {}
-    for name in ("alice", "bob"):
-        code = kit.ws.invites.create(name, 600.0, PROJECT)
-        joined = onboard.join(kit.ws, code, name)
-        kit.sessions[name] = testboard.Acting(kit.ws, tokens.load(kit.ws.base, joined),
-                                          {"id": joined, "label": "t", "parent": "", "source": "test"})
-    other = kit.ws.invites.create("zed", 600.0, {"key": "git@example.org:other/gadgets.git", "name": "Gadgets"})
-    name = onboard.join(kit.ws, other, "zed")
-    kit.sessions["zed"] = testboard.Acting(kit.ws, tokens.load(kit.ws.base, name),
-                                       {"id": name, "label": "", "parent": "", "source": "test"})
+def team(workspace_node, monkeypatch):  # noqa: F811
+    kit = build(workspace_node, monkeypatch)
+    kit.sessions = {name: workspace_node.session(workspace_node.member(name)) for name in ("alice", "bob", "carol")}
     return kit
 
 
-def inbox(kit, who, ack=True):
-    return kit.ws.inbox(kit.sessions[who].token, ack=ack, limit=50)
+def inbox(s):
+    """What reached the session's inbox since it last looked."""
+    page = s.read(s.cursor("inbox"), inbox=True)
+    s.keep("inbox", page.cursor)
+    return page.entries
 
 
 def test_a_subscriber_to_a_runs_thread_is_told_exactly_once_when_it_lands(team):
     owner, watcher = testboard.BoardEvents(team.sessions["alice"]), team.sessions["bob"]
     thread = owner.claimed(FILE, KEY)
     assert thread > 0
-    assert testboard.follow_thread(watcher, thread)["type"] == "thread"
+    assert testboard.follow_thread(watcher, thread)
     owner.finished(FILE, KEY, "pass", "entry0123456789abcdef")
-    [message] = inbox(team, "bob")
-    assert "test-result" in message["text"] and "outcome=pass" in message["text"]
-    assert "entry=entry0123456789abcdef" in message["text"] and message["from"] == "alice"
-    assert inbox(team, "bob") == []
+    [message] = inbox(watcher)
+    assert "test-result" in message.text and "outcome=pass" in message.text
+    assert "entry=entry0123456789abcdef" in message.text and message.sender == team.sessions["alice"].name
+    assert inbox(watcher) == []
 
 
 def test_waiters_are_told_when_the_run_they_waited_on_failed(team):
@@ -66,60 +58,88 @@ def test_waiters_are_told_when_the_run_they_waited_on_failed(team):
     thread = owner.claimed(FILE, KEY)
     watcher.waiting(FILE, {"thread": thread, "agent": {"id": "alice"}})
     owner.finished(FILE, KEY, "fail", "entryfail")
-    [message] = inbox(team, "bob")
-    assert "outcome=fail" in message["text"] and "run it yourself" in message["text"]
+    [message] = inbox(team.sessions["bob"])
+    assert "outcome=fail" in message.text and "run it yourself" in message.text
 
 
 def test_a_job_ending_reaches_each_follower_and_task_watcher_once_and_not_its_own_submitter(team):
-    lead = team.agent("lead", "lead")
-    tasks = TaskBoard(team.ws)
-    task = tasks.create(lead, {"title": "Inspect", "description": "Look.", "acceptance": ["ok"],
-                               "source_key": "repo:demo/sim:issue:1"})
-    tasks.subscribe(team.sessions["bob"].token, task["id"])
-    carol = onboard.join(team.ws, team.ws.invites.create("carol", 600.0, PROJECT), "carol")
-    session = testboard.Acting(team.ws, tokens.load(team.ws.base, carol), {"id": carol, "label": "", "parent": ""})
-    events = testboard.BoardEvents(team.sessions["alice"], lambda: tasks.watchers(task["id"]))
+    lead = Tasks(team.session(team.lead))
+    task = lead.create({"title": "Inspect", "description": "Look.", "acceptance": ["ok"],
+                        "source_key": "repo:demo/sim:issue:1"})
+    Tasks(team.sessions["bob"]).subscribe(task["id"])
+    for name in ("alice", "bob", "carol"):
+        inbox(team.sessions[name])
+    events = testboard.BoardEvents(team.sessions["alice"], lambda: lead.watchers(task["id"]))
     thread = events.job_started("j1", {"argv": ["all", FILE]})
-    testboard.follow_thread(session, thread)
+    testboard.follow_thread(team.sessions["carol"], thread)
     testboard.follow_thread(team.sessions["bob"], thread)
-    events.job_done("j1", {"argv": ["all", FILE]}, {"exit": 0, "state": "done",
-                                                   "summary": {"ran": 1, "reused": 2}}, thread)
-    [message] = inbox(team, "bob")
-    assert "outcome=pass" in message["text"] and "ran=1 reused=2" in message["text"]
-    assert "result=scripts/test result j1" in message["text"]
-    [carols] = team.ws.inbox(session.token, ack=True, limit=50)
-    assert "test-job job=j1" in carols["text"]
-    assert inbox(team, "alice") == [] and inbox(team, "bob") == []
+    events.job_done("j1", {"argv": ["all", FILE]}, {"exit": 0, "state": "done", "summary": {"ran": 1, "reused": 2}}, thread)
+    [message] = inbox(team.sessions["bob"])
+    assert "outcome=pass" in message.text and "ran=1 reused=2" in message.text
+    assert "result=scripts/test result j1" in message.text
+    [carols] = inbox(team.sessions["carol"])
+    assert "test-job job=j1" in carols.text
+    assert inbox(team.sessions["alice"]) == [] and inbox(team.sessions["bob"]) == []
+
+
+def test_a_task_watcher_who_does_not_follow_the_thread_is_told_once(team):
+    lead = Tasks(team.session(team.lead))
+    task = lead.create({"title": "Inspect", "description": "Look.", "acceptance": ["ok"],
+                        "source_key": "repo:demo/sim:issue:2"})
+    Tasks(team.sessions["bob"]).subscribe(task["id"])
+    inbox(team.sessions["bob"])
+    events = testboard.BoardEvents(team.sessions["alice"], lambda: lead.watchers(task["id"]))
+    thread = events.job_started("j3", {"argv": ["fast"]})
+    events.job_done("j3", {"argv": ["fast"]}, {"exit": 1, "state": "done"}, thread)
+    [message] = inbox(team.sessions["bob"])
+    assert "outcome=fail" in message.text and "test-job job=j3" in message.text
+    assert inbox(team.sessions["bob"]) == []
 
 
 def test_running_a_job_creates_no_identity_and_no_token_file(team):
-    before = (sorted(a["id"] for a in team.ws.registered()), sorted(p.name for p in tokens.directory(team.ws.base).iterdir()))
-    events = testboard.BoardEvents(team.sessions["alice"])
+    alice = team.sessions["alice"]
+
+    def state():
+        return (sorted(a.name for a in alice.agents(retired=True)),
+                sorted(p.name for p in (team.node.state / "client" / team.node.board).glob("*.token")))
+    before = state()
+    events = testboard.BoardEvents(alice)
     thread = events.job_started("j2", {"argv": ["fast"]})
     key = events.claimed(FILE, KEY)
     events.finished(FILE, KEY, "pass", "entry1")
     events.canary_mismatch(FILE, "detail")
     events.job_done("j2", {"argv": ["fast"]}, {"exit": 1, "state": "done"}, thread)
-    after = (sorted(a["id"] for a in team.ws.registered()), sorted(p.name for p in tokens.directory(team.ws.base).iterdir()))
-    assert key > 0 and after == before
+    assert key > 0 and state() == before
+
+
+def test_the_runner_records_the_session_that_ran_a_file_on_its_entry(team):
+    alice = team.sessions["alice"]
+    agent = testboard.BoardEvents(alice).agent
+    assert agent == {"id": alice.name, "parent": "", "source": "workspace-session"}
+    assert testboard.BoardEvents(team.sessions["bob"]).agent["id"] == team.sessions["bob"].name
 
 
 def test_a_canary_mismatch_posts_one_announcement_line(team):
-    testboard.BoardEvents(team.sessions["alice"]).canary_mismatch(FILE, "cached pass from e1 but a fresh run failed")
-    rows = [r for r in team.ws.bus.log.rows() if r.get("to") == "#announcements"]
-    assert len(rows) == 1 and rows[0]["type"] == "blocked" and "canary mismatch" in rows[0]["body"]
-    assert "\n" not in rows[0]["body"] and len(rows[0]["body"]) <= 200
+    alice = team.sessions["alice"]
+    testboard.BoardEvents(alice).canary_mismatch(FILE, "cached pass from e1 but a fresh run failed")
+    rows = alice.read_all(channel="#announcements")
+    assert len(rows) == 1 and rows[0].fields["type"] == "blocked" and "canary mismatch" in rows[0].text
+    assert "\n" not in rows[0].text and len(rows[0].text) <= 200
 
 
-def test_another_projects_agent_cannot_follow_a_runs_thread(team):
-    thread = testboard.BoardEvents(team.sessions["alice"]).claimed(FILE, KEY)
-    with pytest.raises(Exception, match="no board"):
-        testboard.follow_thread(team.sessions["zed"], thread)
-    assert testboard.BoardEvents(team.sessions["zed"]).claimed(FILE, KEY) != thread
+def test_another_boards_agent_cannot_follow_a_runs_thread(team):
+    alice = team.sessions["alice"]
+    thread = testboard.BoardEvents(alice).claimed(FILE, KEY)
+    made = sessions.register(team.node.client, "other-board", sessions.Native("claude-sonnet-5-5", "claude-code", "zed"))
+    zed = sessions.Session(team.node.client, "other-board", made.token, made.name)
+    with pytest.raises(Exception, match="no thread"):
+        testboard.follow_thread(zed, thread)
+    testboard.BoardEvents(zed).claimed(FILE, KEY)
+    assert [e.sender for e in alice.read_all(thread=str(thread))] == [alice.name]
 
 
 def test_a_poisoned_thread_number_changes_neither_the_hit_nor_the_run(team, tmp_path):
-    events = testboard.BoardEvents(team.sessions["zed"])
+    events = testboard.BoardEvents(team.sessions["bob"])
     events.waiting(FILE, {"thread": 10 ** 6, "agent": {"id": "alice"}})
     events.waiting(FILE, {"thread": "not a number"})
     store = storage.Store(tmp_path / "store")
@@ -128,18 +148,21 @@ def test_a_poisoned_thread_number_changes_neither_the_hit_nor_the_run(team, tmp_
     assert store.claimed(KEY)["thread"] == 10 ** 6 and store.claimed(KEY)["pid"] > 0
 
 
-def test_a_lease_names_its_agent_and_the_board_checks_the_identity(team, tmp_path):
+def test_a_lease_names_its_agent_and_the_board_checks_the_identity(team, tmp_path, monkeypatch):
     folder = tmp_path / "slots"
     folder.mkdir(exist_ok=True)
-    for number, agent in enumerate(({"id": "alice", "label": "reuse", "job": "j1"}, {"id": "mallory"})):
+    monkeypatch.setenv(slots.SLOTS_ENV, str(folder))
+    alice = team.sessions["alice"]
+    for number, agent in enumerate(({"id": alice.name, "label": "reuse", "job": "j1"}, {"id": "mallory"})):
         (folder / f"{number}.slot").write_text(json.dumps({
             "label": "tests\x1b[31m", "pid": os.getpid(), "want": 2, "minimum": 1, "granted": number, "agent": agent}))
     (folder / "2.slot").write_text(json.dumps({"label": "free text", "pid": os.getpid(), "want": 1, "granted": 1}))
-    seen = slots.testslots(team.ws.registry.role_of)
+    known = {a.name for a in alice.agents()}
+    seen = slots.testslots(lambda name: name in known)
     named = {item["agent"]["id"]: item for item in seen["running"] + seen["waiting"] if item["agent"]}
-    assert named["alice"]["agent"]["registered"] is True and named["alice"]["label"].startswith("alice (tests")
+    assert named[alice.name]["agent"]["registered"] is True and named[alice.name]["label"].startswith(f"{alice.name} (tests")
     assert named["mallory"]["agent"]["registered"] is False
-    assert "\x1b" not in named["alice"]["label"]
+    assert "\x1b" not in named[alice.name]["label"]
     assert [i["agent"] for i in seen["running"] if i["label"] == "free text"] == [None]
 
 
@@ -152,7 +175,7 @@ def put_entry(base: Path, scope: str, **over) -> str:
     return store.put(fields)
 
 
-def test_a_runner_entry_is_verified_for_its_own_project_only(team, tmp_path):
+def test_a_runner_entry_is_verified_for_its_own_project_only(tmp_path):
     base = tmp_path / "reuse"
     repo = tmp_path / "repo"
     repo.mkdir()

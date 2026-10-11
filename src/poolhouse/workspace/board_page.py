@@ -15,7 +15,7 @@ from poolhouse.board import client
 from poolhouse.board.session import Agent, Entry, Session
 from poolhouse.workspace import board_pages, filecli, inbound, plain
 from poolhouse.workspace.agent_display import describe
-from poolhouse.workspace.boardapi import data_line
+from poolhouse.workspace.plain import data_line
 from poolhouse.workspace.screen import Refused
 
 __all__ = ["Log", "ack", "agents", "boards", "conversations", "dm", "file", "head", "post", "read", "thread", "threads", "wait"]

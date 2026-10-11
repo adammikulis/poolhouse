@@ -171,6 +171,35 @@ fn a_task_with_a_scope_stays_accepted_until_its_landing_completes_it() {
 }
 
 #[test]
+fn the_overview_counts_states_and_a_workers_own_progress_claims_never_make_an_estimate() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let clock = clocked(&mut n);
+    let t = team(&mut n);
+    let queued = id_of(make(&mut n, &t.lead.1, json!({"source_key": "k:queued"})));
+    let waiting = id_of(make(&mut n, &t.lead.1, json!({"source_key": "k:waiting", "deps": [queued]})));
+    let working = id_of(make(&mut n, &t.lead.1, json!({"source_key": "k:working"})));
+    let a = assign(&mut n, &t, &working);
+    ok(claim(&mut n, &t, &working, &a));
+    ok(req(&mut n, "task_checkpoint", "demo", &t.kid.1, json!({"task": working, "summary": "Replay started", "progress": "99 percent complete"})));
+    advance(&clock, 10);
+    let listed = ok(req(&mut n, "task_list", "demo", &t.other.1, json!({})));
+    let count = |key: &str| listed["overview"][key].clone();
+    assert_eq!((count("total"), count("remaining"), count("queued"), count("running"), count("blocked"), count("review"), count("done")),
+               (json!(3), json!(3), json!(2), json!(1), json!(0), json!(0), json!(0)));
+    assert_eq!(listed["overview"]["eta_seconds"], Value::Null);
+    assert_eq!(listed["overview"]["workers"][0]["id"], json!(t.kid.0));
+    assert_eq!((listed["overview"]["workers"][0]["active"].clone(), listed["overview"]["workers"][0]["heartbeat_age_seconds"].clone()), (json!(true), json!(10)));
+    let find = |id: &str| listed["tasks"].as_array().unwrap().iter().find(|x| x["id"] == id).unwrap().clone();
+    assert_eq!(find(&working)["activity"]["eta_seconds"], Value::Null, "what a worker says of its progress is not a measurement");
+    assert_eq!(find(&waiting)["activity"]["waiting_on"][0]["id"], json!(queued));
+    submit(&mut n, &t, &working);
+    ok(judge(&mut n, &t.other.1, &working, json!({"accepted": false, "reason": "An extra check failed", "checks": [{"name": "Replay passes", "passed": true}, {"name": "Extra", "passed": false}]})));
+    let after = get(&mut n, &t.lead.1, &working);
+    assert_eq!((after["activity"]["verified_checks"]["passed"].clone(), after["activity"]["verified_checks"]["total"].clone()), (json!(1), json!(2)));
+}
+
+#[test]
 fn followers_hear_each_state_change_and_a_stranger_cannot_follow_for_a_worker() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
@@ -268,6 +297,36 @@ fn a_designated_reviewer_judges_in_strict_mode_and_the_worker_never_does() {
     let stranger = session(&mut n, "demo", "stranger");
     assert_eq!(code(&judge(&mut n, &stranger.1, &task, accepted())), "denied");
     assert_eq!(ok(judge(&mut n, &t.other.1, &task, accepted()))["verifier"], json!(t.other.0));
+}
+
+#[test]
+fn a_worker_named_its_own_reviewer_still_does_not_review_its_task() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let t = team(&mut n);
+    ok(req(&mut n, "task_mode", "demo", &t.lead.1, json!({"mode": "strict"})));
+    let task = id_of(make(&mut n, &t.lead.1, json!({"source_key": "self", "assignees": [t.kid.0], "reviewers": [t.kid.0]})));
+    let a = assign(&mut n, &t, &task);
+    ok(claim(&mut n, &t, &task, &a));
+    submit(&mut n, &t, &task);
+    assert_eq!(code(&judge(&mut n, &t.kid.1, &task, accepted())), "denied");
+    assert_eq!(get(&mut n, &t.lead.1, &task)["state"], json!("review"));
+}
+
+#[test]
+fn another_workers_allocation_cannot_claim_a_task() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let t = team(&mut n);
+    let made = ok(req(&mut n, "register", "demo", &t.lead.1, json!({"model": "qwen4", "harness": "pi", "session": "kid2"})));
+    let kid2 = made["token"].as_str().unwrap().to_string();
+    ok(req(&mut n, "lease_acquire", "demo", &kid2, json!({"resources": [{"type": "model_slot", "model": "qwen4"}], "ttl_s": 5000})));
+    let task = id_of(make(&mut n, &t.lead.1, json!({})));
+    let a = assign(&mut n, &t, &task);
+    let stolen = req(&mut n, "task_claim", "demo", &kid2, json!({"task": task, "assign": a}));
+    assert_eq!(code(&stolen), "denied", "{stolen}");
+    assert_eq!(get(&mut n, &t.lead.1, &task)["state"], json!("queued"));
+    ok(claim(&mut n, &t, &task, &a));
 }
 
 #[test]
@@ -408,13 +467,39 @@ fn integration_records_are_kept_by_the_task_and_only_those_with_a_hand_in_it_wri
     ok(req(&mut n, "task_record", "demo", &t.lead.1, record));
     ok(req(&mut n, "task_record", "demo", &t.lead.1, json!({"task": task, "kind": "integration", "rid": "integration:1", "record": {"state": "integrated"}})));
     ok(req(&mut n, "task_record", "demo", &t.lead.1, json!({"task": task, "kind": "event", "rid": "e1", "record": {"state": "integrated"}})));
+    ok(req(&mut n, "task_record", "demo", &t.lead.1, json!({"task": task, "kind": "evidence", "rid": "proposal", "record": {"entries": [{"id": "e1", "outcome": "pass"}]}})));
     let held = get(&mut n, &t.lead.1, &task);
+    assert_eq!(held["test_evidence"][0]["entries"][0]["id"], json!("e1"));
     assert_eq!((held["integrations"].as_array().unwrap().len(), held["integrations"][0]["state"].clone(), held["integration_events"].as_array().unwrap().len()), (1, json!("integrated"), 1));
     let landed = "f".repeat(40);
     ok(req(&mut n, "task_complete", "demo", &t.lead.1, json!({"task": task, "landed": landed})));
     let done = get(&mut n, &t.lead.1, &task);
     assert_eq!((done["state"].clone(), done["landed_commit"].clone()), (json!("completed"), json!(landed)));
     assert_eq!(code(&req(&mut n, "task_complete", "demo", &t.lead.1, json!({"task": task, "landed": landed}))), "invalid", "a completed task is not completed again");
+}
+
+#[test]
+fn the_parent_of_an_assigned_worker_reserves_its_checkout_before_the_worker_claims() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let t = team(&mut n);
+    let task = id_of(make(&mut n, &t.other.1, json!({"source_key": "scope-sponsor"})));
+    lose_authority(&mut n, &t);
+    let scope = json!({"task": task, "scope": {"state": "reserved"}});
+    assert_eq!(code(&req(&mut n, "task_scope", "demo", &t.lead.1, scope.clone())), "denied", "no worker is assigned yet");
+    let allocation = assign(&mut n, &t, &task);
+    ok(req(&mut n, "task_scope", "demo", &t.lead.1, scope.clone()));
+    let record = json!({"task": task, "kind": "allocation", "rid": allocation, "record": {"execution_config": {"harness": "pi"}}});
+    ok(req(&mut n, "task_record", "demo", &t.lead.1, record.clone()));
+    let moved = json!({"task": task, "scope": {"state": "active"}});
+    ok(req(&mut n, "task_scope", "demo", &t.kid.1, moved));
+    let stranger = session(&mut n, "demo", "stranger");
+    assert_eq!(code(&req(&mut n, "task_scope", "demo", &stranger.1, scope)), "denied");
+    assert_eq!(code(&req(&mut n, "task_record", "demo", &stranger.1, record)), "denied");
+    let other_kind = json!({"task": task, "kind": "integration", "rid": "integration:1", "record": {"state": "candidate"}});
+    assert_eq!(code(&req(&mut n, "task_record", "demo", &t.lead.1, other_kind)), "denied", "only the allocation is the parent's before the worker claims");
+    let held = get(&mut n, &t.lead.1, &task);
+    assert_eq!((held["scope"]["state"].clone(), held["allocations"][0]["execution_config"]["harness"].clone()), (json!("active"), json!("pi")));
 }
 
 #[test]

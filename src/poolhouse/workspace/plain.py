@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["line", "name_ok", "text"]
+from poolhouse.workspace.screen import NEUTRAL
+
+__all__ = ["data_line", "line", "name_ok", "text"]
 
 HIDDEN = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]")
 BOARD = re.compile(r"^#[a-z0-9][a-z0-9._-]{0,39}$")
@@ -14,6 +16,14 @@ def line(value: object, width: int = 120) -> str:
     """``value`` on one line: control and bidirectional characters turned to spaces, at most
     ``width`` characters."""
     return " ".join(HIDDEN.sub(" ", str(value)).split())[:width]
+
+
+def data_line(value: object, width: int = 120) -> str:
+    """``value`` as one plain line with fence tags and chat markup neutralised."""
+    out = line(value, width)
+    for pattern, repl in NEUTRAL:
+        out = pattern.sub(repl, out)
+    return out
 
 
 def text(value: object, width: int = 4000) -> tuple[str, bool]:

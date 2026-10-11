@@ -964,8 +964,7 @@ A `person` gate passes only a person at a terminal. A `delegated` gate passes a 
 agent acting on the owner's instruction (`CLAUDECODE` or `POOLHOUSE_AGENT` set, not a spawned subagent,
 no `parent/name` identity), and records each agent use in the authority audit log. A helper or
 child identity never passes a delegated gate and never flips the registry. A lead agent or a
-person flips it, and each flip records who, which gates, from and to in the authority log and the
-workspace audit log. The default state is the `dev` preset: every delegable gate is delegated and
+person flips it, and each flip records who, which gates, from and to in the authority log. The default state is the `dev` preset: every delegable gate is delegated and
 enforcement is `open`. `preset prod` leaves workspace setup, model recording and local agent
 verbs delegated, makes every other gate a person's and sets enforcement `strict`.
 `POOLHOUSE_AUTHORITY_FLOOR=person` reads every gate as a person's; it only tightens, and the test
@@ -976,8 +975,8 @@ secrets (unlock, the pool passphrase and token, signing keys), a passwordless `s
 (Poolhouse never installs one), and the human prompt that confirms a privileged operating-system
 step. The wired memory limit is the one machine setting an agent may request (gate
 `serve.wired-limit`): it goes through macOS's own administrator dialog, Poolhouse never sees or
-stores the password, and `sudo` still needs a terminal. The identity bootstrap (`init`) and the
-review screen also stay a person's.
+stores the password, and `sudo` still needs a terminal. The review screen also stays a
+person's.
 
 Boot and login units (launchd, systemd, Windows tasks) are prepared by tooling and installed by a
 person. `python -m poolhouse.fleet.autostart prepare --role pool-daemon|runtime-ensure` is safe for

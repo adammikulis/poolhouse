@@ -11,14 +11,20 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from poolhouse import do, requests, roles
+from poolhouse.board.client import NodeError
+from poolhouse.board.session import Session
 from poolhouse.http import ServerError
 from poolhouse.http_cancel import Cancellation, scope
 from poolhouse.interventions import Call, Confirm
-from poolhouse.workspace import localeffort as le, localprofile as lp, plain, work_reputation
-from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.rates import RateLimited
+from poolhouse.workspace import (
+    inbound,
+    localeffort as le,
+    localprofile as lp,
+    plain,
+    work_reputation,
+)
+from poolhouse.workspace.board_cli import screened
 from poolhouse.workspace.screen import Refused
-from poolhouse.workspace.service import Workspace
 
 __all__ = ["Guarded", "Limits", "Needs", "Sink", "TaskState", "TaskStopped", "Unattended", "ask_a_person",
            "workspace_extension"]
@@ -188,24 +194,23 @@ class Guarded:
         return getattr(self.client, name)
 
 
-def workspace_extension(ws: Workspace, token: str, me: str, state: TaskState,
-                        obeyed: Callable[[str], bool]) -> roles.Extension:
+def workspace_extension(s: Session, state: TaskState, obeyed: Callable[[str], bool]) -> roles.Extension:
     """Reading a thread and the roster are reads; sending a `task`, `question` or `status` is a
     change the agent makes itself, up to five a task, and a run that read an agent it does not
     obey can send no `task`. ``obeyed`` says whether a sender is one the agent acts for."""
+    me = s.name
 
     def workspace_roster() -> list[dict[str, str]]:
-        """The agents in the workspace, by name and role."""
-        return [{"name": plain.line(a["id"], 60), "role": a["role"]} for a in ws.registered()
-                if "/" not in a["id"]][:64]
+        """The agents on the board, by name and role."""
+        return [{"name": plain.line(a.name, 60), "role": "agent"} for a in s.agents() if not a.parent][:64]
 
     def workspace_reputation(agent: str = "", offset: int = 0) -> dict[str, Any]:
         """Read your own and team verified completion scores and their recorded evidence."""
-        return work_reputation.standings(ws, token, agent=agent, offset=offset)
+        return work_reputation.standings_on(s, agent=agent, offset=offset)
 
     def workspace_thread(root: int) -> list[dict[str, str]]:
         """A message and its replies, each fenced as data from its sender."""
-        rows = ws.thread(token, int(root))[-20:]
+        rows = inbound.present(s, s.read_all(thread=str(int(root)))[-20:], 20, True)
         if any(not obeyed(r["from"]) for r in rows):
             state.read_outside = True
         return [{"from": r["from"], "type": r["type"], "text": r["text"][:SEND_BODY]} for r in rows]
@@ -220,11 +225,12 @@ def workspace_extension(ws: Workspace, token: str, me: str, state: TaskState,
             return {"sent": False, "error": "this run read words from an agent you do not act for; "
                                             "it can ask or report but not give orders"}
         try:
-            sent = ws.send(token, to, kind, str(text)[:SEND_BODY])
-        except (Denied, Refused, RateLimited, ValueError) as err:
+            screened("the message", str(text)[:SEND_BODY])
+            sent = s.post(to, kind, str(text)[:SEND_BODY])
+        except (NodeError, Refused, ValueError) as err:
             return {"sent": False, "error": plain.line(err, 200)}
         state.sent += 1
-        return {"sent": True, "seq": sent["seq"]}
+        return {"sent": True, "seq": str(sent["id"]).rsplit(":", 1)[-1]}
 
     def set_effort(level: str, reason: str = "") -> dict[str, Any]:
         """Choose how much you think from the next task on: off, low, medium or high, up to the ceiling the person set. It changes compute only, never your role, tools or limits, and takes effect at the next task so this task's prompt stays as it is."""
@@ -234,7 +240,6 @@ def workspace_extension(ws: Workspace, token: str, me: str, state: TaskState,
         if le.clamp(level, ceiling) != level:
             return {"set": False, "error": f"the person set a ceiling of {ceiling}; {level} is above it"}
         state.effort = level
-        ws.audit("local-agent.effort", me, level=level, ceiling=ceiling, reason_chars=len(str(reason)))
         return {"set": True, "effort": level, "takes_effect": "the next task"}
 
     schemas = [(do._schema(fn.__name__, "", fn, fn.__doc__ or ""), fn)

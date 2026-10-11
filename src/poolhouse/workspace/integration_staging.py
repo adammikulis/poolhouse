@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
+from poolhouse.errors import Denied
 from poolhouse.workspace import integration_git as repo
-from poolhouse.workspace.identity import Denied
 
 
 def merge_state(primary: Path, commit: str) -> bool:

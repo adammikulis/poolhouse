@@ -8,9 +8,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from poolhouse import hub
+from poolhouse.board.names import valid_name
 from poolhouse.hub import remote
 from poolhouse.serve import suggest
-from poolhouse.workspace.identity import valid_name
 from poolhouse.workspace.modelid import clean_model
 
 __all__ = ["AUTO", "FETCH_QUERY", "Pick", "Selection", "agent_name", "choose", "fetch_hint",

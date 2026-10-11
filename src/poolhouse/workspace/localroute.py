@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from poolhouse import coding, roles
 from poolhouse.board import person
 from poolhouse.board.session import Session
+from poolhouse.errors import Denied
 from poolhouse.fleet.onboard.web import Call, Listener, Reply as WebReply
 from poolhouse.fleet.same_page import Reply, checked, reply
 from poolhouse.graph.guard import host_ok, refusal
@@ -33,8 +34,6 @@ from poolhouse.workspace import (
     plain,
 )
 from poolhouse.workspace.boardroute import COOKIE, Request, session_ok
-from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.service import Workspace
 
 __all__ = ["PREFIX", "respond", "serve"]
 
@@ -66,15 +65,15 @@ def _model_view(*, coding: bool = False) -> dict[str, Any]:
             "ok": pick.ok, "problem": plain.line(pick.problem, 300), "hint": plain.line(pick.hint, 200)}
 
 
-def _read(ws: Workspace, route: str) -> Any:
+def _read(base: Path, route: str) -> Any:
     if route == "list":
-        return {"agents": ls.listing(ws), "roles": la.role_choices(), "default_role": roles.DEFAULT, "efforts": [*le.LEVELS, le.AUTO],
+        return {"agents": ls.listing(base), "roles": la.role_choices(), "default_role": roles.DEFAULT, "efforts": [*le.LEVELS, le.AUTO],
                 "default_effort": le.DEFAULT, "default_max_effort": le.DEFAULT_MAX, "default_max_output_tokens": None, "default_task_caps": {},
                 "orders_from": list(la.DEFAULT_ORDERS_FROM), "harnesses": [localharness.OWN, *coding.HARNESSES],
                 "saved": [{key: (agent.extra.get("backlog", {}).get("repo", "") if key == "repo"
                                  else asdict(localloop.caps_of(agent)) if key == "task_caps"
                                  else getattr(agent, key)) for key in START_KEYS}
-                          for name in la.names(ws) if (agent := la.load(ws, name)) is not None]}
+                          for name in la.names(base) if (agent := la.load(base, name)) is not None]}
     if route == "model":
         return {**_model_view(), "profiles": {"chat": _model_view(), "coding": _model_view(coding=True)}}
     raise ValueError("no such route")
@@ -92,36 +91,36 @@ def _typed(body: bytes, shape: Mapping[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _write(ws: Workspace, route: str, body: bytes) -> tuple[int, Any]:
+def _write(base: Path, session: Callable[[], Session], route: str, body: bytes) -> tuple[int, Any]:
     if route == "start":
         data = _typed(body, START_KEYS)
         profile = data.get("profile") or "coding"
         role = data.get("role") or (la.PLAN_AND_GO if profile == "coding" else roles.DEFAULT)
         context = lp.parse_ctx(data.get("ctx", "")) or lp.profile(profile).ctx
         try:
-            got = ls.start(ws, ls.Ask(data.get("model") or localmodel.AUTO, data.get("name", ""),
+            starter = person.session(data["project"]) if data.get("project") else session()
+            got = ls.start(starter, ls.Ask(data.get("model") or localmodel.AUTO, data.get("name", ""),
                                       role, data.get("effort") or le.DEFAULT,
                                       data.get("max_effort") or le.DEFAULT_MAX,
                                       profile, context,
                                       data.get("project", ""), harness=data.get("harness") or "pi",
                                       repo=data.get("repo", ""), max_output_tokens=data.get('max_output_tokens'),
-                                      task_caps=data.get('task_caps', {})),
-                           authority=ls.Authority(parent_token=ls.launch_parent(ws, data.get('project', ''))))
+                                      task_caps=data.get('task_caps', {})), base=base)
         except ls.Unavailable as err:
             return 409, {"error": plain.line(err.problem, 300), "hint": plain.line(err.hint, 200)}
         return 200, {"name": got.name, "pid": got.pid, "model": plain.line(got.model, 80),
                      "role": got.role, "already": got.already}
     if route in ("pause", "resume"):
         name = _typed(body, {"name": str}).get("name", "")
-        return 200, ls.pause(ws, name, route == "pause")
+        return 200, ls.pause(base, name, route == "pause")
     if route == "stop":
         name = _typed(body, {"name": str}).get("name", "")
-        done = ls.stop(ws, name, wait_s=STOP_WAIT_S)
+        done = ls.stop(base, name, wait_s=STOP_WAIT_S)
         return 200, {"name": done.name, "forced": done.forced, "lease_released": done.lease_released}
     raise ValueError("no such route")
 
 
-def respond(ws: Workspace, req: Request, body: bytes = b"") -> Reply:
+def respond(base: Path, session: Callable[[], Session], req: Request, body: bytes = b"") -> Reply:
     """The answer to one request under ``/agents/``: GET ``list`` and ``model``; POST ``start`` and ``stop``."""
     path = urlsplit(req.target).path
     if not path.startswith(PREFIX):
@@ -130,9 +129,9 @@ def respond(ws: Workspace, req: Request, body: bytes = b"") -> Reply:
     try:
         if req.method == "POST":
             bad = _post_refusal(req)
-            return bad or reply(*_write(ws, route, body))
+            return bad or reply(*_write(base, session, route, body))
         bad = checked(req.method, req.headers, req.port)
-        return bad or reply(200, _read(ws, route))
+        return bad or reply(200, _read(base, route))
     except Denied as err:
         return reply(403, {"error": plain.line(err, 200)})
     except (ValueError, KeyError) as err:
@@ -153,9 +152,9 @@ class _Route(boardroute._Route):
     """The Board's route with the Agents routes and page added; its start and stop routes need the
     same session cookie as the Board route."""
 
-    def __init__(self, ws: Workspace, session: Callable[[], Session]) -> None:
+    def __init__(self, base: Path, session: Callable[[], Session]) -> None:
         super().__init__(session)
-        self.ws = ws
+        self.base = base
 
     def __call__(self, call: Call) -> WebReply:
         headers = {k.lower(): v for k, v in call.headers.items()}
@@ -163,7 +162,7 @@ class _Route(boardroute._Route):
         if path.startswith(PREFIX):
             req = Request(call.method, call.path, headers, self.port, session_ok(headers, self.session))
             body = call.body(BODY_MAX + 1) if call.method == "POST" else b""
-            status, out, blob = respond(self.ws, req, body)
+            status, out, blob = respond(self.base, self.person_session, req, body)
             return WebReply(status, blob, out, out.pop("Content-Type", "application/json"))
         if path == "/agents":
             return self._page(call, headers)
@@ -177,7 +176,7 @@ class _Route(boardroute._Route):
         return WebReply(status, blob, out, out.pop("Content-Type", "text/html; charset=utf-8"))
 
 
-def serve(ws: Workspace, port: int = 0) -> Listener:
+def serve(base: Path, port: int = 0) -> Listener:
     """A loopback listener for the Board and Agents pages and routes; ``listener.session`` is the
     secret the person's browser presents (open ``/agents?session=...`` once)."""
-    return boardroute.serve(lambda: person.session(Path.cwd()), port, routes=functools.partial(_Route, ws))
+    return boardroute.serve(lambda: person.session(Path.cwd()), port, routes=functools.partial(_Route, base))

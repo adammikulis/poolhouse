@@ -11,8 +11,8 @@ from poolhouse.command import flag
 from poolhouse.person import require_person
 from poolhouse.workspace import inbound, limits, render
 from poolhouse.workspace.board_cli import TYPES, screened
-from poolhouse.workspace.boardapi import Held
 from poolhouse.workspace.cli_options import READ, WIDEN
+from poolhouse.workspace.inbound import Held
 from poolhouse.workspace.screen import Refused
 
 __all__ = ["TABLE"]

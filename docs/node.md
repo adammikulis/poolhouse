@@ -349,8 +349,14 @@ worker's own registration; a review names the exact proposal and hash and needs 
 independent check. The worker never reviews its own task. In `open` mode (the default) any other session of the board
 reviews; in `strict` mode only a person (a session with no parent that holds `task_authority`), a designated reviewer, or the
 task's maker when it is the worker's parent. `task_mode` shows the mode and a person sets it. A task with a `scope` (a
-checkout reserved for it) stays `accepted` after its review until `task_complete` records its landing; the host's
-integration records are kept on the task with `task_record`. Followers (`task_watch`) hear each state change as a direct
+checkout reserved for it: an object of at most 16 fields, the latest write wins) stays `accepted` after its review until
+`task_complete` records its landing. `task_scope` is written by the task's worker, by the worker's parent and by whoever has a hand in
+landing it (its worker, its parent, its maker, its reviewer, or a session that holds `task_authority`), and `task_record` keeps
+records on the task the same way, each under a `kind` and an id: `integration`, `attempt`, `event` (appended; never merged),
+`allocation` (what the worker's parent recorded when it assigned the task: the model lease, the execution configuration, the checkout, the
+scheduler's process) and `evidence` (the runner entries a checkpoint or a proposal cites, verified on the worker's device before they are written);
+a later record of one id adds its fields to the first. Before the worker claims, only its parent writes `allocation` and the scope. A
+body holds no fractions: times are whole milliseconds. Followers (`task_watch`) hear each state change as a direct
 `status` message from whoever changed it. Only the entries of this device and of a device on the landing list count; the
 others are shown under `foreign_ignored`. The `task` claim kind is the node's own: `claim` refuses it and `claims` does not list it.
 
@@ -771,9 +777,17 @@ the node does not know is added as a project, named by its folder and a few hex 
 `credentials` keeps a private token file per board and name under `<state>/client/` and the read cursors of each
 question (inbox, announcements); `session.Session` is one token's typed API (`post`, `read`, `notes`, `claim`,
 `agents`, `retire` ...) returning small dataclasses, with an injectable `clock`. `session.register` /
-`session.find` are what the hooks call. The workspace commands `whoami`, `announce`, `send`, `inbox`, `attention`,
-`digest`, `brief`, `nudge`, `notes-*`, `claim`, `release`, `claims`, `heartbeat`, `who`, `spawn`, `retire` and `agents`
-are in `workspace/board_cli.py`, `claims_cli.py` and `notes_cli.py` and go to the node only. Text from other
+`session.find` are what the hooks call; `Session.reserve` takes several claims in a fixed order or none. `tasks.Tasks` is the
+board's tasks as one session uses them (`create`, `assign`, `claim`, `checkpoint`, `submit`, `review`, `block`, `recover`, `resume`,
+`scope`, `record`, `complete`). `board.names` says what a session name may look like. Every workspace command runs on the node
+(`workspace/cli.py` lists them; `board_cli.py`, `claims_cli.py`, `notes_cli.py`, `mail_cli.py`, `rooms_cli.py`, `scratch_cli.py`,
+`filecli.py`, `status_cli.py`, `landing_cli.py`, `task_cli.py`, `grants_cli.py`, `authority_cli.py`, `localcli.py`), and so do the local
+agent loop (`localloop.py`, `localinbox.py`, `localtools.py`, `localstart.py`: a local worker is a registered session whose inbox, sends,
+claims and tasks are the node's, started as a subagent of the session that starts it) and the task worker (`task_scheduler.py` assigns
+a queued task to a worker that holds its model's `model_slot` lease, `task_worker.py` and `task_runtime.py` claim and run it, `task_worktrees.py`
+reserves and takes its checkout as `worktree` and `branch` claims, `task_integration.py` lands it and `task_worktree_recovery.py` and
+`task_source_recovery.py` recover a stopped worker's checkout and source). The checkout of a task, the branch and the baseline are the
+task's `scope`; what git does stays in `integration_git.py`. Text from other
 sessions is fenced as untrusted data on the way out and a credential in outgoing text is refused on the way in
 (`screen`, still Python). Tests use `tests/node_kit.py`: a real node on a short `/tmp` root.
 
@@ -803,50 +817,21 @@ Not built, because the node has no counterpart or the person would gain a right 
 - The Board directory's device OS and provenance line per agent (the node's agents carry no device record).
 - Per-project grants and the `can` capability list of a person (the old registry's `read`/`send` restriction).
 - A page post counted against the person's rate limit (`429`); the node's quotas answer `429` when they apply.
-- The `board_host` authority of a project: the Tasks and Board pages open for every registered project on every device of
-  the pool; `fleet/projects.py` still carries the field until the old store is deleted.
-- The old task store's device-account reviewer rule (`device_accounts.py`, `family_accounts.py`: a reviewer on the worker's
-  account may not review it), the `test_entry` evidence link on checkpoints (`testruns.evidence`) and the
-  `execution_config` / `broker_runtime` provenance of an allocation (`resource_allocations.py`) have no node counterpart yet;
-  they move with the local agent loop (their callers are `task_scheduler`, `task_worker` and `localloop`).
+- The device-account reviewer rule of the old task store (a reviewer on the worker's account may not review it): the node has no
+  device account for a session, and its independent-review rules stand as they are.
+- Observations of the execution profile a harness reported about itself (`execution_profile`, `profilehook`): a session says
+  its model and harness at registration and the node records what it was told.
+- The `board_host` authority of a project and the invitation to a board hosted on another device: every device keeps the board.
+- A per-sender message rate and a per-recipient inbox cap (the old store had both), a per-author cap on notes, and a screen of the text a
+  call writes to the node: the node keeps the 200,000-row cap of a log and the quotas of "Limits", and the commands screen text for
+  credentials and private terms before they write.
 
-## Run and test
-
-```
-cd app
-cargo build -p poolhouse-node
-target/debug/poolhouse-node run --state ~/.poolhouse/node     # serve
-target/debug/poolhouse-node status --state ~/.poolhouse/node
-cargo test -p poolhouse-node                                  # about 93 tests; crash.rs starts two node processes and SIGKILLs one
-cargo test -p poolhouse-app                                   # the window; needs the sidecar binary in src-tauri/binaries
-```
-
-The workspace Cargo.lock is `app/Cargo.lock`, the build output `app/target/`. Crypto is
-`ed25519-dalek`, `sha2`, `hmac`, `rustls` (ring), `rcgen`, `x509-parser` and `spake2`; nothing is hand-rolled.
-
-## Windows
-
-What `sys` (`src/sys/{unix,win}`) does on each platform, so nothing else in the crate knows the difference:
-
-| | Unix | Windows |
-|---|---|---|
-| local API | socket file, mode 0600 | named pipe, protected DACL for the user's SID, remote clients refused, first instance exclusive |
-| who is calling | `SO_PEERCRED` / `getpeereid` | `ImpersonateNamedPipeClient` + token SID |
-| which process is calling (lineage) | `SO_PEERCRED` pid / `LOCAL_PEERPID`, then the parents up to the shell of its terminal | not read yet: no lineage is recorded and none refused |
-| private directory | `mkdir` 0700 | `SetNamedSecurityInfoW`: protected DACL, the user's SID only, inherited by files (`private_file` is then a no-op) |
-| atomic replace | `rename` + directory fsync | `MoveFileExW(REPLACE_EXISTING \| WRITE_THROUGH)`; no directory flush exists |
-| log append | `O_APPEND`, `fsync` | the log seeks to the end before each write (an append-only handle cannot be cut back), `FlushFileBuffers` |
-| single instance, `start.lock` | `flock` | `LockFileEx` on byte 2^30, released when the holder dies |
-| lease liveness | pid + start time (`/proc`, `proc_pidinfo`), zombies count as dead | process handle + creation time + exit code; no zombies; a process this user may not inspect has start 0 and counts as alive |
-| start in the background | new process group | `DETACHED_PROCESS \| CREATE_NEW_PROCESS_GROUP` |
-| graceful stop | `shutdown` request, SIGTERM | `shutdown` request, the stop event, Ctrl+C / Ctrl+Break |
-
-`lease::types` accepts a drive path (`C:\x`, `C:/x`) or a UNC path as an absolute worktree or area claim, and compares
-claims with one separator and no case on a drive. The state directory is `%USERPROFILE%\.poolhouse\node` by default.
 Tests that need a socket path short enough for macOS use `kit::short_dir()`; `kit::kill_hard` is `kill -9` or `taskkill /F`.
 
 ## What is left
 
+- A note written on another device whose `supersedes` names a test-verified note of this device hides it from the default listing:
+  `fold_notes` (`src/notes.rs`) does not compare trust, which the old store's replica refused.
 - Windows has been compiled (`cargo check --target x86_64-pc-windows-gnu --all-targets`, with a stand-in C compiler for
   `ring`'s build script) but never run by the author; the first real run is the `windows` job in `ci.yml` and the
   Windows step of `release-build.yml` (see "Windows" above). A pipe server owned by another user is refused by the Rust

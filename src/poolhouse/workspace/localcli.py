@@ -1,19 +1,23 @@
-"""``poolhouse-workspace agent start|stop|list``: a local model that joins the workspace."""
+"""``poolhouse-workspace agent start|stop|list``: a local model that joins a board as a session."""
 
 from __future__ import annotations
 
 import argparse
 import math
+import os
 import time
-from typing import Any
+from pathlib import Path
 
-from poolhouse import authority, roles
+from poolhouse import authority, node_launch, person as terminal, roles
+from poolhouse.board import person, person_key, place, session as sessions
+from poolhouse.board.client import Client, Denied
 from poolhouse.command import flag
 from poolhouse.log import say, warn
 from poolhouse.serve import provenance
 from poolhouse.workspace import (
     backlog,
     issuepump,
+    limits,
     localagent as la,
     localeffort as le,
     localloop,
@@ -23,11 +27,9 @@ from poolhouse.workspace import (
     plain,
     task_launch,
     task_scheduler,
-    tokens,
 )
-from poolhouse.workspace.service import Workspace
 
-__all__ = ["ACTIONS", "OPTIONS", "run"]
+__all__ = ["ACTIONS", "OPTIONS", "command", "run"]
 
 ACTIONS = ("start", "stop", "list", "backlog", "schedule", "supersede-issue", "resume-issue")
 READY_WAIT_S = 180.0
@@ -76,7 +78,7 @@ OPTIONS = [
     flag("--max-model-calls", type=_limit, default=None, help="model calls per task; default none"),
     flag("--max-task-seconds", type=_seconds, default=None, help="task wall time in seconds; default none"),
     flag("--orders-from", default=",".join(la.DEFAULT_ORDERS_FROM), metavar="NAMES",
-         help="agents it takes tasks from besides the person and any lead (comma list)"),
+         help="sessions it takes tasks from besides the person, its starter and any lead (comma list of names)"),
     flag("--profile", default="coding", choices=["chat", "coding"],
          help="coding: durable project task queue; chat: interactive message loop"),
     flag("--harness", default="pi", choices=["pi", "codex", "claude"], help="native coding harness"),
@@ -87,20 +89,20 @@ OPTIONS = [
 ]
 
 
-def _wait(ws: Workspace, name: str, seconds: float) -> int:
+def _wait(base: Path, name: str, seconds: float) -> int:
     """Poll the status file until the agent is idle or failed; 0 ready, 1 failed or timed out."""
     began, shown = time.monotonic(), ""
     while time.monotonic() - began < seconds:
-        row = next((r for r in ls.listing(ws) if r["name"] == name), None)
+        row = next((r for r in ls.listing(base) if r["name"] == name), None)
         if row is None or not row["running"]:
-            warn(f"{name} stopped before it was ready; see {la.log_file(ws, name)}")
+            warn(f"{name} stopped before it was ready; see {la.log_file(base, name)}")
             return 1
         line = f"  {row['state']}: {row['detail']}".rstrip(": ")
         if line != shown:
             say(line)
             shown = line
         if row["state"] == "idle":
-            say(f"{name} is ready: send it a task with `poolhouse-workspace send {name} task TEXT`")
+            say(f"{name} is ready: send it a task with `poolhouse-workspace send {row['identity']} task TEXT`")
             return 0
         if row["state"] == "failed":
             warn(f"{name} could not load its model: {row['detail']}")
@@ -110,19 +112,33 @@ def _wait(ws: Workspace, name: str, seconds: float) -> int:
     return 0
 
 
-def _start(args: argparse.Namespace, ws: Workspace) -> int:
+def _session(args: argparse.Namespace) -> sessions.Session:
+    """The session that acts: the agent named (or the environment's), else a person's own session of this terminal on the
+    board of the project; an agent-marked process with no session of its own is refused."""
+    state = node_launch.default_state()
+    client = Client(state, person=person_key.provider(state, acting=person.acting(state)))
+    named = args.agent or args.token_file or os.environ.get(sessions.AGENT_ENV, "")
+    if named:
+        return sessions.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=client)
+    if terminal.marked():
+        raise Denied("denied", "an agent starts a local agent as a session of its own: run it as a registered session")
+    where = Path(args.project or ".")
+    return person.on(client, place.resolve(client, where, args.board))
+
+
+def _start(args: argparse.Namespace, s: sessions.Session, base: Path) -> int:
     if args.agent:
         if not args.task or not (args.name or args.target):
             raise ValueError('agent start requires an existing worker name and --task')
-        got = task_launch.start(ws, tokens.load(ws.base, args.agent), args.name or args.target, args.task)
-        runner = la.load(ws, got.name)
+        got = task_launch.start(s, base, args.name or args.target, args.task)
+        runner = la.load(base, got.name)
         caps = localloop.caps_of(runner)
         if caps.seconds is None:
             warn("Task wall time is None. Tasks could run indefinitely until you cancel them.")
         say(f'{got.name}: {runner.model_name}; {runner.ctx} context; {runner.role}; {runner.harness}; '
             f'effort {runner.effort}, ceiling {runner.max_effort}; '
             f'{caps.rounds} turns, {caps.calls} tool calls, {caps.steps} model calls, {caps.seconds} seconds wall time')
-        return 0 if args.no_wait else _wait(ws, got.name, READY_WAIT_S)
+        return 0 if args.no_wait else _wait(base, got.name, READY_WAIT_S)
     selected_profile = lp.profile(args.profile)
     selected_context = lp.parse_ctx(args.ctx) or selected_profile.ctx
     project = args.project or ("." if selected_profile.name == "coding" else "")
@@ -138,32 +154,32 @@ def _start(args: argparse.Namespace, ws: Workspace) -> int:
         warn("Task wall time is None. Tasks could run indefinitely until you cancel them.")
     say(f"model: {pick.name} ({pick.note})")
     try:
-        got = ls.start(ws, ls.Ask(args.model, args.name, selected_role, args.effort, args.max_effort,
-                                  args.profile, selected_context, project, la.check_orders(args.orders_from.split(",")), args.harness,
-                                  repo=args.repo, max_output_tokens=args.max_output_tokens,
-                                  task_caps={"rounds": getattr(args, "max_rounds", None),
-                                             "calls": getattr(args, "max_tool_calls", None),
-                                             "steps": getattr(args, "max_model_calls", None),
-                                             "seconds": getattr(args, "max_task_seconds", None)}), pick=pick,
-                       authority=ls.Authority(parent_token=ls.launch_parent(ws, project)))
+        got = ls.start(s, ls.Ask(args.model, args.name, selected_role, args.effort, args.max_effort,
+                                 args.profile, selected_context, project, la.check_orders(args.orders_from.split(",")), args.harness,
+                                 repo=args.repo, max_output_tokens=args.max_output_tokens,
+                                 task_caps={"rounds": getattr(args, "max_rounds", None),
+                                            "calls": getattr(args, "max_tool_calls", None),
+                                            "steps": getattr(args, "max_model_calls", None),
+                                            "seconds": getattr(args, "max_task_seconds", None)}), base=base, pick=pick)
     except ls.Unavailable as err:
         warn(str(err))
         return 1
     if got.already:
         say(f"{got.name} is already running (pid {got.pid}) on {got.model} as {got.role}")
         return 0
-    say("it takes tasks from: the person, any lead, " + ", ".join(la.check_orders(args.orders_from.split(",")))
+    say(f"it takes tasks from: the person, {s.name} which started it, any lead, "
+        + ", ".join(la.check_orders(args.orders_from.split(",")))
         + " (and their delegates); everything else is information only")
-    say(f"started {got.name} (pid {got.pid}) on {got.model} as {got.role}; "
-        f"log: {la.log_file(ws, got.name)}")
-    return 0 if args.no_wait else _wait(ws, got.name, READY_WAIT_S)
+    say(f"started {got.name} as {got.identity} (pid {got.pid}) on {got.model} as {got.role}; "
+        f"log: {la.log_file(base, got.name)}")
+    return 0 if args.no_wait else _wait(base, got.name, READY_WAIT_S)
 
 
-def _stop(args: argparse.Namespace, ws: Workspace) -> int:
+def _stop(args: argparse.Namespace, base: Path) -> int:
     if not args.target:
         raise ValueError("agent stop needs the agent's name; `agent list` shows them")
-    done = (task_launch.stop(ws, tokens.load(ws.base, args.agent), args.target, args.task)
-            if args.agent else ls.stop(ws, args.target))
+    done = (task_launch.stop(_session(args), base, args.target, args.task) if args.agent
+            else ls.stop(base, args.target))
     say(f"stopped {done.name}" + (" (it had to be killed)" if done.forced else "")
         + ("; its model lease is released" if done.lease_released else ""))
     for note in done.notes:
@@ -171,8 +187,8 @@ def _stop(args: argparse.Namespace, ws: Workspace) -> int:
     return 0
 
 
-def _list(ws: Workspace) -> int:
-    rows = ls.listing(ws)
+def _list(base: Path) -> int:
+    rows = ls.listing(base)
     if not rows:
         say("no local agent is running; `poolhouse-workspace agent start` starts one")
         return 0
@@ -185,24 +201,26 @@ def _list(ws: Workspace) -> int:
     return 0
 
 
-def run(args: argparse.Namespace, ws: Workspace) -> int:
+def command(args: argparse.Namespace) -> int:
     """Do the ``agent`` action; start and stop are for a person at a terminal."""
+    return run(args, limits.root())
+
+
+def run(args: argparse.Namespace, base: Path) -> int:
+    """Do the ``agent`` action with the local agents' records in ``base``."""
     if args.action == "list":
-        return _list(ws)
+        return _list(base)
     if args.action == 'schedule':
         if not args.target or not args.agent:
             raise ValueError('agent schedule requires a worker name and --agent registered-parent')
-        return task_scheduler.watch(ws, tokens.load(ws.base, args.agent), la.check_name(args.target), task=args.task)
+        return task_scheduler.watch(_session(args), base, la.check_name(args.target), task=args.task)
     if args.action in ("supersede-issue", "resume-issue"):
         if not args.target:
             raise ValueError("supersede-issue needs the existing worker name")
-        if args.agent:
-            token = tokens.load(ws.base, args.agent)
-        else:
+        if not args.agent:
             authority.require("workspace.agents", "supersede a repository issue")
-            token = tokens.read_file(tokens.directory(ws.base) / tokens.OWNER_FILE)
         decision = backlog.supersede if args.action == "supersede-issue" else backlog.resume
-        decision(ws, token, args.target, args.issue, args.reason)
+        decision(_session(args), base, args.target, args.issue, args.reason)
         say(f"issue {args.issue}: {args.action} decision recorded")
         return 0
     if not (args.agent and args.action in ("start", "stop")):
@@ -210,14 +228,15 @@ def run(args: argparse.Namespace, ws: Workspace) -> int:
     if args.action == "backlog":
         if not args.target:
             raise ValueError("agent backlog needs the existing worker's name")
-        token = tokens.read_file(tokens.directory(ws.base) / tokens.OWNER_FILE)
-        worker = la.load(ws, args.target)
+        worker = la.load(base, args.target)
         project = args.project or (worker.project if worker else "")
         repo = args.repo or (backlog.repository(project) if project else "")
-        backlog.configure(ws, token, args.target, repo, project)
-        issuepump.start(ws, token, args.target)
+        s = _session(args)
+        backlog.configure(s, base, args.target, repo, project)
+        issuepump.start(s, base, args.target)
         say(f"{args.target} is pulling open issues from {repo} into its task queue")
         return 0
     provenance.told(args.lease_for)
-    handler: Any = _start if args.action == "start" else _stop
-    return int(handler(args, ws))
+    if args.action == "start":
+        return _start(args, _session(args), base)
+    return _stop(args, base)

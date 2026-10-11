@@ -15,7 +15,7 @@ from pathlib import Path
 from poolhouse import runtime, windows_private
 from poolhouse.files import writing
 
-MODULES = frozenset({"poolhouse.harnesshook", "poolhouse.workspace.profilehook", "poolhouse.workspace.cli"})
+MODULES = frozenset({"poolhouse.harnesshook", "poolhouse.workspace.cli"})
 
 
 def owned(path: Path) -> None:

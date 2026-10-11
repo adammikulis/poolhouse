@@ -28,8 +28,6 @@ from poolhouse.chatpolicy import READ_ONLY
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.log import say
 from poolhouse.serve import provenance
-from poolhouse.workspace import tokens
-from poolhouse.workspace.identity import TOKEN_ENV
 
 __all__ = ["config_toml", "environment", "launch", "policy_flags"]
 
@@ -141,7 +139,7 @@ def workspace_config(session) -> str:
          'args = ["-m", "poolhouse.mcp", "--builtin", "--workspace-only"]',
          "startup_timeout_sec = 30", "required = true", "[mcp_servers.workspace.env]"]
     workspace += [f"{name} = {_q(value)}" for name, value in {
-        TOKEN_ENV: tokens.load(session.base, session.name),
+        "POOLHOUSE_WORKSPACE_AGENT": session.name, "POOLHOUSE_BOARD": session.board,
         "POOLHOUSE_HOME": str(session.base.parent), "POOLHOUSE_WORKSPACE_HOME": str(session.base),
         "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
         "POOLHOUSE_AGENT": "1", "POOLHOUSE_NONINTERACTIVE": "1"}.items()]

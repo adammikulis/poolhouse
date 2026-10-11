@@ -42,7 +42,7 @@ hidden = [
     # Reached only through a lazy import, so nothing static points at it.
     "poolhouse.serve", "psutil", "ladybug._lbug", "ladybug._lbug_capi",
     "poolhouse.graph.store", "poolhouse.graph.cypher", "machineid",
-    "poolhouse.workspace.coordinator", "poolhouse.workspace.coordinator_routes", "poolhouse.workspace.fleet_routes", "poolhouse.workspace.coding_routes", "poolhouse.mcp",
+    "poolhouse.workspace.fleet_routes", "poolhouse.workspace.coding_routes", "poolhouse.mcp",
     "poolhouse.activity.fleet_routes", "poolhouse.workspace.work_reputation",
     # keyring picks its backend by importing these at run time. The PyInstaller hook collects them
     # today (checked in a frozen build); naming them keeps a change to that hook from silently

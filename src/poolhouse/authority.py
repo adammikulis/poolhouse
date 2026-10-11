@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from collections.abc import Iterable, Mapping
-from pathlib import Path
 from typing import Any
 
 from poolhouse import home
@@ -26,7 +26,6 @@ GATES: dict[str, str] = {
     "workspace.setup": "workspace",
     "workspace.model": "workspace",
     "workspace.agents": "workspace",
-    "workspace.coordinator": "workspace",
     "sentinel.quarantine": "sentinel",
     "sentinel.policy": "sentinel",
     "requests.answer": "requests",
@@ -128,17 +127,17 @@ def set_state(names: Iterable[str], new: str, *, by: str, project: str = "",
 
 
 def workspace_helper(name: str) -> bool:
-    """Whether the workspace registry records ``name`` as a subagent (an identity with a parent).
-    An unreadable registry counts as one: a delegated pass fails closed."""
+    """Whether the node's record, kept beside the session ``name``'s token when it registered, says it is a subagent (it has a
+    parent). A session with no record is not one; a record that cannot be read counts as one: a delegated pass fails closed."""
     if not name:
         return False
-    named = os.environ.get("POOLHOUSE_WORKSPACE_HOME")
-    base = Path(named).expanduser() if named else home.state("workspace")
-    try:
-        agents = read_json(base / "agents.json", {}).get("agents", {})
-        return bool(agents.get(name, {}).get("parent"))
-    except (OSError, ValueError, AttributeError):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,47}", name):
         return True
+    try:
+        kept = [path.read_text("utf-8").strip() for path in (home.state("node") / "client").glob(f"*/{name}.parent")]
+    except (OSError, ValueError):
+        return True
+    return any(kept)
 
 
 def require(gate: str, action: str, terminal: tuple[bool, bool] | None = None,

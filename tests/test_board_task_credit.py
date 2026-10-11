@@ -221,7 +221,7 @@ def test_the_reputation_tool_reads_the_boards_own_standings(board, ledger, monke
     lambda t: t['review'].update(checks=[{'name': 'Replay passes', 'passed': False}]),
 ])
 def test_an_award_binds_the_exact_proposal_and_outcome_it_was_reviewed_for(board, ledger, change):
-    from poolhouse.workspace.identity import Denied as Refused
+    from poolhouse.board.client import Denied as Refused
 
     reviewed(board)
     task = board.tasks(board.lead).get(board.task['id'])

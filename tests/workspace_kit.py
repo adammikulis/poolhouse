@@ -1,15 +1,12 @@
-"""Shared setup for the workspace tests: a workspace under tmp_path, tokens, real subprocesses."""
+"""Shared setup for tests that run real subprocesses against a workspace home under tmp_path."""
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
-
-from poolhouse.workspace import Workspace
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 STRIPPED = ("CODEX_THREAD_ID", "CODEX_SESSION_ID", "CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_WORKSPACE_TOKEN",
@@ -24,28 +21,6 @@ def clean_env(monkeypatch, tmp_path: Path) -> Path:
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(base))
     monkeypatch.setenv("DEV_TEST_SLOTS_DIR", str(tmp_path / "slots"))
     return base
-
-
-class Kit:
-    """A workspace, its owner's token, and helpers to mint more."""
-
-    def __init__(self, base: Path, clock=None) -> None:
-        self.base = base
-        self.ws = Workspace(base, clock) if clock else Workspace(base)
-        self.owner = self.ws.init("owner")
-
-    def agent(self, name: str, role: str = "agent", ttl_s: float = 0.0) -> str:
-        return self.ws.mint(self.owner, name, role, ttl_s)
-
-    def reopen(self, clock=None) -> Workspace:
-        return Workspace(self.base, clock) if clock else Workspace(self.base)
-
-    def limits(self, **values) -> None:
-        path = self.base / "limits.json"
-        current = json.loads(path.read_text()) if path.exists() else {"version": 1}
-        current.update(values)
-        path.write_text(json.dumps(current))
-        self.ws = Workspace(self.base, self.ws.clock)
 
 
 def run_python(code: str, base: Path, token: str = "", *args: str,

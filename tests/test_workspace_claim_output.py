@@ -8,6 +8,6 @@ def test_unclaimed_owner_is_rendered_without_identity_conversion():
         'kind: file\nkey: unclaimed.py\nowner: None')
 
 
-def test_claimed_owner_is_rendered_readably():
-    assert 'worker on shared board' in _text({
-        'owner': 'board:' + 'a' * 32 + ':worker'})
+def test_a_claimed_owner_is_rendered_as_its_session_name():
+    assert _text({'kind': 'file', 'key': 'claimed.py', 'owner': 'claude-0a1b2c'}) == (
+        'kind: file\nkey: claimed.py\nowner: claude-0a1b2c')

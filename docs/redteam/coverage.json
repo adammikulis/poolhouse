@@ -1,10 +1,10 @@
 {
- "surfaces": 867,
+ "surfaces": 787,
  "by_status": {
-  "covered": 539,
-  "partial": 196,
+  "covered": 467,
+  "partial": 194,
   "uncovered": 52,
-  "n/a": 80,
+  "n/a": 74,
   "unmapped": 0
  },
  "by_kind": {
@@ -37,8 +37,8 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 48,
-   "partial": 48,
+   "covered": 46,
+   "partial": 47,
    "uncovered": 0,
    "n/a": 0,
    "unmapped": 0
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 117,
+   "covered": 63,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -68,7 +68,7 @@
    "covered": 3,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 20,
+   "n/a": 14,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 82,
+   "covered": 67,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,8 +100,8 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 87,
-   "partial": 59,
+   "covered": 86,
+   "partial": 58,
    "uncovered": 0,
    "n/a": 2,
    "unmapped": 0
@@ -739,18 +739,7 @@
    "status": "covered",
    "tests": [
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal",
-    "tests/test_redteam_human_floor.py::test_no_tool_an_agent_is_offered_sets_up_joins_delegates_or_names_the_token_directory",
-    "tests/test_redteam_human_floor.py::test_a_hostile_message_cannot_widen_a_delegate_or_leak_a_token_path",
-    "tests/test_workspace_quickstart.py::test_person_only_commands_refuse_an_agent_and_no_terminal",
-    "tests/test_workspace_quickstart.py::test_failed_redemptions_lock_every_code_out",
-    "tests/test_redteam_human_floor.py::test_the_one_thing_an_agent_may_mint_is_a_bounded_child_invite_and_never_a_person_grant",
-    "tests/test_workspace_agent_invites.py::test_message_text_cannot_make_an_invite_or_change_the_policy",
-    "tests/test_workspace_agent_invites.py::test_a_read_only_session_is_refused_and_the_env_can_only_tighten_the_policy",
-    "tests/test_workspace_agent_invites.py::test_approve_first_raises_a_request_the_person_answers",
-    "tests/test_workspace_agent_invites.py::test_the_code_cannot_be_written_into_a_message_or_a_note",
-    "tests/test_workspace_agent_invites.py::test_a_claimed_name_or_model_cannot_make_the_child_lead_human_or_owner",
-    "tests/test_workspace_agent_invites.py::test_the_person_revokes_a_whole_subtree_and_its_outstanding_invites"
+    "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal"
    ],
    "note": ""
   },
@@ -826,18 +815,7 @@
    "status": "covered",
    "tests": [
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal",
-    "tests/test_redteam_human_floor.py::test_no_tool_an_agent_is_offered_sets_up_joins_delegates_or_names_the_token_directory",
-    "tests/test_redteam_human_floor.py::test_a_hostile_message_cannot_widen_a_delegate_or_leak_a_token_path",
-    "tests/test_workspace_quickstart.py::test_person_only_commands_refuse_an_agent_and_no_terminal",
-    "tests/test_workspace_quickstart.py::test_failed_redemptions_lock_every_code_out",
-    "tests/test_redteam_human_floor.py::test_the_one_thing_an_agent_may_mint_is_a_bounded_child_invite_and_never_a_person_grant",
-    "tests/test_workspace_agent_invites.py::test_message_text_cannot_make_an_invite_or_change_the_policy",
-    "tests/test_workspace_agent_invites.py::test_a_read_only_session_is_refused_and_the_env_can_only_tighten_the_policy",
-    "tests/test_workspace_agent_invites.py::test_approve_first_raises_a_request_the_person_answers",
-    "tests/test_workspace_agent_invites.py::test_the_code_cannot_be_written_into_a_message_or_a_note",
-    "tests/test_workspace_agent_invites.py::test_a_claimed_name_or_model_cannot_make_the_child_lead_human_or_owner",
-    "tests/test_workspace_agent_invites.py::test_the_person_revokes_a_whole_subtree_and_its_outstanding_invites"
+    "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal"
    ],
    "note": ""
   },
@@ -973,18 +951,7 @@
    "status": "covered",
    "tests": [
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal",
-    "tests/test_redteam_human_floor.py::test_no_tool_an_agent_is_offered_sets_up_joins_delegates_or_names_the_token_directory",
-    "tests/test_redteam_human_floor.py::test_a_hostile_message_cannot_widen_a_delegate_or_leak_a_token_path",
-    "tests/test_workspace_quickstart.py::test_person_only_commands_refuse_an_agent_and_no_terminal",
-    "tests/test_workspace_quickstart.py::test_failed_redemptions_lock_every_code_out",
-    "tests/test_redteam_human_floor.py::test_the_one_thing_an_agent_may_mint_is_a_bounded_child_invite_and_never_a_person_grant",
-    "tests/test_workspace_agent_invites.py::test_message_text_cannot_make_an_invite_or_change_the_policy",
-    "tests/test_workspace_agent_invites.py::test_a_read_only_session_is_refused_and_the_env_can_only_tighten_the_policy",
-    "tests/test_workspace_agent_invites.py::test_approve_first_raises_a_request_the_person_answers",
-    "tests/test_workspace_agent_invites.py::test_the_code_cannot_be_written_into_a_message_or_a_note",
-    "tests/test_workspace_agent_invites.py::test_a_claimed_name_or_model_cannot_make_the_child_lead_human_or_owner",
-    "tests/test_workspace_agent_invites.py::test_the_person_revokes_a_whole_subtree_and_its_outstanding_invites"
+    "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal"
    ],
    "note": ""
   },
@@ -2111,7 +2078,7 @@
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
    "status": "covered",
    "tests": [
-    "tests/test_automatic_project_connection.py::test_local_registration_refuses_hostile_response"
+    "tests/test_remote_transport_attacks.py::test_local_registration_refuses_hostile_response"
    ],
    "note": "bounded loopback registration rejects foreign redirects, oversized replies, absent or tampered seals, malformed JSON and another project identity"
   },
@@ -2778,45 +2745,6 @@
    "note": ""
   },
   {
-   "id": "egress:workspace/coordinator_client.py:_device_member",
-   "kind": "egress",
-   "source": "workspace/coordinator_client.py:_device_member",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_device_transport.py::test_coordinator_member_rejects_untrusted_joining_before_transport",
-    "tests/test_workspace_coordinator.py::test_hostile_saved_coordinator_origin_is_refused_before_transport",
-    "tests/test_workspace_coordinator.py::test_remote_mcp_never_falls_back_to_local_workspace"
-   ],
-   "note": "Saved origins reject plaintext, credentials and foreign URL components; revoked, missing, ambiguous, unjoined and certificate-mismatched device rows cannot install a pin or open transport; remote clients refuse local fallback"
-  },
-  {
-   "id": "egress:workspace/remote.py:RemoteWorkspace.__init__",
-   "kind": "egress",
-   "source": "workspace/remote.py:RemoteWorkspace.__init__",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "partial",
-   "tests": [
-    "tests/test_net_no_bypass.py"
-   ],
-   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
-  },
-  {
-   "id": "egress:workspace/remote.py:RemoteWorkspace._request",
-   "kind": "egress",
-   "source": "workspace/remote.py:RemoteWorkspace._request",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_remote_transport_attacks.py",
-    "tests/test_workspace_remote.py"
-   ],
-   "note": "project credentials stay on the exact LAN authority endpoint; redirects, oversized or malformed replies, and slow responses are refused"
-  },
-  {
    "id": "handler:fleet/api.py:Handler",
    "kind": "handler",
    "source": "fleet/api.py:Handler",
@@ -2938,11 +2866,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -2958,11 +2883,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -2978,11 +2900,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -2998,11 +2917,25 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:board/credentials.py:prepare",
+   "kind": "human",
+   "source": "board/credentials.py:prepare",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3018,11 +2951,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3092,11 +3022,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3126,11 +3053,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3146,11 +3070,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3166,11 +3087,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3186,11 +3104,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3206,11 +3121,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3226,11 +3138,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3246,11 +3155,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3266,11 +3172,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3286,11 +3189,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3306,11 +3206,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3326,11 +3223,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3346,11 +3240,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3366,11 +3257,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3386,11 +3274,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3406,11 +3291,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3426,11 +3308,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3446,11 +3325,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3466,11 +3342,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3486,11 +3359,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3506,11 +3376,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3526,11 +3393,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3546,11 +3410,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3566,11 +3427,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3586,11 +3444,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3606,11 +3461,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3626,11 +3478,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3646,11 +3495,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3666,11 +3512,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3686,11 +3529,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3706,11 +3546,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3726,11 +3563,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3746,11 +3580,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3766,11 +3597,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3786,11 +3614,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3806,11 +3631,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3826,11 +3648,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3846,11 +3665,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3866,11 +3682,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3886,11 +3699,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3906,11 +3716,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3926,11 +3733,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3946,11 +3750,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3966,11 +3767,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -3986,11 +3784,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4006,11 +3801,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4026,199 +3818,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/backlog.py:configure",
-   "kind": "human",
-   "source": "workspace/backlog.py:configure",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/backlog.py:resume",
-   "kind": "human",
-   "source": "workspace/backlog.py:resume",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_backlog.py::test_parent_resume_preserves_failed_attempt_and_consumes_one_retry",
-    "tests/test_workspace_backlog.py::test_issue_resume_refuses_unblocked_foreign_and_child_requests",
-    "tests/test_workspace_backlog.py::test_issue_resume_cannot_bypass_task_retry_budget"
-   ],
-   "note": "Authenticated person or actual parent recovery preserves the failed projection and grants one intake attempt; child, foreign parent, unblocked projections and budget bypasses are refused"
-  },
-  {
-   "id": "human:workspace/backlog.py:supersede",
-   "kind": "human",
-   "source": "workspace/backlog.py:supersede",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_backlog.py::test_parent_superseded_issue_stays_excluded_after_revision_change",
-    "tests/test_workspace_backlog.py::test_child_and_foreign_parent_cannot_supersede_repository_tasks",
-    "tests/test_workspace_backlog.py::test_maintained_cli_records_parent_decision_without_person_impersonation"
-   ],
-   "note": "Only the person or actual registered worker parent records an obsolete-issue decision; child and foreign-parent tokens mutate no decision, and later issue revisions preserve the authenticated exclusion"
-  },
-  {
-   "id": "human:workspace/boardapi.py:BoardApi.combine_graph",
-   "kind": "human",
-   "source": "workspace/boardapi.py:BoardApi.combine_graph",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/boardapi.py:BoardApi.export_graph",
-   "kind": "human",
-   "source": "workspace/boardapi.py:BoardApi.export_graph",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/boardapi.py:BoardApi.follow",
-   "kind": "human",
-   "source": "workspace/boardapi.py:BoardApi.follow",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/boardapi.py:BoardApi.join",
-   "kind": "human",
-   "source": "workspace/boardapi.py:BoardApi.join",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/chat.py:run",
-   "kind": "human",
-   "source": "workspace/chat.py:run",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/claims.py:Claims.inactive_worktree",
-   "kind": "human",
-   "source": "workspace/claims.py:Claims.inactive_worktree",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/claims.py:Claims.return_worktree",
-   "kind": "human",
-   "source": "workspace/claims.py:Claims.return_worktree",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4234,125 +3835,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/cli.py:_coordinator",
-   "kind": "human",
-   "source": "workspace/cli.py:_coordinator",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/coordinator_calls.py:prepare",
-   "kind": "human",
-   "source": "workspace/coordinator_calls.py:prepare",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/coordinator_routes.py:_change",
-   "kind": "human",
-   "source": "workspace/coordinator_routes.py:_change",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_standing_device_policy.py::test_an_agent_token_cannot_choose_host_mode_for_itself_a_subagent_or_a_forged_parent",
-    "tests/test_standing_device_policy.py::test_only_protected_own_local_identity_selects_authority",
-    "tests/test_standing_device_policy.py::test_a_person_cannot_host_over_a_followed_coordinator"
-   ],
-   "note": "an agent, subagent or forged token cannot choose host mode; only a person selects what the device hosts"
-  },
-  {
-   "id": "human:workspace/device_agent.py:bind_worker",
-   "kind": "human",
-   "source": "workspace/device_agent.py:bind_worker",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/device_agent.py:enroll",
-   "kind": "human",
-   "source": "workspace/device_agent.py:enroll",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/enforcement_check.py:check_project",
-   "kind": "human",
-   "source": "workspace/enforcement_check.py:check_project",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4368,56 +3852,11 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/files.py:FileApi._unheld",
-   "kind": "human",
-   "source": "workspace/files.py:FileApi._unheld",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_files.py::test_only_a_person_deletes_and_the_content_is_shredded",
-    "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_board_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
-   ],
-   "note": "an agent tries to delete a file, read a held file or fetch one unfenced"
-  },
-  {
-   "id": "human:workspace/files.py:FileApi.content_for_person",
-   "kind": "human",
-   "source": "workspace/files.py:FileApi.content_for_person",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_files.py::test_only_a_person_deletes_and_the_content_is_shredded",
-    "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_board_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
-   ],
-   "note": "an agent tries to delete a file, read a held file or fetch one unfenced"
-  },
-  {
-   "id": "human:workspace/files.py:FileApi.delete",
-   "kind": "human",
-   "source": "workspace/files.py:FileApi.delete",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_files.py::test_only_a_person_deletes_and_the_content_is_shredded",
-    "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_board_files.py::test_the_person_downloads_text_as_an_attachment_and_never_sees_it_rendered"
-   ],
-   "note": "an agent tries to delete a file, read a held file or fetch one unfenced"
   },
   {
    "id": "human:workspace/grants_cli.py:person_runner.run",
@@ -4484,86 +3923,6 @@
    "note": "grant, revoke-grant, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign for this node, once, from the terminal it was signed in, a removed key enrolled again, a token used from another terminal than the one that registered it, and a name with no lineage taken by a process that holds none of its tokens (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
   },
   {
-   "id": "human:workspace/guide.py:_ensure",
-   "kind": "human",
-   "source": "workspace/guide.py:_ensure",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/guide.py:agent_connect",
-   "kind": "human",
-   "source": "workspace/guide.py:agent_connect",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/guide.py:connect",
-   "kind": "human",
-   "source": "workspace/guide.py:connect",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/guide.py:walk",
-   "kind": "human",
-   "source": "workspace/guide.py:walk",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
    "id": "human:workspace/hooks_cli.py:install",
    "kind": "human",
    "source": "workspace/hooks_cli.py:install",
@@ -4574,111 +3933,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/identity.py:Identity.trust",
-   "kind": "human",
-   "source": "workspace/identity.py:Identity.trust",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/identity.py:Registry._add",
-   "kind": "human",
-   "source": "workspace/identity.py:Registry._add",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/identity.py:Registry.init",
-   "kind": "human",
-   "source": "workspace/identity.py:Registry.init",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/identity.py:Registry.set_project",
-   "kind": "human",
-   "source": "workspace/identity.py:Registry.set_project",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/issuepump.py:run",
-   "kind": "human",
-   "source": "workspace/issuepump.py:run",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4694,11 +3950,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -4714,545 +3967,8 @@
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
     "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
     "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
     "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/notes.py:Notes.trust_of",
-   "kind": "human",
-   "source": "workspace/notes.py:Notes.trust_of",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/onboard.py:doctor",
-   "kind": "human",
-   "source": "workspace/onboard.py:doctor",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/onboard.py:hello",
-   "kind": "human",
-   "source": "workspace/onboard.py:hello",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/onboard.py:setup",
-   "kind": "human",
-   "source": "workspace/onboard.py:setup",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/quarantine.py:Quarantine.release",
-   "kind": "human",
-   "source": "workspace/quarantine.py:Quarantine.release",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/quarantine.py:Quarantine.text",
-   "kind": "human",
-   "source": "workspace/quarantine.py:Quarantine.text",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/reports.py:eligible",
-   "kind": "human",
-   "source": "workspace/reports.py:eligible",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/reports.py:emit",
-   "kind": "human",
-   "source": "workspace/reports.py:emit",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/resource_allocations.py:assign",
-   "kind": "human",
-   "source": "workspace/resource_allocations.py:assign",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/service.py:Workspace.deliver",
-   "kind": "human",
-   "source": "workspace/service.py:Workspace.deliver",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/service.py:Workspace.mint",
-   "kind": "human",
-   "source": "workspace/service.py:Workspace.mint",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/service.py:Workspace.set_model",
-   "kind": "human",
-   "source": "workspace/service.py:Workspace.set_model",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_actions.py:block",
-   "kind": "human",
-   "source": "workspace/task_actions.py:block",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_task_routes.py::test_foreign_page_cannot_create_tasks",
-    "tests/test_fleet_task_routes.py::test_joined_unsigned_and_browser_claims_are_refused",
-    "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate",
-    "tests/test_taskboard.py::test_designated_reviewer_without_read_capability_cannot_grade_task",
-    "tests/test_taskboard.py::test_changed_task_specification_cannot_be_claimed",
-    "tests/test_task_credit.py::test_same_device_parent_cannot_review_through_another_worker_session",
-    "tests/test_task_credit.py::test_review_and_proposal_tampering_cannot_mint_credits"
-   ],
-   "note": "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
-  },
-  {
-   "id": "human:workspace/task_authority.py:authorize",
-   "kind": "human",
-   "source": "workspace/task_authority.py:authorize",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_integration.py:DevelopmentIntegration.__init__",
-   "kind": "human",
-   "source": "workspace/task_integration.py:DevelopmentIntegration.__init__",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_integration.py:DevelopmentIntegration.prepare",
-   "kind": "human",
-   "source": "workspace/task_integration.py:DevelopmentIntegration.prepare",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_integration.py:reviewed",
-   "kind": "human",
-   "source": "workspace/task_integration.py:reviewed",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_scope.py:eligible",
-   "kind": "human",
-   "source": "workspace/task_scope.py:eligible",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_source_recovery.py:_worker",
-   "kind": "human",
-   "source": "workspace/task_source_recovery.py:_worker",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_worktree_recovery.py:dematerialize",
-   "kind": "human",
-   "source": "workspace/task_worktree_recovery.py:dematerialize",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/task_worktrees.py:prepare",
-   "kind": "human",
-   "source": "workspace/task_worktrees.py:prepare",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/taskboard.py:TaskBoard._qualifies",
-   "kind": "human",
-   "source": "workspace/taskboard.py:TaskBoard._qualifies",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/taskboard.py:TaskBoard._reviewer",
-   "kind": "human",
-   "source": "workspace/taskboard.py:TaskBoard._reviewer",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_task_routes.py::test_foreign_page_cannot_create_tasks",
-    "tests/test_fleet_task_routes.py::test_joined_unsigned_and_browser_claims_are_refused",
-    "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate",
-    "tests/test_taskboard.py::test_designated_reviewer_without_read_capability_cannot_grade_task",
-    "tests/test_taskboard.py::test_changed_task_specification_cannot_be_claimed",
-    "tests/test_task_credit.py::test_same_device_parent_cannot_review_through_another_worker_session",
-    "tests/test_task_credit.py::test_review_and_proposal_tampering_cannot_mint_credits"
-   ],
-   "note": "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
-  },
-  {
-   "id": "human:workspace/taskboard.py:TaskBoard.create",
-   "kind": "human",
-   "source": "workspace/taskboard.py:TaskBoard.create",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_task_routes.py::test_foreign_page_cannot_create_tasks",
-    "tests/test_fleet_task_routes.py::test_joined_unsigned_and_browser_claims_are_refused",
-    "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate",
-    "tests/test_taskboard.py::test_designated_reviewer_without_read_capability_cannot_grade_task",
-    "tests/test_taskboard.py::test_changed_task_specification_cannot_be_claimed",
-    "tests/test_task_credit.py::test_same_device_parent_cannot_review_through_another_worker_session",
-    "tests/test_task_credit.py::test_review_and_proposal_tampering_cannot_mint_credits"
-   ],
-   "note": "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
-  },
-  {
-   "id": "human:workspace/tokens.py:directory",
-   "kind": "human",
-   "source": "workspace/tokens.py:directory",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/work_reputation.py:fleet_route",
-   "kind": "human",
-   "source": "workspace/work_reputation.py:fleet_route",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:workspace/work_reputation.py:legacy_roster",
-   "kind": "human",
-   "source": "workspace/work_reputation.py:legacy_roster",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
-    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
-    "tests/test_workspace_rules.py::test_only_a_human_token_reads_or_releases_a_held_item",
-    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
-    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
-    "tests/test_workspace_model.py::test_only_a_person_or_launcher_process_records_a_verified_model",
-    "tests/test_workspace_model.py::test_an_agent_cannot_verify_itself_or_overwrite_a_verified_model_or_set_anothers",
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
@@ -5552,66 +4268,6 @@
    "id": "listener:setup.py:_port_free",
    "kind": "listener",
    "source": "setup.py:_port_free",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:workspace/automatic_connection.py:_attach",
-   "kind": "listener",
-   "source": "workspace/automatic_connection.py:_attach",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:workspace/automatic_connection.py:_other_local_actor",
-   "kind": "listener",
-   "source": "workspace/automatic_connection.py:_other_local_actor",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:workspace/automatic_connection.py:refresh",
-   "kind": "listener",
-   "source": "workspace/automatic_connection.py:refresh",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:workspace/automatic_connection.py:startup",
-   "kind": "listener",
-   "source": "workspace/automatic_connection.py:startup",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:workspace/cli.py:_context",
-   "kind": "listener",
-   "source": "workspace/cli.py:_context",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:workspace/remote_cli.py:run",
-   "kind": "listener",
-   "source": "workspace/remote_cli.py:run",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
@@ -5994,11 +4650,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6010,11 +4662,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6026,15 +4674,11 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_files.py::test_a_file_is_read_only_by_those_who_may_read_its_message",
-    "tests/test_workspace_files.py::test_a_direct_message_file_is_private_to_the_join_and_the_person",
     "tests/test_workspace_files.py::test_search_never_returns_what_the_caller_may_not_read",
     "tests/test_workspace_files.py::test_executables_archives_and_pickles_are_refused",
     "tests/test_workspace_files.py::test_hostile_names_are_cleaned_to_one_plain_name",
     "tests/test_workspace_files.py::test_out_refuses_paths_that_leave_the_worktree",
-    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites",
-    "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_workspace_files.py::test_an_unreadable_keystore_posts_nothing_and_reads_nothing"
+    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites"
    ],
    "note": "file names, notes, text and snippets are agent text: fenced, bounded, access-checked, never executed"
   },
@@ -6046,11 +4690,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6062,11 +4702,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6078,11 +4714,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6094,15 +4726,11 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_files.py::test_a_file_is_read_only_by_those_who_may_read_its_message",
-    "tests/test_workspace_files.py::test_a_direct_message_file_is_private_to_the_join_and_the_person",
     "tests/test_workspace_files.py::test_search_never_returns_what_the_caller_may_not_read",
     "tests/test_workspace_files.py::test_executables_archives_and_pickles_are_refused",
     "tests/test_workspace_files.py::test_hostile_names_are_cleaned_to_one_plain_name",
     "tests/test_workspace_files.py::test_out_refuses_paths_that_leave_the_worktree",
-    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites",
-    "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_workspace_files.py::test_an_unreadable_keystore_posts_nothing_and_reads_nothing"
+    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites"
    ],
    "note": "file names, notes, text and snippets are agent text: fenced, bounded, access-checked, never executed"
   },
@@ -6114,15 +4742,11 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_files.py::test_a_file_is_read_only_by_those_who_may_read_its_message",
-    "tests/test_workspace_files.py::test_a_direct_message_file_is_private_to_the_join_and_the_person",
     "tests/test_workspace_files.py::test_search_never_returns_what_the_caller_may_not_read",
     "tests/test_workspace_files.py::test_executables_archives_and_pickles_are_refused",
     "tests/test_workspace_files.py::test_hostile_names_are_cleaned_to_one_plain_name",
     "tests/test_workspace_files.py::test_out_refuses_paths_that_leave_the_worktree",
-    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites",
-    "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_workspace_files.py::test_an_unreadable_keystore_posts_nothing_and_reads_nothing"
+    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites"
    ],
    "note": "file names, notes, text and snippets are agent text: fenced, bounded, access-checked, never executed"
   },
@@ -6134,15 +4758,11 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_files.py::test_a_file_is_read_only_by_those_who_may_read_its_message",
-    "tests/test_workspace_files.py::test_a_direct_message_file_is_private_to_the_join_and_the_person",
     "tests/test_workspace_files.py::test_search_never_returns_what_the_caller_may_not_read",
     "tests/test_workspace_files.py::test_executables_archives_and_pickles_are_refused",
     "tests/test_workspace_files.py::test_hostile_names_are_cleaned_to_one_plain_name",
     "tests/test_workspace_files.py::test_out_refuses_paths_that_leave_the_worktree",
-    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites",
-    "tests/test_workspace_files.py::test_injection_text_is_held_until_a_person_releases_it",
-    "tests/test_workspace_files.py::test_an_unreadable_keystore_posts_nothing_and_reads_nothing"
+    "tests/test_workspace_files.py::test_out_refuses_symlinks_and_never_overwrites"
    ],
    "note": "file names, notes, text and snippets are agent text: fenced, bounded, access-checked, never executed"
   },
@@ -6154,11 +4774,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6170,11 +4786,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6186,11 +4798,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6202,11 +4810,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6218,11 +4822,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6234,11 +4834,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6250,7 +4846,6 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_work_reputation.py::test_reputation_read_requires_valid_token_and_read_capability",
     "tests/test_work_reputation.py::test_local_tools_read_reputation_and_task_frame_contains_team_awareness",
     "tests/test_board_task_credit.py::test_the_reputation_tool_reads_the_boards_own_standings"
    ],
@@ -6264,11 +4859,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6280,11 +4871,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6296,11 +4883,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6312,11 +4895,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6328,11 +4907,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6344,11 +4919,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6360,11 +4931,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6376,11 +4943,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6392,11 +4955,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6408,11 +4967,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6424,11 +4979,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6440,11 +4991,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6456,11 +5003,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6472,11 +5015,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6488,11 +5027,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6504,11 +5039,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -6520,11 +5051,7 @@
    "attacker": "a prompt-injected model calls the tool with hostile arguments",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw",
-    "tests/test_workspace_surface.py::test_mcp_writes_need_the_senders_token_and_reads_do_not_need_a_write",
-    "tests/test_workspace_bus.py::test_an_injected_instruction_is_held_and_never_reaches_the_reader",
-    "tests/test_workspace_quiet.py::test_an_announcement_is_one_short_line_and_the_sender_is_rate_limited",
-    "tests/test_workspace_quiet.py::test_repeated_reads_are_byte_identical_and_tool_descriptions_are_static"
+    "tests/test_workspace_surface.py::test_mcp_returns_injected_text_fenced_and_never_raw"
    ],
    "note": ""
   },
@@ -7716,20 +6243,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/board_graph.py",
-   "kind": "parser",
-   "source": "workspace/board_graph.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -7757,31 +6270,12 @@
     "tests/test_board_ui.py::test_person_post_accepts_exact_browser_origin",
     "tests/test_board_ui.py::test_person_post_rejects_different_browser_origin",
     "tests/test_redteam_board.py::test_the_route_never_writes_and_refuses_other_hosts_sites_and_traversal",
-    "tests/test_redteam_board.py::test_an_agent_cannot_read_another_board_or_join_through_any_command",
-    "tests/test_redteam_board.py::test_boards_and_subscriptions_cannot_be_made_without_limit",
     "tests/test_board_page.py::test_the_route_reads_only_and_checks_host_origin_and_fetch_site",
     "tests/test_redteam_board.py::test_the_one_write_route_refuses_every_way_a_hostile_page_could_reach_it",
     "tests/test_redteam_board.py::test_a_post_cannot_borrow_another_identity_or_smuggle_options",
-    "tests/test_workspace_quiet.py::test_a_new_agent_has_no_subscriptions_and_its_inbox_holds_no_board_traffic",
-    "tests/test_workspace_quiet.py::test_the_lead_and_the_person_cannot_leave_announcements_and_an_agent_can_only_mute",
-    "tests/test_workspace_quiet.py::test_message_text_never_changes_a_subscription",
-    "tests/test_workspace_model.py::test_a_hostile_model_or_harness_is_refused_everywhere",
     "tests/test_redteam_board.py::test_following_and_the_live_route_give_an_agent_nothing_it_could_not_already_read"
    ],
    "note": "Fleet and exact registered local projects delegate to the maintained person-only Board parser; HTTP and HTTPS exact browser origins, membership, visible acknowledgements, malformed and oversized bodies, missing UI authority, foreign projects and agent owner credentials are exercised without identity creation"
-  },
-  {
-   "id": "parser:workspace/chain.py",
-   "kind": "parser",
-   "source": "workspace/chain.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
   },
   {
    "id": "parser:workspace/coding_routes.py",
@@ -7822,45 +6316,6 @@
    "note": "Coding is a declared authenticated Fleet extension; only same-origin person UI can start turns, browser bodies cannot set identity or policy, native argv/session resume retains maintained role hooks, cancellation revokes the temporary agent"
   },
   {
-   "id": "parser:workspace/coordinator.py",
-   "kind": "parser",
-   "source": "workspace/coordinator.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/coordinator_client.py",
-   "kind": "parser",
-   "source": "workspace/coordinator_client.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/coordinator_routes.py",
-   "kind": "parser",
-   "source": "workspace/coordinator_routes.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
    "id": "parser:workspace/device_metadata.py",
    "kind": "parser",
    "source": "workspace/device_metadata.py",
@@ -7868,24 +6323,9 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
-  },
-  {
-   "id": "parser:workspace/filestore.py",
-   "kind": "parser",
-   "source": "workspace/filestore.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_files.py::test_a_wrong_key_cannot_read_the_content",
-    "tests/test_workspace_files.py::test_the_graph_snapshot_carries_a_schema_version",
-    "tests/test_workspace_files.py::test_the_content_is_never_plaintext_on_disk_and_the_message_carries_only_the_handle"
-   ],
-   "note": "the sealed snapshot and blobs: a wrong key or a tampered file refuses"
   },
   {
    "id": "parser:workspace/fleet_routes.py",
@@ -7910,7 +6350,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -7923,7 +6362,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -7936,7 +6374,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -7950,7 +6387,6 @@
    "status": "covered",
    "tests": [
     "tests/test_task_coding.py::test_native_turn_and_output_limits_preserve_authority",
-    "tests/test_workspace_local_agent.py::test_stopping_a_delegated_worker_preserves_its_private_identity",
     "tests/test_workspace_local_agent.py::test_stop_never_releases_a_foreign_holder",
     "tests/test_workspace_local_agent.py::test_start_and_stop_refuse_a_process_an_agent_started",
     "tests/test_workspace_local_agent.py::test_paused_coding_worker_keeps_tasks_queued_until_resume",
@@ -7972,20 +6408,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/notes.py",
-   "kind": "parser",
-   "source": "workspace/notes.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -7998,7 +6420,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -8021,87 +6442,6 @@
    "note": "a transcript entry that is not a typed human prompt on a pinned Claude Code version, is missing, unreadable or differs from the hook prompt records nothing; a forged line by a same-user process is the documented threat-model limit"
   },
   {
-   "id": "parser:workspace/profilehook.py",
-   "kind": "parser",
-   "source": "workspace/profilehook.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/project_connection.py",
-   "kind": "parser",
-   "source": "workspace/project_connection.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_project_connection.py"
-   ],
-   "note": "corrupt connection records and conflicting checkout authorities refuse device-local fallback and privileged operations"
-  },
-  {
-   "id": "parser:workspace/rates.py",
-   "kind": "parser",
-   "source": "workspace/rates.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/remote.py",
-   "kind": "parser",
-   "source": "workspace/remote.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_remote_transport_attacks.py",
-    "tests/test_workspace_remote.py"
-   ],
-   "note": "sealed replies must be bounded JSON objects and project capabilities cannot cross authorities or projects"
-  },
-  {
-   "id": "parser:workspace/replica_sync.py",
-   "kind": "parser",
-   "source": "workspace/replica_sync.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_device_logs.py::test_a_relay_cannot_append_rows_under_a_replayed_head",
-    "tests/test_device_logs.py::test_a_head_must_sign_the_row_directly_before_it",
-    "tests/test_device_logs.py::test_an_origin_that_is_not_32_lower_case_hex_never_reaches_the_file_system",
-    "tests/test_device_logs.py::test_the_upper_case_form_of_this_devices_origin_cannot_reach_its_log",
-    "tests/test_device_logs.py::test_a_forged_copy_marks_an_origin_damaged_only_when_its_owner_presented_it",
-    "tests/test_device_logs.py::test_an_origin_bound_by_a_relay_is_rebound_to_the_key_its_owner_presents",
-    "tests/test_device_logs.py::test_a_device_holds_no_more_logs_than_the_origin_cap",
-    "tests/test_replica_attacks.py::test_a_person_role_or_any_other_role_string_is_stored_as_an_agent",
-    "tests/test_replica_attacks.py::test_a_foreign_post_may_only_target_general_or_announcements",
-    "tests/test_replica_attacks.py::test_unknown_fields_of_a_foreign_message_reject_it",
-    "tests/test_replica_attacks.py::test_a_note_body_cannot_choose_the_operation_that_is_appended",
-    "tests/test_replica_attacks.py::test_newlines_and_unusable_names_are_rejected",
-    "tests/test_replica_attacks.py::test_a_sender_named_like_a_local_agent_is_rejected",
-    "tests/test_replica_attacks.py::test_flagged_text_from_another_device_is_quarantined_not_shown",
-    "tests/test_replica_attacks.py::test_one_malformed_row_does_not_block_the_rows_after_it",
-    "tests/test_replica_attacks.py::test_acknowledgements_count_only_for_a_row_whose_hash_matches",
-    "tests/test_replica.py::test_a_person_role_in_a_row_from_another_device_is_stored_as_an_agent",
-    "tests/test_replica.py::test_a_member_serving_a_head_under_another_key_is_refused_and_nothing_of_it_is_folded",
-    "tests/test_replica.py::test_an_agent_token_cannot_start_a_sync"
-   ],
-   "note": "log rows from a member are stored only after the chain, a head over the row before it and an origin id of 32 lower-case hex characters verify, then folded as an agent under a local device name through the local size, screen and quarantine checks"
-  },
-  {
    "id": "parser:workspace/screen.py",
    "kind": "parser",
    "source": "workspace/screen.py",
@@ -8109,33 +6449,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/service.py",
-   "kind": "parser",
-   "source": "workspace/service.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/session_name.py",
-   "kind": "parser",
-   "source": "workspace/session_name.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -8148,7 +6461,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -8161,7 +6473,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -8174,7 +6485,6 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -8189,11 +6499,7 @@
    "tests": [
     "tests/test_fleet_task_routes.py::test_foreign_page_cannot_create_tasks",
     "tests/test_fleet_task_routes.py::test_joined_unsigned_and_browser_claims_are_refused",
-    "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate",
-    "tests/test_taskboard.py::test_designated_reviewer_without_read_capability_cannot_grade_task",
-    "tests/test_taskboard.py::test_changed_task_specification_cannot_be_claimed",
-    "tests/test_task_credit.py::test_same_device_parent_cannot_review_through_another_worker_session",
-    "tests/test_task_credit.py::test_review_and_proposal_tampering_cannot_mint_credits"
+    "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate"
    ],
    "note": "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
   },
@@ -8205,33 +6511,18 @@
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
   },
   {
-   "id": "parser:workspace/tokens.py",
+   "id": "parser:workspace/worktree_lifecycle.py",
    "kind": "parser",
-   "source": "workspace/tokens.py",
+   "source": "workspace/worktree_lifecycle.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
    "tests": [
-    "tests/test_workspace_bus.py",
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:workspace/tools.py",
-   "kind": "parser",
-   "source": "workspace/tools.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_bus.py",
     "tests/test_workspace_rules.py"
    ],
    "note": ""
@@ -8559,12 +6850,11 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_device_transport.py::test_daemon_project_dispatch_refuses_invalid_device_requests",
-    "tests/test_device_agent_bootstrap.py::test_project_bootstrap_has_same_device_boundary",
-    "tests/test_device_agent_bootstrap.py::test_http_device_session_recovery_and_revocation",
-    "tests/test_workspace_remote.py::test_signed_sealed_fleet_and_agent_capabilities_both_required"
+    "tests/test_project_enrollment_admission.py::test_registration_requires_a_sealed_request_from_the_active_dev_membership",
+    "tests/test_project_enrollment_admission.py::test_local_project_route_refuses_unauthorized_registration",
+    "tests/test_project_enrollment_admission.py::test_native_registration_requires_local_active_dev_proof"
    ],
-   "note": "Real daemon project requests reject missing, removed and pool-only device proof, unsealed bodies and malformed JSON before host dispatch; project operations require both member and agent authority"
+   "note": "A real daemon's project requests (the catalogue, a snapshot, the local registration) reject missing and pool-only device proof, unsealed bodies and malformed JSON; registration requires the active Dev membership"
   },
   {
    "id": "route:fleet/chat_routes.py:/ui/chat",
@@ -12497,18 +10787,6 @@
    "note": "Origin URLs are read with a fixed argv, timeout and checkout directory; hostile URL syntax does not become a repository"
   },
   {
-   "id": "spawn:workspace/guide.py:clipboard",
-   "kind": "spawn",
-   "source": "workspace/guide.py:clipboard",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_quickstart.py::test_the_clipboard_gets_the_text_on_stdin_and_never_through_a_shell"
-   ],
-   "note": "a constant argv per tool; the pasted text goes on stdin"
-  },
-  {
    "id": "spawn:workspace/integration_git.py:ancestor",
    "kind": "spawn",
    "source": "workspace/integration_git.py:ancestor",
@@ -12518,8 +10796,7 @@
    "tests": [
     "tests/test_task_integration.py::test_reviewed_artifact_names_stay_literal_git_arguments_and_cannot_escape",
     "tests/test_task_integration.py::test_stale_sources_and_release_target_are_refused_before_gates",
-    "tests/test_task_integration.py::test_failed_merge_or_gate_preserves_candidate_and_never_publishes",
-    "tests/test_task_integration.py::test_maintained_push_hook_preserves_foreign_merged_worktrees_and_reports_the_block"
+    "tests/test_task_integration.py::test_failed_merge_or_gate_preserves_candidate_and_never_publishes"
    ],
    "note": "real isolated repositories exercise literal hostile paths, exact reviewed ancestry, gate failure and the maintained publication hook; only fixed gate command forms run"
   },
@@ -12533,8 +10810,7 @@
    "tests": [
     "tests/test_task_integration.py::test_reviewed_artifact_names_stay_literal_git_arguments_and_cannot_escape",
     "tests/test_task_integration.py::test_stale_sources_and_release_target_are_refused_before_gates",
-    "tests/test_task_integration.py::test_failed_merge_or_gate_preserves_candidate_and_never_publishes",
-    "tests/test_task_integration.py::test_maintained_push_hook_preserves_foreign_merged_worktrees_and_reports_the_block"
+    "tests/test_task_integration.py::test_failed_merge_or_gate_preserves_candidate_and_never_publishes"
    ],
    "note": "real isolated repositories exercise literal hostile paths, exact reviewed ancestry, gate failure and the maintained publication hook; only fixed gate command forms run"
   },
@@ -12548,22 +10824,9 @@
    "tests": [
     "tests/test_task_integration.py::test_reviewed_artifact_names_stay_literal_git_arguments_and_cannot_escape",
     "tests/test_task_integration.py::test_stale_sources_and_release_target_are_refused_before_gates",
-    "tests/test_task_integration.py::test_failed_merge_or_gate_preserves_candidate_and_never_publishes",
-    "tests/test_task_integration.py::test_maintained_push_hook_preserves_foreign_merged_worktrees_and_reports_the_block"
+    "tests/test_task_integration.py::test_failed_merge_or_gate_preserves_candidate_and_never_publishes"
    ],
    "note": "real isolated repositories exercise literal hostile paths, exact reviewed ancestry, gate failure and the maintained publication hook; only fixed gate command forms run"
-  },
-  {
-   "id": "spawn:workspace/notes.py:Notes.verify",
-   "kind": "spawn",
-   "source": "workspace/notes.py:Notes.verify",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
-   "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
-   ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
    "id": "spawn:workspace/notes_cli.py:verify",

@@ -8,9 +8,8 @@ from collections.abc import Callable
 from typing import Any
 
 from poolhouse.board.client import NodeError
+from poolhouse.errors import Denied
 from poolhouse.fleet import autostart_check, autostart_ledger
-from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.rates import RateLimited
 from poolhouse.workspace.screen import Refused
 
 __all__ = ["REPEAT_S", "fields"]
@@ -29,7 +28,7 @@ def _post(announce: Callable[[str, str], Any], report: autostart_check.Report, n
     text = f"autostart drifted: {report.reasons[0]}"[:LIMIT].replace("\n", " ")
     try:
         announce("blocked", text)
-    except (Denied, Refused, RateLimited, NodeError):
+    except (Denied, Refused, NodeError):
         return
     autostart_ledger.write({**ledger, "reported": {"fingerprint": seen, "at": now}})
 

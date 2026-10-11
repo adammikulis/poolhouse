@@ -11,16 +11,21 @@ from typing import Any
 
 from poolhouse.board.session import Agent, Entry, Session
 from poolhouse.workspace import limits
-from poolhouse.workspace.boardapi import Held, data_line
-from poolhouse.workspace.files import REF, human_size
-from poolhouse.workspace.identity import AGENT, Identity
-from poolhouse.workspace.modelid import describe
+from poolhouse.workspace.files import NOT_AVAILABLE, REF, human_size
+from poolhouse.workspace.modelid import describe, safe
+from poolhouse.workspace.plain import data_line
 from poolhouse.workspace.screen import fence, marker_tiers
 from poolhouse.workspace.standing import record_injection, sender_standing
 
-__all__ = ["PLACEHOLDER", "advanced", "hold", "judge", "names", "present", "shown"]
+__all__ = ["PLACEHOLDER", "Held", "advanced", "hold", "judge", "judge_text", "names", "present", "shown"]
 
 PLACEHOLDER = "[held in quarantine as {qid}: {why}. A person releases it; until then it is not shown]"
+
+
+class Held(list):  # type: ignore[type-arg]
+    """A list of results that also says how many more were held back by the default caps."""
+
+    held: int = 0
 
 
 class Seen(dict[str, dict[str, Any]]):
@@ -28,9 +33,6 @@ class Seen(dict[str, dict[str, Any]]):
     id, and in ``files`` the file messages its text names, by handle."""
 
     files: dict[str, Entry]
-
-
-NOT_AVAILABLE = "file {} (not available to you)"
 
 
 def names(s: Session) -> dict[str, Agent]:
@@ -43,12 +45,17 @@ def _text(e: Entry) -> str:
     return f"subject: {subject}\n{e.text}" if subject else e.text
 
 
-def judge(e: Entry) -> tuple[list[str], bool, bool]:
-    """``(markers, hard, held)``: the injection markers in ``e``, whether any is hard, and whether they hold it:
-    a hard marker always does, a soft one only when its sender does not have good standing."""
-    hard, soft = marker_tiers(f"{e.fields.get('subject', '')}\n{e.text}")
-    held = bool(hard) or (bool(soft) and sender_standing(Identity(e.sender, AGENT)) != "good")
+def judge_text(text: str, sender: str) -> tuple[list[str], bool, bool]:
+    """``(markers, hard, held)``: the injection markers in ``text`` written by ``sender``, whether any is hard, and whether
+    they hold it: a hard marker always does, a soft one only when its sender does not have good standing."""
+    hard, soft = marker_tiers(text)
+    held = bool(hard) or (bool(soft) and sender_standing(sender) != "good")
     return sorted([*hard, *soft]), bool(hard), held
+
+
+def judge(e: Entry) -> tuple[list[str], bool, bool]:
+    """``judge_text`` of the subject and body of ``e`` and its sender."""
+    return judge_text(f"{e.fields.get('subject', '')}\n{e.text}", e.sender)
 
 
 def hold(s: Session, entries: list[Entry]) -> Seen:
@@ -60,7 +67,7 @@ def hold(s: Session, entries: list[Entry]) -> Seen:
         if held and e.sender != s.name:
             flagged.append((e.id, flags))
             if hard:
-                record_injection(Identity(e.sender, AGENT))
+                record_injection(e.sender)
     seen = Seen(s.hold(flagged) if flagged else {})
     named = any(REF.search(e.text) for e in entries)
     seen.files = {e.fields["file"]["id"]: e for e in s.files() if not e.gone} if named else {}
@@ -85,7 +92,7 @@ def shown(e: Entry, models: dict[str, Agent], cap: int = 0, held: dict[str, dict
     if held is not None and e.id not in held:
         body = _refs(body, getattr(held, "files", {}))
     who = models.get(e.sender)
-    model, state = (who.model, who.model_state) if who else ("", "")
+    model, state = (safe(who.model), who.model_state) if who else ("", "")
     record = (held or {}).get(e.id)
     if cap and len(body) > cap and not record:
         body = f"{body[:cap]}…({len(body) - cap} more chars; {e.ref})"

@@ -1,11 +1,13 @@
-"""Maintained local-agent controls behind Fleet authentication."""
+"""Maintained local-agent controls behind Fleet authentication, answered from the person's session on the node."""
 
-from poolhouse.workspace import localroute
+from pathlib import Path
+
+from poolhouse.board import person
+from poolhouse.workspace import limits, localroute
 from poolhouse.workspace.boardroute import Request
-from poolhouse.workspace.service import Workspace
 
 
-def route(request) -> bool:
+def route(request, *, root=None) -> bool:
     if not request.path.startswith('/ui/agents/'):
         return False
     if request.method not in ('GET', 'POST'):
@@ -24,7 +26,7 @@ def route(request) -> bool:
         raw = request.handler.rfile.read(int(length))
     call = Request(request.method, request.handler.path.replace('/ui/agents/', '/agents/', 1),
                    headers, request.handler.server.server_address[1], True)
-    code, extra, body = localroute.respond(Workspace(), call, raw)
+    code, extra, body = localroute.respond(limits.root(), lambda: person.session(Path(root) if root else Path.cwd()), call, raw)
     handler = request.handler
     handler.send_response(code)
     for key, value in extra.items():

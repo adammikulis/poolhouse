@@ -1,20 +1,17 @@
-"""Isolated native graph tasks, authenticated workers and maintained allocation checks."""
+"""A board on a real node with a lead, its coding worker on a git checkout that holds its model, an independent session, and the
+task flows between them: the node's tasks, the scheduler's allocations and the worker's worktrees."""
 
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 from git_template import copy_checkout
-from workspace_kit import Kit, clean_env
+from local_kit import build
 
+from poolhouse.board.tasks import Tasks
 from poolhouse.net import git
-from poolhouse.workspace import (
-    device_agent,
-    localagent,
-    resource_allocations as resources,
-    task_worktrees,
-    tokens,
-)
-from poolhouse.workspace.taskboard import TaskBoard
+from poolhouse.workspace import localagent as la, task_scheduler
+
+MODEL = "qwen"
 
 
 def _baseline(root):
@@ -28,48 +25,46 @@ def _baseline(root):
     git.run(['worktree', 'add', '-b', 'source', str(source)], cwd=repository)
 
 
+def worker_on(kit, source, name='native-worker', model=MODEL, parent=None, **fields):
+    """A coding worker on ``source``: a subagent of the lead that holds the slot of its model, saved as a local agent;
+    ``(member, record)``."""
+    member = kit.node.member(name, parent=parent or kit.lead)
+    kit.session(member).call('lease_acquire', resources=[{'type': 'model_slot', 'model': model}], ttl_s=5000)
+    saved = la.Agent(name, model, identity=member.name, board=kit.node.board, profile='coding', project=str(source),
+                     pid=555, process_started=42, **{'harness': 'pi', **fields})
+    la.save(kit.base, saved)
+    return member, saved
+
+
 @pytest.fixture
-def board(tmp_path, monkeypatch):
-    kit = Kit(clean_env(monkeypatch, tmp_path))
-    kit.now = [1000.0]
-    kit.ws.clock = lambda: kit.now[0]
-    kit.parent = kit.agent('lead')
-    delegated = kit.ws.delegate(kit.parent, 'worker')
-    kit.worker_id = delegated['id']
-    kit.child = tokens.read_file(Path(delegated['token_file']))
-    monkeypatch.setattr(device_agent, 'device_id', lambda: '1234567890abcdef')
-    monkeypatch.setattr(resources, 'device_id', lambda: '1234567890abcdef')
-    source = tmp_path / 'source'
+def board(workspace_node, monkeypatch, tmp_path):
+    """The team with a queued task, assigned to the worker on its model slot with its checkout reserved."""
+    kit = build(workspace_node, monkeypatch)
     copy_checkout('taskboard', _baseline, tmp_path, 'repository', 'source')
-    kit.source = source
-    localagent.save(kit.ws, localagent.Agent('native-worker', 'qwen', identity=kit.worker_id,
-                                           profile='coding', project=str(source), pid=555, process_started=42))
-    device_agent.bind_worker(kit.ws, kit.owner, 'native-worker')
-    kit.status = {'servers': [{'ours': True, 'pid': 999, 'model': 'qwen', 'port': 51548,
-                  'holders': [{'lease': 'native-grant', 'pid': 555, 'pid_started': 42}]}]}
-    monkeypatch.setattr(resources.broker_wire, 'status', lambda **kw: kit.status)
-    monkeypatch.setattr(resources, 'pid_exists', lambda pid: True)
-    monkeypatch.setattr(resources, 'started_at', lambda pid: 42)
-    kit.board = TaskBoard(kit.ws)
+    kit.source = tmp_path / 'source'
+    kit.parent = kit.session(kit.lead)
+    kit.member, kit.runner = worker_on(kit, kit.source)
+    kit.child = kit.session(kit.member)
+    kit.worker_id = kit.member.name
+    kit.reviewer = kit.session(kit.stranger)
+    kit.board = Tasks(kit.parent)
+    kit.work = Tasks(kit.child)
     kit.spec = {'title': 'Inspect native simulation', 'description': 'Collect a reproducible replay.',
                 'acceptance': ['Replay passes'], 'source_key': 'repo:demo/sim:issue:42'}
-    kit.task = kit.board.create(kit.parent, kit.spec)
-    def prepare(ident, worker=None):
-        return task_worktrees.prepare(kit.ws, kit.parent, worker or kit.worker_id, ident)
-    kit.prepare = prepare
-    prepare(kit.task['id'])
-    kit.allocation = resources.assign(kit.ws, kit.parent, kit.worker_id, kit.task['id'], 'native-grant')
+    kit.task = kit.board.create(kit.spec)
+    kit.allocation = task_scheduler.assign_next(kit.parent, kit.base, kit.worker_id, task=kit.task['id'])
     return kit
 
 
-def proposed(kit):
-    kit.board.claim(kit.child, kit.task['id'], kit.allocation['allocation_id'])
-    return kit.board.submit(kit.child, kit.task['id'],
-                           {'artifacts': {'replay.json': 'a' * 64},
-                            'checks': [{'name': 'Worker claims tests', 'passed': True}],
-                            'summary': 'Native replay proposed',
-                            'provenance': {'commit': 'abc123', 'environment': 'native-python',
-                                           'model': 'qwen', 'runtime': 'Agents SDK'}})
+def proposed(kit, allocation=None, ident=None):
+    """The worker claims the task and submits a proposal; the proposal."""
+    ident = ident or kit.task['id']
+    kit.work.claim(ident, (allocation or kit.allocation)['allocation_id'])
+    return kit.work.submit(ident, {'artifacts': {'replay.json': 'a' * 64},
+                                   'checks': [{'name': 'Worker claims tests', 'passed': True}],
+                                   'summary': 'Native replay proposed',
+                                   'provenance': {'commit': 'abc123', 'environment': 'native-python',
+                                                  'model': 'qwen', 'runtime': 'Agents SDK'}})
 
 
 def accepted():

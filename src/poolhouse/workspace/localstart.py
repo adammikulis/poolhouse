@@ -4,43 +4,38 @@ command checks for a person at a terminal, the browser route for the person's se
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
 import signal
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, Unpack
 
 from poolhouse import agent_dependency, jobs, roles
+from poolhouse.board import place
+from poolhouse.board.client import NodeError
+from poolhouse.board.session import Native, Registration, Session
+from poolhouse.lock import held
 from poolhouse.serve import broker_wire
 from poolhouse.serve.process import pid_exists, started_at
 from poolhouse.workspace import (
     backlog,
-    device_agent,
-    guide,
     issuepump,
+    limits,
     localagent as la,
     localeffort as le,
     localharness as lh,
     localloop,
     localmodel,
     localprofile as lp,
-    onboard,
-    project as projects,
-    task_authority,
-    tokens,
 )
-from poolhouse.workspace.chain import held
-from poolhouse.workspace.identity import AGENT, LEAD, Denied
-from poolhouse.workspace.service import Workspace
 
-__all__ = ["Ask", "Authority", "Runtime", "Started", "Stopped", "Unavailable", "launch_parent",
-           "listing", "start", "stop"]
+__all__ = ["Ask", "Started", "Stopped", "Unavailable", "listing", "pause", "start", "stop"]
 
 LOOP = "poolhouse.workspace.localloop"
 STOP_WAIT_S = 20.0
+HARNESSES = ("pi", "codex", "claude")
 
 
 class Unavailable(ValueError):
@@ -65,38 +60,22 @@ class Ask:
     project: str = ""
     orders_from: tuple[str, ...] = la.DEFAULT_ORDERS_FROM
     harness: str = lh.PI
-    authority: tuple[str, str] | None = None
     repo: str = ""
     max_output_tokens: int | None = None
     task_caps: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
-class Authority:
-    """Authenticated person or project-agent authority for a worker launch."""
-
-    person_token: str = field(default="", repr=False)
-    parent_token: str = field(default="", repr=False)
-
-
-@dataclass(frozen=True, slots=True)
-class Runtime:
-    """The selected model, context size and project for a coding worker."""
-
-    model: localmodel.Pick | None
-    context: int
-    project: str
-
-
-@dataclass(frozen=True, slots=True)
 class Started:
-    """The agent that is running after `start`; ``already`` is true when it was running before."""
+    """The agent that is running after `start`; ``already`` is true when it was running before and ``identity`` is the
+    name its session has on the board."""
 
     name: str
     pid: int
     model: str
     role: str
     already: bool = False
+    identity: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,176 +89,113 @@ class Stopped:
     notes: list[str] = field(default_factory=list)
 
 
-def _mint(ws: Workspace, name: str, project: dict[str, str]) -> None:
-    """The agent's token file and place on its project's board; the standard agent role only."""
-    token = ws.registry.mint(onboard.SETUP, name, AGENT, onboard.TOKEN_S)
-    ws.audit("mint", onboard.SETUP.id, agent=name, role=AGENT, via="local-agent")
-    tokens.store(ws.base, name, token)
-    if project:
-        ws.registry.set_project(onboard.SETUP, name, project)
-    ws.board.place(name, project)
+def _output_tokens(value: int | None) -> int | None:
+    """Validate the positive generated-token limit."""
+    if value is not None and (type(value) is not int or value < 1):
+        raise ValueError('maximum output tokens must be a positive integer')
+    return value
 
 
-def start(ws: Workspace, ask: Ask, *, pick=None, spawn=None,
-          authority: Authority | None = None) -> Started:
-    """Start a worker and bind person-authorized launches to the persistent device account."""
-    authority = authority or Authority()
-    person_token, parent_token = authority.person_token, authority.parent_token
-    if parent_token and ws.auth(parent_token).role not in (AGENT, LEAD):
-        raise Denied('coding queue launch requires an authenticated agent parent')
-    if person_token:
-        device_agent.enroll(ws, person_token)
-    result = _start(ws, ask, pick=pick, spawn=spawn, parent_token=parent_token)
-    if person_token:
-        device_agent.bind_worker(ws, person_token, result.name)
-    elif parent_token and result.already:
-        device_agent.bind_owned_worker(ws, parent_token, result.name)
-    return result
-
-
-def launch_parent(ws: Workspace, project: str) -> str:
-    """Return the authenticated local launcher agent's token for this project."""
-    found = projects.describe(project)
-    if not found:
-        raise ValueError('local worker launch requires a project')
-    name = 'local-app-launcher-' + hashlib.sha256(found['key'].encode('utf-8')).hexdigest()[:16]
-    connected = guide.agent_connect(ws, name, found)
-    return tokens.load(ws.base, connected['id'])
-
-
-def _worker_identity(ws, have, name, project, parent_token=""):
-    if have and ws.registry.role_of(have.identity or name):
-        identity = have.identity or name
-        child = ws.auth(tokens.load(ws.base, identity))
-        if parent_token and child.parent != ws.auth(parent_token).id:
-            raise Denied('coding queue launch requires this worker registered parent')
-        return identity
-    if parent_token:
-        return ws.delegate(parent_token, name)['id']
-    _mint(ws, name, project)
-    return name
-
-
-def _running(have, chosen):
+def _running(have: la.Agent, chosen: localmodel.Pick) -> Started:
     if have.model != chosen.ref:
         raise ValueError(f"{have.name} already runs {have.model_name}; stop and restart that same name to change models")
-    return Started(have.name, have.pid, have.model_name, have.role, already=True)
+    return Started(have.name, have.pid, have.model_name, have.role, already=True, identity=have.identity)
 
 
-def _start(ws: Workspace, ask: Ask, *, pick: localmodel.Pick | None = None,
-          spawn: Callable[..., Any] | None = None, parent_token="") -> Started:
-    """Join a local model to the workspace and run its loop detached; the same name again reports
-    the agent already running. Raises `Unavailable` when no suitable model is downloaded or it
-    would not fit, ValueError for a bad name, role or project."""
-    output_tokens = _output_tokens(ask.max_output_tokens)
-    task_caps = asdict(localloop.checked_caps(ask.task_caps))
-    role = roles.get(ask.role).name
-    ceiling = le.valid(ask.max_effort)
-    effort = le.clamp(le.valid(ask.effort, allow_auto=True), ceiling) if ask.effort != le.AUTO else le.AUTO
-    folder_ = la.check_project(ask.project, ws.base)
-    orders = la.check_orders(list(ask.orders_from))
+def _check_board(s: Session, project: str) -> None:
+    """Refuse a project that belongs to another board than the session that starts the agent."""
+    if project and place.resolve(s.client, Path(project)) != s.board:
+        raise ValueError("the project belongs to another board than the session that starts the agent")
+
+
+def _register(s: Session, name: str, chosen: localmodel.Pick, harness: str) -> Registration:
+    """The agent's session on the board, as a subagent of the session that starts it."""
+    try:
+        return s.register(Native(localmodel.model_identity(chosen.name), harness, la.native_id(s.name, name)))
+    except NodeError as err:
+        raise ValueError(f"{name} could not join the board {s.board}: {err}") from err
+
+
+class StartOptions(TypedDict, total=False):
+    """What `start` takes besides the session and the request: where the agent's files are, a model already chosen, how to
+    detach the loop, and whether a saved registration is kept."""
+
+    base: Path
+    pick: localmodel.Pick
+    spawn: Callable[..., Any]
+    reuse: bool
+
+
+def _chosen(ask: Ask, folder_: str, pick: localmodel.Pick | None) -> tuple[lp.Profile, localmodel.Pick, int]:
+    """The profile, the model and the context length of a request, after the refusals: no suitable model, a model that
+    would not fit, a coding agent without a project or a known harness."""
     prof = lp.profile(ask.profile)
     if prof.name == "chat":
         problem = agent_dependency.problem()
         if problem:
             raise Unavailable(problem, "pip install 'poolhouse[agents]'")
     ctx = ask.ctx or prof.ctx
-    if parent_token and prof.name == 'coding' and (not folder_ or
-            ws.registry.info(ws.auth(parent_token).id).get('project') != projects.describe(folder_)):
-        raise Denied('coding queue launch requires the parent registered project')
     chosen = pick or localmodel.choose(
         ask.model, selection=localmodel.Selection(coding=prof.name == "coding", context=ctx))
     if not chosen.ok:
         raise Unavailable(chosen.problem, chosen.hint)
+    if prof.name == "coding":
+        if ask.harness not in HARNESSES:
+            raise ValueError("coding harness is pi, codex or claude")
+        if not folder_:
+            raise ValueError("a coding agent works in a project folder")
+    return prof, chosen, ctx
+
+
+def start(s: Session, ask: Ask, **options: Unpack[StartOptions]) -> Started:
+    """Join a local model to the board of ``s`` as a subagent of that session and run its loop detached; the same name
+    again reports the agent already running. Raises `Unavailable` when no suitable model is downloaded or it would
+    not fit, ValueError for a bad name, role or project."""
+    base, reuse = options.get("base") or limits.root(), options.get("reuse", False)
+    output_tokens = _output_tokens(ask.max_output_tokens)
+    task_caps = asdict(localloop.checked_caps(ask.task_caps))
+    role = roles.get(ask.role).name
+    ceiling = le.valid(ask.max_effort)
+    effort = le.clamp(le.valid(ask.effort, allow_auto=True), ceiling) if ask.effort != le.AUTO else le.AUTO
+    folder_ = la.check_project(ask.project, base)
+    orders = la.check_orders(list(ask.orders_from))
+    prof, chosen, ctx = _chosen(ask, folder_, options.get("pick"))
+    _check_board(s, folder_)
     if not ctx:
         try:
             ctx = localmodel.context_for(chosen, coding=prof.name == 'coding')
         except (OSError, ValueError) as error:
             raise Unavailable(str(error)) from error
-    if prof.name == "coding":
-        return _coding(ws, ask, Runtime(chosen, ctx, folder_), parent_token)
     problem, hint = lp.admit(chosen.ref or chosen.name, ctx)
     if problem:
         raise Unavailable(problem, hint)
-    name = la.check_name(ask.name or "local-agent")
-    with held(la.folder(ws) / "start.lock"):
-        have = la.load(ws, name)
+    name = la.check_name(ask.name or ("local-coding" if prof.name == "coding" else "local-agent"))
+    harness = ask.harness if prof.name == "coding" else lh.OWN
+    with held(la.folder(base) / "start.lock"):
+        have = la.load(base, name)
         if have is not None and la.alive(have):
             return _running(have, chosen)
-        if ws.registry.role_of(name) and have is None:
-            raise ValueError(f"{name} is another agent's name; pass a different --name")
-        identity = _worker_identity(ws, have, name, projects.describe(folder_) if folder_ else {}, parent_token)
-        _record_model(ws, identity, chosen)
-        la.stop_file(ws, name).unlink(missing_ok=True)
-        agent = la.Agent(name=name, identity=identity, model=chosen.ref, model_name=chosen.name,
-                         size_bytes=chosen.size_bytes, role=role, profile=prof.name, ctx=ctx, effort=effort, max_effort=ceiling,
-                         project=folder_, orders_from=orders, started=time.time(), extra={**(dict(have.extra) if have else {}), "task_caps": task_caps, "explicit_output_limit": True, "explicit_task_limits": True},
+        if reuse and have is not None and have.identity:
+            if have.model != chosen.ref:
+                raise ValueError("task launch must preserve the saved worker model")
+            registered = have.identity
+        else:
+            registered = _register(s, name, chosen, harness).name
+        la.stop_file(base, name).unlink(missing_ok=True)
+        agent = la.Agent(name=name, identity=registered, board=s.board, model=chosen.ref, model_name=chosen.name,
+                         size_bytes=chosen.size_bytes, role=role, profile=prof.name, harness=harness, ctx=ctx,
+                         effort=effort, max_effort=ceiling, project=folder_, orders_from=orders, started=time.time(),
+                         extra={**(dict(have.extra) if have else {}), "task_caps": task_caps,
+                                "explicit_output_limit": True, "explicit_task_limits": True},
                          max_output_tokens=output_tokens)
-        la.save(ws, agent)
-        if parent_token:
-            device_agent.bind_owned_worker(ws, parent_token, name)
-        job = (spawn or jobs.detach)(LOOP, [name], log=la.log_file(ws, name), kind=name,
-                                     home=la.folder(ws) / "jobs")
-        la.save(ws, replace(agent, pid=job.pid, process_started=started_at(job.pid) or 0.0,
-                            log=str(job.log)))
-    ws.audit("local-agent.start", onboard.SETUP.id, agent=name, role=role)
-    return Started(name, job.pid, chosen.name, role)
-
-
-def _coding(ws: Workspace, ask: Ask, runtime: Runtime,
-            parent_token="") -> Started:
-    """Start a coding worker through its configured native harness and maintained broker."""
-    output_tokens = _output_tokens(ask.max_output_tokens)
-    task_caps = asdict(localloop.checked_caps(ask.task_caps))
-    chosen, ctx, project = runtime.model, runtime.context, runtime.project
-    chosen = chosen or localmodel.choose(ask.model, selection=localmodel.Selection(coding=True, context=ctx))
-    if not chosen.ok:
-        raise Unavailable(chosen.problem, chosen.hint)
-    problem, hint = lp.admit(chosen.ref or chosen.name, ctx)
-    if problem:
-        raise Unavailable(problem, hint)
-    role = roles.get(ask.role).name
-    if ask.harness not in ("pi", "codex", "claude"):
-        raise ValueError("coding harness is pi, codex or claude")
-    name = la.check_name(ask.name or "local-coding")
-    with held(la.folder(ws) / "start.lock"):
-        have = la.load(ws, name)
-        if ask.authority:
-            authorized, _ = task_authority.authorize(ws, ask.authority[0], name, ask.authority[1])
-            if chosen.ref != authorized.model:
-                raise ValueError('task launch must preserve the saved worker model')
-            if any(getattr(ask, key) != getattr(authorized, key) for key in
-                   ('model', 'name', 'role', 'effort', 'max_effort', 'ctx', 'project', 'orders_from',
-                    'harness', 'max_output_tokens')):
-                raise ValueError('saved worker configuration changed before task launch')
-            if task_caps != asdict(localloop.caps_of(have)):
-                raise ValueError('saved worker task limits changed before task launch')
-        if have is not None and la.alive(have):
-            return _running(have, chosen)
-        agent = la.Agent(name=name, model=chosen.ref, model_name=chosen.name,
-                         size_bytes=chosen.size_bytes, role=role, profile="coding", harness=ask.harness,
-                         ctx=ctx, project=project, effort=(le.AUTO if ask.effort == le.AUTO else
-                             le.clamp(le.valid(ask.effort), le.valid(ask.max_effort))), max_effort=ask.max_effort,
-                         max_output_tokens=output_tokens,
-                         extra={**(dict(have.extra) if have else {}), "task_caps": task_caps, "explicit_output_limit": True, "explicit_task_limits": True}, orders_from=la.check_orders(list(ask.orders_from)),
-                         started=time.time())
-        identity = (have.identity or have.name) if ask.authority else _worker_identity(
-            ws, have, name, projects.describe(project) if project else {}, parent_token)
-        agent = replace(agent, identity=identity)
-        if not ask.authority:
-            _record_model(ws, identity, chosen, ask.harness)
-        la.save(ws, agent)
-        if parent_token:
-            device_agent.bind_owned_worker(ws, parent_token, name)
-        job = jobs.detach(lh.RUNNER, [name], log=la.log_file(ws, name), kind=name,
-                          home=la.folder(ws) / "jobs")
-        la.save(ws, replace(agent, pid=job.pid, process_started=started_at(job.pid) or 0.0,
-                            log=str(job.log)))
-    repo = ask.repo or (backlog.repository(project) if project else "")
-    if repo and parent_token:
-        issuepump.configure_and_start(ws, parent_token, name, repo, project)
-    ws.audit("local-agent.start", onboard.SETUP.id, agent=name, role=role, harness=ask.harness)
-    return Started(name, job.pid, chosen.name, role)
+        la.save(base, agent)
+        entry = lh.RUNNER if prof.name == "coding" else LOOP
+        job = (options.get("spawn") or jobs.detach)(entry, [name], log=la.log_file(base, name), kind=name, home=la.folder(base) / "jobs")
+        la.save(base, replace(agent, pid=job.pid, process_started=started_at(job.pid) or 0.0, log=str(job.log)))
+    repo = ask.repo or (backlog.repository(folder_) if prof.name == "coding" and folder_ else "")
+    if repo:
+        issuepump.configure_and_start(s, base, name, repo, folder_)
+    return Started(name, job.pid, chosen.name, role, identity=registered)
 
 
 def _ended(pid: int, seconds: float) -> bool:
@@ -291,14 +207,14 @@ def _ended(pid: int, seconds: float) -> bool:
     return True
 
 
-def stop(ws: Workspace, name: str, *, release: Callable[[str], Any] | None = None,
+def stop(base: Path, name: str, *, release: Callable[[str], Any] | None = None,
          wait_s: float = STOP_WAIT_S) -> Stopped:
-    """Stop the owned process and holder while preserving its identity and saved preferences."""
-    agent = la.load(ws, la.check_name(name))
+    """Stop the owned process and holder while keeping its session and saved preferences."""
+    agent = la.load(base, la.check_name(name))
     if agent is None:
         raise ValueError(f"no local agent called {name}; `agent list` shows them")
-    la.stop_file(ws, name).write_text("stop\n", encoding="utf-8")
-    lease = str((la.status_of(ws, name).get("lease") or {}).get("id") or "")
+    la.stop_file(base, name).write_text("stop\n", encoding="utf-8")
+    lease = str((la.status_of(base, name).get("lease") or {}).get("id") or "")
     owned = bool(release) or _owns_lease(agent, lease)
     running, forced, notes = la.alive(agent), False, []
     if running:
@@ -315,24 +231,11 @@ def stop(ws: Workspace, name: str, *, release: Callable[[str], Any] | None = Non
             freed = bool((release or _release)(lease))
         except (OSError, RuntimeError) as err:
             notes.append(f"the lease was not released now ({err}); it ends with the process")
-    la.save(ws, replace(agent, pid=0, process_started=0.0))
-    la.Status(ws, name).update(state='stopped', detail='Identity and preferences retained', lease={})
-    for path in (la.stop_file(ws, name), la.pause_file(ws, name), la.folder(ws) / "jobs" / f"{name}.json"):
+    la.save(base, replace(agent, pid=0, process_started=0.0))
+    la.Status(base, name).update(state='stopped', detail='Session and preferences retained', lease={})
+    for path in (la.stop_file(base, name), la.pause_file(base, name), la.folder(base) / "jobs" / f"{name}.json"):
         path.unlink(missing_ok=True)
-    ws.audit("local-agent.stop", onboard.SETUP.id, agent=name, forced=forced, lease=freed)
     return Stopped(name, running, forced, freed, notes)
-
-
-def _record_model(ws: Workspace, name: str, chosen: localmodel.Pick, harness: str = lh.OWN) -> None:
-    """Record the authenticated worker's configured model and harness claim."""
-    ws.claim_model(tokens.load(ws.base, name), localmodel.model_identity(chosen.name), harness)
-
-
-def _output_tokens(value: int | None) -> int | None:
-    """Validate the positive generated-token limit."""
-    if value is not None and (type(value) is not int or value < 1):
-        raise ValueError('maximum output tokens must be a positive integer')
-    return value
 
 
 def _owns_lease(agent: la.Agent, lease: str) -> bool:
@@ -351,27 +254,27 @@ def _release(lease: str) -> bool:
     return bool(broker_wire.release(lease))
 
 
-
-def pause(ws: Workspace, name: str, paused: bool) -> dict[str, Any]:
+def pause(base: Path, name: str, paused: bool) -> dict[str, Any]:
     """Pause or resume queued tasks; an active task finishes before pausing."""
     name = la.check_name(name)
-    if la.load(ws, name) is None:
+    if la.load(base, name) is None:
         raise ValueError(f"no local agent called {name}")
-    flag = la.pause_file(ws, name)
+    flag = la.pause_file(base, name)
     if paused:
         flag.write_text("paused\n", encoding="utf-8")
     else:
         flag.unlink(missing_ok=True)
     return {"name": name, "paused": paused}
 
-def listing(ws: Workspace) -> list[dict[str, Any]]:
+
+def listing(base: Path) -> list[dict[str, Any]]:
     """Every local agent: its model, role, state, steps, last message, memory held and lease."""
     out = []
-    for name in la.names(ws):
-        agent = la.load(ws, name)
+    for name in la.names(base):
+        agent = la.load(base, name)
         if agent is None:
             continue
-        status, live = la.status_of(ws, name), la.alive(agent)
+        status, live = la.status_of(base, name), la.alive(agent)
         if live and float(status.get("beat") or 0) < agent.started:
             status = {}
         state = str(status.get("state") or "starting") if live else (
@@ -384,9 +287,9 @@ def listing(ws: Workspace) -> list[dict[str, Any]]:
             "steps": int(status.get("steps") or 0), "tasks": int(status.get("tasks") or 0),
             "ignored": int(status.get("ignored") or 0),
             "last_message": status.get("last_message") or {},
-            "backlog": issuepump.status(ws, name),
+            "backlog": issuepump.status(base, name),
             "memory_bytes": agent.size_bytes if live and state != "failed" else 0,
             "lease": bool((status.get("lease") or {}).get("id")) and live,
-            "paused": la.pause_file(ws, name).exists(), "orders_from": list(agent.orders_from), "started": agent.started,
+            "paused": la.pause_file(base, name).exists(), "orders_from": list(agent.orders_from), "started": agent.started,
             "beat": float(status.get("beat") or 0.0)})
     return out

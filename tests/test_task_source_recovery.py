@@ -1,260 +1,182 @@
 """Offline source recovery retains pending tasks and immutable resource history."""
 
-from copy import deepcopy
+import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from node_kit import node_binary, workspace_node  # noqa: F401
 from taskboard_kit import board as _board_fixture
 
 from poolhouse import worktreerules
-from poolhouse.graph.store import GraphStore
-from poolhouse.workspace import localagent, task_source_recovery as recovery, task_worktree_recovery
-from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.task_graph import record
+from poolhouse.board.tasks import Tasks
+from poolhouse.errors import Denied
+from poolhouse.workspace import (
+    integration_git as repo,
+    localagent,
+    task_scheduler,
+    task_source_recovery as recovery,
+    task_worktree_recovery,
+    task_worktrees,
+)
 
 board = _board_fixture
 
 
+def rebind_events(kit):
+    return [row for row in kit.board.get(kit.task['id'])['integration_events'] if row['transition'] == 'rebind-source']
+
+
+def log_of(kit):
+    return json.loads((localagent.folder(kit.base) / 'native-worker.recovery.json').read_text())
+
+
 @pytest.fixture
 def stopped(board, monkeypatch):
-    board.board.claim(board.child, board.task['id'], board.allocation['allocation_id'])
-    board.board.block(board.parent, board.task['id'], 'Pending native task')
+    board.work.claim(board.task['id'], board.allocation['allocation_id'])
+    task_worktrees.activate(board.child, board.work.get(board.task['id']))
+    board.work.block(board.task['id'], 'Pending native task')
     monkeypatch.setattr(task_worktree_recovery, 'pid_exists', lambda pid: False)
-    task_worktree_recovery.dematerialize(board.ws, board.parent, board.task['id'], 'Worker stopped')
+    task_worktree_recovery.dematerialize(board.parent, board.base, board.task['id'], 'Worker stopped')
     board.target = worktreerules.checkouts(board.source)[1]
     return board
 
 
-def test_source_rebind_preserves_specs_grants_states_and_historical_allocations(stopped):
+def test_source_rebind_preserves_specs_states_and_historical_allocations(stopped):
     kit = stopped
-    before = kit.board.get(kit.parent, kit.task['id'])
-    registry = deepcopy(kit.ws.registry._load())
-    with GraphStore(kit.base / 'coordination.db') as graph:
-        allocation = record(graph, kit.allocation['allocation_id'], 'allocation')
-        scope = record(graph, 'task-worktree:' + kit.task['id'].split(':')[1], 'task-worktree')
-    kit.now[0] += 1
-    result = recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Retire source anchor')
-    after = kit.board.get(kit.parent, kit.task['id'])
+    before = kit.board.get(kit.task['id'])
+    result = recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Retire source anchor')
+    after = kit.board.get(kit.task['id'])
     assert result['verified'] and result['tasks'] == [kit.task['id']]
-    assert kit.ws.registry._load() == registry
-    for key in ('state', 'blocked_reason', 'failures', 'spec_hash', 'project', 'assignees'):
+    for key in ('state', 'blocked_reason', 'failures', 'title', 'acceptance', 'assignees', 'checkpoints', 'allocations'):
         assert after[key] == before[key]
-    assert after['checkpoints'][:-1] == before['checkpoints']
-    assert localagent.load(kit.ws, 'native-worker').project == str(kit.target)
-    with GraphStore(kit.base / 'coordination.db') as graph:
-        assert record(graph, kit.allocation['allocation_id'], 'allocation') == allocation
-        updated = record(graph, scope['id'], 'task-worktree')
-        assert updated == {**scope, 'source_project': str(kit.target)}
-    repeated = recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Verify recovery')
+    assert after['scope'] == {**before['scope'], 'source_project': str(kit.target)}
+    assert localagent.load(kit.base, 'native-worker').project == str(kit.target)
+    assert [row['source_project'] for row in rebind_events(kit)] == [str(kit.source)]
+    repeated = recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Verify recovery')
     assert repeated['recovery'] == result['recovery']
-    assert kit.board.get(kit.parent, kit.task['id'])['checkpoints'] == after['checkpoints']
+    assert kit.board.get(kit.task['id'])['integration_events'] == after['integration_events']
+
+
+def test_a_rebound_task_is_assigned_and_taken_again_from_the_new_source(stopped):
+    kit = stopped
+    recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Retire source anchor')
+    kit.board.resume(kit.task['id'], 'Ready for reassignment')
+    again = task_scheduler.assign_next(kit.parent, kit.base, kit.worker_id, task=kit.task['id'])
+    kit.work.claim(kit.task['id'], again['allocation_id'])
+    scope = kit.board.get(kit.task['id'])['scope']
+    assert scope['source_project'] == str(kit.target) and scope['state'] == 'reserved'
 
 
 @pytest.mark.redteam
-@pytest.mark.parametrize('kind', ['caller', 'live', 'materialized', 'repository', 'baseline', 'creator', 'grant'])
+@pytest.mark.parametrize('kind', ['caller', 'live', 'materialized', 'repository', 'baseline', 'owner', 'creator', 'retired'])
 def test_source_rebind_refuses_unrelated_or_active_assignments(stopped, monkeypatch, kind):
     kit = stopped
-    target, token = kit.target, kit.parent
+    target, caller = kit.target, kit.parent
+    scope = kit.board.get(kit.task['id'])['scope']
     if kind == 'caller':
-        token = kit.child
+        caller = kit.child
     elif kind == 'live':
         monkeypatch.setattr(task_worktree_recovery, 'pid_exists', lambda pid: pid == 555)
         monkeypatch.setattr(task_worktree_recovery, 'started_at', lambda pid: 42)
     elif kind == 'repository':
         target = kit.source.parent / 'unrelated'
         target.mkdir()
-        from poolhouse.workspace import integration_git as repo
         repo.git(target, 'init')
+    elif kind == 'materialized':
+        Path(scope['project']).mkdir()
+    elif kind == 'baseline':
+        kit.board.scope(kit.task['id'], {**scope, 'baseline_commit': 'a' * 40})
+    elif kind == 'owner':
+        kit.board.scope(kit.task['id'], {**scope, 'owner': kit.reviewer.name})
+    elif kind == 'creator':
+        other = Tasks(kit.reviewer).create(dict(kit.spec, title='Another task', source_key='repo:demo/sim:issue:43'))
+        task_scheduler.assign_next(kit.parent, kit.base, kit.worker_id, task=other['id'])
     else:
-        with GraphStore(kit.base / 'coordination.db') as graph:
-            if kind in ('baseline', 'materialized'):
-                scope = record(graph, 'task-worktree:' + kit.task['id'].split(':')[1], 'task-worktree')
-                if kind == 'materialized':
-                    Path(scope['project']).mkdir()
-                else:
-                    graph.upsert_node({'id': scope['id'], 'kind': 'task-worktree',
-                                       'attrs': {**scope, 'baseline_commit': 'a' * 40}})
-            else:
-                task = record(graph, kit.task['id'], 'task')
-                if kind == 'creator':
-                    task['created_by'] = 'unrelated'
-                else:
-                    from poolhouse.board.taskspec import SPEC_FIELDS, fingerprint
-                    task['project'] = {'key': 'unrelated', 'name': 'other'}
-                    task['spec_hash'] = fingerprint({key: task[key] for key in SPEC_FIELDS})
-                graph.upsert_node({'id': task['id'], 'kind': 'task', 'attrs': task})
-    before = localagent.load(kit.ws, 'native-worker')
+        kit.parent.retire(kit.worker_id)
+    before = localagent.load(kit.base, 'native-worker')
     with pytest.raises((Denied, RuntimeError)):
-        recovery.rebind(kit.ws, token, kit.worker_id, str(target), 'Offline recovery')
-    assert localagent.load(kit.ws, 'native-worker') == before
+        recovery.rebind(caller, kit.base, kit.worker_id, str(target), 'Offline recovery')
+    assert localagent.load(kit.base, 'native-worker') == before
+    assert not rebind_events(kit)
 
 
 def test_prepared_rebind_resumes_after_worker_file_interruption(stopped, monkeypatch):
     kit = stopped
     real_save = localagent.save
-    def crash(ws, worker):
-        real_save(ws, worker)
+
+    def crash(base, worker):
+        real_save(base, worker)
         raise SystemExit('Interrupted after worker update')
     monkeypatch.setattr(localagent, 'save', crash)
     with pytest.raises(SystemExit):
-        recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Resume source recovery')
+        recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Resume source recovery')
+    assert log_of(kit)['state'] == 'prepared'
     monkeypatch.setattr(localagent, 'save', real_save)
-    result = recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Resume source recovery')
-    assert result['verified']
-    with GraphStore(kit.base / 'coordination.db') as graph:
-        logs = graph.nodes('source-recovery')
-        assert len(logs) == 1 and logs[0]['attrs']['state'] == 'committed'
+    result = recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Resume source recovery')
+    assert result['verified'] and log_of(kit)['state'] == 'committed' and log_of(kit)['id'] == result['recovery']
+    assert len(rebind_events(kit)) == 1
 
 
-def test_failed_graph_update_restores_worker_and_resumes_prepared_log(stopped, monkeypatch):
+def test_failed_node_update_leaves_the_worker_and_resumes_the_prepared_log(stopped, monkeypatch):
     kit = stopped
-    original, real_save = localagent.load(kit.ws, 'native-worker'), recovery.save
-    def fail(graph, kind, row):
-        if kind == 'task-worktree':
-            raise RuntimeError('Graph write interrupted')
-        real_save(graph, kind, row)
-    monkeypatch.setattr(recovery, 'save', fail)
+    original, real_scope = localagent.load(kit.base, 'native-worker'), Tasks.scope
+
+    def fail(self, ident, scope):
+        raise RuntimeError('Node write interrupted')
+    monkeypatch.setattr(Tasks, 'scope', fail)
     with pytest.raises(RuntimeError, match='interrupted'):
-        recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Recover source')
-    assert localagent.load(kit.ws, 'native-worker') == original
-    monkeypatch.setattr(recovery, 'save', real_save)
-    assert recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Recover source')['verified']
+        recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Recover source')
+    assert localagent.load(kit.base, 'native-worker') == original
+    assert kit.board.get(kit.task['id'])['scope']['source_project'] == str(kit.source) and log_of(kit)['state'] == 'prepared'
+    monkeypatch.setattr(Tasks, 'scope', real_scope)
+    assert recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Recover source')['verified']
+    assert kit.board.get(kit.task['id'])['scope']['source_project'] == str(kit.target)
 
 
 @pytest.mark.redteam
 @pytest.mark.parametrize('drift', ['repository', 'dirty'])
 def test_committed_retry_revalidates_repository_and_clean_source(stopped, monkeypatch, drift):
     kit = stopped
-    recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Initial recovery')
+    recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Initial recovery')
     if drift == 'dirty':
         (kit.target / 'code.py').write_text('changed = True\n')
     else:
-        actual = recovery.worktreerules.checkouts
-        monkeypatch.setattr(recovery.worktreerules, 'checkouts', lambda target:
+        actual = worktreerules.checkouts
+        monkeypatch.setattr(worktreerules, 'checkouts', lambda target:
                             (kit.target, kit.target.parent / 'different-primary') if Path(target) == kit.target
                             else actual(target))
     with pytest.raises(Denied):
-        recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Verify recovery')
+        recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Verify recovery')
 
 
 @pytest.mark.redteam
-def test_authenticated_revocation_waits_for_source_transaction(stopped, monkeypatch):
-    import os
-    import subprocess
-    import sys
-    import time
-
+def test_a_worker_retired_after_recovery_cannot_be_recovered_again(stopped):
     kit = stopped
-    ready, finished = kit.base / 'revoke-ready', kit.base / 'revoke-finished'
-    processes = []
-    actual = recovery._apply
-    def competing(ws, log, runner, scopes):
-        code = """import os, sys
-from pathlib import Path
-from poolhouse.workspace.service import Workspace
-ws = Workspace(Path(sys.argv[1]))
-Path(sys.argv[3]).write_text('ready')
-ws.revoke(os.environ['POOLHOUSE_TEST_RECOVERY_PARENT'], sys.argv[2])
-Path(sys.argv[4]).write_text('finished')
-"""
-        process = subprocess.Popen([sys.executable, '-c', code, str(kit.base), kit.worker_id,
-                                    str(ready), str(finished)],
-                                   env={**os.environ, 'POOLHOUSE_TEST_RECOVERY_PARENT': kit.parent})
-        processes.append(process)
-        deadline = time.monotonic() + 10
-        while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.01)
-        assert ready.exists() and process.poll() is None
-        time.sleep(0.05)
-        assert not finished.exists()
-        actual(ws, log, runner, scopes)
-        assert not finished.exists()
-    monkeypatch.setattr(recovery, '_apply', competing)
-    try:
-        result = recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Authorized recovery')
-        assert result['verified']
-        assert processes[0].wait(timeout=10) == 0 and finished.exists()
-        with pytest.raises(Denied):
-            recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Revoked worker')
-    finally:
-        for process in processes:
-            if process.poll() is None:
-                process.terminate()
-                process.wait(timeout=10)
+    assert recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Authorized recovery')['verified']
+    kit.parent.retire(kit.worker_id)
+    with pytest.raises(Denied):
+        recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Revoked worker')
 
 
 @pytest.mark.redteam
-def test_cancelled_graph_update_restores_worker_and_preserves_pending_scope(stopped, monkeypatch):
+def test_cancelled_node_update_restores_the_worker_and_resumes_the_prepared_log(stopped, monkeypatch):
     kit = stopped
-    original = localagent.load(kit.ws, 'native-worker')
-    before = kit.board.get(kit.parent, kit.task['id'])
-    scope_id = 'task-worktree:' + kit.task['id'].split(':')[1]
-    with GraphStore(kit.base / 'coordination.db') as graph:
-        original_scope = record(graph, scope_id, 'task-worktree')
-    real_save = recovery.save
-    def interrupt(graph, kind, row):
-        real_save(graph, kind, row)
-        if kind == 'task-worktree':
-            raise KeyboardInterrupt('Recovery cancelled')
-    monkeypatch.setattr(recovery, 'save', interrupt)
+    original = localagent.load(kit.base, 'native-worker')
+    before = kit.board.get(kit.task['id'])
+    real_scope = Tasks.scope
+
+    def interrupt(self, ident, scope):
+        real_scope(self, ident, scope)
+        raise KeyboardInterrupt('Recovery cancelled')
+    monkeypatch.setattr(Tasks, 'scope', interrupt)
     with pytest.raises(KeyboardInterrupt, match='cancelled'):
-        recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Source recovery')
-    assert localagent.load(kit.ws, 'native-worker') == original
-    after = kit.board.get(kit.parent, kit.task['id'])
+        recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Source recovery')
+    monkeypatch.setattr(Tasks, 'scope', real_scope)
+    assert localagent.load(kit.base, 'native-worker') == original
+    after = kit.board.get(kit.task['id'])
     assert after['state'] == before['state'] and after['checkpoints'] == before['checkpoints']
-    with GraphStore(kit.base / 'coordination.db') as graph:
-        assert record(graph, scope_id, 'task-worktree') == original_scope
-        logs = graph.nodes('source-recovery')
-        assert len(logs) == 1 and logs[0]['attrs']['state'] == 'prepared'
-    monkeypatch.setattr(recovery, 'save', real_save)
-    assert recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Resume source recovery')['verified']
-
-
-@pytest.mark.parametrize('task_grant', [False, True])
-@pytest.mark.parametrize('child_grant', [False, True])
-def test_source_recovery_retains_inherited_parent_project_grant(stopped, task_grant, child_grant):
-    from poolhouse.board.taskspec import SPEC_FIELDS, fingerprint
-
-    kit = stopped
-    project = {'key': 'repo-demo', 'name': 'demo'}
-    owner = kit.ws.auth(kit.owner)
-    kit.ws.registry.set_project(owner, 'lead', project)
-    if child_grant:
-        kit.ws.registry.set_project(owner, kit.worker_id, project)
-    with GraphStore(kit.base / 'coordination.db') as graph:
-        task = record(graph, kit.task['id'], 'task')
-        task['project'] = project if task_grant else {}
-        task['spec_hash'] = fingerprint({key: task[key] for key in SPEC_FIELDS})
-        graph.upsert_node({'id': task['id'], 'kind': 'task', 'attrs': task})
-    registry = deepcopy(kit.ws.registry._load())
-    before = kit.board.get(kit.parent, kit.task['id'])
-    result = recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Retire source anchor')
-    assert result['verified']
-    assert kit.ws.registry._load() == registry
-    after = kit.board.get(kit.parent, kit.task['id'])
-    for key in ('state', 'spec_hash', 'project', 'assignees', 'blocked_reason', 'failures'):
-        assert after[key] == before[key]
-    assert recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Verify source')['recovery'] == result['recovery']
-
-
-@pytest.mark.redteam
-@pytest.mark.parametrize('task_grant', [False, True])
-def test_source_recovery_refuses_conflicting_child_project_grant(stopped, task_grant):
-    from poolhouse.board.taskspec import SPEC_FIELDS, fingerprint
-
-    kit = stopped
-    owner = kit.ws.auth(kit.owner)
-    project = {'key': 'repo-demo', 'name': 'demo'}
-    kit.ws.registry.set_project(owner, 'lead', project)
-    kit.ws.registry.set_project(owner, kit.worker_id, {'key': 'other-repo', 'name': 'other'})
-    with GraphStore(kit.base / 'coordination.db') as graph:
-        task = record(graph, kit.task['id'], 'task')
-        task['project'] = project if task_grant else {}
-        task['spec_hash'] = fingerprint({key: task[key] for key in SPEC_FIELDS})
-        graph.upsert_node({'id': task['id'], 'kind': 'task', 'attrs': task})
-    registry = deepcopy(kit.ws.registry._load())
-    before = localagent.load(kit.ws, 'native-worker')
-    with pytest.raises(Denied, match='project grants'):
-        recovery.rebind(kit.ws, kit.parent, kit.worker_id, str(kit.target), 'Retire source anchor')
-    assert localagent.load(kit.ws, 'native-worker') == before
-    assert kit.ws.registry._load() == registry
+    assert log_of(kit)['state'] == 'prepared' and not rebind_events(kit)
+    assert recovery.rebind(kit.parent, kit.base, kit.worker_id, str(kit.target), 'Resume source recovery')['verified']
+    assert len(rebind_events(kit)) == 1 and kit.board.get(kit.task['id'])['scope']['source_project'] == str(kit.target)
+    assert localagent.load(kit.base, 'native-worker') == replace(original, project=str(kit.target))

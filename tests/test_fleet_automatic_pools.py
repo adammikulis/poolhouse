@@ -248,15 +248,12 @@ def test_membership_offer_identifies_the_pool_key():
     assert address == ("127.0.0.1", 8771)
 
 
-def test_manual_dev_selection_survives_restart_and_project_settle(tmp_path, monkeypatch):
-    from poolhouse.workspace.automatic_connection import settle
-
+def test_manual_dev_selection_survives_restart(tmp_path, monkeypatch):
     path = tmp_path / "device.key"
     member = discovery.mint_pool("chosen-dev", path, selection="manual")
     monkeypatch.setattr(automatic, "offers", lambda port: pytest.fail("manual selection discovered another pool"))
     assert discovery.memberships(path)[0].selection == "manual"
     assert automatic.ensure(path, mode="dev") == member
-    assert settle(discovery.memberships(path)[0], path) == member
 
 
 def test_auto_action_releases_manual_selection_and_converges(tmp_path, monkeypatch):
@@ -300,13 +297,3 @@ def test_manual_join_marks_received_dev_membership(tmp_path, monkeypatch):
     assert member.key == received.key
     assert member.selection == "manual"
     assert discovery.memberships(path) == [member]
-
-
-def test_project_settle_respects_manual_choice_made_during_discovery(tmp_path, monkeypatch):
-    from poolhouse.workspace.automatic_connection import settle
-
-    original = discovery.Membership("development", KEY)
-    chosen = discovery.Membership("chosen-dev", b"b" * 43, selection="manual")
-    monkeypatch.setattr(automatic, "ensure", lambda *args, **kwargs: chosen)
-    monkeypatch.setattr(automatic, "offers", lambda port: pytest.fail("manual selection discovered another pool"))
-    assert settle(original, tmp_path / "device.key") == chosen

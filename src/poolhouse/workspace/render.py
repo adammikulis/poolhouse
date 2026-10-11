@@ -8,7 +8,6 @@ import sys
 from typing import Any
 
 from poolhouse.log import say, warn
-from poolhouse.workspace import project_session
 from poolhouse.workspace.modelid import describe
 from poolhouse.workspace.screen import fence
 
@@ -61,14 +60,13 @@ def text(value: Any) -> str:
                        for v in value], "agents")
     if isinstance(value, dict) and {"kind", "key", "owner", "expires_in_s"} <= value.keys():
         soon = ", expiring soon" if value.get("expiring_soon") else ""
-        return f"{value['kind']} {value['key']}  {project_session.owner(value['owner'])}  expires in {value['expires_in_s']:.0f} s{soon}"
+        return f"{value['kind']} {value['key']}  {value['owner']}  expires in {value['expires_in_s']:.0f} s{soon}"
     if isinstance(value, dict) and "text" in value and "kind" in value:
         return (f"note {value['id']} {value['kind']} ({value['trust']}"
                 f"{', stale' if value['stale'] else ''}): {value['status']}\n{value['text']}")
     if isinstance(value, list):
         return "\n".join(text(v) for v in value) or "(none)"
     if isinstance(value, dict):
-        value = {**value, "owner": project_session.owner(value["owner"])} if isinstance(value.get("owner"), str) else value
         return "\n".join(f"{k}: {v if not isinstance(v, (dict, list)) else json.dumps(v)}"
                          for k, v in value.items())
     return str(value)

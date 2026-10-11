@@ -23,6 +23,7 @@ def board(workspace_node, monkeypatch):
     monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
     node = workspace_node
     kit = SimpleNamespace(node=node, lead=node.member("lead"), other=node.member("other"))
+    node.allow(kit.lead, "task_authority")
     kit.worker = node.member("worker", parent=kit.lead)
     kit.lease = model_lease(node, kit.worker)
     kit.tasks = lambda who: Tasks(node.session(who))

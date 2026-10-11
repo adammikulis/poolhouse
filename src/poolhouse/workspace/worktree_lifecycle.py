@@ -1,65 +1,54 @@
-"""Durable ownership and completion checks for isolated coding checkouts."""
+"""Durable ownership and completion checks for isolated coding checkouts on this device."""
+
+from __future__ import annotations
 
 import hashlib
-import os
-import shutil
-import tempfile
-from contextlib import contextmanager
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from poolhouse import worktreerules
-from poolhouse.files import promote
-from poolhouse.graph.store import GraphStore
+from poolhouse.errors import Denied
+from poolhouse.files import read_json, write_json
+from poolhouse.lock import held
 from poolhouse.workspace import integration_git as repo
-from poolhouse.workspace.chain import held
-from poolhouse.workspace.identity import Denied
+
+__all__ = ["assigned", "assigned_file", "checkpoint", "cleanup", "pending", "record_cleanup", "remember", "require_clean", "scopes"]
+
+FILE = "worktree-lifecycle.json"
 
 
-@contextmanager
-def _storage(base: Path, *, write: bool = False):
-    database = base / 'worktree-lifecycle.db'
-    with held(base / 'worktree-lifecycle.lock'):
-        if not write:
-            with GraphStore(database, read_only=True) as graph:
-                yield graph
-            return
-        if any(Path(str(database) + suffix).exists() for suffix in ('.wal', '.wal.checkpoint', '.shadow')):
-            raise Denied('lifecycle storage requires preserved checkpoint recovery')
-        staging = Path(tempfile.mkdtemp(prefix='worktree-lifecycle-stage-', dir=base))
-        staged = staging / database.name
-        if database.exists():
-            shutil.copyfile(database, staged)
-        with GraphStore(staged) as graph:
-            yield graph
-            expected = (graph.nodes(), graph.edges())
-        with GraphStore(staged, read_only=True) as graph:
-            actual = (graph.nodes(), graph.edges())
-        def normalize(rows):
-            return sorted(rows, key=lambda row: repr(sorted(row.items())))
-        if tuple(map(normalize, actual)) != tuple(map(normalize, expected)):
-            raise Denied('lifecycle staged checkpoint differs from the recorded graph')
-        if any(Path(str(staged) + suffix).exists() for suffix in ('.wal', '.wal.checkpoint', '.shadow')):
-            raise Denied('lifecycle staged checkpoint is incomplete; recovery evidence preserved')
-        staged.chmod(0o600)
-        with staged.open('rb') as source:
-            os.fsync(source.fileno())
-        promote(staged, database)
-        if os.name != 'nt':
-            directory = os.open(base, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
-        shutil.rmtree(staging)
+def _read(base: Path) -> dict[str, dict[str, Any]]:
+    found = read_json(base / FILE, {})
+    rows = found.get("scopes") if isinstance(found, dict) else None
+    return dict(rows) if isinstance(rows, dict) else {}
 
 
-def scopes(base: Path, owner: str) -> list[dict]:
-    database = base / 'worktree-lifecycle.db'
-    if not database.exists():
-        return []
-    with _storage(base) as graph:
-        return [row['attrs'] for row in graph.nodes('worktree-lifecycle')
-                if row['attrs']['owner'] == owner]
+def _edit(base: Path, change: Callable[[dict[str, dict[str, Any]]], None]) -> None:
+    """Apply ``change`` to the recorded scopes under the lock and write them down."""
+    with held(base / "worktree-lifecycle.lock"):
+        rows = _read(base)
+        change(rows)
+        write_json(base / FILE, {"version": 1, "scopes": rows})
+        (base / FILE).chmod(0o600)
+
+
+def assigned_file(base: Path, identity: str) -> Path:
+    """The file naming the checkout the session ``identity`` works in for its task, while it does; the task's own landing cleans it."""
+    return base / "local-agents" / f"{identity}.assigned"
+
+
+def assigned(base: Path, identity: str) -> str:
+    """The checkout the session ``identity`` is working in for its task now, or an empty string."""
+    try:
+        return assigned_file(base, identity).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def scopes(base: Path, owner: str) -> list[dict[str, Any]]:
+    """The checkouts ``owner`` was recorded to hold."""
+    return [row for row in _read(base).values() if row["owner"] == owner]
 
 
 def remember(base: Path, owner: str, path: str) -> None:
@@ -77,8 +66,9 @@ def remember(base: Path, owner: str, path: str) -> None:
     development = repo.git(primary, 'branch', '--show-current') if primary else ''
     value = {'owner': owner, 'path': str(checkout),
              'primary': str(primary) if primary else '', 'branch': branch, 'development': development}
-    def merged(graph) -> tuple[dict, dict]:
-        previous = next((row['attrs'] for row in graph.nodes('worktree-lifecycle') if row['id'] == key), {})
+
+    def merged(rows: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+        previous = rows.get(key, {})
         wanted = dict(value)
         if not found and previous.get('primary'):
             wanted.update({name: previous[name] for name in ('primary', 'branch', 'development')})
@@ -86,14 +76,10 @@ def remember(base: Path, owner: str, path: str) -> None:
         commits = sorted(set(previous.get('commits', [])) | ({commit} if commit else set()))
         return previous, {**wanted, 'branches': branches, 'commits': commits}
 
-    if (base / 'worktree-lifecycle.db').exists():
-        with _storage(base) as graph:
-            previous, attrs = merged(graph)
-        if previous == attrs:
-            return                    # already recorded: the checkpoint rewrite is the whole cost
-    with _storage(base, write=True) as graph:
-        attrs = merged(graph)[1]
-        graph.upsert_node({'id': key, 'kind': 'worktree-lifecycle', 'label': owner, 'attrs': attrs})
+    previous, attrs = merged(_read(base))
+    if previous == attrs:
+        return
+    _edit(base, lambda rows: rows.__setitem__(key, merged(rows)[1]))
 
 
 def checkpoint(base: Path, owner: str) -> None:
@@ -104,34 +90,35 @@ def checkpoint(base: Path, owner: str) -> None:
             remember(base, owner, str(path))
 
 
-def record_cleanup(base: Path, path: Path, proof: tuple[str, str],
-                   primary: Path, development: str) -> None:
+def record_cleanup(base: Path, path: Path, proof: tuple[str, str], primary: Path, development: str) -> None:
     """Record a completed maintained removal with its captured source and landed commits."""
     commit, landed = proof
-    with _storage(base, write=True) as graph:
-        for row in graph.nodes('worktree-lifecycle'):
-            scope = row['attrs']
-            if scope['path'] == str(path):
-                if path.exists():
-                    raise Denied('cleanup proof requires an absent checkout')
-                if scope['primary'] and Path(scope['primary']) != primary:
-                    raise Denied('cleanup proof repository differs from the attributed checkout')
-                if not repo.ancestor(primary, commit, landed):
-                    raise Denied('cleanup proof requires the exact source commit to be landed')
-                attrs = {**scope, 'primary': str(primary), 'development': development,
+
+    def change(rows: dict[str, dict[str, Any]]) -> None:
+        for key, scope in rows.items():
+            if scope['path'] != str(path):
+                continue
+            if path.exists():
+                raise Denied('cleanup proof requires an absent checkout')
+            if scope['primary'] and Path(scope['primary']) != primary:
+                raise Denied('cleanup proof repository differs from the attributed checkout')
+            if not repo.ancestor(primary, commit, landed):
+                raise Denied('cleanup proof requires the exact source commit to be landed')
+            rows[key] = {**scope, 'primary': str(primary), 'development': development,
                          'commits': sorted(set(scope['commits']) | {commit}),
                          'cleanup': {'commit': commit, 'landed': landed}}
-                graph.upsert_node({**row, 'attrs': attrs})
+
+    _edit(base, change)
 
 
-def cleanup(base: Path, owner: str, path: str, claims, *, claim_owner: str = '') -> dict:
-    """Remove a claimed landed checkout and record its final commit after verified cleanup."""
+def cleanup(base: Path, owner: str, path: str, claim_owner: Callable[[str], str]) -> dict[str, Any]:
+    """Remove a claimed landed checkout and record its final commit after verified cleanup; ``claim_owner`` names who
+    holds the worktree claim of a path."""
     target = Path(path).resolve()
     owned = [scope for scope in scopes(base, owner) if scope['path'] == str(target)]
     if not owned or not target.exists():
         raise Denied('cleanup requires this worker\'s existing attributed checkout')
-    claim = claims.who('worktree', str(target))
-    if not claim or claim['owner'] != (claim_owner or owner):
+    if claim_owner(str(target)) != owner:
         raise Denied('cleanup requires the live checkout claim of this worker')
     checkpoint(base, owner)
     owned = [scope for scope in scopes(base, owner) if scope['path'] == str(target)]
@@ -152,7 +139,7 @@ def cleanup(base: Path, owner: str, path: str, claims, *, claim_owner: str = '')
     return {'path': str(target), 'commit': commit, 'landed': landed, 'cleanup_verified': True}
 
 
-def pending(base: Path, owner: str) -> list[dict]:
+def pending(base: Path, owner: str) -> list[dict[str, Any]]:
     """Inspect the worker's durable scopes without removing files or Git references."""
     result = []
     for scope in scopes(base, owner):
@@ -167,10 +154,8 @@ def pending(base: Path, owner: str) -> list[dict]:
                     result.append({**scope, 'reasons': ['reserved checkout path remains']})
                 continue
             remember(base, scope['owner'], scope['path'])
-            with _storage(base) as graph:
-                scope = next(row['attrs'] for row in graph.nodes('worktree-lifecycle')
-                             if row['attrs']['path'] == str(found[0])
-                             and row['attrs']['owner'] == scope['owner'])
+            scope = next(row for row in _read(base).values()
+                         if row['path'] == str(found[0]) and row['owner'] == scope['owner'])
             path = Path(scope['path'])
         primary = Path(scope['primary'])
         registered = repo.git(primary, 'worktree', 'list', '--porcelain').splitlines()
@@ -198,12 +183,12 @@ def pending(base: Path, owner: str) -> list[dict]:
 def require_clean(base: Path, owner: str, *, within: tuple[str, ...] = ()) -> None:
     """Refuse completion while this worker's own attributed checkout, registration or branch
     remains. With ``within`` only the checkouts at or around those roots: another worker's checkout never blocks it."""
-    scopes = pending(base, owner)
+    rows = pending(base, owner)
     if within:
         roots = [Path(r).resolve() for r in within]
-        scopes = [row for row in scopes if any(
+        rows = [row for row in rows if any(
             (here := Path(row['path']).resolve()) == r or r in here.parents or here in r.parents
             for r in roots)]
-    if scopes:
-        detail = '; '.join(f"{row['path']} ({row['branch']}): {', '.join(row['reasons'])}" for row in scopes)
+    if rows:
+        detail = '; '.join(f"{row['path']} ({row['branch']}): {', '.join(row['reasons'])}" for row in rows)
         raise Denied('completion requires landed work and verified cleanup: ' + detail)

@@ -302,12 +302,3 @@ def test_the_bash_guard_makes_a_subagent_name_itself_in_workspace_commands(team)
     assert run_guard(f"poolhouse-workspace inbox --agent {child.name}", agent_id="agent-a")[0] == 0
     assert run_guard("poolhouse-workspace inbox")[0] == 0
     assert run_guard("ls", agent_id="agent-a")[0] == 0
-
-
-def test_a_device_that_follows_a_remote_coordinator_still_uses_its_own_node(team):
-    from poolhouse.workspace import coordinator_config, limits
-
-    coordinator_config.save(limits.root(), {"mode": "remote", "workspace": "workspace:" + "a" * 32,
-                                            "endpoint": "https://coordinator.example:8770"})
-    assert json.loads(team.cli("whoami", "--json", who=team.lead).stdout)["id"] == team.lead.name
-    assert team.cli("send", team.bob.name, "note", "hello", who=team.lead).returncode == 0

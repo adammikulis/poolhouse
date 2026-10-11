@@ -1,4 +1,4 @@
-"""A detached workspace agent's authenticated task loop and shared model lease."""
+"""A detached workspace agent's task loop as a session of its board, and its shared model lease."""
 
 from __future__ import annotations
 
@@ -13,36 +13,40 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from poolhouse import chat as chatting, harnessing, hub
+from poolhouse.board.client import Denied, NodeError
+from poolhouse.board.session import Entry, Session
 from poolhouse.client import Client, Request, Transport, serving_params
+from poolhouse.files import read_json, write_json
 from poolhouse.serve import chat_template
 from poolhouse.serve.manager import serve
 from poolhouse.workspace import (
+    inbound,
+    limits,
     localagent as la,
     localeffort as le,
     localinbox,
     localprofile as lp,
     localtools as lt,
     plain,
-    tokens,
     work_reputation,
-    worker_completion,
-    worker_reconnect,
 )
-from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.rates import RateLimited
+from poolhouse.workspace.board_cli import screened
 from poolhouse.workspace.screen import Refused
-from poolhouse.workspace.service import Workspace
 
 __all__ = ["Caps", "Held", "Settings", "client_on", "lease_model", "run"]
 
 logger = logging.getLogger("poolhouse.localagent")
 LEASE_WAIT_S = 120.0
 IDLE_S = 5.0
+POLL_S = 0.2
 REPLY_CHARS = 3500
 TASK_TEXT = 8000
+QUESTION = "loop"
+"""The read cursor of the loop's own question: what it has taken from its inbox."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,36 +165,48 @@ def _last_words(messages: list[dict[str, Any]]) -> str:
 
 
 class Loop:
-    """One agent's loop over a workspace: the record, token, model, caps and status it works with."""
+    """One agent's loop over its board: the record, session, model, caps and status it works with."""
 
-    def __init__(self, ws: Workspace, agent: la.Agent, held: Held, settings: Settings,
+    def __init__(self, s: Session, agent: la.Agent, held: Held, settings: Settings,
                  wiring: tuple[Callable[[], bool], la.Status]) -> None:
-        self.ws, self.agent, self.held = ws, agent, held
+        self.s, self.agent, self.held = s, agent, held
         self.stopped, self.status = wiring
+        self.base = self.status.base
         self.caps = settings.caps or caps_of(agent)
         self.approval = (functools.partial(lt.ask_a_person, stop=self.stopped)
                          if settings.approval is lt.ask_a_person else settings.approval)
         self.execute = settings.execute
-        self.token = (ws.worker_token(agent) if hasattr(type(ws), "worker_token")
-                      else tokens.load(ws.base, agent.identity or agent.name))
         self.steps = self.tasks = self.ignored = 0
         self.effort = agent.effort
-        self.completion = None
-        if hasattr(type(ws), "worker_token"):
-            transport = ws.remote.transport if isinstance(ws.remote, worker_reconnect.Recovering) else ws.remote
-            ws.remote = worker_reconnect.Recovering(transport, self.stopped, self.status)
-            self.completion = worker_completion.Log(ws)
+        self.frontier = s.cursor(QUESTION)
 
     def agent_orders(self, row: dict[str, Any]) -> str:
-        return la.obeys(self.ws, self.agent, row)
+        return la.obeys(self.s, self.agent, row)
 
     def obeyed(self, sender: str) -> bool:
-        probe = {"from": sender, "state": "clear", "type": "task", "to": self.agent.name}
-        return bool(la.obeys(self.ws, self.agent, probe))
+        probe = {"from": sender, "state": "clear", "type": "task", "to": self.agent.identity}
+        return bool(la.obeys(self.s, self.agent, probe))
+
+    def fresh(self, limit: int) -> list[tuple[Entry, dict[str, Any]]]:
+        """The next ``limit`` unread messages after the ones taken, each with the row the model is shown; the
+        ones taken are not read again."""
+        entries = self.s.read(self.frontier, inbox=True, limit=limit).entries
+        if not entries:
+            return []
+        rows = inbound.present(self.s, entries, limit, True, raw=True)
+        return list(zip(entries, rows, strict=True))
+
+    def take(self, entry: Entry) -> None:
+        """Move the loop's place in its inbox past ``entry``; `keep` writes it down."""
+        self.frontier = inbound.advanced([entry], self.frontier)
+
+    def keep(self) -> None:
+        """Write the loop's place in its inbox: the messages before it are not delivered again."""
+        self.s.keep(QUESTION, self.frontier)
 
     def handle(self, row: dict[str, Any]) -> None:
         """Act on one message if the agent obeys its sender, else count it as information."""
-        why = la.obeys(self.ws, self.agent, row)
+        why = self.agent_orders(row)
         seen = {"from": plain.line(row["from"], 60), "type": row["type"], "seq": row["seq"],
                 "ts": time.time(), "obeyed": bool(why)}
         if not why:
@@ -199,18 +215,31 @@ class Loop:
             return
         self.status.update(state="working", detail=f"task {row['seq']} from {seen['from']}",
                            last_message=seen)
-        saved = self.completion.begin(row) if self.completion else None
-        if saved:
-            kind, text, rounds = saved["kind"], saved["body"], saved["rounds"]
-        else:
-            kind, text, rounds = self.perform(row, why)
-            if self.completion:
-                self.completion.finish(row, kind, text, rounds)
+        kind, text, rounds = self.settled(row, why)
         self.reply(row, kind, text)
+        self.pending().unlink(missing_ok=True)
         self.steps += rounds
         self.tasks += 1
         self.status.update(state="idle", detail="", steps=self.steps, tasks=self.tasks,
                            last_message={**seen, "reply": kind, "summary": plain.line(text, 160)})
+
+    def pending(self) -> Path:
+        """The file that holds the task this loop is on until its reply is sent."""
+        return la.folder(self.base) / f"{self.agent.name}.pending.json"
+
+    def settled(self, row: dict[str, Any], why: str) -> tuple[str, str, int]:
+        """``(reply kind, text, rounds)`` of one task, run once: the task is written down before it runs and its result
+        before it is sent, so a task a crash interrupted is answered as interrupted and a result a crash kept is sent."""
+        saved = read_json(self.pending(), {})
+        if saved.get("seq") == row["seq"]:
+            if saved.get("state") == "completed":
+                return str(saved["kind"]), str(saved["text"]), 0
+            return "status", "an earlier run of this task was interrupted; side effects need review before it is run again", 0
+        write_json(self.pending(), {"seq": row["seq"], "state": "executing"})
+        self.pending().chmod(0o600)
+        kind, text, rounds = self.perform(row, why)
+        write_json(self.pending(), {"seq": row["seq"], "state": "completed", "kind": kind, "text": text})
+        return kind, text, rounds
 
     def level(self, row: dict[str, Any]) -> str:
         """This task's effort: the rule table's pick for ``auto``, else the level the agent holds
@@ -222,17 +251,15 @@ class Loop:
     def perform(self, row: dict[str, Any], why: str) -> tuple[str, str, int]:
         """Run the task through the chat agent under the agent's role: ``(reply kind, text, rounds)``."""
         if self.execute:
-            self.status.update(reputation=work_reputation.brief(self.ws, self.token))
+            self.status.update(reputation=work_reputation.brief_on(self.s))
             return self.execute(self.agent, row, why, self.stopped)
         state = lt.TaskState(ceiling=self.agent.max_effort)
         level = self.level(row)
-        person = lt.Unattended(self.agent.name, state, self.approval)
+        person = lt.Unattended(self.agent.identity, state, self.approval)
         guarded = lt.Guarded(self.held.client, effort=level,
                              limits=lt.Limits(self.caps.seconds, self.caps.steps, self.agent.ctx,
                                               self.agent.max_output_tokens), stop=self.stopped)
-        identity = (self.ws.worker_identity if hasattr(type(self.ws), "worker_token")
-                    else self.agent.name)
-        extension = lt.workspace_extension(self.ws, self.token, identity, state, self.obeyed)
+        extension = lt.workspace_extension(self.s, state, self.obeyed)
         agent = chatting.Chat(guarded, person, tools=chatting.tools_for_chat(person=person),
                               role=self.agent.role, task=True, extension=extension)
         agent.message_boundary = localinbox.Boundary(self, row, agent, state)
@@ -242,7 +269,7 @@ class Loop:
                                              if agent.role.max_calls is not None and self.caps.calls is not None
                                              else agent.role.max_calls if self.caps.calls is None else self.caps.calls))
         try:
-            reputation = work_reputation.brief(self.ws, self.token)
+            reputation = work_reputation.brief_on(self.s)
             self.status.update(reputation=reputation)
             out = agent.turn(_frame(row, why, reputation))
         except lt.TaskStopped as stop:
@@ -260,10 +287,8 @@ class Loop:
                           + (f"; waiting for a person: {state.needs[-1].what}" if state.needs else "")), out.rounds
 
     def reply(self, row: dict[str, Any], kind: str, text: str) -> None:
-        """Send the result on the thread it came on: to the board, or to the sender."""
-        if self.completion:
-            self.completion.deliver(self.ws, self.token, row)
-            return
+        """Send the result on the thread it came on: to the board, or to the sender; sent once however often the
+        message is handled."""
         to = row["to"] if str(row["to"]).startswith("#") else row["from"]
         body, _ = plain.text(text, REPLY_CHARS)
         if len(text) > REPLY_CHARS:
@@ -271,59 +296,61 @@ class Loop:
             body = body[:REPLY_CHARS - len(notice)] + notice
         for attempt in (body, "the reply was refused by the workspace's checks; ask again"):
             try:
-                self.ws.send(self.token, to, kind, attempt, reply_to=row["seq"])
+                screened("the reply", attempt)
+                self.s.call("post", kind="message", idem=f"reply-{row['seq']}",
+                            fields={"type": kind, "to": to, "body": attempt, "subject": "", "reply_id": row["seq"]})
                 return
             except Refused:
                 continue
-            except RateLimited as err:
-                logger.warning("reply held back: %s", err)
-                return
-            except (Denied, ValueError) as err:
+            except (NodeError, ValueError) as err:
                 logger.warning("reply not sent: %s", plain.line(err, 200))
                 return
 
     def serve(self, idle: list[bool]) -> None:
         """Wait for messages and handle each, until stopped."""
-        if self.completion and (pending := self.completion.record()):
-            if pending["state"] == "executing":
-                raise worker_completion.Interrupted("task execution was interrupted; review its side effects")
-            if pending["state"] != "sent":
-                self.handle(pending["row"])
-            self.ws.ack(self.token, pending["seq"])
-            self.completion.acknowledged(pending["row"])
         while not self.stopped():
-            if la.pause_file(self.ws, self.agent.name).exists():
+            if la.pause_file(self.base, self.agent.name).exists():
                 self.status.update(state="paused", detail="Queued tasks wait until resumed")
                 time.sleep(0.2)
                 continue
             self.status.update(state="idle", detail="Waiting for an authorized task")
             idle[0] = True
             try:
-                rows = self.ws.wait(self.token, IDLE_S, ack=False, raw=True, limit=1)
+                found = self.wait(IDLE_S)
             finally:
                 idle[0] = False
-            for row in rows:
+            for entry, row in found:
                 if self.stopped():
                     return
-                if la.pause_file(self.ws, self.agent.name).exists():
+                if la.pause_file(self.base, self.agent.name).exists():
                     break
+                self.take(entry)
                 self.handle(row)
-                self.ws.ack(self.token, row["seq"])
-                if self.completion:
-                    self.completion.acknowledged(row)
+                self.keep()
+
+    def wait(self, seconds: float) -> list[tuple[Entry, dict[str, Any]]]:
+        """The next unread message, waiting up to ``seconds`` for it."""
+        end = time.monotonic() + seconds
+        while not self.stopped():
+            if found := self.fresh(1):
+                return found
+            if time.monotonic() >= end:
+                break
+            time.sleep(POLL_S)
+        return []
 
 
-def run(ws: Workspace, name: str, settings: Settings | None = None) -> int:
+def run(base: Path, name: str, settings: Settings | None = None) -> int:
     """Run ``name``'s loop until it is stopped; 0 after a stop, 1 when the model could not be had or
     the token stopped working. The model lease is released on the way out."""
-    agent = la.load(ws, name)
+    agent = la.load(base, name)
     if agent is None:
         raise ValueError(f"no local agent called {name}")
     settings = settings or Settings()
-    status, flag, idle = la.Status(ws, name), settings.cancel or threading.Event(), [False]
+    status, flag, idle = la.Status(base, name), settings.cancel or threading.Event(), [False]
 
     def stopped() -> bool:
-        return flag.is_set() or la.stop_file(ws, name).exists()
+        return flag.is_set() or la.stop_file(base, name).exists()
 
     if settings.signals:
         def stop_now(*_: object) -> None:
@@ -342,14 +369,11 @@ def run(ws: Workspace, name: str, settings: Settings | None = None) -> int:
     status.update(lease=held.lease, detail="", effort=agent.effort, max_effort=agent.max_effort)
     code = 0
     try:
-        Loop(ws, agent, held, settings, (stopped, status)).serve(idle)
-    except (_Wake, worker_reconnect.Cancelled):
+        Loop(la.session_of(agent), agent, held, settings, (stopped, status)).serve(idle)
+    except _Wake:
         pass
-    except (worker_reconnect.Unavailable, worker_completion.Interrupted) as err:
-        status.update(state="failed", detail=plain.line(err, 300))
-        code = 1
     except Denied as err:
-        status.update(state="failed", detail=f"its workspace token stopped working: {plain.line(err, 120)}")
+        status.update(state="failed", detail=f"its board token stopped working: {plain.line(err, 120)}")
         code = 1
     finally:
         status.update(state="stopping")
@@ -373,7 +397,7 @@ def run_detached(argv: list[str] | None = None) -> int:
     os.environ["POOLHOUSE_AGENT"] = "1"
     os.environ["POOLHOUSE_NONINTERACTIVE"] = "1"
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    return run(Workspace(), la.check_name(args[0]), Settings(signals=True))
+    return run(limits.root(), la.check_name(args[0]), Settings(signals=True))
 
 
 if __name__ == "__main__":  # pragma: no cover - the detached entry point

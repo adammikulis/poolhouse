@@ -11,11 +11,12 @@ from typing import Any
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import Entry, Session
 from poolhouse.command import flag
+from poolhouse.errors import Denied
 from poolhouse.workspace import board_cli, inbound, limits, render
 from poolhouse.workspace.board_cli import ANNOUNCE, TYPES
-from poolhouse.workspace.boardapi import Held, data_line
 from poolhouse.workspace.cli_options import FOR_AGENT, WIDEN
-from poolhouse.workspace.identity import Denied
+from poolhouse.workspace.inbound import Held
+from poolhouse.workspace.plain import data_line
 
 __all__ = ["ACTIONS", "TABLE", "watching"]
 

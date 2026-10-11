@@ -353,6 +353,23 @@ class Session:
             raise
         return _claim(got["claim"], got["changed"])
 
+    def reserve(self, resources: list[tuple[str, str]], ttl_s: int = 0, pid: int = 0) -> list[Claim]:
+        """Take every one of ``resources`` (kind and key) or none: they are claimed in one fixed order, and the ones newly taken
+        are given up when another session holds one; `Conflict` then."""
+        taken: list[Claim] = []
+        every: list[Claim] = []
+        try:
+            for kind, key in sorted(dict.fromkeys(resources)):
+                claim = self.claim(kind, key, ttl_s=ttl_s, pid=pid)
+                every.append(claim)
+                if claim.changed:
+                    taken.append(claim)
+        except Denied:
+            for claim in taken:
+                self.release(claim.kind, claim.key)
+            raise
+        return every
+
     def release(self, kind: str, key: str, held_by: str = "") -> bool:
         """Give a claim up; ``held_by`` names a subagent of this session whose claim it frees."""
         params = {"held_by": held_by} if held_by else {}
@@ -395,7 +412,7 @@ def register(client: Client, board: str, native: Native, parent_token: str = "")
         if not own:
             raise
         got = client.call("register", board, "", model=native.model, harness=native.harness, session=native.id)
-    credentials.store(client.state, board, got["name"], got["token"])
+    credentials.store(client.state, board, got["name"], got["token"], got["parent"])
     return Registration(got["name"], got["token"], got["parent"], got["created"], board)
 
 

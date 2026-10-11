@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from poolhouse import board_names
 from poolhouse.graph.store import GraphStore
 from poolhouse.memory import vault
@@ -55,15 +53,6 @@ def test_an_old_sealed_evidence_store_reads_through_the_new_names(tmp_path):
     reopened.close()
 
 
-def test_an_old_claims_file_reads_through_the_new_owner_prefix(tmp_path):
-    path = tmp_path / "claims.json"
-    path.write_text(json.dumps({"version": 1, "claims": {
-        "branch:x": {"kind": "branch", "key": "x", "owner": OLD_OWNER, "pid": 0, "since": 1.0,
-                     "expires": 9e12, "note": ""}}}))
-    assert board_names.migrate_claims(path) == 1
-    assert json.loads(path.read_text())["claims"]["branch:x"]["owner"] == NEW_OWNER
-
-
 def test_the_migration_is_idempotent(tmp_path):
     path = tmp_path / "issue-backlog.db"
     old_backlog(path)
@@ -75,10 +64,6 @@ def test_the_migration_is_idempotent(tmp_path):
         assert board_names.rewrite_graph(graph) == 0
     board_names.opened(path).close()
     assert snapshot(path) == first
-    claims = tmp_path / "claims.json"
-    claims.write_text(json.dumps({"version": 1, "claims": {"a:b": {"owner": OLD_OWNER}}}))
-    assert board_names.migrate_claims(claims) == 1
-    assert board_names.migrate_claims(claims) == 0
     assert board_names.rewritten(board_names.rewritten(OLD_OWNER)) == NEW_OWNER
 
 
@@ -92,8 +77,3 @@ def test_a_store_with_no_old_names_is_untouched(tmp_path):
     before = snapshot(path)
     board_names.opened(path).close()
     assert snapshot(path) == before
-    claims = tmp_path / "claims.json"
-    text = json.dumps({"version": 1, "claims": {"a:b": {"owner": NEW_OWNER, "note": "canonical:x"}}})
-    claims.write_text(text)
-    assert board_names.migrate_claims(claims) == 0
-    assert claims.read_text() == text

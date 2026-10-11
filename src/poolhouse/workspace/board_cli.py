@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from poolhouse.board import credentials, person, person_key, session
 from poolhouse.board.client import Client, Conflict, NodeError
 from poolhouse.board.session import Entry, Native, Session
 from poolhouse.command import flag
+from poolhouse.errors import Denied
 from poolhouse.log import say, warn
 from poolhouse.workspace import (
     agent_display,
@@ -25,15 +27,14 @@ from poolhouse.workspace import (
     nudge,
     onboard,
     render,
-    session_name,
+    worktree_lifecycle,
 )
-from poolhouse.workspace.boardapi import data_line
 from poolhouse.workspace.cli_options import FOR_AGENT, READ
-from poolhouse.workspace.identity import Denied
-from poolhouse.workspace.modelid import clean_harness, clean_model
+from poolhouse.workspace.modelid import clean_harness, clean_model, safe
+from poolhouse.workspace.plain import data_line
 from poolhouse.workspace.screen import Refused, fence, refusals
 
-__all__ = ["TABLE", "guarded", "runner"]
+__all__ = ["TABLE", "exiting", "guarded", "runner"]
 
 TYPES = ("task", "status", "handoff", "question", "answer", "claim", "release", "note", "file")
 ANNOUNCE_KINDS = ("joined", "milestone", "done", "blocked")
@@ -53,13 +54,24 @@ def exit_code(err: Exception) -> int:
 
 
 FAILURES = (NodeError, OSError, Denied, Refused, ValueError, EOFError)
+GENERIC = frozenset({"claude", "chatgpt", "qwen", "claude-code", "codex"})
+"""The names `--agent` once carried for every session; each is refused in favour of the session's own."""
+
+
+def check_agent(given: str, environ: dict[str, str] | None = None) -> None:
+    """Refuse a shared harness name where the session has its own; the message names the new id."""
+    own = (environ if environ is not None else os.environ).get(session.AGENT_ENV, "")
+    if own and given and given in GENERIC and given != own:
+        raise Denied(f"`--agent {given}` is no longer an identity: every session has its own name, and "
+                     f"yours is {own}. Run workspace commands as yourself: the environment names you, "
+                     f"so drop --agent")
 
 
 def guarded(run: Callable[[argparse.Namespace], int | None]) -> Callable[[argparse.Namespace], int]:
     """``run`` with its refusals turned into one warning (or one JSON object) and an exit status."""
     def wrapped(args: argparse.Namespace) -> int:
         try:
-            session_name.check_agent(getattr(args, "agent", ""))
+            check_agent(getattr(args, "agent", ""))
             return int(run(args) or 0)
         except FAILURES as err:
             code = exit_code(err)
@@ -78,19 +90,27 @@ def connect(args: argparse.Namespace) -> Session:
     return session.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=Client(state, person=person_key.provider(state, acting=person.acting(state))))
 
 
+def narrowed(s: Session, result: Any, named: str) -> Any:
+    """``result`` cut to the records that name the session ``named`` stands for (a name or an unambiguous start of one); as it is when ``named`` is empty."""
+    return agent_filter.narrow(result, agent_filter.resolve([a.name for a in s.agents(True)], named)) if named else result
+
+
 def runner(handler: Handler) -> Callable[[argparse.Namespace], int]:
     """A command that connects, runs ``handler`` and prints what it returns."""
     def run(args: argparse.Namespace) -> int:
         s = connect(args)
         result = handler(args, s)
         if result is not None:
-            named = getattr(args, "for_agent", "")
-            if named:
-                result = agent_filter.narrow(result, agent_filter.resolve([a.name for a in s.agents(True)], named))
+            result = narrowed(s, result, getattr(args, "for_agent", ""))
             render.show(args, result)
             render.held_note(result)
         return 0
     return guarded(run)
+
+
+def exiting(handler: Handler) -> Callable[[argparse.Namespace], int]:
+    """A command that connects and runs ``handler``, which prints for itself and returns the exit status."""
+    return guarded(lambda args: handler(args, connect(args)))
 
 
 def screened(what: str, *texts: str) -> None:
@@ -100,6 +120,8 @@ def screened(what: str, *texts: str) -> None:
     if len(joined.encode()) > lim.body_bytes:
         raise Refused(f"{what} is {len(joined.encode())} bytes; the limit is {lim.body_bytes}")
     why = refusals(joined, limits.denylist_path(limits.root()))
+    if str(node_launch.default_state() / "client") in joined:
+        why = [*why, "it names the token directory"]
     if why:
         raise Refused(f"{what} was not written: {'; '.join(why)}. Remove it and send again.")
 
@@ -138,20 +160,20 @@ def unanswered(s: Session) -> list[dict[str, Any]]:
 def whoami(args: argparse.Namespace, s: Session) -> Any:
     """Who the token says you are; --model and --harness record what you say you run on."""
     a = s.whoami(clean_model(args.model) if args.model else "", clean_harness(args.harness))
-    return {"id": a.name, "parent": a.parent, "board": s.board, "model": a.model or "unknown", "model_state": a.model_state,
+    return {"id": a.name, "parent": a.parent, "board": s.board, "model": safe(a.model) or "unknown", "model_state": a.model_state,
             "harness": a.harness}
 
 
 def agents(args: argparse.Namespace, s: Session) -> Any:
     """Every live identity with its model and whether it may coordinate."""
-    return [{"id": a.name, "role": "agent", "parent": a.parent, "model": a.model, "model_state": a.model_state,
+    return [{"id": a.name, "role": "agent", "parent": a.parent, "model": safe(a.model), "model_state": a.model_state,
              "harness": a.harness, "last_acted": a.seen_ms / 1000, "retired": a.retired, **agent_display.describe(a)}
             for a in s.agents()]
 
 
 def spawn(args: argparse.Namespace, s: Session) -> Any:
     """Register a subagent's native session as a child of the caller."""
-    made = s.register(Native(args.model, args.harness, args.session))
+    made = s.register(Native(clean_model(args.model) if args.model else "", clean_harness(args.harness), args.session))
     return {"id": made.name, "parent": made.parent}
 
 
@@ -163,33 +185,44 @@ def retire(args: argparse.Namespace, s: Session) -> Any:
     return {"id": done["name"], "tokens_revoked": done["tokens_revoked"], "leases_released": done["leases_released"]}
 
 
-def announce(args: argparse.Namespace, s: Session) -> Any:
-    """Post one terse line for everyone's roll-up."""
-    text = render.body(args.text)
+def announced(s: Session, kind: str, text: str) -> dict[str, Any]:
+    """Post one terse line of ``kind`` for everyone's roll-up."""
     chars = limits.load(limits.root()).announce_chars
-    if args.kind not in ANNOUNCE_KINDS:
-        raise Refused(f"an announcement is one of {', '.join(ANNOUNCE_KINDS)}, not {args.kind!r}; "
+    if kind not in ANNOUNCE_KINDS:
+        raise Refused(f"an announcement is one of {', '.join(ANNOUNCE_KINDS)}, not {kind!r}; "
                       f"for anything else send a direct message to the one agent who needs it")
     if not text.strip() or "\n" in text or len(text) > chars:
         raise Refused(f"an announcement is one line of at most {chars} characters ({len(text)} given); put the "
                       f"detail in a note and link it, such as 'done: see note 12'")
     screened("the announcement", text)
-    sent = s.post(ANNOUNCE, args.kind, text, subject=args.kind)
-    return {"seq": sent["id"].rsplit(":", 1)[-1], "type": args.kind, "to": ANNOUNCE, "from": sent["sender"]}
+    if kind == "done":
+        worktree_lifecycle.require_clean(limits.root(), s.name)
+    sent = s.post(ANNOUNCE, kind, text, subject=kind)
+    return {"seq": sent["id"].rsplit(":", 1)[-1], "type": kind, "to": ANNOUNCE, "from": sent["sender"]}
+
+
+def announce(args: argparse.Namespace, s: Session) -> Any:
+    """Post one terse line for everyone's roll-up."""
+    return announced(s, args.kind, render.body(args.text))
+
+
+def delivered(s: Session, to: str, kind: str, body: str, **said: str) -> dict[str, Any]:
+    """Send ``body`` of type ``kind`` (with the ``subject`` and ``reply_to`` ``said``) to one agent or room, or announce it when ``to`` is `*`."""
+    subject = said.get("subject", "")
+    if to == "*":
+        return announced(s, kind, body)
+    if kind not in TYPES:
+        raise ValueError(f"type must be one of {', '.join(TYPES)}")
+    if kind == "file":
+        raise Refused("a file message is made by `attach`")
+    screened("the message", subject, body)
+    sent = s.post(to, kind, body, subject=subject, reply_id=said.get("reply_to", ""))
+    return {"seq": sent["id"].rsplit(":", 1)[-1], "type": kind, "to": to, "from": sent["sender"]}
 
 
 def send(args: argparse.Namespace, s: Session) -> Any:
     """Send a message to one agent, or an announcement to `*`."""
-    if args.to == "*":
-        return announce(argparse.Namespace(kind=args.type, text=args.body), s)
-    if args.type not in TYPES:
-        raise ValueError(f"type must be one of {', '.join(TYPES)}")
-    if args.type == "file":
-        raise Refused("a file message is made by `attach`")
-    body = render.body(args.body)
-    screened("the message", args.subject, body)
-    sent = s.post(args.to, args.type, body, subject=args.subject, reply_id=args.reply_to)
-    return {"seq": sent["id"].rsplit(":", 1)[-1], "type": args.type, "to": args.to, "from": sent["sender"]}
+    return delivered(s, args.to, args.type, render.body(args.body), subject=args.subject, reply_to=args.reply_to)
 
 
 def inbox(args: argparse.Namespace, s: Session) -> Any:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from poolhouse.workspace.boardapi import data_line
+from poolhouse.workspace.plain import data_line
 
 if TYPE_CHECKING:
     from poolhouse.board.session import Session

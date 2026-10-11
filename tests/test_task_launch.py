@@ -5,38 +5,33 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from node_kit import node_binary, workspace_node  # noqa: F401
 from taskboard_kit import board
 
+from poolhouse.board.tasks import Tasks
+from poolhouse.errors import Denied
+from poolhouse.net import git
 from poolhouse.workspace import (
     localagent as la,
     localloop,
     localmodel,
     localstart,
-    project,
     task_authority,
     task_caps,
     task_launch,
-    tokens,
 )
-from poolhouse.workspace.identity import Denied
 
 __all__ = ['board']
 
 
 @pytest.fixture
 def audit(board):
-    token = board.agent('audit-worker')
-    tokens.store(board.ws.base, 'audit-worker', token)
-    grant = project.describe(str(board.source))
-    person = board.ws.auth(board.owner)
-    for ident in ('lead', 'audit-worker'):
-        board.ws.registry.set_project(person, ident, grant)
-    runner = la.Agent('audit-worker', 'qwen', role='read-only', project=str(board.source),
-                      ctx=131072, max_effort='low', orders_from=('lead',), harness='claude',
-                      max_output_tokens=12345)
-    la.save(board.ws, runner)
-    spec = {**board.spec, 'source_key': 'audit-request', 'project': grant, 'assignees': ['audit-worker']}
-    task = board.board.create(board.parent, spec)
+    """A worker of its own (a session with no parent) saved on the project, and a task of the lead that names it."""
+    member = board.node.member('audit-worker')
+    runner = la.Agent('audit-worker', 'qwen', identity=member.name, board=board.node.board, role='read-only',
+                      project=str(board.source), ctx=131072, max_effort='low', harness='claude', max_output_tokens=12345)
+    la.save(board.base, runner)
+    task = board.board.create({**board.spec, 'source_key': 'audit-request', 'assignees': [member.name]})
     return board, runner, task
 
 
@@ -44,17 +39,15 @@ def audit(board):
 def test_existing_nonchild_launch_preserves_identity_configuration_and_caps(audit, monkeypatch, harness):
     kit, runner, task = audit
     runner = replace(runner, harness=harness)
-    la.save(kit.ws, runner)
-    assert not kit.ws.auth(tokens.load(kit.ws.base, runner.name)).parent
+    la.save(kit.base, runner)
     monkeypatch.setattr(localstart.localmodel, 'choose', lambda *_args, **_kw: localmodel.Pick(ref='qwen', name='qwen'))
     monkeypatch.setattr(localstart.lp, 'admit', lambda *_: ('', ''))
     monkeypatch.setattr(localstart.jobs, 'detach', lambda *_args, **_kw: SimpleNamespace(pid=123, log='runtime.log'))
     monkeypatch.setattr(localstart, 'started_at', lambda _: 10)
-    monkeypatch.setattr(localstart, '_mint', lambda *_: pytest.fail('minted identity'))
-    monkeypatch.setattr(localstart, '_record_model', lambda *_: pytest.fail('changed verified model'))
-    task_launch.start(kit.ws, kit.parent, runner.name, task['id'])
-    saved = la.load(kit.ws, runner.name)
-    assert saved.identity == runner.name and saved.profile == 'coding' and saved.harness == harness
+    monkeypatch.setattr(localstart, '_register', lambda *_: pytest.fail('registered another session'))
+    task_launch.start(kit.parent, kit.base, runner.name, task['id'])
+    saved = la.load(kit.base, runner.name)
+    assert saved.identity == runner.identity and saved.profile == 'coding' and saved.harness == harness
     assert saved.max_output_tokens == runner.max_output_tokens == 12345
     assert (saved.model, saved.role, saved.ctx, saved.max_effort, saved.orders_from) == (
         runner.model, runner.role, runner.ctx, runner.max_effort, runner.orders_from)
@@ -62,25 +55,29 @@ def test_existing_nonchild_launch_preserves_identity_configuration_and_caps(audi
 
 
 @pytest.mark.redteam
-@pytest.mark.parametrize('cause', ['caller', 'assignee', 'project', 'orders', 'source', 'active'])
-def test_exact_task_authority_denies_foreign_or_changed_assignment(audit, cause):
+@pytest.mark.parametrize('cause', ['caller', 'assignee', 'orders', 'source', 'board', 'active'])
+def test_exact_task_authority_denies_foreign_or_changed_assignment(audit, cause, monkeypatch, tmp_path):
     kit, runner, task = audit
-    token, ident = kit.parent, task['id']
+    caller, ident = kit.parent, task['id']
     if cause == 'caller':
-        token = kit.agent('unrelated')
+        caller = kit.reviewer
     elif cause == 'assignee':
-        other = kit.board.create(kit.parent, {**kit.spec, 'source_key': 'other-task', 'project': task['project']})
-        ident = other['id']
-    elif cause == 'project':
-        kit.ws.registry.set_project(kit.ws.auth(kit.owner), runner.name, {'key': 'different'})
+        ident = kit.board.create({**kit.spec, 'source_key': 'other-task'})['id']
     elif cause == 'orders':
-        la.save(kit.ws, replace(runner, orders_from=('unrelated',)))
+        caller = kit.reviewer
+        ident = Tasks(caller).create({**kit.spec, 'source_key': 'stranger-task', 'assignees': [runner.identity]})['id']
     elif cause == 'source':
-        la.save(kit.ws, replace(runner, project=str(kit.base.parent)))
+        la.save(kit.base, replace(runner, project=str(kit.base.parent)))
+    elif cause == 'board':
+        elsewhere = tmp_path / 'elsewhere'
+        elsewhere.mkdir()
+        git.run(['init'], cwd=elsewhere)
+        monkeypatch.delenv('POOLHOUSE_BOARD')
+        la.save(kit.base, replace(runner, project=str(elsewhere)))
     else:
-        la.Status(kit.ws, runner.name).update(state='working', task='task:' + 'b' * 32)
-    with pytest.raises(Denied):
-        task_authority.authorize(kit.ws, token, runner.name, ident)
+        la.Status(kit.base, runner.name).update(state='working', task='task-99')
+    with pytest.raises(Denied, match="checkout of this board's project" if cause == 'board' else None):
+        task_authority.authorize(caller, kit.base, runner.name, ident)
 
 
 @pytest.mark.redteam

@@ -150,9 +150,9 @@ def test_status_updates_preserve_open_and_concurrent_snapshots(tmp_path):
     from poolhouse.workspace import localagent
 
     ws = SimpleNamespace(base=tmp_path / "workspace")
-    status = localagent.Status(ws, "worker")
+    status = localagent.Status(ws.base, "worker")
     status.update(state="paused", counter=0, payload="0" * 8192)
-    initial = localagent.status_of(ws, "worker")
+    initial = localagent.status_of(ws.base, "worker")
     ready = threading.Barrier(5)
     stopped = threading.Event()
 
@@ -160,7 +160,7 @@ def test_status_updates_preserve_open_and_concurrent_snapshots(tmp_path):
         ready.wait(timeout=10)
         count = 0
         while not stopped.is_set():
-            row = localagent.status_of(ws, "worker")
+            row = localagent.status_of(ws.base, "worker")
             assert row["payload"] == str(row["counter"]) * 8192
             assert row["state"] in {"paused", "running"}
             count += 1
@@ -168,9 +168,8 @@ def test_status_updates_preserve_open_and_concurrent_snapshots(tmp_path):
 
     code = '''import sys
 from pathlib import Path
-from types import SimpleNamespace
 from poolhouse.workspace.localagent import Status
-status = Status(SimpleNamespace(base=Path(sys.argv[1])), "worker")
+status = Status(Path(sys.argv[1]), "worker")
 for counter in range(1, 51):
     status.update(state="running", counter=counter, payload=str(counter) * 8192)
 '''
@@ -184,5 +183,5 @@ for counter in range(1, 51):
             stopped.set()
         assert all(reader.result(timeout=10) > 0 for reader in readers)
         assert json.load(snapshot) == initial
-    assert localagent.status_of(ws, "worker")["counter"] == 50
+    assert localagent.status_of(ws.base, "worker")["counter"] == 50
     assert list(status.path.parent.glob("*.tmp")) == []

@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 from poolhouse import worktreerules
+from poolhouse.errors import Denied
 from poolhouse.sentinel.redaction import redact
-from poolhouse.workspace.identity import Denied
 
 COMMIT = re.compile(r'[0-9a-f]{40}')
 

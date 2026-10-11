@@ -6,9 +6,20 @@ import argparse
 import json
 from typing import Any
 
+from poolhouse.board.session import Session
 from poolhouse.board.tasks import Tasks
 from poolhouse.command import flag
-from poolhouse.workspace import enforcement_cli, render, task_outcomes
+from poolhouse.workspace import (
+    backlog,
+    enforcement_cli,
+    limits,
+    render,
+    task_integration,
+    task_outcomes,
+    task_source_recovery,
+    testruns,
+    worktree_lifecycle,
+)
 from poolhouse.workspace.cli_options import FOR_AGENT
 
 __all__ = ["TABLE"]
@@ -16,6 +27,14 @@ __all__ = ["TABLE"]
 
 def _payload(args: argparse.Namespace) -> Any:
     return json.loads(render.body(args.payload))
+
+
+def _worktrees(args: argparse.Namespace, s: Session) -> Any:
+    base = limits.root()
+    if args.cleanup:
+        return worktree_lifecycle.cleanup(base, s.name, args.cleanup,
+                                          lambda path: next((c.owner for c in s.claims("worktree") if c.key == path), ""))
+    return worktree_lifecycle.pending(base, s.name)
 
 
 TABLE = (
@@ -34,13 +53,22 @@ TABLE = (
      lambda a, s: Tasks(s).claim(a.id, a.allocation_id)),
     ("task-heartbeat", "renew your working task's lease", [flag("id")], lambda a, s: Tasks(s).heartbeat(a.id)),
     ("task-checkpoint", "save your working task's checkpoint (JSON or - for stdin)", [flag("id"), flag("payload")],
-     lambda a, s: Tasks(s).checkpoint(a.id, _payload(a))),
+     lambda a, s: testruns.checkpoint(Tasks(s), a.id, _payload(a))),
     ("task-submit", "submit immutable artifact hashes for review (JSON or -)", [flag("id"), flag("payload")],
-     lambda a, s: Tasks(s).submit(a.id, _payload(a))),
+     lambda a, s: testruns.submit(Tasks(s), a.id, _payload(a))),
     ("task-review", "independently review a task (JSON or -)", [flag("id"), flag("payload")],
      lambda a, s: task_outcomes.session_review(s, a.id, _payload(a))),
     ("enforcement", "show, check, set, promote or demote the board's task enforcement mode (open or strict)",
      enforcement_cli.OPTIONS, enforcement_cli.run),
     ("task-credit", "retry recording the credit of an independently reviewed outcome", [flag("id")],
      lambda a, s: task_outcomes.session_credit(s, a.id)),
+    ("issue-subscribe", "receive inbox status changes for a repository issue", [flag("ref", metavar="OWNER/REPO#NUMBER")],
+     lambda a, s: backlog.subscribe_issue(s, limits.root(), a.ref)),
+    ("issue-unsubscribe", "stop inbox status changes for a repository issue", [flag("ref", metavar="OWNER/REPO#NUMBER")],
+     lambda a, s: backlog.subscribe_issue(s, limits.root(), a.ref, False)),
+    ("task-integrate", "gate, land and clean an independently accepted committed native task", [flag("id")],
+     lambda a, s: task_integration.integrate(s, limits.root(), a.id)),
+    *task_source_recovery.TABLE,
+    ("worktrees", "inspect or clean your landed coding checkout scopes",
+     [flag("--cleanup", default="", help="remove an owned landed checkout and record its cleanup proof")], _worktrees),
 )

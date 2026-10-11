@@ -65,7 +65,7 @@ pub fn task(board: &Board, t: &Task) -> Value {
         "blocked_kind": t.blocked_kind, "worker": t.worker, "started_at": t.started_at, "lease": l, "dependencies": dependencies, "proposal": t.proposal(),
         "review": t.review(), "checkpoints": t.checkpoints, "artifacts": artifacts(t), "reviews": t.reviews, "scope": t.scope, "landed_commit": t.landed,
         "resumed_by": t.resumed_by, "resume_reason": t.resume_reason, "integrations": records(t, "integration"), "integration_attempts": records(t, "attempt"),
-        "integration_events": records(t, "event"), "assignments": t.assigns.iter().map(|a| json!({"id": a.id, "by": a.by, "at": a.at, "worker": a.worker,
+        "integration_events": records(t, "event"), "allocations": records(t, "allocation"), "test_evidence": records(t, "evidence"), "assignments": t.assigns.iter().map(|a| json!({"id": a.id, "by": a.by, "at": a.at, "worker": a.worker,
         "lease": a.lease, "model": a.model, "capabilities": a.capabilities})).collect::<Vec<_>>(),
         "watchers": t.watchers.iter().filter(|(_, on)| **on).map(|(w, _)| w.as_str()).collect::<Vec<_>>(), "pending_block_ms": blocked_ms(board, t),
         "activity": activity(board, t, &l)});

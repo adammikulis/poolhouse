@@ -1,5 +1,7 @@
 # Workspace load: many agent processes on one machine
 
+The harness this document measured, `scripts/experiments/workspace_load.py`, and its test were removed with the old file-based workspace store (docs/node.md); what follows is what it measured then, kept as a dated record.
+
 `scripts/experiments/workspace_load.py` starts N agent processes, each with its own token,
 against one temporary workspace. Each sends to its neighbour, waits for mail, claims a port and a
 branch and renews them, reads the keystore master once (through a counting fake keyring; the OS

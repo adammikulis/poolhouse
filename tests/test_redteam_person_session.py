@@ -209,6 +209,17 @@ def test_the_audit_rows_name_every_mint_and_refusal_and_hold_no_ticket_or_secret
     assert secret not in text and issued["ticket"] not in text and "wrong-ticket" not in text
 
 
+def test_the_audit_rows_go_to_a_private_file_under_the_root_when_no_sink_is_set(window, tmp_path):
+    window.ui.audit, window.ui.root = None, tmp_path / "ui-root"
+    ticket(window, "wrong")
+    redeem(window, "wrong-ticket")
+    path = window.ui.root / "ui-audit.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert {(row["event"], row.get("reason")) for row in rows} >= {("launch.refused", "secret"), ("session.refused", "ticket")}
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert window.ui.launch.value not in path.read_text()
+
+
 def test_a_token_session_is_not_a_person(window):
     bare = window.ui.sessions.open("token", "token")
     cookie = window.ui.sessions.cookie_header(bare).split(";", 1)[0]

@@ -27,7 +27,7 @@ def test_native_turn_and_output_limits_preserve_authority(monkeypatch, native):
         seen.update(command=command, environment=environment)
         return 0
     monkeypatch.setattr(task_coding.Manager, '_process', process)
-    manager = task_coding.TaskManager(None, SimpleNamespace(base=None), agent)
+    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, agent)
     command, context = native
     manager._process(None, [*command, '--print'], {'AUTHORITY': 'unchanged'}, context)
     assert '--max-turns' not in seen['command']
@@ -53,7 +53,7 @@ def test_native_template_thinking_is_separate_from_output_and_stream(monkeypatch
     seen = {}
     monkeypatch.setattr(task_coding.Manager, '_process',
                         lambda self, turn, command, environment, context: seen.update(environment) or 0)
-    manager = task_coding.TaskManager(None, SimpleNamespace(base=None), agent)
+    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, agent)
     command, context = native
     manager._process(None, command, {'CLAUDE_CODE_MAX_OUTPUT_TOKENS': '12000',
         'CLAUDE_CODE_EXTRA_BODY': json.dumps({'stream': True, 'max_tokens': 12000,
@@ -71,7 +71,7 @@ def test_native_effort_switch_has_no_generated_output_or_thinking_cap(monkeypatc
     seen = {}
     monkeypatch.setattr(task_coding.Manager, '_process',
                         lambda self, turn, command, environment, context: seen.update(environment) or 0)
-    manager = task_coding.TaskManager(None, SimpleNamespace(base=None), agent)
+    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, agent)
     command, context = native
     manager._process(None, command, {}, context)
     assert json.loads(seen['CLAUDE_CODE_EXTRA_BODY'])['chat_template_kwargs']['enable_thinking'] is False
@@ -87,7 +87,7 @@ def test_native_effort_switch_has_no_generated_output_or_thinking_cap(monkeypatc
 @pytest.mark.parametrize('body', ['broken', '[]', '{"chat_template_kwargs":[]}'])
 def test_invalid_native_extra_body_does_not_launch(monkeypatch, native, body):
     monkeypatch.setattr(task_coding.Manager, '_process', lambda *_: pytest.fail('native launched'))
-    manager = task_coding.TaskManager(None, SimpleNamespace(base=None), localagent.Agent('worker', 'qwen'))
+    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, localagent.Agent('worker', 'qwen'))
     command, context = native
     with pytest.raises(ValueError):
         manager._process(None, command, {'CLAUDE_CODE_EXTRA_BODY': body}, context)
@@ -100,8 +100,7 @@ def test_stop_cancels_native_turn(tmp_path, monkeypatch):
     monkeypatch.setattr(task_coding, 'Conversations', lambda *_: SimpleNamespace(start=lambda **_: conversation))
     monkeypatch.setattr(task_coding.git, 'head', lambda _: 'a' * 40)
     monkeypatch.setattr(task_coding.la, 'folder', lambda _: tmp_path)
-    monkeypatch.setattr(task_coding.tokens, 'load', lambda *_: 'token')
-    monkeypatch.setattr(task_coding.work_reputation, 'brief', lambda *_: 'Recorded reputation data')
+    monkeypatch.setattr(task_coding.work_reputation, 'brief_on', lambda *_: 'Recorded reputation data')
     monkeypatch.setattr(task_coding.Turn, 'cancel', lambda self: (cancelled.append(True), self.cancelled.set()))
     def run(self, turn, conversation, prompt):
         assert 'calling done' not in prompt
@@ -112,8 +111,8 @@ def test_stop_cancels_native_turn(tmp_path, monkeypatch):
     monkeypatch.setattr(task_coding.TaskManager, '_run', run)
     task = {'id': 'task:' + 'a' * 32, 'title': 'Fix queue', 'description': 'Fix the queue', 'acceptance': ['Fails correctly']}
     with pytest.raises(RuntimeError, match='cancelled'):
-        task_coding.perform(SimpleNamespace(base=tmp_path), localagent.Agent('worker', 'qwen'),
-                            task, tmp_path, (stop.is_set, lambda _: None))
+        task_coding.perform(SimpleNamespace(board='demo'), tmp_path, localagent.Agent('worker', 'qwen'),
+                            task, task_coding.Run(tmp_path, stop.is_set, lambda _: None))
     assert cancelled == [True]
 
 
@@ -131,7 +130,7 @@ def test_proposal_binds_committed_files_and_deletions(tmp_path):
     (tmp_path / 'new.py').write_text('NEW = True\n')
     git.run(['add', '--', 'deleted.py', 'new.py'], cwd=tmp_path)
     git.run(['commit', '-m', 'task changes'], cwd=tmp_path)
-    task = {'lease': {'resource': {'baseline_commit': baseline}}}
+    task = {'scope': {'baseline_commit': baseline}}
     turn = SimpleNamespace(text='Changed code and verified checks.', session='session')
     proposal = task_coding._proposal(localagent.Agent('worker', 'qwen'), task, tmp_path, turn, 'python')
     assert set(proposal['artifacts']) == {'.task.patch', '.task-report.md', 'new.py'}
@@ -160,7 +159,7 @@ def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, mo
         return 0
     monkeypatch.setattr(coding, 'launch_coding_agent', launch)
     agent = localagent.Agent('worker', 'qwen', profile='coding', harness='pi', max_output_tokens=32000)
-    manager = task_coding.TaskManager(store, SimpleNamespace(base=None), agent)
+    manager = task_coding.TaskManager(store, SimpleNamespace(board='demo'), None, agent)
     manager._run(task_coding.Turn(conversation.id), conversation, 'Implement a queue')
     assert seen['max_output_tokens'] == 32000
     assert seen['effort'] == 'low'

@@ -3,22 +3,16 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, NamedTuple
 
+from poolhouse.board import client, person
+from poolhouse.board.names import valid_id
 from poolhouse.board.session import Session
 from poolhouse.board.tasks import Tasks
-from poolhouse.files import read_json
 from poolhouse.reputation import economy
 from poolhouse.reputation.work import WorkLedger
-from poolhouse.workspace import (
-    coordination,
-    device_accounts,
-    family_accounts,
-    tokens,
-    work_dimensions,
-)
-from poolhouse.workspace.identity import HUMAN, Denied, valid_id, valid_name
-from poolhouse.workspace.service import Workspace
+from poolhouse.workspace import family_accounts, work_dimensions
 
 
 @contextmanager
@@ -29,11 +23,6 @@ def _store(ledger):
     finally:
         if ledger is None:
             held.sealed.close()
-
-
-def scope(ws) -> str:
-    """The workspace identity used by verified-work evidence."""
-    return coordination.workspace_id(ws)
 
 
 class Roster(NamedTuple):
@@ -56,23 +45,6 @@ def bindings(s: Session) -> dict[str, list[dict[str, Any]]]:
         if account and account not in found.setdefault(task['worker'], []):
             found[task['worker']].append({**account, 'last_bound': lease['at']})
     return found
-
-
-def legacy_roster(ws, who: str) -> Roster:
-    """The agents of an old-style workspace (no person, no device account) as ``who`` sees them."""
-    aliases: dict[str, list[str]] = {}
-    for path in (ws.base / 'local-agents').glob('*.json'):
-        name = path.stem
-        if not valid_name(name) or name.endswith('.status'):
-            continue
-        saved = read_json(path, None)
-        if isinstance(saved, dict) and saved.get('version') == 1 and saved.get('name') == name:
-            identity = saved.get('identity') or name
-            if isinstance(identity, str) and valid_id(identity):
-                aliases.setdefault(identity, []).append(name)
-    names = [name for name in ws.registry.ids() if ws.registry.info(name)['role'] != HUMAN
-             and (device_accounts.account_for(ws, name) or {}).get('base_id') != name]
-    return Roster(scope(ws), who, names, aliases, {name: family_accounts.current_accounts(ws, name) for name in names})
 
 
 def standings_of(roster: Roster, *, agent: str = "", offset: int = 0, ledger: WorkLedger | None = None) -> dict[str, Any]:
@@ -109,15 +81,6 @@ def standings_on(s: Session, *, agent: str = "", offset: int = 0, ledger: WorkLe
     """The session's own standing and its board's team evidence."""
     roster = Roster(s.board, s.name, [a.name for a in s.agents()], {}, bindings(s))
     return standings_of(roster, agent=agent, offset=offset, ledger=ledger)
-
-
-def standings(ws, token: str, *, agent: str = "", offset: int = 0, ledger: WorkLedger | None = None) -> dict[str, Any]:
-    """The authenticated caller's completion standing and its workspace team's evidence."""
-    if reader := getattr(type(ws), "remote_reputation", None):
-        return reader(ws, token, agent=agent, offset=offset)
-    who = ws.auth(token)
-    ws._may(who, 'read')
-    return standings_of(legacy_roster(ws, who.id), agent=agent, offset=offset, ledger=ledger)
 
 
 def _account_group(groups, identity, account):
@@ -163,14 +126,6 @@ def _brief(standing: dict[str, Any]) -> str:
             f"Your credits: {standing['own']['economy']['balance']}; runs are free, no charging.\n" + '\n'.join(rows))
 
 
-def brief(ws, token: str) -> str:
-    """A bounded own/team reputation summary for an agent's task context."""
-    try:
-        return _brief(standings(ws, token))
-    except (OSError, RuntimeError, ValueError):
-        return 'Verified-work reputation is unavailable; no credit balance or work rating can be inferred.'
-
-
 def brief_on(s: Session) -> str:
     """The same summary for a session of a board."""
     try:
@@ -180,23 +135,19 @@ def brief_on(s: Session) -> str:
 
 
 def fleet_route(request) -> bool:
-    """The person's read-only verified-work standings behind Fleet authorization."""
+    """The person's read-only verified-work standings behind Fleet authorization, from the person's session on the project's board."""
     if request.path != '/ui/work-reputation/standings':
         return False
     if request.method != 'GET':
         request.send(405, {'error': 'reputation is read-only'})
         return True
     try:
-        ws = Workspace()
-        token = tokens.read_file(tokens.directory(ws.base) / tokens.OWNER_FILE)
-        if ws.auth(token).role != HUMAN:
-            raise Denied('the page needs its person owner')
-        request.send(200, standings(ws, token, agent=request.asked('agent', ''),
-                                     offset=int(request.asked('offset', '0'))))
-    except Denied:
-        request.send(403, {'error': 'the workspace person owner is unavailable'})
+        request.send(200, standings_on(person.session(Path.cwd()), agent=request.asked('agent', ''),
+                                       offset=int(request.asked('offset', '0'))))
+    except client.Denied:
+        request.send(403, {'error': 'the person session is unavailable'})
     except ValueError:
         request.send(400, {'error': 'Invalid reputation agent or evidence offset.'})
-    except (OSError, RuntimeError):
+    except (client.NodeError, OSError, RuntimeError):
         request.send(503, {'error': 'Verified-work reputation is unavailable or locked.'})
     return True

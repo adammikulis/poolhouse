@@ -12,10 +12,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from poolhouse.files import read_json, write_json
 from poolhouse.graph.store import GraphStore
 
-__all__ = ["VERSION", "marker", "migrate_claims", "migrate_graph", "opened", "rewrite_graph", "rewritten"]
+__all__ = ["VERSION", "marker", "migrate_graph", "opened", "rewrite_graph", "rewritten"]
 
 VERSION = 1
 KINDS = {"canonical-task-ref": "task-ref"}
@@ -71,21 +70,3 @@ def opened(path: Path) -> GraphStore:
     graph = GraphStore(path)
     migrate_graph(graph, path)
     return graph
-
-
-def migrate_claims(path: Path) -> int:
-    """Rewrite old owner prefixes in the claims file once; returns how many claims changed."""
-    seal = marker(path)
-    if seal.exists() or not path.exists():
-        return 0
-    data = read_json(path, {})
-    found = data.get("claims") if isinstance(data, dict) else None
-    changed = 0
-    if isinstance(found, dict):
-        fresh = rewritten(found)
-        changed = sum(fresh[key] != found[key] for key in found)
-        if changed:
-            write_json(path, {**data, "claims": fresh})
-            path.chmod(0o600)
-    seal.write_text(str(VERSION))
-    return changed

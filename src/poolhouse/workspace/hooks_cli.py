@@ -16,13 +16,13 @@ INSTALL = [flag("--settings", default="", help="the Claude Code settings file (d
                 help="write one agent's hooks only")]
 
 
-def snippet(args: argparse.Namespace, ws: object) -> int:
+def snippet(args: argparse.Namespace) -> int:
     """Print the setting a tool needs so it runs `nudge`; writes nothing."""
     say(onboard.hook_snippet(args.tool, args.agent or "NAME"), end="")
     return 0
 
 
-def install(args: argparse.Namespace, ws: object) -> int:
+def install(args: argparse.Namespace) -> int:
     """Write the nudge hooks into each agent's settings; exit 1 when no agent was found."""
     authority.require("workspace.setup", "workspace install-hooks")
     where = {agent: home.expand(given) for agent, given in

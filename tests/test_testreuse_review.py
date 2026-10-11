@@ -1,5 +1,5 @@
 """Defects found reviewing test result reuse, each reproduced against real pytest runs of tiny projects,
-real job tables and the real task board."""
+real job tables."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ import testreuse_key as keys
 import testreuse_plugin as plugin
 import testreuse_run as run
 import testreuse_store as storage
-from taskboard_kit import board  # noqa: F401  (fixture)
 from test_testreuse import (  # noqa: F401  (fixture)
     AGENT,
     FILE,
@@ -355,7 +354,7 @@ def test_a_board_notice_never_raises_out_of_a_run():
         def __getattr__(self, name):
             raise RuntimeError(name)
 
-    events = testboard.BoardEvents(testboard.Acting(Broken(), "token", {"id": "alice", "parent": ""}))
+    events = testboard.BoardEvents(Broken())
     assert events.claimed(FILE, "k" * 64) == 0
     events.canary_mismatch(FILE, "detail")
     events.job_done("j", {}, {"exit": 0}, 0)

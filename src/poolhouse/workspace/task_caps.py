@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from poolhouse.workspace.chain import held
+from poolhouse.lock import held
 
 
 def admit(path):

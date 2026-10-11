@@ -7,7 +7,8 @@ from typing import Any
 
 from poolhouse.board.session import Claim, Session
 from poolhouse.command import flag
-from poolhouse.workspace import claims, limits
+from poolhouse.workspace import limits, worktree_lifecycle
+from poolhouse.workspace.claim_keys import normal
 from poolhouse.workspace.cli_options import FOR_AGENT
 
 __all__ = ["KINDS", "TABLE", "shown"]
@@ -25,12 +26,16 @@ def shown(c: Claim) -> dict[str, Any]:
 def claim(args: argparse.Namespace, s: Session) -> Any:
     """Own something until the time runs out or the process named by --pid ends."""
     ttl = int(args.ttl or limits.load(limits.root()).claim_ttl_s)
-    return shown(s.claim(args.kind, claims.normal(args.kind, args.key), ttl, args.pid))
+    key = normal(args.kind, args.key)
+    made = s.claim(args.kind, key, ttl, args.pid)
+    if args.kind == "worktree":
+        worktree_lifecycle.remember(limits.root(), s.name, key)
+    return shown(made)
 
 
 def release(args: argparse.Namespace, s: Session) -> Any:
     """Give a claim up; --held-by frees one of the caller's own subagents."""
-    key = claims.normal(args.kind, args.key)
+    key = normal(args.kind, args.key)
     return {"kind": args.kind, "key": key, "released": s.release(args.kind, key, args.held_by)}
 
 
@@ -47,7 +52,7 @@ def heartbeat(args: argparse.Namespace, s: Session) -> Any:
 
 def who(args: argparse.Namespace, s: Session) -> Any:
     """Who owns this?"""
-    key = claims.normal(args.kind, args.key)
+    key = normal(args.kind, args.key)
     return next((shown(c) for c in s.claims(args.kind) if c.key == key), {"owner": None})
 
 

@@ -1,9 +1,9 @@
-"""A local model that joins the workspace as an agent: its record, its status file and who it obeys.
+"""A local model that joins a board as a session: its record, its status file and who it obeys.
 
-The folder ``local-agents/`` under the workspace holds, per agent NAME, ``NAME.json`` (what the
+The folder ``local-agents/`` under the workspace state holds, per agent NAME, ``NAME.json`` (what the
 person asked for), ``NAME.status.json`` (what the loop is doing), ``NAME.stop`` (the kill
-switch the loop checks every step) and ``NAME.log``. No file holds a token: that stays in
-``tokens/NAME``.
+switch the loop checks every step) and ``NAME.log``. No file holds a token: the worker's token is
+the one its parent's registration left in the client folder of the node (`board.credentials`).
 """
 
 from __future__ import annotations
@@ -11,31 +11,36 @@ from __future__ import annotations
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import roles
+from poolhouse import home, node_launch, roles
+from poolhouse.board import credentials, grants, person
+from poolhouse.board.client import Client
+from poolhouse.board.names import valid_id, valid_name
+from poolhouse.board.session import Agent as Registered, Session
 from poolhouse.chatpolicy import APPROVE_FIRST, PLAN_AND_GO, READ_ONLY
 from poolhouse.files import read_json, write_json
 from poolhouse.serve.process import pid_exists, started_at
-from poolhouse.workspace.identity import HUMAN, LEAD, valid_id, valid_name
-from poolhouse.workspace.service import Workspace
 
 __all__ = ["APPROVE_FIRST", "DEFAULT_ORDERS_FROM", "ORDER_KINDS", "PLAN_AND_GO", "READ_ONLY",
            "Agent", "Status", "alive", "check_name", "check_orders", "check_project", "folder",
-           "load", "names", "obeys", "role_choices", "save", "status_of"]
+           "is_person", "leads", "load", "log_file", "manages", "names", "native_id", "obeys", "pause_file", "role_choices", "save",
+           "session_of", "status_of", "stop_file"]
 
-DEFAULT_ORDERS_FROM = ("claude",)
+DEFAULT_ORDERS_FROM: tuple[str, ...] = ()
 ORDER_KINDS = ("task", "question")
 MOST_ORDERERS = 8
+DEPTH = 8
 RESERVED = frozenset({"admin", "system", "human", "workspace", "owner", "root", "setup", "agent"})
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f‪-‮⁦-⁩]")
 
 
-def folder(ws: Workspace) -> Path:
+def folder(base: Path) -> Path:
     """The directory of local-agent files, owner only."""
-    path = ws.base / "local-agents"
+    path = base / "local-agents"
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.chmod(0o700)
     return path
@@ -72,20 +77,21 @@ def check_project(path: str, base: Path) -> str:
 
 
 def check_orders(names: list[str]) -> tuple[str, ...]:
-    """The agents the person named as givers of orders; ValueError for a name that is no id."""
+    """The sessions the person named as givers of orders; ValueError for a name that is no session name."""
     unique = tuple(dict.fromkeys(n.strip() for n in names if n.strip()))
     if len(unique) > MOST_ORDERERS or not all(valid_id(n) for n in unique):
-        raise ValueError(f"name at most {MOST_ORDERERS} agents, each a plain id")
+        raise ValueError(f"name at most {MOST_ORDERERS} sessions, each by the name `agents` shows")
     return unique
 
 
 @dataclass(frozen=True, slots=True)
 class Agent:
-    """What the person asked for when the agent was started."""
+    """What the person asked for when the agent was started; ``identity`` is the name its session has on ``board``."""
 
     name: str
     model: str
     identity: str = ""
+    board: str = ""
     model_name: str = ""
     size_bytes: int = 0
     role: str = roles.DEFAULT
@@ -109,36 +115,49 @@ class Agent:
         return out
 
 
-def _paths(ws: Workspace, name: str) -> dict[str, Path]:
-    base = folder(ws)
-    return {"record": base / f"{name}.json", "status": base / f"{name}.status.json",
-            "stop": base / f"{name}.stop", "log": base / f"{name}.log"}
+def native_id(starter: str, name: str) -> str:
+    """The session id this device registers the agent ``name`` under for the session ``starter`` that starts it: each device,
+    each starter and each agent has a board name of its own."""
+    return f"{home.machine_id()}-{starter}-{name}"
 
 
-def pause_file(ws: Workspace, name: str) -> Path:
+def session_of(agent: Agent, client: Client | None = None) -> Session:
+    """The agent's own session on its board, with the token its registration left in the client folder."""
+    node = client or Client(node_launch.default_state())
+    return Session(node, agent.board, credentials.load(node.state, agent.board, agent.identity), agent.identity)
+
+
+def _paths(base: Path, name: str) -> dict[str, Path]:
+    where = folder(base)
+    return {"record": where / f"{name}.json", "status": where / f"{name}.status.json",
+            "stop": where / f"{name}.stop", "log": where / f"{name}.log"}
+
+
+def pause_file(base: Path, name: str) -> Path:
     """The file that pauses the worker before its next queued task."""
-    return folder(ws) / f"{check_name(name)}.pause"
+    return folder(base) / f"{check_name(name)}.pause"
 
 
-def stop_file(ws: Workspace, name: str) -> Path:
+def stop_file(base: Path, name: str) -> Path:
     """The file whose presence tells ``name``'s loop to stop at its next step."""
-    return _paths(ws, check_name(name))["stop"]
+    return _paths(base, check_name(name))["stop"]
 
 
-def log_file(ws: Workspace, name: str) -> Path:
-    return _paths(ws, check_name(name))["log"]
+def log_file(base: Path, name: str) -> Path:
+    return _paths(base, check_name(name))["log"]
 
 
-def save(ws: Workspace, agent: Agent) -> None:
+
+def save(base: Path, agent: Agent) -> None:
     """Write ``agent``'s record."""
-    path = _paths(ws, check_name(agent.name))["record"]
+    path = _paths(base, check_name(agent.name))["record"]
     write_json(path, {"version": 1, **agent.as_dict()})
     path.chmod(0o600)
 
 
-def load(ws: Workspace, name: str) -> Agent | None:
+def load(base: Path, name: str) -> Agent | None:
     """The record of ``name``, or None when there is none or it is not one of ours."""
-    row = read_json(_paths(ws, check_name(name))["record"], None)
+    row = read_json(_paths(base, check_name(name))["record"], None)
     if not isinstance(row, dict) or row.get("version") != 1 or row.get("name") != name:
         return None
     fields = {k: row[k] for k in Agent.__dataclass_fields__ if k in row}
@@ -148,9 +167,9 @@ def load(ws: Workspace, name: str) -> Agent | None:
     return Agent(**fields)
 
 
-def names(ws: Workspace) -> list[str]:
+def names(base: Path) -> list[str]:
     """Every agent with a record."""
-    return sorted(p.name.removesuffix(".json") for p in folder(ws).glob("*.json")
+    return sorted(p.name.removesuffix(".json") for p in folder(base).glob("*.json")
                   if not p.name.endswith(".status.json") and valid_name(p.name.removesuffix(".json")))
 
 
@@ -165,8 +184,9 @@ def alive(agent: Agent) -> bool:
 class Status:
     """The loop's own status file: its state, what it last did and when it last looked."""
 
-    def __init__(self, ws: Workspace, name: str) -> None:
-        self.path = _paths(ws, name)["status"]
+    def __init__(self, base: Path, name: str) -> None:
+        self.base = base
+        self.path = _paths(base, name)["status"]
         self.data: dict[str, Any] = read_json(self.path, {}) or {}
 
     def update(self, **fields: Any) -> None:
@@ -175,33 +195,73 @@ class Status:
         self.path.chmod(0o600)
 
 
-def status_of(ws: Workspace, name: str) -> dict[str, Any]:
+def status_of(base: Path, name: str) -> dict[str, Any]:
     """What the loop of ``name`` last wrote: ``state``, ``detail``, ``steps``, ``tasks`` and so on."""
-    found = read_json(_paths(ws, check_name(name))["status"], {})
+    found = read_json(_paths(base, check_name(name))["status"], {})
     return found if isinstance(found, dict) else {}
 
 
-def obeys(ws: Workspace, agent: Agent, row: dict[str, Any]) -> str:
+def is_person(s: Session) -> bool:
+    """Whether ``s`` is a session of the person's own screen or terminal."""
+    me = next((a for a in s.agents() if a.name == s.name), None)
+    return bool(me and not me.parent and me.harness == person.HARNESS and me.model == person.MODEL)
+
+
+def manages(s: Session, agent: Agent) -> bool:
+    """Whether ``s`` is the session that started ``agent`` or the person's own session."""
+    mine = next((a for a in s.agents() if a.name == agent.identity), None)
+    return bool(mine and (mine.parent == s.name or is_person(s)))
+
+
+def leads(s: Session) -> frozenset[str]:
+    """The sessions with no parent that hold a live grant of the task authority for themselves: the person's leads."""
+    held = grants.listing(s).grants
+    return frozenset(g.to["name"] for g in held if g.action == "task_authority" and g.status == "live"
+                     and g.to.get("kind") == "session" and g.to.get("name"))
+
+
+def _giver(agent: Agent, known: dict[str, Registered], lead: Callable[[], frozenset[str]], sender: str) -> str:
+    """Why ``sender``, or a session above it, is one the agent acts for; an empty string when none is."""
+    starter = known[agent.identity].parent if agent.identity in known else ""
+    name, seen = sender, set()
+    while name and name not in seen and len(seen) < DEPTH:
+        seen.add(name)
+        who = known.get(name)
+        if who is None or who.retired:
+            return ""
+        reason = ""
+        if not who.parent and who.harness == person.HARNESS and who.model == person.MODEL:
+            reason = "the person"
+        elif name in agent.orders_from:
+            reason = f"{name}, whom the person named"
+        elif name == starter:
+            reason = f"{name}, which started it"
+        elif not who.parent and name in lead():
+            reason = f"{name}, a lead the person gave the task authority"
+        if reason:
+            return reason if name == sender else f"a delegate of {name}, {reason}"
+        name = who.parent
+    return ""
+
+
+def obeys(s: Session, agent: Agent, row: dict[str, Any], known: dict[str, Registered] | None = None) -> str:
     """Why the agent acts on message ``row``, or an empty string when it is information only.
 
-    Only a clear ``task`` or ``question`` from a live person or lead identity, an identity the
-    person named, or a delegate of one of those is acted on; a message to ``*`` and one held in
-    quarantine never is, and a message on a board must name the agent."""
+    Only a clear ``task`` or ``question`` from the person's own session, the session that started the agent, a session
+    with no parent that holds the task authority, a session the person named, or a subagent of one of those is acted
+    on; a message to ``*`` and one held in quarantine never is, and a message on a board must name the agent."""
     sender = str(row.get("from", ""))
-    if row.get("state") != "clear" or row.get("type") not in ORDER_KINDS or sender == agent.name \
+    if row.get("state") != "clear" or row.get("type") not in ORDER_KINDS or sender == agent.identity \
             or row.get("to") == "*":
         return ""
-    if str(row.get("to", "")).startswith("#") and f"@{agent.name}" not in str(row.get("raw") or ""):
+    if str(row.get("to", "")).startswith("#") and f"@{agent.identity}" not in str(row.get("raw") or ""):
         return ""
-    role = ws.registry.role_of(sender)
-    if not role:
-        return ""
-    if role in (HUMAN, LEAD):
-        return f"the {role}"
-    top = sender.partition("/")[0]
-    if sender in agent.orders_from or top in agent.orders_from:
-        return f"{top}, whom the person named"
-    parent = str(ws.registry.info(sender).get("parent") or "")
-    if parent and (ws.registry.role_of(parent) in (HUMAN, LEAD) or parent in agent.orders_from):
-        return f"a delegate of {parent}"
-    return ""
+    roster = known if known is not None else {a.name: a for a in s.agents(True)}
+    cache: list[frozenset[str]] = []
+
+    def lead() -> frozenset[str]:
+        if not cache:
+            cache.append(leads(s))
+        return cache[0]
+
+    return _giver(agent, roster, lead, sender)

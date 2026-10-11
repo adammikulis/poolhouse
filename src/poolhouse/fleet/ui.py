@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
+from poolhouse import jsonl
 from poolhouse.home import machine_id
 from poolhouse.http import Server, ServerError, open_stream
 
@@ -126,7 +127,7 @@ class UI:
         self.launch: LaunchSecret | None = None
         """The secret that lets this machine's own window or owner terminal ask for a ticket."""
         self.audit: Callable[..., None] | None = None
-        """``(event, **fields)``: appends a row to the audit chain; nothing is recorded when unset."""
+        """``(event, **fields)``: takes the rows `record` would write to the root's audit file."""
         self._join_lock = threading.Lock()
         self._members: tuple[float, list[dict[str, Any]]] = (0.0, [])
         self.setup_jobs = None
@@ -161,9 +162,14 @@ class UI:
         return session is not None and session.credentialed
 
     def record(self, event: str, **fields: Any) -> None:
-        """Append a session event to the audit chain; ticket and secret values are never passed."""
+        """Append a session event to ``audit`` when a caller set one, else to the private ``ui-audit.jsonl`` under the root
+        (nothing when there is neither); ticket and secret values are never passed."""
         if self.audit is not None:
             self.audit(event, **fields)
+        elif self.root is not None:
+            path = Path(self.root) / "ui-audit.jsonl"
+            jsonl.append(path, [{"at": time.time(), "event": event, **fields}], default=str)
+            path.chmod(0o600)
 
     # -- state -----------------------------------------------------------
     def state(self) -> dict[str, Any]:

@@ -84,5 +84,7 @@ class Client:
         body = json.dumps(request).encode()
         if len(body) > MAX_FRAME:
             raise Quota("quota", "the request is larger than a frame may be")
-        reply = exchange(self.state, body, 660.0)
-        return json.loads(reply)
+        got = json.loads(exchange(self.state, body, 660.0))
+        if not isinstance(got, dict):
+            raise ValueError("the node answered with something that is not a JSON object")
+        return got
