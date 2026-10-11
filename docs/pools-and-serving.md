@@ -172,7 +172,7 @@ row is never believed again. A **hold** is a delay before an act takes effect, i
 |---|---|---|---|
 | `found` | the founding keys, each with its acceptance | the epoch-1 charter | the id is its hash; once |
 | `admit` | secure: a strong admin after the join rules of 1.6, or the delegate for a trusted-path join; open: any active member's device key, `via: segment` | adds the certificate, with `how` and `by_key` | idempotent; refused for a removed certificate; delegate 3 an hour, 10 a day; an open member's device 5 an hour |
-| `remove` | one strong admin | the certificate is `revoked`, sticky | idempotent; immediate |
+| `remove` | one strong admin | the certificate is `revoked`, sticky; carries a log cut (below) | idempotent; immediate |
 | `leave` | the device itself | status `left`; a later `admit` may undo it | idempotent |
 | `admin_add` | sensitive threshold of strong admins **and** the added key's acceptance | the key joins the admin set | effect after `holds.admin_add_h` (24 h) |
 | `admin_remove` | sensitive threshold of strong admins other than the removed key; carries a cut | the key leaves the admin set | effect after `holds.admin_remove_h` (24 h); the removed key may `veto` |
@@ -188,7 +188,11 @@ row is never believed again. A **hold** is a delay before an act takes effect, i
 
 **How a member accepts an act.** The pool and epoch are its own; every signature verifies; the distinct people (or keys, under
 `unit: key`) among the signers that hold a **strong** admin key of that epoch reach the class's threshold (the recovery key counts
-for none); a `device` signature is accepted only where the table says so; `at_ms` is not more than five minutes ahead of its clock.
+for none); a `device` signature is accepted only where the table says so, and each one by a device that may give it (its own `leave`, alone;
+an `admit` from a live delegate, or in an open pool from a member that says `segment`), so a member that relays an act with its own
+signature added changes nothing; an act names each signer once; `at_ms` is not more than five minutes ahead of its clock. An admin
+act that follows a charter the pool has left behind is refused, and so is an act signed only by admins that are no longer listed
+unless the cut of their removal names it.
 Anything else is refused and recorded with its reason, never applied. Heartbeats (1.6) travel in the same exchange and are not
 stored.
 
@@ -199,7 +203,10 @@ checkpoints and across restarts. An act that is complete on a device only after 
 late to join or contest that step there, so a late arrival cannot reopen a step that is already in effect. The wall clock and the
 signer's `at_ms` are never read for a delay: an act backdated by its signer, or a device whose clock a network source moved
 forward, shortens nothing. A device counts only the time it is awake, so a hold never ends early for a device that was off: it ends
-after the full hold has run on that device with no `cancel` seen.
+after the full hold has run on that device with no `cancel` seen. The acts a device takes from the member that let it in as already
+in effect (their holds ran before it came) can still be cancelled until their hold has run from the moment it joined, so a host that
+withheld a `cancel` does not make a joiner's view final. The order of a device's admits and leaves, and of `delegate` and
+`delegate_end`, is the order this device first saw them.
 
 **Order, forks and last admin.**
 
@@ -222,10 +229,23 @@ after the full hold has run on that device with no `cancel` seen.
 key that is not in the cut is void on every device, whenever it arrives. A stolen key cannot keep a signed act in a drawer and
 release it after the key is removed.
 
+**Removing a device carries a log cut.** A `remove` lists, for each log of boards that the removed device wrote and the removing
+admin's device holds, the board, the origin and how many entries of it stand (at most 256 logs; the node fills it in and ignores
+what a caller sent). Every device that learns of the removal cuts those logs there and takes no later entry of them, from the removed
+device or from any member that relays it; an entry carries its own signature, and a relay proves nothing about it. A log of the
+removed device that no removal names stands as far as the device holds it, and no log is started under its key. Several removals of
+one device stand at the least they name. What the removed device admitted (as a delegate or an open pool's member) goes with it, and
+an admin may admit those devices again. A member that has not heard of the removal can still hold and pass on later entries until it
+does; the others refuse them.
+
 **Limits and paging.** Acts replicate in the `acts` member op in pages of at most 256 acts (`{pool, have: <tokens of the last 4,096 acts held>,
 page, push}`, a token being an act's id and a tag of who has signed it, so a signature added later to an act already held is passed on),
-each act at most 16 KiB, a page at most 2 MiB so it fits the 4 MiB frame. Caps per pool: 4,096 live `admit` entries, 256
-admin-set acts, 1 pending `handoff`, 1 pending `recover`, 1 pending `succession`. There are no stored tickets: a join window is
+each act at most 16 KiB, a page at most 2 MiB so it fits the 4 MiB frame. Caps per pool: 4,096 `admit` entries that stand, 256
+admin-set acts, 8,192 acts, 1 pending `handoff`, 1 pending `recover`, 1 pending `succession`. What a member can send in bulk, the
+device-signed `admit` that stands nowhere, is held 32 of one device's and 1,024 in all, a device's own oldest first, and goes before
+anything else when the pool is full; a device holds at most eight of its own `leave` and signs one only while it is a member. A device
+that takes a push is folded once for each time an act that follows needs what an earlier one changed (the admin set, a device just
+admitted), and a request that changes nothing writes nothing. There are no stored tickets: a join window is
 ephemeral and lives in the memory of the device that opened it, and the delegate's `admit` is the only trace. Rates: knocks 5 a
 minute per source address and 30 a minute in all, at most 3 pending; one pending sensitive approval per pool; after a decline the
 same kind of request waits 10 minutes (slice 1 keeps this per device and kind, since it has no session of the phone to name).

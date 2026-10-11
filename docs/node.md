@@ -794,9 +794,11 @@ pool, through admin keys; a device never does, and the one thing a member device
   `poolhouse/pool-act/v1`, a line break and the canonical JSON without the signatures; the id of an act is the hash of those bytes,
   so co-signers sign the same bytes and the signature sets of two copies merge. `prev` is the hash of the charter the signer knew.
   Kinds: `found`, `admit`, `remove`, `leave`, `admin_add`, `admin_remove`, `veto`, `cancel`, `set_threshold`, `set_holds`,
-  `set_mode`, `delegate`, `delegate_end`. A body field nobody defined, an act over 16 KiB, more than eight signatures, a kind this
-  build does not know, an act for another pool, one dated more than five minutes ahead and one whose signature does not verify are
-  refused, and each refusal is recorded with its reason (`pools/<id>/refused.json`, the last 256).
+  `set_mode`, `delegate`, `delegate_end`. A body field nobody defined, an act over 16 KiB, more than eight signatures, one signer
+  named twice, a kind this build does not know, an act for another pool, one dated more than five minutes ahead and one whose
+  signature does not verify are refused, and each refusal is recorded with its reason (`pools/<id>/refused.json`, the last 256).
+  An admin act for a charter the pool has left behind, and an act signed only by admins that are no longer listed (unless the cut
+  of the removal that took them out kept it), are refused and held nowhere.
 - **Time** (`gov/clock.rs`): every hold, window and expiry is measured in the awake time of this device (its monotonic clock, saved
   at checkpoints, not running while it sleeps) from the first moment it had the act with every signature the act needs. The wall
   clock and the signer's `at_ms` are never read for a delay.
@@ -812,21 +814,41 @@ pool, through admin keys; a device never does, and the one thing a member device
 - **The roster** (`gov/roster.rs`): built from scratch from the acts and the chain, never from a row a member sent. `admit` by a
   strong admin; by a live delegate (a device an admin act lets sign `admit` for 30 days, at most 3 an hour and 10 a day by the order
   this device first saw the admits); in an open pool by any member's own device key with `via: segment`, at most 5 an hour. A device
-  that does not hold its key in a keystore (`Node::key_binding`; no keystore yet) signs no delegate admit, so a copy of its state
+  signature is taken only on the device's own `leave` (and alone) and on an `admit` from such a device; when an act is relayed with
+  a signature its signer may not give, that signature is refused, and the roster credits an admit to the first of its signers that
+  qualifies, so a relay voids nothing by adding its own. The order of a device's admits and leaves, and of `delegate` and
+  `delegate_end`, is the order this device first saw them, not the time a signer wrote on them. A device that does not hold its key in a keystore (`Node::key_binding`; no keystore yet) signs no delegate admit, so a copy of its state
   directory signs none, and every delegate admit is written to the pool board as `delegate_admit`. A device that joins is handed the
   founding act, the admin-set acts in effect (their holds were over before it came), the live delegates' acts and the acts that
-  stand; it takes the admin-set acts and the rest as settled, so the rates of a delegate do not refuse admits that were made before
+  stand (the first three must fit 256 KiB or the join is refused whole, before the device is admitted); it takes the admin-set acts and the rest as settled, so the rates of a delegate do not refuse admits that were made before
   it came. A device that has left, or was removed, signs no admit. `remove` is sticky; `leave` is the
   device's own signature and a later `admit` undoes it.
-- **Keeping it** (`gov/pool.rs`): `pools/<id>/` holds `charter.json`, `acts.json`, `seen.json` and `refused.json`. Caps: 4,096 admits,
-  256 admin-set acts (the oldest that never took effect make room), 8,192 acts.
+- **Keeping it** (`gov/pool.rs`, `gov/room.rs`): `pools/<id>/` holds `charter.json`, `acts.json`, `seen.json` and `refused.json`, each
+  written only when what it holds changed (the awake total at least once a minute). Caps: 4,096 admits that stand, 256 admin-set
+  acts (the oldest that never took effect make room), 8,192 acts. What a member can send in bulk is the device-signed admit that
+  stands nowhere (past a rate, or by a device that may not admit): 32 of one device's and 1,024 in all are held, a device's own
+  oldest go first, and they go before anything else when the pool is full; a device holds at most eight of its own leaves, and signs
+  one only while it is a member. A push is folded when an act that follows needs what an earlier one changed (the admin set, a
+  device that was just admitted), a tick when a hold, a delegate or a dispute ends. An act a joiner took as settled can still be
+  cancelled until its hold has run from the join.
+- **Removing a device and its logs** (`gov/logs.rs`, `Board::cut`): a `remove` carries, for each log of boards that the removed device
+  wrote and the removing admin's device holds (`{board, origin, seq}`, at most 256), how many entries of it stand; the node writes the
+  list itself, whatever the caller sent. A device that learns of the removal cuts those logs there and takes no later entry of them
+  from any relay (an entry carries its own signature, and a relay proves nothing about it); a log of the removed device that no
+  removal names stands as far as the device holds it; no entry under the key of a removed device is taken from a log no removal
+  names. Several removals of one device stand at the least they name. What the removed device admitted goes with it, and an admin
+  can admit it again.
 - **The `acts` op** (`gov/wire.rs`): `{pool, have, page, push}`. `have` is up to 4,096 tokens (an act's id and a tag of who signed it,
   so a signature added later is passed on); a reply is a page of at most 256 acts and 2 MiB, the acts that change the admins first,
   and what was pushed is checked by the receiver from the keys it holds, whoever carried it. A request reads at most 64 pages.
 - **Signing** (`gov/signer.rs`, `gov/ops.rs`): the node holds no person key. An act that needs a person's signature is put to a
   `Signer` (the phone approval, when it exists, and a rig's in-memory key for tests); the typed-yes person key path signs outside the
   node: `pool_draft` makes the act and the bytes to sign, `pool_found` and `pool_submit` take the signed act back. A no from the
-  person is respected for ten minutes for that kind of act, and a person is asked at most twelve times in ten minutes.
+  person is respected for ten minutes for that kind of act, and a person is asked at most twelve times in ten minutes. The sentence
+  a person signs an act under (`gov/describe.rs`, at most 300 characters) names the key with its person, strength and fingerprint, the
+  device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. `pool_found` is
+  granted by the name of the pool the act founds and refuses a charter with no strong admin key, which nobody could admit a device
+  under.
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
 - **Legacy mode.** A device with a `pool.json` and no `pools/<id>/` keeps its pool and its sync exactly as before, except that a
   member's rows, removals and policy are ignored (the record changes only by this device's own API, the grants, and the joins it makes);
