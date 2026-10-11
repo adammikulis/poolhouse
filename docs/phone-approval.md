@@ -61,7 +61,7 @@ key as three groups of four characters, so a code someone else scanned is seen a
 
 **Another phone, later.** The node enrols a second key only when a key it already holds approves it, so a code that an agent
 or a bystander saw cannot add a phone by itself. The code is made by the person's command, by an agent (`phone_offer`,
-allowed once a person key exists, three an hour), or by the app of a phone already added (Settings, "Add another phone"). The
+allowed once a person key exists, three an hour), or by the app of a phone already added ("Phones and notifications", "Add another phone"). The
 new phone scans it and the node puts "Add the phone `<name>`, key `7f3a 91c2 d04e`" in front of every phone already added.
 One tap and one fingerprint on one of them adds it. The text says what it means: the new phone approves everything this one can.
 
@@ -223,9 +223,9 @@ device that holds the key.
 ## Several phones, removing one, losing one
 
 Up to eight person keys fit on a node, phones and typed-`yes` keys together. Every phone sees every request and any one
-phone decides it; the others are told it ended (the app's list and a quiet update to the notification).
+phone decides it; on the others it leaves the list, and its notification goes when the app next looks and in any case when the request ends.
 
-**Removing a phone.** Settings in the app lists the phones with their key and when each last asked. "Remove" on another
+**Removing a phone.** "Phones and notifications" in the app lists the phones with their key and whether each has a wake-up. "Remove" on another
 phone makes a request, "Remove the phone `<name>`", and one fingerprint on a phone that stays removes it: its key stops counting at
 once, what it signed earlier stays as signed and is listed as signed by a key that was removed, and the node never enrols the
 same key again (`persons_removed.json`). A phone removes itself the same way. The last key is never removed; to start again
@@ -377,9 +377,9 @@ key, never the text.
 
 ## Checks on a real phone
 
-The tests prove the protocol and the app's logic without a device; these need the phone and are the owner's, in this order:
+The tests prove the protocol and the app's logic without a device (`PhoneApprovalTest` on a JVM, `tests/test_board_approval.py`, `app/poolhouse-node/tests/approvals.rs`), and the pool check (`scripts/pool-check --only phone-approval`) runs the node's side on a Mac and on Linux containers with a phone made of keys. These need the phone and are the owner's, in this order:
 
-1. Install the APK; open it; the camera permission prompt appears once and the scan opens.
+1. Install the APK (`python app/android/build.py GRADLE PLUGIN API debug` builds it); open it; the notification permission prompt (Android 13 and later) and the camera permission prompt each appear once, and the scan opens.
 2. Run `poolhouse-workspace phone add`; scan the code; the fingerprint prompt appears once; the app says the phone is added;
    the terminal names it with its key.
 3. Have an agent run `poolhouse-workspace approval request add_device --for 10m --uses 1`: the notification arrives with the app
@@ -392,7 +392,7 @@ The tests prove the protocol and the app's logic without a device; these need th
    `expired`.
 7. Enrol a fingerprint on the phone: the old key is lost, the app says so and offers the scan.
 8. Add a second phone and remove the first from it.
-9. With the UnifiedPush distributor installed: close the app, make a request: the notification arrives with the app closed, and
-   a capture of the push server's side shows only ciphertext.
+9. With a UnifiedPush distributor installed (ntfy): in "Phones and notifications" choose "Turn on wake-up", close the app, make a request: the
+   notification arrives with the app closed, and a capture of the push server's side shows only ciphertext.
 10. Change the node's address (another network, then Tailscale): the app finds it from the code's other endpoint and says nothing.
 11. Confirm the camera is not opened after the scan, no image is stored, and `FLAG_SECURE` hides the text in the recents screen.
