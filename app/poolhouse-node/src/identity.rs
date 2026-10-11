@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, random_hex, sha256_hex, write_atomic};
+use crate::lineage::{shares, Anchor, ENFORCED};
 
 pub const SHORT: usize = 6;
 pub const MAX_IDENTITIES: usize = 10_000;
@@ -60,6 +61,9 @@ pub struct Ident {
     pub retired_reason: String,
     /// Wall milliseconds of the last request this session made (written at most every 30 s).
     pub seen_ms: u64,
+    /// The processes the session was registered from (`lineage`); empty when they were not known.
+    #[serde(default)]
+    pub lineage: Vec<Anchor>,
 }
 
 /// A model id or harness name as one short clean line.
@@ -181,22 +185,19 @@ impl Registry {
     }
 
     /// The unique name of this session, recorded so no later session takes the same one. The
-    /// same session always gets the same name back (``true`` when it is new); a session whose
-    /// short suffix collides with another's gets a longer one.
-    pub fn assign(&mut self, model: &str, state: ModelState, harness: &str, session: &str, parent: &str, now_ms: u64) -> Result<(String, bool)> {
+    /// same session always gets the same name back (``true`` when it is new), to a process of the lineage it was
+    /// registered from only; a session whose short suffix collides with another's gets a longer one.
+    pub fn assign(&mut self, who: Who, model: &str, state: ModelState, now_ms: u64, lineage: &[Anchor]) -> Result<(String, bool)> {
+        let Who { harness, session, parent } = who;
         if session.is_empty() || harness.is_empty() {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
         }
         let (full, word) = (digest(harness, session), family_word(model));
         let model = clean(model, 256)?;
-        if let Some((name, known)) = self.names.iter().find(|(_, i)| i.digest == full) {
-            if known.retired {
-                return Err(Error::Denied(format!("{name} was retired; its session cannot register again")));
-            }
-            if known.parent != parent {
-                return Err(Error::Denied(format!("{name} is already registered under another parent")));
-            }
-            return Ok((name.clone(), false));
+        let known = self.names.iter().find(|(_, i)| i.digest == full).map(|(n, _)| n.clone());
+        if let Some(name) = known {
+            self.admit(&name, parent, lineage)?;
+            return Ok((name, false));
         }
         if self.names.len() >= MAX_IDENTITIES {
             return Err(Error::Quota("this board holds as many sessions as it will".into()));
@@ -206,11 +207,54 @@ impl Registry {
         let state = if model.is_empty() { ModelState::Unknown } else { state };
         self.names.insert(name.clone(), Ident {
             digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness, 64)?,
-            retired: false, retired_reason: String::new(), seen_ms: now_ms,
+            retired: false, retired_reason: String::new(), seen_ms: now_ms, lineage: lineage.to_vec(),
         });
         self.save()?;
         Ok((name, true))
     }
+
+    /// Whether the session ``name`` may be registered again by a process of ``lineage`` under ``parent``: a retired session
+    /// never, a subagent only under its own parent, a main session only from the lineage it was registered from (a name
+    /// registered before lineages were kept takes the first one that asks).
+    fn admit(&mut self, name: &str, parent: &str, lineage: &[Anchor]) -> Result<()> {
+        let known = self.names.get_mut(name).expect("found above");
+        if known.retired {
+            return Err(Error::Denied(format!("{name} was retired; its session cannot register again")));
+        }
+        if known.parent != parent {
+            return Err(Error::Denied(format!("{name} is already registered under another parent")));
+        }
+        if !parent.is_empty() || !ENFORCED {
+            return Ok(());
+        }
+        if known.lineage.is_empty() && !lineage.is_empty() {
+            known.lineage = lineage.to_vec();
+            return self.save();
+        }
+        if known.lineage.is_empty() || shares(&known.lineage, lineage) {
+            return Ok(());
+        }
+        Err(Error::Denied("this session is registered from another process lineage (another terminal or program); a person moves it to the terminal \
+                           where it runs now with `poolhouse-workspace rebind HARNESS SESSION`, which ends the tokens it holds".into()))
+    }
+
+    /// Move the main session ``name`` to ``lineage``: it is registered from there from now on.
+    pub fn rebind(&mut self, name: &str, lineage: &[Anchor]) -> Result<()> {
+        let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
+        if ident.retired || !ident.parent.is_empty() {
+            return Err(Error::Denied("only a main session that has not retired is moved".into()));
+        }
+        ident.lineage = lineage.to_vec();
+        self.save()
+    }
+}
+
+/// The native session a registration names: its harness, its id and the parent it registers under (empty for a main session).
+#[derive(Clone, Copy)]
+pub struct Who<'a> {
+    pub harness: &'a str,
+    pub session: &'a str,
+    pub parent: &'a str,
 }
 
 /// Where a token leads: a board and a name on it.
@@ -220,32 +264,46 @@ pub struct Holder {
     pub name: String,
 }
 
+/// A token as the file keeps it: whose it is and when, in order of issue, it was made.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+struct Held {
+    #[serde(flatten)]
+    holder: Holder,
+    #[serde(default)]
+    seq: u64,
+}
+
 /// The tokens of this node, kept as hashes in a file only its owner reads.
 pub struct Tokens {
     path: PathBuf,
-    held: BTreeMap<String, Holder>,
+    held: BTreeMap<String, Held>,
+    next: u64,
 }
 
 impl Tokens {
     pub fn open(path: &Path) -> Result<Tokens> {
-        let held = match std::fs::read(path) {
+        let held: BTreeMap<String, Held> = match std::fs::read(path) {
             Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| Error::Damaged(format!("tokens unreadable: {e}")))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
             Err(e) => return Err(e.into()),
         };
-        Ok(Tokens { path: path.into(), held })
+        let next = held.values().map(|h| h.seq).max().map_or(1, |n| n + 1);
+        Ok(Tokens { path: path.into(), held, next })
     }
 
-    /// A fresh random token for ``board``/``name``; the oldest of a name's tokens is dropped
-    /// past a few. The token itself is returned once and never stored.
+    /// A fresh random token for ``board``/``name``, returned once and never stored. A name holds at most a few tokens; past
+    /// them the oldest goes, except the first the name was given, which only the end of the session (or a person's
+    /// `rebind`) takes away.
     pub fn issue(&mut self, board: &str, name: &str) -> Result<String> {
-        let token = random_hex(32)?;
         let holder = Holder { board: board.into(), name: name.into() };
-        let same: Vec<String> = self.held.iter().filter(|(_, h)| **h == holder).map(|(k, _)| k.clone()).collect();
-        for old in same.iter().take((same.len() + 1).saturating_sub(MAX_TOKENS_PER_NAME)) {
+        let mut same: Vec<(u64, String)> = self.held.iter().filter(|(_, h)| h.holder == holder).map(|(k, h)| (h.seq, k.clone())).collect();
+        same.sort();
+        for (_, old) in same.iter().skip(1).take((same.len() + 1).saturating_sub(MAX_TOKENS_PER_NAME)) {
             self.held.remove(old);
         }
-        self.held.insert(sha256_hex(token.as_bytes()), holder);
+        let token = random_hex(32)?;
+        self.held.insert(sha256_hex(token.as_bytes()), Held { holder, seq: self.next });
+        self.next += 1;
         write_atomic(&self.path, &serde_json::to_vec(&self.held)?)?;
         Ok(token)
     }
@@ -253,7 +311,7 @@ impl Tokens {
     /// Drop every token of ``board``/``name``; how many there were.
     pub fn revoke_name(&mut self, board: &str, name: &str) -> Result<usize> {
         let before = self.held.len();
-        self.held.retain(|_, h| !(h.board == board && h.name == name));
+        self.held.retain(|_, h| !(h.holder.board == board && h.holder.name == name));
         let gone = before - self.held.len();
         if gone > 0 {
             write_atomic(&self.path, &serde_json::to_vec(&self.held)?)?;
@@ -263,6 +321,6 @@ impl Tokens {
 
     /// Who ``token`` belongs to.
     pub fn resolve(&self, token: &str) -> Option<&Holder> {
-        self.held.get(&sha256_hex(token.as_bytes()))
+        self.held.get(&sha256_hex(token.as_bytes())).map(|h| &h.holder)
     }
 }

@@ -14,6 +14,7 @@ from pathlib import Path
 from poolhouse.board import place, session as sessions
 from poolhouse.board.client import Client
 from poolhouse.board.tasks import Tasks
+from poolhouse.board.terminal import terminal_id
 
 __all__ = ["Agent", "Board", "Claim", "Message", "Note", "Task", "connect"]
 
@@ -256,8 +257,8 @@ def connect(*, agent: str = "", token_file: str = "", board: str = "", cwd: str 
 
 
 def register(name: str = "python", *, board: str = "", cwd: str | Path | None = None) -> Board:
-    """Register a session for a script under ``name`` and return it; registering the same name again returns the same session."""
+    """Register a session for a script under ``name`` and return it; registering the same name again from the same terminal returns the same session."""
     node = Client()
     where = place.resolve(node, Path(cwd) if cwd else None, board)
-    got = sessions.register(node, where, sessions.Native("script", "python", name))
+    got = sessions.register(node, where, sessions.Native("script", "python", f"{name}-{terminal_id()}"))
     return Board(sessions.Session(node, where, got.token, got.name))

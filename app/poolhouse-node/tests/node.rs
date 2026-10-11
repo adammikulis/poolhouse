@@ -62,7 +62,7 @@ fn every_write_is_stamped_from_the_token_and_a_forged_sender_is_refused() {
         assert_eq!(code(&reply), "denied", "param {forged}");
         let mut envelope = json!({"v": 1, "id": 1, "method": "post", "board": "demo", "token": bt, "params": {"kind": "message", "fields": {"type": "status", "body": "x"}}});
         envelope[forged] = json!(alice);
-        assert_eq!(code(&poolhouse_node::api::handle(&mut n, &envelope)), "denied", "envelope {forged}");
+        assert_eq!(code(&poolhouse_node::api::handle(&mut n, &envelope, &poolhouse_node::lineage::Peer::none())), "denied", "envelope {forged}");
     }
     assert_eq!(texts(&ok(req(&mut n, "read", "demo", &bt, json!({})))["entries"]), vec!["hello"]);
     assert_eq!(code(&post(&mut n, "demo", "not-a-token", "x")), "denied");

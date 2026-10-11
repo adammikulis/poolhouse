@@ -225,6 +225,12 @@ def unenroll(args: argparse.Namespace, ctx: Ctx) -> Any:
     return grants.unenrol(ctx.client, ctx.carrier.token, _held(ctx), args.key)
 
 
+def rebind(args: argparse.Namespace, ctx: Ctx) -> Any:
+    """Move a main session to the terminal this runs in: the node ends the tokens it holds, and the harness registers it from here."""
+    done = grants.rebind(ctx.client, ctx.carrier.board, args.harness, args.session, _held(ctx))
+    return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": "start the harness in this terminal: it registers as that session"}
+
+
 TABLE = (
     ("grants", "who holds which grant: its state, what it covers, when it ends and how often it was used",
      [flag("--status", default="", choices=("live", "expired", "exhausted", "revoked", "not-yet", "ignored")),
@@ -249,6 +255,9 @@ PERSON = (
      [flag("--about", default="a person's key", help="what to call the key there")], proof),
     ("person-enroll", "put a key carried from another device on this node, approved by this node's key",
      [flag("--proof", required=True, help="what `person-proof` printed")], enroll),
+    ("rebind", "a person moves a main session to the terminal this runs in, ending the tokens it holds, so its harness can register from here",
+     [flag("harness", help="the harness of the session, as the refusal named it (claude-code, codex, ...)"),
+      flag("session", help="the native session id of the harness, as the refusal named it")], rebind),
     ("person-unenroll", "take a key off this node, signed by a key this node holds (the last key stays)",
      [flag("--key", required=True, metavar="FINGERPRINT", help="the fingerprint of the key to remove (`grants` lists the keys the node holds)")], unenroll),
 )

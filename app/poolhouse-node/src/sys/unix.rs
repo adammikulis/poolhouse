@@ -97,6 +97,31 @@ pub fn peer(stream: &Stream) -> Result<Principal> {
     }
 }
 
+/// The id of the process on the other end of ``stream``, when the system says (`SO_PEERCRED`, `LOCAL_PEERPID`).
+pub fn peer_pid(stream: &Stream) -> Option<u32> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        // SAFETY: `cred` and `len` are valid for the call and sized as getsockopt expects.
+        let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len) };
+        (rc == 0 && cred.pid > 0).then_some(cred.pid as u32)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut pid: libc::pid_t = 0;
+        let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
+        // SAFETY: `pid` and `len` are valid for the call and sized as getsockopt expects.
+        let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_LOCAL, libc::LOCAL_PEERPID, (&mut pid as *mut libc::pid_t).cast(), &mut len) };
+        (rc == 0 && pid > 0).then_some(pid as u32)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = stream;
+        None
+    }
+}
+
 /// A held advisory lock on a file; released when dropped.
 pub struct Lock {
     _file: File,

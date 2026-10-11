@@ -14,7 +14,11 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, sha256_hex, unhex, write_atomic};
 
+use super::spec::SKEW_MS;
+
 const MOST_KEYS: usize = 8;
+/// How many used nonces are remembered at once; past it nothing more is accepted until the oldest age out.
+const MOST_NONCES: usize = 256;
 /// The file beside `persons.json` that holds the hash of the secret the first key is enrolled with.
 pub const SECRET_FILE: &str = "enroll_secret.json";
 /// How long the secret a person's command made is good for.
@@ -38,6 +42,8 @@ struct Secret {
 pub struct Persons {
     path: PathBuf,
     keys: BTreeMap<String, Key>,
+    /// Nonces a person's key signed that were used, with the time: a signature over one is accepted once.
+    used: BTreeMap<String, u64>,
 }
 
 fn same(a: &str, b: &str) -> bool {
@@ -63,7 +69,7 @@ impl Persons {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
             Err(e) => return Err(e.into()),
         };
-        Ok(Persons { path: path.into(), keys })
+        Ok(Persons { path: path.into(), keys, used: BTreeMap::new() })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -86,6 +92,17 @@ impl Persons {
         let found = std::fs::read(&file).ok().and_then(|bytes| serde_json::from_slice::<Secret>(&bytes).ok());
         let _ = std::fs::remove_file(&file);
         found.is_some_and(|s| !secret.is_empty() && now_ms >= s.at_ms && now_ms - s.at_ms <= SECRET_TTL_MS && same(&s.sha256, &sha256_hex(secret.as_bytes())))
+    }
+
+    /// Note that ``nonce`` was used at ``now_ms``: false when it already was within the time a signature is fresh for, or
+    /// when too many are remembered to take another.
+    pub fn once(&mut self, nonce: &str, now_ms: u64) -> bool {
+        self.used.retain(|_, at| now_ms.abs_diff(*at) <= 2 * SKEW_MS);
+        if self.used.contains_key(nonce) || self.used.len() >= MOST_NONCES {
+            return false;
+        }
+        self.used.insert(nonce.into(), now_ms);
+        true
     }
 
     /// Remove the enrolled key ``fingerprint``; the last key stays.

@@ -279,6 +279,7 @@ def test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is
         ["grant", "release_main", *fine], ["grant", "sudo", *fine], ["grant", "", *fine], ["grant", "land_trust\nnote_verify", *fine],
         ["revoke-grant", "g-nope"], ["revoke-grant", "../../etc/passwd"], ["revoke-grant", "g-" + "0" * 16],
         ["person-enroll", "--proof", "{not json"], ["person-enroll", "--proof", '{"public": 5}'], ["person-enroll", "--proof", "[]"],
+        ["rebind", "claude-code", "no-such-session"], ["rebind", "x" * 500, lead.name], ["rebind", "", ""], ["rebind", "../x", "ab\ncd"], ["rebind", "claude-code"],
         ["person-unenroll", "--key", "nope"], ["person-unenroll", "--key", "ab\ncd"], ["person-unenroll", "--key", "ab" * 32],
         ["grants-setup", "--session", "bad session name"], ["grants-setup", "--session", "claude-000000"], ["grants-setup", "--session", lead.name, "--days", "0"],
         ["grants-setup", "--session", lead.name, "--days", "9999"], ["grants-setup", "--session", kid.name], ["grants-setup", "--session", ""],

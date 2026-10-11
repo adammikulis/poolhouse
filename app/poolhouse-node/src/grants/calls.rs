@@ -44,8 +44,9 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
     }
 }
 
-fn fresh(node: &Node, p: &Map<String, Value>) -> Result<u64> {
-    let at = p.get("at_ms").and_then(Value::as_u64).ok_or_else(|| Error::Invalid("at_ms is the time the person signed, in milliseconds".into()))?;
+/// The time a person signed, from the param ``key``, when it is within five minutes of this node's clock.
+pub(crate) fn fresh(node: &Node, p: &Map<String, Value>, key: &str) -> Result<u64> {
+    let at = p.get(key).and_then(Value::as_u64).ok_or_else(|| Error::Invalid(format!("{key} is the time the person signed, in milliseconds")))?;
     if at.abs_diff(node.now_ms()) > SKEW_MS {
         return Err(Error::Invalid("the signed time is more than five minutes from this node's clock".into()));
     }
@@ -87,7 +88,7 @@ fn issue(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     let mut whole = body.clone();
     whole.insert("sig".into(), json!(sig));
     let parsed = spec::parse_issue(&whole)?;
-    fresh(node, p)?;
+    fresh(node, p, "at_ms")?;
     if !node.persons.signed(&parsed.person, &signing_bytes(&body), sig) {
         return Err(Error::Denied("a grant counts only when a person key enrolled on this node signed it".into()));
     }
@@ -105,7 +106,7 @@ fn revoke(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     let mut whole = body.clone();
     whole.insert("sig".into(), json!(sig));
     let named = spec::parse_revoke(&whole)?;
-    fresh(node, p)?;
+    fresh(node, p, "at_ms")?;
     if !node.persons.signed(&named.person, &signing_bytes(&body), sig) {
         return Err(Error::Denied("a revocation counts only when a person key enrolled on this node signed it".into()));
     }
@@ -162,7 +163,7 @@ fn enrolment(public: &str, about: &str, at_ms: u64) -> Vec<u8> {
 fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries a person key to enrol".into()))?;
     let (public, about) = (text(p, "public")?, text(p, "about")?);
-    let at = fresh(node, p)?;
+    let at = fresh(node, p, "at_ms")?;
     if about.len() > 60 || !is_line(about) || !about.is_ascii() {
         return Err(Error::Invalid("about is one plain line of at most 60 characters".into()));
     }
@@ -191,7 +192,7 @@ fn unenrolment(fingerprint: &str, by: &str, at_ms: u64) -> Vec<u8> {
 fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries the removal of a person key".into()))?;
     let (fingerprint, by) = (text(p, "fingerprint")?, text(p, "by")?);
-    let at = fresh(node, p)?;
+    let at = fresh(node, p, "at_ms")?;
     if !node.persons.signed(by, &unenrolment(fingerprint, by, at), text(p, "sig")?) {
         return Err(Error::Denied("an enrolled person key signs the removal of a key".into()));
     }

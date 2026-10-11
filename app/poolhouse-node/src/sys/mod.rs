@@ -37,6 +37,12 @@ impl Principal {
     }
 }
 
+/// The id of the process on the other end of ``stream``: not read on Windows yet.
+#[cfg(windows)]
+pub fn peer_pid(_stream: &Stream) -> Option<u32> {
+    None
+}
+
 /// Where the node of the state directory ``state`` listens: a socket file, or a pipe name.
 pub fn endpoint(state: &Path) -> PathBuf {
     endpoint_of(state)

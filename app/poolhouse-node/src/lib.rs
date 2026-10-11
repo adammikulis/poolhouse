@@ -20,6 +20,7 @@ pub mod identity;
 pub mod landing;
 pub mod landtrust;
 pub mod lease;
+pub mod lineage;
 pub mod links;
 pub mod log;
 pub mod mail;

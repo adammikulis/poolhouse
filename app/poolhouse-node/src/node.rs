@@ -19,8 +19,9 @@ use crate::device::{fingerprint, load_or_create};
 use crate::error::{Error, Result};
 use crate::fold::{self, check_local, Context, Entry};
 use crate::fsutil::private_dir;
-use crate::identity::{Holder, Ident, ModelState, Registry, Tokens};
+use crate::identity::{Holder, Ident, ModelState, Registry, Tokens, Who};
 use crate::lease::Leases;
+use crate::lineage::Peer;
 use crate::landtrust::LandTrust;
 use crate::links::Links;
 use crate::quarantine::Quarantine;
@@ -64,6 +65,14 @@ pub struct Node {
     pub build: crate::build::Build,
     /// How this machine is attached to the network (`netif::network`), told to every peer in the hello so it can say how to reach this device.
     pub network: String,
+}
+
+/// A native session as its harness names it: the model it says it runs, the harness and its own session id.
+#[derive(Clone, Copy)]
+pub struct Native<'a> {
+    pub model: &'a str,
+    pub harness: &'a str,
+    pub session: &'a str,
 }
 
 /// What a request is allowed to touch, decided from its token and the board it names.
@@ -157,9 +166,10 @@ impl Node {
         }
     }
 
-    /// Register a session on ``board`` (creating the board on first use); a token given makes
-    /// the new session a subagent of the token's owner. Returns name, token, whether new.
-    pub fn register(&mut self, board: &str, parent_token: Option<&str>, model: &str, harness: &str, session: &str) -> Result<Value> {
+    /// Register a session on ``board`` (creating the board on first use) from the process ``peer``; a token given makes
+    /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
+    /// the lineage it was registered from. Returns name, token, whether new.
+    pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let parent = match parent_token {
             None => String::new(),
             Some(t) => match self.tokens.resolve(t) {
@@ -167,11 +177,12 @@ impl Node {
                 _ => return Err(Error::Denied("a parent must be a session of this board".into())),
             },
         };
+        let Native { model, harness, session } = native;
         let inherited = model.trim().is_empty().then(|| self.boards.get(board).and_then(|h| h.names.get(&parent)).map(|p| p.model.clone())).flatten().unwrap_or_default();
         let (model, state) = if inherited.is_empty() { (model, ModelState::Claimed) } else { (inherited.as_str(), ModelState::Inherited) };
         let hosted = self.host(board)?;
         let now = hosted.board.now_ms();
-        let (name, created) = hosted.names.assign(model, state, harness, session, &parent, now)?;
+        let (name, created) = hosted.names.assign(Who { harness, session, parent: &parent }, model, state, now, &peer.lineage())?;
         if created {
             self.write_identity(board, &name)?;
         }

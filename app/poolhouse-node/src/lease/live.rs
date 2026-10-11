@@ -9,6 +9,12 @@ pub struct Proc {
     pub start: u64,
     /// Exited but not yet reaped by its parent.
     pub zombie: bool,
+    /// The process that started it, 0 when unknown.
+    pub parent: u32,
+    /// The session it belongs to (the id of the session leader), 0 when unknown.
+    pub session: u32,
+    /// Whether it has a controlling terminal.
+    pub tty: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -22,7 +28,9 @@ pub fn inspect(pid: u32) -> Option<Proc> {
         if got as usize != size {
             return None;
         }
-        Some(Proc { start: info.pbi_start_tvsec * 1000 + info.pbi_start_tvusec / 1000, zombie: info.pbi_status == ZOMBIE })
+        let session = libc::getsid(pid as i32).max(0) as u32;
+        Some(Proc { start: info.pbi_start_tvsec * 1000 + info.pbi_start_tvusec / 1000, zombie: info.pbi_status == ZOMBIE, parent: info.pbi_ppid, session,
+                   tty: info.e_tdev != 0 && info.e_tdev != u32::MAX })
     }
 }
 
@@ -34,19 +42,20 @@ pub fn inspect(pid: u32) -> Option<Proc> {
     let ticks: u64 = rest.get(19)?.parse().ok()?;
     // SAFETY: sysconf reads a constant.
     let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as u64;
-    Some(Proc { start: ticks * 1000 / hz, zombie: rest.first() == Some(&"Z") })
+    let field = |i: usize| rest.get(i).and_then(|f| f.parse().ok()).unwrap_or(0);
+    Some(Proc { start: ticks * 1000 / hz, zombie: rest.first() == Some(&"Z"), parent: field(1), session: field(3), tty: field(4) != 0 })
 }
 
 #[cfg(windows)]
 pub fn inspect(pid: u32) -> Option<Proc> {
-    crate::sys::process_info(pid).map(|(start, _)| Proc { start, zombie: false })
+    crate::sys::process_info(pid).map(|(start, _)| Proc { start, zombie: false, parent: 0, session: 0, tty: false })
 }
 
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
 pub fn inspect(pid: u32) -> Option<Proc> {
     // SAFETY: signal 0 only checks that the process exists.
     let found = unsafe { libc::kill(pid as i32, 0) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
-    found.then_some(Proc { start: 0, zombie: false })
+    found.then_some(Proc { start: 0, zombie: false, parent: 0, session: 0, tty: false })
 }
 
 /// The start time to record for ``pid`` now, or None when it cannot be read.

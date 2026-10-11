@@ -23,12 +23,15 @@ from poolhouse.files import write_json
 from poolhouse.platform import private_file
 
 __all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "approve", "canonical", "default_bundle", "describe", "duration_ms",
-           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "issue", "listing", "log", "revoke", "sign_issue", "sign_revoke",
-           "sign_unenroll", "unenrol", "want_line", "when"]
+           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "issue", "listing", "log", "rebind", "revoke",
+           "sign_issue", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
 UNENROLL_DOMAIN = b"poolhouse/person-unenroll/v1\n"
+REBIND_DOMAIN = b"poolhouse/session-rebind/v1\n"
+FRESH_MS = 5 * 60 * 1000
+"""How long the node takes a person's signature as fresh."""
 ENROLMENT_HASH_FILE = "enroll_secret.json"
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
@@ -179,6 +182,20 @@ def sign_unenroll(key: Signs, fingerprint_: str, *, now_ms: int | None = None) -
     return {k: v for k, v in body.items() if k != "op"} | {"sig": key.sign_bytes(UNENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
+def sign_rebind(key: Signs, board: str, name: str, node: str, *, now_ms: int | None = None) -> dict[str, Any]:
+    """The `rebind` params moving the main session ``name`` of ``board`` to the process that sends them, on the node ``node``, signed by ``key``."""
+    body = {"op": "rebind", "board": board, "name": name, "node": node, "nonce": secrets.token_hex(16), "at_ms": _now_ms() if now_ms is None else now_ms}
+    _plain(body)
+    return {"at_ms": body["at_ms"], "nonce": body["nonce"], "by": fingerprint(key.public), "sig": key.sign_bytes(REBIND_DOMAIN + canonical(body).encode()).hex()}
+
+
+def rebind(client: Client, board: str, harness: str, session: str, key: Signs) -> dict[str, Any]:
+    """Move the main session ``session`` of ``harness`` on ``board`` to this process's terminal, signed by ``key``; the tokens it held end."""
+    name = str(client.call("session_lookup", board, harness=harness, session=session)["name"])
+    node = str(client.call("hello")["device"])
+    return dict(client.call("rebind", board, "", harness=harness, session=session, **sign_rebind(key, board, name, node)))
+
+
 def unenrol(client: Client, token: str, key: Signs, fingerprint_: str) -> dict[str, Any]:
     """Take the key ``fingerprint_`` off the node, signed by ``key``; the node keeps its last key."""
     return dict(client.call("person_unenroll", "", token, **sign_unenroll(key, fingerprint_)))
@@ -308,8 +325,11 @@ def describe(data: bytes) -> str:
             return f"end the grant {body['gid']} on board {body['board']}" + (f" ({body['reason']})" if body.get("reason") else "")
         if domain + b"\n" == ENROLL_DOMAIN:
             return enrol_line(bytes.fromhex(body["public"]), body["about"])
+        if domain + b"\n" == REBIND_DOMAIN and body["op"] == "rebind":
+            return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in, on the node {body['node']}, "
+                    f"and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")
         if domain + b"\n" == UNENROLL_DOMAIN:
             return f"take the person key {body['fingerprint']} off the node"
     except (KeyError, TypeError, AttributeError, ValueError):
         pass
-    raise ValueError("a person key signs a grant, the end of a grant, or the enrolment of a key, and this is none of them")
+    raise ValueError("a person key signs a grant, the end of a grant, the enrolment or removal of a key, or the move of a session, and this is none of them")

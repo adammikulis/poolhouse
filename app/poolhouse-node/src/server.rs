@@ -10,6 +10,7 @@ use serde_json::json;
 use crate::api::{handle, API_VERSION};
 use crate::error::{Error, Result};
 use crate::fsutil::private_dir;
+use crate::lineage::Peer;
 use crate::net::Net;
 use crate::node::Node;
 use crate::sys::{peer, try_lock, Listener, Lock, Principal, Stream};
@@ -82,11 +83,12 @@ fn connection(mut stream: Stream, node: &Mutex<Node>, allowed: &Principal, net: 
         let refusal = json!({"v": API_VERSION, "id": null, "ok": false, "error": {"code": "denied", "message": "denied: another user"}});
         return write_frame(&mut stream, &refusal);
     }
+    let who = Peer::of(&stream);
     while let Some(request) = read_frame(&mut stream)? {
         let reply = crate::lease::rpc::serve(&|r| match net {
-            Some(net) => Ok(net.call(r)),
+            Some(net) => Ok(net.call(r, &who)),
             None => match node.lock() {
-                Ok(mut n) => Ok(handle(&mut n, r)),
+                Ok(mut n) => Ok(handle(&mut n, r, &who)),
                 Err(_) => Err(Error::Damaged("node poisoned".into())),
             },
         }, &request)?;

@@ -5,6 +5,7 @@ pub mod netkit;
 
 use ed25519_dalek::SigningKey;
 use poolhouse_node::board::Board;
+use poolhouse_node::lineage::Peer;
 use poolhouse_node::node::Node;
 use poolhouse_node::row::{Kind, Row};
 use serde_json::{json, Value};
@@ -59,6 +60,11 @@ pub fn node(dir: &Path) -> Node {
 }
 
 pub fn req(node: &mut Node, method: &str, board: &str, token: &str, params: Value) -> Value {
+    req_from(node, &Peer::none(), method, board, token, params)
+}
+
+/// A request made by the process ``peer``.
+pub fn req_from(node: &mut Node, peer: &Peer, method: &str, board: &str, token: &str, params: Value) -> Value {
     let mut r = json!({"v": 1, "id": 1, "method": method, "params": params});
     if !board.is_empty() {
         r["board"] = json!(board);
@@ -66,7 +72,7 @@ pub fn req(node: &mut Node, method: &str, board: &str, token: &str, params: Valu
     if !token.is_empty() {
         r["token"] = json!(token);
     }
-    poolhouse_node::api::handle(node, &r)
+    poolhouse_node::api::handle(node, &r, peer)
 }
 
 pub fn ok(reply: Value) -> Value {

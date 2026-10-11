@@ -10,7 +10,8 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fold::Entry;
-use crate::node::{Node, READ_DEFAULT, READ_MAX};
+use crate::lineage::Peer;
+use crate::node::{Native, Node, READ_DEFAULT, READ_MAX};
 use crate::row::{valid_name, Kind};
 
 pub const API_VERSION: u64 = 1;
@@ -192,11 +193,15 @@ fn status(node: &mut Node, token: &str, board: &str) -> Result<Value> {
     Ok(out)
 }
 
-fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     match method {
         "hello" => Ok(json!({"v": API_VERSION, "node": "poolhouse-node", "version": env!("CARGO_PKG_VERSION"),
-                             "pid": std::process::id(), "fingerprint": node.fingerprint(), "build": node.build.id, "build_seq": node.build.seq, "wire": node.build.wire})),
-        "register" => node.register(board, (!token.is_empty()).then_some(token), str_of(p, "model")?, str_of(p, "harness")?, str_of(p, "session")?),
+                             "pid": std::process::id(), "fingerprint": node.fingerprint(), "device": node.cert.fingerprint(),
+                             "build": node.build.id, "build_seq": node.build.seq, "wire": node.build.wire})),
+        "register" => {
+            let native = Native { model: str_of(p, "model")?, harness: str_of(p, "harness")?, session: str_of(p, "session")? };
+            node.register(board, (!token.is_empty()).then_some(token), native, peer)
+        }
         "status" => status(node, token, board),
         "post" => post(node, token, board, p),
         "read" => read(node, token, board, p),
@@ -206,7 +211,7 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         "project_resolve" => node.projects.resolve(str_of(p, "path")?).map(|p| json!({"board": p.id})),
         m if crate::poolapi::handles(m) => crate::poolapi::dispatch(node, m, token, p),
         m if crate::lease::rpc::METHODS.contains(&m) => crate::lease::rpc::call(node, m, board, token, p),
-        m if crate::sessions::METHODS.contains(&m) => crate::sessions::call(node, m, board, token, p),
+        m if crate::sessions::METHODS.contains(&m) => crate::sessions::call(node, m, board, token, p, peer),
         m if crate::claims::METHODS.contains(&m) => crate::claims::call(node, m, board, token, p),
         m if crate::landing::METHODS.contains(&m) => crate::landing::call(node, m, board, token, p),
         m if crate::notes::METHODS.contains(&m) => crate::notes::call(node, m, board, token, p),
@@ -227,9 +232,9 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
     }
 }
 
-/// Answer one request.
-pub fn handle(node: &mut Node, request: &Value) -> Value {
-    respond(request, run(node, request))
+/// Answer one request made by the process ``peer``.
+pub fn handle(node: &mut Node, request: &Value, peer: &Peer) -> Value {
+    respond(request, run(node, request, peer))
 }
 
 /// The reply to ``request`` carrying ``result``.
@@ -279,9 +284,9 @@ pub fn parse(request: &Value) -> Result<Call> {
     Ok(Call { method: method.into(), board: board.into(), token: token.into(), params })
 }
 
-fn run(node: &mut Node, request: &Value) -> Result<Value> {
+fn run(node: &mut Node, request: &Value, peer: &Peer) -> Result<Value> {
     let c = parse(request)?;
-    let done = dispatch(node, &c.method, &c.board, &c.token, &c.params)?;
+    let done = dispatch(node, &c.method, &c.board, &c.token, &c.params, peer)?;
     if let Some(holder) = node.tokens.resolve(&c.token).cloned() {
         // a retired session's token is gone by now, so it is never marked active again
         let hosted = node.host(&holder.board)?;

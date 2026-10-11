@@ -19,6 +19,7 @@ from pathlib import Path
 
 from poolhouse import node_binary, node_pool, node_supervise
 from poolhouse.board import person_key
+from poolhouse.board.terminal import terminal_id
 from poolhouse.command import Group, flag
 from poolhouse.log import say, warn
 from poolhouse.node_health import call, node_health
@@ -80,8 +81,8 @@ def status(state: Path) -> dict:
 
 
 def _token(state: Path) -> str:
-    """A session on the board `pool` (the same one each time); changing the pool needs a registered session."""
-    return call(state, "register", {"model": "claude-sonnet-5-5", "harness": "poolhouse-pool", "session": SESSION}, board=BOARD)["token"]
+    """A session on the board `pool` (the same one each time from one terminal); changing the pool needs a registered session."""
+    return call(state, "register", {"model": "claude-sonnet-5-5", "harness": "poolhouse-pool", "session": f"{SESSION}-{terminal_id()}"}, board=BOARD)["token"]
 
 
 def _act(state: Path, method: str, params: dict) -> dict:

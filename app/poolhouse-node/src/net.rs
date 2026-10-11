@@ -17,6 +17,7 @@ use crate::beacon::{self, Advert, Beacon, BeaconConfig, BeaconStats, Hooks};
 use crate::cert::{board_fingerprint, Identity};
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
+use crate::lineage::Peer;
 use crate::membership::{Device, Policy, Standing, Status};
 use crate::netsync::sync_all;
 use crate::node::Node;
@@ -574,7 +575,7 @@ impl Net {
 
     // -- the local API ----------------------------------------------------
     /// Answer a local API request: the network methods here, the rest by the node under its lock.
-    pub fn call(&self, request: &Value) -> Value {
+    pub fn call(&self, request: &Value, peer: &Peer) -> Value {
         let parsed = parse(request);
         match parsed {
             Ok(c) if NETWORK.contains(&c.method.as_str()) => respond(request, self.network(&c)),
@@ -583,7 +584,7 @@ impl Net {
                 Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
             },
             _ => match self.node.lock() {
-                Ok(mut n) => crate::api::handle(&mut n, request),
+                Ok(mut n) => crate::api::handle(&mut n, request, peer),
                 Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
             },
         }

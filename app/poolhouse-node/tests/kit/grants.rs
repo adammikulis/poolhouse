@@ -13,6 +13,12 @@ pub const HOUR: u64 = 3_600_000;
 /// How a test reaches a node: a method, a board, a token and params in; the reply out.
 pub type Call<'a> = &'a mut dyn FnMut(&str, &str, &str, Value) -> Value;
 
+/// A nonce no other call of this test process made.
+pub fn fresh_nonce() -> String {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!("{:016x}{:016x}", now_ms(), COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
 }
@@ -100,6 +106,15 @@ impl Person {
             params["approval"] = json!(sign(a));
         }
         params
+    }
+
+    /// The `rebind` params moving the session ``name`` of ``board`` (named by ``harness`` and ``session``), signed by this key for
+    /// the node whose certificate fingerprint is ``node``.
+    pub fn rebind_params(&self, harness: &str, session: &str, board: &str, name: &str, node: &str) -> Value {
+        let (at, nonce) = (now_ms(), fresh_nonce());
+        let body = json!({"op": "rebind", "board": board, "name": name, "node": node, "nonce": nonce, "at_ms": at});
+        let bytes = format!("poolhouse/session-rebind/v1\n{}", canonical(&body));
+        json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
     }
 
     /// Enrol this key on the node ``call`` reaches (its state directory is ``dir``), carried by the session ``token``, with

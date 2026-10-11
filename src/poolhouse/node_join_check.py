@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from poolhouse import node_binary, node_join, runtime
+from poolhouse.board.terminal import terminal_id
 from poolhouse.node_health import call
 
 WSLCONFIG = r"%UserProfile%\.wslconfig"
@@ -169,7 +170,7 @@ def step_enrolled(c: Check) -> Step:
 
 
 def step_converge(c: Check) -> Step:
-    token = call(c.state, "register", {"model": "claude-sonnet-5-5", "harness": "poolhouse-pool", "session": SESSION}, board=BOARD)["token"]
+    token = call(c.state, "register", {"model": "claude-sonnet-5-5", "harness": "poolhouse-pool", "session": f"{SESSION}-{terminal_id()}"}, board=BOARD)["token"]
     mine = f"pool-check from {socket.gethostname()} at {int(time.time())}"
     call(c.state, "post", {"kind": "message", "fields": {"type": "status", "body": mine}}, board=BOARD, token=token)
     seen: list[str] = []

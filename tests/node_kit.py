@@ -184,13 +184,14 @@ class WorkspaceNode:
                               capture_output=True, text=True, timeout=timeout, check=False, input=stdin, cwd=cwd)
 
     def terminal(self, *argv: str, who: Member | None = None, timeout: float = 90, env: dict[str, str] | None = None,
-                 typed: dict[str, str] | None = None) -> tuple[int, str, str]:
+                 typed: dict[str, str] | None = None, program: list[str] | None = None) -> tuple[int, str, str]:
         """Run ``poolhouse-workspace`` with a pseudo-terminal on stdin and stdout that is also its controlling terminal, as a
         person at a screen would: the exit status, what it printed there and what it wrote to stderr. ``typed`` maps a piece
-        of text to what the person types each time it appears (`TYPED` is the passphrase and yes)."""
+        of text to what the person types each time it appears (`TYPED` is the passphrase and yes). ``program`` runs in place of
+        the workspace command: a shell is the leader of the terminal session, as a person's shell is."""
         leader, follower = pty.openpty()
         with tempfile.TemporaryFile("w+") as errors:
-            proc = subprocess.Popen([sys.executable, "-m", "poolhouse.workspace.cli", *argv], env=self.env(who, env), stdin=follower,
+            proc = subprocess.Popen(program or [sys.executable, "-m", "poolhouse.workspace.cli", *argv], env=self.env(who, env), stdin=follower,
                                     stdout=follower, stderr=errors, text=True, start_new_session=True,
                                     preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0))
             chunks: list[bytes] = []
