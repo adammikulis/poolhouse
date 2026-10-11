@@ -103,7 +103,7 @@ def filesystem_probes(layout: profile.Layout, checkout: Path) -> list[Result]:
         _denied_write("write the runtime tree", layout.state / "runtimes" / tag),
         _denied_write("write a launch agent", layout.home / "Library" / "LaunchAgents" / tag),
         _denied_write("write a systemd user unit", layout.home / ".config" / "systemd" / "user" / tag),
-        _denied_read("read another agent's token", layout.state / "workspace" / "tokens" / "codex"),
+        _denied_read("read the session tokens of the node", layout.state / "node" / "client"),
         _denied_read("read the keystore state", layout.state / "keystore"),
         _denied_read("read ssh keys", layout.home / ".ssh"),
         _denied_read("read cloud credentials", layout.home / ".aws"),

@@ -27,20 +27,18 @@ SCRUBBED_ENV = (
 )
 
 STATE_DENY_READ = (
-    "workspace/tokens", "workspace/local-agents", "workspace/device-accounts.db",
-    "workspace/device-accounts.db.shadow", "workspace/invites.json", "workspace/shared-invites.json",
-    "workspace-remote", "keystore", "server-keys.json", "pool.key.old", "pool.json",
+    "node/client", "workspace/local-agents", "keystore", "server-keys.json", "pool.key.old", "pool.json",
     "credentials.endpoint", "credentials.toml.bak", "onboard",
 )
-STATE_ALLOW_READ = ("workspace/tokens/claude-code",)
+"""`node/client` holds a token file and a `.parent` file for each session and its read cursors."""
+STATE_ALLOW_READ: tuple[str, ...] = ()
 STATE_ALLOW_WRITE = (
     "workspace", "logs", "activity", "requests", "holds", "hook-diagnostics",
     "broker.lock", "broker-leases.json", "servers.json", "servers.lock", "servers.admission.lock",
 )
 STATE_DENY_WRITE = (
-    "workspace/tokens", "workspace/local-agents", "workspace/device-accounts.db",
-    "workspace/device-accounts.db.shadow", "workspace/invites.json", "workspace/shared-invites.json",
-    "keystore", "runtimes", "hooks", "gate", "guard", "machine-id", "wired-limit.json",
+    "node/client", "workspace/local-agents", "keystore", "runtimes", "hooks", "gate", "guard", "machine-id",
+    "wired-limit.json",
 )
 HOME_DENY_READ = (".ssh", ".aws", ".gnupg", ".config/gh", ".netrc", ".git-credentials", ".docker/config.json",
                   ".npmrc", ".pypirc")

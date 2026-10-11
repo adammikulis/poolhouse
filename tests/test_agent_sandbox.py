@@ -54,11 +54,19 @@ def test_every_worktree_is_writable_and_its_git_config_and_hooks_are_not(layout,
     assert str(shared / "hooks") in files["denyWrite"]
 
 
-def test_tokens_are_denied_except_the_harness_own(layout):
+def test_the_node_client_folder_holding_every_session_token_is_closed_to_reads_and_writes(layout):
+    clients = str(layout.state / "node" / "client")
+    for files in (profile.claude_settings(layout)["sandbox"]["filesystem"], profile.srt_settings(layout)["filesystem"]):
+        assert clients in files["denyRead"] and clients in files["denyWrite"]
+    assert profile.claude_settings(layout)["sandbox"]["filesystem"]["allowRead"] == []
+    for path in (profile.claude_settings(layout)["sandbox"]["filesystem"]["allowWrite"] + profile.allow_read(layout)):
+        assert not path.startswith(clients), "no allowed path reaches a token or a .parent file"
+    assert f"Write(/{clients}/**)" in profile.claude_settings(layout)["permissions"]["deny"]
+    assert not any("workspace/tokens" in path for path in profile.deny_read(layout) + profile.deny_write(layout))
+
+
+def test_the_credentials_of_the_machine_are_denied_to_reads(layout):
     files = profile.claude_settings(layout)["sandbox"]["filesystem"]
-    tokens = str(layout.state / "workspace" / "tokens")
-    assert tokens in files["denyRead"] and tokens in files["denyWrite"]
-    assert files["allowRead"] == [tokens + "/claude-code"]
     for name in (".ssh", ".aws", ".config/gh"):
         assert str(layout.home / name) in files["denyRead"]
 

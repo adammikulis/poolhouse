@@ -35,7 +35,7 @@ outside the sandbox, so the same paths are also refused by `permissions.deny` ru
 | Memory | one Seatbelt/bubblewrap process per command | one wrapper per harness | a second login session |
 | Friction | loopback ports, ssh, sibling worktrees (see matrix) | the same, and the harness itself is confined: its own API host must be listed | highest: every shared path needs a group, ACL or copy |
 | File tools, MCP, hooks | not covered | covered | covered |
-| Reading tokens and `.owner` of other agents | closed by `denyRead` (Bash only) | closed for every tool | closed by file mode |
+| Reading the tokens and `.parent` files of the sessions (`~/.poolhouse/node/client`) | closed by `denyRead` (Bash only) | closed for every tool | closed by file mode |
 | Forging transcripts, the person store | Bash closed; Edit/Write closed by permission rules | closed | closed |
 | Editing hooks and settings | Bash closed by `denyWrite`; file tools by rules; managed file is root-owned | closed | closed (owner-owned checkout) |
 | pty tricks (a command attaching to the person's terminal) | open: sandbox does not isolate ttys | open | closed: different user cannot open the person's ttys |
@@ -56,9 +56,12 @@ protect that the sandbox cannot.
   claims.json) from inside the agent's own process. A sandboxed agent that may announce may also
   edit those files. Closing it needs the CLI to talk to the daemon (loopback TLS) with
   `workspace/` read-only to agents. Pending entry in HANDOFF.md.
-- **The agent's own token.** `workspace/tokens/claude-code` stays readable (`allowRead`) because
-  the commands that authenticate as the lead read it. Other agents' tokens and the person store
-  are denied.
+- **The session tokens.** `~/.poolhouse/node/client/<board>/` holds a `<name>.token` file and a `<name>.parent`
+  file for every session of the node, and the read cursors of each. The folder is closed to reads and writes for
+  Bash commands (`denyRead`, `denyWrite`) and to the file tools by permission rules, and no path inside it is
+  allowed, so a command run in the sandbox cannot read the token of another session or its own file. A command
+  that must act as a session is given its token in `$POOLHOUSE_WORKSPACE_TOKEN` or with `--token-file` from a
+  path outside the folder.
 - **ttys.** No option except a separate account isolates terminals.
 - **Hooks run unsandboxed.** Protected by write denial, not by isolation.
 - **`cron` and `at`.** Seatbelt cannot name them as files; the profile relies on the system
@@ -83,9 +86,9 @@ The values come from `scripts/agent_sandbox_profile.py`; the file the person ins
 | `sandbox.excludedCommands` | `poolhouse runtime ensure`, `poolhouse runtime rollback`, `poolhouse runtime restart-host`: the three deploy commands, guarded by the `runtime.deploy` authority gate (see the matrix) |
 | `sandbox.allowUnsandboxedCommands`, `autoAllowBashIfSandboxed` | `false` |
 | `sandbox.filesystem.allowWrite` | every checkout from `git worktree list` (explicit paths: Linux does not expand wildcards), the primary `.git`, the scratch and temp directories, `~/.poolhouse/{workspace,logs,activity,requests,holds,hook-diagnostics}` and the broker, server and lock files, `~/.cache/{dev-test-slots,poolhouse,huggingface,pip,ms-playwright}` |
-| `sandbox.filesystem.denyWrite` | per checkout `scripts/hooks`, `.claude`, `.mcp.json`, `.githooks`, `.git/config`, `.git/hooks`; in the primary `.git`: `config`, `hooks`, `info`, `worktrees/*/config.worktree`, `worktrees/*/hooks`; `~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.gitconfig`, shell rc files, `~/.pyenv/{versions,shims}`, `~/.local/bin`, `~/Library/LaunchAgents` (macOS) or the systemd user and autostart directories (Linux); under `~/.poolhouse`: `runtimes`, `keystore`, `hooks`, `gate`, `guard`, `machine-id`, `wired-limit.json`, and in `workspace` the tokens, local-agents, device-accounts, invites |
-| `sandbox.filesystem.denyRead` | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, browser profiles (Chrome, Firefox, Safari, Keychains, Cookies), and under `~/.poolhouse`: `workspace/tokens`, `workspace/local-agents`, `workspace/device-accounts.db*`, invites, `workspace-remote`, `keystore`, `server-keys.json`, `pool.key.old`, `pool.json`, `credentials.*`, `onboard` |
-| `sandbox.filesystem.allowRead` | `~/.poolhouse/workspace/tokens/claude-code` |
+| `sandbox.filesystem.denyWrite` | per checkout `scripts/hooks`, `.claude`, `.mcp.json`, `.githooks`, `.git/config`, `.git/hooks`; in the primary `.git`: `config`, `hooks`, `info`, `worktrees/*/config.worktree`, `worktrees/*/hooks`; `~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.gitconfig`, shell rc files, `~/.pyenv/{versions,shims}`, `~/.local/bin`, `~/Library/LaunchAgents` (macOS) or the systemd user and autostart directories (Linux); under `~/.poolhouse`: `runtimes`, `keystore`, `hooks`, `gate`, `guard`, `machine-id`, `wired-limit.json`, `node/client`, and in `workspace` the local-agents |
+| `sandbox.filesystem.denyRead` | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, browser profiles (Chrome, Firefox, Safari, Keychains, Cookies), and under `~/.poolhouse`: `node/client`, `workspace/local-agents`, `keystore`, `server-keys.json`, `pool.key.old`, `pool.json`, `credentials.*`, `onboard` |
+| `sandbox.filesystem.allowRead` | none |
 | `sandbox.network.allowedDomains` | `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` (hub, CDN, LFS and xet hosts), `github.com`, `api.github.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `raw.githubusercontent.com`, `pypi.org`, `files.pythonhosted.org`, `127.0.0.1:8770` |
 | `sandbox.network.allowLocalBinding` | `true` on macOS only |
 | `sandbox.credentials.envVars.deny` | `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`, `POOLHOUSE_HOME`, `POOLHOUSE_CACHE`, `POOLHOUSE_AGENT`, `POOLHOUSE_WORKSPACE_AGENT`, `POOLHOUSE_NET_ALLOW_HOSTS`, `HF_ENDPOINT`, `HF_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, API keys, `SSH_AUTH_SOCK`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHON_KEYRING_BACKEND`, `GIT_CONFIG_*`, `GIT_SSH_COMMAND`, `GIT_ASKPASS`, `PIP_*INDEX_URL`, `BASH_ENV`, `ENV` |
@@ -194,7 +197,7 @@ VERIFIED from an agent; each sandboxed result is PREDICTED until the owner's ste
 | `packaging/build.py` | writes `dist/` and `.build-venv` inside the checkout, installs from PyPI | PREDICTED | none |
 | playwright browsers | the browser binary in `~/.cache/ms-playwright` is readable; launching a headed window is not blocked by Seatbelt on the profile, but loopback servers need `allowLocalBinding` | PREDICTED | run headless; list the cache directory |
 | the pool board client (`127.0.0.1:8770`, TLS) | works: the entry is in `allowedDomains` | PREDICTED | |
-| `poolhouse-workspace announce/claim/inbox` | works: reads its token (allowRead), writes `workspace/` | PREDICTED | |
+| `poolhouse-workspace announce/claim/inbox` | works with the token in `$POOLHOUSE_WORKSPACE_TOKEN` or `--token-file`; `--agent NAME` reads `node/client`, which the sandbox refuses | PREDICTED (that the node's socket is reachable from the sandbox is unverified) | give the command its token by environment or file |
 | hooks reading the transcript (`~/.claude/projects`) | unaffected: hooks run unsandboxed | PREDICTED (documented behaviour) | |
 | Agent writes `~/.claude/projects/...` | refused | PREDICTED | |
 
@@ -219,10 +222,8 @@ Do these at your own terminal, in order. Steps 1 to 3 run no sandbox.
    `echo x >> .git/hooks/x`. Expect the commit to work and the hook write to fail. This tests
    whether `denyWrite` beats the parent allow.
 9. Ask for `env | grep -c CLAUDE_CODE_MESSAGING`. Expect `0`.
-10. Ask for `poolhouse-workspace announce joined 'sandbox acceptance' --agent claude-code`.
-    Expect the announcement to be recorded. Failure here means the token read or the `workspace`
-    write is blocked.
-11. Ask for `scripts/test all -n 1 tests/test_agent_sandbox.py`. Expect `22 passed`. On Linux a
+10. Ask for `cat ~/.poolhouse/node/client/*/*.token`. Expect `Operation not permitted`.
+11. Ask for `scripts/test all -n 1 tests/test_agent_sandbox.py`. Expect every test to pass. On Linux a
     refused connection from the broker is the loopback gap in the matrix.
 12. Ask for `git push` of a throwaway branch over HTTPS. Expect success; an SSH remote fails.
 13. Ask for `curl -sI https://example.com`. Expect a proxy refusal.
