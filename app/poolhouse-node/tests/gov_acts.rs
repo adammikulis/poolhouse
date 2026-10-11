@@ -6,7 +6,7 @@ mod kit;
 use kit::gov::*;
 use poolhouse_node::gov::charter::Unit;
 use poolhouse_node::gov::keys::Role;
-use poolhouse_node::gov::pool::{ActStatus, Ingest};
+use poolhouse_node::gov::pool::{ActStatus, GovPool, Ingest};
 use poolhouse_node::gov::signer::RigSigner;
 use poolhouse_node::membership::Policy;
 use poolhouse_node::poolops::wall_ms;
@@ -346,7 +346,7 @@ fn a_ticket_is_no_act_and_no_kind_this_build_does_not_know_is_taken() {
 }
 
 #[test]
-fn an_act_that_follows_a_charter_the_pool_has_left_behind_is_a_no_op() {
+fn an_admin_act_that_follows_a_charter_the_pool_has_left_behind_is_refused_and_held_nowhere() {
     let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
     let old_prev = g.context();
     put(&mut g, "set_holds", json!({"dispute_d": 9}), &[A]);
@@ -354,10 +354,50 @@ fn an_act_that_follows_a_charter_the_pool_has_left_behind_is_a_no_op() {
     advance(&mut g, HOUR);
     let mut stale = poolhouse_node::gov::act::Act::new(&g.id, old_prev.0, "set_holds", json!({"dispute_d": 30}), wall_ms(), &old_prev.1).unwrap();
     sign(&mut stale, A);
-    take(&mut g, stale.clone());
+    assert!(refused(take(&mut g, stale.clone())).contains("left behind"));
     advance(&mut g, 25 * HOUR);
     assert_eq!(g.state().chain.latest().charter.holds.dispute_d, 9);
-    assert!(matches!(g.status(&stale.id()), ActStatus::Stale | ActStatus::Void(_)), "{:?}", g.status(&stale.id()));
+    assert_eq!(g.status(&stale.id()), ActStatus::Unknown);
+}
+
+#[test]
+fn an_act_signed_by_an_admin_that_has_been_removed_is_refused_unless_the_cut_kept_it() {
+    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben"), strong(C, "cy")], Policy::Secure);
+    let kept = admit(&g, &ident(10), &[C]);
+    take(&mut g, kept.clone());
+    put(&mut g, "admin_remove", json!({"key": public(C), "cut": [kept.id()]}), &[A, B]);
+    advance(&mut g, 25 * HOUR);
+    assert!(!admins(&g).contains(&public(C)));
+    let late = admit(&g, &ident(11), &[C]);
+    assert!(refused(take(&mut g, late)).contains("is an admin of this pool"), "a removed admin signs nothing new");
+    let mut again = kept.clone();
+    again.nonce = "00".repeat(16);
+    again.signatures.clear();
+    sign(&mut again, C);
+    assert!(refused(take(&mut g, again)).contains("admin of this pool now"), "and an act the cut does not name is not kept");
+    let mut copy = kept;
+    copy.signatures.clear();
+    sign(&mut copy, C);
+    assert_eq!(take(&mut g, copy), Ingest::Known, "the act the cut kept is still the one held");
+}
+
+#[test]
+fn a_removed_admins_flood_of_acts_for_an_old_epoch_evicts_no_act_of_the_admins_that_are_left() {
+    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben"), strong(C, "cy")], Policy::Secure);
+    let epoch_one = g.context();
+    put(&mut g, "admin_remove", json!({"key": public(C), "cut": []}), &[A, B]);
+    advance(&mut g, 25 * HOUR);
+    assert!(!admins(&g).contains(&public(C)));
+    let legit = make(&g, "admin_add", json!({"entry": entry(strong(D, "dee"), 3, &g.id)}), &[A, B]);
+    assert_eq!(take(&mut g, legit.clone()), Ingest::Accepted);
+    for n in 0..300u64 {
+        let mut act = poolhouse_node::gov::act::Act::new(&g.id, epoch_one.0, "admin_add", json!({"entry": entry(strong(5, "eve"), 2, &g.id)}), wall_ms() - n, &epoch_one.1).unwrap();
+        sign(&mut act, C);
+        assert!(matches!(take(&mut g, act), Ingest::Refused(_)));
+    }
+    assert!(g.acts().contains_key(&legit.id()), "the act the two admins signed is still held");
+    advance(&mut g, 25 * HOUR);
+    assert!(admins(&g).contains(&public(D)), "and it takes effect");
 }
 
 #[test]
@@ -387,6 +427,36 @@ fn an_act_dated_in_the_future_is_refused() {
     let mut act = g.new_act("remove", json!({"fingerprint": "ab".repeat(32)}), wall_ms() + 3_600_000).unwrap();
     sign(&mut act, A);
     assert!(refused(take(&mut g, act)).contains("future"));
+}
+
+/// A joiner that took the admin-set act ``add`` as settled from its host, and the cancel of it that the host withheld.
+fn joiner_with_settled_add() -> (tempfile::TempDir, GovPool, poolhouse_node::gov::act::Act) {
+    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben")], Policy::Secure);
+    let add = make(&g, "admin_add", json!({"entry": entry(strong(D, "dee"), 2, &g.id.clone())}), &[A, B]);
+    take(&mut g, add.clone());
+    let cancel = make(&g, "cancel", json!({"act": add.id()}), &[A]);
+    let dir = tempfile::tempdir().unwrap();
+    let mut joiner = GovPool::create(dir.path(), g.found_act().clone()).unwrap();
+    joiner.clock.freeze();
+    joiner.ingest_many(vec![add], wall_ms(), true);
+    assert!(admins(&joiner).contains(&public(D)), "taken as settled, it is in force on the joiner at once");
+    (dir, joiner, cancel)
+}
+
+#[test]
+fn a_joiner_that_took_a_pending_act_as_settled_still_takes_a_cancel_that_reaches_it_within_the_hold_counted_from_the_join() {
+    let (_dir, mut joiner, cancel) = joiner_with_settled_add();
+    advance(&mut joiner, 23 * HOUR);
+    joiner.ingest(cancel, wall_ms());
+    assert!(!admins(&joiner).contains(&public(D)), "the host withheld a cancel that was signed within the hold");
+}
+
+#[test]
+fn a_cancel_that_reaches_a_joiner_after_the_hold_counted_from_the_join_ends_nothing() {
+    let (_dir, mut joiner, cancel) = joiner_with_settled_add();
+    advance(&mut joiner, 25 * HOUR);
+    joiner.ingest(cancel, wall_ms());
+    assert!(admins(&joiner).contains(&public(D)));
 }
 
 #[test]

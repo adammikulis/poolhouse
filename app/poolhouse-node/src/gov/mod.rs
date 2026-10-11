@@ -15,6 +15,7 @@
 //! | `chain` | the admin-set acts one after the other: holds, cancels, vetoes, forks, disputes |
 //! | `roster` | the members, the removals and the delegates, with the rate caps |
 //! | `pool` | one pool on disk: acceptance of acts, the fold, paging |
+//! | `room` | how many acts of each kind a pool holds, and which go first |
 //! | `signer` | who signs for a person (a rig key until the phone approval exists) |
 //! | `wire` | the `acts` member op |
 //! | `ops` | the node's part: founding, admitting, removing, leaving, and the acts a person's key signs |
@@ -28,6 +29,7 @@ pub mod keys;
 pub mod ops;
 pub mod pool;
 pub mod roster;
+pub mod room;
 pub mod signer;
 pub mod wire;
 

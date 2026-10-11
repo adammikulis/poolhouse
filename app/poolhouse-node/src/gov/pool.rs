@@ -4,7 +4,7 @@
 //! `seen.json` (the awake time of the first sight of each act, and the awake total at the last checkpoint) and `refused.json`
 //! (the last refusals, each with its reason). An act is accepted when its shape, pool, time and signatures are right and its
 //! signers are keys this pool has listed; whether it takes effect is the fold's (`chain`, `roster`), recomputed from scratch
-//! each time, so nothing a member says is believed twice.
+//! each time, so nothing a member says is believed twice. `room` bounds what a member can fill the pool with.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::error::{Error, Result};
-use crate::fsutil::{private_dir, sha256_hex, write_atomic};
+use crate::fsutil::{private_dir, sha256_hex, unhex, write_atomic};
 use crate::grants::spec::SKEW_MS;
 use crate::membership::{Device, Policy, Status};
 
@@ -25,7 +25,8 @@ use super::charter::Charter;
 use super::clock::Awake;
 use super::keys::{AdminKey, Role, Strength};
 use super::roster::{self, Roster};
-use super::{ADMIN_ACTS_PER_KEYS, HAVE_ACTS, MAX_ACTS, MAX_ADMIN_ACTS, MAX_ADMITS, MAX_REFUSALS, PAGE_ACTS, PAGE_BYTES, SETTLED};
+use super::room::Junk;
+use super::{HAVE_ACTS, MAX_REFUSALS, PAGE_ACTS, PAGE_BYTES, SETTLED};
 
 const CHARTER: &str = "charter.json";
 const ACTS: &str = "acts.json";
@@ -77,20 +78,37 @@ pub struct JoinPayload {
     pub acts: Vec<Act>,
 }
 
+/// What has changed since the files were written.
+#[derive(Default, Clone, Copy)]
+pub(super) struct Dirty {
+    pub acts: bool,
+    pub seen: bool,
+    pub refused: bool,
+}
+
 pub struct GovPool {
     dir: PathBuf,
     pub id: String,
     pub genesis: Charter,
     found: Act,
-    acts: BTreeMap<String, Act>,
-    seen: Seen,
+    pub(super) acts: BTreeMap<String, Act>,
+    pub(super) seen: Seen,
     /// When each admin-set act first had all the signatures it needs on this device; its hold runs from then.
-    ready: Seen,
-    refusals: VecDeque<Refusal>,
+    pub(super) ready: Seen,
+    pub(super) refusals: VecDeque<Refusal>,
     pub clock: Arc<Awake>,
-    state: State,
+    pub(super) state: State,
     folded_at: i64,
     saved_at: i64,
+    /// The awake time this device took the history of the pool from a member that let it in, if it did.
+    joined: Option<i64>,
+    /// The awake time the next hold, delegate or dispute ends.
+    deadline: i64,
+    folds: u64,
+    pub(super) dirty: Dirty,
+    pub(super) junk: Junk,
+    /// The admits held that are not known to be void.
+    pub(super) admits_live: usize,
 }
 
 fn bad<T>(why: &str) -> Result<T> {
@@ -102,6 +120,29 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<Option<T>> {
         Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| Error::Damaged(format!("{} unreadable: {e}", path.display()))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.into()),
+    }
+}
+
+/// What the acts taken since the pool was last folded changed that an act that follows may need.
+#[derive(Default)]
+struct Moved {
+    chain: bool,
+    devices: BTreeSet<String>,
+}
+
+impl Moved {
+    fn note(&mut self, act: &Act) {
+        let named = |field: &str| act.body[field].as_str().map(str::to_string);
+        match act.kind.as_str() {
+            "admit" => self.devices.extend(act.body["cert"].as_str().and_then(unhex).map(|der| crate::cert::cert_fingerprint(&der))),
+            "delegate" | "remove" | "delegate_end" => self.devices.extend(named("fingerprint")),
+            _ => self.chain |= act.is_chain(),
+        }
+    }
+
+    /// Whether ``act``, taken when the charter in force is of epoch ``epoch``, needs the pool folded first.
+    fn needs_fold(&self, act: &Act, epoch: u64) -> bool {
+        (self.chain && !(act.is_chain() && act.epoch <= epoch)) || act.device_keys().iter().any(|d| self.devices.contains(*d))
     }
 }
 
@@ -123,7 +164,8 @@ impl GovPool {
         let empty = Chain::new(&genesis);
         let mut pool = GovPool {
             dir, id, genesis, found, acts: BTreeMap::new(), seen: Seen::new(), ready: Seen::new(), refusals: VecDeque::new(), clock,
-            state: State { chain: empty, roster: Roster::default() }, folded_at: 0, saved_at: 0,
+            state: State { chain: empty, roster: Roster::default() }, folded_at: 0, saved_at: 0, joined: None, deadline: i64::MAX, folds: 0,
+            dirty: Dirty::default(), junk: Junk::default(), admits_live: 0,
         };
         pool.refold();
         Ok(pool)
@@ -137,6 +179,7 @@ impl GovPool {
         private_dir(&dir)?;
         let mut pool = GovPool::assemble(dir, found, Arc::new(Awake::new(0)))?;
         write_atomic(&pool.dir.join(CHARTER), &serde_json::to_vec(&pool.found)?)?;
+        pool.dirty = Dirty { acts: true, seen: true, refused: true };
         pool.save()?;
         Ok(pool)
     }
@@ -150,18 +193,29 @@ impl GovPool {
         let acts: Vec<Act> = read_json::<Value>(&dir.join(ACTS))?.and_then(|v| serde_json::from_value(v["acts"].clone()).ok()).unwrap_or_default();
         pool.acts = acts.into_iter().filter(|a| a.check_shape().is_ok() && a.pool == pool.id).map(|a| (a.id(), a)).collect();
         pool.seen = saved.as_ref().and_then(|v| serde_json::from_value(v["seen"].clone()).ok()).unwrap_or_default();
+        pool.joined = saved.as_ref().and_then(|v| v["joined_ms"].as_i64());
         pool.ready = saved.and_then(|v| serde_json::from_value(v["ready"].clone()).ok()).unwrap_or_default();
         pool.refusals = read_json(&dir.join(REFUSED))?.unwrap_or_default();
         pool.refold();
         Ok(pool)
     }
 
-    /// Write what changed to disk, with the awake total as of now.
+    /// Write what changed to disk, with the awake total as of now when anything else is written or a minute has passed.
     pub fn save(&mut self) -> Result<()> {
-        self.saved_at = self.clock.now_ms();
-        write_atomic(&self.dir.join(ACTS), &serde_json::to_vec(&json!({"acts": self.acts.values().collect::<Vec<_>>()}))?)?;
-        write_atomic(&self.dir.join(SEEN), &serde_json::to_vec(&json!({"awake_ms": self.clock.now_ms(), "seen": self.seen, "ready": self.ready}))?)?;
-        write_atomic(&self.dir.join(REFUSED), &serde_json::to_vec(&self.refusals)?)
+        let now = self.clock.now_ms();
+        if self.dirty.acts {
+            write_atomic(&self.dir.join(ACTS), &serde_json::to_vec(&json!({"acts": self.acts.values().collect::<Vec<_>>()}))?)?;
+        }
+        if self.dirty.acts || self.dirty.seen || self.checkpoint_due() {
+            let doc = json!({"awake_ms": now, "seen": self.seen, "ready": self.ready, "joined_ms": self.joined});
+            write_atomic(&self.dir.join(SEEN), &serde_json::to_vec(&doc)?)?;
+            self.saved_at = now;
+        }
+        if self.dirty.refused {
+            write_atomic(&self.dir.join(REFUSED), &serde_json::to_vec(&self.refusals)?)?;
+        }
+        self.dirty = Dirty::default();
+        Ok(())
     }
 
     pub fn dir(&self) -> &Path {
@@ -171,19 +225,32 @@ impl GovPool {
     /// Fold the state again as it stands now.
     pub fn refold(&mut self) {
         let now = self.clock.now_ms();
-        let chain = chain::build(&self.genesis, &self.id, &self.acts, (&self.seen, &self.ready), now);
+        let chain = chain::build(&self.genesis, &self.id, &self.acts, (&self.seen, &self.ready), self.joined.unwrap_or(0), now);
+        let known = self.ready.len();
         for id in &chain.validated {
             self.ready.entry(id.clone()).or_insert(now);
         }
+        self.dirty.seen |= self.ready.len() != known;
         let roster = roster::build(&chain, &self.acts, &self.seen, now);
+        self.admits_live = self.acts.iter().filter(|(id, a)| a.kind == "admit" && !roster.void.contains_key(*id) && !roster.short.contains_key(*id)).count();
+        let ends = [chain.pending.as_ref().map(|p| p.effective_ms), chain.dispute.as_ref().map(|d| d.ends_ms)];
+        self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).min().unwrap_or(i64::MAX);
         self.state = State { chain, roster };
         self.folded_at = now;
+        self.folds += 1;
+        self.junk.forget();
     }
 
-    /// Fold again when a second or more of awake time has passed since the last fold, so a hold that has run takes effect; whether
-    /// it did.
+    /// How many times the pool has been folded: what a flood of acts costs.
+    pub fn folds(&self) -> u64 {
+        self.folds
+    }
+
+    /// Fold again when a second or more of awake time has passed since the last fold and a hold, a delegate or a dispute has run
+    /// out, so what it ended takes effect; whether it did.
     pub fn tick(&mut self) -> bool {
-        let due = self.clock.now_ms().saturating_sub(self.folded_at) >= 1000;
+        let now = self.clock.now_ms();
+        let due = now >= self.deadline && now.saturating_sub(self.folded_at) >= 1000;
         if due {
             self.refold();
         }
@@ -229,6 +296,7 @@ impl GovPool {
     }
 
     fn refuse(&mut self, act: &Act, why: &str) -> Ingest {
+        self.dirty.refused = true;
         self.refusals.push_back(Refusal { id: act.id(), kind: act.kind.chars().take(24).collect(), why: why.into() });
         while self.refusals.len() > MAX_REFUSALS {
             self.refusals.pop_front();
@@ -252,6 +320,9 @@ impl GovPool {
         if named.is_some_and(|c| !admin.is_empty() && admin.iter().all(|k| c.admin(k).is_none())) {
             return Err("none of the keys that signed is an admin of this pool at the epoch the act names".into());
         }
+        if !act.is_chain() && !admin.is_empty() && !self.admin_now(act) {
+            return Err("none of the keys that signed is an admin of this pool now, and a removed admin's cut does not keep the act".into());
+        }
         let counts = |key: &&str| named.is_some_and(|c| c.admin(key).is_some_and(|k| k.role == Role::Admin && k.strength == Strength::Strong));
         match act.kind.as_str() {
             "admit" if admin.is_empty() && device.is_empty() => Err("an admit is signed".into()),
@@ -268,6 +339,12 @@ impl GovPool {
             _ if admin.iter().any(counts) => Ok(()),
             _ => Err("a weak key counts toward nothing but the end of a delegate".into()),
         }
+    }
+
+    /// Whether one of the admin keys that signed ``act`` is listed in the charter now in force, or is a removed key whose cut kept it.
+    fn admin_now(&self, act: &Act) -> bool {
+        let id = act.id();
+        act.admin_keys().iter().any(|k| self.state.chain.latest().charter.admin(k).is_some() || self.state.chain.cuts.get(*k).is_some_and(|cut| cut.contains(&id)))
     }
 
     /// Whether the device ``key`` may sign ``act``: a device that is a member signs its own `leave`, and an `admit` when it is a live
@@ -297,6 +374,7 @@ impl GovPool {
         }
         let Some(held) = self.acts.get_mut(id) else { return Ingest::Known };
         let added = fit.into_iter().filter(|s| held.add_signature(s.clone())).count();
+        self.dirty.acts |= added > 0;
         if added > 0 { Ingest::Merged } else { Ingest::Known }
     }
 
@@ -317,51 +395,11 @@ impl GovPool {
         Ok(())
     }
 
-    fn room_for(&mut self, act: &Act) -> std::result::Result<(), String> {
-        if self.acts.len() >= MAX_ACTS {
-            return Err("this pool holds as many acts as it will".into());
-        }
-        let count = |pool: &GovPool, f: fn(&Act) -> bool| pool.acts.values().filter(|a| f(a)).count();
-        if act.kind == "admit" && count(self, |a| a.kind == "admit") >= MAX_ADMITS {
-            return Err("this pool holds as many admits as it will".into());
-        }
-        if act.is_chain() {
-            self.room_for_admin_act(act)?;
-        }
-        Ok(())
-    }
-
-    /// The admin-set acts not yet in effect are at most 256, and the same keys may have signed at most 16 of them: a key that
-    /// floods the pool with acts replaces its own oldest, and never the acts of other keys.
-    fn room_for_admin_act(&mut self, act: &Act) -> std::result::Result<(), String> {
-        let keys = act.admin_keys();
-        let live = |pool: &GovPool| -> Vec<(i64, String, bool)> {
-            pool.acts.iter().filter(|(id, a)| a.is_chain() && !pool.state.chain.applied.contains(*id))
-                .map(|(id, a)| (pool.seen.get(id).copied().unwrap_or(0), id.clone(), a.admin_keys().iter().any(|k| keys.contains(k)))).collect()
-        };
-        let held = live(self);
-        if held.len() >= MAX_ADMIN_ACTS {
-            return Err("this pool holds as many acts that change its admins as it will".into());
-        }
-        let mine: Vec<&(i64, String, bool)> = held.iter().filter(|(_, _, shared)| *shared).collect();
-        if mine.len() >= ADMIN_ACTS_PER_KEYS {
-            let oldest = mine.iter().min().map(|(_, id, _)| id.clone());
-            oldest.into_iter().for_each(|id| self.forget(&id));
-        }
-        Ok(())
-    }
-
     /// Whether the key with this fingerprint is listed in the charter now in force and accepted being listed: what a grant scoped to
     /// the pools an admin key administers (`admin:<fingerprint>`) matches.
     pub fn admin_scope(&self, fingerprint: &str) -> bool {
         let anchor = |k: &AdminKey| if k.since == 1 { self.genesis.anchor() } else { self.id.clone() };
         self.state.chain.latest().charter.admins.iter().any(|k| k.fingerprint() == fingerprint && k.accepted(&anchor(k)))
-    }
-
-    fn forget(&mut self, id: &str) {
-        self.acts.remove(id);
-        self.seen.remove(id);
-        self.ready.remove(id);
     }
 
     /// Hand one act to the pool, ``wall_ms`` being this device's wall clock (read only to refuse an act dated in the future).
@@ -407,37 +445,44 @@ impl GovPool {
         if self.state.chain.state_for(&act).is_none() {
             return self.refuse(&act, "that act follows a charter this pool never had");
         }
+        if act.is_chain() && act.epoch < self.state.chain.latest().n {
+            return self.refuse(&act, "that act follows a charter this pool has left behind");
+        }
         if let Err(why) = self.signers_fit(&act).and_then(|()| self.room_for(&act)) {
             return self.refuse(&act, &why);
         }
-        self.seen.insert(id.clone(), if settled { SETTLED } else { self.clock.now_ms() });
+        let now = self.clock.now_ms();
+        self.seen.insert(id.clone(), if settled { SETTLED } else { now });
         if settled {
             self.ready.insert(id.clone(), SETTLED);
+            self.joined.get_or_insert(now);
         }
+        self.note_held(&id, &act);
         self.acts.insert(id, act);
+        self.dirty.acts = true;
+        self.dirty.seen = true;
         Ingest::Accepted
     }
 
     /// Hand many acts to the pool, in the order that lets each find the keys and devices it needs; the acts held back are tried
     /// again as the others are accepted. ``settled`` marks acts taken inside a join this device made. The pool is folded again
-    /// only when an act that follows needs what an accepted one changed.
+    /// only when an act that follows needs what an accepted one changed: the admin set, or a device that was just admitted.
     pub fn ingest_many(&mut self, acts: Vec<Act>, wall_ms: u64, settled: bool) -> Vec<(String, Ingest)> {
         let mut queue: Vec<(String, Act)> = acts.into_iter().map(|a| (a.id(), a)).collect();
         queue.sort_by_key(|(id, a)| (a.epoch, !a.is_chain(), a.device_keys().len(), a.at_ms, id.clone()));
         let mut done: BTreeMap<String, Ingest> = BTreeMap::new();
-        let (mut chain_moved, mut roster_moved) = (false, false);
+        let mut moved = Moved::default();
         for _ in 0..8 {
             let (mut again, mut progress) = (Vec::new(), false);
             for (id, act) in queue {
-                if chain_moved || (roster_moved && !act.device_keys().is_empty()) {
+                if moved.needs_fold(&act, self.state.chain.latest().n) {
                     self.refold();
-                    (chain_moved, roster_moved) = (false, false);
+                    moved = Moved::default();
                 }
                 let out = self.take(act.clone(), wall_ms, settled);
                 if matches!(out, Ingest::Accepted | Ingest::Merged) {
                     progress = true;
-                    roster_moved = true;
-                    chain_moved |= act.is_chain() || matches!(act.kind.as_str(), "cancel" | "veto");
+                    moved.note(&act);
                 }
                 if out == Ingest::Waiting {
                     again.push((id.clone(), act));
@@ -448,6 +493,8 @@ impl GovPool {
             if queue.is_empty() || !progress {
                 break;
             }
+            self.refold();
+            moved = Moved::default();
         }
         self.refold();
         done.into_iter().collect()

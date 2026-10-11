@@ -23,7 +23,7 @@ use super::act::Act;
 use super::body::{self, Body};
 use super::charter::{Charter, Class, Mode, Unit};
 use super::keys::{Role, Strength};
-use super::{DAY_MS, HOUR_MS, MAX_ADMINS, MAX_ADMIN_ACTS};
+use super::{DAY_MS, HOUR_MS, MAX_ADMINS, MAX_ADMIN_ACTS, SETTLED};
 
 /// The first moment (awake milliseconds) this device saw each act.
 pub type Seen = BTreeMap<String, i64>;
@@ -82,6 +82,9 @@ struct Ctx<'a> {
     acts: &'a BTreeMap<String, Act>,
     seen: &'a Seen,
     ready: &'a Seen,
+    /// When this device took the history of the pool from the member that let it in; a settled act may be cancelled until its hold
+    /// has run from then.
+    joined: i64,
     now: i64,
 }
 
@@ -292,9 +295,10 @@ fn candidates(cx: &Ctx, chain: &mut Chain, dropped: &BTreeSet<String>) -> Vec<Ca
             Check::Ok(signers) => {
                 chain.validated.insert(id.clone());
                 let effective = cx.ready_at(id).saturating_add(hold_ms(&parsed, &s.charter));
-                if cancels.get(id).is_some_and(|c| *c <= effective) {
+                let stoppable_until = if cx.ready_at(id) == SETTLED { cx.joined.saturating_add(hold_ms(&parsed, &s.charter)) } else { effective };
+                if cancels.get(id).is_some_and(|c| *c <= stoppable_until) {
                     chain.void.insert(id.clone(), "an admin cancelled it".into());
-                } else if vetoes.get(id).is_some_and(|v| *v <= effective) {
+                } else if vetoes.get(id).is_some_and(|v| *v <= stoppable_until) {
                     chain.void.insert(id.clone(), "the key it removes vetoed it".into());
                 } else {
                     out.push(Cand { id: id.clone(), seen: cx.ready_at(id), body: parsed, signers, effective });
@@ -451,8 +455,8 @@ fn run(genesis: &Charter, cx: &Ctx, struck: BTreeSet<(String, String)>) -> Chain
 }
 
 /// Build the chain from the charter of epoch 1 and every act held, as it stands ``now`` on this device.
-pub fn build(genesis: &Charter, pool: &str, acts: &BTreeMap<String, Act>, times: (&Seen, &Seen), now: i64) -> Chain {
-    let cx = Ctx { pool, acts, seen: times.0, ready: times.1, now };
+pub fn build(genesis: &Charter, pool: &str, acts: &BTreeMap<String, Act>, times: (&Seen, &Seen), joined: i64, now: i64) -> Chain {
+    let cx = Ctx { pool, acts, seen: times.0, ready: times.1, joined, now };
     let mut struck: BTreeSet<(String, String)> = BTreeSet::new();
     loop {
         let chain = run(genesis, &cx, struck.clone());
