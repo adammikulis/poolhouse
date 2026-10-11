@@ -30,7 +30,7 @@ const MOST_REPLIES: usize = 8;
 const COOLDOWN: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 const MOST_ASKS: usize = 12;
 
-fn no_pool() -> Error {
+pub(crate) fn no_pool() -> Error {
     Error::say("denied", "This device is not in a pool yet; make one, or join one.", "approval", "ask-owner")
 }
 
@@ -42,16 +42,16 @@ fn no_signer() -> Error {
     Error::say("denied", "I need your OK for that, and nothing here can ask you yet.", "approval", "ask-owner")
 }
 
-fn not_admin() -> Error {
+pub(crate) fn not_admin() -> Error {
     Error::say("denied", "None of the keys I can ask is an admin of this pool.", "approval", "ask-owner")
 }
 
-fn declined(why: &str) -> Error {
+pub(crate) fn declined(why: &str) -> Error {
     Error::say("denied", why, "none", "stop")
 }
 
 /// How many signers an act of ``kind`` needs: a class, or one strong admin (`None`).
-fn class_of(kind: &str) -> Result<Option<Class>> {
+pub(crate) fn class_of(kind: &str) -> Result<Option<Class>> {
     match kind {
         "admit" | "veto" => Ok(None),
         "remove" | "cancel" | "delegate_end" => Ok(Some(Class::Routine)),
@@ -454,7 +454,7 @@ impl Node {
 
     /// An `admin_remove` keeps every act of that key this device holds, whatever the caller names: a cut the caller chose would strike what the person was never shown. A `remove` names the logs of the device that
     /// this device holds, whatever the caller says.
-    fn with_cut(&self, kind: &str, mut body: Value) -> Value {
+    pub(crate) fn with_cut(&self, kind: &str, mut body: Value) -> Value {
         if kind == "remove" {
             body["cut"] = json!(self.logs_of(body["fingerprint"].as_str().unwrap_or("")));
         }

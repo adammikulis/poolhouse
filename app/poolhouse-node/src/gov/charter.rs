@@ -189,6 +189,16 @@ impl Charter {
 
     /// Whether this is a charter a pool can start from: the shape, the keys and each key's acceptance.
     pub fn check_founding(&self) -> Result<()> {
+        self.check_form()?;
+        let anchor = self.anchor();
+        if !self.admins.iter().all(|k| k.accepted(&anchor)) {
+            return bad("every admin key accepts the charter it is listed in");
+        }
+        self.check_numbers()
+    }
+
+    /// Whether this charter is of the form a pool starts from, before any key has accepted it.
+    pub fn check_form(&self) -> Result<()> {
         if self.v != 1 || self.epoch != 1 || self.mode != Mode::Admins || self.succession.is_some() || self.from.is_some() || self.at_ms == 0 {
             return bad("this build founds a pool of epoch 1 governed by admins, with no succession and no earlier pool");
         }
@@ -199,10 +209,6 @@ impl Charter {
             return bad("a pool's project is a project key");
         }
         self.check_keys(1)?;
-        let anchor = self.anchor();
-        if !self.admins.iter().all(|k| k.accepted(&anchor)) {
-            return bad("every admin key accepts the charter it is listed in");
-        }
         self.check_numbers()
     }
 

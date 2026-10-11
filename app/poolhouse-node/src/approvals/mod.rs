@@ -10,6 +10,7 @@
 //! | `context` | what else a person weighs, signed with the request: what they said, the verdict, the taint, the undo window, the steps |
 //! | `flags` | what looks off about a request, from what the node knows of the session |
 //! | `fatigue` | what keeps a request that is made again and again from wearing a person down: one item, holds, caps, who is told |
+//! | `sign` | a request that the person's phone sign an act of the pool, and what the node does with the signature |
 //! | `challenge` | the bytes a key signs, and the grant entries an approval writes |
 //! | `decide` | the signature check, the one-time state change and what an approval does |
 //! | `calls` | the methods of the local API |
@@ -22,6 +23,7 @@ pub mod decide;
 pub mod fatigue;
 pub mod flags;
 pub mod request;
+pub mod sign;
 pub mod summary;
 
 use std::path::{Path, PathBuf};
@@ -47,6 +49,8 @@ pub const GRANTS: &str = "grants";
 pub const HOLD: &str = "hold";
 pub const PHONE_ADD: &str = "phone_add";
 pub const PHONE_REMOVE: &str = "phone_remove";
+/// A request that a phone's key sign one act of the pool, which the node finishes when the signature comes.
+pub const SIGN: &str = "sign";
 
 /// How many requests wait on a node, how many one session has waiting, and how many a session makes in ten minutes.
 pub const MOST_PENDING: usize = 64;

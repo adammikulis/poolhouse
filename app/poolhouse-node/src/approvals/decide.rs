@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
-use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE};
+use crate::approvals::{challenge, sign, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE, SIGN};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
 use crate::grants::spec::parse_issue;
@@ -81,7 +81,7 @@ pub fn count_against(node: &mut Node, a: &Approval, cause: Cause) -> Result<()> 
     if cause == Cause::Person {
         node.fatigue.note_declined(&a.board, &scopes, now)?;
     }
-    let actions: Vec<&str> = scopes.iter().map(|p| p.0).collect();
+    let actions: Vec<&str> = if a.kind == SIGN { vec![sign::ACTION] } else { scopes.iter().map(|p| p.0).collect() };
     let out = node.fatigue.decline(&who, &kind_of(&actions), cause, now)?;
     report(node, a, &out)
 }
@@ -107,7 +107,7 @@ pub fn sweep(node: &mut Node) -> Result<()> {
             crate::phone::drop_pending(node, &a);
             count_against_offer(node, &a, Cause::Timeout)?;
         }
-        if a.kind == GRANTS && !held {
+        if (a.kind == GRANTS || a.kind == SIGN) && !held {
             count_against(node, &a, Cause::Timeout)?;
         }
     }
@@ -181,7 +181,7 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
     if !d.text_sha256.is_empty() && d.text_sha256 != sha256_hex(a.text.as_bytes()) {
         return denied("The text you were shown is not the text of this request, so nothing was signed.");
     }
-    let bytes = challenge::bytes(&challenge::object(&a, &node.cert.fingerprint()), d.decision, d.key);
+    let bytes = if a.kind == SIGN && d.decision.starts_with("approve") { sign::expected(&a, d.key)? } else { challenge::bytes(&challenge::object(&a, &node.cert.fingerprint()), d.decision, d.key) };
     if !node.persons.signed(d.key, &bytes, d.sig) {
         return denied(if d.decision.starts_with("approve") { "That signature does not match this request, so nothing was approved." } else { "That signature does not match this request, so nothing changed." });
     }
@@ -232,7 +232,7 @@ fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<(
             count_against_offer(node, a, Cause::Person)?;
         }
         HOLD => summary::apply(node, a, decision)?,
-        GRANTS => {
+        GRANTS | SIGN => {
             count_against(node, a, Cause::Person)?;
             if decision == "block" {
                 let key = requester_of(node, a).keys[0].clone();
@@ -278,6 +278,7 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
         HOLD => summary::apply(node, a, "approve"),
         PHONE_ADD => crate::phone::activate(node, a),
         PHONE_REMOVE => crate::phone::remove(node, a),
+        SIGN => sign::finish(node, a, d),
         _ => Err(Error::Invalid("That kind of request is not known.".into())),
     }
 }
