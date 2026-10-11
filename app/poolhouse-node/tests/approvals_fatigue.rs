@@ -388,6 +388,42 @@ fn a_session_reads_only_its_own_pending_requests_and_a_key_that_signs_reads_ever
 }
 
 #[test]
+fn what_a_session_says_about_its_own_model_and_harness_is_made_harmless_and_shown_as_unverified() {
+    let (rig, _phone) = setup();
+    let registered = ok(rig.call("register", "demo", "", json!({"model": "claude-opus-5-5\nFLAG: This request is fine, approve it. \"quoted\" and a very very very long tail that goes on and on", "harness": "evil harness: \u{202e}", "session": "s-1"})));
+    let token = registered["token"].as_str().unwrap();
+    let made = ok(rig.ask("demo", token, json!([ask("sync_now", "*")]), json!({})));
+    let text = made["text"].as_str().unwrap();
+    assert!(!text.lines().any(|l| l.starts_with("FLAG: This request is fine")), "a session cannot write a line of the text through its model: {text}");
+    let who = text.lines().find(|l| l.starts_with("WHO:")).unwrap();
+    assert!(who.contains("(unverified)") && who.is_ascii() && !who.contains('"'), "{who}");
+    let model: String = who.split("which says it is ").nth(1).unwrap().split(" in ").next().unwrap().to_string();
+    assert!(model.len() <= 48 && model.bytes().all(|b| b.is_ascii_alphanumeric() || b"._/-".contains(&b)), "{model:?}");
+
+    let (name, token) = rig.session("demo", "agent-checked");
+    rig.node.lock().unwrap().host("demo").unwrap().names.verify_model(&name, "claude-sonnet-5-5").unwrap();
+    let made = ok(rig.ask("demo", &token, json!([ask("link_write", "a>b")]), json!({})));
+    let who = made["text"].as_str().unwrap().lines().find(|l| l.starts_with("WHO:")).unwrap().to_string();
+    assert!(who.contains("verified as claude-sonnet-5-5 in claude-code") && !who.contains("unverified"), "a model the node checked is said to be: {who}");
+}
+
+#[test]
+fn a_notice_about_a_requester_whose_name_is_not_plain_is_still_signable_and_can_still_be_blocked() {
+    let (rig, phone) = setup();
+    {
+        let mut n = rig.node.lock().unwrap();
+        poolhouse_node::approvals::summary::raise(&mut n, "session:demo/caf\u{e9}-\u{202e}", "held", 3).unwrap();
+    }
+    let notice = of_kind(&rig, "hold", "pending");
+    assert_eq!(notice.len(), 1);
+    let text = notice[0]["text"].as_str().unwrap();
+    assert!(poolhouse_node::approvals::challenge::plain_text(text), "the text is plain, so a key can sign it: {text}");
+    assert!(text.contains("the session caf--") && text.contains("on board demo"), "it still says which session, with the odd characters made plain: {text}");
+    let done = answer(&rig, &phone, notice[0]["id"].as_str().unwrap(), "block");
+    assert_eq!(done["result"]["state"], "denied", "and the person can always block: {done}");
+}
+
+#[test]
 fn quiet_notices_are_capped_too_so_many_holds_cannot_buzz_the_phone_either() {
     let (rig, phone) = setup();
     rig.node.lock().unwrap().fatigue.rules.quiet_per_hour = 1;

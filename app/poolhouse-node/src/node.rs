@@ -236,7 +236,7 @@ impl Node {
     /// and a node hosts a bounded number of boards. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let Native { model, harness, session } = native;
-        let (model, harness) = (identity::clean(model, 256)?, identity::clean(harness, 64)?);
+        let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
         if !valid_name(board) {
             return Err(Error::Invalid("a board id is a short lower-case word".into()));
         }

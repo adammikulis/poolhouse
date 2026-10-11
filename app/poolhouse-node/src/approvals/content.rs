@@ -169,6 +169,8 @@ pub struct Who<'a> {
     pub name: &'a str,
     pub model: &'a str,
     pub harness: &'a str,
+    /// Whether the node checked the model, or only heard the session say it.
+    pub verified: bool,
     pub parent: &'a str,
     pub board: &'a str,
     pub device: &'a str,
@@ -213,7 +215,8 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     out.push(format!("RISK: {}. {worst}", risk.to_uppercase()));
     out.push(d.ctx.said_line());
     let kind = if d.who.parent.is_empty() { "a main session".to_string() } else { format!("a subagent of {}", d.who.parent) };
-    out.push(format!("WHO: {}, which says it is {} in {}, {kind}, on device {}, board {}.", d.who.name, d.who.model, d.who.harness, d.who.device, d.who.board));
+    let claim = if d.who.verified { format!("verified as {} in {}", d.who.model, d.who.harness) } else { format!("which says it is {} in {} (unverified)", d.who.model, d.who.harness) };
+    out.push(format!("WHO: {}, {claim}, {kind}, on device {}, board {}.", d.who.name, d.who.device, d.who.board));
     out.push(d.ctx.verdict_line());
     out.push(d.ctx.taint_line());
     let many = d.lines.len() > 1;

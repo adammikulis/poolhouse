@@ -135,7 +135,7 @@ NOTE: <news that is not a reason to look: a session that is new, the first reque
 POOL: <for anything that connects something: the pool is OPEN or SECURE and what that means, from the node's own state>
 RISK: ROUTINE | SENSITIVE | IRREVERSIBLE, and why
 SAID: You said: "<what the person told the session>" (recorded by the agent's harness from your prompt | sent from this app)  --  or: No instruction from you is recorded for this session.
-WHO: <session name>, which says it is <model> in <harness>, a main session or a subagent of <parent>, on device <name>, board <board>
+WHO: <session name>, which says it is <model> in <harness> (unverified)  --  or: verified as <model> in <harness>, a main session or a subagent of <parent>, on device <name>, board <board>
 VERDICT: The node found this request matches | goes beyond | has nothing to do with what you said.  --  or: No recent instruction from you was found to compare it with.
 TAINT: <this session read content from outside it cannot vouch for | has read nothing from outside | not tracked: the node cannot say>
 ASK: <the one plain sentence: what it wants to do>          (one per ask, numbered when there are several)
@@ -168,8 +168,11 @@ a line out. A source that is wired in later fills the same fields and changes no
 - came from a device that is not a member of the pool (`This request came from a device that is not a member of your pool.`).
 
 A request to change how devices join names one policy, `open` or `secure`, and never a pattern: a resource of `*` or `op*`
-would cover `open` without the text saying so, so the node refuses it when it is asked. The model on the `WHO:` line is what
-the session said about itself when it registered; the node cannot check it, and the line says so.
+would cover `open` without the text saying so, so the node refuses it when it is asked. The model and harness on the `WHO:` line are what
+the session said about itself when it registered, and the line says `(unverified)` unless the node checked the model. A session chooses
+those strings, so the node keeps only letters, digits and `._/-` of them, at most 48 characters, and a character that is anything
+else becomes a hyphen: a session cannot write a line of the text through its model name. A notice about a requester whose name
+is not plain shows the odd characters as hyphens, so every notice can be signed and the person can always block.
 
 The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`,
 `link_remove`, `note_verify`, `land_control` are routine; `link_read`, `set_join_policy`, `add_device`, `join_pool`, `shard_call`,

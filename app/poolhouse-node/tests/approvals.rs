@@ -234,7 +234,7 @@ fn the_text_carries_every_field_a_person_needs_flags_first_and_the_pool_line_nea
     assert_eq!(labels[0], "FLAG", "flags come first");
     assert!(text.contains("POOL: SECURE. Each device needs your code to join."), "{text}");
     assert!(text.contains("RISK: SENSITIVE."), "{text}");
-    assert!(text.contains("WHO: claude-") && text.contains("which says it is claude-sonnet-5-5 in claude-code, a main session, on device"), "{text}");
+    assert!(text.contains("WHO: claude-") && text.contains("which says it is claude-sonnet-5-5 in claude-code (unverified), a main session, on device"), "{text}");
     assert!(text.contains("ASK 1: Make a short code that lets one more device join this pool."), "{text}");
     assert!(text.contains("ASK 2: Share the board demo with the board lab, read and write."), "{text}");
     assert!(text.contains("SCOPE 1:") && text.contains("10 minutes from the moment you approve") && text.contains("once;"), "{text}");

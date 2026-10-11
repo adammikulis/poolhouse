@@ -16,6 +16,7 @@ use crate::approvals::flags::{for_grants, Asked};
 use crate::approvals::{summary, Approval, CANCELLED, EXPIRED, GRANTS, HELD, MOST_PENDING, MOST_PENDING_PER_SESSION, MOST_REQUESTS, PENDING, REQUEST_WINDOW_MS};
 use crate::error::{Error, Result};
 use crate::fsutil::random_hex;
+use crate::identity::ModelState;
 use crate::node::Node;
 
 const MOST_NOTE: usize = 160;
@@ -119,7 +120,8 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
         return again(node, &found);
     }
     let now = node.now_ms();
-    let (model, harness, parent) = node.host(board)?.names.get(&name).map(|i| (i.model.clone(), i.harness.clone(), i.parent.clone())).unwrap_or_default();
+    let (model, harness, parent, verified) = node.host(board)?.names.get(&name)
+        .map(|i| (i.model.clone(), i.harness.clone(), i.parent.clone(), i.model_state == ModelState::Verified)).unwrap_or_default();
     let who = fatigue::requester(board, &name, &node.host(board)?.names.root(&name));
     let actions: Vec<&str> = asks.iter().map(|a| a.action.as_str()).collect();
     let held_key = match node.fatigue.standing(&who, &kind_of(&actions), now) {
@@ -164,7 +166,7 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let device = node.members.get(&device_fp).map(|d| d.name.clone()).unwrap_or_default();
     let expires_ms = now + ttl;
     let draft = Draft {
-        who: Who { name: &name, model: &model, harness: &harness, parent: &parent, board, device: &device },
+        who: Who { name: &name, model: &model, harness: &harness, verified, parent: &parent, board, device: &device },
         lines: asks.iter().map(|a| Line { action: &a.action, resource: &a.resource, lasts_ms: a.lasts_ms, uses: a.uses, review: a.review }).collect(),
         policy, flags, notes: found.notes, ctx: &ctx, note: &note, task: &task, task_known: !unknown, created_ms: now, expires_ms,
     };

@@ -8,6 +8,7 @@
 use serde_json::json;
 
 use crate::approvals::content::{span, utc};
+use crate::approvals::challenge;
 use crate::approvals::context::Context;
 use crate::approvals::decide::{audit, requester_of};
 use crate::approvals::fatigue::{QUIET, URGENT};
@@ -30,8 +31,20 @@ pub fn label_of(key: &str) -> String {
     }
 }
 
-fn text(cause: &str, key: &str, queued: u64, until_ms: u64, block_ms: u64) -> (String, String) {
-    let who = label_of(key);
+/// The notice, in words a key can always sign: a requester's name that would make text a key cannot sign is shown with its odd characters
+/// as hyphens, and failing that as "an agent", so a person can always read the notice and always block.
+fn signable(cause: &str, key: &str, queued: u64, until_ms: u64, block_ms: u64) -> (String, String) {
+    let tidy: String = key.chars().map(|c| if c.is_ascii_graphic() { c } else { '-' }).collect();
+    for label in [label_of(key), label_of(&tidy)] {
+        let made = text(cause, &label, queued, until_ms, block_ms);
+        if challenge::plain_text(&made.1) {
+            return made;
+        }
+    }
+    text(cause, "an agent", queued, until_ms, block_ms)
+}
+
+fn text(cause: &str, who: &str, queued: u64, until_ms: u64, block_ms: u64) -> (String, String) {
     let mut lines = Vec::new();
     let title = if cause == "flood" {
         "Requests are waiting in your list".to_string()
@@ -84,7 +97,7 @@ pub fn raise(node: &mut Node, key: &str, cause: &str, queued: u64) -> Result<()>
             x.decided_ms = now;
         })?;
     }
-    let (title, text) = text(cause, key, queued, until, block_ms);
+    let (title, text) = signable(cause, key, queued, until, block_ms);
     let ctx = Context { block_ms, ..Context::default() };
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: HOLD.into(), board: POOL_BOARD.into(), action: json!({"kind": HOLD, "cause": cause, "key": key, "queued": queued}),
