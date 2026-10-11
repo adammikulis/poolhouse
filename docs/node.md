@@ -247,6 +247,10 @@ matched an injection pattern in an entry reports it with `quarantine_hold`; the 
 entry on this device (never synced), shows the client its `qid` and `state`, and `quarantine_release` marks
 it released under the grant `quarantine_release`, with an audit entry. Showing a placeholder for a held entry
 is the client's job (`workspace/inbound.py`): an agent that reads the log through the API gets the text.
+A message to a session that was retired is `denied` (`<name> is not a session of this board`), with one exception: an
+`answer` whose `reply_id` names a message that session wrote is accepted and recorded on that thread like any
+other, so the question it left is closed and the audit shows who answered it. Nothing is delivered to the retired
+session, which has no token to read with; a question, or an answer that names no message of it, is still `denied`.
 
 **Rooms and subscriptions.** A room is `#name` (lower-case letters, digits, `.`, `_`, `-`, at most 40, never the name of
 a fixed channel such as `#general` or `#dm`). It is a fold of the board's `room` entries, so every device computes the

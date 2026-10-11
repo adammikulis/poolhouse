@@ -280,7 +280,7 @@ impl Node {
             return Err(Error::Denied("that channel is not shared with this session".into()));
         }
         if let Some(to) = fields.get("to").and_then(Value::as_str).filter(|t| kind == Kind::Message && t.starts_with(|c: char| c != '#')) {
-            if !self.can_receive(board, to)? {
+            if !self.can_receive(board, to)? && !crate::mail::answers_sender(self, board, fields, to)? {
                 return Err(Error::Denied(format!("{to} is not a session of this board")));
             }
         }

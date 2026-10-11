@@ -127,6 +127,22 @@ def test_a_read_request_of_a_retired_sender_is_no_longer_owed_and_an_unread_one_
     assert owed(board) == [live, unread], 'a live sender stays owed once read, and an unread request of a retired one too'
 
 
+def test_send_answer_to_a_retired_sender_is_recorded_and_closes_the_request(board, tmp_path):
+    child = start(board, spawn_events(tmp_path, nested=False)['child'])
+    asked = board.session(child).post(board.lead.name, 'question', 'may I land', subject='question')['id'].rsplit(':', 1)[-1]
+    board.session(child).retire()
+    lead = later(board, board.lead, HOUR)
+    assert owed(board) == [asked]
+    with pytest.raises(board_session.Denied, match='not a session of this board'):
+        board_cli.delivered(lead, child.name, 'question', 'are you there')
+    sent = board_cli.delivered(lead, child.name, 'answer', 'yes, land it', reply_to=asked)
+    assert (sent['type'], sent['to'], sent['from']) == ('answer', child.name, board.lead.name)
+    assert owed(board) == [], 'the answer closes the request without it being read first'
+    thread = lead.read_all(thread=asked)
+    assert [(e.sender, e.fields['type'], e.fields['to']) for e in thread] == [
+        (child.name, 'question', board.lead.name), (board.lead.name, 'answer', child.name)]
+
+
 def test_inbox_shows_what_is_owed_and_attention_prints_it(board, capsys):
     seq = ask(board)
     args = argparse.Namespace(json=False, ack=False, children=False, all=False, limit=0, raw=False)

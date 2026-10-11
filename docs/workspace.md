@@ -234,7 +234,9 @@ Message types are `task`, `status`, `handoff`, `question`, `answer`, `claim`, `r
 sent to you, older than the owner's `owed_after_s`, that you have not answered (you wrote to its sender, or in reply,
 after it). A request from a session that was retired (a subagent that stopped) and that you have read, by `ack` or by
 `dm` showing it, is closed and left out, so stale handoffs do not hide live questions; an unread one stays until you read
-it.
+it. `send NAME answer TEXT --reply-to SEQ` to a retired sender is accepted and recorded as an answer on the
+thread, which closes the request whether or not it was read ([docs/node.md](node.md), "Replies, threads and held text");
+any other message to a retired session is refused.
 
 There is no sync command: the node dials the members of the pool each cycle and swaps the boards both hold in both
 directions ([docs/node.md](node.md), its section on the pool). Every entry is in the device's signed log at once.
