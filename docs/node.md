@@ -826,7 +826,7 @@ pool, through admin keys; a device never does, and the one thing a member device
 - **Signing** (`gov/signer.rs`, `gov/ops.rs`): the node holds no person key. An act that needs a person's signature is put to a
   `Signer` (the phone approval, when it exists, and a rig's in-memory key for tests); the typed-yes person key path signs outside the
   node: `pool_draft` makes the act and the bytes to sign, `pool_found` and `pool_submit` take the signed act back. A no from the
-  person is respected for ten minutes for that kind of act.
+  person is respected for ten minutes for that kind of act, and a person is asked at most twelve times in ten minutes.
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
 - **Legacy mode.** A device with a `pool.json` and no `pools/<id>/` keeps its pool and its sync exactly as before, except that a
   member's rows, removals and policy are ignored (the record changes only by this device's own API, the grants, and the joins it makes);

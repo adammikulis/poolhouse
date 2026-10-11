@@ -11,8 +11,11 @@ use poolhouse_node::error::Error;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
 use poolhouse_node::gov::keys::Strength;
 use poolhouse_node::gov::signer::RigSigner;
+use poolhouse_node::net::{Net, NetConfig};
+use poolhouse_node::node::Node;
 use poolhouse_node::peer::PeerClient;
 use poolhouse_node::poolops::wall_ms;
+use poolhouse_node::projectid::project_key;
 use serde_json::{json, Value};
 
 const ANN: u8 = 1;
@@ -293,6 +296,31 @@ fn an_act_a_person_signed_with_a_key_of_their_own_is_submitted_without_any_signe
     let reply = b.ok("pool_submit", "", &b.token, json!({"act": act}));
     assert_eq!(reply["status"], "effective", "{reply}");
     assert_eq!(b.member(&victim.fingerprint()).map(|m| m["status"].clone()), Some(json!("revoked")));
+}
+
+fn beacon_config(beacon_cfg: poolhouse_node::beacon::BeaconConfig, project: Option<&str>, settle_ms: u64) -> NetConfig {
+    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon_cfg), sync_every: None, project: project.map(project_key), settle: std::time::Duration::from_millis(settle_ms) }
+}
+
+#[test]
+fn a_lone_device_that_hears_the_beacon_of_an_open_governed_pool_of_its_project_joins_it_whatever_its_id_sorts() {
+    let (pa, pb) = (udp_port(), udp_port());
+    let a = device_with(beacon_config(beacon(pa, &[pb]), None, 0));
+    let id = found_for(&a, person(ANN, "ann"), "open", &project_key("poolhouse"));
+    let dir = tempfile::tempdir().unwrap();
+    drop(Node::open(dir.path()).unwrap());
+    let path = dir.path().join("pool.json");
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    record["pool"] = json!("0000000000000000");
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    let node = std::sync::Arc::new(std::sync::Mutex::new(Node::open(dir.path()).unwrap()));
+    let net = Net::start(node.clone(), beacon_config(beacon(pb, &[pa]), Some("poolhouse"), 60_000)).unwrap();
+    let mut b = Dev { dir, node, net, token: String::new() };
+    b.token = b.session("demo", "main").1;
+    eventually("b to join the open governed pool it hears", 15, || a.is_member(&b.fp()) && b.is_member(&a.fp()));
+    assert_eq!(b.pool(), id);
+    assert_eq!(a.member(&b.fp()).unwrap()["by"], "open", "admitted by the member's own device signature");
+    assert!(b.node.lock().unwrap().members.gov().is_some());
 }
 
 #[test]

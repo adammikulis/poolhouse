@@ -9,8 +9,13 @@ use super::netkit::Dev;
 
 /// A node on this device that signs for ``signer`` and founds a pool.
 pub fn found(dev: &Dev, signer: Arc<RigSigner>, policy: &str) -> String {
+    found_for(dev, signer, policy, "")
+}
+
+/// Like `found`, for the project ``project`` (a project key, or empty).
+pub fn found_for(dev: &Dev, signer: Arc<RigSigner>, policy: &str, project: &str) -> String {
     dev.node.lock().unwrap().set_signer(signer);
-    let reply = dev.ok("pool_create", "", &dev.token, json!({"title": "home", "policy": policy}));
+    let reply = dev.ok("pool_create", "", &dev.token, json!({"title": "home", "policy": policy, "project": project}));
     reply["pool"].as_str().unwrap().to_string()
 }
 
