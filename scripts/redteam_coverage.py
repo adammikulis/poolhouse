@@ -99,8 +99,8 @@ READ_FILES = ("web.py", "markup.py", "chat.py", "do.py", "files.py", "messages.p
               "gym/world_files.py", "gym/car_definition.py", "gym/drone_definition.py", "gym/traffic_world.py",
               "fleet/request_fields.py", "fleet/gym_recording_routes.py", "fleet/workspace_routes.py",
               "workspace/fleet_routes.py")
-FORCED = ("hub/cards.py", "hub/discover.py", "hub/listing.py", "workspace/notes.py",
-          "workspace/service.py", "memory/recall.py", "memory/tools.py", "sandbox/policies.py",
+FORCED = ("hub/cards.py", "hub/discover.py", "hub/listing.py", "workspace/notes_cli.py",
+          "workspace/screen.py", "workspace/inbound.py", "memory/recall.py", "memory/tools.py", "sandbox/policies.py",
           "sentinel/review.py", "decide/questions.py", "decide/pointer_prompt.py",
           "decide/logprob.py")
 READ_CALLS = {"json.load", "json.loads", "tomllib.loads", "tomllib.load", "struct.unpack",

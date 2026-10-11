@@ -1253,6 +1253,22 @@ tests = [
 note = "person joins reject hostile length and JSON bodies without registering a session on the node; browser session and origin remain checked"
 
 [[group]]
+match = ["parser:workspace/inbound.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_board_messages.py::test_clean_text_is_delivered_fenced_and_labelled_and_a_forged_fence_is_held",
+         "tests/test_board_messages.py::test_digests_are_bounded_fenced_and_plain"]
+note = "text a session sent is fenced as data, a forged fence is held and a digest is bounded"
+
+[[group]]
+match = ["parser:workspace/notes_cli.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_board_client.py::test_a_notes_command_is_never_run_through_a_shell",
+         "tests/test_redteam_board_client.py::test_a_command_off_the_allow_list_is_refused_whatever_the_note_says"]
+note = "a note's verify command runs only when it is on the owner's allow list, and never through a shell"
+
+[[group]]
 match = ["parser:workspace/*"]
 status = "covered"
 tests = [ "tests/test_workspace_rules.py"]

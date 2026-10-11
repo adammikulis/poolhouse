@@ -135,8 +135,8 @@ system, not a second one. State per piece:
 | Work reputation | `reputation/economy.py` `summary`; `workspace/work_reputation.py`; `tests/test_work_reputation.py` | Yes. Quality: reviewer 0-100 ratings with a prior of weight two. Reliability: Beta(1,1) over accepted versus rejected outcomes; infrastructure blocks add no negative sample | Independent review outcomes; sample counts and confidence returned with every score [code] |
 | Advisory price modifier | `economy.summary` `pricing` | Computed only. Bounded 0.8-1.2, neutral at start, `price` 0, `active_charging` False, baseline access guaranteed | Derived from reliability and confidence [code] |
 | Ledger storage | `reputation/work.py` `WorkLedger`, `reputation/sealed.py` | Yes. Encrypted graph under a keystore key; capped at 5000 evidence and contribution nodes; a retry returns the original award, no duplicate | Balances are derived from evidence, no separate balance file [docs] |
-| Device and family accounts | `workspace/device_accounts.py`, `workspace/family_accounts.py` | Yes. One person-enrolled account per physical device; evidence rolls up by model family across devices; workers cannot choose an account | Enrolment is by the person; family derived from the model id [code] |
-| Resource attribution | `workspace/resource_allocations.py`; `tests/test_resource_allocations.py` | Yes. An allocation binds worker, task, device and a live broker grant; `verified_binding` refuses if the broker holder, enrolment or execution config changed | Broker-observed: holder pid and start time, lease id, model and runtime provenance are immutable on the task [code] |
+| Device and family accounts | the device's certificate in the pool's membership (`app/poolhouse-node/src/membership.rs`), `workspace/family_accounts.py` | Yes. One member per physical device, joined by the person; evidence rolls up by model family across devices; workers cannot choose an account | Joining is by the person; family derived from the model id [code] |
+| Resource attribution | `task_assign` and the lease table (`app/poolhouse-node/src/tasks/calls.rs`, `lease/`); `workspace/task_scheduler.py`; `tests/test_resource_allocations.py` | Yes. An assignment binds worker, task and a live lease of the worker's model on this device, and a claim is refused when that lease is no longer a live grant | The lease table observes the holder process, the lease id and the model; the assignment is an entry of the task [code] |
 | Measured usage | `economy.assessment` `usage` | Yes, thin. `tokens_in`, `tokens_out`, `wall_seconds`, each bounded or null | Counted only when a reviewer supplies it; worker-reported usage is not a measurement; unknown stays null [code, docs] |
 | Actor and model-runtime views | `workspace/work_dimensions.py`, `tests/test_model_work_attribution.py` | **Unlanded.** On `133dd374` and `03d09c55`, not on `0.2dev` or this branch | Overlapping views over the same reviews: per actor, per exact model plus runtime plus artifact; derives, never awards twice [code on those commits] |
 | Source-risk reputation | `reputation/store.py`, `docs/reputation.md` | Yes, separate from work reputation. Events, a 30-day half-life, watch/bad states | Only the system's own observations move a score [docs] |
@@ -160,11 +160,11 @@ Each is an extension of 3.1. None is built. **[code]** by absence unless stated.
 ### 3.3 Tenancy and roles
 
 Today the unit of identity is a workspace plus an agent, and the unit of an account is a device
-(`workspace_id` in `workspace/coordination.py`). A reputation store lives under one user
+(the board and the pool in `docs/node.md`). A reputation store lives under one user
 (`reputation/u-<id>/graph.enc`) [docs]. A "tenant" for the service is a new, outer key: a tenant owns
 consumers, providers and tokens, and every allocation and award carries its id. Roles map onto
-the existing roles in `workspace/identity.py` (a person, parents and children) rather than a new
-model; the provider is the enrolled device account, the consumer is a requesting identity. **[plan]**
+the existing identities in `app/poolhouse-node/src/identity.rs` (the person's key, main sessions and subagents) rather than a new
+model; the provider is a device that joined the pool, the consumer is a requesting identity. **[plan]**
 
 ### 3.4 Job verification
 
@@ -246,8 +246,8 @@ weights and outputs, and can return wrong answers. So, **[plan]**:
   type allowlist (inference of named models only in the open market) is the stronger control.
 - **Illegal content.** Cannot be detected by the provider side if jobs are encrypted; this is an
   operator and terms-of-service problem (section 5) and a reason for narrow job types.
-- **Denial of service.** Per-tenant rate limits; `workspace/rates.py` has a per-sender sliding
-  window that is a starting point [code].
+- **Denial of service.** Per-tenant rate limits; the node's per-sender sliding windows (`app/poolhouse-node/src/limits.rs`, `writes.rs`)
+  are a starting point [code].
 
 ### 4.3 Dispute handling
 
@@ -349,7 +349,7 @@ touched, without its own task.
 | 3 | Every job and request carries a tenant id | Violates: no `tenant` in `src/` (grep, zero hits); allocations carry worker, task, device only (`resource_allocations.assign`) | M | Yes, add the field as optional on new records |
 | 4 | Every job's resource use flows through the existing credit and attribution path; do not add a parallel ledger | Complies: allocation, `verified_usage`, `economy.summary` (3.1). Violates: usage has only tokens and wall seconds | M | Yes: extend `economy.assessment` usage fields, never a second store |
 | 5 | Keys and caches are per tenant | Violates: one keystore profile `reputation`; one pool key; no per-tenant KV or prompt cache separation | L | No, design first |
-| 6 | No host or central authority in the data path; an operator is optional and replaceable | Complies by design intent (`docs/board-replication.md`, design only). Violates: workspace state is one `coordination.db` behind a file lock on one machine (`resource_allocations.py`) | L | No |
+| 6 | No host or central authority in the data path; an operator is optional and replaceable | Complies for the board: every device holds a signed replica and syncs with whichever devices it reaches (`docs/node.md`, "Sync"). Violates: the coordination of paid work has no design yet | L | No |
 | 7 | Verified-work accounting is independent of who ran it | Complies: awards bind proposal and review hashes and refuse a self-review (`task_credit.py`); `work_dimensions` (unlanded) keeps views derived | S | Yes |
 | 8 | Egress and sandbox policy default-deny for foreign work | Complies: `Net.deny()` is the policy default (`sandbox/policy.py`, `docs/sandbox.md`). Not checked: whether every launcher routes through it | S to M | Yes, route a launcher through it when touched |
 | 9 | Secrets never in logs or on the board | Complies in part: `src/poolhouse/redact/` exists, keystore holds keys. Not audited across all log sites | M to audit; S per site | Yes |

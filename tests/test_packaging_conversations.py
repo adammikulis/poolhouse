@@ -27,19 +27,13 @@ def test_frozen_daemon_keeps_graph_conversations_after_restart(tmp_path):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    from poolhouse.workspace import Workspace, tokens
-
-    workspace_root = tmp_path / "workspace"
-    workspace = Workspace(workspace_root)
-    owner = workspace.init("person")
-    tokens.store(workspace_root, tokens.OWNER_FILE, owner)
-    environment = {**os.environ, "POOLHOUSE_HOME": str(tmp_path / "home"),
-                   "POOLHOUSE_WORKSPACE_HOME": str(workspace_root), "PYTHONPATH": "",
+    environment = {**os.environ, "POOLHOUSE_HOME": str(tmp_path / "home"), "PYTHONPATH": "",
                    "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring"}
     with running(Path(binary), root, port, environment, tmp_path / "first.log"):
         readiness = call(port, "GET", "/ui/chat")
         assert readiness["runtime_ready"], readiness.get("runtime_error")
-        assert call(port, "GET", "/ui/board/agents") == {"owner_id": "person", "agents": []}
+        board = call(port, "GET", "/ui/board/agents")
+        assert board["agents"] == [] and board["owner_id"]
         assert call(port, "GET", "/ui/conversations/saved")["messages"] == [
             {**legacy["messages"][0], "reasoning": "", "status": "complete"}]
         made = call(port, "POST", "/ui/conversations", {"model": "chosen-model", "title": "Packaged chat",

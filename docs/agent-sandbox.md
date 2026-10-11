@@ -42,20 +42,19 @@ outside the sandbox, so the same paths are also refused by `permissions.deny` ru
 | launchd, cron, at persistence | LaunchAgents and systemd dirs denied; `cron` and `at` spools are root-owned system paths, not listed | same | closed: the account's own crontab is the agent's |
 | pip install into runtimes | `~/.poolhouse/runtimes` and `~/.pyenv/versions` denied | same | closed |
 | gh and ssh credentials | `~/.config/gh`, `~/.ssh`, `SSH_AUTH_SOCK` denied or scrubbed | same | closed: nothing to read |
-| Residual | a command that is allowed to reach the board can write the board's files (below) | same | the agent still has the board token it needs |
+| Residual | a command can read the node's key files that are not denied (below) | same | the agent still holds the token of its own session |
 
 Recommendation: install the built-in sandbox now (all of it is one root-owned file, and
 `scripts/agent-sandbox prepare` already produces it). Use sandbox-runtime for the local-model
-harness, which Claude Code's setting does not reach. Revisit a separate account when the board is
-reached through the daemon instead of direct file writes, because that is what the account would
-protect that the sandbox cannot.
+harness, which Claude Code's setting does not reach. Revisit a separate account for the node's key files
+(below), which a sandbox that reads broadly does not hide.
 
 ## Residual gaps the sandbox does not close
 
-- **Board files.** `poolhouse-workspace` writes `~/.poolhouse/workspace` (board.db, audit.jsonl,
-  claims.json) from inside the agent's own process. A sandboxed agent that may announce may also
-  edit those files. Closing it needs the CLI to talk to the daemon (loopback TLS) with
-  `workspace/` read-only to agents. Pending entry in HANDOFF.md.
+- **The node's files.** The node writes the boards, the lease table and the token hashes under `~/.poolhouse/node`, and
+  `poolhouse-workspace` asks it over its socket; that folder is not on the write list, so a sandboxed command cannot
+  edit them. Only `node/client` is on the read-deny list: the node's device key, its enrolment secret and the
+  person's key custody (`node/person`) stay readable to a sandboxed command.
 - **The session tokens.** `~/.poolhouse/node/client/<board>/` holds a `<name>.token` file and a `<name>.parent`
   file for every session of the node, and the read cursors of each. The folder is closed to reads and writes for
   Bash commands (`denyRead`, `denyWrite`) and to the file tools by permission rules, and no path inside it is

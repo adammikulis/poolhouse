@@ -1,5 +1,7 @@
 # Earned trust: delegated control from the reputation ledger
 
+The `[V path]` tags cite `0.2dev` at `173e52f1`. The workspace store they name (`workspace/chain.py`, `claims.py`, `identity.py`, `notes.py`, `service.py`, `taskboard.py`, `task_actions.py`, `enforcement.py`, `device_accounts.py`, `quarantine.py`) was replaced by the node (`app/poolhouse-node`, docs/node.md).
+
 Status: design, 2026-10-08. Nothing in sections 3 to 7 is built, except the standing grants the levels would widen (the node refuses what no grant names, a person's key signs each grant, every use is on the board): docs/node.md, "Standing grants". The ledger, the levels and the suspension are the next slice. Owner statements this note serves:
 "the whole point of having a trust/reputation ledger is so agents can be trusted", and "we're
 eventually going to have to give agents more control over things as projects get larger. doing it in

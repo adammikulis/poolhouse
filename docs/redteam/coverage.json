@@ -1,7 +1,7 @@
 {
- "surfaces": 787,
+ "surfaces": 789,
  "by_status": {
-  "covered": 467,
+  "covered": 469,
   "partial": 194,
   "uncovered": 52,
   "n/a": 74,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 67,
+   "covered": 69,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -6343,6 +6343,19 @@
    "note": "person joins reject hostile length and JSON bodies without registering a session on the node; browser session and origin remain checked"
   },
   {
+   "id": "parser:workspace/inbound.py",
+   "kind": "parser",
+   "source": "workspace/inbound.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_messages.py::test_clean_text_is_delivered_fenced_and_labelled_and_a_forged_fence_is_held",
+    "tests/test_board_messages.py::test_digests_are_bounded_fenced_and_plain"
+   ],
+   "note": "text a session sent is fenced as data, a forged fence is held and a digest is bounded"
+  },
+  {
    "id": "parser:workspace/integration_git.py",
    "kind": "parser",
    "source": "workspace/integration_git.py",
@@ -6411,6 +6424,19 @@
     "tests/test_workspace_rules.py"
    ],
    "note": ""
+  },
+  {
+   "id": "parser:workspace/notes_cli.py",
+   "kind": "parser",
+   "source": "workspace/notes_cli.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_board_client.py::test_a_notes_command_is_never_run_through_a_shell",
+    "tests/test_redteam_board_client.py::test_a_command_off_the_allow_list_is_refused_whatever_the_note_says"
+   ],
+   "note": "a note's verify command runs only when it is on the owner's allow list, and never through a shell"
   },
   {
    "id": "parser:workspace/nudge.py",

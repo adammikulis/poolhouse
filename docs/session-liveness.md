@@ -1,7 +1,8 @@
 # Session liveness, recovery and coordinator promotion
 
-Design note. Nothing here is implemented. Line numbers are against the worktree this note was
-written on (`feat/test-reuse` base).
+Design note. Line numbers and the files it names under `workspace/` (`claims.py`, `harness_remote.py`, `task_actions.py`, `coordinator.json`) are against the worktree this note was
+written on (`feat/test-reuse` base). The node (docs/node.md, "Leases") now drops a claim or lease whose holder process is gone or whose time ran out; presence,
+recovery and coordinator promotion below are still design.
 
 Problem: a closed terminal, a crashed machine or a sleeping laptop leaves claims, task leases,
 child tokens and a coordinator that no longer exist. Nothing notices, and nothing hands the work

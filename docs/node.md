@@ -93,8 +93,7 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
 
 `register {model, harness, session}` on a board returns `{name, token}`. The name is the model
 family (`claude`, `chatgpt`, `qwen`, else `agent`), a dash, and the first six hex of
-SHA-256(`harness NUL session`), extended by two hex per collision, exactly the algorithm of
-`src/poolhouse/workspace/session_name.py`. The same session always gets the same name back, and a main
+SHA-256(`harness NUL session`), extended by two hex per collision (`Registry::assign` in `src/identity.rs`). The same session always gets the same name back, and a main
 session's token only from the lineage it was registered from (below). A
 `register` carrying the token of a session of the same board makes the new session its subagent
 (`parent` recorded in its identity entry); the parent is never a request field.

@@ -25,14 +25,14 @@ Slice 1b-i (`delegate` removed from the CLI, `mint` person-only) is implemented;
 
 Paths relative to the repository root.
 
-- `src/poolhouse/workspace/identity.py`: roles `human`, `lead`, `agent`. `MINTS` lets a human
-  mint any role, a lead mint `agent`, an agent nothing. `Identity.trust` is `"human"` for
-  role `human`, else `"agent-claimed"`. `delegate()` mints a child token `parent/name`.
-- `notes.py`: trust rank `agent-claimed < test-verified < human` comes from the author's
-  role, never from fields. `task_credit.py` supplies verified evidence.
-- `chat.py`: the person's console; requires a `HUMAN` token.
-- `agent_display.py`: display names from registry metadata; `session_kind` is `person` for
-  role `human`.
+- `app/poolhouse-node/src/identity.rs`: the node names every session and keeps the SHA-256 of its token; a session is a
+  main session or a subagent (it has a parent), and no session has a role of a person. The person is an enrolled key
+  (`grants/person.rs`) whose signature makes a grant count; no verb mints an identity for another actor.
+- `app/poolhouse-node/src/notes.rs`: trust (`agent-claimed` or `test-verified`) is derived from the latest fresh passing
+  `verify` entry, never from fields. `src/poolhouse/workspace/task_credit.py` supplies verified evidence.
+- `src/poolhouse/workspace/chat.py`: the person's console over the person's own session on the board (`board/person.py`).
+- `src/poolhouse/workspace/agent_display.py`: display names from the node's session records; `session_kind` is `main` or
+  `subagent`.
 - `authority.py` registry: a `delegated` gate passes a lead agent when `CLAUDECODE` or
   `POOLHOUSE_AGENT` is set. `runtime.deploy` (group `runtime`) is the gate for `Poolhouse runtime
   ensure`, `rollback` and `restart-host`: Dev delegates it, Prod keeps it with the person. That is an environment test, not evidence the owner said
@@ -404,10 +404,9 @@ authorization; `delegate` is gone.
   `src/poolhouse/workspace/person_record.py` (new: log, `consume`),
   `src/poolhouse/workspace/person_intent.py` (new: closed tables and the interpreter),
   `scripts/hooks/pre-push`, `scripts/hooks/claude-bash-guard` (call `consume`),
-  `src/poolhouse/sentinel/human.py` (`_FORBIDDEN`), `workspace/boards.py` (refuse the kind),
-  `workspace/identity.py` (reserved names, `label`, delete `delegate`), `workspace/service.py`,
-  `remote.py`, `remote_host.py`, `person_session.py`, `harnessid.py`, `localstart.py`,
-  `automatic_connection.py`, `child_renewal.py` (delete), `task_scheduler.py`,
+  `src/poolhouse/sentinel/human.py` (`_FORBIDDEN`), `app/poolhouse-node/src/identity.rs` (reserved names; no
+  `delegate`), `app/poolhouse-node/src/api.rs`, `src/poolhouse/board/person.py`, `harnessid.py`, `localstart.py`,
+  `task_scheduler.py`,
   `scripts/hooks/claude-subagent-start`, `workspace/cli.py`, `agent_display.py`,
   `docs/workspace.md`, `docs/local-agent.md`.
 - Tests, about 55: interpreter unit tests, one per row of 5.4 plus the affirmative and

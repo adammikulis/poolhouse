@@ -176,8 +176,8 @@ Rank is by how much of the goal a missing item blocks, first item first.
    each has its own GPU; the real gap is a device that is both a test runner and a model host (2.1(5)) and a
    request that would evict a model another caller leases.
 4. **Wake and unload.** No Wake-on-LAN, sleep detection or idle unload exists: no WoL or idle-unload code was
-   found under `serve/` or `fleet/` (searched `idle_timeout`, `idle_unload`, `unload_after`, `keep_alive`, `wake_on_lan`, `magic packet` under `serve/` and `fleet/`) [V]. `workspace/wake.py`
-   is board wake-ups over named pipes, not machine power. Needed: an "asleep" state in the report and a
+   found under `serve/` or `fleet/` (searched `idle_timeout`, `idle_unload`, `unload_after`, `keep_alive`, `wake_on_lan`, `magic packet` under `serve/` and `fleet/`) [V]. The board's `wait`
+   and `watch` are reads of the node, not machine power. Needed: an "asleep" state in the report and a
    person-granted wake action; unload is `poolhouse-serve down` and must go through the same lease check.
 5. **Model files.** Members already fetch model files from each other before the Hub
    (`poolhouse-models pull`, `fleet fetch`, `docs/onboarding.md` [D]), so a device without the model can
