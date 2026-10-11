@@ -158,7 +158,7 @@ a line out. A source that is wired in later fills the same fields and changes no
 - is the first request of its kind on this node (`first of its kind`);
 - asks for more than that session's last grant of the kind (a longer time, more uses, a wider resource, or no limit);
 - comes from a subagent;
-- asks for a wildcard resource on a sensitive or irreversible action, or for a grant that lasts over a day;
+- asks for a wildcard resource, at any risk level, on an action that names a resource (a star on `sync_now` or `add_device`, which take none, says nothing), or for a grant that lasts over a day;
 - would change the pool's join policy from secure to open;
 - names a task that is not on the board;
 - asks for a scope the person declined before (`This was declined N time(s) before ...`), which also takes one more deliberate step;
@@ -169,8 +169,8 @@ A request to change how devices join names one policy, `open` or `secure`, and n
 would cover `open` without the text saying so, so the node refuses it when it is asked. The model on the `WHO:` line is what
 the session said about itself when it registered; the node cannot check it, and the line says so.
 
-The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`, `link_read`,
-`link_remove`, `note_verify`, `land_control` are routine; `set_join_policy`, `add_device`, `join_pool`, `shard_call`,
+The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`,
+`link_remove`, `note_verify`, `land_control` are routine; `link_read`, `set_join_policy`, `add_device`, `join_pool`, `shard_call`,
 `shard_consent`, `land_trust`, `task_authority`, `quarantine_release`, `link_write`, `source_add` and adding a phone are
 sensitive; `member_remove` and `file_delete` are irreversible. A request is as risky as its riskiest ask.
 

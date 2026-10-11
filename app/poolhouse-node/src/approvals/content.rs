@@ -16,7 +16,7 @@ pub const IRREVERSIBLE: &str = "irreversible";
 pub fn risk_of(action: &str) -> (&'static str, &'static str) {
     match action {
         "sync_now" => (ROUTINE, "It swaps board entries with the pool's devices and changes nothing else."),
-        "link_read" => (ROUTINE, "Another board can read this one and can write nothing."),
+        "link_read" => (SENSITIVE, "Another board can read what this one holds: it leaves this board, and a link cannot take it back."),
         "link_remove" => (ROUTINE, "It ends a sharing link, and sharing can be made again."),
         "note_verify" => (ROUTINE, "It records that a note's command was run; it runs nothing."),
         "land_control" => (ROUTINE, "It can pause, resume and cancel landing requests; it lands nothing itself."),
@@ -36,6 +36,12 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "phone_remove" => (IRREVERSIBLE, "A removed phone's key is never accepted again."),
         _ => (SENSITIVE, "It is not an action this node knows the cost of."),
     }
+}
+
+/// Whether a request for ``action`` names a resource that matters: a star is a whole class of things, and a person is told so. `sync_now` and
+/// `add_device` take none, so the star they carry says nothing.
+pub fn names_a_resource(action: &str) -> bool {
+    !matches!(action, "sync_now" | "add_device")
 }
 
 /// The level of the riskiest of ``levels``.

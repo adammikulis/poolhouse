@@ -312,6 +312,24 @@ fn the_same_request_asked_again_soon_after_it_was_withdrawn_or_ran_out_does_not_
 }
 
 #[test]
+fn sharing_a_board_for_reading_is_sensitive_and_a_wildcard_is_flagged_at_every_level_but_not_where_it_means_nothing() {
+    let (rig, _phone) = setup();
+    let (_, token) = rig.session("demo", "agent-1");
+    let read = ok(rig.ask("demo", &token, json!([ask("link_read", "a>b")]), json!({})));
+    assert_eq!(read["risk"], "sensitive", "another board reading this one is not routine");
+    assert!(read.get("code").is_some() && read["challenge"]["context"]["pick"].as_array().unwrap().len() == 3, "so it has a number to match");
+    let everything = ok(rig.ask("demo", &token, json!([ask("link_read", "*")]), json!({})));
+    assert!(everything["text"].as_str().unwrap().contains("FLAG: It asks for link_read on anything: a whole class of things, not one."), "{everything}");
+    assert_eq!(everything["risk"], "sensitive");
+    let ending = ok(rig.ask("demo", &token, json!([ask("link_remove", "*")]), json!({})));
+    assert_eq!(ending["risk"], "routine");
+    assert!(ending["text"].as_str().unwrap().contains("FLAG: It asks for link_remove on anything: a whole class of things, not one."), "a wildcard is flagged at the routine level too: {ending}");
+    assert!(ending.get("code").is_none(), "and a routine request still has no number");
+    let sync = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})));
+    assert!(!sync["text"].as_str().unwrap().contains("a whole class of things"), "an action with no resource is not flagged for the star it carries: {sync}");
+}
+
+#[test]
 fn quiet_notices_are_capped_too_so_many_holds_cannot_buzz_the_phone_either() {
     let (rig, phone) = setup();
     rig.node.lock().unwrap().fatigue.rules.quiet_per_hour = 1;

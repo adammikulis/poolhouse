@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::approvals::content::{risk_of, ROUTINE};
+use crate::approvals::content::names_a_resource;
 use crate::approvals::APPROVED;
 use crate::error::Result;
 use crate::grants::book::{standing, Grant};
@@ -61,7 +61,7 @@ pub fn for_grants(node: &mut Node, board: &str, session: &str, asks: &[Asked], p
                 out.push(format!("It asks for more than its last {} grant: {}.", ask.action, more.join(", ")));
             }
         }
-        if (ask.resource == "*" || ask.resource.ends_with('*')) && risk_of(ask.action).0 != ROUTINE {
+        if (ask.resource == "*" || ask.resource.ends_with('*')) && names_a_resource(ask.action) {
             out.push(format!("It asks for {} on {}: a whole class of things, not one.", ask.action, crate::approvals::content::resource_words(ask.resource)));
         }
         if ask.lasts_ms > DAY_MS {
