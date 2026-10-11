@@ -64,7 +64,7 @@ python -m poolhouse.device_setup --yes
    `poolhouse-workspace send MAC_SESSION_NAME status "connected from Windows" --agent YOUR_NAME`, and read the
    reply with `poolhouse-workspace inbox --agent YOUR_NAME`.
 7. **Run tests on this device.** `scripts/test` on its own runs on the device you are on: `scripts/test quick
-   tests/test_x.py` (WSL, Linux, macOS), with the explicit selectors AGENTS.md "Running the tests" asks for. On
+   tests/test_x.py` (WSL, Linux, macOS), with the explicit selectors AGENTS.md "Scoped merge gates and background verification" asks for. On
    Windows the suite runs inside WSL (docs/windows-runtime.md); use the WSL checkout. Another device's agent can also
    run tests here with `--on` once you turn it on (the last section).
 

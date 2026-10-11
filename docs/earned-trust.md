@@ -228,7 +228,7 @@ None of these reads the ledger, and none has a standing input; they stay at thei
   identity never passes a `delegated` gate; `POOLHOUSE_AUTHORITY_FLOOR=person` only tightens.
   [D `AGENTS.md`] The levels here must sit **inside** these gates and never relax one.
 - **GPU, one at a time.** A GPU lease is required and nothing computes alongside it. [D `AGENTS.md`
-  section 4] A high level does not skip the lease.
+  "One thing computing on the GPU at a time"] A high level does not skip the lease.
 - **Budgets only fall.** `--allow-increase` keys on `CLAUDECODE`, and edit guards refuse growth.
   [D `CLAUDE.md`] A high level never raises a budget.
 - **Independent review.** A worker never credits or reviews itself; hashes bind the review.
