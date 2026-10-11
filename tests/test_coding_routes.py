@@ -6,17 +6,17 @@ import time
 import pytest
 from coding_kit import SESSION, fixture_worker
 from launch_support import signed
+from node_kit import node_binary, workspace_node  # noqa: F401
 from test_fleet_ui import Serving
-from workspace_kit import Kit
 
+from poolhouse.board import person
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.workspace import coding_turns
 
 
 @pytest.fixture
-def coding_api(tmp_path, monkeypatch):
+def coding_api(tmp_path, monkeypatch, workspace_node):  # noqa: F811
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "workspace"))
-    kit = Kit(tmp_path / "workspace")
     monkeypatch.setattr(coding_turns, "worker", fixture_worker)
     server = signed(Serving(tmp_path))
     server.ui.settings.setup_done = True
@@ -25,13 +25,18 @@ def coding_api(tmp_path, monkeypatch):
     folder.mkdir()
     made = server.ui.conversations.start(model="test-model", settings={"mode": "coding", "project": str(folder), "role": "read-only", "harness": "codex"})
     try:
-        yield server, made, kit
+        yield server, made, workspace_node
     finally:
         if hasattr(server.ui, "coding_turns"):
             for turn in server.ui.coding_turns.turns.values():
                 if turn.state in ("starting", "running", "cancelling"):
                     turn.cancel()
         server.close()
+
+
+def sessions(node, retired=False):
+    """The sessions of the board as the person's session sees them."""
+    return person.on(node.client, node.board).agents(retired=retired)
 
 
 def post(server, cid, operation, body, **options):
@@ -51,7 +56,7 @@ def finished(server, cid):
 
 
 def test_native_turns_resume_and_revoke_only_their_agent(coding_api):
-    server, conversation, kit = coding_api
+    server, conversation, node = coding_api
     assert post(server, conversation.id, "start", {"message": "inspect the brakes"})[0] == 202
     assert finished(server, conversation.id)["state"] == "completed"
     assert post(server, conversation.id, "start", {"message": "inspect the sensors"})[0] == 202
@@ -61,13 +66,16 @@ def test_native_turns_resume_and_revoke_only_their_agent(coding_api):
     saved = server.ui.conversations.get(conversation.id)
     assert [message.content for message in saved.messages] == ["inspect the brakes", "Inspected: inspect the brakes",
                                                               "inspect the sensors", "Inspected: inspect the sensors"]
-    assert kit.ws.registry.role_of("owner") == "human"
-    assert not kit.ws.registry.role_of(f"chat-{conversation.id}")
-    assert not (kit.base / "tokens" / f"chat-{conversation.id}").exists()
+    persons = person.on(node.client, node.board)
+    live = {a.name: a for a in sessions(node)}
+    assert [a.harness for a in live.values()] == ["poolhouse-ui"] and persons.name in live
+    ended = [a for a in sessions(node, retired=True) if a.retired]
+    assert [a.parent for a in ended] == [persons.name, persons.name]
+    assert [path.name for path in (node.state / "client" / node.board).glob("*.token")] == [f"{persons.name}.token"]
 
 
 def test_cancel_stops_native_process_and_the_next_turn_can_start(coding_api):
-    server, conversation, _kit = coding_api
+    server, conversation, _node = coding_api
     assert post(server, conversation.id, "start", {"message": "wait until cancelled"})[0] == 202
     deadline = time.monotonic() + 10
     while server.ui.coding_turns.status(conversation.id)["session"] != SESSION:
@@ -87,13 +95,13 @@ def test_cancel_stops_native_process_and_the_next_turn_can_start(coding_api):
 @pytest.mark.parametrize("body", [{"message": []}, {"message": ""}, {"message": "hello", "role": "admin"},
                                   {"message": "hello", "parent": "owner"}, [], {"message": "hello", "token": "secret"}])
 def test_client_cannot_supply_identity_or_unsupported_fields(coding_api, body):
-    server, conversation, _kit = coding_api
+    server, conversation, _node = coding_api
     assert post(server, conversation.id, "start", body)[0] == 400
     assert server.ui.conversations.get(conversation.id).messages == []
 
 
 def test_coding_start_requires_person_page_origin_and_ui_header(coding_api):
-    server, conversation, _kit = coding_api
+    server, conversation, _node = coding_api
     path = f"/ui/coding/{conversation.id}/start"
     body = {"message": "hello"}
     assert server.call(path, method="POST", body=body)[0] == 403
@@ -112,19 +120,19 @@ def test_coding_extension_is_declared_in_installed_metadata():
 
 
 def test_launcher_refusal_is_failed_instead_of_a_completed_empty_turn(coding_api):
-    server, conversation, kit = coding_api
+    server, conversation, node = coding_api
     assert post(server, conversation.id, "start", {"message": "startup rejected"})[0] == 202
     status = finished(server, conversation.id)
     assert status["state"] == "failed"
     assert "status 2" in status["error"]
-    assert not kit.ws.registry.role_of(f"chat-{conversation.id}")
+    assert [a.harness for a in sessions(node, retired=True) if a.harness != "poolhouse-ui"] == []
     assert len(server.ui.conversations.get(conversation.id).messages) == 1
 
 
 def test_joined_coding_session_is_required_before_starting_a_worker(coding_api, monkeypatch):
     from poolhouse.fleet import routes
 
-    server, conversation, _kit = coding_api
+    server, conversation, _node = coding_api
     monkeypatch.setattr(routes, "in_pool", lambda _: True)
     assert post(server, conversation.id, "start", {"message": "unsigned"}, cookie="")[0] == 401
     assert server.ui.conversations.get(conversation.id).messages == []

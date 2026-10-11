@@ -1,58 +1,8 @@
-"""Records that a lookup or an unchanged rebind used to rewrite are left alone (docs/disk-writes.md)."""
-
-from types import SimpleNamespace
+"""Records that an unchanged rebind used to rewrite are left alone (docs/disk-writes.md)."""
 
 import pytest
 
-from poolhouse import home
-from poolhouse.graph.store import GraphStore
-from poolhouse.workspace import (
-    integration_git as repo,
-    project_connection as connection,
-    worktree_lifecycle as lifecycle,
-)
-from poolhouse.workspace.device_accounts import account_for
-
-PROJECT = "a" * 32
-
-
-class Remote:
-    host = "http://127.0.0.1:8770"
-    project_id = PROJECT
-    pool_key = ""
-
-    def token(self, **kwargs):
-        return "project-agent-capability"
-
-    def call(self, operation, token, *args, **kwargs):
-        return {"id": "mac", "role": "agent", "can": ["send", "read", "claim"], "project": {"key": PROJECT}}
-
-
-def test_binding_an_unchanged_connection_does_not_rewrite_the_record(tmp_path, monkeypatch):
-    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
-    project, other = tmp_path / "project", tmp_path / "second"
-    project.mkdir()
-    other.mkdir()
-    connection.bind(Remote(), project, "mac")
-    path = home.state("workspace-connections.json")
-    first = path.stat()
-    connection.bind(Remote(), project, "mac")
-    again = path.stat()
-    assert (again.st_mtime_ns, again.st_ino) == (first.st_mtime_ns, first.st_ino)
-    connection.bind(Remote(), other, "mac")
-    assert str(other.resolve()) in path.read_text()
-
-
-def test_an_account_lookup_writes_nothing(tmp_path):
-    ws = SimpleNamespace(base=tmp_path)
-    assert account_for(ws, "worker") is None
-    assert not list(tmp_path.iterdir()), "a lookup must not create the store"
-    with GraphStore(tmp_path / "device-accounts.db") as graph:
-        graph.upsert_node({"id": "agent:worker", "kind": "agent", "label": "worker"})
-    database = tmp_path / "device-accounts.db"
-    seen = (database.stat().st_mtime_ns, database.read_bytes())
-    assert account_for(ws, "worker") is None
-    assert (database.stat().st_mtime_ns, database.read_bytes()) == seen
+from poolhouse.workspace import integration_git as repo, worktree_lifecycle as lifecycle
 
 
 @pytest.fixture
@@ -74,7 +24,7 @@ def test_remembering_an_unchanged_checkout_does_not_rewrite_the_store(tmp_path, 
     base = tmp_path / "lifecycle"
     base.mkdir()
     lifecycle.remember(base, "worker", str(checkout))
-    database = base / "worktree-lifecycle.db"
+    database = base / "worktree-lifecycle.json"
     first = (database.stat().st_mtime_ns, database.read_bytes())
     lifecycle.remember(base, "worker", str(checkout))
     assert (database.stat().st_mtime_ns, database.read_bytes()) == first

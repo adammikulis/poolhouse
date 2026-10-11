@@ -7,6 +7,7 @@ import json
 import tomllib
 
 import pytest
+from node_kit import node_binary, workspace_node  # noqa: F401
 
 from poolhouse import agent_hooks, authority
 from poolhouse.person import HumanRequired
@@ -136,10 +137,10 @@ def test_the_install_command_follows_the_registry(machine, monkeypatch):
     authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
     monkeypatch.setenv("CLAUDECODE", "1")
     with pytest.raises(HumanRequired):
-        hooks_cli.install(args, None)
+        hooks_cli.install(args)
     assert not (machine / "s.json").exists()
     authority.set_state(["workspace.setup"], authority.DELEGATED, by="lead")
-    assert hooks_cli.install(args, None) == 0
+    assert hooks_cli.install(args) == 0
     assert (machine / "s.json").is_file()
 
 
@@ -168,13 +169,9 @@ def test_findings_report_an_unreadable_file_and_a_missing_binary(machine, monkey
     assert "poolhouse-workspace is not on PATH" in found[0].said
 
 
-def test_the_workspace_doctor_carries_the_hook_findings(machine, monkeypatch):
-    from workspace_kit import Kit
-
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(machine / "ws"))
-    monkeypatch.setattr(authority, "require_person", lambda *a, **k: None)
-    kit = Kit(machine / "ws")
-    hooks = [f for f in onboard.doctor(kit.ws) if "message-board hooks" in f.what]
+def test_the_workspace_doctor_carries_the_hook_findings(machine, workspace_node):  # noqa: F811
+    session = workspace_node.session(workspace_node.member("doctor"))
+    hooks = [f for f in onboard.doctor(session) if "message-board hooks" in f.what]
     assert [f.ok for f in hooks] == [False, False]
     assert all("missing" in f.what and f.fix == "poolhouse-workspace install-hooks" for f in hooks)
 
@@ -182,10 +179,10 @@ def test_the_workspace_doctor_carries_the_hook_findings(machine, monkeypatch):
 def test_the_install_command_writes_both_agents_into_named_files(machine, capsys, monkeypatch):
     monkeypatch.setattr(authority, "require_person", lambda *a, **k: None)
     args = argparse.Namespace(settings=str(machine / "s.json"), codex_config=str(machine / "c.toml"), only=[], agent="")
-    assert hooks_cli.install(args, None) == 0
+    assert hooks_cli.install(args) == 0
     out = capsys.readouterr().out
     assert "claude-code: PostToolUse, Stop, UserPromptSubmit" in out and "codex: PostToolUse, Stop" in out
     assert (machine / "s.json").is_file() and (machine / "c.toml").is_file()
     args.only = ["codex"]
-    assert hooks_cli.install(args, None) == 0
+    assert hooks_cli.install(args) == 0
     assert "claude-code" not in capsys.readouterr().out

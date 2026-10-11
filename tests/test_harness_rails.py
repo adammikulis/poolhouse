@@ -10,9 +10,11 @@ import threading
 import time
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from workspace_kit import Kit, clean_env
+from harness_kit import held
+from node_kit import node_binary, workspace_node  # noqa: F401
 
 from poolhouse import (
     claude,
@@ -24,9 +26,9 @@ from poolhouse import (
     private_path,
     requests,
 )
+from poolhouse.board import credentials, person, session as board_session
+from poolhouse.board.client import Denied as NodeDenied
 from poolhouse.harnesspolicy import decide
-from poolhouse.workspace import tokens
-from poolhouse.workspace.project import describe
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 
@@ -98,10 +100,8 @@ class TestHook:
         assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
         assert inbox.list() == []
 
-    def test_a_call_that_asks_waits_for_the_person_and_runs_only_on_their_yes(self, tmp_path, monkeypatch):
-        kit = Kit(clean_env(monkeypatch, tmp_path))
-        tokens.store(kit.base, 'local-test', kit.agent('local-test'))
-        kit.ws.registry.set_project(kit.ws.auth(kit.owner), 'local-test', describe(str(tmp_path)))
+    def test_a_call_that_asks_waits_for_the_person_and_runs_only_on_their_yes(self, tmp_path, workspace_node):  # noqa: F811
+        agent = workspace_node.member("local-test")
         for choice, want in (("allow-once", "allow"), ("deny", "deny")):
             inbox = requests.Inbox(memory=True)
             payload = {"tool_name": "Bash", "tool_input": {"command": f"rm -rf {tmp_path}/x"}, "cwd": str(tmp_path),
@@ -118,11 +118,12 @@ class TestHook:
 
             thread = threading.Thread(target=person)
             thread.start()
-            out = harnesshook.pre(payload, self._rail(wait_s=10.0, roots=(str(tmp_path),)), inbox)
+            out = harnesshook.pre(payload, harnesshook.Rail("approve-first", agent.name, (str(tmp_path),), (), 10.0), inbox)
             thread.join()
             assert out["hookSpecificOutput"]["permissionDecision"] == want
             raised = requests.list_requests(inbox=inbox)[0]
-            assert raised.kind == "tool_call_destructive" and raised.raised_by.agent == "local-test"
+            assert raised.kind == "tool_call_destructive" and raised.raised_by.agent == agent.name
+        assert held(workspace_node.session(agent), agent.name) == [("area", str((tmp_path / "x").resolve()))]
 
     def test_an_unanswered_request_is_a_denial(self):
         inbox = requests.Inbox(memory=True)
@@ -284,8 +285,7 @@ def _fake_serving(seen):
 class TestLaunch:
     @pytest.fixture(autouse=True)
     def _quiet(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(codex.tokens, "load", lambda base, agent: "assigned-test-session")
-        monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, **kwargs: harnessid.HarnessSession(name, base=tmp_path / "workspace"))
+        monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, **kwargs: harnessid.HarnessSession(name, board="demo", base=tmp_path / "workspace"))
         monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         monkeypatch.setattr(claude, "alias_of", lambda url, model: "qwen-27b")
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen-27b")
@@ -331,7 +331,8 @@ class TestLaunch:
         assert scope["required"] is True
         assert scope["command"] == sys.executable
         assert scope["args"][-1] == "--workspace-only"
-        assert scope["env"]["POOLHOUSE_WORKSPACE_TOKEN"] == "assigned-test-session"
+        assert scope["env"]["POOLHOUSE_WORKSPACE_AGENT"] == "local-qwen-27b-codex" and scope["env"]["POOLHOUSE_BOARD"] == "demo"
+        assert "POOLHOUSE_WORKSPACE_TOKEN" not in scope["env"]
         assert "--dangerously-bypass-hook-trust" in seen["command"] and seen["command"][-2:] == ["exec", "fix it"]
         assert tmp_path / "tree" not in seen["home"].parents and not seen["home"].exists()
 
@@ -377,7 +378,7 @@ class TestWorkspaceCommands:
         assert harnesshook.nudge(hostile) == "nudge text"
         command, options = seen[0]
         assert command == [sys.executable, '-m', 'poolhouse.workspace.notification_reader',
-                           hostile, str(Path.cwd()), '']
+                           hostile, str(Path.cwd())]
         assert options.get('shell', False) is False
         assert options['timeout'] == harnesshook.NUDGE_S
 
@@ -389,18 +390,20 @@ class TestWorkspaceCommands:
 
 
 class TestHarnessSession:
-    @pytest.fixture(autouse=True)
-    def _own_workspace(self, monkeypatch, tmp_path):
-        clean_env(monkeypatch, tmp_path)
-        monkeypatch.setattr(harnessid.project_connection, "auto_attach", lambda *a: None, raising=False)
-
     @pytest.fixture
-    def person(self, monkeypatch):
-        from poolhouse import authority
+    def kit(self, workspace_node, tmp_path):  # noqa: F811
+        lead = workspace_node.member("lead")
+        project = tmp_path / "proj"
+        project.mkdir()
+        return SimpleNamespace(node=workspace_node, lead=lead, board=workspace_node.session(lead), project=project)
 
-        real = authority.require_person
-        monkeypatch.setattr(authority, "require_person",
-                            lambda action, terminal=None, env=None: real(action, (True, True), env))
+    @staticmethod
+    def agents(kit, retired=False):
+        return {a.name: a for a in kit.board.agents(retired=retired)}
+
+    @staticmethod
+    def token_file(kit, session):
+        return kit.node.state / "client" / kit.node.board / f"{session.name}.token"
 
     def test_the_name_is_local_model_harness_cleaned_to_what_an_id_allows(self):
         assert harnessid.agent_name("Qwen3.8-27B-UD-Q4_K_XL", "codex") == "local-qwen3.8-27b-ud-q4_k_xl-codex"
@@ -408,145 +411,116 @@ class TestHarnessSession:
         assert len(harnessid.agent_name("x" * 80, "codex")) <= 48
         assert harnessid.agent_name("m", "codex", "mine") == "mine"
 
-    def test_a_launcher_connects_a_persistent_agent_without_printing_a_token(self, person, tmp_path):
-        from poolhouse.workspace import Workspace, tokens
-
+    def test_a_launcher_makes_a_subagent_session_of_the_session_that_starts_it_without_printing_a_token(self, kit):
         said = []
-        project = tmp_path / "proj"
-        project.mkdir()
-        session = harnessid.invite("local-test-codex", project, "claude", said.append)
-        ws = Workspace()
-        assert session.persistent and not session.minted and ws.registry.role_of("local-test-codex") == "agent"
-        token_file = tokens.directory(ws.base) / "local-test-codex"
+        session = harnessid.invite("local-test-codex", kit.project, kit.lead.name, said.append)
+        assert session.minted and not session.persistent and session.board == kit.node.board
+        assert self.agents(kit)[session.name].parent == kit.lead.name
+        token_file = self.token_file(kit, session)
         assert private_path.problem(token_file) == ""
         secret = token_file.read_text().strip()
-        assert secret not in "".join(said) and session.flags() == ["--agent", "local-test-codex"]
-        assert session.revoke() is False and token_file.exists()
-        assert ws.auth(secret).id == "local-test-codex"
-        again = harnessid.invite("local-test-codex", project, "claude", said.append)
-        assert again.persistent and tokens.load(ws.base, again.name) == secret
+        assert secret not in "".join(said) and secret != kit.lead.token
+        assert session.flags() == ["--agent", session.name]
+        assert credentials.load(kit.node.state, kit.node.board, session.name) == secret
 
-    def test_the_session_is_on_the_board_with_the_quiet_defaults(self, person, tmp_path):
-        from poolhouse.workspace import Workspace
+    def test_a_launcher_run_by_a_person_is_a_subagent_of_the_persons_session(self, kit):
+        session = harnessid.invite("local-test-codex", kit.project, "", lambda _: None)
+        persons = person.on(kit.node.client, kit.node.board)
+        assert self.agents(kit)[session.name].parent == persons.name and session.parent.name == persons.name
 
-        project = tmp_path / "proj"
-        project.mkdir()
-        session = harnessid.invite("local-test-codex", project, "claude", lambda _: None)
-        boards, subs = Workspace(session.base).board.store.state()
-        assert any("local-test-codex" in b["members"] for k, b in boards.items() if k != "#general")
-        assert not subs.get("local-test-codex")
+    def test_a_launcher_run_by_an_agent_is_a_subagent_of_that_agents_session(self, kit, monkeypatch):
+        monkeypatch.setenv(board_session.AGENT_ENV, kit.lead.name)
+        session = harnessid.invite("local-test-codex", kit.project, "", lambda _: None)
+        assert self.agents(kit)[session.name].parent == kit.lead.name
 
-    def test_a_launcher_records_its_model_as_claimed(self, person, monkeypatch, tmp_path):
-        from poolhouse.workspace import Workspace
+    def test_the_default_parent_of_a_launch_is_the_session_of_its_environment(self, kit, monkeypatch):
+        monkeypatch.setenv(board_session.AGENT_ENV, kit.lead.name)
+        args = harnessing.parser("codex", "codex", 8080, 1).parse_args(["qwen", "--project", str(kit.project)])
+        monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
+        with harnessing.opened(args, "codex", ("http://127.0.0.1:9", "qwen", 0), lambda _: None) as run:
+            assert self.agents(kit)[run.session.name].parent == kit.lead.name
+            assert f"activation owner: {kit.lead.name}" in run.brief and f"the lead ({kit.lead.name})" in run.brief
+        assert self.agents(kit, retired=True)[run.session.name].retired
 
-        session = harnessid.invite("local-test-codex", tmp_path, "claude", lambda _: None)
+    def test_a_launcher_whose_named_parent_has_no_session_is_refused(self, kit):
+        said = []
+        with pytest.raises(ValueError, match="could not be made"):
+            harnessid.invite("local-test-codex", kit.project, "ghost", said.append)
+        assert said[0].startswith("workspace connection refused") and "ghost" in said[0]
+
+    def test_the_session_is_on_the_board_with_the_quiet_defaults(self, kit):
+        session = harnessid.invite("local-test-codex", kit.project, kit.lead.name, lambda _: None)
+        assert session.name in self.agents(kit)
+        assert not session.session().subs()
+
+    def test_a_launcher_records_its_model_as_claimed(self, kit, monkeypatch):
+        session = harnessid.invite("local-test-codex", kit.project, kit.lead.name, lambda _: None)
         assert session.record_model("qwen-27b", "codex") is True
-        assert "qwen-27b" in json.dumps(Workspace(session.base).registry.info("local-test-codex"))
-        assert Workspace(session.base).registry.info(session.name)["model_state"] == "claimed"
+        agent = self.agents(kit)[session.name]
+        assert (agent.model, agent.model_state, agent.harness) == ("qwen-27b", "claimed", "codex")
         monkeypatch.setenv("CLAUDECODE", "1")
         assert session.record_model("other", "codex") is True
+        assert self.agents(kit)[session.name].model == "other"
         assert harnessid.HarnessSession("x").record_model("m", "codex") is False
 
-    def test_ending_the_session_keeps_identity_and_removes_harness_files(self, person, monkeypatch, tmp_path):
-        from poolhouse.workspace import Workspace, tokens
-
+    def test_ending_the_session_retires_it_and_removes_harness_files(self, kit, monkeypatch, tmp_path):
         seen = {}
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen")
         monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         binary = tmp_path / "codex"
         binary.write_text("#!/bin/sh\n")
-        (tmp_path / "proj").mkdir()
 
         def run(command, env):
-            ws = Workspace()
-            seen["token"] = tokens.load(ws.base, "local-qwen-codex")
-            assert ws.auth(seen["token"]).id == "local-qwen-codex"
             seen["home"] = Path(env["CODEX_HOME"])
+            config = tomllib.loads((seen["home"] / "config.toml").read_text())
+            seen["name"] = config["mcp_servers"]["workspace"]["env"]["POOLHOUSE_WORKSPACE_AGENT"]
+            assert not self.agents(kit)[seen["name"]].retired
+            assert credentials.load(kit.node.state, kit.node.board, seen["name"])
             return 0
 
-        assert codex.launch(["--codex", str(binary), "--project", str(tmp_path / "proj")], say=lambda _: None,
-                            run_codex=run) == 0
-        assert Workspace().auth(seen["token"]).id == "local-qwen-codex"
-        assert (tokens.directory(Workspace().base) / "local-qwen-codex").exists()
+        assert codex.launch(["--codex", str(binary), "--project", str(kit.project), "--as", kit.lead.name],
+                            say=lambda _: None, run_codex=run) == 0
+        assert self.agents(kit, retired=True)[seen["name"]].retired
+        assert not (kit.node.state / "client" / kit.node.board / f"{seen['name']}.token").exists()
         assert not seen["home"].exists()
+        assert self.agents(kit)[kit.lead.name].parent == "" and kit.board.whoami().name == kit.lead.name
 
-    def test_an_agent_launcher_initializes_itself_without_a_parent_credential(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("CLAUDECODE", "1")
-        session = harnessid.invite("local-test-codex", tmp_path, "claude", lambda _: None)
-        assert session.name == "local-test-codex" and session.persistent
-
-    @pytest.mark.parametrize("authority", ["selected", "discovered", "coordinator"])
-    def test_remote_launcher_uses_selected_authority_without_local_bootstrap(self, monkeypatch, tmp_path, authority):
-        calls = []
-        class Remote:
-            base = tmp_path
-            def token(self, **kwargs):
-                return "saved-session"
-            def call(self, operation, token, *args):
-                calls.append((operation, args))
-                return {"id": "device-worker"}
-            def ensure(self, base, name, **kwargs):
-                calls.append(("ensure", kwargs))
-                return "device-worker"
-        remote = Remote()
-        via_board = authority != "coordinator"
-        connection = {"host": "https://192.0.2.1", "project_id": "a" * 32}
-        selected = connection if authority == "selected" else None
-        monkeypatch.setattr(harnessid.project_connection, "selected", lambda *a: selected)
-        monkeypatch.setattr(harnessid.project_connection, "auto_attach",
-                            lambda *a: connection if authority == "discovered" else None, raising=False)
-        monkeypatch.setattr(harnessid.project_connection, "RemoteWorkspace", lambda *a, **k: remote)
-        monkeypatch.setattr(harnessid.coordinator_client, "client", lambda *a: remote)
-        monkeypatch.setattr(harnessid, "authoritative", lambda *a: {"key": "a" * 32, "name": "project"})
-        monkeypatch.setattr(harnessid.limits, "root", lambda: tmp_path)
-        monkeypatch.setattr(harnessid, "Workspace", lambda *a: pytest.fail("local fallback"))
-        session = harnessid.invite("worker", tmp_path, "", lambda _: None)
-        assert session.name == "device-worker" and session.persistent
-        assert session.record_model("test-model", "test-harness")
-        assert calls[-1][0] == ("claim_model" if via_board else "ensure")
-        assert not session.revoke()
-
-    def test_a_fake_endpoint_cannot_verify_a_delegated_agents_model(self, monkeypatch, tmp_path):
+    def test_a_fake_endpoint_cannot_verify_a_delegated_agents_model(self, kit, monkeypatch):
         from poolhouse.testing import FakeLlamaServer, Served
-        from poolhouse.workspace import Workspace, tokens
 
-        ws = Workspace()
-        owner = ws.init("owner")
-        parent = ws.mint(owner, "codex", "agent")
-        tokens.store(ws.base, "codex", parent)
         monkeypatch.setenv("CLAUDECODE", "1")
-        session = harnessid.invite("local-qwen", tmp_path, "codex", lambda _: None)
+        session = harnessid.invite("local-qwen", kit.project, kit.lead.name, lambda _: None)
         endpoint = FakeLlamaServer(Served(model="qwen-27b"))
         try:
             assert session.record_model("qwen-27b", "codex", endpoint.base_url)
-            assert ws.whoami_model(session.name)["model_state"] == "claimed"
+            assert self.agents(kit)[session.name].model_state == "claimed"
         finally:
             endpoint.close()
             session.revoke()
 
-    def test_an_agent_launcher_delegates_a_distinct_private_child_without_changing_invite_policy(self, monkeypatch, tmp_path):
-        from poolhouse.workspace import Workspace, tokens
-
-        ws = Workspace()
-        owner = ws.init("owner")
-        parent = ws.mint(owner, "codex", "agent")
-        tokens.store(ws.base, "codex", parent)
-        monkeypatch.setenv("CLAUDECODE", "1")
+    def test_a_launched_session_is_a_distinct_private_child_that_a_revocation_ends(self, kit):
         said = []
-        session = harnessid.invite("local-qwen", tmp_path, "codex", said.append)
-        assert session.name == "codex/local-qwen" and session.flags() == ["--agent", "codex/local-qwen"]
-        secret = tokens.load(ws.base, session.name)
-        child = ws.auth(secret)
-        assert child.parent == "codex" and child.role == "agent"
-        assert set(child.can) <= set(ws.auth(parent).can)
-        assert secret not in "".join(said)
-        assert ws.limits.agent_invite_ask == "approve-first" and ws.invites.made_by("codex") == []
-        assert session.revoke() and ws.auth(parent).id == "codex"
-        from poolhouse.workspace import Denied
+        session = harnessid.invite("local-qwen", kit.project, kit.lead.name, said.append)
+        child = credentials.load(kit.node.state, kit.node.board, session.name)
+        assert session.name != kit.lead.name and child != kit.lead.token
+        assert board_session.Session(kit.node.client, kit.node.board, child).whoami().name == session.name
+        assert session.revoke() is True
+        assert not self.token_file(kit, session).exists()
+        assert self.agents(kit, retired=True)[session.name].retired
+        with pytest.raises(NodeDenied):
+            board_session.register(kit.node.client, kit.node.board, board_session.Native("", "harness", "nested"), child)
+        assert kit.board.whoami().name == kit.lead.name and self.agents(kit)[kit.lead.name].retired is False
 
-        with pytest.raises(Denied, match="revoked"):
-            ws.delegate(secret, "nested")
+    def test_revoking_a_session_releases_only_its_own_claims(self, kit):
+        first = harnessid.invite("local-one", kit.project, kit.lead.name, lambda _: None)
+        second = harnessid.invite("local-two", kit.project, kit.lead.name, lambda _: None)
+        mine, theirs = str(kit.project / "mine.py"), str(kit.project / "theirs.py")
+        first.session().claim("area", mine)
+        second.session().claim("area", theirs)
+        assert first.revoke() is True
+        assert held(kit.board, first.name) == [] and held(kit.board, second.name) == [("area", theirs)]
+        assert second.revoke() is True
 
     def test_the_brief_names_who_the_agent_obeys_and_that_everything_else_is_data(self):
         text = harnessid.brief("n", "alias", "codex", "claude", ["reviewer"])
@@ -556,7 +530,6 @@ class TestHarnessSession:
 class TestCodingAgent:
     def test_launch_coding_agent_runs_codex_with_the_project_and_the_orders(self, monkeypatch, tmp_path):
         seen = {}
-        monkeypatch.setattr(codex.tokens, "load", lambda base, agent: "assigned-test-session")
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen-27b")
         monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)

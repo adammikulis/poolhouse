@@ -5,16 +5,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import harnesshook
-from poolhouse.workspace.identity import BoardUnavailable, Denied
+from poolhouse import harness_claims, harnesshook, node_launch
+from poolhouse.board.client import Client
+from poolhouse.errors import Denied
+from poolhouse.workspace import harness_session
 
 
 def unavailable(*args, **kwargs):
-    raise BoardUnavailable('board unavailable: connection refused')
+    raise harness_session.BoardUnavailable('board unavailable: connection refused')
 
 
 def test_post_outage_does_not_reverse_a_completed_tool(monkeypatch, capsys):
-    monkeypatch.setattr(harnesshook.harness_remote, 'context', unavailable)
     monkeypatch.setattr(harnesshook, '_reader_run', lambda *args, **kwargs:
                         SimpleNamespace(returncode=1, stdout='', stderr='connection refused'))
     out = io.StringIO()
@@ -25,14 +26,14 @@ def test_post_outage_does_not_reverse_a_completed_tool(monkeypatch, capsys):
 
 
 def test_stop_is_not_blocked_when_the_board_is_unavailable(monkeypatch):
-    monkeypatch.setattr(harnesshook.harness_remote, 'context', unavailable)
+    monkeypatch.setattr(Client, 'call', lambda *args, **kwargs: pytest.fail('completion asked the node'))
     assert harnesshook.stop(harnesshook.Rail('plan-and-go', 'worker', ['/project'])) == {}
 
 
 def test_stop_stays_blocked_by_a_real_refusal(monkeypatch):
     def refused(*args, **kwargs):
         raise Denied('completion refused')
-    monkeypatch.setattr(harnesshook.harness_remote, 'context', refused)
+    monkeypatch.setattr(harnesshook.worktree_lifecycle, 'require_clean', refused)
     result = harnesshook.stop(harnesshook.Rail('plan-and-go', 'worker', ['/project']))
     assert result['decision'] == 'block' and 'completion refused' in result['reason']
 
@@ -53,6 +54,16 @@ def test_pre_outage_degrades_to_a_warning_and_a_real_denial_still_denies(monkeyp
     assert answer['permissionDecision'] == 'deny' and 'another agent owns this' in answer['permissionDecisionReason']
 
 
+def test_an_unreachable_node_degrades_the_pre_hook_to_a_warning(monkeypatch, tmp_path):
+    def down(*args, **kwargs):
+        raise node_launch.NodeUnavailable('the node does not answer')
+    monkeypatch.setattr(Client, 'call', down)
+    payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(tmp_path / 'test.py')}, 'cwd': str(tmp_path)}
+    answer = harnesshook.pre(payload, harnesshook.Rail('plan-and-go', 'worker', [str(tmp_path)]))['hookSpecificOutput']
+    assert answer['permissionDecision'] == 'allow'
+    assert 'ownership not checked' in answer['permissionDecisionReason'] and 'does not answer' in answer['permissionDecisionReason']
+
+
 @pytest.mark.parametrize('secret', ['mlws1.worker.' + 'a' * 43, 'mlws1.worker.one/child.two.' + 'b' * 43,
                                    'mlsk1.' + 'c' * 43, 'sk-' + 'a' * 30,
                                    'https://owner:private-password@example.invalid',
@@ -67,9 +78,9 @@ def test_diagnostic_redacts_credentials(secret, monkeypatch):
 
 @pytest.mark.parametrize('role', ['read-only', 'approve-first', 'plan-and-go'])
 def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_path, role):
-    def no_board_context(*args, **kwargs):
+    def no_board_session(*args, **kwargs):
         pytest.fail('resource-free launcher requested mutation authority')
-    monkeypatch.setattr(harnesshook.harness_remote, 'context', no_board_context)
+    monkeypatch.setattr(harness_claims, 'session_of', no_board_session)
     monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (False, 'test declined'))
     args = {'command': 'poolhouse --no-browser'}
     rail = harnesshook.Rail(role, 'worker', [str(tmp_path)])
@@ -80,7 +91,7 @@ def test_launcher_keeps_normal_role_policy_without_admission(monkeypatch, tmp_pa
 
 
 def test_a_board_outage_never_waives_the_destructive_call_guard(monkeypatch, tmp_path):
-    monkeypatch.setattr(harnesshook.harness_remote, 'context', unavailable)
+    monkeypatch.setattr(harness_claims, 'session_of', unavailable)
     monkeypatch.setattr(harnesshook, '_ask', lambda *args, **kwargs: (False, 'test declined'))
     args = {'command': f'poolhouse --no-browser; rm -rf {tmp_path / "owned"}'}
     result = harnesshook.pre({'tool_name': 'Bash', 'tool_input': args, 'cwd': str(tmp_path)},
@@ -109,7 +120,6 @@ def test_unhandled_post_failure_is_nonblocking(monkeypatch, capsys):
 
 
 def test_post_checkpoint_outage_preserves_pending_message_alert(monkeypatch):
-    monkeypatch.setattr(harnesshook.harness_remote, 'context', unavailable)
     seen = []
 
     def pending(label, rail=None):

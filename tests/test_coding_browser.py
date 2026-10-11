@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 from coding_kit import fixture_worker
+from node_kit import node_binary, workspace_node  # noqa: F401
 from test_fleet_ui import Serving
-from workspace_kit import Kit
 
 from poolhouse.fleet.conversation_settings import DEFAULTS
 from poolhouse.fleet.conversations import Conversations
@@ -14,9 +14,8 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def coding_browser(tmp_path, monkeypatch, playwright):
+def coding_browser(tmp_path, monkeypatch, playwright, workspace_node):  # noqa: F811
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "workspace"))
-    Kit(tmp_path / "workspace")
     monkeypatch.setattr(coding_turns, "worker", fixture_worker)
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True

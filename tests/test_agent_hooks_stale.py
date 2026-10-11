@@ -77,7 +77,7 @@ def test_install_hooks_removes_the_stale_claude_entries_and_keeps_the_rest(machi
     path = machine / "s.json"
     path.write_text(json.dumps(OLD_CLAUDE))
     args = argparse.Namespace(settings=str(path), codex_config="", only=["claude-code"], agent="")
-    assert hooks_cli.install(args, None) == 0
+    assert hooks_cli.install(args) == 0
     data = json.loads(path.read_text())
     assert commands(data, "PostToolUse") == ["other-tool", "poolhouse-workspace nudge --agent claude --hook post"]
     assert commands(data, "Stop") == ["poolhouse-workspace nudge --agent claude --hook stop"]
@@ -92,7 +92,7 @@ def test_install_hooks_removes_the_stale_codex_entries_and_keeps_the_rest(machin
     path = machine / "c.toml"
     path.write_text(OLD_CODEX)
     args = argparse.Namespace(settings="", codex_config=str(path), only=["codex"], agent="")
-    assert hooks_cli.install(args, None) == 0
+    assert hooks_cli.install(args) == 0
     data = tomllib.loads(path.read_text())
     assert commands(data, "Stop") == ["keep-me", "poolhouse-workspace nudge --agent codex --hook stop"]
     assert commands(data, "PostToolUse") == ["poolhouse-workspace nudge --agent codex --hook post"]

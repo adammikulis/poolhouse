@@ -1,52 +1,57 @@
-"""Interrupted lifecycle staging preserves committed ownership records."""
+"""Interrupted lifecycle writes preserve committed ownership records."""
 
 import os
 import subprocess
 import sys
 
 import pytest
+from harness_kit import SRC
 
 from poolhouse.workspace import worktree_lifecycle as lifecycle
 
+STORE = 'worktree-lifecycle.json'
+
 
 def seed(base):
-    with lifecycle._storage(base, write=True) as graph:
-        graph.upsert_node({'id': 'scope', 'kind': 'worktree-lifecycle', 'label': 'worker',
-                           'attrs': {'owner': 'worker', 'label': 'worker', 'commits': ['retained']}})
+    lifecycle._edit(base, lambda rows: rows.__setitem__('scope', {'owner': 'worker', 'label': 'worker', 'commits': ['retained']}))
 
 
-def test_killed_staged_writer_preserves_active_records(tmp_path):
+def test_killed_writer_preserves_active_records(tmp_path):
     seed(tmp_path)
-    before = (tmp_path / 'worktree-lifecycle.db').read_bytes()
+    before = (tmp_path / STORE).read_bytes()
     script = """from pathlib import Path
 import os, sys
-from poolhouse.workspace.worktree_lifecycle import _storage
-with _storage(Path(sys.argv[1]), write=True) as graph:
- graph.upsert_node({'id':'unpublished','kind':'worktree-lifecycle','attrs':{'owner':'worker'}})
- os._exit(23)
+from poolhouse.workspace.worktree_lifecycle import _edit
+def change(rows):
+    rows['unpublished'] = {'owner': 'worker'}
+    os._exit(23)
+_edit(Path(sys.argv[1]), change)
 """
-    done = subprocess.run([sys.executable, '-c', script, str(tmp_path)], env=os.environ.copy(), check=False)
+    done = subprocess.run([sys.executable, '-c', script, str(tmp_path)], env={**os.environ, 'PYTHONPATH': SRC}, check=False)
     assert done.returncode == 23
-    assert (tmp_path / 'worktree-lifecycle.db').read_bytes() == before
+    assert (tmp_path / STORE).read_bytes() == before
     assert lifecycle.scopes(tmp_path, 'worker')[0]['commits'] == ['retained']
-    assert list(tmp_path.glob('worktree-lifecycle-stage-*'))
-    with lifecycle._storage(tmp_path, write=True) as graph:
-        graph.upsert_node({'id': 'next', 'kind': 'worktree-lifecycle', 'attrs': {'owner': 'worker', 'label': ''}})
+    lifecycle._edit(tmp_path, lambda rows: rows.__setitem__('next', {'owner': 'worker', 'label': ''}))
     assert len(lifecycle.scopes(tmp_path, 'worker')) == 2
 
 
-def test_failed_writer_preserves_evidence_and_committed_graph(tmp_path):
+def test_failed_writer_preserves_committed_records(tmp_path):
     seed(tmp_path)
-    with pytest.raises(RuntimeError, match='interrupted'), lifecycle._storage(tmp_path, write=True) as graph:
-        graph.upsert_node({'id': 'unpublished', 'kind': 'worktree-lifecycle', 'attrs': {'owner': 'worker'}})
+    before = (tmp_path / STORE).read_bytes()
+
+    def interrupted(rows):
+        rows['unpublished'] = {'owner': 'worker'}
         raise RuntimeError('interrupted')
+    with pytest.raises(RuntimeError, match='interrupted'):
+        lifecycle._edit(tmp_path, interrupted)
+    assert (tmp_path / STORE).read_bytes() == before
     assert len(lifecycle.scopes(tmp_path, 'worker')) == 1
-    assert list(tmp_path.glob('worktree-lifecycle-stage-*'))
 
 
-def test_read_does_not_checkpoint_or_change_committed_database(tmp_path):
+def test_read_does_not_rewrite_or_add_files(tmp_path):
     seed(tmp_path)
-    before = (tmp_path / 'worktree-lifecycle.db').stat().st_mtime_ns
+    before = (tmp_path / STORE).stat().st_mtime_ns
+    names = sorted(path.name for path in tmp_path.iterdir())
     assert lifecycle.scopes(tmp_path, 'worker')
-    assert (tmp_path / 'worktree-lifecycle.db').stat().st_mtime_ns == before
-    assert not list(tmp_path.glob('worktree-lifecycle.db.*'))
+    assert (tmp_path / STORE).stat().st_mtime_ns == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == names

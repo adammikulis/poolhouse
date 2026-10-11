@@ -5,7 +5,7 @@ import io
 import pytest
 
 from poolhouse import harnesshook
-from poolhouse.workspace.identity import Denied
+from poolhouse.errors import Denied
 
 
 @pytest.mark.parametrize("reason, expected", [
