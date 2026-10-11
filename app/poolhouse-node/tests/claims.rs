@@ -88,3 +88,74 @@ fn only_the_holder_releases_and_a_claim_of_one_board_is_not_listed_on_another() 
     let leases = ok(req(&mut n, "lease_list", "demo", &at, json!({})));
     assert_eq!(leases["leases"].as_array().unwrap().len(), 1);
 }
+
+fn reserve(n: &mut Node, token: &str, wanted: &[(&str, &str)]) -> Value {
+    let resources: Vec<Value> = wanted.iter().map(|(kind, key)| json!({"kind": kind, "key": key})).collect();
+    req(n, "reserve", "demo", token, json!({"resources": resources}))
+}
+
+/// What ``owner`` holds, as `kind key`.
+fn keys(n: &mut Node, token: &str, owner: &str) -> Vec<String> {
+    let mut found: Vec<String> = listed(n, token).iter().filter(|c| c["owner"] == owner).map(|c| format!("{} {}", c["kind"].as_str().unwrap(), c["key"].as_str().unwrap())).collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn an_area_a_worktree_and_an_install_conflict_when_one_path_contains_the_other_whichever_asks() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((first, at), (_, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
+    ok(claim(&mut n, &at, "area", "/repo/x/src/lib.rs", json!({})));
+    ok(claim(&mut n, &at, "area", "/repo/x/docs/a.md", json!({})));
+    for (kind, path) in [("worktree", "/repo/x"), ("worktree", "/repo/x/src"), ("worktree", "/repo/x/src/lib.rs"), ("install", "/repo/x"), ("area", "/repo/x/src"), ("area", "/repo")] {
+        let refused = claim(&mut n, &bt, kind, path, json!({}));
+        assert_eq!(code(&refused), "denied", "{kind} {path}");
+        assert!(refused["error"]["message"].as_str().unwrap().contains(&first), "{refused}");
+    }
+    for (kind, path) in [("worktree", "/repo/xy"), ("worktree", "/repo/y"), ("install", "/repo/x/src2"), ("area", "/repo/x/src/lib.rs.bak")] {
+        ok(claim(&mut n, &bt, kind, path, json!({})));
+    }
+    ok(claim(&mut n, &at, "worktree", "/work/tree", json!({})));
+    ok(claim(&mut n, &at, "install", "/work/venv", json!({})));
+    for (kind, path) in [("area", "/work/tree/src/a.py"), ("install", "/work/tree/.venv"), ("worktree", "/work/venv/lib"), ("area", "/work/venv/bin/python")] {
+        assert_eq!(code(&claim(&mut n, &bt, kind, path, json!({}))), "denied", "{kind} {path}");
+    }
+    ok(claim(&mut n, &bt, "port", "9000", json!({})));
+    ok(claim(&mut n, &bt, "server", "/repo/x", json!({})));
+    ok(claim(&mut n, &bt, "branch", "/repo/x", json!({})));
+}
+
+#[test]
+fn a_reserve_takes_every_resource_or_none_and_keeps_what_the_caller_already_held() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((first, at), (second, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
+    ok(claim(&mut n, &at, "area", "/repo/x/src/lib.rs", json!({})));
+    ok(claim(&mut n, &bt, "port", "9100", json!({})));
+    let refused = reserve(&mut n, &bt, &[("port", "9100"), ("server", "api"), ("branch", "feat"), ("worktree", "/repo/x")]);
+    assert_eq!(code(&refused), "denied");
+    assert!(refused["error"]["message"].as_str().unwrap().contains(&first), "{refused}");
+    assert_eq!(keys(&mut n, &bt, &second), ["port 9100"], "nothing of the refused set was taken and the port held before stays");
+    let got = ok(reserve(&mut n, &bt, &[("port", "9100"), ("server", "api"), ("branch", "feat"), ("worktree", "/repo/other")]));
+    let changed: Vec<(String, bool)> = got["claims"].as_array().unwrap().iter().map(|c| (c["claim"]["kind"].as_str().unwrap().into(), c["changed"].as_bool().unwrap())).collect();
+    assert_eq!(changed, [("port".to_string(), false), ("server".into(), true), ("branch".into(), true), ("worktree".into(), true)]);
+    let again = ok(reserve(&mut n, &bt, &[("worktree", "/repo/other"), ("server", "api")]));
+    assert!(again["claims"].as_array().unwrap().iter().all(|c| c["changed"] == false));
+    assert_eq!(code(&reserve(&mut n, &at, &[("branch", "feat")])), "denied");
+    assert_eq!(code(&reserve(&mut n, &at, &[("port", "7001"), ("worktree", "/repo/other/sub")])), "denied");
+    assert_eq!(keys(&mut n, &at, &first), ["area /repo/x/src/lib.rs"], "a refused reserve leaves its caller's holdings as they were");
+}
+
+#[test]
+fn a_reserve_is_bad_when_empty_or_over_the_most_or_names_a_bad_key() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (name, at) = session(&mut n, "demo", "a");
+    assert_eq!(code(&reserve(&mut n, &at, &[])), "invalid");
+    assert_eq!(code(&reserve(&mut n, &at, &[("port", "9100"), ("worktree", "relative")])), "invalid");
+    assert!(keys(&mut n, &at, &name).is_empty(), "a set with a bad key takes none of it");
+    let many: Vec<(String, String)> = (0..129).map(|i| ("port".to_string(), (9000 + i).to_string())).collect();
+    let wanted: Vec<(&str, &str)> = many.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    assert_eq!(code(&reserve(&mut n, &at, &wanted)), "invalid");
+}

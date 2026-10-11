@@ -11,11 +11,14 @@ use crate::lease::table::Why;
 use crate::lease::types::{Lease, Resource, State, CLAIM_KINDS};
 use crate::node::Node;
 
-pub const METHODS: [&str; 3] = ["claim", "release", "claims"];
+pub const METHODS: [&str; 4] = ["claim", "reserve", "release", "claims"];
+/// Most resources one reserve takes.
+pub const MOST_RESERVED: usize = 128;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "claim" => &["kind", "key", "ttl_s", "pid", "local"],
+        "reserve" => &["resources", "ttl_s", "pid", "local"],
         "release" => &["kind", "key", "held_by"],
         "claims" => &["kind"],
         _ => return None,
@@ -63,10 +66,17 @@ fn show(node: &Node, l: &Lease, kind: &str, name: &str, board: &str) -> Value {
            "expires_in_s": left, "expiring_soon": left < 300, "pid": if own { l.pid } else { 0 }, "since_ms": l.granted_ms})
 }
 
-fn claim(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
-    let (kind, key) = (kind_of(p, true)?, text(p, "key")?);
+/// Take the claim ``kind`` ``key`` for ``holder`` without waiting, or renew the one it already holds: whether it was newly taken, and its lease.
+fn take(node: &mut Node, board: &str, token: &str, holder: &str, (kind, key): (&str, &str), p: &Map<String, Value>) -> Result<(bool, Lease)> {
     let name = held_as(kind, board, key);
-    let access = node.access(token, board, true)?;
+    if let Some(l) = node.leases.table.leases.iter().find(|l| l.holder == holder && l.state == State::Held && mine(l, kind, &name)).cloned() {
+        let ttl = p.get("ttl_s").and_then(Value::as_u64).unwrap_or(l.ttl_s);
+        let mut renew = Map::new();
+        renew.insert("id".into(), json!(l.id));
+        renew.insert("ttl_s".into(), json!(ttl));
+        rpc::call(node, "lease_renew", board, token, &renew)?;
+        return Ok((false, node.leases.table.find(&l.id).cloned().unwrap_or(l)));
+    }
     let mut ask = Map::new();
     ask.insert("resources".into(), json!([{"type": "claim", "kind": kind, "name": name}]));
     ask.insert("wait".into(), json!(false));
@@ -75,24 +85,87 @@ fn claim(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
             ask.insert(field.into(), v.clone());
         }
     }
-    let holder = format!("{board}/{}", access.holder.name);
-    rpc::tick(node, &[board])?;
-    if let Some(l) = node.leases.table.leases.iter().find(|l| l.holder == holder && l.state == State::Held && mine(l, kind, &name)).cloned() {
-        let ttl = p.get("ttl_s").and_then(Value::as_u64).unwrap_or(l.ttl_s);
-        let mut renew = Map::new();
-        renew.insert("id".into(), json!(l.id));
-        renew.insert("ttl_s".into(), json!(ttl));
-        rpc::call(node, "lease_renew", board, token, &renew)?;
-        let l = node.leases.table.find(&l.id).cloned().unwrap_or(l);
-        return Ok(json!({"changed": false, "claim": show(node, &l, kind, &name, board)}));
-    }
     let got = rpc::call(node, "lease_acquire", board, token, &ask)?;
     if got["state"] == "busy" {
         let who = got["blockers"].as_array().and_then(|b| b.first()).and_then(|b| b["holder"].as_str()).map_or("another session of yours", |h| h.rsplit('/').next().unwrap_or(h));
         return Err(Error::Denied(format!("{kind} {key} is held by {who}")));
     }
     let l = node.leases.table.find(got["id"].as_str().unwrap_or("")).cloned().ok_or_else(|| Error::Invalid("the claim ended at once".into()))?;
-    Ok(json!({"changed": true, "claim": show(node, &l, kind, &name, board)}))
+    Ok((true, l))
+}
+
+fn claim(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let (kind, key) = (kind_of(p, true)?, text(p, "key")?);
+    let access = node.access(token, board, true)?;
+    let holder = format!("{board}/{}", access.holder.name);
+    rpc::tick(node, &[board])?;
+    let (changed, l) = take(node, board, token, &holder, (kind, key), p)?;
+    Ok(json!({"changed": changed, "claim": show(node, &l, kind, &held_as(kind, board, key), board)}))
+}
+
+/// The ``kind`` and ``key`` of each resource a reserve names: one to `MOST_RESERVED`, each a valid claim, each once.
+fn wanted(p: &Map<String, Value>) -> Result<Vec<(String, String)>> {
+    let list = p.get("resources").and_then(Value::as_array).ok_or_else(|| Error::Invalid("resources is a list of kind and key".into()))?;
+    if list.is_empty() || list.len() > MOST_RESERVED {
+        return Err(Error::Invalid(format!("a reserve names one to {MOST_RESERVED} resources")));
+    }
+    let mut out: Vec<(String, String)> = Vec::new();
+    for item in list {
+        let one = item.as_object().ok_or_else(|| Error::Invalid("a resource is an object of kind and key".into()))?;
+        let (kind, key) = (kind_of(one, true)?, text(one, "key")?);
+        Resource::Claim { kind: kind.into(), name: key.into() }.check()?;
+        if !out.iter().any(|(k, n)| k == kind && n == key) {
+            out.push((kind.into(), key.into()));
+        }
+    }
+    Ok(out)
+}
+
+/// The session that holds something ``kind`` ``key`` is in the way of, other than ``holder``, if any does.
+fn in_the_way(node: &Node, board: &str, holder: &str, kind: &str, key: &str) -> Option<String> {
+    let wanted = Resource::Claim { kind: kind.into(), name: held_as(kind, board, key) };
+    node.leases.table.leases.iter()
+        .find(|o| o.state == State::Held && o.holder != holder && o.resources.iter().any(|x| wanted.conflicts(x)))
+        .map(|o| if o.board == board { o.name.clone() } else { "other-board".into() })
+}
+
+/// Give back claims a reserve took before it was refused.
+fn give_back(node: &mut Node, board: &str, holder: &str, taken: &[String]) -> Result<()> {
+    let mut events = Vec::new();
+    for id in taken {
+        events.push(Event::Ended(node.leases.table.release(id, holder)?, Why::Released));
+    }
+    node.leases.save()?;
+    rpc::mirror(node, &events)?;
+    rpc::tick(node, &[board])
+}
+
+/// Take every resource named or none: the whole set is checked against what others hold before the first is taken, in one call of
+/// the node, so no other session sees or races a part of it; a resource the caller already holds is renewed and kept if the rest is refused.
+fn reserve(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let list = wanted(p)?;
+    let access = node.access(token, board, true)?;
+    let holder = format!("{board}/{}", access.holder.name);
+    rpc::tick(node, &[board])?;
+    if let Some((kind, key, who)) = list.iter().find_map(|(k, n)| in_the_way(node, board, &holder, k, n).map(|who| (k, n, who))) {
+        return Err(Error::Denied(format!("{kind} {key} is held by {who}")));
+    }
+    let (mut taken, mut out) = (Vec::new(), Vec::new());
+    for (kind, key) in &list {
+        match take(node, board, token, &holder, (kind, key), p) {
+            Ok((changed, l)) => {
+                if changed {
+                    taken.push(l.id.clone());
+                }
+                out.push(json!({"changed": changed, "claim": show(node, &l, kind, &held_as(kind, board, key), board)}));
+            }
+            Err(e) => {
+                give_back(node, board, &holder, &taken)?;
+                return Err(e);
+            }
+        }
+    }
+    Ok(json!({"claims": out}))
 }
 
 /// The session whose claim a release gives up: the caller's own, or one of its spawned subagents'
@@ -177,6 +250,7 @@ pub fn owned_branch(node: &mut Node, board: &str, actor: &str) -> Result<Option<
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
         "claim" => claim(node, board, token, p),
+        "reserve" => reserve(node, board, token, p),
         "release" => release(node, board, token, p),
         _ => claims(node, board, token, p),
     }

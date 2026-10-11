@@ -9,6 +9,8 @@ use crate::row::{is_line, valid_name};
 pub const LOCAL: &str = "local";
 /// Claim kinds, as `src/poolhouse/workspace/claims.py` names them (`install` and `task` are new; `task` is the node's own, taken by a task claim).
 pub const CLAIM_KINDS: [&str; 7] = ["worktree", "branch", "area", "port", "server", "install", "task"];
+/// Claim kinds named by an absolute path; two of them conflict when one path contains the other, whatever their kinds.
+pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
 pub const MAX_RESOURCES: usize = 8;
 
 fn local() -> String {
@@ -88,11 +90,19 @@ impl Resource {
         }
     }
 
+    /// The path a worktree, install or area claim names.
+    fn path(&self) -> Option<&str> {
+        match self {
+            Resource::Claim { kind, name } if PATH_CLAIMS.contains(&kind.as_str()) => Some(name),
+            _ => None,
+        }
+    }
+
     /// Whether this resource and ``other`` cannot both be held by different holders at once.
-    /// Equal keys conflict; worktree and area claims also conflict with a nested path.
+    /// Equal keys conflict; worktree, install and area claims conflict with each other when one path contains the other.
     pub fn conflicts(&self, other: &Resource) -> bool {
-        match (self, other) {
-            (Resource::Claim { kind: a, name: x }, Resource::Claim { kind: b, name: y }) if a == b && (a == "worktree" || a == "area") => nested(x, y),
+        match (self.path(), other.path()) {
+            (Some(x), Some(y)) => nested(x, y),
             _ => self.exclusive() && self.key() == other.key(),
         }
     }
@@ -114,7 +124,7 @@ impl Resource {
                 }
                 match kind.as_str() {
                     "port" if !name.parse::<u32>().is_ok_and(|p| (1..65536).contains(&p)) => bad("a port is a number from 1 to 65535"),
-                    "worktree" | "area" if !is_absolute(name) => bad("a worktree or area claim names an absolute path"),
+                    "worktree" | "area" | "install" if !is_absolute(name) => bad("a worktree, install or area claim names an absolute path"),
                     _ => Ok(()),
                 }
             }

@@ -8,6 +8,8 @@ import sys
 
 import pytest
 
+from poolhouse.board.client import Conflict
+
 pytest_plugins = ["node_kit"]
 
 
@@ -76,3 +78,20 @@ def test_a_claim_taken_by_another_names_its_owner_and_is_listed_by_the_kind(team
     assert [c["key"] for c in run(team, team.beta, "claims", "--kind", "branch")] == ["agent/z"]
     assert run(team, team.beta, "claims", "--kind", "port") == []
     assert run(team, team.beta, "claims", "--for-agent", team.alpha.name)[0]["owner"] == team.alpha.name
+
+
+def test_areas_held_under_a_path_keep_another_session_from_a_worktree_or_install_around_it(team, tmp_path):
+    a, b = team.session(team.alpha), team.session(team.beta)
+    tree = tmp_path / "repo" / "x"
+    a.reserve([("area", str(tree / "src" / "a.py")), ("area", str(tree / "docs" / "b.md"))])
+    for kind, key in [("worktree", tree), ("worktree", tree / "src"), ("install", tree), ("area", tree / "src")]:
+        with pytest.raises(Conflict, match=team.alpha.name):
+            b.claim(kind, str(key))
+    with pytest.raises(Conflict, match=team.alpha.name):
+        b.reserve([("port", "9400"), ("worktree", str(tree))])
+    assert [c for c in b.claims() if c.owner == team.beta.name] == [], "a refused reserve takes none of its set"
+    b.claim("worktree", str(tmp_path / "repo" / "xy"))
+    b.claim("worktree", str(tmp_path / "repo" / "y"))
+    a.claim("worktree", str(tmp_path / "work"))
+    with pytest.raises(Conflict, match=team.alpha.name):
+        b.reserve([("area", str(tmp_path / "work" / "src" / "m.py"))])

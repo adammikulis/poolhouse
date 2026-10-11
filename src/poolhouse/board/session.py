@@ -354,21 +354,16 @@ class Session:
         return _claim(got["claim"], got["changed"])
 
     def reserve(self, resources: list[tuple[str, str]], ttl_s: int = 0, pid: int = 0) -> list[Claim]:
-        """Take every one of ``resources`` (kind and key) or none: they are claimed in one fixed order, and the ones newly taken
-        are given up when another session holds one; `Conflict` then."""
-        taken: list[Claim] = []
-        every: list[Claim] = []
+        """Take every one of ``resources`` (kind and key) or none, in one call of the node: `Conflict` when another
+        session holds one of them, and nothing of the set is then taken."""
+        params = {k: v for k, v in (("ttl_s", ttl_s), ("pid", pid)) if v}
         try:
-            for kind, key in sorted(dict.fromkeys(resources)):
-                claim = self.claim(kind, key, ttl_s=ttl_s, pid=pid)
-                every.append(claim)
-                if claim.changed:
-                    taken.append(claim)
-        except Denied:
-            for claim in taken:
-                self.release(claim.kind, claim.key)
+            got = self.call("reserve", resources=[{"kind": kind, "key": key} for kind, key in dict.fromkeys(resources)], **params)
+        except Denied as err:
+            if " is held by " in str(err):
+                raise Conflict(err.code, str(err)) from None
             raise
-        return every
+        return [_claim(c["claim"], c["changed"]) for c in got["claims"]]
 
     def release(self, kind: str, key: str, held_by: str = "") -> bool:
         """Give a claim up; ``held_by`` names a subagent of this session whose claim it frees."""

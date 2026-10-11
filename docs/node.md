@@ -197,7 +197,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `quarantine_hold` | board, token | `entries` (`[{id, flags}]`: entries a reading client matched an injection pattern in) | `{items}`: one record per entry on this device, with `qid`, `state` (`quarantined` or `released`) and `flags`, never the text |
 | `quarantine_list` | board, token | | `{items}` of the entries the caller may read |
 | `quarantine_release` | token with the grant `quarantine_release` | `qid` | `{item}`; writes an audit entry |
-| `claim`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{kind, key, released}` / `{claims}` |
+| `claim`, `reserve`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `resources` (`[{kind, key}]`, one to 128), `ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{claims: [{changed, claim}]}` / `{kind, key, released}` / `{claims}` |
 | `notes` | board, token | `ref, query, kind, all, limit` | `{notes}` |
 | `note_verify` | board, token | `note, exit, out_sha` | `{notes: [the note]}` |
 | `link`, `unlink`, `links` | board, token with the grant `link_read` or `link_write` (make), `link_remove` (end) | `to, channels, mode` / `id` | the link |
@@ -286,7 +286,10 @@ audit entry: `done` (an ordinary end, such as a worker whose work is finished) o
 by a session about itself, `revoked` or `forged` (an end for cause, which the landing runner holds against the work
 the session asked for or reviewed).
 
-**Claims** are leases of one `claim` resource taken without waiting. A branch claim is held under the
+**Claims** are leases of one `claim` resource taken without waiting. `reserve` takes a set of them in one call of the
+node: the set is checked against what others hold before the first is taken, so it is taken whole or refused whole (the
+refusal names the holder of the first resource in the way), a claim the caller already held is renewed and kept, and a
+set refused by a claim another device holds gives back what it took. A branch claim is held under the
 board's name, so two boards may claim the same branch name; ports, servers, paths and installs are the
 device's. `claims` lists the claims of the caller's board with the owner. A holder's `pid` and `ttl_s`
 behave as for any lease (dead process or expiry drops it). A claim taken with `local` waits only for this device's
@@ -563,7 +566,7 @@ decides; another device is `denied`):
 | `gpu` | `device` | one holder at a time |
 | `cpu_slots` | `device, count` | counted against `cpu_slots` |
 | `memory_mb` | `device, mb` | counted against `memory_mb`; more than the budget is `quota`, less than what is left queues |
-| `claim` | `kind, name` | `kind` is worktree, branch, area, port, server or install; one holder per name; worktree and area names are absolute paths and conflict with a nested path |
+| `claim` | `kind, name` | `kind` is worktree, branch, area, port, server or install; one holder per name; worktree, install and area names are absolute paths, and two of them, whatever their kinds, conflict when one path contains the other |
 | `model_slot` | `device, model, context, draft, parallel` | one holder per device and model; the shape is kept and shown |
 
 A request names one to eight resources and gets all of them at once or waits. **Order** is
