@@ -202,7 +202,7 @@ fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>, peer: &Peer) -> 
         return Err(Error::Denied("a person key signs its own enrolment".into()));
     }
     if node.persons.is_empty() {
-        if !node.firsts.take(crate::presence::Purpose::Key, text(p, "secret")?, node.now_ms()) {
+        if !node.firsts.take(crate::presence::Purpose::Key, text(p, "secret")?, text(p, "public")?, node.now_ms()) {
             return Err(Error::Denied("the first person key is enrolled by `poolhouse-workspace grants-setup`, with the one-time secret the operating system's prompt makes when the person says yes".into()));
         }
     } else {

@@ -46,17 +46,28 @@ fn a_session_that_registered_first_cannot_enrol_its_own_key_grant_itself_and_loc
 }
 
 #[test]
+fn the_yes_is_for_the_key_that_was_asked_about_and_no_other() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, token) = session(&mut n, "demo", "a");
+    let secret = first_secret(&mut caller(&mut n), &token, "key", &person().public());
+    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&agent(), "an agent", &secret))), "denied", "the person said yes to another key");
+    assert!(held(&mut n).is_empty());
+    assert_eq!(code(&req(&mut n, "presence_ask", "", &token, json!({"purpose": "key"}))), "invalid", "a first key is asked for with its public key");
+}
+
+#[test]
 fn the_secret_is_single_use_and_spent_by_a_wrong_guess() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, token) = session(&mut n, "demo", "a");
-    let secret = first_secret(&mut caller(&mut n), &token, "key");
+    let secret = first_secret(&mut caller(&mut n), &token, "key", &person().public());
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&agent(), "x", "not-it"))), "denied");
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", &secret))), "denied", "a wrong guess spends the secret, so the right one is refused after it");
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", ""))), "denied", "an empty secret is none");
     assert!(held(&mut n).is_empty());
 
-    let secret = first_secret(&mut caller(&mut n), &token, "key");
+    let secret = first_secret(&mut caller(&mut n), &token, "key", &person().public());
     ok(req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", &secret)));
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, with_secret(&person(), "a test person", &secret))), "denied", "the secret is gone once it enrolled a key");
 
@@ -71,7 +82,7 @@ fn the_secret_is_never_in_a_file_and_only_the_session_that_asked_reads_it() {
     let mut n = node(dir.path());
     let (_, mine) = session(&mut n, "demo", "a");
     let (_, theirs) = session(&mut n, "demo", "b");
-    let asked = ok(req(&mut n, "presence_ask", "", &mine, json!({"purpose": "key", "about": "the first key"})));
+    let asked = ok(req(&mut n, "presence_ask", "", &mine, json!({"purpose": "key", "public": person().public()})));
     let secret = asked["secret"].as_str().expect("the test person says yes at once").to_string();
     assert_eq!((asked["state"].as_str(), asked["purpose"].as_str()), (Some("confirmed"), Some("key")), "{asked}");
     let others = ok(req(&mut n, "presence_status", "", &theirs, json!({})));

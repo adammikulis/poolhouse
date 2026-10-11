@@ -152,7 +152,7 @@ impl Rig {
             return make_offer(&mut self.node.lock().unwrap(), now()).unwrap();
         }
         let (_, token) = self.session("demo", "first-phone-setup");
-        first_secret(&mut |m, b, t, p| self.call(m, b, t, p), &token, "phone")
+        first_secret(&mut |m, b, t, p| self.call(m, b, t, p), &token, "phone", "")
     }
 
     /// Add ``phone``: with the code the first phone's prompt makes or the code the node makes, then, for a later phone, the approval of

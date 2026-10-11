@@ -68,7 +68,7 @@ def test_a_guessed_secret_and_the_files_an_agent_can_write_enrol_no_first_key(wo
 
 def test_a_secret_is_the_nodes_own_and_one_wrong_guess_spends_it(workspace_node):
     token, person = register(workspace_node), Signer.generate()
-    said = wire.answer_presence(workspace_node.state, token, "key", "a test person")["result"]
+    said = wire.answer_presence(workspace_node.state, token, "key", person.public.hex())["result"]
     assert said["state"] == "confirmed" and said["presence"] == "terminal"
     with pytest.raises(Denied):
         grants.enrol(workspace_node.client, token, {**grants.enrolment(person, "a test person"), "secret": "guess"})
@@ -81,8 +81,18 @@ def test_the_person_typing_yes_to_the_node_enrols_the_first_key_and_a_second_sec
     token, person = register(workspace_node), Signer.generate()
     assert enrol_first(workspace_node.client, token, person)["fingerprint"] == grants.fingerprint(person.public)
     assert held(workspace_node) == [grants.fingerprint(person.public)]
-    again = wire.answer_presence(workspace_node.state, token, "key", "another")
+    again = wire.answer_presence(workspace_node.state, token, "key", Signer.generate().public.hex())
     assert not again["ok"] and again["code"] == "denied", "a key is enrolled already: a further one is approved by it, not by this question"
+
+
+def test_the_persons_yes_is_for_the_key_it_was_asked_about_and_no_other_key(workspace_node):
+    token, person, agent = register(workspace_node), Signer.generate(), Signer.generate()
+    said = wire.answer_presence(workspace_node.state, token, "key", person.public.hex())["result"]
+    with pytest.raises(Denied):
+        grants.enrol(workspace_node.client, token, {**grants.enrolment(agent, "an agent"), "secret": said["secret"]})
+    assert held(workspace_node) == [], "a yes for one key enrolled another"
+    asked = wire.answer_presence(workspace_node.state, token, "key", "")
+    assert not asked["ok"] and asked["code"] == "invalid", "a first key is asked for with its key"
 
 
 def test_a_node_started_with_no_way_to_ask_refuses_the_first_key_and_the_first_phone(node_binary):
@@ -96,7 +106,7 @@ def test_a_node_started_with_no_way_to_ask_refuses_the_first_key_and_the_first_p
         token = board_session.register(client, "demo", board_session.Native("claude-sonnet-5-5", "claude-code", "x"), "").token
         for purpose in ("key", "phone"):
             with pytest.raises(Denied, match="no way to ask"):
-                presence.ask(client, token, purpose, "x")
+                presence.ask(client, token, purpose, Signer.generate().public.hex() if purpose == "key" else "")
     finally:
         node_launch.stop_node(state)
         shutil.rmtree(root, ignore_errors=True)
@@ -109,7 +119,7 @@ def test_the_launcher_asks_with_the_system_prompt_only_for_the_installed_softwar
     assert node_launch._presence(None) == []
     monkeypatch.setattr(real_machine, "allowed", lambda: True)
     assert node_launch._presence(["--lan"]) == ["--lan", "--presence", "os"]
-    assert node_launch._presence(["--presence", "terminal"]) == ["--presence", "terminal"]
+    assert node_launch._presence(["--presence", "terminal", "--lan"]) == ["--lan", "--presence", "os"], "an agent's own terminal can answer its own question"
 
 
 def test_no_switch_of_the_shipped_node_answers_for_the_person():

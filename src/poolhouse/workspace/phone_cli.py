@@ -72,7 +72,7 @@ def _code(client: Client, carrier: Session, further: bool) -> str:
     prompt, or the person's terminal); a further phone's is asked of the node, which a phone that is already added approves."""
     if further:
         return str(carrier.call("phone_offer")["link"])
-    return str(presence.ask(client, carrier.token, "phone", "the first phone", presence.Voice(say=say))["link"])
+    return str(presence.ask(client, carrier.token, "phone", "", presence.Voice(say=say))["link"])
 
 
 def _add(args: argparse.Namespace) -> int:

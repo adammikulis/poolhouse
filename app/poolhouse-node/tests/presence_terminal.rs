@@ -20,7 +20,7 @@ fn terminal_node(dir: &std::path::Path) -> Node {
 }
 
 fn ask(n: &mut Node, token: &str, terminal: &str) -> Value {
-    req(n, "presence_ask", "", token, json!({"purpose": "key", "terminal": terminal}))
+    req(n, "presence_ask", "", token, json!({"purpose": "key", "public": kit::grants::person().public(), "terminal": terminal}))
 }
 
 fn answered(n: &mut Node, token: &str) -> Value {

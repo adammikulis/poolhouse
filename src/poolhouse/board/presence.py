@@ -60,15 +60,16 @@ SILENT = Voice()
 
 
 def ask(
-    client: Client, token: str, purpose: str, about: str = "", voice: Voice = SILENT
+    client: Client, token: str, purpose: str, public: str = "", voice: Voice = SILENT
 ) -> dict[str, Any]:
     """Ask the person, through the node, to allow the session ``token`` to add the first person key (``purpose`` `key`) or the first
     phone (`phone`), and wait for the answer: the node's reply with the one-time `secret` (and, for a phone, its `link`).
 
-    Raises `Denied` when the person said no or did not answer, or when the node has no way to ask.
+    ``public`` is the public key (hex) of the first key: the person's yes is for that key and no other, and the question shows its words;
+    a phone has none. Raises `Denied` when the person said no or did not answer, or when the node has no way to ask.
     """
     named = terminal_name() if voice.terminal is None else voice.terminal
-    said = client.call("presence_ask", "", token, purpose=purpose, about=about, terminal=named)
+    said = client.call("presence_ask", "", token, purpose=purpose, public=public, terminal=named)
     told = False
     end = time.monotonic() + WAIT_S
     while said["state"] == "asking" and time.monotonic() < end:

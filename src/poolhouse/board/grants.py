@@ -180,7 +180,7 @@ def enrol(client: Client, token: str, params: dict[str, Any]) -> dict[str, Any]:
 def enrol_first(client: Client, token: str, key: Signs, about: str, voice: presence.Voice = presence.SILENT) -> dict[str, Any]:
     """Put the first person key on the node after the person says yes to the node's own question (`presence.ask`): the secret is the node's, made
     when the person answered, and nothing this process writes can make one."""
-    secret = str(presence.ask(client, token, "key", f"the first key, {about}", voice)["secret"])
+    secret = str(presence.ask(client, token, "key", key.public.hex(), voice)["secret"])
     return enrol(client, token, {**enrolment(key, about), "secret": secret})
 
 

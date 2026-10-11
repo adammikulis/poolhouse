@@ -87,7 +87,7 @@ def person_keys(directory: Path, cls: type[ConfirmedKeys] = ConfirmedKeys) -> Co
 def enrol_first(client: board_client.Client, token: str, key: Signer | ConfirmedKeys) -> dict:
     """The first person key on the node, after the person types yes to the question the node writes on a terminal of its own
     (`wire.answer_presence`): the same steps as a person's, against the node as shipped."""
-    said = wire.answer_presence(client.state, token, "key", "a test person")
+    said = wire.answer_presence(client.state, token, "key", key.public.hex())
     assert said["ok"] and said["result"]["state"] == "confirmed", f"the person's yes was not taken: {said}"
     return board_grants.enrol(client, token, {**board_grants.enrolment(key, "a test person"), "secret": said["result"]["secret"]})
 

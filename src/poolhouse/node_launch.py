@@ -72,17 +72,18 @@ PRESENCE_FLAG = "--presence"
 
 
 def _presence(extra: list[str] | None) -> list[str]:
-    """``extra`` with the way the node asks the person for the first key or phone: the operating system's prompt for the installed software
-    on the real home and no other, so a test, a checkout or a rig never raises a dialog (`real_machine`). A node of another kind
-    (`--presence terminal`, for a server or a rig) is the caller's own word; `--presence os` outside the real home is dropped."""
-    words = list(extra or [])
-    named = [i for i, word in enumerate(words) if word == PRESENCE_FLAG]
-    if real_machine.allowed():
-        return words if named else [*words, PRESENCE_FLAG, "os"]
-    for i in reversed(named):
-        if words[i + 1 : i + 2] == ["os"]:
-            del words[i : i + 2]
-    return words
+    """``extra`` with the way the node asks the person for the first key or phone. The installed software on the real home asks with the
+    operating system's prompt and no other way: a terminal can be answered by the program that asks, so `--presence terminal` is dropped
+    there (and the node refuses it on that home as well). Anywhere else (a test, a checkout, a rig, a server) `--presence os` is dropped, so
+    none raises a dialog (`real_machine`), and `--presence terminal` is the caller's own word."""
+    real, words, out, i = real_machine.allowed(), list(extra or []), [], 0
+    while i < len(words):
+        if words[i] != PRESENCE_FLAG:
+            out.append(words[i])
+        elif words[i + 1 : i + 2] == ["terminal"] and not real:
+            out += words[i : i + 2]
+        i += 2 if words[i] == PRESENCE_FLAG else 1
+    return [*out, PRESENCE_FLAG, "os"] if real else out
 
 
 def _start_supervisor(state: Path, extra: list[str]) -> None:

@@ -54,8 +54,9 @@ poolhouse://add-phone?data=<base64url of {"v":1,"pin":"<64 hex>","endpoints":["h
 **The first phone.** A person runs `poolhouse-workspace phone add` once on the computer (a person's command: it refuses a
 process an agent started, like `grants-setup`). The command asks the node (`presence_ask`) to allow the session to add the first phone,
 and the node asks the person itself with **one prompt that no agent can answer**: the operating system's own dialog (macOS and Linux:
-a password or fingerprint, shown by the installed software on the real home), or, on a node started with `--presence terminal`, a
-question the node writes on the terminal and reads the typed `yes` from itself. Only then does the node make the one-time secret, in
+a password or fingerprint, shown by the installed software on the real home, and the only way to ask there: a computer with no such prompt
+refuses), or, on a node of another state directory started with `--presence terminal` (the pool check, a server), a question the node writes
+on the terminal and reads the typed `yes` from itself. For the first key the prompt shows the key's own words and the yes is for that key only. Only then does the node make the one-time secret, in
 its memory and in no file, so a program that can write the state directory (an agent) can neither make a code nor plant one. The command
 draws the QR code in the terminal; it writes no image file for the first phone, because a file could be read by any program that runs as
 the person. The person scans it. The phone's key is enrolled directly: the secret is the proof that the person at the computer said yes to
@@ -422,7 +423,7 @@ is not allowed without a one-line reason in the last column.
 | # | Step | Kind | Why it is needed |
 |---|---|---|---|
 | 1 | Run `poolhouse-workspace phone add` on the computer | a command, once | only a person at the computer can ask for the first key (an agent cannot) |
-| 2 | Say yes to the prompt the computer shows (its own password or fingerprint dialog, or a typed yes where the node asks on a terminal) | one prompt, once | the one step an agent cannot answer: without it an agent that can write the state directory could become the first key and sign grants |
+| 2 | Say yes to the prompt the computer shows (its own password or fingerprint dialog; a typed yes only for a node that is not the account's own, such as the pool check's) | one prompt, once | the one step an agent cannot answer: without it an agent that can write the state directory could become the first key and sign grants |
 | 3 | Scan the code with the app | one scan | carries the node's address, its certificate and the one-time secret |
 | 4 | Fingerprint to sign the phone's own addition | one biometric prompt | the key signs, and every signature needs the person |
 

@@ -29,11 +29,10 @@ const ASK_FOR_MS: u64 = 120_000;
 const SECRET_FOR_MS: u64 = 10 * 60_000;
 /// After a prompt that was refused or not answered, how long before the node asks again: a session cannot pester the person with prompts.
 const QUIET_MS: u64 = 10 * 60_000;
-const MOST_ABOUT: usize = 60;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
-        "presence_ask" => &["purpose", "about", "terminal"],
+        "presence_ask" => &["purpose", "public", "terminal"],
         "presence_status" => &[],
         _ => return None,
     })
@@ -90,19 +89,43 @@ pub trait Presence: Send {
     fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>>;
 }
 
-/// The operating system's own prompt, run as a child process the node polls: it ends the prompt when it is dropped.
-struct OsPrompt(Child);
+/// The operating system's own prompt, run as a child process the node polls. It ends when it is dropped and, whether or not anything polls,
+/// when the time to answer has run out: a dialog nobody answered cannot be answered hours later.
+struct OsPrompt {
+    child: std::sync::Arc<std::sync::Mutex<Child>>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl OsPrompt {
+    fn start(child: Child, wait: std::time::Duration) -> OsPrompt {
+        let (child, stop) = (std::sync::Arc::new(std::sync::Mutex::new(child)), std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let (reaped, quit) = (child.clone(), stop.clone());
+        std::thread::spawn(move || {
+            let end = std::time::Instant::now() + wait;
+            while !quit.load(std::sync::atomic::Ordering::SeqCst) && std::time::Instant::now() < end {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+            if let Ok(mut c) = reaped.lock() {
+                let _ = c.kill();
+            }
+        });
+        OsPrompt { child, stop }
+    }
+}
 
 impl Asking for OsPrompt {
     fn poll(&mut self) -> Option<bool> {
-        self.0.try_wait().ok().flatten().map(|status| status.success())
+        self.child.lock().ok()?.try_wait().ok().flatten().map(|status| status.success())
     }
 }
 
 impl Drop for OsPrompt {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut c) = self.child.lock() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
     }
 }
 
@@ -120,16 +143,23 @@ fn dialog(what: &str) -> Option<Command> {
     }
     if cfg!(target_os = "linux") && std::path::Path::new("/usr/bin/pkexec").is_file() {
         let mut command = Command::new("/usr/bin/pkexec");
-        command.arg("/usr/bin/true");
+        command.args(["/usr/bin/env", "--", "/usr/bin/true"]).arg(plain(what).replace(' ', "_"));
         return Some(command);
     }
     None
 }
 
-/// Whether ``state`` is inside the real state directory of the account this process runs as (`~/.poolhouse`, from the password database
-/// and never from `HOME`): the only place the operating system's prompt is raised.
+/// Whether ``state`` is the device's own node directory of the account this process runs as (`~/.poolhouse/node`, the account's home from
+/// the password database and never from `HOME`), the same directory and no other under it: the only place a real prompt is raised.
+pub(crate) fn is_the_real_state(state: &std::path::Path, account_home: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(account_home.join(".poolhouse").join("node")), std::fs::canonicalize(state)) {
+        (Ok(real), Ok(mine)) => mine == real,
+        _ => false,
+    }
+}
+
 #[cfg(unix)]
-fn on_real_home(state: &std::path::Path) -> bool {
+pub(crate) fn on_real_home(state: &std::path::Path) -> bool {
     let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
     let (mut buf, mut found) = (vec![0 as libc::c_char; 4096], std::ptr::null_mut());
     // SAFETY: entry and buf are valid for the call and buf's length is passed; getpwuid_r sets found to entry or null.
@@ -139,14 +169,11 @@ fn on_real_home(state: &std::path::Path) -> bool {
     }
     // SAFETY: pw_dir is a NUL-terminated string that lives in buf.
     let home = unsafe { std::ffi::CStr::from_ptr(entry.pw_dir) }.to_string_lossy().into_owned();
-    match (std::fs::canonicalize(std::path::Path::new(&home).join(".poolhouse")), std::fs::canonicalize(state)) {
-        (Ok(real), Ok(mine)) => mine.starts_with(real),
-        _ => false,
-    }
+    is_the_real_state(state, std::path::Path::new(&home))
 }
 
 #[cfg(not(unix))]
-fn on_real_home(_state: &std::path::Path) -> bool {
+pub(crate) fn on_real_home(_state: &std::path::Path) -> bool {
     false
 }
 
@@ -180,12 +207,17 @@ impl Presence for Os {
     }
 
     fn begin(&mut self, what: &str, _terminal: &str) -> Result<Box<dyn Asking>> {
+        #[cfg(unix)]
+        // SAFETY: geteuid takes no arguments and cannot fail.
+        if unsafe { libc::geteuid() } == 0 {
+            return Err(Error::Denied("The operating system's prompt is not raised for an administrator account: add the first key or phone from your own account.".into()));
+        }
         if !on_real_home(&self.state) {
             return Err(Error::Denied("The operating system's prompt is raised only for the node of this account's own state directory, never for a test, a checkout or a copy.".into()));
         }
-        let mut command = dialog(what).ok_or_else(|| Error::Denied(if cfg!(windows) { "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." } else { "This computer has no operating system prompt the node can ask the person with, so the first key or phone cannot be added here yet." }.into()))?;
+        let mut command = dialog(what).ok_or_else(|| Error::Denied(if cfg!(windows) { "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." } else { "This computer has no operating system prompt the node can ask the person with, so the first key or phone cannot be added here yet; on your own account there is no other way to ask." }.into()))?;
         let child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
-        Ok(Box::new(OsPrompt(child)))
+        Ok(Box::new(OsPrompt::start(child, std::time::Duration::from_millis(ASK_FOR_MS))))
     }
 }
 
@@ -211,7 +243,7 @@ impl Mode {
     pub fn presence(self, state: &std::path::Path) -> Box<dyn Presence> {
         match self {
             Mode::Os => Box::new(Os::new(state)),
-            Mode::Terminal => Box::new(terminal::Terminal),
+            Mode::Terminal => Box::new(terminal::Terminal::new(state)),
         }
     }
 }
@@ -224,6 +256,7 @@ pub fn default_presence() -> Box<dyn Presence> {
 struct Pending {
     purpose: Purpose,
     by: String,
+    bound: String,
     started_ms: u64,
     prompt: Box<dyn Asking>,
 }
@@ -237,6 +270,7 @@ enum Outcome {
 
 struct Secret {
     purpose: Purpose,
+    bound: String,
     sha256: String,
     at_ms: u64,
 }
@@ -260,7 +294,9 @@ impl Firsts {
     }
 
     /// Open a prompt for ``by`` (`board/name`): nothing is made until the person says yes.
-    pub fn ask(&mut self, purpose: Purpose, by: &str, about: &str, terminal: &str, now: u64) -> Result<()> {
+    /// ``bound`` is the public key (hex) the first key will be: the yes is for that key only, and the dialog shows its words (empty for a phone,
+    /// whose key is made by the phone after the scan and shown on both screens then).
+    pub fn ask(&mut self, purpose: Purpose, by: &str, bound: &str, terminal: &str, now: u64) -> Result<()> {
         if self.asking.as_ref().is_some_and(|p| p.by == by && p.purpose == purpose) {
             return Ok(());
         }
@@ -270,9 +306,14 @@ impl Firsts {
         if now < self.quiet_until_ms {
             return Err(Error::Quota("The person was asked a moment ago and did not say yes; wait a few minutes before asking again.".into()));
         }
-        let what = format!("poolhouse: allow the session {by} to add {} to this computer?{}", purpose.words(), if about.is_empty() { String::new() } else { format!(" ({about})") });
+        let key = match (purpose, bound) {
+            (Purpose::Key, "") => return Err(Error::Invalid("The first key is asked for with its public key, so the yes is for that key.".into())),
+            (Purpose::Key, public) => format!(" with the key {}", crate::phone::words(&crate::grants::person::fingerprint_of("ed25519", public)?)),
+            (Purpose::Phone, _) => String::new(),
+        };
+        let what = format!("poolhouse: allow the session {by} to add {}{key} to this computer?", purpose.words());
         let prompt = self.presence.begin(&what, terminal)?;
-        self.asking = Some(Pending { purpose, by: by.into(), started_ms: now, prompt });
+        self.asking = Some(Pending { purpose, by: by.into(), bound: if purpose == Purpose::Key { bound.into() } else { String::new() }, started_ms: now, prompt });
         self.outcome = None;
         Ok(())
     }
@@ -280,12 +321,12 @@ impl Firsts {
     /// What became of the prompt ``by`` opened, as a reply: the secret comes once, in the reply that first says yes.
     pub fn status(&mut self, by: &str, now: u64) -> Value {
         if let Some(p) = &mut self.asking {
-            let answer = p.prompt.poll();
             let late = now.saturating_sub(p.started_ms) > ASK_FOR_MS;
+            let answer = if late { None } else { p.prompt.poll() };
             if answer.is_some() || late {
                 let done = self.asking.take().expect("checked above");
                 self.outcome = Some((done.by.clone(), match answer {
-                    Some(true) => self.make(done.purpose, now),
+                    Some(true) => self.make(done.purpose, &done.bound, now),
                     Some(false) => Outcome::No,
                     None => Outcome::Late,
                 }));
@@ -305,13 +346,13 @@ impl Firsts {
         }
     }
 
-    fn make(&mut self, purpose: Purpose, now: u64) -> Outcome {
+    fn make(&mut self, purpose: Purpose, bound: &str, now: u64) -> Outcome {
         let mut raw = [0u8; 32];
         if getrandom::fill(&mut raw).is_err() {
             return Outcome::No;
         }
         let secret = crate::phone::enrol::b64url(&raw);
-        self.secret = Some(Secret { purpose, sha256: sha256_hex(secret.as_bytes()), at_ms: now });
+        self.secret = Some(Secret { purpose, bound: bound.into(), sha256: sha256_hex(secret.as_bytes()), at_ms: now });
         Outcome::Yes(Some(secret), now + SECRET_FOR_MS, purpose)
     }
 
@@ -330,10 +371,10 @@ impl Firsts {
         self.secret = None;
     }
 
-    /// Spend the secret of ``purpose``: it is good once, for ten minutes, and one wrong guess spends it too.
-    pub fn take(&mut self, purpose: Purpose, secret: &str, now: u64) -> bool {
+    /// Spend the secret of ``purpose`` for the key ``bound`` (the one the yes was for; empty for a phone): it is good once, for ten minutes, and one wrong guess spends it too.
+    pub fn take(&mut self, purpose: Purpose, secret: &str, bound: &str, now: u64) -> bool {
         let found = self.secret.take();
-        found.is_some_and(|s| s.purpose == purpose && now >= s.at_ms && now - s.at_ms <= SECRET_FOR_MS && !secret.is_empty() && same(&s.sha256, &sha256_hex(secret.as_bytes())))
+        found.is_some_and(|s| s.purpose == purpose && same(&s.bound, bound) && now >= s.at_ms && now - s.at_ms <= SECRET_FOR_MS && !secret.is_empty() && same(&s.sha256, &sha256_hex(secret.as_bytes())))
     }
 }
 
@@ -357,8 +398,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
         if !node.persons.is_empty() {
             return Err(Error::Denied("A person key is enrolled already: a further key or phone is approved by one that is, not by this prompt.".into()));
         }
-        let about: String = text(p, "about")?.chars().filter(|c| c.is_ascii_alphanumeric() || " .,-".contains(*c)).take(MOST_ABOUT).collect();
-        node.firsts.ask(purpose, &by, &about, text(p, "terminal")?, now)?;
+        node.firsts.ask(purpose, &by, text(p, "public")?, text(p, "terminal")?, now)?;
     }
     let mut out = node.firsts.status(&by, now);
     if out["state"] == "confirmed" && out["purpose"] == "phone" && out["secret"].is_string() {
@@ -372,6 +412,11 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A public key (the Ed25519 base point) for the first key to be.
+    const KEY: &str = "5866666666666666666666666666666666666666666666666666666666666666";
+    /// Another one (the curve's order-2 point is invalid, so this is a different valid point).
+    const OTHER: &str = "c9a3f86aae465f0e56513864510f3997561fa2c9e85ea21dc2292309f3cd6022";
 
     /// A person who answers when the test says so.
     struct Scripted(std::sync::Arc<std::sync::Mutex<Option<bool>>>);
@@ -402,18 +447,18 @@ mod tests {
     #[test]
     fn nothing_is_made_until_the_person_says_yes_and_only_the_asker_reads_it() {
         let (mut firsts, answer) = person();
-        firsts.ask(Purpose::Key, "demo/a", "", "", 1000).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", 1000).unwrap();
         assert_eq!(firsts.status("demo/a", 2000)["state"], "asking");
         assert_eq!(firsts.status("demo/b", 2000)["state"], "none", "another session does not even see the prompt");
-        assert!(!firsts.take(Purpose::Key, "guess", 2000));
+        assert!(!firsts.take(Purpose::Key, "guess", KEY, 2000));
         *answer.lock().unwrap() = Some(true);
         assert_eq!(firsts.status("demo/b", 3000)["state"], "none", "nor the secret");
         let said = firsts.status("demo/a", 3000);
         assert_eq!(said["state"], "confirmed");
         let secret = said["secret"].as_str().unwrap().to_string();
         assert!(firsts.status("demo/a", 3500)["secret"].is_null(), "the secret is read once");
-        assert!(!firsts.take(Purpose::Phone, &secret, 4000), "a key's secret adds no phone, and one try spends it");
-        assert!(!firsts.take(Purpose::Key, &secret, 4000), "spent");
+        assert!(!firsts.take(Purpose::Phone, &secret, "", 4000), "a key's secret adds no phone, and one try spends it");
+        assert!(!firsts.take(Purpose::Key, &secret, KEY, 4000), "spent");
     }
 
     #[test]
@@ -435,29 +480,29 @@ mod tests {
         *answer.lock().unwrap() = Some(true);
         firsts.ask(Purpose::Phone, "demo/a", "", "", 0).unwrap();
         let secret = firsts.status("demo/a", 10)["secret"].as_str().unwrap().to_string();
-        assert!(firsts.take(Purpose::Phone, &secret, 20));
-        assert!(!firsts.take(Purpose::Phone, &secret, 30), "once");
+        assert!(firsts.take(Purpose::Phone, &secret, "", 20));
+        assert!(!firsts.take(Purpose::Phone, &secret, "", 30), "once");
         firsts.ask(Purpose::Phone, "demo/a", "", "", 40).unwrap();
         let late = firsts.status("demo/a", 50)["secret"].as_str().unwrap().to_string();
-        assert!(!firsts.take(Purpose::Phone, &late, 50 + SECRET_FOR_MS + 1), "ten minutes");
+        assert!(!firsts.take(Purpose::Phone, &late, "", 50 + SECRET_FOR_MS + 1), "ten minutes");
     }
 
     #[test]
     fn a_no_or_no_answer_makes_nothing_and_keeps_the_node_from_asking_again_for_a_while() {
         let (mut firsts, answer) = person();
-        firsts.ask(Purpose::Key, "demo/a", "", "", 0).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
         *answer.lock().unwrap() = Some(false);
         assert_eq!(firsts.status("demo/a", 10)["state"], "refused");
-        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", "", "", 20), Err(Error::Quota(_))), "a session cannot pester the person with prompts");
+        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", KEY, "", 20), Err(Error::Quota(_))), "a session cannot pester the person with prompts");
         *answer.lock().unwrap() = None;
-        firsts.ask(Purpose::Key, "demo/a", "", "", QUIET_MS + 100).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", QUIET_MS + 100).unwrap();
         assert_eq!(firsts.status("demo/a", QUIET_MS + ASK_FOR_MS + 200)["state"], "expired", "no answer in two minutes is a no");
     }
 
     #[test]
     fn a_node_started_with_no_presence_refuses_and_no_name_turns_the_question_off() {
         let mut firsts = Firsts::new(default_presence());
-        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", "", "", 0), Err(Error::Denied(_))), "no way to ask is a no, never a yes");
+        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", KEY, "", 0), Err(Error::Denied(_))), "no way to ask is a no, never a yes");
         assert_eq!(firsts.kind(), "closed");
         for name in ["auto", "off", "none", "unattended", "yes", "test", ""] {
             assert!(Mode::parse(name).is_none(), "{name:?} is not a way to ask");
@@ -476,10 +521,52 @@ mod tests {
     }
 
     #[test]
+    fn a_yes_for_one_key_enrols_no_other_key_and_the_dialog_names_the_key() {
+        let (mut firsts, answer) = person();
+        *answer.lock().unwrap() = Some(true);
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
+        let secret = firsts.status("demo/a", 10)["secret"].as_str().unwrap().to_string();
+        assert!(!firsts.take(Purpose::Key, &secret, OTHER, 20), "the yes was for another key");
+        let (mut firsts, answer) = person();
+        *answer.lock().unwrap() = Some(true);
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
+        let secret = firsts.status("demo/a", 10)["secret"].as_str().unwrap().to_string();
+        assert!(!firsts.take(Purpose::Key, &secret, "", 20), "a key must be named");
+        assert!(matches!(firsts.ask(Purpose::Key, "demo/b", "", "", 30), Err(Error::Invalid(_)) | Err(Error::Quota(_))), "a first key is asked for with its key");
+        let (mut firsts, _) = person();
+        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", "", "", 0), Err(Error::Invalid(_))));
+        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", "not a key", "", 0), Err(Error::Invalid(_))));
+    }
+
+    #[test]
+    fn a_yes_that_comes_after_the_time_to_answer_makes_nothing_whether_or_not_anyone_polled() {
+        let (mut firsts, answer) = person();
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
+        *answer.lock().unwrap() = Some(true);
+        assert_eq!(firsts.status("demo/a", ASK_FOR_MS + 1)["state"], "expired", "answered hours later is no answer");
+        assert!(!firsts.offered(Purpose::Key, ASK_FOR_MS + 2));
+    }
+
+    #[test]
+    fn only_the_accounts_own_node_directory_is_the_real_one() {
+        let home = std::env::temp_dir().join(format!("presence-home-{}", std::process::id()));
+        let node = home.join(".poolhouse").join("node");
+        std::fs::create_dir_all(node.join("x")).unwrap();
+        std::fs::create_dir_all(home.join(".poolhouse").join("y")).unwrap();
+        let ok = is_the_real_state(&node, &home);
+        let decoy_in_node = is_the_real_state(&node.join("x"), &home);
+        let decoy_beside = is_the_real_state(&home.join(".poolhouse").join("y"), &home);
+        let root = is_the_real_state(&home.join(".poolhouse"), &home);
+        let elsewhere = is_the_real_state(&home, &home);
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(ok && !decoy_in_node && !decoy_beside && !root && !elsewhere, "{ok} {decoy_in_node} {decoy_beside} {root} {elsewhere}");
+    }
+
+    #[test]
     fn one_prompt_is_open_at_a_time() {
         let (mut firsts, _) = person();
-        firsts.ask(Purpose::Key, "demo/a", "", "", 0).unwrap();
-        firsts.ask(Purpose::Key, "demo/a", "", "", 5).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
+        firsts.ask(Purpose::Key, "demo/a", KEY, "", 5).unwrap();
         assert!(matches!(firsts.ask(Purpose::Phone, "demo/b", "", "", 10), Err(Error::Quota(_))));
     }
 

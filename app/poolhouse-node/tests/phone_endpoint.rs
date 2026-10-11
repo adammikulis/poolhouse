@@ -84,7 +84,7 @@ fn a_phone_is_added_and_decides_over_tls_against_the_one_pinned_certificate() {
     assert!(call(addr, client(&pin, true), "GET /phone/v1/hello HTTP/1.1\r\nHost: x\r\n", b"").is_err(), "TLS 1.2 is not spoken");
 
     let (_, setup) = session(&mut node.lock().unwrap(), "demo", "setup");
-    let secret = kit::grants::first_secret(&mut |m, b, t, p| req(&mut node.lock().unwrap(), m, b, t, p), &setup, "phone");
+    let secret = kit::grants::first_secret(&mut |m, b, t, p| req(&mut node.lock().unwrap(), m, b, t, p), &setup, "phone", "");
     let mut phone = FakePhone::new("Pixel");
     let body = phone.add_body(&device, &secret).to_string();
     let (status, added) = call(addr, client(&pin, false), &post("add", ""), body.as_bytes()).unwrap();

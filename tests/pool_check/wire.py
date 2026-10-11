@@ -3,7 +3,7 @@
     python tests/pool_check/wire.py start --state DIR --binary PATH [--arg ARG ...]
     python tests/pool_check/wire.py stop  --state DIR
     python tests/pool_check/wire.py call  --state DIR METHOD [--board B] [--token T] [--params JSON]
-    python tests/pool_check/wire.py presence --state DIR --token T --purpose key|phone [--about TEXT]
+    python tests/pool_check/wire.py presence --state DIR --token T --purpose key|phone [--public HEX]
     python tests/pool_check/wire.py phone-listen --state DIR
     python tests/pool_check/wire.py phone --state DIR OP [--token T] [--body JSON] [--method GET]
     python tests/pool_check/wire.py cert --state DIR
@@ -58,7 +58,7 @@ def _screen_says(master: int, text: str, seconds: float) -> bool:
     return text.encode() in shown
 
 
-def answer_presence(state: Path, token: str, purpose: str, about: str) -> dict:
+def answer_presence(state: Path, token: str, purpose: str, public: str = "") -> dict:
     """Play the person at the node's own question: ask as the session ``token`` for the one-time secret of the first key or phone, name a
     pseudo-terminal of this device as the terminal, and type `yes` there when the node has written its question on it.
 
@@ -71,7 +71,7 @@ def answer_presence(state: Path, token: str, purpose: str, about: str) -> dict:
 
     master, slave = pty.openpty()
     try:
-        asked = call(state, "presence_ask", "", token, {"purpose": purpose, "about": about, "terminal": os.ttyname(slave)})
+        asked = call(state, "presence_ask", "", token, {"purpose": purpose, "public": public, "terminal": os.ttyname(slave)})
         if not asked["ok"] or asked["result"]["state"] != "asking":
             return asked
         if not _screen_says(master, "Type yes", 20.0):
@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         if name == "presence":
             one.add_argument("--token", required=True)
             one.add_argument("--purpose", required=True, choices=("key", "phone"))
-            one.add_argument("--about", default="the pool check's person")
+            one.add_argument("--public", default="")
         if name == "phone":
             one.add_argument("op")
             one.add_argument("--token", default="")
@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "start":
             out = start(state, Path(args.binary), [f"{a}" for a in args.arg])
         elif args.cmd == "presence":
-            out = answer_presence(state, args.token, args.purpose, args.about)
+            out = answer_presence(state, args.token, args.purpose, args.public)
         elif args.cmd == "phone-listen":
             phone.listen_on(state, "127.0.0.1:0")
             out = {"ok": True, "result": {"listening": True}}

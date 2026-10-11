@@ -425,9 +425,13 @@ kept where it is spent.
 signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal, asks the node (`presence_ask`)
 to allow the session to add the first key, and the node asks the person itself: the operating system's own prompt (a password or a fingerprint,
 on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when
-`poolhouse.real_machine.allowed()`, and the node itself asks only for a state directory under the account's own `~/.poolhouse`), or, for a node
-started with `--presence terminal` (a server, a container, the pool check's rig), the terminal device the asker names, where the node writes the
-question and reads the typed `yes` itself, so the answer never passes through the process that asked. A node started with no `--presence`
+`poolhouse.real_machine.allowed()`, and the node itself asks only for the account's own node directory (`~/.poolhouse/node`, that directory and
+no other under it, never as the administrator account). **On the real home the operating system's prompt is the only presence**: a computer
+with no such prompt (Windows, a Linux without `pkexec`) refuses and says so plainly. The prompt shows the words of the key being added, the yes
+is for that key only (`presence_ask` takes its `public`; another key presented with the secret is refused), and the prompt ends when two minutes
+are up whether or not anything polls. For a node on any other state directory (a server, a container, the pool check's rig, a test) started
+with `--presence terminal`, the node writes the question on the terminal device the asker names and reads the typed `yes` itself; it refuses that
+mode on the real home, because the program that asks could open a terminal of its own and answer. A node started with no `--presence`
 cannot ask and refuses the first key and the first phone. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
 attempt; a node that holds a key never asks. There is no cargo feature, argument or environment variable that answers for the person, in any
@@ -448,8 +452,14 @@ that device back enrols a new key made there. The last key is never removed, and
 removal is written to the pool board. The secret is in the node's memory, so a program that can write the state directory (a planted `enroll_secret.json`) enrols nothing,
 and a session that asks gets a secret only when the person answers. What an agent can still do is ask repeatedly (the node asks one question at a
 time, refuses for a few minutes after a no, and the prompt names the session that asked), spend the secret of the person's yes with a wrong guess
-so that the person asks again, or, when the node asks on a terminal, open a pseudo-terminal of its own and type `yes` there: that is why a node
-that can use the operating system's prompt does, and the terminal is for nodes that have none ("Key custody").
+so that the person asks again. A node that asks on a terminal (never on the real home) can be answered by a program that opens a pseudo-terminal
+of its own, which is why the real home allows the operating system's prompt only. On Linux a polkit rule that lets the account authenticate
+without a password (or `pkexec` set up to allow the action to anyone) lets the prompt return yes with nobody answering: that is accepted, and
+the person who runs such a rule has already given that power to every program of the account.
+
+**Accepted residual: `persons.json` is a plain file.** The OS user can edit it with the node stopped (documented at `src/grants/person.rs`), so
+a program that can stop the node and write its state directory can plant a key; the operating-system sandbox of agents (slice S0 of
+`docs/compromised-agents.md`) is what closes it, not the node.
 
 **A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` (its fingerprint is the SHA-256 of its 65-byte
 public point) and signs only approvals (docs/phone-approval.md): an agent asks (`approval_request`), the node writes the question in plain words, the phone's key

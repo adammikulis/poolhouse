@@ -152,7 +152,7 @@ impl Person {
     /// Enrol this key on the node ``call`` reaches, carried by the session ``token``, with the one-time secret the person's yes makes.
     pub fn enroll(&self, _dir: &Path, call: Call, token: &str) -> Value {
         let mut params = self.enrolment("a test person", None);
-        params["secret"] = json!(first_secret(call, token, "key"));
+        params["secret"] = json!(first_secret(call, token, "key", &self.public()));
         call("person_enroll", "", token, params)
     }
 
@@ -243,13 +243,13 @@ pub fn gid_of(name: &str, action: &str) -> String {
 /// Ask the person for the one-time secret the first key (``purpose`` `key`) or the first phone (`phone`) is added with, as the session
 /// ``token``. A node of a test says yes at once (`kit::node`); a node process asks on the terminal named here, where this test types `yes`
 /// as a person would, so the same binary a person installs is the one that is run.
-pub fn first_secret(call: Call, token: &str, purpose: &str) -> String {
+pub fn first_secret(call: Call, token: &str, purpose: &str, public: &str) -> String {
     #[cfg(unix)]
     let mut screen = super::screen::screen();
     #[cfg(unix)]
-    let named = json!({"purpose": purpose, "terminal": screen.name});
+    let named = json!({"purpose": purpose, "public": public, "terminal": screen.name});
     #[cfg(not(unix))]
-    let named = json!({"purpose": purpose});
+    let named = json!({"purpose": purpose, "public": public});
     let asked = call("presence_ask", "", token, named);
     assert_eq!(asked["ok"], true, "ask the prompt: {asked}");
     let mut said = asked;

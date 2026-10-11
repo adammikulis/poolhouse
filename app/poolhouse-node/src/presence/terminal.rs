@@ -17,7 +17,16 @@ use crate::error::Result;
 use crate::error::Error;
 
 /// Ask on the terminal device the request names.
-pub struct Terminal;
+pub struct Terminal {
+    real: bool,
+}
+
+impl Terminal {
+    /// The terminal presence of the node of ``state``, which is refused outright when that is this account's own node.
+    pub fn new(state: &std::path::Path) -> Terminal {
+        Terminal { real: super::on_real_home(state) }
+    }
+}
 
 /// A question that is on a terminal: what became of it, and a flag that ends the wait when the question is dropped.
 struct Typed {
@@ -48,6 +57,9 @@ impl Presence for Terminal {
     }
 
     fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>> {
+        if self.real {
+            return Err(crate::error::Error::Denied("On this computer's own node the first key and phone are asked for with the operating system's prompt only: a terminal can be answered by the program that asks.".into()));
+        }
         #[cfg(unix)]
         {
             let fd = unix::open(terminal)?;
@@ -137,5 +149,16 @@ mod unix {
         // SAFETY: closing the descriptor this thread opened, once.
         unsafe { libc::close(fd) };
         said
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_terminal_is_never_the_way_to_ask_on_the_accounts_own_node() {
+        let refused = Terminal { real: true }.begin("poolhouse: allow the session demo/a to add your first person key to this computer?", "/dev/tty");
+        assert!(refused.err().is_some_and(|e| e.to_string().contains("operating system's prompt only")), "the program that asks could open its own terminal and answer it");
     }
 }
