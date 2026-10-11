@@ -17,7 +17,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, macauth, sentinel
+from poolhouse import home, lan as lan_policy, macauth, sentinel
 from poolhouse.files import write_text
 from poolhouse.fleet.onboard.requests import Devices
 from poolhouse.hub import default_roots
@@ -84,7 +84,7 @@ def bind_address(host: str | None, *, lan: bool, joined: bool) -> str:
     """Return the configured loopback or LAN listening address."""
     if host:
         return host
-    return ALL_INTERFACES if lan or joined else LOOPBACK
+    return ALL_INTERFACES if (lan or joined) and lan_policy.allowed() else LOOPBACK
 
 
 def load_or_create_token(
@@ -152,7 +152,7 @@ class DaemonRuntime:
         self.lan = options.lan
         self.ui_from_lan = options.ui_from_lan
         self.name = options.name
-        self.announce = options.announce
+        self.announce = options.announce and lan_policy.allowed()  # no beacon, no multicast, outside the real home or under a test
         self.pool_key_path = options.pool_key_path
         self.pool_mode = options.pool_mode
         self.device_report = options.device_report
@@ -623,7 +623,7 @@ class DaemonRuntime:
             return
         for member in selected:
             say(f"  joined pool {member.group!r}")
-        if not self.host and self.listening == LOOPBACK:
+        if not self.host and self.listening == LOOPBACK and lan_policy.allowed():
             self.widen.set()
             self.httpd.shutdown()
 

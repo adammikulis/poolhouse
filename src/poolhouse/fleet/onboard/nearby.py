@@ -23,6 +23,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
+from poolhouse import lan as lan_policy
+
 from .events import BUS, Bus
 from .requests import clean
 
@@ -230,8 +232,11 @@ class UdpTransport:
     def __init__(self, *, bind: str | None = None, port: int = DEFAULT_PORT,
                  destinations: list[tuple[str, int]] | None = None,
                  group: str | None = None) -> None:
-        self.destinations = destinations if destinations is not None else [
-            (DEFAULT_GROUP, port), ("255.255.255.255", port)]
+        here = not lan_policy.allowed()  # outside the real home, or under a test: loopback alone, no group, no broadcast
+        if here:
+            bind, group = "127.0.0.1", None
+        self.destinations = destinations if destinations is not None else (
+            [("127.0.0.1", port)] if here else [(DEFAULT_GROUP, port), ("255.255.255.255", port)])
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if hasattr(socket, "SO_REUSEPORT"):

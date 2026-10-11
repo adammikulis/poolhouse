@@ -2,11 +2,10 @@
 
 import argparse
 import json
-import os
 
 import pytest
 
-from poolhouse import node_launch, node_pool
+from poolhouse import lan, node_launch, node_pool
 from poolhouse.fleet import members
 from poolhouse.fleet.discovery import DiscoveryError
 
@@ -52,32 +51,34 @@ def test_status_is_none_when_no_node_answers(tmp_path):
     assert found is None and why
 
 
-@pytest.mark.parametrize(("own", "extra", "started"), [
-    (True, None, ["--lan"]), (False, None, []), (True, ["--listen", "127.0.0.1:0"], ["--listen", "127.0.0.1:0"])])
-def test_the_devices_own_node_starts_on_the_lan_and_a_scratch_node_stays_local(tmp_path, monkeypatch, own, extra, started):
-    own_state, scratch = tmp_path / "own", tmp_path / "scratch"
+def start_in(monkeypatch, tmp_path, own_state, which, extra):
+    """The words `ensure_node` hands the supervisor when it starts a node in ``which`` (None for the device's own)."""
     seen: list[list[str]] = []
-    monkeypatch.delenv(node_launch.LAN_ENV)  # the suite sets it off for itself; this test is about the default
     monkeypatch.setattr(node_launch, "default_state", lambda: own_state)
     monkeypatch.setattr(node_launch, "node_health", lambda state: {"ok": True} if seen else None)
     monkeypatch.setattr(node_launch.node_supervise, "resolve", lambda state: None)
     monkeypatch.setattr(node_launch, "supervised", lambda state: False)
     monkeypatch.setattr(node_launch, "_start_supervisor", lambda state, words: seen.append(words))
-    node_launch.ensure_node(None if own else scratch, extra=extra, wait_s=1)
+    node_launch.ensure_node(which, extra=extra, wait_s=1)
+    return seen
+
+
+@pytest.mark.parametrize(("own", "extra", "started"), [
+    (True, None, ["--lan"]), (False, None, []), (True, ["--listen", "127.0.0.1:0"], ["--listen", "127.0.0.1:0"]),
+    (False, ["--lan", "--project", "p"], ["--lan", "--project", "p"])])
+def test_where_the_network_is_allowed_the_devices_own_node_starts_on_the_lan_and_a_scratch_node_stays_local(tmp_path, monkeypatch, own, extra, started):
+    monkeypatch.setattr(lan, "allowed", lambda: True)  # the installed software on the real home; what a person's machine runs
+    seen = start_in(monkeypatch, tmp_path, tmp_path / "own", None if own else tmp_path / "scratch", extra)
     assert seen == [started]
 
 
-def test_under_the_test_suite_the_devices_own_node_starts_local_and_never_on_the_lan(tmp_path, monkeypatch):
-    assert os.environ[node_launch.LAN_ENV] == "off", "the suite sets it for itself and every process it starts"
-    own_state = tmp_path / "own"
-    seen: list[list[str]] = []
-    monkeypatch.setattr(node_launch, "default_state", lambda: own_state)
-    monkeypatch.setattr(node_launch, "node_health", lambda state: {"ok": True} if seen else None)
-    monkeypatch.setattr(node_launch.node_supervise, "resolve", lambda state: None)
-    monkeypatch.setattr(node_launch, "supervised", lambda state: False)
-    monkeypatch.setattr(node_launch, "_start_supervisor", lambda state, words: seen.append(words))
-    node_launch.ensure_node(None, wait_s=1)
-    assert seen == [[]], "no --lan: a node a test starts is reachable from this machine only"
+@pytest.mark.parametrize("extra", [None, ["--lan"], ["--lan", "--project", "team"]])
+def test_without_the_real_home_no_variable_is_needed_to_keep_a_node_off_the_network(tmp_path, monkeypatch, extra):
+    monkeypatch.delenv(node_launch.LAN_ENV, raising=False)  # nothing is set: missing must never mean open
+    monkeypatch.delenv(lan.TESTS_ENV, raising=False)
+    assert lan.under_test() and not lan.allowed()
+    seen = start_in(monkeypatch, tmp_path, tmp_path / "own", None, extra)
+    assert seen == [["--project", "team"] if extra and "team" in extra else []], "no --lan: this node is reachable from this machine only"
 
 
 WSL_FIX = "this device looks like WSL2 behind NAT: set networkingMode=mirrored in .wslconfig and run wsl --shutdown, or run `python -m poolhouse.device_setup --yes` on it"

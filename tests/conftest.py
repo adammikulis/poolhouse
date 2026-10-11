@@ -124,6 +124,7 @@ _install_git_hooks()
 import testslots  # noqa: E402  (``scripts`` is on the path above)
 import walkbound  # noqa: E402
 from environ_guard import environment_is_restored  # noqa: E402,F401  (an autouse fixture)
+from network_guard import nothing_beyond_loopback  # noqa: E402,F401  (an autouse fixture)
 
 from poolhouse.http import Server  # noqa: E402
 from poolhouse.testing import live  # noqa: E402
@@ -1107,7 +1108,8 @@ def _real_home(tmp_path_factory):
         mp.setenv("HOME", str(away))
         mp.setenv("POOLHOUSE_HOME", str(away / ".poolhouse"))
         mp.setenv("POOLHOUSE_CACHE", str(away / ".cache" / "poolhouse"))
-        mp.setenv("POOLHOUSE_NODE_LAN", "off")  # a node a test starts never listens on the network
+        if os.environ.get(live.LAN_TESTS) != "1":
+            mp.setenv("POOLHOUSE_NODE_LAN", "off")  # belt only: `poolhouse.lan` already keeps a node off the network under a moved home or pytest
         yield real
     if failure := watch.settle():
         pytest.fail(failure, pytrace=False)

@@ -11,11 +11,14 @@ import ipaddress
 import socket
 from collections.abc import Iterable, Mapping
 
-__all__ = ["CREDENTIALS", "LIVE_API", "LIVE_NET", "MARKERS", "PAID_SDKS", "outside", "skip_reason"]
+from poolhouse.person import AGENT_MARKERS
+
+__all__ = ["CREDENTIALS", "LAN_TESTS", "LIVE_API", "LIVE_NET", "MARKERS", "PAID_SDKS", "outside", "skip_reason"]
 
 LIVE_API = "POOLHOUSE_LIVE_API"
 LIVE_NET = "POOLHOUSE_LIVE_NET"
-MARKERS = {"live_api": LIVE_API, "live_net": LIVE_NET}
+LAN_TESTS = "POOLHOUSE_LAN_TESTS"
+MARKERS = {"live_api": LIVE_API, "live_net": LIVE_NET, "lan_network": LAN_TESTS}
 
 CREDENTIALS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
                "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "COHERE_API_KEY",
@@ -31,8 +34,10 @@ def skip_reason(marks: Iterable[str], environ: Mapping[str, str]) -> str:
     """Why a test carrying these marker names is skipped, empty when it may run."""
     for mark in marks:
         switch = MARKERS.get(mark)
+        if mark == "lan_network" and any(environ.get(agent) for agent in AGENT_MARKERS):
+            return "an agent never runs the tests that listen on the network; a person does, at the machine"
         if switch is not None and environ.get(switch) != "1":
-            return f"reaches a real remote service; set {switch}=1 to run it on purpose"
+            return f"reaches beyond this machine; set {switch}=1 to run it on purpose"
     return ""
 
 

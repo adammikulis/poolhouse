@@ -269,6 +269,7 @@ markers = [
     "redteam: needs the redteam extra (PyRIT); left out unless --redteam is given",
     "live_api: calls a paid or quota-limited remote API; runs only when POOLHOUSE_LIVE_API=1",
     "live_net: reaches a public endpoint; runs only when POOLHOUSE_LIVE_NET=1",
+    "lan_network: binds a non-loopback address, joins multicast or sends to the LAN; runs only when POOLHOUSE_LAN_TESTS=1",
     "seatbelt: runs sandbox-exec itself, so it cannot run under the real-state write denial; listed in tests/seatbelt-modules.txt",
     "gate: a scan of the whole tracked tree, the same one `scripts/test gate` makes; left out of fast and full unless --gate or --slow is given",
     "heavy: runs in the default tier and costs seconds a test; `scripts/test fast` leaves it out",

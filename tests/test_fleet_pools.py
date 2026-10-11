@@ -86,6 +86,9 @@ def test_a_pool_asked_for_by_name_is_still_answered_only_by_its_holders(advertis
     assert joining.find_joiners("attic", timeout_s=0.5, port=udp) == []
 
 
+@pytest.mark.lan_network
+
+
 def test_two_pools_on_one_machine_list_with_their_holders(advertise, tmp_path, udp):
     advertise("lab", "studio")
     advertise("lab", "larch")

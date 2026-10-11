@@ -8,6 +8,7 @@ import time
 
 import pytest
 
+from poolhouse import lan
 from poolhouse.fleet.daemon import ALL_INTERFACES, LOOPBACK, bind_address
 from poolhouse.fleet.discovery import primary_ip
 
@@ -17,7 +18,8 @@ def test_the_default_is_this_machine_only():
     assert bind_address("", lan=False, joined=False) == LOOPBACK
 
 
-def test_a_pool_member_or_an_explicit_lan_listens_on_the_network():
+def test_a_pool_member_or_an_explicit_lan_listens_on_the_network(monkeypatch):
+    monkeypatch.setattr(lan, "allowed", lambda: True)  # the real home; elsewhere the daemon stays on loopback (tests/test_lan.py)
     assert bind_address(None, lan=True, joined=False) == ALL_INTERFACES
     assert bind_address(None, lan=False, joined=True) == ALL_INTERFACES
 
@@ -53,6 +55,7 @@ def _reachable(address, port, *, wait_s=20.0):
 
 
 @pytest.mark.slow
+@pytest.mark.lan_network
 @pytest.mark.parametrize("flags, on_the_lan", [((), False), (("--lan",), True)])
 def test_a_daemon_started_with_no_flags_cannot_be_reached_from_the_lan(tmp_path, flags,
                                                                        on_the_lan):
@@ -105,6 +108,7 @@ def _status(address, port):
     return got
 
 
+@pytest.mark.lan_network
 @pytest.mark.parametrize("ui_from_lan, from_the_lan", [(False, 403), (True, 200)])
 def test_the_web_interface_answers_other_machines_only_when_told_to(tmp_path, ui_from_lan,
                                                                     from_the_lan):
@@ -122,6 +126,7 @@ def test_the_web_interface_answers_other_machines_only_when_told_to(tmp_path, ui
 
 
 @pytest.mark.slow
+@pytest.mark.lan_network
 def test_a_lan_daemon_serves_its_certificate_and_refuses_plain_http_from_the_lan(tmp_path):
     import ssl
 
