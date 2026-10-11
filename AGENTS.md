@@ -939,6 +939,16 @@ ours with its own arguments, an environment variable that flips one of our param
 that says where its graph keeps its pointers, its copy and kinds handed to our page. When an app
 needs more than that, the missing piece is a command or a parameter here.
 
+### Only real decisions go to the owner
+
+A question to the owner is for a decision that is the owner's alone and that the agent cannot settle
+from the request, the code or the rules here (product direction, spending, anything outward-facing
+or irreversible, a hard floor). When one option is better, the agent takes it and goes on: it does
+not pitch a choice whose answer it already knows, does not offer a weaker option beside the better
+one to look careful, and does not ask permission for work inside what it was told to do. It says
+what it chose and why in the report, in a line. Timidity is a defect: stopping to ask when the
+answer is known costs the owner's attention and stops the work.
+
 ### Options and recommendations are ranked by what is correct
 
 When an agent puts a choice to the owner or to another agent (a question, a plan, a report that
