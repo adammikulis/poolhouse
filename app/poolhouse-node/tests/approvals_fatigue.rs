@@ -500,6 +500,35 @@ fn a_denied_add_counts_against_the_session_that_made_the_code_and_blocks_its_cod
 }
 
 #[test]
+fn a_session_that_is_held_makes_no_code_and_a_code_it_made_before_adds_nothing_once_it_is_held() {
+    let (rig, first, _name, token) = with_offering_session();
+    let offer = ok(rig.call("phone_offer", "", &token, json!({})));
+    for i in 0..2 {
+        let made = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({"note": format!("{i}")})));
+        ok(answer(&rig, &first, made["id"].as_str().unwrap(), "deny"));
+    }
+    let refused = rig.phone("POST", "add", "", FakePhone::new("Pixel").add_body(&rig.device(), &secret_of_link(&offer))).1;
+    assert_eq!(code(&refused), "denied", "{refused}");
+    assert!(message(&refused).contains("held or blocked"), "the code of a session that is held adds nothing: {refused}");
+    let again = rig.call("phone_offer", "", &token, json!({}));
+    assert!(message(&again).contains("held or blocked"), "and it asks for no more codes: {again}");
+}
+
+#[test]
+fn a_phone_that_scans_the_code_of_a_busy_session_is_listed_and_not_pushed() {
+    let (rig, first, _name, token) = with_offering_session();
+    let offer = ok(rig.call("phone_offer", "", &token, json!({})));
+    for action in ["sync_now", "add_device", "link_write"] {
+        let resource = if action == "link_write" { "a>b" } else { "*" };
+        assert_eq!(ok(rig.ask("demo", &token, json!([ask(action, resource)]), json!({})))["urgency"], "urgent");
+    }
+    let sent = rig.pushed.sent().len();
+    let added = rig.phone("POST", "add", "", FakePhone::new("Pixel").add_body(&rig.device(), &secret_of_link(&offer))).1["result"].clone();
+    assert_eq!(rig.get(&first, added["approval"].as_str().unwrap())["urgency"], "silent", "a requester has three interruptions at once, a phone's addition counts as one of its own");
+    assert_eq!(rig.pushed.sent().len(), sent + 1, "and nothing but the one quiet notice reached the phone");
+}
+
+#[test]
 fn a_phone_add_nobody_answers_counts_against_the_session_that_made_the_code_too() {
     let (rig, _first, _name, token) = with_offering_session();
     let offer = ok(rig.call("phone_offer", "", &token, json!({})));
