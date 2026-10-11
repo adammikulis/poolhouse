@@ -30,6 +30,13 @@ instead. Wire it into a project's `.claude/settings.json` (the docstring shows t
 `POOLHOUSE_GUARD=off` disables it for a session. Both hooks are tested:
 `tests/test_no_real_names.py` and `tests/test_bash_guard.py`.
 
+The `no-real-names` hook needs the privacy extra: `pip install '.[privacy]' && python -m spacy download
+en_core_web_sm`; with it the hook refuses a person it has never seen, not merely a known list. Invented
+names go in `tests/known-fixtures.txt`. Both name hooks (`no-real-names`, `commit-msg`) read `NAMES_GRAPH`,
+`NAMES_SCRAPE`, `NAMES_FIXTURES` and `PYTHON` from the environment, so a machine holding a local database of
+names can wrap them with an untracked `.git/hooks/` script that exports those and execs the tracked one; the
+installer leaves such a wrapper alone.
+
 Set `git config --local pull.ff only` for editor sync: a divergent pull refuses before
 creating a merge. Reconcile divergence in an integration worktree, then land with a reviewed
 fast-forward. The pre-push hook refuses dirty checkouts and unfinished Git operations for
@@ -64,6 +71,50 @@ prints, for every pair a rule cleared, which section and which word did it
 (`'North Carolina' cleared by place_first: north`), so the next exception is a word added
 to a known section rather than a code change. `NAMES_SHAPES=path.json` reads another
 rules file instead of the shipped one.
+
+### Hook failures and runtime cutover checks
+
+The rules are in AGENTS.md, "Hook failures are active incidents" and "Activating a fix"; this is
+the procedure.
+
+After changing or activating a runtime, exercise the installed hook commands for pre, post and
+stop under the owning authenticated session. Check the actual launcher interpreter, the
+distribution revision, the structured output and the exit status: source tests and a daemon
+health response do not establish which hook runtime is active. Preserve any diagnostic ID and
+the redacted local record. Fix a hook regression and repeat these checks before continuing work
+that depends on it. Notification outages must warn without blocking completed local tools;
+independent authorization and unfinished-work completion checks remain enforced. Inspect records
+with `poolhouse-doctor hooks [ID]` or, without workspace imports,
+`python -m poolhouse.hook_diagnostics [ID]`. These bounded local incident logs preserve failure
+evidence while workspace services or graph startup are unavailable. The signature summary
+retains first occurrence time, checkout branch/HEAD, installed runtime revision and repeat count
+across detail rotation. Record runtime cutover checks in the handoff.
+
+When a development hook fails repeatedly, or the owner asks to fix it:
+
+- Pause unrelated work and assign one owner to diagnosis, installation and verification.
+  Coordination must not delay a ready repair. Keep independent review bounded to the affected
+  hook; do not wait for a UI batch, unrelated refactor, cleanup or broad suite.
+- Reproduce the exact installed command immediately. Record elapsed time, exit status, stdout,
+  stderr, configured timeout, interpreter path and installed version/commit. Compare the
+  running artifact with the proposed source fix before further edits. Never substitute a
+  checkout test for verification of the hook the owner is using.
+- If measured duration approaches the host timeout, promptly apply an authorized timeout
+  adjustment with a backup while correcting the slow path. Keep notification work bounded
+  below that timeout, avoid redundant authentication and subprocesses, and terminate owned
+  timed-out children. Notifications must warn and return successfully when the daemon is
+  unavailable; independent authorization and completion checks retain their enforcement.
+- Failures must emit a credential-redacted diagnostic reference before context truncation and
+  preserve local records independently of the daemon: first occurrence, branch/HEAD, installed
+  provenance, stage timings, reason and recurrence count. Never swallow a failure or proceed as
+  though a broken hook succeeded.
+- Complete the authorized build, isolated installation and exact-command smoke before
+  requesting any required host trust review. Preserve active jobs, original configuration and
+  rollback artifacts. Never fabricate a trust hash or bypass authorization to activate a change.
+- Completion requires the actual configuration selecting the repaired artifact, required trust
+  approval saved, and a successful installed invocation on the available hardware. Verify the
+  normal host-triggered hook too; report any remaining reload or verification step. A source
+  commit, review, passing test or prepared runtime is only a checkpoint.
 
 ## Python versions
 

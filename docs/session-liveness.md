@@ -360,7 +360,7 @@ is recorded but not honoured and the board says why; it is the owner's table to 
 
 The new coordinator needs nothing from the dead one's context:
 - the task graph, leases, checkpoints, proposals, reviews (`coordination.db`);
-- claims (`claims.json`) and lifecycle scopes (`worktree-lifecycle.db`);
+- claims (the held leases in the node's `leases.json`) and lifecycle scopes (`worktree-lifecycle.json`);
 - the board, HANDOFF.md and `git worktree list`/branches in the primary checkout;
 - the previous coordinator's in-flight record `landing:<id>` (section 6).
 On promotion it runs `recover` once, reads `inbox`, posts one summary announcement, then resumes

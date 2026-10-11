@@ -1,7 +1,7 @@
 # The pool check
 
 `scripts/pool-check` starts a real pool of N devices and checks, step by step, that it works. Every claim that two or more devices work
-together has to pass it before the owner is asked to set up another device (AGENTS.md, section 1). A test with two nodes on one machine
+together has to pass it before the owner is asked to set up another device (AGENTS.md, "Setting up a new device"). A test with two nodes on one machine
 over loopback proves the Rust and the Python are correct; it does not prove a pool works across a different operating system, kernel,
 filesystem and network stack, which is where every "it never worked on the other device" has been.
 

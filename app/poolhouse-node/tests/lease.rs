@@ -254,21 +254,41 @@ fn a_claim_is_renewed_only_to_eight_hours_after_it_was_taken_and_the_renewal_say
 }
 
 #[test]
-fn a_claim_taken_for_longer_than_its_lifetime_is_refused_a_renewal_once_the_lifetime_is_over() {
+fn a_claim_past_its_lifetime_is_refused_a_renewal_and_taken_again_by_its_holder_for_a_new_lifetime() {
     let (_d, mut n, (_, ta), (_, tb)) = two();
     let t = clocked(&mut n);
     let taken = ok(req(&mut n, "claim", "demo", &ta, json!({"kind": "server", "key": "api", "ttl_s": 86_400})));
     advance(&t, EIGHT_HOURS_S - 60);
     let id = taken["claim"]["lease"].clone();
-    assert_eq!(ok(req(&mut n, "lease_renew", "demo", &ta, json!({"id": id})))["capped"], true);
+    assert_eq!(ok(req(&mut n, "lease_renew", "demo", &ta, json!({"id": id})))["capped"], true, "a renewal inside the lifetime is held back to it");
     advance(&t, 120);
-    for refused in [req(&mut n, "lease_renew", "demo", &ta, json!({"id": id})), req(&mut n, "claim", "demo", &ta, json!({"kind": "server", "key": "api"}))] {
-        assert_eq!(code(&refused), "denied");
-        assert!(refused["error"]["message"].as_str().unwrap().contains("lifetime"), "{refused}");
-    }
-    assert_eq!(code(&req(&mut n, "claim", "demo", &tb, json!({"kind": "server", "key": "api"}))), "denied", "the claim is still its holder's until it is released");
-    ok(req(&mut n, "release", "demo", &ta, json!({"kind": "server", "key": "api"})));
-    assert_eq!(ok(req(&mut n, "claim", "demo", &ta, json!({"kind": "server", "key": "api"})))["changed"], true);
+    let refused = req(&mut n, "lease_renew", "demo", &ta, json!({"id": id}));
+    assert_eq!(code(&refused), "denied");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("lifetime"), "{refused}");
+    assert_eq!(code(&req(&mut n, "claim", "demo", &tb, json!({"kind": "server", "key": "api"}))), "denied", "it is still its holder's until the holder takes it again");
+    let again = ok(req(&mut n, "claim", "demo", &ta, json!({"kind": "server", "key": "api"})));
+    assert_eq!(again["changed"], true, "its holder asking again releases the old claim and takes it anew");
+    assert_ne!(again["claim"]["lease"], id);
+    assert_eq!(again["claim"]["since_ms"].as_u64().unwrap(), T0 + EIGHT_HOURS_S * 1000 + 60_000, "with a lifetime that starts now");
+    let kept = ok(req(&mut n, "lease_renew", "demo", &ta, json!({"id": again["claim"]["lease"]})));
+    assert_eq!(kept["capped"], false, "and one that a renewal may use");
+    assert_eq!(code(&req(&mut n, "claim", "demo", &tb, json!({"kind": "server", "key": "api"}))), "denied", "another holder is refused as before");
+    assert_eq!(ok(req(&mut n, "claims", "demo", &ta, json!({"kind": "server"})))["claims"].as_array().unwrap().len(), 1, "the old claim is gone");
+}
+
+#[test]
+fn a_reserve_of_a_worktree_the_caller_holds_past_its_lifetime_takes_it_anew() {
+    let (_d, mut n, (_, ta), (_, tb)) = two();
+    let t = clocked(&mut n);
+    let wanted = json!({"resources": [{"kind": "worktree", "key": "/repos/x/wt1"}, {"kind": "branch", "key": "feat"}], "ttl_s": 86_400});
+    let first = ok(req(&mut n, "reserve", "demo", &ta, wanted.clone()));
+    assert_eq!(first["claims"][0]["changed"], true);
+    advance(&t, EIGHT_HOURS_S + 60);
+    assert_eq!(code(&req(&mut n, "reserve", "demo", &tb, wanted.clone())), "denied", "another session's reserve is refused");
+    let again = ok(req(&mut n, "reserve", "demo", &ta, wanted));
+    assert!(again["claims"].as_array().unwrap().iter().all(|c| c["changed"] == true), "{again}");
+    assert_ne!(again["claims"][0]["claim"]["lease"], first["claims"][0]["claim"]["lease"]);
+    assert_eq!(ok(req(&mut n, "claims", "demo", &ta, json!({})))["claims"].as_array().unwrap().len(), 2);
 }
 
 #[test]

@@ -58,6 +58,18 @@ pub fn link_reply(node: &mut Node, token: &str, board: &str, fields: &mut Map<St
     Ok(())
 }
 
+/// Whether ``fields`` is an `answer` to a message that ``to`` wrote: the one thing a session that was retired is still sent,
+/// so the question it left is closed and the board shows who closed it. Nothing else reaches a retired session.
+pub fn answers_sender(node: &mut Node, board: &str, fields: &Map<String, Value>, to: &str) -> Result<bool> {
+    let reply = fields.get("reply_id").and_then(Value::as_str).unwrap_or("");
+    if reply.is_empty() || fields.get("type").and_then(Value::as_str) != Some("answer") {
+        return Ok(false);
+    }
+    let own = node.host(board)?.board.origin().to_string();
+    let id = resolve(board, &own, reply);
+    Ok(node.view(board)?.iter().any(|e| e.id == id && e.kind == Kind::Message && e.sender == to))
+}
+
 /// The id of the root of the thread that ``reference`` belongs to, among the messages ``viewer`` may read.
 pub fn root_of(node: &mut Node, board: &str, entries: &[Entry], viewer: &str, reference: &str) -> Result<String> {
     let own = node.host(board)?.board.origin().to_string();

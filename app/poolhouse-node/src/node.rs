@@ -29,6 +29,7 @@ use crate::quarantine::Quarantine;
 use crate::registry::Projects;
 use crate::row::{valid_name, Kind};
 use crate::subs::Subs;
+use crate::tally::Tally;
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
@@ -46,6 +47,8 @@ pub struct Hosted {
     pub quarantine: Quarantine,
     pub subs: Subs,
     pub book: Book,
+    /// What the write limits count, kept as rows arrive (`tally`).
+    pub tally: Tally,
 }
 
 pub struct Node {
@@ -74,6 +77,8 @@ pub struct Node {
     pub asking: Asking,
     pub stop: Arc<AtomicBool>,
     pub started: Instant,
+    /// How many times a whole board was folded (`view`).
+    pub folds: u64,
     /// The build this device runs and advertises (`build`).
     pub build: crate::build::Build,
     /// How this machine is attached to the network (`netif::network`), told to every peer in the hello so it can say how to reach this device.
@@ -120,7 +125,7 @@ impl Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
-            stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
+            stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
             build: crate::build::Build::from_env(), network: crate::netif::network().into(),
         };
         let root = dir.join("boards");
@@ -148,11 +153,13 @@ impl Node {
             }
             let dir = self.dir.join("boards").join(id);
             private_dir(&dir)?;
-            let board = Board::open(&dir.join("log"), id, &self.pool, self.key.clone())?;
+            let mut board = Board::open(&dir.join("log"), id, &self.pool, self.key.clone())?;
             let names = Registry::open(&dir.join("names.json"))?;
             let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
             let subs = Subs::open(&dir.join("subs.json"))?;
-            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs, book: Book::default() });
+            let mut tally = Tally::default();
+            tally.catch_up(&mut board, &names)?;
+            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs, book: Book::default(), tally });
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
     }
@@ -251,8 +258,16 @@ impl Node {
         Ok(json!({"name": name, "token": token, "created": created, "parent": parent, "board": board, "origin": origin}))
     }
 
+    /// The counters of ``board`` for the write limits, brought up to the rows it has now.
+    pub fn tally(&mut self, board: &str) -> Result<&mut Tally> {
+        let Hosted { board, names, tally, .. } = self.hosted(board)?;
+        tally.catch_up(board, names)?;
+        Ok(tally)
+    }
+
     /// The folded entries of ``board``, in merged order, with the foreign rows that were refused recorded.
     pub fn view(&mut self, board: &str) -> Result<Vec<Entry>> {
+        self.folds += 1;
         let Hosted { board, names, .. } = self.hosted(board)?;
         let rows = board.merged();
         let own = board.origin().to_string();
@@ -280,7 +295,7 @@ impl Node {
             return Err(Error::Denied("that channel is not shared with this session".into()));
         }
         if let Some(to) = fields.get("to").and_then(Value::as_str).filter(|t| kind == Kind::Message && t.starts_with(|c: char| c != '#')) {
-            if !self.can_receive(board, to)? {
+            if !self.can_receive(board, to)? && !crate::mail::answers_sender(self, board, fields, to)? {
                 return Err(Error::Denied(format!("{to} is not a session of this board")));
             }
         }

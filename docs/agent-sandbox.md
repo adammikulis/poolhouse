@@ -3,7 +3,7 @@
 Status: prepared 2026-10-08, nothing installed. The owner decided agents run under an operating
 system sandbox. This document is the target profile for each harness, what each option closes,
 how our workflows behave under it, and the order in which the owner checks it. Machine settings are
-a person's (AGENTS.md section 6): an agent runs `scripts/agent-sandbox prepare`, and the person
+a person's (AGENTS.md section 1): an agent runs `scripts/agent-sandbox prepare`, and the person
 installs what it staged.
 
 Every claim about sandbox behaviour is **PREDICTED** unless marked **VERIFIED**. An agent cannot
