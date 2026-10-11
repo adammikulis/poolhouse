@@ -9,6 +9,7 @@ phone's custody of the key (Android Keystore, the fingerprint prompt) and the pu
 from __future__ import annotations
 
 import json
+import time
 
 from phone_keys import PhoneKeys
 from pool_check.device import BOARD, Device
@@ -45,7 +46,8 @@ def _on(world: World, device: Device) -> str:
     added = _phone(device, "add", body=phone.add_body(str(device.hello()["device"]), code))
     assert added["ok"] and added["result"]["state"] == "pending", f"{device.name}: a phone added after a key exists should wait for approval: {added}"
     phone.token = added["result"]["token"]
-    waiting = next(a for a in device.call("approval_pending", "", token)["approvals"] if a["id"] == added["result"]["approval"])
+    listing = grants.sign_list(person.key, str(device.hello()["device"]), int(time.time() * 1000))
+    waiting = next(a for a in device.call("approval_pending", "", token, **listing)["approvals"] if a["id"] == added["result"]["approval"])
     assert "POOL: SECURE." in waiting["text"], f"{device.name}: adding a phone states the pool's policy:\n{waiting['text']}"
     approval = grants.sign_approval(person.key, waiting, "approve")
     approved = device.call("approval_decide", "", token, **approval)

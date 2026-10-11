@@ -1,6 +1,6 @@
 """The `approval` command of `poolhouse-workspace`: ask a person's phone for grants, wait for the answer and read what became of it.
 
-`request`, `status`, `wait`, `cancel`, `list` and `pending` are any session's. `decide` is a person's at a terminal: it signs the
+`request`, `status`, `wait`, `cancel`, `list` and `pending` are any session's, and read only that session's own requests; `pending --all` and `decide` are a person's. `decide` is a person's at a terminal: it signs the
 answer with the person's key after a typed yes, the other way a person's key answers (the phone is the first). What an agent can do
 is ask and wait; no verb here answers for a person (docs/phone-approval.md).
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from typing import Any
 
 from poolhouse import person
@@ -34,6 +35,7 @@ OPTIONS = [
     flag("--task", default="", metavar="REF", help="request: the task on the board the request came from"),
     flag("--ttl", type=int, default=0, metavar="SECONDS", help="request: how long it stays on the person's phone (default 30 minutes, at most 24 hours)"),
     flag("--expect-policy", default="", choices=("", "open", "secure"), help="request: what you believe the pool's join policy is; the node refuses the request if it is not"),
+    flag("--all", action="store_true", help="pending: every request that waits, not only your own (a person at a terminal: your key signs to read them)"),
     flag("--wait", type=float, default=0.0, metavar="SECONDS", help="request: wait this long for the answer"),
     flag("--timeout", type=float, default=30.0, metavar="SECONDS", help="wait: how long to wait for the answer"),
 ]
@@ -81,6 +83,12 @@ def _own(args: argparse.Namespace, s: Session) -> int:
         if args.wait:
             made.wait(args.wait)
         return _print(args, made)
+    if args.verb == "pending" and args.all:
+        person.require_person("reading every request that waits")
+        carrier, key = held_key(Client())
+        listed = list(_waiting(carrier, key).values())
+        say(json.dumps(listed) if args.json else "\n".join(f"{a['id']}  {a['state']:<9} {a['risk']:<12} {a['title']}" for a in listed) or "(none)")
+        return 0
     if args.verb in ("list", "pending"):
         listed = s.call("approvals" if args.verb == "list" else "approval_pending")["approvals"]
         say(json.dumps(listed) if args.json else "\n".join(f"{a['id']}  {a['state']:<9} {a['risk']:<12} {a['title']}" for a in listed) or "(none)")
@@ -102,6 +110,13 @@ def held_key(client: Client) -> tuple[Session, Any]:
     if grants.fingerprint(key.public) not in grants.listing(carrier).persons:
         raise Denied("denied", "this node does not hold your key: run `poolhouse-workspace grants-setup`")
     return carrier, key
+
+
+def _waiting(carrier: Session, key: Any) -> dict[str, dict[str, Any]]:
+    """Every request that waits, by handle, read with the person's key: the key signs the reading (a typed yes), because a session reads only its own."""
+    node = str(carrier.call("hello")["device"])
+    signed = grants.sign_list(key, node, int(time.time() * 1000))
+    return {a["id"]: a for a in carrier.call("approval_pending", **signed)["approvals"]}
 
 
 def answer(carrier: Session, key: Any, request: dict[str, Any], decision: str) -> dict[str, Any]:
@@ -130,9 +145,9 @@ def _decide(args: argparse.Namespace) -> int:
     if len(args.items) != 2 or args.items[1] not in ("approve", "deny", "block"):
         raise ValueError("decide takes a handle and approve, deny or block: `approval decide ap-0123456789abcdef approve`")
     carrier, key = held_key(Client())
-    waiting = {a["id"]: a for a in carrier.call("approval_pending")["approvals"]}
+    waiting = _waiting(carrier, key)
     if args.items[0] not in waiting:
-        raise ValueError("no request waiting has that handle: `poolhouse-workspace approval pending` lists them")
+        raise ValueError("no request waiting has that handle: `poolhouse-workspace approval pending --all` lists them")
     done = answer(carrier, key, waiting[args.items[0]], args.items[1])
     say(json.dumps({"id": done["id"], "state": done["state"]}) if args.json else f"{done['id']}  {done['state']}")
     return 0

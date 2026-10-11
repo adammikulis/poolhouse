@@ -15,6 +15,8 @@ use crate::grants::spec::Issue;
 use crate::row::canonical;
 
 pub const DOMAIN: &str = "poolhouse/approval/v1\n";
+/// What a person's key signs to read every request that waits, once: a session reads only its own.
+pub const LIST_DOMAIN: &str = "poolhouse/approval-list/v1\n";
 /// The most bytes of text a request carries, and the most asks.
 pub const MAX_TEXT: usize = 6000;
 pub const MOST_ASKS: usize = 8;
@@ -33,6 +35,11 @@ pub fn bytes(challenge: &Value, decision: &str, key: &str) -> Vec<u8> {
     whole["decision"] = json!(decision);
     whole["key"] = json!(key);
     format!("{DOMAIN}{}", canonical(&whole)).into_bytes()
+}
+
+/// The bytes a person's key signs to read what waits on the node whose certificate fingerprint is ``node``, at ``at_ms``.
+pub fn list_bytes(node: &str, at_ms: u64) -> Vec<u8> {
+    format!("{LIST_DOMAIN}{}", canonical(&json!({"op": "approval_list", "node": node, "at_ms": at_ms}))).into_bytes()
 }
 
 /// Whether ``text`` is what a request may carry: printable ASCII and line breaks, within `MAX_TEXT`.

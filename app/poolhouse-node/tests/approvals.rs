@@ -202,8 +202,11 @@ fn a_person_key_that_signs_with_a_typed_yes_decides_the_same_requests() {
     let (_, carrier) = rig.session("demo", "person-terminal");
     kit::grants::enrolled(rig.dir.path(), &mut |m, b, t, p| rig.call(m, b, t, p), &carrier);
     ok(rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({})));
-    let seen = ok(rig.call("approval_pending", "", &carrier, json!({})))["approvals"][0].clone();
     let typed = person();
+    assert!(ok(rig.call("approval_pending", "", &carrier, json!({})))["approvals"].as_array().unwrap().is_empty(), "the session that carries the answer reads none of what others asked");
+    let now = kit::phone::now();
+    let list_sig = hex(&ed25519_dalek::Signer::sign(&typed.key, &challenge::list_bytes(&rig.device(), now)).to_bytes());
+    let seen = ok(rig.call("approval_pending", "", &carrier, json!({"key": typed.fingerprint(), "sig": list_sig, "at_ms": now})))["approvals"][0].clone();
     let sign = |view: &Value, decision: &str| {
         let bytes = challenge::bytes(&view["challenge"], decision, &typed.fingerprint());
         json!({"id": view["id"], "decision": decision, "key": typed.fingerprint(), "sig": hex(&ed25519_dalek::Signer::sign(&typed.key, &bytes).to_bytes()), "pick": rig.shown(view["id"].as_str().unwrap())})

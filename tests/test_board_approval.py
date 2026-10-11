@@ -105,11 +105,13 @@ def test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_ty
     lead = team.member("lead")
     team.keep_person_key(lead)
     made = json.loads(team.cli("approval", "request", "sync_now", "--json", who=lead).stdout)
+    assert json.loads(team.cli("approval", "pending", "--json", who=team.member("other")).stdout) == [], "another session reads none of what lead asked"
+    assert [a["id"] for a in json.loads(team.cli("approval", "pending", "--json", who=lead).stdout)] == [made["id"]], "a session reads its own"
     code, out, err = team.terminal("approval", "decide", made["id"], "approve", who=lead, typed={"Type yes": "no", "signing key passphrase: ": PASSPHRASE})
-    assert code == 3 and "APPROVE the request" in out and "WHO:" in out, (out, err)
+    assert code != 0 and "READ every request that waits for you" in out, "a person's key signs to read what waits, and a no ends it there: " + out + err
     assert json.loads(team.cli("approval", "status", made["id"], "--json", who=lead).stdout)["state"] == "pending"
     code, out, err = team.terminal("approval", "decide", made["id"], "approve", who=lead, typed=TYPED)
-    assert code == 0 and "approved" in out, (out, err)
+    assert code == 0 and "approved" in out and "APPROVE the request" in out and "WHO:" in out, (out, err)
     assert json.loads(team.cli("approval", "status", made["id"], "--json", who=lead).stdout)["state"] == "approved"
 
 
@@ -118,7 +120,9 @@ def test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again
     lead = team.member("lead")
     team.keep_person_key(lead)
     first = json.loads(team.cli("approval", "request", "add_device", "link_read:a>b", "--json", who=lead).stdout)
-    options = next(a for a in json.loads(team.cli("approval", "pending", "--json", who=lead).stdout) if a["id"] == first["id"])["challenge"]["context"]["pick"]
+    code, out, err = team.terminal("approval", "pending", "--all", "--json", who=lead, typed=TYPED)
+    assert code == 0, (out, err)
+    options = next(a for a in json.loads(next(line for line in out.splitlines() if line.startswith("["))) if a["id"] == first["id"])["challenge"]["context"]["pick"]
     assert first["code"] in options and len(options) == 3, "the phone offers three numbers, the agent's among them"
     other = next(n for n in options if n != first["code"])
     code, out, err = team.terminal("approval", "decide", first["id"], "approve", who=lead, typed={**TYPED, "Which number": other})

@@ -455,12 +455,19 @@ On the local socket, with a session's token (docs/node.md, "Local API"):
 | `approval_status` | `id` | `{id, state, text, decided_ms, by, grants}` for the requesting session only |
 | `approval_cancel` | `id` | `{id, state}` |
 | `approvals` | `state` | the requesting session's own requests |
-| `approval_pending` | | every pending request (any registered session may read the text it would show a person) |
+| `approval_pending` | `key`, `sig`, `at_ms` (a person's reading, below) | a session reads only its own waiting requests (their words, note, task, session and the number to show, never another session's); with `key`, `sig` and `at_ms` the signature of an enrolled person key made in the last thirty seconds over `poolhouse/approval-list/v1` and the node's fingerprint, it reads every waiting request, still without the numbers |
 | `approval_decide` | `id`, `decision` (`approve`, `approve_repeat`, `deny`, `block`), `key`, `sig`, `text_sha256`, `pick` | `{id, state}`: needs a signature of an enrolled person key; a session only carries it. `pick` is the number the person chose and is not signed |
 | `phone_info` | | `{pin, port, endpoints, device, policy}` |
 | `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour for each session; not while another code waits to be scanned; the request to approve the phone says which session made the code); the first is a person's command |
 | `phones` | | the phones: name, key, state, when added and last seen, whether a push address is set |
 | `phone_remove` | `phone` | the request "Remove the phone", for a key the node holds to approve |
+
+**A session reads only its own.** What another session asked, the note and task it wrote and the number it is to show are not
+for any session but that one: a session that carries a person's answer reads the request it carries through the person's own
+terminal, which signs the reading (`poolhouse/approval-list/v1\n` and canonical JSON `{"at_ms", "node", "op": "approval_list"}`,
+the node being its certificate fingerprint, good for thirty seconds) after a typed yes that says what it signs. A signature
+for another node, from another time or by a key the node does not hold reads nothing. The phone has its own list over its
+own token and is not affected.
 
 On the phone endpoint (HTTPS, TLS 1.3, one P-256 self-signed certificate the code pins; `--phone ADDR`, port 7449 by default),
 `POST /phone/v1/<op>` with a JSON body, always `{"ok":true,"result":...}` or `{"ok":false,"error":{"code","message"}}` with a

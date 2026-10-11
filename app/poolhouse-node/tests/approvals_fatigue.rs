@@ -353,6 +353,41 @@ fn the_first_request_of_a_new_session_is_a_note_when_it_is_routine_and_a_flag_wh
 }
 
 #[test]
+fn a_session_reads_only_its_own_pending_requests_and_a_key_that_signs_reads_every_one() {
+    let (rig, phone) = setup();
+    let ((_, one), (_, two)) = (rig.session("demo", "agent-1"), rig.session("demo", "agent-2"));
+    let made = ok(rig.ask("demo", &one, json!([ask("add_device", "*")]), json!({"note": "the quiet reason", "task": ""})));
+    let theirs = ok(rig.call("approval_pending", "", &two, json!({})));
+    assert!(theirs["approvals"].as_array().unwrap().is_empty(), "another session sees none of what agent-1 asked: {theirs}");
+    assert!(!theirs.to_string().contains("quiet reason") && !theirs.to_string().contains(made["id"].as_str().unwrap()));
+    let mine = ok(rig.call("approval_pending", "", &one, json!({})));
+    assert_eq!(mine["approvals"].as_array().unwrap().len(), 1);
+    assert_eq!(mine["approvals"][0]["code"], made["code"], "a session reads its own number, and only its own");
+    let (same_name, elsewhere) = rig.session("elsewhere", "agent-1");
+    assert_eq!(same_name, rig.session("demo", "agent-1").0, "the same session id has the same name on another board");
+    let theirs = ok(rig.call("approval_pending", "", &elsewhere, json!({})));
+    assert!(theirs["approvals"].as_array().unwrap().is_empty(), "nor does a session of the same name on another board: {theirs}");
+
+    let node = rig.device();
+    let now = kit::phone::now();
+    let signed = |at: u64| json!({"key": phone.fingerprint(), "sig": phone.sign(&poolhouse_node::approvals::challenge::list_bytes(&node, at)), "at_ms": at});
+    let all = ok(rig.call("approval_pending", "", &two, signed(now)));
+    assert_eq!(all["approvals"].as_array().unwrap().len(), 1, "a person's key that signs this now reads every request that waits");
+    assert!(all["approvals"][0].get("code").is_none(), "but never the number an agent is to show");
+    let stale = rig.call("approval_pending", "", &two, signed(now - 120_000));
+    assert_eq!(code(&stale), "denied", "a signature from two minutes ago reads nothing: {stale}");
+    let other = FakePhone::new("Stranger");
+    let forged = rig.call("approval_pending", "", &two, json!({"key": other.fingerprint(), "sig": other.sign(&poolhouse_node::approvals::challenge::list_bytes(&node, now)), "at_ms": now}));
+    assert_eq!(code(&forged), "denied", "a key the node does not hold reads nothing: {forged}");
+    let mut wrong = signed(now);
+    wrong["at_ms"] = json!(now + 1);
+    assert_eq!(code(&rig.call("approval_pending", "", &two, wrong)), "denied", "a signature for another time reads nothing");
+    let elsewhere = "ab".repeat(32);
+    let for_another_node = json!({"key": phone.fingerprint(), "sig": phone.sign(&poolhouse_node::approvals::challenge::list_bytes(&elsewhere, now)), "at_ms": now});
+    assert_eq!(code(&rig.call("approval_pending", "", &two, for_another_node)), "denied", "a signature made for another node reads nothing here");
+}
+
+#[test]
 fn quiet_notices_are_capped_too_so_many_holds_cannot_buzz_the_phone_either() {
     let (rig, phone) = setup();
     rig.node.lock().unwrap().fatigue.rules.quiet_per_hour = 1;
@@ -537,8 +572,9 @@ fn a_request_that_is_not_routine_has_a_number_to_match_and_a_wrong_choice_is_a_d
     assert!(made["text"].as_str().unwrap().contains("PICK: After your fingerprint you choose the number this agent showed you"), "{made}");
     let seen = rig.get(&phone, id);
     assert!(seen.get("code").is_none(), "{seen}");
-    let pending = ok(rig.call("approval_pending", "", &token, json!({})));
-    assert!(!pending.to_string().contains(&format!("\"code\":\"{shown}\"")), "no session reads another's number");
+    let (_, other) = rig.session("demo", "agent-2");
+    let pending = ok(rig.call("approval_pending", "", &other, json!({})));
+    assert!(!pending.to_string().contains(&shown) && pending["approvals"].as_array().unwrap().is_empty(), "no session reads another's request or its number: {pending}");
     let nothing = rig.phone("POST", "decide", "", json!({"id": id, "decision": "approve", "key": phone.fingerprint(), "sig": phone.decision(&seen, "approve")["sig"], "pick": ""})).1;
     assert_eq!(code(&nothing), "invalid", "a decision with no choice is no answer: {nothing}");
     let outside = rig.phone("POST", "decide", "", json!({"id": id, "decision": "approve", "key": phone.fingerprint(), "sig": phone.decision(&seen, "approve")["sig"], "pick": "07"})).1;

@@ -23,8 +23,8 @@ from poolhouse.files import write_json
 from poolhouse.platform import private_file
 
 __all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
-           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "here", "issue", "listing", "log", "rebind", "revoke",
-           "sign_approval", "sign_issue", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
+           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
+           "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
@@ -32,6 +32,7 @@ APPROVE_DOMAIN = b"poolhouse/person-approve/v1\n"
 UNENROLL_DOMAIN = b"poolhouse/person-unenroll/v1\n"
 REBIND_DOMAIN = b"poolhouse/session-rebind/v1\n"
 APPROVAL_DOMAIN = b"poolhouse/approval/v1\n"
+LIST_DOMAIN = b"poolhouse/approval-list/v1\n"
 FRESH_MS = 5 * 60 * 1000
 """How long the node takes a person's signature as fresh."""
 ENROLMENT_HASH_FILE = "enroll_secret.json"
@@ -343,6 +344,16 @@ def approval_bytes(challenge: dict[str, Any], decision: str, key: str) -> bytes:
     return APPROVAL_DOMAIN + canonical({**challenge, "decision": decision, "key": key}).encode()
 
 
+def list_bytes(node: str, at_ms: int) -> bytes:
+    """The bytes a person's key signs to read every request that waits on the node whose certificate fingerprint is ``node``."""
+    return LIST_DOMAIN + canonical({"op": "approval_list", "node": node, "at_ms": at_ms}).encode()
+
+
+def sign_list(key: Signs, node: str, at_ms: int) -> dict[str, Any]:
+    """The `approval_pending` params that let the person's ``key`` read every request that waits: a session reads only its own."""
+    return {"key": fingerprint(key.public), "sig": key.sign_bytes(list_bytes(node, at_ms)).hex(), "at_ms": at_ms}
+
+
 DECISIONS = ("approve", "approve_repeat", "deny", "block")
 DECISION_WORDS = {"approve": "APPROVE", "approve_repeat": "APPROVE AGAIN (it was declined before)", "deny": "DENY", "block": "DENY AND BLOCK"}
 
@@ -381,6 +392,8 @@ def describe(data: bytes) -> str:
         if domain + b"\n" == APPROVAL_DOMAIN and body["op"] == "approval":
             shown = "\n".join(f"      {line}" for line in str(body["text"]).split("\n"))
             return f"{DECISION_WORDS.get(str(body['decision']), str(body['decision']).upper())} the request {body['id']} of {body['session'] or 'a phone'} on board {body['board']}, which reads:\n{shown}"
+        if domain + b"\n" == LIST_DOMAIN and body["op"] == "approval_list":
+            return f"READ every request that waits for you on the node {body['node']}, with the words each one carries, so that you can answer one; good for thirty seconds"
         if domain + b"\n" == REBIND_DOMAIN and body["op"] == "rebind":
             return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in (the shell is process "
                     f"{body['anchor']['pid']}), on the node {body['node']}, and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")

@@ -15,13 +15,15 @@ const MOST_USES: u64 = 1000;
 const MAX_LASTS_MS: u64 = 30 * 24 * 3600 * 1000;
 const MIN_LASTS_MS: u64 = 60 * 1000;
 const LISTED: usize = 20;
+/// How long a person's signature to read every waiting request is good for.
+const LIST_FRESH_MS: u64 = 30_000;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "approval_request" => &["asks", "note", "task", "ttl_s", "expect_policy"],
         "approval_status" | "approval_cancel" => &["id"],
         "approvals" => &["state"],
-        "approval_pending" => &[],
+        "approval_pending" => &["key", "sig", "at_ms"],
         "approval_decide" => &["id", "decision", "key", "sig", "text_sha256", "pick"],
         _ => return None,
     })
@@ -165,8 +167,19 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
             Ok(json!({"approvals": shown}))
         }
         "approval_pending" => {
-            node.tokens.resolve(token).ok_or_else(|| Error::Denied("A registered session reads what is waiting.".into()))?;
+            let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session reads what is waiting.".into()))?;
             sweep(node)?;
+            let key = text(p, "key")?;
+            if key.is_empty() {
+                // A session reads its own requests and nobody else's: what another asked, its note and its number are not for it.
+                let mine: Vec<Value> = node.approvals.all().iter().filter(|a| a.pending() && a.board == holder.board && a.session == holder.name).map(|a| agent_view(node, a)).collect();
+                return Ok(json!({"approvals": mine}));
+            }
+            let (at, now) = (p.get("at_ms").and_then(Value::as_u64).unwrap_or(0), node.now_ms());
+            let signed = at.abs_diff(now) <= LIST_FRESH_MS && node.persons.signed(key, &challenge::list_bytes(&node.cert.fingerprint(), at), text(p, "sig")?);
+            if !signed {
+                return Err(Error::Denied("Only the signature of a person's key, made just now, reads every request that waits.".into()));
+            }
             Ok(json!({"approvals": pending(node)}))
         }
         _ => {
