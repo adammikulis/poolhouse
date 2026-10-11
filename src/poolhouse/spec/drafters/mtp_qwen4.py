@@ -22,7 +22,7 @@ from mlx_vlm.models.qwen4_exp.language import (
     _qwen4_inject,
 )
 
-from poolhouse import home
+from poolhouse.hub import derived
 from poolhouse.spec.layout import Layout
 from poolhouse.spec.qwen4 import attend
 
@@ -118,10 +118,11 @@ def gguf_weights(path: Path) -> dict[str, mx.array]:
 
 
 def load_gguf_head(path: Path, args: object, bits: int = 4, group_size: int = 32) -> Qwen4MtpHead:
-    """The head from a llama.cpp MTP GGUF, quantized to ``bits``; cached once quantized."""
+    """The head from a llama.cpp MTP GGUF, quantized to ``bits``; kept in the hub cache (`derived`) once quantized."""
     head = Qwen4MtpHead(args)
-    cached = home.cache("spec", "mtp", f"{path.stem}-{bits}bit.safetensors")
-    if not cached.is_file():
+    source, recipe = derived.source_of(path), f"mlx-q{bits}-g{group_size}"
+    cached = derived.lookup(source, recipe)
+    if not cached:
         found = gguf_weights(path)
         wanted = {name for name, _ in tree_flatten(head.parameters()) if ".indexer." not in name}
         missing = sorted(wanted - set(found))
@@ -131,8 +132,8 @@ def load_gguf_head(path: Path, args: object, bits: int = 4, group_size: int = 32
         head.set_dtype(mx.bfloat16)
         nn.quantize(head, group_size=group_size, bits=bits, class_predicate=_routing)
         mx.eval(head.parameters())
-        cached.parent.mkdir(parents=True, exist_ok=True)
-        mx.save_safetensors(str(cached), dict(tree_flatten(head.parameters())))
+        derived.save(source, recipe, lambda stage: mx.save_safetensors(
+            str(stage), dict(tree_flatten(head.parameters()))))
         return head
     nn.quantize(head, group_size=group_size, bits=bits, class_predicate=_routing)
     head.load_weights(list(mx.load(str(cached)).items()))
