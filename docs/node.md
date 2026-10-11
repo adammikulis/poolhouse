@@ -25,11 +25,17 @@ built and tested alone. The shipping section below puts it in every runtime and 
   gets `denied: this directory is not part of a project`, never another project's board. A git
   source is stored as the repository's main working tree. A place is never the same as, inside or
   around a place of another project (`invalid`), so no project takes over where another's sessions
-  land. `project_add` needs the token of a session of the board the project names, a node takes ten
-  projects a minute and holds 256, and `source_add` is the grant of that name. The first session in a
-  repository registers a session on the board the repository names (harness `poolhouse-place`) and adds the
-  project with it (`board.place.resolve`). A person's approval of a project is not asked: it would
-  have to work before any session exists. A project is as trustworthy as whoever registered on its board first.
+  land. A place is never the user's home, a directory around it or the root of the disk, and a folder that
+  is not a git repository never holds a git repository of its own (a search three levels deep, with no
+  links followed): such a folder is `invalid`. `project_add` needs the token of a session of the board the
+  project names; a place that is not a git repository (`folder`, `gdrive`, `onedrive`) also needs the
+  grant `source_add` on the project, as every further place does, which a person gives with
+  `poolhouse-workspace grant source_add --to NAME --scope PROJECT`; the grant is spent once the project
+  was added. A lineage takes ten projects a minute, counted when one was added, and a node holds 256
+  ("Limits"). The first session in a repository registers a session on the board the repository names
+  (harness `poolhouse-place`) and adds the project with it (`board.place.resolve`). A person's approval
+  of a git project is not asked: it would have to work before any session exists, and a prompt for the
+  person to approve a new project, and for a place that is not a repository, is planned. A project is as trustworthy as whoever registered on its board first.
   `.poolhouse/project.toml` in a repo (`board = "id"`) is an optional hint only
   (`project::propose_id`, `project::init_project`); it is never required.
   `--board ID` still names a board directly, and is checked against the session's registration.
@@ -93,33 +99,54 @@ session's token only from the lineage it was registered from (below). A
 `register` carrying the token of a session of the same board makes the new session its subagent
 (`parent` recorded in its identity entry); the parent is never a request field.
 
-The token is 32 random bytes as hex. The node stores only its SHA-256 in `tokens.json` (0600). A
-write's sender is the name the token resolves to; a request carrying `sender`, `name`, `parent`,
+The token is 32 random bytes as hex. The node stores only its SHA-256 in `tokens.json` (0600), with the lineage it was
+registered from (below). A write's sender is the name the token resolves to; a request carrying `sender`, `name`, `parent`,
 `label`, `from`, `author`, `actor`, `identity` or `as` anywhere in its envelope, params or `fields`
 is refused `denied`. At most eight tokens per name: a ninth ends the oldest one except the first the name was given, and
-a refused registration issues none and ends none. 10,000 sessions per board.
+a refused registration issues none and ends none. 10,000 sessions per board and 2,048 tokens per node ("Limits").
+
+**A token is a bearer secret.** The client keeps it in `<state>/client/<board>/<name>.token`, mode 0600 in a 0700 directory. The
+file mode keeps it from other operating-system users and from nothing else: any process of the same user can read the file, and
+whoever reads it can present the token. The lineage below does not hide it; it limits what a token spends.
 
 **Lineage.** The node reads the process id of the client of the socket (`SO_PEERCRED` on Linux, `LOCAL_PEERPID` on macOS) and the
 processes above it, with their start times, up to and including the shell of its terminal (the leader of a session that has a
-controlling terminal), or to the top when it has none, and records them with a main session when the session is first registered.
-A harness that runs each command in a session of its own, with no terminal, is still its terminal's: the walk goes on past such a
-session. A later `register` of that session is answered with a token only to a process that has one of them in common: one started
-from the same terminal, or by the same process. Any other process gets `denied: this session is registered from another process
-lineage`, no token, and the tokens the session holds go on working. A session that does not exist yet registers from anywhere and
-holds no grant; a subagent registers with its parent's token from any process. A person at the terminal where a session now runs
-moves it there with `poolhouse-workspace rebind HARNESS SESSION`: an enrolled person key signs the board, the session's name, this
-node's device fingerprint, a nonce used once and the time (five minutes), with a typed `yes`; the node makes the caller's lineage the
-session's and ends the tokens it held; the harness started in that terminal registers as the session. Names registered before
-lineages were kept take the lineage of the first process that registers them again.
+controlling terminal), or to the top when it has none, and records them with a main session when the session is first registered,
+and with every token it issues. A harness that runs each command in a session of its own, with no terminal, is still its terminal's:
+the walk goes on past such a session. Two lineages share a process when they end in the same one, the shell of the terminal
+or the app at the top. Two things are answered only to a process of the lineage a session was registered from:
 
-What the lineage stops: a process in another terminal (or another app) than the one that registered a main session, such as another
-terminal's harness that read the session id from the transcript files of the first. What it does not: a process inside that
-lineage, which includes the subagents and tools of the lead's own harness (they run as children of its process, so as far as the
-node can tell they are the lead); a harness that has no terminal at all, where everything started by the same app shares the app
-at the top; a registrant whose parent has gone (a daemon) has no parents to share, is its own lineage, and is registered again only
-after a `rebind`; a process of the same user that starts itself from the lead's terminal; and Windows, where the peer is not read
-yet, so nothing is recorded or refused there. Programs that register a session of their own use one id per terminal
-(`board.terminal.terminal_id`), so each terminal has its own.
+- **Registering again.** A later `register` of a main session is answered with a token only to a process that shares it. Any other
+  process gets `denied: this session is registered from another process lineage`, no token, and the tokens the session holds go on
+  working. A session that does not exist yet registers from anywhere and holds no grant. A subagent registers with its parent's token
+  from any process, and its token carries its parent's lineage, not the registering process's.
+- **Spending a grant.** A token presented from a process that shares none of the lineage it was registered from still reads, posts,
+  claims and leases as the session, and spends no grant: the request is refused saying the grant is held but the token is used from
+  another terminal or process tree than the one that registered it, and that a person moves the session with `rebind`. A subagent of the
+  lead that runs in a terminal of its own therefore reads and sends and spends nothing it inherits; the grants a lead's subagents hold
+  (`note_verify`) are spent from the lead's terminal. A token with no lineage recorded spends no grant either.
+
+A person at the terminal where a session now runs moves it there with `poolhouse-workspace rebind HARNESS SESSION`: an enrolled person
+key signs the board, the session's name, this node's device fingerprint, a nonce used once (remembered across restarts), the time (five
+minutes) and the terminal it was signed in (`anchor`: the shell of that terminal, which the request must come from), with a typed
+`yes`; the node makes the caller's lineage the session's and ends the tokens it held; the harness started in that terminal registers as
+the session. Tokens of its subagents stay bound to where they were registered.
+
+A main session with no lineage recorded (registered before lineages were kept, by a process the node could not read, from another
+process id namespace, or under `hidepid`) is taken again only by a process that presents a token of that name, which binds it to where
+that process runs; any other process is refused saying a person moves the session with `rebind`. No process adopts a name by being the
+first to ask. Its old tokens read and send and spend nothing until it is bound. The client presents the token it keeps for a session
+when it registers that session again (`board.session.register`).
+
+What the lineage stops: a process in another terminal (or another app) than the one that registered a main session, whether it learned
+the session id from the transcript files of the first or took the token from its file, for everything a grant allows. What it does
+not: a process inside that lineage, which includes the subagents and tools of the lead's own harness (they run as children of its
+process, so as far as the node can tell they are the lead, and they can read the token file); a harness that has no terminal at all,
+where everything started by the same app shares the app at the top; a registrant whose parent has gone (a daemon) has no parents to
+share, is its own lineage, and is bound again only after a `rebind`; a process of the same user that starts itself from the lead's
+terminal; a process that reads the token file and reaches the node from a process the lead started (the lineage shows who sent a
+request, not whose secret it is); and Windows, where the peer is not read yet, so nothing is recorded or refused there. Programs that
+register a session of their own use one id per terminal (`board.terminal.terminal_id`), so each terminal has its own.
 
 ## Local API
 
@@ -150,8 +177,9 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | method | needs | params | result |
 |---|---|---|---|
 | `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
-| `register` | board | `model, harness, session` (token = parent) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage |
-| `rebind` | board | `harness, session, at_ms, nonce, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
+| `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
+| `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
+| `rebind` | board | `harness, session, at_ms, nonce, anchor, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
 | `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms}]}` |
@@ -173,7 +201,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `notes` | board, token | `ref, query, kind, all, limit` | `{notes}` |
 | `note_verify` | board, token | `note, exit, out_sha` | `{notes: [the note]}` |
 | `link`, `unlink`, `links` | board, token with the grant `link_read` or `link_write` (make), `link_remove` (end) | `to, channels, mode` / `id` | the link |
-| `project_add` | token of a session of that board | `id, kind, path` | the project |
+| `project_add` | token of a session of that board; for a place that is not a git repository, the grant `source_add` | `id, kind, path` | the project |
 | `source_add` | token of that project, with the grant `source_add` | `id, kind, path` | the project |
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
 | `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
@@ -190,7 +218,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
 | `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
-| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce`; `fingerprint, at_ms, by, sig` | `{fingerprint, keys}` / the enrolled person keys |
+| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
 device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
@@ -370,13 +398,17 @@ signature over the enrolment). The first key also takes `secret`: `poolhouse-wor
 makes a random secret, writes only its SHA-256 and the time beside `persons.json` (`enroll_secret.json`, mode 0600) and presents the
 secret to `person_enroll` in the same process. The node reads that hash from the file and from no request, accepts the secret once and
 for ten minutes, and spends it on any guess, so a wrong secret ends the attempt; a node that holds a key never asks for one. A session
-that registered first, or any session, therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms` and `nonce` add a second: `approval` is an enrolled key's signature over the
-new key's public key, name and proof time, the approver's fingerprint, this node's device fingerprint, the approval time (five minutes)
-and the nonce, which the node accepts once, so an approval enrols that key on that node once and nothing replays it after the key is
-removed. `person_unenroll` (`fingerprint`, `at_ms`, `by`, `sig`) removes a key when an enrolled
-key signs the removal: what the removed key signed stops counting at once, and stays void if the same key is enrolled again (the
-node keeps when each key was removed in `persons_removed.json`, and ignores a grant or revocation the key signed, or that was written to
-the board, at or before then); the last key is never removed, and each enrolment and
+that registered first, or any session, therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms`, `nonce` and `anchor` add a second: `approval` is an enrolled key's signature over the
+new key's public key, name and proof time, the approver's fingerprint, this node's device fingerprint, the approval time (five minutes),
+the nonce and the terminal it was signed in (`anchor`, the shell of that terminal, which the request must come from). The node accepts a
+nonce once, and remembers it for ten minutes across restarts (`persons_nonces.json`), so an approval enrols that key on that node once,
+from that terminal, and nothing replays it. `person_unenroll` (`fingerprint`, `at_ms`, `by`, `nonce`, `anchor`, `sig`) removes a key when
+an enrolled key signs the removal for this node, once and in the terminal it was made in, with the same node fingerprint, nonce and anchor
+in the signed body: a removal signed for another node, used twice, or sent from another terminal removes nothing. What the removed key
+signed stops counting at once, and a removed key is never enrolled again (the node keeps the removed fingerprints in
+`persons_removed.json`): an entry it signed with a time ahead of its removal, on this device or arriving from another, is as void as one
+signed before it, since the node has no record of when a foreign entry was written that a signer could not choose. A person who wants
+that device back enrols a new key made there. The last key is never removed, and each enrolment and
 removal is written to the pool board. The hash file is a write to the state directory, so this keeps out every session that has only
 the API. A process of the same operating-system user that writes the directory can enrol a key too, by planting the hash of a secret
 of its own in `enroll_secret.json` and presenting that secret, and any session can spend the person's one-time secret with a wrong
@@ -406,6 +438,14 @@ signing helper process under a different operating-system identity that holds th
 and neither is built. The person's screen (the UI daemon) has no terminal, so a refusal there names the grant and the person runs the
 command at a terminal; an approval dialog in the screen is planned.
 
+What a signature is good for once it is made: a grant names the board, the session, the action, the device and its end, and is a
+standing permission until then. Every other signature (the enrolment approval of a key, the removal of a key, the move of a session)
+names this node by its device fingerprint, carries a nonce the node takes once and remembers for ten minutes across restarts, is fresh
+for five minutes, and names the terminal it was made in (`anchor`), which the request must come from: a captured one is no good on
+another node, a second time, later, or from a process of another terminal. The person key and the session token are two secrets
+with two kinds of custody: the key is behind the typed `yes` and the keystore; the token is a file only the file mode keeps from
+other users, bound to a lineage ("Identity").
+
 **What counts.** `grants::check(node, holder, action, scope)` answers true, and writes the use, only for a live grant: this
 board, this device (or `*`), a resource the pattern covers, a session or class the grant names (a class never covers a subagent
 unless `main` is false), before `until_ms`, with uses left, not revoked. `holds` asks without spending. An entry written on
@@ -419,9 +459,14 @@ host), `sync_now`, `shard_call` (the device) and `shard_consent` before they run
 (the target branch, `*` for pause and resume) in the landing queue, besides having no parent; `task_authority` (the task, or `mode`)
 wherever a session with no parent acts for the person (assign, review in strict mode, block, recover, set the mode, record a
 landing), spent only where it is what lets the call through; `note_verify` (the note), `quarantine_release` (the held id) and
-`file_delete` (the handle); `link_read` and `link_write` (`FROM>TO`, for a link of mode `ro` and `rw`), `link_remove` (the link id) and `source_add` (the project id).
+`file_delete` (the handle); `link_read` and `link_write` (`FROM>TO`, for a link of mode `ro` and `rw`), `link_remove` (the link id) and `source_add` (the project id,
+for a further place of a project and for a project whose first place is not a git repository).
 `note_verify`, `quarantine_release` and `file_delete` are used only by a session registered on the board they act on, never through a
 link. A link goes only to a board this node already hosts, so `link` creates none. The use is on the board as a `use` entry naming the grant, the session, the action and the target.
+Every check applies the lineage of the token ("Identity"): a token used from a process that shares none of the lineage it was
+registered from holds no grant at that moment. A link, the end of a link and a project or a place are first checked and made, and the
+grant is spent once they were made, so a link that cannot be made (a channel that is not a `#name`, a link that is not there, a place
+that does not exist) spends no use; the other sites spend before they act.
 
 **Commands.** `poolhouse-workspace grant ACTION --to NAME [--with-subagents]|--class FAMILY|--account MODEL --scope RESOURCE --until 30d [--uses N]`,
 `revoke-grant ID`, `grants` (who holds what, and its state; a grant that names a verified model says it matches nobody yet),
@@ -429,29 +474,71 @@ link. A link goes only to a board this node already hosts, so `link` creates non
 device) and `person-unenroll --key FINGERPRINT`. The six that make or end a grant or a key need a person at a terminal with the key
 and a typed `yes` for each thing they sign; `grants` and `grant-log` are for any session, and the public
 `ph.board.Board.grants()` is planned (docs/api.md). A refusal for want of a grant names it; a command a person runs asks whether to
-sign that grant for one use and two minutes and, on a typed `yes`, asks again; a process an agent started, or one with no terminal,
-is not asked.
+sign that grant for one use and two minutes and, on a typed `yes`, asks again as the person's own session of that terminal
+(`board.person.acting`: the grant is signed for that session, since another terminal's token spends no grant here, and the use is
+written under its name); a process an agent started, or one with no terminal, is not asked.
 
 **The first-run bundle.** `grants-setup` goes to the lead's own sessions, named at setup: `--session NAME` (repeat for several), or
 picked from the list of the board's main sessions it prints, where the model and harness are what each session says about itself.
 It enrols the person's key if the node holds none and signs one grant per action and session on this device, 30 days each:
-`land_control`, `task_authority`, `shard_consent`, `sync_now`, `shard_call`, and `note_verify` for the session's subagents too. The
-exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `land_trust`,
-`quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own commands. Each is revoked
+`land_control`, `task_authority`, `shard_call`, and `note_verify` for the session's subagents too. The
+exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `shard_consent`, `sync_now`,
+`land_trust`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
+commands (`poolhouse-workspace grant shard_consent --to NAME --until 30d`, each its own typed `yes`). Each is revoked
 by its id. A class grant stays in the registry but is refused by `grants-setup --family` and `grant --class` unless the person passes
 `--i-understand-registration-is-open`: it is held by every session that says it is of the family, which is any process.
 
-**What the grants protect against, and what they do not.** A grant names one session, and a main session's token goes only to the
-lineage it was registered from ("Identity"): a process that merely claims a model family holds nothing a grant for one name gives,
-and a process outside the terminal session and process tree of a registered lead cannot get a token for the lead, by knowing its
-harness and session id or otherwise. They do not protect against a process inside that lineage (the lead's own subagents and tools run
-as children of its harness and are the lead as far as the node can tell), against a process of the same operating-system user that
-starts itself from the lead's terminal or signs with the person's key ("Key custody"), or on Windows, where lineages are not read yet.
-A class grant holds for whatever claims the family, which is why it asks for `--i-understand-registration-is-open`. `--account` and
-`--verified` name a verified model, no session is verified yet, and the listing says such a grant matches nobody. A project is added by
-a session of its own board, ten a minute and 256 to a node, never in or around another project's place, and a person's approval is not
-asked ("Boards, projects, links"). The trust ledger (levels from outcomes, suspension on forgery signals, credit to a
+**What the lead's lineage can do with the bundle.** For 30 days, the lead's main session and everything that runs from its terminal
+and process tree (its subagents, its tools, any process the harness starts, and any process in them that reads the token file) can:
+`land_control` (pause, resume and cancel others' requests in the landing queue), `task_authority` (act for the person on tasks: assign,
+review in strict mode, set the enforcement mode, record a landing), `shard_call` (send a test run, its files and its start to another device of
+the pool that allowed this one, and read and cancel it: `shard_put`, `shard_start`, `shard_status`, `shard_cancel`, `shard_caps`) and
+`note_verify` (record that a note's command was run, which sets the note's trust). The subagents of the lead hold `note_verify` only.
+The lead's lineage cannot do what the bundle leaves out: it cannot turn test shards on, or name which devices may run its tests
+here (`shard_consent`, the most sensitive grant, since it lets code from another device run here), cannot ask for a sync (`sync_now`),
+and cannot touch the pool, landing trust, quarantine, files, links or places without a grant of a person's own.
+
+**What the grants protect against, and what they do not.** A grant names one session. A token is a bearer secret, kept in a file
+every process of the same operating-system user can read, protected by the file mode against other users only. What the node adds is the
+lineage: a main session registers again only from the lineage it registered from, and every token spends a grant only from the lineage
+that registered it ("Identity"). So a process that merely claims a model family holds nothing a grant for one name gives, and a
+process outside the terminal and process tree of a registered lead cannot spend the lead's grants, by knowing its harness and session id
+or by taking its token from the file; it can read and send as the lead, and the lead's person moves the session to that terminal with
+`rebind` when that is wanted. They do not protect against a process inside that lineage (the lead's own subagents and tools run as
+children of its harness and are the lead as far as the node can tell, and a subagent holds a token of the lead's lineage), against a
+process of the same operating-system user that starts itself from the lead's terminal or signs with the person's key ("Key custody"),
+or on Windows, where lineages are not read yet. A class grant holds for whatever claims the family, which is why it asks for
+`--i-understand-registration-is-open`. `--account` and `--verified` name a verified model, no session is verified yet, and the listing
+says such a grant matches nobody. A project is added by a session of its own board, with the grant `source_add` for a place that is not
+a git repository, ten a minute per lineage and 256 to a node, never in or around another project's place, never the user's home or a
+directory around it, and a person's approval of a git project is not asked ("Boards, projects, links"; "Limits"). The trust ledger (levels from outcomes, suspension on forgery signals, credit to a
 model-and-version account) is not built; a grant is the only thing that widens what a session may do.
+
+## Limits
+
+What a node and a lineage may do is bounded, so no process fills the node's memory or disk or keeps another from working. A lineage is
+the shell of a terminal or the app at the top of a process tree ("Identity"); a limit that names one is kept per lineage, so a flood of
+fresh sessions from one terminal shares one limit and another terminal has its own. A count is kept in memory (a restart clears it) in a
+table of at most 1,024 lineage-and-use keys; a new key past the bound drops the key used longest ago, so no key is refused for the
+others'. A use is counted when it was made: a refused or failed attempt counts for nothing.
+
+| what | limit | refused as |
+|---|---|---|
+| sessions a board holds | 10,000 | `quota` |
+| tokens a name holds | 8 (a ninth ends the oldest but the first) | the oldest ends |
+| tokens a node holds | 2,048; when full, the tokens of sessions idle for 30 days end | `quota` |
+| boards a node hosts | 256 | `quota` |
+| registrations by a lineage | 60 a minute | `quota` |
+| boards a lineage creates | 16 an hour | `quota` |
+| links a board has open | 64 | `quota` |
+| links a lineage makes | 6 a minute | `quota` |
+| projects a node holds | 256 | `quota` |
+| projects a lineage adds | 10 a minute | `quota` |
+| person keys a node holds | 8 | `quota` |
+| used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
+| a frame | 1 MiB | the connection closes |
+
+The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`.
 
 ## Leases
 
@@ -693,7 +780,8 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 ## The person's session (the UI)
 
 The UI daemon acts for the person through one session of its own per board, `poolhouse.board.person.session(root)`: a
-parentless session registered under the harness `poolhouse-ui` and the model `person`. It holds no grant of its own: when the
+parentless session registered under the harness `poolhouse-ui` and the model `person`, with one native id for each terminal or
+program that asks (`person.native_id()`), since a token spends a grant only from the lineage that registered it ("Identity"). It holds no grant of its own: when the
 node refuses a call of the page for want of one, the person's key (kept beside the node) is asked to sign a grant for that one use
 (`board.person_key`), which takes a typed `yes` on a terminal: a daemon with none signs nothing, and the person runs the command. Its token is kept in the daemon's private client folder
 (`<state>/client/<board>/`), never in a page; a page's request is checked (loopback, credentialed launch session, same
@@ -771,7 +859,9 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
   device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"),
-  a person's approval of a new project, the lineage of a registrant on Windows (`GetNamedPipeClientProcessId`), a screen that asks the person the
+  a person's approval of a new project (a typed yes at project_add, for a git project and for a place that is not one), a per-use
+  user-presence prompt for the person key, a lineage on each request that a token carries as proof of who holds it rather than only
+  checked at the spend of a grant, the lineage of a registrant on Windows (`GetNamedPipeClientProcessId`), a screen that asks the person the
   signing question itself so the UI daemon can sign, rebuilding the graph index from entries.
 - Pools of two or more members do not merge: a device that already has members refuses to join another
   pool (`Pool::adopt`).

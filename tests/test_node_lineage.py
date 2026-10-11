@@ -15,7 +15,7 @@ import termios
 import pytest
 from node_kit import SRC, STRIPPED, TYPED
 
-from poolhouse.board import grants as board_grants, session as board_session
+from poolhouse.board import credentials, grants as board_grants, session as board_session
 from poolhouse.board.client import Denied
 
 pytest_plugins = ["node_kit"]
@@ -105,6 +105,29 @@ def test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_gran
     assert "spent" not in apart and "rebind" in apart["refused"] and apart["hint"] is None, apart
     uses = [e for e in board_grants.log(node.session(node.lead)) if e["op"] == "use"]
     assert len(uses) == 1, "only the use from the registering terminal was written"
+
+
+def test_a_session_registered_before_presents_its_own_token_when_it_registers_again_and_falls_back_when_that_token_is_gone(lead, monkeypatch):
+    node = lead
+    sent: list[str] = []
+    real = node.client.call
+
+    def spy(method, board="", token="", **params):
+        if method == "register":
+            sent.append(token)
+        return real(method, board, token, **params)
+
+    monkeypatch.setattr(node.client, "call", spy)
+    native = board_session.Native("claude-sonnet-5-5", "claude-code", "lead")
+    again = board_session.register(node.client, node.board, native)
+    assert again.name == node.lead.name and sent == [node.lead.token], "the token the client keeps goes with the registration"
+    sent.clear()
+    credentials.store(node.state, node.board, node.lead.name, "0" * 64)
+    third = board_session.register(node.client, node.board, native)
+    assert third.name == node.lead.name and sent == ["0" * 64, ""], "a token the node no longer holds is tried once and the session registers without it"
+    sent.clear()
+    kid = board_session.register(node.client, node.board, board_session.Native("claude-sonnet-5-5", "claude-code", "kid"), third.token)
+    assert kid.parent == node.lead.name and sent == [third.token], "a parent's token is what a subagent presents"
 
 
 def test_a_session_holds_eight_tokens_and_past_them_the_oldest_but_the_first_goes(lead):
@@ -215,3 +238,21 @@ def test_a_program_that_registers_a_session_of_its_own_gets_one_per_terminal(lea
     assert here[0] == here[1], "the same terminal gets the same session again"
     apart = [api_session_of_a_child(node, own_session=True) for _ in range(2)]
     assert len({*apart, here[0]}) == 3, "each terminal has a session of its own, and none is refused for the lineage of another"
+
+
+PERSON_SESSION = (
+    "import sys\n"
+    "from pathlib import Path\n"
+    "from poolhouse.board import person\n"
+    "from poolhouse.board.client import Client\n"
+    "print(person.on(Client(Path(sys.argv[1])), sys.argv[2]).name)\n"
+)
+
+
+def test_the_persons_session_is_one_for_each_terminal_since_a_token_spends_a_grant_only_where_it_registered(lead):
+    node = lead
+    args = (str(node.state), node.board)
+    here = [child_output(PERSON_SESSION, *args, node=node, own_terminal=False) for _ in range(2)]
+    assert here[0] == here[1], "the same terminal gets the same session again"
+    apart = child_output(PERSON_SESSION, *args, node=node, own_terminal=True)
+    assert apart != here[0], "another terminal has a session of its own, and is not handed the token another terminal registered"

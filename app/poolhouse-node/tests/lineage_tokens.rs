@@ -92,6 +92,27 @@ fn a_subagent_token_spends_only_where_its_parent_was_registered() {
     done(vec![outside]);
 }
 
+#[test]
+fn a_subagent_that_presents_its_own_token_from_another_terminal_gets_a_token_of_the_lineage_it_was_registered_from() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let first = ok(register(&mut n, &me(), "lead", ""));
+    let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
+    enrolled_person(&mut n, &token);
+    let to = json!({"kind": "session", "name": name, "subagents": true});
+    ok(person().issue(&mut |m, b, t, p| req(&mut n, m, b, t, p), "demo", &token, "g-00000000000000d2", &Spec::to(to, "note_verify")));
+    let note = ok(req(&mut n, "post", "demo", &token, json!({"kind": "note", "fields": {"nkind": "fact", "title": "t", "body": "b", "verify_cmd": "true"}})))["seq"].to_string();
+    let sub = ok(register(&mut n, &me(), "sub-a", &token))["token"].as_str().unwrap().to_string();
+
+    let outside = process(true);
+    let again = register(&mut n, &peer(&outside), "sub-a", &sub);
+    assert_eq!(ok(again.clone())["parent"], name.as_str(), "a subagent registers again with its own token from any process: {again}");
+    let lifted = ok(again)["token"].as_str().unwrap().to_string();
+    assert_eq!(code(&verify(&mut n, &peer(&outside), &lifted, &note)), "denied", "and the token it gets spends nowhere its first one did not");
+    assert_eq!(verify(&mut n, &me(), &lifted, &note)["ok"], true);
+    done(vec![outside]);
+}
+
 fn enrolled_person(n: &mut Node, token: &str) {
     let dir = n.dir.clone();
     kit::grants::enrolled(&dir, &mut |m, b, t, p| req(n, m, b, t, p), token);

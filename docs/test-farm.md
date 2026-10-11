@@ -45,7 +45,7 @@ checkout), refuses a Python that is not 3.13 and writes an `audit` entry to the 
 that did it. `off` stops the next upload at once (the file is read at every request). Turning it on lets any
 other device of the pool run a tree's tests here as this user, so do it only on a device whose pool you trust;
 removing a pool member (`member_remove`) refuses it at its next request. `poolhouse features disable remote-tests` also switches this device's node off.
-`shard_consent` and `shard_call` are grants (docs/node.md, "Standing grants"): the consent command, run by a person at a terminal, signs the one it needs, and the lead's first-run bundle carries both for the lead's own use.
+`shard_consent` and `shard_call` are grants (docs/node.md, "Standing grants"): the consent command, run by a person at a terminal, signs the one it needs (a typed yes), and the lead's first-run bundle carries `shard_call` and not `shard_consent`, which a person grants on its own.
 
 ## What runs where
 
