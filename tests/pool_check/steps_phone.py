@@ -50,7 +50,8 @@ def _on(world: World, device: Device) -> str:
     waiting = next(a for a in device.call("approval_pending", "", token, **listing)["approvals"] if a["id"] == added["result"]["approval"])
     assert "POOL: SECURE." in waiting["text"], f"{device.name}: adding a phone states the pool's policy:\n{waiting['text']}"
     approval = grants.sign_approval(person.key, waiting, "approve")
-    approved = device.call("approval_decide", "", token, **approval)
+    assert len(added["result"]["number"]) == 2, f"{device.name}: the new phone shows no number for the approving key to pick"
+    approved = device.call("approval_decide", "", token, **approval, pick=added["result"]["number"])
     assert approved["state"] == "approved", f"{device.name}: the person's key did not approve the phone: {approved}"
     assert len(device.call("person_keys")["keys"]) == 2, f"{device.name}: the phone's key is not a person key"
     assert _phone(device, "status", phone.token)["result"]["state"] == "active"

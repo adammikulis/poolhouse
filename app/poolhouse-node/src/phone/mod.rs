@@ -181,7 +181,7 @@ pub fn announce(node: &mut Node, a: &Approval) {
     if targets.is_empty() {
         return;
     }
-    let by = if a.session.is_empty() { String::new() } else { format!("session:{}/{}", a.board, a.session) };
+    let by = if a.asker().is_empty() { String::new() } else { format!("session:{}", a.asker()) };
     let _ = node.fatigue.record_push(quiet, &by, now);
     let _ = node.approvals.update(&a.id, |x| x.notified = true);
     for t in targets {

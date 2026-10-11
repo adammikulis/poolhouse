@@ -148,6 +148,7 @@ public final class MainActivity extends Activity {
             store.keepAdded(link, hello.getString("device"), hello.optString("name", "your computer"), added.getString("phone"), name, added.getString("token"), push, pushSecret);
             store.set("state", added.getString("state"));
             store.set("words", added.optString("words", ""));
+            store.set("number", added.optString("number", ""));
             store.learnClock(hello.getLong("now_ms"));
             runOnUiThread(() -> {
                 if (epoch == generation) start();
@@ -167,6 +168,7 @@ public final class MainActivity extends Activity {
         boolean waiting = store.waitingForApproval();
         ui = Ui.page(this, store.deviceName().isEmpty() ? "poolhouse" : store.deviceName(), waiting
                 ? "Waiting for one of your phones to approve this one. Its key: " + store.text("words")
+                + (store.text("number").isEmpty() ? "" : ". The phone that approves asks you to choose a number out of three: choose " + store.text("number"))
                 : "Requests from your agents wait here until you answer them.");
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);

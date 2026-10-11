@@ -423,6 +423,135 @@ fn a_notice_about_a_requester_whose_name_is_not_plain_is_still_signable_and_can_
     assert_eq!(done["result"]["state"], "denied", "and the person can always block: {done}");
 }
 
+/// A node with one phone added and a listener "on", and a session that holds the right to ask for a code for a further phone.
+fn with_offering_session() -> (Rig, FakePhone, String, String) {
+    let (rig, phone) = setup();
+    rig.node.lock().unwrap().phone_port = 7449;
+    let (name, token) = rig.session("demo", "offerer");
+    (rig, phone, name, token)
+}
+
+/// The secret in the link a session got from `phone_offer`.
+fn secret_of_link(offer: &Value) -> String {
+    kit::phone::secret_of(offer["link"].as_str().unwrap().strip_prefix("poolhouse://add-phone?data=").unwrap())
+}
+
+#[test]
+fn a_phone_that_waits_for_approval_shows_its_own_screen_a_number_and_the_approving_phone_must_pick_it() {
+    let (rig, first) = setup();
+    let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let second = FakePhone::new("Tablet");
+    let added = rig.phone("POST", "add", "", second.add_body(&rig.device(), &secret)).1["result"].clone();
+    let number = added["number"].as_str().unwrap().to_string();
+    assert_eq!(number.len(), 2, "the new phone is given a number to show: {added}");
+    let seen = rig.get(&first, added["approval"].as_str().unwrap());
+    let options = seen["challenge"]["context"]["pick"].as_array().unwrap().clone();
+    assert!(options.len() == 3 && options.contains(&json!(number)), "the approving phone offers three numbers, the new phone's among them");
+    assert!(seen["text"].as_str().unwrap().contains("PICK: After your fingerprint you choose the number the new phone shows on its own screen"), "{seen}");
+    let wrong = options.iter().map(|o| o.as_str().unwrap()).find(|o| *o != number).unwrap();
+    let mut body = first.decision(&seen, "approve");
+    body["pick"] = json!(wrong);
+    let refused = rig.phone("POST", "decide", "", body).1;
+    assert_eq!(code(&refused), "denied", "{refused}");
+    assert_eq!(held(&mut rig.node.lock().unwrap()).len(), 1, "a wrong number adds nothing");
+    let mut again = first.decision(&rig.get(&first, added["approval"].as_str().unwrap()), "approve");
+    again["pick"] = json!(number);
+    assert_eq!(code(&rig.phone("POST", "decide", "", again).1), "denied", "and the request is over: the phone must ask again");
+}
+
+#[test]
+fn only_one_phone_waits_to_be_added_and_a_phone_that_was_not_approved_keeps_the_next_away_for_an_hour() {
+    let (rig, first) = setup();
+    let offer = || poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
+    let second = FakePhone::new("Tablet");
+    let added = rig.phone("POST", "add", "", second.add_body(&rig.device(), &offer())).1["result"].clone();
+    let waiting = rig.phone("POST", "add", "", FakePhone::new("Watch").add_body(&rig.device(), &offer())).1;
+    assert_eq!(code(&waiting), "quota", "a second phone while one waits: {waiting}");
+    assert!(message(&waiting).contains("already waiting"), "{waiting}");
+    ok(answer(&rig, &first, added["approval"].as_str().unwrap(), "deny"));
+    let soon = rig.phone("POST", "add", "", FakePhone::new("Watch").add_body(&rig.device(), &offer())).1;
+    assert_eq!(code(&soon), "quota", "{soon}");
+    assert!(message(&soon).contains("less than an hour ago"), "{soon}");
+}
+
+#[test]
+fn a_phone_that_was_approved_does_not_keep_the_next_one_waiting() {
+    let (rig, first) = setup();
+    let mut second = FakePhone::new("Tablet");
+    rig.add(&mut second, Some(&first));
+    let mut third = FakePhone::new("Watch");
+    rig.add(&mut third, Some(&first));
+    assert_eq!(held(&mut rig.node.lock().unwrap()).len(), 3, "an approved phone is no reason to wait");
+}
+
+#[test]
+fn a_denied_add_counts_against_the_session_that_made_the_code_and_blocks_its_codes_for_a_day() {
+    let (rig, first, _name, token) = with_offering_session();
+    let offer = ok(rig.call("phone_offer", "", &token, json!({})));
+    let added = rig.phone("POST", "add", "", FakePhone::new("Pixel").add_body(&rig.device(), &secret_of_link(&offer))).1["result"].clone();
+    let seen = rig.get(&first, added["approval"].as_str().unwrap());
+    assert!(seen["text"].as_str().unwrap().contains("The code this phone used was made by the session"), "{seen}");
+    ok(answer(&rig, &first, added["approval"].as_str().unwrap(), "deny"));
+    let again = rig.call("phone_offer", "", &token, json!({}));
+    assert_eq!(code(&again), "denied", "{again}");
+    assert!(message(&again).contains("blocked"), "a session whose code was not approved asks for no more codes for a day: {again}");
+    let (_, other) = rig.session("demo", "someone-else");
+    ok(rig.call("phone_offer", "", &other, json!({})));
+}
+
+#[test]
+fn a_phone_add_nobody_answers_counts_against_the_session_that_made_the_code_too() {
+    let (rig, _first, _name, token) = with_offering_session();
+    let offer = ok(rig.call("phone_offer", "", &token, json!({})));
+    let added = rig.phone("POST", "add", "", FakePhone::new("Pixel").add_body(&rig.device(), &secret_of_link(&offer))).1["result"].clone();
+    rig.node.lock().unwrap().approvals.update(added["approval"].as_str().unwrap(), |a| a.expires_ms = 1).unwrap();
+    let (_, other) = rig.session("demo", "someone-else");
+    ok(rig.ask("demo", &other, json!([ask("sync_now", "*")]), json!({})));
+    let again = rig.call("phone_offer", "", &token, json!({}));
+    assert_eq!(code(&again), "denied", "an add that ran out blocks the session that made its code: {again}");
+}
+
+#[test]
+fn a_removal_an_agent_asked_for_names_the_session_and_a_held_session_cannot_ask() {
+    let (rig, first) = setup();
+    let mut second = FakePhone::new("Tablet");
+    rig.add(&mut second, Some(&first));
+    let (name, token) = rig.session("demo", "remover");
+    let made = ok(rig.call("phone_remove", "", &token, json!({"phone": second.id})));
+    assert!(made["text"].as_str().unwrap().lines().any(|l| l == format!("FLAG: The session {name} on board demo asked for this, not a phone of yours.")), "{made}");
+    assert_eq!(made["challenge"]["session"], "", "it is a request about a phone, not one an agent holds");
+    ok(answer(&rig, &first, made["id"].as_str().unwrap(), "deny"));
+    let (_, held_token) = rig.session("demo", "held-one");
+    for i in 0..2 {
+        let made = ok(rig.ask("demo", &held_token, json!([ask("sync_now", "*")]), json!({"note": format!("{i}")})));
+        ok(answer(&rig, &first, made["id"].as_str().unwrap(), "deny"));
+    }
+    let refused = rig.call("phone_remove", "", &held_token, json!({"phone": second.id}));
+    assert_eq!(code(&refused), "denied", "a held session asks for nothing about phones either: {refused}");
+}
+
+#[test]
+fn removals_an_agent_asks_for_one_after_another_stop_buzzing_the_phone_after_the_third() {
+    let (rig, first) = setup();
+    let mut others: Vec<FakePhone> = (0..4).map(|i| FakePhone::new(&format!("Phone {i}"))).collect();
+    for phone in &mut others {
+        rig.add(phone, Some(&first));
+    }
+    let (_, token) = rig.session("demo", "remover");
+    let urgency: Vec<String> = others.iter().map(|p| ok(rig.call("phone_remove", "", &token, json!({"phone": p.id})))["urgency"].as_str().unwrap().to_string()).collect();
+    assert_eq!(urgency, ["urgent", "urgent", "urgent", "silent"], "a requester has three interruptions at once, for phones as for anything else");
+    assert_eq!(of_kind(&rig, "hold", "pending").len(), 1, "and the rest is one quiet notice, not a buzz for each");
+}
+
+#[test]
+fn a_phone_that_asks_to_remove_another_is_not_named_as_an_agent() {
+    let (rig, first) = setup();
+    let mut second = FakePhone::new("Tablet");
+    rig.add(&mut second, Some(&first));
+    let asked = rig.phone("POST", "remove", &second.token, json!({"id": first.id})).1["result"].clone();
+    assert!(!asked["text"].as_str().unwrap().contains("The session"), "{asked}");
+}
+
 #[test]
 fn quiet_notices_are_capped_too_so_many_holds_cannot_buzz_the_phone_either() {
     let (rig, phone) = setup();

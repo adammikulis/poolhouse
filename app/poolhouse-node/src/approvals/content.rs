@@ -245,7 +245,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
 
 /// What a phone's own request shows: a title, the text and the risk, for adding or removing a phone. ``phone`` is its name and ``key``
 /// the first twenty-four characters of its key in groups of four.
-pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, flags: &[String], expires_ms: u64) -> (String, String, &'static str) {
+pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, flags: &[String], ctx: &Context, expires_ms: u64) -> (String, String, &'static str) {
     let action = if adding { "phone_add" } else { "phone_remove" };
     let (risk, why) = risk_of(action);
     let mut out: Vec<String> = flags.iter().map(|f| format!("FLAG: {f}")).collect();
@@ -260,6 +260,9 @@ pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, 
     } else {
         "SCOPE: That phone stops being able to approve at once, and what it already approved stays as signed.".into()
     });
+    if !ctx.pick.is_empty() {
+        out.push("PICK: After your fingerprint you choose the number the new phone shows on its own screen, out of three. A wrong choice counts as a decline.".into());
+    }
     out.push(if adding {
         "CANNOT: Nothing else changes. Check that the key above is the one the new phone shows.".into()
     } else {

@@ -86,6 +86,17 @@ pub fn count_against(node: &mut Node, a: &Approval, cause: Cause) -> Result<()> 
     report(node, a, &out)
 }
 
+/// A phone's addition was denied or ran out: it counts against the session whose code the phone used, which may ask for no more codes
+/// for a day.
+pub fn count_against_offer(node: &mut Node, a: &Approval, cause: Cause) -> Result<()> {
+    let Some((board, name)) = a.by.split_once('/') else { return Ok(()) };
+    let now = node.now_ms();
+    let root = node.host(board).map_or_else(|_| name.to_string(), |h| h.names.root(name));
+    let out = node.fatigue.decline(&requester(board, name, &root), "phone_add", cause, now)?;
+    node.fatigue.block(&format!("offer:{}", a.by), now, crate::approvals::fatigue::DAY_MS)?;
+    report(node, a, &out)
+}
+
 /// Mark the requests that ran out, and write an entry for each; a request nobody answered counts against its requester as a timeout,
 /// never as consent. What a hold kept back is let go when the hold ends.
 pub fn sweep(node: &mut Node) -> Result<()> {
@@ -94,6 +105,7 @@ pub fn sweep(node: &mut Node) -> Result<()> {
         audit(node, "approval.expired", &a, if held { "held, and never shown" } else { "nobody decided it" });
         if a.kind == PHONE_ADD {
             crate::phone::drop_pending(node, &a);
+            count_against_offer(node, &a, Cause::Timeout)?;
         }
         if a.kind == GRANTS && !held {
             count_against(node, &a, Cause::Timeout)?;
@@ -215,7 +227,10 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
 /// What a person's deny or block does besides ending the request.
 fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<()> {
     match a.kind.as_str() {
-        PHONE_ADD => crate::phone::drop_pending(node, a),
+        PHONE_ADD => {
+            crate::phone::drop_pending(node, a);
+            count_against_offer(node, a, Cause::Person)?;
+        }
         HOLD => summary::apply(node, a, decision)?,
         GRANTS => {
             count_against(node, a, Cause::Person)?;

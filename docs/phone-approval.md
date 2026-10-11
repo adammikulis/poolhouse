@@ -72,6 +72,16 @@ phone used was made by the session `<name>` on board `<board>`, not by you at th
 yourself just now." A code that is waiting to be scanned is never replaced by one a session or a phone asks for, so an agent
 cannot take over the code the person is showing.
 
+**A phone's addition goes through the same brakes as an agent's request** ("Approval fatigue"). A request to add a phone carries
+a number to match, like any request above routine: the new phone shows a number on its own screen and the phone that approves
+asks, after the fingerprint, which of three numbers it is, so an approval made by reflex on a phone the person did not scan adds
+nothing. At most one phone waits to be added at a time, and a phone that was denied, ran out or was withdrawn keeps the next one away
+for an hour. A phone that is not approved counts against the session that made the code it used: the same decline and timeout
+counts as any request of that session, and that session may ask for no more codes (`phone_offer`) for a day. A session that is held
+or blocked asks for no codes and no removals either. The request goes to the phone as urgent, quiet or only listed by the same
+caps as any other (a flood is one quiet notice, not a buzz for each). A removal an agent asked for carries a `FLAG:` naming the
+session that asked, because a removal ends a phone the person may have relied on.
+
 **Handing the code over.** An agent can make the code and hand the person an image or a link (`poolhouse-workspace phone
 offer --image FILE`, `Board.offer_phone()`, and `phone add --image FILE` once one phone is added); a link opens the app. What an
 agent holds is the secret, which adds a phone only after an existing phone approves it, and the approval says the agent made
@@ -488,7 +498,7 @@ On the local socket, with a session's token (docs/node.md, "Local API"):
 | `approval_pending` | `key`, `sig`, `at_ms` (a person's reading, below) | a session reads only its own waiting requests (their words, note, task, session and the number to show, never another session's); with `key`, `sig` and `at_ms` the signature of an enrolled person key made in the last thirty seconds over `poolhouse/approval-list/v1` and the node's fingerprint, it reads every waiting request, still without the numbers |
 | `approval_decide` | `id`, `decision` (`approve`, `approve_repeat`, `deny`, `block`), `key`, `sig`, `text_sha256`, `pick` | `{id, state}`: needs a signature of an enrolled person key; a session only carries it. `pick` is the number the person chose and is not signed |
 | `phone_info` | | `{pin, port, endpoints, device, policy}` |
-| `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour for each session; not while another code waits to be scanned; the request to approve the phone says which session made the code); the first is a person's command |
+| `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour for each session; not while another code waits to be scanned; not for a session that is held or blocked or whose last code was not approved, for a day; the request to approve the phone says which session made the code and carries a number to match); the first is a person's command |
 | `phones` | | the phones: name, key, state, when added and last seen, whether a push address is set |
 | `phone_remove` | `phone` | the request "Remove the phone", for a key the node holds to approve |
 

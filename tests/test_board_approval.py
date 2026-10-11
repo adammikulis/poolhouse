@@ -204,7 +204,7 @@ def test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_
     assert "\x1b[30;47m" in out, "the code was drawn in the terminal"
     seen = endpoint.ok("get", {"id": reply["approval"]}, token=first.token)
     assert "key " + reply["words"] in seen["text"] and "made by" not in seen["text"], "a code a person made at the computer carries no warning"
-    assert endpoint.ok("decide", first.decision(seen, "approve"))["state"] == "approved"
+    assert endpoint.ok("decide", first.decision(seen, "approve", pick=reply["number"]))["state"] == "approved"
     assert sorted(p["name"] for p in board_phone.phones(team.session(lead)) if p["state"] == "active") == ["Pixel", "Tablet"]
 
 

@@ -510,6 +510,8 @@ fn a_code_a_session_made_says_so_on_the_request_to_approve_its_phone_and_a_perso
     assert!(text.contains(&format!("FLAG: The code this phone used was made by the session {name} on board demo, not by you at the computer.")), "{text}");
     assert!(text.contains(&format!("key {}", added["words"].as_str().unwrap())) && added["words"].as_str().unwrap().split(' ').count() == 6, "24 characters of the key are shown: {text}");
 
+    let seen = rig.get(&first, added["approval"].as_str().unwrap());
+    assert_eq!(rig.phone("POST", "decide", "", first.decision(&seen, "approve")).1["ok"], true, "the first phone approves the one a session's code added, so the next can ask");
     let secret = poolhouse_node::phone::enrol::make_offer(rig.dir.path(), kit::phone::now()).unwrap();
     let by_hand = rig.phone("POST", "add", "", FakePhone::new("Tablet").add_body(&rig.device(), &secret)).1["result"].clone();
     let text = rig.get(&first, by_hand["approval"].as_str().unwrap())["text"].as_str().unwrap().to_string();

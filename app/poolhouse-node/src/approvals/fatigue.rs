@@ -20,8 +20,8 @@ pub const URGENT: &str = "urgent";
 pub const QUIET: &str = "quiet";
 pub const SILENT: &str = "silent";
 
-const HOUR_MS: u64 = 3_600_000;
-const DAY_MS: u64 = 24 * HOUR_MS;
+pub const HOUR_MS: u64 = 3_600_000;
+pub const DAY_MS: u64 = 24 * HOUR_MS;
 const MOST_DECLINED: usize = 400;
 const MOST_ENTRIES: usize = 400;
 
@@ -288,6 +288,11 @@ impl Fatigue {
     /// When the hold or the refusal at ``key`` ends, 0 when there is none.
     pub fn until(&self, key: &str) -> u64 {
         self.file.entries.get(key).map_or(0, |e| e.hold_until_ms.max(e.refuse_until_ms))
+    }
+
+    /// When the refusal at ``key`` ends, if it is refusing now: a key that is no session's, such as `offer:board/name`.
+    pub fn refused_key(&self, key: &str, now: u64) -> Option<u64> {
+        self.file.entries.get(key).map(|e| e.refuse_until_ms).filter(|until| *until > now)
     }
 
     /// Let ``key`` ask again: its hold and its refusal end, and what it was declined for stops counting.

@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 
 use crate::approvals::calls::{asks_of, plain_error, plain_line, text, ttl_of, Ask};
 use crate::approvals::content::{grants_text, risk_of, riskiest, Draft, Line, Who, ROUTINE};
-use crate::approvals::context::{AskFacts, Context};
+use crate::approvals::context::{pick_options, AskFacts, Context};
 use crate::approvals::decide::{agent_view, audit, sweep};
 use crate::approvals::fatigue::{self, kind_of, same, Delivery, Standing, SILENT, URGENT};
 use crate::approvals::flags::{for_grants, Asked};
@@ -21,24 +21,15 @@ use crate::node::Node;
 
 const MOST_NOTE: usize = 160;
 
-fn random_u16() -> Result<u16> {
-    let mut raw = [0u8; 2];
-    getrandom::fill(&mut raw).map_err(|e| std::io::Error::other(e.to_string()))?;
-    Ok(u16::from_le_bytes(raw))
-}
-
-/// The number the agent is to show the person and the three the person chooses among, the right one in a place nobody can guess.
-fn pick_options() -> Result<(String, Vec<String>)> {
-    let mut numbers: Vec<String> = Vec::new();
-    while numbers.len() < 3 {
-        let n = (10 + random_u16()? % 90).to_string();
-        if !numbers.contains(&n) {
-            numbers.push(n);
-        }
-    }
-    let code = numbers[0].clone();
-    numbers.swap(0, usize::from(random_u16()? % 3));
-    Ok((code, numbers))
+/// How loudly a request of the requester ``asker`` (`board/name`, empty when no session asked) is delivered, and whether it is only quiet
+/// because a cap was reached. A phone's addition or removal goes through the same caps as an agent's request.
+pub fn classify(node: &mut Node, asker: &str, friend: bool, prompted: &str, now: u64) -> (&'static str, bool) {
+    let live: Vec<&Approval> = node.approvals.all().iter().filter(|a| a.pending() && a.urgency == URGENT).collect();
+    let mine = if asker.is_empty() { 0 } else { live.iter().filter(|a| a.asker() == asker).count() };
+    let (all_urgent, by) = (live.len(), if asker.is_empty() { String::new() } else { format!("session:{asker}") });
+    let delivery = Delivery { trusted: friend, prompted, requester_urgent: mine, all_urgent, pushes: node.fatigue.pushes_this_hour(now),
+                              requester_pushes: if by.is_empty() { 0 } else { node.fatigue.pushes_by(&by, now) } };
+    fatigue::urgency(&node.fatigue.rules, &delivery)
 }
 
 /// Whether ``source`` is this device or a member of the pool: a request from anywhere else never interrupts the person.
@@ -177,17 +168,11 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let grants: Vec<Value> = asks.iter().map(|a| grant_of(a, &device_fp)).collect::<Result<_>>()?;
     let (urgency, overflow) = match &held_key {
         Some(_) => (SILENT, false),
-        None => {
-            let live: Vec<&Approval> = node.approvals.all().iter().filter(|a| a.pending() && a.urgency == URGENT).collect();
-            let mine = live.iter().filter(|a| a.board == board && a.session == name).count();
-            let delivery = Delivery { trusted: friend, prompted: &ctx.prompted, requester_urgent: mine, all_urgent: live.len(), pushes: node.fatigue.pushes_this_hour(now),
-                                      requester_pushes: node.fatigue.pushes_by(&who.keys[0], now) };
-            match fatigue::urgency(&node.fatigue.rules, &delivery) {
-                // The same request again soon after it was withdrawn or ran out is listed, not pushed again.
-                (URGENT, _) if repeated => (SILENT, false),
-                other => other,
-            }
-        }
+        None => match classify(node, &format!("{board}/{name}"), friend, &ctx.prompted, now) {
+            // The same request again soon after it was withdrawn or ran out is listed, not pushed again.
+            (URGENT, _) if repeated => (SILENT, false),
+            other => other,
+        },
     };
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: GRANTS.into(), board: board.into(), session: name.clone(), action: json!({"kind": GRANTS, "grants": grants}),

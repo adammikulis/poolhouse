@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::approvals::content::{span, utc};
+use crate::error::Result;
 
 /// How an instruction of the person reached the node: attested by the agent's harness from the person's prompt, or sent from the app.
 pub const ORIGINS: [&str; 3] = ["none", "harness", "app"];
@@ -136,6 +137,26 @@ impl Context {
         }
         line
     }
+}
+
+fn random_u16() -> Result<u16> {
+    let mut raw = [0u8; 2];
+    getrandom::fill(&mut raw).map_err(|e| std::io::Error::other(e.to_string()))?;
+    Ok(u16::from_le_bytes(raw))
+}
+
+/// The number a person is to be shown and the three they choose among, the right one in a place nobody can guess.
+pub fn pick_options() -> Result<(String, Vec<String>)> {
+    let mut numbers: Vec<String> = Vec::new();
+    while numbers.len() < 3 {
+        let n = (10 + random_u16()? % 90).to_string();
+        if !numbers.contains(&n) {
+            numbers.push(n);
+        }
+    }
+    let code = numbers[0].clone();
+    numbers.swap(0, usize::from(random_u16()? % 3));
+    Ok((code, numbers))
 }
 
 /// What a source of evidence tells the node about a session's request. Values the node does not write are replaced by what it does.

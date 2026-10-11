@@ -33,7 +33,8 @@ def add_phone(team: Any, name: str = "Pixel", *, by: PhoneKeys | None = None) ->
     if by is not None:
         assert reply["state"] == "pending"
         seen = endpoint.ok("get", {"id": reply["approval"]}, token=by.token)
-        assert endpoint.ok("decide", by.decision(seen, "approve"))["state"] == "approved"
+        assert len(reply["number"]) == 2, "the new phone is given a number to show, and the approving phone picks it"
+        assert endpoint.ok("decide", by.decision(seen, "approve", pick=reply["number"]))["state"] == "approved"
     else:
         assert reply["state"] == "active"
     return added

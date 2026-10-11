@@ -114,6 +114,9 @@ pub struct Approval {
     /// Whether a push told the person about it: withdrawing a request the person was told of is not free.
     #[serde(default)]
     pub notified: bool,
+    /// For a phone's addition: the session whose code the phone used (`board/name`), empty for a code a person or a phone made.
+    #[serde(default)]
+    pub by: String,
 }
 
 fn urgent() -> String {
@@ -127,12 +130,18 @@ impl Approval {
             id: String::new(), kind: String::new(), board: String::new(), session: String::new(), action: Value::Null, text: String::new(), title: String::new(),
             risk: String::new(), nonce: String::new(), created_ms: 0, expires_ms: 0, state: PENDING.into(), decided_ms: 0, decided_by: String::new(),
             reason: String::new(), grants: Vec::new(), seq: 0, context: Context::default(), pick_code: String::new(), urgency: urgent(), retries: 0,
-            same: String::new(), source: String::new(), held_by: String::new(), notified: false,
+            same: String::new(), source: String::new(), held_by: String::new(), notified: false, by: String::new(),
         }
     }
 
     pub fn pending(&self) -> bool {
         self.state == PENDING
+    }
+
+    /// The session behind the request (`board/name`): the one that asked, or for a phone's addition the one whose code it used; empty
+    /// when no session did.
+    pub fn asker(&self) -> String {
+        if self.session.is_empty() { self.by.clone() } else { format!("{}/{}", self.board, self.session) }
     }
 
     /// Pending, or kept back and not yet let through: not over.

@@ -137,7 +137,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
         }
         "remove" => {
             let by = format!("The phone {}", n.phones.get(id).map(|f| f.name.clone()).unwrap_or_default());
-            let made = ask_to_remove(&mut n, &by, text(p, "id"))?;
+            let made = ask_to_remove(&mut n, &by, "", text(p, "id"))?;
             n.approvals.get(&made).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into()))
         }
         "offer" => offer(&mut n, id),
