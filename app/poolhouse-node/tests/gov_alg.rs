@@ -86,6 +86,10 @@ fn a_signature_that_names_the_other_algorithm_is_refused_in_both_directions() {
     assert!(refused(take(&mut g, as_ed)).contains("algorithm"), "a P-256 key is never read as Ed25519");
     let as_p256 = with_sig(act.clone(), ANN, Alg::P256Ecdsa, ANN, &act.sign_bytes());
     assert!(refused(take(&mut g, as_p256)).contains("algorithm"), "an Ed25519 key is never read as P-256");
+    let well_formed_as_ed = with_sig(act.clone(), PHONE, Alg::Ed25519, ANN, &act.sign_bytes());
+    assert!(refused(take(&mut g, well_formed_as_ed)).contains("algorithm"), "a signature of the right shape for the algorithm named is still not for a key of the other");
+    let well_formed_as_p256 = with_sig(act.clone(), ANN, Alg::P256Ecdsa, PHONE, &act.sign_bytes());
+    assert!(refused(take(&mut g, well_formed_as_p256)).contains("algorithm"));
     assert!(!is_member(&g, &device));
 }
 
