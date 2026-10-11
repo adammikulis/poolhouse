@@ -218,7 +218,10 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
 | `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
-| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys |
+| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys, each with its `alg` (`ed25519` or `p256`) |
+| `approval_request`, `approval_status`, `approval_cancel`, `approvals` | board, token | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` / `id` / `id` / `state` | the request with its plain-words `text` and `challenge` / its state and the grants it wrote / the request / the session's own requests; docs/phone-approval.md |
+| `approval_pending`, `approval_decide` | token (any registered session; a session only carries a decision) | `id, decision, key, sig, text_sha256` | what waits for a person / the request decided, once, by the signature of an enrolled key |
+| `phone_info`, `phone_offer`, `phones` | none, token, token | `secret` / / | where phones reach this node and its pinned certificate / a code for a further phone (once a person key exists) / the phones held |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
 device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
@@ -427,6 +430,14 @@ the API. A process of the same operating-system user that writes the directory c
 of its own in `enroll_secret.json` and presenting that secret, and any session can spend the person's one-time secret with a wrong
 guess so that the person runs `grants-setup` again: neither is stopped by the node; both are inside the boundary of "Key custody".
 
+**A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` (its fingerprint is the SHA-256 of its 65-byte
+public point) and signs only approvals (docs/phone-approval.md): an agent asks (`approval_request`), the node writes the question in plain words, the phone's key
+signs a challenge that binds the text, the node and the request, and an approved request writes ordinary `grant` entries whose body carries that approval instead
+of a signature over the grant, so they count wherever a grant a person typed `yes` for counts. The phone endpoint (`--phone ADDR`, or the address in
+`phone.json` in the state directory) is HTTPS on one P-256 certificate (`phone.cert`, pinned by the code a person scans); `phones.json` holds each phone, its token's hash
+and its push address; `approvals.json` the requests; `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
+phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it.
+
 **Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` (and `enroll_secret.json`
 if there is one) in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
 the node stopped no session can ask for it, and every grant the deleted key signed reads as ignored until the new key signs new ones.
@@ -447,8 +458,9 @@ terminal of its own and goes through the commands. It does not stop a process of
 pseudo-terminal it types `yes` into), imports the key code directly, injects keystrokes into the person's terminal, or reads the
 key file and its passphrase or the keychain item, and signs without being asked. Real protection needs something a process of the
 user cannot answer: a per-use operating-system user-presence prompt (Touch ID) or a hardware key that signs only on a touch, or a
-signing helper process under a different operating-system identity that holds the key and puts the question itself. Both are planned
-and neither is built. The person's screen (the UI daemon) has no terminal, so a refusal there names the grant and the person runs the
+signing helper process under a different operating-system identity that holds the key and puts the question itself. A phone's key is the first of these
+(docs/phone-approval.md): its signature needs the person's fingerprint on another device, which no process on the computer can answer. The
+other two are planned and not built. The person's screen (the UI daemon) has no terminal, so a refusal there names the grant and the person runs the
 command at a terminal; an approval dialog in the screen is planned.
 
 What a signature is good for once it is made: a grant names the board, the session, the action, the device and its end, and is a
@@ -547,7 +559,11 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | links a lineage makes | 6 a minute | `quota` |
 | projects a node holds | 256 | `quota` |
 | projects a lineage adds | 10 a minute | `quota` |
-| person keys a node holds | 8 | `quota` |
+| person keys a node holds, phones included | 8 | `quota` |
+| requests waiting on a node; waiting from one session; requests one session makes | 64; 8; 6 in ten minutes | `quota` |
+| a request's asks, its text, its note | 8, 6000 bytes, 160 characters | `invalid` |
+| codes for a phone the node makes | 3 an hour | `quota` |
+| connections the phone endpoint holds; a request body | 48; 64 KiB | the connection closes |
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
 | messages, notes and claims one session writes | 30 a minute; a subagent 10, and what it writes counts against its parent's 30 | `quota` |

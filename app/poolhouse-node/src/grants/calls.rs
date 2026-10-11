@@ -252,7 +252,7 @@ fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>, peer: &Peer) -
 }
 
 fn keys(node: &Node) -> Value {
-    let keys: Vec<Value> = node.persons.all().iter().map(|(f, k)| json!({"fingerprint": f, "about": k.label, "at_ms": k.at_ms})).collect();
+    let keys: Vec<Value> = node.persons.all().iter().map(|(f, k)| json!({"fingerprint": f, "about": k.label, "at_ms": k.at_ms, "alg": k.alg})).collect();
     json!({"keys": keys})
 }
 

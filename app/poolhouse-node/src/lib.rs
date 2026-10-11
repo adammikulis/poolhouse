@@ -3,6 +3,7 @@
 //! the session's token, and answers a local API on a Unix socket, or on a Windows named pipe limited to the current user.
 
 pub mod api;
+pub mod approvals;
 pub mod beacon;
 pub mod board;
 pub mod build;
@@ -34,6 +35,7 @@ pub mod node;
 pub mod notes;
 pub mod join_code;
 pub mod peer;
+pub mod phone;
 pub mod poolapi;
 pub mod poolops;
 pub mod probe;

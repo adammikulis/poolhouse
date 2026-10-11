@@ -12,7 +12,7 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::fsutil::{hex, sha256_hex, unhex, write_atomic};
+use crate::fsutil::{sha256_hex, unhex, write_atomic};
 
 use super::spec::SKEW_MS;
 
@@ -28,12 +28,23 @@ pub const NONCES_FILE: &str = "persons_nonces.json";
 /// How long the secret a person's command made is good for.
 pub const SECRET_TTL_MS: u64 = 10 * 60 * 1000;
 
+/// The key algorithms a person key may use: Ed25519 (a key kept beside the node, signed with a typed `yes`) and ECDSA P-256 with SHA-256
+/// (a phone's Keystore key, signatures in DER).
+pub const ED25519: &str = "ed25519";
+pub const P256: &str = "p256";
+
+fn ed25519() -> String {
+    ED25519.into()
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Key {
-    /// The public key, 64 hex digits.
+    /// The public key in hex: 64 digits for Ed25519, 130 for a P-256 point (`04` and both coordinates).
     pub public: String,
     pub label: String,
     pub at_ms: u64,
+    #[serde(default = "ed25519")]
+    pub alg: String,
 }
 
 #[derive(Deserialize)]
@@ -62,11 +73,39 @@ fn public_of(public: &str) -> Result<VerifyingKey> {
     VerifyingKey::from_bytes(&bytes).map_err(|_| Error::Invalid("that is not a public key".into()))
 }
 
-/// Whether ``sig`` (hex) is ``public``'s signature over ``message``.
+/// Whether ``sig`` (hex) is the Ed25519 key ``public``'s signature over ``message``.
 pub fn verifies(public: &str, message: &[u8], sig: &str) -> bool {
     let Ok(key) = public_of(public) else { return false };
     let Some(sig) = unhex(sig).and_then(|b| <[u8; 64]>::try_from(b).ok()) else { return false };
     key.verify_strict(message, &Signature::from_bytes(&sig)).is_ok()
+}
+
+/// The bytes of a P-256 public key given in hex: an uncompressed point of 65 bytes.
+pub fn p256_point(public: &str) -> Option<Vec<u8>> {
+    unhex(public).filter(|b| b.len() == 65 && b[0] == 4)
+}
+
+/// Whether ``sig`` (hex, DER) is the P-256 key ``public``'s ECDSA signature with SHA-256 over ``message``.
+pub fn verifies_p256(public: &str, message: &[u8], sig: &str) -> bool {
+    let (Some(point), Some(sig)) = (p256_point(public), unhex(sig)) else { return false };
+    sig.len() <= 72 && ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_ASN1, point).verify(message, &sig).is_ok()
+}
+
+/// Whether ``sig`` is the signature of the key ``public`` of algorithm ``alg`` over ``message``.
+pub fn verifies_with(alg: &str, public: &str, message: &[u8], sig: &str) -> bool {
+    match alg {
+        P256 => verifies_p256(public, message, sig),
+        _ => verifies(public, message, sig),
+    }
+}
+
+/// The fingerprint a key of ``alg`` is known by: SHA-256 of its public bytes.
+pub fn fingerprint_of(alg: &str, public: &str) -> Result<String> {
+    let bytes = match alg {
+        P256 => p256_point(public).ok_or_else(|| Error::Invalid("a phone's key is an uncompressed P-256 point of 130 hex digits".into()))?,
+        _ => public_of(public)?.as_bytes().to_vec(),
+    };
+    Ok(sha256_hex(&bytes))
 }
 
 impl Persons {
@@ -99,7 +138,7 @@ impl Persons {
 
     /// Whether the enrolled key ``fingerprint`` signed ``message``.
     pub fn signed(&self, fingerprint: &str, message: &[u8], sig: &str) -> bool {
-        self.keys.get(fingerprint).is_some_and(|k| verifies(&k.public, message, sig))
+        self.keys.get(fingerprint).is_some_and(|k| verifies_with(&k.alg, &k.public, message, sig))
     }
 
     /// Whether ``secret`` is the one a person's command left for the first enrolment, fresh at ``now_ms``. The file is
@@ -143,10 +182,14 @@ impl Persons {
         Ok(key)
     }
 
-    /// Enrol ``public``; its fingerprint. Enrolling a key already held changes nothing, and a key that was removed is not enrolled again.
+    /// Enrol the Ed25519 key ``public``; its fingerprint. Enrolling a key already held changes nothing, and a key that was removed is not enrolled again.
     pub fn add(&mut self, public: &str, label: &str, at_ms: u64) -> Result<String> {
-        let public = public_of(public)?;
-        let fingerprint = sha256_hex(public.as_bytes());
+        self.add_key(ED25519, public, label, at_ms)
+    }
+
+    /// Enrol the key ``public`` of algorithm ``alg`` (`ed25519` or `p256`), as `add` does.
+    pub fn add_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64) -> Result<String> {
+        let fingerprint = fingerprint_of(alg, public)?;
         if self.removed.contains_key(&fingerprint) {
             return Err(Error::Denied("that key was removed from this node and is not enrolled again: make a new key on that device".into()));
         }
@@ -154,16 +197,22 @@ impl Persons {
             if self.keys.len() >= MOST_KEYS {
                 return Err(Error::Quota("this node holds as many person keys as it will".into()));
             }
-            self.keys.insert(fingerprint.clone(), Key { public: hex(public.as_bytes()), label: label.into(), at_ms });
+            self.keys.insert(fingerprint.clone(), Key { public: public.to_ascii_lowercase(), label: label.into(), at_ms, alg: alg.into() });
             write_atomic(&self.path, &serde_json::to_vec(&self.keys)?)?;
         }
         Ok(fingerprint)
+    }
+
+    /// The enrolled key ``fingerprint``.
+    pub fn get(&self, fingerprint: &str) -> Option<&Key> {
+        self.keys.get(fingerprint)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fsutil::hex;
     use ed25519_dalek::SigningKey;
 
     fn public(seed: u8) -> String {

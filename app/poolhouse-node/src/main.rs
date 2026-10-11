@@ -97,11 +97,32 @@ fn set_build(node: &mut poolhouse_node::node::Node, args: &[String]) -> Result<(
     Ok(())
 }
 
+/// Where the node listens for phones: `--phone ADDR`, else the address `phone.json` in the state directory holds (a person's command
+/// writes it); None when neither names one.
+fn phone_listen(state: &Path, args: &[String]) -> Result<Option<SocketAddr>, String> {
+    if let Some(a) = flag(args, "--phone") {
+        return addr(a).map(Some);
+    }
+    match std::fs::read(state.join("phone.json")) {
+        Ok(bytes) => {
+            let listen = serde_json::from_slice::<serde_json::Value>(&bytes).ok().and_then(|v| v["listen"].as_str().map(str::to_string));
+            listen.ok_or_else(|| "phone.json names no listen address".to_string()).and_then(|a| addr(&a)).map(Some)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("phone.json: {e}")),
+    }
+}
+
 fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let config = net_config(args)?;
+    let phone = phone_listen(state, args)?;
     let mut server = Server::bind(state).map_err(|e| e.to_string())?;
     let shared = server.node();
     set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
+    if let Some(listen) = phone {
+        shared.lock().map_err(|e| e.to_string())?.pusher = Box::new(poolhouse_node::phone::push::Web::start(state));
+        poolhouse_node::phone::http::start(shared.clone(), listen).map_err(|e| e.to_string())?;
+    }
     if let Some(config) = config {
         let net = Net::start(server.node(), config).map_err(|e| e.to_string())?;
         server = server.attach(net);

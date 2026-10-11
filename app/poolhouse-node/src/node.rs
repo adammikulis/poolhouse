@@ -58,6 +58,14 @@ pub struct Node {
     pub members: Pool,
     /// The keys of the person, whose signature makes a grant count.
     pub persons: Persons,
+    /// What agents asked of the person and what became of it (`approvals`), and the phones the person answers from (`phone`).
+    pub approvals: crate::approvals::Approvals,
+    pub phones: crate::phone::Phones,
+    /// The certificate of the endpoint a phone talks to, and the port it listens on (0 while it does not).
+    pub phone_cert: crate::phone::cert::Endpoint,
+    pub phone_port: u16,
+    /// Where a sealed notification goes.
+    pub pusher: Box<dyn crate::phone::push::Pusher>,
     /// The other devices whose landing entries this device counts; empty by default.
     pub land_trust: LandTrust,
     pub facts: Facts,
@@ -117,7 +125,9 @@ impl Node {
         let members = Pool::open(&dir.join("pool.json"))?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let mut node = Node {
-            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
+            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
+            approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
+            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),

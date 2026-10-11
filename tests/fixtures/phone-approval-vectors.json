@@ -1,0 +1,52 @@
+{
+ "about": "Made once with Python's cryptography library, which shares no code with the node or the app: the Rust tests, the Java protocol checks and the Python tests each rebuild `approve_bytes` from `challenge` and check that `signature` verifies. `push` is the example of RFC 8291, section 5.",
+ "challenge": {
+  "v": 1,
+  "op": "approval",
+  "id": "ap-0123456789abcdef",
+  "node": "3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba",
+  "board": "demo",
+  "session": "claude-1a2b3c",
+  "action": {
+   "kind": "grants",
+   "grants": [
+    {
+     "action": "add_device",
+     "device": "3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba",
+     "gid": "g-00000000000000a1",
+     "lasts_ms": 600000,
+     "resource": "*",
+     "review": false,
+     "uses": 1
+    },
+    {
+     "action": "link_write",
+     "device": "3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba",
+     "gid": "g-00000000000000a2",
+     "lasts_ms": 3600000,
+     "resource": "demo>lab",
+     "review": true
+    }
+   ]
+  },
+  "text": "FLAG: No grant you signed has ever named claude-1a2b3c.\nFLAG: This is the first request for add_device on this device.\nPOOL: SECURE. Each device needs your code to join.\nRISK: SENSITIVE. It makes a code that lets another device join this pool.\nWHO: claude-1a2b3c, claude-opus-5-5 in claude-code, a main session, on device studio, board demo.\nASK 1: Make a short code that lets one more device join this pool.\nSCOPE 1: only claude-1a2b3c (not its subagents), on this device (studio), on anything, for 10 minutes from the moment you approve (at the latest until 2026-09-21 14:53 UTC), once; no review is needed.\nASK 2: Share the board demo with the board lab, read and write.\nSCOPE 2: only claude-1a2b3c (not its subagents), on this device (studio), on demo>lab, for 1 hour from the moment you approve (at the latest until 2026-09-21 15:43 UTC), as often as it likes; each use needs an independent review.\nCANNOT: Nothing beyond what is listed: no other action, board or device, nothing after the end shown, no more uses than shown. It can never approve anything or act as you.\nWHY: The agent says: \"adding the Linux box\" (not checked by anyone).\nDENY: If you deny, the agent is told no and nothing changes.\nEXPIRES: This request ends at 2026-09-21 14:43 UTC.",
+  "nonce": "00112233445566778899aabbccddeeff",
+  "created_ms": 1790000000000,
+  "expires_ms": 1790001800000
+ },
+ "key": {
+  "public": "04acce4ee6eb405545fb4f61e4823a0e2c5b014d7d2cea11c4e9cce5b672ac35e0e1a671d9833ab3c071b262ce9af09d20fd18cb73a437c94a3af2f0e031b29c60",
+  "fingerprint": "7a0f298890c6f72a58c79a0b4b78df21fc96ab3cb14cc4965c007ae63f2831df"
+ },
+ "approve_bytes": "poolhouse/approval/v1\n{\"action\":{\"grants\":[{\"action\":\"add_device\",\"device\":\"3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba\",\"gid\":\"g-00000000000000a1\",\"lasts_ms\":600000,\"resource\":\"*\",\"review\":false,\"uses\":1},{\"action\":\"link_write\",\"device\":\"3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba\",\"gid\":\"g-00000000000000a2\",\"lasts_ms\":3600000,\"resource\":\"demo>lab\",\"review\":true}],\"kind\":\"grants\"},\"board\":\"demo\",\"created_ms\":1790000000000,\"decision\":\"approve\",\"expires_ms\":1790001800000,\"id\":\"ap-0123456789abcdef\",\"key\":\"7a0f298890c6f72a58c79a0b4b78df21fc96ab3cb14cc4965c007ae63f2831df\",\"node\":\"3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"op\":\"approval\",\"session\":\"claude-1a2b3c\",\"text\":\"FLAG: No grant you signed has ever named claude-1a2b3c.\\nFLAG: This is the first request for add_device on this device.\\nPOOL: SECURE. Each device needs your code to join.\\nRISK: SENSITIVE. It makes a code that lets another device join this pool.\\nWHO: claude-1a2b3c, claude-opus-5-5 in claude-code, a main session, on device studio, board demo.\\nASK 1: Make a short code that lets one more device join this pool.\\nSCOPE 1: only claude-1a2b3c (not its subagents), on this device (studio), on anything, for 10 minutes from the moment you approve (at the latest until 2026-09-21 14:53 UTC), once; no review is needed.\\nASK 2: Share the board demo with the board lab, read and write.\\nSCOPE 2: only claude-1a2b3c (not its subagents), on this device (studio), on demo>lab, for 1 hour from the moment you approve (at the latest until 2026-09-21 15:43 UTC), as often as it likes; each use needs an independent review.\\nCANNOT: Nothing beyond what is listed: no other action, board or device, nothing after the end shown, no more uses than shown. It can never approve anything or act as you.\\nWHY: The agent says: \\\"adding the Linux box\\\" (not checked by anyone).\\nDENY: If you deny, the agent is told no and nothing changes.\\nEXPIRES: This request ends at 2026-09-21 14:43 UTC.\",\"v\":1}",
+ "approve_signature": "3045022100ac7418f41d61911e8f2774040db9b15e43b4d232806a88f408f98096faa1a5b3022020442917a8861b4e1ea92950f36862970b91c43b255c5028391a355e5adb6509",
+ "deny_bytes": "poolhouse/approval/v1\n{\"action\":{\"grants\":[{\"action\":\"add_device\",\"device\":\"3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba\",\"gid\":\"g-00000000000000a1\",\"lasts_ms\":600000,\"resource\":\"*\",\"review\":false,\"uses\":1},{\"action\":\"link_write\",\"device\":\"3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba\",\"gid\":\"g-00000000000000a2\",\"lasts_ms\":3600000,\"resource\":\"demo>lab\",\"review\":true}],\"kind\":\"grants\"},\"board\":\"demo\",\"created_ms\":1790000000000,\"decision\":\"deny\",\"expires_ms\":1790001800000,\"id\":\"ap-0123456789abcdef\",\"key\":\"7a0f298890c6f72a58c79a0b4b78df21fc96ab3cb14cc4965c007ae63f2831df\",\"node\":\"3a05903849a971ff4d44654f2497d8f8a593691f56ca7af1c50c55bd03f5f0ba\",\"nonce\":\"00112233445566778899aabbccddeeff\",\"op\":\"approval\",\"session\":\"claude-1a2b3c\",\"text\":\"FLAG: No grant you signed has ever named claude-1a2b3c.\\nFLAG: This is the first request for add_device on this device.\\nPOOL: SECURE. Each device needs your code to join.\\nRISK: SENSITIVE. It makes a code that lets another device join this pool.\\nWHO: claude-1a2b3c, claude-opus-5-5 in claude-code, a main session, on device studio, board demo.\\nASK 1: Make a short code that lets one more device join this pool.\\nSCOPE 1: only claude-1a2b3c (not its subagents), on this device (studio), on anything, for 10 minutes from the moment you approve (at the latest until 2026-09-21 14:53 UTC), once; no review is needed.\\nASK 2: Share the board demo with the board lab, read and write.\\nSCOPE 2: only claude-1a2b3c (not its subagents), on this device (studio), on demo>lab, for 1 hour from the moment you approve (at the latest until 2026-09-21 15:43 UTC), as often as it likes; each use needs an independent review.\\nCANNOT: Nothing beyond what is listed: no other action, board or device, nothing after the end shown, no more uses than shown. It can never approve anything or act as you.\\nWHY: The agent says: \\\"adding the Linux box\\\" (not checked by anyone).\\nDENY: If you deny, the agent is told no and nothing changes.\\nEXPIRES: This request ends at 2026-09-21 14:43 UTC.\",\"v\":1}",
+ "deny_signature": "3045022100e1d5b996195cac79a0e6f1d11c5a3f35ea909f597f10b54c106b187eda72db0402206395996eb995ee74003962609fc93f5ae5a4a2d122c9c91d7578cd43356c8e42",
+ "push": {
+  "ua_private": "ab5757a70dd4a53e553a6bbf71ffefea2874ec07a6b379e3c48f895a02dc33de",
+  "ua_public": "042571b2becdfde360551aaf1ed0f4cd366c11cebe555f89bcb7b186a53339173168ece2ebe018597bd30479b86e3c8f8eced577ca59187e9246990db682008b0e",
+  "auth": "05305932a1c7eabe13b6cec9fda48882",
+  "body": "0c6bfaadad67958803092d454676f397000010004104fe33f4ab0dea71914db55823f73b54948f41306d920732dbb9a59a53286482200e597a7b7bc260ba1c227998580992e93973002f3012a28ae8f06bbb78e5ec0ff297de5b429bba7153d3a4ae0caa091fd425f3b4b5414add8ab37a19c1bbb05cf5cb5b2a2e0562d558635641ec52812c6c8ff42e95ccb86be7cd",
+  "plaintext": "When I grow up, I want to be a watermelon"
+ }
+}
