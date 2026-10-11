@@ -8,7 +8,7 @@ use kit::netkit::*;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::error::Error;
 use poolhouse_node::fsutil::hex;
-use poolhouse_node::membership::{Policy, Pool, Standing};
+use poolhouse_node::membership::{Device, Policy, Pool, Standing};
 use poolhouse_node::peer::PeerClient;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
@@ -40,6 +40,20 @@ fn a_revocation_is_never_undone_and_a_stale_row_from_a_host_cannot_bring_a_devic
     let id = pool.id.clone();
     pool.adopt(&id, &stale, None, (&device.fingerprint, "open")).unwrap();
     assert_eq!(pool.standing(&device.fingerprint), Standing::Revoked, "the host of a join cannot bring a removed device back");
+}
+
+#[test]
+fn a_device_name_of_many_multibyte_characters_is_cut_by_characters_and_the_record_reopens() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut pool = pool_in(&dir);
+    let name = format!("a{}", "\u{1f600}".repeat(100));
+    let device = pool.enrol(&identity(6).der, &name, "join-code", 1).unwrap();
+    assert_eq!(device.name.chars().count(), 80, "the name was cut to 80 characters, which are more than 80 bytes");
+    let reopened = pool_in(&dir);
+    assert_eq!(reopened.get(&device.fingerprint).unwrap().name, device.name);
+    let long = format!("{}{}", "x".repeat(79), "\u{1f600}\u{1f600}");
+    let row = json!({"fingerprint": device.fingerprint, "cert": device.cert, "name": long, "status": "active", "at": 1, "by": long});
+    assert_eq!(Device::read(&row).unwrap().name.chars().count(), 80);
 }
 
 #[test]

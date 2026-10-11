@@ -93,8 +93,8 @@ impl Device {
     /// A row from the file or a peer, or None when it is not what it claims.
     pub fn read(row: &Value) -> Option<Device> {
         let mut d: Device = serde_json::from_value(row.clone()).ok()?;
-        d.name.truncate(80);
-        d.by.truncate(80);
+        d.name = d.name.chars().take(80).collect();
+        d.by = d.by.chars().take(80).collect();
         if !valid_fingerprint(&d.fingerprint) {
             return None;
         }
