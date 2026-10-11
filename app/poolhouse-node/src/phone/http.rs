@@ -6,7 +6,7 @@
 
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -17,13 +17,19 @@ use crate::approvals::calls::pending;
 use crate::approvals::decide::{decide, sweep, view, Decision};
 use crate::error::{Error, Result};
 use crate::node::Node;
-use crate::phone::enrol::{ask_to_remove, enrol, make_offer};
+use crate::phone::enrol::{ask_to_remove, enrol, make_offer_by, offer_is_live};
+use crate::phone::gate::{Gate, Permit};
 use crate::phone::{shown, ACTIVE, PENDING};
 
 const MOST_HEAD: usize = 16 * 1024;
 const MOST_BODY: usize = 64 * 1024;
 const MOST_CONNECTIONS: usize = 48;
-const IO_TIMEOUT: Duration = Duration::from_secs(20);
+/// The most connections one address holds, and the last connections kept for addresses a phone answered from (`gate`).
+const MOST_PER_ADDRESS: usize = 6;
+const RESERVED: usize = 8;
+/// How long the handshake and the request may take together, and the answer to be written.
+const HEAR_FOR: Duration = Duration::from_secs(10);
+const ANSWER_FOR: Duration = Duration::from_secs(10);
 const MOST_WAIT: Duration = Duration::from_secs(15);
 const POLL: Duration = Duration::from_millis(250);
 const RECENT: usize = 10;
@@ -65,6 +71,14 @@ fn list(node: &mut Node, me: &str) -> Value {
            "version": node.approvals.version(), "now_ms": now, "device": node.cert.fingerprint(), "policy": node.members.policy.name()})
 }
 
+/// The phone ``id`` is added and not removed: a phone removed while its request was between two locks does nothing more.
+fn still_added(node: &Node, id: &str) -> Result<()> {
+    if node.phones.get(id).is_some_and(|f| f.state == ACTIVE) {
+        return Ok(());
+    }
+    Err(Error::Denied("This phone is not added to this device, or it was removed.".into()))
+}
+
 fn wait(node: &Mutex<Node>, me: &str, p: &Map<String, Value>) -> Result<Value> {
     let after = p.get("after").and_then(Value::as_u64).unwrap_or(u64::MAX);
     let limit = Duration::from_millis(p.get("timeout_ms").and_then(Value::as_u64).unwrap_or(10_000)).min(MOST_WAIT);
@@ -72,6 +86,7 @@ fn wait(node: &Mutex<Node>, me: &str, p: &Map<String, Value>) -> Result<Value> {
     loop {
         {
             let mut n = lock(node)?;
+            still_added(&n, me)?;
             sweep(&mut n)?;
             if n.approvals.version() != after || start.elapsed() >= limit {
                 return Ok(list(&mut n, me));
@@ -81,12 +96,18 @@ fn wait(node: &Mutex<Node>, me: &str, p: &Map<String, Value>) -> Result<Value> {
     }
 }
 
-fn offer(node: &mut Node) -> Result<Value> {
-    if !node.rates.permits("phone offer", 3, Duration::from_secs(3600)) {
-        return Err(Error::Quota("3 codes an hour is the most this device makes for phones; try again later.".into()));
+/// A code for a further phone, asked for by the phone ``id``; the request to approve the phone it adds says which phone made the code.
+fn offer(node: &mut Node, id: &str) -> Result<Value> {
+    if offer_is_live(&node.dir, node.now_ms()) {
+        return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
     }
-    node.rates.record("phone offer", Duration::from_secs(3600));
-    let secret = make_offer(&node.dir, node.now_ms())?;
+    let key = format!("phone offer {id}");
+    if !node.rates.permits(&key, 3, Duration::from_secs(3600)) {
+        return Err(Error::Quota("3 codes an hour is the most one phone asks for; try again later.".into()));
+    }
+    node.rates.record(&key, Duration::from_secs(3600));
+    let by = format!("the phone {}", node.phones.get(id).map(|f| f.name.clone()).unwrap_or_default());
+    let secret = make_offer_by(&node.dir, node.now_ms(), &by)?;
     let expires = node.now_ms() + crate::phone::enrol::OFFER_TTL_MS;
     Ok(json!({"link": crate::phone::calls::link(node, &secret, expires), "expires_ms": expires}))
 }
@@ -97,6 +118,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
         return wait(node, id, p);
     }
     let mut n = lock(node)?;
+    still_added(&n, id)?;
     sweep(&mut n)?;
     let now = n.now_ms();
     n.phones.touch(id, now)?;
@@ -118,7 +140,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
             let made = ask_to_remove(&mut n, &by, text(p, "id"))?;
             n.approvals.get(&made).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into()))
         }
-        "offer" => offer(&mut n),
+        "offer" => offer(&mut n, id),
         _ => Err(Error::Invalid("This device's phone endpoint has no such operation.".into())),
     }
 }
@@ -146,7 +168,7 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
                 return reply(Err(Error::Quota("Too many tries from this address; wait a minute.".into())));
             }
             n.rates.record(&key, Duration::from_secs(60));
-            return reply(if op == "add" { enrol(&mut n, &params) } else {
+            return reply(if op == "add" { enrol(&mut n, ip, &params) } else {
                 decide(&mut n, &Decision { id: text(&params, "id"), decision: text(&params, "decision"), key: text(&params, "key"), sig: text(&params, "sig"), text_sha256: text(&params, "text_sha256") })
             });
         }
@@ -225,20 +247,61 @@ fn write_response<S: Write>(s: &mut S, status: u16, body: &Value) -> std::io::Re
     s.flush()
 }
 
-fn serve_one(node: &Mutex<Node>, config: Arc<ServerConfig>, tcp: TcpStream) -> Result<()> {
+/// A connection with a deadline on the whole of a stage, not on each read: a host that sends a byte every few seconds is cut off
+/// all the same.
+struct Timed {
+    tcp: TcpStream,
+    until: Instant,
+}
+
+impl Timed {
+    fn arm(&mut self, span: Duration) {
+        self.until = Instant::now() + span;
+    }
+
+    fn left(&self) -> std::io::Result<Duration> {
+        let left = self.until.saturating_duration_since(Instant::now());
+        if left.is_zero() { Err(std::io::ErrorKind::TimedOut.into()) } else { Ok(left) }
+    }
+}
+
+impl Read for Timed {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.tcp.set_read_timeout(Some(self.left()?))?;
+        self.tcp.read(buf)
+    }
+}
+
+impl Write for Timed {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.tcp.set_write_timeout(Some(self.left()?))?;
+        self.tcp.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.tcp.flush()
+    }
+}
+
+fn serve_one(node: &Mutex<Node>, config: Arc<ServerConfig>, tcp: TcpStream, place: &Permit) -> Result<()> {
     let ip = tcp.peer_addr()?.ip();
-    tcp.set_read_timeout(Some(IO_TIMEOUT))?;
-    tcp.set_write_timeout(Some(IO_TIMEOUT))?;
     let mut conn = ServerConnection::new(config).map_err(|e| Error::Invalid(format!("tls: {e}")))?;
-    let mut tcp = tcp;
+    let mut tcp = Timed { tcp, until: Instant::now() + HEAR_FOR };
     while conn.is_handshaking() {
         conn.complete_io(&mut tcp).map_err(|e| Error::Denied(format!("the handshake failed: {e}")))?;
     }
     let mut stream = StreamOwned::new(conn, tcp);
     let (status, body) = match read_request(&mut stream) {
-        Ok((method, path, token, body)) => handle(node, ip, &method, &path, &token, &body),
+        Ok((method, path, token, body)) => {
+            let reply = handle(node, ip, &method, &path, &token, &body);
+            if reply.1["ok"] == json!(true) && path != "/phone/v1/hello" {
+                place.vouch();
+            }
+            reply
+        }
         Err(e) => (400, json!({"ok": false, "error": {"code": "invalid", "message": e.to_string()}})),
     };
+    stream.sock.arm(ANSWER_FOR);
     let _ = write_response(&mut stream, status, &body);
     stream.conn.send_close_notify();
     let _ = stream.conn.complete_io(&mut stream.sock);
@@ -260,24 +323,65 @@ pub fn start(node: Arc<Mutex<Node>>, listen: SocketAddr) -> Result<PhoneServer> 
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
     lock(&node)?.phone_port = port;
-    let live = Arc::new(AtomicUsize::new(0));
+    let gate = Gate::new(MOST_CONNECTIONS, MOST_PER_ADDRESS, RESERVED);
     std::thread::spawn(move || {
         while !stop.load(Ordering::SeqCst) {
             match listener.accept() {
-                Ok((tcp, _)) if live.load(Ordering::SeqCst) < MOST_CONNECTIONS => {
+                Ok((tcp, from)) => {
+                    let Some(place) = gate.enter(from.ip()) else { continue };
                     let _ = tcp.set_nonblocking(false);
-                    let (node, config, live) = (node.clone(), config.clone(), live.clone());
-                    live.fetch_add(1, Ordering::SeqCst);
+                    let (node, config) = (node.clone(), config.clone());
                     std::thread::spawn(move || {
-                        let _ = serve_one(&node, config, tcp);
-                        live.fetch_sub(1, Ordering::SeqCst);
+                        let _ = serve_one(&node, config, tcp, &place);
                     });
                 }
-                Ok(_) => std::thread::sleep(Duration::from_millis(50)),
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(10)),
                 Err(_) => std::thread::sleep(Duration::from_millis(100)),
             }
         }
     });
     Ok(PhoneServer { port })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn connected() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        (client, listener.accept().unwrap().0)
+    }
+
+    #[test]
+    fn a_peer_that_says_nothing_is_cut_off_at_the_deadline() {
+        let (_client, server) = connected();
+        let mut timed = Timed { tcp: server, until: Instant::now() + Duration::from_millis(300) };
+        let began = Instant::now();
+        assert!(timed.read(&mut [0u8; 16]).is_err());
+        assert!(began.elapsed() < Duration::from_secs(2), "{:?}", began.elapsed());
+    }
+
+    #[test]
+    fn a_peer_that_sends_a_byte_at_a_time_is_cut_off_at_the_same_deadline() {
+        let (client, server) = connected();
+        let sender = std::thread::spawn(move || {
+            let mut client = client;
+            for _ in 0..40 {
+                if client.write_all(b"x").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+        let mut timed = Timed { tcp: server, until: Instant::now() + Duration::from_millis(600) };
+        let (began, mut got) = (Instant::now(), 0);
+        while let Ok(n) = timed.read(&mut [0u8; 16]) {
+            got += n;
+            assert!(n > 0, "the peer did not close");
+        }
+        assert!(began.elapsed() < Duration::from_millis(1500) && (3..15).contains(&got), "{:?} {got}", began.elapsed());
+        drop(timed);
+        sender.join().unwrap();
+    }
 }

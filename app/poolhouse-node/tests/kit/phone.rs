@@ -82,6 +82,21 @@ pub fn now() -> u64 {
     super::grants::now_ms()
 }
 
+/// The one-time secret inside the data of a link a person scans (`poolhouse://add-phone?data=...`, URL-safe base64 of JSON).
+pub fn secret_of(data: &str) -> String {
+    const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let (mut bits, mut have, mut bytes) = (0u32, 0u32, Vec::new());
+    for c in data.chars() {
+        bits = bits << 6 | ALPHABET.find(c).expect("a URL-safe base64 character") as u32;
+        have += 6;
+        if have >= 8 {
+            have -= 8;
+            bytes.push((bits >> have & 0xff) as u8);
+        }
+    }
+    serde_json::from_slice::<Value>(&bytes).unwrap()["secret"].as_str().unwrap().to_string()
+}
+
 /// A node in a temporary directory, that pushes into a recording service, and the phones and sessions of a test.
 pub struct Rig {
     pub node: Mutex<Node>,
@@ -105,7 +120,12 @@ impl Rig {
 
     /// A request to the phone endpoint, as it comes in from ``LOCAL``.
     pub fn phone(&self, http: &str, op: &str, token: &str, body: Value) -> (u16, Value) {
-        poolhouse_node::phone::http::handle(&self.node, LOCAL, http, &format!("/phone/v1/{op}"), token, body.to_string().as_bytes())
+        self.phone_from(LOCAL, http, op, token, body)
+    }
+
+    /// A request to the phone endpoint as it comes in from the address ``ip``.
+    pub fn phone_from(&self, ip: IpAddr, http: &str, op: &str, token: &str, body: Value) -> (u16, Value) {
+        poolhouse_node::phone::http::handle(&self.node, ip, http, &format!("/phone/v1/{op}"), token, body.to_string().as_bytes())
     }
 
     pub fn device(&self) -> String {

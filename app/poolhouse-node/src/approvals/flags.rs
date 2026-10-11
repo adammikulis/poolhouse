@@ -67,7 +67,7 @@ pub fn for_grants(node: &mut Node, board: &str, session: &str, asks: &[Asked], p
         if ask.lasts_ms > DAY_MS {
             out.push(format!("The {} grant would last more than a day.", ask.action));
         }
-        if ask.action == "set_join_policy" && policy == "secure" && ask.resource == "open" {
+        if ask.action == "set_join_policy" && policy == "secure" && covers(ask.resource, "open") {
             out.push("This would change the pool from secure to open.".into());
         }
     }

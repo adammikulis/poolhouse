@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 use crate::approvals::{Approval, GRANTS};
 use crate::cert::valid_fingerprint;
 use crate::error::{Error, Result};
-use crate::grants::spec::{Issue, SKEW_MS};
+use crate::grants::spec::Issue;
 use crate::row::canonical;
 
 pub const DOMAIN: &str = "poolhouse/approval/v1\n";
@@ -90,7 +90,7 @@ pub fn check_entry(map: &Map<String, Value>, issue: &Issue) -> Result<()> {
     if !same || !to_ok {
         return bad("the grant is not the ask the approval names");
     }
-    if issue.at_ms < created || issue.at_ms > expires + SKEW_MS {
+    if issue.at_ms < created || issue.at_ms > expires {
         return bad("the grant starts outside the life of the request that approved it");
     }
     Ok(())

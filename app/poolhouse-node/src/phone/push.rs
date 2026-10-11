@@ -134,11 +134,15 @@ pub fn public(ip: IpAddr) -> bool {
         IpAddr::V4(v4) => {
             let o = v4.octets();
             !(v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified() || v4.is_multicast() || v4.is_broadcast() || v4.is_documentation()
-                || (o[0] == 100 && (64..128).contains(&o[1])) || o[0] == 0 || o[0] >= 240)
+                || (o[0] == 100 && (64..128).contains(&o[1])) || o[0] == 0 || o[0] >= 240
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0) || (o[0] == 198 && (o[1] == 18 || o[1] == 19)))
         }
         IpAddr::V6(v6) => {
             let s = v6.segments();
-            !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || s[0] & 0xfe00 == 0xfc00 || s[0] & 0xffc0 == 0xfe80 || v6.to_ipv4_mapped().is_some_and(|m| !public(IpAddr::V4(m))))
+            // Addresses that wrap an IPv4 one (mapped, compatible, NAT64, 6to4) reach the network the v4 address names.
+            let wraps_v4 = s[..6] == [0; 6] || (s[0] == 0x64 && s[1] == 0xff9b && s[2..6] == [0; 4]) || s[0] == 0x2002;
+            !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || s[0] & 0xfe00 == 0xfc00 || s[0] & 0xffc0 == 0xfe80 || wraps_v4
+                || v6.to_ipv4_mapped().is_some_and(|m| !public(IpAddr::V4(m))))
         }
     }
 }
@@ -217,7 +221,10 @@ impl Pusher for NoPusher {
 
 /// A push service that keeps what it was given: every address and the ciphertext sent to it, and nothing else.
 #[derive(Clone, Default)]
-pub struct Recording(pub Arc<Mutex<Vec<(String, Vec<u8>)>>>);
+pub struct Recording(pub Arc<Mutex<Vec<Sent>>>);
+
+/// One push as the recording service holds it: the address it went to and the sealed bytes.
+pub type Sent = (String, Vec<u8>);
 
 impl Pusher for Recording {
     fn send(&self, endpoint: &str, body: Vec<u8>) {

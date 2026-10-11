@@ -104,6 +104,25 @@ fn a_phone_is_added_and_decides_over_tls_against_the_one_pinned_certificate() {
 }
 
 #[test]
+fn a_host_that_opens_connections_and_says_nothing_cannot_hold_every_place() {
+    let dir = short_dir();
+    let node = Arc::new(Mutex::new(node(dir.path())));
+    let server = poolhouse_node::phone::http::start(node.clone(), "127.0.0.1:0".parse().unwrap()).unwrap();
+    let addr: SocketAddr = format!("127.0.0.1:{}", server.port).parse().unwrap();
+    let pin = node.lock().unwrap().phone_cert.fingerprint();
+    let hello = "GET /phone/v1/hello HTTP/1.1\r\nHost: x\r\n";
+    let silent: Vec<TcpStream> = (0..6).map(|_| TcpStream::connect(addr).unwrap()).collect();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(call(addr, client(&pin, false), hello, b"").is_err(), "a seventh connection from one address is not served while six sit silent");
+    drop(silent);
+    let served = (0..50).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        call(addr, client(&pin, false), hello, b"").is_ok()
+    });
+    assert!(served, "the places come back when the silent connections close");
+}
+
+#[test]
 fn what_is_malformed_or_too_large_is_refused_without_reaching_the_node() {
     let dir = short_dir();
     let node = Arc::new(Mutex::new(node(dir.path())));
@@ -114,8 +133,9 @@ fn what_is_malformed_or_too_large_is_refused_without_reaching_the_node() {
     assert_eq!(status, 404);
     let (status, _) = call(addr, client(&pin, false), &post("add", ""), b"[1]").unwrap();
     assert_eq!(status, 200, "a body that is not an object is an error reply, not a crash");
-    let (status, reply) = call(addr, client(&pin, false), &post("add", ""), &vec![b'a'; 70 * 1024]).unwrap();
-    assert!(status == 400 || reply.is_null(), "a body over 64 KiB is not read: {status}");
+    // The node answers 400 and closes before the rest of the body is sent, so a client that is still writing may see the close instead.
+    let refused = call(addr, client(&pin, false), &post("add", ""), &vec![b'a'; 70 * 1024]);
+    assert!(refused.as_ref().map_or(true, |(status, reply)| *status == 400 || reply.is_null()), "a body over 64 KiB is not read: {refused:?}");
     let (status, _) = call(addr, client(&pin, false), "POST /phone/v1/list HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n", b"0\r\n\r\n").unwrap();
     assert_eq!(status, 400, "chunked bodies are not taken");
     let (status, reply) = call(addr, client(&pin, false), &post("nonsense", "x"), b"{}").unwrap();

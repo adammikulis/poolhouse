@@ -29,13 +29,14 @@ OPTIONS = [
     flag("verb", choices=VERBS, help="add (a person: shows a code to scan), list, remove NAME (a person), offer (a link for one more phone)"),
     flag("name", nargs="?", default="", help="remove: the phone's name"),
     flag("--port", type=int, default=phone.PORT, help="add: the port phones talk to (default 7449)"),
-    flag("--image", default="", metavar="FILE", help="add, offer: also write the code as an image file a screen can show"),
+    flag("--image", default="", metavar="FILE", help="add (for a further phone), offer: also write the code as an image file a screen can show"),
     flag("--wait", type=float, default=600.0, metavar="SECONDS", help="add: how long to wait for the phone (the code is good for ten minutes)"),
 ]
 
 
 def _words(fingerprint: str) -> str:
-    return " ".join(fingerprint[i:i + 4] for i in (0, 4, 8))
+    """The first 24 characters of a key's fingerprint in groups of four: what a person compares across two screens."""
+    return " ".join(fingerprint[i:i + 4] for i in range(0, 24, 4))
 
 
 def _row(p: dict[str, Any]) -> str:
@@ -68,6 +69,9 @@ def _show(code: str, image: str) -> None:
 def _add(args: argparse.Namespace) -> int:
     person.require_person("adding a phone")
     client = Client()
+    if args.image and not client.call("phone_info")["keys"]:
+        raise Denied("denied", "The first phone is added from the code drawn in this terminal, with no image file: a file could be read by any program that runs as you, "
+                     "and the first phone is added on the strength of the code alone. Run it again without --image.")
     carrier = person_session.on(client, approval_cli.POOL)
     _listening(client, args.port)
     before = {p["id"] for p in phone.phones(carrier)}

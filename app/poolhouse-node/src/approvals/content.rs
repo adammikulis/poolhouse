@@ -199,7 +199,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     }
     out.push(format!("RISK: {}. {worst}", risk.to_uppercase()));
     let kind = if d.who.parent.is_empty() { "a main session".to_string() } else { format!("a subagent of {}", d.who.parent) };
-    out.push(format!("WHO: {}, {} in {}, {kind}, on device {}, board {}.", d.who.name, d.who.model, d.who.harness, d.who.device, d.who.board));
+    out.push(format!("WHO: {}, which says it is {} in {}, {kind}, on device {}, board {}.", d.who.name, d.who.model, d.who.harness, d.who.device, d.who.board));
     let many = d.lines.len() > 1;
     for (i, l) in d.lines.iter().enumerate() {
         let n = if many { format!(" {}", i + 1) } else { String::new() };
@@ -223,7 +223,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
 }
 
 /// What a phone's own request shows: a title, the text and the risk, for adding or removing a phone. ``phone`` is its name and ``key``
-/// the first twelve characters of its key in groups of four.
+/// the first twenty-four characters of its key in groups of four.
 pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, flags: &[String], expires_ms: u64) -> (String, String, &'static str) {
     let action = if adding { "phone_add" } else { "phone_remove" };
     let (risk, why) = risk_of(action);

@@ -103,6 +103,9 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
                 x.state = FAILED.into();
                 x.reason = why.clone();
             })?;
+            if a.kind == PHONE_ADD {
+                crate::phone::drop_pending(node, &a);
+            }
             return denied(&format!("The signature was good but it could not be carried out: {why}"));
         }
     } else if a.kind == PHONE_ADD {
@@ -116,13 +119,22 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
 fn apply(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()> {
     match a.kind.as_str() {
         GRANTS => {
-            let mut written = Vec::new();
+            // Every entry is checked before the first is written, so a refusal leaves no ask live while the agent is told none is.
+            let mut entries = Vec::new();
             for body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig) {
                 parse_issue(&body)?;
                 let gid = body.get("gid").and_then(Value::as_str).unwrap_or("").to_string();
                 let body = Value::Object(body);
                 crate::fold::check_local(Kind::Grant, "node", &body, "")?;
-                node.host(&a.board)?.board.append(Kind::Grant, "node", body, "")?;
+                entries.push((gid, body));
+            }
+            let mut written = Vec::new();
+            for (gid, body) in entries {
+                if let Err(e) = node.host(&a.board).and_then(|h| h.board.append(Kind::Grant, "node", body, "").map(drop)) {
+                    // A write that fails part-way (the disk) leaves the asks already written live; the request names them.
+                    let _ = node.approvals.update(&a.id, |x| x.grants = written.clone());
+                    return Err(e);
+                }
                 written.push(gid);
             }
             node.approvals.update(&a.id, |x| x.grants = written)

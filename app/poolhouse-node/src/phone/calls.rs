@@ -6,7 +6,7 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::node::Node;
-use crate::phone::enrol::{ask_to_remove, b64url, make_offer, OFFER_TTL_MS};
+use crate::phone::enrol::{ask_to_remove, b64url, make_offer_by, offer_is_live, OFFER_TTL_MS};
 use crate::phone::shown;
 
 pub const METHODS: [&str; 4] = ["phone_info", "phone_offer", "phones", "phone_remove"];
@@ -66,28 +66,33 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
     match method {
         "phone_info" => Ok(info(node, text(p, "secret")?)),
         "phone_offer" => {
-            node.tokens.resolve(token).ok_or_else(|| Error::Denied("A registered session asks for a code for a phone.".into()))?;
+            let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session asks for a code for a phone.".into()))?;
             if node.persons.is_empty() {
                 return Err(Error::Denied("The first phone is added by a person at the computer with `poolhouse-workspace phone add`; this works once one phone or key is added.".into()));
             }
             if node.phone_port == 0 {
                 return Err(Error::Invalid("This device is not listening for phones; `poolhouse-workspace phone add` turns that on.".into()));
             }
-            if !node.rates.permits("phone offer", MOST_OFFERS_PER_HOUR, Duration::from_secs(3600)) {
-                return Err(Error::Quota(format!("{MOST_OFFERS_PER_HOUR} codes an hour is the most this device makes for phones; try again later.")));
+            if offer_is_live(&node.dir, node.now_ms()) {
+                return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
             }
-            node.rates.record("phone offer", Duration::from_secs(3600));
-            let secret = make_offer(&node.dir, node.now_ms())?;
+            let key = format!("phone offer {}/{}", holder.board, holder.name);
+            if !node.rates.permits(&key, MOST_OFFERS_PER_HOUR, Duration::from_secs(3600)) {
+                return Err(Error::Quota(format!("{MOST_OFFERS_PER_HOUR} codes an hour is the most one session asks for; try again later.")));
+            }
+            node.rates.record(&key, Duration::from_secs(3600));
+            let secret = make_offer_by(&node.dir, node.now_ms(), &format!("the session {} on board {}", holder.name, holder.board))?;
             Ok(info(node, &secret))
         }
         "phone_remove" => {
             let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session asks to remove a phone.".into()))?;
-            if !node.rates.permits("phone remove", MOST_REMOVALS_PER_HOUR, Duration::from_secs(3600)) {
-                return Err(Error::Quota(format!("{MOST_REMOVALS_PER_HOUR} requests an hour is the most this device takes to remove phones; try again later.")));
+            let key = format!("phone remove {}/{}", holder.board, holder.name);
+            if !node.rates.permits(&key, MOST_REMOVALS_PER_HOUR, Duration::from_secs(3600)) {
+                return Err(Error::Quota(format!("{MOST_REMOVALS_PER_HOUR} requests an hour is the most one session makes to remove phones; try again later.")));
             }
-            node.rates.record("phone remove", Duration::from_secs(3600));
             let by = format!("The session {} on board {}", holder.name, holder.board);
             let id = ask_to_remove(node, &by, text(p, "phone")?)?;
+            node.rates.record(&key, Duration::from_secs(3600));
             node.approvals.get(&id).cloned().map(|a| crate::approvals::decide::view(node, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into()))
         }
         _ => {

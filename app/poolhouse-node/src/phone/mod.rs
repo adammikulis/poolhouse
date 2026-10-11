@@ -6,12 +6,14 @@
 //! | `enrol` | the one-time code a person's command leaves, and a phone's addition |
 //! | `calls` | the phone methods of the local API |
 //! | `http` | the HTTPS endpoint a phone talks to |
+//! | `gate` | who may hold a connection to it: a share each, and places kept for phones |
 //! | `cert` | the P-256 certificate of that endpoint, which the code pins |
 //! | `push` | the sealed notification and its delivery |
 
 pub mod calls;
 pub mod cert;
 pub mod enrol;
+pub mod gate;
 pub mod http;
 pub mod push;
 
@@ -153,9 +155,10 @@ pub fn shown(p: &Phone, this: &str) -> Value {
            "push": !p.push.endpoint.is_empty(), "this": p.id == this})
 }
 
-/// The first twelve characters of a key's fingerprint in groups of four, as a person compares them across two screens.
+/// The first twenty-four characters of a key's fingerprint in groups of four, as a person compares them across two screens: 96 bits, so
+/// no key can be ground to look like another.
 pub fn words(fingerprint: &str) -> String {
-    fingerprint.as_bytes().chunks(4).take(3).map(|c| String::from_utf8_lossy(c).into_owned()).collect::<Vec<_>>().join(" ")
+    fingerprint.as_bytes().chunks(4).take(6).map(|c| String::from_utf8_lossy(c).into_owned()).collect::<Vec<_>>().join(" ")
 }
 
 /// The sealed message for each active phone that has an address: the request as the phone needs it to show and sign it, or, when that
@@ -188,6 +191,9 @@ pub fn drop_pending(node: &mut Node, a: &Approval) {
 pub fn activate(node: &mut Node, a: &Approval) -> Result<()> {
     let id = a.action.get("phone").and_then(Value::as_str).unwrap_or("");
     let phone = node.phones.get(id).filter(|p| p.state == PENDING).cloned().ok_or_else(|| Error::Invalid("That phone is no longer waiting to be added.".into()))?;
+    if a.action.get("key").and_then(Value::as_str) != Some(phone.key.as_str()) {
+        return Err(Error::Invalid("That phone's key is not the key the request named, so nothing was added.".into()));
+    }
     let now = node.now_ms();
     node.persons.add_key(P256, &phone.key, &phone.name, now)?;
     node.phones.set_state(id, ACTIVE)?;
@@ -199,6 +205,9 @@ pub fn activate(node: &mut Node, a: &Approval) -> Result<()> {
 pub fn remove(node: &mut Node, a: &Approval) -> Result<()> {
     let id = a.action.get("phone").and_then(Value::as_str).unwrap_or("");
     let phone = node.phones.get(id).filter(|p| p.state == ACTIVE).cloned().ok_or_else(|| Error::Invalid("That phone is not one of this device's phones.".into()))?;
+    if a.action.get("fingerprint").and_then(Value::as_str) != Some(phone.fingerprint.as_str()) {
+        return Err(Error::Invalid("That phone's key is not the key the request named, so nothing was removed.".into()));
+    }
     let now = node.now_ms();
     node.persons.remove(&phone.fingerprint, now)?;
     node.phones.set_state(id, REMOVED)?;

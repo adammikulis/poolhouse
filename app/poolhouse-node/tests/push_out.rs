@@ -79,10 +79,10 @@ fn a_push_never_goes_to_an_address_inside_the_network_unless_a_person_listed_the
     let (port, ca, _rx) = service("201 Created");
     let refused = post_with(&format!("https://localhost:{port}/x"), b"x", trusting(&ca), &[]).unwrap_err().to_string();
     assert!(refused.contains("a push goes only to a public address"), "{refused}");
-    for inside in ["127.0.0.1", "10.1.2.3", "192.168.0.7", "172.16.0.9", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1"] {
+    for inside in ["127.0.0.1", "10.1.2.3", "192.168.0.7", "172.16.0.9", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1", "192.0.0.8", "198.18.0.1", "198.19.255.1"] {
         assert!(!public(inside.parse::<IpAddr>().unwrap()), "{inside}");
     }
-    for inside in ["::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1"] {
+    for inside in ["::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1", "::10.0.0.1", "64:ff9b::a00:1", "2002:a00:1::1"] {
         assert!(!public(inside.parse::<IpAddr>().unwrap()), "{inside}");
     }
     for outside in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {

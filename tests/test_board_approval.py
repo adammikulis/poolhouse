@@ -118,9 +118,25 @@ def test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone(pho
     assert not (team.state / board_phone.OFFER_FILE).exists(), "an agent's `phone add` left no code"
 
 
-def test_a_person_adds_the_first_phone_by_a_code_with_no_typed_yes(phone_node):
+def test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an_image_file(phone_node):
     team = phone_node
     lead = team.member("lead")
+    image = team.state.parent / "first-phone.svg"
+    code, out, err = team.terminal("phone", "add", "--image", str(image), "--wait", "5", who=lead)
+    assert code != 0 and "no image file" in out + err, (out, err)
+    assert not image.exists() and not (team.state / board_phone.OFFER_FILE).exists(), "nothing was written that could be read as a code"
+    code, out, err = team.terminal("phone", "add", "--wait", "2", who=lead)
+    assert code == 3 and "\x1b[30;47m" in out and "No phone scanned the code in time" in out, (out, err)
+    phone = add_phone(team)
+    listing = team.cli("phone", "list", who=lead)
+    words = " ".join(phone.fingerprint[i:i + 4] for i in range(0, 24, 4))
+    assert "Pixel" in listing.stdout and words in listing.stdout, listing.stdout
+
+
+def test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it(phone_node):
+    team = phone_node
+    lead = team.member("lead")
+    first = add_phone(team)
     image = team.state.parent / "phone-add.svg"
     result: dict[str, object] = {}
 
@@ -138,16 +154,18 @@ def test_a_person_adds_the_first_phone_by_a_code_with_no_typed_yes(phone_node):
     data = json.loads(base64.urlsafe_b64decode(parse_qs(urlparse(link[1]).query)["data"][0] + "=="))
     assert data["v"] == 1 and data["pin"] == hashlib.sha256((team.state / "phone.cert").read_bytes()).hexdigest()
     assert data["policy"] == "secure" and data["expires"] > time.time() and len(data["secret"]) == 43
-    phone = PhoneKeys("Pixel")
-    reply = endpoint_of(team).ok("add", phone.add_body(team.client.call("hello")["device"], data["secret"]))
-    assert reply["state"] == "active" and reply["words"] == " ".join(phone.fingerprint[i:i + 4] for i in (0, 4, 8))
+    tablet = PhoneKeys("Tablet")
+    endpoint = endpoint_of(team)
+    reply = endpoint.ok("add", tablet.add_body(team.client.call("hello")["device"], data["secret"]))
+    assert reply["state"] == "pending" and reply["words"] == " ".join(tablet.fingerprint[i:i + 4] for i in range(0, 24, 4))
     thread.join(timeout=60)
     code, out, err = result["run"]  # type: ignore[misc]
-    assert code == 0 and 'The phone "Pixel" (key ' + reply["words"] + ") is added." in out, (out, err)
+    assert code == 0 and 'The phone "Tablet" (key ' + reply["words"] + ") scanned the code and waits for one of your phones to approve it." in out, (out, err)
     assert "\x1b[30;47m" in out, "the code was drawn in the terminal"
-    assert [p["name"] for p in board_phone.phones(team.session(lead)) if p["state"] == "active"] == ["Pixel"]
-    listing = team.cli("phone", "list", who=lead)
-    assert "Pixel" in listing.stdout and reply["words"] in listing.stdout
+    seen = endpoint.ok("get", {"id": reply["approval"]}, token=first.token)
+    assert "key " + reply["words"] in seen["text"] and "made by" not in seen["text"], "a code a person made at the computer carries no warning"
+    assert endpoint.ok("decide", first.decision(seen, "approve"))["state"] == "approved"
+    assert sorted(p["name"] for p in board_phone.phones(team.session(lead)) if p["state"] == "active") == ["Pixel", "Tablet"]
 
 
 def test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing(phone_node):

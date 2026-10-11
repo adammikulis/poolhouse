@@ -1,10 +1,12 @@
 //! Adding a phone: the one-time code, and what a phone sends when it scans one.
 //!
 //! The code is a random secret whose hash a person's command leaves beside `persons.json` (`phone_offer.json`), as `grants-setup` does
-//! for the first key, or that the node leaves when asked once a key exists. The first phone is enrolled on the strength of the code,
-//! the proof that its key made the request, and a time within five minutes. Every later phone waits for a key the node holds to
-//! approve it, so a code that someone else saw adds nothing by itself.
+//! for the first key, or that the node leaves when asked once a key exists, saying who asked. The first phone is enrolled on the
+//! strength of the code, the proof that its key made the request, and a time within five minutes. Every later phone waits for a key
+//! the node holds to approve it, so a code that someone else saw adds nothing by itself, and a code a session made says so on the
+//! request.
 
+use std::net::IpAddr;
 use std::path::Path;
 use std::time::Duration;
 
@@ -26,7 +28,9 @@ use crate::row::canonical;
 pub const OFFER_FILE: &str = "phone_offer.json";
 /// How long a code is good for.
 pub const OFFER_TTL_MS: u64 = 10 * 60 * 1000;
-const WRONG_CODES: usize = 30;
+/// The wrong codes one address may try in ten minutes. A code is 256 random bits, so the count only keeps a noisy address quiet: it
+/// never ends the offer, because that would let anyone on the network cancel the code a person is about to scan.
+const WRONG_CODES: usize = 10;
 const WRONG_WINDOW: Duration = Duration::from_secs(600);
 const ADD_DOMAIN: &str = "poolhouse/phone-add/v1\n";
 /// How long a phone that waits for approval is kept before it is dropped.
@@ -36,6 +40,9 @@ const WAIT_MS: u64 = 15 * 60 * 1000;
 struct Offer {
     sha256: String,
     at_ms: u64,
+    /// Who asked for the code through the node, empty when a person's command at the computer left it.
+    #[serde(default)]
+    made_by: String,
 }
 
 fn same(a: &str, b: &str) -> bool {
@@ -55,34 +62,49 @@ pub fn b64url(bytes: &[u8]) -> String {
     out
 }
 
-/// Leave a one-time code for the next phone and return its secret (the caller puts it in the code a person scans).
+/// Leave a one-time code for the next phone, made by a person's command at the computer, and return its secret (the caller puts it in
+/// the code a person scans).
 pub fn make_offer(dir: &Path, now_ms: u64) -> Result<String> {
+    make_offer_by(dir, now_ms, "")
+}
+
+/// Leave a one-time code that ``made_by`` asked for (a session or a phone; empty for a person at the computer): the request to approve
+/// the phone it adds says so.
+pub fn make_offer_by(dir: &Path, now_ms: u64, made_by: &str) -> Result<String> {
     let mut raw = [0u8; 32];
     getrandom::fill(&mut raw).map_err(|e| std::io::Error::other(e.to_string()))?;
     let secret = b64url(&raw);
-    write_atomic(&dir.join(OFFER_FILE), &serde_json::to_vec(&json!({"sha256": sha256_hex(secret.as_bytes()), "at_ms": now_ms}))?)?;
+    write_atomic(&dir.join(OFFER_FILE), &serde_json::to_vec(&json!({"sha256": sha256_hex(secret.as_bytes()), "at_ms": now_ms, "made_by": made_by}))?)?;
     Ok(secret)
 }
 
-/// Spend the code ``secret``: it is good once, for ten minutes. A wrong code is counted, and enough of them end the offer.
-fn spend_offer(node: &mut Node, secret: &str, now_ms: u64) -> Result<()> {
-    let file = node.dir.join(OFFER_FILE);
-    let offer = std::fs::read(&file).ok().and_then(|b| serde_json::from_slice::<Offer>(&b).ok())
-        .ok_or_else(|| Error::Denied("No phone is being added right now: ask for a new code.".into()))?;
+fn read_offer(dir: &Path) -> Option<Offer> {
+    std::fs::read(dir.join(OFFER_FILE)).ok().and_then(|b| serde_json::from_slice::<Offer>(&b).ok())
+}
+
+/// Whether a code is waiting to be scanned: one a person is showing is not replaced by one a session asked for.
+pub fn offer_is_live(dir: &Path, now_ms: u64) -> bool {
+    read_offer(dir).is_some_and(|o| now_ms >= o.at_ms && now_ms - o.at_ms <= OFFER_TTL_MS)
+}
+
+/// Spend the code ``secret`` that ``ip`` sent: it is good once, for ten minutes. A wrong code is counted against the address that sent
+/// it and never ends the offer. Whoever made the code is returned, empty for a person at the computer.
+fn spend_offer(node: &mut Node, ip: IpAddr, secret: &str, now_ms: u64) -> Result<String> {
+    let offer = read_offer(&node.dir).ok_or_else(|| Error::Denied("No phone is being added right now: ask for a new code.".into()))?;
     if now_ms < offer.at_ms || now_ms - offer.at_ms > OFFER_TTL_MS {
-        let _ = std::fs::remove_file(&file);
+        let _ = std::fs::remove_file(node.dir.join(OFFER_FILE));
         return Err(Error::Denied("That code has expired; ask for a new one.".into()));
     }
-    if !node.rates.permits("phone code", WRONG_CODES, WRONG_WINDOW) {
-        let _ = std::fs::remove_file(&file);
-        return Err(Error::Denied("Too many wrong codes were tried, so that code was cancelled; ask for a new one.".into()));
+    let tries = format!("phone code {ip}");
+    if !node.rates.permits(&tries, WRONG_CODES, WRONG_WINDOW) {
+        return Err(Error::Quota("Too many wrong codes came from this address; wait ten minutes.".into()));
     }
     if secret.is_empty() || !same(&offer.sha256, &sha256_hex(secret.as_bytes())) {
-        node.rates.record("phone code", WRONG_WINDOW);
+        node.rates.record(&tries, WRONG_WINDOW);
         return Err(Error::Denied("That code was not made for this device.".into()));
     }
-    let _ = std::fs::remove_file(&file);
-    Ok(())
+    let _ = std::fs::remove_file(node.dir.join(OFFER_FILE));
+    Ok(offer.made_by)
 }
 
 fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
@@ -100,8 +122,8 @@ pub fn add_bytes(node_fp: &str, p: &Map<String, Value>) -> Vec<u8> {
     format!("{ADD_DOMAIN}{}", canonical(&body)).into_bytes()
 }
 
-/// Add the phone that sent ``p``: the first one at once, every later one after a key the node holds approves it.
-pub fn enrol(node: &mut Node, p: &Map<String, Value>) -> Result<Value> {
+/// Add the phone that ``ip`` sent ``p`` for: the first one at once, every later one after a key the node holds approves it.
+pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Value> {
     let now = node.now_ms();
     let (name, key, p256dh, auth) = (text(p, "name")?, text(p, "key")?.to_ascii_lowercase(), text(p, "p256dh")?.to_ascii_lowercase(), text(p, "auth")?.to_ascii_lowercase());
     let at = p.get("at_ms").and_then(Value::as_u64).filter(|a| a.abs_diff(now) <= SKEW_MS)
@@ -110,7 +132,7 @@ pub fn enrol(node: &mut Node, p: &Map<String, Value>) -> Result<Value> {
         return Err(Error::Invalid("A phone sends a plain name, its key, its push key and its push secret.".into()));
     }
     let fingerprint = fingerprint_of(P256, &key)?;
-    spend_offer(node, text(p, "secret")?, now)?;
+    let made_by = spend_offer(node, ip, text(p, "secret")?, now)?;
     let mut signed = p.clone();
     signed.insert("key".into(), json!(key));
     signed.insert("p256dh".into(), json!(p256dh));
@@ -128,6 +150,9 @@ pub fn enrol(node: &mut Node, p: &Map<String, Value>) -> Result<Value> {
     }
     let (id, token) = (format!("ph-{}", random_hex(6)?), random_hex(32)?);
     let first = node.persons.is_empty();
+    if first && !made_by.is_empty() {
+        return Err(Error::Denied("A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`.".into()));
+    }
     let phone = Phone {
         id: id.clone(), name: name.into(), fingerprint: fingerprint.clone(), key: key.clone(), token_sha256: sha256_hex(token.as_bytes()),
         state: if first { ACTIVE } else { PENDING }.into(), push: Push { p256dh, auth, endpoint: String::new() }, added_ms: at, seen_ms: now,
@@ -138,7 +163,7 @@ pub fn enrol(node: &mut Node, p: &Map<String, Value>) -> Result<Value> {
         node.persons.add_key(P256, &key, name, now)?;
         let _ = node.record_event("phone.add", &fingerprint, &format!("{name}; the first key, added by a code a person asked for at this device"));
     } else {
-        approval = ask_to_add(node, &id, name, &key, &fingerprint, now)?;
+        approval = ask_to_add(node, &id, (name, &key, &fingerprint), &made_by, now)?;
     }
     let me = node.cert.fingerprint();
     let device = node.members.get(&me).map(|d| d.name.clone()).unwrap_or_default();
@@ -147,9 +172,13 @@ pub fn enrol(node: &mut Node, p: &Map<String, Value>) -> Result<Value> {
 }
 
 /// The request every phone already added sees for the new one.
-fn ask_to_add(node: &mut Node, id: &str, name: &str, key: &str, fingerprint: &str, now: u64) -> Result<String> {
+fn ask_to_add(node: &mut Node, id: &str, phone: (&str, &str, &str), made_by: &str, now: u64) -> Result<String> {
+    let (name, key, fingerprint) = phone;
     let expires = now + WAIT_MS;
-    let flags = vec!["A phone no key of yours has seen is asking to be added. It must show the same key as below before you approve.".to_string()];
+    let mut flags = vec!["A phone no key of yours has seen is asking to be added. It must show the same key as below before you approve.".to_string()];
+    if !made_by.is_empty() {
+        flags.push(format!("The code this phone used was made by {made_by}, not by you at the computer. Approve only if you scanned it yourself just now."));
+    }
     let (title, text, risk) = phone_text(true, name, &words(fingerprint), &format!("A new phone named {name}"), node.members.policy.name(), &flags, expires);
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: PHONE_ADD.into(), board: POOL_BOARD.into(), session: String::new(),
