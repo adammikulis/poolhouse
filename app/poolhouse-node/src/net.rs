@@ -4,7 +4,7 @@
 //! The node's lock is never held across network I/O: a request takes it, decides, and lets go.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
@@ -68,8 +68,8 @@ pub struct Net {
     settling: AtomicBool,
     /// Members that opened a connection to this device and keep it open for requests to go down (they cannot be dialed: they are behind NAT).
     reverse: Mutex<BTreeMap<String, Arc<Mutex<PeerClient>>>>,
-    /// Members this device is keeping such a connection to, so each is attached once.
-    attaching: Mutex<BTreeSet<String>>,
+    /// Members this device is keeping such a connection to, so each is attached once, with a handle that closes the connection.
+    attaching: Mutex<BTreeMap<String, Option<TcpStream>>>,
     this: OnceLock<Weak<Net>>,
 }
 
@@ -126,7 +126,7 @@ impl Net {
         let net = Arc::new(Net {
             node, server_config: server_config(&me, standing)?, me, port, stop, shards,
             window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), settling: AtomicBool::new(false), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
-            reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeSet::new()), this: OnceLock::new(),
+            reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()), this: OnceLock::new(),
         });
         let _ = net.this.set(Arc::downgrade(&net));
         locked(&net.node)?.facts.listen = Some(listener.local_addr()?.to_string());
@@ -476,29 +476,40 @@ impl Net {
                 }
             }
         }
+        self.drop_removed();
         Ok(reached)
     }
 
     /// Keep one connection open to ``fp`` for it to send this device requests down, unless one is already kept: this device may be behind
-    /// NAT, where the member cannot dial it but this device can dial the member.
-    fn attach(&self, fp: &str, addr: SocketAddr) {
-        let Some(net) = self.this.get().and_then(Weak::upgrade) else { return };
-        let Ok(mut kept) = locked(&self.attaching) else { return };
-        if !kept.insert(fp.to_string()) {
-            return;
+    /// NAT, where the member cannot dial it but this device can dial the member. Returns the thread that keeps it, None when one is kept.
+    pub fn attach(&self, fp: &str, addr: SocketAddr) -> Option<std::thread::JoinHandle<()>> {
+        let net = self.this.get().and_then(Weak::upgrade)?;
+        let mut kept = locked(&self.attaching).ok()?;
+        if kept.contains_key(fp) {
+            return None;
         }
+        kept.insert(fp.to_string(), None);
         drop(kept);
         let fp = fp.to_string();
-        std::thread::spawn(move || {
+        Some(std::thread::spawn(move || {
             let _ = net.attach_run(&fp, addr);
             if let Ok(mut kept) = locked(&net.attaching) {
                 kept.remove(&fp);
             }
-        });
+        }))
     }
 
     fn attach_run(&self, fp: &str, addr: SocketAddr) -> Result<()> {
+        if !self.is_member(fp) {
+            return Ok(());
+        }
         let mut c = PeerClient::connect_long(&self.me, addr, Some(fp))?;
+        if let Some(slot) = locked(&self.attaching)?.get_mut(fp) {
+            *slot = c.closer();
+        }
+        if !self.is_member(fp) {
+            return Ok(());
+        }
         c.call(&json!({"op": "attach"}))?;
         self.session_opened(fp);
         let ended = c.serve(self, addr.ip());
@@ -506,9 +517,39 @@ impl Net {
         ended.map(|_| ())
     }
 
-    /// Hold the connection ``client`` (a member's, opened to this device) as the way to send that member requests.
+    fn is_member(&self, fp: &str) -> bool {
+        self.node.lock().is_ok_and(|n| n.members.is_active(fp))
+    }
+
+    /// Close the connections kept with devices this one no longer lists as active members: the ones it keeps open to a member (`attach`)
+    /// and the ones a member opened to it.
+    pub fn drop_removed(&self) {
+        let mut held: BTreeSet<String> = self.attaching.lock().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+        held.extend(self.reverse.lock().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default());
+        let Ok(node) = self.node.lock() else { return };
+        let gone: Vec<String> = held.into_iter().filter(|fp| !node.members.is_active(fp)).collect();
+        drop(node);
+        for fp in gone {
+            if let Ok(kept) = self.attaching.lock() {
+                if let Some(Some(stream)) = kept.get(&fp) {
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+            }
+            let link = self.reverse.lock().ok().and_then(|m| m.get(&fp).cloned());
+            if let Some(link) = link {
+                self.drop_reverse(&fp, &link);
+            }
+        }
+    }
+
+    /// Hold the connection ``client`` (a member's, opened to this device) as the way to send that member requests; one from a device that is
+    /// not an active member is closed.
     pub fn register_reverse(&self, client: PeerClient) {
         let fp = client.fingerprint.clone();
+        if !self.is_member(&fp) {
+            self.session_closed(&fp);
+            return;
+        }
         let replaced = self.reverse.lock().ok().and_then(|mut m| m.insert(fp.clone(), Arc::new(Mutex::new(client))));
         if replaced.is_some() {
             self.session_closed(&fp);
@@ -590,10 +631,16 @@ impl Net {
                 Ok(n) => respond(request, Ok(merged(n.pool_status(), self.network_facts()))),
                 Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
             },
-            _ => match self.node.lock() {
-                Ok(mut n) => crate::api::handle(&mut n, request, peer),
-                Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
-            },
+            _ => {
+                let reply = match self.node.lock() {
+                    Ok(mut n) => crate::api::handle(&mut n, request, peer),
+                    Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
+                };
+                if request["method"] == "member_remove" {
+                    self.drop_removed();
+                }
+                reply
+            }
         }
     }
 
