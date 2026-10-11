@@ -990,6 +990,13 @@ task's `scope`; what git does stays in `integration_git.py`. Text from other
 sessions is fenced as untrusted data on the way out and a credential in outgoing text is refused on the way in
 (`screen`, still Python). Tests use `tests/node_kit.py`: a real node on a short `/tmp` root.
 
+**Founding a pool from Python.** `board/founding.py` is the client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`:
+`found(session, admin, name, policy)` drafts the charter, has the person's key sign its acceptance and the first `admit`, and submits both,
+after the grant `pool_create` came from the phone's card (`with_card` asks the card for any missing grant and sends the call again after the
+tap) or from the first key. It answers "already in the pool X" for a device that is founded, and refuses a key that is not strong before the
+person is asked. `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
+wrap it, and `poolhouse pool found` is the agent's command; docs/pools-and-serving.md, 1.17, says what is built and what remains.
+
 ## The person's session (the UI)
 
 The UI daemon acts for the person through one session of its own per board, `poolhouse.board.person.session(root)`: a

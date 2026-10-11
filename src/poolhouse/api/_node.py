@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from poolhouse import errors, node_health, node_launch
-from poolhouse.board import client, person_key, session as board_session
-from poolhouse.board.terminal import terminal_id
+from poolhouse.board import client, founding, person_key
 
 __all__ = ["call", "session"]
 
@@ -26,6 +25,4 @@ def call(method: str, params: dict[str, Any] | None = None, *, token: str = "") 
 
 def session() -> Any:
     """A session of the pool board of this device (the one that may change the pool), as the node knows the caller."""
-    node = client.Client(node_launch.default_state())
-    got = node.call("register", "pool", "", model="poolhouse-api", harness="poolhouse-api", session=f"python-api-{terminal_id()}")
-    return board_session.Session(node, "pool", got["token"], got["name"])
+    return founding.pool_session(client.Client(node_launch.default_state()))

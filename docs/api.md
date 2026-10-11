@@ -22,24 +22,35 @@ poolhouse                      # first run: starts this device's node; you now h
 import poolhouse as ph
 
 pool = ph.pool.status()
-print(pool.id, pool.policy, [m.name for m in pool.members])     # a pool of one: this device
+print(pool.governance, pool.missing)     # unfounded: a pool of one that admits nobody, and what it needs
 ```
 
-Add a second device. Both devices run `poolhouse` once. On the first, make a code (policy `secure`):
+A pool of one is not yet a pool: nobody governs it, so nobody can join it. A person founds it, and an agent does the work. You tell your
+agent "make a pool called home" and it calls:
 
 ```python
-ph.pool.listen("secure", agreed=True)       # a person said yes to turning the network on
+try:
+    made = ph.pool.found("home", "secure", say=print)   # the person answers on their phone or at this computer's prompt
+    print(made.say)                                       # "This device is now in the pool home (secure)."
+except ph.pool.Refusal as refused:
+    print(refused, "->", refused.where)                   # one sentence for the person, and where they tap
+```
+
+Add a second device. Both devices run `poolhouse` once. On the first, turn the network on and make a code (the pool's policy is `secure`):
+
+```python
+ph.pool.listen(agreed=True)                  # a person said yes to turning the network on
 print(ph.pool.add_device())                  # {"code": "...", "ttl_s": 300}
 ```
 
-On the second device the person types the code, or the script passes it:
+On the second device the person tells their agent the code, or the script passes it:
 
 ```python
 ph.pool.join(host="192.168.2.27", code="...")     # this device now belongs to that pool
 ```
 
-Under the `open` policy (the default) two devices on the same network find each other and join with no code:
-`ph.pool.listen("open", agreed=True)` on each. Either way, look:
+An `open` pool (`ph.pool.found("home", "open")`) takes a device on the same network without a code, only the fingerprint of the device that
+answers: `ph.pool.join(host, fingerprint=...)`. Either way, look:
 
 ```python
 for m in ph.pool.members():
@@ -94,16 +105,18 @@ member can be removed.
 
 | Name | Contract |
 |---|---|
-| `ph.pool.status()` | The `Pool` of this device: id, project, policy, address it listens on, and every member. |
+| `ph.pool.status()` | The `Pool` of this device: id, project, policy, address it listens on, and every member, with `governance` (`unfounded`: a pool of one no person founded, which admits nobody, or `governed`), the pool's `name` and `missing`, one sentence on what the pool still needs from its person (a pool, a strong key, a signature; empty when nothing). |
+| `ph.pool.found(name=None, policy="secure", *, admin=None, say=None)` | Make this device's pool, governed by the person's key: the node drafts the charter, the person's key signs it, the node takes it back, and this device is the first member. Returns a `Founding` (`pool`, `already`, `say`); a device already in a founded pool answers "already in the pool X" and changes nothing. The person answers where only they can: the first key at the prompt this computer shows, the grant on the phone's card; the agent never signs. `say` is called with the sentence that tells the person where to answer while the call waits. A pool needs a strong key (one that asks the person at each signature, 1.3 of docs/pools-and-serving.md): where none exists the call raises `ph.pool.Refusal` before anyone is asked. |
 | `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
 | `ph.pool.listen(*, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |
 | `ph.pool.add_device(ttl_s=300)` | Make the short-lived code another device joins with (policy `secure`). |
-| `ph.pool.join(host, code, *, port=7447)` | Join the pool of the device at `host` with its code. |
+| `ph.pool.join(host, code="", *, port=7447, fingerprint="")` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon). A device already in a pool does not change pool. When a phone is linked, the grant to join is asked of it and the call goes on after the tap. |
 | `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. In a governed pool it is an act of the pool's admins, signed by a person's key; a device's word alone removes nobody. |
 | `ph.pool.sync()` | Exchange board entries with every connected member now. |
 | `ph.pool.capacity()` | `Capacity` of this device: cores, CPU slots and how many are leased, memory and what is free, accelerators and their memory, leases held and queued. |
-| `ph.pool.Pool`, `ph.pool.Member`, `ph.pool.Capacity` | The frozen dataclasses above. |
+| `ph.pool.Pool`, `ph.pool.Member`, `ph.pool.Capacity`, `ph.pool.Founding` | The frozen dataclasses above. |
+| `ph.pool.Refusal` | Raised (a `ph.Denied`) when a pool call needs the person: `str(e)` is one sentence of at most 160 characters to pass on, `e.needs` is `approval`, `device`, `time` or `none`, `e.where` is where they tap or answer, `e.then` is `wait`, `retry`, `ask-owner` or `stop`. |
 
 ```python
 pool = ph.pool.status()

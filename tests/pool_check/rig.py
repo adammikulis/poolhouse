@@ -34,6 +34,7 @@ ROOT = dock.ROOT
 SLOW_ENV = "POOLHOUSE_POOL_CHECK"
 PLATFORMS = ("docker", "native", "windows-wsl")
 STEPS = [
+    ("found-by-api", steps_pool.found_by_api),
     ("join-open", steps_pool.join_open),
     ("join-secure", steps_pool.join_secure),
     ("join-wrong-code", steps_pool.a_wrong_code_is_refused),
