@@ -95,8 +95,11 @@ fn a_cycle_that_learns_of_a_removal_does_not_go_on_to_dial_the_removed_device() 
     let (wa, wv) = (writer(&a, "a"), writer(victim, "victim"));
     remove(revoker, victim);
     wv.say("written by the removed device");
+    let last_seen = || victim.member(&a.fp()).unwrap()["last_seen_ms"].clone();
+    let before = last_seen();
     a.net.sync_once(true).unwrap();
     assert_eq!(a.member(&victim.fp()).unwrap()["status"], "revoked", "the first dial of the cycle carried the removal");
+    assert_eq!(last_seen(), before, "the cycle opened a connection to the removed device after it had recorded the removal");
     assert!(!wa.holds("written by the removed device"), "the cycle dialed the removed device after it had recorded the removal");
     assert_eq!(a.member(&victim.fp()).unwrap()["last_error"], "", "a removed device is not dialed, so no dial to it failed");
 }
