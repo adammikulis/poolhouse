@@ -27,8 +27,8 @@ from poolhouse.safenames import safe_filename, safe_join
 COMMIT = re.compile(r"[a-f0-9]{40}")
 DIGEST = re.compile(r"[a-f0-9]{40}|[a-f0-9]{64}")
 
-__all__ = ["COMMIT", "blob_name", "digest_of", "git_blob_sha1", "identify", "into_blobs", "link", "main_commit",
-           "point_ref", "repo_root", "same_bytes"]
+__all__ = ["COMMIT", "DIGEST", "blob_name", "digest_of", "git_blob_sha1", "identify", "into_blobs", "link",
+           "main_commit", "point_ref", "repo_root", "same_bytes", "tidy", "volume"]
 
 
 def repo_root(repo: str) -> Path:
@@ -162,3 +162,19 @@ def into_blobs(path: Path, blob: Path, name: str, *, copy: bool = True) -> str:
         return "new"
     finally:
         staged.unlink(missing_ok=True)
+
+
+def volume(path: Path) -> Path:
+    """The nearest folder of ``path`` that exists, which says what volume a file there would be on."""
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    return path
+
+
+def tidy(root: Path) -> None:
+    """Remove the folders under ``root`` that a move emptied, and ``root`` itself when nothing is left in it."""
+    for here, _dirs, _names in os.walk(root, topdown=False):
+        try:
+            Path(here).rmdir()
+        except OSError:
+            continue

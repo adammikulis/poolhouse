@@ -112,16 +112,10 @@ def scan(root: Path) -> tuple[list[Item], list[str]]:
     return items, odd
 
 
-def _volume(path: Path) -> Path:
-    while not path.exists() and path != path.parent:
-        path = path.parent
-    return path
-
-
 def _cache_problem(cache: Path) -> str:
     """Why the hub cache cannot be written, or '': judged off the nearest folder that exists, so a plan
     creates nothing."""
-    near = _volume(cache)
+    near = hfstore.volume(cache)
     if not near.is_dir() or not os.access(near, os.W_OK | os.X_OK):
         return f"the hub cache {cache} cannot be written ({near} is not a writable folder)"
     return ""
@@ -172,8 +166,8 @@ def plan(root: Path, cache: Path, models: list[str]) -> Report:
     problem = _cache_problem(cache)
     if problem:
         report.blocked.append(problem)
-    same = root.stat().st_dev == _volume(cache).stat().st_dev
-    free = shutil.disk_usage(_volume(cache)).free
+    same = root.stat().st_dev == hfstore.volume(cache).stat().st_dev
+    free = shutil.disk_usage(hfstore.volume(cache)).free
     report.notes.append("same volume: each file is linked into the cache and the old name removed; "
                         "no extra disk" if same else
                         f"another volume: each file is copied then removed; the cache has "
@@ -221,15 +215,6 @@ def _repo_state(repo: str) -> tuple[str, dict[str, remote.RemoteFile]]:
     return commit, {f.path: f for f in remote.listing(repo, commit)}
 
 
-def _tidy(root: Path) -> None:
-    """Remove the folders the move emptied, and the old store itself when nothing is left in it."""
-    for here, _dirs, _names in os.walk(root, topdown=False):
-        try:
-            Path(here).rmdir()
-        except OSError:
-            continue
-
-
 def _one_repo(repo: str, items: list[Item], cache: Path, report: Report) -> None:
     try:
         commit, listed = _repo_state(repo)
@@ -266,7 +251,7 @@ def migrate(*, apply: bool, models: Callable[[], list[str]] = broker_models) -> 
         grouped.setdefault(item.repo, []).append(item)
     for repo, rows in grouped.items():
         _one_repo(repo, rows, cache, report)
-    _tidy(root)
+    hfstore.tidy(root)
     _log([f"done: moved {report.moved}, left {len(report.left)}"])
     return report
 
