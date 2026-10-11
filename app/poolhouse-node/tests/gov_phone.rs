@@ -202,6 +202,17 @@ fn another_phone_of_the_person_cannot_answer_a_request_asked_of_the_first_phones
 }
 
 #[test]
+fn a_phone_that_is_waiting_to_be_added_or_was_removed_is_not_a_signer() {
+    let (rig, phone, token) = linked();
+    for state in ["pending", "removed"] {
+        rig.node.lock().unwrap().phones.set_state(&phone.id, state).unwrap();
+        let asked = ask_found(&rig, &token, "home", "secure");
+        assert_eq!(asked["ok"], false, "{state}: {asked}");
+        assert!(asked["error"]["say"].as_str().unwrap().contains("your phone"), "{asked}");
+    }
+}
+
+#[test]
 fn a_phone_that_is_not_an_admin_of_the_pool_is_not_asked_to_sign_for_it() {
     use kit::gov::*;
     use poolhouse_node::gov::charter::Unit;
