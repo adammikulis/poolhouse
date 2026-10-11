@@ -150,3 +150,23 @@ fn a_parent_releases_the_claim_of_its_subagent_and_no_one_else_does() {
     ok(req(&mut n, "claim", "demo", &lead, json!({"kind": "port", "key": "9401"})));
     assert_eq!(code(&req(&mut n, "release", "demo", &kt, json!({"kind": "port", "key": "9401", "held_by": "claude-000000"}))), "denied", "a child does not release its parent's claim");
 }
+
+#[test]
+fn an_answer_to_a_retired_sender_is_recorded_and_nothing_else_is_sent_to_it() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((lead, lt), (_, ot)) = (session(&mut n, "demo", "lead"), session(&mut n, "demo", "other"));
+    let (kid, kt) = child_of(&mut n, &lt, "kid");
+    let asked = ok(say_to(&mut n, &kt, &lead, "may I land this?", json!({"type": "question"})))["seq"].to_string();
+    let elsewhere = ok(say_to(&mut n, &ot, &lead, "unrelated", json!({})))["seq"].to_string();
+    ok(req(&mut n, "retire", "demo", &kt, json!({})));
+    assert_eq!(code(&say_to(&mut n, &lt, &kid, "a new question", json!({}))), "denied", "a retired session is sent nothing new");
+    assert_eq!(code(&say_to(&mut n, &lt, &kid, "an answer to nothing", json!({"type": "answer"}))), "denied");
+    assert_eq!(code(&say_to(&mut n, &lt, &kid, "a reply that is no answer", json!({"reply_id": asked}))), "denied");
+    assert_eq!(code(&say_to(&mut n, &lt, &kid, "to the wrong sender", json!({"type": "answer", "reply_id": elsewhere}))), "denied");
+    let seq = ok(say_to(&mut n, &lt, &kid, "yes, land it", json!({"type": "answer", "reply_id": asked})))["seq"].to_string();
+    let thread = ok(req(&mut n, "read", "demo", &lt, json!({"thread": asked})));
+    assert_eq!(bodies(&thread), vec!["may I land this?", "yes, land it"], "the answer is on the thread of the question");
+    let entry = &thread["entries"][1];
+    assert_eq!((entry["fields"]["type"].clone(), entry["fields"]["to"].clone(), entry["sender"].clone(), entry["seq"].to_string()), (json!("answer"), json!(kid), json!(lead), seq));
+}

@@ -16,7 +16,7 @@ from node_kit import SRC
 
 from poolhouse import node_supervise
 from poolhouse.board import session as board_session
-from poolhouse.workspace import agent_display, board_cli, limits
+from poolhouse.workspace import agent_display, board_cli, limits, mail_cli
 
 pytest_plugins = ["node_kit"]
 HOOKS = Path(__file__).resolve().parents[1] / 'scripts/hooks'
@@ -111,6 +111,36 @@ def test_a_request_to_a_subagent_is_addressed_to_its_name_and_is_not_the_leads(b
     board.session(board.alice).post(child.name, 'question', 'is it done')
     plain = ask(board)
     assert owed(board) == [plain]
+
+
+def test_a_read_request_of_a_retired_sender_is_no_longer_owed_and_an_unread_one_is(board, tmp_path):
+    child = start(board, spawn_events(tmp_path, nested=False)['child'])
+    kid = board.session(child)
+    read = kid.post(board.lead.name, 'handoff', 'over to you', subject='handoff')['id'].rsplit(':', 1)[-1]
+    live = ask(board)
+    unread = kid.post(board.lead.name, 'question', 'may I land', subject='question')['id'].rsplit(':', 1)[-1]
+    kid.retire()
+    assert owed(board) == [read, live, unread]
+    mail_cli.ack(argparse.Namespace(ref=read), later(board, board.lead, HOUR))
+    assert owed(board) == [live, unread], 'a read request of a retired sender is closed'
+    mail_cli.ack(argparse.Namespace(ref=live), later(board, board.lead, HOUR))
+    assert owed(board) == [live, unread], 'a live sender stays owed once read, and an unread request of a retired one too'
+
+
+def test_send_answer_to_a_retired_sender_is_recorded_and_closes_the_request(board, tmp_path):
+    child = start(board, spawn_events(tmp_path, nested=False)['child'])
+    asked = board.session(child).post(board.lead.name, 'question', 'may I land', subject='question')['id'].rsplit(':', 1)[-1]
+    board.session(child).retire()
+    lead = later(board, board.lead, HOUR)
+    assert owed(board) == [asked]
+    with pytest.raises(board_session.Denied, match='not a session of this board'):
+        board_cli.delivered(lead, child.name, 'question', 'are you there')
+    sent = board_cli.delivered(lead, child.name, 'answer', 'yes, land it', reply_to=asked)
+    assert (sent['type'], sent['to'], sent['from']) == ('answer', child.name, board.lead.name)
+    assert owed(board) == [], 'the answer closes the request without it being read first'
+    thread = lead.read_all(thread=asked)
+    assert [(e.sender, e.fields['type'], e.fields['to']) for e in thread] == [
+        (child.name, 'question', board.lead.name), (board.lead.name, 'answer', child.name)]
 
 
 def test_inbox_shows_what_is_owed_and_attention_prints_it(board, capsys):
@@ -246,6 +276,30 @@ def test_a_subagent_that_stops_is_marked_done_with_its_branch_and_its_identity_e
     assert child.name in [a.name for a in board.session(board.lead).agents(retired=True)]
     with pytest.raises(board_session.Denied, match='token is not known'):
         board.client.call('whoami', board.board, child.token)
+
+
+def test_a_handoff_the_subagent_posted_is_closed_when_it_stops_if_it_was_acked_or_answered(board, tmp_path):
+    repository = tmp_path / 'repo'
+    subprocess.run(['git', 'init', '-q', '-b', 'worker/topic', str(repository)], check=True)
+    event = {'agent_type': 'branch-worker', 'agent_id': 'cccccc333', 'session_id': 'sess1', 'cwd': str(repository)}
+    root = limits.root()
+    limits.save(root, replace(limits.load(root), owed_after_s=0.0))
+    child = board.session(start(board, event))
+
+    def post():
+        return child.post(board.lead.name, 'handoff', 'a branch is ready', subject='handoff')['id'].rsplit(':', 1)[-1]
+
+    answered = post()
+    time.sleep(0.01)
+    board.session(board.lead).post(child.name, 'answer', 'landed', reply_id=answered)
+    time.sleep(0.01)
+    acked, unseen = post(), post()
+    mail_cli.ack(argparse.Namespace(ref=acked), later(board, board.lead, HOUR))
+    assert owed(board) == [acked, unseen], 'while the subagent lives, a read handoff is still owed and an answered one is not'
+    assert hook('claude-subagent-stop', event).returncode == 0
+    assert owed(board) == [unseen], 'stopping closes the handoff that was acked and keeps the unread one'
+    shown = run(board.lead.name, 'attention').stdout
+    assert f'[{unseen}] handoff from {child.name}' in shown and f'[{acked}]' not in shown and f'[{answered}]' not in shown
 
 
 def test_lead_attention_hook_injects_once_per_interval_and_skips_subagents(board, monkeypatch):

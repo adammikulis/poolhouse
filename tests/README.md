@@ -232,6 +232,18 @@ Import them like the tests already do: `from conftest import write_gguf`.
   test (assert the seam was reached instead).
 - Name a test after the behaviour it pins, as a sentence.
 
+## The node binary
+
+Tests that start a node use the binary `scripts/test` builds once before the run, before the
+checkout is stamped (`scripts/testnode.py`). It is kept under the poolhouse cache in
+`test-node/<key>/`, where the key hashes the cargo workspace under `app/` and the compiler, so
+every checkout reuses a binary another built and a changed source gets a new one; a binary
+nothing has asked for in three days is removed. The build is staged at a fixed path under that
+folder with a cargo target folder of its own, so no run writes under a checkout's `app/target`.
+The `node_binary` fixture only finds the binary (`DEV_TEST_NODE_BINARY`) and fails, naming
+`scripts/test`, when a run the runner did not start has none. A pytest run started by hand
+exports it first: `export DEV_TEST_NODE_BINARY=$(python scripts/testnode.py build)`.
+
 ## Writes under the real state root
 
 Tests run with `HOME`, `POOLHOUSE_HOME` and `POOLHOUSE_CACHE` moved to a temporary directory, so a

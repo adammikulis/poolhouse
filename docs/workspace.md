@@ -230,6 +230,15 @@ Message types are `task`, `status`, `handoff`, `question`, `answer`, `claim`, `r
 `attach`). Note kinds are `decision`, `rule`, `fact` and `question`. Claim kinds are `branch`, `worktree`, `port`,
 `server`, `install` and `area`.
 
+**What is owed.** `attention`, `inbox` and `digest --status` list a direct `question`, `task`, `handoff` or `blocked`
+sent to you, older than the owner's `owed_after_s`, that you have not answered (you wrote to its sender, or in reply,
+after it). A request from a session that was retired (a subagent that stopped) and that you have read, by `ack` or by
+`dm` showing it, is closed and left out, so stale handoffs do not hide live questions; an unread one stays until you read
+it. The `SubagentStop` hook ends a subagent with `done` and `retire`, so the handoffs it posted that were answered or acked
+close with it. `send NAME answer TEXT --reply-to SEQ` to a retired sender is accepted and recorded as an answer on the
+thread, which closes the request whether or not it was read ([docs/node.md](node.md), "Replies, threads and held text");
+any other message to a retired session is refused.
+
 There is no sync command: the node dials the members of the pool each cycle and swaps the boards both hold in both
 directions ([docs/node.md](node.md), its section on the pool). Every entry is in the device's signed log at once.
 `outbox` lists what you sent with a `sync` field: `provisional` until every device that has synced the board holds
@@ -517,9 +526,11 @@ serving broker continues to enforce its own live model and GPU leases. Ownership
 security reputation.
 
 `area` claims identify a source file or directory across linked Git worktrees. Supply an absolute path in your
-checkout; the claim resolves it to the repository's shared Git checkout and relative source path. Native file
-mutations reserve both the physical file and its repository-qualified source area. Editing the same source file in
-another worktree is refused, while disjoint files remain independently claimable. `install` claims identify an
+checkout; the claim resolves it to the repository's shared source area, spelled `<disk root>/.poolhouse-areas/<repository>/<relative
+path>` so it lies inside no checkout and a claim on a whole checkout (a shell command in the primary) never reaches it. Native file
+mutations reserve both the physical file and its source area. Editing the same source file in another worktree is refused,
+while disjoint files remain independently claimable, and a worker's edit in a linked worktree does not refuse a session working
+in the primary. `install` claims identify an
 absolute environment or target directory. These claims do not grant access to either path.
 
 ## Structured tasks

@@ -1,6 +1,7 @@
 //! What one session may write: how often it sends, how many announcements, how many messages wait unread in an inbox and from one
-//! sender, how many notes an author keeps, and how many live subagents a session has. A count is kept in memory with the others of
-//! `limits::Rates` (a restart clears it) and a use is counted when it was made.
+//! sender, how many notes an author keeps, and how many live subagents a session has. A rate is kept in memory with the others of
+//! `limits::Rates` (a restart clears it) and a use is counted when it was made; the unread messages and the notes are counted by
+//! `tally` as rows arrive and again from the log when the node starts.
 
 use std::path::Path;
 use std::time::Duration;
@@ -9,8 +10,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
-use crate::fold::{ANNOUNCE, DIRECT};
-use crate::identity::Holder;
+use crate::fold::ANNOUNCE;
+use crate::identity::{Holder, Ident};
+use crate::lease::live;
+use crate::lease::types::State;
 use crate::node::Node;
 use crate::row::Kind;
 
@@ -23,6 +26,8 @@ pub struct WriteLimits {
     /// Messages, notes and claims one session writes in `window_s`; a subagent writes `child_sends` of them, and counts against its parent's too.
     pub sends: usize,
     pub child_sends: usize,
+    /// What all the subagents of one session write together in `window_s`, besides each one's `child_sends`; none of it is the parent's own `sends`.
+    pub subagent_sends: usize,
     pub window_s: f64,
     /// Announcements one session writes in `announce_window_s` before the board is told it is over; an announcement is never refused for it.
     pub announces: usize,
@@ -32,16 +37,16 @@ pub struct WriteLimits {
     pub unread_per_sender: usize,
     /// Notes one author keeps on a board.
     pub notes_per_author: usize,
-    /// Live subagents one session has: not retired, and active within `child_life_s`.
+    /// Live subagents one session has: not retired, and either holding a live lease or heard from within `child_beat_s`.
     pub children: usize,
-    pub child_life_s: u64,
+    pub child_beat_s: u64,
 }
 
 impl Default for WriteLimits {
     fn default() -> WriteLimits {
         WriteLimits {
-            sends: 30, child_sends: 10, window_s: 60.0, announces: 6, announce_window_s: 600.0,
-            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, children: 8, child_life_s: 8 * 3600,
+            sends: 30, child_sends: 10, subagent_sends: 120, window_s: 60.0, announces: 6, announce_window_s: 600.0,
+            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, children: 8, child_beat_s: 1800,
         }
     }
 }
@@ -81,19 +86,25 @@ fn parent_of(node: &Node, who: &Holder) -> Option<String> {
     node.boards.get(&who.board).and_then(|h| h.names.get(&who.name)).map(|i| i.parent.clone()).filter(|p| !p.is_empty())
 }
 
-/// Whether ``who`` may send once more in the window: a subagent within its own count and its parent's.
+/// The count of what all the subagents of ``parent`` send together.
+fn family(who: &Holder, parent: &str) -> String {
+    format!("subagent-send {}/{parent}", who.board)
+}
+
+/// Whether ``who`` may send once more in the window: a subagent within its own count and its parent's allowance for all its subagents,
+/// which is none of the parent's own count.
 fn may_send(node: &mut Node, who: &Holder) -> bool {
     let (limits, parent) = (node.writes.clone(), parent_of(node, who));
-    let most = if parent.is_some() { limits.child_sends.min(limits.sends) } else { limits.sends };
-    node.rates.permits(&key("send", who), most, limits.window())
-        && parent.is_none_or(|p| node.rates.permits(&key("send", &Holder { board: who.board.clone(), name: p }), limits.sends, limits.window()))
+    let Some(parent) = parent else { return node.rates.permits(&key("send", who), limits.sends, limits.window()) };
+    node.rates.permits(&key("send", who), limits.child_sends.min(limits.sends), limits.window())
+        && node.rates.permits(&family(who, &parent), limits.subagent_sends, limits.window())
 }
 
 fn count_send(node: &mut Node, who: &Holder) {
     let (window, parent) = (node.writes.window(), parent_of(node, who));
     node.rates.record(&key("send", who), window);
     if let Some(p) = parent {
-        node.rates.record(&key("send", &Holder { board: who.board.clone(), name: p }), window);
+        node.rates.record(&family(who, &p), window);
     }
 }
 
@@ -114,14 +125,7 @@ pub fn sent(node: &mut Node, who: &Holder) {
 /// The direct messages waiting unread for ``to``, and those among them from ``from``; `None` when ``to`` is not a session of this device.
 fn waiting(node: &mut Node, board: &str, to: &str, from: &str) -> Result<Option<(usize, usize)>> {
     let Some(seen) = node.boards.get(board).and_then(|h| h.names.get(to)).map(|i| i.inbox_read.clone()) else { return Ok(None) };
-    let mut counts = (0, 0);
-    for e in node.view(board)?.iter().filter(|e| e.channel == DIRECT && e.fields.get("to").and_then(Value::as_str) == Some(to)) {
-        if e.seq > seen.get(&e.origin).copied().unwrap_or(0) {
-            counts.0 += 1;
-            counts.1 += usize::from(e.sender == from);
-        }
-    }
-    Ok(Some(counts))
+    Ok(Some(node.tally(board)?.unread(to, &seen, from)))
 }
 
 /// Hold a post to the limits before it is written: sends in a window, the notes of an author, the unread messages of a recipient.
@@ -135,8 +139,7 @@ pub fn check_post(node: &mut Node, board: &str, who: &Holder, actor: &str, kind:
     }
     let limits = node.writes.clone();
     if kind == Kind::Note {
-        let wrote = node.view(board)?.iter().filter(|e| e.kind == Kind::Note && e.sender == actor).count();
-        if wrote >= limits.notes_per_author {
+        if node.tally(board)?.notes_by(actor) >= limits.notes_per_author {
             return Err(Error::Quota(format!("{actor} already wrote {} notes", limits.notes_per_author)));
         }
     }
@@ -171,6 +174,18 @@ pub fn wrote(node: &mut Node, board: &str, who: &Holder, actor: &str, post: Admi
     Ok(())
 }
 
+/// Whether the session ``name`` of ``board`` is live: not retired, and either holding a lease that is held and whose holder process is
+/// still the one that took it, or heard from within `child_beat_s`.
+fn is_live(node: &Node, board: &str, name: &str, ident: &Ident, now: u64) -> bool {
+    let leased = || {
+        let at = node.leases.now();
+        node.leases.table.leases.iter().any(|l| {
+            l.board == board && l.name == name && l.state == State::Held && l.expires_ms > at && (l.pid == 0 || live::is_alive(l.pid, l.pid_start))
+        })
+    };
+    !ident.retired && (now.saturating_sub(ident.seen_ms) <= node.writes.child_beat_s * 1000 || leased())
+}
+
 /// Refuse a registration that would give ``parent`` more live subagents than it may have; a session already registered is not new.
 pub fn check_children(node: &Node, board: &str, parent: &str, harness: &str, session: &str) -> Result<()> {
     let Some(hosted) = node.boards.get(board).filter(|_| !parent.is_empty()) else { return Ok(()) };
@@ -178,7 +193,7 @@ pub fn check_children(node: &Node, board: &str, parent: &str, harness: &str, ses
         return Ok(());
     }
     let now = hosted.board.now_ms();
-    let live = hosted.names.all().values().filter(|i| i.parent == parent && !i.retired && now.saturating_sub(i.seen_ms) <= node.writes.child_life_s * 1000).count();
+    let live = hosted.names.all().iter().filter(|(n, i)| i.parent == parent && is_live(node, board, n, i, now)).count();
     if live >= node.writes.children {
         return Err(Error::Quota(format!("{parent} already has {live} live subagents: retire one before registering another")));
     }

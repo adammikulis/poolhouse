@@ -24,8 +24,9 @@ Measured 2026-10-08 on the owner's Mac, read-only, while several agents were wor
 | 4 | `workspace-remote/*/worktree-lifecycle.db` | 515 | 2.9 MB | `remember` copied, rewrote, fsynced and promoted the whole store even when the record was identical |
 | 5 | `guard/<tree>.json` (edit guard index) | per edit | 0.3-0.75 MB | rewritten on every edit anywhere in `src/poolhouse`; 78 files and 35 MB, never pruned |
 
-Appended and kept: `audit.jsonl` (about 54 KB/h over the last 24 h, hash chained, fsynced),
-`activity.log`, `sentinel/events.log` (HMAC chained). Not changed.
+Appended and kept: the audit trail (about 54 KB/h over the last 24 h, hash chained, fsynced; it was a file
+of its own when this was measured and is now `#audit` entries in the signed log of each board under
+`node/boards/<id>/log/`), `activity.log`, `sentinel/events.log` (HMAC chained). Not changed.
 
 ## Changed
 
