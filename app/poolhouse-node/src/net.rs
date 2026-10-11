@@ -276,7 +276,7 @@ impl Net {
             }
             Standing::Unknown => {
                 let settling = self.settling.load(Ordering::SeqCst);
-                let lone_joins = node.members.can_join_other() && (b.pool < node.members.id || !b.lone);
+                let lone_joins = node.members.can_join_other() && (b.pool.len() == 32 || b.pool < node.members.id || !b.lone);
                 let eligible = b.project == node.members.project
                     && crate::netif::on_segment(b.addr)
                     && ((node.members.policy == Policy::Open && (b.pool == node.members.id || lone_joins))

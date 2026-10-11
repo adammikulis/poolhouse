@@ -334,7 +334,7 @@ impl Node {
     /// Add this device's signer's signatures to the act ``id`` the pool holds.
     pub fn pool_cosign(&mut self, id: &str) -> Result<Value> {
         let signer = self.signer.clone().ok_or_else(no_signer)?;
-        self.with_gov(|g, wall| {
+        self.asking("cosign", |n| n.with_gov(|g, wall| {
             let mut act = g.acts().get(id).cloned().ok_or_else(|| Error::Invalid("this device holds no such act".into()))?;
             let charter = g.state().chain.state_for(&act).ok_or_else(upgrade)?.charter.clone();
             let class = class_of(&act.kind)?;
@@ -347,7 +347,7 @@ impl Node {
             sign_with(&mut act, signer.as_ref(), &keys, &summary)?;
             let kept = g.ingest(act, wall);
             reply(g, id, kept)
-        })
+        }))
     }
 
     /// Hand the pool an act a person's key signed elsewhere (the typed-yes path, a phone, another device's signer).
