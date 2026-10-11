@@ -157,3 +157,9 @@ def test_the_refusal_names_the_command_that_leases():
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "llama-server -m x"}}))
     assert done.returncode == BLOCKED
     assert "poolhouse-serve up MODEL" in done.stderr and "poolhouse-serve down" in done.stderr
+
+
+@pytest.mark.parametrize("command", ["SKIP_BUDGETS=1 git commit -m x", "git commit --no-verify -m x", "git commit -n -m x"])
+def test_skipping_the_commit_hooks_stays_refused_with_the_guard_off(command):
+    """The off switch is for the soft rules: no spelling of a hook skip is one of them."""
+    assert guard(command, POOLHOUSE_GUARD="off") == BLOCKED
