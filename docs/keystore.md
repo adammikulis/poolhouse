@@ -14,6 +14,7 @@ fails on any other).
 | `memory` | user / profile / store directory, plus the file's salt | the encrypted memory store (`docs/memory.md`) |
 | `fleet-signing` | the state directory | the Ed25519 signing key, kept in `signing.key.wrapped` (`docs/onboarding.md`) |
 | `credentials` | the credential name | values stored with `poolhouse credentials set NAME --keychain` (`docs/credentials.md`) |
+| `device-key` | the node's state directory | the node's Ed25519 device key, kept in `device.key.wrapped` and given to the node on its standard input at each start (`docs/node.md`, "Where the device key is kept") |
 
 A subkey is `HKDF-SHA256(master, info = purpose, owner, context)` with every field
 length-prefixed. `wrap` and `unwrap` seal with AES-256-GCM under that subkey and bind purpose and
@@ -89,7 +90,7 @@ There is no way to rotate the master and keep the data.
 ## Passphrase fallback
 
 With no usable keystore, `POOLHOUSE_MEMORY_KEYS=passphrase` and the signing key's encrypted file
-keep working; their scrypt derivation is `keystore.scrypt_key`. A person chooses it; the keystore
+keep working, and so does the device key under `POOLHOUSE_DEVICE_KEY_PASSPHRASE`; their scrypt derivation is `keystore.scrypt_key`. A person chooses it; the keystore
 never falls back to it by itself.
 
 ### Passphrases in the environment

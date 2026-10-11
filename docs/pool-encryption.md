@@ -34,7 +34,7 @@ the client by a MAC over the request, not by a client certificate and not bound 
 | Request and response bodies on `/workspace/v1/*`, `/jobs`, work dispatch (`http.build_request`, `fleet/api.py:_unsealed`) | sealed inside TLS | Request is signed (method, target, host, body, 120 s window, nonce); answer is sealed with the request nonce and status as AAD | HMAC-SHA256, HKDF-SHA256 written with stdlib `hmac`/`hashlib` (`macauth.derive`, `keystore.hkdf`); AES-256-GCM, random 96 bit nonce (`sealing.py`) via `cryptography` | Key derived from the pool key (`/workspace/v1/*` also accepts per-device secrets, `fleet/device_auth.py`) | No forward secrecy: a leaked pool or device secret opens every captured body. Nonce cache is in memory (resets on restart; the 120 s window bounds it). `Sealed.open` accepts an unsealed answer when status >= 400, empty body or non-JSON, so streams and errors are not sealed |
 | Fleet job dispatch (`POST /jobs`) | as above | pool MAC | as above | pool key | Job argv and env travel sealed; job results and logs are fetched through the same sealed JSON, but log streaming is not sealed |
 | Model requests, `/infer/*` proxy (`fleet/api.py:_proxy`) | sealed request body; streamed answer is TLS only | pool or device MAC | as above | as above | Streamed tokens are not sealed by the application (`docs/fleet.md:315`). The proxy hop to the model server is plaintext loopback, and the model server sees plaintext prompts |
-| Board entries, notes and DMs between devices (node sync: `app/poolhouse-node/src/{net,tls,sync}.rs`) | TLS 1.3 only, to the certificate the device pinned; a joining device takes any certificate and the join exchange authenticates it | Both sides show a certificate and the other device must be an active member of the pool; every row is a signed log row checked on arrival (chain, hashes, head signature, pinned key) | Ed25519 device key (`device.key`), rustls with the ring provider | device key file 0600 | No sealing beyond TLS, and no forward secrecy beyond TLS 1.3's. Every member keeps a copy of every board it syncs in the clear (section 2.2) |
+| Board entries, notes and DMs between devices (node sync: `app/poolhouse-node/src/{net,tls,sync}.rs`) | TLS 1.3 only, to the certificate the device pinned; a joining device takes any certificate and the join exchange authenticates it | Both sides show a certificate and the other device must be an active member of the pool; every row is a signed log row checked on arrival (chain, hashes, head signature, pinned key) | Ed25519 device key (`device.key`), rustls with the ring provider | the keystore, a passphrase file or a 0600 file the node calls weak (section 10) | No sealing beyond TLS, and no forward secrecy beyond TLS 1.3's. Every member keeps a copy of every board it syncs in the clear (section 2.2) |
 | Board listener and `/ui` routes (`workspace/boardroute.py`, `fleet/ui.py`) | `/ui` on a LAN is TLS-only (`--ui-from-lan`); loopback is plaintext | Passphrase sign-in; same-origin and Origin checks (`boardroute._checked`) | cookie session | session in memory | Passphrase travels inside TLS only; no second factor. Loopback session is exposed to a same-user process (out of scope) |
 | Test job results and logs (`workspace/testruns.py`, `activity/reuse.py`) | local files; remote fetch sealed JSON | hash-chained entries (unkeyed hashing) | sha-256 hashes | none | Integrity only; contents plaintext on disk |
 | Model weights and file transfer (`fleet/onboard/transfer.py`, `fleet/files.py`) | TLS to the pinned device; ranged chunks | Manifest signed with Ed25519 (`fleet/onboard/signing.py`), each chunk sha256-checked | `cryptography` Ed25519 | signing key wrapped under the OS keystore | **Signed, not sealed**: with TLS off the weights are readable on the wire. Fine otherwise; weights are not secret except private fine-tunes (section 5, slice 6) |
@@ -58,7 +58,7 @@ the client by a MAC over the request, not by a client certificate and not bound 
 | Job records and logs (`fleet/jobs.py` writes `job.json`, `log`) | **plaintext** | none | none | Command lines and output of every job, including remote dispatch, on disk |
 | Sentinel events (`sentinel/sealed.py`) | HMAC only | HMAC-SHA256 | key beside the file | Tamper-evident, not confidential |
 | Session token files (`<state>/client/<board>/<name>.token`, `board/credentials.py`) | plaintext, 0600 in a 0700 folder, sentinel-registered; the node keeps only the SHA-256 | none | file | Agent capability tokens |
-| Log replica (the node's copies of other devices' logs) | plaintext JSON lines, 0600 in 0700 folders, each row verified when it arrived | signed hash chain, Ed25519 device key | `device.key` file | Every member holds every board it syncs in the clear |
+| Log replica (the node's copies of other devices' logs) | plaintext JSON lines, 0600 in 0700 folders, each row verified when it arrived | signed hash chain, Ed25519 device key | the keystore, a passphrase file or a weak 0600 file (section 10) | Every member holds every board it syncs in the clear |
 | Backups and bundles | no backup writer found that encrypts; the recovery file (`fleet/recovery.py`) is the one export, passphrase-derived | scrypt (check KDF params in slice 1) | passphrase | Anything a person copies from `~/.poolhouse` is plaintext |
 
 Keystore usage: `keystore.py` is the only importer of `keyring`; unattended processes never create the
@@ -407,9 +407,26 @@ is superseded by this section.
   tampered roster row dropped; a beacon that was never enrolled not pinned; a caller with no certificate cannot
   use the pool secret; a member of another pool cannot use this pool's secret.
 
+### Slice 3, the node's device key, done
+
+The node's device key (`device.key`, Ed25519) is kept in the operating system's keystore where the computer has one, through
+`poolhouse.keystore`: wrapped under a subkey (`device-key`, owned by the state directory) as `device.key.wrapped`, which opens only
+on this computer and for this directory. The supervisor unwraps it and gives it to the node on its standard input at each start;
+the node writes no key file, records the custody and the fingerprint the key must have in `device.custody.json`, and refuses to
+start a state directory that recorded a key kept elsewhere without it, so a copy of the state directory carries no identity. A
+computer with no keystore keeps it under `POOLHOUSE_DEVICE_KEY_PASSPHRASE` (`device.key.enc`, scrypt and ChaCha20-Poly1305, the
+signing key's format) or, with neither, in the plain file, which `pool_status.device_key` calls weak, as it does the passphrase
+file: the delegate of `docs/pools-and-serving.md` exists only where the custody is the keystore. A new device is born into the
+keystore when its master key already exists, so nothing is asked of a person; a key in a file moves with
+`poolhouse node key --migrate`, a person at a terminal (one Keychain prompt when the master key is new), and the node restarts
+on it. No test reads the machine's keystore: the tests use an in-memory ring and a file ring, and a real node started by its
+supervisor on the file ring. Not done, and why: a key the keystore holds non-exportable. Ed25519 is not a key type the macOS
+Keychain or Windows CNG keeps, and a Secure Enclave key needs a paid developer account (decision 8.1); until then the key is in the
+memory of the node while it runs.
+
 ### Left
 
-Slice 1's stream and chunk sealing; slice 3 (the pool key and TLS key are still plaintext files, now
+Slice 1's stream and chunk sealing; slice 3 for the other stores (the pool key and TLS key are still plaintext files, now
 joined by the roster); the channel-bound MAC of 2b (the certificate is checked on the same TLS session as
 the request, but the MAC does not yet cover its fingerprint); slices 4 to 8 and G1 to G5; rotating the
 pool key on revocation (a removed device still holds it); a real multi-device run, which this work could not

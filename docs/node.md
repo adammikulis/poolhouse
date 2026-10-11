@@ -69,7 +69,7 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
 - **Crash safety.** Append is one write plus `fsync`; it returns when the row is on disk. On open, a
   last line without its newline was never acknowledged and is cut off (a torn write from `kill -9`);
   damage anywhere else is an error, never a silent drop.
-- **Heads.** A head row signs (Ed25519, device key, `device.key` 0600) the row directly before it.
+- **Heads.** A head row signs (Ed25519, the device key: "Where the device key is kept") the row directly before it.
   Only rows through the last verified head are given to peers or stored from peers. A pool of one
   never needs to sign.
 - **Merge.** All rows sort by (wall, counter, origin, seq): one total order for any delivery order,
@@ -658,6 +658,22 @@ listener is the one network port.
   (`cert.rs`, `device.cert`, valid ten years). Its fingerprint is the SHA-256 of the DER and is the
   device's identity in the pool; the board fingerprint (hash of the public key, used for acks and
   origin binding) is read back out of the certificate a peer showed.
+- **Where the device key is kept** (`device.rs`, `poolhouse.node_key`). Its custody is `keystore`, `passphrase` or `file`, and
+  `pool_status` says it in `device_key` (`{custody, weak}`, weak for everything but `keystore`). In the `keystore` the key is wrapped
+  under the computer's keystore (`poolhouse.keystore`, purpose `device-key`, owned by the state directory's path) as
+  `device.key.wrapped`; the supervisor unwraps it and gives it to the node on its standard input at every start
+  (`--key-stdin --key-custody keystore`), and the node writes no key file anywhere, so a copy of the state directory, or a backup,
+  carries no identity and starts no node. Under a `passphrase` (`POOLHOUSE_DEVICE_KEY_PASSPHRASE`, for a computer with no keystore)
+  it is `device.key.enc`, the same way. A `file` is `device.key` (0600), which the node makes when nothing else holds a key. The state
+  directory records the custody and the fingerprint the key must have in `device.custody.json`: a node with a record and no key
+  refuses to start (it never makes itself another identity), a key that is not the recorded one is refused, and a key given while
+  a `device.key` of the same device is there removes the file. A new device is born into the keystore when the keystore's master
+  key already exists, so nothing is asked of anyone; otherwise it starts with a weak file. `poolhouse node key` says where the key
+  is kept, and `poolhouse node key --migrate` (a person at a terminal; one Keychain prompt when the master key does not exist yet)
+  moves a key out of its file and restarts the node. A weak device key signs no delegate's `admit` (docs/pools-and-serving.md, 1.3).
+  What it does not protect: the key is in the node's memory while it runs, and a process of the same user that can ask the keystore as
+  the supervisor does signs as the device. Ed25519 cannot be held non-exportable by the macOS Keychain or Windows CNG, and a
+  Secure Enclave key needs a paid developer account (docs/pool-encryption.md, 8.1).
 - **Transport** (`tls.rs`, rustls with the ring provider). TLS 1.3 only; a TLS 1.2 client is refused. Both
   sides show a certificate. A client pins the one fingerprint it expects (a changed digit is a refused
   handshake) or, when joining, takes any certificate and lets the exchange authenticate it. A server

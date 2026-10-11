@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from poolhouse import build_update, node_app, node_binary, runtime, win32
+from poolhouse import build_update, node_app, node_binary, node_key, runtime, win32
 from poolhouse.files import read_json, write_json
 from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, only_one
@@ -88,10 +88,17 @@ def _program(binary: Path, sha: str, extra: list[str]) -> Path:
     return node_app.bundled(binary, sha) if node_app.uses_bundle(extra) else binary
 
 
-def _spawn(state: Path, binary: Path, sha: str, extra: list[str]) -> subprocess.Popen:
+def _spawn(state: Path, binary: Path, sha: str, extra: list[str], key: node_key.Released | None) -> subprocess.Popen:
+    """Start the node; a key that is kept in the keystore or under a passphrase goes to it on its standard input and nowhere else."""
+    argv = [str(_program(binary, sha, extra)), "run", "--state", str(state), *(key.argv() if key else []), *extra, *build_update.node_args()]
     with (state / LOG).open("ab") as out:
-        child = start_process([str(_program(binary, sha, extra)), "run", "--state", str(state), *extra, *build_update.node_args()], stdin=subprocess.DEVNULL, stdout=out,
-                              stderr=subprocess.STDOUT)
+        child = start_process(argv, stdin=subprocess.PIPE if key else subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
+    if key and child.stdin is not None:
+        try:
+            child.stdin.write(key.line())
+            child.stdin.close()
+        except OSError:
+            _note(state, f"node {child.pid} did not read its key")
     before = running(state)
     previous = before.get("previous") if before.get("sha256") == sha else {"binary": before.get("binary"), "sha256": before.get("sha256")}
     write_json(state / RUN, {"pid": child.pid, "binary": str(binary), "sha256": sha, "started_at": time.time(),
@@ -156,6 +163,7 @@ def _loop(state: Path, extra: list[str], stopping: Callable[[], bool]) -> int:
         try:
             binary, sha = resolve(state)
             _program(binary, sha, extra)  # builds Poolhouse.app first when this start needs it, so a failure is a refusal here
+            key = node_key.release(state)
         except OSError as exc:
             refused += 1
             _note(state, f"cannot start the node: {exc}")
@@ -165,7 +173,7 @@ def _loop(state: Path, extra: list[str], stopping: Callable[[], bool]) -> int:
             delay = min(delay * 2, MAX_DELAY_S)
             continue
         refused, began = 0, time.monotonic()
-        child = _spawn(state, binary, sha, extra)
+        child = _spawn(state, binary, sha, extra, key)
         code = _wait(child, state, seen, stopping)
         if code is None:
             end(child, state)
