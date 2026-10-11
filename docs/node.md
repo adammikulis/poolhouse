@@ -561,7 +561,8 @@ session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) se
 `window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `children` and `child_beat_s`. A message
 is unread until its recipient reads its inbox with a `since` cursor past it: the node keeps the furthest cursor each session presented
 on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
-counts as a send, and the `reserve` of a harness hook does not.
+counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
+the log when the node starts), so a post is checked without folding the board.
 
 ## Leases
 

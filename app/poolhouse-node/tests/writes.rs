@@ -256,3 +256,57 @@ fn a_subagent_whose_only_claim_is_held_by_a_process_that_has_ended_is_not_live()
         let _ = sleeper.wait();
     }
 }
+
+fn fill(n: &mut Node, token: &str, rows: usize) {
+    for i in 0..rows {
+        ok(req(n, "post", "demo", token, json!({"kind": "message", "fields": {"type": "status", "to": "#general", "body": format!("row {i}")}})));
+    }
+}
+
+#[test]
+fn a_post_is_checked_against_counters_kept_as_rows_arrive_and_never_folds_the_board() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((_, at), (reader, rt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "r"));
+    (n.writes.sends, n.writes.unread_per_sender, n.writes.inbox_pending, n.writes.notes_per_author) = (1_000_000, 4, 5, 4);
+    for rows in [0, 300] {
+        fill(&mut n, &at, rows);
+        let (folds, counted) = (n.folds, n.tally("demo").unwrap().counted);
+        ok(say(&mut n, &at, &reader, "a direct message"));
+        ok(note(&mut n, &at, &format!("a note after {rows} rows")));
+        ok(say(&mut n, &at, "#general", "a message to the room everyone is in"));
+        assert_eq!(n.folds, folds, "a post folds nothing: {rows} rows on the board");
+        assert!(n.tally("demo").unwrap().counted - counted <= 6, "it counts the rows written since the last check, not the board: {rows} rows");
+    }
+    ok(say(&mut n, &at, &reader, "a third"));
+    ok(say(&mut n, &at, &reader, "a fourth"));
+    assert_eq!(code(&say(&mut n, &at, &reader, "a fifth")), "quota", "four unread from one sender");
+    let all = ok(req(&mut n, "read", "demo", &rt, json!({"inbox": true})));
+    assert_eq!(code(&say(&mut n, &at, &reader, "reading without moving the cursor is not having read")), "quota");
+    ok(req(&mut n, "read", "demo", &rt, json!({"inbox": true, "since": all["cursor"]})));
+    ok(say(&mut n, &at, &reader, "the reader has read what was waiting"));
+    ok(note(&mut n, &at, "a third note"));
+    ok(note(&mut n, &at, "a fourth note"));
+    assert_eq!(code(&note(&mut n, &at, "a fifth note")), "quota", "four notes by one author");
+}
+
+#[test]
+fn counters_are_rebuilt_from_the_log_when_the_node_starts() {
+    let dir = tempdir().unwrap();
+    let (at, reader);
+    {
+        let mut n = node(dir.path());
+        let (_, token) = session(&mut n, "demo", "a");
+        let (name, _) = session(&mut n, "demo", "r");
+        (at, reader) = (token, name);
+        n.writes.sends = 1_000_000;
+        for i in 0..3 {
+            ok(say(&mut n, &at, &reader, &format!("waiting {i}")));
+            ok(note(&mut n, &at, &format!("note {i}")));
+        }
+    }
+    let mut n = node(dir.path());
+    (n.writes.sends, n.writes.unread_per_sender, n.writes.notes_per_author) = (1_000_000, 3, 3);
+    assert_eq!(code(&say(&mut n, &at, &reader, "a fourth")), "quota", "the three waiting messages were counted again from the log");
+    assert_eq!(code(&note(&mut n, &at, "a fourth")), "quota", "and the three notes");
+}

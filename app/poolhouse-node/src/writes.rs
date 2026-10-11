@@ -1,6 +1,7 @@
 //! What one session may write: how often it sends, how many announcements, how many messages wait unread in an inbox and from one
-//! sender, how many notes an author keeps, and how many live subagents a session has. A count is kept in memory with the others of
-//! `limits::Rates` (a restart clears it) and a use is counted when it was made.
+//! sender, how many notes an author keeps, and how many live subagents a session has. A rate is kept in memory with the others of
+//! `limits::Rates` (a restart clears it) and a use is counted when it was made; the unread messages and the notes are counted by
+//! `tally` as rows arrive and again from the log when the node starts.
 
 use std::path::Path;
 use std::time::Duration;
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
-use crate::fold::{ANNOUNCE, DIRECT};
+use crate::fold::ANNOUNCE;
 use crate::identity::{Holder, Ident};
 use crate::lease::live;
 use crate::lease::types::State;
@@ -124,14 +125,7 @@ pub fn sent(node: &mut Node, who: &Holder) {
 /// The direct messages waiting unread for ``to``, and those among them from ``from``; `None` when ``to`` is not a session of this device.
 fn waiting(node: &mut Node, board: &str, to: &str, from: &str) -> Result<Option<(usize, usize)>> {
     let Some(seen) = node.boards.get(board).and_then(|h| h.names.get(to)).map(|i| i.inbox_read.clone()) else { return Ok(None) };
-    let mut counts = (0, 0);
-    for e in node.view(board)?.iter().filter(|e| e.channel == DIRECT && e.fields.get("to").and_then(Value::as_str) == Some(to)) {
-        if e.seq > seen.get(&e.origin).copied().unwrap_or(0) {
-            counts.0 += 1;
-            counts.1 += usize::from(e.sender == from);
-        }
-    }
-    Ok(Some(counts))
+    Ok(Some(node.tally(board)?.unread(to, &seen, from)))
 }
 
 /// Hold a post to the limits before it is written: sends in a window, the notes of an author, the unread messages of a recipient.
@@ -145,8 +139,7 @@ pub fn check_post(node: &mut Node, board: &str, who: &Holder, actor: &str, kind:
     }
     let limits = node.writes.clone();
     if kind == Kind::Note {
-        let wrote = node.view(board)?.iter().filter(|e| e.kind == Kind::Note && e.sender == actor).count();
-        if wrote >= limits.notes_per_author {
+        if node.tally(board)?.notes_by(actor) >= limits.notes_per_author {
             return Err(Error::Quota(format!("{actor} already wrote {} notes", limits.notes_per_author)));
         }
     }
