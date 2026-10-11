@@ -68,7 +68,8 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
 Every design and every security-adjacent change (identity, membership, grants, approvals, serving, sharing, anything
 that moves trust or compute) gets an attack-first pass before it is built or landed: an agent other than the author is
 told to break it and answers in writing for each of a copied or cloned pool or device, replay, a forged or
-below-threshold signature, a compromised or malicious member, a stolen phone or key, a malicious or confused agent, a
+below-threshold signature, a compromised or malicious member, a stolen phone or key, a malicious agent, an agent that is compromised without knowing it (an injected instruction in a board message, tool
+result, page or file that it takes for an ordinary order), a
 downgrade (secure to open), approval fatigue (repeated requests until the person accepts from exhaustion), and a
 takeover by whoever is merely present. Findings are fixed or named as accepted risks
 with the owner; the author's own review does not count. (The owner found by hand an auto-migration to a pool copy, a
