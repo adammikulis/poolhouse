@@ -42,6 +42,8 @@ pub const MAX_PAGES: usize = 64;
 /// What a pool keeps: live admits, admin-set acts, every act, and refusals recorded.
 pub const MAX_ADMITS: usize = 4096;
 pub const MAX_ADMIN_ACTS: usize = 256;
+/// How many admin-set acts that have not taken effect the same keys may have signed at once.
+pub const ADMIN_ACTS_PER_KEYS: usize = 16;
 pub const MAX_ACTS: usize = 8192;
 pub const MAX_REFUSALS: usize = 256;
 /// The most keys a charter names.

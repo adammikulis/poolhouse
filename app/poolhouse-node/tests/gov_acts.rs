@@ -500,6 +500,30 @@ fn a_flood_of_admin_set_acts_is_capped_and_a_page_fits_the_frame() {
 }
 
 #[test]
+fn a_key_that_floods_admin_acts_replaces_its_own_oldest_and_never_the_acts_of_another_key() {
+    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben"), strong(C, "cy")], Policy::Secure);
+    let legit = make(&g, "admin_remove", json!({"key": public(C), "cut": []}), &[B]);
+    take(&mut g, legit.clone());
+    let flood: Vec<_> = (0..40u64).map(|n| make(&g, "set_holds", json!({"dispute_d": 2 + n % 20}), &[A])).collect();
+    g.ingest_many(flood, wall_ms(), false);
+    let ann = g.acts().values().filter(|a| a.is_chain() && a.admin_keys().contains(&public(A).as_str())).count();
+    assert!(ann <= poolhouse_node::gov::ADMIN_ACTS_PER_KEYS, "{ann}");
+    assert!(g.acts().contains_key(&legit.id()), "the removal ben signed is still held, waiting for a second person");
+}
+
+#[test]
+fn the_scope_of_an_admin_fingerprint_matches_a_pool_only_where_the_key_is_listed_and_accepted() {
+    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let fp = |seed: u8| poolhouse_node::gov::keys::fingerprint_of(&public(seed));
+    assert!(g.admin_scope(&fp(A)) && !g.admin_scope(&fp(B)));
+    put_add(&mut g, strong(B, "ben"), &[A]);
+    assert!(!g.admin_scope(&fp(B)), "a key asked to be listed is not listed until the add takes effect");
+    advance(&mut g, 25 * HOUR);
+    assert!(g.admin_scope(&fp(B)));
+    assert!(!g.admin_scope(&"ab".repeat(32)));
+}
+
+#[test]
 fn an_act_over_sixteen_kib_or_with_a_field_nobody_defined_is_refused() {
     let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
     let mut big = make(&g, "remove", json!({"fingerprint": "ab".repeat(32)}), &[A]);

@@ -23,9 +23,9 @@ use super::body::{self, Body};
 use super::chain::{self, Chain, Seen};
 use super::charter::Charter;
 use super::clock::Awake;
-use super::keys::{Role, Strength};
+use super::keys::{AdminKey, Role, Strength};
 use super::roster::{self, Roster};
-use super::{HAVE_ACTS, MAX_ACTS, MAX_ADMIN_ACTS, MAX_ADMITS, MAX_REFUSALS, PAGE_ACTS, PAGE_BYTES, SETTLED};
+use super::{ADMIN_ACTS_PER_KEYS, HAVE_ACTS, MAX_ACTS, MAX_ADMIN_ACTS, MAX_ADMITS, MAX_REFUSALS, PAGE_ACTS, PAGE_BYTES, SETTLED};
 
 const CHARTER: &str = "charter.json";
 const ACTS: &str = "acts.json";
@@ -301,19 +301,37 @@ impl GovPool {
         if act.kind == "admit" && count(self, |a| a.kind == "admit") >= MAX_ADMITS {
             return Err("this pool holds as many admits as it will".into());
         }
-        if act.is_chain() && count(self, Act::is_chain) >= MAX_ADMIN_ACTS && !self.evict_unsatisfied() {
-            return Err("this pool holds as many acts that change its admins as it will".into());
+        if act.is_chain() {
+            self.room_for_admin_act(act)?;
         }
         Ok(())
     }
 
-    /// Make room among the admin-set acts by dropping the oldest that never took effect.
-    fn evict_unsatisfied(&mut self) -> bool {
-        let victim = {
-            let live = &self.state.chain.applied;
-            self.acts.iter().filter(|(id, a)| a.is_chain() && !live.contains(*id)).min_by_key(|(id, _)| (self.seen.get(*id).copied().unwrap_or(0), (*id).clone())).map(|(id, _)| id.clone())
+    /// The admin-set acts not yet in effect are at most 256, and the same keys may have signed at most 16 of them: a key that
+    /// floods the pool with acts replaces its own oldest, and never the acts of other keys.
+    fn room_for_admin_act(&mut self, act: &Act) -> std::result::Result<(), String> {
+        let keys = act.admin_keys();
+        let live = |pool: &GovPool| -> Vec<(i64, String, bool)> {
+            pool.acts.iter().filter(|(id, a)| a.is_chain() && !pool.state.chain.applied.contains(*id))
+                .map(|(id, a)| (pool.seen.get(id).copied().unwrap_or(0), id.clone(), a.admin_keys().iter().any(|k| keys.contains(k)))).collect()
         };
-        victim.map(|id| self.forget(&id)).is_some()
+        let held = live(self);
+        if held.len() >= MAX_ADMIN_ACTS {
+            return Err("this pool holds as many acts that change its admins as it will".into());
+        }
+        let mine: Vec<&(i64, String, bool)> = held.iter().filter(|(_, _, shared)| *shared).collect();
+        if mine.len() >= ADMIN_ACTS_PER_KEYS {
+            let oldest = mine.iter().min().map(|(_, id, _)| id.clone());
+            oldest.into_iter().for_each(|id| self.forget(&id));
+        }
+        Ok(())
+    }
+
+    /// Whether the key with this fingerprint is listed in the charter now in force and accepted being listed: what a grant scoped to
+    /// the pools an admin key administers (`admin:<fingerprint>`) matches.
+    pub fn admin_scope(&self, fingerprint: &str) -> bool {
+        let anchor = |k: &AdminKey| if k.since == 1 { self.genesis.anchor() } else { self.id.clone() };
+        self.state.chain.latest().charter.admins.iter().any(|k| k.fingerprint() == fingerprint && k.accepted(&anchor(k)))
     }
 
     fn forget(&mut self, id: &str) {

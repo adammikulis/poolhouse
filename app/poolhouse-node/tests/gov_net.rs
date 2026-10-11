@@ -226,9 +226,11 @@ fn a_member_cannot_replay_a_stale_act_or_flood_the_acts_op() {
     let (a, b, _) = pool_of_three();
     let pool = a.pool();
     let mut to_a = link(&b, &a);
-    let have: Vec<String> = (0..5000).map(|n| format!("{n:064x}")).collect();
-    let too_many = to_a.call(&json!({"op": "acts", "pool": pool, "have": have}));
+    let tokens = |n: usize| -> Vec<String> { (0..n).map(|i| format!("{i:080x}")).collect() };
+    let too_many = to_a.call(&json!({"op": "acts", "pool": pool, "have": tokens(4097)}));
     assert!(matches!(too_many, Err(Error::Invalid(_))), "{too_many:?}");
+    assert!(to_a.call(&json!({"op": "acts", "pool": pool, "have": tokens(4096)})).is_ok(), "4,096 is what a request may name");
+    assert!(matches!(to_a.call(&json!({"op": "acts", "pool": pool, "have": ["not a token"]})), Err(Error::Invalid(_))));
     let pushes: Vec<Value> = (0..300).map(|n| json!({"v": 1, "n": n})).collect();
     assert!(matches!(to_a.call(&json!({"op": "acts", "pool": pool, "push": pushes})), Err(Error::Invalid(_))));
     assert!(matches!(to_a.call(&json!({"op": "acts", "pool": pool, "page": 64})), Err(Error::Invalid(_))));
@@ -264,7 +266,9 @@ fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere
     sync(&b);
     let cosigned = b.ok("pool_cosign", "", &b.token, json!({"act": set["act"]}));
     assert_ne!(cosigned["status"], "needs-signers", "{cosigned}");
-    for d in [&b, &a, &c] {
+    sync(&b);
+    assert_eq!(a.status()["governance"]["holds"]["admin_add_h"], 48, "b pushed the signature to a, which does not dial b");
+    for d in [&a, &c] {
         sync(d);
     }
     for d in [&a, &b, &c] {
