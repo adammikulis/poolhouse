@@ -304,7 +304,7 @@ def test_a_hostile_message_makes_no_session_and_widens_nothing_for_a_subagent(wo
     shown = held[0]
     assert shown["authority"] == "none" and shown["state"] == "quarantined" and hostile not in shown["text"]
     assert str(node.state / "client") not in json.dumps(held)
-    for denied, asked in (("set_join_policy", {"policy": "open"}), ("member_remove", {"fingerprint": "a" * 64}),
+    for denied, asked in (("pool_leave", {}), ("member_remove", {"fingerprint": "a" * 64}),
                           ("shard_consent", {"enabled": True, "python": "", "repo": ""})):
         with pytest.raises(Denied):
             node.client.call(denied, node.board, kid.token, **asked)

@@ -1,6 +1,6 @@
 """Set this device up to join a pool, the same one command on macOS, Linux, Windows and WSL.
 
-    python -m poolhouse.device_setup [--yes] [--dry-run] [--wait SECONDS] [--policy open|secure]
+    python -m poolhouse.device_setup [--yes] [--dry-run] [--wait SECONDS]
 
 It lists every change this device needs, asks one yes (`--yes` for an agent or script that is already allowed), makes them
 and ends with READY, or NOT READY and the one fix. Per platform: Windows and WSL get inbound firewall rules (one Windows
@@ -109,7 +109,7 @@ def plan(needs: Needs, *, port: int = node_join.DEFAULT_PORT, beacon: int = node
     steps.append({"runtime": "use the node of the selected runtime", "found": f"use the node binary at {needs.source.path}",
                   "build": "build the node with cargo (a few minutes)",
                   "rustup": "install Rust with the standard installer, then build the node"}[needs.source.kind])
-    steps.append(f"start the node with its network on (TCP {port}, UDP beacon {beacon}), join policy open, and run the join check")
+    steps.append(f"start the node with its network on (TCP {port}, UDP beacon {beacon}), and run the join check")
     return steps
 
 
@@ -168,7 +168,7 @@ def _setup(a) -> int:
         if prepare(needs):
             return 0
         check = node_join_check.Check(state=default_state(), port=node_join.DEFAULT_PORT, beacon_port=node_join.DEFAULT_BEACON_PORT,
-                                      wait_s=a.wait, policy=a.policy, binary=binary_of(needs, repo))
+                                      wait_s=a.wait, binary=binary_of(needs, repo))
         node_join.consent(check.port, check.beacon_port, yes=True)
         ok = node_join_check.walk(check)
         say(node_join_check.summary(check))
@@ -182,7 +182,7 @@ GROUP = Group("poolhouse.device_setup", "Set this device up to join a pool: the 
     flag("--yes", action="store_true", help="agree to the listed changes without being asked"),
     flag("--dry-run", action="store_true", help="list the changes and make none"),
     flag("--wait", type=float, default=90.0, help="seconds to wait for another device at each step that needs it"),
-    flag("--policy", default="open", choices=node_join.POLICIES, help="open: devices on this network enrol by themselves; secure: a join code")])
+])
 
 main = GROUP.run
 

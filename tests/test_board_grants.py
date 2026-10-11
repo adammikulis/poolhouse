@@ -82,18 +82,20 @@ def test_a_refusal_names_the_grant_and_a_person_at_a_terminal_signs_it_for_one_u
     lead = team.lead
     team.allow(lead, "sync_now")  # enrols the key, nothing else
     plain = team.member("plain")
-    call = lambda: team.client.call("set_join_policy", "", plain.token, policy="open")  # noqa: E731 - one request, asked twice
+    call = lambda: team.client.call("pool_leave", "", plain.token)  # noqa: E731 - one request, asked twice
     with pytest.raises(Denied) as refused:
         call()
-    assert refused.value.grant["action"] == "set_join_policy" and refused.value.grant["name"] == plain.name
+    assert refused.value.grant["action"] == "pool_leave" and refused.value.grant["name"] == plain.name
     team.client.person = lambda token, hint: token if board_grants.issue(team.session(plain), team.person, board_grants.Want(
         hint["action"], {"kind": "session", "name": hint["name"]}, hint["resource"], hint["device"], 120_000, 1)) else ""
-    assert team.client.call("set_join_policy", "", plain.token, policy="open")["policy"] == "open"
+    with pytest.raises(Denied) as spent:  # the one use was spent on a call the node then answered: this device is in no pool
+        team.client.call("pool_leave", "", plain.token)
+    assert "not in a pool" in str(spent.value) and not getattr(spent.value, "grant", None)
     team.client.person = None
     with pytest.raises(Denied):
         call()
     log = board_grants.log(team.session(plain))
-    assert [e["op"] for e in log if e["action"] == "set_join_policy"] == ["use", "issue"]
+    assert [e["op"] for e in log if e["action"] == "pool_leave"] == ["use", "issue"]
     assert [e["user"] for e in log if e["op"] == "use"] == [plain.name]
 
 

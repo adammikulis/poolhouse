@@ -25,7 +25,7 @@ from poolhouse.fleet.onboard.manifest import Signer
 POOL = "pool"
 ABOUT = "the pool check's person"
 LASTS_MS = 6 * 3_600_000
-POOL_ACTIONS = ("set_join_policy", "add_device", "join_pool", "member_remove", "sync_now", "pool_create")
+POOL_ACTIONS = ("add_device", "join_pool", "member_remove", "sync_now", "pool_create")
 """What the rig's pool session does on each device: the pool calls every step makes."""
 SESSION_ACTIONS = ("shard_call", "shard_consent")
 """What the rig's session of the demo board does: send tests to another device, and (as the receiver) name who may."""

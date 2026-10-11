@@ -42,7 +42,7 @@ def a_session_with_no_grant_is_refused_until_a_person_signs_one(world: World) ->
         _refused(bare, method, action, **params)
     assert victim.fingerprint in {m["fingerprint"] for m in first.others()}, "a session with no grant removed a member"
     moved = first.try_call("set_join_policy", "", rig.token, policy="open")
-    assert not moved["ok"] and "reissue" in moved["error"], f"a granted session moved the join policy of a governed pool: {moved}"
+    assert not moved["ok"] and "unknown method" in moved["error"], f"the join policy of a governed pool has a method that moves it: {moved}"
     forged = person.try_allow(bare, "add_device", Signer.generate())
     assert not forged["ok"], f"a grant signed by a key the node does not hold was taken: {forged}"
     _refused(bare, "add_device", ttl_s=120)
@@ -68,6 +68,7 @@ def a_session_with_no_grant_is_refused_until_a_person_signs_one(world: World) ->
 def a_removed_key_stops_what_it_signed(world: World) -> str:
     """A second person key, approved by the first, signs a grant that works; when the first key removes it the grant stops, what the first key signed still works, and the removed key cannot come back."""
     world.fresh()
+    world.pool_of(world.devices)
     person = world.person
     readers = [d for d in world.devices if d.call("lineage")["lineage"]]
     if not readers:
@@ -77,11 +78,11 @@ def a_removed_key_stops_what_it_signed(world: World) -> str:
     second = Signer.generate()
     person.enrol(rig, second)
     signed = person.allow(bare, "add_device", second)
-    first.call("add_device", "", bare.token, ttl_s=120)
+    first.call("add_device", "", bare.token, ttl_s=120, presigned=True)
     person.remove(rig, grants.fingerprint(second.public))
     _refused(bare, "add_device", ttl_s=120)
     assert person.status(rig, signed) != "live", f"the node still lists the removed key's grant as {person.status(rig, signed)}"
-    first.admin("add_device", ttl_s=120)
+    first.admin("add_device", ttl_s=120, presigned=True)
     assert not person.try_allow(bare, "add_device", second)["ok"], "a removed key signed a new grant"
     again = None
     try:
