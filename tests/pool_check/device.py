@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -378,6 +379,15 @@ def wsl_argv(distro: str, checkout: str, argv: list[str], env: dict[str, str]) -
     return ["wsl.exe", "-d", distro, "--cd", checkout, "--", "env", *(f"{k}={v}" for k, v in env.items()), *argv]
 
 
+def windows_address(seen: str) -> str:
+    """The IPv4 address of Windows in what WSL printed: the gateway of the default route, else the nameserver WSL points at Windows; an error showing ``seen`` when neither is there."""
+    route, _, resolv = seen.partition("---")
+    for pattern, text in ((r"\bvia\s+(\d{1,3}(?:\.\d{1,3}){3})\b", route), (r"^nameserver\s+(\d{1,3}(?:\.\d{1,3}){3})\s*$", resolv)):
+        if found := re.search(pattern, text, re.MULTILINE):
+            return found.group(1)
+    raise RuntimeError(f"WSL shows no address for Windows: {seen.strip()[:600]!r}")
+
+
 @dataclass
 class WslHostedDevice(Device):
     """A real WSL2 distribution of the Windows machine this runs on, as a device: its own node, state and Python inside the distribution.
@@ -404,8 +414,8 @@ class WslHostedDevice(Device):
 
     def windows_host(self) -> str:
         """The address of Windows as WSL sees it: the default route's gateway (NAT mode)."""
-        out = self.run(["sh", "-c", "ip route show default | awk '{print $3}'"]).stdout.strip()
-        return out.splitlines()[0]
+        seen = self.run(["sh", "-c", "ip -4 route show default; echo '---'; cat /etc/resolv.conf"]).stdout
+        return windows_address(seen)
 
     def script(self, name, *argv):
         return [f"{self.checkout}/.venv/bin/python", f"{self.checkout}/tests/pool_check/{name}", *argv]

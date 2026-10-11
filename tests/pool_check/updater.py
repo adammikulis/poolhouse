@@ -14,13 +14,15 @@ import argparse
 import json
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 import wire
 
-from poolhouse import build_update, runtime, runtime_store
+from poolhouse import build_update, node_health, runtime, runtime_store
 from poolhouse.build_update import Steps
 
 BRANCH = "dev"
@@ -50,6 +52,25 @@ def make_repos(root: Path) -> tuple[Path, str, str]:
     return checkout, old, git("rev-parse", "HEAD", cwd=other)
 
 
+def wait_for_restart(state: Path, old_pid: int, seconds: float = 60.0, ask: Callable[..., dict] = node_health.call) -> int:
+    """Wait until a node other than ``old_pid`` answers on ``state``; its pid.
+
+    The node's supervisor restarts the node whenever the runtime selection (`selected.json`) changes, and the selection is written here to
+    make the device a checkout one commit behind: a question put to the node in that moment meets the old node closing or no node at all.
+    """
+    end, seen = time.monotonic() + seconds, "no node answered"
+    while time.monotonic() < end:
+        try:
+            pid = int(ask(state, "hello")["pid"])
+            if pid != old_pid:
+                return pid
+            seen = f"the node is still {old_pid}"
+        except (OSError, ValueError) as exc:
+            seen = f"{type(exc).__name__}: {exc}"
+        time.sleep(0.2)
+    raise RuntimeError(f"the supervisor did not restart the node after the selection changed: {seen}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--state", required=True)
@@ -64,7 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     runtime_store.write_state({"checkout": str(checkout)})
     runtime.directory().mkdir(parents=True, exist_ok=True)
     selected = runtime.directory() / "selected.json"
+    before = int(node_health.call(state, "hello")["pid"])
     selected.write_text(json.dumps({"commit": old}))
+    wait_for_restart(state, before)
 
     def ensure(_checkout: Path) -> tuple[int, str]:
         selected.write_text(json.dumps({"commit": new}))
