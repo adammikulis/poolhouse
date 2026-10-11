@@ -1,7 +1,7 @@
 {
- "surfaces": 791,
+ "surfaces": 793,
  "by_status": {
-  "covered": 471,
+  "covered": 473,
   "partial": 194,
   "uncovered": 52,
   "n/a": 74,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 69,
+   "covered": 71,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -5611,6 +5611,18 @@
    "note": "planted files cannot escape the import root; invalid native JSON, XML entities and include paths are rejected; malformed browser JSON and review/frame symlinks are refused"
   },
   {
+   "id": "parser:hub/adopt.py",
+   "kind": "parser",
+   "source": "hub/adopt.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_adopt.py"
+   ],
+   "note": "download records, indexes, provenance files and links in an old folder or a derived repository are read back; a hand-edited or planted one vouches for nothing, moves nothing and removes nothing"
+  },
+  {
    "id": "parser:hub/capabilities.py",
    "kind": "parser",
    "source": "hub/capabilities.py",
@@ -5635,6 +5647,18 @@
    "status": "uncovered",
    "tests": [],
    "note": "a crafted model-repository listing, card, document, mailbox, WAV or archive reaches the reader; only tests/test_hub_modelfile.py attacks one"
+  },
+  {
+   "id": "parser:hub/derived.py",
+   "kind": "parser",
+   "source": "hub/derived.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_adopt.py"
+   ],
+   "note": "download records, indexes, provenance files and links in an old folder or a derived repository are read back; a hand-edited or planted one vouches for nothing, moves nothing and removes nothing"
   },
   {
    "id": "parser:hub/discover.py",

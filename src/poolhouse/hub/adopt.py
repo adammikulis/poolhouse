@@ -68,7 +68,9 @@ def _missing(path: Path, rel: str, index: Path) -> list[str]:
     try:
         weight_map = json.loads(index.read_text(encoding="utf-8")).get("weight_map", {})
         header = modelfile.safetensors_header(path)
-    except (OSError, ValueError, modelfile.NotAModelFile):
+    except (OSError, ValueError, RecursionError, AttributeError, modelfile.NotAModelFile):
+        return []
+    if not isinstance(weight_map, dict):
         return []
     return [name for name, shard in weight_map.items() if shard == rel and name not in header]
 
@@ -84,11 +86,15 @@ def structure_problem(path: Path, rel: str = "", index: Path | None = None) -> s
 
 
 def _record(path: Path) -> dict | None:
-    try:
-        held = json.loads(provenance.sidecar(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    """The download record beside ``path``: None when there is none, an empty one when it cannot be read."""
+    note = provenance.sidecar(path)
+    if not note.exists():
         return None
-    return held if isinstance(held, dict) else None
+    try:
+        held = json.loads(note.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return {}
+    return held if isinstance(held, dict) else {}
 
 
 def _by_hub(path: Path, size: int, one: remote.RemoteFile) -> tuple[str, str]:
@@ -109,7 +115,8 @@ def _by_record(path: Path, size: int, held: dict) -> tuple[str, str]:
         return "", "its download record does not vouch for it"
     if files.sha256_file(path) != digest:
         return "", "differs from the digest its download record names"
-    etag = str((held.get("headers") or {}).get("etag", "")).removeprefix("W/").strip('"')
+    headers = held.get("headers")
+    etag = str(headers.get("etag", "") if isinstance(headers, dict) else "").removeprefix("W/").strip('"')
     if len(etag) == 40 and hfstore.DIGEST.fullmatch(etag):
         same = hfstore.git_blob_sha1(path, size) == etag
         return (etag, "its download record") if same else ("", "differs from the object id its download record names")
