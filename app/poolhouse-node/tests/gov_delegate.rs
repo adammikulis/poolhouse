@@ -4,6 +4,7 @@ mod kit;
 
 use kit::gov::*;
 use poolhouse_node::cert::Identity;
+use poolhouse_node::gov::act::Act;
 use poolhouse_node::gov::keys::Strength;
 use poolhouse_node::gov::pool::{GovPool, Ingest};
 use poolhouse_node::membership::Policy;
@@ -188,4 +189,100 @@ fn a_delegate_made_by_a_key_that_is_removed_without_its_act_in_the_cut_admits_no
     assert!(!admins(&g).contains(&public(3)));
     assert!(!is_member(&g, &guest), "the delegate act lost the signature of the key that was removed, and one person is not enough to make a delegate");
     assert!(g.state().roster.delegates.is_empty());
+}
+
+/// The seed of a device whose fingerprint sorts below ``fingerprint``.
+fn seed_below(fingerprint: &str) -> u8 {
+    (100u8..200).find(|s| ident(*s).fingerprint().as_str() < fingerprint).expect("a lower fingerprint")
+}
+
+fn device_leave(g: &mut GovPool, who: &Identity, signers: &[u8]) -> Ingest {
+    let mut leave = g.new_act("leave", json!({"fingerprint": who.fingerprint()}), wall_ms()).unwrap();
+    signers.iter().for_each(|s| device_sign(&mut leave, *s));
+    take(g, leave)
+}
+
+#[test]
+fn a_member_that_relays_a_delegates_admit_cannot_undo_it_by_adding_its_own_signature() {
+    let (_d, mut g, delegate) = delegate_pool();
+    let plain_seed = seed_below(&delegate.fingerprint());
+    put_admit(&mut g, &ident(plain_seed), &[A]);
+    let guest = ident(31);
+    let mut act = g.new_act("admit", admit_body(&guest, "guest", "join-code", ""), wall_ms()).unwrap();
+    device_sign(&mut act, 20);
+    assert_eq!(take(&mut g, act.clone()), Ingest::Accepted);
+    let mut relayed = act.clone();
+    device_sign(&mut relayed, plain_seed);
+    assert!(matches!(take(&mut g, relayed), Ingest::Refused(_)), "a device that may not admit adds no signature to an admit");
+    assert!(is_member(&g, &guest), "the delegate's admit stands");
+    assert_eq!(g.acts()[&act.id()].signatures.len(), 1);
+}
+
+#[test]
+fn an_admit_carrying_the_signature_of_a_device_that_may_not_admit_is_refused() {
+    let (_d, mut g, delegate) = delegate_pool();
+    let plain_seed = seed_below(&delegate.fingerprint());
+    put_admit(&mut g, &ident(plain_seed), &[A]);
+    let guest = ident(31);
+    let mut act = g.new_act("admit", admit_body(&guest, "guest", "join-code", ""), wall_ms()).unwrap();
+    device_sign(&mut act, 20);
+    device_sign(&mut act, plain_seed);
+    assert!(matches!(take(&mut g, act), Ingest::Refused(_)));
+    assert!(!is_member(&g, &guest));
+}
+
+#[test]
+fn a_member_cannot_add_its_signature_to_the_leave_of_another_device() {
+    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (goes, other) = (ident(21), ident(22));
+    put_admit(&mut g, &goes, &[A]);
+    put_admit(&mut g, &other, &[A]);
+    let mut leave = g.new_act("leave", json!({"fingerprint": goes.fingerprint()}), wall_ms()).unwrap();
+    device_sign(&mut leave, 21);
+    assert_eq!(take(&mut g, leave.clone()), Ingest::Accepted);
+    let mut relayed = leave.clone();
+    device_sign(&mut relayed, 22);
+    assert!(matches!(take(&mut g, relayed), Ingest::Refused(_)));
+    assert_eq!(g.devices()[&goes.fingerprint()].status, poolhouse_node::membership::Status::Left, "the leave stands");
+}
+
+#[test]
+fn a_delegate_end_ends_the_delegate_whatever_time_its_signer_put_on_either_act() {
+    let (_d, mut g) = pool(&[strong(A, "ann"), kit::gov::weak(B, "ann")], Policy::Secure);
+    let delegate = ident(20);
+    put_admit(&mut g, &delegate, &[A]);
+    let (epoch, prev) = g.context();
+    let mut ahead = Act::new(&g.id, epoch, "delegate", json!({"fingerprint": delegate.fingerprint()}), wall_ms() + 4 * MINUTE as u64, &prev).unwrap();
+    sign(&mut ahead, A);
+    take(&mut g, ahead);
+    assert!(g.state().roster.delegates.contains_key(&delegate.fingerprint()));
+    advance(&mut g, 10);
+    put(&mut g, "delegate_end", json!({"fingerprint": delegate.fingerprint()}), &[B]);
+    assert!(g.state().roster.delegates.is_empty(), "the end came after the delegate act on this device");
+}
+
+#[test]
+fn a_device_that_left_admits_nobody_whatever_time_it_puts_on_the_admit() {
+    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Open);
+    let member = ident(20);
+    put_admit(&mut g, &member, &[A]);
+    assert_eq!(device_leave(&mut g, &member, &[20]), Ingest::Accepted);
+    advance(&mut g, 10);
+    let guest = ident(30);
+    let mut act = g.new_act("admit", admit_body(&guest, "guest", "open", "segment"), wall_ms() - MINUTE as u64).unwrap();
+    device_sign(&mut act, 20);
+    take(&mut g, act);
+    assert!(!is_member(&g, &guest), "it was seen after the leave, so it was signed by a device that was not a member");
+}
+
+#[test]
+fn a_leave_is_signed_by_the_device_it_names_alone() {
+    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (goes, other) = (ident(21), ident(22));
+    put_admit(&mut g, &goes, &[A]);
+    put_admit(&mut g, &other, &[A]);
+    assert!(matches!(device_leave(&mut g, &goes, &[22]), Ingest::Refused(_)), "another device signs no leave of this one");
+    assert!(matches!(device_leave(&mut g, &goes, &[21, 22]), Ingest::Refused(_)), "nor does one add its signature");
+    assert!(is_member(&g, &goes));
+    assert_eq!(device_leave(&mut g, &goes, &[21]), Ingest::Accepted);
 }

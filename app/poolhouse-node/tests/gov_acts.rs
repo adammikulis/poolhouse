@@ -116,10 +116,25 @@ fn a_replayed_act_is_a_no_op_and_a_signature_counted_twice_counts_once() {
     let mut twice = make(&g, "admin_add", json!({"entry": entry(strong(C, "cy"), 2, &g.id)}), &[A]);
     let dup = twice.signatures[0].clone();
     twice.signatures.push(dup);
-    take(&mut g, twice.clone());
+    assert!(refused(take(&mut g, twice.clone())).contains("once by each signer"), "a signer signs an act once");
     advance(&mut g, 25 * HOUR);
     assert!(!admins(&g).contains(&public(C)), "one person signed it twice; two are needed once a second person is listed");
-    assert!(matches!(g.status(&twice.id()), ActStatus::Short(1, 2) | ActStatus::Void(_)), "{:?}", g.status(&twice.id()));
+    assert_eq!(g.status(&twice.id()), ActStatus::Unknown);
+}
+
+#[test]
+fn a_signature_repeated_to_pad_an_act_does_not_win_a_fork() {
+    let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben"), strong(C, "cy")], Policy::Secure);
+    let anchor = g.id.clone();
+    let honest = make(&g, "admin_add", json!({"entry": entry(strong(D, "dee"), 2, &anchor)}), &[A, B]);
+    let mut padded = make(&g, "admin_add", json!({"entry": entry(strong(5, "eve"), 2, &anchor)}), &[C, A]);
+    let again = padded.signatures.iter().find(|s| s.key == public(C)).unwrap().clone();
+    (0..6).for_each(|_| padded.signatures.push(again.clone()));
+    take(&mut g, honest.clone());
+    assert!(refused(take(&mut g, padded.clone())).contains("once by each signer"));
+    advance(&mut g, 25 * HOUR);
+    assert!(admins(&g).contains(&public(D)) && !admins(&g).contains(&public(5)), "the act the two people signed wins");
+    assert!(g.state().chain.dispute.is_none());
 }
 
 #[test]

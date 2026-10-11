@@ -109,7 +109,11 @@ impl Act {
         if self.signatures.len() > MAX_SIGNATURES || serde_json::to_vec(self).map_or(usize::MAX, |b| b.len()) > MAX_ACT_BYTES {
             return bad("an act is at most 16 KiB with at most eight signatures");
         }
+        let mut signers = std::collections::BTreeSet::new();
         for s in &self.signatures {
+            if !signers.insert((s.kind, s.key.as_str())) {
+                return bad("an act is signed once by each signer");
+            }
             let key_ok = match s.kind {
                 SigKind::Admin => valid_public(&s.key),
                 SigKind::Device => valid_fingerprint(&s.key),

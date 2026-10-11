@@ -16,9 +16,9 @@ use serde_json::{json, Value};
 use crate::error::{Error, Result};
 use crate::fsutil::{private_dir, sha256_hex, write_atomic};
 use crate::grants::spec::SKEW_MS;
-use crate::membership::Device;
+use crate::membership::{Device, Policy, Status};
 
-use super::act::{Act, SigKind};
+use super::act::{Act, ActSig, SigKind};
 use super::body::{self, Body};
 use super::chain::{self, Chain, Seen};
 use super::charter::Charter;
@@ -255,9 +255,9 @@ impl GovPool {
         let counts = |key: &&str| named.is_some_and(|c| c.admin(key).is_some_and(|k| k.role == Role::Admin && k.strength == Strength::Strong));
         match act.kind.as_str() {
             "admit" if admin.is_empty() && device.is_empty() => Err("an admit is signed".into()),
-            "leave" if !admin.is_empty() || device.is_empty() => Err("a device leaves by its own signature".into()),
+            "leave" if !admin.is_empty() || device.len() != 1 => Err("a device leaves by its own signature alone".into()),
+            "admit" | "leave" if device.iter().any(|d| !self.device_fits(act, d)) => Err("a device signs its own leave, and an admit only as a delegate or, in an open pool, as a member that says it checked the device is on its network".into()),
             "admit" if !admin.is_empty() && !admin.iter().any(counts) => Err("a weak key, or the recovery key, admits no device".into()),
-            "admit" if admin.is_empty() && !self.may_admit_by_device(act) => Err("a member that is not a delegate admits nobody in a secure pool, and in an open one only a device it checked is on its network".into()),
             "admit" | "leave" => Ok(()),
             _ if !device.is_empty() => Err("only a device's own act is signed by a device".into()),
             "delegate_end" if !admin.is_empty() => Ok(()),
@@ -270,10 +270,34 @@ impl GovPool {
         }
     }
 
-    /// Whether a device may sign this admit now: a live delegate may; in an open pool a member may when it says `segment`.
-    fn may_admit_by_device(&self, act: &Act) -> bool {
-        let open = self.state.chain.latest().charter.policy == crate::membership::Policy::Open && act.body["via"] == "segment";
-        open || (act.body["via"].as_str().unwrap_or("").is_empty() && act.device_keys().iter().any(|d| self.state.roster.delegates.contains_key(*d)))
+    /// Whether the device ``key`` may sign ``act``: a device that is a member signs its own `leave`, and an `admit` when it is a live
+    /// delegate or, in an open pool, says `segment`. A removed device signs nothing.
+    fn device_fits(&self, act: &Act, key: &str) -> bool {
+        let Some(device) = self.state.roster.devices.get(key).filter(|d| d.status != Status::Revoked) else { return false };
+        let via = act.body["via"].as_str().unwrap_or("");
+        match act.kind.as_str() {
+            "leave" => device.status == Status::Active && act.body["fingerprint"] == key,
+            "admit" => (self.state.chain.latest().charter.policy == Policy::Open && via == "segment") || (via.is_empty() && self.state.roster.delegates.contains_key(key)),
+            _ => false,
+        }
+    }
+
+    /// The signatures of ``act`` that are new to the act held under ``id`` and that their signers may give.
+    fn signatures_to_add(&self, id: &str, act: &Act) -> Vec<ActSig> {
+        let held = self.acts.get(id).map(|a| a.signatures.clone()).unwrap_or_default();
+        let new = act.signatures.iter().filter(|s| !held.iter().any(|h| h.kind == s.kind && h.key == s.key));
+        new.filter(|s| s.kind == SigKind::Admin || self.device_fits(act, &s.key)).cloned().collect()
+    }
+
+    /// Add the signatures of ``act`` that may be given to the copy held under ``id``.
+    fn merge(&mut self, id: &str, act: &Act) -> Ingest {
+        let fit = self.signatures_to_add(id, act);
+        if fit.is_empty() {
+            return self.refuse(act, "no signature on that act is one its signer may give");
+        }
+        let Some(held) = self.acts.get_mut(id) else { return Ingest::Known };
+        let added = fit.into_iter().filter(|s| held.add_signature(s.clone())).count();
+        if added > 0 { Ingest::Merged } else { Ingest::Known }
     }
 
     fn verify_signatures(&self, act: &Act) -> std::result::Result<(), Ingest> {
@@ -347,7 +371,8 @@ impl GovPool {
         out
     }
 
-    fn take(&mut self, act: Act, wall_ms: u64, settled: bool) -> Ingest {
+    fn take(&mut self, mut act: Act, wall_ms: u64, settled: bool) -> Ingest {
+        act.signatures.sort();
         let id = act.id();
         if let Err(e) = act.check_shape() {
             return self.refuse(&act, &e.to_string());
@@ -373,9 +398,8 @@ impl GovPool {
             Err(Ingest::Refused(why)) => return self.refuse(&act, &why),
             Err(other) => return other,
         }
-        if let Some(held) = self.acts.get_mut(&id) {
-            let added = act.signatures.iter().filter(|s| held.add_signature((*s).clone())).count();
-            return if added > 0 { Ingest::Merged } else { Ingest::Known };
+        if self.acts.contains_key(&id) {
+            return self.merge(&id, &act);
         }
         if act.epoch > self.state.chain.latest().n {
             return Ingest::Waiting;
