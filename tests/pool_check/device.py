@@ -19,7 +19,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath
 
 from pool_check import dock
 
@@ -124,8 +124,8 @@ class Device:
     def heal(self, world) -> None:
         raise NotImplementedError
 
-    def root_of_checkout(self) -> Path:
-        """The checkout of this tree on this device (the one `scripts/test_on.py` is in)."""
+    def root_of_checkout(self) -> PurePath:
+        """The checkout of this tree on this device (the one `scripts/test_on.py` is in), as that device spells paths."""
         raise NotImplementedError
 
     def session_env(self) -> dict[str, str]:
@@ -424,7 +424,7 @@ class WslHostedDevice(Device):
         return [f"{self.checkout}/.venv/bin/python"]
 
     def root_of_checkout(self):
-        return Path(self.checkout)
+        return PurePosixPath(self.checkout)  # a path on the Linux side: never spelled with this machine's separators
 
     def test_python(self):
         return f"{self.checkout}/.venv/bin/python"

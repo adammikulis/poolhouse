@@ -88,6 +88,14 @@ def test_the_address_of_windows_is_read_from_the_default_route_or_the_nameserver
         windows_address("default dev eth0 scope link\n---\nnameserver fe80::1\n")
 
 
+def test_the_checkout_inside_wsl_is_spelled_as_a_linux_path_whatever_machine_the_rig_runs_on():
+    from pathlib import PurePosixPath
+
+    from pool_check.device import WslHostedDevice
+    where = WslHostedDevice(name="wsl", port=1, checkout="/root/poolhouse").root_of_checkout()
+    assert type(where) is PurePosixPath and str(where) == "/root/poolhouse"
+
+
 def test_a_command_in_wsl_carries_its_environment_because_wsl_passes_none():
     argv = wsl_argv("Ubuntu-24.04", "/root/poolhouse", ["python", "x.py"], {"POOLHOUSE_HOME": "/tmp/pcw", "A": "b"})
     assert argv == ["wsl.exe", "-d", "Ubuntu-24.04", "--cd", "/root/poolhouse", "--", "env", "POOLHOUSE_HOME=/tmp/pcw", "A=b", "python", "x.py"]
