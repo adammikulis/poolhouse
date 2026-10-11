@@ -139,7 +139,7 @@ EXPIRES: This request ends at <time> UTC.
 - would change the pool's join policy from secure to open;
 - names a task that is not on the board.
 
-The `RISK:` level is fixed per action in `approvals::risk` (a table, not a judgement of the agent): `sync_now`, `link_read`,
+The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`, `link_read`,
 `link_remove`, `note_verify`, `land_control` are routine; `set_join_policy`, `add_device`, `join_pool`, `shard_call`,
 `shard_consent`, `land_trust`, `task_authority`, `quarantine_release`, `link_write`, `source_add` and adding a phone are
 sensitive; `member_remove` and `file_delete` are irreversible. A request is as risky as its riskiest ask.
@@ -209,16 +209,16 @@ Each refusal is one sentence the agent can pass to its person.
 | The text the phone showed is not the node's text | "The text you were shown is not the text of this request, so nothing was signed." |
 | A signature of the right text by a key the node does not hold | "That key is not one of your keys on this device, so nothing was approved." |
 | A phone that was removed | "That phone was removed from this device and can no longer approve." |
-| An agent (any session) deciding | "A session cannot decide a request: only a person's key can." |
+| A session that signs with a key it made itself | "That key is not one of your keys on this device, so nothing was approved." |
 | The requester carrying its own decision | "The session that asked cannot carry the answer to its own request." |
 | An ask for a floor (`grant_issue`, `push_main`...) | "`grant_issue` is a floor: no grant, from anyone, covers it." |
 | An agent's `expect_policy` that is not the node's | "The pool is secure, not open as you wrote; ask again with what is true." |
 | Text with other than printable ASCII | "That text must be plain English letters, digits and punctuation." |
-| A request beyond the limits | "Six requests in ten minutes is the most one session may make; try again later." |
-| A challenge replayed on the board | "That grant was not signed for this board or this session, so it counts for nothing." |
+| A request beyond the limits | "6 requests in ten minutes is the most one session may make; try again later." |
+| A grant entry copied from an approval and changed (another session, other words, a longer time) | not an answer to anyone: the node lists it as ignored ("not signed by a person key enrolled on this device") and it counts for nothing |
 
-The text of the grants on the board is the text of the approval, so a person can read, in `poolhouse-workspace approval log`,
-what each key approved.
+Each grant an approval wrote carries the approval, text included, so what each key approved stays on the board and verifies on any
+device that holds the key.
 
 ## Several phones, removing one, losing one
 
@@ -231,10 +231,10 @@ once, what it signed earlier stays as signed and is listed as signed by a key th
 same key again (`persons_removed.json`). A phone removes itself the same way. The last key is never removed; to start again
 a person stops the node, deletes `persons.json` and `phones.json` and runs `phone add` (docs/node.md, "Recovery").
 
-**A lost phone.** From another phone as above. With one phone, the person's command `poolhouse-workspace phone remove NAME` at
-the computer removes it: that command is a person's (it refuses an agent's process), and it leaves a one-time removal beside
-`persons.json` for the node to read, as the enrolment secret does. A phone that is only locked is not an exposure: a signature
-needs the person's fingerprint or the device credential.
+**A lost phone.** From another phone as above. At the computer, `poolhouse-workspace phone remove NAME` asks a key the node holds to
+remove it, with the typed yes: that command is a person's (it refuses an agent's process) and needs a person key kept at the computer
+(`grants-setup`). With one phone and no such key, the offline recovery of docs/node.md ("Recovery") starts again. A phone that is only
+locked is not an exposure: a signature needs the person's fingerprint or the device credential.
 
 **A new fingerprint on the phone** destroys the approval key (Android's own rule). The app says so plainly and goes straight
 to the scan, because the old key is gone for good: a person with another phone removes the old one from it, or removes it at the
@@ -352,12 +352,13 @@ On the local socket, with a session's token (docs/node.md, "Local API"):
 | `approval_pending` | | every pending request (any registered session may read the text it would show a person) |
 | `approval_decide` | `id`, `decision`, `key`, `sig`, `text_sha256` | `{id, state}`: needs a signature of an enrolled person key; a session only carries it |
 | `phone_info` | | `{pin, port, endpoints, device, policy}` |
-| `phone_offer` | | a code for a further phone (needs a person key to exist); the first is a person's command |
-| `phones` | | the phones: name, key, when added and last seen |
+| `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour); the first is a person's command |
+| `phones` | | the phones: name, key, state, when added and last seen, whether a push address is set |
+| `phone_remove` | `phone` | the request "Remove the phone", for a key the node holds to approve |
 
 On the phone endpoint (HTTPS, TLS 1.3, one P-256 self-signed certificate the code pins; `--phone ADDR`, port 7449 by default),
 `POST /phone/v1/<op>` with a JSON body, always `{"ok":true,"result":...}` or `{"ok":false,"error":{"code","message"}}` with a
-bearer token except `add` and `decide`: `hello` (GET), `add`, `list`, `get`, `wait`, `decide`, `push`, `phones`, `remove`.
+bearer token except `hello`, `add` and `decide`: `hello` (GET), `add`, `status` (a phone waiting for approval), `list`, `get`, `wait`, `decide`, `push`, `phones`, `remove`, `offer`.
 
 Audit: each addition, removal, request, decision and expiry is an audit entry on the pool board (`phone.add`,
 `phone.remove`, `approval.request`, `approval.approved`, `approval.denied`, `approval.expired`), naming the id, the session and the

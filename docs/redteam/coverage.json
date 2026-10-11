@@ -1,7 +1,7 @@
 {
- "surfaces": 789,
+ "surfaces": 792,
  "by_status": {
-  "covered": 469,
+  "covered": 472,
   "partial": 194,
   "uncovered": 52,
   "n/a": 74,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 63,
+   "covered": 66,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -3825,6 +3825,23 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
+   "id": "human:workspace/approval_cli.py:_decide",
+   "kind": "human",
+   "source": "workspace/approval_cli.py:_decide",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_approval.py::test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone",
+    "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
+    "tests/test_board_approval.py::test_a_person_adds_the_first_phone_by_a_code_with_no_typed_yes",
+    "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal"
+   ],
+   "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
+  },
+  {
    "id": "human:workspace/cli.py:_chat",
    "kind": "human",
    "source": "workspace/cli.py:_chat",
@@ -3972,6 +3989,40 @@
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/phone_cli.py:_add",
+   "kind": "human",
+   "source": "workspace/phone_cli.py:_add",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_approval.py::test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone",
+    "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
+    "tests/test_board_approval.py::test_a_person_adds_the_first_phone_by_a_code_with_no_typed_yes",
+    "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal"
+   ],
+   "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
+  },
+  {
+   "id": "human:workspace/phone_cli.py:_remove",
+   "kind": "human",
+   "source": "workspace/phone_cli.py:_remove",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_approval.py::test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone",
+    "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
+    "tests/test_board_approval.py::test_a_person_adds_the_first_phone_by_a_code_with_no_typed_yes",
+    "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal"
+   ],
+   "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
   },
   {
    "id": "keystore:fleet/onboard/signing.py:SigningKeys._drop",

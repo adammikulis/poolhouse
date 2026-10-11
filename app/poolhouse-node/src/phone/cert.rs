@@ -43,7 +43,7 @@ impl Endpoint {
 
 fn make() -> Result<Endpoint> {
     let fail = |e: rcgen::Error| Error::Invalid(format!("phone certificate: {e}"));
-    let pair = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).map_err(fail)?;
+    let signing = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).map_err(fail)?;
     let mut params = CertificateParams::new(Vec::<String>::new()).map_err(fail)?;
     let mut name = DistinguishedName::new();
     name.push(DnType::CommonName, "poolhouse-phone");
@@ -55,8 +55,8 @@ fn make() -> Result<Endpoint> {
     };
     params.not_before = ymd(now - 24 * 3600);
     params.not_after = ymd(now + TEN_YEARS_S);
-    let cert = params.self_signed(&pair).map_err(fail)?;
-    Ok(Endpoint { der: cert.der().to_vec(), pkcs8: pair.serialize_der() })
+    let cert = params.self_signed(&signing).map_err(fail)?;
+    Ok(Endpoint { der: cert.der().to_vec(), pkcs8: signing.serialize_der() })
 }
 
 /// Load the endpoint's certificate from ``dir``, making it on first use.

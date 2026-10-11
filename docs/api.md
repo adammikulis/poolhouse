@@ -122,7 +122,9 @@ A board belongs to a project (the repository a directory belongs to) and syncs t
 |---|---|
 | `ph.board.connect(*, agent="", token_file="", board="", cwd=None)` | Your `Board` session: the agent named (or `$POOLHOUSE_WORKSPACE_AGENT`), or a token file or `$POOLHOUSE_WORKSPACE_TOKEN`, on the board of `cwd`'s project (or `board`, or `$POOLHOUSE_BOARD`). `ph.Denied` with none. |
 | `ph.board.register(name="python", *, board="", cwd=None)` | Register a session for a script and return its `Board`; the same name returns the same session. |
-| `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `tasks`, `task`, `add_task`, `review_task`, `link`, `links`, `unlink`, `projects`. |
+| `ph.board.Board` | The session. `name`, `id`; `send`, `announce`, `inbox`, `dm`, `thread`, `wait`, `add_note`, `notes`, `claim`, `release`, `claims`, `renew`, `agents`, `tasks`, `task`, `add_task`, `review_task`, `link`, `links`, `unlink`, `projects`, `request_approval`, `approval`, `approvals`, `offer_phone`. |
+| `ph.board.Ask` | One grant to ask a person for: `action`, `resource` (default `*`), `lasts` (`90m`, `12h`, `30d`), `uses`, `review`. |
+| `ph.board.Approval` | A request made of the person's phone: `id`, `state` (pending, approved, denied, expired, cancelled or failed), `text` (what the person reads, written by the node), `title`, `risk`, `expires_ms`, `grants` (the ids an approval wrote); `wait(timeout_s)` returns the state and is `pending` when the time ran out, `refresh()`, `cancel()`, `message()` (one sentence to pass on to the person). |
 | `ph.board.Message` | `ref`, `sender`, `kind`, `to`, `subject`, `body`, `at_ms`, `foreign` (written on another device), `reply_to`. |
 | `ph.board.Note` | `ref`, `kind`, `title`, `body`, `author`, `tags`, `trust`, `stale`. |
 | `ph.board.Claim` | `kind`, `key`, `owner`, `expires_in_s`. |
@@ -146,6 +148,17 @@ board.add_note("decision", "Parser", "Use the recursive-descent one.", tags=("pa
 `milestone`, `done`, `blocked`. `link(to, channels=(), mode="ro")` lets another board read (or, with `"rw"`, write)
 channels of this one, to a board the node already hosts (`"ro"` needs the grant `link_read`, `"rw"` `link_write`; a board has at most 64 open); `unlink` ends it at once (the grant
 `link_remove`).
+
+`request_approval(asks, *, note="", task="", ttl_s=0, expect_policy="")` asks the person, on their phone, for one to eight grants for
+this session and returns an `Approval` to wait on; the person reads a text the node wrote, taps, and the phone's key signs it
+(docs/phone-approval.md). `approval(handle)` and `approvals(state="")` read back what this session asked, and `offer_phone()` returns a
+link that adds one more phone once a phone is added.
+
+```python
+ask = board.request_approval([ph.board.Ask("add_device", lasts="10m", uses=1)], note="adding the Linux box")
+state = ask.wait(timeout_s=60)             # "pending" is not a failure: the request stays on the person's phone until it ends
+print(ask.message())                       # a sentence to pass on to the person
+```
 
 `tasks(state="")` lists the tasks of the board, `add_task(title, acceptance)` puts one on it and `review_task(ref, accepted,
 reason, checks)` decides one a worker submitted; the worker never reviews its own. Workers claim, checkpoint and submit with

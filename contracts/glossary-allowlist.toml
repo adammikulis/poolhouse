@@ -165,6 +165,10 @@ token = "KeyPair"
 reason = "the rcgen/cryptography libraries' own type for a public and private key"
 
 [[token]]
+token = "EcdsaKeyPair"
+reason = "the ring library's own type for an ECDSA private and public key"
+
+[[token]]
 token = "TorchPair"
 reason = "a torch/mlx implementation pair in the backend parity code"
 

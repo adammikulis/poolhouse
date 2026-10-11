@@ -507,6 +507,17 @@ note = "hostile pytest text remains literal argv; source mount is read-only, no 
 
 # -- the human-only floor ------------------------------------------------------------------
 [[group]]
+match = ["human:workspace/approval_cli.py:*", "human:workspace/phone_cli.py:*"]
+status = "covered"
+tests = ["tests/test_board_approval.py::test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone",
+         "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
+         "tests/test_board_approval.py::test_a_person_adds_the_first_phone_by_a_code_with_no_typed_yes",
+         "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
+         "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+         "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal"]
+note = "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
+
+[[group]]
 match = ["human:workspace/grants_cli.py:*"]
 status = "covered"
 count = 2

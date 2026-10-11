@@ -18,7 +18,7 @@ use tempfile::TempDir;
 pub const LOCAL: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50));
 
 pub struct FakePhone {
-    pair: EcdsaKeyPair,
+    signing: EcdsaKeyPair,
     pub public: String,
     pub name: String,
     pub token: String,
@@ -32,20 +32,20 @@ impl FakePhone {
     pub fn new(name: &str) -> FakePhone {
         let rng = SystemRandom::new();
         let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &rng).unwrap();
-        let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8.as_ref(), &rng).unwrap();
+        let signing = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8.as_ref(), &rng).unwrap();
         let push = EphemeralPrivateKey::generate(&ECDH_P256, &rng).unwrap();
         let push_public = push.compute_public_key().unwrap().as_ref().to_vec();
-        let public = hex(pair.public_key().as_ref());
-        FakePhone { pair, public, name: name.into(), token: String::new(), id: String::new(), push: Some(push), push_public, auth: [9u8; 16] }
+        let public = hex(signing.public_key().as_ref());
+        FakePhone { signing, public, name: name.into(), token: String::new(), id: String::new(), push: Some(push), push_public, auth: [9u8; 16] }
     }
 
     pub fn fingerprint(&self) -> String {
-        sha256_hex(pair_bytes(&self.public).as_slice())
+        sha256_hex(key_bytes(&self.public).as_slice())
     }
 
     /// The signature (hex, DER) of this phone's key over ``bytes``.
     pub fn sign(&self, bytes: &[u8]) -> String {
-        hex(self.pair.sign(&SystemRandom::new(), bytes).unwrap().as_ref())
+        hex(self.signing.sign(&SystemRandom::new(), bytes).unwrap().as_ref())
     }
 
     /// The body of its `add` request for the node ``node_fp`` with the code ``secret``.
@@ -74,7 +74,7 @@ impl FakePhone {
     }
 }
 
-fn pair_bytes(public: &str) -> Vec<u8> {
+fn key_bytes(public: &str) -> Vec<u8> {
     poolhouse_node::fsutil::unhex(public).unwrap()
 }
 
