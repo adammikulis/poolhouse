@@ -274,6 +274,39 @@ fn a_partly_signed_act_is_held_from_the_moment_it_is_complete_and_not_from_the_m
 }
 
 #[test]
+fn a_hold_keeps_running_across_a_restart() {
+    let (_dir, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let act = add(&g, strong(B, "ben"), &[A]);
+    take(&mut g, act);
+    advance(&mut g, 20 * HOUR);
+    g.save().unwrap();
+    let dir = g.dir().to_path_buf();
+    drop(g);
+    let mut again = poolhouse_node::gov::pool::GovPool::load(&dir).unwrap();
+    again.clock.freeze();
+    advance(&mut again, 3 * HOUR);
+    assert!(!admins(&again).contains(&public(B)), "23 hours of awake time in all: a restart gives none back");
+    advance(&mut again, 2 * HOUR);
+    assert!(admins(&again).contains(&public(B)));
+}
+
+#[test]
+fn a_cancel_seen_in_the_hold_still_ends_the_act_after_a_restart() {
+    let (_dir, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let act = add(&g, strong(B, "ben"), &[A]);
+    take(&mut g, act.clone());
+    advance(&mut g, 2 * HOUR);
+    put(&mut g, "cancel", json!({"act": act.id()}), &[A]);
+    g.save().unwrap();
+    let dir = g.dir().to_path_buf();
+    drop(g);
+    let mut again = poolhouse_node::gov::pool::GovPool::load(&dir).unwrap();
+    again.clock.freeze();
+    advance(&mut again, 30 * HOUR);
+    assert!(!admins(&again).contains(&public(B)), "the cancel was first seen inside the hold, and a restart does not move that");
+}
+
+#[test]
 fn a_backdated_act_and_a_wall_clock_a_month_ahead_shorten_no_hold() {
     let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
     let mut act = g.new_act("admin_add", json!({"entry": entry(strong(B, "ben"), 2, &g.id)}), wall_ms() - 3 * 24 * 3_600_000).unwrap();
