@@ -109,7 +109,7 @@ fn a_pool_json_of_the_old_format_or_of_no_format_is_set_aside_and_the_node_start
     for (i, content) in [old_pool.as_slice(), b"\x00\xff not json at all {{{".as_slice()].into_iter().enumerate() {
         let dir = tempfile::tempdir().unwrap();
         let token = {
-            let mut n = Node::open(dir.path()).unwrap();
+            let mut n = kit::node(dir.path());
             let (name, token) = kit::session(&mut n, "demo", "a");
             kit::allow(&mut n, "demo", &token, &name, &[]);
             kit::ok(kit::post(&mut n, "demo", &token, "kept across the old pool"));
