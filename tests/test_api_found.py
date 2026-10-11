@@ -70,11 +70,55 @@ def test_found_with_a_linked_phone_asks_the_phone_and_a_second_call_says_it_is_t
     assert ph.pool.status().missing == "", "a governed pool with a strong key needs nothing from its person"
 
 
-def test_found_with_a_phone_that_cannot_sign_a_charter_yet_says_so_and_changes_nothing(phone_node):
-    add_phone(phone_node)
-    with pytest.raises(ph.pool.Refusal) as refused:
-        ph.pool.found("home")
-    assert "cannot sign" in str(refused.value) and "app" in refused.value.where
+def answer_signing_requests(node, phone, answers: list[str]) -> list[str]:
+    """The person's phone answers each request to sign an act as it comes (`approve` signs the act's own bytes, `deny` signs the challenge); the states."""
+    endpoint, states = endpoint_of(node), []
+    for answer in answers:
+        for _ in range(200):
+            waiting = [r for r in endpoint.ok("list", {}, token=phone.token)["approvals"] if r["state"] == "pending"]
+            if waiting:
+                seen = endpoint.ok("get", {"id": waiting[0]["id"]}, token=phone.token)
+                assert seen["challenge"]["action"]["kind"] == "sign" and seen["challenge"]["text"] == seen["text"]
+                body = phone.signature(seen) if answer == "approve" else phone.decision(seen, answer)
+                states.append(str(endpoint.ok("decide", body)["state"]))
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError("the agent never asked the phone")
+    return states
+
+
+def test_found_with_a_linked_phone_is_two_taps_and_the_phones_key_is_the_strong_admin(phone_node):
+    phone = add_phone(phone_node)
+    told: list[str] = []
+    done: dict = {}
+    thread = threading.Thread(target=lambda: done.update(made=ph.pool.found("home", say=told.append)))
+    thread.start()
+    states = answer_signing_requests(phone_node, phone, ["approve", "approve"])
+    thread.join(30)
+    made = done["made"]
+    assert states == ["approved", "approved"] and made.pool.name == "home" and made.pool.governance == "governed" and not made.already
+    admins = phone_node.client.call("pool_status")["governance"]["admins"]
+    assert [(a["strength"], a["fingerprint"]) for a in admins] == [("strong", phone.fingerprint)]
+    assert any("Found the pool home, secure" in line for line in told), told
+    assert ph.pool.status().missing == "" and len([m for m in ph.pool.status().members if m.active]) == 1
+
+
+def test_found_with_a_linked_phone_the_person_declines_and_nothing_is_founded(phone_node):
+    phone = add_phone(phone_node)
+    outcome: list = []
+
+    def agent() -> None:
+        try:
+            outcome.append(ph.pool.found("home"))
+        except ph.pool.Refusal as refused:
+            outcome.append(refused)
+
+    thread = threading.Thread(target=agent)
+    thread.start()
+    assert answer_signing_requests(phone_node, phone, ["deny"]) == ["denied"]
+    thread.join(30)
+    assert isinstance(outcome[0], ph.pool.Refusal) and "You said no" in str(outcome[0]) and outcome[0].where == "your phone"
     assert ph.pool.status().governance == "unfounded"
 
 

@@ -1,10 +1,10 @@
-"""An agent founds a pool for a person: the node drafts the charter, the person's key signs it, the node takes it back (docs/pools-and-serving.md, 2 and 3).
+"""An agent founds a pool for a person: the person's phone signs the charter and the first admit of this device, or a key the caller holds does (docs/pools-and-serving.md, 2 and 3).
 
-Nothing here signs for anyone. The signature that makes the pool true is the person's admin key, put to the person where only the
-person can answer: the operating system's own prompt for the first key, or the phone's card for a grant (docs/phone-approval.md).
-`Admin` is that key and how strong it is, and a key that is not strong is refused before the person is asked anything, since
-the node takes no pool whose charter lists no strong key. Every refusal is a `Refusal`: one sentence an agent passes on, what is needed
-and where the person taps.
+Nothing here signs for anyone. With a phone linked (`found_by_phone`) the node writes two cards, one to accept being the pool's first admin
+and one to admit this device, and each is a tap on the phone (docs/phone-approval.md, "Signing an act"). With a key the caller holds
+(`found`) the node drafts the charter, that key signs it outside the node, and the node takes it back; a key that is not strong is refused
+before the person is asked anything, since the node takes no pool whose charter lists no strong key. Every refusal is a `Refusal`: one
+sentence an agent passes on, what is needed and where the person taps.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from poolhouse.board.client import Client, NodeError
 from poolhouse.board.session import Session
 from poolhouse.board.terminal import terminal_id
 
-__all__ = ["Admin", "Founded", "Refusal", "Terms", "default_admin", "found", "found_here", "pool_session", "with_card"]
+__all__ = ["Admin", "Founded", "Refusal", "Terms", "default_admin", "found", "found_by_phone", "found_here", "pool_session", "with_card"]
 
 POOL_GRANT_LASTS = "10m"
 CARD_WAIT_S = 120.0
@@ -103,7 +103,11 @@ def _live(session: Session, name: str) -> bool:
 
 def _card(session: Session, ask: approval.Ask, note: str, wait_s: float, voice: presence.Voice) -> None:
     """Ask the person's phone for the grant ``ask`` once and wait for the tap."""
-    made = approval.request(session, approval.wire([ask], note=note))
+    _answered(approval.request(session, approval.wire([ask], note=note)), wait_s, voice)
+
+
+def _answered(made: approval.Approval, wait_s: float, voice: presence.Voice) -> None:
+    """Wait for the person's answer to ``made``; a refusal that says what became of it unless it was approved."""
     if made.code:
         voice.say(f"Your phone will ask which number I show you: {made.code}.")
     if made.wait(wait_s) != "approved":
@@ -204,14 +208,34 @@ def found(session: Session, admin: Admin, name: str, policy: str = "secure", ter
     return Founded(str(made["pool"]), str(made["name"]), str(made["policy"]), int(made["epoch"]))
 
 
-def default_admin(session: Session) -> Admin:
-    """The admin key this device can offer a pool today: the person's key kept beside the node, as strong as it honestly is.
+def _ask_phone(session: Session, method: str, terms: Terms, **params: Any) -> None:
+    """Ask the person's phone to sign what the node's ``method`` puts on its card, tell the person where to look, and wait for the tap."""
+    try:
+        made = approval.Approval(session, dict(session.client.call(method, "", session.token, **params)))
+    except NodeError as err:
+        raise _refused(err, where="your phone") from None
+    terms.voice.say(f"Your phone is asking you: {made.title}.")
+    _answered(made, terms.wait_s, terms.voice)
 
-    A linked phone is the strong key, but it signs approvals of grants and no charter yet, so with one linked the sentence says so.
-    """
-    if _phone_linked(session):
-        raise Refusal("Your phone is linked, but it cannot sign a new pool's charter yet; update the Poolhouse app, then tell me again.",
-                      needs="device", where="the Poolhouse app on your phone")
+
+def found_by_phone(session: Session, name: str, policy: str, terms: Terms | None = None) -> Founded:
+    """Found the pool ``name`` of ``policy`` with the person's phone as its first admin: two taps, to accept the charter and to admit this device."""
+    terms = terms or Terms()
+    if (done := _already(session.client.call("pool_status", "", session.token))) is not None:
+        return done
+    if policy not in POLICIES:
+        raise Refusal("A pool lets devices join by themselves (open) or with a code (secure); say which.", needs="none")
+    _ask_phone(session, "pool_ask_found", terms, title=name, policy=policy, project="")
+    cert = terms.cert_hex or (Path(session.client.state) / "device.cert").read_bytes().hex()
+    _ask_phone(session, "pool_ask_sign", terms, kind="admit", body={"cert": cert, "name": device_name(), "how": "found", "via": ""})
+    made = _already(session.client.call("pool_status", "", session.token))
+    if made is None:
+        raise Refusal("The pool was not founded; ask again.", needs="none", then="retry")
+    return Founded(made.pool, made.name, made.policy, made.epoch)
+
+
+def default_admin(session: Session) -> Admin:
+    """The admin key this device can offer a pool when no phone is linked: the person's key kept beside the node, as strong as it honestly is."""
     return Admin(person_key.keys(session.client.state), FIRST_KEY_STRENGTH)
 
 
@@ -230,4 +254,6 @@ def device_name() -> str:
 def found_here(client: Client, name: str | None, policy: str, *, admin: Admin | None = None, voice: presence.Voice = presence.SILENT) -> Founded:
     """What an agent does when its person says "make a pool": found it on the device ``client`` reaches, with ``admin`` or the key the device can offer."""
     session = pool_session(client)
+    if admin is None and _phone_linked(session):
+        return found_by_phone(session, name or device_name(), policy, Terms(voice=voice))
     return found(session, admin or default_admin(session), name or device_name(), policy, Terms(voice=voice))
