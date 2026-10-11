@@ -139,6 +139,24 @@ fn a_phone_that_was_removed_can_no_longer_approve_and_its_key_is_not_added_again
 }
 
 #[test]
+fn a_session_can_ask_for_a_phone_to_be_removed_and_only_a_key_removes_it() {
+    let rig = Rig::new();
+    let (mut first, mut second) = (FakePhone::new("Pixel"), FakePhone::new("Tablet"));
+    rig.add(&mut first, None);
+    rig.add(&mut second, Some(&first));
+    let (_, token) = rig.session("demo", "agent-1");
+    assert_eq!(code(&rig.call("phone_remove", "", &token, json!({"phone": "ph-nobody"}))), "invalid");
+    let asked = ok(rig.call("phone_remove", "", &token, json!({"phone": second.id})));
+    assert!(asked["text"].as_str().unwrap().contains("WHO: The session claude-") && asked["text"].as_str().unwrap().contains("ASK: Remove the phone Tablet"), "{asked}");
+    assert_eq!(asked["risk"], "irreversible");
+    assert_eq!(held(&mut rig.node.lock().unwrap()).len(), 2, "asking removes nothing");
+    let done = rig.phone("POST", "decide", "", first.decision(&asked, "approve")).1;
+    assert_eq!(done["result"]["state"], "approved", "{done}");
+    assert_eq!(held(&mut rig.node.lock().unwrap()), [first.fingerprint()]);
+    assert_eq!(rig.phone("POST", "list", &second.token, json!({})).0, 401);
+}
+
+#[test]
 fn the_last_key_stays_even_when_it_is_the_phone_that_asks_to_go() {
     let rig = Rig::new();
     let mut only = FakePhone::new("Pixel");

@@ -171,7 +171,7 @@ pub fn ask_to_remove(node: &mut Node, by: &str, target: &str) -> Result<String> 
     }
     let now = node.now_ms();
     let expires = now + crate::approvals::DEFAULT_TTL_MS;
-    let (title, text, risk) = phone_text(false, &phone.name, &words(&phone.fingerprint), &format!("The phone {by}"), node.members.policy.name(), &[], expires);
+    let (title, text, risk) = phone_text(false, &phone.name, &words(&phone.fingerprint), by, node.members.policy.name(), &[], expires);
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: crate::approvals::PHONE_REMOVE.into(), board: POOL_BOARD.into(), session: String::new(),
         action: json!({"kind": crate::approvals::PHONE_REMOVE, "phone": target, "name": phone.name, "fingerprint": phone.fingerprint}),
@@ -180,6 +180,7 @@ pub fn ask_to_remove(node: &mut Node, by: &str, target: &str) -> Result<String> 
     };
     node.approvals.add(approval.clone())?;
     audit(node, "approval.request", &approval, &format!("remove the phone {}", phone.name));
+    crate::phone::announce(node, &approval);
     Ok(approval.id)
 }
 

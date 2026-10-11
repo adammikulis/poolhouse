@@ -6,17 +6,19 @@ use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::node::Node;
-use crate::phone::enrol::{b64url, make_offer, OFFER_TTL_MS};
+use crate::phone::enrol::{ask_to_remove, b64url, make_offer, OFFER_TTL_MS};
 use crate::phone::shown;
 
-pub const METHODS: [&str; 3] = ["phone_info", "phone_offer", "phones"];
+pub const METHODS: [&str; 4] = ["phone_info", "phone_offer", "phones", "phone_remove"];
 const MOST_OFFERS_PER_HOUR: usize = 3;
+const MOST_REMOVALS_PER_HOUR: usize = 6;
 const MOST_ENDPOINTS: usize = 4;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "phone_info" => &["secret"],
         "phone_offer" | "phones" => &[],
+        "phone_remove" => &["phone"],
         _ => return None,
     })
 }
@@ -77,6 +79,16 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
             node.rates.record("phone offer", Duration::from_secs(3600));
             let secret = make_offer(&node.dir, node.now_ms())?;
             Ok(info(node, &secret))
+        }
+        "phone_remove" => {
+            let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session asks to remove a phone.".into()))?;
+            if !node.rates.permits("phone remove", MOST_REMOVALS_PER_HOUR, Duration::from_secs(3600)) {
+                return Err(Error::Quota(format!("{MOST_REMOVALS_PER_HOUR} requests an hour is the most this device takes to remove phones; try again later.")));
+            }
+            node.rates.record("phone remove", Duration::from_secs(3600));
+            let by = format!("The session {} on board {}", holder.name, holder.board);
+            let id = ask_to_remove(node, &by, text(p, "phone")?)?;
+            node.approvals.get(&id).cloned().map(|a| crate::approvals::decide::view(node, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into()))
         }
         _ => {
             node.tokens.resolve(token).ok_or_else(|| Error::Denied("A registered session lists the phones.".into()))?;
