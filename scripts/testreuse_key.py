@@ -26,7 +26,7 @@ SPAWNS = re.compile(r"\b(?:subprocess|Popen|os\.system|os\.exec\w*|os\.spawn\w*|
                     r"concurrent\.futures\.process)\b")
 DYNAMIC = re.compile(r"\b(?:importlib\.util|runpy|pkgutil|entry_points|importorskip|__import__|import_module)\b")
 UNSEEN = re.compile(r"\b(?:DirEntry|scandir|fstat|utime|chown|setxattr|mmap|sqlite3|ladybug)\b")
-SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules", "app/target"})
+SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules"})
 SNAPSHOT_BUDGET_S = 10.0
 RUNNER_OWNED = frozenset({".full-tier-last.json"})
 RUNNER_PLUGINS = frozenset({"testslots_pytest", "testreuse_plugin"})
@@ -354,7 +354,7 @@ def build_manifest(root: Path, rel: str, seen: dict, closures: Closures, argumen
 
 def snapshot(root: Path) -> dict[str, tuple[int, int, int]] | None:
     """Modification time, change time and size of every file under ``root``, ignored files included; caches,
-    environments, cargo's target folder, other agents' worktrees (by root-relative path) and the runner's own files are left out.
+    environments, other agents' worktrees (by root-relative path) and the runner's own files are left out.
     None when the walk outlasts ``SNAPSHOT_BUDGET_S``."""
     found: dict[str, tuple[int, int, int]] = {}
     started = time.monotonic()

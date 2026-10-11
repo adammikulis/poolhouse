@@ -117,21 +117,6 @@ def test_edits_in_other_agents_worktrees_do_not_move_the_tree(project, tmp_path)
     assert report.status == 0 and "pass" in kinds(store)
 
 
-def test_a_cargo_build_in_the_target_folder_does_not_move_the_tree(project, tmp_path):
-    store = storage.Store(tmp_path / "store")
-    (project / "app/target/debug").mkdir(parents=True)
-    (project / "app/target/debug/poolhouse-node").write_text("1")
-
-    def build(real):
-        def launch(command):
-            (project / "app/target/debug/poolhouse-node").write_text("22")
-            return real(command)
-        return launch
-
-    report, _ = attempt(project, store, launch=build)
-    assert report.status == 0 and "pass" in kinds(store)
-
-
 def test_a_directory_named_venv_below_the_root_is_still_watched(project, tmp_path):
     store = storage.Store(tmp_path / "store")
     (project / "tests/venv").mkdir()
