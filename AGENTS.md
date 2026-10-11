@@ -69,7 +69,8 @@ Every design and every security-adjacent change (identity, membership, grants, a
 that moves trust or compute) gets an attack-first pass before it is built or landed: an agent other than the author is
 told to break it and answers in writing for each of a copied or cloned pool or device, replay, a forged or
 below-threshold signature, a compromised or malicious member, a stolen phone or key, a malicious or confused agent, a
-downgrade (secure to open), and a takeover by whoever is merely present. Findings are fixed or named as accepted risks
+downgrade (secure to open), approval fatigue (repeated requests until the person accepts from exhaustion), and a
+takeover by whoever is merely present. Findings are fixed or named as accepted risks
 with the owner; the author's own review does not count. (The owner found by hand an auto-migration to a pool copy, a
 guard widened to turn a gate green, and any member able to remove the founder; this rule exists so the owner does not
 have to.)
