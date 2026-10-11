@@ -42,8 +42,9 @@ GENERATING = ("/chat/completions", "/completions", "/completion", "/embeddings",
 """Endpoints that run the model; the last path segments a request is queued on."""
 
 POLL_S = 0.25
-LEASE_S = 86_400
-"""A turn's lease ends with its process or a day after it was last renewed, whichever comes first."""
+LEASE_S = 180
+RENEW_S = 60.0
+"""A turn's lease ends with its process, or `LEASE_S` after it was last renewed, which the turn does every `RENEW_S` while it runs."""
 _held = threading.local()
 _parallel: contextvars.ContextVar[str] = contextvars.ContextVar("poolhouse_parallel", default="")
 _told: set[str] = set()
@@ -191,14 +192,34 @@ def turn(url: str, *, wait_s: float | None = None, cancelled=None) -> Iterator[N
     table = leasetable.default()
     lease = _await(table, device, f"turn.{os.getpid()}.{uuid.uuid4().hex[:8]}", wait_s, cancelled)
     mine.add(device)
+    done = threading.Event()
+    threading.Thread(target=_kept, args=(table, lease, done), daemon=True).start()
     try:
         yield
     finally:
+        done.set()
         mine.discard(device)
+        _given_back(table, lease, device)
+
+
+def _kept(table: leasetable.Table, lease: str, done: threading.Event) -> None:
+    """Renew a turn's lease every `RENEW_S` until the turn is over."""
+    while not done.wait(RENEW_S):
+        with contextlib.suppress(OSError, Refused):
+            table.renew(lease, ttl_s=LEASE_S)
+
+
+def _given_back(table: leasetable.Table, lease: str, device: str) -> None:
+    """Give a turn's lease back, trying three times; one that is not given back ends `LEASE_S` after its last renewal."""
+    failure: Exception | None = None
+    for pause in (0.0, 0.2, 0.4):
+        time.sleep(pause)
         try:
             table.release(lease)
+            return
         except (OSError, Refused) as why:
-            logger.warning("the turn on the %s device was not given back (%s); it ends with this process", device, why)
+            failure = why
+    logger.warning("the turn on the %s device was not given back (%s); it ends within %s seconds", device, failure, LEASE_S)
 
 
 def _rows(leases: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

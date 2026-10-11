@@ -159,9 +159,9 @@ def test_parallel_requests_are_an_explicit_opt_out_and_do_overlap(servers):
 
 
 def test_requests_are_served_in_the_order_they_arrived(servers):
-    first, second = servers(2)
+    first, second = servers(2, hold_s=1.0)
     base = time.time() + 3.0
-    run_all([together([first.url, second.url][i % 2], str(i), base + 0.3 * i) for i in range(4)])
+    run_all([together([first.url, second.url][i % 2], str(i), base + 0.5 * i) for i in range(4)])
     order = [who for _, _, who in sorted(first.windows + second.windows)]
     assert order == ["0", "1", "2", "3"]
 
@@ -380,3 +380,59 @@ def test_a_device_the_table_cannot_be_asked_about_is_not_sent_to(servers, monkey
     with pytest.raises(ServerError) as why:
         request_json(one.url, payload={}, timeout=5)
     assert why.value.status == 429 and "gpu" in str(why.value) and one.windows == []
+
+
+def test_a_turn_that_runs_longer_than_its_lease_lasts_keeps_it_by_renewing(servers, monkeypatch):
+    (one,) = servers(1, hold_s=0.01)
+    monkeypatch.setattr(gate, "LEASE_S", 2)
+    monkeypatch.setattr(gate, "RENEW_S", 0.4)
+    got: list[BaseException | None] = []
+
+    def second() -> None:
+        try:
+            with gate.turn(one.url, wait_s=3.5):
+                got.append(None)
+        except gate.QueueTimeout as why:
+            got.append(why)
+
+    with gate.turn(one.url):
+        waiter = threading.Thread(target=second)
+        waiter.start()
+        time.sleep(4.5)
+    waiter.join(timeout=10)
+    assert len(got) == 1 and isinstance(got[0], gate.QueueTimeout), "the lease did not run out under a turn that was still running"
+
+
+def test_a_turn_that_cannot_be_given_back_ends_by_itself_and_the_line_goes_on(servers, monkeypatch, caplog):
+    (one,) = servers(1, hold_s=0.01)
+    monkeypatch.setattr(gate, "LEASE_S", 2)
+    monkeypatch.setattr(gate, "RENEW_S", 60.0)
+    tried: list[str] = []
+
+    def refuses(self, lease):
+        tried.append(lease)
+        raise OSError("the node did not answer")
+
+    with monkeypatch.context() as broken, caplog.at_level("WARNING", logger="poolhouse.gate"):
+        broken.setattr(leasetable.Table, "release", refuses)
+        with gate.turn(one.url):
+            pass
+    assert len(tried) == 3 and "was not given back" in caplog.text
+    began = time.monotonic()
+    with gate.turn(one.url, wait_s=10):
+        waited = time.monotonic() - began
+    assert 0.3 < waited < 6, "the next request had its turn when the lease ran out"
+
+
+def test_a_turn_that_is_over_leaves_no_thread_renewing_its_lease(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with gate.turn(one.url):
+        pass
+    time.sleep(0.3)
+    before = threading.active_count()
+    with gate.turn(one.url):
+        assert threading.active_count() == before + 1, "the renewer of the turn's lease"
+    deadline = time.monotonic() + 3
+    while threading.active_count() > before and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert threading.active_count() == before, "the renewer stopped when the turn ended"

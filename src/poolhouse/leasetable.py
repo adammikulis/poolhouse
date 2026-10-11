@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ __all__ = ["BOARD", "NATIVE", "Table", "TableDown", "Terms", "default", "gpu", "
 BOARD = "pool"
 NATIVE = {"model": "poolhouse-serve", "harness": "poolhouse-serve", "session": "leases"}
 START_WAIT_S = 60.0
+DOWN_S = 20.0
+"""How long after a node would not start a call says so at once instead of asking it to start again."""
 CONFIG = "lease-config.json"
 CALL_S = 30.0
 MIB = 1 << 20
@@ -75,10 +78,13 @@ class Table:
         self.state = Path(state) if state else state_root("node")
         self._token = ""
         self._lock = threading.Lock()
+        self._down: tuple[float, str] = (0.0, "")
 
     def call(self, method: str, **params: Any) -> dict[str, Any]:
         """One request as the session; the node is started when it does not answer. `node_health.Refused` when it refuses."""
         wait = float(params.pop("_wait_s", 0))
+        if time.monotonic() < self._down[0]:
+            raise TableDown(self._down[1])
         for attempt in range(2):
             try:
                 return self._send(method, params, self._session(), wait)
@@ -89,7 +95,11 @@ class Table:
             except OSError:
                 if attempt:
                     raise
-                self._start()
+                try:
+                    self._start()
+                except TableDown as why:
+                    self._down = (time.monotonic() + DOWN_S, str(why))
+                    raise
         raise TableDown(f"the node of {self.state} did not answer")
 
     def _send(self, method: str, params: dict[str, Any], token: str = "", wait_s: float = 0.0) -> dict[str, Any]:
@@ -97,7 +107,7 @@ class Table:
         return node_health.result_of(node_health.exchange(self.state, body, CALL_S + wait_s))
 
     def _start(self) -> None:
-        done = subprocess.run([sys.executable, "-m", "poolhouse.node_launch", "ensure", "--state", str(self.state)],
+        done = subprocess.run([sys.executable, "-m", "poolhouse.node_launch", "ensure", f"--state={self.state.absolute()}"],
                               capture_output=True, text=True, timeout=START_WAIT_S + 30, check=False)
         if done.returncode:
             raise TableDown(f"no node answers for {self.state} and it did not start: {(done.stdout + done.stderr).strip()[-300:]}")
@@ -117,7 +127,7 @@ class Table:
 
     def _registered(self) -> str:
         """The token of the session registered now: one process of the state directory registers it, the others read its token."""
-        (self.state / "client" / BOARD).mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._folder()
         with only_one(self.state / "client" / BOARD / ".register.lock", timeout=CALL_S, announce=lambda _line: None):
             if token := self._kept():
                 return token
@@ -131,9 +141,14 @@ class Table:
         except node_health.Refused:
             return ""
 
+    def _folder(self) -> None:
+        """The folders a session's token is kept in, for this user alone."""
+        for folder in (self.state / "client", self.state / "client" / BOARD):
+            folder.mkdir(exist_ok=True, mode=0o700)
+
     def _keep(self, name: str, token: str) -> None:
         target = self.state / "client" / BOARD / f"{name}.token"
-        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._folder()
         with writing(target) as tmp:
             tmp.write_text(token + "\n", encoding="utf-8")
             private_file(tmp)

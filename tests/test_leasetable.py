@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -85,3 +86,40 @@ def test_a_token_the_node_no_longer_knows_is_replaced(table, workspace_node):
     table.acquire([leasetable.gpu()], leasetable.Terms(tag="a"))
     table._token = "not-a-token"
     assert table.listing()["leases"], "the stale token is dropped and the kept one is read again"
+
+
+@pytest.mark.parametrize("name", ["--help", "-x; touch pwned", "a b/$(touch pwned)", "dir\nnewline"])
+def test_a_state_directory_named_like_an_option_or_a_command_is_one_argument_of_the_command_that_starts_the_node(name, monkeypatch, tmp_path):
+    import subprocess
+
+    seen: list[list[str]] = []
+
+    def run(argv, **kwargs):
+        seen.append(argv)
+        assert kwargs.get("shell") is not True
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.chdir(tmp_path)
+    leasetable.Table(Path(name))._start()
+    (argv,) = seen
+    assert argv[1:4] == ["-m", "poolhouse.node_launch", "ensure"] and len(argv) == 5
+    assert argv[4] == f"--state={(tmp_path / name).resolve()}" or argv[4] == f"--state={tmp_path / name}"
+    assert not (tmp_path / "pwned").exists()
+
+
+def test_a_node_that_would_not_start_is_not_asked_to_start_again_for_a_while(tmp_path, monkeypatch):
+    import subprocess
+
+    started: list[list[str]] = []
+
+    def run(argv, **_kwargs):
+        started.append(argv)
+        return subprocess.CompletedProcess(argv, 1, "", "the keystore is locked")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    table = leasetable.Table(tmp_path / "nowhere")
+    for _ in range(3):
+        with pytest.raises(leasetable.TableDown, match="keystore is locked"):
+            table.listing()
+    assert len(started) == 1
