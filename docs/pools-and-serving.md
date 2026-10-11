@@ -118,7 +118,7 @@ at least monthly never sees it.
 founder's key):
 
 ```
-{ v: 1, epoch, name, policy: "open"|"secure", mode: "admins"|"members",
+{ v: 1, epoch, name, policy: "open"|"secure", mode: "admins"|"members", project: "" | <project key>,
   admins: [{key, label, person, role}],
   thresholds: {routine, sensitive, unit: "person"|"key"},
   recover_delay_days (1..30, default 7), succession: {quorum, delay_days} | null,
@@ -305,7 +305,9 @@ stay; shared boards continue by 6.8); standing grants (scoped by pool id, so a g
 bundle's `admin:<key>` scope covers the new pool at once); tickets and delegates (reissued by the new charter's founding act under
 the same tap); leases (ended, then queued again by their holders); served models and their offers (only those the handoff lists);
 quotas and consents (per pool, so they must be made again: a pool the owner has not allowed takes no work, which is the safe
-direction); the pool's name (same). The old pool is retired for good: a retired pool cannot be re-activated, a copy of it moves
+direction); the pool's name (same). **Pool id continuity:** the id does not continue (a new charter is a new hash), and the new charter's
+`from` names the old pool and the handoff, so `pool_status` shows the lineage and a board's history stays whole across it. The old
+pool is retired for good: a retired pool cannot be re-activated, a copy of it moves
 nobody, and an act for it is refused by every device that followed.
 
 **Person feels:** "make this pool secure", one approval with a review list whose defaults are already right. Reason it is visible:
@@ -492,36 +494,51 @@ sentence and one tap, optional.
 
 ### 3.2 The same owner adds a second device (journeys 2a, 2b, 2c)
 
-**2a: same network, the pool is open** (the owner said "that my devices on this network join by themselves", and the agent
-repeated "anyone on this Wi-Fi can join" in the approval). Second device: install (1), os-prompt (1). It finds the pool by its
-signed beacon and joins; the owner's phone says "'guest-laptop' joined 'home'. Review?" Budget 2 steps, 0 taps, 0 terminal.
-Wrong: "I can't see 'home' from here; are both devices on the same Wi-Fi?" (a firewall prompt is the OS's own).
+**2a: same network, the pool is open** (the owner said "that my devices on this network join by themselves", and the approval said
+"anyone on this Wi-Fi can join").
 
-**2b: same network, the pool is secure** (the default). Second device: install (1), os-prompt (1), says "Join my pool called
-home" (1). Its agent knocks; the owner's phone shows "'guest-laptop' wants to join 'home'. Does it show maple-river-ten?" and the
-new device's agent shows the same three words; the owner compares and taps (1). Budget 4 steps (install, os-prompt, say, tap), 0 terminal.
-Reason for the visible tap: a stranger on the Wi-Fi must not join, and only the person can see two screens agree. Wrong: "The words
-don't match, so I stopped. Someone else may be knocking."
+| # | The person sees and does | The agent does | What can go wrong, in the words shown |
+|---|---|---|---|
+| 1 | Installs Poolhouse on the second device; allows network discovery once (`install`, `os-prompt`) | Starts the node; it hears the pool's signed beacon | "I can't see 'home' from here. Are both devices on the same Wi-Fi?" |
+| 2 | Nothing. The first device's phone says "'guest-laptop' joined 'home'. Review?" | The node admits the device by an open `admit`; the first device's agent offers the review | "'guest-laptop' joined without a code. Keep it?" |
 
-**2c: another network.** First device: "Add a device that is on another network" (1). The agent issues the ticket under the delegate
-(no tap) and gives the owner a link and a QR. Second device: install (1), says "Join this pool" and pastes the link, or scans it
-(1). Budget 4 steps (say, install, os-prompt, say), 0 taps, 0 terminal. The link carries the address, the first device's certificate fingerprint as a pin and the
-code, so there is nothing to type. Wrong: "That device can't reach this one from outside your home network. Install Tailscale on both
-devices (I can do that once you OK it), or wait until you are home." Honest limit: a device on another network joins only when it can
-reach a member's address (a Tailscale address or a public one); without that it cannot, and the agent says so.
+Budget: 2 steps, 0 taps, 0 terminal.
+
+**2b: same network, the pool is secure** (the default).
+
+| # | The person sees and does | The agent does | What can go wrong, in the words shown |
+|---|---|---|---|
+| 1 | Installs; allows discovery once (`install`, `os-prompt`) | Starts the node | as 2a |
+| 2 | Says "Join my pool called home" on the new device (`say`) | Knocks on the pool it heard; shows three words in the chat | "I can't see 'home' from here. Are both devices on the same Wi-Fi?" |
+| 3 | The first device's phone shows "'guest-laptop' wants to join 'home'. Does it show maple-river-ten?"; compares with the new device's chat and taps (`tap`) | The first device issues a ticket under the delegate; the new device is admitted when the tap arrives | "The words don't match, so I stopped. Someone else may be knocking." |
+
+Budget: 4 steps (install, os-prompt, say, tap), 0 terminal. Reason for the visible tap: a stranger on the Wi-Fi must not join, and
+only the person can see two screens agree.
+
+**2c: another network.**
+
+| # | The person sees and does | The agent does | What can go wrong, in the words shown |
+|---|---|---|---|
+| 1 | Says "Add a device that is on another network" on the first device (`say`) | Issues a ticket under the delegate (no tap), opens the join window, shows a link and a QR | "I can't give out a link yet: this device isn't reachable from outside. Install Tailscale on it, or wait until you are home." |
+| 2 | Installs Poolhouse on the second device; allows discovery once (`install`, `os-prompt`) | Starts the node | as 2a |
+| 3 | Says "Join this pool" and pastes the link, or scans the QR (`say`) | `join_pool` with the address, the first device's certificate fingerprint as the pin and the code from the link; nothing to type | "That code didn't match. Ask the first device for a new link; they last five minutes." |
+
+Budget: 4 steps (say, install, os-prompt, say), 0 taps, 0 terminal. Honest limit: a device on another network joins only when it
+can reach a member's address (a Tailscale address or a public one); without that it cannot, and the agent says so.
 
 ### 3.3 A developer embedding the library (journey 3)
 
-```python
-import poolhouse as ph
-ph.pool.create("lab")                                   # NeedsApproval once: one tap; returns the Pool
-ph.serve.offer("Qwen3-0.6B", pool="lab")                # own pool: covered by the bundle, no tap
-reply = ph.client.Client(ph.serve.connect("Qwen3-0.6B").base_url).chat([{"role": "user", "content": "hello"}])
-```
+| # | The developer sees and does | The library does | What can go wrong, in the words shown |
+|---|---|---|---|
+| 1 | `pip install poolhouse`; once per person, scans the phone link (`install`, `link-phone`) | | "Poolhouse needs your phone once, to know it's you. Scan this." |
+| 2 | `import poolhouse as ph` then `ph.pool.create("lab")` | `pool_create`; raises `ph.NeedsApproval` with `say`, or waits | "I need your OK to make the pool; check your phone." |
+| 3 | Taps once (`tap`) | The founding charter, delegate and bundle are signed; the call returns the `Pool` | "That approval ran out; call again." |
+| 4 | `ph.serve.offer("Qwen3-0.6B", pool="lab")` | Covered by the bundle; no tap | "There isn't room for that model; try a smaller one." |
+| 5 | `ph.client.Client(ph.serve.connect("Qwen3-0.6B").base_url).chat([...])` | The relay opens on loopback and the call goes to the offering device | "The model is busy; you're number 2 in line." |
 
-On the second device: `ph.pool.join_link(link)` (one line). Budget: `pip install`, one `link-phone` (once per person), three lines, one
-tap. A call that needs an approval and cannot get one raises `ph.NeedsApproval` with `say`; `wait=False` returns at once. Nothing in
-the library reads a terminal.
+On a second device: `ph.pool.join_link(link)` (one line). Budget: install, link-phone and tap, 3 human steps and 3 lines of
+code. A call that needs an approval and cannot get one raises `ph.NeedsApproval` with `say`; `wait=False` returns at once. Nothing
+in the library reads a terminal.
 
 ### 3.4 Acceptance, gated
 
@@ -597,10 +614,13 @@ with the plain question "This device is in two pools, home and work. Which one d
 through a pool: the token records `(board, name, pool)` and the identity entry names the pool. A board created on a device in
 several pools names its pool, taken from the project's registered pool (`projects.json` gains `pool`).
 
-**Lone pool.** A fresh device is in a pool of one that has no name. `pool_create` on such a device names that pool (same id) rather
-than making another; joining another pool while still in the unnamed lone pool replaces it by the joined one and rebinds its boards
-(today's `adopt`), so a person who used Poolhouse alone for a week and adds a laptop sees what they saw before. A device in a named
-pool that joins another pool belongs to both; pools never merge.
+**The unfounded pool of one.** A fresh device is in a pool of one that has no charter, no id and no admins: the device is its own
+only member, and it admits nobody. `pool_create` founds the first pool (an approval); the boards the device already holds are bound
+to it at that moment, so a person who used Poolhouse alone for a week and then makes a pool keeps everything. Joining another pool
+while unfounded just joins that pool and binds the boards to it. A device in a founded pool that joins another pool belongs to
+both; pools never merge. The automatic founding of an open pool per project (`settle`, `claim_project`) is removed, since founding
+is an approval; a device still joins an open pool it hears (a pool that names a project is joined only by a device of that
+project), so devices of one repository on one network find each other as before once one pool is founded.
 
 **Beacons** carry the pool id (32 hex) and are sent once per pool per interval, signed by the device key, with `lone` and
 `project` as today. A pool may set `discovery: off`; it is then found only by a ticket or a link. Heads of board logs stay signed in
