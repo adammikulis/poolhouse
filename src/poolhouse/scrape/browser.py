@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from poolhouse import real_machine
 from poolhouse.net import browserguard
 from poolhouse.platform import applescript_quote
 
@@ -82,7 +83,10 @@ def keeping_focus() -> Iterator[None]:
 
 
 def _frontmost() -> str:
-    """The application holding the screen, or ""."""
+    """The application holding the screen, or "" (also when this is not the installed software: asking System Events raises
+    macOS's Automation permission prompt for whatever program asked)."""
+    if real_machine.refusal():
+        return ""
     try:
         done = subprocess.run(
             ["osascript", "-e",

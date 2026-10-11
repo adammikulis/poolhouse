@@ -279,7 +279,7 @@ def test_a_cancelled_password_dialog_changes_nothing_and_says_so():
 
 def test_the_command_line_refuses_an_agent_process_before_anything_runs(tmp_path):
     env = {**os.environ, "PYTHONPATH": SRC, "POOLHOUSE_HOME": str(tmp_path / "home"),
-           "POOLHOUSE_NO_REAL_KEYSTORE": "1", "CLAUDECODE": "1"}
+           "CLAUDECODE": "1"}
     for argv in (["--reset"], ["--apply", "65536"], ["--persist", "65536"], ["--unpersist"]):
         code = ("import sys; from poolhouse.serve import cli; "
                 f"sys.exit(cli.COMMANDS.run(['memory', *{argv!r}]))")

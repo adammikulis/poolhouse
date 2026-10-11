@@ -147,7 +147,7 @@ def measure(name: str, command: list[str], parser, base_url: str, where: Path) -
     before, began = scrape(base_url), time.monotonic()
     try:
         done = subprocess.run(command, cwd=where, capture_output=True, text=True, check=False,
-                              timeout=TIMEOUT_S, env={**os.environ, "POOLHOUSE_NO_REAL_KEYSTORE": "1", "PYTHONPATH": str(ROOT / "src")})
+                              timeout=TIMEOUT_S, env={**os.environ, "PYTHONPATH": str(ROOT / "src")})
         out, code = done.stdout, done.returncode
     except subprocess.TimeoutExpired:
         out, code = "", -1

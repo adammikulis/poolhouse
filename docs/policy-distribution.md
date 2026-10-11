@@ -268,7 +268,7 @@ does not block the session.
 
 `conformance` (`pytest -p poolhouse.policy.conformance` or `poolhouse-policy conformance`) builds a
 scratch repository from the consumer's policy file and lock (never the live checkout or
-`~/.poolhouse`; file keyring, `POOLHOUSE_NO_REAL_KEYSTORE=1`), runs the canaries as child
+`~/.poolhouse`; file keyring; `poolhouse.real_machine` refuses the machine's own keystore there), runs the canaries as child
 processes and asserts the briefing carries every hard id. A consumer adds it to its suite and CI.
 
 ### 3.3 Class c (generated text)

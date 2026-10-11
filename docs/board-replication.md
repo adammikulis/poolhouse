@@ -352,7 +352,7 @@ refuses the terminal `HumanGrant` (`human.py:54-66`).
 
 Real temp devices, each a real process with its own state root, real joining and real sockets; partitions by
 a loopback proxy that drops connections; death by `kill -9`; clocks moved through the `clock=` parameters
-or a per-process offset; `POOLHOUSE_NO_REAL_KEYSTORE=1`. Large pools are real logs and the real
+or a per-process offset; the machine's own keystore is refused by `poolhouse.real_machine`. Large pools are real logs and the real
 merge and fold, one process per device group, over loopback sockets. No mock of merge or board.
 
 | Case | Expected |

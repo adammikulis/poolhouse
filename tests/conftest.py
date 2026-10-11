@@ -522,10 +522,7 @@ def _no_real_cache_or_ports(monkeypatch, tmp_path):
     monkeypatch.setenv("POOLHOUSE_CACHE", str(tmp_path / "cache"))
 
 
-from poolhouse.keystore import ENV_NO_REAL  # noqa: E402
-
-os.environ[ENV_NO_REAL] = "1"
-"""Every process a test starts inherits this: the machine's own keystore reads as absent to it."""
+from real_machine_guard import _keyring_never_resolves_a_real_backend  # noqa: E402, F401
 
 REAL_KEYSTORES = (("macOS", "Keyring"), ("SecretService", "Keyring"), ("Windows", "WinVaultKeyring"),
                   ("kwallet", "DBusKeyring"), ("libsecret", "Keyring"))

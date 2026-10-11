@@ -70,7 +70,7 @@ node never holds it and carries no signer for it. Each governed step is the path
 
 What this does not exercise is the custody of a person's real key: the typed `yes` on the terminal device and the operating system's keystore.
 The rig's key signs without being asked, which is exactly what the node cannot tell apart from a person's key; those are the tests of
-`tests/test_board_person_key.py`, not of a pool. Every device of the rig also runs with `POOLHOUSE_NO_REAL_KEYSTORE=1`, so no device of a check
+`tests/test_board_person_key.py`, not of a pool. No device of the rig is the installed software on the real home (`poolhouse.real_machine`), so no device of a check
 asks the account's Keychain for a key (the updater step's activity log did, and on an owner's Mac that is a Keychain prompt).
 
 ## The steps

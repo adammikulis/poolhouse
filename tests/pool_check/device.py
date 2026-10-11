@@ -34,8 +34,6 @@ AGENT_MARKERS = ("CODEX_THREAD_ID", "CODEX_SESSION_ID", "CLAUDECODE", "POOLHOUSE
                  "POOLHOUSE_WORKSPACE_DENYLIST", "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_BOARD", "POOLHOUSE_HOME")
 
 
-NO_REAL_KEYSTORE = "POOLHOUSE_NO_REAL_KEYSTORE"
-"""Set for every command of a device: the machine's own keystore (the account's Keychain on a Mac) reads as absent, so no device of a check asks for or keeps a key there."""
 ALL_INTERFACES = "0.0.0.0"  # noqa: S104 - a container listens on every interface of its own network namespace, a CI runner's node on its own
 PLATFORM_NAME = {"darwin": "mac", "win32": "windows"}.get(sys.platform, "linux")
 """What the device the rig runs on is called in reports."""
@@ -273,7 +271,7 @@ class LocalDevice(Device):
 
     def env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         base = {k: v for k, v in os.environ.items() if k not in AGENT_MARKERS}
-        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_NODE_LAN": "off", NO_REAL_KEYSTORE: "1", **(extra or {})}
+        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_NODE_LAN": "off", **(extra or {})}
 
     def run(self, argv, env=None, timeout=120, check=True):
         done = subprocess.run(argv, env=self.env(env), cwd=ROOT, capture_output=True, text=True, timeout=timeout, check=False)
@@ -347,7 +345,7 @@ class ContainerDevice(Device):
         return ["docker", "exec", "-i", self.box.name, "python", f"{RIG}/pool_check/driver.py"]
 
     def run(self, argv, env=None, timeout=120, check=True):
-        return self.driven(argv, {"POOLHOUSE_HOME": "/pc", "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": "", NO_REAL_KEYSTORE: "1", **(env or {})}, timeout, check)
+        return self.driven(argv, {"POOLHOUSE_HOME": "/pc", "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": "", **(env or {})}, timeout, check)
 
     def script(self, name, *argv):
         return ["python", f"{RIG}/pool_check/{name}", *argv]
@@ -457,7 +455,7 @@ class WslHostedDevice(Device):
         return wsl_argv(self.distro, self.checkout, [*self.interpreter(), f"{self.checkout}/tests/pool_check/driver.py"], {"PYTHONPATH": f"{self.checkout}/src"})
 
     def run(self, argv, env=None, timeout=120, check=True):
-        return self.driven(argv, {"POOLHOUSE_HOME": self.home, "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": f"{self.checkout}/src", NO_REAL_KEYSTORE: "1", **(env or {})}, timeout, check)
+        return self.driven(argv, {"POOLHOUSE_HOME": self.home, "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": f"{self.checkout}/src", **(env or {})}, timeout, check)
 
     def windows_host(self) -> str:
         """The address of Windows as WSL sees it: the default route's gateway (NAT mode)."""
