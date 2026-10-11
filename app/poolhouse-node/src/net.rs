@@ -395,15 +395,19 @@ impl Net {
         Ok(json!({"confirmation": session.confirmation()?, "grant": crate::fsutil::hex(&grant), "tag": session.seal(&grant)?}))
     }
 
-    /// Open a join-code window: returns the code (``passphrase`` when given) and seconds it lasts.
-    pub fn add_device(&self, passphrase: &str, ttl_s: u64) -> Result<Value> {
+    /// Open a join-code window: returns the code (``passphrase`` when given) and seconds it lasts. ``presigned``: the admit of the
+    /// device that will use the window was signed (and submitted here) before, so this device needs no signer to open it; the window
+    /// still admits nothing a person's key did not sign for.
+    pub fn add_device(&self, passphrase: &str, ttl_s: u64, presigned: bool) -> Result<Value> {
         let code = if passphrase.is_empty() { new_code()? } else { passphrase.to_string() };
         if code.len() < 6 || code.len() > 200 {
             return Err(Error::Invalid("a passphrase is 6 to 200 characters".into()));
         }
         let until = wall_ms() + ttl_s.clamp(1, 600) * 1000;
         let mut node = locked(&self.node)?;
-        node.can_admit()?;
+        if !presigned {
+            node.can_admit()?;
+        }
         *locked(&self.window)? = Some(Window::new(&code, until));
         node.facts.join_code_until_ms = until;
         Ok(json!({"code": code, "expires_in_s": ttl_s.clamp(1, 600), "port": self.port, "fingerprint": self.me.fingerprint()}))
@@ -666,7 +670,7 @@ impl Net {
             authorize_from(&mut node, &c.token, peer, &c.method, &resource)?;
         }
         match c.method.as_str() {
-            "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120)),
+            "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120), c.params.get("presigned") == Some(&Value::Bool(true))),
             "join_pool" => self.join_pool(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
             "shard_call" => self.shard_call(c, peer),
             _ => Ok(json!({"reached": self.sync_once(true)?})),

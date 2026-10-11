@@ -82,6 +82,18 @@ fn device_sign(act: &mut Act, key: &SigningKey, fingerprint: &str) {
     act.add_signature(ActSig { kind: SigKind::Device, key: fingerprint.into(), sig });
 }
 
+/// The founding act of a call: the act itself, or the charter a person's keys accepted (the act is made of it); not both, not neither.
+pub fn founding_act(act: Option<&Value>, charter: Option<&Value>) -> Result<Value> {
+    match (act, charter) {
+        (Some(act), None) => Ok(act.clone()),
+        (None, Some(charter)) => {
+            let c: Charter = serde_json::from_value(charter.clone()).map_err(|e| Error::Invalid(format!("that is not a charter: {}", e.to_string().chars().take(80).collect::<String>())))?;
+            Ok(json!(Act::new(&c.pool_id(), 1, "found", c.body(), c.at_ms, "")?))
+        }
+        _ => Err(Error::Invalid("a pool is founded by an act or by a charter, one of them".into())),
+    }
+}
+
 /// The founding act in ``act`` and its charter, when the charter has a strong admin key: without one nobody could admit a device.
 fn founding_of(act: &Value) -> Result<(Act, Charter)> {
     let found: Act = serde_json::from_value(act.clone()).map_err(|e| Error::Invalid(format!("that is not an act: {}", e.to_string().chars().take(80).collect::<String>())))?;
@@ -422,6 +434,25 @@ impl Node {
         let id = self.start_pool(found)?;
         self.record_event("pool_created", &id, &format!("{} ({})", charter.name.chars().take(40).collect::<String>(), charter.policy.name()))?;
         Ok(json!({"pool": id, "name": charter.name, "policy": charter.policy.name(), "epoch": 1}))
+    }
+
+    /// The charter of a pool of ``keys`` (each `{key, person, strength, label}`, an admin) with every acceptance blank, and the bytes each
+    /// key signs to accept it: for keys that sign elsewhere, which hand the accepted charter back through `pool_found`.
+    pub fn pool_draft_found(&self, name: &str, policy: Policy, project: &str, keys: &Value) -> Result<Value> {
+        let listed = keys.as_array().filter(|k| !k.is_empty() && k.len() <= super::MAX_ADMINS).ok_or_else(|| Error::Invalid("a pool names one to sixteen admin keys".into()))?;
+        let text = |k: &Value, field: &str| k[field].as_str().unwrap_or("").to_string();
+        let mut admins = Vec::new();
+        for k in listed {
+            let strength = serde_json::from_value(k["strength"].clone()).map_err(|_| Error::Invalid("a key is strong or weak".into()))?;
+            admins.push(AdminKey { key: text(k, "key"), role: Role::Admin, strength, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
+        }
+        if let Some(bad) = admins.iter().find(|k| !super::keys::valid_public(&k.key)) {
+            return Err(Error::Invalid(format!("{} is not an Ed25519 public key", bad.key.chars().take(16).collect::<String>())));
+        }
+        let charter = Charter::new(name, policy, project, admins, wall_ms());
+        let anchor = charter.anchor();
+        let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "sign_bytes": hex(&k.acceptance_message(&anchor))})).collect();
+        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": format!("Make the pool {}.", quoted(name))}))
     }
 
     /// The act of ``kind`` this device's pool would take next, with the bytes a person's key signs and what the person is shown: for

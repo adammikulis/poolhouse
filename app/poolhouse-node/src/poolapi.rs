@@ -30,8 +30,9 @@ pub fn params(method: &str) -> Option<&'static [&'static str]> {
         "pool_cosign" => &["act"],
         "pool_submit" => &["act"],
         "pool_draft" => &["kind", "body"],
-        "pool_found" => &["act"],
-        "add_device" => &["passphrase", "ttl_s"],
+        "pool_found" => &["act", "charter"],
+        "pool_draft_found" => &["title", "policy", "project", "keys"],
+        "add_device" => &["passphrase", "ttl_s", "presigned"],
         "join_pool" => &["host", "port", "passphrase", "fingerprint"],
         "shard_call" => &["device", "op", "args"],
         "shard_consent" => &["enabled", "python", "repo", "allow", "deny"],
@@ -116,11 +117,12 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             node.pool_leave()
         }
         "pool_found" => {
-            let act = p.get("act").unwrap_or(&Value::Null);
-            let name = node.founding_name(act)?;
+            let act = crate::gov::ops::founding_act(p.get("act"), p.get("charter"))?;
+            let name = node.founding_name(&act)?;
             authorize(node, token, "pool_create", &name)?;
-            node.pool_found(act)
+            node.pool_found(&act)
         }
+        "pool_draft_found" => node.pool_draft_found(text(p, "title")?, Policy::parse(text(p, "policy")?)?, text(p, "project")?, p.get("keys").unwrap_or(&Value::Null)),
         "pool_draft" => node.pool_draft(text(p, "kind")?, p.get("body").cloned().unwrap_or(Value::Null)),
         "pool_propose" => {
             let kind = text(p, "kind")?;

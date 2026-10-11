@@ -187,8 +187,9 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
             Ok(hello(node, standing))
         }
         ("join_open", _) => join_open(node, der, req, ip, standing),
-        ("join_exchange" | "join_confirm", Standing::Unknown) => net.join_code_step(node, der, op, req),
-        ("join_exchange" | "join_confirm", _) => Err(Error::Denied("this device is already a member".into())),
+        // a device whose admit was signed before it dialed (`add_device` with `presigned`) is a member already, and proves it holds the
+        // code like any other: it is handed the record again and nothing else changes
+        ("join_exchange" | "join_confirm", _) => net.join_code_step(node, der, op, req),
         (_, Standing::Unknown) => Err(Error::Denied("this device is not a member of the pool".into())),
         ("members", _) => members(node, &fp, req),
         ("acts", _) => crate::gov::wire::serve(node, req),

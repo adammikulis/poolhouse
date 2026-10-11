@@ -325,6 +325,31 @@ fn a_pool_is_founded_drafted_and_signed_by_a_key_outside_the_node_with_no_signer
     let _ = b;
 }
 
+#[test]
+fn a_window_opened_with_no_signer_on_the_node_admits_only_the_device_an_admin_already_signed_for() {
+    let (a, b, c) = (device(), device(), device());
+    let charter = charter(&[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
+    for dev in [&a, &b] {
+        let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&dev.net.me, "dev", "join-code", "")}));
+        let mut act: Act = serde_json::from_value(draft["act"].clone()).unwrap();
+        if dev.fp() == a.fp() {
+            act.body["how"] = json!("found");
+        }
+        sign(&mut act, ANN);
+        a.ok("pool_submit", "", &a.token, json!({"act": act}));
+    }
+    let closed = a.call("add_device", "", &a.token, json!({}));
+    assert_eq!(closed["ok"], false, "with no signer a window opens only for what was signed before: {closed}");
+    let code = a.ok("add_device", "", &a.token, json!({"presigned": true}))["code"].as_str().unwrap().to_string();
+    let stranger = c.call("join_pool", "", &c.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": code}));
+    assert_eq!(stranger["ok"], false, "a device nobody signed an admit for is not let in by an open window: {stranger}");
+    assert!(!a.is_member(&c.fp()));
+    let code = a.ok("add_device", "", &a.token, json!({"presigned": true}))["code"].as_str().unwrap().to_string();
+    b.ok("join_pool", "", &b.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": code}));
+    assert!(a.is_member(&b.fp()) && b.is_member(&a.fp()));
+}
+
 // -- the delegate ----------------------------------------------------------------------------------------------------------
 
 #[test]
