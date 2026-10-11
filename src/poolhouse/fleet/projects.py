@@ -1,4 +1,4 @@
-"""Local project metadata, explicit publication and workspace authority."""
+"""Local project metadata and explicit source publication."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def identity(root: Path) -> str:
     """Return the project identity from checkout metadata or its Git origin."""
     attached = read_json(root / ".poolhouse-project.json", {})
     if isinstance(attached, dict) and attached.get("kind") == "project-checkout":
-        return source.project_id(attached["project_id"])
+        return source.project_id(str(attached.get("project_id", "")))
     return git_identity(root)
 
 
@@ -110,27 +110,12 @@ def git_identity(root: Path) -> str:
     return hashlib.sha256(origin.encode()).hexdigest()[:32]
 
 
-def attached_authority(root: Path) -> dict:
-    """Return validated authority metadata from a managed checkout."""
-    attached = read_json(root / ".poolhouse-project.json", {})
-    if not isinstance(attached, dict) or attached.get("kind") != "project-checkout":
-        return {}
-    authority = attached.get("authority", {})
-    if not isinstance(authority, dict):
-        raise source.ProjectError("Project authority metadata is invalid")
-    value = authority.get("host", "")
-    if not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 32 for c in value):
-        raise source.ProjectError("Project authority metadata is invalid")
-    return authority
-
-
 @dataclass
 class Project:
     id: str
     name: str
     root: str
     source_machine: str
-    board_host: str = ""
     shared: bool = False
     source_hash: str = ""
     archive_sha256: str = ""
@@ -147,9 +132,8 @@ class Project:
 class ProjectRegistry:
     """Registered local projects and immutable source bundles."""
 
-    def __init__(self, root: Path, machine: str, candidates: tuple[Path, ...] = (), host: str = ""):
+    def __init__(self, root: Path, machine: str, candidates: tuple[Path, ...] = ()):
         self.root, self.machine = root, machine
-        self.host = host
         self.path = root / "projects.json"
         self.lock = threading.RLock()
         self._candidates: dict[str, Path] = {}
@@ -164,12 +148,10 @@ class ProjectRegistry:
             try:
                 path = Path(git.run(["rev-parse", "--show-toplevel"], cwd=path).stdout.strip()).resolve()
                 identifier = identity(path)
-                authority = attached_authority(path)
                 self._candidates[identifier] = path
                 if identifier not in self._projects:
                     self._projects[identifier] = Project(
-                        id=identifier, name=path.name, root=str(path), source_machine=self.machine,
-                        board_host=authority.get("host", ""))
+                        id=identifier, name=path.name, root=str(path), source_machine=self.machine)
             except (OSError, git.GitFailed, source.ProjectError):
                 continue
 
@@ -182,14 +164,12 @@ class ProjectRegistry:
             identifier = identity(top)
             if identifier != expected_project:
                 raise source.ProjectError("Local project identity does not match the requested project")
-            authority = attached_authority(top)
         except (OSError, git.GitFailed) as exc:
             raise source.ProjectError("Choose an available local Git project") from exc
         with self.lock:
             project = self._projects.get(identifier)
             if project is None:
-                project = Project(id=identifier, name=top.name, root=str(top),
-                                  source_machine=self.machine, board_host=authority.get("host", ""))
+                project = Project(id=identifier, name=top.name, root=str(top), source_machine=self.machine)
                 self._projects[identifier] = project
             self._candidates[identifier] = top
             self._save()
@@ -208,8 +188,7 @@ class ProjectRegistry:
 
     def list(self) -> list[dict]:
         with self.lock:
-            return [{**project.public(), "source_host": self.host} for project in self._projects.values()
-                    if project.shared]
+            return [project.public() for project in self._projects.values() if project.shared]
 
     def _save(self) -> None:
         write_json(self.path, {"projects": [asdict(p) for p in self._projects.values()]})
@@ -219,16 +198,13 @@ class ProjectRegistry:
             root = self._candidates.get(candidate)
             if root is None:
                 raise source.ProjectError("Choose an available local project")
-            authority = attached_authority(root)
             identifier = identity(root)
             manifest, packed = source.build(root, identifier)
             source.verify(packed, identifier, manifest["source_hash"])
-            prior = self._projects.get(identifier)
             project = Project(id=identifier, name=name.strip() or root.name, root=str(root),
                               source_machine=self.machine, shared=True, source_hash=manifest["source_hash"],
                               archive_sha256=hashlib.sha256(packed).hexdigest(), size_bytes=manifest["size_bytes"],
-                              files=len(manifest["files"]), excluded_files=manifest["excluded_files"],
-                              board_host=prior.board_host if prior else authority.get("host", ""))
+                              files=len(manifest["files"]), excluded_files=manifest["excluded_files"])
             target = self._bundle(project)
             with writing(target) as temporary:
                 temporary.write_bytes(packed)
@@ -259,41 +235,17 @@ class ProjectRegistry:
                 raise source.ProjectError("Published project bundle failed verification")
             return data
 
-    def workspace_base(self, identifier: str) -> Path:
-        project = self.get(identifier)
-        if not self.hosts(project.board_host):
-            raise source.ProjectError("Project workspace belongs to another device")
-        return self.root / "shared-workspaces" / project.id
-
-    def hosts(self, board_host: str) -> bool:
-        """Whether a Board address is this device's workspace address."""
-        return bool(board_host) and board_host == self.host
-
-    def claim_authority(self, identifier: str) -> Project:
-        """Select this device as the workspace authority."""
-        with self.lock:
-            project = self.get(identifier)
-            if not self.host:
-                raise source.ProjectError("This device has no reachable workspace address")
-            if project.board_host and project.board_host != self.host:
-                raise source.ProjectError("Project already has another workspace address")
-            project.board_host = self.host
-            self._save()
-            return project
-
     def boards(self) -> list[dict]:
         """Return registered board metadata without checkout paths or source bundles."""
         with self.lock:
             return [self._board(project) for project in self._projects.values()]
 
     def _board(self, project: Project) -> dict:
-        return {"id": project.id, "name": project.name, "machine": self.machine,
-                "board_host": project.board_host}
+        return {"id": project.id, "name": project.name, "machine": self.machine}
 
-    def catalogue(self, *, include_boards: bool = False) -> dict:
+    def catalogue(self) -> dict:
         code = bootstrap()
-        return {"projects": self.list(), "boards": self.boards() if include_boards else [], "machine": self.machine,
-                "capabilities": ["project-source"],
+        return {"projects": self.list(), "machine": self.machine, "capabilities": ["project-source"],
                 "bootstrap_sha256": hashlib.sha256(code).hexdigest()}
 
 
@@ -314,7 +266,7 @@ def register(handler, registry: ProjectRegistry | None, pool_key_path: Path | No
     return True
 
 
-def answer(handler, registry: ProjectRegistry | None, parsed, *, pool_key_path: Path | None = None) -> bool:
+def answer(handler, registry: ProjectRegistry | None, parsed) -> bool:
     """Answer authenticated source catalogue and immutable bundle requests."""
     prefix = "/workspace/v1/projects"
     if not parsed.path.startswith(prefix) or registry is None:
@@ -322,8 +274,7 @@ def answer(handler, registry: ProjectRegistry | None, parsed, *, pool_key_path: 
     pieces = parsed.path.removeprefix(prefix).strip("/").split("/")
     try:
         if parsed.path == prefix:
-            show_boards = project_enrollment.visible(handler.connection, handler._sealing(), pool_key_path)
-            handler._send(200, registry.catalogue(include_boards=show_boards))
+            handler._send(200, registry.catalogue())
         elif pieces == ["bootstrap"]:
             handler._send(200, {}, raw=bootstrap(), content_type="text/x-python")
         elif len(pieces) == 2 and pieces[1] == "snapshot":

@@ -69,13 +69,13 @@ def project_tasks(workspace_node, monkeypatch, tmp_path):
     to the project task route; ``(call, node, projects)``."""
     monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
     monkeypatch.delenv("POOLHOUSE_BOARD")
-    projects = {ident: SimpleNamespace(name=name, root=str(_repo(tmp_path / name)), board_host="")
+    projects = {ident: SimpleNamespace(name=name, root=str(_repo(tmp_path / name)))
                 for ident, name in ((PROJECT, "experiment"), (OTHER, "other"))}
-    registry = SimpleNamespace(machine="local", hosts=lambda host: True, get=lambda ident: projects[ident])
+    registry = SimpleNamespace(machine="local", get=lambda ident: projects[ident])
     sessions = Sessions()
     session = sessions.open("fixture-person", "launch-ticket")
     cookie_value = f"poolhouse_ui={session.sid}"
-    ui = SimpleNamespace(sessions=sessions, projects=registry, record=lambda *a, **k: None, workspaces=object(),
+    ui = SimpleNamespace(sessions=sessions, projects=registry, record=lambda *a, **k: None,
                          authed=lambda cookie: cookie == cookie_value,
                          credentialed=lambda cookie: cookie == cookie_value and session.credentialed,
                          host_ok=lambda host: host == "127.0.0.1:8770")

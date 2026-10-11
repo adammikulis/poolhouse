@@ -19,7 +19,6 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
-from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +38,6 @@ from . import (
     companion_routes,
     device_auth,
     invite_routes,
-    project_workers,
     projects as project_routes,
 )
 from .availability import Availability, parse_window
@@ -101,7 +99,6 @@ class Daemon:
     fetcher: Fetcher | None = None
     ui: Any | None = None
     projects: project_routes.ProjectRegistry | None = None
-    workspaces: Any | None = None
     schedule: Availability | None = None
     on_paused: str = "stop"
     schedule_path: Path | None = None
@@ -232,8 +229,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             """Whether this request is signed by a secret this machine answers to, and when it
             came over TLS from another machine, by a device that is a member; the answer is
             sent when it is not. ``body`` is what the request carried."""
-            self._workspace_device = None
-            self._workspace_projects = daemon.projects
             seen = screen.check(self, body)
             verdict, self._member = seen.verdict, seen.member
             if seen.refusal is not None:
@@ -241,7 +236,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 self._send(seen.refusal[0], {"error": seen.refusal[1]})
                 return False
             if verdict.ok:
-                self._workspace_device = device_auth.identify(daemon.devices(), verdict.secret)
                 mode = self.headers.get(sealing.HEADER, "")
                 self._opening = (sealing.box_key(verdict.secret), verdict, mode == "2",
                                  self.headers) if mode in ("1", "2") else None
@@ -409,12 +403,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             self._send(status, answer)
             return True
 
-        def _extension(self, body=None) -> bool:
-            for entry in entry_points(group='poolhouse.member_routes'):
-                if self.path.split('?')[0].startswith('/' + entry.name + '/'):
-                    return bool(entry.load()(self, body))
-            return False
-
         def do_GET(self) -> None:
             if companion_routes.answer(ui, self):
                 return
@@ -438,8 +426,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if member_answer(self, roster, "GET", path, None):
                 return
-            if project_routes.answer(self, daemon.projects, parsed,
-                                     pool_key_path=pool_key_path) or self._extension():
+            if project_routes.answer(self, daemon.projects, parsed):
                 return
             if path == "/health":
                 status = runner.status()
@@ -630,10 +617,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if project_routes.register(self, daemon.projects, pool_key_path, body):
                 return
             try:
-                if self._workspace(body or b"{}"):
-                    return
-                if self._extension(body):
-                    return
                 self._route_post(body or b"{}")
             except Malformed as bad:
                 self._send(bad.status, {"error": bad.message})
@@ -647,9 +630,6 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not isinstance(got, dict):
                 raise Malformed(400, "the body is not a JSON object")
             return got
-
-        def _workspace(self, body: bytes) -> bool:
-            return project_workers.answer(self, daemon.workspaces, body, pool_key_path)
 
         def _route_post(self, body: bytes) -> None:
             parsed = urllib.parse.urlparse(self.path)

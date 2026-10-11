@@ -24,7 +24,6 @@ tasks-view .task-metrics { display:grid; grid-template-columns:repeat(6,minmax(0
 tasks-view .task-project-bar { display:flex; align-items:end; gap:18px; margin-bottom:22px; }
 tasks-view .task-project-bar label { margin:0; min-width:240px; }
 tasks-view .task-project-bar select { display:block; width:100%; margin-top:7px; }
-tasks-view .task-project-bar p { margin:0 0 8px; }
 tasks-view .task-overview { display:grid; grid-template-columns:220px minmax(0,1fr); gap:20px; margin-bottom:24px; }
 tasks-view .task-remaining { padding:calc(24px * var(--ui-density,1)); border-radius:16px; background:var(--poolhouse-yellow); color:var(--poolhouse-yellow-ink); display:flex; flex-direction:column; justify-content:center; }
 tasks-view .task-remaining strong { font-size:3rem; line-height:1; margin-bottom:10px; }
@@ -53,7 +52,7 @@ tasks-view .task-composer { background:var(--bg-raised); border:1px solid var(--
 <template>
 <section class="workspace" hidden>
 <header class="work-heading"><h1>Tasks</h1></header>
-<div class="task-project-bar"><label>Project workspace<select class="task-project" aria-label="Task project workspace"><option value="">Loading projects…</option></select></label><p class="hint task-authority"></p></div>
+<div class="task-project-bar"><label>Project workspace<select class="task-project" aria-label="Task project workspace"><option value="">Loading projects…</option></select></label></div>
 <div class="task-overview"><section class="task-remaining" aria-label="Remaining tasks"><strong class="task-remaining-number">—</strong><span>tasks remaining</span><p class="task-total">Choose a project workspace</p></section><div class="task-metrics"></div></div>
 <div class="task-context"><article><h2>Estimated completion</h2><div class="task-eta-value">Unknown</div><p class="hint task-eta-reason">Waiting for project task data.</p></article><article><h2>Current workers</h2><div class="task-worker-list"><p class="hint">Choose a project to inspect worker assignments.</p></div></article></div>
 <div class="task-controls"><input aria-label="Search tasks" placeholder="Search tasks"><select aria-label="Task status"><option value="">All statuses</option></select><button class="task-refresh">Refresh</button></div>
@@ -80,7 +79,7 @@ class TasksView extends HTMLElement{
   const projects=new Map();for(const row of result.workspaces||[])if(!projects.has(row.id)||row.is_self)projects.set(row.id,row);
   this.projects=[...projects.values()];const selected=this.project.value;
   this.project.replaceChildren(E('option',{value:''},'Choose a project'),...this.projects.map(row=>E('option',{value:row.id},row.name)));
-  this.project.value=this.projects.some(row=>row.id===selected)?selected:(this.projects.find(row=>row.local_authority)?.id||'');
+  this.project.value=this.projects.some(row=>row.id===selected)?selected:(this.projects.find(row=>row.is_self)?.id||'');
   this.projectsLoaded=true;
  }
  async load(){
@@ -92,7 +91,6 @@ class TasksView extends HTMLElement{
    const data=await W.api(this.endpoint());if(selected!==this.project.value)return;
    this.rows=data.tasks||[];this.metrics=data.metrics||{};this.overview=data.overview;this.loadError='';this.paint();
    this.note.textContent=`Updated ${new Date(this.overview.as_of*1000).toLocaleTimeString()}`;
-   const project=this.projects.find(row=>row.id===selected);this.querySelector('.task-authority').textContent=project?`Project workspace · ${project.board_host||'authority not configured'}`:'';
   }catch(error){if(selected!==this.project.value)return;this.rows=[];this.overview=null;this.loadError=error.message||String(error);this.paint();this.note.replaceChildren(E('span',{},`Task data unavailable: ${this.loadError} Use Refresh to try again, or check the project workspace. `),W.button('Open Projects',()=>M.go('projects')));if(error.personSetupRequired===true){const button=E('button',{type:'button',onclick:()=>this.joinProject(selected,button)},'Join workspace as person');this.note.append(button);}}
   finally{this.loading=false;if(this.reloadAfterLoad){this.reloadAfterLoad=false;this.load();}}
  }

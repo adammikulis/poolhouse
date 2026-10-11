@@ -1,4 +1,4 @@
-"""Project publication, hostile archives and checkout authority."""
+"""Project publication, hostile archives and verified checkouts."""
 
 import hashlib
 import io
@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse.files import read_json, write_json
-from poolhouse.fleet import project_client, project_source as source
+from poolhouse.files import read_json
+from poolhouse.fleet import project_client, project_source as source, projects
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.discovery import derive_token
 from poolhouse.fleet.jobs import JobRunner
@@ -108,35 +108,23 @@ def test_checkout_uses_verified_blobs_without_filters(repository, tmp_path):
     git.run(["add", "--", ".gitattributes"], cwd=repository)
     manifest, packed = source.build(repository, IDENTIFIER)
     result = source.checkout(packed, IDENTIFIER, manifest["source_hash"], tmp_path / "checkout",
-                             authority={"host": "https://pc:8770"})
+                             origin={"source_machine": "pc", "source_host": "https://pc:8770"})
     assert (result / "run.sh").read_bytes() == b"#!/bin/sh\necho hello\n"
-    assert read_json(result / ".poolhouse-project.json", {})["authority"]["host"] == "https://pc:8770"
+    assert read_json(result / ".poolhouse-project.json", {}) == {
+        "kind": "project-checkout", "project_id": IDENTIFIER, "source_hash": manifest["source_hash"],
+        "source": {"machine": "pc", "host": "https://pc:8770"}}
     assert git.run(["status", "--porcelain"], cwd=result).stdout.strip() == "?? .poolhouse-project.json"
 
 
 def test_registry_requires_explicit_selection_and_unshare_closes_source(repository, tmp_path):
-    registry = ProjectRegistry(tmp_path / "daemon", "pc", (repository,), "https://pc:8770")
+    registry = ProjectRegistry(tmp_path / "daemon", "pc", (repository,))
     with pytest.raises(source.ProjectError):
         registry.share(str(repository))
     project = registry.share(registry.candidates()[0]["id"])
-    assert project.board_host == ""
-    with pytest.raises(source.ProjectError):
-        registry.workspace_base(project.id)
-    registry.claim_authority(project.id)
-    assert registry.workspace_base(project.id).name == project.id
     assert registry.snapshot(project.id, project.source_hash)
     registry.unshare(project.id)
     with pytest.raises(source.ProjectError):
         registry.snapshot(project.id, project.source_hash)
-
-
-def test_remote_checkout_cannot_create_another_authority(repository, tmp_path):
-    write_json(repository / ".poolhouse-project.json", {"kind": "project-checkout", "project_id": IDENTIFIER,
-                                                        "authority": {"host": "https://other:8770"}})
-    registry = ProjectRegistry(tmp_path / "daemon", "pc", (repository,), "https://pc:8770")
-    project = registry.share(registry.candidates()[0]["id"])
-    with pytest.raises(source.ProjectError, match="another workspace address"):
-        registry.claim_authority(project.id)
 
 
 def test_http_source_requires_auth_and_transfers_verified_checkout(repository, tmp_path):
@@ -154,6 +142,7 @@ def test_http_source_requires_auth_and_transfers_verified_checkout(repository, t
         assert catalogue(Member(base, token))["projects"][0]["id"] == project.id
         result = receive(Member(base, token), project.id, tmp_path / "received")
         assert (result / "run.sh").read_bytes().startswith(b"#!/bin/sh\n")
+        assert read_json(result / ".poolhouse-project.json", {})["source"] == {"machine": "pc", "host": base}
         registry.unshare(project.id)
         with pytest.raises(source.ProjectError):
             receive(Member(base, token), project.id, tmp_path / "received-again")
@@ -191,7 +180,21 @@ def test_standalone_bootstrap_contains_verified_checkout_helpers(repository, tmp
     assert (target / "run.sh").read_bytes() == b"#!/bin/sh\necho hello\n"
 
 
-def test_wsl_board_host_uses_authenticated_bridge_lan_address(monkeypatch):
+@pytest.mark.parametrize("address", ["", "127.0.0.1", "0.0.0.0", "224.1.2.3", "8.8.8.8", "::1"])  # noqa: S104
+def test_lan_host_refuses_non_network_addresses(monkeypatch, address):
+    monkeypatch.delenv("POOLHOUSE_WSL_NETWORK", raising=False)
+    monkeypatch.setattr(projects, "primary_ip", lambda: address)
+    assert lan_host(8770) == ""
+
+
+@pytest.mark.parametrize("address, expected", [("192.168.40.2", "192.168.40.2"), ("fd00::2", "[fd00::2]")])
+def test_lan_host_uses_current_route_address(monkeypatch, address, expected):
+    monkeypatch.delenv("POOLHOUSE_WSL_NETWORK", raising=False)
+    monkeypatch.setattr(projects, "primary_ip", lambda: address)
+    assert lan_host(8770) == f"https://{expected}:8770"
+
+
+def test_wsl_lan_host_uses_authenticated_bridge_address(monkeypatch):
     monkeypatch.setenv("POOLHOUSE_WSL_NETWORK", json.dumps({"address": ["192.168.2.59", 4321]}))
     assert lan_host(8770) == "https://192.168.2.59:8770"
     monkeypatch.setenv("POOLHOUSE_WSL_NETWORK", json.dumps({"address": ["127.0.0.1", 4321]}))

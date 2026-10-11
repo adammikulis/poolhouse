@@ -180,11 +180,10 @@ def test_a_registered_project_coordination_graph_is_not_offered_or_readable(daem
     project_id = 'a' * 32
     base = tmp_path / 'projects'
     base.mkdir()
-    project = Project(id=project_id, name='Experiment', root=str(tmp_path / 'checkout'),
-                      source_machine='local', board_host='https://local:8770')
+    workspace = tmp_path / 'checkout'
+    project = Project(id=project_id, name='Experiment', root=str(workspace), source_machine='local')
     (base / 'projects.json').write_text(json.dumps({'projects': [asdict(project)]}))
-    daemon.ui.projects = ProjectRegistry(base, 'local', host='https://local:8770')
-    workspace = daemon.ui.projects.workspace_base(project_id)
+    daemon.ui.projects = ProjectRegistry(base, 'local')
     workspace.mkdir(parents=True)
     with GraphStore(workspace / 'coordination.db') as graph:
         graph.upsert_node({'id': 'task:one', 'kind': 'task', 'label': 'Evaluate policy'})

@@ -358,8 +358,8 @@ is superseded by this section.
   address beyond this machine without a TLS context, so a plain listener on the LAN cannot exist; a plain
   connection from another address is dropped. Every pool context (`server_context`, `member_context`,
   `pinned_context`, the join and install clients) has `minimum_version = TLSv1_3`; the Android client
-  offers 1.3 only. A beacon with no certificate is ignored unless it is on this machine. `Device`,
-  `RemoteWorkspace` and a project's `board_host` accept `https://`, or `http://` on this machine only; the
+  offers 1.3 only. A beacon with no certificate is ignored unless it is on this machine. `Device`
+  and `Member` accept `https://`, or `http://` on this machine only; the
   join client refuses a plain-HTTP daemon off this machine. Tests: `tests/test_fleet_wire_floor.py` (a relay
   keeps every byte of a request with a planted marker: none of it is plain and the version is TLS 1.3; plain
   HTTP from a LAN address gets no answer; a client capped at TLS 1.2 is refused; the listener cannot be

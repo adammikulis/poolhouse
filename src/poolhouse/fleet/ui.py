@@ -101,7 +101,8 @@ class UI:
         self.downloads: Any = None
         self.root: Any = None
         self.projects: Any = None
-        self.workspaces: Any = None
+        self.display_url = ""
+        """The address other devices reach this one at, shown on its own member card."""
         self.hosting: Any = None
         self.detach: Any = None
         """How a sweep is started: the bench's own `detach` unless a test hands in a fake."""
@@ -125,7 +126,7 @@ class UI:
         self.launch: LaunchSecret | None = None
         """The secret that lets this machine's own window or owner terminal ask for a ticket."""
         self.audit: Callable[..., None] | None = None
-        """``(event, **fields)``: appends a row to the audit chain; the workspaces' audit when unset."""
+        """``(event, **fields)``: appends a row to the audit chain; nothing is recorded when unset."""
         self._join_lock = threading.Lock()
         self._members: tuple[float, list[dict[str, Any]]] = (0.0, [])
         self.setup_jobs = None
@@ -161,9 +162,8 @@ class UI:
 
     def record(self, event: str, **fields: Any) -> None:
         """Append a session event to the audit chain; ticket and secret values are never passed."""
-        audit = self.audit or getattr(self.workspaces, "audit", None)
-        if audit is not None:
-            audit(event, **fields)
+        if self.audit is not None:
+            self.audit(event, **fields)
 
     # -- state -----------------------------------------------------------
     def state(self) -> dict[str, Any]:
@@ -208,7 +208,7 @@ class UI:
                 "slots": slots, "free": int(status.get("free", slots)),
                 "host": "127.0.0.1", "hostname": "",
                 "base_url": f"http://127.0.0.1:{self.member_port}",
-                "display_url": self.projects.host if self.projects is not None else "",
+                "display_url": self.display_url,
                 "is_self": True, "pools": []}
 
     def members(self, *, force: bool = False) -> list[dict[str, Any]]:

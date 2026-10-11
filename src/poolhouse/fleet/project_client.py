@@ -7,14 +7,12 @@ import json
 import re
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from poolhouse import sealing
-from poolhouse.files import read_json
 from poolhouse.http import Sealed, ServerError, ServerUnreachable, open_stream
 
 from .discovery import derive_token, memberships
-from .onboard.lan import require_local_url, secure_scheme
+from .onboard.lan import require_local_url
 from .project_source import MAX_ARCHIVE, MAX_FILES, MAX_SOURCE, ProjectError, checkout, project_id
 from .remote import Member
 
@@ -104,8 +102,7 @@ def validate_project(project: dict) -> None:
     """Refuse malformed project metadata before selecting a source URL."""
     if not isinstance(project, dict):
         raise ProjectError("Member returned an invalid project entry")
-    for field, length in (("id", 32), ("name", 256), ("source_machine", 256),
-                          ("board_host", 2048)):
+    for field, length in (("id", 32), ("name", 256), ("source_machine", 256)):
         value = project.get(field)
         if not isinstance(value, str) or len(value) > length:
             raise ProjectError(f"Invalid project {field}")
@@ -118,12 +115,6 @@ def validate_project(project: dict) -> None:
         value = project.get(field)
         if type(value) is not int or not 0 <= value <= maximum:
             raise ProjectError(f"Invalid project {field}")
-    if project.get("board_host"):
-        parts = urlsplit(project["board_host"])
-        if (not secure_scheme(project["board_host"]) or not parts.hostname or parts.username
-                or parts.password or parts.query or parts.fragment or parts.path not in {"", "/"}):
-            raise ProjectError("Invalid project board_host")
-        require_local_url(project["board_host"])
 
 
 def members(ui) -> list[Member]:
@@ -152,11 +143,7 @@ def available(ui) -> dict:
             devices.append({"name": member.name, "member": member.base_url,
                             "state": "upgrade_required" if getattr(exc, "status", 0) in {404, 501} else "offline",
                             "error": str(exc)})
-    for project in projects:
-        boards = {p["board_host"] for p in projects if p["id"] == project["id"] and p["board_host"]}
-        if len(boards) > 1:
-            project["state"] = "conflict"
-    workspaces = [{**board, "is_self": True, "local_authority": True} for board in ui.projects.boards()] if ui.projects else []
+    workspaces = [{**board, "is_self": True} for board in ui.projects.boards()] if ui.projects else []
     return {"projects": projects, "devices": devices, "workspaces": workspaces,
             "candidates": ui.projects.candidates() if ui.projects else [],
             "local": ui.projects.list() if ui.projects else []}
@@ -171,8 +158,7 @@ def receive(member: Member, identifier: str, base: Path) -> Path:
     if hashlib.sha256(data).hexdigest() != project["archive_sha256"]:
         raise ProjectError("Project archive digest mismatch")
     return checkout(data, identifier, project["source_hash"], base,
-                    authority={"host": project.get("board_host", ""),
-                               "source_machine": project["source_machine"], "source_host": member.base_url})
+                    origin={"source_machine": project["source_machine"], "source_host": member.base_url})
 
 
 def route(request) -> bool:
@@ -201,13 +187,8 @@ def route(request) -> bool:
             selected_members = [p for p in members(ui) if p.base_url == selected]
             if len(selected_members) != 1:
                 raise ProjectError("Choose a currently authenticated pool device")
-            found = available(ui)
-            if any(p["id"] == suffix[0] and p["state"] == "conflict" for p in found["projects"]):
-                raise ProjectError("Project has conflicting workspace authorities")
             result = receive(selected_members[0], suffix[0], ui.root / "project-checkouts")
-            request.send(200, {"project_id": suffix[0], "checkout": str(result),
-                               "board_host": read_json(result / ".poolhouse-project.json", {}).get("authority", {}).get("host", ""),
-                               "attached": False})
+            request.send(200, {"project_id": suffix[0], "checkout": str(result), "attached": False})
         else:
             return False
     except (ProjectError, ServerError, ValueError, OSError) as exc:

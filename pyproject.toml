@@ -340,17 +340,10 @@ reportUnsupportedDunderAll = "error"
 reportUnusedCoroutine = "error"
 reportUnusedExcept = "error"
 
-[project.entry-points."poolhouse.member_routes"]
-workspace = "poolhouse.workspace.coordinator:route"
-
 [project.entry-points."poolhouse.ui_routes"]
-coordination = "poolhouse.workspace.coordinator_routes:route"
 agents = "poolhouse.workspace.agent_routes:route"
 tasks = "poolhouse.workspace.task_routes:route"
 board = "poolhouse.workspace.fleet_routes:route"
 coding = "poolhouse.workspace.coding_routes:route"
 history = "poolhouse.activity.fleet_routes:route"
 work-reputation = "poolhouse.workspace.work_reputation:fleet_route"
-
-[project.entry-points."poolhouse.workspace_hosts"]
-default = "poolhouse.workspace.remote_host:WorkspaceHost"

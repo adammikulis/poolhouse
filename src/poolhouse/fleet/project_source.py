@@ -181,7 +181,7 @@ def _entries(manifest: dict, identifier: str, source_hash: str) -> list[dict]:
     return entries
 
 
-def checkout(packed: bytes, identifier: str, source_hash: str, base: Path, *, authority: dict | None = None) -> Path:
+def checkout(packed: bytes, identifier: str, source_hash: str, base: Path, *, origin: dict | None = None) -> Path:
     """Create a separate Git checkout from a fully verified source snapshot."""
     manifest, contents = verify(packed, identifier, source_hash)
     base = base.resolve()
@@ -200,9 +200,8 @@ def checkout(packed: bytes, identifier: str, source_hash: str, base: Path, *, au
         git.run(["-c", "user.name=poolhouse", "-c", "user.email=poolhouse@example.invalid",
                  "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m",
                  "chore: initialize shared project snapshot"], cwd=stage)
-        origin = authority or {}
+        origin = origin or {}
         metadata = {"kind": "project-checkout", "project_id": identifier, "source_hash": source_hash,
-                    "authority": {"host": origin.get("host", "")},
                     "source": {"machine": origin.get("source_machine", ""), "host": origin.get("source_host", "")}}
         write_json(stage / ".poolhouse-project.json", metadata)
         promote(stage, target)

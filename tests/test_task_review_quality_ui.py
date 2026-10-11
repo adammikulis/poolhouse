@@ -20,10 +20,10 @@ pytestmark = [pytest.mark.slow, pytest.mark.redteam]
 
 def registry(root):
     """The project registry the page lists: one project, whose checkout is ``root``."""
-    row = {'id': PROJECT, 'name': 'experiment', 'machine': 'local', 'board_host': ''}
-    project = SimpleNamespace(name='experiment', root=str(root), board_host='')
+    row = {'id': PROJECT, 'name': 'experiment', 'machine': 'local'}
+    project = SimpleNamespace(name='experiment', root=str(root))
     return SimpleNamespace(machine='local', boards=lambda: [row], list=lambda: [], candidates=lambda: [],
-                           hosts=lambda host: True, get=lambda ident: project)
+                           get=lambda ident: project)
 
 
 def fill_review(viewer):
@@ -45,7 +45,6 @@ def test_advanced_person_quality_review_records_fixed_bonus_and_separate_rating(
     server, node = tasks_ui
     server.ui.projects = registry(tmp_path)
     server.ui.settings.setup_done = True
-    server.ui.workspaces = object()
     ledger = WorkLedger(SealedGraph(tmp_path / 'quality.enc', keys=vault.PassphraseKeys(lambda _: 'isolated quality key')))
     verify = task_credit.verify_on_board
     monkeypatch.setattr(task_outcomes.task_credit, 'verify_on_board', lambda session, ident: verify(session, ident, ledger=ledger))

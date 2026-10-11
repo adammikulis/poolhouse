@@ -1,25 +1,56 @@
-"""Shared team and model conversations driven through the Fleet page."""
+"""Shared team and model conversations driven through the Fleet page, over the person's session on a real node."""
+
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import test_fleet_chat_browser as chat_fixtures
-from workspace_kit import Kit, clean_env
+from person_kit import member_on
 
-from poolhouse.workspace import tokens
+from poolhouse import node_launch
+from poolhouse.board import person
+from poolhouse.fleet import extension_routes
+from poolhouse.workspace import board_page, fleet_routes
+from poolhouse.workspace.agent_display import describe
 
 chat_browser = chat_fixtures.chat_browser
+pytest_plugins = ['node_kit']
 pytestmark = pytest.mark.slow
 
 
-def test_team_composer_survives_history_failure_and_retries_authenticated_send(chat_browser, monkeypatch, tmp_path):
+@pytest.fixture
+def team(workspace_node, monkeypatch):
+    """The node the page reads; ``team.me`` is the person's session on its board."""
+    monkeypatch.setattr(node_launch, 'default_state', lambda: workspace_node.state)
+    entry = SimpleNamespace(name='board', load=lambda: fleet_routes.route)
+    monkeypatch.setattr(extension_routes, 'entry_points', lambda **kw: [entry])
+    workspace_node.me = person.session(Path.cwd(), workspace_node.client)
+    return workspace_node
+
+
+def helper(node, native_id, parent=None):
+    """A session of its own on the board, and its typed session."""
+    member = node.member(native_id, parent=parent)
+    return member, node.session(member)
+
+
+def bodies(node, channel):
+    """What the person reads in a room, oldest first."""
+    return [entry.text for entry in node.me.read_all(channel=channel, kind='message')]
+
+
+def display_name(session, name):
+    """How the page names the session ``name``."""
+    return describe(next(agent for agent in session.agents() if agent.name == name))['display_name']
+
+
+def test_team_composer_survives_history_failure_and_retries_authenticated_send(chat_browser, team):
     from playwright.sync_api import expect
 
-    kit = Kit(clean_env(monkeypatch, tmp_path / 'workspace'))
-    kit.limits(sends_per_window=1000)
-    helper = kit.agent('research-helper')
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    kit.ws.board.create(helper, '#research')
+    _, session = helper(team, 'research-helper')
+    session.room('create', '#research')
     for number in range(105):
-        kit.ws.send(helper, '#research', 'note', f'Existing research message {number}')
+        session.post('#research', 'note', f'Existing research message {number}')
     served, page = chat_browser
     page.goto(f'http://127.0.0.1:{served.port}/ui#board')
     page.get_by_label('Workspace', exact=True).select_option('local')
@@ -57,25 +88,21 @@ def test_team_composer_survives_history_failure_and_retries_authenticated_send(c
     board.get_by_role('button', name='Send', exact=True).click()
     expect(editor).to_have_value('')
     expect(board.locator('.msg pre').last).to_contain_text('Keep this research draft')
-    assert kit.ws.board.ui_read(kit.owner, '#research')['messages'][-1]['body'] == 'Keep this research draft'
+    assert bodies(team, '#research')[-1] == 'Keep this research draft'
     board.get_by_role('button', name='Reply in thread').last.click()
     editor.fill('Authenticated thread reply')
     board.get_by_role('button', name='Send', exact=True).click()
     expect(board.locator('.msg pre').last).to_contain_text('Authenticated thread reply')
-    assert any(row['body'] == 'Authenticated thread reply'
-               for row in kit.ws.board.ui_read(kit.owner, '#research')['messages'])
+    assert 'Authenticated thread reply' in bodies(team, '#research')
 
 
-def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_browser, monkeypatch, tmp_path):
+def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_browser, team):
     from playwright.sync_api import expect
 
-    kit = Kit(clean_env(monkeypatch, tmp_path / 'workspace'))
-    kit.limits(sends_per_window=1000)
-    worker = kit.agent('research-helper')
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    kit.ws.board.create(worker, '#experiments')
-    kit.ws.send(worker, '#experiments', 'note', 'The evaluation is ready.', subject='Model evaluation')
-    kit.ws.send(worker, 'owner', 'note', 'Review the experiment criteria.')
+    worker, session = helper(team, 'research-helper')
+    session.room('create', '#experiments')
+    session.post('#experiments', 'note', 'The evaluation is ready.', subject='Model evaluation')
+    session.post(team.me.name, 'note', 'Review the experiment criteria.')
     served, page = chat_browser
     saved = served.ui.conversations.start(model='model-a', title='Experiment plan')
     served.ui.conversations.append(saved.id, 'assistant', 'Compare the two evaluation runs.')
@@ -93,17 +120,15 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     editor.fill('Use the held-out dataset.')
     board.get_by_role('button', name='Send', exact=True).click()
     expect(board.locator('.msg pre')).to_contain_text(['The evaluation is ready.', 'Use the held-out dataset.'])
-    assert any(message['body'] == 'Use the held-out dataset.' for message in kit.ws.board.ui_read(kit.owner, '#experiments')['messages'])
+    assert 'Use the held-out dataset.' in bodies(team, '#experiments')
     board.get_by_role('button', name='Reply in thread').first.click()
     expect(board.get_by_role('button', name='Back to #experiments')).to_be_visible()
     expect(editor).to_be_in_viewport()
     expect(board.get_by_role('button', name='Send', exact=True)).to_be_in_viewport()
-    from poolhouse.workspace.agent_display import metadata
 
-    worker_id = kit.ws.auth(worker).id
-    worker_label = metadata(kit.ws.registry, worker_id)['display_name']
+    worker_id = worker.name
     member = sidebar.locator(f'button[title="{worker_id}"]')
-    expect(member).to_contain_text(worker_label)
+    expect(member).to_contain_text(display_name(session, worker_id))
     expect(member).to_have_attribute('title', worker_id)
     member.click()
     assert board.evaluate('(node) => node.target().to') == worker_id
@@ -126,7 +151,7 @@ def test_project_selection_never_falls_back_to_local_board(chat_browser):
     project = '7' * 32
     seen = []
     page.route('**/ui/projects', lambda route: route.fulfill(json={'workspaces': [
-        {'id': project, 'name': 'Experiment workspace', 'is_self': True, 'local_authority': True}]}))
+        {'id': project, 'name': 'Experiment workspace', 'is_self': True}]}))
 
     def unavailable(route):
         seen.append(route.request.url)
@@ -141,17 +166,13 @@ def test_project_selection_never_falls_back_to_local_board(chat_browser):
     assert page.get_by_label('Workspace', exact=True).input_value() != 'local'
 
 
-def test_new_dm_from_model_chat_opens_full_child_identity_and_survives_reload(chat_browser, monkeypatch, tmp_path):
+def test_new_dm_from_model_chat_opens_a_subagent_conversation_and_survives_reload(chat_browser, team):
     from playwright.sync_api import expect
 
-    kit = Kit(clean_env(monkeypatch, tmp_path / 'workspace'))
-    kit.limits(sends_per_window=1000)
-    parent_name, child_name = 'p' * 48, 'c' * 48
-    parent = kit.agent(parent_name)
-    child = kit.ws.registry.delegate(kit.ws.auth(parent), child_name, 600, (), 10)
-    identity = parent_name + '/' + child_name
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    kit.ws.send(child, 'owner', 'note', 'Ready to review this experiment.')
+    parent, _ = helper(team, 'parent-agent')
+    child, child_session = helper(team, 'child-agent', parent)
+    identity = child.name
+    child_session.post(team.me.name, 'note', 'Ready to review this experiment.')
     served, page = chat_browser
     page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     page.get_by_label('Workspace', exact=True).select_option('local')
@@ -179,14 +200,12 @@ def test_new_dm_from_model_chat_opens_full_child_identity_and_survives_reload(ch
     ('dark', '#242943', '#edf0fa', '#ff5fa2', '#1b1f3a', .8),
     ('custom', '#253d31', '#e8ffef', '#652891', '#ffffff', .65),
 ])
-def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, monkeypatch, tmp_path, theme_tokens):
+def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, team, theme_tokens):
     from playwright.sync_api import expect
 
     theme, surface, ink, pink, pink_ink, density = theme_tokens
 
-    kit = Kit(clean_env(monkeypatch, tmp_path / 'workspace'))
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    kit.ws.board.create(kit.agent('theme-reviewer'), '#theme')
+    helper(team, 'theme-reviewer')[1].room('create', '#theme')
     served, page = chat_browser
     page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     page.locator('#chat-model-button').wait_for(state='visible')
@@ -232,30 +251,25 @@ def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, monke
     page.screenshot(path=f'/private/tmp/poolhouse-conversations-theme-{theme}.png', full_page=True)
 
 
-def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, monkeypatch, tmp_path):
+def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, team, monkeypatch, tmp_path):
     from playwright.sync_api import expect
 
     from poolhouse.fleet import project_client, project_source
     from poolhouse.fleet.projects import ProjectRegistry, identity
     from poolhouse.net import git
-    from poolhouse.workspace.remote_host import WorkspaceHost
 
+    monkeypatch.delenv('POOLHOUSE_BOARD')
     checkout = tmp_path / 'experiment-workspace'
     checkout.mkdir()
     git.run(['init'], cwd=checkout)
     git.run(['remote', 'add', 'origin', 'https://code.example.invalid/team/team-demo.git'], cwd=checkout)
-    registry = ProjectRegistry(tmp_path / 'registry', 'fixture-device', (checkout,), 'http://127.0.0.1:8770')
+    registry = ProjectRegistry(tmp_path / 'registry', 'fixture-device', (checkout,))
     project = identity(checkout)
-    host = WorkspaceHost(registry)
-    host.prepare(project)
-    ws = host.workspace(project)
-    owner = tokens.read_file(tokens.directory(ws.base) / tokens.OWNER_FILE)
-    worker = ws.mint(owner, 'team-demo-helper')
-    ws.send(worker, '#general', 'note', 'The team experiment is ready.')
+    member_on(team, checkout, 'team-demo-helper').post('#general', 'note', 'The team experiment is ready.')
     monkeypatch.setattr(project_client, 'members', lambda ui: [])
     monkeypatch.setattr(project_source, 'build', lambda *args: pytest.fail('Board chooser published source'))
     served, page = chat_browser
-    served.ui.projects, served.ui.workspaces = registry, host
+    served.ui.projects = registry
     session = served.ui.sessions.open('fixture-person', 'launch-ticket')
     page.context.add_cookies([{'name': 'poolhouse_ui', 'value': session.sid,
                               'url': f'http://127.0.0.1:{served.port}/ui', 'httpOnly': True}])
@@ -265,38 +279,26 @@ def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, m
     expect(page.get_by_label('Workspace', exact=True)).to_have_value(project)
     board = page.locator('chat-view ml-board')
     assert board.get_attribute('endpoint') == f'/ui/projects/{project}/board'
-    expect(page.locator('#conversation-channels').get_by_role('button', name='Join workspace as person')).to_be_visible()
     expect(page.locator('#conversation-direct')).to_have_text('No direct messages yet.')
-    page.locator('#conversation-channels').get_by_role('button', name='Join workspace as person').click()
-    expect(board.get_by_role('button', name='Join workspace as person')).to_be_visible()
-    assert all('person_project' not in row for row in ws.registry._load().values())
-    board.get_by_role('button', name='Join workspace as person').click()
     expect(board.locator('.msg pre')).to_contain_text('The team experiment is ready.')
     assert registry.get(project).shared is False
     assert registry.list() == []
     assert not (tmp_path / 'registry' / 'project-bundles').exists()
 
 
-def _existing_dm_directory(monkeypatch, tmp_path):
-    from poolhouse.workspace.agent_display import metadata
-
-    kit = Kit(clean_env(monkeypatch, tmp_path / 'workspace'))
-    kit.limits(sends_per_window=1000)
-    agents = [kit.agent(f'helper-{number}') for number in range(43)]
-    worker = agents[0]
-    worker_id = kit.ws.auth(worker).id
-    worker_label = metadata(kit.ws.registry, worker_id)['display_name']
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
-    kit.ws.board.create(worker, '#experiments')
-    kit.ws.send(worker, 'owner', 'note', 'Existing experiment discussion.')
-    return kit, agents, worker_id, worker_label
+def existing_dm_directory(team):
+    """43 sessions on the board, one of which has a room and a conversation with the person: the sessions, that one's name and how the page names it."""
+    helpers = [helper(team, f'helper-{number}') for number in range(43)]
+    worker, session = helpers[0]
+    session.room('create', '#experiments')
+    session.post(team.me.name, 'note', 'Existing experiment discussion.')
+    return helpers, worker.name, display_name(session, worker.name)
 
 
-def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversations(chat_browser, monkeypatch, tmp_path):
+def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversations(chat_browser, team):
     from playwright.sync_api import expect
 
-    expect.set_options(timeout=30000)  # each of the 43 sessions opens its own store when listed
-    kit, agents, worker_id, worker_label = _existing_dm_directory(monkeypatch, tmp_path)
+    helpers, worker_id, worker_label = existing_dm_directory(team)
     served, page = chat_browser
     saved = served.ui.conversations.start(model='model-a', title='Experiment plan')
     served.ui.conversations.append(saved.id, 'assistant', 'Recorded model conversation.')
@@ -322,7 +324,7 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     direct.locator('summary').click()
     directory = direct.get_by_label('Message an agent', exact=True)
     assert directory.locator('option').count() >= 44
-    selected_id = kit.ws.auth(agents[-1]).id
+    selected_id = helpers[-1][0].name
     directory.select_option(selected_id)
     direct.get_by_role('button', name='Open', exact=True).click()
     board = page.locator('chat-view ml-board')
@@ -331,11 +333,11 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     expect(direct.locator(':scope > button')).to_have_count(2)
     active = direct.locator(f':scope > button[title="{selected_id}"]')
     expect(active).to_have_attribute('aria-current', 'true')
-    assert len(kit.ws.board.dm_list(kit.owner)) == 1
+    assert len(board_page.conversations(team.me)['conversations']) == 1
     page.reload()
     expect(active).to_have_attribute('aria-current', 'true')
     expect(direct.locator(':scope > button')).to_have_count(2)
-    assert len(kit.ws.board.dm_list(kit.owner)) == 1
+    assert len(board_page.conversations(team.me)['conversations']) == 1
     direct.locator(f':scope > button[title="{worker_id}"]').click()
     expect(board.locator('.msg pre')).to_contain_text('Existing experiment discussion.')
     page.reload()
@@ -343,15 +345,12 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     expect(board.locator('.msg pre')).to_contain_text('Existing experiment discussion.')
 
 
-def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(chat_browser, monkeypatch, tmp_path):
+def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(chat_browser, team):
     from playwright.sync_api import expect
 
-    kit = Kit(clean_env(monkeypatch, tmp_path / 'workspace'))
-    kit.limits(sends_per_window=1000)
-    worker = kit.agent('history-helper')
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
+    _, session = helper(team, 'history-helper')
     for number in range(24):
-        kit.ws.send(worker, '#general', 'note', f'History message {number}\nRecorded experiment details.\nRecorded evaluation details.')
+        session.post('#general', 'note', f'History message {number}\nRecorded experiment details.\nRecorded evaluation details.')
     served, page = chat_browser
     page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     page.get_by_label('Workspace', exact=True).select_option('local')
@@ -383,13 +382,12 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
     assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
     page.screenshot(path='/private/tmp/poolhouse-channel-fixed-mobile-expanded.png')
 
-def test_bounded_history_navigation_keeps_message_nodes_scroll_and_draft(chat_browser, monkeypatch, tmp_path):
+
+def test_bounded_history_navigation_keeps_message_nodes_scroll_and_draft(chat_browser, team):
     from playwright.sync_api import expect
 
     from poolhouse.workspace.board_pages import page as message_page
 
-    kit = Kit(clean_env(monkeypatch, tmp_path / 'workspace'))
-    tokens.store(kit.base, tokens.OWNER_FILE, kit.owner)
     served, browser = chat_browser
     rows = [{'seq': seq, 'from': 'owner', 'role': 'human', 'type': 'note',
              'ts': 1, 'body': f'Message {seq}'} for seq in range(1, 100001)]

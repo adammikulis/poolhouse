@@ -14,7 +14,6 @@ import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import partial
-from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
 
@@ -115,18 +114,6 @@ def load_or_create_token(
     return tok
 
 
-def workspace_host(
-    projects: ProjectRegistry, factory: Callable[[ProjectRegistry], Any] | None = None
-) -> Any:
-    """Create project hosting from the injected or installed provider."""
-    if factory is None:
-        providers = tuple(entry_points(group="poolhouse.workspace_hosts", name="default"))
-        if len(providers) != 1:
-            raise RuntimeError("install one poolhouse default workspace hosting provider")
-        factory = providers[0].load()
-    return factory(projects)
-
-
 def identity_directory(root):
     """Return the installed device identity directory or an isolated daemon root."""
     return home.state("onboard", "tls") if root == default_root() else root / "tls"
@@ -155,7 +142,6 @@ class DaemonOptions:
     on_paused: str = "stop"
     bench_home: Path | str | None = None
     track: str | None = None
-    workspace_factory: Callable[[ProjectRegistry], Any] | None = None
 
 
 class DaemonRuntime:
@@ -181,7 +167,6 @@ class DaemonRuntime:
         self.on_paused = options.on_paused
         self.bench_home = options.bench_home
         self.track = options.track
-        self.workspace_factory = options.workspace_factory
 
     def configure(self) -> None:
         self.root = home.expand(self.root) if self.root else default_root()
@@ -289,13 +274,7 @@ class DaemonRuntime:
         threading.Thread(target=self.probe_speech, name="speech-probe", daemon=True).start()
 
     def initialize_listener(self) -> None:
-        self.projects = ProjectRegistry(
-            self.root,
-            self.bench_host.machine,
-            local_candidates(),
-            lan_host(self.port),
-        )
-        self.workspaces = workspace_host(self.projects, self.workspace_factory)
+        self.projects = ProjectRegistry(self.root, self.bench_host.machine, local_candidates())
         self.members = Pool(self.pool_key_path)
         self.daemon = Daemon(
                 self.runner,
@@ -306,7 +285,6 @@ class DaemonRuntime:
                 fetcher=self.fetcher,
                 ui=self.interface,
                 projects=self.projects,
-                workspaces=self.workspaces,
                 schedule=self.schedule,
                 on_paused=self.on_paused,
                 schedule_path=self.schedule_path,
@@ -394,7 +372,7 @@ class DaemonRuntime:
             self.interface.downloads = self.downloads
             self.interface.root = self.root
             self.interface.projects = self.projects
-            self.interface.workspaces = self.workspaces
+            self.interface.display_url = lan_host(self.port)
 
     def report_startup(self) -> None:
         if self.announce:
@@ -696,11 +674,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
     return 2
 
 
-def run(
-    argv: list[str] | None = None,
-    *,
-    workspace_factory: Callable[[ProjectRegistry], Any] | None = None,
-) -> int:
+def run(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-traind")
     ap.add_argument("--root", default=str(default_root()))
     ap.add_argument(
@@ -889,7 +863,6 @@ def run(
             on_paused=a.on_paused,
             bench_home=a.bench_home,
             track=a.track,
-            workspace_factory=workspace_factory,
         )
     )
     return 0

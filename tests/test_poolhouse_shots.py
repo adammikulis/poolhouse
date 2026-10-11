@@ -56,25 +56,16 @@ SAMPLE_DEVICES = [
     device("attic-laptop", "cpu", 32.0, (2, 2)),
     device("shed-nuc", "amd", 48.0, (2, 1), gpu="Greenhollow 7", paused=True),
 ]
-SAMPLE_BOARD = {"ok": True, "state": "connected",
-                "agents": [{"label": "reviewer", "role": "agent", "online": True, "model": "thornfield-8B"},
-                           {"label": "builder", "role": "agent", "online": True},
-                           {"label": "night-watch", "role": "agent", "online": False}],
-                "messages": [{"from": "builder", "text": "Merged the pool screen branch; tests are green on the garage tower."},
-                             {"from": "reviewer", "text": "Two small notes on the sidebar spacing, nothing blocking."},
-                             {"from": "night-watch", "text": "Quiet night. One device paused itself at 02:10 and resumed."}]}
 
 
 def sample(page):
     """Answer the project routes with the invented sample, leave every other route to the daemon."""
     def respond(route):
-        url = route.request.url
         body = {"ok": True, "projects": [{"id": PROJECT, "name": "ledger-service", "state": "available", "is_self": True},
                                          {"id": "b" * 32, "name": "field-notes", "state": "available", "is_self": False, "member": "attic-laptop"}],
-                "candidates": [], "devices": []} if url.rstrip("/").endswith("/ui/projects") else SAMPLE_BOARD
+                "candidates": [], "devices": []}
         route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
     page.route("**/ui/projects", respond)
-    page.route(f"**/ui/projects/{PROJECT}/board", respond)
 
 
 @pytest.fixture
