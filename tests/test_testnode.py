@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import time
 from argparse import Namespace
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -75,6 +76,12 @@ def test_the_same_sources_reuse_the_binary_in_this_checkout_and_in_another(site,
     other = tmp_path / "another-worktree"
     shutil.copytree(site.root, other)
     assert testnode.ensure(other, cache=cache, cargo=str(site.shim)) == first and site.builds() == 1
+
+
+def test_two_runs_that_need_the_same_binary_build_it_once(site, tmp_path):
+    with ThreadPoolExecutor(2) as pool:
+        found = list(pool.map(lambda _: site.build(tmp_path / "cache"), range(2)))
+    assert found[0] == found[1] and site.builds() == 1
 
 
 def test_changed_sources_get_another_key_and_a_new_build(site, tmp_path):
