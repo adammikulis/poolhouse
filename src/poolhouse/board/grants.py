@@ -28,6 +28,7 @@ __all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "approve", "c
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
+APPROVE_DOMAIN = b"poolhouse/person-approve/v1\n"
 UNENROLL_DOMAIN = b"poolhouse/person-unenroll/v1\n"
 REBIND_DOMAIN = b"poolhouse/session-rebind/v1\n"
 FRESH_MS = 5 * 60 * 1000
@@ -141,13 +142,17 @@ def enrolment(key: Signs, about: str, *, now_ms: int | None = None) -> dict[str,
     return {k: v for k, v in body.items() if k != "op"} | {"proof": key.sign_bytes(ENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
-def approve(proof: dict[str, Any], approver: Signs) -> dict[str, Any]:
-    """The proof of a new key with the approval of a key the node already holds."""
+def approve(proof: dict[str, Any], approver: Signs, *, node: str, now_ms: int | None = None) -> dict[str, Any]:
+    """The proof of a new key with the approval of a key the node already holds: for the node ``node`` (its device
+    fingerprint) only, and good once, for five minutes."""
     if not isinstance(proof, dict) or not {"public", "about", "at_ms", "proof"} <= proof.keys():
         raise ValueError("a carried key is what `person-proof` printed: public, about, at_ms and proof")
-    body = {"op": "enroll", "public": proof["public"], "about": proof["about"], "at_ms": proof["at_ms"]}
+    at, by = _now_ms() if now_ms is None else now_ms, fingerprint(approver.public)
+    body = {"op": "approve", "public": proof["public"], "about": proof["about"], "at_ms": proof["at_ms"], "approved_ms": at, "by": by,
+            "node": node, "nonce": secrets.token_hex(16)}
     _plain(body)
-    return {**proof, "by": fingerprint(approver.public), "approval": approver.sign_bytes(ENROLL_DOMAIN + canonical(body).encode()).hex()}
+    sig = approver.sign_bytes(APPROVE_DOMAIN + canonical(body).encode()).hex()
+    return {**proof, "by": by, "approved_ms": at, "nonce": body["nonce"], "approval": sig}
 
 
 def expect_enrolment(state: Path, *, now_ms: int | None = None) -> str:
@@ -308,7 +313,7 @@ def want_line(board: str, want: Want, at_ms: int) -> str:
 
 def enrol_line(public: bytes, about: str) -> str:
     """What a person reads before a key is enrolled as a person key."""
-    return f"let the key {public.hex()} ({about}) act as a person key on a node"
+    return f"let the key {public.hex()} ({about}) act as a person key on the node"
 
 
 def describe(data: bytes) -> str:
@@ -325,6 +330,9 @@ def describe(data: bytes) -> str:
             return f"end the grant {body['gid']} on board {body['board']}" + (f" ({body['reason']})" if body.get("reason") else "")
         if domain + b"\n" == ENROLL_DOMAIN:
             return enrol_line(bytes.fromhex(body["public"]), body["about"])
+        if domain + b"\n" == APPROVE_DOMAIN and body["op"] == "approve":
+            return (f"{enrol_line(bytes.fromhex(body['public']), body['about'])} {body['node']}, approved by the key {body['by']}, "
+                    f"once, until {when(body['approved_ms'] + FRESH_MS)}")
         if domain + b"\n" == REBIND_DOMAIN and body["op"] == "rebind":
             return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in, on the node {body['node']}, "
                     f"and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")

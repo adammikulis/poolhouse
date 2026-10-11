@@ -117,7 +117,7 @@ def test_the_question_is_read_from_the_bytes_signed_and_only_a_grant_a_revocatio
     revoke = grants.sign_revoke(key, "demo", "g-0123456789abcdef", "no longer needed")
     assert "end the grant g-0123456789abcdef on board demo (no longer needed)" in asked[-1] and revoke["gid"] == "g-0123456789abcdef"
     grants.enrolment(key, "the laptop")
-    assert f"let the key {key.public.hex()} (the laptop) act as a person key on a node" in asked[-1]
+    assert f"let the key {key.public.hex()} (the laptop) act as a person key on the node" in asked[-1]
     grants.sign_unenroll(key, "cd" * 32)
     assert f"take the person key {'cd' * 32} off the node" in asked[-1]
     before = len(asked)
@@ -172,6 +172,15 @@ def test_the_person_key_signs_no_manifest_whoever_confirms(person_key_at):
     assert asked == []
 
 
+def test_an_approval_names_the_whole_node_the_key_and_when_it_ends(person_key_at):
+    keys, asked = person_key_at(True)
+    other = Capture()
+    carried = grants.enrolment(other, "a second device", now_ms=T0)
+    grants.approve(carried, keys, node="cd" * 32, now_ms=T0)
+    assert f"let the key {other.public.hex()} (a second device) act as a person key on the node {'cd' * 32}" in asked[-1]
+    assert f"approved by the key {grants.fingerprint(keys.public)}" in asked[-1] and f"until {grants.when(T0 + 300_000)}" in asked[-1]
+
+
 def test_the_question_of_the_person_key_is_the_terminal_question_and_nothing_else_answers_it(tmp_path, monkeypatch):
     seen: list[tuple[str, dict]] = []
     monkeypatch.setattr(person, "confirm", lambda text, **kw: seen.append((text, kw)) or False)
@@ -190,7 +199,7 @@ def test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_the_person
     carried = {"public": "ab" * 32, "at_ms": T0, "proof": "00" * 64}
     for about in ("\x1b[2J\x1b[Hlet the key 0000 act", "line\nbreak", "caf\u00e9"):
         with pytest.raises(ValueError, match="plain ASCII"):
-            grants.approve({**carried, "about": about}, keys)
+            grants.approve({**carried, "about": about}, keys, node="ab" * 32)
     assert asked == []
 
 

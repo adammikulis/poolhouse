@@ -16,6 +16,7 @@ pub const METHODS: [&str; 7] = ["grant_issue", "grant_revoke", "grants", "grant_
 const MOST_LISTED: usize = 200;
 const MOST_LOGGED_PER_ORIGIN: usize = 500;
 const ENROLL_DOMAIN: &str = "poolhouse/person-enroll/v1\n";
+const APPROVE_DOMAIN: &str = "poolhouse/person-approve/v1\n";
 const UNENROLL_DOMAIN: &str = "poolhouse/person-unenroll/v1\n";
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
@@ -24,7 +25,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "grant_revoke" => &["gid", "at_ms", "reason", "person", "sig"],
         "grants" => &[],
         "grant_log" => &["limit"],
-        "person_enroll" => &["public", "about", "at_ms", "proof", "by", "approval", "secret"],
+        "person_enroll" => &["public", "about", "at_ms", "proof", "by", "approval", "approved_ms", "nonce", "secret"],
         "person_unenroll" => &["fingerprint", "at_ms", "by", "sig"],
         "person_keys" => &[],
         _ => return None,
@@ -158,8 +159,17 @@ fn enrolment(public: &str, about: &str, at_ms: u64) -> Vec<u8> {
     format!("{ENROLL_DOMAIN}{}", canonical(&json!({"op": "enroll", "public": public, "about": about, "at_ms": at_ms}))).into_bytes()
 }
 
-/// Enrol a person key. The key signs its own enrolment. The first key also presents the one-time secret a person's
-/// command at a terminal left on this device; once a key is enrolled, an enrolled key approves each new one.
+/// What an enrolled key signs to approve a new key on one node, once: the new key's proof, who approves, the node's own
+/// certificate fingerprint, the time and a nonce.
+fn approval(proof: &Map<String, Value>, by: &str, node: &str) -> Vec<u8> {
+    let field = |k: &str| proof.get(k).cloned().unwrap_or(Value::Null);
+    let body = json!({"op": "approve", "public": field("public"), "about": field("about"), "at_ms": field("at_ms"), "approved_ms": field("approved_ms"),
+                      "by": by, "node": node, "nonce": field("nonce")});
+    format!("{APPROVE_DOMAIN}{}", canonical(&body)).into_bytes()
+}
+
+/// Enrol a person key. The key signs its own enrolment. The first key also presents the one-time secret a person's command
+/// at a terminal left on this device; once a key is enrolled, an enrolled key approves each new one, for this node and once.
 fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries a person key to enrol".into()))?;
     let (public, about) = (text(p, "public")?, text(p, "about")?);
@@ -175,8 +185,22 @@ fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value>
         if !node.persons.take_secret(text(p, "secret")?, node.now_ms()) {
             return Err(Error::Denied("the first person key is enrolled by `poolhouse-workspace grants-setup` at a terminal, with the one-time secret it makes".into()));
         }
-    } else if !node.persons.signed(text(p, "by")?, &message, text(p, "approval")?) {
-        return Err(Error::Denied("an enrolled person key approves each new one".into()));
+    } else {
+        let by = text(p, "by")?;
+        if !node.persons.all().contains_key(by) {
+            return Err(Error::Denied("an enrolled person key approves each new one, for this node".into()));
+        }
+        fresh(node, p, "approved_ms")?;
+        let nonce = text(p, "nonce")?;
+        if nonce.len() < 16 || nonce.len() > 64 || !nonce.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err(Error::Invalid("an approval carries a nonce of 16 to 64 letters and digits".into()));
+        }
+        if !node.persons.signed(by, &approval(p, by, &node.cert.fingerprint()), text(p, "approval")?) {
+            return Err(Error::Denied("an enrolled person key approves each new one, for this node".into()));
+        }
+        if !node.persons.once(nonce, node.now_ms()) {
+            return Err(Error::Denied("that approval was used already".into()));
+        }
     }
     let fingerprint = node.persons.add(public, about, node.now_ms())?;
     node.record_event("person.enroll", &fingerprint, &format!("{about}; carried by {}/{}", holder.board, holder.name))?;
@@ -196,7 +220,7 @@ fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Valu
     if !node.persons.signed(by, &unenrolment(fingerprint, by, at), text(p, "sig")?) {
         return Err(Error::Denied("an enrolled person key signs the removal of a key".into()));
     }
-    let key = node.persons.remove(fingerprint)?;
+    let key = node.persons.remove(fingerprint, node.now_ms())?;
     node.record_event("person.unenroll", fingerprint, &format!("{}; signed by {by}; carried by {}/{}", key.label, holder.board, holder.name))?;
     Ok(json!({"fingerprint": fingerprint, "keys": node.persons.all().len()}))
 }

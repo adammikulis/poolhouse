@@ -96,7 +96,8 @@ fn a_key_is_removed_only_by_an_enrolled_key_and_the_last_key_stays() {
     let (name, token) = session(&mut n, "demo", "a");
     enrolled(dir.path(), &mut caller(&mut n), &token);
     let (first, second) = (person(), agent());
-    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some(&first))));
+    let device = n.cert.fingerprint();
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
     assert_eq!(held(&mut n).len(), 2);
     ok(second.issue(&mut caller(&mut n), "demo", &token, GID, &Spec::session(&name, "note_verify")));
     let me = Holder { board: "demo".into(), name: name.clone() };
@@ -138,7 +139,8 @@ fn a_damaged_secret_file_and_hostile_removals_change_nothing() {
 
     enrolled(dir.path(), &mut caller(&mut n), &token);
     let (first, second) = (person(), agent());
-    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some(&first))));
+    let device = n.cert.fingerprint();
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
     let good = first.unenroll_params(&second.fingerprint());
     let hostile = [("fingerprint", json!("ab\ncd")), ("fingerprint", json!("a".repeat(100_000))), ("fingerprint", json!(5)), ("fingerprint", Value::Null),
                    ("by", json!("../persons")), ("by", json!(second.fingerprint())), ("by", json!(5)), ("sig", json!("zz")), ("sig", json!("00".repeat(64))),
@@ -163,7 +165,8 @@ fn an_enrolled_key_survives_a_restart_and_a_removed_one_stays_removed() {
         let mut n = node(dir.path());
         let (_, token) = session(&mut n, "demo", "a");
         enrolled(dir.path(), &mut caller(&mut n), &token);
-        ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some(&first))));
+        let device = n.cert.fingerprint();
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
         ok(req(&mut n, "person_unenroll", "", &token, first.unenroll_params(&second.fingerprint())));
     }
     let mut n = node(dir.path());
@@ -175,4 +178,98 @@ fn an_enrolled_key_survives_a_restart_and_a_removed_one_stays_removed() {
     assert!(held(&mut n).is_empty(), "with persons.json deleted while the node was stopped the node holds no key");
     enrolled(dir.path(), &mut caller(&mut n), &token);
     assert_eq!(held(&mut n), [first.fingerprint()], "and the person enrols again with `grants-setup`");
+}
+
+#[test]
+fn what_a_removed_key_signed_stays_void_when_the_same_key_is_enrolled_again() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (name, token) = session(&mut n, "demo", "a");
+    enrolled(dir.path(), &mut caller(&mut n), &token);
+    let (first, second) = (person(), agent());
+    let device = n.cert.fingerprint();
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
+    ok(second.issue(&mut caller(&mut n), "demo", &token, GID, &Spec::session(&name, "note_verify")));
+    let ahead = Spec::session(&name, "land_control").window(120_000, 3_600_000);
+    ok(second.issue(&mut caller(&mut n), "demo", &token, "g-00000000000000c3", &ahead));
+    let me = Holder { board: "demo".into(), name: name.clone() };
+    assert!(check(&mut n, &me, "note_verify", &Scope::any()).unwrap());
+
+    let kept_back = second.issue_params("demo", "g-00000000000000c4", &Spec::session(&name, "task_authority"));
+    ok(req(&mut n, "person_unenroll", "", &token, first.unenroll_params(&second.fingerprint())));
+    assert!(!check(&mut n, &me, "note_verify", &Scope::any()).unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
+    ok(req(&mut n, "grant_issue", "demo", &token, kept_back));
+    assert!(!check(&mut n, &me, "note_verify", &Scope::any()).unwrap(), "enrolled again, what it signed before it was removed counts for nothing");
+    let shown = ok(req(&mut n, "grants", "demo", &token, json!({})));
+    for grant in shown["grants"].as_array().unwrap() {
+        assert_eq!((grant["status"].clone(), grant["why"].as_str().unwrap().contains("removed")), (json!("ignored"), true), "{shown}");
+    }
+    assert_eq!(shown["grants"].as_array().unwrap().len(), 3, "one signed for now, one signed for later, and one signed before and sent after");
+
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    ok(second.issue(&mut caller(&mut n), "demo", &token, "g-00000000000000c2", &Spec::session(&name, "sync_now")));
+    assert!(check(&mut n, &me, "sync_now", &Scope::any()).unwrap(), "what it signs after it is enrolled again counts");
+    drop(n);
+    let mut n = node(dir.path());
+    assert!(!check(&mut n, &me, "note_verify", &Scope::any()).unwrap(), "and the removal outlasts a restart");
+    assert!(check(&mut n, &me, "sync_now", &Scope::any()).unwrap());
+}
+
+#[test]
+fn an_approval_is_for_one_node_and_is_used_once() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, token) = session(&mut n, "demo", "a");
+    enrolled(dir.path(), &mut caller(&mut n), &token);
+    let (first, second) = (person(), agent());
+    let device = n.cert.fingerprint();
+    let approved = second.enrolment("a laptop", Some((&first, &device)));
+    ok(req(&mut n, "person_enroll", "", &token, approved.clone()));
+    ok(req(&mut n, "person_unenroll", "", &token, first.unenroll_params(&second.fingerprint())));
+    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, approved.clone())), "denied", "a captured approval does not enrol the removed key again");
+    assert_eq!(held(&mut n), [first.fingerprint()]);
+
+    let other_node = second.enrolment("a laptop", Some((&first, &"ab".repeat(32))));
+    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, other_node)), "denied", "an approval for another node enrols nothing here");
+    let mut stale = second.enrolment("a laptop", Some((&first, &device)));
+    stale["approved_ms"] = json!(now_ms() - 10 * 60_000);
+    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, stale)), "invalid", "a stale approval");
+    for nonce in ["short", "has spaces in it 0123456789", "../../../../../../../../../../etc"] {
+        let mut p = second.enrolment("a laptop", Some((&first, &device)));
+        p["nonce"] = json!(nonce);
+        assert_eq!(code(&req(&mut n, "person_enroll", "", &token, p)), "invalid", "{nonce}");
+    }
+    let mut unsigned = second.enrolment("a laptop", Some((&first, &device)));
+    unsigned.as_object_mut().unwrap().remove("nonce");
+    assert_eq!(code(&req(&mut n, "person_enroll", "", &token, unsigned)), "invalid", "an approval without a nonce");
+    assert_eq!(held(&mut n), [first.fingerprint()]);
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
+    assert_eq!(held(&mut n).len(), 2, "a fresh approval of the same key enrols it");
+}
+
+#[test]
+fn a_revocation_a_removed_key_signed_stays_void_when_the_same_key_is_enrolled_again() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (name, token) = session(&mut n, "demo", "a");
+    enrolled(dir.path(), &mut caller(&mut n), &token);
+    let (first, second) = (person(), agent());
+    let device = n.cert.fingerprint();
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
+    ok(first.issue(&mut caller(&mut n), "demo", &token, GID, &Spec::session(&name, "note_verify")));
+    let me = Holder { board: "demo".into(), name: name.clone() };
+    assert!(check(&mut n, &me, "note_verify", &Scope::any()).unwrap());
+    ok(second.revoke(&mut caller(&mut n), "demo", &token, GID));
+    assert!(!check(&mut n, &me, "note_verify", &Scope::any()).unwrap(), "the second key ended the grant");
+
+    ok(req(&mut n, "person_unenroll", "", &token, first.unenroll_params(&second.fingerprint())));
+    assert!(check(&mut n, &me, "note_verify", &Scope::any()).unwrap(), "a key that is not enrolled ends nothing");
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
+    assert!(check(&mut n, &me, "note_verify", &Scope::any()).unwrap(), "enrolled again, what it ended before it was removed stays unended");
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    ok(second.revoke(&mut caller(&mut n), "demo", &token, GID));
+    assert!(!check(&mut n, &me, "note_verify", &Scope::any()).unwrap(), "and what it ends now counts");
 }

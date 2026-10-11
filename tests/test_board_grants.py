@@ -55,9 +55,16 @@ def test_a_second_key_is_enrolled_only_with_the_approval_of_the_first(team):
     proof = board_grants.enrolment(other, "a second device")
     with pytest.raises(Denied):
         board_grants.enrol(team.client, team.kid.token, proof)
-    done = board_grants.enrol(team.client, team.kid.token, board_grants.approve(proof, team.person))
+    device = board_grants.listing(team.session(team.lead)).device
+    approved = board_grants.approve(proof, team.person, node=device)
+    done = board_grants.enrol(team.client, team.kid.token, approved)
     assert done["keys"] == 2
     issued(team, team.lead, board_grants.Want("land_trust", {"kind": "session", "name": team.lead.name}), key=other)
+    board_grants.unenrol(team.client, team.kid.token, team.person, board_grants.fingerprint(other.public))
+    with pytest.raises(Denied, match="used already"):
+        board_grants.enrol(team.client, team.kid.token, approved)
+    with pytest.raises(Denied, match="for this node"):
+        board_grants.enrol(team.client, team.kid.token, board_grants.approve(proof, team.person, node="ab" * 32))
 
 
 def test_the_kit_text_of_a_grant_is_plain_ascii(team):
@@ -279,6 +286,7 @@ def test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is
         ["grant", "release_main", *fine], ["grant", "sudo", *fine], ["grant", "", *fine], ["grant", "land_trust\nnote_verify", *fine],
         ["revoke-grant", "g-nope"], ["revoke-grant", "../../etc/passwd"], ["revoke-grant", "g-" + "0" * 16],
         ["person-enroll", "--proof", "{not json"], ["person-enroll", "--proof", '{"public": 5}'], ["person-enroll", "--proof", "[]"],
+        ["person-enroll", "--proof", '{"public": "ab", "about": "\\u001b[2J\\u001b[Hlet the key", "at_ms": 1, "proof": "00"}'],
         ["rebind", "claude-code", "no-such-session"], ["rebind", "x" * 500, lead.name], ["rebind", "", ""], ["rebind", "../x", "ab\ncd"], ["rebind", "claude-code"],
         ["person-unenroll", "--key", "nope"], ["person-unenroll", "--key", "ab\ncd"], ["person-unenroll", "--key", "ab" * 32],
         ["grants-setup", "--session", "bad session name"], ["grants-setup", "--session", "claude-000000"], ["grants-setup", "--session", lead.name, "--days", "0"],

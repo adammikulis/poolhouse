@@ -21,6 +21,8 @@ const MOST_KEYS: usize = 8;
 const MOST_NONCES: usize = 256;
 /// The file beside `persons.json` that holds the hash of the secret the first key is enrolled with.
 pub const SECRET_FILE: &str = "enroll_secret.json";
+/// The file beside `persons.json` that holds when each key that was removed was removed.
+pub const REMOVED_FILE: &str = "persons_removed.json";
 /// How long the secret a person's command made is good for.
 pub const SECRET_TTL_MS: u64 = 10 * 60 * 1000;
 
@@ -42,6 +44,8 @@ struct Secret {
 pub struct Persons {
     path: PathBuf,
     keys: BTreeMap<String, Key>,
+    /// Fingerprint to the wall time the key was last removed: what it signed up to then stays void if it is enrolled again.
+    removed: BTreeMap<String, u64>,
     /// Nonces a person's key signed that were used, with the time: a signature over one is accepted once.
     used: BTreeMap<String, u64>,
 }
@@ -69,7 +73,12 @@ impl Persons {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
             Err(e) => return Err(e.into()),
         };
-        Ok(Persons { path: path.into(), keys, used: BTreeMap::new() })
+        let removed = match std::fs::read(path.with_file_name(REMOVED_FILE)) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| Error::Damaged(format!("removed person keys unreadable: {e}")))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
+            Err(e) => return Err(e.into()),
+        };
+        Ok(Persons { path: path.into(), keys, removed, used: BTreeMap::new() })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -94,6 +103,12 @@ impl Persons {
         found.is_some_and(|s| !secret.is_empty() && now_ms >= s.at_ms && now_ms - s.at_ms <= SECRET_TTL_MS && same(&s.sha256, &sha256_hex(secret.as_bytes())))
     }
 
+    /// Whether the key ``fingerprint`` was removed at or after ``signed_ms``: what it signed by then does not count, even when
+    /// the same key is enrolled again.
+    pub fn removed_since(&self, fingerprint: &str, signed_ms: u64) -> bool {
+        self.removed.get(fingerprint).is_some_and(|at| *at >= signed_ms)
+    }
+
     /// Note that ``nonce`` was used at ``now_ms``: false when it already was within the time a signature is fresh for, or
     /// when too many are remembered to take another.
     pub fn once(&mut self, nonce: &str, now_ms: u64) -> bool {
@@ -105,8 +120,8 @@ impl Persons {
         true
     }
 
-    /// Remove the enrolled key ``fingerprint``; the last key stays.
-    pub fn remove(&mut self, fingerprint: &str) -> Result<Key> {
+    /// Remove the enrolled key ``fingerprint`` at ``now_ms``; the last key stays.
+    pub fn remove(&mut self, fingerprint: &str, now_ms: u64) -> Result<Key> {
         if !self.keys.contains_key(fingerprint) {
             return Err(Error::Invalid("no such person key is enrolled on this node".into()));
         }
@@ -114,6 +129,8 @@ impl Persons {
             return Err(Error::Denied("the last person key stays: to start again, stop the node and delete persons.json (docs/node.md, \"Standing grants\")".into()));
         }
         let key = self.keys.remove(fingerprint).expect("held above");
+        self.removed.insert(fingerprint.into(), now_ms);
+        write_atomic(&self.path.with_file_name(REMOVED_FILE), &serde_json::to_vec(&self.removed)?)?;
         write_atomic(&self.path, &serde_json::to_vec(&self.keys)?)?;
         Ok(key)
     }

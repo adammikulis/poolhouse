@@ -206,12 +206,13 @@ pub struct Revoke {
     pub gid: String,
     pub person: String,
     pub reason: String,
+    pub at_ms: u64,
 }
 
 /// Read and check the body of a `revoke` entry.
 pub fn parse_revoke(map: &Map<String, Value>) -> Result<Revoke> {
     only(map, &["op", "board", "gid", "at_ms", "reason", "person", "sig"])?;
-    number(map, "at_ms")?;
+    let at_ms = number(map, "at_ms")?;
     let (gid, person) = (word(map, "gid", 40)?, word(map, "person", 64)?);
     let reason = match map.get("reason") {
         None => "",
@@ -221,7 +222,7 @@ pub fn parse_revoke(map: &Map<String, Value>) -> Result<Revoke> {
     if !valid_gid(gid) || !valid_fingerprint(person) {
         return bad("a revocation names a gid and the person's key");
     }
-    Ok(Revoke { gid: gid.into(), person: person.into(), reason: reason.into() })
+    Ok(Revoke { gid: gid.into(), person: person.into(), reason: reason.into(), at_ms })
 }
 
 /// Check the shape of any `grant` entry: an issue, a revoke, or a use.

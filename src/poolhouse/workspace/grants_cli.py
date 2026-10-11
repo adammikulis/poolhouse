@@ -217,7 +217,7 @@ def proof(args: argparse.Namespace, ctx: Ctx) -> Any:
 def enroll(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Put another device's key on this node, approved by the key this node already holds."""
     carried = json.loads(args.proof)
-    return grants.enrol(ctx.client, ctx.carrier.token, grants.approve(carried, _held(ctx)))
+    return grants.enrol(ctx.client, ctx.carrier.token, grants.approve(carried, _held(ctx), node=grants.listing(ctx.carrier).device))
 
 
 def unenroll(args: argparse.Namespace, ctx: Ctx) -> Any:

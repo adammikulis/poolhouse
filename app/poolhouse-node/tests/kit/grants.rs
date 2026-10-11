@@ -95,15 +95,20 @@ impl Person {
         hex(&self.key.sign(&signing_bytes(body)).to_bytes())
     }
 
-    /// The enrolment parameters of this key, signed by itself and, when another key is already enrolled, approved by it.
-    pub fn enrolment(&self, about: &str, approver: Option<&Person>) -> Value {
+    /// The enrolment parameters of this key, signed by itself and, when another key is already enrolled, approved by it for the
+    /// node whose certificate fingerprint is the second of ``approver``.
+    pub fn enrolment(&self, about: &str, approver: Option<(&Person, &str)>) -> Value {
         let at = now_ms();
         let message = format!("poolhouse/person-enroll/v1\n{}", canonical(&json!({"op": "enroll", "public": self.public(), "about": about, "at_ms": at})));
-        let sign = |p: &Person| hex(&p.key.sign(message.as_bytes()).to_bytes());
-        let mut params = json!({"public": self.public(), "about": about, "at_ms": at, "proof": sign(self)});
-        if let Some(a) = approver {
+        let mut params = json!({"public": self.public(), "about": about, "at_ms": at, "proof": hex(&self.key.sign(message.as_bytes()).to_bytes())});
+        if let Some((a, node)) = approver {
+            let (approved, nonce) = (now_ms(), fresh_nonce());
+            let body = json!({"op": "approve", "public": self.public(), "about": about, "at_ms": at, "approved_ms": approved, "by": a.fingerprint(), "node": node, "nonce": nonce});
+            let bytes = format!("poolhouse/person-approve/v1\n{}", canonical(&body));
             params["by"] = json!(a.fingerprint());
-            params["approval"] = json!(sign(a));
+            params["approved_ms"] = json!(approved);
+            params["nonce"] = json!(nonce);
+            params["approval"] = json!(hex(&a.key.sign(bytes.as_bytes()).to_bytes()));
         }
         params
     }

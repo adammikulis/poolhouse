@@ -132,7 +132,7 @@ fn a_revocation_or_an_enrolment_with_hostile_input_changes_nothing() {
     refused(&req(&mut n, "grant_revoke", "demo", &token, stale));
     assert!(check(&mut n, &me, "note_verify", &Scope::any()).unwrap(), "the grant stands");
 
-    let enrolment = stranger.enrolment("an agent's key", Some(&stranger));
+    let enrolment = stranger.enrolment("an agent's key", Some((&stranger, &"ab".repeat(32))));
     let small_order = "01".to_string() + &"00".repeat(31);
     for (key, value) in [("public", json!(small_order)), ("public", json!("zz")), ("about", json!("x".repeat(100))), ("about", json!("tab\there")),
                          ("at_ms", json!(5)), ("proof", json!("00".repeat(64))), ("by", json!("ab".repeat(32)))] {
