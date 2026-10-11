@@ -15,7 +15,7 @@ use poolhouse_node::row::Kind;
 use serde_json::{json, Value};
 
 /// ``from`` syncs with ``to`` directly: boards, members and acts.
-fn pair(from: &Dev, to: &Dev) {
+fn meet(from: &Dev, to: &Dev) {
     sync_all(&from.node, &mut link(from, to)).unwrap();
 }
 
@@ -37,8 +37,8 @@ fn c_removed_by_a() -> ((Dev, Dev, Dev), [String; 3], String, usize) {
     let (a, b, c) = pool_of_three();
     let tokens = [&a, &b, &c].map(|d| d.session("demo", &format!("writer-{}", &d.fp()[..6])).1);
     c.say("demo", &tokens[2], "before the removal");
-    pair(&a, &c);
-    pair(&b, &c);
+    meet(&a, &c);
+    meet(&b, &c);
     let origin = origin_of(&c);
     let at_removal = held(&a, &origin);
     assert!(at_removal > 0 && held(&b, &origin) == at_removal, "a and b hold what c wrote");
@@ -50,7 +50,7 @@ fn c_removed_by_a() -> ((Dev, Dev, Dev), [String; 3], String, usize) {
 fn a_member_that_has_not_heard_of_a_removal_cannot_relay_the_removed_devices_new_entries_to_one_that_has() {
     let ((a, b, c), tokens, origin, at_removal) = c_removed_by_a();
     c.say("demo", &tokens[2], "after the removal");
-    pair(&b, &c);
+    meet(&b, &c);
     assert!(held(&b, &origin) > at_removal, "b has not heard of the removal and takes what c wrote after it");
     let mut relay = link(&b, &a);
     let reply = relay.call(&json!({"op": "push", "board": "demo", "origin": origin_of(&b), "logs": {origin.clone(): entries_of(&b, &origin)}, "trusted_vector": {}})).unwrap();
@@ -62,13 +62,13 @@ fn a_member_that_has_not_heard_of_a_removal_cannot_relay_the_removed_devices_new
 fn a_member_that_learns_of_a_removal_drops_what_the_device_wrote_after_the_point_it_names() {
     let ((a, b, c), tokens, origin, at_removal) = c_removed_by_a();
     c.say("demo", &tokens[2], "after the removal");
-    pair(&b, &c);
+    meet(&b, &c);
     assert!(b.texts("demo", &tokens[1]).contains(&"after the removal".to_string()));
-    pair(&b, &a);
+    meet(&b, &a);
     assert_eq!(held(&b, &origin), at_removal, "b takes the removal from a and the point it names with it");
     let texts = b.texts("demo", &tokens[1]);
     assert!(texts.contains(&"before the removal".to_string()) && !texts.contains(&"after the removal".to_string()), "{texts:?}");
-    pair(&b, &a);
+    meet(&b, &a);
     assert_eq!(held(&a, &origin), at_removal);
 }
 
@@ -215,13 +215,13 @@ fn entries_up_to_the_cut_still_arrive_through_a_relay_that_has_not_heard_of_the_
     sync(&b);
     let tokens = [&a, &b, &c, &d].map(|x| x.session("demo", &format!("writer-{}", &x.fp()[..6])).1);
     c.say("demo", &tokens[2], "before the removal");
-    pair(&a, &c);
-    pair(&b, &c);
+    meet(&a, &c);
+    meet(&b, &c);
     let origin = origin_of(&c);
     let at_removal = held(&a, &origin);
     a.ok("member_remove", "", &a.token, json!({"fingerprint": c.fp()}));
     c.say("demo", &tokens[2], "after the removal");
-    pair(&b, &c);
+    meet(&b, &c);
     assert!(held(&b, &origin) > at_removal, "b has not heard of the removal and takes what c wrote after it");
     poolhouse_node::gov::wire::sync_acts(&d.node, &mut link(&d, &a)).unwrap();
     assert!(d.member(&c.fp()).is_some_and(|m| m["status"] == "revoked"), "d holds the removal and the cut it carries");
