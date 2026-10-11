@@ -33,7 +33,7 @@ from poolhouse.jobs import detach
 from poolhouse.log import say, warn
 from poolhouse.units import human_bytes
 
-from . import automatic_pools, pool_found, pool_modes, recovery
+from . import automatic_pools, pool_modes, recovery
 from .applying import apply_plan, serving_table
 from .discovery import (
     Beacon,
@@ -857,7 +857,7 @@ def main(argv: list[str] | None = None) -> int:
     leave_p.add_argument("--keep-running", action="store_true",
                          help="leave the daemon up, just stop answering as a member")
     add_commands(sub)
-    pool_found.add_all(sub)
+    recovery.add_commands(sub)
     args = ap.parse_args(argv)
     if args.cmd in ONBOARD_COMMANDS:
         try:
@@ -867,7 +867,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     fn = {"join": cmd_join, "status": cmd_status, "pools": cmd_pools, "plan": cmd_plan,
           "pause": cmd_pause, "resume": cmd_pause, "leave": cmd_leave,
-          "passphrase": recovery.run, "recovery": recovery.run, "found": pool_found.run}[args.cmd]
+          "passphrase": recovery.run, "recovery": recovery.run}[args.cmd]
     try:
         return fn(args)
     except (JoinError, DiscoveryError, OSError) as exc:

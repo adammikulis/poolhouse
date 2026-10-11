@@ -165,11 +165,8 @@ def _tried(session, told):
 
 def test_the_command_for_agents_says_one_sentence_and_exits_3_when_the_person_has_something_to_do(workspace_node):
     import json
-    import subprocess
-    import sys
 
-    done = subprocess.run([sys.executable, "-m", "poolhouse.fleet.join", "found", "home", "--json"], env=workspace_node.env(), capture_output=True,
-                          text=True, timeout=90, check=False)
+    done = workspace_node.cli("pool", "found", "home", "--json", who=workspace_node.member("agent"))
     said = json.loads(done.stdout.strip().splitlines()[-1])
     assert done.returncode == 3 and said["founded"] is False and "phone" in said["say"] and said["needs"] == "device", done
     assert governance(workspace_node)["mode"] == "unfounded"

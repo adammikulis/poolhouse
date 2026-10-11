@@ -613,7 +613,7 @@ heard of the removal still syncs with it, and it used to take the entries the re
 
 ### 1.17 The agent's founding path, as built (2026-10-11), and what remains
 
-`ph.pool.found(name, policy)` and `poolhouse pool found [NAME] [--policy open|secure]` (`src/poolhouse/board/founding.py`) are the Python
+`ph.pool.found(name, policy)` and `poolhouse-workspace pool found [NAME] [--policy open|secure]` (`src/poolhouse/board/founding.py`) are the Python
 client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`. The agent drafts the charter on the node, the person's key signs
 the acceptance and the first `admit` of this device outside the node, and the node takes them back; the node holds no key and the agent signs
 nothing. Order of what it asks of the person: (1) a linked phone is asked for the `pool_create` grant on its card (one tap; the card's number is

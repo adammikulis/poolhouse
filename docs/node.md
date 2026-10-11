@@ -995,7 +995,7 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 after the grant `pool_create` came from the phone's card (`with_card` asks the card for any missing grant and sends the call again after the
 tap) or from the first key. It answers "already in the pool X" for a device that is founded, and refuses a key that is not strong before the
 person is asked. `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
-wrap it, and `poolhouse pool found` is the agent's command; docs/pools-and-serving.md, 1.17, says what is built and what remains.
+wrap it, and `poolhouse-workspace pool found` is the agent's command; docs/pools-and-serving.md, 1.17, says what is built and what remains.
 
 ## The person's session (the UI)
 
