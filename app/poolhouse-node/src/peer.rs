@@ -11,6 +11,7 @@
 //! | `join_open` | anyone, under policy `open`; a member gets the record again | enrol the caller; reply with the pool record |
 //! | `join_exchange`, `join_confirm` | anyone, while a join code is open | SPAKE2 (`join_code`) |
 //! | `members` | members | swap the builds members report; no row and no policy in it is read |
+//! | `acts` | members | swap the signed acts of a governed pool, in pages (`gov::wire`) |
 //! | `boards`, `vector`, `pull`, `push` | members | board sync (`netsync`) |
 //! | `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` | members | test shards (`shard`) |
 
@@ -75,16 +76,26 @@ pub fn hello_request(node: &Node) -> Value {
     out
 }
 
-/// What a device that has just joined is handed: the pool's id, its record and its policy.
-pub fn record_json(node: &Node) -> Value {
-    json!({"pool": node.members.id, "rows": node.members.export(), "policy": policy_json(node)})
+/// The most bytes of acts a joining device is handed with its admit; the rest it takes in its first exchange.
+const JOIN_BYTES: usize = 256 * 1024;
+
+/// What a device that has just joined (``joiner``, by its certificate's fingerprint) is handed: the pool's id and its record and
+/// policy, or for a governed pool its founding act and the acts that stand.
+pub fn record_json(node: &Node, joiner: &str) -> Value {
+    match node.members.gov() {
+        Some(g) => {
+            let (found, settled, acts) = g.join_payload(JOIN_BYTES, joiner);
+            json!({"pool": g.id, "found": found, "settled": settled, "acts": acts})
+        }
+        None => json!({"pool": node.members.id, "rows": node.members.export(), "policy": policy_json(node)}),
+    }
 }
 
 /// A device that asks to join under `open`: it is enrolled and handed the pool's record. A device that is a member already is handed
 /// the record again and nothing else changes.
 fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing) -> Result<Value> {
     if standing == Standing::Active {
-        return Ok(record_json(node));
+        return Ok(record_json(node, &cert_fingerprint(der)));
     }
     if node.members.policy != Policy::Open {
         return Err(Error::Denied("this pool takes a device only through a join code".into()));
@@ -94,7 +105,7 @@ fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Sta
     }
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
     node.enrol_device(der, name, "open")?;
-    Ok(record_json(node))
+    Ok(record_json(node, &cert_fingerprint(der)))
 }
 
 /// The builds members report. The rows and the policy a member sends here are not read: who is in the pool and how it is joined are
@@ -161,6 +172,7 @@ fn dispatch(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> 
 
 fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Result<Value> {
     let fp = cert_fingerprint(der);
+    node.gov_tick()?;
     let standing = node.members.standing(&fp);
     if standing == Standing::Revoked {
         return Err(Error::Denied("this device was put out of the pool".into()));
@@ -177,6 +189,7 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
         ("join_exchange" | "join_confirm", _) => Err(Error::Denied("this device is already a member".into())),
         (_, Standing::Unknown) => Err(Error::Denied("this device is not a member of the pool".into())),
         ("members", _) => members(node, &fp, req),
+        ("acts", _) => crate::gov::wire::serve(node, req),
         ("boards", _) => Ok(json!({"boards": node.boards.keys().collect::<Vec<_>>()})),
         ("vector", _) => vector(node, &bfp, req),
         ("pull", _) => pull(node, &bfp, req),

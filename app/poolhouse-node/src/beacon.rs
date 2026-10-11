@@ -85,7 +85,7 @@ pub fn decode(bytes: &[u8], now_ms: u64, allow_loopback: bool) -> Result<Beacon>
     let project = v.get("project").and_then(Value::as_str).unwrap_or("").to_string();
     let lone = v.get("lone").and_then(Value::as_bool).unwrap_or(false);
     let b = Beacon { pool: field(&v, "pool")?.into(), fingerprint: field(&v, "fp")?.into(), public, addr, port, ts, project, lone };
-    if !crate::cert::valid_fingerprint(&b.fingerprint) || b.pool.len() != 16 || !(b.project.is_empty() || crate::projectid::valid_key(&b.project)) {
+    if !crate::cert::valid_fingerprint(&b.fingerprint) || !matches!(b.pool.len(), 16 | 32) || !(b.project.is_empty() || crate::projectid::valid_key(&b.project)) {
         return Err(Error::Invalid("beacon names".into()));
     }
     if !(advertisable(addr) || allow_loopback) {

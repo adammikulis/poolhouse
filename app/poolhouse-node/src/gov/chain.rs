@@ -73,7 +73,7 @@ pub struct Chain {
     pub cuts: BTreeMap<String, BTreeSet<String>>,
     /// The acts that had the signatures their kind needs at some point of the fold.
     pub validated: BTreeSet<String>,
-    /// (act id, key) pairs whose signature no longer counts: the key was removed and the act is not in its cut.
+    /// The signatures that no longer count, each named by the act id and the key: the key was removed and the act is not in its cut.
     pub struck: BTreeSet<(String, String)>,
 }
 

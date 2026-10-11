@@ -373,9 +373,11 @@ impl Pool {
         self.save()
     }
 
-    /// Take the pool of the device ``host`` this device has joined. A device alone in its pool takes the pool's id, its rows and its
-    /// policy; a device that has members takes only the row of ``host``, inside the pool it is already in.
-    pub fn adopt(&mut self, id: &str, rows: &[Value], policy: Option<(Policy, u64, &str)>, host: &str) -> Result<()> {
+    /// Take the pool of the device ``host`` this device has joined, the join having been ``by`` (`join-code` or `open`). A device alone
+    /// in its pool takes the pool's id, its rows and its policy; a device that has members takes only the row of ``host``, inside the
+    /// pool it is already in. The row of ``host`` says how it came in as this device met it.
+    pub fn adopt(&mut self, id: &str, rows: &[Value], policy: Option<(Policy, u64, &str)>, joined: (&str, &str)) -> Result<()> {
+        let (host, by) = joined;
         if self.gov.is_some() {
             return Err(governed_refusal());
         }
@@ -384,7 +386,9 @@ impl Pool {
         }
         let alone = self.alone();
         self.id = id.into();
-        let taken: Vec<Value> = if alone { rows.to_vec() } else { rows.iter().filter(|r| r.get("fingerprint").and_then(Value::as_str) == Some(host)).cloned().collect() };
+        let is_host = |r: &Value| r.get("fingerprint").and_then(Value::as_str) == Some(host);
+        let mut taken: Vec<Value> = rows.iter().filter(|r| alone || is_host(r)).cloned().collect();
+        taken.iter_mut().filter(|r| is_host(r)).filter_map(Value::as_object_mut).for_each(|r| drop(r.insert("by".into(), by.into())));
         self.absorb(&taken, host)?;
         if let (true, Some((policy, at, by))) = (alone, policy) {
             self.set_policy(policy, at.min(crate::poolops::wall_ms()), by)?;

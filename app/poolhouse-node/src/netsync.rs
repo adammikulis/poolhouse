@@ -121,6 +121,7 @@ fn push_once(node: &Mutex<Node>, c: &mut PeerClient, id: &str, origin: &str, rep
 /// Swap builds, then sync every board both devices hold; origin to refusal code per board.
 pub fn sync_all(node: &Mutex<Node>, c: &mut PeerClient) -> Result<BTreeMap<String, Report>> {
     sync_members(node, c)?;
+    crate::gov::wire::sync_acts(node, c)?;
     let theirs = peer_boards(c)?;
     let mine: Vec<String> = locked(node)?.boards.keys().cloned().collect();
     let mut out = BTreeMap::new();

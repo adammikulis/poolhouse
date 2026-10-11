@@ -38,7 +38,7 @@ fn a_revocation_is_never_undone_and_a_stale_row_from_a_host_cannot_bring_a_devic
     assert!(matches!(pool.enrol(&other.der, "laptop", "join-code", 30), Err(Error::Denied(_))), "a revoked certificate stays out");
     let stale = vec![json!({"fingerprint": device.fingerprint, "cert": device.cert, "name": "laptop", "status": "active", "at": 99, "by": "x"})];
     let id = pool.id.clone();
-    pool.adopt(&id, &stale, None, &device.fingerprint).unwrap();
+    pool.adopt(&id, &stale, None, (&device.fingerprint, "open")).unwrap();
     assert_eq!(pool.standing(&device.fingerprint), Standing::Revoked, "the host of a join cannot bring a removed device back");
 }
 
@@ -52,7 +52,7 @@ fn a_row_whose_fingerprint_is_not_its_certificates_hash_is_dropped() {
     let no_cert = json!({"fingerprint": b.fingerprint(), "cert": "", "name": "b", "status": "active", "at": 5, "by": "x"});
     let short = json!({"fingerprint": "abc", "cert": hex(&b.der), "name": "b", "status": "active", "at": 5, "by": "x"});
     let (id, joined) = ("0123456789abcdef", good.fingerprint.clone());
-    pool.adopt(id, &[forged, no_cert, short], None, &joined).unwrap();
+    pool.adopt(id, &[forged, no_cert, short], None, (&joined, "open")).unwrap();
     assert_eq!(pool.standing(&b.fingerprint()), Standing::Unknown);
 }
 

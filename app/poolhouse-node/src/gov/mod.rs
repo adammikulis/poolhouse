@@ -4,7 +4,7 @@
 //! the holds, and the join policy. The pool id is the hash of the first charter, so a copy with other admins is another pool.
 //! Every change to the pool (a member admitted or removed, an admin added, a threshold moved) is an act (`act`) signed by admin
 //! keys, or by a device where the table says so; each member checks every act against the keys it already holds, and a member
-//! that relays an act proves nothing about it. The member record is a view folded from the acts (`fold`, `roster`), never an input.
+//! that relays an act proves nothing about it. The member record is a view folded from the acts (`chain`, `roster`), never an input.
 //!
 //! | piece | does |
 //! |---|---|
@@ -17,6 +17,7 @@
 //! | `pool` | one pool on disk: acceptance of acts, the fold, paging |
 //! | `signer` | who signs for a person (a rig key until the phone approval exists) |
 //! | `wire` | the `acts` member op |
+//! | `ops` | the node's part: founding, admitting, removing, leaving, and the acts a person's key signs |
 
 pub mod act;
 pub mod body;
@@ -24,9 +25,11 @@ pub mod chain;
 pub mod charter;
 pub mod clock;
 pub mod keys;
+pub mod ops;
 pub mod pool;
 pub mod roster;
 pub mod signer;
+pub mod wire;
 
 /// The largest act, the most signatures on one, and how many an `acts` page holds and weighs.
 pub const MAX_ACT_BYTES: usize = 16 * 1024;
