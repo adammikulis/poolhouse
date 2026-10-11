@@ -19,6 +19,7 @@ from poolhouse import runtime, runtime_deploy, runtime_host
 from poolhouse.http import Server
 
 pytestmark = pytest.mark.slow
+pytest_plugins = ["node_kit"]
 OLD = "0" * 40
 
 

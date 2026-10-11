@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
@@ -17,13 +16,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import node_build, runtime, runtime_launchers, runtime_store
+from poolhouse.board import session
+from poolhouse.board.client import Conflict, NodeError
 from poolhouse.files import writing
 from poolhouse.fleet import runtime_wheel
 from poolhouse.fleet.environment import Environment
 from poolhouse.lock import Busy, only_one
-from poolhouse.workspace import cli, harness_remote, limits, project_connection, tokens
-from poolhouse.workspace.claims import Claims, Conflict
-from poolhouse.workspace.identity import AGENT, Denied, Identity
 
 BUILD_TIMEOUT = 1800.0
 CLAIM_WAIT_S = 60.0
@@ -111,60 +109,46 @@ def source_epoch(source: Path) -> int:
     return parse_epoch(path.read_text(encoding="utf-8")) if path.is_file() else 0
 
 
-def acting(plan: Plan) -> Identity | None:
-    """The authenticated workspace agent running this command, as a physical claim owner; None when there is none."""
-    name = plan.agent or os.environ.get(tokens.AGENT_ENV, "")
+def acting(plan: Plan) -> session.Session | None:
+    """The session of the workspace agent running this command, on the board of the plan's checkout; None when there
+    is no agent or the node does not know its session."""
+    name = plan.agent or os.environ.get(session.AGENT_ENV, "")
     if not name:
         return None
-    args = argparse.Namespace(agent=name, token_file="")
     try:
-        ws, token = cli._context(args, cli._project_connection(plan.checkout))
-        if isinstance(ws, project_connection.BoardWorkspace):
-            info = ws.remote.call("whoami", token)
-            if (info.get("id") != name or info.get("role") != AGENT or "claim" not in info.get("can", ())
-                    or info.get("project", {}).get("key") != ws.remote.project_id):
-                return None
-            return harness_remote.physical_owner(ws.remote, Identity(name, AGENT, info.get("parent", ""),
-                                                                      tuple(info.get("can", ()))))
-        who = ws.auth(token)
-    except (Denied, OSError, ValueError, KeyError, SystemExit):
+        held = session.connect(agent=name, cwd=plan.checkout)
+        return held if held.whoami().name == name else None
+    except (NodeError, OSError, ValueError):
         return None
-    return who if who.role == AGENT and "claim" in who.can else None
 
 
 @contextmanager
-def owning(paths: list[Path], *, wait_s: float, who: Identity | None, note: str = "runtime deploy",
-           store: Claims | None = None) -> Iterator[None]:
-    """Hold an `install` claim as `who` on each path, waiting for a live other owner up to `wait_s` for each.
+def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> Iterator[None]:
+    """Hold an `install` claim as ``who`` on each path of this device, waiting for a live other owner up to ``wait_s`` for each.
 
-    With no agent there is no claim; the deploy lock alone serialises builds.
+    With no session there is no claim; the deploy lock alone serialises builds.
     """
     if who is None:
         yield
         return
-    if store is None:
-        base = limits.root()
-        store = Claims(base, limits.load(base).claim_ttl_s)
-    me = who
     taken: list[Path] = []
     try:
         for path in paths:
             deadline = time.monotonic() + wait_s
             while True:
                 try:
-                    store.claim(me, "install", str(path), {"ttl_s": CLAIM_TTL_S, "pid": os.getpid(),
-                                                           "note": note})
+                    who.claim("install", str(path), ttl_s=int(CLAIM_TTL_S), pid=os.getpid())
                     break
                 except Conflict as held:
                     if time.monotonic() >= deadline:
-                        raise DeployError(f"{path} is claimed by {held.owner['owner']}") from held
+                        raise DeployError(f"{path} is claimed by {str(held).rpartition(' is held by ')[2]}") from held
                     time.sleep(CLAIM_POLL_S)
             taken.append(path)
         yield
     finally:
         for path in taken:
-            with suppress(ValueError, Denied):
-                store.release(me, "install", str(path))
+            with suppress(NodeError, OSError):
+                who.release("install", str(path))
 
 
 def host_python() -> Path:
@@ -177,7 +161,7 @@ def host_python() -> Path:
 
 def build(plan: Plan, stage: Path, prefix: Path) -> runtime.Runtime:
     """Build the plan's commit into a new immutable runtime tree at `prefix`."""
-    creator = runtime_store.creator_record(plan.agent or os.environ.get(tokens.AGENT_ENV, ""), "ensure")
+    creator = runtime_store.creator_record(plan.agent or os.environ.get(session.AGENT_ENV, ""), "ensure")
     target = runtime_wheel.Target(prefix, creator, host_python())
     built = runtime_wheel.build(plan.checkout, plan.commit, stage, timeout=plan.timeout, target=target)
     try:
@@ -263,16 +247,16 @@ def _restore(directory: Path | None, original: dict[Path, tuple[bytes, int]]) ->
                 temporary.chmod(mode)
 
 
-def build_and_switch(plan: Plan, builder: Builder = build, who: Identity | None = None) -> runtime.Runtime:
+def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session | None = None) -> runtime.Runtime:
     """Build, smoke and select the plan's commit under install claims; a failure before the selection keeps the previous runtime."""
     who = who or acting(plan)
     prefix = runtime.directory() / plan.commit / uuid.uuid4().hex
-    with owning([prefix, *_switch_paths(plan)], wait_s=plan.wait_s, who=who, note=f"runtime build {plan.commit[:7]}"), \
+    with owning([prefix, *_switch_paths(plan)], wait_s=plan.wait_s, who=who), \
             tempfile.TemporaryDirectory(prefix="poolhouse-runtime-") as temporary:
         stage, original = Path(temporary).resolve(), _snapshot(plan.launchers)
         built, published = builder(plan, stage, prefix), False
         try:
-            runtime_store.mark_created(built.prefix, who.id if who else plan.agent or os.environ.get(tokens.AGENT_ENV, ""), "ensure")
+            runtime_store.mark_created(built.prefix, who.name if who else plan.agent or os.environ.get(session.AGENT_ENV, ""), "ensure")
             if built.commit != plan.commit:
                 raise DeployError(f"built {built.commit}, expected {plan.commit}")
             smoke(built, stage / "source", stage)
@@ -364,7 +348,7 @@ def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builde
         return Outcome("busy", plan.commit, str(exc))
 
 
-def _recovered(plan: Plan, who: Identity) -> tuple[runtime.Runtime | None, list[str]]:
+def _recovered(plan: Plan, who: session.Session | None) -> tuple[runtime.Runtime | None, list[str]]:
     chosen = healthy(plan)
     if chosen is not None:
         return chosen, []

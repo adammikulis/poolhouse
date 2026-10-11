@@ -10,12 +10,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from test_runtime_deploy import builder, commit, world  # noqa: F401
+from test_runtime_deploy import agent, builder, commit, world  # noqa: F401
 
 from poolhouse import authority, runtime_cli, runtime_deploy, runtime_store, runtime_trust
 from poolhouse.activity import writer
+from poolhouse.board.session import AGENT_ENV
 
 pytestmark = pytest.mark.slow
+pytest_plugins = ["node_kit"]
 RECORDS: list[SimpleNamespace] = []
 
 
@@ -45,19 +47,19 @@ def selected():
     return runtime_store.selection().get("commit", "")
 
 
-def test_a_delegated_agent_s_ensure_deploys_and_is_audited_with_the_agent(lead, capsys):
+def test_a_delegated_agent_s_ensure_deploys_and_is_audited_with_the_agent(lead, agent, capsys):  # noqa: F811
     repo, _, _ = lead
     head = commit(repo, "a")
     assert runtime_cli.main(["ensure"]) == 0, capsys.readouterr().err
     assert selected() == head
     [entry] = deploys()
-    assert (entry.outcome, entry.meta["command"], entry.meta["agent"]) == ("switched", "ensure", "runtime-agent")
+    assert (entry.outcome, entry.meta["command"], entry.meta["agent"]) == ("switched", "ensure", agent.name)
     assert entry.meta["person"] is False and entry.meta["authority"] == authority.DELEGATED
     used = [row for row in authority.audit_rows() if row["event"] == "authority.use"]
-    assert [(row["gate"], row["agent"]) for row in used] == [("runtime.deploy", "runtime-agent")]
+    assert [(row["gate"], row["agent"]) for row in used] == [("runtime.deploy", agent.name)]
 
 
-def test_an_agent_is_refused_while_the_gate_is_the_person_s_and_nothing_is_built(lead, capsys):
+def test_an_agent_is_refused_while_the_gate_is_the_person_s_and_nothing_is_built(lead, agent, capsys):  # noqa: F811
     repo, _, _ = lead
     commit(repo, "a")
     authority.set_state(["runtime.deploy"], authority.PERSON, by="lead")
@@ -65,7 +67,7 @@ def test_an_agent_is_refused_while_the_gate_is_the_person_s_and_nothing_is_built
     assert "for a person" in capsys.readouterr().err
     assert selected() == "" and not runtime_store.candidates()
     [entry] = deploys()
-    assert (entry.outcome, entry.meta["command"]) == ("refused", "ensure") and entry.meta["agent"] == "runtime-agent"
+    assert (entry.outcome, entry.meta["command"]) == ("refused", "ensure") and entry.meta["agent"] == agent.name
 
 
 def test_revoking_the_delegation_refuses_the_next_deploy_and_keeps_the_selection(lead):
@@ -109,7 +111,7 @@ def test_a_process_no_agent_started_is_not_gated(lead, monkeypatch):
     repo, _, _ = lead
     head = commit(repo, "a")
     monkeypatch.delenv("CLAUDECODE")
-    monkeypatch.delenv("POOLHOUSE_WORKSPACE_AGENT")
+    monkeypatch.delenv(AGENT_ENV)
     authority.set_state(["ALL"], authority.PERSON, by="lead")
     assert runtime_cli.main(["ensure"]) == 0 and selected() == head
 

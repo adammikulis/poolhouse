@@ -1,15 +1,15 @@
-"""Post runtime deploy outcomes and incidents to the workspace board under the acting agent."""
+"""Post runtime deploy outcomes and incidents to the board as the session of the deploying agent."""
 
 from __future__ import annotations
 
-import contextlib
-import io
-import os
 import re
 
 from poolhouse import hook_diagnostics
+from poolhouse.board.client import NodeError
+from poolhouse.board.session import Session
 from poolhouse.runtime_deploy import Outcome
-from poolhouse.workspace import cli, tokens
+from poolhouse.workspace import board_cli
+from poolhouse.workspace.screen import Refused
 
 COMMIT = re.compile(r"[0-9a-f]{40}")
 LIMIT = 190
@@ -35,20 +35,16 @@ def incident(outcome: Outcome, stage: str) -> str:
     return found[1] if found else ""
 
 
-def announce(outcome: Outcome, previous: str, *, verb: str = "ensure", agent: str = "") -> bool:
-    """Post one announcement for a switch, recovery or failure; True when the board took it."""
-    if outcome.action in {"current", "busy", "held"}:
-        return False
-    who = agent or os.environ.get(tokens.AGENT_ENV, "")
-    if not who or not COMMIT.fullmatch(outcome.commit):
+def announce(outcome: Outcome, previous: str, who: Session | None, *, verb: str = "ensure") -> bool:
+    """Post one announcement for a switch, recovery or failure as the session ``who``; True when the board took it."""
+    if who is None or outcome.action in {"current", "busy", "held"} or not COMMIT.fullmatch(outcome.commit):
         return False
     kind, text = _text(outcome, previous, verb)
     if kind == "blocked":
         found = incident(outcome, verb)
         text = f"{text} [diagnostic={found}]" if found else text
-    argv = ["announce", kind, text[:LIMIT], "--agent", who]
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        try:
-            return cli.main(argv) == 0
-        except SystemExit:
-            return False
+    try:
+        board_cli.announced(who, kind, text[:LIMIT])
+    except (Refused, NodeError, OSError, ValueError):
+        return False
+    return True

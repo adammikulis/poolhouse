@@ -6,20 +6,29 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 from pathlib import Path
 
 import pytest
-from workspace_kit import Kit, clean_env
 
-from poolhouse import runtime, runtime_board, runtime_cli, runtime_deploy, runtime_store
+from poolhouse import (
+    node_binary as node_binaries,
+    runtime,
+    runtime_board,
+    runtime_cli,
+    runtime_deploy,
+    runtime_store,
+)
+from poolhouse.board.session import AGENT_ENV
 from poolhouse.fleet import runtime_wheel
 from poolhouse.lock import only_one
-from poolhouse.workspace.claims import Claims
-from poolhouse.workspace.identity import AGENT, Identity
 
 pytestmark = pytest.mark.slow
+pytest_plugins = ["node_kit"]
+NODE: dict[str, Path] = {}
+"""The node binary of the running test's board; each fake runtime carries a copy of it."""
 
 
 def git(repo, *words):
@@ -36,12 +45,21 @@ def commit(repo, name, text="x"):
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch):
-    clean_env(monkeypatch, tmp_path)
-    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
+def world(request, tmp_path, monkeypatch):
+    """A source checkout, a launcher directory and a board whose agent `runtime-agent` is the one deploying.
+
+    The node's folder is made at the real path of /tmp, which on macOS is a symbolic link a runtime path may not hold."""
+    made = tempfile.mkdtemp
+
+    def mkdtemp(*given, **named):
+        return made(*given, **{**named, "dir": os.path.realpath("/tmp")} if named.get("dir") == "/tmp" else named)
+
+    monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
+    workspace_node = request.getfixturevalue("workspace_node")
     monkeypatch.setenv("PIP_NO_INDEX", "1")
     monkeypatch.delenv("POOLHOUSE_RUNTIME_ENSURE", raising=False)
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", "runtime-agent")
+    monkeypatch.setenv(AGENT_ENV, workspace_node.member("runtime-agent").name)
+    monkeypatch.setitem(NODE, "binary", workspace_node.binary)
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "dev")
@@ -50,6 +68,12 @@ def world(tmp_path, monkeypatch):
     launchers = tmp_path / "bin"
     launchers.mkdir(mode=0o700)
     return repo, launchers, tmp_path
+
+
+@pytest.fixture
+def agent(world, workspace_node):
+    """The member of the board that deploys in ``world``."""
+    return workspace_node.members["runtime-agent"]
 
 
 def wheel(stage, commit_id):
@@ -83,7 +107,10 @@ def builder(hook_code=0, log=None, epoch=0):
         runtime_wheel.stamp(built, plan.commit, plan.checkout)
         if log is not None:
             log.append(plan.commit)
-        return runtime_wheel.prepare(built, plan.commit, timeout=120, target=runtime_wheel.Target(prefix))
+        made = runtime_wheel.prepare(built, plan.commit, timeout=120, target=runtime_wheel.Target(prefix))
+        if "binary" in NODE:
+            node_binaries.install(made.prefix, NODE["binary"], commit=plan.commit)
+        return made
     return build
 
 
@@ -229,23 +256,34 @@ def test_collection_keeps_the_newest_verified_and_never_a_tree_a_process_runs_in
     assert prefixes[0].exists() and prefixes[4].exists() and prefixes[5].exists()
 
 
-def test_a_live_owner_of_the_install_claim_blocks_and_a_dead_owner_is_recovered(world, tmp_path):
-    base = tmp_path / "claims"
-    base.mkdir()
-    store = Claims(base, 600)
+def owner_of(session, target):
+    """The name of the session that holds the install claim on ``target``, or None."""
+    return next((c.owner for c in session.claims("install") if c.key == str(target)), None)
+
+
+def test_a_live_owner_of_the_install_claim_blocks_and_a_dead_owner_is_recovered(world, workspace_node, agent, tmp_path):
+    deployer = workspace_node.session(agent)
+    other = workspace_node.session(workspace_node.member("someone-else"))
+    gone = workspace_node.session(workspace_node.member("gone"))
     target = tmp_path / "launchers"
     target.mkdir()
-    store.claim(Identity("someone-else", AGENT), "install", str(target), {"pid": os.getpid(), "ttl_s": 600})
-    with pytest.raises(runtime_deploy.DeployError, match="claimed by someone-else"), \
-            runtime_deploy.owning([target], wait_s=0.2, who=Identity("deployer", AGENT), store=store):
+    other.claim("install", str(target), ttl_s=600, pid=os.getpid())
+    with pytest.raises(runtime_deploy.DeployError, match=f"claimed by {other.name}"), \
+            runtime_deploy.owning([target], wait_s=0.2, who=deployer):
         pass
-    dead = subprocess.Popen([sys.executable, "-c", "pass"])
-    dead.wait()
-    store.release(Identity("someone-else", AGENT), "install", str(target))
-    store.claim(Identity("gone", AGENT), "install", str(target), {"pid": dead.pid, "ttl_s": 600})
-    with runtime_deploy.owning([target], wait_s=0.2, who=Identity("deployer", AGENT), store=store):
-        assert store.who("install", str(target))["owner"] == "deployer"
-    assert store.who("install", str(target)) is None
+    other.release("install", str(target))
+    holder = subprocess.Popen(["sleep", "60"])
+    try:
+        gone.claim("install", str(target), ttl_s=600, pid=holder.pid)
+        with pytest.raises(runtime_deploy.DeployError, match=f"claimed by {gone.name}"), \
+                runtime_deploy.owning([target], wait_s=0.2, who=deployer):
+            pass
+    finally:
+        holder.kill()
+        holder.wait()
+    with runtime_deploy.owning([target], wait_s=5, who=deployer):
+        assert owner_of(deployer, target) == deployer.name
+    assert owner_of(deployer, target) is None
 
 
 def test_two_ensures_do_not_build_twice(world):
@@ -269,21 +307,25 @@ def test_status_reports_selection_and_build_state(world, capsys):
     assert "healthy" in capsys.readouterr().out
 
 
-def test_outcomes_reach_the_board_as_announcements_and_failures_as_incidents(world, monkeypatch, tmp_path):
+def announced(session):
+    """What the session announced, oldest first."""
+    return [sent.entry.text for sent in session.outbox() if sent.entry.channel == "#announcements"]
+
+
+def test_outcomes_reach_the_board_as_announcements_and_failures_as_incidents(world, workspace_node, agent):
     repo, launchers, _ = world
     commit(repo, "a")
-    kit = Kit(Path(os.environ["POOLHOUSE_WORKSPACE_HOME"]))
-    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
+    me = workspace_node.session(agent)
     first = runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
-    assert runtime_board.announce(first, "", agent="runtime-agent")
+    assert runtime_board.announce(first, "", me)
     second_commit = commit(repo, "b")
     failed = runtime_deploy.ensure(plan_for(repo, launchers), builder=builder(hook_code=3))
     assert failed.action == "failed"
-    assert runtime_board.announce(failed, first.commit, agent="runtime-agent")
-    assert not runtime_board.announce(runtime_deploy.Outcome("current", second_commit), "", agent="runtime-agent")
-    rows = [row for row in kit.ws.bus.outbox("runtime-agent", 20) if row["to"] == "#announcements"]
+    assert runtime_board.announce(failed, first.commit, me)
+    assert not runtime_board.announce(runtime_deploy.Outcome("current", second_commit), "", me)
+    rows = announced(me)
     assert len(rows) == 2
-    texts = json.dumps(rows, default=str)
+    texts = json.dumps(rows)
     assert first.commit[:7] in texts and "diagnostic=" in texts and second_commit[:7] in texts
     assert "stays selected" in texts
 
@@ -339,7 +381,7 @@ def test_a_launcher_with_no_usable_runtime_says_so_and_exits(world):
 def test_a_command_with_an_invalid_checkout_writes_nothing(world, capsys, tmp_path):
     repo, launchers, _ = world
     commit(repo, "a")
-    assert runtime_cli.main(["ensure", "--checkout", str(tmp_path), "--launchers", str(launchers)]) == 1
+    assert runtime_cli.main(["ensure", "--checkout", str(tmp_path), "--launchers", str(launchers), "--no-update"]) == 1
     assert "not a poolhouse source checkout" in capsys.readouterr().err
     assert not list(launchers.iterdir()) and not runtime.directory().exists()
 
@@ -527,13 +569,14 @@ def test_discarding_a_tree_unlaunches_it_even_when_deletion_fails(world, monkeyp
     assert prefix.exists() and not (prefix / "verified.json").exists() and runtime_store.rejected(prefix)
 
 
-def test_board_text_carries_only_full_hex_commits(world, monkeypatch):
-    posted = []
-    monkeypatch.setattr(runtime_board.cli, "main", lambda argv: posted.append(argv) or 0)
+def test_board_text_carries_only_full_hex_commits(world, workspace_node, agent):
+    me = workspace_node.session(agent)
     good = runtime_deploy.Outcome("switched", "a" * 40)
-    assert runtime_board.announce(good, "x; rm -rf /", agent="someone")
-    assert "none" in posted[-1][2] and "rm" not in posted[-1][2]
-    assert not runtime_board.announce(runtime_deploy.Outcome("switched", "z" * 40), "", agent="someone")
+    assert runtime_board.announce(good, "x; rm -rf /", me)
+    [posted] = announced(me)
+    assert "none" in posted and "rm" not in posted
+    assert not runtime_board.announce(runtime_deploy.Outcome("switched", "z" * 40), "", me)
+    assert len(announced(me)) == 1
 
 
 def test_the_session_start_refresh_is_bounded_and_the_smoke_environment_disables_it(monkeypatch):
@@ -550,20 +593,6 @@ def test_the_session_start_refresh_is_bounded_and_the_smoke_environment_disables
     assert env["POOLHOUSE_RUNTIME_ENSURE"] == "off"
 
 
-def test_a_claim_is_released_only_when_its_pid_started_after_the_claim_was_taken(tmp_path, monkeypatch):
-    from poolhouse.workspace import claims as claims_module
-    from poolhouse.workspace.claims import Claims
-    store = Claims(tmp_path, 600)
-    target = tmp_path / "t"
-    target.mkdir()
-    store.claim(Identity("holder", AGENT), "install", str(target), {"pid": os.getpid(), "ttl_s": 600})
-    since = store.who("install", str(target))["since"]
-    monkeypatch.setattr(claims_module, "started_at", lambda pid: since - 3600)
-    assert store.who("install", str(target))["owner"] == "holder"
-    monkeypatch.setattr(claims_module, "started_at", lambda pid: since + 3600)
-    assert store.who("install", str(target)) is None
-
-
 def test_status_and_a_tracker_ensure_need_no_recorded_launcher_directory(world, capsys):
     repo, launchers, _ = world
     head = commit(repo, "a")
@@ -576,32 +605,35 @@ def test_status_and_a_tracker_ensure_need_no_recorded_launcher_directory(world, 
 
 def test_tests_cannot_write_launchers_outside_the_state_root_or_the_temporary_directory(world):
     from poolhouse import runtime_launchers
-    fake = runtime.Runtime(Path("/nonexistent"), "a" * 40, "0", runtime.identity())
+    repo, launchers, _ = world
+    commit(repo, "a")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    chosen = runtime.selected()
     import sysconfig
     real = Path(sysconfig.get_path("scripts", vars={"base": sys.base_prefix, "platbase": sys.base_prefix})) / "poolhouse-never"
-    with pytest.raises(OSError, match="test"):
-        runtime.write_launcher(real, "poolhouse.cli", "main", fake)
-    with pytest.raises(OSError, match="test"):
-        runtime_launchers.install(real.parent, fake)
+    with pytest.raises(OSError, match="outside the state root"):
+        runtime.write_launcher(real, "poolhouse.cli", "main", chosen)
+    with pytest.raises(OSError, match="outside the state root"):
+        runtime_launchers.install(real.parent, chosen)
     assert not real.exists()
 
 
-def test_the_install_claim_is_held_by_the_acting_agent_and_rollback_needs_one(world, monkeypatch):
+def test_the_install_claim_is_held_by_the_acting_agent_and_rollback_needs_one(world, agent, monkeypatch):
     repo, launchers, _ = world
     commit(repo, "a")
     seen = []
     real = runtime_deploy.owning
 
     def spy(paths, **kwargs):
-        seen.append(kwargs["who"].id if kwargs["who"] else None)
+        seen.append(kwargs["who"].name if kwargs["who"] else None)
         return real(paths, **kwargs)
 
     monkeypatch.setattr(runtime_deploy, "owning", spy)
     runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
-    assert seen and all(owner.startswith("runtime-agent") for owner in seen)
+    assert seen and all(owner == agent.name for owner in seen)
     commit(repo, "b")
     runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
-    monkeypatch.delenv("POOLHOUSE_WORKSPACE_AGENT")
+    monkeypatch.delenv(AGENT_ENV)
     with pytest.raises(runtime_deploy.DeployError, match="authenticated agent"):
         runtime_deploy.rollback(plan_for(repo, launchers))
 
@@ -611,7 +643,7 @@ def test_without_an_agent_ensure_and_recovery_run_unclaimed_and_post_nothing(wor
     commit(repo, "a")
     runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
     second = commit(repo, "b")
-    monkeypatch.delenv("POOLHOUSE_WORKSPACE_AGENT")
+    monkeypatch.delenv(AGENT_ENV)
     seen = []
     real = runtime_deploy.owning
 
@@ -625,43 +657,37 @@ def test_without_an_agent_ensure_and_recovery_run_unclaimed_and_post_nothing(wor
     shutil.rmtree(runtime_store.selection()["prefix"])
     assert runtime_deploy.ensure(plan_for(repo, launchers), builder=builder(hook_code=3)).action == "recovered"
     assert seen and all(who is None for who in seen)
-    assert not runtime_board.announce(runtime_deploy.Outcome("switched", second), "")
+    assert not runtime_board.announce(runtime_deploy.Outcome("switched", second), "", runtime_deploy.acting(plan_for(repo, launchers)))
 
 
-def test_the_acting_identity_is_the_workspace_agent_and_collides_with_its_harness_claim(world):
-    from poolhouse.workspace import limits
+def test_the_acting_session_is_the_workspace_agent_and_collides_with_its_harness_claim(world, workspace_node, agent):
     repo, launchers, _ = world
     commit(repo, "a")
     who = runtime_deploy.acting(plan_for(repo, launchers))
-    base = limits.root()
-    store = Claims(base, 600)
+    assert who.name == agent.name
     target = world[2] / "area"
     target.mkdir()
-    store.claim(Identity(who.id, AGENT), "install", str(target), {"ttl_s": 600})
-    other = Identity("somebody-else", AGENT)
-    with runtime_deploy.owning([target], wait_s=0.1, who=who, store=store):
-        assert store.who("install", str(target))["owner"] == who.id
-        with pytest.raises(runtime_deploy.DeployError), runtime_deploy.owning([target], wait_s=0.1, who=other, store=store):
+    who.claim("install", str(target), ttl_s=600)
+    other = workspace_node.session(workspace_node.member("somebody-else"))
+    with runtime_deploy.owning([target], wait_s=0.1, who=who):
+        assert owner_of(who, target) == who.name
+        with pytest.raises(runtime_deploy.DeployError), runtime_deploy.owning([target], wait_s=0.1, who=other):
             pass
 
 
-def test_the_acting_identity_is_the_physical_owner_and_needs_the_claim_capability(world, monkeypatch):
-    from types import SimpleNamespace
-
-    from poolhouse.workspace import harness_remote, project_connection
+def test_the_acting_session_is_only_one_the_node_knows_on_the_board_of_the_checkout(world, workspace_node, agent, monkeypatch):
     repo, launchers, _ = world
     commit(repo, "a")
-    info = {"id": "runtime-agent", "role": "agent", "can": ["claim", "send"], "project": {"key": "pk"}}
-    remote = SimpleNamespace(host="h", project_id="pk", call=lambda name, token: info)
-    monkeypatch.setattr(runtime_deploy.cli, "_project_connection", lambda cwd=None: {"host": "h"})
-    monkeypatch.setattr(runtime_deploy.cli, "_context",
-                        lambda args, connection: (project_connection.BoardWorkspace(remote, "t"), "t"))
     got = runtime_deploy.acting(plan_for(repo, launchers))
-    assert got.id == harness_remote.physical_owner(remote, Identity("runtime-agent", AGENT)).id
-    info["can"] = ["send"]
+    assert (got.name, got.board) == (agent.name, workspace_node.board)
+    assert runtime_deploy.acting(plan_for(repo, launchers, agent="no-such-agent")) is None
+    helper = workspace_node.member("helper", parent=agent)
+    assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)).name == helper.name
+    monkeypatch.setenv("POOLHOUSE_BOARD", "another-board")
     assert runtime_deploy.acting(plan_for(repo, launchers)) is None
-    info["can"], info["project"] = ["claim"], {"key": "other"}
-    assert runtime_deploy.acting(plan_for(repo, launchers)) is None
+    monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
+    workspace_node.session(helper).retire()
+    assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)) is None
 
 
 def test_a_symlinked_family_directory_is_never_listed_collected_or_deleted(world, tmp_path):
@@ -809,13 +835,13 @@ def test_foreign_trees_survive_ensure_rollback_recovery_and_collection(world):
     assert all(not runtime_store.ours(prefix) for prefix in foreign)
 
 
-def test_a_tree_this_tool_created_is_marked_before_anything_else_and_stale_unverified_ones_are_collected(world):
+def test_a_tree_this_tool_created_is_marked_before_anything_else_and_stale_unverified_ones_are_collected(world, agent):
     repo, launchers, _ = world
     head = commit(repo, "a")
     runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
     prefix = Path(runtime_store.selection()["prefix"])
     marker = json.loads((prefix / "created.json").read_text())
-    assert marker["tool"] == "poolhouse-runtime" and marker["command"] == "ensure" and marker["agent"] == "runtime-agent"
+    assert marker["tool"] == "poolhouse-runtime" and marker["command"] == "ensure" and marker["agent"] == agent.name
     assert marker["pid"] == os.getpid()
     ours = runtime.directory() / head / ("e" * 32)
     ours.mkdir(parents=True)

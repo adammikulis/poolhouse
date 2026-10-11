@@ -13,6 +13,7 @@ from poolhouse import runtime, runtime_deploy, runtime_launchers
 from poolhouse.fleet import runtime_wheel, updates
 
 pytestmark = pytest.mark.slow
+pytest_plugins = ["node_kit"]
 
 HOSTILE = "a b;touch PWNED;$(touch PWNED)`touch PWNED`"
 

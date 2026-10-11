@@ -161,7 +161,7 @@ def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.
     if outcome.action in ("switched", "recovered"):
         outcome = _with_node(outcome)
     _audited(args, "ensure", plan, outcome.action, outcome.detail)
-    runtime_board.announce(outcome, previous, verb="ensure", agent=args.agent)
+    runtime_board.announce(outcome, previous, runtime_deploy.acting(plan), verb="ensure")
     say(f"{outcome.action} {outcome.commit[:7]} {outcome.detail}".strip())
     return outcome
 
@@ -189,7 +189,7 @@ def _rollback(args: argparse.Namespace) -> int:
     plan = plan_from(args)
     outcome = runtime_deploy.rollback(plan, args.to)
     _audited(args, "rollback", plan, outcome.action, outcome.detail)
-    runtime_board.announce(outcome, previous, verb="rollback to", agent=args.agent)
+    runtime_board.announce(outcome, previous, runtime_deploy.acting(plan), verb="rollback to")
     say(f"{outcome.action} {outcome.commit[:7]} {outcome.detail}".strip())
     return 0 if outcome.ok else 1
 

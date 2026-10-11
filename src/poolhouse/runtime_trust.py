@@ -9,8 +9,8 @@ from pathlib import Path
 
 from poolhouse import authority, home, person, runtime_store
 from poolhouse.activity import writer
+from poolhouse.board.session import AGENT_ENV
 from poolhouse.runtime_deploy import DeployError, floor_of
-from poolhouse.workspace import tokens
 
 KIND = "runtime.deploy"
 GATE = "runtime.deploy"
@@ -127,7 +127,7 @@ def authorize(command: str) -> str:
 
 def audit(command: str, commit: str, result: str, *, agent: str = "", detail: str = "", **passed: str) -> bool:
     """Append a sealed activity record for one deploy command; True when it was written."""
-    who = agent or os.environ.get(tokens.AGENT_ENV, "")
+    who = agent or os.environ.get(AGENT_ENV, "")
     return writer.record(KIND, actor=f"agent:{who}" if who else None, subject=commit, outcome=result,
                          meta={"command": command, "agent": who, "person": is_person(), "authority": passed.get("via", ""),
                                "detail": detail[:DETAIL_LIMIT]})
