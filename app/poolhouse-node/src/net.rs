@@ -436,7 +436,8 @@ impl Net {
     // -- sync -------------------------------------------------------------
     /// Swap pool records and boards with every active member we can reach; the number reached. A member whose last dials failed is left
     /// alone until its backoff ends (a second, then twice as long, up to a minute) unless ``force``: a device nothing can reach does not
-    /// hold up the members that can be reached.
+    /// hold up the members that can be reached. A member put out of the pool while the cycle runs (heard from an earlier dial of it) is
+    /// not dialed, and one put out during its dial is not recorded as reached or attached to.
     pub fn sync_once(&self, force: bool) -> Result<usize> {
         let targets: Vec<(String, String)> = {
             let n = locked(&self.node)?;
@@ -448,10 +449,16 @@ impl Net {
         };
         let mut reached = 0;
         for (fp, addr) in targets {
+            if !locked(&self.node)?.members.is_active(&fp) {
+                continue;
+            }
             let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
                 .and_then(|a| PeerClient::connect(&self.me, a, Some(&fp)))
                 .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all(&self.node, &mut c)));
             let mut n = locked(&self.node)?;
+            if !n.members.is_active(&fp) {
+                continue;
+            }
             let f = n.facts.peer(&fp);
             match result {
                 Ok(_) => {
