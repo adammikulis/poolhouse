@@ -83,8 +83,12 @@ slice closes it; nothing else in this document is safe to build on until it does
 
 ### 1.3 Keys: roles, strength, thresholds and the delegate
 
-An **admin** is an Ed25519 public key named in the pool's charter. Every entry carries the key's **own acceptance**: a signature by
-that key over the pool, the epoch, its role and its strength. A key is therefore listed only by its holder: adding a key needs the
+An **admin** is a public key named in the pool's charter, with the **algorithm** it signs with: `ed25519` (64 lower-case hex digits) or
+`p256-ecdsa` (an uncompressed P-256 point, 130; ECDSA with SHA-256, signatures in DER, as a phone's hardware key makes them). The algorithm is
+the one the key's encoding says, is named by the charter entry and by every signature, and is inside the bytes the key signs to accept
+being listed; a signature that names the other algorithm is refused whichever way round, so one is never checked as the other, and a device
+signs with Ed25519 only (`gov/alg.rs`). Every entry carries the key's **own acceptance**: a signature by
+that key over the pool, the epoch, its algorithm, its role and its strength. A key is therefore listed only by its holder: adding a key needs the
 added key's signature as well as the admins' (1.5), so nobody can list someone else's public key to borrow its name or its
 standing grants. A person decides on a key by its **fingerprint as three check words** ("maple-river-ten"); the label an adder wrote
 ("the owner's phone") is untrusted text, quoted and styled apart wherever it appears, and is never what an approval rests on.
@@ -95,7 +99,11 @@ when any process of the user's account can use it: a keystore item readable afte
 process can open for itself (the limit `docs/node.md` states under "Key custody"). The strength is declared when the key is
 enrolled and written in the charter; keys enrolled through the phone path are strong (`docs/phone-approval.md`). **Only strong keys
 count toward sensitive acts, toward removing a member and toward cancelling.** A weak key may sign only the end of a delegate (a
-reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` says "weak keys only" for a pool with no strong admin.
+reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` says "weak keys only" for a pool with no strong admin. **What is strong today:** the key of a phone added to this node (its
+Android Keystore key signs only after the person's fingerprint, once per signature; `docs/phone-approval.md`, "Signing an act"). The node
+takes that from the phone's addition, which the person approved; it cannot yet check that the key is hardware-backed or demands presence
+per signature (Key Attestation, which would let it check, is a later slice). A keystore key of the account, or a key kept in a file or put
+in by a typed yes, is `weak`: any process of the account can use it after one prompt.
 
 **Roles.** `admin` signs and counts as above. `recovery` is a key kept offline (a phrase the person writes down, or a second phone
 put away). **The recovery key counts toward no immediate threshold, routine or sensitive**: the phrase alone can never sign an
@@ -613,27 +621,36 @@ heard of the removal still syncs with it, and it used to take the entries the re
 
 ### 1.17 The agent's founding path, as built (2026-10-11), and what remains
 
-`ph.pool.found(name, policy)` and `poolhouse-workspace pool found [NAME] [--policy open|secure]` (`src/poolhouse/board/founding.py`) are the Python
-client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`. The agent drafts the charter on the node, the person's key signs
-the acceptance and the first `admit` of this device outside the node, and the node takes them back; the node holds no key and the agent signs
-nothing. Order of what it asks of the person: (1) a linked phone is asked for the `pool_create` grant on its card (one tap; the card's number is
-told to the agent for its person); (2) with no phone, the first key goes in after the person says yes to the node's own question (the operating
-system's prompt on the real home), and that key signs the grant. A device already in a founded pool answers "This device is already in the pool
-X" and changes nothing. Every refusal is a `Refusal` (an `ph.Denied`): one sentence of at most 160 characters, what is needed, where the person
-taps and what the agent does next. The node writes the `pool_created` event to the pool board's audit.
+`ph.pool.found(name, policy)` and `poolhouse-workspace pool found [NAME] [--policy open|secure]` (`src/poolhouse/board/founding.py`) found the
+pool of this device. **With a phone linked** (`found_by_phone`) the node writes two cards from the structured act and the phone's key signs
+each one: "Found the pool home, secure: you will be its first admin" (the key's acceptance of the charter, which makes the pool), then
+"Let the device ... join the pool" (the first `admit`, of this device). The phone signs the act's own bytes behind the person's
+fingerprint, so the signature is the one every member checks; `pool_ask_found` and `pool_ask_sign` make the requests and the node
+finishes the work when the signature comes (`approvals/sign.rs`; the blocking `Signer` of `gov/signer.rs` cannot stand behind a phone,
+because the node's lock is held while it signs and the phone's answer needs it). The person taps twice and types nothing; no grant card
+comes first, since the card is the person's consent. **With no phone** the first key the node holds is `weak`, and the call refuses it before
+anyone is asked: "A pool needs a key that asks for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell
+me again." A caller that holds a key it declares strong passes it as `admin` and the node drafts, the key signs outside it and the node takes
+the act back (`pool_draft_found`, `pool_found`, `pool_draft`, `pool_submit`, `alg` named on each key); that path asks for the `pool_create`
+grant on the phone's card as before. A device already in a founded pool answers "This device is already in the pool X" and changes
+nothing. Every refusal is a `Refusal` (an `ph.Denied`): one sentence of at most 160 characters, what is needed, where the person taps and
+what the agent does next. The node writes the `pool_created` event to the pool board's audit.
 
-**What remains, exactly.** A pool needs a strong admin key (1.3), and no strong key can sign a charter yet: the phone's key is P-256 and signs
-approvals of grants only, a charter's admin key is Ed25519 (`gov/keys.rs`), and the node has no production `Signer` that asks the phone
-(`gov/signer.rs` holds the rig's). The key the first-key flow makes is kept in the account's keystore, which any process of the account can
-use, so it is `weak` (`founding.FIRST_KEY_STRENGTH`) and the call refuses it before the person is asked anything: "A pool needs a key that asks
-for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again." With a phone linked the sentence
-is "Your phone is linked, but it cannot sign a new pool's charter yet; update the Poolhouse app, then tell me again." The path is real
-and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's `found-by-api`) with a key the test made declared strong, as
-the rig's person always did. To close it: the phone signs a charter acceptance and an act (`alg: p256` admin keys, verified by
-`grants::person::verifies`, or an Ed25519 key in the phone's keystore with a per-signature prompt), and the node's `Signer` becomes the
-phone approval. Also not built: the card's text for `pool_create` (it falls to the node's default, "It is not an action this node knows the
-cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and the fingerprint of an open pool's member,
-or a code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
+**What remains, exactly.**
+
+* **Founding is two taps** because the first admit follows the charter in time (its `prev` is the hash of the charter with the acceptance
+  in it). One tap needs the charter to name the device it starts with, so the key's acceptance covers it and the fold admits it.
+* **No number to match on a signing card.** A grant card for a sensitive action asks the person for the number the agent showed; a card to
+  sign an admit or a removal carries none, so an agent that asks for a signature the person did not mean relies on the person reading the
+  card. Accepted for now; the hardening is the same pick as for grants.
+* **The phone shows the node's text** for a signing card and recomputes the bytes from the act or charter entry it carries
+  (`Challenge.actBytes`, not compiled in this checkout), but does not yet render the plain words from the act itself; the text a card shows
+  is the node's, and a node that wrote text that did not match its act is caught only by the person reading the one-line summary.
+* **Several phones**: the oldest active phone is the admin; adding another phone as an admin is an `admin_add` it signs, which `pool_ask_sign`
+  asks for but no command makes yet.
+* **Strength is declared, not attested** (1.3): Key Attestation recording is a later slice.
+* A call that lists the open pools a device has heard (`ph.pool.join` needs the host and the fingerprint of an open pool's member, or a
+  code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
 
 ## 2. Operated by agents, approved by a tap
 

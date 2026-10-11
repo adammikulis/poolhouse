@@ -215,7 +215,9 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
 | `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
-| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, strength, label}`) | `{charter, anchor, accept, summary}`: the charter with blank acceptances and, for each key, the bytes it signs to accept it; the rig or person signs them and hands the charter back to `pool_found` |
+| `pool_ask_found` | a registered session; a phone added to this node | `title`, `policy`, `project` | a request that the phone's key accept being the first admin of a new pool; the pool is founded when the phone signs (`docs/phone-approval.md`, "Signing an act") |
+| `pool_ask_sign` | a registered session; a phone added to this node whose key is a strong admin of the pool | `kind`, `body` | a request that the phone's key sign the act the pool would take next; the pool takes it when the phone signs |
+| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, alg, person, strength, label}`) | `{charter, anchor, accept, summary}`: the charter with blank acceptances and, for each key, the bytes it signs to accept it; the rig or person signs them and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the device is a member once an admit signed for it is submitted |
 | `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
@@ -818,8 +820,10 @@ pool, through admin keys; a device never does, and the one thing a member device
 - **The charter** (`gov/charter.rs`): the pool's name, join policy (`open` or `secure`, fixed for the pool's life), admin keys,
   thresholds, holds. The pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter, 32 hex digits, so a copy of a pool
   with other admins is another pool. `charter.json` holds the founding act; the epoch rises with each step of the chain below.
-- **Admin keys** (`gov/keys.rs`): Ed25519 public keys, each listed with its own acceptance (its signature over the pool, the epoch
-  it joins at, its role, strength and person), so a key is listed only by its holder. `strong` keys (a presence the signing process
+- **Admin keys** (`gov/keys.rs`, `gov/alg.rs`): public keys of `alg` `ed25519` or `p256-ecdsa` (a phone's key), the algorithm fixed by the
+  key's encoding and named by the charter entry and every signature (a mismatch is refused; a device signs Ed25519 only), each listed with its
+  own acceptance (its signature over the pool, the epoch it joins at, its algorithm, role, strength and person), so a key is listed only by its holder.
+  A phone added to the node is asked to sign by a request of kind `sign` (`approvals/sign.rs`, `docs/phone-approval.md`, "Signing an act"); its key is strong. `strong` keys (a presence the signing process
   cannot supply) are the only ones that count toward a threshold, a removal or a cancel; a `weak` key may end a delegate and
   nothing else. The `recovery` role counts toward no immediate act and leaves the admin set only with its own signature.
   Thresholds count distinct people (`unit: person`) or keys: `routine` (remove, cancel, end a delegate) 1 by default, `sensitive`

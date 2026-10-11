@@ -262,6 +262,29 @@ second decision, a replay of the same bytes, or a decision after the end is refu
 **A deny is signed too.** An unsigned deny would let anything that reaches the node end the person's pending requests. The
 agent that asked is told "denied" the same way.
 
+## Signing an act
+
+A phone's key is also an admin key of a pool (`alg: p256-ecdsa`, strong; docs/pools-and-serving.md, 1.3). The node asks it to sign one act
+with a request of kind `sign` (`approvals/sign.rs`), made by `pool_ask_found` (accept being the first admin of a new pool) and `pool_ask_sign`
+(`admit`, `remove`, `admin_add` and the other acts a person's key signs). The request's action is
+`{kind: "sign", step: "found" | "act", signer, alg, key, message, charter | act}`: `message` is the exact bytes to sign (hex), and the
+structure they come from travels beside it, so the phone makes the bytes again and refuses a request whose bytes are not those
+(`poolhouse/pool-accept/v1` and the canonical entry with the anchor of the charter for `found`; `poolhouse/pool-act/v1` and the canonical act
+without its signatures for `act`; nothing else, in particular never the `poolhouse/approval/v1` domain, so an approval of a grant cannot be
+asked for under another name).
+
+* **Approve** signs `message` itself, behind the fingerprint, and the node verifies it against the bytes it makes again from the stored
+  structure and against the one key the request named, then founds the pool or hands the signed act to the pool (which verifies it again).
+  A signature over the challenge instead is refused; a key that was not asked is refused; a request is decided once.
+* **Deny** is signed over the challenge as for any request, and counts as a decline of kind `pool_sign` (a hold after repeated ones).
+* **The card** is written by the node from the structured act: `POOL:`, `RISK:` (sensitive; irreversible for a removal), `SAID:`/`WHO:`/`VERDICT:`/`TAINT:`, `ASK:`
+  (the sentence of `gov/describe.rs`, or "Found the pool 'home', secure. ..."), `KEY:` (the phone's key in six groups of four), `SCOPE:`, `CANNOT:`,
+  `WHY:`, `DENY:`, `EXPIRES:`, in plain ASCII. A name that is not ASCII is shown with hyphens.
+* A phone key counts as strong because it was added by the person's approval and signs only after their fingerprint; the node cannot yet check
+  the key is hardware-backed (Key Attestation, later).
+* Not built: a number to match on this card; the phone rendering the plain words from the act itself; the Android change is small
+  (`Challenge.signsAct`, `Challenge.actBytes`, one line in `Decider`) and has not been compiled or run on a phone.
+
 ## Approval fatigue
 
 An agent, or someone behind it, can ask again and again until a person accepts to be left alone. Every defence below is the node's,
@@ -501,6 +524,7 @@ On the local socket, with a session's token (docs/node.md, "Local API"):
 | `approval_cancel` | `id` | `{id, state}` |
 | `approvals` | `state` | the requesting session's own requests |
 | `approval_pending` | `key`, `sig`, `at_ms` (a person's reading, below) | a session reads only its own waiting requests (their words, note, task, session and the number to show, never another session's); with `key`, `sig` and `at_ms` the signature of an enrolled person key made in the last thirty seconds over `poolhouse/approval-list/v1` and the node's fingerprint, it reads every waiting request, still without the numbers |
+| `pool_ask_found`, `pool_ask_sign` | `title`, `policy`, `project`; `kind`, `body` | a request of kind `sign` (see "Signing an act"), the same shape as `approval_request` returns; needs a registered session and a phone added to this node |
 | `approval_decide` | `id`, `decision` (`approve`, `approve_repeat`, `deny`, `block`), `key`, `sig`, `text_sha256`, `pick` | `{id, state}`: needs a signature of an enrolled person key; a session only carries it. `pick` is the number the person chose and is not signed |
 | `phone_info` | | `{pin, port, endpoints, device, policy}` |
 | `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour for each session; not while another code waits to be scanned; not for a session that is held or blocked or whose last code was not approved, for a day; the request to approve the phone says which session made the code and carries a number to match); the first is a person's command |
