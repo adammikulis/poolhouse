@@ -699,8 +699,19 @@ listener is the one network port.
   its certificate is dropped; revoked wins every merge and is never undone; a revoked certificate cannot
   be enrolled again. Members swap records with the `members` op; only an active member's rows are merged.
   Every request is checked against the record when it arrives, so a device removed after it connected is
-  refused at its next request on the same connection. Changes are written to the board `pool` as audit
-  entries; the record is the authority.
+  refused at its next request on the same connection. A device that records a removal also stops using the
+  connections it holds to the removed device: a sync cycle does not dial a member removed since the cycle
+  began, and a dial already open ends at its next request, so nothing is sent to, taken from or merged from
+  the removed device once the record says so (`netsync::locked_for`); it closes the connections it keeps
+  open to the removed device and the ones the removed device opened to it (`Net::drop_removed`, run after
+  a removal is made here, after a `members` request is served and at the end of each sync cycle), so the
+  device shows as not connected. A member that has not heard of the
+  removal yet still syncs with the removed device and passes on what it takes; it hears of the removal when
+  it next reaches a member that knows. The entries the removed device wrote in that window are kept and
+  relayed: `sync::take` and `Board::ingest` do not check the origin of a row against the active members, so
+  a member that already removed the device takes them from the relay
+  (`removal.rs`, `rows_of_a_removed_device_relayed_by_an_unaware_member_are_still_taken`). Changes are
+  written to the board `pool` as audit entries; the record is the authority.
 - **Join policy**: one pool attribute, `open` or `secure` (default `secure`), newest change wins, set by
   `set_join_policy` and carried by the `members` op.
 - **Peer ops** (`peer.rs`, frames up to 4 MiB): `hello`, `join_open`, `join_exchange`, `join_confirm` for

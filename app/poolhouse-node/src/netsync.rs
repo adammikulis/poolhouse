@@ -22,8 +22,22 @@ fn locked(node: &Mutex<Node>) -> Result<MutexGuard<'_, Node>> {
     node.lock().map_err(|_| Error::Damaged("node poisoned".into()))
 }
 
-fn with_board<T>(node: &Mutex<Node>, id: &str, f: impl FnOnce(&mut Hosted) -> Result<T>) -> Result<T> {
-    let mut n = locked(node)?;
+fn removed() -> Error {
+    Error::Denied("that device was put out of the pool; nothing more is exchanged with it".into())
+}
+
+/// The node's lock, taken only while the device ``peer`` is still an active member: once this device has recorded a removal, nothing more
+/// is sent to or taken from the removed device, on a connection opened before it or from a reply that arrives after it.
+fn locked_for<'a>(node: &'a Mutex<Node>, peer: &str) -> Result<MutexGuard<'a, Node>> {
+    let n = locked(node)?;
+    if !n.members.is_active(peer) {
+        return Err(removed());
+    }
+    Ok(n)
+}
+
+fn with_board<T>(node: &Mutex<Node>, peer: &str, id: &str, f: impl FnOnce(&mut Hosted) -> Result<T>) -> Result<T> {
+    let mut n = locked_for(node, peer)?;
     let h = n.boards.get_mut(id).ok_or_else(|| Error::Denied("this device does not hold that board".into()))?;
     f(h)
 }
@@ -35,18 +49,26 @@ fn tips(v: &Value, key: &str) -> Result<BTreeMap<String, Tip>> {
 /// Swap pool records with the peer; how many of ours changed.
 pub fn sync_members(node: &Mutex<Node>, c: &mut PeerClient) -> Result<usize> {
     let ask = {
-        let n = locked(node)?;
+        let n = locked_for(node, &c.fingerprint)?;
         json!({"op": "members", "pool": n.members.id, "rows": n.members.export(), "policy": policy_json(&n), "builds": n.builds_known()})
     };
     let reply = c.call(&ask)?;
+    take_members(node, &c.fingerprint, &reply)
+}
+
+/// Merge the pool record, policy and builds in the reply of the member ``from``; how many of our records changed.
+pub fn take_members(node: &Mutex<Node>, from: &str, reply: &Value) -> Result<usize> {
     let rows = reply.get("rows").and_then(Value::as_array).ok_or_else(|| Error::Invalid("rows is a list".into()))?;
-    let mut n = locked(node)?;
-    let changed = n.members.merge(rows, &c.fingerprint)?;
+    let mut n = locked_for(node, from)?;
+    let changed = n.members.merge(rows, from)?;
+    if !n.members.is_active(from) {
+        return Err(removed());
+    }
     if let Some(p) = reply.get("policy") {
         take_policy(&mut n, p)?;
     }
     if let Some(builds) = reply.get("builds") {
-        n.take_builds(&c.fingerprint, builds);
+        n.take_builds(from, builds);
     }
     Ok(changed)
 }
@@ -61,12 +83,12 @@ pub fn peer_boards(c: &mut PeerClient) -> Result<Vec<String>> {
 pub fn sync_board(node: &Mutex<Node>, c: &mut PeerClient, id: &str) -> Result<Report> {
     let mut report = Report::default();
     for _ in 0..MAX_ROUNDS {
-        let (origin, vector) = with_board(node, id, |h| {
+        let (origin, vector) = with_board(node, &c.fingerprint, id, |h| {
             h.board.seal()?;
             Ok((h.board.origin().to_string(), h.board.vector()))
         })?;
         let reply = c.call(&json!({"op": "pull", "board": id, "origin": origin, "vector": vector}))?;
-        let pulled = with_board(node, id, |h| {
+        let pulled = with_board(node, &c.fingerprint, id, |h| {
             let remote = reply["origin"].as_str().unwrap_or("");
             if !crate::row::valid_origin(remote) || !h.board.bind_peer(&c.board_fingerprint, remote)? {
                 return Err(Error::Denied("this device writes a different log than the one it presented before".into()));
@@ -87,7 +109,7 @@ pub fn sync_board(node: &Mutex<Node>, c: &mut PeerClient, id: &str) -> Result<Re
 fn push_once(node: &Mutex<Node>, c: &mut PeerClient, id: &str, origin: &str, report: &mut Report) -> Result<usize> {
     let reply = c.call(&json!({"op": "vector", "board": id, "origin": origin}))?;
     let remote = tips(&reply, "vector")?;
-    let (logs, trusted) = with_board(node, id, |h| {
+    let (logs, trusted) = with_board(node, &c.fingerprint, id, |h| {
         h.board.acknowledge(&c.board_fingerprint, &remote)?;
         Ok((rows_since(&h.board, &seqs(&remote)), h.board.trusted_vector()))
     })?;

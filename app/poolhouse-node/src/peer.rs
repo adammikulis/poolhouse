@@ -234,6 +234,9 @@ pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpA
             (result, node.members.standing(&cert_fingerprint(der)) == Standing::Revoked)
         };
         write_frame_max(s, &reply_of(result), MAX_PEER_FRAME)?;
+        if req["op"] == "members" {
+            net.drop_removed();
+        }
         if revoked {
             return Ok(Ended::Closed);
         }
@@ -251,6 +254,7 @@ pub struct PeerClient {
     pub fingerprint: String,
     pub board_fingerprint: String,
     pub der: Vec<u8>,
+    closer: Option<TcpStream>,
 }
 
 impl PeerClient {
@@ -264,7 +268,7 @@ impl PeerClient {
         tcp.set_nodelay(true)?;
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured) })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None })
     }
 
     /// Like `connect`, for a connection that stays open for hours: no read timeout (the other end speaks when it has something) and TCP
@@ -274,15 +278,21 @@ impl PeerClient {
         tcp.set_write_timeout(Some(IO_TIMEOUT))?;
         tcp.set_nodelay(true)?;
         socket2::SockRef::from(&tcp).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(Duration::from_secs(30)).with_interval(Duration::from_secs(10)))?;
+        let closer = tcp.try_clone().ok();
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured) })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer })
+    }
+
+    /// A second handle on the socket of a connection made with `connect_long`: shutting it down from another thread ends the connection.
+    pub fn closer(&self) -> Option<TcpStream> {
+        self.closer.as_ref().and_then(|t| t.try_clone().ok())
     }
 
     /// A connection a member opened to this device, to send that member requests over it.
     pub fn accepted(secured: Secured<rustls::ServerConnection>) -> Result<PeerClient> {
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured) })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None })
     }
 
     /// Answer the requests that come down this connection (the other end holds the channel), until it closes.

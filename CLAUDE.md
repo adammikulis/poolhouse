@@ -99,6 +99,28 @@ A reviewer subagent runs one effort step below the worker it checks, never above
 than writing and its job is to disagree on evidence. Record a repeated failure of a kind of task at an effort
 in docs/model-benchmarks.md, not only here.
 
+## Subagent length and cost
+
+Price per token does not rise past 200k on the models we use: Claude 4.6 and later models except Haiku 5.5 bill the whole
+1M window at the standard rate (Sonnet 5.5 $2 in / $10 out per MTok; Opus 5.5 $4 / $20; cache reads $0.10 and $0.20; platform
+pricing page, checked 2026-10-11). **Haiku 5.5 is the exception: above 100k tokens of prompt it costs five times as much**
+($0.50 in / $2.50 out against $0.10 / $0.50), so a Haiku task stays under 100k tokens of context or moves to Sonnet.
+The cost that grows with length is the re-reading: every tool call of an agent re-reads its whole context (a cache read at
+5 percent of the input price when the cache is warm, a full write at 1.25 times when it is not, and the cache lasts 5 minutes
+unless a one-hour write was made), so a worker's bill grows with tool calls times context, roughly the square of its length.
+Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to 0.9 million tokens each. So:
+
+- One slice per worker: a brief that names one deliverable with a stop condition. A worker that has made about 150 tool calls
+  without reporting is stopped by the lead, its commits kept, and the rest is a new worker with a fresh context and a one-line
+  summary of state (a continuation is cheaper than a longer life).
+- Split by deliverable, not by phase: design, code, review and fixes are separate workers; a reviewer reads, runs a few
+  targeted checks and reports, with its tool calls capped near 40.
+- Briefs point at files and sections; they do not paste documents. Workers read ranges, not whole files, and run the
+  affected tests, not the suite, until the one gate run.
+- The lead keeps its own context short: results are summarised once, large outputs are read from a file range, and a session
+  that has grown past roughly 300k tokens of context is continued after a summary.
+- Effort follows the table above; avoid xhigh for work a clear brief makes mechanical.
+
 ## The heartbeat
 
 A lead keeps a heartbeat prompt firing every 55 minutes for the whole life of its session (the prompt cache goes
