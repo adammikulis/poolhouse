@@ -915,11 +915,11 @@ LIVE_WRITERS = frozenset({"broker-leases.json", "broker.json", "broker.lock", "s
                           "servers.lock", "logs", "guard", "runtimes", "traind/env", "spec-venv", "llama.cpp"})
 
 #: Paths below the state root that OTHER agents and test runs on the machine append to while this
-#: run is going (every `scripts/test` run ends by logging to `activity/`; every agent message lands
-#: in `workspace/`), so a write there says nothing about this run. A glob per path, and only logs
+#: run is going (every `scripts/test` run ends by logging to `activity/`; the land runner logs
+#: to `workspace/land-runner.*`), so a write there says nothing about this run. A glob per path, and only logs
 #: and the hub: the keystore, key files, manifests, canaries, honey, requests, credentials and the
 #: sentinel's records stay guarded, because a test that reached for those would be an escape.
-LIVE_PATHS = ("workspace/*", "harness/*", "workspace-connections.json", "workspace-remote/*/worktree-lifecycle.db*", "activity/*/activity.log*", "activity/*/activity.log.lock",
+LIVE_PATHS = ("workspace/land-runner.*", "harness/*", "workspace-connections.json", "workspace-remote/*/worktree-lifecycle.db*", "activity/*/activity.log*", "activity/*/activity.log.lock",
               "sentinel/events.log*", "sentinel/anchor.log")
 
 
@@ -1091,9 +1091,9 @@ def _real_home(tmp_path_factory):
     from poolhouse import home
 
     real = types.SimpleNamespace(state=home.home(), cache=home.cache())
-    from state_attribution import Watch
+    from state_attribution import Watch, attributing
 
-    watch = Watch(real.state, lambda r: file_mtimes(r, attribute_external=False), lambda b, a: real_state_changes(real.state, b, a))
+    watch = Watch(real.state, lambda r: file_mtimes(r, attribute_external=False), lambda b, a: real_state_changes(real.state, b, a), attribute=attributing(real.state))
     away = tmp_path_factory.mktemp("home")
     account = home.user_home()
     browsers = account / ("Library/Caches" if sys.platform == "darwin" else ".cache")

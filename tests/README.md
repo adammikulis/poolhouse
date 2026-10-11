@@ -236,5 +236,22 @@ other sessions write there too, so the rule is:
 3. When one was seen, the same files are a **warning**, printed once at teardown with the files
    and the writers seen, because the run cannot tell its own write from theirs.
 
+Under `node/` the writer is told first (`tests/node_attribution.py`). The node that holds
+`node/node.lock`, as `node/node-run.json` names it, must be a live process outside the run. Each
+entry that changed in `boards/*/names.json`, `tokens.json` and `leases.json` names the session it
+belongs to and the processes that session was registered from (its lineage), and a lease names the
+process that holds it.
+
+- A file whose changed entries all belong to sessions the run did not start (they existed before
+  the run, or were registered from a process that started before it) is left out of the report.
+- A file with an entry registered from a process of the run (the pytest process, its workers and
+  everything below the topmost of them), or a lease a process of the run holds, **fails** even when
+  other processes are live. So does every changed file under `node/` when the node itself is part of
+  the run.
+- A key, certificate, enrolment secret, grant or person file under `node/` **fails** whoever else is
+  live.
+- An entry whose lineage cannot place it, and any other file under `node/`, falls under rules 2
+  and 3.
+
 `tests/test_state_attribution.py` pins both outcomes with a child process that ignores the moved
 `HOME`, against a temporary directory standing in for the real root.
