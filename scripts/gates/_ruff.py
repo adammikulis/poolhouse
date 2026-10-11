@@ -11,6 +11,8 @@ from . import Finding, _pins
 from ._util import rel
 
 ROOTS = ("src", "tests", "scripts", "packaging")
+INPUTS = (*ROOTS, "pyproject.toml", "ruff.toml", ".ruff.toml")
+"""Everything ruff reads: the directories it checks and the files it takes its settings from."""
 
 
 def command() -> tuple[str, ...] | None:

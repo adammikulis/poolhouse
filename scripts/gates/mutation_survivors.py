@@ -8,8 +8,10 @@ from pathlib import Path
 
 from . import Finding
 from ._mutation import NEVER_RUN, TEST_ROOT, candidates, dotted, functions
+from ._util import DEFAULT_INPUTS
 
 NAME = "mutation-survivors"
+INPUTS = DEFAULT_INPUTS
 OWNER = "scripts/mutate"
 LEDGER = "scripts/gates/survivors.txt"
 STATES = ("survivor", "equivalent")

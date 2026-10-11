@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 from functools import cache
@@ -127,16 +128,34 @@ def calls(tree: ast.Module) -> tuple[tuple[ast.Call, str], ...]:
     return tuple(out)
 
 
-def tree_fingerprint(root: Path) -> str:
-    """A hash of every file the checkers and collection read, and of the interpreter."""
-    digest = hashlib.sha256(f"{sys.version}\0{sys.executable}".encode())
-    for base in ("src", "tests", "scripts", "pyproject.toml"):
+DEFAULT_INPUTS = ("src", "tests", "scripts", "pyproject.toml")
+"""What a checker of python code reads: the code, the tests and the project's own settings."""
+EVERYTHING = "."
+"""An input naming every file the repository does not ignore, tracked or not."""
+
+
+def _held(root: Path, inputs: tuple[str, ...]) -> list[Path]:
+    """The files under the named inputs; every unignored file when an input is ``EVERYTHING``."""
+    if EVERYTHING in inputs:
+        listed = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "-z"], cwd=root,
+                                capture_output=True, check=False)
+        if listed.returncode == 0:
+            return sorted(root / n for n in listed.stdout.decode().split("\0") if n and (root / n).is_file())
+        return sorted(p for p in root.rglob("*") if p.is_file() and ".git" not in p.parts)
+    held: list[Path] = []
+    for base in inputs:
         place = root / base
-        paths = [place] if place.is_file() else sorted(place.rglob("*")) if place.is_dir() else []
-        for path in paths:
-            if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
-                digest.update(path.relative_to(root).as_posix().encode())
-                digest.update(path.read_bytes())
+        held += [place] if place.is_file() else sorted(place.rglob("*")) if place.is_dir() else []
+    return held
+
+
+def tree_fingerprint(root: Path, inputs: tuple[str, ...] = DEFAULT_INPUTS) -> str:
+    """A hash of every file under ``inputs`` (repo-relative files and directories) and of the interpreter."""
+    digest = hashlib.sha256(f"{sys.version}\0{sys.executable}".encode())
+    for path in _held(root, inputs):
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc":
+            digest.update(path.relative_to(root).as_posix().encode())
+            digest.update(path.read_bytes())
     return digest.hexdigest()
 
 

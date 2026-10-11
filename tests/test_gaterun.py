@@ -127,6 +127,34 @@ def test_an_untracked_file_is_part_of_the_key(scan):
     assert held.key(step.step) != before
 
 
+@pytest.mark.parametrize("name", ["docs/glossary.md", "docs/commands.md", "docs/redteam/coverage-map.toml",
+                                  "docs/redteam/coverage.json", "contracts/glossary-allowlist.toml",
+                                  "budgets.json", ".github/workflows/ci.yml", "app/src-tauri/capabilities/main.json"])
+@pytest.mark.parametrize("tracked", [True, False])
+def test_an_edit_to_a_file_outside_src_tests_and_scripts_changes_the_key_of_every_step(scan, name, tracked):
+    step, folder = scan
+    place = step.root / name
+    place.parent.mkdir(parents=True, exist_ok=True)
+    place.write_text("one\n")
+    if tracked:
+        git(step.root, "add", name)
+    held = step.gate(folder, True)
+    before = held.key(step.step)
+    place.write_text("two\n")
+    assert held.key(step.step) != before
+
+
+def test_a_pass_is_not_reused_after_a_docs_only_edit(scan):
+    step, folder = scan
+    (step.root / "docs").mkdir()
+    (step.root / "docs" / "commands.md").write_text("one\n")
+    assert step.verdict(folder, True).status == 0
+    (step.root / "docs" / "commands.md").write_text("two\n")
+    again = step.verdict(folder, True)
+    assert (again.status, again.reused) == (0, "")
+    assert step.ran() == 2
+
+
 def test_the_steps_identity_and_the_base_tip_are_part_of_the_key(scan):
     step, folder = scan
     held = step.gate(folder, True)

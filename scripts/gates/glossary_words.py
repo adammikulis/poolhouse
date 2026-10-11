@@ -9,8 +9,10 @@ from pathlib import Path
 from types import ModuleType
 
 from . import Finding
+from ._util import EVERYTHING
 
 NAME = "glossary-words"
+INPUTS = (EVERYTHING,)
 OWNER = "docs/glossary.md"
 HARD = True
 SCRIPT = Path(__file__).resolve().parents[1] / "nomenclature.py"

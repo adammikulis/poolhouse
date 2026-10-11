@@ -10,7 +10,7 @@ from functools import cache
 from pathlib import Path
 from types import ModuleType
 
-from ._util import remembered, tree_fingerprint
+from ._util import DEFAULT_INPUTS, remembered, tree_fingerprint
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,8 @@ def checkers() -> list[ModuleType]:
         for attr in ("NAME", "OWNER", "describe", "find"):
             if not hasattr(module, attr):
                 raise AttributeError(f"gates.{info.name} has no {attr}")
+        if not getattr(module, "INCREMENTAL", False) and not getattr(module, "INPUTS", ()):
+            raise AttributeError(f"gates.{info.name} is remembered by tree and names no INPUTS")
         found.append(module)
     return found
 
@@ -65,9 +67,10 @@ def unrunnable() -> dict[str, str]:
 def findings(checker: ModuleType, root: Path) -> list[Finding]:
     """One checker's findings over the tree at root, in path order.
 
-    The tree this package sits in is remembered by content, with the version of each
-    external tool a checker may call, so an unchanged tree is not scanned twice. A checker
-    marked ``INCREMENTAL`` keeps its own per-file results and is never held whole.
+    The tree this package sits in is remembered by the content of the files the checker names
+    in ``INPUTS``, with the version of each external tool it may call, so a tree unchanged
+    where the checker reads is not scanned twice. A checker marked ``INCREMENTAL`` keeps its
+    own per-file results and is never held whole.
     """
     def scan() -> list[list]:
         found = sorted(checker.find(root), key=lambda f: (f.path, f.line, f.detail))
@@ -77,13 +80,13 @@ def findings(checker: ModuleType, root: Path) -> list[Finding]:
         return [Finding(*row) for row in scan()]
     tools = ",".join(f"{t}={_stamp(t)}" for t in ("ruff", "pyright"))
     return [Finding(*row) for row in remembered(root, checker.NAME, scan, tools,
-                                                 repo_fingerprint())]
+                                                 repo_fingerprint(tuple(checker.INPUTS)))]
 
 
 @cache
-def repo_fingerprint() -> str:
-    """The fingerprint of the tree this package sits in, taken once per process."""
-    return tree_fingerprint(Path(__file__).resolve().parents[2])
+def repo_fingerprint(inputs: tuple[str, ...] = DEFAULT_INPUTS) -> str:
+    """The fingerprint of what the tree this package sits in holds under ``inputs``, taken once per process."""
+    return tree_fingerprint(Path(__file__).resolve().parents[2], inputs)
 
 
 def _stamp(tool: str) -> str:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import Finding
-from ._ruff import findings, skip  # noqa: F401
+from ._ruff import INPUTS, findings, skip  # noqa: F401
 from .ruff_blind_except import PREFIXES as BLE
 from .ruff_bugbear import PREFIXES as BUGBEAR
 from .ruff_security import PREFIXES as SECURITY
