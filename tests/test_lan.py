@@ -80,3 +80,15 @@ def test_the_beacon_goes_to_loopback_alone_and_its_socket_is_bound_there_with_no
         assert sock.getsockname()[0] == "127.0.0.1"
     real_home(clean)
     assert len(discovery._destinations(discovery.default_group(), 9)) == 4, "the real home keeps multicast, broadcast and loopback"
+
+
+def test_a_desktop_dialog_is_shown_only_on_the_persons_machine_whatever_is_set(clean):
+    from poolhouse import desktop
+
+    clean.delenv(desktop.ENV)  # the suite sets it to console; this is about what happens with it unset
+    assert desktop.which_way("Darwin", which=lambda name: "/usr/bin/" + name) == "none", "unset, under a test: nothing on a screen"
+    assert desktop.which_way("Darwin", env={}, which=lambda name: "/usr/bin/" + name) == "macos", "an explicit environment is judged as given"
+    real_home(clean)
+    assert desktop.which_way("Darwin", which=lambda name: "/usr/bin/" + name) == "macos"
+    clean.setenv(desktop.ENV, "console")
+    assert desktop.which_way("Darwin", which=lambda name: "/usr/bin/" + name) == "none"

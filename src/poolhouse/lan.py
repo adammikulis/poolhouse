@@ -30,13 +30,19 @@ def on_real_home() -> bool:
     return home.home().resolve() == home.account_roots()[0]
 
 
+def on_the_persons_machine() -> bool:
+    """Whether this process is the installed software on the account's real state root, not a test or a rig: the only place
+    a dialog, a window or the network may be real."""
+    return on_real_home() and not under_test()
+
+
 def allowed() -> bool:
     """Whether this process may open a listening socket beyond loopback or join the beacon."""
     if os.environ.get(OFF_ENV) == "off":
         return False
     if os.environ.get(TESTS_ENV) == "1":
         return not any(os.environ.get(marker) for marker in AGENT_MARKERS)
-    return on_real_home() and not under_test()
+    return on_the_persons_machine()
 
 
 def clamp(args: list[str]) -> list[str]:
