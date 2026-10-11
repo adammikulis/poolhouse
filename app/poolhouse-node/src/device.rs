@@ -15,6 +15,11 @@ use crate::error::{Error, Result};
 use crate::fsutil::{hex, random_hex, sha256_hex, unhex, write_atomic};
 
 const FILE: &str = "device.key";
+/// What `device.key` holds once the key is kept elsewhere: not a key, so a node that does not know of the keystore stops on it
+/// instead of making another identity.
+/// The files a key kept in the keystore or under a passphrase is in; a directory with one of them and no record is a device's.
+const KEPT_ELSEWHERE: [&str; 2] = ["device.key.wrapped", "device.key.enc"];
+const NOTE: &str = "kept elsewhere: see device.custody.json; this file is not a key\n";
 /// What a state directory remembers of a key kept elsewhere: where, and the fingerprint it must be.
 const RECORD: &str = "device.custody.json";
 
@@ -54,10 +59,23 @@ impl Custody {
 }
 
 /// A key a node is given to run as, with where it came from (never `File`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct Supplied {
     pub seed: [u8; 32],
     pub custody: Custody,
+}
+
+impl std::fmt::Debug for Supplied {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Supplied {{ custody: {:?}, seed: .. }}", self.custody)
+    }
+}
+
+/// What `device.key` is.
+enum KeyFile {
+    Missing,
+    Note,
+    Key(Box<SigningKey>),
 }
 
 /// The custody a state directory recorded for its key and the fingerprint the key must have, when it recorded one.
@@ -73,13 +91,14 @@ fn recorded(dir: &Path) -> Result<Option<(Custody, String)>> {
     custody.zip(fingerprint).map(Some).ok_or_else(|| Error::Damaged("the record of the device key is unreadable".into()))
 }
 
-fn plain(dir: &Path) -> Result<Option<SigningKey>> {
+fn plain(dir: &Path) -> Result<KeyFile> {
     match std::fs::read_to_string(dir.join(FILE)) {
+        Ok(text) if text.starts_with("kept ") => Ok(KeyFile::Note),
         Ok(text) => {
             let bytes: [u8; 32] = unhex(text.trim()).and_then(|b| b.try_into().ok()).ok_or_else(|| Error::Damaged("device key unreadable".into()))?;
-            Ok(Some(SigningKey::from_bytes(&bytes)))
+            Ok(KeyFile::Key(Box::new(SigningKey::from_bytes(&bytes))))
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(KeyFile::Missing),
         Err(e) => Err(e.into()),
     }
 }
@@ -88,35 +107,43 @@ fn plain(dir: &Path) -> Result<Option<SigningKey>> {
 /// directory remembers and moves out of a key file; else the key file, made on first use.
 pub fn load(dir: &Path, supplied: Option<&Supplied>) -> Result<(SigningKey, Custody)> {
     let known = recorded(dir)?;
+    let file = plain(dir)?;
     let Some(given) = supplied else {
         if let Some((custody, _)) = known {
             return Err(Error::Denied(format!(
                 "the key of this device is kept in the {}, and the node was not given it: start the node through poolhouse", custody.word())));
         }
+        if matches!(file, KeyFile::Note) || (matches!(file, KeyFile::Missing) && KEPT_ELSEWHERE.iter().any(|name| dir.join(name).exists())) {
+            return Err(Error::Denied("the key of this device was kept elsewhere and the record of where is gone: a person starts over by moving this state directory aside".into()));
+        }
         return load_or_create(dir).map(|key| (key, Custody::File));
     };
     let key = SigningKey::from_bytes(&given.seed);
-    let (mine, in_a_file) = (fingerprint(&key), plain(dir)?);
-    if known.as_ref().is_some_and(|(_, fp)| *fp != mine) || in_a_file.as_ref().is_some_and(|f| fingerprint(f) != mine) {
+    let mine = fingerprint(&key);
+    let other_cert = std::fs::read(dir.join(crate::cert::FILE)).is_ok_and(|der| crate::cert::board_fingerprint(&der).is_ok_and(|f| f != mine));
+    if known.as_ref().is_some_and(|(_, fp)| *fp != mine) || matches!(&file, KeyFile::Key(f) if fingerprint(f) != mine) || (known.is_none() && other_cert) {
         return Err(Error::Denied("the key given is not the key of the device whose state this is".into()));
     }
     if known.as_ref().map(|(c, _)| *c) != Some(given.custody) {
         write_atomic(&dir.join(RECORD), json!({"custody": given.custody.word(), "fingerprint": mine}).to_string().as_bytes())?;
     }
-    if in_a_file.is_some() {
-        std::fs::remove_file(dir.join(FILE))?;
+    if !matches!(file, KeyFile::Note) {
+        write_atomic(&dir.join(FILE), NOTE.as_bytes())?;
     }
     Ok((key, given.custody))
 }
 
 /// Load the key file from ``dir``, creating it on first use.
 pub fn load_or_create(dir: &Path) -> Result<SigningKey> {
-    if let Some(key) = plain(dir)? {
-        return Ok(key);
+    if let KeyFile::Key(key) = plain(dir)? {
+        return Ok(*key);
     }
     let seed = random_hex(32)?;
     write_atomic(&dir.join(FILE), seed.as_bytes())?;
-    plain(dir)?.ok_or_else(|| Error::Damaged("device key unreadable".into()))
+    match plain(dir)? {
+        KeyFile::Key(key) => Ok(*key),
+        _ => Err(Error::Damaged("device key unreadable".into())),
+    }
 }
 
 /// The fingerprint of a device: SHA-256 of its public key as hex.

@@ -40,10 +40,10 @@ const KILL_AFTER: Duration = Duration::from_secs(45);
 const SHARDS: &str = "shards";
 const BOOT: &str = "import sys; sys.path.insert(0, sys.argv[1]); from poolhouse.fleet.shard_exec import run; raise SystemExit(run(sys.argv[2]))";
 /// Variables that mark a shell as an agent's, or point a tree somewhere else: none reaches a run.
-const DROPPED: [&str; 18] = ["CLAUDECODE", "AI_AGENT", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ATTENDED", "CODEX_THREAD_ID",
+const DROPPED: [&str; 19] = ["CLAUDECODE", "AI_AGENT", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ATTENDED", "CODEX_THREAD_ID",
     "CODEX_SESSION_ID", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_WORKSPACE_TOKEN", "POOLHOUSE_WORKSPACE_AGENT",
     "POOLHOUSE_WORKSPACE_DENYLIST", "POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID", "POOLHOUSE_BOARD", "DEV_TEST_JOB",
-    "DEV_TEST_AGENT", "PYTHONPATH", "PYTHONHOME"];
+    "DEV_TEST_AGENT", "PYTHONPATH", "PYTHONHOME", "POOLHOUSE_DEVICE_KEY_PASSPHRASE"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {

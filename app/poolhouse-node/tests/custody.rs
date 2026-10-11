@@ -22,6 +22,14 @@ fn fingerprint_of(seed: u8) -> String {
     device::fingerprint(&kit::key(seed))
 }
 
+/// ``path`` is not there, or holds a note a node that reads it as a key stops on.
+fn assert_not_a_key(path: &std::path::Path) {
+    if let Ok(text) = std::fs::read_to_string(path) {
+        assert!(text.starts_with("kept "), "{path:?} holds {text:?}");
+        assert!(poolhouse_node::fsutil::unhex(text.trim()).is_none(), "a note that is not hex");
+    }
+}
+
 fn status(n: &mut Node) -> Value {
     ok(req(n, "pool_status", "", "", json!({})))
 }
@@ -42,7 +50,7 @@ fn a_key_the_node_is_given_is_its_identity_and_is_never_written_to_a_file() {
     assert_eq!(poolhouse_node::cert::board_fingerprint(&n.cert.der).unwrap(), fingerprint_of(7), "the certificate is made from the key it was given");
     assert_eq!(status(&mut n)["device_key"], json!({"custody": "keystore", "weak": false}));
     let names: Vec<String> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into()).collect();
-    assert!(!names.iter().any(|n| n == "device.key"), "no key file: {names:?}");
+    assert_not_a_key(&dir.path().join("device.key"));
     for name in &names {
         let path = dir.path().join(name);
         if path.is_file() {
@@ -60,7 +68,7 @@ fn a_node_whose_key_is_kept_elsewhere_will_not_make_itself_another_one() {
     let refused = Node::open(dir.path()).err().expect("a node with no key starts nothing");
     assert!(matches!(refused, Error::Denied(_)), "{refused}");
     assert!(refused.to_string().contains("keystore"), "{refused}");
-    assert!(!dir.path().join("device.key").exists(), "it did not make a key of its own");
+    assert_not_a_key(&dir.path().join("device.key"));
 }
 
 #[test]
@@ -85,7 +93,7 @@ fn a_key_file_for_the_same_key_is_removed_once_the_node_has_the_key_and_another_
     let file = dir.path().join("device.key");
     std::fs::write(&file, "07".repeat(32)).unwrap();
     drop(Node::open_with(dir.path(), Some(&supplied(7))).unwrap());
-    assert!(!file.exists(), "the key moved out of the file");
+    assert_not_a_key(&file);
 
     let other = tempfile::tempdir().unwrap();
     std::fs::write(other.path().join("device.key"), "09".repeat(32)).unwrap();
@@ -105,7 +113,7 @@ fn a_node_started_with_its_key_on_standard_input_runs_as_that_key_and_leaves_no_
     let status = Client::connect(&state).unwrap().call("pool_status", "", "", json!({})).unwrap();
     assert_eq!(Client::connect(&state).unwrap().call("hello", "", "", json!({})).unwrap()["fingerprint"], fingerprint_of(11));
     assert_eq!(status["device_key"], json!({"custody": "keystore", "weak": false}));
-    assert!(!state.join("device.key").exists());
+    assert_not_a_key(&state.join("device.key"));
     let _ = Client::connect(&state).and_then(|mut c| c.call("shutdown", "", "", json!({})));
     let _ = child.kill();
     let _ = child.wait();
@@ -121,4 +129,63 @@ fn a_node_told_to_read_its_key_that_gets_nothing_valid_does_not_start() {
         assert!(!child.wait().unwrap().success(), "input {input:?}");
         assert!(!dir.path().join("s").join("device.key").exists());
     }
+}
+
+#[test]
+fn a_state_directory_whose_record_is_gone_is_never_given_another_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    drop(Node::open_with(dir.path(), Some(&supplied(7))).unwrap());
+    std::fs::remove_file(dir.path().join("device.custody.json")).unwrap();
+    let alone = Node::open(dir.path()).err().expect("a node with no record and no key makes none");
+    assert!(matches!(alone, Error::Denied(_)), "{alone}");
+    assert_not_a_key(&dir.path().join("device.key"));
+    let other = Node::open_with(dir.path(), Some(&supplied(8))).err().expect("a key that is not the certificate's");
+    assert!(matches!(other, Error::Denied(_)), "{other}");
+    assert!(Node::open_with(dir.path(), Some(&supplied(7))).is_ok(), "the key of the device opens it and the record is written again");
+    assert!(dir.path().join("device.custody.json").is_file());
+    std::fs::write(dir.path().join("device.custody.json"), "{").unwrap();
+    assert!(matches!(Node::open(dir.path()).err(), Some(Error::Damaged(_))), "a record that is damaged is not read as none");
+    let weak = tempfile::tempdir().unwrap();
+    drop(Node::open(weak.path()).unwrap());
+    std::fs::create_dir(weak.path().join("device.custody.json")).unwrap();
+    assert!(Node::open(weak.path()).is_err(), "a record that cannot be read at all is not read as none");
+}
+
+#[test]
+fn a_state_directory_that_holds_a_wrapped_or_sealed_key_and_nothing_else_is_never_given_a_new_one() {
+    for kept in ["device.key.wrapped", "device.key.enc"] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(kept), b"x").unwrap();
+        let alone = Node::open(dir.path()).err().expect("a key kept elsewhere is not replaced by a new one");
+        assert!(matches!(alone, Error::Denied(_)), "{kept}: {alone}");
+        assert!(!dir.path().join("device.key").exists(), "{kept}: no key was made");
+    }
+}
+
+#[test]
+fn a_record_that_says_file_or_names_no_fingerprint_is_damaged() {
+    for record in [json!({"custody": "file", "fingerprint": "ab".repeat(32)}), json!({"custody": "keystore"}), json!({"custody": "elsewhere", "fingerprint": "ab".repeat(32)})] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("device.custody.json"), record.to_string()).unwrap();
+        assert!(matches!(Node::open(dir.path()).err(), Some(Error::Damaged(_))), "{record}");
+    }
+}
+
+#[test]
+fn a_node_told_the_key_is_in_a_file_or_given_too_long_a_line_does_not_start() {
+    let dir = short_dir();
+    let mut child = Command::new(BIN).args(["run", "--state"]).arg(dir.path().join("s")).args(["--key-stdin", "--key-custody", "file"])
+        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all(format!("{}\n", "0b".repeat(32)).as_bytes()).unwrap();
+    assert!(!child.wait().unwrap().success(), "a key is never given as one that is in a file");
+    let mut child = Command::new(BIN).args(["run", "--state"]).arg(dir.path().join("s")).arg("--key-stdin")
+        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+    child.stdin.take().unwrap().write_all("0b".repeat(500).as_bytes()).unwrap();
+    assert!(!child.wait().unwrap().success());
+}
+
+#[test]
+fn what_a_node_is_told_about_its_key_is_never_printed() {
+    let shown = format!("{:?}", supplied(7));
+    assert!(!shown.contains('7') && !shown.contains("07"), "{shown}");
 }

@@ -16,7 +16,7 @@ use x509_parser::prelude::{FromDer, X509Certificate};
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, write_atomic};
 
-const FILE: &str = "device.cert";
+pub const FILE: &str = "device.cert";
 const TEN_YEARS_S: i64 = 10 * 365 * 24 * 3600 + 3 * 24 * 3600;
 
 /// The fingerprint of a certificate: SHA-256 of its DER, as lower-case hex.

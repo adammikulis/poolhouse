@@ -111,7 +111,18 @@ fn supplied_key(args: &[String]) -> Result<Option<Supplied>, String> {
     let mut line = String::new();
     std::io::stdin().lock().take(130).read_line(&mut line).map_err(|e| format!("the key on standard input: {e}"))?;
     let seed: [u8; 32] = unhex(line.trim()).and_then(|b| b.try_into().ok()).ok_or("standard input did not hold a key: 64 hex digits and a newline")?;
+    no_core_dumps();
     Ok(Some(Supplied { seed, custody }))
+}
+
+/// A node that holds a key it was given leaves no core file behind, which would hold the key.
+fn no_core_dumps() {
+    #[cfg(unix)]
+    {
+        let none = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: setrlimit reads the one plain-data struct it is given.
+        unsafe { libc::setrlimit(libc::RLIMIT_CORE, &none) };
+    }
 }
 
 fn run(state: &Path, args: &[String]) -> Result<(), String> {
@@ -164,5 +175,17 @@ fn main() -> ExitCode {
             eprintln!("poolhouse-node: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    #[test]
+    fn a_node_that_holds_a_given_key_cannot_write_a_core_file() {
+        super::no_core_dumps();
+        let mut now = libc::rlimit { rlim_cur: 1, rlim_max: 1 };
+        // SAFETY: getrlimit writes the one plain-data struct it is given.
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_CORE, &mut now) }, 0);
+        assert_eq!((now.rlim_cur, now.rlim_max), (0, 0));
     }
 }
