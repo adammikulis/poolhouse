@@ -13,9 +13,11 @@ Nothing else keeps models: ``<state>/models`` no longer exists as a store.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import re
+import shutil
 from pathlib import Path
 
 from poolhouse import files, hub
@@ -25,7 +27,8 @@ from poolhouse.safenames import safe_filename, safe_join
 COMMIT = re.compile(r"[a-f0-9]{40}")
 DIGEST = re.compile(r"[a-f0-9]{40}|[a-f0-9]{64}")
 
-__all__ = ["COMMIT", "blob_name", "git_blob_sha1", "link", "main_commit", "point_ref", "repo_root"]
+__all__ = ["COMMIT", "blob_name", "digest_of", "git_blob_sha1", "identify", "into_blobs", "link", "main_commit",
+           "point_ref", "repo_root", "same_bytes"]
 
 
 def repo_root(repo: str) -> Path:
@@ -91,3 +94,71 @@ def point_ref(repo: str, revision: str, commit: str) -> None:
     for part in revision.split("/"):
         safe_filename(part)
     files.write_text(safe_join(repo_root(repo), f"refs/{revision}"), commit)
+
+
+def identify(path: Path | str) -> tuple[str, str, str] | None:
+    """``(repo, commit, file)`` for a path inside ``models--owner--name/snapshots/<commit>/``, with ``file``
+    empty for the snapshot folder itself; None for any other path."""
+    parts = Path(path).parts
+    for at, part in enumerate(parts[:-2]):
+        owner, _, name = part[len("models--"):].partition("--")
+        if part.startswith("models--") and owner and name and parts[at + 1] == "snapshots" \
+                and COMMIT.fullmatch(parts[at + 2]):
+            return f"{owner}/{name}", parts[at + 2], "/".join(parts[at + 3:])
+    return None
+
+
+def same_bytes(one: Path, other: Path, *, chunk: int = 1 << 22) -> bool:
+    """Whether two files hold the same bytes, read through any link."""
+    if one.stat().st_size != other.stat().st_size:
+        return False
+    with one.open("rb") as left, other.open("rb") as right:
+        while block := left.read(chunk):
+            if block != right.read(len(block)):
+                return False
+    return True
+
+
+def digest_of(path: Path, name: str) -> str:
+    """``path``'s digest in the form ``name`` is written in: sha256 for an LFS file, else the object id."""
+    return files.sha256_file(path) if len(name) == 64 else git_blob_sha1(path, path.stat().st_size)
+
+
+def _existing(blob: Path, path: Path, name: str) -> str:
+    """``'have'`` when the blob already in the cache is these bytes, else why it is not."""
+    if blob.stat().st_size == path.stat().st_size and digest_of(blob, name) == name:
+        return "have"
+    return f"{blob.name[:12]} is in the cache with other bytes; it is not replaced"
+
+
+def into_blobs(path: Path, blob: Path, name: str, *, copy: bool = True) -> str:
+    """Put ``path``'s bytes at ``blob``, never replacing one: ``'new'``, ``'have'`` when a blob of that name
+    was already there with the same bytes, or the reason it could not be. A link is made when ``path`` is on
+    the cache's volume; otherwise the bytes are copied, or refused when ``copy`` is false."""
+    if not DIGEST.fullmatch(name):
+        raise ValueError(f"{name!r} is not a digest a blob can be named by")
+    blob.parent.mkdir(parents=True, exist_ok=True)
+    if blob.exists():
+        return _existing(blob, path, name)
+    try:
+        os.link(path, blob)
+        return "new"
+    except FileExistsError:
+        return _existing(blob, path, name)
+    except OSError as exc:
+        if exc.errno not in (errno.EXDEV, errno.EPERM, errno.EMLINK, errno.ENOTSUP):
+            raise
+    if not copy:
+        return f"{path.name} is on another volume than the cache and is not copied"
+    staged = blob.with_name(f"{blob.name}.{os.getpid()}.incomplete")
+    try:
+        shutil.copyfile(path, staged)
+        if digest_of(staged, name) != name:
+            return f"the copy of {path.name} did not hash to {name[:12]}"
+        try:
+            os.link(staged, blob)
+        except FileExistsError:
+            return _existing(blob, path, name)
+        return "new"
+    finally:
+        staged.unlink(missing_ok=True)

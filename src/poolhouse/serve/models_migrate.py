@@ -14,7 +14,6 @@ is listed. Progress is appended to ``<state>/models-migrate.log``; a cut-off run
 
 from __future__ import annotations
 
-import errno
 import json
 import os
 import shutil
@@ -193,46 +192,6 @@ def _digest_problem(item: Item, one: remote.RemoteFile) -> str:
     return "" if actual == wanted else f"{item.rel} differs from the digest the Hub lists"
 
 
-def _digest_of(path: Path, name: str) -> str:
-    """``path``'s digest in the form ``name`` is written in: sha256 for an LFS file, else the object id."""
-    return files.sha256_file(path) if len(name) == 64 else hfstore.git_blob_sha1(path, path.stat().st_size)
-
-
-def _existing(blob: Path, item: Item, name: str) -> str:
-    """``'have'`` when the blob already in the cache is these bytes, else why it is not."""
-    if blob.stat().st_size == item.size and _digest_of(blob, name) == name:
-        return "have"
-    return f"{blob.name[:12]} is in the cache with other bytes; it is not replaced"
-
-
-def _into_blobs(item: Item, blob: Path, name: str) -> str:
-    """Put the file's bytes at ``blob`` without ever replacing one: ``'new'``, ``'have'`` when a blob
-    of that name was already there and is the same bytes, or the reason it could not be."""
-    blob.parent.mkdir(parents=True, exist_ok=True)
-    if blob.exists():
-        return _existing(blob, item, name)
-    try:
-        os.link(item.path, blob)
-        return "new"
-    except FileExistsError:
-        return _existing(blob, item, name)
-    except OSError as exc:
-        if exc.errno not in (errno.EXDEV, errno.EPERM, errno.EMLINK, errno.ENOTSUP):
-            raise
-    staged = blob.with_name(f"{blob.name}.{os.getpid()}.incomplete")
-    try:
-        shutil.copyfile(item.path, staged)
-        if _digest_of(staged, name) != name:
-            return f"the copy of {item.rel} did not hash to {name[:12]}"
-        try:
-            os.link(staged, blob)
-        except FileExistsError:
-            return _existing(blob, item, name)
-        return "new"
-    finally:
-        staged.unlink(missing_ok=True)
-
-
 def place(item: Item, one: remote.RemoteFile | None, commit: str, cache: Path) -> tuple[str, str]:
     """Move one file into the cache. Returns ``(outcome, why)``: ``new`` or ``have`` when done, else
     ``left`` and the reason; the old file is removed only after the link reads back right."""
@@ -244,7 +203,7 @@ def place(item: Item, one: remote.RemoteFile | None, commit: str, cache: Path) -
         if problem:
             return "left", problem
         root = cache / f"models--{item.repo.replace('/', '--')}"
-        got = _into_blobs(item, root / "blobs" / name, name)
+        got = hfstore.into_blobs(item.path, root / "blobs" / name, name)
         if got not in ("new", "have"):
             return "left", got
         target = root / "snapshots" / commit / item.rel
