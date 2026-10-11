@@ -29,7 +29,6 @@ ENV = "DEV_TEST_NODE_BINARY"
 """Output of the runner, input of the node fixture: the binary this run's tests start."""
 FOLDER = "test-node"
 MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "src-tauri")
-SKIPPED = frozenset({"target", "node_modules", "__pycache__"})
 KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
 BUILD_TIMEOUT_S = 1800.0
@@ -55,16 +54,16 @@ def account_environment() -> dict[str, str]:
 
 
 def sources(app: Path) -> list[str]:
-    """The files of the cargo workspace under ``app`` as paths relative to it, sorted."""
-    found = []
-    for member in MEMBERS:
-        path = app / member
-        if path.is_file():
-            found.append(member)
-        for folder, names, files in os.walk(path):
-            names[:] = [n for n in names if n not in SKIPPED]
-            found.extend((Path(folder) / f).relative_to(app).as_posix() for f in files)
-    return sorted(found)
+    """The files of the cargo workspace under ``app`` that git does not ignore (tracked, or new and not yet added), as paths
+    relative to it, sorted."""
+    try:
+        done = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *MEMBERS], cwd=app,
+                              capture_output=True, text=True, check=False)
+    except OSError as error:
+        raise BuildError(f"git did not run: {error}") from error
+    if done.returncode:
+        raise BuildError(f"the sources of {app} are listed by git, and it said: {done.stderr.strip()[-300:]}")
+    return sorted({name for name in done.stdout.split("\0") if name and (app / name).is_file()})
 
 
 def digest(path: Path) -> str:
@@ -86,17 +85,19 @@ def stage(app: Path, files: list[str], work: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(app / name, target)
     wanted = set(files)
-    for folder, names, here in os.walk(work):
-        names[:] = [n for n in names if n not in SKIPPED]
-        for name in here:
-            if (Path(folder) / name).relative_to(work).as_posix() not in wanted:
-                (Path(folder) / name).unlink()
+    for found in [p for p in work.rglob("*") if p.is_file()]:
+        if found.relative_to(work).as_posix() not in wanted:
+            found.unlink()
 
 
 def prune(base: Path, keep: str) -> None:
-    """Remove the binaries nothing has asked for in ``IDLE_S`` seconds."""
+    """Remove the binaries nothing has asked for in ``IDLE_S`` seconds; one that goes while this looks is not an error."""
     for folder in base.iterdir():
-        if folder.name != keep and len(folder.name) == KEY_LENGTH and time.time() - folder.stat().st_mtime > IDLE_S:
+        try:
+            idle = len(folder.name) == KEY_LENGTH and folder.name != keep and time.time() - folder.stat().st_mtime > IDLE_S
+        except FileNotFoundError:
+            continue
+        if idle:
             shutil.rmtree(folder, ignore_errors=True)
 
 
@@ -141,7 +142,10 @@ def ensure(root: Path, *, cache: Path | None = None, cargo: str = "",
                     shutil.copy2(made, staging / node_binary.name())
                     (staging / "key.json").write_text(json.dumps({"key": key, "toolchain": toolchain, "files": len(files)}))
                     staging.rename(base / key)
-    os.utime(base / key)
+    try:
+        os.utime(base / key)
+    except FileNotFoundError:  # another run pruned it between the look and the touch
+        return ensure(root, cache=cache, cargo=cargo, admit=admit, say=say)
     prune(base, key)
     return found
 

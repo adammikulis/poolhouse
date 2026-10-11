@@ -15,6 +15,8 @@ from pathlib import Path
 import node_kit
 import pytest
 import testnode
+import yaml
+from conftest import REPO
 from test_gatescope import load_runner
 
 MAIN = "fn main() { println!(\"{} node\", env!(\"CARGO_PKG_NAME\")); }\n"
@@ -54,6 +56,8 @@ def site(tmp_path):
     shim.chmod(0o755)
     subprocess.run([testnode.tool("cargo"), "generate-lockfile", "--offline"], cwd=root / "app", check=True, capture_output=True,
                    env=testnode.account_environment())
+    (root / ".gitignore").write_text("app/target/\napp/src-tauri/binaries/\napp/src-tauri/gen/\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
     return Site(root, log, shim)
 
 
@@ -105,6 +109,23 @@ def test_files_outside_the_cargo_workspace_do_not_change_the_key(site, tmp_path)
     assert site.build(tmp_path / "cache") == first and site.builds() == 1
 
 
+def test_what_git_ignores_below_the_app_crate_is_in_neither_the_key_nor_the_staged_build(site, tmp_path):
+    first = site.build(tmp_path / "cache")
+    tauri = site.root / "app" / "src-tauri"
+    (tauri / "binaries").mkdir(parents=True)
+    (tauri / "binaries" / "poolhouse-headless-aarch64-apple-darwin").write_text("a sidecar built by packaging")
+    (tauri / "gen" / "schemas").mkdir(parents=True)
+    (tauri / "gen" / "schemas" / "desktop.json").write_text("{}")
+    (tauri / "Cargo.toml").write_text('[package]\nname = "poolhouse-app"\nversion = "0.0.0"\nedition = "2021"\n')
+    assert site.build(tmp_path / "cache") != first, "a tracked or new file of the crate is in the key"
+    again = site.build(tmp_path / "cache")
+    (tauri / "binaries" / "poolhouse-headless-aarch64-apple-darwin").write_text("rebuilt by packaging")
+    (tauri / "gen" / "schemas" / "desktop.json").write_text('{"changed": true}')
+    assert site.build(tmp_path / "cache") == again
+    staged = tmp_path / "cache" / testnode.FOLDER / "workspace" / "app" / "src-tauri"
+    assert not (staged / "binaries").exists() and not (staged / "gen").exists()
+
+
 def test_another_compiler_is_another_key(site):
     app = site.root / "app"
     files = testnode.sources(app)
@@ -120,6 +141,32 @@ def test_a_binary_nothing_has_asked_for_in_days_is_removed_and_the_current_one_i
     os.utime(old.parent, (long_ago, long_ago))
     current = site.build(cache)
     assert current.is_file() and not old.exists()
+
+
+def test_a_binary_another_run_prunes_while_this_one_looks_is_not_an_error(site, tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    current = site.build(cache)
+    base = cache / testnode.FOLDER
+    real = Path.iterdir
+    monkeypatch.setattr(Path, "iterdir", lambda self: [*real(self), self / ("a" * testnode.KEY_LENGTH)] if self == base else real(self))
+    assert site.build(cache) == current
+
+
+def test_a_binary_pruned_between_the_look_and_the_touch_is_built_again(site, tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    first = site.build(cache)
+    touched = []
+    real = os.utime
+
+    def utime(path, *a, **k):
+        touched.append(path)
+        if len(touched) == 1:
+            shutil.rmtree(first.parent)
+            raise FileNotFoundError(path)
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(os, "utime", utime)
+    assert site.build(cache).is_file() and site.builds() == 2
 
 
 def test_a_build_that_fails_says_so_and_leaves_no_binary(site, tmp_path):
@@ -189,3 +236,30 @@ def test_the_build_command_prints_the_binary_for_a_run_the_runner_does_not_start
     monkeypatch.setattr(testnode, "ensure", lambda root, **k: tmp_path / "poolhouse-node")
     assert testnode.main(["build"]) == 0 and capsys.readouterr().out.strip() == str(tmp_path / "poolhouse-node")
     assert testnode.main(["nonsense"]) == 2
+
+
+def ci_node_steps() -> list[str]:
+    workflow = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())
+    return [step["run"] for job in workflow["jobs"].values() for step in job.get("steps", []) if step.get("name") == "build the node the tests start"]
+
+
+def run_ci_step(script: str, tmp_path: Path, python: str) -> tuple[int, str, str]:
+    tools = tmp_path / "tools"
+    tools.mkdir(exist_ok=True)
+    (tools / "python").write_text(python)
+    (tools / "python").chmod(0o755)
+    env = tmp_path / "github-env"
+    env.write_text("")
+    done = subprocess.run(["bash", "-e", "-c", script], capture_output=True, text=True, check=False, cwd=tmp_path,
+                          env={"PATH": f"{tools}:/usr/bin:/bin", "GITHUB_ENV": str(env)})
+    return done.returncode, env.read_text(), done.stderr
+
+
+def test_the_ci_step_that_builds_the_node_fails_when_the_build_fails_and_names_it_otherwise(tmp_path):
+    steps = ci_node_steps()
+    assert len(steps) == 2
+    for script in steps:
+        code, exported, said = run_ci_step(script, tmp_path, "#!/bin/sh\necho 'testnode: cargo build -p poolhouse-node failed' >&2\nexit 1\n")
+        assert code != 0 and exported == "" and "cargo build -p poolhouse-node failed" in said
+        code, exported, _ = run_ci_step(script, tmp_path, "#!/bin/sh\necho /cache/test-node/key/poolhouse-node\n")
+        assert code == 0 and exported == "DEV_TEST_NODE_BINARY=/cache/test-node/key/poolhouse-node\n"
