@@ -232,6 +232,57 @@ fn claims_conflict_on_the_same_worktree_and_on_a_nested_path() {
     assert_eq!(code(&req(&mut n, "lease_acquire", "demo", &tb, json!({"resources": [{"type": "claim", "kind": "port", "name": "99999"}]}))), "invalid");
 }
 
+const EIGHT_HOURS_S: u64 = 8 * 3600;
+
+#[test]
+fn a_claim_is_renewed_only_to_eight_hours_after_it_was_taken_and_the_renewal_says_it_was_held_back() {
+    let (_d, mut n, (_, ta), _) = two();
+    let t = clocked(&mut n);
+    let taken = ok(req(&mut n, "claim", "demo", &ta, json!({"kind": "port", "key": "9301", "ttl_s": 4000})));
+    let id = taken["claim"]["lease"].clone();
+    let mut last = Value::Null;
+    for step in 1..=9 {
+        advance(&t, 3000);
+        last = ok(req(&mut n, "lease_renew", "demo", &ta, json!({"id": id, "ttl_s": 3600})));
+        assert_eq!(last["capped"], step == 9, "the renewal at {} s", step * 3000);
+    }
+    assert_eq!(last["expires_ms"].as_u64().unwrap(), last["granted_ms"].as_u64().unwrap() + EIGHT_HOURS_S * 1000, "never past eight hours from the grant");
+    advance(&t, 1900);
+    assert_eq!(code(&req(&mut n, "lease_renew", "demo", &ta, json!({"id": id}))), "invalid", "the claim ended with its lifetime");
+    let again = ok(req(&mut n, "claim", "demo", &ta, json!({"kind": "port", "key": "9301"})));
+    assert_eq!(again["changed"], true, "taking it again starts a new lifetime");
+}
+
+#[test]
+fn a_claim_taken_for_longer_than_its_lifetime_is_refused_a_renewal_once_the_lifetime_is_over() {
+    let (_d, mut n, (_, ta), (_, tb)) = two();
+    let t = clocked(&mut n);
+    let taken = ok(req(&mut n, "claim", "demo", &ta, json!({"kind": "server", "key": "api", "ttl_s": 86_400})));
+    advance(&t, EIGHT_HOURS_S - 60);
+    let id = taken["claim"]["lease"].clone();
+    assert_eq!(ok(req(&mut n, "lease_renew", "demo", &ta, json!({"id": id})))["capped"], true);
+    advance(&t, 120);
+    for refused in [req(&mut n, "lease_renew", "demo", &ta, json!({"id": id})), req(&mut n, "claim", "demo", &ta, json!({"kind": "server", "key": "api"}))] {
+        assert_eq!(code(&refused), "denied");
+        assert!(refused["error"]["message"].as_str().unwrap().contains("lifetime"), "{refused}");
+    }
+    assert_eq!(code(&req(&mut n, "claim", "demo", &tb, json!({"kind": "server", "key": "api"}))), "denied", "the claim is still its holder's until it is released");
+    ok(req(&mut n, "release", "demo", &ta, json!({"kind": "server", "key": "api"})));
+    assert_eq!(ok(req(&mut n, "claim", "demo", &ta, json!({"kind": "server", "key": "api"})))["changed"], true);
+}
+
+#[test]
+fn a_lease_that_is_not_a_claim_has_no_lifetime_cap() {
+    let (_d, mut n, (_, ta), _) = two();
+    let t = clocked(&mut n);
+    let held = acquire(&mut n, &ta, json!({"resources": [gpu()], "ttl_s": 3600}));
+    for _ in 0..10 {
+        advance(&t, 3000);
+        assert_eq!(ok(req(&mut n, "lease_renew", "demo", &ta, json!({"id": held["id"]})))["capped"], false);
+    }
+    assert_eq!(state(&mut n, &ta, &held["id"]), "held", "30000 s on, past the lifetime of a claim");
+}
+
 #[test]
 fn memory_admission_refuses_over_the_budget_and_queues_over_what_is_left() {
     let (_d, mut n, (_, ta), (_, tb)) = two();

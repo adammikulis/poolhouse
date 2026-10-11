@@ -12,6 +12,8 @@ pub const CLAIM_KINDS: [&str; 7] = ["worktree", "branch", "area", "port", "serve
 /// Claim kinds named by an absolute path; two of them conflict when one path contains the other, whatever their kinds.
 pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
 pub const MAX_RESOURCES: usize = 8;
+/// How long after it was granted a claim may be kept by renewals.
+pub const MAX_CLAIM_LIFETIME_S: u64 = 8 * 3600;
 
 fn local() -> String {
     LOCAL.into()
@@ -207,6 +209,19 @@ pub struct Lease {
     pub local: bool,
     /// How long one renewal extends the lease.
     pub ttl_s: u64,
+}
+
+impl Lease {
+    /// When a claim ends at the latest however it is renewed; `None` for a lease that holds no claim of the user's.
+    pub fn lifetime_end_ms(&self) -> Option<u64> {
+        let claims = self.resources.iter().any(|r| matches!(r, Resource::Claim { kind, .. } if kind != "task"));
+        claims.then(|| self.granted_ms + MAX_CLAIM_LIFETIME_S * 1000)
+    }
+
+    /// Whether a renewal now would reach past the lifetime of a held claim and is held back to it.
+    pub fn capped(&self, now: u64) -> bool {
+        self.state == State::Held && self.lifetime_end_ms().is_some_and(|end| now + self.ttl_s * 1000 > end)
+    }
 }
 
 /// What admission decides, in one place so it is configuration, not code.

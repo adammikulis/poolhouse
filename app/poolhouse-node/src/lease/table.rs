@@ -207,11 +207,16 @@ impl Table {
         if l.holder != holder {
             return Err(Error::Denied("that lease is held by another identity".into()));
         }
+        let end = l.lifetime_end_ms().filter(|_| l.state == State::Held);
+        if end.is_some_and(|end| end <= now) {
+            return Err(Error::Denied("the claim's lifetime is over; release it and take it again".into()));
+        }
         if l.state == State::Held {
             if ttl_s != 0 {
                 l.ttl_s = ttl_s.clamp(1, cfg.max_ttl_s);
             }
-            l.expires_ms = now + l.ttl_s * 1000;
+            let wanted = now + l.ttl_s * 1000;
+            l.expires_ms = end.map_or(wanted, |end| l.expires_ms.max(wanted.min(end)));
         } else {
             l.expires_ms = now + cfg.queue_patience_s * 1000;
         }

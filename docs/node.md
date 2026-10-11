@@ -583,7 +583,9 @@ process start time and drops the lease when the process is gone, a zombie, or st
 moment (a reused pid). A `remote` holder has no pid and lives by expiry. Every lease expires
 `ttl_s` after the last renewal; a queued request not polled for `queue_patience_s` is dropped. The
 sweep runs on every lease call, and at the first one after a restart, so a stale holder is dropped
-and a live one kept.
+and a live one kept. A lease that holds a claim (not the node's own `task` claim) is renewed to at most eight hours after it was
+granted: a renewal that would reach past that is held to it and the lease shows `capped`, and once the eight hours are over a
+renewal, or a claim of the same name by its holder, is `denied` as a lifetime over, and the holder releases it and takes it again.
 
 **Takeover.** When a request is granted resources a dead or expired holder had, the node writes an
 audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming the old holder and why).
@@ -597,7 +599,7 @@ audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming th
 | `lease_wait` | `id, timeout_ms` | the lease once `held`, or still `queued` at the timeout (at most 10 minutes; the node's lock is not held while it waits) |
 
 A lease is `{id, state (queued|held), holder, resources, class, estimate_s, since_ms, granted_ms,
-expires_ms, ttl_s, pid, remote, position, wait_estimate_s}`. Rust: `node.leases` (`Leases`, with
+expires_ms, ttl_s, capped, pid, remote, position, wait_estimate_s}`. Rust: `node.leases` (`Leases`, with
 `tick`), `lease::table::Table`, `lease::rpc::call` and `serve`, `lease::live::is_alive`.
 
 **On the board.** Every grant and end is a `lease` entry (`#leases`) written under the holder's

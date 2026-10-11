@@ -92,7 +92,7 @@ fn show(t: &Table, node: &Node, l: &Lease, viewer: &str) -> Value {
     json!({"id": l.id, "state": l.state, "holder": if own { l.holder.as_str() } else { "other-board" },
            "resources": if own || l.state == State::Held { json!(l.resources) } else { json!([]) },
            "class": l.class, "estimate_s": l.estimate_s, "since_ms": l.since_ms, "granted_ms": l.granted_ms,
-           "expires_ms": l.expires_ms, "ttl_s": l.ttl_s, "pid": if own { l.pid } else { 0 }, "remote": l.remote,
+           "expires_ms": l.expires_ms, "ttl_s": l.ttl_s, "capped": l.capped(node.leases.now()), "pid": if own { l.pid } else { 0 }, "remote": l.remote,
            "position": position, "wait_estimate_s": wait_estimate_s})
 }
 
