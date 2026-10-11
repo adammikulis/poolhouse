@@ -87,7 +87,10 @@ fn lineage_allows(node: &Node, holder: &Holder) -> bool {
 /// the lineage that registered it.
 pub fn find(node: &mut Node, holder: &Holder, action: &str, scope: &Scope) -> Result<Option<String>> {
     grantable(action)?;
-    if node.host(&holder.board)?.names.get(&holder.name).is_none_or(|i| i.retired) {
+    let Some((harness, model)) = node.host(&holder.board)?.names.get(&holder.name).filter(|i| !i.retired).map(|i| (i.harness.clone(), i.model.clone())) else { return Ok(None) };
+    // A session suspended for asking again and again holds no grant while the suspension lasts.
+    let asking = crate::approvals::fatigue::requester(&holder.board, &holder.name, &harness, &model);
+    if node.fatigue.suspended(&asking, node.now_ms()) {
         return Ok(None);
     }
     let device = node.cert.fingerprint();

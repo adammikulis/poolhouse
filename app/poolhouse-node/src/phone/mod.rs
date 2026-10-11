@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::approvals::decide::view;
+use crate::approvals::fatigue::{QUIET, SILENT, URGENT};
 use crate::approvals::Approval;
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, write_atomic};
@@ -164,13 +165,23 @@ pub fn words(fingerprint: &str) -> String {
 /// The sealed message for each active phone that has an address: the request as the phone needs it to show and sign it, or, when that
 /// does not fit in a push, the title and the id alone, and the phone fetches the rest.
 pub fn announce(node: &mut Node, a: &Approval) {
+    let now = node.now_ms();
+    let quiet = a.urgency == QUIET;
+    if a.urgency == SILENT || (quiet && node.fatigue.quiet_this_hour(now) >= node.fatigue.rules.quiet_per_hour) {
+        return;
+    }
     let full = view(node, a);
-    let mut payload = json!({"v": 1, "id": a.id, "title": a.title, "agent": a.session, "risk": a.risk, "expires_ms": a.expires_ms, "challenge": full["challenge"]});
+    let urgency = if quiet { QUIET } else { URGENT };
+    let mut payload = json!({"v": 1, "id": a.id, "title": a.title, "agent": a.session, "risk": a.risk, "urgency": urgency, "expires_ms": a.expires_ms, "challenge": full["challenge"]});
     if payload.to_string().len() > push::MAX_PLAINTEXT {
-        payload = json!({"v": 1, "id": a.id, "title": a.title, "agent": a.session, "risk": a.risk, "expires_ms": a.expires_ms, "more": true});
+        payload = json!({"v": 1, "id": a.id, "title": a.title, "agent": a.session, "risk": a.risk, "urgency": urgency, "expires_ms": a.expires_ms, "more": true});
     }
     let body = payload.to_string();
     let targets: Vec<Push> = node.phones.all().filter(|p| p.state == ACTIVE && !p.push.endpoint.is_empty()).map(|p| p.push.clone()).collect();
+    if targets.is_empty() {
+        return;
+    }
+    let _ = node.fatigue.record_push(quiet, now);
     for t in targets {
         let sealed = crate::fsutil::unhex(&t.p256dh).zip(crate::fsutil::unhex(&t.auth)).ok_or(()).and_then(|(key, auth)| push::seal(body.as_bytes(), &key, &auth).map_err(|_| ()));
         if let Ok(sealed) = sealed {

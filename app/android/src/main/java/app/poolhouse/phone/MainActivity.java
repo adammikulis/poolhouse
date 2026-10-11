@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import org.json.JSONObject;
 import java.security.KeyPair;
 import java.security.SecureRandom;
@@ -202,20 +203,40 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private android.widget.Button card(ApprovalView view) {
+        ApprovalText parts = view.parts();
+        android.widget.Button card = new android.widget.Button(this);
+        card.setAllCaps(false);
+        card.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
+        card.setText(view.title + "\n" + parts.level().toUpperCase(java.util.Locale.ROOT) + (parts.flags.isEmpty() ? "" : "  -  Check this one: " + parts.flags.get(0)));
+        card.setOnClickListener(v -> startActivity(new Intent(this, ApprovalActivity.class).putExtra("id", view.id)));
+        return card;
+    }
+
+    /**
+     * The requests that wait, and apart from them a quiet list: what an agent asked on its own, notices about requests kept back and
+     * what came too fast to be pushed. Nothing in the quiet list ever made a sound; it is read when the person opens the app.
+     */
     private void show(List<ApprovalView> views) {
         list.removeAllViews();
         int waiting = 0;
+        List<ApprovalView> quiet = new java.util.ArrayList<>();
         for (ApprovalView view : views) {
             if (!view.pending()) { Notifier.forget(this, view.id); continue; }
-            waiting++;
             Notifier.keep(this, view);
-            ApprovalText parts = view.parts();
-            android.widget.Button card = new android.widget.Button(this);
-            card.setAllCaps(false);
-            card.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
-            card.setText(view.title + "\n" + parts.level().toUpperCase(java.util.Locale.ROOT) + (parts.flags.isEmpty() ? "" : "  -  Check this one: " + parts.flags.get(0)));
-            card.setOnClickListener(v -> startActivity(new Intent(this, ApprovalActivity.class).putExtra("id", view.id)));
-            list.addView(card, new LinearLayout.LayoutParams(-1, -2));
+            if (view.interrupts()) {
+                waiting++;
+                list.addView(card(view), new LinearLayout.LayoutParams(-1, -2));
+            } else {
+                quiet.add(view);
+            }
+        }
+        if (!quiet.isEmpty()) {
+            TextView heading = new TextView(this);
+            heading.setText("Quiet list: asked on their own, kept back, or too many at once to push (" + quiet.size() + ")");
+            heading.setPadding(0, 24, 0, 8);
+            list.addView(heading);
+            for (ApprovalView view : quiet) list.addView(card(view), new LinearLayout.LayoutParams(-1, -2));
         }
         ui.say(waiting == 0 ? "Nothing is waiting for you." : waiting + (waiting == 1 ? " request is" : " requests are") + " waiting for you.");
     }

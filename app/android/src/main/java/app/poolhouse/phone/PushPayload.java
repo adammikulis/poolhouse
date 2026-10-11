@@ -12,6 +12,8 @@ final class PushPayload {
     final String id;
     final String title;
     final String agent;
+    /** How loudly the node told the person: urgent, or quiet for a notice that must not interrupt. */
+    final String urgency;
     final long expiresMs;
     final ApprovalView view;
 
@@ -20,11 +22,12 @@ final class PushPayload {
         id = raw.getString("id");
         title = raw.getString("title");
         agent = raw.optString("agent", "");
+        urgency = "quiet".equals(raw.optString("urgency", "urgent")) ? "quiet" : "urgent";
         expiresMs = raw.getLong("expires_ms");
         if (!id.matches("ap-[0-9a-f]{16}") || title.length() > 160) throw new JSONException("This push is malformed.");
         if (raw.has("challenge")) {
             JSONObject challenge = raw.getJSONObject("challenge");
-            view = new ApprovalView(new JSONObject().put("id", id).put("state", "pending").put("title", title).put("session", agent)
+            view = new ApprovalView(new JSONObject().put("id", id).put("state", "pending").put("title", title).put("session", agent).put("urgency", urgency)
                     .put("text", challenge.getString("text")).put("expires_ms", expiresMs).put("challenge", challenge));
         } else {
             view = null;

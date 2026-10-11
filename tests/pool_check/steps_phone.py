@@ -78,8 +78,38 @@ def _on(world: World, device: Device) -> str:
     assert _phone(device, "decide", body=phone.decision(shown, "deny"))["result"]["state"] == "denied"
     assert device.call("approval_status", BOARD, device.token, id=second["id"])["state"] == "denied"
     stranger = _phone(device, "list", "not-a-token")
-    assert stranger["status"] == 401, f"{device.name}: a token the node does not know read the requests: {stranger}"
-    return f"{device.name}: a phone was added (approved by the person's key), a request was approved once and denied once, text the node did not write and a second decision were refused, and a token the node never gave read nothing"
+    assert stranger["status"] == 401, f"{device.name}: a token the node never gave read the requests: {stranger}"
+    return (f"{device.name}: a phone was added (approved by the person's key), a request was approved once and denied once, text the node did not write and a second decision were refused, "
+            f"and a token the node never gave read nothing; {_pestered(device, phone)}")
+
+
+def _pestered(device: Device, phone: PhoneKeys) -> str:
+    """A session that asks again and again: the same request is one item, a wrong number is a decline, what was declined waits and is asked on its own, and a block ends it."""
+    token, name = device.bare_session(BOARD, "pester")
+    ask = {"action": "add_device", "resource": "*", "lasts_ms": 600_000, "uses": 1}
+    first = device.call("approval_request", BOARD, token, asks=[ask])
+    assert len(first["code"]) == 2 and len(first["challenge"]["context"]["pick"]) == 3 and first["code"] in first["challenge"]["context"]["pick"], f"{device.name}: no number to match: {first}"
+    for i in range(20):
+        again = device.call("approval_request", BOARD, token, asks=[{**ask, "uses": 1 + i % 3}], note=f"again {i}")
+        assert again["id"] == first["id"] and again["deduplicated"], f"{device.name}: asking again made a new request: {again}"
+    waiting = [a for a in device.call("approval_pending", "", token)["approvals"] if a["kind"] == "grants" and a["session"] == name]
+    assert len(waiting) == 1, f"{device.name}: {len(waiting)} requests wait after twenty-one identical asks"
+    seen = _phone(device, "get", phone.token, {"id": first["id"]})["result"]
+    wrong = next(n for n in seen["challenge"]["context"]["pick"] if n != first["code"])
+    refused = _phone(device, "decide", body={**phone.decision(seen, "approve"), "pick": wrong})
+    assert not refused["ok"] and "not the one the agent showed" in refused["error"]["message"], f"{device.name}: a wrong number approved or was not refused: {refused}"
+    assert device.call("approval_status", BOARD, token, id=first["id"])["state"] == "denied", f"{device.name}: a wrong number is not a decline"
+    soon = device.try_call("approval_request", BOARD, token, asks=[ask])
+    assert not soon["ok"] and "declined a moment ago" in soon["error"], f"{device.name}: a declined kind was asked again at once: {soon}"
+    batched = device.try_call("approval_request", BOARD, token, asks=[ask, {"action": "link_read", "resource": "a>b", "lasts_ms": 600_000}])
+    assert not batched["ok"] and "asked for on its own" in batched["error"], f"{device.name}: a scope that was declined was batched: {batched}"
+    blocked = device.call("approval_request", BOARD, token, asks=[{"action": "link_read", "resource": "a>b", "lasts_ms": 600_000}])
+    shown = _phone(device, "get", phone.token, {"id": blocked["id"]})["result"]
+    assert "If you deny and block, it also cannot ask again for 1 day." in shown["text"], f"{device.name}: the text does not say what a block does"
+    assert _phone(device, "decide", body=phone.decision(shown, "block"))["result"]["state"] == "denied"
+    after = device.try_call("approval_request", BOARD, token, asks=[{"action": "link_read", "resource": "c>d", "lasts_ms": 600_000}])
+    assert not after["ok"] and "A person blocked this agent" in after["error"], f"{device.name}: a blocked session asked again: {after}"
+    return "twenty-one identical asks were one request, a wrong number was a decline, what was declined waited and was asked on its own, and a block ended it"
 
 
 def a_phone_approves_what_a_session_asks_on_every_device(world: World) -> str:

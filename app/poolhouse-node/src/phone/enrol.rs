@@ -183,8 +183,8 @@ fn ask_to_add(node: &mut Node, id: &str, phone: (&str, &str, &str), made_by: &st
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: PHONE_ADD.into(), board: POOL_BOARD.into(), session: String::new(),
         action: json!({"kind": PHONE_ADD, "phone": id, "name": name, "key": key, "fingerprint": fingerprint}),
-        text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms: expires, state: APPROVAL_PENDING.into(), decided_ms: 0,
-        decided_by: String::new(), reason: String::new(), grants: Vec::new(), seq: 0,
+        text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms: expires, state: APPROVAL_PENDING.into(),
+        source: node.cert.fingerprint(), ..Approval::empty()
     };
     node.approvals.add(approval.clone())?;
     audit(node, "approval.request", &approval, &format!("add the phone {name}"));
@@ -204,8 +204,8 @@ pub fn ask_to_remove(node: &mut Node, by: &str, target: &str) -> Result<String> 
     let approval = Approval {
         id: format!("ap-{}", random_hex(8)?), kind: crate::approvals::PHONE_REMOVE.into(), board: POOL_BOARD.into(), session: String::new(),
         action: json!({"kind": crate::approvals::PHONE_REMOVE, "phone": target, "name": phone.name, "fingerprint": phone.fingerprint}),
-        text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms: expires, state: APPROVAL_PENDING.into(), decided_ms: 0,
-        decided_by: String::new(), reason: String::new(), grants: Vec::new(), seq: 0,
+        text, title, risk: risk.into(), nonce: random_hex(16)?, created_ms: now, expires_ms: expires, state: APPROVAL_PENDING.into(),
+        source: node.cert.fingerprint(), ..Approval::empty()
     };
     node.approvals.add(approval.clone())?;
     audit(node, "approval.request", &approval, &format!("remove the phone {}", phone.name));

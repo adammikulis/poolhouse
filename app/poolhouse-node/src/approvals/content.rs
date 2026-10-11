@@ -1,9 +1,11 @@
 //! The plain-words text of a request, made from fields the node checked.
 //!
 //! One fact a line, each line starting with a label, in this order: `FLAG:` lines, `POOL:` for anything that connects something,
-//! `RISK:`, `WHO:`, `ASK:` and `SCOPE:` for each ask, `CANNOT:`, `WHY:`, `DENY:`, `EXPIRES:`. The agent's own words are only the
-//! note, shown on the `WHY:` line as the agent's. Times are written in UTC so the text is the same bytes on every device.
+//! `RISK:`, `SAID:`, `WHO:`, `VERDICT:`, `TAINT:`, `ASK:` and `SCOPE:` for each ask, `HELD:` and `PICK:` when they apply, `CANNOT:`,
+//! `WHY:`, `DENY:`, `EXPIRES:`. The agent's own words are only the note, shown on the `WHY:` line as the agent's. Times are written in
+//! UTC so the text is the same bytes on every device.
 
+use crate::approvals::context::Context;
 use crate::cert::civil;
 
 pub const ROUTINE: &str = "routine";
@@ -173,6 +175,8 @@ pub struct Draft<'a> {
     /// The join policy of the node's pool now.
     pub policy: &'a str,
     pub flags: Vec<String>,
+    /// What else the person weighs; its lines are part of the text.
+    pub ctx: &'a Context,
     pub note: &'a str,
     /// The task the request came from and whether the board has it.
     pub task: &'a str,
@@ -198,14 +202,19 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
         out.push(pool_line(d.policy, next, d.lines.iter().any(|l| l.action == "join_pool")));
     }
     out.push(format!("RISK: {}. {worst}", risk.to_uppercase()));
+    out.push(d.ctx.said_line());
     let kind = if d.who.parent.is_empty() { "a main session".to_string() } else { format!("a subagent of {}", d.who.parent) };
     out.push(format!("WHO: {}, which says it is {} in {}, {kind}, on device {}, board {}.", d.who.name, d.who.model, d.who.harness, d.who.device, d.who.board));
+    out.push(d.ctx.verdict_line());
+    out.push(d.ctx.taint_line());
     let many = d.lines.len() > 1;
     for (i, l) in d.lines.iter().enumerate() {
         let n = if many { format!(" {}", i + 1) } else { String::new() };
         out.push(format!("ASK{n}: {}", sentence(l.action, l.resource, d.policy)));
         out.push(format!("SCOPE{n}: {}", scope(d, l)));
     }
+    out.extend(d.ctx.held_line());
+    out.extend(d.ctx.pick_line());
     out.push("CANNOT: Nothing beyond what is listed: no other action, board or device, nothing after the end shown, no more uses than shown. It can never approve anything or act as you.".into());
     let task = match (d.task.is_empty(), d.task_known) {
         (true, _) => String::new(),
@@ -213,7 +222,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
         (false, false) => format!(" It names {}, which is not on board {}.", d.task, d.who.board),
     };
     out.push(if d.note.is_empty() && task.is_empty() { "WHY: The agent gave no reason.".into() } else if d.note.is_empty() { format!("WHY:{task}") } else { format!("WHY: The agent says: \"{}\" (not checked by anyone).{task}", d.note) });
-    out.push("DENY: If you deny, the agent is told no and nothing changes.".into());
+    out.push(d.ctx.deny_line());
     out.push(format!("EXPIRES: This request ends at {}.", utc(d.expires_ms)));
     let title = match d.lines.as_slice() {
         [one] => format!("{} asks to {}", d.who.name, label_of(one.action)),

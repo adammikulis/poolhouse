@@ -64,7 +64,7 @@ pub fn push_address(url: &str) -> bool {
 fn list(node: &mut Node, me: &str) -> Value {
     let now = node.now_ms();
     let mut shown_now = pending(node);
-    let mut done: Vec<&crate::approvals::Approval> = node.approvals.all().iter().filter(|a| !a.pending()).collect();
+    let mut done: Vec<&crate::approvals::Approval> = node.approvals.all().iter().filter(|a| !a.live()).collect();
     done.sort_by_key(|a| std::cmp::Reverse(a.seq));
     shown_now.extend(done.into_iter().take(RECENT).map(|a| view(node, a)));
     json!({"approvals": shown_now, "phones": node.phones.all().filter(|p| p.state != crate::phone::REMOVED).map(|p| shown(p, me)).collect::<Vec<_>>(),
@@ -125,7 +125,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
     match op {
         "status" => Ok(json!({"state": ACTIVE})),
         "list" => Ok(list(&mut n, id)),
-        "get" => n.approvals.get(text(p, "id")).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
+        "get" => n.approvals.get(text(p, "id")).filter(|a| a.state != crate::approvals::HELD).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
         "phones" => Ok(json!({"phones": n.phones.all().filter(|f| f.state != crate::phone::REMOVED).map(|f| shown(f, id)).collect::<Vec<_>>()})),
         "push" => {
             let endpoint = text(p, "endpoint");
@@ -169,7 +169,7 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
             }
             n.rates.record(&key, Duration::from_secs(60));
             return reply(if op == "add" { enrol(&mut n, ip, &params) } else {
-                decide(&mut n, &Decision { id: text(&params, "id"), decision: text(&params, "decision"), key: text(&params, "key"), sig: text(&params, "sig"), text_sha256: text(&params, "text_sha256") })
+                decide(&mut n, &Decision { id: text(&params, "id"), decision: text(&params, "decision"), key: text(&params, "key"), sig: text(&params, "sig"), text_sha256: text(&params, "text_sha256"), pick: text(&params, "pick") })
             });
         }
         ("POST", _) => {}

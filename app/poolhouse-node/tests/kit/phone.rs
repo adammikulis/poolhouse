@@ -123,9 +123,21 @@ impl Rig {
         self.phone_from(LOCAL, http, op, token, body)
     }
 
-    /// A request to the phone endpoint as it comes in from the address ``ip``.
-    pub fn phone_from(&self, ip: IpAddr, http: &str, op: &str, token: &str, body: Value) -> (u16, Value) {
+    /// A request to the phone endpoint as it comes in from the address ``ip``. A decision that names no number carries the one the agent
+    /// showed, as a person who looked at the agent's screen would choose it; a test of a wrong choice names its own.
+    pub fn phone_from(&self, ip: IpAddr, http: &str, op: &str, token: &str, mut body: Value) -> (u16, Value) {
+        if op == "decide" && body.get("pick").is_none() {
+            let shown = body["id"].as_str().and_then(|id| self.node.lock().unwrap().approvals.get(id).map(|a| a.pick_code.clone())).unwrap_or_default();
+            if !shown.is_empty() {
+                body["pick"] = json!(shown);
+            }
+        }
         poolhouse_node::phone::http::handle(&self.node, ip, http, &format!("/phone/v1/{op}"), token, body.to_string().as_bytes())
+    }
+
+    /// The number the agent showed for the request ``id``, empty when none had to be matched.
+    pub fn shown(&self, id: &str) -> String {
+        self.node.lock().unwrap().approvals.get(id).map(|a| a.pick_code.clone()).unwrap_or_default()
     }
 
     pub fn device(&self) -> String {

@@ -220,7 +220,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
 | `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys, each with its `alg` (`ed25519` or `p256`) |
 | `approval_request`, `approval_status`, `approval_cancel`, `approvals` | board, token | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` / `id` / `id` / `state` | the request with its plain-words `text` and `challenge` / its state and the grants it wrote / the request / the session's own requests; docs/phone-approval.md |
-| `approval_pending`, `approval_decide` | token (any registered session; a session only carries a decision) | `id, decision, key, sig, text_sha256` | what waits for a person / the request decided, once, by the signature of an enrolled key |
+| `approval_pending`, `approval_decide` | token (any registered session; a session only carries a decision) | `id, decision (approve, approve_repeat, deny, block), key, sig, text_sha256, pick` | what waits for a person / the request decided, once, by the signature of an enrolled key |
 | `phone_info`, `phone_offer`, `phones` | none, token, token | `secret` / / | where phones reach this node and its pinned certificate / a code for a further phone (once a person key exists) / the phones held |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
@@ -435,7 +435,7 @@ public point) and signs only approvals (docs/phone-approval.md): an agent asks (
 signs a challenge that binds the text, the node and the request, and an approved request writes ordinary `grant` entries whose body carries that approval instead
 of a signature over the grant, so they count wherever a grant a person typed `yes` for counts. The phone endpoint (`--phone ADDR`, or the address in
 `phone.json` in the state directory) is HTTPS on one P-256 certificate (`phone.cert`, pinned by the code a person scans); `phones.json` holds each phone, its token's hash
-and its push address; `approvals.json` the requests; `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
+and its push address; `approvals.json` the requests; `fatigue.json` the declines, timeouts, holds and pushes that keep a request made again and again from wearing the person down (docs/phone-approval.md, "Approval fatigue"); `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
 phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it.
 
 **Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` (and `enroll_secret.json`

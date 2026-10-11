@@ -98,9 +98,17 @@ def confirm(prompt: str, *, wait_s: float = 120.0) -> bool:
     The terminal device is read and written itself, so what stdin and stdout are changes nothing; text typed before the
     prompt appeared is dropped, and no terminal, no answer, or anything but `yes` is a no.
     """
+    return typed(prompt, wait_s=wait_s) == "yes"
+
+
+def typed(prompt: str, *, wait_s: float = 120.0) -> str:
+    """Ask ``prompt`` on the controlling terminal: the line the person typed there within ``wait_s``, lower case and stripped.
+
+    Read as `confirm` reads it; no terminal, no answer or text that cannot be read is an empty line.
+    """
     with controlling_terminal() as found, _background_reads_fail():
         if found is None:
-            return False
+            return ""
         reader, writer = found
         try:
             if sys.platform != "win32":
@@ -109,7 +117,7 @@ def confirm(prompt: str, *, wait_s: float = 120.0) -> bool:
             writer.flush()
             if sys.platform != "win32" and not select.select([reader], [], [], wait_s)[0]:
                 writer.write("\nno answer: nothing was done\n")
-                return False
-            return reader.readline().strip().lower() == "yes"
+                return ""
+            return reader.readline().strip().lower()
         except (OSError, ValueError, UnicodeError):
-            return False
+            return ""

@@ -13,14 +13,16 @@ from typing import Any
 from poolhouse.board import grants
 from poolhouse.board.session import Session
 
-__all__ = ["ENDED", "PENDING", "Approval", "Ask", "request", "wire"]
+__all__ = ["ENDED", "HELD", "PENDING", "Approval", "Ask", "request", "wire"]
 
 PENDING = "pending"
+HELD = "held"
 ENDED = ("approved", "denied", "expired", "cancelled", "failed")
 POLL_START_S = 0.4
 POLL_MOST_S = 2.0
 SAYS = {
     "pending": "Waiting for your answer on your phone.",
+    "held": "Your requests are being held: a person was told once, nothing was shown to them, and asking again changes nothing.",
     "approved": "You approved it, so the grants exist.",
     "denied": "You said no; nothing changed.",
     "expired": "The request ended before you answered; ask again if it is still needed.",
@@ -54,7 +56,8 @@ class Approval:
     """A request a session made of the person, and what became of it.
 
     `wait` returns ``pending`` when its time runs out: the request is still on the person's phone, and the same handle goes on
-    being good until the request ends, so waiting is never a failure.
+    being good until the request ends, so waiting is never a failure. A request that is ``held`` is kept back unseen after earlier
+    ones were declined or ran out; asking it again is the same request, and nothing shows it to the person until they let it through.
     """
 
     __slots__ = ("_raw", "_session")
@@ -70,7 +73,7 @@ class Approval:
 
     @property
     def state(self) -> str:
-        """pending, approved, denied, expired, cancelled or failed, as of the last time it was read."""
+        """pending, held, approved, denied, expired, cancelled or failed, as of the last time it was read."""
         return str(self._raw["state"])
 
     @property
@@ -87,6 +90,24 @@ class Approval:
     def risk(self) -> str:
         """routine, sensitive or irreversible."""
         return str(self._raw["risk"])
+
+    @property
+    def code(self) -> str:
+        """The number to show your person when the request is not routine: they choose it among three after their fingerprint.
+
+        Empty for a routine request, and once the request has ended.
+        """
+        return str(self._raw.get("code", ""))
+
+    @property
+    def urgency(self) -> str:
+        """How loudly the person is told: urgent, quiet or silent (the list only)."""
+        return str(self._raw.get("urgency", "urgent"))
+
+    @property
+    def deduplicated(self) -> bool:
+        """Whether this was already waiting: the same request made again is the same item, never a new notification."""
+        return bool(self._raw.get("deduplicated", False))
 
     @property
     def expires_ms(self) -> int:
@@ -112,7 +133,7 @@ class Approval:
         """Wait up to ``timeout_s`` seconds for the person to answer; the state, which is `pending` when none came."""
         end = time.monotonic() + timeout_s
         pause = POLL_START_S
-        while self.refresh() == PENDING and time.monotonic() < end:
+        while self.refresh() in (PENDING, HELD) and time.monotonic() < end:
             time.sleep(min(pause, max(0.0, end - time.monotonic())))
             pause = min(pause * 1.5, POLL_MOST_S)
         return self.state

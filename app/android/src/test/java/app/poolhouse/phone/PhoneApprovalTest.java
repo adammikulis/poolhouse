@@ -50,6 +50,8 @@ public final class PhoneApprovalTest {
         theText(vectors);
         theNotification(vectors);
         theDecision(vectors);
+        theStepsAgainstBeingWornDown(vectors);
+        theNoticesAndTheContext(vectors);
         thePushHandler(vectors);
         theNodeApi();
         theFrictionBudget(contract);
@@ -173,7 +175,17 @@ public final class PhoneApprovalTest {
     static void theText(JSONObject vectors) throws Exception {
         ApprovalText parts = ApprovalText.parse(vectors.getJSONObject("challenge").getString("text"));
         check(parts.complete(), "the text has who, what, scope, what it cannot do, why, what a deny does and when it ends");
-        equal(2, parts.flags.size(), "what looks off comes first and is kept");
+        equal(3, parts.flags.size(), "what looks off comes first and is kept");
+        check(parts.said.startsWith("You said: \"add the Linux box to the pool\""), "what the person said");
+        check(parts.verdict.contains("goes beyond"), "how the node judged it");
+        check(parts.taint.contains("cannot vouch for"), "whether the session read content from outside");
+        check(parts.held.contains("2026-09-21 14:28 UTC") && parts.pick.startsWith("After your fingerprint"), "the undo window and the number to match");
+        check(parts.completeFor("grants") && parts.completeFor("hold"), "every part an agent's request carries is there");
+        for (String label : new String[] {"SAID:", "VERDICT:", "TAINT:"}) {
+            StringBuilder without = new StringBuilder();
+            for (String line : vectors.getJSONObject("challenge").getString("text").split("\n")) if (!line.startsWith(label)) without.append(without.length() == 0 ? "" : "\n").append(line);
+            check(!ApprovalText.parse(without.toString()).completeFor("grants") && ApprovalText.parse(without.toString()).completeFor("hold"), "a request an agent made without its " + label + " line is not complete");
+        }
         check(parts.pool.startsWith("SECURE."), "the pool line says the policy");
         equal("sensitive", parts.level(), "the risk level");
         equal(2, parts.asks.size(), "two asks");
@@ -206,13 +218,14 @@ public final class PhoneApprovalTest {
             equal("Approval waiting from claude-1a2b3c", model.publicTitle, "the lock screen names only the agent");
             check(!model.publicText.contains("add_device") && !model.publicText.contains("lab") && !model.publicTitle.contains("lab"), "nothing else shows while locked");
             equal(challenge.getString("text"), model.body, "the expanded notification is the whole text that is signed");
-            for (String label : new String[] {"POOL:", "RISK:", "WHO:", "ASK 1:", "SCOPE 1:", "CANNOT:", "WHY:", "DENY:", "EXPIRES:"}) {
+            for (String label : new String[] {"POOL:", "RISK:", "SAID:", "WHO:", "VERDICT:", "TAINT:", "ASK 1:", "SCOPE 1:", "HELD:", "PICK:", "CANNOT:", "WHY:", "DENY:", "EXPIRES:"}) {
                 check(model.body.contains(label), "the notification carries " + label);
             }
             equal(flagged, model.body.contains("FLAG:"), "flags are carried when the node wrote them");
             if (flagged) check(model.collapsed.startsWith("Check this one: "), "what looks off is first even when collapsed");
             equal((Boolean) one[2], model.approveOpensScreen, "only a routine request with nothing flagged is approved from the notification itself: " + level + " flagged " + flagged);
             equal(1800000L, model.timeoutMs, "the notification goes when the request ends");
+            check(!model.quiet && model.labels[0].equals("Approve") && model.labels[1].equals("Deny") && model.labels[2].equals("Deny and block"), "a request an agent made offers approve, deny and deny and block");
         }
         JSONObject big = new JSONObject().put("v", 1).put("id", vector.getString("id")).put("title", "claude-1a2b3c asks for 8 things").put("agent", "claude-1a2b3c")
                 .put("risk", "routine").put("expires_ms", vector.getLong("expires_ms")).put("more", true);
@@ -236,6 +249,21 @@ public final class PhoneApprovalTest {
         }
     }
 
+    /** The view of the request a challenge makes, as the node's list shows it. */
+    static ApprovalView viewOf(JSONObject challenge) throws Exception {
+        return new ApprovalView(new JSONObject().put("id", challenge.getString("id")).put("state", "pending").put("title", "claude-1a2b3c asks for 2 things")
+                .put("session", challenge.getString("session")).put("text", challenge.getString("text")).put("expires_ms", challenge.getLong("expires_ms")).put("challenge", challenge));
+    }
+
+    interface Change { void apply(JSONObject context) throws Exception; }
+
+    /** A copy of {@code challenge} whose context {@code change} has changed. */
+    static JSONObject withContext(JSONObject challenge, Change change) throws Exception {
+        JSONObject copy = new JSONObject(challenge.toString());
+        change.apply(copy.getJSONObject("context"));
+        return copy;
+    }
+
     static void theDecision(JSONObject vectors) throws Exception {
         SoftwareAuthorizer key = new SoftwareAuthorizer();
         String device = vectors.getJSONObject("challenge").getString("node");
@@ -243,8 +271,8 @@ public final class PhoneApprovalTest {
         Recording node = new Recording();
         NodeApi api = new NodeApi(node, "p".repeat(64), List.of("https://192.168.1.4:7449"));
         Decider decider = new Decider(api, key, device);
-        ApprovalView view = view(vectors, "routine");
-        equal("sensitive", view.risk, "the risk is the one the signed text names, never the unsigned field beside it");
+        ApprovalView view = viewOf(withContext(vectors.getJSONObject("challenge"), c -> c.put("repeat", 0).put("pick", new JSONArray())));
+        equal("sensitive", view(vectors, "routine").risk, "the risk is the one the signed text names, never the unsigned field beside it");
         equal("a1b2 c3d4 e5f6 0718 293a 4b5c", Hex.words("a1b2c3d4e5f60718293a4b5c6d7e8f90"), "a key shows 24 characters in groups of four");
         equal("", Hex.words("a1b2"), "a short fingerprint shows nothing rather than a part");
         String[] outcome = new String[2];
@@ -351,12 +379,147 @@ public final class PhoneApprovalTest {
         } catch (java.io.IOException unreachable) { }
     }
 
+    /** A pick made at once by whoever the test is. */
+    static Decider.Picker choosing(String number, List<List<String>> seen) {
+        return (options, chosen, cancelled) -> {
+            seen.add(options);
+            if (number == null) cancelled.run(); else chosen.accept(number);
+        };
+    }
+
+    static void theStepsAgainstBeingWornDown(JSONObject vectors) throws Exception {
+        JSONObject vector = vectors.getJSONObject("challenge");
+        SoftwareAuthorizer key = new SoftwareAuthorizer();
+        String device = vector.getString("node");
+        long inside = vector.getLong("created_ms");
+        Recording node = new Recording();
+        Decider decider = new Decider(new NodeApi(node, "p".repeat(64), List.of("https://192.168.1.4:7449")), key, device);
+        ApprovalView view = viewOf(vector);
+        equal(1L, view.challenge.repeat(), "the scope was declined once before");
+        equal(List.of("12", "47", "83"), view.challenge.pick(), "the three numbers to choose among");
+        String[] outcome = new String[2];
+        Decider.Done done = new Decider.Done() {
+            @Override public void answered(String state) { outcome[0] = state; }
+            @Override public void failed(String sentence) { outcome[1] = sentence; }
+        };
+        List<List<String>> asked = new ArrayList<>();
+        decider.decide(view, "approve", view.text, inside, choosing("47", asked), done);
+        check(outcome[1] != null && outcome[1].contains("declined 1 time(s) before") && key.asked == 0 && node.sent.isEmpty(), "the plain approval of a scope declined before is refused and asks nobody");
+        outcome[1] = null;
+        decider.decide(view, "approve_repeat", view.text, inside, null, done);
+        check(outcome[1] != null && key.asked == 0 && node.sent.isEmpty(), "a number to match with nobody to ask asks no fingerprint and sends nothing");
+        outcome[1] = null;
+        decider.decide(view, "approve_repeat", view.text, inside, choosing(null, asked), done);
+        equal(1, key.asked, "the fingerprint comes first");
+        check(outcome[1] != null && outcome[1].contains("no number was chosen") && node.sent.isEmpty(), "leaving the question sends nothing, and the request waits");
+        decider.decide(view, "approve_repeat", view.text, inside, choosing("47", asked), done);
+        equal("approved", outcome[0], "the deliberate approval is sent");
+        equal(2, key.asked, "one fingerprint for each try, never two for one");
+        equal(List.of("12", "47", "83"), asked.get(asked.size() - 1), "the person was offered the three numbers");
+        JSONObject body = new JSONObject(node.sent.get(0).substring(node.sent.get(0).indexOf('{')));
+        equal("47", body.getString("pick"), "the number chosen travels, unsigned");
+        equal("approve_repeat", body.getString("decision"), "the decision is the deliberate one");
+        check(key.verifies(view.challenge.bytes("approve_repeat", Hex.sha256(key.publicPoint())), Hex.parse(body.getString("sig"))), "and the signature is over it");
+        outcome[0] = null;
+        decider.decide(view, "deny", view.text, inside, null, done);
+        equal("approved", outcome[0], "a deny needs no number");
+        JSONObject deny = new JSONObject(node.sent.get(1).substring(node.sent.get(1).indexOf('{')));
+        check(!deny.has("pick") && deny.getString("decision").equals("deny"), "and carries none");
+        decider.decide(view, "block", view.text, inside, null, done);
+        JSONObject block = new JSONObject(node.sent.get(2).substring(node.sent.get(2).indexOf('{')));
+        equal("block", block.getString("decision"), "deny and block is a decision of its own");
+        check(key.verifies(view.challenge.bytes("block", Hex.sha256(key.publicPoint())), Hex.parse(block.getString("sig"))), "signed over its own bytes");
+        ApprovalView noBlock = viewOf(withContext(vector, c -> c.put("block_ms", 0)));
+        equal("", noBlock.labels()[2], "no block button when the text names no block");
+        int sent = node.sent.size();
+        decider.decide(noBlock, "block", noBlock.text, inside, null, done);
+        check(node.sent.size() == sent && outcome[1].contains("does not offer"), "a block that is not offered is not signed");
+        ApprovalView first = viewOf(withContext(vector, c -> c.put("repeat", 0)));
+        decider.decide(first, "approve_repeat", first.text, inside, choosing("47", asked), done);
+        check(node.sent.size() == sent && outcome[1].contains("not declined before"), "a scope nobody declined is approved the usual way");
+    }
+
+    static void theNoticesAndTheContext(JSONObject vectors) throws Exception {
+        JSONObject vector = vectors.getJSONObject("challenge");
+        String node = vector.getString("node");
+        long now = vector.getLong("created_ms");
+        new Challenge(vector).check(node, vector.getString("text"), now);
+        for (String field : new String[] {"said", "verdict", "taint", "held", "prompted", "repeat", "pick", "block_ms"}) {
+            JSONObject dropped = new JSONObject(vector.toString());
+            dropped.getJSONObject("context").remove(field);
+            refuses(() -> new Challenge(dropped).check(node, vector.getString("text"), now), "a challenge without " + field);
+        }
+        JSONObject noContext = new JSONObject(vector.toString());
+        noContext.remove("context");
+        refuses(() -> new Challenge(noContext).check(node, vector.getString("text"), now), "a challenge without a context");
+        refuses(() -> new Challenge(withContext(vector, c -> c.put("extra", 1))).check(node, vector.getString("text"), now), "a context with a part the node never writes");
+        refuses(() -> new Challenge(withContext(vector, c -> c.put("verdict", "fine"))).check(node, vector.getString("text"), now), "a verdict the node never writes");
+        refuses(() -> new Challenge(withContext(vector, c -> c.put("pick", new JSONArray().put("1").put("2")))).check(node, vector.getString("text"), now), "two numbers to choose between");
+        refuses(() -> new Challenge(withContext(vector, c -> c.getJSONObject("said").put("origin", "somewhere"))).check(node, vector.getString("text"), now), "an origin the node never writes");
+        String key = vectors.getJSONObject("key").getString("fingerprint");
+        byte[] original = new Challenge(vector).bytes("approve", key);
+        Change[] changes = {c -> c.getJSONObject("said").put("quote", "add the Linux box"), c -> c.getJSONObject("said").put("origin", "app"), c -> c.put("verdict", "matches"),
+                c -> c.put("taint", "clean"), c -> c.getJSONObject("held").put("act_at_ms", 1), c -> c.getJSONObject("held").put("cancel", false), c -> c.put("prompted", "no"),
+                c -> c.put("repeat", 2), c -> c.put("pick", new JSONArray().put("1").put("2").put("3")), c -> c.put("block_ms", 1)};
+        for (Change change : changes) {
+            check(!java.util.Arrays.equals(original, new Challenge(withContext(vector, change)).bytes("approve", key)), "a changed part of the context changes the bytes that are signed");
+        }
+        JSONObject action = new JSONObject(vector.toString());
+        action.getJSONObject("action").getJSONArray("grants").getJSONObject(0).put("resource", "lab");
+        check(!java.util.Arrays.equals(original, new Challenge(action).bytes("approve", key)), "so does what it wants");
+        equal(List.of("add_device on anything, once, for 10 minutes", "link_write on demo>lab, as often as it is needed, for 1 hour, each use reviewed"), Wants.of(new Challenge(vector)),
+                "what it wants is read from the structured asks the key signs");
+        equal("add_device on lab, once, for 10 minutes", Wants.of(new Challenge(action)).get(0), "and follows them when they change");
+        check(Wants.of(new Challenge(new JSONObject(vector.toString()).put("action", new JSONObject().put("kind", "hold").put("cause", "flood")))).isEmpty(), "a notice asks for no grant");
+        // A notice about requests kept back: its buttons ask something else, and a quiet one does not interrupt.
+        for (String[] one : new String[][] {{"held", "Allow once", "Keep holding", "Block it"}, {"suspended", "Lift the suspension", "Keep it suspended", "Block it"}, {"flood", "Dismiss", "", ""}}) {
+            JSONObject notice = new JSONObject(vector.toString());
+            notice.put("action", new JSONObject().put("kind", "hold").put("cause", one[0]).put("key", "session:demo/claude-1a2b3c").put("queued", 3));
+            ApprovalView view = viewOf(notice);
+            equal(List.of(one[1], one[2], one[3]), java.util.Arrays.asList(view.labels()), "what the buttons of a " + one[0] + " notice say");
+            JSONObject raw = new JSONObject().put("v", 1).put("id", notice.getString("id")).put("title", "a notice").put("agent", "").put("urgency", "quiet")
+                    .put("expires_ms", notice.getLong("expires_ms")).put("challenge", notice);
+            NotificationModel model = NotificationModel.of(PushPayload.parse(raw.toString().getBytes(StandardCharsets.UTF_8)), now);
+            check(model.quiet && model.publicTitle.equals("A quiet notice is waiting") && model.approveOpensScreen, "a notice is quiet, says nothing at the lock screen and opens on the screen first");
+        }
+        ApprovalView flood = viewOf(new JSONObject(vector.toString()).put("action", new JSONObject().put("kind", "hold").put("cause", "flood")));
+        SoftwareAuthorizer person = new SoftwareAuthorizer();
+        Recording recording = new Recording();
+        String[] told = new String[1];
+        new Decider(new NodeApi(recording, "p".repeat(64), List.of("https://192.168.1.4:7449")), person, node).decide(flood, "deny", flood.text, now, new Decider.Done() {
+            @Override public void answered(String state) { told[0] = "sent"; }
+            @Override public void failed(String sentence) { told[0] = sentence; }
+        });
+        check(person.asked == 0 && recording.sent.isEmpty() && told[0].contains("does not offer"), "a notice that offers one answer is not signed with another");
+        JSONObject loud = new JSONObject().put("v", 1).put("id", vector.getString("id")).put("title", "asks").put("agent", "claude-1a2b3c").put("urgency", "urgent")
+                .put("expires_ms", vector.getLong("expires_ms")).put("challenge", vector);
+        check(!NotificationModel.of(PushPayload.parse(loud.toString().getBytes(StandardCharsets.UTF_8)), now).quiet, "a request that interrupts is not quiet");
+        JSONObject odd = new JSONObject(loud.toString()).put("urgency", "deafening");
+        PushPayload strange = PushPayload.parse(odd.toString().getBytes(StandardCharsets.UTF_8));
+        check(!NotificationModel.of(strange, now).quiet && strange.view.interrupts() && strange.urgency.equals("urgent"), "an urgency the node never writes is read as the usual one");
+        JSONObject lacking = new JSONObject(vector.toString());
+        StringBuilder kept = new StringBuilder();
+        for (String line : vector.getString("text").split("\n")) if (!line.startsWith("SAID:")) kept.append(kept.length() == 0 ? "" : "\n").append(line);
+        lacking.put("text", kept.toString());
+        SoftwareAuthorizer nobody = new SoftwareAuthorizer();
+        Recording sentNothing = new Recording();
+        String[] answered = new String[1];
+        new Decider(new NodeApi(sentNothing, "p".repeat(64), List.of("https://192.168.1.4:7449")), nobody, node).decide(viewOf(withContext(lacking, c -> c.put("repeat", 0).put("pick", new JSONArray()))), "deny", kept.toString(), now,
+                new Decider.Done() {
+                    @Override public void answered(String state) { answered[0] = "sent"; }
+                    @Override public void failed(String sentence) { answered[0] = sentence; }
+                });
+        check(nobody.asked == 0 && sentNothing.sent.isEmpty() && answered[0].contains("leaves out something"), "a request an agent made without what the person said is not signed, and nobody is asked");
+    }
+
     static void theFrictionBudget(JSONObject contract) {
         equal(contract.getInt("first_run"), ApprovalFlow.firstRun().size(), "the steps of the first run");
         equal(contract.getInt("approve_routine"), ApprovalFlow.approving("routine", false).size(), "the steps of a routine approval");
         equal(contract.getInt("approve_sensitive"), ApprovalFlow.approving("sensitive", false).size(), "the steps of a sensitive approval");
         equal(ApprovalFlow.approving("sensitive", false), ApprovalFlow.approving("irreversible", false), "an irreversible request takes the steps of a sensitive one");
-        equal(ApprovalFlow.approving("sensitive", false), ApprovalFlow.approving("routine", true), "a routine request the node flagged takes the steps of a sensitive one");
+        equal(List.of(ApprovalFlow.Step.TAP_NOTIFICATION, ApprovalFlow.Step.TAP_APPROVE, ApprovalFlow.Step.FINGERPRINT), ApprovalFlow.approving("routine", true), "a routine request the node flagged is read first and needs no pick");
+        check(ApprovalFlow.approving("routine", false).size() == 2 && !ApprovalFlow.approving("routine", false).contains(ApprovalFlow.Step.PICK), "a routine request pays nothing for the defences against being worn down");
+        equal(1L, ApprovalFlow.approving("sensitive", false).stream().filter(step -> step == ApprovalFlow.Step.PICK).count(), "one pick for what is not routine");
         for (String risk : new String[] {"routine", "sensitive", "irreversible"}) {
             for (boolean flagged : new boolean[] {false, true}) {
                 int prompts = 0;

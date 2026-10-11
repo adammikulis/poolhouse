@@ -14,8 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOC = (ROOT / "docs" / "phone-approval.md").read_text(encoding="utf-8")
 CONTRACT = json.loads((ROOT / "contracts" / "phone-friction.json").read_text(encoding="utf-8"))
-CEILING = {"first_run": 3, "approve_routine": 2, "approve_sensitive": 3}
-"""What a person does: a command, a scan and a fingerprint the first time; a tap and a fingerprint for a routine request; one more tap, to read, for the rest."""
+CEILING = {"first_run": 3, "approve_routine": 2, "approve_sensitive": 4}
+"""What a person does: a command, a scan and a fingerprint the first time; a tap and a fingerprint for a routine request; for the rest one more tap, to read, and one pick, so no reflex can approve them."""
 SECTIONS = {"first_run": "**First run, on a computer and a phone (the first phone).**", "approve_routine": "**A routine approval (one request, one or many asks).**",
             "approve_sensitive": "**A sensitive or irreversible approval.**"}
 
@@ -50,6 +50,9 @@ def test_every_first_run_step_and_the_one_extra_tap_of_a_sensitive_request_say_w
     assert all(reasons(SECTIONS["first_run"])), "every first-run step says why it is needed"
     extra = steps(SECTIONS["approve_sensitive"])[0]
     assert "whole text" in extra and reasons(SECTIONS["approve_sensitive"])[0], "the extra tap has its reason in the table"
+    pick = steps(SECTIONS["approve_sensitive"])[3]
+    assert "Pick the number" in pick and reasons(SECTIONS["approve_sensitive"])[3], "the one pick has its reason in the table"
+    assert len(steps(SECTIONS["approve_routine"])) == 2, "a routine approval gets no pick: the defence against being worn down costs it nothing"
 
 
 def test_one_fingerprint_is_asked_for_a_decision_and_the_notification_is_the_only_step_it_needs():

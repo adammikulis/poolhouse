@@ -11,12 +11,16 @@ the computer's Fleet page.
   A phone added later waits for one of the phones already added to approve it.
 - **Requests**: the home screen lists what waits, newest first, kept current by a request the computer holds open. Tapping one shows
   the whole text: what looks off, the pool line (open or secure), the risk, who asks, what is asked and how far it reaches, what it
-  cannot do, why, what a deny does and when it ends. Approve and Deny each ask for the fingerprint, strong face unlock or device
-  credential once.
+  cannot do, why, what a deny does and when it ends, and below it what the signed request itself asks, read from the structured asks the
+  key signs. Approve and Deny each ask for the fingerprint, strong face unlock or device credential once; a request that is not routine
+  then asks which of three numbers the agent showed, a scope declined before asks "Approve anyway?" first, and a request an agent made also
+  offers Deny and block. What an agent asked on its own, notices about requests kept back and what came too fast to be pushed are in a
+  quiet list under the requests.
 - **Notifications**: the node seals each request to the phone's push key (Web Push payload encryption, RFC 8291) and posts it to the
   address a UnifiedPush distributor gave the app. The lock screen says only `Approval waiting from <agent>`; once unlocked the
   notification shows the whole text with Approve and Deny, and Approve opens the fingerprint prompt (for a routine request) or the
-  whole request first (for any other). Without a distributor the app still works: requests show while it is open.
+  whole request first (for any other, and for any the node flagged). A notice about requests kept back is on a channel with no sound,
+  no heads-up and no badge. Without a distributor the app still works: requests show while it is open.
 - **Phones**: list the phones, remove one (another phone's fingerprint confirms), add another phone (a code to scan on it).
 - **Chat** with the computer: the status and streamed chat of Fleet, behind the fingerprint, over pinned TLS.
 

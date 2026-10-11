@@ -206,7 +206,7 @@ fn a_person_key_that_signs_with_a_typed_yes_decides_the_same_requests() {
     let typed = person();
     let sign = |view: &Value, decision: &str| {
         let bytes = challenge::bytes(&view["challenge"], decision, &typed.fingerprint());
-        json!({"id": view["id"], "decision": decision, "key": typed.fingerprint(), "sig": hex(&ed25519_dalek::Signer::sign(&typed.key, &bytes).to_bytes())})
+        json!({"id": view["id"], "decision": decision, "key": typed.fingerprint(), "sig": hex(&ed25519_dalek::Signer::sign(&typed.key, &bytes).to_bytes()), "pick": rig.shown(view["id"].as_str().unwrap())})
     };
     let mut edited = seen.clone();
     edited["challenge"]["text"] = json!("something else");
@@ -366,7 +366,9 @@ fn a_request_waits_across_a_restart_and_is_still_decided_once() {
     drop(rig.node);
     let node = poolhouse_node::node::Node::open(rig.dir.path()).unwrap();
     let again = std::sync::Mutex::new(node);
-    let reply = poolhouse_node::phone::http::handle(&again, kit::phone::LOCAL, "POST", "/phone/v1/decide", "", phone.decision(&seen, "approve").to_string().as_bytes()).1;
+    let mut body = phone.decision(&seen, "approve");
+    body["pick"] = json!(again.lock().unwrap().approvals.get(&id).unwrap().pick_code);
+    let reply = poolhouse_node::phone::http::handle(&again, kit::phone::LOCAL, "POST", "/phone/v1/decide", "", body.to_string().as_bytes()).1;
     assert_eq!(reply["result"]["state"], "approved", "{reply}");
     assert!(check(&mut again.lock().unwrap(), &holder(&name), "add_device", &Scope::on("*")).unwrap(), "the grant is on the board and the key is held after a restart");
 }
@@ -638,6 +640,13 @@ fn the_vectors_a_second_implementation_made_are_the_bytes_and_the_signature_this
     assert_eq!(String::from_utf8(deny.clone()).unwrap(), file["deny_bytes"].as_str().unwrap());
     assert!(poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &deny, file["deny_signature"].as_str().unwrap()));
     assert!(!poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &deny, file["approve_signature"].as_str().unwrap()), "an approval is not a deny");
+    for (decision, bytes_key, sig_key) in [("block", "block_bytes", "block_signature"), ("approve_repeat", "approve_repeat_bytes", "approve_repeat_signature")] {
+        let bytes = challenge::bytes(&file["challenge"], decision, key);
+        assert_eq!(String::from_utf8(bytes.clone()).unwrap(), file[bytes_key].as_str().unwrap(), "{decision}: the same canonical bytes as Python's");
+        assert!(poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &bytes, file[sig_key].as_str().unwrap()), "{decision}");
+        assert!(!poolhouse_node::grants::person::verifies_p256(file["key"]["public"].as_str().unwrap(), &bytes, file["approve_signature"].as_str().unwrap()), "an approval is not a {decision}");
+    }
+    assert!(poolhouse_node::approvals::context::Context::from_object(&file["challenge"]["context"]).is_some(), "the vector's context is one the node would write");
     let add = &file["add"];
     let body = add["body"].as_object().unwrap();
     let proof = poolhouse_node::phone::enrol::add_bytes(add["node"].as_str().unwrap(), body);

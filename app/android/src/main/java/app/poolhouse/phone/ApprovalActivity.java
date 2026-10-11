@@ -1,6 +1,7 @@
 package app.poolhouse.phone;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -8,13 +9,15 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.WindowManager;
 import android.widget.TextView;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * One request in full: what looks off first, the pool line, the risk, who asks, what is asked and how far it reaches, what it
- * cannot do, why, what a deny does and when it ends, each line exactly as the node wrote it and the key signs it. Approve and
- * Deny each ask for the fingerprint once. The screen is never shown on a locked phone.
+ * One request in full: what looks off first, the pool line, the risk, what the person said, who asks, how the node judged it, what
+ * is asked and how far it reaches, what it cannot do, why, what a deny does and when it ends, each line exactly as the node wrote it
+ * and the key signs it. Each answer asks for the fingerprint once; an approval of what is not routine then asks which number the agent
+ * showed, and a scope declined before takes one more deliberate confirmation first. The screen is never shown on a locked phone.
  */
 public final class ApprovalActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -93,14 +96,22 @@ public final class ApprovalActivity extends Activity {
             ui.line(line, colour(line), line.startsWith("FLAG:") || line.startsWith("POOL:") || line.startsWith("RISK:"));
             shown.append(shown.length() == 0 ? "" : "\n").append(line);
         }
+        List<String> wants = Wants.of(view.challenge);
+        if (!wants.isEmpty()) {
+            ui.line("What the signed request itself asks, read from the bytes your key signs:", Ui.CALM, true);
+            for (String want : wants) ui.line(want, Color.BLACK, false);
+        }
         countdown = ui.text("", 15);
         final String onScreen = shown.toString();
         boolean open = view.pending();
-        ui.button("Approve", () -> decide("approve", onScreen)).setEnabled(open);
-        ui.button("Deny", () -> decide("deny", onScreen)).setEnabled(open);
+        String[] labels = view.labels();
+        ui.button(labels[0], () -> approve(onScreen)).setEnabled(open);
+        if (!labels[1].isEmpty()) ui.button(labels[1], () -> decide("deny", onScreen)).setEnabled(open);
+        if (!labels[2].isEmpty()) ui.button(labels[2], () -> decide("block", onScreen)).setEnabled(open);
         if (!open) ui.say(view.state.equals("approved") ? "This request was approved." : view.state.equals("denied") ? "This request was denied." : "This request has ended.");
         tick();
-        boolean direct = open && !prompted && (prompt.equals("deny") || (prompt.equals("approve") && !view.opensScreen()));
+        boolean direct = open && !prompted && ((prompt.equals("deny") && !labels[1].isEmpty()) || (prompt.equals("block") && !labels[2].isEmpty())
+                || (prompt.equals("approve") && !view.opensScreen()));
         if (direct) {
             prompted = true;
             decide(prompt, onScreen);
@@ -114,10 +125,29 @@ public final class ApprovalActivity extends Activity {
         if (left > 0 && visible) clock.postDelayed(this::tick, 1000);
     }
 
+    /** Approve: a scope that was declined before is confirmed first, as its own deliberate step, and then approved again. */
+    private void approve(String onScreen) {
+        long repeat = view.challenge.repeat();
+        if (repeat == 0) {
+            decide("approve", onScreen);
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Declined " + repeat + " time(s) before")
+                .setMessage("You declined this " + repeat + " time(s) before. Approve it anyway?")
+                .setNegativeButton("No", null).setPositiveButton("Approve anyway", (dialog, which) -> decide("approve_repeat", onScreen)).show();
+    }
+
+    /** Ask which number the agent showed, after the fingerprint; leaving the question sends nothing. */
+    private void choose(List<String> options, java.util.function.Consumer<String> chosen, Runnable cancelled) {
+        runOnUiThread(() -> new AlertDialog.Builder(this).setTitle("Which number did your agent show you?")
+                .setItems(options.toArray(new String[0]), (dialog, which) -> worker.execute(() -> chosen.accept(options.get(which))))
+                .setOnCancelListener(dialog -> cancelled.run()).show());
+    }
+
     private void decide(String decision, String onScreen) {
         ui.say("Waiting for your fingerprint...");
         Decider decider = new Decider(store.api(), new BiometricAuthorizer(this), store.device());
-        decider.decide(view, decision, onScreen, store.nodeNowMs(), new Decider.Done() {
+        decider.decide(view, decision, onScreen, store.nodeNowMs(), this::choose, new Decider.Done() {
             @Override public void answered(String state) {
                 runOnUiThread(() -> {
                     Notifier.forget(ApprovalActivity.this, view.id);

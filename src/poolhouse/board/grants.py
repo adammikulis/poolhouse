@@ -343,10 +343,18 @@ def approval_bytes(challenge: dict[str, Any], decision: str, key: str) -> bytes:
     return APPROVAL_DOMAIN + canonical({**challenge, "decision": decision, "key": key}).encode()
 
 
+DECISIONS = ("approve", "approve_repeat", "deny", "block")
+DECISION_WORDS = {"approve": "APPROVE", "approve_repeat": "APPROVE AGAIN (it was declined before)", "deny": "DENY", "block": "DENY AND BLOCK"}
+
+
 def sign_approval(key: Signs, request: dict[str, Any], decision: str) -> dict[str, Any]:
-    """The `approval_decide` params answering the ``request`` (as the node showed it) with ``decision``, signed by ``key``."""
-    if decision not in ("approve", "deny"):
-        raise ValueError("a decision is approve or deny")
+    """The `approval_decide` params answering the ``request`` (as the node showed it) with ``decision``, signed by ``key``.
+
+    ``decision`` is approve, approve_repeat (a scope that was declined before), deny, or block (deny, and the agent that asked cannot
+    ask again for the time the text names). A number to match is not signed: the caller adds it as ``pick`` once the person chose.
+    """
+    if decision not in DECISIONS:
+        raise ValueError("a decision is approve, approve_repeat, deny or block")
     fingerprint_ = fingerprint(key.public)
     bytes_ = approval_bytes(request["challenge"], decision, fingerprint_)
     return {"id": request["id"], "decision": decision, "key": fingerprint_, "sig": key.sign_bytes(bytes_).hex(),
@@ -372,7 +380,7 @@ def describe(data: bytes) -> str:
                     f"once, until {when(body['approved_ms'] + FRESH_MS)}, in the terminal whose shell is process {body['anchor']['pid']}")
         if domain + b"\n" == APPROVAL_DOMAIN and body["op"] == "approval":
             shown = "\n".join(f"      {line}" for line in str(body["text"]).split("\n"))
-            return f"{str(body['decision']).upper()} the request {body['id']} of {body['session'] or 'a phone'} on board {body['board']}, which reads:\n{shown}"
+            return f"{DECISION_WORDS.get(str(body['decision']), str(body['decision']).upper())} the request {body['id']} of {body['session'] or 'a phone'} on board {body['board']}, which reads:\n{shown}"
         if domain + b"\n" == REBIND_DOMAIN and body["op"] == "rebind":
             return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in (the shell is process "
                     f"{body['anchor']['pid']}), on the node {body['node']}, and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")

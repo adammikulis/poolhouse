@@ -3836,6 +3836,7 @@
     "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
     "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an_image_file",
     "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
+    "tests/test_board_approval.py::test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again_for_a_scope_declined_before",
     "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal"
@@ -4003,6 +4004,7 @@
     "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
     "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an_image_file",
     "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
+    "tests/test_board_approval.py::test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again_for_a_scope_declined_before",
     "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal"
@@ -4021,6 +4023,7 @@
     "tests/test_board_approval.py::test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_type_yes",
     "tests/test_board_approval.py::test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an_image_file",
     "tests/test_board_approval.py::test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_approve_it",
+    "tests/test_board_approval.py::test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again_for_a_scope_declined_before",
     "tests/test_board_approval.py::test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal"

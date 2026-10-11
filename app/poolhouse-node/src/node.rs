@@ -60,6 +60,9 @@ pub struct Node {
     pub persons: Persons,
     /// What agents asked of the person and what became of it (`approvals`), and the phones the person answers from (`phone`).
     pub approvals: crate::approvals::Approvals,
+    /// What keeps a request that is made again and again from wearing the person down, and what the node knows of what the person said.
+    pub fatigue: crate::approvals::fatigue::Fatigue,
+    pub evidence: Box<dyn crate::approvals::context::Evidence>,
     pub phones: crate::phone::Phones,
     /// The certificate of the endpoint a phone talks to, and the port it listens on (0 while it does not).
     pub phone_cert: crate::phone::cert::Endpoint,
@@ -126,7 +129,8 @@ impl Node {
         let facts = Facts::open(&dir.join("peers.json"))?;
         let mut node = Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
-            approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
+            approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
+            evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),

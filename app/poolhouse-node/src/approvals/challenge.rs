@@ -7,6 +7,7 @@
 
 use serde_json::{json, Map, Value};
 
+use crate::approvals::context::Context;
 use crate::approvals::{Approval, GRANTS};
 use crate::cert::valid_fingerprint;
 use crate::error::{Error, Result};
@@ -17,13 +18,13 @@ pub const DOMAIN: &str = "poolhouse/approval/v1\n";
 /// The most bytes of text a request carries, and the most asks.
 pub const MAX_TEXT: usize = 6000;
 pub const MOST_ASKS: usize = 8;
-const APPROVAL_KEYS: [&str; 8] = ["id", "node", "nonce", "created_ms", "expires_ms", "text", "grants", "index"];
+const APPROVAL_KEYS: [&str; 9] = ["id", "node", "nonce", "created_ms", "expires_ms", "text", "grants", "index", "context"];
 const ASK_KEYS: [&str; 7] = ["action", "device", "gid", "lasts_ms", "resource", "review", "uses"];
 
 /// The challenge of a request on the node whose certificate fingerprint is ``node``: everything but the decision and the key.
 pub fn object(a: &Approval, node: &str) -> Value {
     json!({"v": 1, "op": "approval", "id": a.id, "node": node, "board": a.board, "session": a.session, "action": a.action,
-           "text": a.text, "nonce": a.nonce, "created_ms": a.created_ms, "expires_ms": a.expires_ms})
+           "text": a.text, "nonce": a.nonce, "created_ms": a.created_ms, "expires_ms": a.expires_ms, "context": a.context.object()})
 }
 
 /// The bytes the key ``key`` signs to give ``decision`` (`approve` or `deny`) on ``challenge``.
@@ -46,7 +47,7 @@ pub fn grant_bytes(map: &Map<String, Value>) -> Vec<u8> {
         let session = map.get("to")?.get("name")?.as_str()?;
         let challenge = json!({"v": 1, "op": "approval", "id": ap.get("id")?, "node": ap.get("node")?, "board": map.get("board")?, "session": session,
                                "action": {"kind": GRANTS, "grants": ap.get("grants")?}, "text": ap.get("text")?, "nonce": ap.get("nonce")?,
-                               "created_ms": ap.get("created_ms")?, "expires_ms": ap.get("expires_ms")?});
+                               "created_ms": ap.get("created_ms")?, "expires_ms": ap.get("expires_ms")?, "context": ap.get("context")?});
         Some(bytes(&challenge, "approve", map.get("person")?.as_str()?))
     };
     rebuilt().unwrap_or_else(|| b"an approval entry that cannot be read".to_vec())
@@ -70,7 +71,8 @@ pub fn check_entry(map: &Map<String, Value>, issue: &Issue) -> Result<()> {
     let id_ok = ap["id"].as_str().and_then(|s| s.strip_prefix("ap-")).is_some_and(|h| hex_of(&Value::String(h.into()), 16));
     let (created, expires) = (ap["created_ms"].as_u64(), ap["expires_ms"].as_u64());
     let text_ok = ap["text"].as_str().is_some_and(plain_text);
-    if !id_ok || !ap["node"].as_str().is_some_and(valid_fingerprint) || !hex_of(&ap["nonce"], 32) || !text_ok || created.is_none() || expires.is_none() {
+    if !id_ok || !ap["node"].as_str().is_some_and(valid_fingerprint) || !hex_of(&ap["nonce"], 32) || !text_ok || created.is_none() || expires.is_none()
+        || Context::from_object(&ap["context"]).is_none() {
         return bad("an approval's id, node, nonce, times and text are malformed");
     }
     let (created, expires) = (created.unwrap_or(0), expires.unwrap_or(0));
@@ -118,7 +120,7 @@ pub fn grant_entries(a: &Approval, node: &str, at_ms: u64, signer: &str, sig: &s
         }
         body.insert("person".into(), json!(signer));
         body.insert("approval".into(), json!({"id": a.id, "node": node, "nonce": a.nonce, "created_ms": a.created_ms, "expires_ms": a.expires_ms,
-                                              "text": a.text, "grants": asks, "index": index}));
+                                              "text": a.text, "grants": asks, "index": index, "context": a.context.object()}));
         body.insert("sig".into(), json!(sig));
         Some(body)
     }).collect()

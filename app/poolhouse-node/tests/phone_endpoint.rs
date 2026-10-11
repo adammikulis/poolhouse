@@ -99,7 +99,9 @@ fn a_phone_is_added_and_decides_over_tls_against_the_one_pinned_certificate() {
     let (_, listed) = call(addr, client(&pin, false), &post("list", &phone.token), b"{}").unwrap();
     let seen = listed["result"]["approvals"][0].clone();
     assert_eq!(seen["id"], made["id"]);
-    let (_, done) = call(addr, client(&pin, false), &post("decide", ""), phone.decision(&seen, "approve").to_string().as_bytes()).unwrap();
+    let mut decision = phone.decision(&seen, "approve");
+    decision["pick"] = json!(node.lock().unwrap().approvals.get(made["id"].as_str().unwrap()).unwrap().pick_code);
+    let (_, done) = call(addr, client(&pin, false), &post("decide", ""), decision.to_string().as_bytes()).unwrap();
     assert_eq!(done["result"]["state"], "approved", "{done}");
 }
 

@@ -20,11 +20,13 @@ def test_an_agent_asks_waits_and_is_told_when_the_phone_approved(phone_node):
     assert isinstance(ask, ph.board.Approval)
     assert (ask.state, ask.risk) == ("pending", "sensitive") and "adding the Linux box" in ask.text and ask.title.endswith("asks to add a device")
     assert ask.wait(0.6) == "pending", "time running out is not a failure"
+    assert len(ask.code) == 2 and ask.urgency == "urgent" and not ask.deduplicated, "a request that is not routine comes with the number to show the person"
+    assert board.request_approval([ph.board.Ask("add_device", lasts="10m", uses=1)], note="again").deduplicated, "the same request made again is the same item"
     assert ask.message() == "Waiting for your answer on your phone."
     endpoint = endpoint_of(team)
     seen = endpoint.ok("list", token=phone.token)["approvals"][0]
     assert seen["id"] == ask.id and seen["text"] == ask.text, "the phone shows the text the agent has"
-    assert endpoint.ok("decide", phone.decision(seen, "approve"))["state"] == "approved"
+    assert endpoint.ok("decide", phone.decision(seen, "approve", pick=ask.code))["state"] == "approved"
     assert ask.wait(10) == "approved" and len(ask.grants) == 1
     assert ask.message() == "You approved it, so the grants exist."
     held = grants.listing(team.session(team.members["lead"]))
@@ -41,7 +43,9 @@ def test_a_denied_request_changes_nothing_and_a_withdrawn_one_ends(phone_node):
     first = board.request_approval([ph.board.Ask("sync_now", uses=1)])
     assert endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": first.id}, token=phone.token), "deny"))["state"] == "denied"
     assert first.wait(5) == "denied" and first.message() == "You said no; nothing changed."
-    second = board.request_approval([ph.board.Ask("sync_now", uses=1)])
+    with pytest.raises(ph.Error, match=r"declined a moment ago; wait .* before asking for it again"):
+        board.request_approval([ph.board.Ask("sync_now", uses=1)])
+    second = board.request_approval([ph.board.Ask("link_read", "a>b", uses=1)])
     assert second.cancel() == "cancelled" and second.message() == "The request was withdrawn."
     assert grants.listing(team.session(team.members["lead"])).grants == []
 

@@ -1,5 +1,6 @@
 package app.poolhouse.phone;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -8,7 +9,7 @@ import java.util.List;
  * here fails the checks until the budget says why.
  */
 final class ApprovalFlow {
-    enum Step { RUN_COMMAND, SCAN_CODE, TAP_NOTIFICATION, TAP_APPROVE, FINGERPRINT }
+    enum Step { RUN_COMMAND, SCAN_CODE, TAP_NOTIFICATION, TAP_APPROVE, FINGERPRINT, PICK }
 
     private ApprovalFlow() { }
 
@@ -25,8 +26,17 @@ final class ApprovalFlow {
         return List.of(Step.RUN_COMMAND, Step.SCAN_CODE, Step.FINGERPRINT);
     }
 
-    /** What a person does to approve a request of this risk (flagged or not) from its notification. */
+    /**
+     * What a person does to approve a request of this risk (flagged or not) from its notification: the screen first when it is not routine
+     * or was flagged, one fingerprint, and, for what is not routine, one pick of the number the agent showed (so no reflex approves it). A
+     * routine request pays for none of the defences against being worn down.
+     */
     static List<Step> approving(String level, boolean flagged) {
-        return opensScreen(level, flagged) ? List.of(Step.TAP_NOTIFICATION, Step.TAP_APPROVE, Step.FINGERPRINT) : List.of(Step.TAP_APPROVE, Step.FINGERPRINT);
+        List<Step> steps = new ArrayList<>();
+        if (opensScreen(level, flagged)) steps.add(Step.TAP_NOTIFICATION);
+        steps.add(Step.TAP_APPROVE);
+        steps.add(Step.FINGERPRINT);
+        if (!"routine".equals(level)) steps.add(Step.PICK);
+        return steps;
     }
 }

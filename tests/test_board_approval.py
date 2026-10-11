@@ -31,6 +31,12 @@ def test_the_bytes_and_signature_another_implementation_made_are_the_ones_this_o
     key = file["key"]["fingerprint"]
     assert grants.approval_bytes(file["challenge"], "approve", key).decode() == file["approve_bytes"]
     assert grants.approval_bytes(file["challenge"], "deny", key).decode() == file["deny_bytes"]
+    for decision in ("block", "approve_repeat"):
+        built = grants.approval_bytes(file["challenge"], decision, key)
+        assert built.decode() == file[f"{decision}_bytes"], decision
+        ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), bytes.fromhex(file["key"]["public"])).verify(
+            bytes.fromhex(file[f"{decision}_signature"]), built, ec.ECDSA(hashes.SHA256()))
+    assert set(file["challenge"]["context"]) == {"said", "verdict", "taint", "held", "prompted", "repeat", "pick", "block_ms"}
     public = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), bytes.fromhex(file["key"]["public"]))
     public.verify(bytes.fromhex(file["approve_signature"]), file["approve_bytes"].encode(), ec.ECDSA(hashes.SHA256()))
     assert hashlib.sha256(bytes.fromhex(file["key"]["public"])).hexdigest() == key
@@ -47,6 +53,8 @@ def test_what_the_person_is_asked_at_a_terminal_is_the_request_itself():
     assert shown.startswith("APPROVE the request ap-0123456789abcdef of claude-1a2b3c on board demo, which reads:")
     assert all(line.strip() in shown for line in file["challenge"]["text"].split("\n")), "every line the phone shows is put to the person"
     assert grants.describe(file["deny_bytes"].encode()).startswith("DENY the request")
+    assert grants.describe(file["block_bytes"].encode()).startswith("DENY AND BLOCK the request")
+    assert grants.describe(file["approve_repeat_bytes"].encode()).startswith("APPROVE AGAIN (it was declined before) the request")
 
 
 def test_every_state_has_one_sentence_an_agent_can_pass_on():
@@ -69,7 +77,8 @@ def test_the_shell_asks_waits_and_reads_what_became_of_the_request(phone_node):
     assert waiting.returncode == 0 and json.loads(waiting.stdout)["state"] == "pending", "waiting is not failing"
     endpoint = endpoint_of(team)
     seen = endpoint.ok("get", {"id": made["id"]}, token=phone.token)
-    assert endpoint.ok("decide", phone.decision(seen, "approve"))["state"] == "approved"
+    assert re.fullmatch(r"\d\d", made["code"]), "a request that is not routine prints the number to show the person"
+    assert endpoint.ok("decide", phone.decision(seen, "approve", pick=made["code"]))["state"] == "approved"
     after = team.cli("approval", "status", made["id"], "--json", who=lead)
     assert after.returncode == 0 and json.loads(after.stdout)["state"] == "approved" and len(json.loads(after.stdout)["grants"]) == 2
     listed = team.cli("approval", "list", who=lead)
@@ -102,6 +111,33 @@ def test_a_person_at_a_terminal_answers_with_the_key_the_node_holds_once_they_ty
     code, out, err = team.terminal("approval", "decide", made["id"], "approve", who=lead, typed=TYPED)
     assert code == 0 and "approved" in out, (out, err)
     assert json.loads(team.cli("approval", "status", made["id"], "--json", who=lead).stdout)["state"] == "approved"
+
+
+def test_a_person_at_a_terminal_chooses_the_number_after_the_yes_and_types_again_for_a_scope_declined_before(phone_node):
+    team = phone_node
+    lead = team.member("lead")
+    team.keep_person_key(lead)
+    first = json.loads(team.cli("approval", "request", "add_device", "link_read:a>b", "--json", who=lead).stdout)
+    options = next(a for a in json.loads(team.cli("approval", "pending", "--json", who=lead).stdout) if a["id"] == first["id"])["challenge"]["context"]["pick"]
+    assert first["code"] in options and len(options) == 3, "the phone offers three numbers, the agent's among them"
+    other = next(n for n in options if n != first["code"])
+    code, out, err = team.terminal("approval", "decide", first["id"], "approve", who=lead, typed={**TYPED, "Which number": other})
+    assert code != 0 and "Which number did your agent show you?" in out and "not the one the agent showed" in out + err, (out, err)
+    assert json.loads(team.cli("approval", "status", first["id"], "--json", who=lead).stdout)["state"] == "denied", "a wrong number is a decline"
+    again = json.loads(team.cli("approval", "request", "add_device", "--json", who=lead).stdout)
+    assert "declined 1 time(s) before" in again["text"], "the scope that was declined says so"
+    code, out, err = team.terminal("approval", "decide", again["id"], "approve", who=lead, typed={"Type again": "no", **TYPED, "Which number": again["code"]})
+    assert code != 0 and "Type again to approve it anyway" in out, (out, err)
+    assert json.loads(team.cli("approval", "status", again["id"], "--json", who=lead).stdout)["state"] == "pending", "without the extra word nothing was signed"
+    code, out, err = team.terminal("approval", "decide", again["id"], "approve", who=lead, typed={"Type again": "again", **TYPED, "Which number": again["code"]})
+    assert code == 0 and "approved" in out, (out, err)
+    assert "APPROVE AGAIN" in out, "the person is told what is being signed"
+
+
+def test_every_held_request_says_it_is_held_and_waiting_does_not_pretend_otherwise():
+    assert approval.SAYS["held"].startswith("Your requests are being held") and approval.HELD == "held"
+    held = Approval(None, {"state": "held", "reason": ""})  # type: ignore[arg-type]
+    assert held.message() == approval.SAYS["held"] and not held.deduplicated and held.urgency == "urgent" and held.code == ""
 
 
 def test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone(phone_node):
