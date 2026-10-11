@@ -117,15 +117,24 @@ pub struct Place {
     pub resource: String,
 }
 
+/// Refuse a resource that is not an exact name, `*`, or a prefix before a final `*`, in plain ASCII with no `..`.
+pub fn check_resource(resource: &str) -> Result<()> {
+    if !plain(resource, MOST_TEXT) {
+        return bad("a resource is one plain word of at most 120 characters");
+    }
+    if resource.trim_end_matches('*').contains('*') || resource.contains("..") {
+        return bad("a resource is an exact name, or a prefix ending in *, with no ..");
+    }
+    Ok(())
+}
+
 fn place(map: &Map<String, Value>) -> Result<Place> {
     only(map, &["board", "device", "resource"])?;
     let (board, device, resource) = (word(map, "board", 48)?, word(map, "device", 64)?, word(map, "resource", MOST_TEXT)?);
     if !valid_name(board) || !(device == "*" || valid_fingerprint(device)) {
         return bad("scope names a board and a device fingerprint or *");
     }
-    if resource.trim_end_matches('*').contains('*') || resource.contains("..") {
-        return bad("a resource is an exact name, or a prefix ending in *, with no ..");
-    }
+    check_resource(resource)?;
     Ok(Place { board: board.into(), device: device.into(), resource: resource.into() })
 }
 
@@ -183,7 +192,7 @@ fn uses(map: &Map<String, Value>) -> Result<Option<u64>> {
 
 /// Read and check the body of an `issue` entry (its shape, not its signature).
 pub fn parse_issue(map: &Map<String, Value>) -> Result<Issue> {
-    only(map, &["op", "board", "gid", "to", "action", "scope", "at_ms", "until_ms", "uses", "conditions", "person", "sig"])?;
+    only(map, &["op", "board", "gid", "to", "action", "scope", "at_ms", "until_ms", "uses", "conditions", "person", "sig", "approval"])?;
     let (gid, action, person) = (word(map, "gid", 40)?, word(map, "action", 40)?, word(map, "person", 64)?);
     grantable(action)?;
     let (at_ms, until_ms) = (number(map, "at_ms")?, number(map, "until_ms")?);
@@ -198,7 +207,11 @@ pub fn parse_issue(map: &Map<String, Value>) -> Result<Issue> {
     if uses.is_some() && PORTABLE.contains(&action) && place.device == "*" {
         return bad("a grant with a number of uses on an action another device may use names the one device it is used on");
     }
-    Ok(Issue { gid: gid.into(), to: grantee(object(map, "to")?)?, action: action.into(), place, at_ms, until_ms, uses, review: conditions(map)?, person: person.into() })
+    let issue = Issue { gid: gid.into(), to: grantee(object(map, "to")?)?, action: action.into(), place, at_ms, until_ms, uses, review: conditions(map)?, person: person.into() };
+    if map.contains_key("approval") {
+        crate::approvals::challenge::check_entry(map, &issue)?;
+    }
+    Ok(issue)
 }
 
 /// What a `revoke` entry names: the grant, the key that signed it and why.
@@ -239,8 +252,12 @@ pub fn check_entry(map: &Map<String, Value>) -> Result<()> {
     }
 }
 
-/// The bytes the person's key signs: a domain line and the canonical body without its signature.
+/// The bytes the person's key signs: a domain line and the canonical body without its signature. A grant an approval wrote is signed
+/// as the approval's challenge, which the entry carries.
 pub fn signing_bytes(body: &Map<String, Value>) -> Vec<u8> {
+    if body.contains_key("approval") {
+        return crate::approvals::challenge::grant_bytes(body);
+    }
     let mut plain = body.clone();
     plain.remove("sig");
     format!("{SIGN_DOMAIN}{}", canonical(&Value::Object(plain))).into_bytes()

@@ -72,13 +72,14 @@ pub struct Ident {
     pub inbox_read: BTreeMap<String, u64>,
 }
 
-/// A model id or harness name as one short clean line.
-pub fn clean(text: &str, most: usize) -> Result<String> {
-    let text = text.trim();
-    if text.len() > most || text.chars().any(char::is_control) {
-        return Err(Error::Invalid(format!("a model or harness is one clean line of at most {most} bytes")));
-    }
-    Ok(text.into())
+/// The most characters of a model id or harness name that are kept.
+pub const MOST_WORD: usize = 48;
+
+/// A model id or harness name as it is kept: letters, digits and `._/-`, at most `MOST_WORD` of them, anything else a hyphen. A session
+/// chooses these strings and they are put in the words a person reads, so whatever it sends is made harmless here and is shown as
+/// unverified unless the node checked it.
+pub fn clean(text: &str) -> Result<String> {
+    Ok(text.trim().chars().take(MOST_WORD).map(|c| if c.is_ascii_alphanumeric() || "._/-".contains(c) { c } else { '-' }).collect())
 }
 
 /// The names of one board.
@@ -105,6 +106,19 @@ impl Registry {
         self.names.get(name)
     }
 
+    /// The main session ``name`` belongs to: the top of the chain of sessions that started it, which the node knows from who registered
+    /// whom and not from anything a session says about itself.
+    pub fn root(&self, name: &str) -> String {
+        let mut at = name;
+        for _ in 0..16 {
+            match self.names.get(at) {
+                Some(i) if !i.parent.is_empty() => at = i.parent.as_str(),
+                _ => break,
+            }
+        }
+        at.to_string()
+    }
+
     pub fn all(&self) -> &BTreeMap<String, Ident> {
         &self.names
     }
@@ -121,7 +135,7 @@ impl Registry {
 
     /// Record what a session says it runs on; a verified model is never lowered to a claim.
     pub fn claim_model(&mut self, name: &str, model: &str, harness: &str) -> Result<bool> {
-        let (model, harness) = (clean(model, 256)?, clean(harness, 64)?);
+        let (model, harness) = (clean(model)?, clean(harness)?);
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
         let new_harness = if harness.is_empty() { ident.harness.clone() } else { harness };
         let (new, state) = match (model.is_empty(), ident.model_state) {
@@ -140,7 +154,7 @@ impl Registry {
 
     /// Record that the node checked ``name`` runs ``model``; only the node's own checks call this.
     pub fn verify_model(&mut self, name: &str, model: &str) -> Result<()> {
-        let model = clean(model, 256)?;
+        let model = clean(model)?;
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
         (ident.model, ident.model_state) = (model, ModelState::Verified);
         self.save()
@@ -214,7 +228,7 @@ impl Registry {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
         }
         let (full, word) = (digest(harness, session), family_word(model));
-        let model = clean(model, 256)?;
+        let model = clean(model)?;
         let known = self.names.iter().find(|(_, i)| i.digest == full).map(|(n, _)| n.clone());
         if let Some(name) = known {
             self.admit(&name, parent, lineage, proven)?;
@@ -227,7 +241,7 @@ impl Registry {
             .ok_or_else(|| Error::Quota("no free name".into()))?;
         let state = if model.is_empty() { ModelState::Unknown } else { state };
         self.names.insert(name.clone(), Ident {
-            digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness, 64)?,
+            digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness)?,
             retired: false, retired_reason: String::new(), seen_ms: now_ms, lineage: lineage.to_vec(), inbox_read: BTreeMap::new(),
         });
         self.save()?;

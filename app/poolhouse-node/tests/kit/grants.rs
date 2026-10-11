@@ -149,11 +149,10 @@ impl Person {
         json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "anchor": anchor, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
     }
 
-    /// Enrol this key on the node ``call`` reaches (its state directory is ``dir``), carried by the session ``token``, with
-    /// the one-time secret a person's command at a terminal would have left there.
-    pub fn enroll(&self, dir: &Path, call: Call, token: &str) -> Value {
+    /// Enrol this key on the node ``call`` reaches, carried by the session ``token``, with the one-time secret the person's yes makes.
+    pub fn enroll(&self, _dir: &Path, call: Call, token: &str) -> Value {
         let mut params = self.enrolment("a test person", None);
-        params["secret"] = json!(expect_enrolment(dir));
+        params["secret"] = json!(first_secret(call, token, "key", &self.public()));
         call("person_enroll", "", token, params)
     }
 
@@ -241,13 +240,31 @@ pub fn gid_of(name: &str, action: &str) -> String {
     format!("g-{}", &sha256_hex(format!("{name} {action}").as_bytes())[..20])
 }
 
-/// Leave in the state directory ``dir`` what a person's command at a terminal leaves for the first enrolment: the hash of a
-/// fresh secret, which is returned.
-pub fn expect_enrolment(dir: &Path) -> String {
-    let secret = format!("secret-{}", sha256_hex(&now_ms().to_be_bytes()));
-    let hash = json!({"sha256": sha256_hex(secret.as_bytes()), "at_ms": now_ms()});
-    std::fs::write(dir.join("enroll_secret.json"), hash.to_string()).unwrap();
-    secret
+/// Ask the person for the one-time secret the first key (``purpose`` `key`) or the first phone (`phone`) is added with, as the session
+/// ``token``. A node of a test says yes at once (`kit::node`); a node process asks on the terminal named here, where this test types `yes`
+/// as a person would, so the same binary a person installs is the one that is run.
+pub fn first_secret(call: Call, token: &str, purpose: &str, public: &str) -> String {
+    #[cfg(unix)]
+    let mut screen = super::screen::screen();
+    #[cfg(unix)]
+    let named = json!({"purpose": purpose, "public": public, "terminal": screen.name});
+    #[cfg(not(unix))]
+    let named = json!({"purpose": purpose, "public": public});
+    let asked = call("presence_ask", "", token, named);
+    assert_eq!(asked["ok"], true, "ask the prompt: {asked}");
+    let mut said = asked;
+    #[cfg(unix)]
+    if said["result"]["state"] == "asking" {
+        screen.sees("Type yes");
+        screen.types("yes\n");
+    }
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while said["result"]["state"] == "asking" && std::time::Instant::now() < end {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        said = call("presence_status", "", token, json!({}));
+    }
+    assert_eq!(said["result"]["state"], "confirmed", "the person said yes: {said}");
+    said["result"]["secret"].as_str().expect("the secret comes once").to_string()
 }
 
 /// Enrol the test person on the node ``call`` reaches (its state directory is ``dir``), unless it already is.

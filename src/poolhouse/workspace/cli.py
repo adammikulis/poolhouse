@@ -14,6 +14,7 @@ from poolhouse.command import Group, flag, option
 from poolhouse.log import say
 from poolhouse.sentinel import human
 from poolhouse.workspace import (
+    approval_cli,
     authority_cli,
     board_cli,
     chat,
@@ -30,6 +31,7 @@ from poolhouse.workspace import (
     notes_cli,
     nudge,
     person_view,
+    phone_cli,
     render,
     rooms_cli,
     scratch_cli,
@@ -108,6 +110,10 @@ for _name, _help, _options, _handler in grants_cli.TABLE:
     COMMANDS.add(_name, grants_cli.reader(_handler), help=_help, options=[*NODE_COMMON, *_options])
 for _name, _help, _options, _handler in grants_cli.PERSON:
     COMMANDS.add(_name, grants_cli.person_runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
+COMMANDS.add("approval", approval_cli.COMMAND, options=[*NODE_COMMON, *approval_cli.OPTIONS],
+             help="ask a person's phone for grants (request), wait for the answer, read what became of it; a person answers with decide")
+COMMANDS.add("phone", phone_cli.COMMAND, options=[*NODE_COMMON, *phone_cli.OPTIONS],
+             help="add the phone a person approves from (add: shows a code to scan), list the phones, remove one; add and remove are a person's")
 COMMANDS.add("nudge", board_cli.guarded(board_cli.nudging),
              help="print one line summarising what waits for you (nothing when nothing does); for hooks",
              options=[*NODE_COMMON, flag("--hook", default="", choices=("", *nudge.EVENTS),

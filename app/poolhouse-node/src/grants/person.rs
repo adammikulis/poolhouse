@@ -1,9 +1,8 @@
 //! The person's keys: the Ed25519 public keys enrolled on this node. A grant counts only when one of them signed
 //! it. The private halves live in the person's keystore, never here, and nothing in this module signs.
 //!
-//! The first key is enrolled with a one-time secret: a person's command at a terminal writes the secret's hash into
-//! the state directory (`SECRET_FILE`) and presents the secret to `person_enroll`. The node reads the hash from that
-//! file only, so no request can set one.
+//! The first key is enrolled with a one-time secret that the operating system's own prompt made when the person said yes to it
+//! (`presence`): the node keeps it in memory, never in a file, and no request can set one.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -12,34 +11,35 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::fsutil::{hex, sha256_hex, unhex, write_atomic};
+use crate::fsutil::{sha256_hex, unhex, write_atomic};
 
 use super::spec::SKEW_MS;
 
 const MOST_KEYS: usize = 8;
 /// How many used nonces are remembered at once; past it nothing more is accepted until the oldest age out.
 const MOST_NONCES: usize = 256;
-/// The file beside `persons.json` that holds the hash of the secret the first key is enrolled with.
-pub const SECRET_FILE: &str = "enroll_secret.json";
 /// The file beside `persons.json` that holds when each key that was removed was removed: a removed key is never enrolled again.
 pub const REMOVED_FILE: &str = "persons_removed.json";
 /// The file beside `persons.json` that holds the nonces a person's key signed that were used, with the time.
 pub const NONCES_FILE: &str = "persons_nonces.json";
-/// How long the secret a person's command made is good for.
-pub const SECRET_TTL_MS: u64 = 10 * 60 * 1000;
+
+/// The key algorithms a person key may use: Ed25519 (a key kept beside the node, signed with a typed `yes`) and ECDSA P-256 with SHA-256
+/// (a phone's Keystore key, signatures in DER).
+pub const ED25519: &str = "ed25519";
+pub const P256: &str = "p256";
+
+fn ed25519() -> String {
+    ED25519.into()
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Key {
-    /// The public key, 64 hex digits.
+    /// The public key in hex: 64 digits for Ed25519, 130 for a P-256 point (`04` and both coordinates).
     pub public: String,
     pub label: String,
     pub at_ms: u64,
-}
-
-#[derive(Deserialize)]
-struct Secret {
-    sha256: String,
-    at_ms: u64,
+    #[serde(default = "ed25519")]
+    pub alg: String,
 }
 
 /// The enrolled keys, by fingerprint (SHA-256 of the public key), kept in one atomically replaced file.
@@ -53,20 +53,44 @@ pub struct Persons {
     used: BTreeMap<String, u64>,
 }
 
-fn same(a: &str, b: &str) -> bool {
-    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
-}
-
 fn public_of(public: &str) -> Result<VerifyingKey> {
     let bytes: [u8; 32] = unhex(public).and_then(|b| b.try_into().ok()).ok_or_else(|| Error::Invalid("a person's key is a public key of 64 hex digits".into()))?;
     VerifyingKey::from_bytes(&bytes).map_err(|_| Error::Invalid("that is not a public key".into()))
 }
 
-/// Whether ``sig`` (hex) is ``public``'s signature over ``message``.
+/// Whether ``sig`` (hex) is the Ed25519 key ``public``'s signature over ``message``.
 pub fn verifies(public: &str, message: &[u8], sig: &str) -> bool {
     let Ok(key) = public_of(public) else { return false };
     let Some(sig) = unhex(sig).and_then(|b| <[u8; 64]>::try_from(b).ok()) else { return false };
     key.verify_strict(message, &Signature::from_bytes(&sig)).is_ok()
+}
+
+/// The bytes of a P-256 public key given in hex: an uncompressed point of 65 bytes.
+pub fn p256_point(public: &str) -> Option<Vec<u8>> {
+    unhex(public).filter(|b| b.len() == 65 && b[0] == 4)
+}
+
+/// Whether ``sig`` (hex, DER) is the P-256 key ``public``'s ECDSA signature with SHA-256 over ``message``.
+pub fn verifies_p256(public: &str, message: &[u8], sig: &str) -> bool {
+    let (Some(point), Some(sig)) = (p256_point(public), unhex(sig)) else { return false };
+    sig.len() <= 72 && ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_ASN1, point).verify(message, &sig).is_ok()
+}
+
+/// Whether ``sig`` is the signature of the key ``public`` of algorithm ``alg`` over ``message``.
+pub fn verifies_with(alg: &str, public: &str, message: &[u8], sig: &str) -> bool {
+    match alg {
+        P256 => verifies_p256(public, message, sig),
+        _ => verifies(public, message, sig),
+    }
+}
+
+/// The fingerprint a key of ``alg`` is known by: SHA-256 of its public bytes.
+pub fn fingerprint_of(alg: &str, public: &str) -> Result<String> {
+    let bytes = match alg {
+        P256 => p256_point(public).ok_or_else(|| Error::Invalid("a phone's key is an uncompressed P-256 point of 130 hex digits".into()))?,
+        _ => public_of(public)?.as_bytes().to_vec(),
+    };
+    Ok(sha256_hex(&bytes))
 }
 
 impl Persons {
@@ -99,16 +123,7 @@ impl Persons {
 
     /// Whether the enrolled key ``fingerprint`` signed ``message``.
     pub fn signed(&self, fingerprint: &str, message: &[u8], sig: &str) -> bool {
-        self.keys.get(fingerprint).is_some_and(|k| verifies(&k.public, message, sig))
-    }
-
-    /// Whether ``secret`` is the one a person's command left for the first enrolment, fresh at ``now_ms``. The file is
-    /// removed whatever the answer, so one guess is all a secret allows.
-    pub fn take_secret(&self, secret: &str, now_ms: u64) -> bool {
-        let file = self.path.with_file_name(SECRET_FILE);
-        let found = std::fs::read(&file).ok().and_then(|bytes| serde_json::from_slice::<Secret>(&bytes).ok());
-        let _ = std::fs::remove_file(&file);
-        found.is_some_and(|s| !secret.is_empty() && now_ms >= s.at_ms && now_ms - s.at_ms <= SECRET_TTL_MS && same(&s.sha256, &sha256_hex(secret.as_bytes())))
+        self.keys.get(fingerprint).is_some_and(|k| verifies_with(&k.alg, &k.public, message, sig))
     }
 
     /// Whether the key ``fingerprint`` was removed from this node.
@@ -143,10 +158,14 @@ impl Persons {
         Ok(key)
     }
 
-    /// Enrol ``public``; its fingerprint. Enrolling a key already held changes nothing, and a key that was removed is not enrolled again.
+    /// Enrol the Ed25519 key ``public``; its fingerprint. Enrolling a key already held changes nothing, and a key that was removed is not enrolled again.
     pub fn add(&mut self, public: &str, label: &str, at_ms: u64) -> Result<String> {
-        let public = public_of(public)?;
-        let fingerprint = sha256_hex(public.as_bytes());
+        self.add_key(ED25519, public, label, at_ms)
+    }
+
+    /// Enrol the key ``public`` of algorithm ``alg`` (`ed25519` or `p256`), as `add` does.
+    pub fn add_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64) -> Result<String> {
+        let fingerprint = fingerprint_of(alg, public)?;
         if self.removed.contains_key(&fingerprint) {
             return Err(Error::Denied("that key was removed from this node and is not enrolled again: make a new key on that device".into()));
         }
@@ -154,16 +173,22 @@ impl Persons {
             if self.keys.len() >= MOST_KEYS {
                 return Err(Error::Quota("this node holds as many person keys as it will".into()));
             }
-            self.keys.insert(fingerprint.clone(), Key { public: hex(public.as_bytes()), label: label.into(), at_ms });
+            self.keys.insert(fingerprint.clone(), Key { public: public.to_ascii_lowercase(), label: label.into(), at_ms, alg: alg.into() });
             write_atomic(&self.path, &serde_json::to_vec(&self.keys)?)?;
         }
         Ok(fingerprint)
+    }
+
+    /// The enrolled key ``fingerprint``.
+    pub fn get(&self, fingerprint: &str) -> Option<&Key> {
+        self.keys.get(fingerprint)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fsutil::hex;
     use ed25519_dalek::SigningKey;
 
     fn public(seed: u8) -> String {

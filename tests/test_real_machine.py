@@ -190,6 +190,21 @@ def test_the_node_never_touches_the_operating_systems_keystore():
     assert "--key-stdin" in (app / "src" / "main.rs").read_text(encoding="utf-8")
 
 
+NODE_ASKS_FIRST = {"presence/mod.rs": "osascript ... with administrator privileges (the first key and the first phone): the node asks only for a state directory under the account's own "
+                                        "~/.poolhouse (`on_real_home`), and the launcher passes `--presence os` only when `real_machine.allowed()` (`node_launch._presence`)"}
+NODE_CALL = re.compile(r"osascript|pkexec|administrator privileges|authtrampoline|SecKeychain|SecItem|Authorization(?:Execute|Create)")
+
+
+def test_the_node_raises_an_operating_system_prompt_only_from_the_reviewed_file_and_only_for_the_real_home():
+    app = Path(__file__).resolve().parents[1] / "app" / "poolhouse-node" / "src"
+    found = {path.relative_to(app).as_posix() for path in app.rglob("*.rs") if NODE_CALL.search(path.read_text(encoding="utf-8"))}
+    assert found == NODE_ASKS_FIRST.keys(), "a new place in the node that can raise a system prompt: review it, make it ask on_real_home first and list it here"
+    prompt = (app / "presence" / "mod.rs").read_text(encoding="utf-8")
+    assert "if !on_real_home(&self.state)" in prompt and prompt.index("if !on_real_home") < prompt.index("dialog(what)"), "the refusal comes before the dialog is built"
+    launcher = (SRC / "node_launch.py").read_text(encoding="utf-8")
+    assert "real_machine.allowed()" in launcher, "the launcher asks real_machine before it passes --presence os"
+
+
 @pytest.fixture
 def nothing_spawns(monkeypatch):
     """Any process started through `subprocess.run` fails the test: the refusal must come before it."""

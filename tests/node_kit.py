@@ -24,8 +24,9 @@ from typing import Any
 
 import pytest
 import testnode
+from pool_check import wire
 
-from poolhouse import node_binary as node_binary_module, node_launch, node_supervise
+from poolhouse import node_binary as node_binary_module, node_launch, node_pool, node_supervise
 from poolhouse.board import (
     client as board_client,
     credentials,
@@ -83,13 +84,21 @@ def person_keys(directory: Path, cls: type[ConfirmedKeys] = ConfirmedKeys) -> Co
     return cls(directory, describe=board_grants.describe, ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
 
 
+def enrol_first(client: board_client.Client, token: str, key: Signer | ConfirmedKeys) -> dict:
+    """The first person key on the node, after the person types yes to the question the node writes on a terminal of its own
+    (`wire.answer_presence`): the same steps as a person's, against the node as shipped."""
+    said = wire.answer_presence(client.state, token, "key", key.public.hex())
+    assert said["ok"] and said["result"]["state"] == "confirmed", f"the person's yes was not taken: {said}"
+    return board_grants.enrol(client, token, {**board_grants.enrolment(key, "a test person"), "secret": said["result"]["secret"]})
+
+
 def allow(carrier: board_session.Session, person: Signer, *actions: str, to: dict | None = None, **limits: Any) -> list[str]:
     """``person`` (a test key, enrolled on the node first) grants the session ``carrier`` (or ``to``) every action of the
     registry, or just ``actions``, within ``limits`` (``resource``, ``uses``, ``lasts_ms``); the grant ids. The carrier
     only carries the request."""
     held = board_grants.listing(carrier)
     if board_grants.fingerprint(person.public) not in held.persons:
-        board_grants.enrol_first(carrier.client, carrier.token, person, "a test person")
+        enrol_first(carrier.client, carrier.token, person)
     named = to or {"kind": "session", "name": carrier.name}
     return [board_grants.issue(carrier, person, board_grants.Want(a, named, **limits))["gid"] for a in actions or held.registry["actions"]]
 
@@ -151,7 +160,7 @@ class WorkspaceNode:
         if held:
             board_grants.enrol(self.client, who.token, board_grants.approve(board_grants.enrolment(keys, "a test person"), self.person, board_grants.here(self.client)))
         else:
-            board_grants.enrol_first(self.client, who.token, keys, "a test person")
+            enrol_first(self.client, who.token, keys)
         return keys
 
     def session(self, who: Member) -> board_session.Session:
@@ -215,6 +224,10 @@ class WorkspaceNode:
         os.close(leader)
         return proc.returncode, b"".join(chunks).decode(), message
 
+    def start(self) -> dict:
+        """Start the node (again), asking the person on a terminal it reads itself like every node of the tests."""
+        return node_launch.ensure_node(self.state, extra=[*node_pool.network_args(), *wire.PRESENCE])
+
     def stop(self) -> None:
         """Stop the node and its supervisor and wait for them to go."""
         node_launch.stop_node(self.state)
@@ -239,7 +252,7 @@ def workspace_node(node_binary, monkeypatch, request):
             monkeypatch.delenv(name, raising=False)
     node_supervise.point(state, node_binary, node_binary_module.sha256(node_binary))
     node = WorkspaceNode(state, board_client.Client(state), node_binary)
-    node_launch.ensure_node(state)
+    node.start()
     try:
         yield node
     finally:

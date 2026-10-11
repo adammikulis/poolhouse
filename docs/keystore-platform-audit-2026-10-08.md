@@ -28,11 +28,11 @@ other secret is wrapped (AES-256-GCM, HKDF subkey per purpose and owner) and kep
 | legacy items (`poolhouse-memory`, `onboard-signing-<hash>`, `<NAME>`) | pre-master items | OS keystore | migrated and deleted on first use by a person's command | yes | kept when verification fails |
 | Android `DeviceVault.java` | device grant | Android Keystore, user-authentication required | the companion app | biometric/PIN by design | closed |
 
-Test isolation (superseded 2026-10-11: `poolhouse.real_machine` allows the machine's own keystore only to the installed software on the real home, no variable; the text below describes the earlier variable): `tests/conftest.py` set `POOLHOUSE_NO_REAL_KEYSTORE=1` and
+Test isolation (superseded 2026-10-11: `poolhouse.real_machine` allows the machine's own keystore only to the installed software on the real home, no variable; the text below describes the earlier variable): `tests/conftest.py` set `the former no-real-keystore variable` and
 `PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring` for the run and every child, refuses the
 real backends' `get/set/delete_password` in process, installs an in-memory ring and patches
 `keystore.interactive` to true. `runtime_deploy._clean_environment` (the smoke run of a new
-runtime) sets `POOLHOUSE_NO_REAL_KEYSTORE=1` and `POOLHOUSE_NONINTERACTIVE=1`.
+runtime) sets `the former no-real-keystore variable` and `POOLHOUSE_NONINTERACTIVE=1`.
 
 ## 2. Platform matrix
 
@@ -86,7 +86,7 @@ true, so it counted as a person and could create the master behind a Keychain pr
 on `test-agent-shell-baseline` (`scripts/testagentenv_pytest.py`): clearing the markers per test cannot
 make an in-process test reach a real keychain, because `_keystore_has_a_person` already forces
 `interactive()` true, the `MemoryRing` is installed, the real backends' methods raise, and
-`POOLHOUSE_NO_REAL_KEYSTORE=1` and `PYTHON_KEYRING_BACKEND=...fail.Keyring` are in the environment every
+`the former no-real-keystore variable` and `PYTHON_KEYRING_BACKEND=...fail.Keyring` are in the environment every
 child inherits. A test that builds a child environment from scratch without those two variables would
 reach the keychain on a macOS desktop; I found no such test (`test_compare_harnesses`,
 `test_embedding` build scratch environments but never touch the keystore). The sentence "Poolhouse will

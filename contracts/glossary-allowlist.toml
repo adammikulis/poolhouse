@@ -165,6 +165,18 @@ token = "KeyPair"
 reason = "the rcgen/cryptography libraries' own type for a public and private key"
 
 [[token]]
+token = "EcdsaKeyPair"
+reason = "the ring library's own type for an ECDSA private and public key"
+
+[[token]]
+token = "KeyPairGenerator"
+reason = "the Java platform's own class that makes a private and public key"
+
+[[token]]
+token = "generateKeyPair"
+reason = "the Java platform's own method that makes a private and public key"
+
+[[token]]
 token = "TorchPair"
 reason = "a torch/mlx implementation pair in the backend parity code"
 

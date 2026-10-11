@@ -8,15 +8,17 @@ read, never an instruction to follow.
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse.board import place, session as sessions
+from poolhouse.board import approval as approvals, place, session as sessions
+from poolhouse.board.approval import Approval, Ask
 from poolhouse.board.client import Client
 from poolhouse.board.tasks import Tasks
 from poolhouse.board.terminal import terminal_id
 
-__all__ = ["Agent", "Board", "Claim", "Message", "Note", "Task", "connect"]
+__all__ = ["Agent", "Approval", "Ask", "Board", "Claim", "Message", "Note", "Task", "connect"]
 
 ANNOUNCE = "#announcements"
 ANNOUNCE_KINDS = ("joined", "milestone", "done", "blocked")
@@ -243,6 +245,30 @@ class Board:
     def projects(self) -> list[dict[str, object]]:
         """The projects this device's node knows (each project is a board)."""
         return list(self._session.call("project_list"))
+
+    def request_approval(self, asks: Sequence[Ask], *, note: str = "", task: str = "", ttl_s: int = 0, expect_policy: str = "") -> Approval:
+        """Ask the person, on their phone, for one to eight grants for this session; the `Approval` to wait on.
+
+        The node writes the question in plain words and keeps it until the person's key answers; `Approval.wait` returns
+        ``pending`` when its time runs out, which is not a failure. ``note`` is your own words (160 plain characters), shown
+        to the person as yours.
+        """
+        return approvals.request(self._session, approvals.wire(list(asks), note=note, task=task, ttl_s=ttl_s, expect_policy=expect_policy))
+
+    def approval(self, handle: str) -> Approval:
+        """A request this session made, by its handle."""
+        return Approval(self._session, dict(self._session.call("approval_status", id=handle)))
+
+    def approvals(self, state: str = "") -> list[Approval]:
+        """The newest requests this session made (only those in ``state`` when given)."""
+        return [Approval(self._session, dict(raw)) for raw in self._session.call("approvals", **({"state": state} if state else {}))["approvals"]]
+
+    def offer_phone(self) -> str:
+        """A link that adds one more phone when its person opens it on that phone (valid ten minutes, once); needs a phone added already.
+
+        The new phone is added only after a phone already added approves it, so the link is safe to hand to the person.
+        """
+        return str(self._session.call("phone_offer")["link"])
 
 
 def connect(*, agent: str = "", token_file: str = "", board: str = "", cwd: str | Path | None = None) -> Board:

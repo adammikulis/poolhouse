@@ -17,7 +17,17 @@ import tempfile
 import time
 from pathlib import Path
 
-from poolhouse import errors, jobs, lan, node_binary, node_pool, node_supervise, runtime, win32
+from poolhouse import (
+    errors,
+    jobs,
+    lan,
+    node_binary,
+    node_pool,
+    node_supervise,
+    real_machine,
+    runtime,
+    win32,
+)
 from poolhouse.command import Group, flag
 from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, held_by, only_one, pid_alive
@@ -58,6 +68,24 @@ def supervised(state: Path) -> bool:
     return bool(held_by(state / node_supervise.LOCK))
 
 
+PRESENCE_FLAG = "--presence"
+
+
+def _presence(extra: list[str] | None) -> list[str]:
+    """``extra`` with the way the node asks the person for the first key or phone. The installed software on the real home asks with the
+    operating system's prompt and no other way: a terminal can be answered by the program that asks, so `--presence terminal` is dropped
+    there (and the node refuses it on that home as well). Anywhere else (a test, a checkout, a rig, a server) `--presence os` is dropped, so
+    none raises a dialog (`real_machine`), and `--presence terminal` is the caller's own word."""
+    real, words, out, i = real_machine.allowed(), list(extra or []), [], 0
+    while i < len(words):
+        if words[i] != PRESENCE_FLAG:
+            out.append(words[i])
+        elif words[i + 1 : i + 2] == ["terminal"] and not real:
+            out += words[i : i + 2]
+        i += 2 if words[i] == PRESENCE_FLAG else 1
+    return [*out, PRESENCE_FLAG, "os"] if real else out
+
+
 def _start_supervisor(state: Path, extra: list[str]) -> None:
     argv = ["supervise", "--state", str(state), *(f"--arg={word}" for word in extra)]
     jobs.detach("poolhouse.node_launch", argv, log=state / "supervisor.log")
@@ -75,7 +103,7 @@ def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wa
     state = state or default_state()
     if extra is None and state == default_state():
         extra = node_pool.network_args()
-    extra = lan.clamp(extra) if extra else extra
+    extra = _presence(lan.clamp(extra) if extra else extra)
     if (said := node_health(state)) is not None:
         return said
     state.mkdir(mode=0o700, parents=True, exist_ok=True)

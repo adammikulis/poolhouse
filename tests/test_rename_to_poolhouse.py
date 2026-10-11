@@ -42,8 +42,6 @@ def test_each_old_spelling_has_a_rule(old, new):
     "https://raw.githubusercontent.com/adammikulis/ml-stack/main/install.sh",
     "git clone git@github.com:adammikulis/ml-stack.git",
     "~/Documents/repos/ml-stack",
-    "package com.mlstack.companion;",
-    "src/main/java/com/mlstack/companion",
     'b"ml-stack/keystore/v1"',
     'b"ml-stack/activity/v1"',
     'b"ml-stack/v1"',
@@ -87,8 +85,6 @@ def test_paths_follow_the_same_names():
     assert rename.target("src/ml_stack/home.py") == "src/poolhouse/home.py"
     assert rename.target("app/poolside-node/Cargo.toml") == "app/poolhouse-node/Cargo.toml"
     assert rename.target("packaging/ml-stack.spec") == "packaging/poolhouse.spec"
-    assert rename.target("app/android/src/main/java/com/mlstack/companion/Invite.java") == (
-        "app/android/src/main/java/com/mlstack/companion/Invite.java")
 
 
 def test_history_and_the_rename_s_own_records_are_not_moved_or_rewritten(tmp_path):

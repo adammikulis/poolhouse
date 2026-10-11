@@ -226,7 +226,10 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
 | `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
-| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys |
+| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys, each with its `alg` (`ed25519` or `p256`) |
+| `approval_request`, `approval_status`, `approval_cancel`, `approvals` | board, token | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` / `id` / `id` / `state` | the request with its plain-words `text` and `challenge` / its state and the grants it wrote / the request / the session's own requests; docs/phone-approval.md |
+| `approval_pending`, `approval_decide` | token (any registered session; a session only carries a decision) | `key, sig, at_ms` / `id, decision (approve, approve_repeat, deny, block), key, sig, text_sha256, pick` | the session's own waiting requests, or every one with the signature of an enrolled key made in the last thirty seconds / the request decided, once, by the signature of an enrolled key |
+| `phone_info`, `phone_offer`, `phones` | none, token, token | `secret` / / | where phones reach this node and its pinned certificate / a code for a further phone (once a person key exists) / the phones held |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
 device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
@@ -419,11 +422,23 @@ another device may use (`task_authority`, `note_verify`, `sync_now`, `shard_call
 kept where it is spent.
 
 **Who may sign.** The keys enrolled in `persons.json`. `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
-signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal,
-makes a random secret, writes only its SHA-256 and the time beside `persons.json` (`enroll_secret.json`, mode 0600) and presents the
-secret to `person_enroll` in the same process. The node reads that hash from the file and from no request, accepts the secret once and
-for ten minutes, and spends it on any guess, so a wrong secret ends the attempt; a node that holds a key never asks for one. A session
-that registered first, or any session, therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms`, `nonce` and `anchor` add a second: `approval` is an enrolled key's signature over the
+signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal, asks the node (`presence_ask`)
+to allow the session to add the first key, and the node asks the person itself: the operating system's own prompt (a password or a fingerprint,
+on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when
+`poolhouse.real_machine.allowed()`, and the node itself asks only for the account's own node directory (`~/.poolhouse/node`, that directory and
+no other under it, never as the administrator account). **On the real home the operating system's prompt is the only presence**: a computer
+with no such prompt (Windows, a Linux without `pkexec`) refuses and says so plainly. The prompt shows the words of the key being added, the yes
+is for that key only (`presence_ask` takes its `public`; another key presented with the secret is refused), and the prompt ends when two minutes
+are up whether or not anything polls. For a node on any other state directory (a server, a container, the pool check's rig, a test) started
+with `--presence terminal`, the node writes the question on the terminal device the asker names and reads the typed `yes` itself; it refuses that
+mode on the real home, because the program that asks could open a terminal of its own and answer. A node started with no `--presence`
+cannot ask and refuses the first key and the first phone. On a yes the node makes the random secret in its memory (never a file), hands it
+once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
+attempt; a node that holds a key never asks. There is no cargo feature, argument or environment variable that answers for the person, in any
+binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
+(`tests/pool_check/wire.py`, `answer_presence`). Windows has no operating-system prompt the node can raise and reads no terminal for the node, so
+the first key and the first phone are refused there until a presence step is built for it. A session that registered first, or any session,
+therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms`, `nonce` and `anchor` add a second: `approval` is an enrolled key's signature over the
 new key's public key, name and proof time, the approver's fingerprint, this node's device fingerprint, the approval time (five minutes),
 the nonce and the terminal it was signed in (`anchor`, the shell of that terminal, which the request must come from). The node accepts a
 nonce once, and remembers it for ten minutes across restarts (`persons_nonces.json`), so an approval enrols that key on that node once,
@@ -434,13 +449,27 @@ signed stops counting at once, and a removed key is never enrolled again (the no
 `persons_removed.json`): an entry it signed with a time ahead of its removal, on this device or arriving from another, is as void as one
 signed before it, since the node has no record of when a foreign entry was written that a signer could not choose. A person who wants
 that device back enrols a new key made there. The last key is never removed, and each enrolment and
-removal is written to the pool board. The hash file is a write to the state directory, so this keeps out every session that has only
-the API. A process of the same operating-system user that writes the directory can enrol a key too, by planting the hash of a secret
-of its own in `enroll_secret.json` and presenting that secret, and any session can spend the person's one-time secret with a wrong
-guess so that the person runs `grants-setup` again: neither is stopped by the node; both are inside the boundary of "Key custody".
+removal is written to the pool board. The secret is in the node's memory, so a program that can write the state directory (a planted `enroll_secret.json`) enrols nothing,
+and a session that asks gets a secret only when the person answers. What an agent can still do is ask repeatedly (the node asks one question at a
+time, refuses for a few minutes after a no, and the prompt names the session that asked), spend the secret of the person's yes with a wrong guess
+so that the person asks again. A node that asks on a terminal (never on the real home) can be answered by a program that opens a pseudo-terminal
+of its own, which is why the real home allows the operating system's prompt only. On Linux a polkit rule that lets the account authenticate
+without a password (or `pkexec` set up to allow the action to anyone) lets the prompt return yes with nobody answering: that is accepted, and
+the person who runs such a rule has already given that power to every program of the account.
 
-**Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` (and `enroll_secret.json`
-if there is one) in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
+**Accepted residual: `persons.json` is a plain file.** The OS user can edit it with the node stopped (documented at `src/grants/person.rs`), so
+a program that can stop the node and write its state directory can plant a key; the operating-system sandbox of agents (slice S0 of
+`docs/compromised-agents.md`) is what closes it, not the node.
+
+**A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` (its fingerprint is the SHA-256 of its 65-byte
+public point) and signs only approvals (docs/phone-approval.md): an agent asks (`approval_request`), the node writes the question in plain words, the phone's key
+signs a challenge that binds the text, the node and the request, and an approved request writes ordinary `grant` entries whose body carries that approval instead
+of a signature over the grant, so they count wherever a grant a person typed `yes` for counts. The phone endpoint (`--phone ADDR`, or the address in
+`phone.json` in the state directory) is HTTPS on one P-256 certificate (`phone.cert`, pinned by the code a person scans); `phones.json` holds each phone, its token's hash
+and its push address; `approvals.json` the requests; `fatigue.json` the declines, timeouts, holds and pushes that keep a request made again and again from wearing the person down (docs/phone-approval.md, "Approval fatigue"); `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
+phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it.
+
+**Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
 the node stopped no session can ask for it, and every grant the deleted key signed reads as ignored until the new key signs new ones.
 It is the only way to remove a node's last key.
 
@@ -459,8 +488,9 @@ terminal of its own and goes through the commands. It does not stop a process of
 pseudo-terminal it types `yes` into), imports the key code directly, injects keystrokes into the person's terminal, or reads the
 key file and its passphrase or the keychain item, and signs without being asked. Real protection needs something a process of the
 user cannot answer: a per-use operating-system user-presence prompt (Touch ID) or a hardware key that signs only on a touch, or a
-signing helper process under a different operating-system identity that holds the key and puts the question itself. Both are planned
-and neither is built. The person's screen (the UI daemon) has no terminal, so a refusal there names the grant and the person runs the
+signing helper process under a different operating-system identity that holds the key and puts the question itself. A phone's key is the first of these
+(docs/phone-approval.md): its signature needs the person's fingerprint on another device, which no process on the computer can answer. The
+other two are planned and not built. The person's screen (the UI daemon) has no terminal, so a refusal there names the grant and the person runs the
 command at a terminal; an approval dialog in the screen is planned.
 
 What a signature is good for once it is made: a grant names the board, the session, the action, the device and its end, and is a
@@ -560,7 +590,11 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | links a lineage makes | 6 a minute | `quota` |
 | projects a node holds | 256 | `quota` |
 | projects a lineage adds | 10 a minute | `quota` |
-| person keys a node holds | 8 | `quota` |
+| person keys a node holds, phones included | 8 | `quota` |
+| requests waiting on a node; waiting from one session; requests one session makes | 64; 8; 6 in ten minutes | `quota` |
+| a request's asks, its text, its note | 8, 6000 bytes, 160 characters | `invalid` |
+| codes for a phone the node makes | 3 an hour | `quota` |
+| connections the phone endpoint holds; a request body | 48; 64 KiB | the connection closes |
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
 | messages, notes and claims one session writes | 30 a minute; a subagent 10, and what its subagents write together is held to 120 a minute of their own, which is none of the parent's 30 | `quota` |

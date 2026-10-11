@@ -18,7 +18,7 @@ struct Proc {
 
 fn start(state: &Path) -> Child {
     let child = Command::new(env!("CARGO_BIN_EXE_poolhouse-node"))
-        .args(["run", "--state"]).arg(state).args(["--listen", "127.0.0.1:0"])
+        .args(["run", "--state"]).arg(state).args(["--listen", "127.0.0.1:0", "--presence", "terminal"])
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
     eventually("the node to answer", 20, || Client::connect(state).and_then(|mut c| c.call("hello", "", "", json!({}))).is_ok());
     child

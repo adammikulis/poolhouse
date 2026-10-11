@@ -14,26 +14,25 @@ import secrets
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Protocol
 
+from poolhouse.board import presence
 from poolhouse.board.client import Client
 from poolhouse.board.session import Session
-from poolhouse.files import write_json
-from poolhouse.platform import private_file
 
-__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approve", "canonical", "default_bundle", "describe", "duration_ms",
-           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "here", "issue", "listing", "log", "rebind", "revoke",
-           "sign_issue", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
+__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
+           "enrol", "enrol_first", "enrol_line", "enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
+           "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
 APPROVE_DOMAIN = b"poolhouse/person-approve/v1\n"
 UNENROLL_DOMAIN = b"poolhouse/person-unenroll/v1\n"
 REBIND_DOMAIN = b"poolhouse/session-rebind/v1\n"
+APPROVAL_DOMAIN = b"poolhouse/approval/v1\n"
+LIST_DOMAIN = b"poolhouse/approval-list/v1\n"
 FRESH_MS = 5 * 60 * 1000
 """How long the node takes a person's signature as fresh."""
-ENROLMENT_HASH_FILE = "enroll_secret.json"
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
 
@@ -68,17 +67,17 @@ def duration_ms(text: str) -> int:
     return ms
 
 
-def _plain(value: Any) -> None:
-    """Refuse text the node would not read back byte for byte: grants are plain ASCII."""
-    if isinstance(value, str) and (not value.isascii() or any(ord(c) < 32 for c in value)):
+def _plain(value: Any, *, lines: bool = False) -> None:
+    """Refuse text the node would not read back byte for byte: grants are plain ASCII (a request's text may break lines)."""
+    if isinstance(value, str) and (not value.isascii() or any(ord(c) < 32 and not (lines and c == "\n") for c in value)):
         raise ValueError("a grant is plain ASCII text")
     if isinstance(value, dict):
         for key, item in value.items():
-            _plain(key)
-            _plain(item)
+            _plain(key, lines=lines)
+            _plain(item, lines=lines)
     elif isinstance(value, list):
         for item in value:
-            _plain(item)
+            _plain(item, lines=lines)
 
 
 def _now_ms() -> int:
@@ -173,27 +172,15 @@ def approve(proof: dict[str, Any], approver: Signs, where: Where, *, now_ms: int
     return {**proof, "by": by, "approved_ms": at, "nonce": body["nonce"], "anchor": where.anchor, "approval": sig}
 
 
-def expect_enrolment(state: Path, *, now_ms: int | None = None) -> str:
-    """Leave in the node's state directory the hash of a fresh one-time secret, and return the secret.
-
-    The node enrols the first person key only with that secret, within ten minutes, once; it reads the hash from this file
-    and from no request, so only a process that can write the state directory can make one.
-    """
-    secret = secrets.token_urlsafe(32)
-    path = Path(state) / ENROLMENT_HASH_FILE
-    write_json(path, {"sha256": hashlib.sha256(secret.encode()).hexdigest(), "at_ms": _now_ms() if now_ms is None else now_ms})
-    private_file(path)
-    return secret
-
-
 def enrol(client: Client, token: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Put a person key on the node: ``params`` from `enrolment` with the `expect_enrolment` secret (the first key) or `approve` (every later one)."""
+    """Put a person key on the node: ``params`` from `enrolment` with the secret of a `presence.ask` (the first key) or `approve` (every later one)."""
     return dict(client.call("person_enroll", "", token, **params))
 
 
-def enrol_first(client: Client, token: str, key: Signs, about: str) -> dict[str, Any]:
-    """Put the first person key on the node: the secret the node asks for is made here, in this process, and used at once."""
-    secret = expect_enrolment(client.state)
+def enrol_first(client: Client, token: str, key: Signs, about: str, voice: presence.Voice = presence.SILENT) -> dict[str, Any]:
+    """Put the first person key on the node after the person says yes to the node's own question (`presence.ask`): the secret is the node's, made
+    when the person answered, and nothing this process writes can make one."""
+    secret = str(presence.ask(client, token, "key", key.public.hex(), voice)["secret"])
     return enrol(client, token, {**enrolment(key, about), "secret": secret})
 
 
@@ -336,6 +323,40 @@ def enrol_line(public: bytes, about: str) -> str:
     return f"let the key {public.hex()} ({about}) act as a person key on the node"
 
 
+def approval_bytes(challenge: dict[str, Any], decision: str, key: str) -> bytes:
+    """The bytes the key ``key`` signs to give ``decision`` (`approve` or `deny`) on the ``challenge`` of a request."""
+    _plain(challenge, lines=True)
+    return APPROVAL_DOMAIN + canonical({**challenge, "decision": decision, "key": key}).encode()
+
+
+def list_bytes(node: str, at_ms: int) -> bytes:
+    """The bytes a person's key signs to read every request that waits on the node whose certificate fingerprint is ``node``."""
+    return LIST_DOMAIN + canonical({"op": "approval_list", "node": node, "at_ms": at_ms}).encode()
+
+
+def sign_list(key: Signs, node: str, at_ms: int) -> dict[str, Any]:
+    """The `approval_pending` params that let the person's ``key`` read every request that waits: a session reads only its own."""
+    return {"key": fingerprint(key.public), "sig": key.sign_bytes(list_bytes(node, at_ms)).hex(), "at_ms": at_ms}
+
+
+DECISIONS = ("approve", "approve_repeat", "deny", "block")
+DECISION_WORDS = {"approve": "APPROVE", "approve_repeat": "APPROVE AGAIN (it was declined before)", "deny": "DENY", "block": "DENY AND BLOCK"}
+
+
+def sign_approval(key: Signs, request: dict[str, Any], decision: str) -> dict[str, Any]:
+    """The `approval_decide` params answering the ``request`` (as the node showed it) with ``decision``, signed by ``key``.
+
+    ``decision`` is approve, approve_repeat (a scope that was declined before), deny, or block (deny, and the agent that asked cannot
+    ask again for the time the text names). A number to match is not signed: the caller adds it as ``pick`` once the person chose.
+    """
+    if decision not in DECISIONS:
+        raise ValueError("a decision is approve, approve_repeat, deny or block")
+    fingerprint_ = fingerprint(key.public)
+    bytes_ = approval_bytes(request["challenge"], decision, fingerprint_)
+    return {"id": request["id"], "decision": decision, "key": fingerprint_, "sig": key.sign_bytes(bytes_).hex(),
+            "text_sha256": hashlib.sha256(str(request["text"]).encode()).hexdigest()}
+
+
 def describe(data: bytes) -> str:
     """What signing ``data`` does, in words, read from the bytes themselves; `ValueError` for anything a person key does not sign."""
     domain, _, rest = data.partition(b"\n")
@@ -353,6 +374,11 @@ def describe(data: bytes) -> str:
         if domain + b"\n" == APPROVE_DOMAIN and body["op"] == "approve":
             return (f"{enrol_line(bytes.fromhex(body['public']), body['about'])} {body['node']}, approved by the key {body['by']}, "
                     f"once, until {when(body['approved_ms'] + FRESH_MS)}, in the terminal whose shell is process {body['anchor']['pid']}")
+        if domain + b"\n" == APPROVAL_DOMAIN and body["op"] == "approval":
+            shown = "\n".join(f"      {line}" for line in str(body["text"]).split("\n"))
+            return f"{DECISION_WORDS.get(str(body['decision']), str(body['decision']).upper())} the request {body['id']} of {body['session'] or 'a phone'} on board {body['board']}, which reads:\n{shown}"
+        if domain + b"\n" == LIST_DOMAIN and body["op"] == "approval_list":
+            return f"READ every request that waits for you on the node {body['node']}, with the words each one carries, so that you can answer one; good for thirty seconds"
         if domain + b"\n" == REBIND_DOMAIN and body["op"] == "rebind":
             return (f"move the session {body['name']} of board {body['board']} to the terminal this command runs in (the shell is process "
                     f"{body['anchor']['pid']}), on the node {body['node']}, and end the tokens it holds now; once, until {when(body['at_ms'] + FRESH_MS)}")
@@ -361,4 +387,4 @@ def describe(data: bytes) -> str:
                     f"until {when(body['at_ms'] + FRESH_MS)}, in the terminal whose shell is process {body['anchor']['pid']}")
     except (KeyError, TypeError, AttributeError, ValueError):
         pass
-    raise ValueError("a person key signs a grant, the end of a grant, the enrolment or removal of a key, or the move of a session, and this is none of them")
+    raise ValueError("a person key signs a grant, the end of a grant, the enrolment or removal of a key, the move of a session or the answer to a request, and this is none of them")

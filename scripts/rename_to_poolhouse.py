@@ -25,8 +25,6 @@ KEPT = (
     "githubusercontent.com/adammikulis/ml-stack",
     "adammikulis/ml-stack",
     "repos/ml-stack",
-    "com.mlstack",
-    "com/mlstack",
     "ml-stack/keystore/v1",
     "ml-stack/activity/v1",
     "ml-stack/workspace-files/v1",
@@ -35,8 +33,7 @@ KEPT = (
     "ml-stack-memory-key-id",
     "ml-stack-join-v1",
 )
-"""Spellings that survive. The repository URLs stay until the owner renames the repository; the
-Android package is the installed app's identity; the last seven are bytes that key derivation and
+"""Spellings that survive. The repository URLs stay until the owner renames the repository; the last seven are bytes that key derivation and
 authenticated encryption already used on data at rest, so renaming one makes that data unreadable."""
 
 RULES = (

@@ -511,6 +511,7 @@ Closure of the base requirements and the `store`, `hub`, `web`, `plot`, `graph`,
 | `web_atoms` | 0.2.6 | MIT OR Apache-2.0 |
 | `webkit2gtk` | 2.0.2 | MIT |
 | `webkit2gtk-sys` | 2.0.2 | MIT |
+| `webpki-roots` | 1.0.9 | CDLA-Permissive-2.0 |
 | `webview2-com` | 0.38.2 | MIT |
 | `webview2-com-macros` | 0.8.1 | MIT |
 | `webview2-com-sys` | 0.38.2 | MIT |

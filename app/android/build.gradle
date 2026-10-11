@@ -13,17 +13,18 @@ def api = providers.gradleProperty('androidApi').map { it.toInteger() }.getOrEls
     platforms?.collect { it.name.substring('android-'.length()).toInteger() }?.max() ?: 0)
 if (api < 30) throw new GradleException('Install an Android SDK platform supporting authentication-bound device credentials.')
 def metadata = file('../../pyproject.toml').getText('UTF-8')
-def release = (metadata =~ /(?m)^version = "([^"]+)"/)[0][1]
-def parts = release.tokenize('.').collect { it.replaceAll(/[^0-9].*$/, '').toInteger() }
+def appVersion = (metadata =~ /(?m)^version = "([^"]+)"/)[0][1]
+def parts = appVersion.tokenize('.').collect { it.replaceAll(/[^0-9].*$/, '').toInteger() }
 
 android {
-    namespace 'com.mlstack.companion'
+    namespace 'app.poolhouse.phone'
     compileSdk api
+    buildToolsVersion = providers.gradleProperty('androidBuildTools').getOrElse('36.0.0')
     defaultConfig {
-        applicationId 'com.mlstack.companion'
+        applicationId 'app.poolhouse.phone'
         minSdk 30
         targetSdk api
-        versionName release
+        versionName appVersion
         versionCode parts[0] * 1000000 + parts[1] * 1000 + parts[2]
     }
     signingConfigs {
@@ -50,24 +51,34 @@ android {
 }
 
 dependencies {
-    implementation 'com.google.zxing:core:latest.release'
+    implementation 'com.google.zxing:core:3.5.3'
 }
 
 configurations { protocol }
-dependencies { protocol 'org.json:json:latest.release' }
+dependencies { protocol 'org.json:json:20240303' }
+
+def phone = 'src/main/java/app/poolhouse/phone/'
+def checked = ['Hex', 'Canonical', 'Challenge', 'ApprovalText', 'ApprovalView', 'WebPushCipher', 'AddLink', 'Authorizer', 'Transport', 'NodeError',
+               'NodeApi', 'AddRequest', 'Decider', 'Wants', 'ApprovalFlow', 'PushPayload', 'NotificationModel', 'PushChannel', 'PushHandler',
+               'PinnedHttps', 'ChatLink', 'ChatSetup'].collect { phone + it + '.java' }
+def checks = ['SoftwareAuthorizer', 'PhoneApprovalTest', 'PhoneProtocolTest'].collect { 'src/test/java/app/poolhouse/phone/' + it + '.java' }
 tasks.register('compileProtocol', JavaCompile) {
-    source = files('src/main/java/com/mlstack/companion/Invite.java',
-                   'src/main/java/com/mlstack/companion/PinnedHttps.java',
-                   'src/main/java/com/mlstack/companion/Enrollment.java',
-                   'src/test/java/com/mlstack/companion/CompanionProtocolTest.java')
+    source = files(checked + checks)
     classpath = configurations.protocol
     destinationDirectory = layout.buildDirectory.dir('protocol')
     options.encoding = 'UTF-8'
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
 }
-tasks.register('protocolChecks', JavaExec) {
+tasks.register('chatChecks', JavaExec) {
     dependsOn 'compileProtocol'
     classpath = configurations.protocol + files(layout.buildDirectory.dir('protocol'))
-    mainClass = 'com.mlstack.companion.CompanionProtocolTest'
+    mainClass = 'app.poolhouse.phone.PhoneProtocolTest'
 }
+tasks.register('approvalChecks', JavaExec) {
+    dependsOn 'compileProtocol'
+    classpath = configurations.protocol + files(layout.buildDirectory.dir('protocol'))
+    mainClass = 'app.poolhouse.phone.PhoneApprovalTest'
+    args = [file('../../tests/fixtures/phone-approval-vectors.json').path, file('../../contracts/phone-friction.json').path]
+}
+tasks.register('protocolChecks') { dependsOn 'chatChecks', 'approvalChecks' }

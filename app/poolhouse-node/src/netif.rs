@@ -29,7 +29,7 @@ impl Iface {
 }
 
 #[cfg(unix)]
-fn read_interfaces() -> Vec<Iface> {
+fn read_interfaces(point_to_point: bool) -> Vec<Iface> {
     let mut head: *mut libc::ifaddrs = std::ptr::null_mut();
     // SAFETY: getifaddrs fills `head` with a list it owns until freeifaddrs; each node is read once, before the free.
     if unsafe { libc::getifaddrs(&mut head) } != 0 {
@@ -41,7 +41,7 @@ fn read_interfaces() -> Vec<Iface> {
         // SAFETY: `at` is a node of the list above.
         let (flags, addr, mask, next) = unsafe { ((*at).ifa_flags, (*at).ifa_addr, (*at).ifa_netmask, (*at).ifa_next) };
         let wanted = (libc::IFF_UP | libc::IFF_RUNNING) as u32;
-        let barred = (libc::IFF_LOOPBACK | libc::IFF_POINTOPOINT) as u32;
+        let barred = if point_to_point { libc::IFF_LOOPBACK as u32 } else { (libc::IFF_LOOPBACK | libc::IFF_POINTOPOINT) as u32 };
         if !addr.is_null() && !mask.is_null() && flags as u32 & wanted == wanted && flags as u32 & barred == 0 {
             // SAFETY: both pointers are sockaddrs; they are read as sockaddr_in only after the family says so.
             unsafe {
@@ -59,13 +59,19 @@ fn read_interfaces() -> Vec<Iface> {
 }
 
 #[cfg(not(unix))]
-fn read_interfaces() -> Vec<Iface> {
+fn read_interfaces(_point_to_point: bool) -> Vec<Iface> {
     Vec::new()
 }
 
 /// The interfaces a beacon goes out on: every up, non-loopback, non-point-to-point IPv4 one.
 pub fn interfaces() -> Vec<Iface> {
-    read_interfaces()
+    read_interfaces(false)
+}
+
+/// The addresses a phone on the local network or on the person's tailnet can reach this machine at: every up IPv4 address in a private
+/// range (a VPN interface included) or in the tailnet's `100.64.0.0/10`.
+pub fn phone_addresses() -> Vec<Ipv4Addr> {
+    read_interfaces(true).into_iter().map(|i| i.addr).filter(|a| a.is_private() || (a.octets()[0] == 100 && (64..128).contains(&a.octets()[1]))).collect()
 }
 
 fn private_range(ip: Ipv4Addr) -> bool {

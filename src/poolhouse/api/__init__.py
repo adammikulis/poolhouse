@@ -26,7 +26,7 @@ ERRORS = ("Error", "NotRunning", "Denied", "Conflict")
 SURFACE: dict[str, tuple[str, ...]] = {
     "pool": ("status", "members", "policy", "listen", "add_device", "join", "remove", "sync", "capacity",
              "Pool", "Member", "Capacity"),
-    "board": ("connect", "register", "Board", "Message", "Note", "Claim", "Agent", "Task"),
+    "board": ("connect", "register", "Board", "Message", "Note", "Claim", "Agent", "Task", "Ask", "Approval"),
     "leases": ("view", "acquire", "wait", "renew", "release", "cpu_slots", "memory_mb", "gpu", "model_slot", "claim", "LeaseRecord"),
     "test": ("devices", "run", "Device", "Result"),
     "models": ("pull", "path", "cache_dir"),

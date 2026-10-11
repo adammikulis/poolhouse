@@ -43,8 +43,11 @@ now does what a person does, through the node's real paths and nothing else (`te
 
 * It makes one Ed25519 key for the run, in memory. The key is never written beside a node, never put in a keystore and never the account's;
   there is no switch in the node or in any production path for it, and nothing in the node knows a rig is running.
-* For each device it leaves the hash of a one-time secret in that node's own temporary state directory, the way `grants-setup` does
-  (`grants.expect_enrolment`, run on the device by `wire.py expect-enrol`), and enrols the key through the node's `person_enroll` with the secret.
+* For each device it plays the person at the node's own question: the node started with `--presence terminal` (the node as shipped; it has no switch
+  that answers for anyone) writes "allow the session to add the first person key?" on a pseudo-terminal of that device, and the rig types `yes`
+  there (`wire.py presence`, run on the device, `answer_presence`). The one-time secret that yes makes comes back to the session that asked, and the
+  rig enrols the key through the node's `person_enroll` with it. Only the installed software on the real home asks with the operating system's own
+  prompt, so no check raises a dialog.
 * It signs each grant through `grant_issue`, for the rig's named sessions on that device only (the device's own fingerprint), for six hours:
   `add_device`, `join_pool`, `member_remove`, `sync_now` and `pool_create` to the session on the `pool` board that the steps join and
   remove through, and `shard_call` and `shard_consent` to the session of the `demo` board that sends and receives test runs. Nothing else is
@@ -93,6 +96,7 @@ asks the account's Keychain for a key (the updater step's activity log did, and 
 | `cert-swap` | a device that comes back at a member's address with a different certificate is refused by every member and by the pin of the members that dial it |
 | `grants-gate` | in a governed pool a session no person has granted is refused `add_device`, `member_remove` and `pool_propose` with the missing grant named, and no grant moves the join policy; under a person-signed grant of one use it opens a window once and is then refused; a standing grant works until it is revoked; a `member_remove` grant scoped to one fingerprint still leaves the removal to the person's signature, and the signed removal takes effect |
 | `grants-key-removed` | a second person key, approved by the first for this node and this terminal, signs a grant that works; once the first key removes it, that grant stops, the first key's grants and the rig's session keep working, the removed key signs nothing new and cannot be enrolled again. Skipped where no node device reads which process asks (Windows) |
+| `phone-approval` | on each device a phone made of keys (a P-256 key made in the run, the HTTPS requests a phone makes sent by the device itself to its own node over TLS 1.3 pinned to that node's certificate) is added, waiting for the person's key to approve it; a session's request reads in full (flags, pool line, risk, who, ask, scope, what it cannot do, why, what a deny does, when it ends); a signature over text the node did not write is refused; the phone approves it once and the grant is live, a second decision is refused, a second request is denied, the session that asked cannot carry an answer or a stranger's token read anything, and a session that asks again and again gets one item for twenty-one identical asks, a wrong number chosen is a decline that makes it wait, what was declined is asked on its own and a block ends it. Not exercised: the phone's key custody and fingerprint, the push (docs/phone-approval.md, "Checks on a real phone") |
 | `partition-heal` | a device cut off from the network (`docker network disconnect`) writes and claims a branch, so does the rest; after healing every entry is everywhere and exactly one device holds the branch |
 | `crash-mid-sync` | the node of a device is killed with SIGKILL while 1500 entries are arriving; the supervisor restarts it and it ends with all of them and no damaged log |
 | `tests-on-device` | `scripts/test --on` (the real `test_on` code) sends a tiny tree to a Linux device: refused until its person enables the feature and names the sender, then a test file that asserts it is Linux passes there; a device not named is refused |

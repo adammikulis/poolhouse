@@ -6,6 +6,10 @@
 //! group in production, a peer in tests), `--advertise IP` the address it carries,
 //! `--allow-loopback` lets a test advertise loopback, `--sync-ms N` sets the sync interval.
 //!
+//! `--presence os|terminal` says how the first person key and the first phone are asked of the person (with neither the node refuses
+//! them: `os` is the operating system's own prompt, for the account's real state directory only; `terminal` is the terminal device the
+//! asker names, which the node itself reads).
+//!
 //! With the beacon on, the device finds a pool without a key or a code: it takes the project of
 //! the repository it runs in (`--project-dir DIR`, else the working directory; `--project NAME`
 //! names one instead; `--no-project` turns this off), and while it is in no pool joins an `open` pool
@@ -99,6 +103,22 @@ fn set_build(node: &mut poolhouse_node::node::Node, args: &[String]) -> Result<(
     Ok(())
 }
 
+/// Where the node listens for phones: `--phone ADDR`, else the address `phone.json` in the state directory holds (a person's command
+/// writes it); None when neither names one.
+fn phone_listen(state: &Path, args: &[String]) -> Result<Option<SocketAddr>, String> {
+    if let Some(a) = flag(args, "--phone") {
+        return addr(a).map(Some);
+    }
+    match std::fs::read(state.join("phone.json")) {
+        Ok(bytes) => {
+            let listen = serde_json::from_slice::<serde_json::Value>(&bytes).ok().and_then(|v| v["listen"].as_str().map(str::to_string));
+            listen.ok_or_else(|| "phone.json names no listen address".to_string()).and_then(|a| addr(&a)).map(Some)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("phone.json: {e}")),
+    }
+}
+
 /// The key the node was told to run as: one line of 64 hex digits on standard input when ``--key-stdin`` is given, with where it is
 /// kept (``--key-custody keystore|passphrase``, default keystore). Whatever starts the node gives it; nothing the node writes holds it.
 fn supplied_key(args: &[String]) -> Result<Option<Supplied>, String> {
@@ -126,9 +146,18 @@ fn no_core_dumps() {
 
 fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let config = net_config(args)?;
+    let phone = phone_listen(state, args)?;
     let mut server = Server::bind_with(state, supplied_key(args)?.as_ref()).map_err(|e| e.to_string())?;
     let shared = server.node();
     set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
+    if let Some(name) = flag(args, "--presence") {
+        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is os (the operating system's prompt) or terminal (the person's terminal device)")?;
+        shared.lock().map_err(|e| e.to_string())?.firsts = poolhouse_node::presence::Firsts::new(mode.presence(state));
+    }
+    if let Some(listen) = phone {
+        shared.lock().map_err(|e| e.to_string())?.pusher = Box::new(poolhouse_node::phone::push::Web::start(state));
+        poolhouse_node::phone::http::start(shared.clone(), listen).map_err(|e| e.to_string())?;
+    }
     if let Some(config) = config {
         let net = Net::start(server.node(), config).map_err(|e| e.to_string())?;
         server = server.attach(net);

@@ -64,6 +64,21 @@ pub struct Node {
     pub members: Pool,
     /// The keys of the person, whose signature makes a grant count.
     pub persons: Persons,
+    /// What agents asked of the person and what became of it (`approvals`), and the phones the person answers from (`phone`).
+    pub approvals: crate::approvals::Approvals,
+    /// What keeps a request that is made again and again from wearing the person down, and what the node knows of what the person said.
+    pub fatigue: crate::approvals::fatigue::Fatigue,
+    pub evidence: Box<dyn crate::approvals::context::Evidence>,
+    pub phones: crate::phone::Phones,
+    /// The certificate of the endpoint a phone talks to, and the port it listens on (0 while it does not).
+    pub phone_cert: crate::phone::cert::Endpoint,
+    pub phone_port: u16,
+    /// The prompt of the operating system that the first key and the first phone need, and the one-time secret it makes (never a file).
+    pub firsts: crate::presence::Firsts,
+    /// The one-time code for a further phone that is waiting to be scanned, in memory only.
+    pub offer: Option<crate::phone::enrol::Offer>,
+    /// Where a sealed notification goes.
+    pub pusher: Box<dyn crate::phone::push::Pusher>,
     /// The other devices whose landing entries this device counts; empty by default.
     pub land_trust: LandTrust,
     pub facts: Facts,
@@ -136,7 +151,10 @@ impl Node {
         let members = Pool::load(dir)?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let mut node = Node {
-            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
+            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
+            approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
+            evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
+            phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
@@ -237,7 +255,7 @@ impl Node {
     /// and a node hosts a bounded number of boards. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let Native { model, harness, session } = native;
-        let (model, harness) = (identity::clean(model, 256)?, identity::clean(harness, 64)?);
+        let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
         if !valid_name(board) {
             return Err(Error::Invalid("a board id is a short lower-case word".into()));
         }

@@ -2,8 +2,9 @@
 
 A node allows a session nothing beyond its own board's messages, notes, claims and leases until a grant names it, and counts a grant only
 when a person key enrolled on that node signed it (docs/node.md, "Standing grants"). The rig runs the pool as a person would, so it does what
-a person does and nothing else: it leaves the hash of a one-time secret in the node's own state directory (the way `grants-setup` does,
-`grants.expect_enrolment`), enrols its key through the node's real `person_enroll`, and signs each grant through the real `grant_issue`. The
+a person does and nothing else: it says yes to the question the node itself writes on a terminal (`wire.answer_presence`, a typed `yes` at a
+pseudo-terminal, against the node as shipped, which has no switch that answers for anyone), enrols its key through the node's real `person_enroll`
+with the one-time secret that yes made, and signs each grant through the real `grant_issue`. The
 key is an in-memory Ed25519 key that belongs to this run alone: it is never written beside a node, never in a keystore and never the key of
 the account, and nothing here is reachable from the node's own code or from a production path, so there is no switch for a node to honour.
 What the rig does not exercise is the custody of a person's real key: the typed `yes` on a terminal and the keystore (docs/pool-check.md).
@@ -59,14 +60,22 @@ class RigPerson:
     def enrol(self, holder: Holder, key: Signer | None = None) -> dict:
         """Put the run's key (or ``key``, approved by the run's key) on the node of ``holder``'s device, carried by ``holder``'s session.
 
-        The first key goes in with the one-time secret the rig leaves in the node's state directory; a later key with the approval of one
+        The first key goes in with the one-time secret the node makes when the rig's person types yes to its question; a later key with the approval of one
         the node holds, for this node, once, from this process's terminal.
         """
         device, carried = holder.device, key or self.key
         if key is None or not device.call("person_keys")["keys"]:
-            secret = device.wire("expect-enrol", "--state", device.state_text)["result"]["secret"]
+            secret = self.says_yes(device, holder.token, "key", carried.public.hex())["secret"]
             return device.call("person_enroll", "", holder.token, **grants.enrolment(carried, ABOUT), secret=secret)
         return device.call("person_enroll", "", holder.token, **grants.approve(grants.enrolment(carried, ABOUT), self.key, self.where(device)))
+
+    def says_yes(self, device: Device, token: str, purpose: str, public: str = "") -> dict:
+        """The person types yes to the node's question for the first ``purpose`` (`key` or `phone`) as the session ``token``: the node's reply, which
+        carries the one-time secret once, to the session that asked."""
+        out = device.wire("presence", "--state", device.state_text, "--token", token, "--purpose", purpose, "--public", public, check=False)
+        if not out["ok"] or out["result"]["state"] != "confirmed":
+            raise RuntimeError(f"{device.name}: the person's yes to the node's question was not taken: {out}")
+        return dict(out["result"])
 
     def where(self, device: Device) -> grants.Where:
         """The node and the terminal a signature made now is good for."""
