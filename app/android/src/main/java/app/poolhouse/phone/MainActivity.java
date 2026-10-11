@@ -120,7 +120,7 @@ public final class MainActivity extends Activity {
                 String name = Build.MODEL == null || !Build.MODEL.matches("[\\x20-\\x7e]{1,40}") ? "Android phone" : Build.MODEL.trim();
                 JSONObject body = AddRequest.body(link, name, ApprovalKey.publicPoint(), WebPushCipher.point(push.getPublic()), pushSecret, hello.getLong("now_ms"));
                 byte[] proof = AddRequest.proofBytes(hello.getString("device"), body);
-                runOnUiThread(() -> new BiometricAuthorizer(this).sign(proof, "Add this phone", new Authorizer.Result() {
+                runOnUiThread(() -> new BiometricAuthorizer(this).sign(proof, "Add this phone", false, new Authorizer.Result() {
                     @Override public void signed(byte[] der) {
                         worker.execute(() -> finishAdding(epoch, api, hello, name, body, der, push, pushSecret, link));
                     }

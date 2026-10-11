@@ -369,7 +369,9 @@ nothing else; it does not sign. The notification:
   and no badge, says only `A quiet notice is waiting` at the lock screen, and has buttons that say what they do (**Allow once**,
   **Keep holding**, **Block it**; **Lift the suspension**; **Dismiss**);
 - **Approve** always asks for the fingerprint or the device credential before anything is signed, and never from a locked screen
-  without it. For a routine request that the node did not flag, the notification's Approve opens the prompt directly, with the
+  without it. To approve a request above routine it asks for a strong fingerprint or face and nothing weaker: a phone that has only a PIN set up
+  refuses to sign the approval and says to set one up or to answer at the computer, because a PIN is watched over a shoulder and a
+  person's key must not approve a sensitive act on it. A deny or a block only takes authority away, so a PIN is enough for those. For a routine request that the node did not flag, the notification's Approve opens the prompt directly, with the
   text just read in the expanded notification; for a sensitive or irreversible request, and for any request that carries a `FLAG:`
   line, it opens the approval screen first, so the full text is on the screen when the prompt appears. The level and the flags
   are read from the signed text (its `RISK:` and `FLAG:` lines), never from a field beside it that the signature does not cover.
@@ -421,6 +423,8 @@ The tap on the notification on the approving phone is the routine approval below
 | 1 | Approve on the notification | one tap |
 | 2 | Fingerprint | one biometric prompt |
 
+(with the phone unlocked; from a locked phone see below)
+
 **A sensitive or irreversible approval.**
 
 | # | Step | Kind | Why it is needed |
@@ -431,7 +435,30 @@ The tap on the notification on the approving phone is the routine approval below
 | 4 | Pick the number the agent showed, out of three | one tap | a tap made by reflex, or on a request the person never looked into, cannot approve it: the number is on the agent's own screen |
 
 A routine request the node flagged as looking off takes the first three rows and no pick; a scope that was declined before takes one more
-deliberate step in the screen (the confirmation before the prompt), described under "Approval fatigue".
+deliberate step in the screen (the confirmation before the prompt), described under "Approval fatigue". What the node writes as a
+`NOTE:` is not a flag: the first request of a new session, and the first request of a kind on this device, are facts for the person to
+read, not reasons to open the screen first, so a routine request with only notes is still approved from the notification.
+
+**From a locked phone** Android does not run an action on a notification until the phone is unlocked, and unlocking is a step of its
+own before the prompt of the approval. Those counts are the real ones when the phone is in a pocket:
+
+**A routine approval from a locked phone.**
+
+| # | Step | Kind | Why it is needed |
+|---|---|---|---|
+| 1 | Unlock the phone | the phone's own unlock | Android asks before it runs an action on a notification, so the lock screen shows only who is asking |
+| 2 | Approve on the notification | one tap | |
+| 3 | Fingerprint | one biometric prompt | |
+
+**A sensitive or irreversible approval from a locked phone.**
+
+| # | Step | Kind | Why it is needed |
+|---|---|---|---|
+| 1 | Unlock the phone | the phone's own unlock | Android asks before it runs an action on a notification |
+| 2 | Tap the notification | one tap | the whole text must be on the screen before the prompt: it is sensitive or cannot be undone |
+| 3 | Approve on the screen | one tap | |
+| 4 | Fingerprint | one biometric prompt | |
+| 5 | Pick the number the agent showed, out of three | one tap | the number is on the agent's own screen |
 
 **What the defences against being worn down cost the normal case** ("Approval fatigue"): a request made once and answered once.
 

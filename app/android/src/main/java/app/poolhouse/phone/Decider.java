@@ -51,6 +51,14 @@ final class Decider {
         if (decision.startsWith("approve") && !view.challenge.pick().isEmpty() && picker == null) throw new SecurityException("There is no way to choose the number, so nothing was signed.");
     }
 
+    /**
+     * Whether the answer needs a strong fingerprint or face: an approval of anything above a routine request does, and a PIN is not enough
+     * for it. A deny or a block only takes authority away, so a PIN is enough for those.
+     */
+    private static boolean strong(ApprovalView view, String decision) {
+        return decision.startsWith("approve") && !"routine".equals(view.risk);
+    }
+
     /** Which of the three buttons ({@code approve}, {@code deny}, {@code block}) a decision belongs to. */
     private static int slot(String decision) {
         return decision.equals("deny") ? 1 : decision.equals("block") ? 2 : 0;
@@ -67,9 +75,10 @@ final class Decider {
             view.challenge.check(device, shown, nodeNowMs);
             if (!view.whole()) throw new SecurityException("That request leaves out something a person needs to decide, so nothing was signed.");
             rules(view, decision, picker);
+            if (strong(view, decision) && !key.strongAvailable()) throw new SecurityException("This needs your fingerprint or a strong face unlock, which this phone has not set up: set one up in the phone's settings, or answer at your computer.");
             String fingerprint = Hex.sha256(key.publicPoint());
             byte[] bytes = view.challenge.bytes(decision, fingerprint);
-            key.sign(bytes, view.labels()[slot(decision)], new Authorizer.Result() {
+            key.sign(bytes, view.labels()[slot(decision)], strong(view, decision), new Authorizer.Result() {
                 @Override public void signed(byte[] der) {
                     List<String> options = view.challenge.pick();
                     if (!decision.startsWith("approve") || options.isEmpty()) {

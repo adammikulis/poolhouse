@@ -12,7 +12,8 @@ the computer's Fleet page.
 - **Requests**: the home screen lists what waits, newest first, kept current by a request the computer holds open. Tapping one shows
   the whole text: what looks off, the pool line (open or secure), the risk, who asks, what is asked and how far it reaches, what it
   cannot do, why, what a deny does and when it ends, and below it what the signed request itself asks, read from the structured asks the
-  key signs. Approve and Deny each ask for the fingerprint, strong face unlock or device credential once; a request that is not routine
+  key signs. Approve and Deny each ask for the fingerprint, strong face unlock or device credential once (to approve a request above routine it asks for a strong
+  fingerprint or face and no PIN, and a phone without one approves nothing that is not routine); a request that is not routine
   then asks which of three numbers the agent showed, a scope declined before asks "Approve anyway?" first, and a request an agent made also
   offers Deny and block. What an agent asked on its own, notices about requests kept back and what came too fast to be pushed are in a
   quiet list under the requests.

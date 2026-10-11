@@ -51,6 +51,7 @@ public final class PhoneApprovalTest {
         theNotification(vectors);
         theDecision(vectors);
         theStepsAgainstBeingWornDown(vectors);
+        theStrengthOfTheAnswer(vectors);
         theNoticesAndTheContext(vectors);
         thePushHandler(vectors);
         theNodeApi();
@@ -190,6 +191,10 @@ public final class PhoneApprovalTest {
         equal("sensitive", parts.level(), "the risk level");
         equal(2, parts.asks.size(), "two asks");
         check(!ApprovalText.parse("WHO: x\nsomething unlabelled").complete(), "a line that is not labelled is kept and the text is not complete");
+        String routine = variant(vectors.getJSONObject("challenge"), "routine", false).getString("text");
+        ApprovalText noted = ApprovalText.parse("NOTE: No grant you signed has ever named claude-1a2b3c.\nNOTE: This is the first request for sync_now on this device.\n" + routine);
+        check(noted.complete() && noted.flags.isEmpty() && noted.notes.size() == 2, "a note is news the person may read, kept, and not a line the text cannot carry");
+        check(!ApprovalFlow.opensScreen(noted.level(), !noted.flags.isEmpty()), "a routine request with only notes is answered from the notification");
     }
 
     /** The challenge with the text's flags kept or dropped and its RISK line naming {@code level}: what the node would have signed for such a request. */
@@ -420,6 +425,7 @@ public final class PhoneApprovalTest {
         equal("47", body.getString("pick"), "the number chosen travels, unsigned");
         equal("approve_repeat", body.getString("decision"), "the decision is the deliberate one");
         check(key.verifies(view.challenge.bytes("approve_repeat", Hex.sha256(key.publicPoint())), Hex.parse(body.getString("sig"))), "and the signature is over it");
+        check(key.lastStrong, "an approval of a request that is not routine asks for a strong fingerprint and nothing weaker");
         outcome[0] = null;
         decider.decide(view, "deny", view.text, inside, null, done);
         equal("approved", outcome[0], "a deny needs no number");
@@ -437,6 +443,36 @@ public final class PhoneApprovalTest {
         ApprovalView first = viewOf(withContext(vector, c -> c.put("repeat", 0)));
         decider.decide(first, "approve_repeat", first.text, inside, choosing("47", asked), done);
         check(node.sent.size() == sent && outcome[1].contains("not declined before"), "a scope nobody declined is approved the usual way");
+    }
+
+    static void theStrengthOfTheAnswer(JSONObject vectors) throws Exception {
+        JSONObject vector = vectors.getJSONObject("challenge");
+        long inside = vector.getLong("created_ms");
+        SoftwareAuthorizer key = new SoftwareAuthorizer();
+        Recording node = new Recording();
+        Decider decider = new Decider(new NodeApi(node, "p".repeat(64), List.of("https://192.168.1.4:7449")), key, vector.getString("node"));
+        String[] outcome = new String[2];
+        Decider.Done done = new Decider.Done() {
+            @Override public void answered(String state) { outcome[0] = state; }
+            @Override public void failed(String sentence) { outcome[1] = sentence; }
+        };
+        ApprovalView routine = viewOf(withContext(variant(vector, "routine", false), c -> c.put("repeat", 0).put("pick", new JSONArray())));
+        ApprovalView sensitive = viewOf(withContext(vector, c -> c.put("repeat", 0).put("pick", new JSONArray())));
+        decider.decide(routine, "approve", routine.text, inside, done);
+        check(outcome[0] != null && !key.lastStrong, "a routine request is answered with a fingerprint, a strong face or the PIN");
+        outcome[0] = null;
+        decider.decide(sensitive, "approve", sensitive.text, inside, done);
+        check(outcome[0] != null && key.lastStrong, "a request above routine asks for a strong fingerprint or face and nothing weaker");
+        key.strongSetUp = false;
+        int asked = key.asked;
+        outcome[0] = outcome[1] = null;
+        decider.decide(sensitive, "approve", sensitive.text, inside, done);
+        check(outcome[0] == null && outcome[1].contains("strong face unlock") && key.asked == asked, "a phone with only a PIN is not asked to approve what is not routine");
+        outcome[0] = outcome[1] = null;
+        decider.decide(sensitive, "deny", sensitive.text, inside, done);
+        check(outcome[0] != null && !key.lastStrong, "a deny only takes authority away, so a PIN is enough for it");
+        decider.decide(routine, "approve", routine.text, inside, done);
+        check(outcome[0] != null, "but it approves a routine request as before");
     }
 
     static void theNoticesAndTheContext(JSONObject vectors) throws Exception {
@@ -520,6 +556,10 @@ public final class PhoneApprovalTest {
         equal(List.of(ApprovalFlow.Step.TAP_NOTIFICATION, ApprovalFlow.Step.TAP_APPROVE, ApprovalFlow.Step.FINGERPRINT), ApprovalFlow.approving("routine", true), "a routine request the node flagged is read first and needs no pick");
         check(ApprovalFlow.approving("routine", false).size() == 2 && !ApprovalFlow.approving("routine", false).contains(ApprovalFlow.Step.PICK), "a routine request pays nothing for the defences against being worn down");
         equal(1L, ApprovalFlow.approving("sensitive", false).stream().filter(step -> step == ApprovalFlow.Step.PICK).count(), "one pick for what is not routine");
+        equal(contract.getInt("approve_routine_locked"), ApprovalFlow.approving("routine", false, true).size(), "the steps of a routine approval from a locked phone");
+        equal(contract.getInt("approve_sensitive_locked"), ApprovalFlow.approving("sensitive", false, true).size(), "the steps of a sensitive approval from a locked phone");
+        equal(ApprovalFlow.Step.UNLOCK, ApprovalFlow.approving("routine", false, true).get(0), "the unlock comes first");
+        equal(ApprovalFlow.approving("sensitive", false).size() + 1, ApprovalFlow.approving("sensitive", false, true).size(), "a locked phone costs exactly the unlock more");
         for (String risk : new String[] {"routine", "sensitive", "irreversible"}) {
             for (boolean flagged : new boolean[] {false, true}) {
                 int prompts = 0;

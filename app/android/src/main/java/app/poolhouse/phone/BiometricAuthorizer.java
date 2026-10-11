@@ -1,6 +1,7 @@
 package app.poolhouse.phone;
 
 import android.app.Activity;
+import android.hardware.biometrics.BiometricManager;
 import android.hardware.biometrics.BiometricPrompt;
 import android.os.CancellationSignal;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
@@ -19,7 +20,12 @@ final class BiometricAuthorizer implements Authorizer {
         return ApprovalKey.publicPoint();
     }
 
-    @Override public void sign(byte[] message, String title, Result result) {
+    @Override public boolean strongAvailable() {
+        BiometricManager biometrics = activity.getSystemService(BiometricManager.class);
+        return biometrics != null && biometrics.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS;
+    }
+
+    @Override public void sign(byte[] message, String title, boolean strong, Result result) {
         final Signature signature;
         try {
             signature = ApprovalKey.signature();
@@ -30,8 +36,8 @@ final class BiometricAuthorizer implements Authorizer {
             result.failed("This phone's approval key could not be used. Add this phone again.");
             return;
         }
-        BiometricPrompt prompt = new BiometricPrompt.Builder(activity).setTitle(title).setSubtitle("Use your fingerprint, strong face unlock or your device PIN")
-                .setAllowedAuthenticators(ApprovalKey.AUTHENTICATORS).setConfirmationRequired(false).build();
+        BiometricPrompt prompt = new BiometricPrompt.Builder(activity).setTitle(title).setSubtitle(strong ? "Use your fingerprint or strong face unlock" : "Use your fingerprint, strong face unlock or your device PIN")
+                .setAllowedAuthenticators(strong ? BiometricManager.Authenticators.BIOMETRIC_STRONG : ApprovalKey.AUTHENTICATORS).setConfirmationRequired(false).build();
         prompt.authenticate(new BiometricPrompt.CryptoObject(signature), new CancellationSignal(), executor, new BiometricPrompt.AuthenticationCallback() {
             @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult unlocked) {
                 try {

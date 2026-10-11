@@ -6,14 +6,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The plain-words text of a request cut into the parts a screen lays out: what looks off first, the pool line, the risk, what the
+ * The plain-words text of a request cut into the parts a screen lays out: what looks off first, what is only news (notes), the pool line, the risk, what the
  * person said, who asks, how the node judged it against what was said, whether the session read content from outside, what is
  * asked and how far it reaches, an undo window, the number to match, what it cannot do, why, what a deny does and when it ends.
  * The node wrote the text and the key signs it; this only reads it, and a line it does not know is kept, never dropped.
  */
 final class ApprovalText {
-    private static final Pattern LINE = Pattern.compile("^(FLAG|POOL|RISK|SAID|WHO|VERDICT|TAINT|ASK|SCOPE|HELD|PICK|CANNOT|WHY|DENY|EXPIRES)(?: (\\d+))?: (.*)$");
+    private static final Pattern LINE = Pattern.compile("^(FLAG|NOTE|POOL|RISK|SAID|WHO|VERDICT|TAINT|ASK|SCOPE|HELD|PICK|CANNOT|WHY|DENY|EXPIRES)(?: (\\d+))?: (.*)$");
     final List<String> flags = new ArrayList<>();
+    final List<String> notes = new ArrayList<>();
     final List<String> asks = new ArrayList<>();
     final List<String> scopes = new ArrayList<>();
     final List<String> other = new ArrayList<>();
@@ -38,6 +39,7 @@ final class ApprovalText {
             String value = found.group(3);
             switch (found.group(1)) {
                 case "FLAG": out.flags.add(value); break;
+                case "NOTE": out.notes.add(value); break;
                 case "POOL": out.pool = value; break;
                 case "RISK": out.risk = value; break;
                 case "SAID": out.said = value; break;

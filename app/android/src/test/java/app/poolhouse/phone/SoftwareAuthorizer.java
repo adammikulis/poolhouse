@@ -10,6 +10,9 @@ final class SoftwareAuthorizer implements Authorizer {
     final KeyPair signing;
     int asked;
     String refuses;
+    /** Whether a strong fingerprint is set up, and whether the last signature asked for one. */
+    boolean strongSetUp = true;
+    boolean lastStrong;
 
     SoftwareAuthorizer() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
@@ -21,8 +24,13 @@ final class SoftwareAuthorizer implements Authorizer {
         return WebPushCipher.point(signing.getPublic());
     }
 
-    @Override public void sign(byte[] message, String title, Result result) {
+    @Override public boolean strongAvailable() {
+        return strongSetUp;
+    }
+
+    @Override public void sign(byte[] message, String title, boolean strong, Result result) {
         asked++;
+        lastStrong = strong;
         if (refuses != null) {
             result.failed(refuses);
             return;

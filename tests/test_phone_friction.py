@@ -14,10 +14,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOC = (ROOT / "docs" / "phone-approval.md").read_text(encoding="utf-8")
 CONTRACT = json.loads((ROOT / "contracts" / "phone-friction.json").read_text(encoding="utf-8"))
-CEILING = {"first_run": 3, "approve_routine": 2, "approve_sensitive": 4}
+CEILING = {"first_run": 3, "approve_routine": 2, "approve_routine_locked": 3, "approve_sensitive": 4, "approve_sensitive_locked": 5}
 """What a person does: a command, a scan and a fingerprint the first time; a tap and a fingerprint for a routine request; for the rest one more tap, to read, and one pick, so no reflex can approve them."""
 SECTIONS = {"first_run": "**First run, on a computer and a phone (the first phone).**", "approve_routine": "**A routine approval (one request, one or many asks).**",
-            "approve_sensitive": "**A sensitive or irreversible approval.**"}
+            "approve_sensitive": "**A sensitive or irreversible approval.**", "approve_routine_locked": "**A routine approval from a locked phone.**",
+            "approve_sensitive_locked": "**A sensitive or irreversible approval from a locked phone.**"}
 
 
 def steps(heading: str) -> list[str]:
@@ -56,7 +57,7 @@ def test_every_first_run_step_and_the_one_extra_tap_of_a_sensitive_request_say_w
 
 
 def test_one_fingerprint_is_asked_for_a_decision_and_the_notification_is_the_only_step_it_needs():
-    for name in ("approve_routine", "approve_sensitive"):
+    for name in ("approve_routine", "approve_sensitive", "approve_routine_locked", "approve_sensitive_locked"):
         rows = [r.lower() for r in steps(SECTIONS[name])]
         assert sum("fingerprint" in r for r in rows) == 1, f"{name}: one biometric prompt per approval"
         assert not any("type" in r.split("|")[2] for r in rows), "nothing is typed to approve"

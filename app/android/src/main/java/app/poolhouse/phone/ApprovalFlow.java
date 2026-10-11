@@ -9,7 +9,7 @@ import java.util.List;
  * here fails the checks until the budget says why.
  */
 final class ApprovalFlow {
-    enum Step { RUN_COMMAND, SCAN_CODE, TAP_NOTIFICATION, TAP_APPROVE, FINGERPRINT, PICK }
+    enum Step { RUN_COMMAND, SCAN_CODE, UNLOCK, TAP_NOTIFICATION, TAP_APPROVE, FINGERPRINT, PICK }
 
     private ApprovalFlow() { }
 
@@ -32,7 +32,16 @@ final class ApprovalFlow {
      * routine request pays for none of the defences against being worn down.
      */
     static List<Step> approving(String level, boolean flagged) {
+        return approving(level, flagged, false);
+    }
+
+    /**
+     * The same for a phone that is {@code locked}: Android does not run an action on a notification until the phone is unlocked, so the
+     * unlock is a step of its own, before the rest.
+     */
+    static List<Step> approving(String level, boolean flagged, boolean locked) {
         List<Step> steps = new ArrayList<>();
+        if (locked) steps.add(Step.UNLOCK);
         if (opensScreen(level, flagged)) steps.add(Step.TAP_NOTIFICATION);
         steps.add(Step.TAP_APPROVE);
         steps.add(Step.FINGERPRINT);
