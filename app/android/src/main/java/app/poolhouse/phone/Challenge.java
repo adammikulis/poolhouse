@@ -82,6 +82,40 @@ final class Challenge {
         return out;
     }
 
+    /** Whether this asks the key to sign one act of a pool (a charter's acceptance, an admit, a removal): the signature is over the act's own bytes. */
+    boolean signsAct() {
+        return "sign".equals(kind());
+    }
+
+    /**
+     * The bytes the key signs to approve a request to sign an act: made again here from the structure the action carries, never taken from the
+     * node's own hex of them, and refused unless they are what the node named.
+     */
+    byte[] actBytes() throws Exception {
+        JSONObject action = action();
+        String step = action == null ? "" : action.optString("step");
+        String text;
+        if ("act".equals(step)) {
+            JSONObject act = new JSONObject(action.getJSONObject("act").toString());
+            act.remove("signatures");
+            text = "poolhouse/pool-act/v1\n" + Canonical.of(act);
+        } else if ("found".equals(step)) {
+            JSONObject charter = new JSONObject(action.getJSONObject("charter").toString());
+            JSONArray admins = charter.getJSONArray("admins");
+            JSONObject entry = new JSONObject(admins.getJSONObject(0).toString());
+            for (int i = 0; i < admins.length(); i++) admins.getJSONObject(i).put("acceptance", "");
+            entry.remove("acceptance");
+            entry.remove("label");
+            entry.put("v", 1).put("anchor", Hex.sha256(Canonical.of(charter)));
+            text = "poolhouse/pool-accept/v1\n" + Canonical.of(entry);
+        } else {
+            throw new SecurityException("That is not a request to sign an act, so nothing was signed.");
+        }
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        if (!Hex.of(bytes).equals(action.optString("message"))) throw new SecurityException("The bytes to sign are not the ones this request describes, so nothing was signed.");
+        return bytes;
+    }
+
     /** The bytes the key whose fingerprint is {@code key} signs to give {@code decision}. */
     byte[] bytes(String decision, String key) throws Exception {
         if (!DECISIONS.contains(decision)) throw new IllegalArgumentException("A decision is approve, approve again, deny or block.");
