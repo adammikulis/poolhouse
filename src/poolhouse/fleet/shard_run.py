@@ -48,7 +48,7 @@ def environment(base: Path) -> dict[str, str]:
     env = child_environment()
     for name in DROPPED:
         env.pop(name, None)
-    env.update({"POOLHOUSE_HOME": str(base / "home"), "POOLHOUSE_NO_REAL_KEYSTORE": "1",
+    env.update({"POOLHOUSE_HOME": str(base / "home"), 
                 "PYTHONDONTWRITEBYTECODE": "1"})
     return env
 

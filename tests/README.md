@@ -171,10 +171,14 @@ the broker are not remote services and are untouched by all of this.
 
 ## The real keystore
 
-No test reads, writes or prompts for an item in the real OS keystore (macOS Keychain). In process
-the real backends refuse (`tests/conftest.py`); `tests/conftest.py` also sets
-`POOLHOUSE_NO_REAL_KEYSTORE=1` for the whole run, and every process a test starts inherits it, so
-the keystore reads as absent there. A test child that needs a working keystore sets
+No test reads, writes or prompts for an item in the real OS keystore (macOS Keychain), an
+administrator password dialog or the `security` tool. This is structural, not remembered: the code
+(`poolhouse.real_machine`) allows them only to the installed software (this code installed under
+`~/.poolhouse/runtimes`) on the account's own `~/.poolhouse`, never in a test run, and no variable,
+argument or file turns that on, so a child, a script or a rig process that forgot a flag still finds
+the keystore unavailable. In process `tests/conftest.py` also refuses the real backends and fails the
+test that resolves one (`tests/test_real_machine.py` checks both, and scans `src` for a new
+`osascript`, `security` or administrator-privileges call outside the reviewed list). A test child that needs a working keystore sets
 `PYTHON_KEYRING_BACKEND=onboard_support.FileKeyring` and `POOLHOUSE_TEST_KEYRING=<file>` (see
 `tests/onboard_support.py`) and puts `tests` on its `PYTHONPATH`; a test that spawns a child with
 an environment built from scratch must do the same. A test that stripped the agent markers

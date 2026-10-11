@@ -4,12 +4,11 @@ One item per OS user holds a random 32-byte master key. Each purpose (memory vau
 signing key, wrapped credentials) gets a subkey: HKDF-SHA256 over the master with the purpose,
 owner and context in ``info``; `wrap` and `unwrap` bind purpose and owner as AAD.
 
-Nothing touches the keystore at import, construction or `status`. The master is read once per
-process. Every backend call passes a gate: denial latch, hourly ceiling, cross-process lock. Reads
-of an existing item and the operations that make or remove one (creates, deletes, retries after a
-refusal) have separate hourly ceilings. A background process never creates the master and reads it
-only after ``poolhouse-security unlock``. Each backend call is a sentinel event (purpose, outcome),
-never a value.
+The machine's own keystore is used only by the installed software on the real home (`poolhouse.real_machine`), whatever the
+environment says. Nothing touches it at import, construction or `status`. The master is read once per process. Every backend
+call passes a gate: denial latch, hourly ceiling, cross-process lock. Reads of an existing item and the operations that make or
+remove one have separate hourly ceilings. A background process never creates the master and reads it only after
+``poolhouse-security unlock``. Each backend call is a sentinel event (purpose, outcome), never a value.
 """
 
 from __future__ import annotations
@@ -28,25 +27,32 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from poolhouse import home, keystore_guard, legacy, person, platform, private_path, sentinel
+from poolhouse import (
+    home,
+    keystore_guard,
+    legacy,
+    person,
+    platform,
+    private_path,
+    real_machine,
+    sentinel,
+)
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import warn
 from poolhouse.sentinel import human
 from poolhouse.sentinel.events import Event, Severity
 
-__all__ = ["COOLDOWN_S", "ENV_NONINTERACTIVE", "ENV_NO_REAL", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
+__all__ = ["COOLDOWN_S", "ENV_NONINTERACTIVE", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
            "UNLOCK_COMMAND", "WRITE_CEILING", "Keystore", "KeystoreBusy", "KeystoreDenied", "KeystoreError",
            "KeystoreLocked", "KeystoreMissing", "KeystoreUnavailable", "Wires", "aead", "default", "hkdf",
            "interactive", "is_real", "os_user", "scrypt_key"]
 
 SERVICE = "poolhouse"
 ENV_NONINTERACTIVE = "POOLHOUSE_NONINTERACTIVE"
-ENV_NO_REAL = "POOLHOUSE_NO_REAL_KEYSTORE"
-"""Set by the test suite for itself and every process it starts: the machine's own keystore is
-treated as absent, so a test child can never store or prompt for a Keychain item."""
-REAL_BACKENDS = ("keyring.backends.macOS", "keyring.backends.SecretService", "keyring.backends.libsecret",
-                 "keyring.backends.Windows", "keyring.backends.kwallet")
+REAL_BACKENDS = ("keyring.backends.",)
+"""Every backend `keyring` ships talks to the machine's own keystore except the ones below: a new one is real until named safe."""
+NOT_REAL_BACKENDS = ("keyring.backends.fail", "keyring.backends.null", "keyring.backends.chainer")
 UNLOCK_COMMAND = "poolhouse-security unlock"
 READ_CEILING = 600
 WRITE_CEILING = 5
@@ -70,7 +76,8 @@ logger.addHandler(logging.NullHandler())
 def is_real(ring: Any) -> bool:
     """Whether ``ring`` (or any backend a chainer holds) talks to the machine's own keystore."""
     parts = getattr(ring, "backends", None) or [ring]
-    return any(type(part).__module__.startswith(REAL_BACKENDS) for part in parts)
+    return any(type(part).__module__.startswith(REAL_BACKENDS) and not type(part).__module__.startswith(NOT_REAL_BACKENDS)
+               for part in parts)
 
 
 class KeystoreError(RuntimeError):
@@ -286,8 +293,8 @@ class Keystore:
         why = keystore_guard.unsafe_backend(keyring.get_keyring()) if usable else ""
         if why:
             raise KeystoreUnavailable(f"Poolhouse will not keep its key in this keyring backend: {why}")
-        if usable and os.environ.get(ENV_NO_REAL) and is_real(keyring.get_keyring()):
-            raise KeystoreUnavailable(f"the machine's own keystore is switched off ({ENV_NO_REAL})")
+        if usable and is_real(keyring.get_keyring()) and (barred := real_machine.refusal()):
+            raise KeystoreUnavailable(f"this computer's own keystore is not used here: {barred}")
         if not usable:
             raise KeystoreUnavailable("this machine has no usable OS keystore (macOS Keychain, "
                                       "Linux Secret Service)")

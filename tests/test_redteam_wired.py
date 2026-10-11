@@ -55,7 +55,7 @@ def test_only_the_command_and_the_ui_route_import_the_privileged_change():
                                   ["--unpersist"]])
 def test_a_command_run_by_an_agent_is_refused_before_anything_is_written(tmp_path, argv):
     env = {**os.environ, "PYTHONPATH": SRC, "POOLHOUSE_HOME": str(tmp_path / "home"),
-           "POOLHOUSE_NO_REAL_KEYSTORE": "1", "CLAUDECODE": "1"}
+           "CLAUDECODE": "1"}
     code = ("import sys; from poolhouse.serve import cli; "
             f"sys.exit(cli.COMMANDS.run(['memory', *{argv!r}]))")
     got = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
@@ -68,7 +68,7 @@ def test_a_command_run_by_an_agent_is_refused_before_anything_is_written(tmp_pat
                                   "../../etc/passwd", "a\ntouch PWNED"])
 def test_a_model_name_is_a_lookup_and_never_a_command(tmp_path, name):
     env = {**os.environ, "PYTHONPATH": SRC, "POOLHOUSE_HOME": str(tmp_path / "home"),
-           "POOLHOUSE_NO_REAL_KEYSTORE": "1", "CLAUDECODE": ""}
+           "CLAUDECODE": ""}
     got = subprocess.run([sys.executable, "-c",
                           "import sys; from poolhouse.serve import cli; "
                           f"sys.exit(cli.COMMANDS.run(['memory', '--for', {name!r}, '--apply']))"],

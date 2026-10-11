@@ -17,7 +17,7 @@ class WindowsStartupTests(unittest.TestCase):
         state = Path(directory.name)
         isolated = patch.dict(os.environ, {
             "POOLHOUSE_HOME": str(state / "state"), "POOLHOUSE_CACHE": str(state / "cache"),
-            "POOLHOUSE_NO_REAL_KEYSTORE": "1", "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
+            "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
             "POOLHOUSE_NOTIFY": "off",
         })
         isolated.start()
@@ -39,7 +39,7 @@ import poolhouse.sandbox.run
 import poolhouse.fleet.launch
 import poolhouse.setup
 """
-        env = dict(os.environ, POOLHOUSE_NO_REAL_KEYSTORE="1", POOLHOUSE_NOTIFY="off")
+        env = dict(os.environ, POOLHOUSE_NOTIFY="off")
         done = subprocess.run([sys.executable, "-c", code], env=env,
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(done.returncode, 0, done.stderr)

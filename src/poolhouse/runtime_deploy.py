@@ -175,7 +175,7 @@ def build(plan: Plan, stage: Path, prefix: Path) -> runtime.Runtime:
 def _clean_environment(home: Path, bin_dir: Path) -> dict[str, str]:
     kept = {key: value for key, value in runtime.environment().items()
             if not key.startswith(("POOLHOUSE_", "POOLHOUSE_")) and key not in {"CLAUDE_ENV_FILE", "CLAUDE_CONFIG_DIR"}}
-    return {**kept, "HOME": str(home), "POOLHOUSE_HOME": str(home / "state"), "POOLHOUSE_NO_REAL_KEYSTORE": "1",
+    return {**kept, "HOME": str(home), "POOLHOUSE_HOME": str(home / "state"), 
             "POOLHOUSE_NONINTERACTIVE": "1", "POOLHOUSE_NOTIFY": "off", "POOLHOUSE_RUNTIME_ENSURE": "off",
             "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
 
