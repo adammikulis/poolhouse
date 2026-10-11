@@ -375,6 +375,13 @@ fn an_act_signed_by_an_admin_that_has_been_removed_is_refused_unless_the_cut_kep
     again.signatures.clear();
     sign(&mut again, C);
     assert!(refused(take(&mut g, again)).contains("admin of this pool now"), "and an act the cut does not name is not kept");
+    let dir = tempfile::tempdir().unwrap();
+    let mut other = GovPool::create(dir.path(), g.found_act().clone()).unwrap();
+    other.clock.freeze();
+    other.ingest_many(g.acts().values().filter(|a| a.id() != kept.id()).cloned().collect(), wall_ms(), false);
+    advance(&mut other, 25 * HOUR);
+    assert!(!admins(&other).contains(&public(C)));
+    assert_eq!(take(&mut other, kept.clone()), Ingest::Accepted, "a device that never held the act takes it, for the cut names it");
     let mut copy = kept;
     copy.signatures.clear();
     sign(&mut copy, C);

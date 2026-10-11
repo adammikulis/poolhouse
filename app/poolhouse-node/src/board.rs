@@ -297,6 +297,11 @@ impl Board {
         out
     }
 
+    /// How many entries of the log of ``origin`` stand, when a removal closed it.
+    pub fn cut_of(&self, origin: &str) -> Option<u64> {
+        self.state.t.cuts.get(origin).copied()
+    }
+
     /// Keep only the first ``seq`` entries of the log of ``origin``, and take no later one, whoever relays it. The least ever named
     /// stands; this device's own log is never cut.
     pub fn cut(&mut self, origin: &str, seq: u64) -> Result<()> {

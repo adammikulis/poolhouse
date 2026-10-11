@@ -6,8 +6,11 @@ mod kit;
 use kit::gov::*;
 use kit::govnode::*;
 use kit::netkit::*;
+use std::collections::{BTreeMap, BTreeSet};
+
 use poolhouse_node::board::Board;
 use poolhouse_node::netsync::sync_all;
+use poolhouse_node::sync::exchange;
 use poolhouse_node::row::Kind;
 use serde_json::{json, Value};
 
@@ -117,4 +120,55 @@ fn removing_a_device_removes_the_devices_it_admitted_and_an_admin_can_admit_one_
     std::thread::sleep(std::time::Duration::from_millis(5));
     put_admit(&mut g, &guest, &[1]);
     assert!(is_member(&g, &guest), "an admin's own admit brings it back");
+}
+
+fn note(board: &mut Board, text: &str) {
+    board.append(Kind::Note, "bob", json!({"nkind": "fact", "title": text, "body": "b", "author": "bob"}), text).unwrap();
+}
+
+#[test]
+fn a_log_of_a_removed_device_that_no_removal_names_stands_as_far_as_this_device_holds_it() {
+    let (dir_a, dir_c) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let mut a = Board::open(dir_a.path(), "demo", "pool", kit::key(1)).unwrap();
+    let mut c = Board::open(dir_c.path(), "demo", "pool", kit::key(2)).unwrap();
+    note(&mut c, "one");
+    exchange(&mut a, &mut c).unwrap();
+    let origin = c.origin().to_string();
+    let held = a.rows(&origin).len();
+    assert!(held > 0);
+    let writer = a.writer_fingerprint(&origin).unwrap();
+    a.close_removed(BTreeSet::from([writer]), &BTreeMap::new()).unwrap();
+    assert_eq!(a.cut_of(&origin), Some(held as u64));
+    note(&mut c, "two");
+    let report = exchange(&mut a, &mut c).unwrap();
+    assert_eq!(a.rows(&origin).len(), held, "nothing it wrote later is taken");
+    assert!(report.refused.contains_key(&origin), "{report:?}");
+}
+
+#[test]
+fn two_removals_of_one_device_that_name_different_points_stand_at_the_least() {
+    let (_d, mut g) = pool(&[strong(1, "ann")], poolhouse_node::membership::Policy::Secure);
+    let victim = ident(40);
+    put_admit(&mut g, &victim, &[1]);
+    let origin = "ab".repeat(16);
+    for seq in [5u64, 3, 9] {
+        put(&mut g, "remove", json!({"fingerprint": victim.fingerprint(), "cut": [{"board": "demo", "origin": origin, "seq": seq}]}), &[1]);
+    }
+    assert_eq!(g.state().roster.log_cuts[&("demo".to_string(), origin)], 3);
+}
+
+#[test]
+fn a_board_opened_after_a_removal_is_closed_to_the_logs_it_names() {
+    let (a, _b, c) = pool_of_three();
+    let origin = "cd".repeat(16);
+    let body = json!({"fingerprint": c.fp(), "cut": [{"board": "late", "origin": origin, "seq": 2}]});
+    let mut n = a.node.lock().unwrap();
+    n.with_gov(|g, wall| {
+        let mut act = g.new_act("remove", body, wall)?;
+        sign(&mut act, ANN);
+        g.ingest(act, wall);
+        Ok(())
+    }).unwrap();
+    assert!(!n.boards.contains_key("late"));
+    assert_eq!(n.host("late").unwrap().board.cut_of(&origin), Some(2));
 }
