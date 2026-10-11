@@ -83,7 +83,7 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
                          "(default: %(default)s)")
     ap.add_argument("--name", default="", help="the workspace name to ask for (default: local-<model>)")
     ap.add_argument("--as", dest="parent", default=PARENT,
-                    help="the workspace session this one is a subagent of (default: the session of the command's environment, else the person's)")
+                    help="the workspace session this one is a subagent of (default: the session of the command's environment; a launch with neither is refused)")
     ap.add_argument("--project", default="", metavar="DIR",
                     help="the project directory the session works in (default: the current directory)")
     ap.add_argument("--orders-from", action="append", default=[], metavar="AGENT",

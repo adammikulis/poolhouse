@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse import harnessid
 from poolhouse.board import grants as board_grants
 from poolhouse.board.client import NodeError
 from poolhouse.board.names import RESERVED, valid_name
@@ -95,6 +96,21 @@ def test_a_registration_that_names_who_it_is_for_is_refused_and_makes_no_session
             node.client.call("register", node.board, token, model="claude-sonnet-5-5", harness="claude-code",
                              session="someone-else", **{field: "owner"})
     assert sessions(node, worker) == before
+
+
+def test_a_coding_harness_is_never_given_a_session_under_the_person_when_no_session_starts_it(workspace_node, tmp_path):
+    node = workspace_node
+    lead = node.member("lead")
+    project = tmp_path / "project"
+    project.mkdir()
+    before, said = sessions(node, lead), []
+    with pytest.raises(ValueError, match="started by a session"):
+        harnessid.invite("local-harness", project, "", said.append)
+    assert sessions(node, lead) == before, "no session was made, under the person or any other"
+    assert any("started by a session" in line for line in said)
+    made = harnessid.invite("local-harness", project, lead.name, said.append)
+    assert made.parent is not None and made.parent.name == lead.name
+    assert sessions(node, lead) == sorted([*before, made.name])
 
 
 @pytest.mark.parametrize("model", ["human", "owner", "person", "poolhouse-ui", "workspace", "system"])

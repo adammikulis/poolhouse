@@ -33,7 +33,7 @@ def fixture_worker(root, cid, conversation, prompt, communication) -> None:
     def launch(model, role, project, **options):
         if prompt == "startup rejected":
             raise SystemExit(2)
-        session = harnessid.invite(options["name"], Path(project), "", lambda text: None)
+        session = harnessid.invite(options["name"], Path(project), options["parent"], lambda text: None)
         try:
             with tempfile.TemporaryDirectory() as private:
                 command = [sys.executable, str(Path(__file__)), *options["harness_args"]]

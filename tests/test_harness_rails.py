@@ -423,9 +423,15 @@ class TestHarnessSession:
         assert session.flags() == ["--agent", session.name]
         assert credentials.load(kit.node.state, kit.node.board, session.name) == secret
 
-    def test_a_launcher_run_by_a_person_is_a_subagent_of_the_persons_session(self, kit):
-        session = harnessid.invite("local-test-codex", kit.project, "", lambda _: None)
+    def test_a_launcher_that_no_session_starts_is_refused_and_makes_no_session_under_the_person(self, kit):
+        before, said = set(self.agents(kit)), []
+        with pytest.raises(ValueError, match="started by a session"):
+            harnessid.invite("local-test-codex", kit.project, "", said.append)
+        assert set(self.agents(kit)) == before and said[0].startswith("workspace connection refused")
+
+    def test_a_launcher_run_by_a_person_names_the_persons_session_as_its_parent(self, kit):
         persons = person.on(kit.node.client, kit.node.board)
+        session = harnessid.invite("local-test-codex", kit.project, persons.name, lambda _: None)
         assert self.agents(kit)[session.name].parent == persons.name and session.parent.name == persons.name
 
     def test_a_launcher_run_by_an_agent_is_a_subagent_of_that_agents_session(self, kit, monkeypatch):

@@ -24,7 +24,7 @@ def launch_coding_agent(model: str, role: str, project: str | Path, harness: str
     """Run ``harness`` on ``model`` in ``project`` under ``role``; returns the harness's exit code.
 
     ``model`` "" takes the coding default. Options: ``name`` overrides the workspace identity
-    (``local-<model>-<harness>``); ``orders_from`` lists identities the agent obeys besides the
+    (``local-<model>-<harness>``); ``parent`` names the session that starts the agent (else the one of ``$POOLHOUSE_WORKSPACE_AGENT``); ``orders_from`` lists identities the agent obeys besides the
     person and the lead; ``harness_args`` go to the harness after ``--``; ``say`` receives the
     launcher's lines; ``run_codex`` or ``run_claude`` replaces the process start.
     """
@@ -47,6 +47,8 @@ def launch_coding_agent(model: str, role: str, project: str | Path, harness: str
         argv += ["--draft", draft]
     if options.get("name"):
         argv += ["--name", options.pop("name")]
+    if options.get("parent"):
+        argv += ["--as", options.pop("parent")]
     for each in options.pop("orders_from", ()):
         argv += ["--orders-from", each]
     if harness_args := options.pop("harness_args", ()):

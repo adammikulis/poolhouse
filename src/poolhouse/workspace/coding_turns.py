@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import coding, platform, roles
+from poolhouse.board import person
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_types import safe
 from poolhouse.fleet.conversations import Conversations
@@ -188,6 +189,7 @@ class Manager:
                     if settings["effort"] == "auto" else localeffort.clamp(settings["effort"], settings["max_effort"]))
             result = coding.launch_coding_agent(conversation.model, settings["role"] or roles.DEFAULT,
                 settings["project"], harness=harness, context=settings["context"], draft=settings.get("draft", "auto"), name=f"chat-{conversation.id}",
+                parent=person.session(settings["project"]).name,
                 harness_args=args, say=lambda text: turn.emit({"status": text}),
                 **{f"run_{harness}": lambda command, env: self._process(turn, command, env, (home, harness, prompt, settings["project"]))},
                 **launch_options)

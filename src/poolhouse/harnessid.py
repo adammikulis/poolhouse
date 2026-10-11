@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from poolhouse import node_launch
-from poolhouse.board import person, place, session as sessions
+from poolhouse.board import place, session as sessions
 from poolhouse.board.client import Client, NodeError
 from poolhouse.board.names import valid_name
 from poolhouse.briefing import REQUIRED_BRIEFING
@@ -51,11 +51,12 @@ def brief(name: str, alias: str, harness: str, parent: str, orders_from: Sequenc
 
 
 def _launcher(client: Client, board: str, parent: str) -> sessions.Session:
-    """The session that starts the harness: the agent named by ``parent`` or the environment, else the person's."""
+    """The session that starts the harness: the agent named by ``parent`` or the environment; ValueError when there is none."""
     named = parent if parent and parent != "workspace" else os.environ.get(AGENT_ENV, "")
-    if named:
-        return sessions.connect(agent=named, board=board, client=client)
-    return person.on(client, board)
+    if not named:
+        raise ValueError(f"a coding agent is started by a session: name it with --parent or run as one (${AGENT_ENV}); "
+                         "no session is made for it under the person")
+    return sessions.connect(agent=named, board=board, client=client)
 
 
 def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None],
