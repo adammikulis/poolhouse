@@ -131,8 +131,19 @@ def test_an_area_held_by_another_session_blocks_a_file_under_it(kit):
 
 def test_a_session_without_a_token_of_its_own_reserves_nothing(kit):
     (kit.node.state / 'client' / kit.node.board / f'{kit.alpha.name}.token').unlink()
-    with pytest.raises(harness_session.BoardUnavailable, match=kit.alpha.name):
+    with pytest.raises(Denied, match=kit.alpha.name) as refused:
         reserve(kit, kit.alpha, 'Write', {'file_path': str(kit.project / 'source.py')})
+    assert not isinstance(refused.value, harness_session.BoardUnavailable), 'a missing token is a refusal, not a board outage'
+    assert held(kit.b, kit.beta.name) == [] and held(kit.b, kit.alpha.name) == []
+
+
+def test_the_hook_denies_a_session_with_no_token_file_and_does_not_wave_it_through_with_a_note(kit):
+    (kit.node.state / 'client' / kit.node.board / f'{kit.alpha.name}.token').unlink()
+    target = kit.project / 'source.py'
+    payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(target), 'content': 'x\n'}, 'cwd': str(kit.project)}
+    answer = harnesshook.pre(payload, harnesshook.Rail('plan-and-go', kit.alpha.name, roots=[str(kit.project)], wait_s=0))['hookSpecificOutput']
+    assert answer['permissionDecision'] == 'deny' and 'no usable token' in answer['permissionDecisionReason']
+    assert 'ownership not' not in answer['permissionDecisionReason']
     assert held(kit.b, kit.beta.name) == [] and held(kit.b, kit.alpha.name) == []
 
 

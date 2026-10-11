@@ -44,8 +44,9 @@ def test_hook_session_is_the_launchers_agent_without_environment_fallback(kit, m
 
 def test_a_session_with_no_token_of_its_own_never_reads_another_inbox(kit):
     kit.s.post(kit.lead.name, 'question', 'for the lead')
-    with pytest.raises(harness_session.BoardUnavailable, match='no usable token for child-thread'):
+    with pytest.raises(Denied, match='no usable token for child-thread') as refused:
         reader.read('child-thread', kit.root)
+    assert not isinstance(refused.value, harness_session.BoardUnavailable)
 
 
 def test_the_token_of_another_session_under_the_agents_name_never_reads(kit):
@@ -65,8 +66,9 @@ def test_a_checkout_of_another_project_is_never_read_with_the_session_of_this_on
     monkeypatch.delenv('POOLHOUSE_BOARD')
     elsewhere = tmp_path / 'elsewhere'
     git.run(['init', str(elsewhere)])
-    with pytest.raises(harness_session.BoardUnavailable, match=f'no usable token for {kit.reader.name}'):
+    with pytest.raises(Denied, match=f'no usable token for {kit.reader.name}') as refused:
         reader.read(kit.reader.name, elsewhere)
+    assert not isinstance(refused.value, harness_session.BoardUnavailable)
 
 
 def test_a_read_asks_who_the_token_is_once_and_what_waits_once(kit, monkeypatch):

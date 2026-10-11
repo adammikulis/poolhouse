@@ -21,14 +21,17 @@ class BoardUnavailable(Denied):
 
 
 def session_of(actor, cwd):
-    """The session ``actor`` holds on the board of ``cwd``'s project. BoardUnavailable when the node or the token is not there;
-    Denied when the node refuses the token or it belongs to another session."""
+    """The session ``actor`` holds on the board of ``cwd``'s project. BoardUnavailable when the node or the board is not there;
+    Denied when ``actor`` has no usable token file, the node refuses the token or it belongs to another session."""
     try:
         node = Client(node_launch.default_state())
         board = place.resolve(node, Path(cwd))
-        token = credentials.load(node.state, board, actor)
     except (NodeError, OSError) as error:
         raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
+    try:
+        token = credentials.load(node.state, board, actor)
+    except Denied as error:
+        raise Denied(f'{actor} has no session of its own on the board of {Path(cwd).name}: {error}') from error
     s = Session(node, board, token)
     try:
         named = s.name
