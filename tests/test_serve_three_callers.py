@@ -22,7 +22,8 @@ from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.fakes import fake_llama_binary
 
-pytestmark = pytest.mark.slow
+pytest_plugins = ["serve_node"]
+pytestmark = [pytest.mark.slow, pytest.mark.usefixtures("serve_leases")]
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 GIB = 1024 ** 3
 
@@ -145,7 +146,7 @@ def test_a_caller_that_would_not_fit_is_refused_with_the_holders_named(tmp_path,
         late = caller(second)
         refusal = first_line(late)
         assert refusal["refused"] == "AdmissionRefused"
-        assert "red" in refusal["said"] and "a.gguf" in refusal["said"]
+        assert "this server needs" in refusal["said"] and "a.gguf" in refusal["said"]
         late.wait(timeout=30)
     finally:
         holder.kill()

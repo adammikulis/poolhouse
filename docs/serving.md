@@ -90,6 +90,17 @@ command a *person* runs to raise the limit, `poolhouse-serve memory --for MODEL 
 the broker uses it when it is free and picks another when it is not; a port held by another
 process is never killed or fought over.
 
+**Memory, the model slot and the GPU are the node's.** A server about to start is a lease of the node's table
+(`docs/node.md`, "Leases") tagged `server.<port>`: the memory it is estimated to take and a model slot named
+`serve:<file name>@<port>` (a task worker's slot has the model's name, so the two never meet), bound to the server's process, so
+the lease ends with the server, whoever held it last. The node keeps the machine's budget, 95% of what `poolhouse.hub.room` allows,
+which the broker writes to the node's `lease-config.json`; it queues a start that does not fit beside the servers up, and refuses
+one that never could. A server another program started is counted in the same table (`unmanaged.<port>.<pid>`, in steps of
+256 MiB) until its process ends. A training run's `gpu-training` claim is the GPU of the table, and every generation request to
+a server on the registry is a quiet lease of the GPU (of the request line of a `cpu` server), so one piece of work uses a device's
+compute at a time whichever process asks. `poolhouse-serve queue` shows the requests in line. The broker renews the leases it holds
+every thirty seconds and takes one again for a running server the node holds none for.
+
 `up` for a shape that is already held adopts that lease (no second server). `status` lists
 the leases (id, model, context, port or queued, holder pid, memory, since) above the
 servers, `--json` gives a script the same, and it exits non-zero when nothing is serving.

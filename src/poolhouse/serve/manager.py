@@ -16,6 +16,7 @@ from typing import Any
 
 import psutil
 
+from poolhouse import leasetable
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import serving_params
@@ -169,8 +170,10 @@ class ServerManager(Admitting):
         state_file: Path | None = None,
         broker: Any = None,
         stop_on_exit: bool = True,
+        table: leasetable.Table | None = None,
     ) -> None:
         self.stop_on_exit = stop_on_exit
+        self.table = table or leasetable.default()
         self.iq = ""
         self.backend = backend or LlamaServerBackend()
         self.tree: ServerBackend = MlxTreeBackend()
@@ -201,7 +204,7 @@ class ServerManager(Admitting):
     def with_backend(self, backend: ServerBackend) -> ServerManager:
         """A manager over ``backend`` that shares this one's records and processes."""
         other = ServerManager(backend, state_file=self.state_file, broker=self._broker,
-                              stop_on_exit=self.stop_on_exit)
+                              stop_on_exit=self.stop_on_exit, table=self.table)
         other._mine, other._processes = self._mine, self._processes
         other._lock, other._port_locks = self._lock, self._port_locks
         other.tree = self.tree
@@ -675,6 +678,7 @@ class ServerManager(Admitting):
             if isinstance(pid, int) and pid_exists(pid):
                 stopped += kill_process_tree(pid, grace_s=grace_s)
             exit_guard.release(pid)
+            self._given_back(entry)
         for held in list(self._processes.values()):
             reap_one(held, grace_s=grace_s)
         self._processes.clear()
@@ -694,18 +698,18 @@ class ServerManager(Admitting):
 
     # ------------------------------------------------------------------ state file
 
-    def _pending(self, spec: ServerSpec, *, est_bytes: int = 0) -> Lease:
+    def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0) -> Lease:
         """Write the server down before it exists, and hand the backend the proof.
 
-        The record carries the port, the model and this process as owner with no pid yet;
-        `_record` fills the pid in once the server answers, `_forget` takes the entry out
-        if it never does. Between the two, a port that looks unrecorded is one this
+        The record carries the port, the model, this process as owner with no pid yet and the node's lease of the memory and
+        slot (``est_mb`` is the memory); `_record` fills the pid in once the server answers, `_forget` takes the entry out
+        and gives the lease back if it never does. Between the two, a port that looks unrecorded is one this
         manager is starting on -- never one it may kill.
         """
         self._mine[str(spec.port)] = {
             "port": spec.port, "pid": None, "backend": self.backend_for(spec).name,
             "model": str(spec.model), "owner_pid": os.getpid(), "pending": True,
-            "device": admission.device_of(spec), "est_bytes": est_bytes,
+            "device": admission.device_of(spec), "lease": lease, "est_mb": est_mb,
             "embedding": bool(spec.embedding), "mmproj": bool(spec.mmproj),
             "context": int(spec.context), "parallel": int(spec.parallel or 1),
         }
@@ -716,6 +720,7 @@ class ServerManager(Admitting):
     def _record(self, spec: ServerSpec, info: ServerInfo,
                 iq: quant_guard.IqQuant | None = None) -> None:
         kept = kvcache.effective(spec)
+        pending = self._mine.get(str(spec.port)) or {}
         self._mine[str(spec.port)] = {
             "port": info.port,
             "pid": info.pid,
@@ -723,7 +728,8 @@ class ServerManager(Admitting):
             "model": str(spec.model),
             "owner_pid": os.getpid(),
             "device": admission.device_of(spec),
-            "est_bytes": (self._mine.get(str(spec.port)) or {}).get("est_bytes", 0),
+            "lease": pending.get("lease", ""),
+            "est_mb": pending.get("est_mb", 0),
             "embedding": bool(spec.embedding),
             "mmproj": bool(spec.mmproj),
             "mtp": info.mtp,
@@ -749,10 +755,11 @@ class ServerManager(Admitting):
         if info.process is not None:
             self._processes[info.port] = info.process
         self._save()
+        self._bound(pending.get("lease", ""), info.pid)
 
     def _forget(self, port: int, *, grace_s: float = 5.0) -> None:
         reap_one(self._processes.pop(port, None), grace_s=grace_s)
-        self._mine.pop(str(port), None)
+        self._given_back(self._mine.pop(str(port), None))
         self._save()
 
     def _load(self) -> dict:

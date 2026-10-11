@@ -22,6 +22,9 @@ from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.process import every_server, kill_process_tree, pid_exists
 from poolhouse.testing.fakes import fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 @pytest.fixture
 def llama_binary(tmp_path):

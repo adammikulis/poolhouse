@@ -29,6 +29,9 @@ from poolhouse.serve.emitted import emitted_flags
 from poolhouse.testing.fakes import fake_binary
 from tests.conftest import leased, write_gguf
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 HELP = """\
 usage: llama-server [options]
 

@@ -24,6 +24,9 @@ from poolhouse.serve.process import kill_process_tree
 from poolhouse.serve.quant_guard import BlockedQuant
 from poolhouse.testing.fakes import fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 STRING, U32 = 8, 4
 Q4_K, Q8_0, IQ4_NL, IQ4_XS = 12, 8, 20, 23
 FTYPE = {"Q4_K_M": 15, "IQ4_XS": 30, "IQ2_XXS": 19, "IQ4_NL": 25}

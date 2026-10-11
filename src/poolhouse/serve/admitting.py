@@ -1,13 +1,15 @@
-"""What `ServerManager` does before a process is started: reuse a server that already fits,
-wait for one that is loading, rate the memory, stop what a dead process left running, and
-take in an unmanaged server when the setting allows it.
+"""What `ServerManager` does before a process is started: reuse a server that already fits, wait for one that is loading, take the
+memory and the slot for it from the node's lease table, stop what a dead process left running, and take in an unmanaged server
+when the setting allows it.
 
-All of it happens under one file lock beside the lease file, so two processes asking at the
-same moment see each other's records.
+The look at the records and the write of the pending record happen under one file lock beside the lease file, so two processes
+asking at the same moment see each other's records; the memory is the node's to give, and a start that waits for it waits outside
+the lock.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import time
@@ -17,10 +19,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from poolhouse import leasetable
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import serving_params
-from poolhouse.hub import room as machine_room
 from poolhouse.lock import only_one
+from poolhouse.node_health import Refused
 from poolhouse.serve import admission, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
@@ -28,7 +31,6 @@ from poolhouse.serve.leases import merge_state, orphaned, recorded_servers
 from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import kill_process_tree
-from poolhouse.serve.unmanaged import unmanaged_servers
 
 __all__ = ["STATE_LOCK_TIMEOUT_S", "Admitting"]
 
@@ -44,6 +46,7 @@ class Admitting:
     state_file: Path
     say: Callable[[str], None] | None
     confirm: Callable[[str], bool] | None
+    table: leasetable.Table
     if TYPE_CHECKING:
         _mine: dict[str, dict]
 
@@ -51,53 +54,79 @@ class Admitting:
         def _load(self) -> dict: ...
         def _write(self, state: dict) -> None: ...
         def _save(self) -> None: ...
-        def _pending(self, spec: ServerSpec, *, est_bytes: int = 0) -> Lease: ...
+        def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0) -> Lease: ...
         def backend_for(self, spec: ServerSpec) -> ServerBackend: ...
 
     def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None,
                   reuse: bool = False, load_s: float = 0.0) -> Lease | ServerInfo:
-        """The record for a server about to start, written once the machine has the memory
-        for it; or, with ``reuse``, the running server that already serves ``spec``.
+        """The record for a server about to start, written once the node has given it the memory and the slot; or, with ``reuse``,
+        the running server that already serves ``spec``.
 
-        Waits while a server that would serve ``spec`` is still loading (up to ``load_s``)
-        and while the servers up and this one would rate red; raises `AdmissionRefused`
-        when no room comes free in `admission.wait_s()`.
+        Waits while a server that would serve ``spec`` is still loading (up to ``load_s``) and while the node holds the memory
+        for the servers up; raises `AdmissionRefused` when it could never fit or no room comes free in `admission.wait_s()`.
         """
         told = self.say or logger.info
         began = time.monotonic()
         memory_until = began + admission.wait_s()
+        wanted = admission.estimate_bytes(spec)
+        asked: dict | None = None
+        handed = False
         waiting = last = ""
-        while True:
-            with only_one(self.state_file.with_name("servers.admission.lock"), wait=True,
-                          timeout=STATE_LOCK_TIMEOUT_S, announce=logger.debug):
-                records = recorded_servers(self.state_file)
-                found, loading = (self._compatible(spec, records, on_event) if reuse
-                                  else (None, False))
-                if found is not None:
-                    return found
-                if not loading or time.monotonic() - began >= load_s:
-                    verdict = self._rated(spec, records)
-                    if verdict.rating == "red" and self._stop_leaked(records, told):
-                        verdict = self._rated(spec, recorded_servers(self.state_file))
-                    if verdict.rating != "red":
-                        if verdict.rating == "yellow":
-                            told(f"port {spec.port}: {verdict.said()}")
-                        return self._pending(spec, est_bytes=verdict.wanted)
-                    waiting = f"waiting for memory -- {verdict.said()}"
-                    if time.monotonic() >= memory_until:
-                        raise admission.AdmissionRefused(
-                            f"port {spec.port}: {verdict.said()}; no memory came free in "
-                            f"{admission.wait_s():.0f}s ({admission.ENV_WAIT} sets the wait)")
-                else:
-                    waiting = "waiting for a server that serves it to finish loading"
-            if waiting != last:
-                told(f"port {spec.port}: {waiting}")
-                last = waiting
-            time.sleep(POLL_S)
+        try:
+            while True:
+                with only_one(self.state_file.with_name("servers.start.lock"), wait=True,
+                              timeout=STATE_LOCK_TIMEOUT_S, announce=logger.debug):
+                    records = recorded_servers(self.state_file)
+                    found, loading = (self._compatible(spec, records, on_event) if reuse
+                                      else (None, False))
+                    if found is not None:
+                        return found
+                    if not loading or time.monotonic() - began >= load_s:
+                        asked = asked or admission.ask(self.table, spec, wanted, pid=os.getpid(),
+                                                       ttl_s=int(load_s) + admission.KEEP_S)
+                        if asked["state"] == "held":
+                            handed = True
+                            return self._pending(spec, lease=asked["id"], est_mb=-(-wanted // admission.MIB))
+                        self._stop_leaked(records, told)
+                        waiting = f"waiting for memory -- {admission.said(self.table, wanted)}"
+                        if time.monotonic() >= memory_until:
+                            raise admission.AdmissionRefused(
+                                f"port {spec.port}: {admission.said(self.table, wanted)}; no memory came free in "
+                                f"{admission.wait_s():.0f}s ({admission.ENV_WAIT} sets the wait)")
+                    else:
+                        waiting = "waiting for a server that serves it to finish loading"
+                if waiting != last:
+                    told(f"port {spec.port}: {waiting}")
+                    last = waiting
+                asked = self._polled(asked)
+        finally:
+            if asked is not None and not handed:
+                with contextlib.suppress(OSError, Refused):
+                    self.table.release(asked["id"])
 
-    def _rated(self, spec: ServerSpec, records: dict[int, dict]) -> admission.Verdict:
-        return admission.check(spec, records, budget=machine_room(),
-                               unmanaged=unmanaged_servers(records))
+    def _polled(self, asked: dict | None) -> dict | None:
+        """The request for memory after a short wait on it, or after a short sleep when there is none; None when the node dropped it."""
+        if asked is None:
+            time.sleep(POLL_S)
+            return None
+        try:
+            return self.table.wait(asked["id"], POLL_S)
+        except Refused:
+            return None
+
+    def _bound(self, lease: str, pid: int | None) -> None:
+        """Bind the node's lease of a server to the server's process, so the memory comes back when it ends."""
+        if lease and pid:
+            try:
+                self.table.renew(lease, ttl_s=admission.KEEP_S, pid=pid)
+            except (Refused, OSError) as why:
+                logger.warning("the lease %s of the server (pid %s) was not bound to it: %s", lease, pid, why)
+
+    def _given_back(self, entry: dict | None) -> None:
+        """Give the node the lease an entry of the registry holds; the node ends it with the server's process anyway."""
+        if entry and entry.get("lease"):
+            with contextlib.suppress(Refused, OSError):
+                self.table.release(str(entry["lease"]))
 
     def _stop_leaked(self, records: dict[int, dict], told: Callable[[str], None]) -> bool:
         """Stop every server whose leasing process has gone; whether any was."""

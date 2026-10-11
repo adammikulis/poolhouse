@@ -21,7 +21,8 @@ from poolhouse.serve.build_paths import BuildFailed, builds_dir
 from poolhouse.serve.process import every_server
 from tests.test_serve_real_llama import small_gguf
 
-pytestmark = pytest.mark.slow
+pytest_plugins = ["serve_node"]
+pytestmark = [pytest.mark.slow, pytest.mark.usefixtures("serve_leases")]
 
 PINNED_TAG = "b11379"
 """A llama.cpp build tag (its release is a prerelease cut from master); the real build test builds this one."""

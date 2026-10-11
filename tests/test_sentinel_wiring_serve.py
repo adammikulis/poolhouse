@@ -32,6 +32,9 @@ from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.fakes import fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 REPO = Path(__file__).resolve().parent.parent
 
 

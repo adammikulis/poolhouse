@@ -871,8 +871,8 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   interval; today the supervisor starts it with `run --state` only (extra flags after `--`), so the network is off.
 - The always-on form: a `fleet/autostart` role for `node_launch supervise` (a person-installed unit); a wheel
   that carries a prebuilt node instead of a Rust toolchain at `runtime ensure` time.
-- Python lease clients (the serve broker, `gate.py` tickets, `testslots` permits, fleet `JobRunner` slots,
-  `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
+- Python lease clients for `testslots` permits, fleet `JobRunner` slots, `lock.only_one` and `claims.py` (the serve broker and the
+  request gate take their leases from the table: `poolhouse.leasetable`, docs/serving.md), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
   device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"),
   a person's approval of a new project (a typed yes at project_add, for a git project and for a place that is not one), a per-use

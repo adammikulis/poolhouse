@@ -8,6 +8,8 @@ from pathlib import Path
 from types import EllipsisType
 from typing import Any
 
+from poolhouse.kvtype import DEFAULT_KV_CACHE
+
 __all__ = ["record_server"]
 
 
@@ -18,7 +20,7 @@ def record_server(state_file: Path, port: int, *, model: str = "model.gguf",
     running as this process and held by it, unless ``pid`` (``None`` for a start that has
     no process yet) or ``owner_pid`` say otherwise."""
     entry = {"port": port, "pid": os.getpid() if pid is ... else pid, "backend": "llama.cpp", "model": model,
-             "owner_pid": owner_pid or os.getpid(),
+             "owner_pid": owner_pid or os.getpid(), "cache_type_k": DEFAULT_KV_CACHE, "cache_type_v": DEFAULT_KV_CACHE,
              "base_url": f"http://127.0.0.1:{port}", **fields}
     state_file.parent.mkdir(parents=True, exist_ok=True)
     held = json.loads(state_file.read_text()) if state_file.exists() else {}

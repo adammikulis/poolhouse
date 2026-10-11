@@ -13,6 +13,8 @@ import pytest
 from poolhouse.client.sdk import FleetTransport
 from poolhouse.http import Server
 
+pytest_plugins = ['node_kit']
+
 
 @contextmanager
 def pending_headers():
@@ -105,15 +107,17 @@ def test_unlimited_sdk_can_cancel_during_tls_handshake():
             worker.join(1)
 
 
-def test_cancelling_queued_request_removes_its_resource_ticket(tmp_path, monkeypatch):
-    from poolhouse import gate
+def test_cancelling_queued_request_gives_its_place_in_the_line_back(workspace_node, monkeypatch):
+    from poolhouse import gate, leasetable
     from poolhouse.http import ServerError, request_json
     from poolhouse.http_cancel import Cancellation, scope
 
-    path = tmp_path / 'admission'
-    path.mkdir()
     monkeypatch.setattr(gate, 'device_of', lambda _url: 'cancel-test')
-    monkeypatch.setattr(gate, '_dir', lambda _pool: path)
+    table = leasetable.default()
+
+    def turns():
+        return [row for row in table.listing()['leases'] if row['tag'].startswith('turn.')]
+
     control, errors = Cancellation(), []
     def work():
         try:
@@ -124,18 +128,17 @@ def test_cancelling_queued_request_removes_its_resource_ticket(tmp_path, monkeyp
     with gate.turn('http://127.0.0.1:1/v1/chat/completions'):
         worker = threading.Thread(target=work)
         worker.start()
-        deadline = time.monotonic() + 2
-        while len(gate._tickets(path)) < 2 and time.monotonic() < deadline:
+        deadline = time.monotonic() + 5
+        while len(turns()) < 2 and time.monotonic() < deadline:
             time.sleep(0.005)
-        assert len(gate._tickets(path)) == 2
-        assert all((path / name).stat().st_size < 1024 for name in gate._tickets(path))
+        assert sorted(row['state'] for row in turns()) == ['held', 'queued']
         control.set()
-        worker.join(1)
+        worker.join(5)
         assert not worker.is_alive()
         assert len(errors) == 1 and errors[0].status == 429
         assert 'cancelled while waiting' in str(errors[0])
-        assert len(gate._tickets(path)) == 1
-    assert gate._tickets(path) == []
+        assert [row['state'] for row in turns()] == ['held']
+    assert turns() == []
 
 
 def test_cancel_during_hostname_resolution_releases_sdk_opening_thread(monkeypatch):

@@ -15,6 +15,9 @@ from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 def test_the_backend_launches_nothing_without_a_lease(tmp_path):
     binary = fake_binary(tmp_path)
@@ -147,7 +150,7 @@ def serving():
 def _orphan_record(state, port: int, pid: int, model: str = "fine.gguf") -> None:
     state.write_text(json.dumps({str(port): {
         "port": port, "pid": pid, "owner_pid": 999_999_998, "backend": "fake",
-        "model": model}}))
+        "model": model, "cache_type_k": "q8_0", "cache_type_v": "q8_0"}}))
 
 
 def test_a_lease_stops_an_orphan_of_another_shape_before_starting(tmp_path, serving):
