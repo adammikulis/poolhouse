@@ -10,7 +10,6 @@ use std::time::Duration;
 use kit::netkit::*;
 use poolhouse_node::beacon::{decode, encode, Beacon};
 use poolhouse_node::net::{Net, NetConfig};
-use poolhouse_node::node::Node;
 use poolhouse_node::poolops::wall_ms;
 use poolhouse_node::projectid::project_key;
 
@@ -25,7 +24,7 @@ fn auto(beacon_cfg: poolhouse_node::beacon::BeaconConfig, project: &str, settle_
 fn device_above(floor: &str, cfg: NetConfig) -> Dev {
     loop {
         let dir = tempfile::tempdir().unwrap();
-        let node = Node::open(dir.path()).unwrap();
+        let node = kit::node(dir.path());
         if node.members.id.as_str() <= floor {
             continue;
         }

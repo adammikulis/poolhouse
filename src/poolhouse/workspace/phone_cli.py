@@ -1,7 +1,8 @@
 """The `phone` command of `poolhouse-workspace`: add the phone a person approves from, list the phones, remove one.
 
 `add` and `remove` are a person's at a terminal. `add` turns on the listener for phones and shows a code to scan; that is the
-whole of a first phone's setup, and no `yes` is typed (docs/phone-approval.md, "Adding a phone"). `remove` asks a key the node
+whole of a further phone's setup; the first phone needs the person's yes to the question the node itself asks (docs/phone-approval.md,
+"The first phone"). `remove` asks a key the node
 holds to approve, with the typed yes. `list` and `offer` are any session's.
 """
 
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import node_launch, person
-from poolhouse.board import person as person_session, phone
+from poolhouse.board import person as person_session, phone, presence
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.command import flag
@@ -66,6 +67,14 @@ def _show(code: str, image: str) -> None:
         say(f"\nThe same code as an image: {qr.write_svg(Path(image), code)}")
 
 
+def _code(client: Client, carrier: Session, further: bool) -> str:
+    """The link to scan. The first phone's is the node's own, made when the person says yes to the question it asks (the operating system's
+    prompt, or the person's terminal); a further phone's is asked of the node, which a phone that is already added approves."""
+    if further:
+        return str(carrier.call("phone_offer")["link"])
+    return str(presence.ask(client, carrier.token, "phone", "the first phone", presence.Voice(say=say))["link"])
+
+
 def _add(args: argparse.Namespace) -> int:
     person.require_person("adding a phone")
     client = Client()
@@ -75,7 +84,7 @@ def _add(args: argparse.Namespace) -> int:
     carrier = person_session.on(client, approval_cli.POOL)
     _listening(client, args.port)
     before = {p["id"] for p in phone.phones(carrier)}
-    code = str(client.call("phone_info", secret=phone.expect_phone(client.state))["link"])
+    code = _code(client, carrier, bool(client.call("phone_info")["keys"]))
     _show(code, args.image)
     end = time.monotonic() + args.wait
     say("\nWaiting for your phone...")

@@ -3,9 +3,8 @@
     python tests/pool_check/wire.py start --state DIR --binary PATH [--arg ARG ...]
     python tests/pool_check/wire.py stop  --state DIR
     python tests/pool_check/wire.py call  --state DIR METHOD [--board B] [--token T] [--params JSON]
-    python tests/pool_check/wire.py expect-enrol --state DIR
+    python tests/pool_check/wire.py presence --state DIR --token T --purpose key|phone [--about TEXT]
     python tests/pool_check/wire.py phone-listen --state DIR
-    python tests/pool_check/wire.py phone-offer --state DIR
     python tests/pool_check/wire.py phone --state DIR OP [--token T] [--body JSON] [--method GET]
     python tests/pool_check/wire.py cert --state DIR
 
@@ -19,14 +18,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import ssl
 from pathlib import Path
 from typing import Any
 
 from poolhouse import node_binary, node_launch, node_supervise
-from poolhouse.board import grants, phone
+from poolhouse.board import phone
 from poolhouse.node_health import API_VERSION, exchange
+
+PRESENCE = ["--presence", "terminal"]
+"""How a node of a rig or a test asks the person for the first key or phone: on a terminal the node reads itself, where `answer_presence` types
+yes. It is the node a person installs; only the installed software on the real home asks with the operating system's prompt."""
 
 
 def call(state: Path, method: str, board: str = "", token: str = "", params: dict | None = None) -> dict:
@@ -40,6 +44,47 @@ def call(state: Path, method: str, board: str = "", token: str = "", params: dic
     if reply.get("ok") is True:
         return {"ok": True, "result": reply["result"]}
     return {"ok": False, "code": reply["error"]["code"], "error": reply["error"]["message"]}
+
+
+def _screen_says(master: int, text: str, seconds: float) -> bool:
+    """Whether the pseudo-terminal's person side shows ``text`` within ``seconds``."""
+    import select
+    import time
+
+    end, shown = time.monotonic() + seconds, b""
+    while time.monotonic() < end and text.encode() not in shown:
+        if select.select([master], [], [], 0.2)[0]:
+            shown += os.read(master, 4096)
+    return text.encode() in shown
+
+
+def answer_presence(state: Path, token: str, purpose: str, about: str) -> dict:
+    """Play the person at the node's own question: ask as the session ``token`` for the one-time secret of the first key or phone, name a
+    pseudo-terminal of this device as the terminal, and type `yes` there when the node has written its question on it.
+
+    This is what a person does at a terminal, against the node as shipped: the node writes the question itself and reads the line itself,
+    so the answer does not pass through the process that asked (docs/pool-check.md). Only the rig's person runs it; the node has no
+    switch that answers for anyone.
+    """
+    import pty
+    import time
+
+    master, slave = pty.openpty()
+    try:
+        asked = call(state, "presence_ask", "", token, {"purpose": purpose, "about": about, "terminal": os.ttyname(slave)})
+        if not asked["ok"] or asked["result"]["state"] != "asking":
+            return asked
+        if not _screen_says(master, "Type yes", 20.0):
+            return {"ok": False, "code": "TimeoutError", "error": "the node wrote no question on the terminal it was given"}
+        os.write(master, b"yes\n")
+        said, end = asked, time.monotonic() + 20
+        while said["ok"] and said["result"]["state"] == "asking" and time.monotonic() < end:
+            time.sleep(0.1)
+            said = call(state, "presence_status", "", token)
+        return said
+    finally:
+        os.close(master)
+        os.close(slave)
 
 
 def post_many(state: Path, session: tuple[str, str], count: int, size: int, prefix: str) -> dict:
@@ -101,9 +146,13 @@ def start(state: Path, binary: Path, args: list[str]) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("start", "stop", "call", "post-many", "expect-enrol", "cert", "phone-listen", "phone-offer", "phone"):
+    for name in ("start", "stop", "call", "post-many", "presence", "cert", "phone-listen", "phone"):
         one = sub.add_parser(name)
         one.add_argument("--state", required=True)
+        if name == "presence":
+            one.add_argument("--token", required=True)
+            one.add_argument("--purpose", required=True, choices=("key", "phone"))
+            one.add_argument("--about", default="the pool check's person")
         if name == "phone":
             one.add_argument("op")
             one.add_argument("--token", default="")
@@ -128,13 +177,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "start":
             out = start(state, Path(args.binary), [f"{a}" for a in args.arg])
-        elif args.cmd == "expect-enrol":
-            out = {"ok": True, "result": {"secret": grants.expect_enrolment(state)}}
+        elif args.cmd == "presence":
+            out = answer_presence(state, args.token, args.purpose, args.about)
         elif args.cmd == "phone-listen":
             phone.listen_on(state, "127.0.0.1:0")
             out = {"ok": True, "result": {"listening": True}}
-        elif args.cmd == "phone-offer":
-            out = {"ok": True, "result": {"secret": phone.expect_phone(state)}}
         elif args.cmd == "phone":
             out = phone_call(state, args.op, args.token, json.loads(args.body), args.method)
         elif args.cmd == "cert":

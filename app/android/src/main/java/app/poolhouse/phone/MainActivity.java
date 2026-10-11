@@ -169,7 +169,8 @@ public final class MainActivity extends Activity {
         ui = Ui.page(this, store.deviceName().isEmpty() ? "poolhouse" : store.deviceName(), waiting
                 ? "Waiting for one of your phones to approve this one. Its key: " + store.text("words")
                 + (store.text("number").isEmpty() ? "" : ". The phone that approves asks you to choose a number out of three: choose " + store.text("number"))
-                : "Requests from your agents wait here until you answer them.");
+                : "Requests from your agents wait here until you answer them." + (store.text("words").isEmpty() ? ""
+                : " This phone's key: " + store.text("words") + ". Your computer showed the same words when it added this phone; if they differ, someone else scanned the code first, so remove this phone there and start again."));
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         ui.content.addView(list, new LinearLayout.LayoutParams(-1, -2));

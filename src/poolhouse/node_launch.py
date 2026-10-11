@@ -17,7 +17,17 @@ import tempfile
 import time
 from pathlib import Path
 
-from poolhouse import errors, jobs, lan, node_binary, node_pool, node_supervise, runtime, win32
+from poolhouse import (
+    errors,
+    jobs,
+    lan,
+    node_binary,
+    node_pool,
+    node_supervise,
+    real_machine,
+    runtime,
+    win32,
+)
 from poolhouse.command import Group, flag
 from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, held_by, only_one, pid_alive
@@ -58,6 +68,23 @@ def supervised(state: Path) -> bool:
     return bool(held_by(state / node_supervise.LOCK))
 
 
+PRESENCE_FLAG = "--presence"
+
+
+def _presence(extra: list[str] | None) -> list[str]:
+    """``extra`` with the way the node asks the person for the first key or phone: the operating system's prompt for the installed software
+    on the real home and no other, so a test, a checkout or a rig never raises a dialog (`real_machine`). A node of another kind
+    (`--presence terminal`, for a server or a rig) is the caller's own word; `--presence os` outside the real home is dropped."""
+    words = list(extra or [])
+    named = [i for i, word in enumerate(words) if word == PRESENCE_FLAG]
+    if real_machine.allowed():
+        return words if named else [*words, PRESENCE_FLAG, "os"]
+    for i in reversed(named):
+        if words[i + 1 : i + 2] == ["os"]:
+            del words[i : i + 2]
+    return words
+
+
 def _start_supervisor(state: Path, extra: list[str]) -> None:
     argv = ["supervise", "--state", str(state), *(f"--arg={word}" for word in extra)]
     jobs.detach("poolhouse.node_launch", argv, log=state / "supervisor.log")
@@ -75,7 +102,7 @@ def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wa
     state = state or default_state()
     if extra is None and state == default_state():
         extra = node_pool.network_args()
-    extra = lan.clamp(extra) if extra else extra
+    extra = _presence(lan.clamp(extra) if extra else extra)
     if (said := node_health(state)) is not None:
         return said
     state.mkdir(mode=0o700, parents=True, exist_ok=True)

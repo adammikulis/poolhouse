@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import person
-from poolhouse.board import grants, person as person_session, person_key, place
+from poolhouse.board import grants, person as person_session, person_key, place, presence
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.command import flag
@@ -201,7 +201,7 @@ def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
         say(f"  {action}: {text}")
     ctx.key.approve(lines, f"These {len(lines)} signatures give the lead sessions above the grants listed, each for {args.days} days, none for more:")
     if enrolling:
-        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about)
+        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about, presence.Voice(say=say))
     done = [grants.issue(ctx.carrier, ctx.key, want, now_ms=at) for want, _ in bundle]
     return {"key_enrolled": enrolling, "to": [_who(to) for to in who], "granted": [{"gid": d["gid"], "action": d["action"]} for d in done],
             "revoke": "poolhouse-workspace revoke-grant ID", "see": "poolhouse-workspace grants"}

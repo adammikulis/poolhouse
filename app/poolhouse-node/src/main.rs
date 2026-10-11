@@ -6,8 +6,9 @@
 //! group in production, a peer in tests), `--advertise IP` the address it carries,
 //! `--allow-loopback` lets a test advertise loopback, `--sync-ms N` sets the sync interval.
 //!
-//! `--presence auto|terminal` says how the first person key and the first phone are asked of the person (default `auto`: the operating
-//! system's own prompt; `terminal`: the terminal device the asker names, which the node itself reads).
+//! `--presence os|terminal` says how the first person key and the first phone are asked of the person (with neither the node refuses
+//! them: `os` is the operating system's own prompt, for the account's real state directory only; `terminal` is the terminal device the
+//! asker names, which the node itself reads).
 //!
 //! With the beacon on, the device finds a pool without a key or a code: it takes the project of
 //! the repository it runs in (`--project-dir DIR`, else the working directory; `--project NAME`
@@ -151,8 +152,8 @@ fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let shared = server.node();
     set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
     if let Some(name) = flag(args, "--presence") {
-        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is auto (the operating system's prompt) or terminal (the person's terminal device)")?;
-        shared.lock().map_err(|e| e.to_string())?.firsts = poolhouse_node::presence::Firsts::new(mode.presence());
+        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is os (the operating system's prompt) or terminal (the person's terminal device)")?;
+        shared.lock().map_err(|e| e.to_string())?.firsts = poolhouse_node::presence::Firsts::new(mode.presence(state));
     }
     if let Some(listen) = phone {
         shared.lock().map_err(|e| e.to_string())?.pusher = Box::new(poolhouse_node::phone::push::Web::start(state));

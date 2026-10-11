@@ -6,6 +6,8 @@ pub mod grants;
 pub mod netkit;
 pub mod phone;
 #[cfg(unix)]
+pub mod screen;
+#[cfg(unix)]
 pub mod procs;
 
 use ed25519_dalek::SigningKey;

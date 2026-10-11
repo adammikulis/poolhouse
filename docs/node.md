@@ -423,11 +423,19 @@ another device may use (`task_authority`, `note_verify`, `sync_now`, `shard_call
 kept where it is spent.
 
 **Who may sign.** The keys enrolled in `persons.json`. `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
-signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal,
-makes a random secret, writes only its SHA-256 and the time beside `persons.json` (`enroll_secret.json`, mode 0600) and presents the
-secret to `person_enroll` in the same process. The node reads that hash from the file and from no request, accepts the secret once and
-for ten minutes, and spends it on any guess, so a wrong secret ends the attempt; a node that holds a key never asks for one. A session
-that registered first, or any session, therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms`, `nonce` and `anchor` add a second: `approval` is an enrolled key's signature over the
+signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal, asks the node (`presence_ask`)
+to allow the session to add the first key, and the node asks the person itself: the operating system's own prompt (a password or a fingerprint,
+on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when
+`poolhouse.real_machine.allowed()`, and the node itself asks only for a state directory under the account's own `~/.poolhouse`), or, for a node
+started with `--presence terminal` (a server, a container, the pool check's rig), the terminal device the asker names, where the node writes the
+question and reads the typed `yes` itself, so the answer never passes through the process that asked. A node started with no `--presence`
+cannot ask and refuses the first key and the first phone. On a yes the node makes the random secret in its memory (never a file), hands it
+once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
+attempt; a node that holds a key never asks. There is no cargo feature, argument or environment variable that answers for the person, in any
+binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
+(`tests/pool_check/wire.py`, `answer_presence`). Windows has no operating-system prompt the node can raise and reads no terminal for the node, so
+the first key and the first phone are refused there until a presence step is built for it. A session that registered first, or any session,
+therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms`, `nonce` and `anchor` add a second: `approval` is an enrolled key's signature over the
 new key's public key, name and proof time, the approver's fingerprint, this node's device fingerprint, the approval time (five minutes),
 the nonce and the terminal it was signed in (`anchor`, the shell of that terminal, which the request must come from). The node accepts a
 nonce once, and remembers it for ten minutes across restarts (`persons_nonces.json`), so an approval enrols that key on that node once,
@@ -438,10 +446,11 @@ signed stops counting at once, and a removed key is never enrolled again (the no
 `persons_removed.json`): an entry it signed with a time ahead of its removal, on this device or arriving from another, is as void as one
 signed before it, since the node has no record of when a foreign entry was written that a signer could not choose. A person who wants
 that device back enrols a new key made there. The last key is never removed, and each enrolment and
-removal is written to the pool board. The hash file is a write to the state directory, so this keeps out every session that has only
-the API. A process of the same operating-system user that writes the directory can enrol a key too, by planting the hash of a secret
-of its own in `enroll_secret.json` and presenting that secret, and any session can spend the person's one-time secret with a wrong
-guess so that the person runs `grants-setup` again: neither is stopped by the node; both are inside the boundary of "Key custody".
+removal is written to the pool board. The secret is in the node's memory, so a program that can write the state directory (a planted `enroll_secret.json`) enrols nothing,
+and a session that asks gets a secret only when the person answers. What an agent can still do is ask repeatedly (the node asks one question at a
+time, refuses for a few minutes after a no, and the prompt names the session that asked), spend the secret of the person's yes with a wrong guess
+so that the person asks again, or, when the node asks on a terminal, open a pseudo-terminal of its own and type `yes` there: that is why a node
+that can use the operating system's prompt does, and the terminal is for nodes that have none ("Key custody").
 
 **A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` (its fingerprint is the SHA-256 of its 65-byte
 public point) and signs only approvals (docs/phone-approval.md): an agent asks (`approval_request`), the node writes the question in plain words, the phone's key
@@ -451,8 +460,7 @@ of a signature over the grant, so they count wherever a grant a person typed `ye
 and its push address; `approvals.json` the requests; `fatigue.json` the declines, timeouts, holds and pushes that keep a request made again and again from wearing the person down (docs/phone-approval.md, "Approval fatigue"); `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
 phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it.
 
-**Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` (and `enroll_secret.json`
-if there is one) in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
+**Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
 the node stopped no session can ask for it, and every grant the deleted key signed reads as ignored until the new key signs new ones.
 It is the only way to remove a node's last key.
 

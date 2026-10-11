@@ -15,7 +15,7 @@ import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from node_kit import PASSPHRASE, TYPED
-from phone_kit import PhoneKeys, add_phone, endpoint_of
+from phone_kit import PhoneKeys, add_phone, code_secret, endpoint_of
 
 from poolhouse.board import approval, grants, phone as board_phone
 from poolhouse.board.approval import Approval
@@ -155,7 +155,7 @@ def test_an_agent_or_a_process_with_no_terminal_cannot_answer_or_add_a_phone(pho
         marked, out, err = team.terminal(*argv, who=lead, env={"CLAUDECODE": "1"})
         assert marked != 0 and "agent" in out + err, (argv, out, err)
     assert json.loads(team.cli("approval", "status", made["id"], "--json", who=lead).stdout)["state"] == "pending"
-    assert not (team.state / board_phone.OFFER_FILE).exists(), "an agent's `phone add` left no code"
+    assert not (team.state / "phone_offer.json").exists(), "an agent's `phone add` left no code"
 
 
 def test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an_image_file(phone_node):
@@ -164,8 +164,8 @@ def test_the_first_phone_is_added_from_a_code_drawn_in_the_terminal_and_never_an
     image = team.state.parent / "first-phone.svg"
     code, out, err = team.terminal("phone", "add", "--image", str(image), "--wait", "5", who=lead)
     assert code != 0 and "no image file" in out + err, (out, err)
-    assert not image.exists() and not (team.state / board_phone.OFFER_FILE).exists(), "nothing was written that could be read as a code"
-    code, out, err = team.terminal("phone", "add", "--wait", "2", who=lead)
+    assert not image.exists() and not (team.state / "phone_offer.json").exists(), "nothing was written that could be read as a code"
+    code, out, err = team.terminal("phone", "add", "--wait", "2", who=lead, typed={"Type yes": "yes"})
     assert code == 3 and "\x1b[30;47m" in out and "No phone scanned the code in time" in out, (out, err)
     phone = add_phone(team)
     listing = team.cli("phone", "list", who=lead)
@@ -203,7 +203,7 @@ def test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_
     assert code == 0 and 'The phone "Tablet" (key ' + reply["words"] + ") scanned the code and waits for one of your phones to approve it." in out, (out, err)
     assert "\x1b[30;47m" in out, "the code was drawn in the terminal"
     seen = endpoint.ok("get", {"id": reply["approval"]}, token=first.token)
-    assert "key " + reply["words"] in seen["text"] and "made by" not in seen["text"], "a code a person made at the computer carries no warning"
+    assert "key " + reply["words"] in seen["text"] and "made by the session" in seen["text"], "the node cannot tell the person's command from a session, so the text names who asked for the code"
     assert endpoint.ok("decide", first.decision(seen, "approve", pick=reply["number"]))["state"] == "approved"
     assert sorted(p["name"] for p in board_phone.phones(team.session(lead)) if p["state"] == "active") == ["Pixel", "Tablet"]
 
@@ -211,7 +211,7 @@ def test_a_further_phone_is_added_by_an_image_and_waits_for_a_phone_you_hold_to_
 def test_a_code_that_was_made_for_nobody_else_adds_nothing_twice_and_a_wrong_one_adds_nothing(phone_node):
     team = phone_node
     endpoint = endpoint_of(team)
-    secret = board_phone.expect_phone(team.state)
+    secret = code_secret(team, None)
     device = team.client.call("hello")["device"]
     wrong = endpoint.request("add", PhoneKeys("Thief").add_body(device, "not-the-code"))[1]
     assert wrong["error"]["message"] == "That code was not made for this device."

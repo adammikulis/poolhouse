@@ -9,7 +9,7 @@ import java.util.List;
  * here fails the checks until the budget says why.
  */
 final class ApprovalFlow {
-    enum Step { RUN_COMMAND, SCAN_CODE, UNLOCK, TAP_NOTIFICATION, TAP_APPROVE, FINGERPRINT, PICK }
+    enum Step { RUN_COMMAND, ANSWER_PROMPT, SCAN_CODE, UNLOCK, TAP_NOTIFICATION, TAP_APPROVE, FINGERPRINT, PICK }
 
     private ApprovalFlow() { }
 
@@ -21,9 +21,12 @@ final class ApprovalFlow {
         return flagged || !"routine".equals(level);
     }
 
-    /** What a person does to add the first phone. */
+    /**
+     * What a person does to add the first phone: the command, the yes to the question the computer itself asks (its own prompt, once, which no
+     * agent can answer), the scan and one fingerprint.
+     */
     static List<Step> firstRun() {
-        return List.of(Step.RUN_COMMAND, Step.SCAN_CODE, Step.FINGERPRINT);
+        return List.of(Step.RUN_COMMAND, Step.ANSWER_PROMPT, Step.SCAN_CODE, Step.FINGERPRINT);
     }
 
     /**

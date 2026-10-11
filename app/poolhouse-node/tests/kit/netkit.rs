@@ -28,7 +28,7 @@ pub fn device() -> Dev {
 
 pub fn device_with(cfg: NetConfig) -> Dev {
     let dir = tempfile::tempdir().unwrap();
-    let node = Arc::new(Mutex::new(Node::open(dir.path()).unwrap()));
+    let node = Arc::new(Mutex::new(super::node(dir.path())));
     let net = Net::start(node.clone(), cfg).unwrap();
     let mut d = Dev { dir, node, net, token: String::new() };
     let (name, token) = d.session("demo", "main");

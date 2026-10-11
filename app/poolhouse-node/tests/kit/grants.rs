@@ -149,8 +149,7 @@ impl Person {
         json!({"harness": harness, "session": session, "at_ms": at, "nonce": nonce, "anchor": anchor, "by": self.fingerprint(), "sig": hex(&self.key.sign(bytes.as_bytes()).to_bytes())})
     }
 
-    /// Enrol this key on the node ``call`` reaches, carried by the session ``token``, with the one-time secret the prompt of the
-    /// operating system makes (a test build says yes to it at once).
+    /// Enrol this key on the node ``call`` reaches, carried by the session ``token``, with the one-time secret the person's yes makes.
     pub fn enroll(&self, _dir: &Path, call: Call, token: &str) -> Value {
         let mut params = self.enrolment("a test person", None);
         params["secret"] = json!(first_secret(call, token, "key"));
@@ -241,12 +240,29 @@ pub fn gid_of(name: &str, action: &str) -> String {
     format!("g-{}", &sha256_hex(format!("{name} {action}").as_bytes())[..20])
 }
 
-/// Ask the prompt of the operating system, which a test build answers yes to at once, for the one-time secret the first key
-/// (``purpose`` `key`) or the first phone (`phone`) is added with, as the session ``token``.
+/// Ask the person for the one-time secret the first key (``purpose`` `key`) or the first phone (`phone`) is added with, as the session
+/// ``token``. A node of a test says yes at once (`kit::node`); a node process asks on the terminal named here, where this test types `yes`
+/// as a person would, so the same binary a person installs is the one that is run.
 pub fn first_secret(call: Call, token: &str, purpose: &str) -> String {
-    let asked = call("presence_ask", "", token, json!({"purpose": purpose}));
+    #[cfg(unix)]
+    let mut screen = super::screen::screen();
+    #[cfg(unix)]
+    let named = json!({"purpose": purpose, "terminal": screen.name});
+    #[cfg(not(unix))]
+    let named = json!({"purpose": purpose});
+    let asked = call("presence_ask", "", token, named);
     assert_eq!(asked["ok"], true, "ask the prompt: {asked}");
-    let said = if asked["result"]["state"] == "confirmed" { asked } else { call("presence_status", "", token, json!({})) };
+    let mut said = asked;
+    #[cfg(unix)]
+    if said["result"]["state"] == "asking" {
+        screen.sees("Type yes");
+        screen.types("yes\n");
+    }
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while said["result"]["state"] == "asking" && std::time::Instant::now() < end {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        said = call("presence_status", "", token, json!({}));
+    }
     assert_eq!(said["result"]["state"], "confirmed", "the person said yes: {said}");
     said["result"]["secret"].as_str().expect("the secret comes once").to_string()
 }

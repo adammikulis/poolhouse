@@ -8,6 +8,7 @@ phone's custody of the key (Android Keystore, the fingerprint prompt) and the pu
 
 from __future__ import annotations
 
+import base64
 import json
 import time
 
@@ -26,6 +27,12 @@ def _phone(device: Device, op: str, token: str = "", body: dict | None = None, m
     return {**sent["reply"], "status": sent["status"]}
 
 
+def link_secret(link: str) -> str:
+    """The one-time secret a phone's code carries: the link is `poolhouse://add-phone?data=` and the base64url of a JSON object."""
+    data = link.split("data=", 1)[1]
+    return str(json.loads(base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)))["secret"])
+
+
 def _live(device: Device, name: str) -> list[str]:
     """The actions the node lists as live for the session ``name`` of the demo board, carried by the node itself (an approval wrote them)."""
     listed = device.call("grants", BOARD, device.token)["grants"]
@@ -42,7 +49,7 @@ def _on(world: World, device: Device) -> str:
     assert device.call("phone_info")["listening"], f"{device.name}'s node does not listen for phones after its restart"
 
     phone = PhoneKeys(f"phone of {device.name}")
-    code = device.wire("phone-offer", "--state", device.state_text)["result"]["secret"]
+    code = link_secret(str(device.call("phone_offer", "", token)["link"]))
     added = _phone(device, "add", body=phone.add_body(str(device.hello()["device"]), code))
     assert added["ok"] and added["result"]["state"] == "pending", f"{device.name}: a phone added after a key exists should wait for approval: {added}"
     phone.token = added["result"]["token"]

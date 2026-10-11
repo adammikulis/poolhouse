@@ -14,16 +14,14 @@ import secrets
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Protocol
 
+from poolhouse.board import presence
 from poolhouse.board.client import Client
 from poolhouse.board.session import Session
-from poolhouse.files import write_json
-from poolhouse.platform import private_file
 
 __all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
-           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
+           "enrol", "enrol_first", "enrol_line", "enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
            "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
@@ -35,7 +33,6 @@ APPROVAL_DOMAIN = b"poolhouse/approval/v1\n"
 LIST_DOMAIN = b"poolhouse/approval-list/v1\n"
 FRESH_MS = 5 * 60 * 1000
 """How long the node takes a person's signature as fresh."""
-ENROLMENT_HASH_FILE = "enroll_secret.json"
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
 
@@ -175,27 +172,15 @@ def approve(proof: dict[str, Any], approver: Signs, where: Where, *, now_ms: int
     return {**proof, "by": by, "approved_ms": at, "nonce": body["nonce"], "anchor": where.anchor, "approval": sig}
 
 
-def expect_enrolment(state: Path, *, now_ms: int | None = None) -> str:
-    """Leave in the node's state directory the hash of a fresh one-time secret, and return the secret.
-
-    The node enrols the first person key only with that secret, within ten minutes, once; it reads the hash from this file
-    and from no request, so only a process that can write the state directory can make one.
-    """
-    secret = secrets.token_urlsafe(32)
-    path = Path(state) / ENROLMENT_HASH_FILE
-    write_json(path, {"sha256": hashlib.sha256(secret.encode()).hexdigest(), "at_ms": _now_ms() if now_ms is None else now_ms})
-    private_file(path)
-    return secret
-
-
 def enrol(client: Client, token: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Put a person key on the node: ``params`` from `enrolment` with the `expect_enrolment` secret (the first key) or `approve` (every later one)."""
+    """Put a person key on the node: ``params`` from `enrolment` with the secret of a `presence.ask` (the first key) or `approve` (every later one)."""
     return dict(client.call("person_enroll", "", token, **params))
 
 
-def enrol_first(client: Client, token: str, key: Signs, about: str) -> dict[str, Any]:
-    """Put the first person key on the node: the secret the node asks for is made here, in this process, and used at once."""
-    secret = expect_enrolment(client.state)
+def enrol_first(client: Client, token: str, key: Signs, about: str, voice: presence.Voice = presence.SILENT) -> dict[str, Any]:
+    """Put the first person key on the node after the person says yes to the node's own question (`presence.ask`): the secret is the node's, made
+    when the person answered, and nothing this process writes can make one."""
+    secret = str(presence.ask(client, token, "key", f"the first key, {about}", voice)["secret"])
     return enrol(client, token, {**enrolment(key, about), "secret": secret})
 
 

@@ -1,15 +1,11 @@
-"""The phone side of the node as a client reaches it: the one-time code a person's command leaves, where the node listens for
-phones, and the phones it holds (docs/phone-approval.md).
+"""The phone side of the node as a client reaches it: where the node listens for phones and the phones it holds (docs/phone-approval.md).
 
-The node reads the hash of the code from a file in its state directory and from no request, so only a process that can write
-that directory can make one, as for the first person key (docs/node.md, "Standing grants").
+The one-time code of the first phone is made by the node when the person says yes to its own question (`board.presence`) and is kept in
+its memory; no file in the state directory makes one.
 """
 
 from __future__ import annotations
 
-import hashlib
-import secrets
-import time
 from pathlib import Path
 from typing import Any
 
@@ -17,24 +13,11 @@ from poolhouse.board.session import Session
 from poolhouse.files import write_json
 from poolhouse.platform import private_file
 
-__all__ = ["LISTEN_FILE", "OFFER_FILE", "PORT", "describe", "expect_phone", "find", "listen_on", "phones"]
+__all__ = ["LISTEN_FILE", "PORT", "describe", "find", "listen_on", "phones"]
 
-OFFER_FILE = "phone_offer.json"
 LISTEN_FILE = "phone.json"
 PORT = 7449
 """The port a phone talks to when no other is chosen."""
-
-
-def expect_phone(state: Path, *, now_ms: int | None = None) -> str:
-    """Leave in the node's state directory the hash of a fresh one-time code and return its secret.
-
-    The node adds one phone with that secret, within ten minutes, once.
-    """
-    secret = secrets.token_urlsafe(32)
-    path = Path(state) / OFFER_FILE
-    write_json(path, {"sha256": hashlib.sha256(secret.encode()).hexdigest(), "at_ms": int(time.time() * 1000) if now_ms is None else now_ms})
-    private_file(path)
-    return secret
 
 
 def listen_on(state: Path, address: str) -> None:

@@ -6,9 +6,12 @@
 //! Everything else around it, which session asked and what happens next, can be done by an agent: the prompt is the one step that
 //! cannot. The secret lives in the node's memory, never in a file, so a program that can write the state directory cannot leave one.
 //!
-//! There is no switch that turns the prompt off. A node asks with the operating system's own prompt where the system has one (`Os`) or,
-//! when it was started with `--presence terminal`, on the person's terminal device (`terminal::Terminal`); tests of this crate put their
-//! own `Presence` on `Node::firsts` (a library field no binary sets), and the pool check answers the terminal the way a person does.
+//! There is no switch that turns the prompt off. A node started with no `--presence` has no way to ask and refuses the first key and
+//! the first phone (`Closed`). `--presence os` asks with the operating system's own prompt, and only for the node of the account's own
+//! real state directory (`Os`); the launcher passes it only for the installed software on the real home (`poolhouse.real_machine`), so a
+//! test, a checkout or a rig never raises a dialog. `--presence terminal` asks on the person's terminal device that the node itself reads
+//! (`terminal::Terminal`). Tests of this crate put their own `Presence` on `Node::firsts` (a library field no binary sets), and the pool
+//! check answers the terminal the way a person does.
 
 pub mod terminal;
 
@@ -123,8 +126,53 @@ fn dialog(what: &str) -> Option<Command> {
     None
 }
 
-/// Ask through the operating system.
-pub struct Os;
+/// Whether ``state`` is inside the real state directory of the account this process runs as (`~/.poolhouse`, from the password database
+/// and never from `HOME`): the only place the operating system's prompt is raised.
+#[cfg(unix)]
+fn on_real_home(state: &std::path::Path) -> bool {
+    let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
+    let (mut buf, mut found) = (vec![0 as libc::c_char; 4096], std::ptr::null_mut());
+    // SAFETY: entry and buf are valid for the call and buf's length is passed; getpwuid_r sets found to entry or null.
+    let ok = unsafe { libc::getpwuid_r(libc::geteuid(), &mut entry, buf.as_mut_ptr(), buf.len(), &mut found) };
+    if ok != 0 || found.is_null() || entry.pw_dir.is_null() {
+        return false;
+    }
+    // SAFETY: pw_dir is a NUL-terminated string that lives in buf.
+    let home = unsafe { std::ffi::CStr::from_ptr(entry.pw_dir) }.to_string_lossy().into_owned();
+    match (std::fs::canonicalize(std::path::Path::new(&home).join(".poolhouse")), std::fs::canonicalize(state)) {
+        (Ok(real), Ok(mine)) => mine.starts_with(real),
+        _ => false,
+    }
+}
+
+#[cfg(not(unix))]
+fn on_real_home(_state: &std::path::Path) -> bool {
+    false
+}
+
+/// Ask through the operating system, for the node of this state directory only.
+pub struct Os {
+    state: std::path::PathBuf,
+}
+
+impl Os {
+    pub fn new(state: &std::path::Path) -> Os {
+        Os { state: state.into() }
+    }
+}
+
+/// No way to ask: a node started with no `--presence` refuses the first key and the first phone.
+pub struct Closed;
+
+impl Presence for Closed {
+    fn kind(&self) -> &'static str {
+        "closed"
+    }
+
+    fn begin(&mut self, _what: &str, _terminal: &str) -> Result<Box<dyn Asking>> {
+        Err(Error::Denied("This node was started with no way to ask the person, so the first key or phone cannot be added through it: the installed Poolhouse starts it with the operating system's prompt.".into()))
+    }
+}
 
 impl Presence for Os {
     fn kind(&self) -> &'static str {
@@ -132,13 +180,16 @@ impl Presence for Os {
     }
 
     fn begin(&mut self, what: &str, _terminal: &str) -> Result<Box<dyn Asking>> {
+        if !on_real_home(&self.state) {
+            return Err(Error::Denied("The operating system's prompt is raised only for the node of this account's own state directory, never for a test, a checkout or a copy.".into()));
+        }
         let mut command = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with, so the first key or phone cannot be added here yet.".into()))?;
         let child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
         Ok(Box::new(OsPrompt(child)))
     }
 }
 
-/// How a node asks, chosen when it starts.
+/// How a node asks, chosen when it starts (`--presence os|terminal`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
     /// The operating system's own prompt.
@@ -150,23 +201,24 @@ pub enum Mode {
 impl Mode {
     pub fn parse(name: &str) -> Option<Mode> {
         match name {
-            "auto" => Some(Mode::Os),
+            "os" => Some(Mode::Os),
             "terminal" => Some(Mode::Terminal),
             _ => None,
         }
     }
 
-    pub fn presence(self) -> Box<dyn Presence> {
+    /// The presence of a node on ``state``.
+    pub fn presence(self, state: &std::path::Path) -> Box<dyn Presence> {
         match self {
-            Mode::Os => Box::new(Os),
+            Mode::Os => Box::new(Os::new(state)),
             Mode::Terminal => Box::new(terminal::Terminal),
         }
     }
 }
 
-/// The presence a node asks with unless it was started with another.
+/// The presence a node asks with unless it was started with another: none.
 pub fn default_presence() -> Box<dyn Presence> {
-    Mode::Os.presence()
+    Box::new(Closed)
 }
 
 struct Pending {
@@ -400,6 +452,27 @@ mod tests {
         *answer.lock().unwrap() = None;
         firsts.ask(Purpose::Key, "demo/a", "", "", QUIET_MS + 100).unwrap();
         assert_eq!(firsts.status("demo/a", QUIET_MS + ASK_FOR_MS + 200)["state"], "expired", "no answer in two minutes is a no");
+    }
+
+    #[test]
+    fn a_node_started_with_no_presence_refuses_and_no_name_turns_the_question_off() {
+        let mut firsts = Firsts::new(default_presence());
+        assert!(matches!(firsts.ask(Purpose::Key, "demo/a", "", "", 0), Err(Error::Denied(_))), "no way to ask is a no, never a yes");
+        assert_eq!(firsts.kind(), "closed");
+        for name in ["auto", "off", "none", "unattended", "yes", "test", ""] {
+            assert!(Mode::parse(name).is_none(), "{name:?} is not a way to ask");
+        }
+        assert!(Mode::parse("os").is_some() && Mode::parse("terminal").is_some());
+    }
+
+    #[test]
+    fn the_operating_systems_prompt_is_raised_only_for_the_account_real_state_directory() {
+        let dir = std::env::temp_dir().join(format!("presence-os-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut os = Os::new(&dir);
+        let refused = os.begin("poolhouse: allow the session demo/a to add the first person key to this computer?", "");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(matches!(refused, Err(Error::Denied(_))), "a temporary state directory is not the account's own, so nothing is spawned");
     }
 
     #[test]

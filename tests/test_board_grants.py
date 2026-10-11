@@ -120,7 +120,7 @@ def test_a_person_sets_up_the_lead_grants_once_and_every_item_is_revoked_by_its_
     lead = team.lead
     code, out, err = setup(team, lead, "--days", "7")
     assert code == 0, (out, err)
-    assert out.count("Type yes") == 1, "one question for the whole list"
+    assert out.count("Type yes to sign") == 1, "one question for the whole list (the node asks its own, once, for the first key)"
     assert lead.name in out and "for 7 days" in out and "land_control" in out and "act as a person key" in out
     for action in board_grants.DEFAULT_ACTIONS:
         assert action in out, out
@@ -264,7 +264,7 @@ def test_a_node_that_lost_its_only_usable_key_is_started_again_by_deleting_perso
     assert board_grants.listing(team.session(lead)).persons == [board_grants.fingerprint(team.person.public)]
     team.stop()
     (team.state / "persons.json").unlink()
-    node_launch.ensure_node(team.state)
+    team.start()
     assert board_grants.listing(team.session(lead)).persons == [], "the node holds no key and trusts no grant signed by one"
     assert {g.status for g in board_grants.listing(team.session(lead)).grants} == {"ignored"}
     code, out, err = setup(team, lead)

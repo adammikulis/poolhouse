@@ -52,14 +52,18 @@ poolhouse://add-phone?data=<base64url of {"v":1,"pin":"<64 hex>","endpoints":["h
 ```
 
 **The first phone.** A person runs `poolhouse-workspace phone add` once on the computer (a person's command: it refuses a
-process an agent started, like `grants-setup`). It leaves the hash of a one-time secret beside `persons.json`, as
-`grants-setup` does (`phone_offer.json`), and draws the QR code in the terminal; it writes no image file for the first phone,
-because a file could be read by any program that runs as the person and the first phone is added on the strength of the code
-alone. The person scans it. The phone's key is enrolled directly: the secret is the proof that someone at the computer asked
-for it. Nothing else is typed and no `yes` is asked, because the person's phone must scan a code that appeared only on that
-computer, within ten minutes, once, and approve with a fingerprint. The command then prints which phone was added and its
-key as six groups of four characters, so a code someone else scanned is seen at once and removed ("Removing a phone"). A code
-made through the node (`phone_offer`) is refused for the first phone.
+process an agent started, like `grants-setup`). The command asks the node (`presence_ask`) to allow the session to add the first phone,
+and the node asks the person itself with **one prompt that no agent can answer**: the operating system's own dialog (macOS and Linux:
+a password or fingerprint, shown by the installed software on the real home), or, on a node started with `--presence terminal`, a
+question the node writes on the terminal and reads the typed `yes` from itself. Only then does the node make the one-time secret, in
+its memory and in no file, so a program that can write the state directory (an agent) can neither make a code nor plant one. The command
+draws the QR code in the terminal; it writes no image file for the first phone, because a file could be read by any program that runs as
+the person. The person scans it. The phone's key is enrolled directly: the secret is the proof that the person at the computer said yes to
+adding a phone, and the phone's own fingerprint proves the key. The command then prints which phone was added and its key as six groups of
+four characters, **and the app shows the same words on its own screen after adding**, so a code someone else scanned first is seen at once
+(the first to scan wins, and the two screens then disagree) and removed ("Removing a phone"). A code made through the node (`phone_offer`) is
+refused for the first phone. **Windows** has no operating-system prompt the node can raise and reads no terminal for the node, so the first
+phone (and the first key) cannot be added on a Windows computer until a presence step is built for it; the node says so.
 
 **Another phone, later.** The node enrols a second key only when a key it already holds approves it, so a code that an agent
 or a bystander saw cannot add a phone by itself. The code is made by the person's command, by an agent (`phone_offer`,
@@ -88,7 +92,7 @@ agent holds is the secret, which adds a phone only after an existing phone appro
 the code, so it is safe to hand over. The first phone is the one exception and is a person's, with no image.
 
 **The code is a bearer secret for ten minutes.** Anyone who photographs it can add their phone to the pending list; on the
-first phone that is an addition with no second approval, on every later phone the person sees the new phone's name and key
+first phone that is an addition with no second approval (the person's yes to the computer's own prompt came first, and the app shows its key words), on every later phone the person sees the new phone's name and key
 before approving. The terminal says what was added, and "Removing a phone" ends it.
 
 ## Asking for an approval (the agent)
@@ -308,6 +312,8 @@ Each refusal is one sentence the agent can pass to its person.
 | A request beyond the limits | "6 requests in ten minutes is the most one session may make; try again later." |
 | A request to change how devices join with a pattern (`*`, `op*`) | "A request to change how devices join names one policy, open or secure, and no pattern." |
 | A code a session made, used to add the first phone | "A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`." |
+| The first key or phone asked of a node that has no way to ask the person (started with no `--presence`, or on Windows) | "This node was started with no way to ask the person, so the first key or phone cannot be added through it." |
+| The person says no, or nobody answers in two minutes | "You said no, so nothing was added." / "Nobody said yes in time, so nothing was added." The node asks again only after a few minutes |
 | An agent asking for a code while one waits to be scanned | "A code for a phone is already waiting to be scanned; use it or wait for it to run out." |
 | Wrong codes from one address (ten in ten minutes) | "Too many wrong codes came from this address; wait ten minutes." The code itself stays good for the person |
 | A host that opens connections and says nothing | the handshake and request have ten seconds in all, one address holds six connections, and the last eight of forty-eight are kept for addresses a phone answered from |
@@ -419,14 +425,15 @@ is not allowed without a one-line reason in the last column.
 | # | Step | Kind | Why it is needed |
 |---|---|---|---|
 | 1 | Run `poolhouse-workspace phone add` on the computer | a command, once | only a person at the computer can ask for the first key (an agent cannot) |
-| 2 | Scan the code with the app | one scan | carries the node's address, its certificate and the one-time secret |
-| 3 | Fingerprint to sign the phone's own addition | one biometric prompt | the key signs, and every signature needs the person |
+| 2 | Say yes to the prompt the computer shows (its own password or fingerprint dialog, or a typed yes where the node asks on a terminal) | one prompt, once | the one step an agent cannot answer: without it an agent that can write the state directory could become the first key and sign grants |
+| 3 | Scan the code with the app | one scan | carries the node's address, its certificate and the one-time secret |
+| 4 | Fingerprint to sign the phone's own addition | one biometric prompt | the key signs, and every signature needs the person |
 
-Counted: 1 command, 1 scan, 1 biometric prompt. Not counted because the system asks them, once: the camera permission, the
+Counted: 1 command, 1 prompt, 1 scan, 1 biometric prompt. Not counted because the system asks them, once: the camera permission, the
 notification permission (Android 13 and later), the install of the app. Done silently by the app: making the keys, storing the
 token, registering the push address, pinning the certificate, choosing the node's address.
 
-**Another phone.** Scan (1), one fingerprint on the phone that approves (1), and the new phone does steps 2 and 3 above.
+**Another phone.** Scan (1), one fingerprint on the phone that approves (1), and the new phone does steps 3 and 4 above.
 The tap on the notification on the approving phone is the routine approval below.
 
 **A routine approval (one request, one or many asks).**

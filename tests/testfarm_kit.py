@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 import test_on
 from node_kit import STRIPPED, allow, node_binary  # noqa: F401  (a fixture the ones below use)
+from pool_check import wire
 from testfarm_tree import make_tree
 
 from poolhouse import features, node_binary as node_binary_module, node_launch, node_supervise
@@ -53,7 +54,7 @@ def start(binary: Path, name: str) -> Device:
     state = root / "node"
     state.mkdir(mode=0o700)
     node_supervise.point(state, binary, node_binary_module.sha256(binary))
-    node_launch.ensure_node(state, extra=["--listen", "127.0.0.1:0"])
+    node_launch.ensure_node(state, extra=["--listen", "127.0.0.1:0", *wire.PRESENCE])
     client = Client(state)
     got = client.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session=name)
     person = Signer.generate()

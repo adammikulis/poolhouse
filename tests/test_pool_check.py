@@ -6,15 +6,13 @@ too (Docker Desktop, or any Docker). Neither is in a default tier: they are slow
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-from pool_check import dock, rig, wire
+from pool_check import dock, rig
 from pool_check.device import WslDevice, wsl_argv
 from pool_check.driver_host import Driver
 from pool_check.report import Report, Skip
@@ -141,14 +139,6 @@ def test_a_driver_that_ends_says_what_it_wrote(tmp_path):
             driver.run(["true"], {}, 5)
     finally:
         driver.close()
-
-
-def test_the_rig_leaves_the_one_time_secret_of_a_person_key_in_the_node_state_the_way_grants_setup_does(tmp_path, capsys):
-    assert wire.main(["expect-enrol", "--state", str(tmp_path)]) == 0
-    secret = json.loads(capsys.readouterr().out)["result"]["secret"]
-    kept = json.loads((tmp_path / "enroll_secret.json").read_text())
-    assert kept["sha256"] == hashlib.sha256(secret.encode()).hexdigest() and set(kept) == {"sha256", "at_ms"}, "the node keeps the hash of the secret and the time, never the secret"
-    assert os.name == "nt" or (tmp_path / "enroll_secret.json").stat().st_mode & 0o077 == 0, "the file is the person's alone"
 
 
 def test_the_device_behind_nat_cannot_be_dialed_by_anything():

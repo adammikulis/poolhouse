@@ -14,8 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOC = (ROOT / "docs" / "phone-approval.md").read_text(encoding="utf-8")
 CONTRACT = json.loads((ROOT / "contracts" / "phone-friction.json").read_text(encoding="utf-8"))
-CEILING = {"first_run": 3, "approve_routine": 2, "approve_routine_locked": 3, "approve_sensitive": 4, "approve_sensitive_locked": 5}
-"""What a person does: a command, a scan and a fingerprint the first time; a tap and a fingerprint for a routine request; for the rest one more tap, to read, and one pick, so no reflex can approve them."""
+CEILING = {"first_run": 4, "approve_routine": 2, "approve_routine_locked": 3, "approve_sensitive": 4, "approve_sensitive_locked": 5}
+"""What a person does: a command, one yes to the computer's own prompt (so no agent can become the first key), a scan and a fingerprint the first time; a tap and a fingerprint for a routine request; for the rest one more tap, to read, and one pick, so no reflex can approve them."""
 SECTIONS = {"first_run": "**First run, on a computer and a phone (the first phone).**", "approve_routine": "**A routine approval (one request, one or many asks).**",
             "approve_sensitive": "**A sensitive or irreversible approval.**", "approve_routine_locked": "**A routine approval from a locked phone.**",
             "approve_sensitive_locked": "**A sensitive or irreversible approval from a locked phone.**"}

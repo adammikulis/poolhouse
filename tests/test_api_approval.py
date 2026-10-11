@@ -65,10 +65,10 @@ def test_an_ask_for_what_no_one_may_grant_and_a_policy_the_pool_does_not_have_ar
 def test_a_link_for_one_more_phone_needs_a_phone_added_first_and_never_adds_one_alone(phone_node):
     team = phone_node
     board = ph.board.Board(team.session(team.member("lead")))
-    with pytest.raises(ph.Denied, match="The first phone is added by a person at the computer"):
+    with pytest.raises(ph.Denied, match="The first phone is added with `poolhouse-workspace phone add`"):
         board.offer_phone()
     first = add_phone(team)
     link = board.offer_phone()
     assert link.startswith("poolhouse://add-phone?data=") and len(link) < 1500
-    second = add_phone(team, "Tablet", by=first)
+    second = add_phone(team, "Tablet", by=first, link=link)
     assert second.token and len(team.client.call("person_keys")["keys"]) == 2
