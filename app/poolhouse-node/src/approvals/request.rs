@@ -153,20 +153,20 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let unknown = !task.is_empty() && !task_known(node, token, board, &task);
     let ids: Vec<Asked> = asks.iter().map(|a| Asked { action: &a.action, resource: &a.resource, lasts_ms: a.lasts_ms, uses: a.uses }).collect();
     let policy = node.members.policy.name();
-    let base = for_grants(node, board, &name, &ids, policy, unknown)?;
+    let found = for_grants(node, board, &name, &ids, policy, unknown)?;
     let risk = riskiest(asks.iter().map(|a| risk_of(&a.action).0));
     let (pick_code, options) = if risk == ROUTINE { (String::new(), Vec::new()) } else { pick_options()? };
     let facts = node.evidence.facts(board, &name, &asks.iter().map(|a| AskFacts { action: &a.action, resource: &a.resource }).collect::<Vec<_>>());
     let ctx = Context::from_facts(&facts, repeat, options, node.fatigue.rules.block_ms);
     let friend = trusted(node, source);
-    let flags = flags_of(base, &ctx, friend);
+    let flags = flags_of(found.flags, &ctx, friend);
     let device_fp = node.cert.fingerprint();
     let device = node.members.get(&device_fp).map(|d| d.name.clone()).unwrap_or_default();
     let expires_ms = now + ttl;
     let draft = Draft {
         who: Who { name: &name, model: &model, harness: &harness, parent: &parent, board, device: &device },
         lines: asks.iter().map(|a| Line { action: &a.action, resource: &a.resource, lasts_ms: a.lasts_ms, uses: a.uses, review: a.review }).collect(),
-        policy, flags, ctx: &ctx, note: &note, task: &task, task_known: !unknown, created_ms: now, expires_ms,
+        policy, flags, notes: found.notes, ctx: &ctx, note: &note, task: &task, task_known: !unknown, created_ms: now, expires_ms,
     };
     let (title, text, risk) = grants_text(&draft);
     if !crate::approvals::challenge::plain_text(&text) {

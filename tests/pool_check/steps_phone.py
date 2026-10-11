@@ -55,7 +55,7 @@ def _on(world: World, device: Device) -> str:
 
     asked = device.call("approval_request", BOARD, device.token, asks=[ASK], note="the pool check asks")
     seen = _phone(device, "get", phone.token, {"id": asked["id"]})["result"]
-    for label in ("FLAG:", "POOL:", "RISK:", "WHO:", "ASK:", "SCOPE:", "CANNOT:", "WHY:", "DENY:", "EXPIRES:"):
+    for label in ("NOTE:", "POOL:", "RISK:", "WHO:", "ASK:", "SCOPE:", "CANNOT:", "WHY:", "DENY:", "EXPIRES:"):
         assert label in seen["text"], f"{device.name}: the text the person reads has no {label} line:\n{seen['text']}"
     assert seen["challenge"]["text"] == seen["text"], "what is signed is what is shown"
 

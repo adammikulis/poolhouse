@@ -330,6 +330,29 @@ fn sharing_a_board_for_reading_is_sensitive_and_a_wildcard_is_flagged_at_every_l
 }
 
 #[test]
+fn the_first_request_of_a_new_session_is_a_note_when_it_is_routine_and_a_flag_when_it_is_not() {
+    let (rig, _phone) = setup();
+    let (name, token) = rig.session("demo", "agent-new");
+    let routine = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})));
+    let text = routine["text"].as_str().unwrap();
+    assert!(!text.lines().any(|l| l.starts_with("FLAG:")), "a routine request that is only new has nothing the person must check first: {text}");
+    assert!(text.lines().any(|l| l == format!("NOTE: No grant you signed has ever named {name}.")), "{text}");
+    assert!(text.lines().any(|l| l == "NOTE: This is the first request for sync_now on this device."), "{text}");
+    assert!(text.lines().next().unwrap().starts_with("NOTE:"), "the notes come where the flags would, before the pool line");
+    let (second, token) = rig.session("demo", "agent-second");
+    let sensitive = ok(rig.ask("demo", &token, json!([ask("add_device", "*")]), json!({})));
+    let text = sensitive["text"].as_str().unwrap();
+    assert!(text.lines().any(|l| l == format!("FLAG: No grant you signed has ever named {second}.")), "{text}");
+    assert!(text.lines().any(|l| l == "FLAG: This is the first request for add_device on this device."), "{text}");
+    assert!(!text.lines().any(|l| l.starts_with("NOTE:")), "what is not routine has no notes: its news is a flag: {text}");
+    let (third, token) = rig.session("demo", "agent-third");
+    let mixed = ok(rig.ask("demo", &token, json!([ask("sync_now", "*"), ask("add_device", "*")]), json!({})));
+    let text = mixed["text"].as_str().unwrap();
+    assert!(text.lines().any(|l| l == format!("FLAG: No grant you signed has ever named {third}.")), "one sensitive ask makes the whole request not routine: {text}");
+    assert!(!text.lines().any(|l| l.starts_with("NOTE:")), "{text}");
+}
+
+#[test]
 fn quiet_notices_are_capped_too_so_many_holds_cannot_buzz_the_phone_either() {
     let (rig, phone) = setup();
     rig.node.lock().unwrap().fatigue.rules.quiet_per_hour = 1;

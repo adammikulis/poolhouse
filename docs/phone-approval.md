@@ -131,6 +131,7 @@ line, each line starting with a label, in this order:
 
 ```
 FLAG: <anything that looks off, one line each: first>
+NOTE: <news that is not a reason to look: a session that is new, the first request of a kind; only on a routine request>
 POOL: <for anything that connects something: the pool is OPEN or SECURE and what that means, from the node's own state>
 RISK: ROUTINE | SENSITIVE | IRREVERSIBLE, and why
 SAID: You said: "<what the person told the session>" (recorded by the agent's harness from your prompt | sent from this app)  --  or: No instruction from you is recorded for this session.
@@ -154,8 +155,9 @@ a line out. A source that is wired in later fills the same fields and changes no
 
 `FLAG:` lines come first so they cannot scroll away. A request carries them when it:
 
-- is from a session no grant you signed ever named (`never named`);
-- is the first request of its kind on this node (`first of its kind`);
+- is from a session no grant you signed ever named (`never named`), or is the first request of its kind on this node (`first of its
+  kind`): for a request that is not routine these are flags; for a routine request they are `NOTE:` lines, because every first request
+  of every new session has them and they are news, not a reason to open the whole request before approving it;
 - asks for more than that session's last grant of the kind (a longer time, more uses, a wider resource, or no limit);
 - comes from a subagent;
 - asks for a wildcard resource, at any risk level, on an action that names a resource (a star on `sync_now` or `add_device`, which take none, says nothing), or for a grant that lasts over a day;

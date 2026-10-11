@@ -1,6 +1,6 @@
 //! The plain-words text of a request, made from fields the node checked.
 //!
-//! One fact a line, each line starting with a label, in this order: `FLAG:` lines, `POOL:` for anything that connects something,
+//! One fact a line, each line starting with a label, in this order: `FLAG:` lines, `NOTE:` lines, `POOL:` for anything that connects something,
 //! `RISK:`, `SAID:`, `WHO:`, `VERDICT:`, `TAINT:`, `ASK:` and `SCOPE:` for each ask, `HELD:` and `PICK:` when they apply, `CANNOT:`,
 //! `WHY:`, `DENY:`, `EXPIRES:`. The agent's own words are only the note, shown on the `WHY:` line as the agent's. Times are written in
 //! UTC so the text is the same bytes on every device.
@@ -181,6 +181,8 @@ pub struct Draft<'a> {
     /// The join policy of the node's pool now.
     pub policy: &'a str,
     pub flags: Vec<String>,
+    /// What is only news, written as `NOTE:` lines that do not open the request first.
+    pub notes: Vec<String>,
     /// What else the person weighs; its lines are part of the text.
     pub ctx: &'a Context,
     pub note: &'a str,
@@ -203,6 +205,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     let risk = riskiest(d.lines.iter().map(|l| risk_of(l.action).0));
     let worst = d.lines.iter().map(|l| risk_of(l.action)).find(|r| r.0 == risk).map_or("", |r| r.1);
     let mut out: Vec<String> = d.flags.iter().map(|f| format!("FLAG: {f}")).collect();
+    out.extend(d.notes.iter().map(|n| format!("NOTE: {n}")));
     if let Some(line) = d.lines.iter().find(|l| connects(l.action)) {
         let next = (line.action == "set_join_policy" && line.resource != d.policy).then_some(line.resource);
         out.push(pool_line(d.policy, next, d.lines.iter().any(|l| l.action == "join_pool")));
