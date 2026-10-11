@@ -246,7 +246,7 @@ have, and arrives as an addition.
 | `ph.pool.capacities()` | The `Capacity` of every member, not only this device; needs the nodes to publish it to the pool. |
 | `ph.jobs.submit(spec, *, on=None)` / `ph.jobs.run(...)` | Dispatch a job to a pool device (or the best free one) under a lease, and follow it: `Job.state`, `Job.result()`, `Job.cancel()`. `ph.test.run` is its first instance. Today fleet jobs run through the pool daemon, not the pool's node. |
 | `ph.trust.standing(agent)` | Read-only view of an agent's earned standing and grants. |
-| `ph.board.Board.grants()` | Read-only: every standing grant of the board (action, who it names, resource, expiry, uses left, state) and what the session holds. Nothing public issues or revokes one: a person signs with a key an agent's process does not open (`poolhouse-workspace grant`, docs/node.md, "Standing grants"). |
+| `ph.board.Board.grants()` | Read-only: every standing grant of the board (action, who it names, resource, expiry, uses left, state) and what the session holds. Nothing public issues or revokes one: a person signs with the person's key at a terminal (`poolhouse-workspace grant`; docs/node.md, "Standing grants" and "Key custody" say what that protects and what it does not). |
 | `ph.pool.flags` | The sentinel and feature flags of the pool, per device. |
 
 ## Not public

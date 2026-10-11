@@ -2,8 +2,9 @@
 used (docs/node.md, "Standing grants").
 
 `grants` and `grant-log` read; any session may run them. `grant`, `revoke-grant`, `grants-setup`, `person-proof`,
-`person-enroll` and `person-unenroll` are a person's: they refuse a process an agent started or one with no terminal, and
-they sign with the person's key, which asks for a typed `yes` on the terminal device for each thing it signs.
+`person-enroll` and `person-unenroll` are a person's: they refuse a process that carries an agent marker or has no terminal, and
+they sign with the person's key, which asks for a typed `yes` on the terminal device for each thing it signs. The markers and the
+question stop accidents and an agent that has no terminal of its own, not a process of the same user (docs/node.md, "Key custody").
 """
 
 from __future__ import annotations
@@ -44,10 +45,6 @@ class Ctx:
     key: Any
 
 
-def _when(ms: int) -> str:
-    return time.strftime("%Y-%m-%d %H:%MZ", time.gmtime(ms / 1000))
-
-
 def _who(to: dict[str, Any]) -> str:
     if to["kind"] == "session":
         return f"{to['name']}{' and its subagents' if to.get('subagents') else ''}"
@@ -62,7 +59,7 @@ def _matches_nobody_yet(to: dict[str, Any]) -> bool:
 
 def _line(g: grants.Grant) -> str:
     left = "unlimited" if g.uses is None else f"{g.used}/{g.uses}"
-    return (f"{g.gid}  {g.status:<9} {g.action:<18} {_who(g.to)}  on {g.scope['resource']}  until {_when(g.until_ms)}  used {left}"
+    return (f"{g.gid}  {g.status:<9} {g.action:<18} {_who(g.to)}  on {g.scope['resource']}  until {grants.when(g.until_ms)}  used {left}"
             f"{'  needs review' if g.review else ''}{'  (' + g.why + ')' if g.why else ''}"
             f"{'  (names a verified model, and no session is verified yet: it matches nobody)' if _matches_nobody_yet(g.to) else ''}")
 
@@ -79,7 +76,7 @@ def show_log(args: argparse.Namespace, s: Session) -> Any:
     rows = grants.log(s, args.limit)
     if args.json:
         return rows
-    return [f"{_when(r['at_ms'])}  {r['op']:<6} {r['gid']}  {r.get('action') or ''}  {r.get('target') or r.get('reason') or ''}  "
+    return [f"{grants.when(r['at_ms'])}  {r['op']:<6} {r['gid']}  {r.get('action') or ''}  {r.get('target') or r.get('reason') or ''}  "
             f"{r.get('user') or r['by']}{'  (another device)' if r['foreign'] else ''}" for r in rows] or ["(nothing yet)"]
 
 
@@ -148,7 +145,7 @@ def grant(args: argparse.Namespace, ctx: Ctx) -> Any:
     this = grants.listing(ctx.carrier).device
     want = grants.Want(args.action, _to(args), args.scope, _device(args.device, this), grants.duration_ms(args.until), args.uses or None, args.review)
     got = grants.issue(ctx.carrier, key, want)
-    return {"granted": got["gid"], "action": want.action, "to": _who(want.to), "on": want.resource, "until": _when(got["until_ms"]),
+    return {"granted": got["gid"], "action": want.action, "to": _who(want.to), "on": want.resource, "until": grants.when(got["until_ms"]),
             "uses": want.uses or "unlimited", "revoke": f"poolhouse-workspace revoke-grant {got['gid']}"}
 
 
@@ -170,7 +167,7 @@ def _chosen(args: argparse.Namespace, main: dict[str, Any]) -> list[str]:
         raise ValueError("no session is registered on this board yet: start the lead, then run this again")
     say("The main sessions on this board (the model and harness are what each session says about itself):")
     for number, agent in enumerate(main.values(), 1):
-        say(f"  {number}. {agent.name}  model {agent.model or '?'}  harness {agent.harness or '?'}  last seen {_when(agent.seen_ms)}")
+        say(f"  {number}. {agent.name}  model {agent.model or '?'}  harness {agent.harness or '?'}  last seen {grants.when(agent.seen_ms)}")
     typed = input("The lead session or sessions to grant, by number or name: ").replace(",", " ").split()
     names = [list(main)[int(t) - 1] if t.isdigit() and 0 < int(t) <= len(main) else t for t in typed]
     if not names:
@@ -198,13 +195,14 @@ def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
     bundle = grants.default_bundle(who, held.device, args.days)
     about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
     enrolling = not held.persons
-    lines = [*([grants.enrol_line(ctx.key.public, about)] if enrolling else []), *(grants.want_line(ctx.carrier.board, want) for want, _ in bundle)]
+    at = int(time.time() * 1000)
+    lines = [*([grants.enrol_line(ctx.key.public, about)] if enrolling else []), *(grants.want_line(ctx.carrier.board, want, at) for want, _ in bundle)]
     for action, text in dict.fromkeys((want.action, text) for want, text in bundle):
         say(f"  {action}: {text}")
     ctx.key.approve(lines, f"These {len(lines)} signatures give the lead sessions above the grants listed, each for {args.days} days, none for more:")
     if enrolling:
         grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about)
-    done = [grants.issue(ctx.carrier, ctx.key, want) for want, _ in bundle]
+    done = [grants.issue(ctx.carrier, ctx.key, want, now_ms=at) for want, _ in bundle]
     return {"key_enrolled": enrolling, "to": [_who(to) for to in who], "granted": [{"gid": d["gid"], "action": d["action"]} for d in done],
             "revoke": "poolhouse-workspace revoke-grant ID", "see": "poolhouse-workspace grants"}
 

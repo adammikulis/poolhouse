@@ -19,11 +19,11 @@ import hashlib
 import json
 import os
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import keystore, legacy
+from poolhouse import keystore, legacy, person
 from poolhouse.files import read_json, write_json, writing
 from poolhouse.log import warn
 from poolhouse.platform import private_file
@@ -223,7 +223,7 @@ class SigningKeys:
         asked first and must say yes."""
         doc = self.meta()
         listed = list(entries)
-        if self.always_confirm or doc.get("confirm"):
+        if doc.get("confirm"):
             summary = f"sign a manifest of {len(listed)} files with key {doc['key_id'][:16]}"
             if confirm is None or not confirm(summary):
                 raise KeyStoreError("signing needs a person's confirmation and did not get it")
@@ -238,7 +238,7 @@ class SigningKeys:
         """The signature of this key over ``data``; with confirm-before-signing on, ``confirm``
         is asked first and must say yes."""
         doc = self.meta()
-        if (self.always_confirm or doc.get("confirm")) and (confirm is None or not confirm(f"sign {len(data)} bytes with key {doc['key_id'][:16]}")):
+        if doc.get("confirm") and (confirm is None or not confirm(f"sign {len(data)} bytes with key {doc['key_id'][:16]}")):
             raise KeyStoreError("signing needs a person's confirmation and did not get it")
         return self._get(doc["store"]).sign_bytes(data)
 
@@ -301,6 +301,46 @@ class SigningKeys:
 
 
 class ConfirmedKeys(SigningKeys):
-    """A signing key that asks a person before every signature, whatever its record says, and starts with a record that says so."""
+    """The person's grant key: every signature is put to the person on the terminal device first, by the key itself.
+
+    A `confirm` passed to a signing call is ignored, `approve` puts one question for a list of exactly the signatures it
+    names, and manifests are refused. The question is `person.confirm`, a typed `yes` on `/dev/tty`, put by `_ask`. It stops a
+    process that is not the person at the terminal; code of the same user that reads the key file and its passphrase, or the
+    keystore item, signs without it (docs/node.md, "Key custody").
+    """
 
     always_confirm = True
+
+    def __init__(self, directory: Path, *, describe: Callable[[bytes], str] | None = None,
+                 passphrase: Callable[[str], str] = _ask_passphrase, ks: keystore.Keystore | None = None) -> None:
+        super().__init__(directory, passphrase=passphrase, ks=ks)
+        self._describe = describe
+        self._approved: list[str] = []
+
+    def _ask(self, prompt: str) -> bool:
+        return person.confirm(prompt)
+
+    def _line(self, data: bytes) -> str:
+        return self._describe(data) if self._describe else f"sign {len(data)} bytes with key {self.key_id[:16]}"
+
+    def approve(self, lines: Sequence[str], header: str) -> None:
+        """Put ``lines`` to the person once: the signatures that read back as exactly these need no second question."""
+        shown = "\n".join(f"  {number}. {line}" for number, line in enumerate(lines, 1))
+        if not self._ask(f"{header}\n{shown}\nType yes to sign {'it' if len(lines) == 1 else 'all of them'}: "):
+            raise KeyStoreError("nothing was signed: the person did not type yes")
+        self._approved = list(lines)
+
+    def sign_bytes(self, data: bytes, *, confirm: Callable[[str], bool] | None = None) -> bytes:
+        """The signature over ``data`` once the person has read what it does and typed yes; ``confirm`` is ignored."""
+        line = self._line(data)
+        if line in self._approved:
+            self._approved.remove(line)
+        elif not self._ask(f"Your person key is asked to sign:\n  {line}\nType yes to sign it: "):
+            raise KeyStoreError("signing needs a person's confirmation and did not get it")
+        return self._get(self.meta()["store"]).sign_bytes(data)
+
+    def sign(self, entries: Iterable[Entry], *, serial: int, confirm: Callable[[str], bool] | None = None) -> bytes:
+        raise KeyStoreError("the person's key signs grants and keys, not manifests")
+
+    def attest(self, entries: Iterable[Entry], *, serial: int, namespace: str, confirm: Callable[[str], bool] | None = None) -> dict[str, Any]:
+        raise KeyStoreError("the person's key signs grants and keys, not manifests")

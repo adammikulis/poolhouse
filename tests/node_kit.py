@@ -79,6 +79,18 @@ class NoKeystore:
         return False
 
 
+class SaysYes(ConfirmedKeys):
+    """The person's key with the question answered yes and no terminal: the kit's stand-in for a person typing `yes`."""
+
+    def _ask(self, prompt: str) -> bool:
+        return True
+
+
+def person_keys(directory: Path, cls: type[ConfirmedKeys] = ConfirmedKeys) -> ConfirmedKeys:
+    """The person's key in ``directory`` the way `person_key.keys` makes it, in a file under the kit's passphrase (never the keystore)."""
+    return cls(directory, describe=board_grants.describe, ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE)
+
+
 def allow(carrier: board_session.Session, person: Signer, *actions: str, to: dict | None = None, **limits: Any) -> list[str]:
     """``person`` (a test key, enrolled on the node first) grants the session ``carrier`` (or ``to``) every action of the
     registry, or just ``actions``, within ``limits`` (``resource``, ``uses``, ``lasts_ms``); the grant ids. The carrier
@@ -136,11 +148,11 @@ class WorkspaceNode:
         """The session ``name`` a hook or command registered, with the token it kept in its private file."""
         return Member(name, credentials.load(self.state, self.board, name), parent)
 
-    def keep_person_key(self, who: Member) -> person_key.PersonKey:
+    def keep_person_key(self, who: Member) -> ConfirmedKeys:
         """A person's key kept beside this node as `grants-setup` leaves it, and enrolled on it (``who`` only carries the
         request): a command run at a terminal signs for what it needs with it once the person types yes, and a process an
-        agent started cannot. The key returned says yes to every question; the one a command reads asks on its terminal."""
-        keys = person_key.PersonKey(ConfirmedKeys(self.state / person_key.KEY_DIR, ks=NoKeystore(), passphrase=lambda _prompt: PASSPHRASE), lambda _text: True)
+        agent marked is refused before the question. The key returned says yes to every question; the one a command reads asks on its terminal."""
+        keys = person_keys(self.state / person_key.KEY_DIR, SaysYes)
         held = board_grants.listing(self.session(who)).persons
         if board_grants.fingerprint(keys.public) in held:
             return keys

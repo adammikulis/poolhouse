@@ -24,7 +24,7 @@ from poolhouse.platform import private_file
 
 __all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "approve", "canonical", "default_bundle", "describe", "duration_ms",
            "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "issue", "listing", "log", "revoke", "sign_issue", "sign_revoke",
-           "sign_unenroll", "unenrol", "want_line"]
+           "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
@@ -122,9 +122,9 @@ def sign_revoke(key: Signs, board: str, gid: str, reason: str = "", *, now_ms: i
     return _params(key, body, SIGN_DOMAIN)
 
 
-def issue(session: Session, key: Signs, want: Want) -> dict[str, Any]:
-    """Ask the node to put ``want`` on the board, signed by ``key``; the session only carries the request."""
-    return dict(session.call("grant_issue", **sign_issue(key, session.board, want)))
+def issue(session: Session, key: Signs, want: Want, *, now_ms: int | None = None) -> dict[str, Any]:
+    """Ask the node to put ``want`` on the board, signed by ``key`` at ``now_ms``; the session only carries the request."""
+    return dict(session.call("grant_issue", **sign_issue(key, session.board, want, now_ms=now_ms)))
 
 
 def revoke(session: Session, key: Signs, gid: str, reason: str = "") -> dict[str, Any]:
@@ -143,6 +143,7 @@ def approve(proof: dict[str, Any], approver: Signs) -> dict[str, Any]:
     if not isinstance(proof, dict) or not {"public", "about", "at_ms", "proof"} <= proof.keys():
         raise ValueError("a carried key is what `person-proof` printed: public, about, at_ms and proof")
     body = {"op": "enroll", "public": proof["public"], "about": proof["about"], "at_ms": proof["at_ms"]}
+    _plain(body)
     return {**proof, "by": fingerprint(approver.public), "approval": approver.sign_bytes(ENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
@@ -269,23 +270,28 @@ def _span(ms: int) -> str:
     return f"{ms} ms"
 
 
+def when(ms: int) -> str:
+    """``ms`` since the epoch as a UTC date and time to the second."""
+    return time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(ms / 1000))
+
+
 def _issue_line(board: str, grant: dict[str, Any]) -> str:
     uses, device, resource = grant["uses"], grant["device"], grant["resource"]
     used = "as often as it is needed" if uses is None else f"{uses} use{'' if uses == 1 else 's'}"
-    where = "any device" if device == "*" else f"device {device[:12]}"
+    where = "any device" if device == "*" else f"device {device}"
     return (f"allow {_grantee(grant['to'])} to {grant['action']} on {'anything' if resource == '*' else resource} (board {board}, {where}), "
-            f"for {_span(grant['lasts_ms'])}, {used}" + (", each use behind an independent review" if grant["review"] else ""))
+            f"for {_span(grant['lasts_ms'])}, ending {when(grant['until_ms'])}, {used}" + (", each use behind an independent review" if grant["review"] else ""))
 
 
-def want_line(board: str, want: Want) -> str:
-    """What a person reads before signing ``want`` on ``board``."""
+def want_line(board: str, want: Want, at_ms: int) -> str:
+    """What a person reads before signing ``want`` on ``board`` at ``at_ms``."""
     return _issue_line(board, {"to": want.to, "action": want.action, "device": want.device, "resource": want.resource,
-                               "lasts_ms": want.lasts_ms, "uses": want.uses, "review": want.review})
+                               "lasts_ms": want.lasts_ms, "until_ms": at_ms + want.lasts_ms, "uses": want.uses, "review": want.review})
 
 
 def enrol_line(public: bytes, about: str) -> str:
     """What a person reads before a key is enrolled as a person key."""
-    return f"let the key {public.hex()[:16]} ({about}) act as a person key on a node"
+    return f"let the key {public.hex()} ({about}) act as a person key on a node"
 
 
 def describe(data: bytes) -> str:
@@ -296,14 +302,14 @@ def describe(data: bytes) -> str:
         if domain + b"\n" == SIGN_DOMAIN and body["op"] == "issue":
             scope = body["scope"]
             return _issue_line(body["board"], {"to": body["to"], "action": body["action"], "device": scope["device"], "resource": scope["resource"],
-                                               "lasts_ms": body["until_ms"] - body["at_ms"], "uses": body.get("uses"),
+                                               "lasts_ms": body["until_ms"] - body["at_ms"], "until_ms": body["until_ms"], "uses": body.get("uses"),
                                                "review": bool(body.get("conditions", {}).get("review"))})
         if domain + b"\n" == SIGN_DOMAIN and body["op"] == "revoke":
             return f"end the grant {body['gid']} on board {body['board']}" + (f" ({body['reason']})" if body.get("reason") else "")
         if domain + b"\n" == ENROLL_DOMAIN:
             return enrol_line(bytes.fromhex(body["public"]), body["about"])
         if domain + b"\n" == UNENROLL_DOMAIN:
-            return f"take the person key {body['fingerprint'][:16]} off the node"
+            return f"take the person key {body['fingerprint']} off the node"
     except (KeyError, TypeError, AttributeError, ValueError):
         pass
     raise ValueError("a person key signs a grant, the end of a grant, or the enrolment of a key, and this is none of them")

@@ -1,17 +1,20 @@
 """The person's grant key: kept beside the node, and used only for what a person confirms at their terminal (docs/node.md,
-"Standing grants").
+"Standing grants", "Key custody").
 
-Every signature it makes is read back from the bytes being signed and needs a typed `yes` on the terminal device itself
-(`person.confirm`), whatever stdin and stdout are. A command a person is running asks for what it needs; when a refusal says a
-grant is missing, it offers to sign one for exactly that, good for one use and two minutes. A process an agent started is
-refused before the question is put.
+Every signature it makes is read back from the bytes being signed and put to the person as a typed `yes` on the terminal device
+(`person.confirm`, `/dev/tty`), whatever stdin and stdout are. A command a person is running asks for what it needs; when a refusal
+says a grant is missing, it offers to sign one for exactly that, good for one use and two minutes. A process an agent marked is
+refused before the question is put. The typed `yes` stops accidents and an agent that does not open a terminal of its own; it is
+not a barrier against a process of the same operating-system user that allocates a terminal of its own, imports this code, or
+reads the key file and its passphrase or the keychain item. A per-use user-presence prompt (Touch ID, a hardware key) or a signing
+helper under another operating-system identity would be, and neither is built.
 """
 
 from __future__ import annotations
 
 import getpass
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -21,12 +24,10 @@ from poolhouse.fleet.onboard.signing import ConfirmedKeys, KeyStoreError
 from poolhouse.log import warn
 from poolhouse.node_health import Refused, call
 
-__all__ = ["KEY_DIR", "PersonKey", "held", "kept", "keys", "provider", "retrying"]
+__all__ = ["KEY_DIR", "held", "kept", "keys", "provider", "retrying"]
 
 KEY_DIR = "person"
 LASTS_MS = 120_000
-
-Ask = Callable[[str], bool]
 
 
 def tty_passphrase(prompt: str) -> str:
@@ -48,40 +49,9 @@ def _remembered(ask: Callable[[str], str]) -> Callable[[str], str]:
     return passphrase
 
 
-class PersonKey:
-    """The person's signing key behind the question every signature is put to."""
-
-    def __init__(self, store: ConfirmedKeys, ask: Ask | None = None) -> None:
-        self.store, self.ask = store, ask or person.confirm
-        self._approved: list[str] = []
-
-    @property
-    def public(self) -> bytes:
-        return self.store.public
-
-    @property
-    def meta_path(self) -> Path:
-        return self.store.meta_path
-
-    def approve(self, lines: Sequence[str], header: str) -> None:
-        """Put ``lines`` to the person once: the signatures that read back as exactly these need no second question."""
-        shown = "\n".join(f"  {number}. {line}" for number, line in enumerate(lines, 1))
-        if not self.ask(f"{header}\n{shown}\nType yes to sign {'it' if len(lines) == 1 else 'all of them'}: "):
-            raise KeyStoreError("nothing was signed: the person did not type yes")
-        self._approved = list(lines)
-
-    def sign_bytes(self, data: bytes) -> bytes:
-        """The signature over ``data`` once the person has read what it does and typed yes on the terminal."""
-        line = grants.describe(data)
-        if line in self._approved:
-            self._approved.remove(line)
-            return self.store.sign_bytes(data, confirm=lambda _: True)
-        return self.store.sign_bytes(data, confirm=lambda _: self.ask(f"Your person key is asked to sign:\n  {line}\nType yes to sign it: "))
-
-
-def keys(state: Path, ask: Ask | None = None) -> PersonKey:
+def keys(state: Path) -> ConfirmedKeys:
     """The person's key of the node whose state directory is ``state``, made on first use of its public half."""
-    return PersonKey(ConfirmedKeys(Path(state) / KEY_DIR, passphrase=_remembered(tty_passphrase)), ask)
+    return ConfirmedKeys(Path(state) / KEY_DIR, describe=grants.describe, passphrase=_remembered(tty_passphrase))
 
 
 def kept(state: Path) -> bool:
@@ -89,20 +59,20 @@ def kept(state: Path) -> bool:
     return (Path(state) / KEY_DIR / "signing.json").exists()
 
 
-def held(state: Path, *, attended: bool = False, ask: Ask | None = None) -> PersonKey | None:
+def held(state: Path, *, attended: bool = False) -> ConfirmedKeys | None:
     """The person's key when one is kept here and this process is a person's: no agent marker, and a terminal on stdin and
     stdout, or a screen the person is sitting at (``attended``); else None. Using it still asks on the terminal device."""
     if person.marked() or not kept(state):
         return None
     if not attended and not (person.is_terminal(sys.stdin) and person.is_terminal(sys.stdout)):
         return None
-    return keys(state, ask)
+    return keys(state)
 
 
-def provider(state: Path, *, attended: bool = False, ask: Ask | None = None) -> Callable[[str, dict[str, Any]], bool]:
+def provider(state: Path, *, attended: bool = False) -> Callable[[str, dict[str, Any]], bool]:
     """What a client asks after a refusal that names a missing grant: sign it for the session behind the token, when the person says yes."""
     def allow(token: str, hint: dict[str, Any]) -> bool:
-        key = held(state, attended=attended, ask=ask)
+        key = held(state, attended=attended)
         if key is None:
             return False
         want = grants.Want(hint["action"], {"kind": "session", "name": hint["name"]}, hint["resource"], hint["device"], LASTS_MS, 1)

@@ -308,8 +308,8 @@ Nothing a session may do beyond reading and writing its own board's messages, no
 grant names it. A grant is a `grant` entry on the board (channel `#grants`) that a person signed once; the node counts a
 grant only when a person key enrolled on it signed it, so a session that does not hold that key makes none through the node's
 API, for itself or anyone, and a `grant` entry any writer puts on the board without that signature is listed as ignored and
-allows nothing. What keeps a process from signing is the custody of the key, which is the operating-system user and a typed
-confirmation, not the node ("Key custody" below says what that does not stop).
+allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
+("Key custody" below says exactly what that does and does not protect).
 
 **The registry.** Sixteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
 `sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release`,
@@ -350,18 +350,22 @@ It is the only way to remove a node's last key.
 
 **Key custody.** The private half lives in the person's keystore beside the node (`<state>/person`): the operating system's
 keychain when there is one, else a file under a passphrase typed at the terminal. The person key never reads
-`POOLHOUSE_SIGNING_PASSPHRASE`, which belongs to the pool's signing key. Every signature made with it is put to the person first. The
-question is read back from the bytes about to be signed (what is allowed, to which session or family, on which resource and device,
-for how long and how often; or which key is enrolled or removed), shown on the controlling terminal device (`/dev/tty`, whatever
-stdin and stdout are) and answered only by typing `yes`: Enter, `y`, text typed before the question was shown and no answer within
-two minutes are all refusals. `grants-setup` puts its whole list in one question. The key asks whatever its own record says, so editing
-the record turns nothing off, and the answer to a refusal that names a grant (`board.person_key.provider`) asks the same way. The
-boundary is the operating-system user plus that question. It does not stop a process of the same user that can type into the
-person's terminal (a keystroke injection into the terminal the question appears on), nor one that can read the keychain item, or
-the key file and its passphrase, and then signs without asking. The longer-term fix is a per-use operating-system user-presence
-prompt (Touch ID) or a hardware key that signs only on a touch, neither of which a process of the user can answer; it is planned and
-not built. The person's screen (the UI daemon) has no terminal, so it cannot sign: a refusal there names the grant and the person
-runs the command at a terminal; an approval dialog in the screen is planned.
+`POOLHOUSE_SIGNING_PASSPHRASE`, which belongs to the pool's signing key. Every signature made with it through `ConfirmedKeys` is put
+to the person first: the question is read back from the bytes about to be signed (what is allowed, to which session or family, on
+which resource and which device in full, for how long and until when, and how often; or which key, in full, is enrolled or removed),
+shown on the controlling terminal device (`/dev/tty`, whatever stdin and stdout are) and answered only by typing `yes`: Enter, `y`,
+text typed before the question was shown and no answer within two minutes are all refusals. `grants-setup` puts its whole list in one
+question. A `confirm` callable passed to a signing call is ignored, and the key asks whatever its own record says. The text that comes
+from outside (the name a carried key gives itself) is plain ASCII or refused before the question is put.
+
+What this protects, exactly: the boundary is the operating-system user. The typed `yes` stops accidents and an agent that has no
+terminal of its own and goes through the commands. It does not stop a process of the same user that allocates its own terminal (a
+pseudo-terminal it types `yes` into), imports the key code directly, injects keystrokes into the person's terminal, or reads the
+key file and its passphrase or the keychain item, and signs without being asked. Real protection needs something a process of the
+user cannot answer: a per-use operating-system user-presence prompt (Touch ID) or a hardware key that signs only on a touch, or a
+signing helper process under a different operating-system identity that holds the key and puts the question itself. Both are planned
+and neither is built. The person's screen (the UI daemon) has no terminal, so a refusal there names the grant and the person runs the
+command at a terminal; an approval dialog in the screen is planned.
 
 **What counts.** `grants::check(node, holder, action, scope)` answers true, and writes the use, only for a live grant: this
 board, this device (or `*`), a resource the pattern covers, a session or class the grant names (a class never covers a subagent
