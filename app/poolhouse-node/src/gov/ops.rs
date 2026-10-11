@@ -272,7 +272,7 @@ impl Node {
         let (signer, binding, key, me) = (self.signer.clone(), self.key_binding, self.key.clone(), self.cert.fingerprint());
         let name: String = name.chars().filter(|c| !c.is_control()).take(80).collect();
         let body = json!({"cert": hex(der), "name": name, "how": how, "via": if how == "open" { "segment" } else { "" }});
-        self.asking("admit", |n| n.with_gov(|g, wall| {
+        let admit = move |n: &mut Node| n.with_gov(|g, wall| {
             let mut act = g.new_act("admit", body, wall)?;
             let (charter, roster) = (g.state().chain.latest().charter.clone(), &g.state().roster);
             let live = roster.devices.get(&me).is_some_and(|d| d.status == Status::Active);
@@ -296,7 +296,9 @@ impl Node {
             let id = act.id();
             let kept = g.ingest(act, wall);
             reply(g, &id, kept).map(|_| ())
-        }))?;
+        });
+        // a device signing by its own key asks no person, so it takes nothing from the asks a person is spared; the peer limits how many it takes in
+        if how == "open" { admit(self)? } else { self.asking("admit", admit)? }
         match self.members.get(&fp) {
             Some(d) if d.status == Status::Active => Ok(d.clone()),
             _ => Err(declined("That device was not admitted: the pool's rules did not allow it.")),

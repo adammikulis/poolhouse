@@ -92,6 +92,23 @@ pub fn record_json(node: &Node, joiner: &str) -> Result<Value> {
     })
 }
 
+/// How many devices one address, and the whole pool, may ask to join without a code in ten minutes. The member that admits them signs
+/// by its own key and asks no person, so a flood of them takes nothing from the person's own approvals; these limits keep it from taking
+/// the pool's admits either.
+const OPEN_JOINS_PER_SOURCE: usize = 5;
+const OPEN_JOINS_PER_POOL: usize = 10;
+const OPEN_JOIN_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
+
+fn open_join_allowed(node: &mut Node, ip: IpAddr) -> Result<()> {
+    let source = format!("open-join {ip}");
+    if !node.rates.permits(&source, OPEN_JOINS_PER_SOURCE, OPEN_JOIN_WINDOW) || !node.rates.permits("open-join", OPEN_JOINS_PER_POOL, OPEN_JOIN_WINDOW) {
+        return Err(Error::Quota("this pool is taking devices as fast as it may: try again in a few minutes".into()));
+    }
+    node.rates.record(&source, OPEN_JOIN_WINDOW);
+    node.rates.record("open-join", OPEN_JOIN_WINDOW);
+    Ok(())
+}
+
 /// A device that asks to join under `open`: it is enrolled and handed the pool's record. A device that is a member already is handed
 /// the record again and nothing else changes.
 fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing) -> Result<Value> {
@@ -105,6 +122,7 @@ fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Sta
         return Err(Error::Denied("this pool takes a device without a code only from its own network".into()));
     }
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
+    open_join_allowed(node, ip)?;
     record_json(node, "")?;
     node.enrol_device(der, name, "open")?;
     record_json(node, &cert_fingerprint(der))

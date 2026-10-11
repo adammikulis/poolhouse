@@ -350,6 +350,33 @@ fn a_window_opened_with_no_signer_on_the_node_admits_only_the_device_an_admin_al
     assert!(a.is_member(&b.fp()) && b.is_member(&a.fp()));
 }
 
+#[test]
+fn devices_that_join_an_open_pool_do_not_use_up_the_asks_the_owner_is_spared() {
+    let a = device();
+    found(&a, person(ANN, "ann"), "open");
+    let victim = identity(60);
+    a.node.lock().unwrap().enrol_device(&victim.der, "ghost", "join-code").ok();
+    for seed in 70..86 {
+        let guest = identity(seed);
+        let _ = a.node.lock().unwrap().enrol_device(&guest.der, "guest", "open");
+    }
+    let removed = a.call("member_remove", "", &a.token, json!({"fingerprint": victim.fingerprint()}));
+    assert_eq!(removed["ok"], true, "sixteen devices asked to join and the owner's removal was refused: {removed}");
+}
+
+#[test]
+fn one_address_and_the_whole_pool_may_only_ask_so_often_to_join_an_open_pool_without_a_code() {
+    let a = device();
+    found(&a, person(ANN, "ann"), "open");
+    let guests: Vec<Dev> = (0..11).map(|_| device()).collect();
+    let ask = |g: &Dev| link(g, &a).call(&json!({"op": "join_open", "name": "guest", "port": g.net.port}));
+    let outcomes: Vec<bool> = guests.iter().map(|g| ask(g).is_ok()).collect();
+    assert!(outcomes[..5].iter().all(|ok| *ok), "{outcomes:?}");
+    let refused = ask(&guests[10]).unwrap_err().to_string();
+    assert!(refused.contains("as fast as it may"), "{refused}");
+    assert!(outcomes[5..].iter().all(|ok| !ok), "{outcomes:?}");
+}
+
 // -- the delegate ----------------------------------------------------------------------------------------------------------
 
 #[test]
