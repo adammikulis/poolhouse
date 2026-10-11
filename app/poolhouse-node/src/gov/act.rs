@@ -10,11 +10,10 @@ use serde_json::Value;
 
 use crate::cert::{device_public, valid_fingerprint};
 use crate::error::{Error, Result};
-use crate::fsutil::{hex, random_hex, sha256_hex, unhex};
-use crate::grants::person::verifies;
+use crate::fsutil::{hex, random_hex, sha256_hex};
 use crate::row::canonical;
 
-use super::keys::valid_public;
+use super::alg::Alg;
 use super::{MAX_ACT_BYTES, MAX_SIGNATURES};
 
 const DOMAIN: &str = "poolhouse/pool-act/v1\n";
@@ -39,6 +38,8 @@ pub enum SigKind {
 pub struct ActSig {
     pub kind: SigKind,
     pub key: String,
+    /// The algorithm of the key; a device signs with Ed25519, an admin key with the one its charter entry names.
+    pub alg: Alg,
     pub sig: String,
 }
 
@@ -115,11 +116,11 @@ impl Act {
                 return bad("an act is signed once by each signer");
             }
             let key_ok = match s.kind {
-                SigKind::Admin => valid_public(&s.key),
-                SigKind::Device => valid_fingerprint(&s.key),
+                SigKind::Admin => Alg::of_key(&s.key) == Some(s.alg),
+                SigKind::Device => valid_fingerprint(&s.key) && s.alg == Alg::Ed25519,
             };
-            if !key_ok || s.sig.len() != 128 || unhex(&s.sig).is_none() {
-                return bad("a signature names its key and is 64 bytes");
+            if !key_ok || !s.alg.sig_shape(&s.sig) {
+                return bad("a signature names its key and its algorithm, and is that algorithm's signature");
             }
         }
         Ok(())
@@ -129,13 +130,13 @@ impl Act {
     pub fn verifies(&self, sig: &ActSig, der: Option<&[u8]>) -> bool {
         let public = match (sig.kind, der) {
             (SigKind::Admin, _) => sig.key.clone(),
-            (SigKind::Device, Some(der)) => match device_public(der) {
+            (SigKind::Device, Some(der)) if sig.alg == Alg::Ed25519 => match device_public(der) {
                 Ok(p) if crate::cert::cert_fingerprint(der) == sig.key => hex(&p),
                 _ => return false,
             },
-            (SigKind::Device, None) => return false,
+            (SigKind::Device, _) => return false,
         };
-        verifies(&public, &self.sign_bytes(), &sig.sig)
+        sig.alg.verifies(&public, &self.sign_bytes(), &sig.sig)
     }
 
     /// Add ``sig`` if this act has no signature by that key yet; whether it was added.

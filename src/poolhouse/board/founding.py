@@ -144,7 +144,7 @@ def _allowed(session: Session, admin: Admin, name: str, wait_s: float, voice: pr
 
 def _charter(session: Session, admin: Admin, name: str, policy: str) -> dict[str, Any]:
     """The node's draft of the charter with the admin key's acceptance filled in, signed outside the node."""
-    key = {"key": admin.key.public.hex(), "person": admin.person, "strength": admin.strength, "label": admin.label}
+    key = {"key": admin.key.public.hex(), "alg": "ed25519", "person": admin.person, "strength": admin.strength, "label": admin.label}
     draft = session.client.call("pool_draft_found", "", session.token, title=name, policy=policy, project="", keys=[key])
     charter = draft["charter"]
     for wanted in draft["accept"]:
@@ -158,7 +158,7 @@ def _admit_this_device(session: Session, admin: Admin, cert: str) -> None:
     drafted = session.client.call("pool_draft", "", session.token, kind="admit", body={"cert": cert, "name": "", "how": "found", "via": ""})
     act = dict(drafted["act"])
     sig = admin.key.sign_bytes(bytes.fromhex(drafted["sign_bytes"])).hex()
-    listed = [*act["signatures"], {"kind": "admin", "key": admin.key.public.hex(), "sig": sig}]
+    listed = [*act["signatures"], {"kind": "admin", "key": admin.key.public.hex(), "alg": "ed25519", "sig": sig}]
     act["signatures"] = sorted(listed, key=lambda s: (s["kind"], s["key"]))
     session.client.call("pool_submit", "", session.token, act=act)
 

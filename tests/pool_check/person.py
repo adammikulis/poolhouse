@@ -129,12 +129,12 @@ class RigPerson:
         """The act of a `pool_draft` reply with the admin key's signature over the bytes the node gave."""
         act = dict(drafted["act"])
         sig = self.admin.sign_bytes(bytes.fromhex(drafted["sign_bytes"])).hex()
-        act["signatures"] = sorted([*act["signatures"], {"kind": "admin", "key": self.admin.public.hex(), "sig": sig}], key=lambda s: (s["kind"], s["key"]))
+        act["signatures"] = sorted([*act["signatures"], {"kind": "admin", "key": self.admin.public.hex(), "alg": "ed25519", "sig": sig}], key=lambda s: (s["kind"], s["key"]))
         return act
 
     def found(self, device: Device, policy: str, title: str = "pool check") -> dict:
         """``device`` founds a pool of ``policy`` governed by the admin key and is its first member: the charter is accepted by the key outside the node."""
-        keys = [{"key": self.admin.public.hex(), "person": "pool-check", "strength": "strong", "label": "the pool check's admin"}]
+        keys = [{"key": self.admin.public.hex(), "alg": "ed25519", "person": "pool-check", "strength": "strong", "label": "the pool check's admin"}]
         draft = device.admin("pool_draft_found", title=title, policy=policy, project="", keys=keys)
         charter = draft["charter"]
         for wanted in draft["accept"]:

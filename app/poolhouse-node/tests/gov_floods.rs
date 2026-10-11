@@ -4,6 +4,7 @@ mod kit;
 
 use kit::gov::*;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
+use poolhouse_node::gov::alg::Alg;
 use poolhouse_node::gov::pool::{GovPool, Ingest};
 use poolhouse_node::gov::room::{MOST_JUNK, MOST_JUNK_PER_DEVICE, MOST_LEAVES_PER_DEVICE};
 use poolhouse_node::gov::{MAX_ACTS, MAX_ADMITS};
@@ -16,7 +17,7 @@ const A: u8 = 1;
 fn fast_sign(act: &mut Act, seed: u8, fingerprint: &str) {
     use ed25519_dalek::Signer;
     let sig = poolhouse_node::fsutil::hex(&kit::key(seed).sign(&act.sign_bytes()).to_bytes());
-    act.add_signature(ActSig { kind: SigKind::Device, key: fingerprint.into(), sig });
+    act.add_signature(ActSig { kind: SigKind::Device, key: fingerprint.into(), alg: Alg::Ed25519, sig });
 }
 
 /// An open pool with one admin and one member device (made from seed 20), and that device's fingerprint.

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
+use poolhouse_node::gov::alg::Alg;
 use poolhouse_node::gov::charter::{Charter, Unit};
 use poolhouse_node::gov::keys::{AdminKey, Role, Strength};
 use poolhouse_node::gov::pool::{GovPool, Ingest};
@@ -41,7 +42,7 @@ pub fn public(seed: u8) -> String {
 
 /// The listing of the key ``k`` at epoch ``since``, accepted against ``anchor``.
 pub fn entry(k: K, since: u64, anchor: &str) -> AdminKey {
-    let mut e = AdminKey { key: public(k.0), role: k.2, strength: k.3, person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
+    let mut e = AdminKey { key: public(k.0), alg: RigSigner::alg(k.0), role: k.2, strength: k.3, person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
     e.acceptance = RigSigner::sign_as(k.0, &e.acceptance_message(anchor));
     e
 }
@@ -76,7 +77,7 @@ pub fn pool_of(c: &Charter) -> (TempDir, GovPool) {
 /// Sign ``act`` as the key made from ``seed``.
 pub fn sign(act: &mut Act, seed: u8) {
     let sig = RigSigner::sign_as(seed, &act.sign_bytes());
-    act.add_signature(ActSig { kind: SigKind::Admin, key: public(seed), sig });
+    act.add_signature(ActSig { kind: SigKind::Admin, key: public(seed), alg: RigSigner::alg(seed), sig });
 }
 
 /// An act of ``kind`` following the charter now in force, signed by ``seeds``.
@@ -117,7 +118,7 @@ pub fn ident(seed: u8) -> Identity {
 pub fn device_sign(act: &mut Act, seed: u8) {
     use ed25519_dalek::Signer;
     let sig = hex(&super::key(seed).sign(&act.sign_bytes()).to_bytes());
-    act.add_signature(ActSig { kind: SigKind::Device, key: ident(seed).fingerprint(), sig });
+    act.add_signature(ActSig { kind: SigKind::Device, key: ident(seed).fingerprint(), alg: Alg::Ed25519, sig });
 }
 
 pub fn admit_body(device: &Identity, name: &str, how: &str, via: &str) -> Value {

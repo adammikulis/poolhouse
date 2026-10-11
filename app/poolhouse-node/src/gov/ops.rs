@@ -17,6 +17,7 @@ use crate::node::Node;
 use crate::poolops::wall_ms;
 
 use super::act::{Act, ActSig, SigKind};
+use super::alg::Alg;
 use super::charter::{Charter, Class, Unit};
 use super::describe::{describe, quoted};
 use super::keys::{AdminKey, Role};
@@ -76,14 +77,14 @@ fn keys_for(signer: &dyn Signer, charter: &Charter, need: usize, weak_ok: bool, 
 fn sign_with(act: &mut Act, signer: &dyn Signer, keys: &[SignerKey], summary: &str) -> Result<()> {
     for key in keys {
         let sig = signer.sign(&key.public, &act.sign_bytes(), summary)?;
-        act.add_signature(ActSig { kind: SigKind::Admin, key: key.public.clone(), sig });
+        act.add_signature(ActSig { kind: SigKind::Admin, key: key.public.clone(), alg: key.alg, sig });
     }
     Ok(())
 }
 
 fn device_sign(act: &mut Act, key: &SigningKey, fingerprint: &str) {
     let sig = hex(&key.sign(&act.sign_bytes()).to_bytes());
-    act.add_signature(ActSig { kind: SigKind::Device, key: fingerprint.into(), sig });
+    act.add_signature(ActSig { kind: SigKind::Device, key: fingerprint.into(), alg: Alg::Ed25519, sig });
 }
 
 /// The founding act of a call: the act itself, or the charter a person's keys accepted (the act is made of it); not both, not neither.
@@ -240,7 +241,7 @@ impl Node {
         let signer = self.signer.clone().ok_or_else(no_signer)?;
         let now = wall_ms();
         let held = signer.keys();
-        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), role: Role::Admin, strength: k.strength, person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
+        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), alg: k.alg, role: Role::Admin, strength: k.strength, person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
         if admins.is_empty() {
             return Err(no_signer());
         }
@@ -429,14 +430,15 @@ impl Node {
         let mut admins = Vec::new();
         for k in listed {
             let strength = serde_json::from_value(k["strength"].clone()).map_err(|_| Error::Invalid("a key is strong or weak".into()))?;
-            admins.push(AdminKey { key: text(k, "key"), role: Role::Admin, strength, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
+            let alg = serde_json::from_value(k["alg"].clone()).map_err(|_| Error::Invalid("a key names its algorithm, ed25519 or p256-ecdsa".into()))?;
+            admins.push(AdminKey { key: text(k, "key"), alg, role: Role::Admin, strength, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
         }
-        if let Some(bad) = admins.iter().find(|k| !super::keys::valid_public(&k.key)) {
-            return Err(Error::Invalid(format!("{} is not an Ed25519 public key", bad.key.chars().take(16).collect::<String>())));
+        if let Some(bad) = admins.iter().find(|k| Alg::of_key(&k.key) != Some(k.alg)) {
+            return Err(Error::Invalid(format!("{} is not a public key of the algorithm named", bad.key.chars().take(16).collect::<String>())));
         }
         let charter = Charter::new(name, policy, project, admins, wall_ms());
         let anchor = charter.anchor();
-        let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "sign_bytes": hex(&k.acceptance_message(&anchor))})).collect();
+        let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "alg": k.alg, "sign_bytes": hex(&k.acceptance_message(&anchor))})).collect();
         Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": format!("Make the pool {}.", quoted(name))}))
     }
 

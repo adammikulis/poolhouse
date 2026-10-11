@@ -9,6 +9,7 @@ use kit::netkit::*;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::error::Error;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
+use poolhouse_node::gov::alg::Alg;
 use poolhouse_node::gov::keys::Strength;
 use poolhouse_node::gov::signer::RigSigner;
 use poolhouse_node::net::{Net, NetConfig};
@@ -213,7 +214,7 @@ fn a_plain_member_cannot_remove_the_founder_enrol_a_device_or_move_the_policy_in
             use ed25519_dalek::Signer;
             poolhouse_node::fsutil::hex(&n.key.sign(&act.sign_bytes()).to_bytes())
         };
-        act.add_signature(ActSig { kind: SigKind::Device, key: b.fp(), sig });
+        act.add_signature(ActSig { kind: SigKind::Device, key: b.fp(), alg: Alg::Ed25519, sig });
         act
     };
     // 3. an admit of a stranger signed by a key made up
@@ -300,7 +301,7 @@ fn an_act_a_person_signed_with_a_key_of_their_own_is_submitted_without_any_signe
         let n = a.node.lock().unwrap();
         let mut act = n.members.gov().unwrap().new_act("remove", json!({"fingerprint": victim.fingerprint()}), wall_ms()).unwrap();
         let sig = RigSigner::sign_as(ANN, &act.sign_bytes());
-        act.add_signature(ActSig { kind: SigKind::Admin, key: public(ANN), sig });
+        act.add_signature(ActSig { kind: SigKind::Admin, key: public(ANN), alg: Alg::Ed25519, sig });
         act
     };
     b.node.lock().unwrap().members.gov().unwrap();

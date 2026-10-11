@@ -8,7 +8,8 @@
 //!
 //! | piece | does |
 //! |---|---|
-//! | `keys` | an admin key, its role and strength, its acceptance |
+//! | `alg` | the algorithm of an admin key: Ed25519 or P-256 ECDSA |
+//! | `keys` | an admin key, its algorithm, role and strength, its acceptance |
 //! | `charter` | the charter, the pool id, thresholds and holds |
 //! | `act`, `body` | the signed act and the body of each kind |
 //! | `describe` | the sentence a person is asked to sign an act under |
@@ -23,6 +24,7 @@
 //! | `ops` | the node's part: founding, admitting, removing, leaving, and the acts a person's key signs |
 
 pub mod act;
+pub mod alg;
 pub mod body;
 pub mod chain;
 pub mod charter;

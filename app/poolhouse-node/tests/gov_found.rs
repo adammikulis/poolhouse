@@ -58,7 +58,7 @@ fn a_join_whose_history_does_not_fit_the_frame_is_refused_whole_and_says_so() {
 }
 
 fn drafted(a: &Dev, policy: &str, keys: &[(u8, &str)]) -> Value {
-    let listed: Vec<Value> = keys.iter().map(|(seed, person)| json!({"key": public(*seed), "person": person, "strength": "strong", "label": format!("{person}'s key")})).collect();
+    let listed: Vec<Value> = keys.iter().map(|(seed, person)| json!({"key": public(*seed), "alg": RigSigner::alg(*seed), "person": person, "strength": "strong", "label": format!("{person}'s key")})).collect();
     a.ok("pool_draft_found", "", &a.token, json!({"title": "home", "policy": policy, "project": "", "keys": listed}))
 }
 

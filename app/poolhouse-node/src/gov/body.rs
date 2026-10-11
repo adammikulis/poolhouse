@@ -10,7 +10,7 @@ use crate::row::{valid_name, valid_origin};
 
 use super::act::{valid_id, Act};
 use super::charter::{Charter, Mode, Unit};
-use super::keys::{valid_public, AdminKey};
+use super::keys::{valid_key, AdminKey};
 
 /// How a device came in: `found` (the first device of a pool), `join-code`, `open`, `tap`, `delegate`, `handoff`.
 pub const HOW: [&str; 6] = ["found", "join-code", "open", "tap", "delegate", "handoff"];
@@ -161,7 +161,7 @@ fn check_target(t: &Target) -> Result<()> {
 }
 
 fn check_drop(d: &Dismiss) -> Result<()> {
-    if !valid_public(&d.key) || d.cut.len() > MOST_CUT || !d.cut.iter().all(|c| valid_id(c)) {
+    if !valid_key(&d.key) || d.cut.len() > MOST_CUT || !d.cut.iter().all(|c| valid_id(c)) {
         return bad("an admin is removed by its key, with the ids of the acts it signed that were seen");
     }
     Ok(())

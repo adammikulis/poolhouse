@@ -96,7 +96,7 @@ def test_a_key_that_asks_nothing_of_the_person_each_time_is_refused_before_anyon
 def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspace_node):
     session = pool_session(workspace_node)
     admin = person()
-    key = [{"key": admin.key.public.hex(), "person": "owner", "strength": "strong", "label": "the owner's key"}]
+    key = [{"key": admin.key.public.hex(), "alg": "ed25519", "person": "owner", "strength": "strong", "label": "the owner's key"}]
     draft = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
     with pytest.raises(Denied, match=r"grant|accept|denied"):
         workspace_node.client.call("pool_found", "", session.token, charter=draft["charter"])

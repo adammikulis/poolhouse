@@ -1,16 +1,16 @@
-//! An admin key: an Ed25519 public key a charter names, with the role and strength its holder declared and its own acceptance.
+//! An admin key: a public key a charter names (Ed25519, or P-256 for a phone), with the algorithm, role and strength its holder declared and its own acceptance.
 //!
-//! The acceptance is the key's signature over the pool it joins, the epoch it joins at, its role, its strength and the person it
+//! The acceptance is the key's signature over the pool it joins, the epoch it joins at, its algorithm, role, strength and the person it
 //! belongs to, so a key is listed only by its holder: adding a key needs the added key's signature as well as the admins'.
 
-use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
-use crate::grants::person::verifies;
 use crate::row::canonical;
+
+use super::alg::Alg;
 
 const ACCEPT_DOMAIN: &str = "poolhouse/pool-accept/v1\n";
 /// The longest label and person name a key carries.
@@ -37,8 +37,10 @@ pub enum Role {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct AdminKey {
-    /// The public key, 64 lower-case hex digits.
+    /// The public key in lower-case hex: 64 digits for Ed25519, 130 for a P-256 point.
     pub key: String,
+    /// The algorithm the key signs with; it must be the one its encoding says.
+    pub alg: Alg,
     pub role: Role,
     pub strength: Strength,
     /// The person the key belongs to; two keys with one person count once under `unit: person`.
@@ -51,11 +53,9 @@ pub struct AdminKey {
     pub label: String,
 }
 
-/// Whether ``text`` is the public key of an Ed25519 key, as 64 lower-case hex digits.
-pub fn valid_public(text: &str) -> bool {
-    text.len() == 64
-        && text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        && unhex(text).and_then(|b| <[u8; 32]>::try_from(b).ok()).is_some_and(|b| VerifyingKey::from_bytes(&b).is_ok())
+/// Whether ``text`` is the public key of an admin key of either algorithm.
+pub fn valid_key(text: &str) -> bool {
+    Alg::of_key(text).is_some()
 }
 
 /// The fingerprint of a public key: the SHA-256 of its bytes, hex.
@@ -75,19 +75,19 @@ impl AdminKey {
     /// The bytes this key signs to accept being listed: ``anchor`` is what the epoch it joins is known by (the charter without
     /// acceptances for the first, the pool id after).
     pub fn acceptance_message(&self, anchor: &str) -> Vec<u8> {
-        let body = json!({"v": 1, "key": self.key, "role": self.role, "strength": self.strength, "person": self.person, "since": self.since, "anchor": anchor});
+        let body = json!({"v": 1, "key": self.key, "alg": self.alg, "role": self.role, "strength": self.strength, "person": self.person, "since": self.since, "anchor": anchor});
         format!("{ACCEPT_DOMAIN}{}", canonical(&body)).into_bytes()
     }
 
     /// Whether the key itself accepted this listing.
     pub fn accepted(&self, anchor: &str) -> bool {
-        verifies(&self.key, &self.acceptance_message(anchor), &self.acceptance)
+        self.alg.verifies(&self.key, &self.acceptance_message(anchor), &self.acceptance)
     }
 
     /// The shape of the entry, not its signatures.
     pub fn check(&self) -> Result<()> {
-        if !valid_public(&self.key) {
-            return Err(Error::Invalid("an admin key is an Ed25519 public key of 64 hex digits".into()));
+        if Alg::of_key(&self.key) != Some(self.alg) {
+            return Err(Error::Invalid("an admin key is an Ed25519 public key of 64 hex digits or a P-256 point of 130, and names the algorithm its encoding says".into()));
         }
         if !plain_text(&self.person, MOST_PERSON) || !self.person.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')) {
             return Err(Error::Invalid("a person is named by plain letters and digits".into()));
@@ -95,7 +95,7 @@ impl AdminKey {
         if !self.label.is_empty() && !plain_text(&self.label, MOST_LABEL) {
             return Err(Error::Invalid("a key label is at most 40 characters with no control character".into()));
         }
-        if self.since == 0 || self.acceptance.len() != 128 || unhex(&self.acceptance).is_none() {
+        if self.since == 0 || !self.alg.sig_shape(&self.acceptance) {
             return Err(Error::Invalid("an admin key carries its own acceptance".into()));
         }
         Ok(())
