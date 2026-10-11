@@ -170,6 +170,9 @@ def test_a_member_with_a_different_key_is_invisible(key, port, tmp_path):
             "a daemon keyed differently must not be discoverable"
 
 
+@pytest.mark.lan_network
+
+
 def test_two_members_are_told_apart(key, port):
     """Two daemons are two members even when they share a host and a port."""
     a = Beacon(name="rtx", port=8770, device={"cuda": True})
@@ -183,6 +186,7 @@ def test_two_members_are_told_apart(key, port):
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="Linux's lo carries no multicast")
+@pytest.mark.lan_network
 def test_two_members_on_one_port_are_both_found_when_the_lan_refuses_multicast(
         key, port, monkeypatch):
     """A LAN that refuses every multicast and broadcast (EHOSTUNREACH on a macOS runner)
@@ -393,6 +397,9 @@ def _probe(rtx: Member) -> dict:
                       name="probe")
 
 
+@pytest.mark.lan_network
+
+
 def test_a_restarted_daemon_keeps_its_machine_id(tmp_path):
     from poolhouse.home import machine_id
 
@@ -405,6 +412,9 @@ def test_a_restarted_daemon_keeps_its_machine_id(tmp_path):
                          [b.instance for b in found]))
     assert seen[0][:2] == seen[1][:2] == (machine_id(), [machine_id()])
     assert seen[0][2] != seen[1][2], "the per-process instance is minted afresh"
+
+
+@pytest.mark.lan_network
 
 
 def test_a_booted_daemon_is_found_and_driven_with_no_address_configured(traind, tmp_path):
@@ -478,11 +488,17 @@ def test_a_daemon_pointed_at_a_held_bench_home_keeps_training_queued_and_says_so
     assert "taking queued work again" in log.read_text(errors="replace")
 
 
+@pytest.mark.lan_network
+
+
 def test_find_one_says_why_when_no_member_matches(traind):
     keyfile, disco_port, _, _log = traind
     with pytest.raises(DiscoveryError, match="no member matches"):
         Member.find_one(name="not-this-box", pool_key_path=keyfile,
                                timeout_s=3.0, port=disco_port)
+
+
+@pytest.mark.lan_network
 
 
 def test_a_daemon_that_can_hear_is_found_by_asking_for_speech(traind):
@@ -513,6 +529,9 @@ def test_discovery_without_a_key_is_an_error_not_an_empty_list(tmp_path):
     """Silence and 'you have no key' are different facts and must read that way."""
     with pytest.raises(DiscoveryError, match="no pool key"):
         Member.find_one(pool_key_path=tmp_path / "absent.key")
+
+
+@pytest.mark.lan_network
 
 
 def test_members_ls_reports_the_running_daemon(traind):
@@ -656,6 +675,9 @@ class TestPassphrase:
         two = mint_pool("home", tmp_path / "b.key").key
         assert one != two
         assert len(base64.urlsafe_b64decode(one + b"=")) == 32
+
+
+@pytest.mark.lan_network
 
 
 def test_two_passphrase_groups_share_a_network_without_seeing_each_other(port, tmp_path):

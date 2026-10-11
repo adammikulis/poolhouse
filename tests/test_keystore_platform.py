@@ -1,6 +1,6 @@
 """The keystore on every platform: who may cause a prompt, what never hangs, which backends may hold the
 key, and what happens when the key is gone. No test touches the machine's own keystore: each installs the
-in-memory fake from `tests/keystore_support.py` (see AGENTS.md, "POOLHOUSE_NO_REAL_KEYSTORE")."""
+in-memory fake from `tests/keystore_support.py` (see AGENTS.md, "The real keystore")."""
 
 from __future__ import annotations
 

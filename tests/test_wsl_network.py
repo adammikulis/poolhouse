@@ -42,6 +42,7 @@ def test_a_bridge_without_a_lan_address_refuses_to_listen_on_every_interface():
         wsl_network.NetworkBridge("", ("127.0.0.1", 9), discovery.DEFAULT_GROUP, 0, native_socket).start()
 
 
+@pytest.mark.lan_network
 def test_udp_bridge_preserves_payload_and_member_address(bridge):
     payload = b"MLD3\x00\xff encrypted beacon"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as member:
@@ -56,6 +57,7 @@ def test_udp_bridge_preserves_payload_and_member_address(bridge):
 
 
 @pytest.mark.parametrize("address", [("8.8.8.8", 53), ("127.0.0.1", 22), ("192.168.2.1", 8771)])
+@pytest.mark.lan_network
 def test_udp_bridge_refuses_non_discovery_destinations(bridge, address):
     udp = MagicMock()
     udp.__enter__.return_value = udp
@@ -66,6 +68,7 @@ def test_udp_bridge_refuses_non_discovery_destinations(bridge, address):
     udp.sendto.assert_not_called()
 
 
+@pytest.mark.lan_network
 def test_udp_bridge_only_replies_to_received_private_members(bridge):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as member:
         member.bind(("127.0.0.1", 0))
@@ -79,6 +82,7 @@ def test_udp_bridge_only_replies_to_received_private_members(bridge):
             assert member.recvfrom(65535)[0] == b"reply"
 
 
+@pytest.mark.lan_network
 def test_udp_bridge_preserves_timeout(bridge):
     with discovery._socket(bind=("", 0)) as sock:
         sock.settimeout(0.01)
@@ -88,6 +92,7 @@ def test_udp_bridge_preserves_timeout(bridge):
 
 @pytest.mark.parametrize("override", [{"token": "wrong"}, {"options": {"bind": ["", 22]}},
                                       {"options": {"group": "239.1.2.3"}}])
+@pytest.mark.lan_network
 def test_bridge_refuses_authentication_and_socket_scope(bridge, override):
     config = json.loads(bridge.config)
     with socket.create_connection(tuple(config["address"]), timeout=2) as client:
@@ -96,6 +101,7 @@ def test_bridge_refuses_authentication_and_socket_scope(bridge, override):
         assert client.recv(100) == b""
 
 
+@pytest.mark.lan_network
 def test_bridge_caps_messages_and_datagrams(bridge):
     with discovery._socket(bind=("", 0)) as sock, pytest.raises(OSError, match="Only LAN discovery"):
         sock.sendto(b"x" * 65508, ("127.0.0.1", bridge.port))
@@ -105,6 +111,7 @@ def test_bridge_caps_messages_and_datagrams(bridge):
         assert client.recv(100) == b""
 
 
+@pytest.mark.lan_network
 def test_lan_relay_preserves_stream_half_close_and_releases_ports(bridge):
     payload = (b"request\x00\xff" * 20000)
     with socket.socket() as upstream:
@@ -162,6 +169,7 @@ def test_windows_udp_reset_uses_winsock_control_and_reports_failure(monkeypatch)
         wsl_network.disable_udp_reset(sock)
 
 
+@pytest.mark.lan_network
 def test_udp_bridge_rejects_public_reply_address(bridge):
     udp = MagicMock()
     udp.recvfrom.return_value = (b"untrusted", ("8.8.8.8", 8771))
@@ -170,6 +178,7 @@ def test_udp_bridge_rejects_public_reply_address(bridge):
     udp.sendto.assert_not_called()
 
 
+@pytest.mark.lan_network
 def test_udp_bridge_rejects_unknown_operation(bridge):
     with pytest.raises(OSError, match="Unknown discovery operation"):
         bridge._operate(MagicMock(), {"operation": "execute", "command": "hostile"}, {})
@@ -281,6 +290,7 @@ def test_gateway_relay_preserves_raw_transport_and_nonloopback_scope(monkeypatch
     raw.assert_called_once_with(client, ("127.0.0.2", 12345), service.stop)
 
 
+@pytest.mark.lan_network
 def test_discovery_reply_cache_retains_recent_members_and_fixed_destinations(bridge):
     fixed = {(bridge.group, bridge.port), ("255.255.255.255", bridge.port), ("127.0.0.1", bridge.port)}
     allowed = dict.fromkeys(fixed)

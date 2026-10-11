@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from poolhouse import real_machine
 from poolhouse.platform import applescript_quote
 
 from .autostart_manifest import ROLE_INFO, Role
@@ -28,6 +29,8 @@ def run(argv: list[str], timeout: float = 60) -> tuple[int, str]:
 
 def elevated(command: str, prompt: str) -> tuple[bool, str]:
     """Run a privileged shell command through the OS's own password dialog."""
+    if why := real_machine.refusal():
+        return False, f"the administrator prompt is not shown here: {why}"
     if sys.platform == "darwin":
         script = (f'do shell script "{applescript_quote(command)}" with administrator '
                   f'privileges with prompt "{applescript_quote(prompt)}"')

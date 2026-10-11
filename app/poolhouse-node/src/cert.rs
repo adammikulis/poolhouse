@@ -34,14 +34,15 @@ pub fn parses(der: &[u8]) -> bool {
     X509Certificate::from_der(der).is_ok_and(|(rest, _)| rest.is_empty())
 }
 
+/// The Ed25519 public key of the device whose certificate this is.
+pub fn device_public(der: &[u8]) -> Result<[u8; 32]> {
+    let (_, cert) = X509Certificate::from_der(der).map_err(|_| Error::Invalid("not a certificate".into()))?;
+    <[u8; 32]>::try_from(cert.tbs_certificate.subject_pki.subject_public_key.data.as_ref()).map_err(|_| Error::Invalid("a device certificate holds an Ed25519 key".into()))
+}
+
 /// The board fingerprint (hash of the Ed25519 public key) of the device whose certificate this is.
 pub fn board_fingerprint(der: &[u8]) -> Result<String> {
-    let (_, cert) = X509Certificate::from_der(der).map_err(|_| Error::Invalid("not a certificate".into()))?;
-    let key = cert.tbs_certificate.subject_pki.subject_public_key.data.as_ref();
-    if key.len() != 32 {
-        return Err(Error::Invalid("a device certificate holds an Ed25519 key".into()));
-    }
-    Ok(sha256_hex(key))
+    device_public(der).map(|key| sha256_hex(&key))
 }
 
 /// A device's certificate and the key it signs with.

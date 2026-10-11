@@ -18,6 +18,9 @@ pub enum Error {
     /// A session holds no grant for what it asked to do; `grant` names the action, the resource, the session and the
     /// device, so a person's client can sign one for exactly that.
     NoGrant { message: String, grant: serde_json::Value },
+    /// A refusal a person can be told in one sentence: what is needed (`needs`: approval, grant, device, time or none) and what the
+    /// asker does next (`then`: wait, retry, ask-owner or stop).
+    Say { code: &'static str, say: String, needs: &'static str, then: &'static str },
     /// The disk said no.
     Io(std::io::Error),
 }
@@ -33,15 +36,23 @@ impl Error {
             Error::Quota(_) => "quota",
             Error::Invalid(_) => "invalid",
             Error::Denied(_) | Error::NoGrant { .. } => "denied",
+            Error::Say { code, .. } => code,
             Error::Io(_) => "io",
         }
+    }
+}
+
+impl Error {
+    /// A refusal that says in one sentence (at most 160 characters) what is wrong and what to do.
+    pub fn say(code: &'static str, say: &str, needs: &'static str, then: &'static str) -> Error {
+        Error::Say { code, say: say.chars().take(160).collect(), needs, then }
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Damaged(m) | Error::Gap(m) | Error::Quota(m) | Error::Invalid(m) | Error::Denied(m) | Error::NoGrant { message: m, .. } => {
+            Error::Damaged(m) | Error::Gap(m) | Error::Quota(m) | Error::Invalid(m) | Error::Denied(m) | Error::NoGrant { message: m, .. } | Error::Say { say: m, .. } => {
                 write!(f, "{}: {m}", self.code())
             }
             Error::Io(e) => write!(f, "io: {e}"),

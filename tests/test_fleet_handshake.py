@@ -70,7 +70,7 @@ class Machine:
         self.joining.handle = record
         token = load_or_create_token(root, self.member.key)
         self.pool.enrol("lab", self.ident.beacon, "a", "self")
-        self.httpd = LimitedServer(("0.0.0.0", 0), make_handler(  # noqa: S104 - native LAN fixture
+        self.httpd = LimitedServer(("127.0.0.1", 0), make_handler(
             Daemon(self.runner, root / "files", token, name="a", joining=self.joining, members=self.pool,
                    pool_key_path=self.keyfile)), tls=tls.member_context(self.ident, self.pool))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()

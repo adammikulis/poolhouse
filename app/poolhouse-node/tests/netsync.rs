@@ -24,6 +24,8 @@ fn trio() -> [(Dev, String); 3] {
     let (a, b, c) = (device(), device(), device());
     a.join_with_code(&b);
     a.join_with_code(&c);
+    b.know(&c);
+    c.know(&b);
     sync(&b, &a);
     sync(&c, &a);
     // Distinct session ids: a foreign row from a name that is also a local session's is refused.

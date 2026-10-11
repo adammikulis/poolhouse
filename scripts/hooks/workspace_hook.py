@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
+from poolhouse import lan
 from poolhouse.guard.secrets import env_secrets, redact
 
 
@@ -62,7 +63,7 @@ def primary_checkout(source: Path) -> Path:
 
 def refresh_runtime(stage: str, checkout: Path | None = None, agent: str = '') -> None:
     """Start a detached runtime build when the selected runtime is behind the checkout's HEAD; takes at most 6 seconds."""
-    if os.environ.get('POOLHOUSE_RUNTIME_ENSURE') == 'off':
+    if os.environ.get('POOLHOUSE_RUNTIME_ENSURE') == 'off' or not lan.on_the_persons_machine():
         return
     source = Path(__file__).resolve().parents[2]
     environment = dict(os.environ, PYTHONPATH=str(source / 'src'))

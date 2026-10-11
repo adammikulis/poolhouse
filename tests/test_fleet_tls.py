@@ -27,14 +27,17 @@ def forget_pins():
     http._PINNED.clear()
 
 
-def lan_address():
+def lan_address(*, real=False):
+    """Where the daemon is reached: loopback, which pins and verifies a certificate the same; ``real`` is this machine's LAN address."""
+    if not real:
+        return "127.0.0.1"
     address = primary_ip()
     if not address or address.startswith("127."):
         pytest.skip("this machine has no address other than loopback")
     return address
 
 
-def serve(tmp_path, ident, *, name="d"):
+def serve(tmp_path, ident, *, name="d", host="127.0.0.1"):
     root = tmp_path / name
     (root / "files").mkdir(parents=True)
     runner = JobRunner(root)
@@ -45,7 +48,7 @@ def serve(tmp_path, ident, *, name="d"):
     for one in (ident, tls.local()):          # the daemon, and this machine as its client
         pool.enrol("lab", one.beacon, name, "test")
     handler = make_handler(Daemon(runner, root / "files", token, name=name, pool_key_path=keyfile, members=pool))
-    httpd = LimitedServer((ALL_INTERFACES, 0), handler, tls=tls.member_context(ident, pool))
+    httpd = LimitedServer((host, 0), handler, tls=tls.member_context(ident, pool))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd, runner, token
 
@@ -208,12 +211,13 @@ def test_a_member_that_was_never_pinned_is_not_trusted_on_sight(tmp_path):
         stop(httpd, runner)
 
 
+@pytest.mark.lan_network
 def test_plain_http_from_another_machine_is_dropped_but_this_machine_may_use_it(tmp_path):
     ident = tls.identity(tmp_path / "tls", "d")
-    httpd, runner, _ = serve(tmp_path, ident)
+    httpd, runner, _ = serve(tmp_path, ident, host=ALL_INTERFACES)
     try:
         port = httpd.server_port
-        with socket.create_connection((lan_address(), port), timeout=5) as sock:
+        with socket.create_connection((lan_address(real=True), port), timeout=5) as sock:
             sock.sendall(b"GET /health HTTP/1.0\r\n\r\n")
             with contextlib.suppress(ConnectionResetError):
                 assert sock.recv(100) == b""

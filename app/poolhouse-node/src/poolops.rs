@@ -17,7 +17,7 @@ pub fn wall_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
-fn host_name() -> String {
+pub(crate) fn host_name() -> String {
     let name = crate::sys::hostname();
     let name: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_')).take(40).collect();
     if name.is_empty() { "device".into() } else { name }
@@ -31,7 +31,7 @@ impl crate::node::Node {
 
     /// List this device's own certificate in the pool, once.
     pub fn enrol_self(&mut self) -> Result<()> {
-        if self.members.get(&self.cert.fingerprint()).is_none() {
+        if self.members.is_legacy() && self.members.get(&self.cert.fingerprint()).is_none() {
             let (der, now) = (self.cert.der.clone(), wall_ms());
             self.members.enrol(&der, &host_name(), "self", now)?;
         }
@@ -47,6 +47,9 @@ impl crate::node::Node {
 
     /// Let the device with this certificate in, and note it on the pool board.
     pub fn enrol_device(&mut self, der: &[u8], name: &str, by: &str) -> Result<Device> {
+        if self.members.gov().is_some() {
+            return self.gov_admit(der, name, by);
+        }
         let existed = self.members.get(&crate::cert::cert_fingerprint(der)).is_some();
         let device = self.members.enrol(der, name, by, wall_ms())?;
         if !existed {
@@ -57,6 +60,9 @@ impl crate::node::Node {
 
     /// Put a device out for good, and note it on the pool board.
     pub fn remove_device(&mut self, fingerprint: &str, by: &str) -> Result<Device> {
+        if self.members.gov().is_some() {
+            return self.gov_remove(fingerprint);
+        }
         let was_out = self.members.get(fingerprint).is_some_and(|d| d.status == crate::membership::Status::Revoked);
         let device = self.members.revoke(fingerprint, by, wall_ms())?;
         if !was_out {
@@ -67,7 +73,10 @@ impl crate::node::Node {
 
     /// Change the join policy; true when it changed.
     pub fn change_policy(&mut self, policy: Policy, by: &str) -> Result<bool> {
-        let changed = self.members.set_policy(policy, wall_ms().max(self.members.policy_at + 1), by)?;
+        if self.members.gov().is_some() {
+            return Err(crate::error::Error::say("invalid", "A pool's join policy never changes in place; reissue the pool to change it.", "none", "stop"));
+        }
+        let changed = self.members.set_policy(policy, wall_ms().max(self.members.policy_at.saturating_add(1)), by)?;
         if changed {
             self.record_event("join_policy", policy.name(), &format!("by {by}"))?;
         }
@@ -95,6 +104,7 @@ impl crate::node::Node {
         }).collect();
         json!({
             "pool": self.members.id, "project": self.members.project, "policy": self.members.policy.name(), "fingerprint": me, "device_key": self.custody.status(), "listen": self.facts.listen,
+            "governance": self.gov_view(),
             "beacon": self.facts.beacon, "join_code_open": self.facts.join_code_until_ms > now,
             "join_code_expires_in_s": self.facts.join_code_until_ms.saturating_sub(now) / 1000, "members": members, "build": self.build_status(),
             "leases": {"held": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Held).count(), "queued": self.leases.table.leases.iter().filter(|l| l.state == crate::lease::types::State::Queued).count()},

@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import authority, home
+from poolhouse import authority, home, real_machine
 from poolhouse.files import read_json, write_json
 from poolhouse.person import AGENT_MARKERS, HumanRequired, is_terminal
 from poolhouse.serve.wired import KEY, MIB, MIN_MB, SYSCTL, Hooks, max_mb
@@ -135,6 +135,8 @@ def require_person(via: str) -> None:
 
 
 def _run(argv: Sequence[str], capture: bool) -> tuple[int, str, str]:
+    if why := real_machine.refusal():
+        return 1, "", f"the administrator prompt is not shown here: {why}"
     try:
         done = subprocess.run(list(argv), capture_output=capture, text=True, timeout=300,
                               check=False)

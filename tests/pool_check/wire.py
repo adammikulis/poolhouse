@@ -7,6 +7,7 @@
     python tests/pool_check/wire.py phone-listen --state DIR
     python tests/pool_check/wire.py phone-offer --state DIR
     python tests/pool_check/wire.py phone --state DIR OP [--token T] [--body JSON] [--method GET]
+    python tests/pool_check/wire.py cert --state DIR
 
 Every command prints one JSON line: ``{"ok": true, "result": ...}`` or ``{"ok": false, "code": ..., "error": ...}``. The rig runs
 this file the same way on both kinds of device (a subprocess on the Mac, `docker exec` in a container), so a device's node is
@@ -100,7 +101,7 @@ def start(state: Path, binary: Path, args: list[str]) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("start", "stop", "call", "post-many", "expect-enrol", "phone-listen", "phone-offer", "phone"):
+    for name in ("start", "stop", "call", "post-many", "expect-enrol", "cert", "phone-listen", "phone-offer", "phone"):
         one = sub.add_parser(name)
         one.add_argument("--state", required=True)
         if name == "phone":
@@ -136,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
             out = {"ok": True, "result": {"secret": phone.expect_phone(state)}}
         elif args.cmd == "phone":
             out = phone_call(state, args.op, args.token, json.loads(args.body), args.method)
+        elif args.cmd == "cert":
+            out = {"ok": True, "result": {"cert": (state / "device.cert").read_bytes().hex()}}
         elif args.cmd == "post-many":
             out = post_many(state, (args.board, args.token), args.count, args.size, args.prefix)
         elif args.cmd == "stop":

@@ -60,7 +60,7 @@ class Project:
         self.commit(self.root, "chore: seed")
         self.log = base / "calls.log"
         self.env = {**os.environ, "POOLHOUSE_HOME": str(home or base / "home"), "DEV_TEST_SLOTS_DIR": str(base / "slots"),
-                    "LAND_FAKE_LOG": str(self.log), "POOLHOUSE_DEV_BRANCH": DEV, "POOLHOUSE_NO_REAL_KEYSTORE": "1",
+                    "LAND_FAKE_LOG": str(self.log), "POOLHOUSE_DEV_BRANCH": DEV, 
                     "PYTHON_KEYRING_BACKEND": "onboard_support.FileKeyring",
                     "POOLHOUSE_TEST_KEYRING": str(base / "keyring.json"),
                     "PYTHONPATH": os.pathsep.join((str(ROOT / "tests"), os.environ.get("PYTHONPATH", "")))}

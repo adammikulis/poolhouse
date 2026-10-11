@@ -260,6 +260,7 @@ class TestFirstRunIsNotUpForGrabs:
         assert body["in_pool"] is True and body["group"] == "home"
         assert in_pool(serving.keyfile)
 
+    @pytest.mark.lan_network
     def test_setup_is_refused_from_another_machine(self, serving):
         """Whoever reaches an unjoined daemon first would own it. Being on the LAN is
         not enough; you have to be on the box, or use ssh and the CLI."""
@@ -294,6 +295,7 @@ class TestFirstRunIsNotUpForGrabs:
         assert status == 401
         assert "sign in" in body["error"]
 
+    @pytest.mark.lan_network
     def test_a_setup_code_lets_a_headless_box_be_set_up_remotely(self, tmp_path):
         s = Serving(tmp_path, setup_token="abc123xyz")
         try:
@@ -309,6 +311,7 @@ class TestFirstRunIsNotUpForGrabs:
 
 
 class TestThePassphraseNeverCrossesPlainHttp:
+    @pytest.mark.lan_network
     def test_another_machine_is_refused_the_interface_when_it_would_be_plain_http(self, tmp_path):
         """A listener beyond this machine cannot be built without TLS, so no passphrase can reach it."""
         plain = Serving(tmp_path, secure=False)
@@ -322,6 +325,7 @@ class TestThePassphraseNeverCrossesPlainHttp:
         finally:
             plain.close()
 
+    @pytest.mark.lan_network
     def test_over_tls_the_same_request_reaches_the_sign_in(self, serving):
         serving.call("/ui/setup/join", method="POST", body={"mode": "create", "passphrase": WORDS, "group": "home"})
         status, _, headers = serving.call("/ui/session", method="POST",
@@ -402,6 +406,7 @@ class TestOnItsOwn:
         status, body, _ = serving.call("/ui/settings")
         assert status == 200, body
 
+    @pytest.mark.lan_network
     def test_nobody_else_does(self, serving):
         self.finished(serving)
         status, body, _ = serving.call("/ui/settings", host=primary_ip())
@@ -415,6 +420,7 @@ class TestOnItsOwn:
         assert status == 403
         assert "hostname" in body["error"]
 
+    @pytest.mark.lan_network
     def test_finishing_is_refused_from_another_machine(self, serving):
         status, _body, _ = serving.call("/ui/setup/done", method="POST",
                                         host=primary_ip())

@@ -17,7 +17,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from poolhouse import errors, jobs, node_binary, node_pool, node_supervise, runtime, win32
+from poolhouse import errors, jobs, lan, node_binary, node_pool, node_supervise, runtime, win32
 from poolhouse.command import Group, flag
 from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, held_by, only_one, pid_alive
@@ -32,9 +32,8 @@ SWAP_WAIT_S = 20.0
 POLL_S = 0.05
 
 
-LAN_ENV = "POOLHOUSE_NODE_LAN"
-"""``off`` keeps the device's own node local. The test suite sets it for itself and every process it starts, so a
-test under a temporary home never opens a node on the network; nothing decides this by looking at a path."""
+LAN_ENV = lan.OFF_ENV
+"""``off`` keeps the device's own node local whatever else holds; without it `lan.allowed` still decides by what the process is."""
 
 
 class NodeUnavailable(OSError, errors.NotRunning):
@@ -67,14 +66,16 @@ def _start_supervisor(state: Path, extra: list[str]) -> None:
 def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wait_s: float = START_WAIT_S) -> dict:
     """The node's health, after starting it under a supervisor when it was not answering.
 
-    The device's own node (the default state directory) starts on the LAN unless ``POOLHOUSE_NODE_LAN=off``, so it joins its project's open pool or makes one
-    (`node_pool.network_args`); a node in any other state directory stays local unless ``extra`` says otherwise.
+    The device's own node (the default state directory) starts on the LAN, so it joins its project's open pool or makes one
+    (`node_pool.network_args`), but only where `lan.allowed` (the installed software on the account's real state root, never a test or a
+    moved root: `--lan` is dropped there); a node in any other state directory stays local unless ``extra`` says otherwise.
     Raises `NodeUnavailable` when it still does not answer after ``wait_s``, and `node_binary.NodeBinaryError` before starting
     anything when the binary is missing or does not match its recorded checksum.
     """
     state = state or default_state()
-    if extra is None and state == default_state() and os.environ.get(LAN_ENV) != "off":
+    if extra is None and state == default_state():
         extra = node_pool.network_args()
+    extra = lan.clamp(extra) if extra else extra
     if (said := node_health(state)) is not None:
         return said
     state.mkdir(mode=0o700, parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
 //! One board on one device: its own signed log and verified copies of the other origins' logs.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,11 +9,11 @@ use serde_json::{json, Value};
 
 use crate::device::{fingerprint, public_hex};
 use crate::error::{Error, Result};
-use crate::fsutil::{hex, private_dir, random_hex, unhex, write_atomic};
+use crate::fsutil::{hex, private_dir, random_hex, sha256_hex, unhex, write_atomic};
 use crate::log::Log;
 use crate::row::{check_body, valid_actor, valid_name, valid_origin, is_line, Kind, Row, GENESIS, MAX_ROW_BYTES, VERSION};
 use crate::rules::{self, head_message, held_back, tick};
-use crate::state::{Pin, State};
+use crate::state::{Cut, Pin, State};
 
 pub const MAX_ORIGINS: usize = 64;
 pub const MAX_LOG_ROWS: usize = 200_000;
@@ -38,6 +38,8 @@ pub struct Board {
     logs: BTreeMap<String, Log>,
     state: State,
     clock: Box<dyn Fn() -> u64 + Send>,
+    /// The board fingerprints of the devices removed from the pool: nothing they sign is taken past what a removal names.
+    removed: BTreeSet<String>,
 }
 
 fn wall_ms() -> u64 {
@@ -65,7 +67,7 @@ impl Board {
                 logs.insert(origin.clone(), Log::open(&path, id, &origin)?);
             }
         }
-        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock };
+        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new() };
         board.log_mut(&origin)?;
         Ok(board)
     }
@@ -231,21 +233,47 @@ impl Board {
     fn store(&mut self, origin: &str, incoming: &[Row], authoritative: bool) -> Result<usize> {
         let pin = self.state.t.keys.get(origin).cloned();
         let key_of = |p: &Option<Pin>| p.as_ref().and_then(|p| unhex(&p.public)).and_then(|b| <[u8; 32]>::try_from(b).ok());
+        let mut cut = self.state.t.cuts.get(origin).cloned();
+        if cut.is_some() && pin.is_none() {
+            // the writer of this log was not known when the cut was named: a cut binds only a removed device's log, so it is lifted
+            // when the first rows show a device that is still in the pool
+            let writer = rules::accept(&self.id, origin, &[], incoming, None, &self.pool).ok().and_then(|t| t.public);
+            if writer.is_some_and(|p| !self.removed.contains(&sha256_hex(&p))) {
+                self.state.t.cuts.remove(origin);
+                self.state.save()?;
+                cut = None;
+            }
+        }
+        let cap = cut.as_ref().map(|c| c.seq);
+        let kept: Vec<Row> = incoming.iter().filter(|r| cap.is_none_or(|c| r.seq <= c)).cloned().collect();
+        let (dropped, incoming) = (kept.len() < incoming.len(), kept);
         let held: Vec<Row> = self.rows(origin).to_vec();
         let (board, pool) = (self.id.clone(), self.pool.clone());
-        let (took, pin) = match rules::accept(&board, origin, &held, incoming, key_of(&pin), &pool) {
+        let (mut took, pin) = match rules::accept(&board, origin, &held, &incoming, key_of(&pin), &pool) {
             Ok(t) => (t, pin),
             Err(Error::Damaged(_)) if authoritative && pin.as_ref().is_some_and(|p| !p.bound) => {
                 self.reset(origin)?;
-                (rules::accept(&board, origin, &[], incoming, None, &pool)?, None)
+                (rules::accept(&board, origin, &[], &incoming, None, &pool)?, None)
             }
             Err(e) => return Err(e),
         };
+        let (closed, before) = (took.public.is_some_and(|p| self.removed.contains(&sha256_hex(&p))), took.rows.len());
+        if closed {
+            took.rows.retain(|r| r.seq <= cap.unwrap_or(0));
+        }
+        let blocked = dropped || took.rows.len() < before;
+        if let Some(c) = cut.filter(|c| c.seq > 0) {
+            let held = self.rows(origin);
+            let reached = |at: usize| if at < held.len() { Some(held[at].hash.as_str()) } else { took.rows.get(at - held.len()).map(|r| r.hash.as_str()) };
+            if reached(c.seq as usize - 1).is_some_and(|h| h != c.hash) {
+                return Err(Error::Invalid("that log does not pass through the point the removal of its device named".into()));
+            }
+        }
         if self.rows(origin).len() + took.rows.len() > MAX_LOG_ROWS {
             return Err(Error::Quota("this log is past the rows a device keeps".into()));
         }
         if took.rows.is_empty() {
-            return Ok(0);
+            return if blocked { Err(Error::Invalid("the device that wrote that log was removed from the pool".into())) } else { Ok(0) };
         }
         let count = took.rows.len();
         self.observe(&took.rows);
@@ -277,6 +305,67 @@ impl Board {
         let now = self.now_ms();
         let top = rows.iter().filter(|r| !held_back(r, now)).map(|r| (r.hlc.0, r.hlc.1)).max();
         self.state.t.seen = self.state.t.seen.max(top.unwrap_or((0, 0)));
+    }
+
+    /// The origins whose logs the device with the board fingerprint ``fingerprint`` wrote, as far as this board knows.
+    pub fn origins_of(&self, fingerprint: &str) -> Vec<String> {
+        let tied = self.state.t.peers.get(fingerprint).cloned();
+        let mut out: Vec<String> = self.logs.keys().filter(|o| **o != self.origin && (tied.as_ref() == Some(*o) || self.writer_fingerprint(o).as_deref() == Some(fingerprint))).cloned().collect();
+        out.sort();
+        out
+    }
+
+    /// How many entries of the log of ``origin`` stand, when a removal closed it.
+    pub fn cut_of(&self, origin: &str) -> Option<u64> {
+        self.state.t.cuts.get(origin).map(|c| c.seq)
+    }
+
+    /// Keep only the first ``seq`` entries of the log of ``origin``, the last of which hashes to ``hash``, and take no later one,
+    /// whoever relays it. The least ever named stands; a copy held that does not pass through the point named is dropped, to be
+    /// fetched again up to it. This device's own log is never cut.
+    pub fn cut(&mut self, origin: &str, seq: u64, hash: &str) -> Result<()> {
+        if origin == self.origin || !valid_origin(origin) {
+            return Ok(());
+        }
+        let named = Cut { seq, hash: hash.into() };
+        let cap = self.state.t.cuts.get(origin).map_or(named.clone(), |c| c.clone().min(named));
+        if self.state.t.cuts.insert(origin.into(), cap.clone()) != Some(cap.clone()) {
+            self.state.save()?;
+        }
+        let keep = usize::try_from(cap.seq).unwrap_or(usize::MAX);
+        let forked = self.rows(origin).get(keep.wrapping_sub(1)).is_some_and(|r| cap.seq > 0 && r.hash != cap.hash);
+        if forked {
+            self.reset(origin)?;
+        } else if let Some(log) = self.logs.get_mut(origin) {
+            log.truncate(keep)?;
+        }
+        Ok(())
+    }
+
+    /// Close the logs of removed devices: ``removed`` are their board fingerprints and ``named`` the cuts removals name by origin.
+    /// A log of a removed device that no removal names stands as far as this device holds it now. A cut binds only the log of a removed
+    /// device, so one that names the log of a device still in the pool is not taken, and one taken before the removal that named it was
+    /// struck is lifted: the cuts are recomputed from the removals in force each time, and a log that was cut is fetched again.
+    pub fn close_removed(&mut self, removed: BTreeSet<String>, named: &BTreeMap<String, Cut>) -> Result<()> {
+        self.removed = removed;
+        let writer_in = |board: &Board, origin: &str| board.writer_fingerprint(origin).map(|w| board.removed.contains(&w));
+        let named: BTreeMap<&String, &Cut> = named.iter().filter(|(o, _)| writer_in(self, o) != Some(false)).collect();
+        let before = self.state.t.cuts.len();
+        let held: BTreeSet<String> = self.state.t.cuts.keys().filter(|o| named.contains_key(*o) || writer_in(self, o) == Some(true)).cloned().collect();
+        self.state.t.cuts.retain(|o, _| held.contains(o));
+        if self.state.t.cuts.len() != before {
+            self.state.save()?;
+        }
+        for (origin, c) in named {
+            self.cut(origin, c.seq, &c.hash)?;
+        }
+        for origin in self.origins() {
+            if writer_in(self, &origin) == Some(true) && !self.state.t.cuts.contains_key(&origin) {
+                let tip = self.rows(&origin).last().map(|r| (r.seq, r.hash.clone())).unwrap_or_default();
+                self.cut(&origin, tip.0, &tip.1)?;
+            }
+        }
+        Ok(())
     }
 
     /// Tie a device to the origin it writes the first time it is seen; false when it already

@@ -14,11 +14,13 @@ fn row(d: &Dev, other: &Dev) -> Value {
     d.member(&other.fp()).unwrap()
 }
 
-/// a knows only b's address and c knows only b's: a and c never dial each other.
+/// a knows only b's address and c knows only b's: a and c never dial each other, though each lists the other as a member.
 fn chain() -> (Dev, Dev, Dev) {
     let (a, b, c) = (device(), device(), device());
     b.join_with_code(&a);
     b.join_with_code(&c);
+    a.know(&c);
+    c.know(&a);
     (a, b, c)
 }
 
@@ -56,6 +58,7 @@ fn a_build_is_told_on_through_more_than_one_member() {
     b.join_with_code(&a);
     b.join_with_code(&c);
     c.join_with_code(&d);
+    (a.know(&d), b.know(&d));
     build(&d, "dddd", 20);
     for _ in 0..2 {
         for dev in [&d, &c, &b, &a] {

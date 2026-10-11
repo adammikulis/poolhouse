@@ -459,7 +459,7 @@ no longer eligible (the table was edited). Mechanics:
 Tests are real processes against a real temp workspace (`poolhouse-workspace` with `limits.root()`
 pointed at a tmp dir, a real `Claims`, `GraphStore`, hook scripts as child processes, no mocking of
 the board). Children exported `PYTHON_KEYRING_BACKEND=onboard_support.FileKeyring` and
-`POOLHOUSE_NO_REAL_KEYSTORE=1` as the repository requires. Clocks: `Claims(clock=...)` and
+a state root that is not the real home, which `poolhouse.real_machine` needs to refuse the machine's keystore, as the repository requires. Clocks: `Claims(clock=...)` and
 `Registry(clock=...)` already accept injected clocks (`claims.py:99`, `identity.py:95`); tests
 advance them instead of sleeping, but the process kill is real.
 

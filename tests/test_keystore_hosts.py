@@ -91,9 +91,8 @@ def test_windows_mount_reads_the_mount_table(tmp_path, monkeypatch):
 
 def test_backend_names_the_ring_in_use_and_why_there_is_none(tmp_path, counting, monkeypatch):
     assert make(tmp_path).backend() == "tests.keystore_support.CountingRing"
-    monkeypatch.setenv(keystore.ENV_NO_REAL, "1")
     monkeypatch.setattr(keystore, "is_real", lambda ring: True)
-    assert make(tmp_path).backend().startswith("none: the machine's own keystore is switched off")
+    assert make(tmp_path).backend().startswith("none: this computer's own keystore is not used here")
 
 
 @pytest.mark.parametrize("name", ["with space", "semi;colon", "dollar$(calc)", "back`tick`", "-leading", "pct%PATH%"])

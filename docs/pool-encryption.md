@@ -61,7 +61,12 @@ the client by a MAC over the request, not by a client certificate and not bound 
 | Log replica (the node's copies of other devices' logs) | plaintext JSON lines, 0600 in 0700 folders, each row verified when it arrived | signed hash chain, Ed25519 device key | the keystore, a passphrase file or a weak 0600 file (section 10) | Every member holds every board it syncs in the clear |
 | Backups and bundles | no backup writer found that encrypts; the recovery file (`fleet/recovery.py`) is the one export, passphrase-derived | scrypt (check KDF params in slice 1) | passphrase | Anything a person copies from `~/.poolhouse` is plaintext |
 
-Keystore usage: `keystore.py` is the only importer of `keyring`; unattended processes never create the
+Keystore usage: `keystore.py` is the only importer of `keyring`, and the machine's own keystore (and the administrator
+password dialog, `security`) is used only by the installed software on the real `~/.poolhouse` (`real_machine.py`): not in
+a test run, not on a state root other than the account's own, not from a checkout or worktree, whatever the environment
+says; there is no variable that turns it on, so a script, a rig process or a test child that forgot a flag still cannot
+raise a Keychain prompt. The Rust node never touches the OS keystore: it reads its key from standard input
+(`--key-stdin`). Unattended processes never create the
 master and read it only after `poolhouse-security unlock`. Consequence: a headless device holds its
 secrets in a passphrase-wrapped key file (decision 8.1), the only mode section 3 counts as protection
 against a stolen disk.

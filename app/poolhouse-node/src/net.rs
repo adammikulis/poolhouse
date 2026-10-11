@@ -232,7 +232,7 @@ impl Net {
     fn settle(self: &Arc<Net>, project: &str, window: Duration) -> Result<()> {
         {
             let mut node = locked(&self.node)?;
-            if node.members.project == project || !node.members.alone() {
+            if node.members.project == project || !node.members.can_join_other() {
                 return Ok(());
             }
             node.members.claim_project(project)?;
@@ -245,7 +245,7 @@ impl Net {
                 std::thread::sleep(Duration::from_millis(20));
             }
             if let Ok(mut node) = net.node.lock() {
-                if node.members.alone() {
+                if node.members.can_join_other() {
                     let _ = node.members.set_policy(Policy::Open, wall_ms(), "auto");
                 }
             }
@@ -276,7 +276,7 @@ impl Net {
             }
             Standing::Unknown => {
                 let settling = self.settling.load(Ordering::SeqCst);
-                let lone_joins = node.members.alone() && (b.pool < node.members.id || !b.lone);
+                let lone_joins = node.members.can_join_other() && (b.pool.len() == 32 || b.pool < node.members.id || !b.lone);
                 let eligible = b.project == node.members.project
                     && crate::netif::on_segment(b.addr)
                     && ((node.members.policy == Policy::Open && (b.pool == node.members.id || lone_joins))
@@ -314,31 +314,42 @@ impl Net {
         if hello["policy"] != "open" {
             return Err(Error::Denied("that pool does not take a device without a code".into()));
         }
-        let reply = if hello["member"] == true {
-            // That device already lists this one (another member let it in): swap records instead.
-            let ask = {
-                let n = locked(&self.node)?;
-                json!({"op": "members", "pool": n.members.id, "rows": n.members.export(), "policy": peer::policy_json(&n)})
-            };
-            c.call(&ask)?
-        } else {
-            c.call(&json!({"op": "join_open", "name": name, "port": self.port}))?
-        };
+        let reply = c.call(&json!({"op": "join_open", "name": name, "port": self.port}))?;
         self.adopt(&c, &reply, addr, "open")
     }
 
-    /// Take the pool a peer's reply describes: its id, its record (which must list the
-    /// certificate the handshake showed), its policy.
+    /// Take the pool a device's reply describes, when this device has joined it: its id, its record (which must list the
+    /// certificate the handshake showed) and its policy.
     fn adopt(&self, c: &PeerClient, reply: &Value, addr: SocketAddr, by: &str) -> Result<()> {
+        if reply.get("found").is_some() {
+            return self.adopt_governed(c, reply, addr);
+        }
         let rows = reply["rows"].as_array().ok_or_else(|| Error::Invalid("rows is a list".into()))?;
         let host = rows.iter().filter_map(Device::read).find(|d| d.fingerprint == c.fingerprint && d.status == Status::Active);
         let host = host.ok_or_else(|| Error::Denied("the pool record does not list the device that sent it".into()))?;
         let mut node = locked(&self.node)?;
-        node.members.adopt(reply["pool"].as_str().unwrap_or(""))?;
+        let policy = reply.get("policy").and_then(peer::policy_of);
+        node.members.adopt(reply["pool"].as_str().unwrap_or(""), rows, policy.as_ref().map(|(p, at, by)| (*p, *at, by.as_str())), (&c.fingerprint, by))?;
         node.enrol_device(&host.der().unwrap_or_default(), &host.name, by)?;
-        node.members.merge(rows, &c.fingerprint)?;
-        if let Some(p) = reply.get("policy") {
-            peer::take_policy(&mut node, p)?;
+        node.facts.set_addr(&c.fingerprint, &addr.to_string())?;
+        node.facts.peer(&c.fingerprint).last_seen_ms = wall_ms();
+        Ok(())
+    }
+
+    /// Take the governed pool a device's reply describes: this device becomes a member of it (an alone device that has no pool of
+    /// its own), or takes the acts the reply holds into the pool it is already in.
+    fn adopt_governed(&self, c: &PeerClient, reply: &Value, addr: SocketAddr) -> Result<()> {
+        let read = |key: &str| -> Result<Vec<crate::gov::act::Act>> { serde_json::from_value(reply[key].clone()).map_err(|_| Error::Invalid(format!("{key} is a list of acts"))) };
+        let found: crate::gov::act::Act = serde_json::from_value(reply["found"].clone()).map_err(|_| Error::Invalid("found is an act".into()))?;
+        let (settled, delegates, rest) = (read("settled")?, read("delegates")?, read("acts")?);
+        let mut node = locked(&self.node)?;
+        if reply["pool"].as_str() != Some(found.pool.as_str()) {
+            return Err(Error::Denied("the pool the device named is not the pool its founding act makes".into()));
+        }
+        if node.members.gov().is_some_and(|g| g.id == found.pool) {
+            node.gov_ingest_many(delegates.into_iter().chain(rest).collect(), false)?;
+        } else {
+            node.adopt_governed(found, settled, delegates, rest)?;
         }
         node.facts.set_addr(&c.fingerprint, &addr.to_string())?;
         node.facts.peer(&c.fingerprint).last_seen_ms = wall_ms();
@@ -374,21 +385,29 @@ impl Net {
             }
             return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the join-code window is closed".into() }));
         }
+        peer::record_json(node, "")?;
         node.enrol_device(der, &name, "join-code")?;
-        let grant = json!({"v": 1, "pool": node.members.id, "rows": node.members.export(), "policy": peer::policy_json(node)}).to_string().into_bytes();
+        let mut grant = peer::record_json(node, &fp)?;
+        grant["v"] = json!(1);
+        let grant = grant.to_string().into_bytes();
         *window = None;
         node.facts.join_code_until_ms = 0;
         Ok(json!({"confirmation": session.confirmation()?, "grant": crate::fsutil::hex(&grant), "tag": session.seal(&grant)?}))
     }
 
-    /// Open a join-code window: returns the code (``passphrase`` when given) and seconds it lasts.
-    pub fn add_device(&self, passphrase: &str, ttl_s: u64) -> Result<Value> {
+    /// Open a join-code window: returns the code (``passphrase`` when given) and seconds it lasts. ``presigned``: the admit of the
+    /// device that will use the window was signed (and submitted here) before, so this device needs no signer to open it; the window
+    /// still admits nothing a person's key did not sign for.
+    pub fn add_device(&self, passphrase: &str, ttl_s: u64, presigned: bool) -> Result<Value> {
         let code = if passphrase.is_empty() { new_code()? } else { passphrase.to_string() };
         if code.len() < 6 || code.len() > 200 {
             return Err(Error::Invalid("a passphrase is 6 to 200 characters".into()));
         }
         let until = wall_ms() + ttl_s.clamp(1, 600) * 1000;
         let mut node = locked(&self.node)?;
+        if !presigned {
+            node.can_admit()?;
+        }
         *locked(&self.window)? = Some(Window::new(&code, until));
         node.facts.join_code_until_ms = until;
         Ok(json!({"code": code, "expires_in_s": ttl_s.clamp(1, 600), "port": self.port, "fingerprint": self.me.fingerprint()}))
@@ -399,7 +418,7 @@ impl Net {
     pub fn join_pool(&self, addr: SocketAddr, passphrase: &str, fingerprint: &str) -> Result<Value> {
         let (alone, name) = {
             let n = locked(&self.node)?;
-            (n.members.alone(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
+            (n.members.can_join_other(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
         };
         if !alone {
             return Err(Error::Denied("a device that already has members does not change pool".into()));
@@ -440,7 +459,8 @@ impl Net {
     /// not dialed, and one put out during its dial is not recorded as reached or attached to.
     pub fn sync_once(&self, force: bool) -> Result<usize> {
         let targets: Vec<(String, String)> = {
-            let n = locked(&self.node)?;
+            let mut n = locked(&self.node)?;
+            n.gov_tick()?;
             let me = self.me.fingerprint();
             let now = wall_ms();
             n.members.active().into_iter().filter(|d| d.fingerprint != me)
@@ -625,7 +645,7 @@ impl Net {
         match parsed {
             Ok(c) if NETWORK.contains(&c.method.as_str()) => respond(request, self.network(&c, peer)),
             Ok(c) if c.method == "pool_status" => match self.node.lock() {
-                Ok(n) => respond(request, Ok(merged(n.pool_status(), self.network_facts()))),
+                Ok(mut n) => respond(request, n.gov_tick().map(|_| merged(n.pool_status(), self.network_facts()))),
                 Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
             },
             _ => {
@@ -650,7 +670,7 @@ impl Net {
             authorize_from(&mut node, &c.token, peer, &c.method, &resource)?;
         }
         match c.method.as_str() {
-            "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120)),
+            "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120), c.params.get("presigned") == Some(&Value::Bool(true))),
             "join_pool" => self.join_pool(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
             "shard_call" => self.shard_call(c, peer),
             _ => Ok(json!({"reached": self.sync_once(true)?})),

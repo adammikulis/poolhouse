@@ -8,7 +8,7 @@ use kit::netkit::*;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::error::Error;
 use poolhouse_node::fsutil::hex;
-use poolhouse_node::membership::{Policy, Pool, Standing};
+use poolhouse_node::membership::{Device, Policy, Pool, Standing};
 use poolhouse_node::peer::PeerClient;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
@@ -27,7 +27,7 @@ fn pool_in(dir: &tempfile::TempDir) -> Pool {
 // -- the membership record ---------------------------------------------------
 
 #[test]
-fn a_revocation_is_never_undone_and_wins_every_merge() {
+fn a_revocation_is_never_undone_and_a_stale_row_from_a_host_cannot_bring_a_device_back() {
     let dir = tempfile::tempdir().unwrap();
     let mut pool = pool_in(&dir);
     let other = identity(2);
@@ -37,13 +37,23 @@ fn a_revocation_is_never_undone_and_wins_every_merge() {
     assert_eq!(pool.standing(&device.fingerprint), Standing::Revoked);
     assert!(matches!(pool.enrol(&other.der, "laptop", "join-code", 30), Err(Error::Denied(_))), "a revoked certificate stays out");
     let stale = vec![json!({"fingerprint": device.fingerprint, "cert": device.cert, "name": "laptop", "status": "active", "at": 99, "by": "x"})];
-    assert_eq!(pool.merge(&stale, "peer").unwrap(), 0, "a stale peer cannot bring a removed device back");
-    assert_eq!(pool.standing(&device.fingerprint), Standing::Revoked);
-    let fresh_dir = tempfile::tempdir().unwrap();
-    let mut fresh = pool_in(&fresh_dir);
-    fresh.enrol(&other.der, "laptop", "join-code", 10).unwrap();
-    assert_eq!(fresh.merge(&pool.export(), "peer").unwrap(), 1, "a revocation heard from a peer is applied");
-    assert_eq!(fresh.standing(&device.fingerprint), Standing::Revoked);
+    let id = pool.id.clone();
+    pool.adopt(&id, &stale, None, (&device.fingerprint, "open")).unwrap();
+    assert_eq!(pool.standing(&device.fingerprint), Standing::Revoked, "the host of a join cannot bring a removed device back");
+}
+
+#[test]
+fn a_device_name_of_many_multibyte_characters_is_cut_by_characters_and_the_record_reopens() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut pool = pool_in(&dir);
+    let name = format!("a{}", "\u{1f600}".repeat(100));
+    let device = pool.enrol(&identity(6).der, &name, "join-code", 1).unwrap();
+    assert_eq!(device.name.chars().count(), 80, "the name was cut to 80 characters, which are more than 80 bytes");
+    let reopened = pool_in(&dir);
+    assert_eq!(reopened.get(&device.fingerprint).unwrap().name, device.name);
+    let long = format!("{}{}", "x".repeat(79), "\u{1f600}\u{1f600}");
+    let row = json!({"fingerprint": device.fingerprint, "cert": device.cert, "name": long, "status": "active", "at": 1, "by": long});
+    assert_eq!(Device::read(&row).unwrap().name.chars().count(), 80);
 }
 
 #[test]
@@ -55,7 +65,8 @@ fn a_row_whose_fingerprint_is_not_its_certificates_hash_is_dropped() {
     let forged = json!({"fingerprint": b.fingerprint(), "cert": good.cert, "name": "b", "status": "active", "at": 5, "by": "x"});
     let no_cert = json!({"fingerprint": b.fingerprint(), "cert": "", "name": "b", "status": "active", "at": 5, "by": "x"});
     let short = json!({"fingerprint": "abc", "cert": hex(&b.der), "name": "b", "status": "active", "at": 5, "by": "x"});
-    assert_eq!(pool.merge(&[forged, no_cert, short], "peer").unwrap(), 0);
+    let (id, joined) = ("0123456789abcdef", good.fingerprint.clone());
+    pool.adopt(id, &[forged, no_cert, short], None, (&joined, "open")).unwrap();
     assert_eq!(pool.standing(&b.fingerprint()), Standing::Unknown);
 }
 
@@ -156,7 +167,7 @@ fn join_policy_open_enrols_a_device_that_names_the_fingerprint() {
 }
 
 #[test]
-fn the_policy_is_switched_by_a_session_with_the_grant_and_spreads() {
+fn the_policy_is_switched_by_a_session_with_the_grant_and_stays_that_devices_own() {
     let (a, b) = (device(), device());
     a.join_with_code(&b);
     let no_token = a.call("set_join_policy", "", "", json!({"policy": "open"}));
@@ -168,7 +179,8 @@ fn the_policy_is_switched_by_a_session_with_the_grant_and_spreads() {
     assert_eq!(a.call("set_join_policy", "", &a.token, json!({"policy": "bogus"}))["error"]["code"], "invalid");
     a.set_policy("open");
     b.ok("sync_now", "", &b.token, json!({}));
-    assert_eq!(b.status()["policy"], "open");
+    assert_eq!(a.status()["policy"], "open");
+    assert_eq!(b.status()["policy"], "secure", "a member's policy is its own: it does not spread by the ordinary exchange");
 }
 
 // -- refusals ----------------------------------------------------------------
@@ -272,19 +284,17 @@ fn a_removed_device_is_refused_at_its_next_request_on_a_live_session() {
 }
 
 #[test]
-fn a_revocation_reaches_a_third_device_through_a_member() {
+fn a_removal_is_the_removing_devices_own_and_does_not_spread_through_a_member() {
     let (a, b, c) = (device(), device(), device());
     a.join_with_code(&b);
     a.join_with_code(&c);
     b.ok("sync_now", "", &b.token, json!({}));
-    assert!(b.is_member(&c.fp()) || { b.ok("sync_now", "", &b.token, json!({})); b.is_member(&c.fp()) });
     a.ok("member_remove", "", &a.token, json!({"fingerprint": c.fp()}));
     b.ok("sync_now", "", &b.token, json!({}));
-    assert_eq!(b.member(&c.fp()).unwrap()["status"], "revoked", "the record spreads by merge");
-    let mut at_b = PeerClient::connect(&c.net.me, b.addr(), Some(&b.fp()));
-    if let Ok(client) = at_b.as_mut() {
-        assert!(client.call(&json!({"op": "boards"})).is_err());
-    }
+    assert_eq!(a.member(&c.fp()).unwrap()["status"], "revoked");
+    assert!(b.member(&c.fp()).is_none(), "b holds only the devices it joined or was joined by: a's removal is a's");
+    let refused = PeerClient::connect(&c.net.me, a.addr(), Some(&a.fp())).and_then(|mut l| l.call(&json!({"op": "boards"})));
+    assert!(refused.is_err(), "the device a removed is refused at a");
 }
 
 #[test]

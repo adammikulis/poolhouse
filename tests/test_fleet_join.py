@@ -399,6 +399,8 @@ class TestStatus:
         assert code == 0 and [r["name"] for r in rows] == ["larch"]
         assert rows[0]["is_self"], "the daemon on --port is this machine"
 
+    @pytest.mark.lan_network
+
     def test_two_machines_of_one_name_are_listed_apart(self, key, udp, daemons,
                                                         monkeypatch, capsys):
 

@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use crate::board::Tip;
 use crate::error::{Error, Result};
 use crate::node::{Hosted, Node};
-use crate::peer::{policy_json, take_policy, PeerClient};
+use crate::peer::PeerClient;
 use crate::row::Row;
 use crate::sync::{rows_since, seqs, take, Report, MAX_ROUNDS};
 
@@ -46,31 +46,24 @@ fn tips(v: &Value, key: &str) -> Result<BTreeMap<String, Tip>> {
     serde_json::from_value(v.get(key).cloned().unwrap_or(json!({}))).map_err(|_| Error::Invalid(format!("{key} maps origins to tips")))
 }
 
-/// Swap pool records with the peer; how many of ours changed.
-pub fn sync_members(node: &Mutex<Node>, c: &mut PeerClient) -> Result<usize> {
+/// Swap the builds members report with the peer. The peer's pool record is not asked for: who is in the pool does not change by
+/// what a member says.
+pub fn sync_members(node: &Mutex<Node>, c: &mut PeerClient) -> Result<()> {
     let ask = {
         let n = locked_for(node, &c.fingerprint)?;
-        json!({"op": "members", "pool": n.members.id, "rows": n.members.export(), "policy": policy_json(&n), "builds": n.builds_known()})
+        json!({"op": "members", "pool": n.members.id, "builds": n.builds_known()})
     };
     let reply = c.call(&ask)?;
     take_members(node, &c.fingerprint, &reply)
 }
 
-/// Merge the pool record, policy and builds in the reply of the member ``from``; how many of our records changed.
-pub fn take_members(node: &Mutex<Node>, from: &str, reply: &Value) -> Result<usize> {
-    let rows = reply.get("rows").and_then(Value::as_array).ok_or_else(|| Error::Invalid("rows is a list".into()))?;
+/// Take the builds in the reply of the member ``from``, if it is still a member.
+pub fn take_members(node: &Mutex<Node>, from: &str, reply: &Value) -> Result<()> {
     let mut n = locked_for(node, from)?;
-    let changed = n.members.merge(rows, from)?;
-    if !n.members.is_active(from) {
-        return Err(removed());
-    }
-    if let Some(p) = reply.get("policy") {
-        take_policy(&mut n, p)?;
-    }
     if let Some(builds) = reply.get("builds") {
         n.take_builds(from, builds);
     }
-    Ok(changed)
+    Ok(())
 }
 
 /// The boards the peer holds.
@@ -125,9 +118,10 @@ fn push_once(node: &Mutex<Node>, c: &mut PeerClient, id: &str, origin: &str, rep
     Ok(stored)
 }
 
-/// Sync the pool record, then every board both devices hold; origin to refusal code per board.
+/// Swap builds, then sync every board both devices hold; origin to refusal code per board.
 pub fn sync_all(node: &Mutex<Node>, c: &mut PeerClient) -> Result<BTreeMap<String, Report>> {
     sync_members(node, c)?;
+    crate::gov::wire::sync_acts(node, c)?;
     let theirs = peer_boards(c)?;
     let mine: Vec<String> = locked(node)?.boards.keys().cloned().collect();
     let mut out = BTreeMap::new();
