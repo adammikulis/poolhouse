@@ -410,6 +410,5 @@ def test_cli_fixture_provisions_only_its_file_keyring(tmp_path):
     root = tmp_path / "isolated-device"
     env = env_for(root)
     assert env["PYTHON_KEYRING_BACKEND"] == "onboard_support.FileKeyring"
-    assert env["POOLHOUSE_NO_REAL_KEYSTORE"] == "1"
     assert json.loads((root / "keyring.json").read_text())
     assert json.loads((root / "keystore" / "provisioned.json").read_text())["at"]

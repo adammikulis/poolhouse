@@ -16,6 +16,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from poolhouse import real_machine
 from poolhouse.home import account_roots
 from poolhouse.log import warn
 
@@ -61,6 +62,7 @@ def _run(argv: list[str]) -> str:
 
 def certificate_sha1() -> str:
     """The fingerprint of the certificate in the login keychain, or '' when there is none."""
+    real_machine.require("reading the login keychain")
     done = subprocess.run(["security", "find-certificate", "-c", CERT_NAME, "-Z", str(keychain())], capture_output=True, text=True,
                           timeout=TOOL_TIMEOUT, check=False)
     return parse_sha1(done.stdout) if done.returncode == 0 else ""
@@ -70,6 +72,7 @@ def create_certificate() -> str:
     """Make the certificate and its key, put both in the login keychain (codesign allowed to use the key), trust it for code
     signing in the user domain; returns the fingerprint. The key and certificate files exist only inside a private temporary directory.
     """
+    real_machine.require("adding a signing certificate to the login keychain")
     password = secrets.token_hex(16)  # protects the throwaway .p12 for the seconds it exists
     with tempfile.TemporaryDirectory(prefix="poolhouse-cert") as scratch:
         key, cert, bundle = (Path(scratch) / name for name in ("key.pem", "cert.pem", "id.p12"))

@@ -15,6 +15,7 @@ use crate::membership::Policy;
 use crate::node::Node;
 
 /// The methods that act on the network and so run without the node lock held.
+const MOST_SUBMITS_PER_MINUTE: usize = 120;
 pub const NETWORK: [&str; 4] = ["add_device", "join_pool", "sync_now", "shard_call"];
 
 /// The params each pool method accepts; None for any other method.
@@ -23,7 +24,15 @@ pub fn params(method: &str) -> Option<&'static [&'static str]> {
         "pool_status" | "sync_now" => &[],
         "member_remove" => &["fingerprint"],
         "set_join_policy" => &["policy"],
-        "add_device" => &["passphrase", "ttl_s"],
+        "pool_create" => &["title", "policy", "project"],
+        "pool_leave" => &[],
+        "pool_propose" => &["kind", "body"],
+        "pool_cosign" => &["act"],
+        "pool_submit" => &["act"],
+        "pool_draft" => &["kind", "body"],
+        "pool_found" => &["act", "charter"],
+        "pool_draft_found" => &["title", "policy", "project", "keys"],
+        "add_device" => &["passphrase", "ttl_s", "presigned"],
         "join_pool" => &["host", "port", "passphrase", "fingerprint"],
         "shard_call" => &["device", "op", "args"],
         "shard_consent" => &["enabled", "python", "repo", "allow", "deny"],
@@ -78,7 +87,10 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
-        "pool_status" => Ok(node.pool_status()),
+        "pool_status" => {
+            node.gov_tick()?;
+            Ok(node.pool_status())
+        }
         "member_remove" => {
             let fingerprint = text(p, "fingerprint")?;
             let who = authorize(node, token, method, fingerprint)?;
@@ -93,6 +105,40 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
                 node.record_event("shard_allow", fingerprint, &format!("removed: put out of the pool by {}/{}", who.board, who.name))?;
             }
             Ok(json!({"fingerprint": device.fingerprint, "status": device.status}))
+        }
+        "set_join_policy" if !node.members.is_legacy() => Err(Error::say("invalid", "A pool's join policy never changes in place; reissue the pool to change it.", "none", "stop")),
+        "pool_create" => {
+            let (name, policy) = (text(p, "title")?, text(p, "policy")?);
+            authorize(node, token, method, name)?;
+            node.pool_create(name, if policy.is_empty() { Policy::Secure } else { Policy::parse(policy)? }, text(p, "project")?)
+        }
+        "pool_leave" => {
+            authorize(node, token, method, "*")?;
+            node.pool_leave()
+        }
+        "pool_found" => {
+            let act = crate::gov::ops::founding_act(p.get("act"), p.get("charter"))?;
+            let name = node.founding_name(&act)?;
+            authorize(node, token, "pool_create", &name)?;
+            node.pool_found(&act)
+        }
+        "pool_draft_found" => node.pool_draft_found(text(p, "title")?, Policy::parse(text(p, "policy")?)?, text(p, "project")?, p.get("keys").unwrap_or(&Value::Null)),
+        "pool_draft" => node.pool_draft(text(p, "kind")?, p.get("body").cloned().unwrap_or(Value::Null)),
+        "pool_propose" => {
+            let kind = text(p, "kind")?;
+            authorize(node, token, "admin_manage", kind)?;
+            node.pool_propose(kind, p.get("body").cloned().unwrap_or(Value::Null))
+        }
+        "pool_cosign" => {
+            authorize(node, token, "admin_manage", "cosign")?;
+            node.pool_cosign(text(p, "act")?)
+        }
+        "pool_submit" => {
+            if !node.rates.permits("pool_submit", MOST_SUBMITS_PER_MINUTE, std::time::Duration::from_secs(60)) {
+                return Err(Error::Quota("acts are submitted as fast as they may be: try again in a minute".into()));
+            }
+            node.rates.record("pool_submit", std::time::Duration::from_secs(60));
+            node.pool_submit(p.get("act").unwrap_or(&Value::Null))
         }
         "set_join_policy" => {
             let who = authorize(node, token, method, text(p, "policy")?)?;

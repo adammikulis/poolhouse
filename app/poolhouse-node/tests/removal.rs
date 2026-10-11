@@ -3,6 +3,8 @@
 
 mod kit;
 
+use kit::gov::person;
+use kit::govnode::{found, sync, ANN};
 use kit::netkit::*;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::error::Error;
@@ -76,10 +78,10 @@ fn a_board_sync_in_progress_with_a_member_that_is_then_removed_stops() {
 fn the_pool_record_a_removed_device_sends_is_not_merged() {
     let (a, b) = (device(), device());
     a.join_with_code(&b);
-    let mut live = PeerClient::connect(&a.net.me, b.addr(), Some(&b.fp())).unwrap();
-    let mut reply = live.call(&json!({"op": "members", "pool": a.pool(), "rows": []})).unwrap();
     let stranger = outsider(7);
-    reply["rows"].as_array_mut().unwrap().push(json!({"fingerprint": stranger.fingerprint(), "cert": hex(&stranger.der), "name": "stranger", "status": "active", "at": 1, "by": "b"}));
+    let reply = json!({"rows": [{"fingerprint": stranger.fingerprint(), "cert": hex(&stranger.der), "name": "stranger", "status": "active", "at": 1, "by": "b"}]});
+    assert!(netsync::take_members(&a.node, &b.fp(), &reply).is_ok(), "a member's reply is read for its builds");
+    assert_eq!(a.node.lock().unwrap().members.standing(&stranger.fingerprint()), Standing::Unknown, "a member enrolled a device through a reply");
     remove(&a, &b);
     let got = netsync::take_members(&a.node, &b.fp(), &reply);
     assert!(matches!(got, Err(Error::Denied(_))), "{got:?}");
@@ -89,11 +91,16 @@ fn the_pool_record_a_removed_device_sends_is_not_merged() {
 #[test]
 fn a_cycle_that_learns_of_a_removal_does_not_go_on_to_dial_the_removed_device() {
     let (a, b, c) = (device(), device(), device());
-    a.join_with_code(&b);
-    a.join_with_code(&c);
-    // `a` dials its members in the order `pool_status` lists them: the first carries the removal of the second.
-    let listed: Vec<String> = a.status()["members"].as_array().unwrap().iter().filter(|m| m["self"] != true).map(|m| m["fingerprint"].as_str().unwrap().to_string()).collect();
-    let (revoker, victim) = if listed[0] == b.fp() { (&b, &c) } else { (&c, &b) };
+    // `a` dials its members in the order `pool_status` lists them, by fingerprint: the first carries the removal of the second, so the
+    // pool is founded on the one listed first, which is the admin that removes the other.
+    let (revoker, victim) = if b.fp() < c.fp() { (&b, &c) } else { (&c, &b) };
+    found(revoker, person(ANN, "ann"), "secure");
+    revoker.join_with_code(&a);
+    revoker.join_with_code(victim);
+    sync(victim);
+    a.node.lock().unwrap().facts.set_addr(&victim.fp(), &victim.addr().to_string()).unwrap();
+    a.net.sync_once(true).unwrap();
+    assert!(a.is_member(&victim.fp()), "a heard of the victim from the revoker's acts");
     let (wa, wv) = (writer(&a, "a"), writer(victim, "victim"));
     remove(revoker, victim);
     wv.say("written by the removed device");
@@ -130,37 +137,36 @@ fn a_member_removed_while_it_is_being_dialed_is_not_recorded_as_a_failed_dial() 
 fn a_reply_that_removes_its_own_sender_sets_no_policy() {
     let (a, b) = (device(), device());
     a.join_with_code(&b);
-    let mut live = PeerClient::connect(&a.net.me, b.addr(), Some(&b.fp())).unwrap();
-    let mut reply = live.call(&json!({"op": "members", "pool": a.pool(), "rows": []})).unwrap();
-    for row in reply["rows"].as_array_mut().unwrap().iter_mut().filter(|r| r["fingerprint"] == b.fp()) {
-        row["status"] = json!("revoked");
-    }
-    reply["policy"] = json!({"policy": "open", "at": 4_000_000_000_000u64, "by": "zzz"});
-    let got = netsync::take_members(&a.node, &b.fp(), &reply);
-    assert!(matches!(got, Err(Error::Denied(_))), "{got:?}");
-    assert_eq!(a.member(&b.fp()).unwrap()["status"], "revoked", "the record in the reply is applied");
-    assert_eq!(a.status()["policy"], "secure", "a device the reply removed set the pool's join policy");
+    let reply = json!({"rows": [{"fingerprint": b.fp(), "cert": "", "name": "", "status": "revoked", "at": 1, "by": b.fp()}], "policy": {"policy": "open", "at": 4_000_000_000_000u64, "by": "zzz"}});
+    assert!(netsync::take_members(&a.node, &b.fp(), &reply).is_ok());
+    assert_eq!(a.member(&b.fp()).unwrap()["status"], "active", "a member's reply removed the member that sent it, or another");
+    assert_eq!(a.status()["policy"], "secure", "a member's reply set the pool's join policy");
 }
 
-/// The documented limit (docs/node.md, Membership): a row of a removed device's log that a member relays is taken like any relayed row,
-/// whether or not the receiver has removed that device. The removal design (docs/pools-and-serving.md, slice 1) refuses such rows
-/// past a cut recorded with the removal, and this test then asserts the opposite.
+/// A member that has not heard of a removal takes what the removed device wrote after it, and passes it on; a device that holds the
+/// removal refuses it (docs/node.md, "Who governs a pool": the log cut of a removal). Real nodes, a governed pool, no entry of the
+/// removed device's log known to the admin when it removed it.
 #[test]
-fn rows_of_a_removed_device_relayed_by_an_unaware_member_are_still_taken() {
+fn rows_of_a_removed_device_relayed_by_an_unaware_member_are_refused_by_a_device_that_holds_the_removal() {
     let (a, b, c) = (device(), device(), device());
+    found(&a, person(ANN, "ann"), "secure");
     a.join_with_code(&b);
     a.join_with_code(&c);
+    sync(&b);
     b.node.lock().unwrap().facts.set_addr(&c.fp(), &c.addr().to_string()).unwrap();
     b.net.sync_once(true).unwrap();
     assert!(b.is_member(&c.fp()), "the relay lists the device it will take the entry from");
     remove(&a, &c);
-    let (wa, wc) = (writer(&a, "a"), writer(&c, "c"));
+    let (wa, wb, wc) = (writer(&a, "a"), writer(&b, "b"), writer(&c, "c"));
     wc.say("written by the removed device");
     let mut live = PeerClient::connect(&b.net.me, c.addr(), Some(&c.fp())).unwrap();
     netsync::sync_all(&b.node, &mut live).unwrap();
+    assert!(wb.holds("written by the removed device"), "the unaware relay took the entry");
+    let mut to_a = PeerClient::connect(&b.net.me, a.addr(), Some(&a.fp())).unwrap();
+    netsync::sync_all(&b.node, &mut to_a).unwrap();
     a.net.sync_once(true).unwrap();
     assert_eq!(a.member(&c.fp()).unwrap()["status"], "revoked");
-    assert!(wa.holds("written by the removed device"), "a relayed row of a removed device was refused");
+    assert!(!wa.holds("written by the removed device"), "a relayed entry of a removed device was taken by a device that holds the removal");
 }
 
 #[test]

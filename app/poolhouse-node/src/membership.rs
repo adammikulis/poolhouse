@@ -3,12 +3,15 @@
 //!
 //! A device is its certificate; its fingerprint is the SHA-256 of the DER. A peer is served only
 //! when the certificate it showed in the handshake is listed here as active; a revoked one is
-//! refused at its next handshake and at its next request on a connection already open. Revoking
-//! is one record that spreads by `merge`, and a revocation is never undone: revoked wins every
-//! merge, and a revoked certificate cannot be enrolled again (a device returns with a new one).
-//! A row whose fingerprint is not the hash of the certificate beside it is dropped.
+//! refused at its next handshake and at its next request on a connection already open. A
+//! revocation is never undone, and a revoked certificate cannot be enrolled again (a device
+//! returns with a new one). A row whose fingerprint is not the hash of the certificate beside it
+//! is dropped.
 //!
-//! The join policy (`open` or `secure`) is one attribute of the pool; the newest change wins.
+//! This record is the legacy pool (`pool.json`). A member's word changes nothing in it: rows,
+//! removals and the join policy that other members send are ignored, and only this device's own
+//! local API (a grant), a join this device made and the join policy at the moment of joining
+//! write to it. The join policy (`open` or `secure`) is one attribute of the pool.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -19,6 +22,7 @@ use serde_json::Value;
 use crate::cert::{cert_fingerprint, parses, valid_fingerprint};
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, random_hex, unhex, write_atomic};
+use crate::gov::pool::GovPool;
 
 pub const MOST_ROWS: usize = 4096;
 const VERSION: u64 = 1;
@@ -55,6 +59,8 @@ impl Policy {
 pub enum Status {
     Active,
     Revoked,
+    /// The device left the pool by its own act; an admit may bring it back.
+    Left,
 }
 
 /// What the record says of a fingerprint.
@@ -87,8 +93,8 @@ impl Device {
     /// A row from the file or a peer, or None when it is not what it claims.
     pub fn read(row: &Value) -> Option<Device> {
         let mut d: Device = serde_json::from_value(row.clone()).ok()?;
-        d.name.truncate(80);
-        d.by.truncate(80);
+        d.name = d.name.chars().take(80).collect();
+        d.by = d.by.chars().take(80).collect();
         if !valid_fingerprint(&d.fingerprint) {
             return None;
         }
@@ -127,7 +133,8 @@ struct File {
     devices: Vec<Device>,
 }
 
-/// The pool this device belongs to and its record of the devices in it.
+/// The pool this device belongs to and its record of the devices in it. A governed pool (`gov`) takes its members and its policy
+/// from the acts it holds and nothing else; a legacy pool (no `gov`) is the `pool.json` of this device.
 pub struct Pool {
     path: PathBuf,
     pub id: String,
@@ -137,9 +144,63 @@ pub struct Pool {
     /// The project this pool belongs to (`project::project_key`), or empty for none.
     pub project: String,
     devices: BTreeMap<String, Device>,
+    gov: Option<GovPool>,
+}
+
+fn governed_refusal() -> Error {
+    Error::Denied("this pool is governed: its members and its policy change only by signed acts".into())
 }
 
 impl Pool {
+    /// Open the pool of the state directory ``root``: the governed pool kept under `pools/` when there is one, else the legacy record.
+    pub fn load(root: &Path) -> Result<Pool> {
+        let mut held: Vec<PathBuf> = match std::fs::read_dir(root.join("pools")) {
+            Ok(entries) => entries.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.join("charter.json").is_file()).collect(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(e.into()),
+        };
+        match held.len() {
+            0 => Pool::open(&root.join("pool.json")),
+            1 => Ok(Pool::governed(root, GovPool::load(&held.remove(0))?)),
+            _ => Err(Error::Damaged("this build holds one pool, and this directory holds several".into())),
+        }
+    }
+
+    /// A pool governed by ``gov``, with the record this device keeps of its members read from it.
+    pub fn governed(root: &Path, gov: GovPool) -> Pool {
+        let mut pool = Pool {
+            path: root.join("pool.json"), id: String::new(), policy: Policy::Secure, policy_at: 0, policy_by: String::new(), project: String::new(),
+            devices: BTreeMap::new(), gov: Some(gov),
+        };
+        pool.refresh();
+        pool
+    }
+
+    pub fn gov(&self) -> Option<&GovPool> {
+        self.gov.as_ref()
+    }
+
+    pub fn gov_mut(&mut self) -> Option<&mut GovPool> {
+        self.gov.as_mut()
+    }
+
+    /// Whether this pool is the `pool.json` of this device, which no member's word changes.
+    pub fn is_legacy(&self) -> bool {
+        self.gov.is_none()
+    }
+
+    /// Whether this device may join another pool: it is alone in a pool that no admin governs.
+    pub fn can_join_other(&self) -> bool {
+        self.gov.is_none() && self.alone()
+    }
+
+    /// Read the id, the policy, the project and the devices from the governed pool again.
+    pub fn refresh(&mut self) {
+        let Some(gov) = &self.gov else { return };
+        let charter = &gov.state().chain.latest().charter;
+        (self.id, self.policy, self.project, self.devices) = (gov.id.clone(), charter.policy, charter.project.clone(), gov.devices());
+    }
+
     /// Open the record at ``path``, making a pool of one (no members yet) on first use.
     pub fn open(path: &Path) -> Result<Pool> {
         match std::fs::read(path) {
@@ -152,10 +213,11 @@ impl Pool {
                         devices.insert(kept.fingerprint.clone(), kept);
                     }
                 }
-                Ok(Pool { path: path.into(), id: f.pool, policy: f.policy, policy_at: f.policy_at, policy_by: f.policy_by, project: f.project, devices })
+                let policy_at = f.policy_at.min(crate::poolops::wall_ms());
+                Ok(Pool { path: path.into(), id: f.pool, policy: f.policy, policy_at, policy_by: f.policy_by, project: f.project, devices, gov: None })
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let pool = Pool { path: path.into(), id: random_hex(8)?, policy: Policy::Secure, policy_at: 0, policy_by: String::new(), project: String::new(), devices: BTreeMap::new() };
+                let pool = Pool { path: path.into(), id: random_hex(8)?, policy: Policy::Secure, policy_at: 0, policy_by: String::new(), project: String::new(), devices: BTreeMap::new(), gov: None };
                 pool.save()?;
                 Ok(pool)
             }
@@ -164,6 +226,9 @@ impl Pool {
     }
 
     fn save(&self) -> Result<()> {
+        if self.gov.is_some() {
+            return Err(governed_refusal());
+        }
         let file = File {
             v: VERSION, pool: self.id.clone(), policy: self.policy, policy_at: self.policy_at, policy_by: self.policy_by.clone(), project: self.project.clone(),
             devices: self.devices.values().cloned().collect(),
@@ -185,7 +250,7 @@ impl Pool {
         match self.devices.get(fingerprint).map(|d| d.status) {
             Some(Status::Active) => Standing::Active,
             Some(Status::Revoked) => Standing::Revoked,
-            None => Standing::Unknown,
+            Some(Status::Left) | None => Standing::Unknown,
         }
     }
 
@@ -204,6 +269,9 @@ impl Pool {
 
     /// Let a device in. A certificate that was revoked here stays out (`Denied`).
     pub fn enrol(&mut self, der: &[u8], name: &str, by: &str, now_ms: u64) -> Result<Device> {
+        if self.gov.is_some() {
+            return Err(governed_refusal());
+        }
         if !parses(der) {
             return Err(Error::Invalid("a device is enrolled with its certificate".into()));
         }
@@ -224,6 +292,9 @@ impl Pool {
 
     /// Put a device out: it is refused from its next handshake and its next request.
     pub fn revoke(&mut self, fingerprint: &str, by: &str, now_ms: u64) -> Result<Device> {
+        if self.gov.is_some() {
+            return Err(governed_refusal());
+        }
         if !valid_fingerprint(fingerprint) {
             return Err(Error::Invalid("a device is removed by its fingerprint, 64 hex digits".into()));
         }
@@ -244,9 +315,9 @@ impl Pool {
         self.devices().iter().filter_map(|d| serde_json::to_value(d).ok()).collect()
     }
 
-    /// Take what a peer that is an active member knows: new devices are added and every
-    /// revocation is applied. Returns how many records changed.
-    pub fn merge(&mut self, rows: &[Value], by: &str) -> Result<usize> {
+    /// Take the rows of the device this one has just joined, which the join itself authenticated (the join code's exchange, or the
+    /// pinned certificate of an `open` pool). Rows a member sends in an ordinary exchange never come here.
+    fn absorb(&mut self, rows: &[Value], by: &str) -> Result<usize> {
         let mut altered = 0;
         for row in rows.iter().take(MOST_ROWS) {
             let Some(mut heard) = Device::read(row) else { continue };
@@ -274,6 +345,9 @@ impl Pool {
 
     /// Set the join policy; false (and no change) when ``at`` is not newer than the standing one.
     pub fn set_policy(&mut self, policy: Policy, at: u64, by: &str) -> Result<bool> {
+        if self.gov.is_some() {
+            return Err(Error::Invalid("a pool's join policy never changes in place; reissue the pool to change it".into()));
+        }
         if (at, by) <= (self.policy_at, self.policy_by.as_str()) {
             return Ok(false);
         }
@@ -286,6 +360,9 @@ impl Pool {
     /// Make this pool one for ``project`` (the node does this at start, before it has heard of
     /// another pool of that project). Only a device alone in its pool may.
     pub fn claim_project(&mut self, project: &str) -> Result<()> {
+        if self.gov.is_some() {
+            return Err(governed_refusal());
+        }
         if self.project == project {
             return Ok(());
         }
@@ -296,15 +373,26 @@ impl Pool {
         self.save()
     }
 
-    /// Take the id of the pool this device joins; only a device alone in its pool may.
-    pub fn adopt(&mut self, id: &str) -> Result<()> {
-        if id == self.id {
-            return Ok(());
+    /// Take the pool of the device ``host`` this device has joined, the join having been ``by`` (`join-code` or `open`). A device alone
+    /// in its pool takes the pool's id, its rows and its policy; a device that has members takes only the row of ``host``, inside the
+    /// pool it is already in. The row of ``host`` says how it came in as this device met it.
+    pub fn adopt(&mut self, id: &str, rows: &[Value], policy: Option<(Policy, u64, &str)>, joined: (&str, &str)) -> Result<()> {
+        let (host, by) = joined;
+        if self.gov.is_some() {
+            return Err(governed_refusal());
         }
-        if !self.alone() || id.len() != 16 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if id != self.id && (!self.alone() || id.len() != 16 || !id.bytes().all(|b| b.is_ascii_hexdigit())) {
             return Err(Error::Denied("a device that already has members does not change pool".into()));
         }
+        let alone = self.alone();
         self.id = id.into();
+        let is_host = |r: &Value| r.get("fingerprint").and_then(Value::as_str) == Some(host);
+        let mut taken: Vec<Value> = rows.iter().filter(|r| alone || is_host(r)).cloned().collect();
+        taken.iter_mut().filter(|r| is_host(r)).filter_map(Value::as_object_mut).for_each(|r| drop(r.insert("by".into(), by.into())));
+        self.absorb(&taken, host)?;
+        if let (true, Some((policy, at, by))) = (alone, policy) {
+            self.set_policy(policy, at.min(crate::poolops::wall_ms()), by)?;
+        }
         self.save()
     }
 }

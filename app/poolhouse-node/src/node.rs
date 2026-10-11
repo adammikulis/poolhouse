@@ -14,6 +14,7 @@ use crate::cert::{self, Identity as CertIdentity};
 use crate::facts::Facts;
 use crate::grants::book::Book;
 use crate::grants::person::Persons;
+use crate::gov::signer::{KeyBinding, Signer};
 use crate::membership::Pool;
 use crate::device::{self, fingerprint, Custody, Supplied};
 use crate::error::{Error, Result};
@@ -85,6 +86,12 @@ pub struct Node {
     pub build: crate::build::Build,
     /// How this machine is attached to the network (`netif::network`), told to every peer in the hello so it can say how to reach this device.
     pub network: String,
+    /// Who signs for a person when an act of the pool needs it (`gov::signer`); None until one is connected.
+    pub signer: Option<Arc<dyn Signer>>,
+    /// Whether this device's key is held by the operating system's keystore or in a file; only the first may be a delegate.
+    pub key_binding: KeyBinding,
+    /// When a person last said no to a kind of act: the same kind is not asked again for ten minutes.
+    pub declined: BTreeMap<String, Instant>,
 }
 
 /// A native session as its harness names it: the model it says it runs, the harness and its own session id.
@@ -126,14 +133,14 @@ impl Node {
         private_dir(dir)?;
         let (key, custody) = device::load(dir, supplied)?;
         let cert = cert::load_or_create(dir, &key)?;
-        let members = Pool::open(&dir.join("pool.json"))?;
+        let members = Pool::load(dir)?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let mut node = Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(),
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(),
         };
         let root = dir.join("boards");
         if root.is_dir() {
@@ -167,6 +174,7 @@ impl Node {
             let mut tally = Tally::default();
             tally.catch_up(&mut board, &names)?;
             self.boards.insert(id.into(), Hosted { board, names, quarantine, subs, book: Book::default(), tally });
+            self.apply_log_cuts(id)?;
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
     }

@@ -3,6 +3,8 @@
 
 mod kit;
 
+use kit::gov::person;
+use kit::govnode::{found, ANN};
 use kit::netkit::*;
 use poolhouse_node::peer::PeerClient;
 use serde_json::json;
@@ -36,11 +38,14 @@ fn the_connection_this_device_keeps_open_to_a_member_is_closed_when_the_member_i
     eventually("a to close its connection to b", 10, || !connected(&a, &b));
 }
 
-/// ``a`` keeps a connection open to each of ``b`` and ``c``.
+/// ``a`` keeps a connection open to each of ``b``, the admin of the pool, and ``c``, which ``a`` hears of from ``b``'s acts.
 fn hub_with_two_attached_members() -> (Dev, Dev, Dev) {
     let (a, b, c) = (device(), device(), device());
-    a.join_with_code(&b);
-    a.join_with_code(&c);
+    found(&b, person(ANN, "ann"), "secure");
+    b.join_with_code(&a);
+    b.join_with_code(&c);
+    a.net.sync_once(true).unwrap();
+    a.node.lock().unwrap().facts.set_addr(&c.fp(), &c.addr().to_string()).unwrap();
     a.net.sync_once(true).unwrap();
     eventually("a to keep a connection open to c", 10, || connected(&a, &c));
     (a, b, c)

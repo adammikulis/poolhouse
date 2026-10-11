@@ -21,6 +21,7 @@ def join_order_does_not_matter(world: World) -> None:
         everyone_holds(world.devices, bodies)
     world.fresh()
     hub = world.devices[-1]
+    world.found(hub)
     for joiner in world.devices[:-1]:
         world.join(joiner, hub)
     world.converged(world.devices)
@@ -31,7 +32,7 @@ def join_order_does_not_matter(world: World) -> None:
 
 
 def a_removed_device_is_refused_by_every_member(world: World) -> str:
-    """The Mac device removes one member; every other member, not only the one that removed it, then refuses that device's next request."""
+    """The first device takes the person's signed removal of one member; every other member, not only the one that removed it, then refuses that device's next request."""
     if world.count < 3:
         raise Skip("needs a remover, a removed device and a third member")
     world.fresh()
@@ -43,7 +44,7 @@ def a_removed_device_is_refused_by_every_member(world: World) -> str:
         host, port = device.reach(victim)
         before = victim.probe(host, port, {"op": "boards"})
         assert before["replies"] and before["replies"][0]["ok"], f"{device.name} refused {victim.name} before it was removed (the probe itself is wrong): {before}"
-    world.first.admin("member_remove", fingerprint=victim.fingerprint)
+    world.remove(world.first, victim)
     removed_at, seen_at = time.monotonic(), {"removed at (ms since the epoch)": int(time.time() * 1000)}
     for device in rest:
         eventually(lambda d=device: (d.member(victim.fingerprint) or {}).get("status") == "revoked", 30, f"{device.name} to record the removal of {victim.name}")
@@ -88,6 +89,7 @@ def a_swapped_certificate_is_refused(world: World) -> None:
     old = target.fingerprint
     target.stop_node()
     target.delete_files("device.*", "*.json", "tls*")
+    target.delete_tree("pools")
     target.start_node()
     target.register("impostor")
     assert target.fingerprint != old, "the device kept its certificate: the swap did not happen"

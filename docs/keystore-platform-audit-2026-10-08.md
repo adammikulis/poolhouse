@@ -28,7 +28,7 @@ other secret is wrapped (AES-256-GCM, HKDF subkey per purpose and owner) and kep
 | legacy items (`poolhouse-memory`, `onboard-signing-<hash>`, `<NAME>`) | pre-master items | OS keystore | migrated and deleted on first use by a person's command | yes | kept when verification fails |
 | Android `DeviceVault.java` | device grant | Android Keystore, user-authentication required | the companion app | biometric/PIN by design | closed |
 
-Test isolation: `tests/conftest.py` sets `POOLHOUSE_NO_REAL_KEYSTORE=1` and
+Test isolation (superseded 2026-10-11: `poolhouse.real_machine` allows the machine's own keystore only to the installed software on the real home, no variable; the text below describes the earlier variable): `tests/conftest.py` set `POOLHOUSE_NO_REAL_KEYSTORE=1` and
 `PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring` for the run and every child, refuses the
 real backends' `get/set/delete_password` in process, installs an in-memory ring and patches
 `keystore.interactive` to true. `runtime_deploy._clean_environment` (the smoke run of a new

@@ -47,7 +47,7 @@ sets the version and releases.
    result, reviewer) goes to the activity log (no secrets) and the hash-chained event log.
 7. **Dry run is the default in tests and `--dry-run` everywhere**: tests use a bare local repo as
    `origin` and fake scanners; never the real network, never the real Keychain
-   (POOLHOUSE_NO_REAL_KEYSTORE; children use tests/onboard_support.FileKeyring); mutation-check each
+   (poolhouse.real_machine refuses the real keystore; children use tests/onboard_support.FileKeyring); mutation-check each
    refusal and each gate once. Red-team rows for the new surfaces. Budgets only fall.
 8. Docs: docs/publishing.md (what auto-publishes, what never does, how to pause, how to rotate
    the credential), `python3 scripts/reference --write`, no version number.

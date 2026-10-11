@@ -22,7 +22,7 @@ ENV_DROPPED = ("CLAUDECODE", "POOLHOUSE_NONINTERACTIVE", "CLAUDE_CODE_SESSION_AT
 def environment(state: Path, **more: str) -> dict[str, str]:
     """A child environment whose poolhouse state is ``state`` and whose Claude folder is beside it."""
     env = {k: v for k, v in os.environ.items() if k not in ENV_DROPPED}
-    env.update(POOLHOUSE_HOME=str(state), POOLHOUSE_NO_REAL_KEYSTORE="1",
+    env.update(POOLHOUSE_HOME=str(state), 
                CLAUDE_CONFIG_DIR=str(state.parent / "claude"), **more)
     return env
 

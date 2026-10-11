@@ -34,8 +34,6 @@ AGENT_MARKERS = ("CODEX_THREAD_ID", "CODEX_SESSION_ID", "CLAUDECODE", "POOLHOUSE
                  "POOLHOUSE_WORKSPACE_DENYLIST", "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_BOARD", "POOLHOUSE_HOME")
 
 
-NO_REAL_KEYSTORE = "POOLHOUSE_NO_REAL_KEYSTORE"
-"""Set for every command of a device: the machine's own keystore (the account's Keychain on a Mac) reads as absent, so no device of a check asks for or keeps a key there."""
 ALL_INTERFACES = "0.0.0.0"  # noqa: S104 - a container listens on every interface of its own network namespace, a CI runner's node on its own
 PLATFORM_NAME = {"darwin": "mac", "win32": "windows"}.get(sys.platform, "linux")
 """What the device the rig runs on is called in reports."""
@@ -135,6 +133,10 @@ class Device:
         """Delete files of the node's state directory by name or glob (what makes a device a new device on its next start)."""
         raise NotImplementedError
 
+    def delete_tree(self, name: str) -> None:
+        """Delete the directory ``name`` of the node's state directory."""
+        raise NotImplementedError
+
     def prepare_checkout(self) -> None:
         """Make the checkout the test farm runs in a git checkout (it is a copy of the tree in a container)."""
 
@@ -211,6 +213,10 @@ class Device:
         """A pool call (join, policy, remove, sync) as this device's session on the `pool` board; the node allows it only under a grant."""
         return self.call(method, "", self.admin_session()[0], **params)
 
+    def certificate(self) -> str:
+        """The device's certificate (hex DER) as its node kept it in its state directory: what an admin's admit of this device names."""
+        return str(self.wire("cert", "--state", self.state_text)["result"]["cert"])
+
     def post(self, body: str, to: str = "#general", kind: str = "note") -> dict:
         return self.call("post", BOARD, kind="message", fields={"type": kind, "to": to, "body": body, "subject": ""})
 
@@ -265,7 +271,7 @@ class LocalDevice(Device):
 
     def env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         base = {k: v for k, v in os.environ.items() if k not in AGENT_MARKERS}
-        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_NODE_LAN": "off", NO_REAL_KEYSTORE: "1", **(extra or {})}
+        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_NODE_LAN": "off", **(extra or {})}
 
     def run(self, argv, env=None, timeout=120, check=True):
         done = subprocess.run(argv, env=self.env(env), cwd=ROOT, capture_output=True, text=True, timeout=timeout, check=False)
@@ -303,6 +309,9 @@ class LocalDevice(Device):
             for found in Path(self.state_text).glob(pattern):
                 found.unlink(missing_ok=True)
 
+    def delete_tree(self, name):
+        shutil.rmtree(Path(self.state_text) / name, ignore_errors=True)
+
     def start_node(self, *more):
         args = ["--listen", self.listen_text(), "--sync-ms", SYNC_MS, *self.build_args, *self.extra, *more]
         flags = [f"--arg={a}" for a in args]
@@ -336,7 +345,7 @@ class ContainerDevice(Device):
         return ["docker", "exec", "-i", self.box.name, "python", f"{RIG}/pool_check/driver.py"]
 
     def run(self, argv, env=None, timeout=120, check=True):
-        return self.driven(argv, {"POOLHOUSE_HOME": "/pc", "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": "", NO_REAL_KEYSTORE: "1", **(env or {})}, timeout, check)
+        return self.driven(argv, {"POOLHOUSE_HOME": "/pc", "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": "", **(env or {})}, timeout, check)
 
     def script(self, name, *argv):
         return ["python", f"{RIG}/pool_check/{name}", *argv]
@@ -366,6 +375,9 @@ class ContainerDevice(Device):
 
     def delete_files(self, *names):
         self.box.exec("sh", "-c", "cd /pc/node && rm -f " + " ".join(names))
+
+    def delete_tree(self, name):
+        self.box.exec("rm", "-rf", f"{STATE}/{name}")
 
     def prepare_checkout(self):
         self.box.exec("sh", "-c", "cd /opt/poolhouse && git init -q . 2>/dev/null; true")
@@ -443,7 +455,7 @@ class WslHostedDevice(Device):
         return wsl_argv(self.distro, self.checkout, [*self.interpreter(), f"{self.checkout}/tests/pool_check/driver.py"], {"PYTHONPATH": f"{self.checkout}/src"})
 
     def run(self, argv, env=None, timeout=120, check=True):
-        return self.driven(argv, {"POOLHOUSE_HOME": self.home, "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": f"{self.checkout}/src", NO_REAL_KEYSTORE: "1", **(env or {})}, timeout, check)
+        return self.driven(argv, {"POOLHOUSE_HOME": self.home, "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": f"{self.checkout}/src", **(env or {})}, timeout, check)
 
     def windows_host(self) -> str:
         """The address of Windows as WSL sees it: the default route's gateway (NAT mode)."""
@@ -482,6 +494,9 @@ class WslHostedDevice(Device):
 
     def delete_files(self, *names):
         self.run(["sh", "-c", f"cd {self.state_text} && rm -f {' '.join(names)}"])
+
+    def delete_tree(self, name):
+        self.run(["rm", "-rf", f"{self.state_text}/{name}"])
 
     def prepare_checkout(self):
         self.run(["sh", "-c", "git rev-parse --git-dir >/dev/null 2>&1 || git init -q ."])

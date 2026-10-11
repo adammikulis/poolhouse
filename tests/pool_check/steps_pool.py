@@ -9,8 +9,9 @@ def join_open(world: World) -> str:
     """Under policy `open` a device on the same network joins with no code; one the first device only sees through NAT or loopback is refused with the reason."""
     world.fresh()
     first, second = world.first, world.others[0]
+    world.found(first, "open")
     host, port = first.reach(second)
-    out = second.try_call("join_pool", token=_admin(second), host=host, port=port, fingerprint=_open(first))
+    out = second.try_call("join_pool", token=_admin(second), host=host, port=port, fingerprint=first.fingerprint)
     notes = []
     if out["ok"]:
         world.converged([first, second])
@@ -22,7 +23,7 @@ def join_open(world: World) -> str:
         notes.append(f"{second.name} was refused by {first.name} ({host} is not on its network): " + out["error"][:100])
     if world.count >= 3 and not world.native:
         third = world.others[1]
-        world.join(third, second, policy="open")
+        world.join(third, second)
         world.converged([first, second, third] if out["ok"] else [second, third])
         by = {m["fingerprint"]: m["by"] for m in second.others() if m["fingerprint"] == third.fingerprint}
         assert by == {third.fingerprint: "open"}, f"{second.name} recorded the join of {third.name} as {by}, not by open"
@@ -30,31 +31,28 @@ def join_open(world: World) -> str:
     return "; ".join(notes)
 
 
-def _open(device) -> str:
-    device.admin("set_join_policy", policy="open")
-    return device.fingerprint
-
-
 def join_secure(world: World) -> None:
-    """Every Linux device joins with a join code, one after another (each joins the previous one), and all list one another."""
+    """The first device founds a secure pool; every other device joins with a join code once the person's key has signed for it, one after another (each joins the previous one), and all list one another."""
     world.fresh()
     world.pool_of(world.devices)
     for device in world.devices:
-        assert {m["by"] for m in device.others()} <= {"join-code", "open"}, device.others()
+        assert {m["by"] for m in device.others()} <= {"found", "join-code", "open"}, device.others()
 
 
 def a_wrong_code_is_refused(world: World) -> None:
-    """A device that gives the wrong join code does not join, and the same code is not accepted again after three tries."""
+    """A device the person admitted that gives the wrong join code does not join, and the same code is not accepted again after three tries."""
     world.fresh()
     mac, linux = world.first, world.others[0]
-    code = mac.admin("add_device", ttl_s=120)
+    world.found(mac)
+    world.person.admit(mac, linux, "join-code")
+    code = mac.admin("add_device", ttl_s=120, presigned=True)
     host, port = mac.reach(linux)
     for _ in range(3):
         out = linux.try_call("join_pool", token=linux.admin_token or _admin(linux), host=host, port=port, passphrase="000000" if code["code"] != "000000" else "111111")
         assert not out["ok"], f"a wrong join code was accepted: {out}"
     right = linux.try_call("join_pool", token=linux.admin_token, host=host, port=port, passphrase=code["code"])
     assert not right["ok"], "the right code worked after three wrong tries: the window must close"
-    assert not mac.others(), f"a device that never got in is listed: {mac.others()}"
+    assert linux.pool()["pool"] != mac.pool()["pool"], f"{linux.name} holds the pool of {mac.name} though it never gave the right code in time"
 
 
 def _admin(device) -> str:

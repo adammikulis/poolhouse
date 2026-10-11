@@ -116,20 +116,30 @@ class World:
             device.stop_node()
         device.wipe_state()
 
-    def join(self, joiner: Device, via: Device, policy: str = "secure") -> dict:
-        """``joiner`` joins the pool ``via`` is in, at the address ``via`` has for the joiner, under ``policy`` (a code, or none under open)."""
+    def found(self, device: Device, policy: str = "secure") -> dict:
+        """``device`` founds a governed pool of ``policy`` (it cannot change later) with the rig's admin key, and is its first member."""
+        return self.person.found(device, policy)
+
+    def join(self, joiner: Device, via: Device) -> dict:
+        """``joiner`` joins the governed pool ``via`` is in, at the address ``via`` has for the joiner: under `open` by the fingerprint of ``via``, under `secure` by
+        a code, after the admin key has signed the admit of the joiner's certificate (the person's yes) and ``via`` has taken it."""
         host, port = via.reach(joiner)
-        if policy == "secure":
-            code = via.admin("add_device", ttl_s=JOIN_TTL_S)
-            return joiner.admin("join_pool", host=host, port=port, passphrase=code["code"])
-        via.admin("set_join_policy", policy="open")
-        return joiner.admin("join_pool", host=host, port=port, fingerprint=via.fingerprint)
+        if via.pool()["policy"] == "open":
+            return joiner.admin("join_pool", host=host, port=port, fingerprint=via.fingerprint)
+        self.person.admit(via, joiner, "join-code")
+        code = via.admin("add_device", ttl_s=JOIN_TTL_S, presigned=True)
+        return joiner.admin("join_pool", host=host, port=port, passphrase=code["code"])
+
+    def remove(self, remover: Device, victim: Device) -> dict:
+        """The admin key removes ``victim`` from the pool ``remover`` is in; ``remover`` takes the signed removal and the members learn it by syncing."""
+        return self.person.remove_member(remover, victim.fingerprint)
 
     def pool_of(self, devices: list[Device], order: list[int] | None = None, policy: str = "secure") -> None:
-        """Join ``devices`` one after another into one pool: each (after the first) joins the previous one."""
+        """Found a pool of ``policy`` on the first of ``devices`` and join the rest one after another: each (after the first) joins the previous one."""
         chain = [devices[i] for i in (order or range(len(devices)))]
+        self.found(chain[0], policy)
         for joiner, via in zip(chain[1:], chain, strict=False):
-            self.join(joiner, via, policy)
+            self.join(joiner, via)
         self.converged(devices)
 
     def converged(self, devices: list[Device], seconds: float = 30) -> None:

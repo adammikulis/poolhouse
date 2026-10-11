@@ -1,6 +1,8 @@
 # Pools, governance, serving and shared boards
 
-Design, 2026-10-11. Nothing in this document is built. It replaces the single-pool assumption of `docs/node.md` (the section on
+Design, 2026-10-11. Slice 1 (governance core, section 11) is built in `app/poolhouse-node/src/gov/` and described as built in
+`docs/node.md`, "Who governs a pool"; the rest of this document is not built. Where the code differs from the design as first
+written, the text below says what the code does. It replaces the single-pool assumption of `docs/node.md` (the section on
 the pool) and adds three things the product needs: a device that belongs to several pools, a device that serves a local model to
 several pools, and a board that more than one pool holds. It starts with the question every other part depends on: who is allowed
 to change a pool.
@@ -161,15 +163,16 @@ A pool has no key of its own and no secret shared by its members. Nothing in a m
 ### 1.5 Acts
 
 Every act is `{v, pool, epoch, kind, body, at_ms, nonce, prev, signatures: [{kind: admin|device, key, sig}]}`, signed over
-`poolhouse/pool-act/v1` and a line break and the canonical JSON of everything but the signatures. `prev` is the hash of the latest
-admin-set act the signer knew. The member record (`roster.json`) is a view folded from the acts; it is not an input and a `members`
+`poolhouse/pool-act/v1` and a line break and the canonical JSON of everything but the signatures. `prev` is the hash of the charter in force that the
+signer knew (an epoch's charter is derived from the acts, so its hash is the same on every device that applied the same acts, whatever order a
+hold ended in). The member record (`roster.json`) is a view folded from the acts; it is not an input and a `members`
 row is never believed again. A **hold** is a delay before an act takes effect, in which any strong admin may `cancel` it.
 
 | Kind | Signed by | Effect | Hold, replay, limits |
 |---|---|---|---|
 | `found` | the founding keys, each with its acceptance | the epoch-1 charter | the id is its hash; once |
 | `admit` | secure: a strong admin after the join rules of 1.6, or the delegate for a trusted-path join; open: any active member's device key, `via: segment` | adds the certificate, with `how` and `by_key` | idempotent; refused for a removed certificate; delegate 3 an hour, 10 a day; an open member's device 5 an hour |
-| `remove` | one strong admin | the certificate is `revoked`, sticky | idempotent; immediate |
+| `remove` | one strong admin | the certificate is `revoked`, sticky; carries a log cut (below) | idempotent; immediate |
 | `leave` | the device itself | status `left`; a later `admit` may undo it | idempotent |
 | `admin_add` | sensitive threshold of strong admins **and** the added key's acceptance | the key joins the admin set | effect after `holds.admin_add_h` (24 h) |
 | `admin_remove` | sensitive threshold of strong admins other than the removed key; carries a cut | the key leaves the admin set | effect after `holds.admin_remove_h` (24 h); the removed key may `veto` |
@@ -185,15 +188,25 @@ row is never believed again. A **hold** is a delay before an act takes effect, i
 
 **How a member accepts an act.** The pool and epoch are its own; every signature verifies; the distinct people (or keys, under
 `unit: key`) among the signers that hold a **strong** admin key of that epoch reach the class's threshold (the recovery key counts
-for none); a `device` signature is accepted only where the table says so; `at_ms` is not more than five minutes ahead of its clock.
+for none); a `device` signature is accepted only where the table says so, and each one by a device that may give it (its own `leave`, alone;
+an `admit` from a live delegate, or in an open pool from a member that says `segment`), so a member that relays an act with its own
+signature added changes nothing; an act names each signer once; `at_ms` is not more than five minutes ahead of its clock. An admin
+act that follows a charter the pool has left behind is refused, and so is an act signed only by admins that are no longer listed
+unless the cut of their removal names it.
 Anything else is refused and recorded with its reason, never applied. Heartbeats (1.6) travel in the same exchange and are not
 stored.
 
 **Time.** Every hold, delay, window and expiry is measured on **each device by its own
-monotonic clock from the first moment that device saw the act**, saved at checkpoints and across restarts. The wall clock and the
+monotonic clock from the first moment that device had the act with every signature it needs** (an act signed by one of two required people
+and completed three days later is held from the completion, so a thief with all the signatures but one gets no head start), saved at
+checkpoints and across restarts. An act that is complete on a device only after the first act of its step has run its hold arrives too
+late to join or contest that step there, so a late arrival cannot reopen a step that is already in effect. The wall clock and the
 signer's `at_ms` are never read for a delay: an act backdated by its signer, or a device whose clock a network source moved
 forward, shortens nothing. A device counts only the time it is awake, so a hold never ends early for a device that was off: it ends
-after the full hold has run on that device with no `cancel` seen.
+after the full hold has run on that device with no `cancel` seen. The acts a device takes from the member that let it in as already
+in effect (their holds ran before it came) can still be cancelled until their hold has run from the moment it joined, so a host that
+withheld a `cancel` does not make a joiner's view final. The order of a device's admits and leaves, and of `delegate` and
+`delegate_end`, is the order this device first saw them.
 
 **Order, forks and last admin.**
 
@@ -216,12 +229,28 @@ after the full hold has run on that device with no `cancel` seen.
 key that is not in the cut is void on every device, whenever it arrives. A stolen key cannot keep a signed act in a drawer and
 release it after the key is removed.
 
-**Limits and paging.** Acts replicate in the `acts` member op in pages of at most 256 acts (`{pool, have: <hashes of the last 4,096>,
-page}`), each act at most 16 KiB, a page at most 2 MiB so it fits the 4 MiB frame. Caps per pool: 4,096 live `admit` entries, 256
-admin-set acts, 1 pending `handoff`, 1 pending `recover`, 1 pending `succession`. There are no stored tickets: a join window is
+**Removing a device carries a log cut.** A `remove` lists, for each log of boards that the removed device wrote and the removing
+admin's device holds, the board, the origin and how many entries of it stand (at most 256 logs; the node fills it in and ignores
+what a caller sent). Every device that learns of the removal cuts those logs there and takes no later entry of them, from the removed
+device or from any member that relays it; an entry carries its own signature, and a relay proves nothing about it. A log of the
+removed device that no removal names stands as far as the device holds it, and no log is started under its key. Several removals of
+one device stand at the least they name. What the removed device admitted (as a delegate or an open pool's member) goes with it, and
+an admin may admit those devices again. A member that has not heard of the removal can still hold and pass on later entries until it
+does; the others refuse them.
+
+**Limits and paging.** Acts replicate in the `acts` member op in pages of at most 256 acts (`{pool, have: <tokens of the last 4,096 acts held>,
+page, push}`, a token being an act's id and a tag of who has signed it, so a signature added later to an act already held is passed on),
+each act at most 16 KiB, a page at most 2 MiB so it fits the 4 MiB frame. Caps per pool: 4,096 `admit` entries that stand, 256
+admin-set acts, 8,192 acts, 1 pending `handoff`, 1 pending `recover`, 1 pending `succession`. What a member can send in bulk, the
+device-signed `admit` that stands nowhere, is held 32 of one device's and 1,024 in all, a device's own oldest first, and goes before
+anything else when the pool is full; a device holds at most eight of its own `leave` and signs one only while it is a member. A device
+that takes a push is folded once for each time an act that follows needs what an earlier one changed (the admin set, a device just
+admitted), and a request that changes nothing writes nothing. There are no stored tickets: a join window is
 ephemeral and lives in the memory of the device that opened it, and the delegate's `admit` is the only trace. Rates: knocks 5 a
 minute per source address and 30 a minute in all, at most 3 pending; one pending sensitive approval per pool; after a decline the
-same kind of request from the same session waits 10 minutes.
+same kind of request waits 10 minutes (slice 1 keeps this per device and kind, since it has no session of the phone to name).
+A device that catches up after being off counts the admits it first sees at once, so it refuses those past the rate of a delegate
+or an open member that others took when they came; that is the cost of counting by first sight.
 
 The last admin cannot be removed, nor the set left below the sensitive threshold; ending a pool's governance is a reissue.
 
@@ -307,8 +336,9 @@ over by being there.
 
 ### 1.9 Changing the join policy is a reissue
 
-`set_join_policy` is removed. The node answers it with `invalid: a pool's join policy never changes in place; reissue the pool to
-change it`, and no grant can name it. To go from open to secure (or the reverse) an admin reissues the pool.
+`set_join_policy` is removed. The node answers it, in a governed pool, with `invalid: A pool's join policy never changes in place;
+reissue the pool to change it.`, whatever grant is held; a legacy pool (1.14) keeps its local, grant-guarded `set_join_policy` until
+it is migrated, because removals and the policy are the local API's alone there. To go from open to secure (or the reverse) an admin reissues the pool.
 
 **The agent flow** (the owner says "make this pool secure"):
 
@@ -559,25 +589,27 @@ reissue**, started only by an explicit call, never by the node on start, and **i
 | 13 | Migration | Legacy mode keeps syncing but ignores member removals, policy and unknown rows; one originator; handshaken devices only; keys enrolled first | 1.14 | `reissue.rs` |
 | 14 | Cross-pool | Beacons rotate and seal; tokens bound to one pool; the least permissive right wins; origin cap counts live origins; bucketed timing | 4.2, 6.3, 7.4 | `pools.rs`, `board_share.rs` |
 
-### 1.16 What slice 1 must carry from the removal review (2026-10-11)
+### 1.16 What slice 1 carries from the removal review (2026-10-11), as built
 
-Today a device that records a removal stops exchanging with the removed device (`docs/node.md`, "Membership"), but a member that has not
-heard of the removal still syncs with it, and the entries it takes are kept and relayed: `sync::take` and `Board::ingest` check a row's
-signature and chain, never whether its origin belongs to a removed device. `app/poolhouse-node/tests/removal.rs`
-(`rows_of_a_removed_device_relayed_by_an_unaware_member_are_still_taken`) pins that behaviour, and slice 1 flips it. Two requirements:
+A device that records a removal stops exchanging with the removed device (`docs/node.md`, "Membership"), but a member that has not
+heard of the removal still syncs with it, and it used to take the entries the removed device wrote and relay them: `sync::take` and
+`Board::ingest` checked a row's signature and chain, never whether its origin belongs to a removed device. Two requirements, both built:
 
-* **F1: a removal carries a cut of the removed device's logs.** The act that removes a member (`remove`) lists, for each log origin of
-  the removed device, the tip (sequence and hash) the remover holds, as `admin_remove` does for a key's acts (1.5, "Removing a key
-  carries a cut"). Every receiver refuses the rows of such an origin past the cut, **whoever relays them**: a relayed row carries no
-  authority of its own, so a member that already removed the device and a member that has not heard yet end with the same rows. The
-  pinned test then asserts the opposite (the relayed row is refused), and a second test shows a row up to the cut still arrives by a relay
-  that has not heard.
-* **F2: a removal retracts what the removed key admitted.** While other members were unaware of a removal, the removed device could
-  enrol devices (rows of the `members` exchange today, `admit` acts in slice 1), and those devices would stay members after it. The
-  removal must be able to name them: an `admit` by the removed key that is not in its cut is void on every device, whenever it arrives,
-  and the devices it admitted before the cut go to the person's review list (keep or drop) with the removed key's name and the check
-  words of each, never silently kept. A test removes a device that enrolled a stranger while another member was unaware, and ends with
-  the stranger not a member on any device.
+* **F1: a removal carries a cut of the removed device's logs.** The `remove` act lists, for each log of boards that the removed
+  device wrote and the remover's device holds, the board, the origin and the tip it holds (sequence and hash), as `admin_remove` does
+  for a key's acts (1.5, "Removing a key carries a cut"; the node writes the list and ignores what a caller sent). Every receiver
+  refuses the rows of such an origin past the cut, **whoever relays them**, and drops a copy it holds that does not pass through the
+  tip named; a relayed row carries no authority of its own, so a member that already removed the device and a member that has not
+  heard yet end with the same rows. A log that no removal names stands as far as the device holds it, and no entry under the key of
+  a removed device is taken from a log started later. `app/poolhouse-node/tests/removal.rs`
+  (`rows_of_a_removed_device_relayed_by_an_unaware_member_are_refused_by_a_device_that_holds_the_removal`) pins the refusal, and
+  `tests/gov_removal.rs` shows the rows up to the cut still arrive through a relay that has not heard.
+* **F2: a removal retracts what the removed key admitted.** In a governed pool a device is a member only by an `admit` act: an admin's,
+  a live delegate's, or an open pool's member's. `members` rows enrol nobody, and an `admit` signed by a device that is removed (or by
+  an admin key whose removal does not name it in its cut) is void on every device, whenever it arrives, and an admin admits those
+  devices again if the person wants them (`gov_removal.rs`, `removing_a_device_removes_the_devices_it_admitted...`). **Not built:** the
+  review list that puts the devices a removed admin key admitted inside its cut to the person to keep or drop with the check words of
+  each (slices 5 and 8); until then they stay members.
 
 ## 2. Operated by agents, approved by a tap
 
@@ -840,7 +872,7 @@ id may enter its signatures, and the old note "the head signature uses an empty 
 
 **Grants** gain `scope.pool`: an id, `*`, or `admin:<key fingerprint>` (the pools whose admin set holds that key). A grant that names
 a pool-level action is spent only for the pool in the call's context. The registry changes: removed `set_join_policy`; kept `shard_consent` (its per-device allow
-list, 1.7); added `pool_create`, `pool_leave`, `pool_reissue`, `pool_migrate`, `admin_manage`, `board_share`, `board_leave`,
+list, 1.7); added `pool_create`, `pool_leave` and `admin_manage` (slice 1), `pool_reissue`, `pool_migrate`, `board_share`, `board_leave`,
 `board_bind`, `board_rebind`, `serve_offer`, `serve_call`, `inbound_consent` (model calls). A grant lets a session **ask**; an admin signature is what makes a
 governing act true for everyone; both are needed, and the first-run bundle (section 2) is how a person gives the first without a
 tap per act. Pool-level audit entries (member added, uses of pool-level grants, offers) are written to the pool's own history
@@ -852,12 +884,12 @@ board, never to a shared board.
 |---|---|---|
 | `pool_list` | none | every pool: id, name, policy, member count, this device's role, boards, offers |
 | `pool_status {pool}` | none | members with reach, governance state (admins, thresholds, pending recover or succession), per-pool limits |
-| `pool_create {name, policy, discovery}` | grant `pool_create` | the pool; approval for the founding charter |
+| `pool_create {title, policy, project}` | grant `pool_create` | the pool; approval for the founding charter (`title`, since `name` is a field the API refuses on every request to keep a caller from naming a sender; `discovery` arrives with slice 4; a charter of weak keys alone is refused) |
 | `pool_leave {pool}` | grant `pool_leave` | this device leaves (`leave` act) |
 | `add_device {pool, ttl_s}`, `join_pool {pool?, host, port, passphrase, fingerprint}` | grants `add_device`, `join_pool` | as today, per pool; a device in other pools joins as a new pool record |
 | `member_remove {pool, fingerprint}` | grant `member_remove` | asks for the admin act; one tap |
 | `pool_reissue {pool, policy, keep}` | grant `pool_reissue` | draft and approval (1.9) |
-| `admin_list`, `admin_add`, `admin_remove` | `admin_manage` | admins and their state |
+| `admin_list`, `admin_add`, `admin_remove` | `admin_manage` | admins and their state; slice 1 has `pool_propose {kind, body}` (make an act and sign it with the keys this device's signer holds), `pool_cosign {act}` (add this signer's signatures to an act the pool holds) and `pool_submit {act}` (take an act signed elsewhere; the signatures are the authority) |
 | `pool_migrate` | grant `pool_migrate` | 1.14 |
 | `sync_now {pool}`, `shard_call {pool, device, ...}`, `capacity {pool}` | as today | per pool; ambiguity is a plain question |
 

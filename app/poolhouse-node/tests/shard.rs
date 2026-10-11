@@ -211,7 +211,7 @@ fn the_requester_is_the_certificate_never_a_field_of_the_request() {
     assert_eq!(local["error"]["code"], "denied", "a caller cannot name who asks: {local}");
     let c = device();
     rig.a.join_with_code(&c);
-    rig.b.ok("sync_now", "", &rig.b.token, json!({}));
+    rig.b.know(&c);
     rig.b.ok("shard_consent", "", &rig.b.token, json!({"allow": [c.fp()]}));
     let mut other = PeerClient::connect(&c.net.me, rig.b.addr(), Some(&rig.b.fp())).unwrap();
     {

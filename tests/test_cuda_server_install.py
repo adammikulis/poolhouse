@@ -16,8 +16,7 @@ class CudaServerInstallTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         isolated = patch.dict(os.environ, {"POOLHOUSE_HOME": str(self.root / "state"),
-                                          "POOLHOUSE_CACHE": str(self.root / "cache"),
-                                          "POOLHOUSE_NO_REAL_KEYSTORE": "1"})
+                                          "POOLHOUSE_CACHE": str(self.root / "cache")})
         isolated.start()
         self.addCleanup(isolated.stop)
         self.llama = importlib.import_module("poolhouse.fleet.llama")

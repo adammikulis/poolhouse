@@ -15,6 +15,13 @@ pub struct Pin {
     pub bound: bool,
 }
 
+/// How much of an origin's log stands after its device was removed: its first ``seq`` entries, the last of which hashes to ``hash``.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Cut {
+    pub seq: u64,
+    pub hash: String,
+}
+
 #[derive(Serialize, Deserialize, Default, Debug)]
 #[serde(default)]
 pub struct Tables {
@@ -32,6 +39,8 @@ pub struct Tables {
     pub labels: BTreeMap<String, String>,
     /// The latest foreign rows that were not folded, with the reason.
     pub rejected: Vec<(String, String)>,
+    /// For an origin whose device was removed, how many of its entries stand: no later one is taken, whoever relays it.
+    pub cuts: BTreeMap<String, Cut>,
 }
 
 pub struct State {

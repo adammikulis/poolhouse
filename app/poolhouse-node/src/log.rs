@@ -75,6 +75,21 @@ impl Log {
         Ok(())
     }
 
+    /// Keep the first ``keep`` rows and cut the file after them.
+    pub fn truncate(&mut self, keep: usize) -> Result<()> {
+        if keep >= self.rows.len() {
+            return Ok(());
+        }
+        let bytes = std::fs::read(&self.path)?;
+        let mut ends = bytes.iter().enumerate().filter(|(_, b)| **b == b'\n').map(|(i, _)| i + 1);
+        let end = if keep == 0 { 0 } else { ends.nth(keep - 1).unwrap_or(bytes.len()) };
+        self.file.set_len(end as u64)?;
+        self.file.sync_all()?;
+        self.file.seek(SeekFrom::End(0))?;
+        self.rows.truncate(keep);
+        Ok(())
+    }
+
     /// Delete the file; the log is gone.
     pub fn remove(self) -> Result<()> {
         std::fs::remove_file(&self.path)?;

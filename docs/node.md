@@ -171,7 +171,8 @@ the listener polls like the non-blocking socket. A pipe vanishes with its node: 
 Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…}}`; reply
 `{"v":1,"id":…,"ok":true,"result":…}` or `{"ok":false,"error":{"code","message"}}` with codes
 `denied`, `invalid`, `quota`, `damaged`, `gap`, `io`. Unknown envelope fields, params and methods are
-`invalid`.
+`invalid`. A refusal an agent can say to a person also carries `say` (one sentence, at most 160 characters), `needs`
+(`approval`, `grant`, `device`, `time` or `none`) and `then` (`wait`, `retry`, `ask-owner` or `stop`).
 
 | method | needs | params | result |
 |---|---|---|---|
@@ -206,10 +207,18 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
 | `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
-| `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, and each member with `status`, `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none` or `self`) with `reach_hint` (the exact fix when it is not direct) and `network` (`wsl-nat`, `wsl-mirrored` or empty, as the member's hello said) |
-| `member_remove` | token with the grant `member_remove` | `fingerprint` | `{fingerprint, status}` |
-| `set_join_policy` | token with the grant `set_join_policy` | `policy` (`open` or `secure`) | `{policy, changed}` |
-| `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s` | `{code, expires_in_s, port, fingerprint}` |
+| `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, `governance` ("Who governs a pool") and each member with `status` (`active`, `revoked` or `left`), `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none` or `self`) with `reach_hint` (the exact fix when it is not direct) and `network` (`wsl-nat`, `wsl-mirrored` or empty, as the member's hello said) |
+| `member_remove` | token with the grant `member_remove` | `fingerprint` | `{fingerprint, status}`; in a governed pool an act of the admins ("Who governs a pool") |
+| `set_join_policy` | token with the grant `set_join_policy` | `policy` (`open` or `secure`) | `{policy, changed}` in a legacy pool; in a governed pool `invalid` with the sentence "A pool's join policy never changes in place; reissue the pool to change it." |
+| `pool_create` | token with the grant `pool_create` | `title`, `policy` (default `secure`), `project` | `{pool, name, policy, epoch}`: founds the governed pool of this device, which must be alone in its pool |
+| `pool_leave` | token with the grant `pool_leave` | | the `leave` act this device signed with its own key |
+| `pool_propose` | token with the grant `admin_manage` | `kind`, `body` | `{act, status, have, need, why}`: makes the act and signs it with the keys this device's signer holds that count |
+| `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
+| `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
+| `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
+| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, strength, label}`) | `{charter, anchor, accept, summary}`: the charter with blank acceptances and, for each key, the bytes it signs to accept it; the rig or person signs them and hands the charter back to `pool_found` |
+| `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the device is a member once an admit signed for it is submitted |
+| `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
 | `sync_now` | token with the grant `sync_now` | | `{reached}` |
 | `shard_call` | token with the grant `shard_call` | `device` (name or fingerprint), `op`, `args` | the device's answer to one test-shard op (docs/test-farm.md); the node adds `op` and the session as `by`, and refuses `op`/`by` in `args` |
@@ -389,9 +398,9 @@ API, for itself or anyone, and a `grant` entry any writer puts on the board with
 allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
 ("Key custody" below says exactly what that does and does not protect).
 
-**The registry.** Seventeen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
+**The registry.** Twenty actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
 `sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release`,
-`file_delete`, `link_read`, `link_write`, `link_remove` and `source_add`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
+`file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave` and `admin_manage`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
 `keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
 owner's release authorization (docs/person-delegation.md); the GPU is leased one holder at a time (the Leases section).
@@ -472,7 +481,8 @@ pool actions, `land_trust`, `land_control`, `shard_consent`, `quarantine_release
 A revocation or a use from a device this one does not trust changes nothing.
 
 **Where it is checked.** `member_remove` (resource: the fingerprint), `set_join_policy` (the policy), `add_device`, `join_pool` (the
-host), `sync_now`, `shard_call` (the device) and `shard_consent` before they run; `land_trust` (the fingerprint) and `land_control`
+host), `sync_now`, `shard_call` (the device), `shard_consent`, `pool_create` (the title), `pool_leave` and `admin_manage` (the kind of act, or
+`cosign`) before they run; a grant lets a session ask, and an admin's signature is what makes a governing act true for everyone; `land_trust` (the fingerprint) and `land_control`
 (the target branch, `*` for pause and resume) in the landing queue, besides having no parent; `task_authority` (the task, or `mode`)
 wherever a session with no parent acts for the person (assign, review in strict mode, block, recover, set the mode, record a
 landing), spent only where it is what lets the call through; `note_verify` (the note), `quarantine_release` (the held id) and
@@ -694,28 +704,24 @@ listener is the one network port.
   handshake) or, when joining, takes any certificate and lets the exchange authenticate it. A server
   completes the handshake for an unknown certificate (it may join or join, nothing else) and refuses
   one the pool has revoked. No certificate, no connection.
-- **Membership** (`membership.rs`, `pool.json`; semantics of `fleet/membership.py`). Per device: fingerprint,
-  certificate, status `active` or `revoked`, who recorded it. A row whose fingerprint is not the hash of
-  its certificate is dropped; revoked wins every merge and is never undone; a revoked certificate cannot
-  be enrolled again. Members swap records with the `members` op; only an active member's rows are merged.
-  Every request is checked against the record when it arrives, so a device removed after it connected is
-  refused at its next request on the same connection. A device that records a removal also stops using the
-  connections it holds to the removed device: a sync cycle does not dial a member removed since the cycle
-  began, and a dial already open ends at its next request, so nothing is sent to, taken from or merged from
-  the removed device once the record says so (`netsync::locked_for`); it closes the connections it keeps
-  open to the removed device and the ones the removed device opened to it (`Net::drop_removed`, run after
-  a removal is made here, after a `members` request is served and at the end of each sync cycle), so the
-  device shows as not connected. A member that has not heard of the
-  removal yet still syncs with the removed device and passes on what it takes; it hears of the removal when
-  it next reaches a member that knows. The entries the removed device wrote in that window are kept and
-  relayed: `sync::take` and `Board::ingest` do not check the origin of a row against the active members, so
-  a member that already removed the device takes them from the relay
-  (`removal.rs`, `rows_of_a_removed_device_relayed_by_an_unaware_member_are_still_taken`). Changes are
-  written to the board `pool` as audit entries; the record is the authority.
-- **Join policy**: one pool attribute, `open` or `secure` (default `secure`), newest change wins, set by
-  `set_join_policy` and carried by the `members` op.
+- **Membership** (`membership.rs`). Per device: fingerprint, certificate, status `active`, `revoked` or `left`, how it came in. A row
+  whose fingerprint is not the hash of its certificate is dropped; a removed (`revoked`) certificate cannot come back, and a device
+  that `left` comes back only by an admit. Every request is checked against the record when it arrives, so a device removed after
+  it connected is refused at its next request on the same connection. A device that records a removal also stops using the
+  connections it holds to the removed device: a sync cycle does not dial a member removed since the cycle began, and a dial already
+  open ends at its next request, so nothing is sent to, taken from or merged from the removed device once the record says so
+  (`netsync::locked_for`); it closes the connections it keeps open to the removed device and the ones the removed device opened to
+  it (`Net::drop_removed`, run after a removal is made here, after a `members` request is served and at the end of each sync cycle),
+  so the device shows as not connected. A member that has not heard of the removal yet still syncs with the removed device and
+  passes on what it takes; the entries the removed device wrote in that window are refused by every device that holds the removal,
+  whoever relays them ("Who governs a pool", the log cut of a removal). Changes are written to the board `pool` as audit entries;
+  the record is the authority. A pool is **governed** (below) or **legacy** (`pool.json`): in either, nothing a member sends in an
+  ordinary exchange adds a device, removes one or moves the join policy.
+- **Join policy**: one pool attribute, `open` or `secure` (default `secure`). In a governed pool it is part of the charter and never
+  changes; in a legacy pool only this device's own `set_join_policy` (a grant) and the join that made this device a member write it.
 - **Peer ops** (`peer.rs`, frames up to 4 MiB): `hello`, `join_open`, `join_exchange`, `join_confirm` for
-  a non-member; `members`, `boards`, `vector`, `pull`, `push` for a member. `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` (members only)
+  a non-member; `members` (the builds members report; no row and no policy in it is read), `acts` (the signed acts of a governed
+  pool, "Who governs a pool"), `boards`, `vector`, `pull`, `push` for a member. `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` (members only)
   run another device's tests here when its person allowed it (`shard/`, docs/test-farm.md): the sender is the
   certificate, a shard belongs to the certificate that made it, the run holds CPU slots in the lease table. A device syncs only the boards
   both hold, through `sync::rows_since` and `sync::take`, so a wire row meets the checks an in-process row
@@ -751,9 +757,10 @@ listener is the one network port.
 - **Joining** (`join_code.rs`). `secure`: `add_device` opens a window (a six-digit code or a passphrase,
   three tries, a time limit), `join_pool` on the other device runs SPAKE2 (`spake2`) with both certificate
   fingerprints as its identities and HMAC-SHA256 confirmations, as in `fleet/onboard/pake.py`; the pool
-  record then arrives sealed under the exchange. `open`: the device is enrolled on its first contact from
-  the same segment and the enrolment is recorded with the certificate fingerprint (`by: open`). A device
-  joins only if it is alone in its pool.
+  record then arrives sealed under the exchange (in a governed pool, the founding act and the acts that stand). `open`: the device
+  is admitted on its first contact from the same segment and the admit is recorded with the certificate fingerprint (`by: open`).
+  A device joins only if it is alone in a pool that no admin governs (`Pool::can_join_other`); a governed pool is left by its own
+  `leave` act and never merged into another.
 
 `poolhouse-node run --state DIR --listen 127.0.0.1:0 --beacon-bind ADDR --beacon-send ADDR
 --advertise IP --sync-ms N` starts the network; tests use real sockets on loopback with injected
@@ -769,6 +776,86 @@ error and `last_join`: a node that sends but never hears its own beacon is block
 a firewall, WSL2 NAT). `python -m poolhouse.node_join join --policy open|secure` starts it that way after showing what
 it does and getting a yes (`--yes` for a script), and `scripts/pool-join-check` walks every step on one device and prints
 the fix for the first that fails.
+
+## Who governs a pool
+
+`gov/` (design: `docs/pools-and-serving.md`, section 1). A pool is its **charter** and the **acts** that change it. People govern a
+pool, through admin keys; a device never does, and the one thing a member device does alone is leave.
+
+- **The charter** (`gov/charter.rs`): the pool's name, join policy (`open` or `secure`, fixed for the pool's life), admin keys,
+  thresholds, holds. The pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter, 32 hex digits, so a copy of a pool
+  with other admins is another pool. `charter.json` holds the founding act; the epoch rises with each step of the chain below.
+- **Admin keys** (`gov/keys.rs`): Ed25519 public keys, each listed with its own acceptance (its signature over the pool, the epoch
+  it joins at, its role, strength and person), so a key is listed only by its holder. `strong` keys (a presence the signing process
+  cannot supply) are the only ones that count toward a threshold, a removal or a cancel; a `weak` key may end a delegate and
+  nothing else. The `recovery` role counts toward no immediate act and leaves the admin set only with its own signature.
+  Thresholds count distinct people (`unit: person`) or keys: `routine` (remove, cancel, end a delegate) 1 by default, `sensitive`
+  (admin changes, thresholds, holds, a delegate) 1 while one person is listed and 2 once two are.
+- **Acts** (`gov/act.rs`, `gov/body.rs`): `{v, pool, epoch, kind, body, at_ms, nonce, prev, signatures}` signed over
+  `poolhouse/pool-act/v1`, a line break and the canonical JSON without the signatures; the id of an act is the hash of those bytes,
+  so co-signers sign the same bytes and the signature sets of two copies merge. `prev` is the hash of the charter the signer knew.
+  Kinds: `found`, `admit`, `remove`, `leave`, `admin_add`, `admin_remove`, `veto`, `cancel`, `set_threshold`, `set_holds`,
+  `set_mode`, `delegate`, `delegate_end`. A body field nobody defined, an act over 16 KiB, more than eight signatures, one signer
+  named twice, a kind this build does not know, an act for another pool, one dated more than five minutes ahead and one whose
+  signature does not verify are refused, and each refusal is recorded with its reason (`pools/<id>/refused.json`, the last 256).
+  An admin act for a charter the pool has left behind, and an act signed only by admins that are no longer listed (unless the cut
+  of the removal that took them out kept it), are refused and held nowhere.
+- **Time** (`gov/clock.rs`): every hold, window and expiry is measured in the awake time of this device (its monotonic clock, saved
+  at checkpoints, not running while it sleeps) from the first moment it had the act with every signature the act needs. The wall
+  clock and the signer's `at_ms` are never read for a delay.
+- **The chain** (`gov/chain.rs`): `admin_add`, `admin_remove`, `set_threshold`, `set_holds` and `set_mode` that follow one charter
+  form one step and take the pool to the next epoch after the longest hold among them (24 hours to add or remove an admin; a
+  weakening, 24 hours; a strengthening, none) with no valid `cancel` seen first. Removals of one step all apply, unless together they
+  would leave fewer strong admins than the sensitive threshold needs: then none applies and a dispute opens; one removal that alone
+  would is void. An add or a threshold change counts only if its signers survive the step's removals. Two that cannot both hold are
+  settled by the number of distinct strong signers, then by the lower signer fingerprints; a tie that remains opens a dispute and
+  applies neither. A `veto` by the key a removal names ends the removal and opens a dispute. A dispute (seven days) pauses the chain.
+  A key that is removed loses every signature of its that is not in the cut its removal carried. An act that is complete on this
+  device only after the first act of its step has run its hold is too late to join or contest the step.
+- **The roster** (`gov/roster.rs`): built from scratch from the acts and the chain, never from a row a member sent. `admit` by a
+  strong admin; by a live delegate (a device an admin act lets sign `admit` for 30 days, at most 3 an hour and 10 a day by the order
+  this device first saw the admits); in an open pool by any member's own device key with `via: segment`, at most 5 an hour. A device
+  signature is taken only on the device's own `leave` (and alone) and on an `admit` from such a device; when an act is relayed with
+  a signature its signer may not give, that signature is refused, and the roster credits an admit to the first of its signers that
+  qualifies, so a relay voids nothing by adding its own. The order of a device's admits and leaves, and of `delegate` and
+  `delegate_end`, is the order this device first saw them, not the time a signer wrote on them. A device that does not hold its key in a keystore (`Node::key_binding`; no keystore yet) signs no delegate admit, so a copy of its state
+  directory signs none, and every delegate admit is written to the pool board as `delegate_admit`. A device that joins is handed the
+  founding act, the admin-set acts in effect (their holds were over before it came), the live delegates' acts and the acts that
+  stand (the first three must fit 256 KiB or the join is refused whole, before the device is admitted); it takes the admin-set acts and the rest as settled, so the rates of a delegate do not refuse admits that were made before
+  it came. A device that has left, or was removed, signs no admit. `remove` is sticky; `leave` is the
+  device's own signature and a later `admit` undoes it.
+- **Keeping it** (`gov/pool.rs`, `gov/room.rs`): `pools/<id>/` holds `charter.json`, `acts.json`, `seen.json` and `refused.json`, each
+  written only when what it holds changed (the awake total at least once a minute). Caps: 4,096 admits that stand, 256 admin-set
+  acts (the oldest that never took effect make room), 8,192 acts. What a member can send in bulk is the device-signed admit that
+  stands nowhere (past a rate, or by a device that may not admit): 32 of one device's and 1,024 in all are held, a device's own
+  oldest go first, and they go before anything else when the pool is full; a device holds at most eight of its own leaves, and signs
+  one only while it is a member. A push is folded when an act that follows needs what an earlier one changed (the admin set, a
+  device that was just admitted), a tick when a hold, a delegate or a dispute ends. An act a joiner took as settled can still be
+  cancelled until its hold has run from the join.
+- **Removing a device and its logs** (`gov/logs.rs`, `Board::cut`): a `remove` carries, for each log of boards that the removed device
+  wrote and the removing admin's device holds (`{board, origin, seq, hash}`, at most 256), how many entries of it stand and the
+  hash of the last; the node writes the list itself, whatever the caller sent. A device that learns of the removal cuts those logs
+  there (a copy that does not pass through the hash is dropped and fetched again up to it) and takes no later entry of them
+  from any relay (an entry carries its own signature, and a relay proves nothing about it); a log of the removed device that no
+  removal names stands as far as the device holds it; no entry under the key of a removed device is taken from a log no removal
+  names. Several removals of one device stand at the least they name. What the removed device admitted goes with it, and an admin
+  can admit it again.
+- **The `acts` op** (`gov/wire.rs`): `{pool, have, page, push}`. `have` is up to 4,096 tokens (an act's id and a tag of who signed it,
+  so a signature added later is passed on); a reply is a page of at most 256 acts and 2 MiB, the acts that change the admins first,
+  and what was pushed is checked by the receiver from the keys it holds, whoever carried it. A request reads at most 64 pages.
+- **Signing** (`gov/signer.rs`, `gov/ops.rs`): the node holds no person key. An act that needs a person's signature is put to a
+  `Signer` (the phone approval, when it exists, and a rig's in-memory key for tests); the typed-yes person key path signs outside the
+  node: `pool_draft` makes the act and the bytes to sign, `pool_found` and `pool_submit` take the signed act back. A no from the
+  person is respected for ten minutes for that kind of act, and a person is asked at most twelve times in ten minutes. The sentence
+  a person signs an act under (`gov/describe.rs`, at most 300 characters) names the key with its person, strength and fingerprint, the
+  device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. `pool_found` is
+  granted by the name of the pool the act founds and refuses a charter with no strong admin key, which nobody could admit a device
+  under.
+  `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
+- **Legacy mode.** A device with a `pool.json` and no `pools/<id>/` keeps its pool and its sync exactly as before, except that a
+  member's rows, removals and policy are ignored (the record changes only by this device's own API, the grants, and the joins it makes);
+  `pool_status` says `governance.mode: legacy` with `needs_migration` when the pool has members, and the new methods answer "This
+  device's pool needs a one-time upgrade; ask the owner to approve it." Nothing migrates on its own.
 
 ## Poolhouse.app: the node's identity on macOS
 
@@ -921,8 +1008,10 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   user-presence prompt for the person key, a lineage on each request that a token carries as proof of who holds it rather than only
   checked at the spend of a grant, the lineage of a registrant on Windows (`GetNamedPipeClientProcessId`), a screen that asks the person the
   signing question itself so the UI daemon can sign, rebuilding the graph index from entries.
-- Pools of two or more members do not merge: a device that already has members refuses to join another
-  pool (`Pool::adopt`).
+- Pools do not merge: a device that is in a governed pool, or that has members, refuses to join another pool; a device alone in a
+  pool no admin governs may join one. A device in several pools, reissue (`set_join_policy` is refused in a governed pool, and the
+  way to change a policy is a reissue), migration of a legacy pool, the recovery key's time lock and succession, and a signer
+  that asks a person's phone are the later slices of `docs/pools-and-serving.md`.
 - The head signature still uses an empty pool id as its domain (`Node.pool`); the pool id lives in
   `pool.json` and the beacon. Moving it into the head would need a re-sign when a device joins.
 - Addresses of members come from the beacon, from joining (the caller's address and announced port) and

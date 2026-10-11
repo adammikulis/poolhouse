@@ -121,9 +121,10 @@ dot in a handle, a missing surname), never its content.
 
 ### Tests never reach the real machine
 
-- No test reads, writes or prompts for an item in the real OS keystore (macOS Keychain): real backends refuse in process
-  (`tests/conftest.py`), which sets `POOLHOUSE_NO_REAL_KEYSTORE=1` for the whole run, inherited by every process a test
-  starts, so the keystore reads as absent. A test child needing a working one uses the file keyring (tests/README.md,
+- No test reads, writes or prompts for an item in the real OS keystore (macOS Keychain), a password dialog or `security`:
+  `poolhouse.real_machine` allows them only to the installed software on the real `~/.poolhouse`, so a process that is
+  not that (a test, its child, a script, a checkout, a worktree) finds them unavailable whatever its environment says,
+  and no variable turns them on. A test child needing a working keystore uses the file keyring (tests/README.md,
   "The real keystore"). Tests run on an empty state root under their own `tmp_path`, never the real home
   (tests/README.md, "Nothing reads the machine").
 - No test calls a paid or quota-limited API or a public endpoint on its own, whatever keys or logins the machine holds:

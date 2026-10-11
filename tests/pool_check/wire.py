@@ -4,6 +4,7 @@
     python tests/pool_check/wire.py stop  --state DIR
     python tests/pool_check/wire.py call  --state DIR METHOD [--board B] [--token T] [--params JSON]
     python tests/pool_check/wire.py expect-enrol --state DIR
+    python tests/pool_check/wire.py cert --state DIR
 
 Every command prints one JSON line: ``{"ok": true, "result": ...}`` or ``{"ok": false, "code": ..., "error": ...}``. The rig runs
 this file the same way on both kinds of device (a subprocess on the Mac, `docker exec` in a container), so a device's node is
@@ -57,7 +58,7 @@ def start(state: Path, binary: Path, args: list[str]) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("start", "stop", "call", "post-many", "expect-enrol"):
+    for name in ("start", "stop", "call", "post-many", "expect-enrol", "cert"):
         one = sub.add_parser(name)
         one.add_argument("--state", required=True)
         if name == "start":
@@ -81,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
             out = start(state, Path(args.binary), [f"{a}" for a in args.arg])
         elif args.cmd == "expect-enrol":
             out = {"ok": True, "result": {"secret": grants.expect_enrolment(state)}}
+        elif args.cmd == "cert":
+            out = {"ok": True, "result": {"cert": (state / "device.cert").read_bytes().hex()}}
         elif args.cmd == "post-many":
             out = post_many(state, (args.board, args.token), args.count, args.size, args.prefix)
         elif args.cmd == "stop":

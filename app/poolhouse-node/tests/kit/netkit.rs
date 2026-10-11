@@ -119,6 +119,13 @@ impl Dev {
         self.status()["pool"].as_str().unwrap().to_string()
     }
 
+    /// This device lists `other` as a member, as its owner could after joining it: members do not teach each other who is in the pool,
+    /// so a test that needs two members that never joined one another says so here. No address is learned.
+    pub fn know(&self, other: &Dev) {
+        let name = other.node.lock().unwrap().members.get(&other.fp()).map(|d| d.name.clone()).unwrap_or_default();
+        self.node.lock().unwrap().enrol_device(&other.net.me.der, &name, "test").unwrap();
+    }
+
     pub fn set_policy(&self, policy: &str) {
         self.ok("set_join_policy", "", &self.token, json!({"policy": policy}));
     }

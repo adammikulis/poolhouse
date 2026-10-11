@@ -286,6 +286,9 @@ pub fn respond(request: &Value, result: Result<Value>) -> Value {
             if let Error::NoGrant { grant, .. } = &e {
                 error["grant"] = grant.clone();
             }
+            if let Error::Say { say, needs, then, .. } = &e {
+                (error["say"], error["needs"], error["then"]) = (json!(say), json!(needs), json!(then));
+            }
             json!({"v": API_VERSION, "id": id, "ok": false, "error": error})
         }
     }
