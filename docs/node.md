@@ -599,7 +599,8 @@ moment (a reused pid). A `remote` holder has no pid and lives by expiry. Every l
 sweep runs on every lease call, and at the first one after a restart, so a stale holder is dropped
 and a live one kept. A lease that holds a claim (not the node's own `task` claim) is renewed to at most eight hours after it was
 granted: a renewal that would reach past that is held to it and the lease shows `capped`, and once the eight hours are over a
-renewal, or a claim of the same name by its holder, is `denied` as a lifetime over, and the holder releases it and takes it again.
+renewal (`lease_renew`) is `denied` as a lifetime over, and a claim or reserve of the same name by its holder gives the old claim up and takes it
+anew, with a lifetime that starts then; another session's claim of it is refused until the old one ends.
 
 **Takeover.** When a request is granted resources a dead or expired holder had, the node writes an
 audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming the old holder and why).

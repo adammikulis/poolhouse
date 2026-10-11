@@ -67,15 +67,20 @@ fn show(node: &Node, l: &Lease, kind: &str, name: &str, board: &str) -> Value {
 }
 
 /// Take the claim ``kind`` ``key`` for ``holder`` without waiting, or renew the one it already holds: whether it was newly taken, and its lease.
+/// A claim the holder keeps past its lifetime is given up and taken again, with a lifetime that starts now.
 fn take(node: &mut Node, board: &str, token: &str, holder: &str, (kind, key): (&str, &str), p: &Map<String, Value>) -> Result<(bool, Lease)> {
     let name = held_as(kind, board, key);
     if let Some(l) = node.leases.table.leases.iter().find(|l| l.holder == holder && l.state == State::Held && mine(l, kind, &name)).cloned() {
-        let ttl = p.get("ttl_s").and_then(Value::as_u64).unwrap_or(l.ttl_s);
-        let mut renew = Map::new();
-        renew.insert("id".into(), json!(l.id));
-        renew.insert("ttl_s".into(), json!(ttl));
-        rpc::call(node, "lease_renew", board, token, &renew)?;
-        return Ok((false, node.leases.table.find(&l.id).cloned().unwrap_or(l)));
+        if l.lifetime_end_ms().is_some_and(|end| end <= node.leases.now()) {
+            give_back(node, board, holder, &[l.id])?;
+        } else {
+            let ttl = p.get("ttl_s").and_then(Value::as_u64).unwrap_or(l.ttl_s);
+            let mut renew = Map::new();
+            renew.insert("id".into(), json!(l.id));
+            renew.insert("ttl_s".into(), json!(ttl));
+            rpc::call(node, "lease_renew", board, token, &renew)?;
+            return Ok((false, node.leases.table.find(&l.id).cloned().unwrap_or(l)));
+        }
     }
     let mut ask = Map::new();
     ask.insert("resources".into(), json!([{"type": "claim", "kind": kind, "name": name}]));
