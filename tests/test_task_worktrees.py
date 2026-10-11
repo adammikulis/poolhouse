@@ -41,8 +41,10 @@ def test_clean_task_baseline_claims_and_parent_authority(team, tmp_path):  # noq
     parent = team.session(team.lead)
     task = Tasks(team.person).create({'title': 'Person task', 'description': 'Fix current code',
                                       'acceptance': ['Checks pass']})['id']
-    with pytest.raises(Denied, match="worker's parent"):
+    with pytest.raises(Denied, match="creator of a task that names the worker"):
         task_authority.authorize(team.session(team.stranger), team.base, member.name, task)
+    with pytest.raises(Denied, match="creator of a task that names the worker"):
+        task_authority.authorize(parent, team.base, member.name, task)
     got = task_scheduler.assign_next(parent, team.base, member.name, task=task)
     prepared = Tasks(parent).get(task)['scope']
     target = tmp_path / ('main-' + task)
@@ -56,7 +58,7 @@ def test_clean_task_baseline_claims_and_parent_authority(team, tmp_path):  # noq
     assert prepared['baseline_commit'] == git.head(source)
     held = Tasks(worker).get(task)['scope']
     assert held == {**prepared, 'state': 'active'}
-    runner, spec = task_authority.authorize(parent, team.base, member.name, task)
+    runner, spec = task_authority.authorize(parent, team.base, member.name, task, parent_may=True)
     assert task_worktrees.plan(parent.name, runner, spec) == held
     assert {c.owner for c in worker.claims('worktree') if c.key == str(target)} == {member.name}
     assert {c.key for c in worker.claims('branch')} == {prepared['branch']}
