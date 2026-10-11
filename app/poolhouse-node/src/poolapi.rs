@@ -116,8 +116,10 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             node.pool_leave()
         }
         "pool_found" => {
-            authorize(node, token, "pool_create", "*")?;
-            node.pool_found(p.get("act").unwrap_or(&Value::Null))
+            let act = p.get("act").unwrap_or(&Value::Null);
+            let name = node.founding_name(act)?;
+            authorize(node, token, "pool_create", &name)?;
+            node.pool_found(act)
         }
         "pool_draft" => node.pool_draft(text(p, "kind")?, p.get("body").cloned().unwrap_or(Value::Null)),
         "pool_propose" => {

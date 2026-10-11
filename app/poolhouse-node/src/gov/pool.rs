@@ -572,14 +572,18 @@ impl GovPool {
     /// What a device that joins (``joiner``, by the fingerprint of its certificate) is handed: the founding act, the admin-set acts
     /// that are in effect here (their holds were over before it arrived), the acts of the delegates that are live here (which run
     /// from the moment the joiner first sees them), the act that admitted the joiner and the other acts that stand, as many as fit
-    /// in ``budget`` bytes.
-    pub fn join_payload(&self, budget: usize, joiner: &str) -> JoinPayload {
+    /// in ``budget`` bytes. The admin-set acts in effect and the live delegates' acts must all fit, or the join is refused whole.
+    pub fn join_payload(&self, budget: usize, joiner: &str) -> Result<JoinPayload> {
         let (chain, roster) = (&self.state.chain, &self.state.roster);
         let settled: Vec<Act> = chain.applied.iter().filter_map(|id| self.acts.get(id)).cloned().collect();
         let live = |a: &Act| a.kind == "delegate" && a.body["fingerprint"].as_str().is_some_and(|d| roster.delegates.contains_key(d));
         let delegates: Vec<Act> = self.acts.values().filter(|a| live(a)).take(PAGE_ACTS).cloned().collect();
+        let history: usize = settled.iter().chain(&delegates).chain(std::iter::once(&self.found)).map(GovPool::weight).sum();
+        if history > budget {
+            return Err(Error::Invalid("this pool's history is too long to hand to a device that joins in one message".into()));
+        }
         let mut acts: Vec<Act> = roster.admitted_by.get(joiner).and_then(|id| self.acts.get(id)).cloned().into_iter().collect();
-        let mut bytes = acts.iter().map(GovPool::weight).sum::<usize>();
+        let mut bytes = history + acts.iter().map(GovPool::weight).sum::<usize>();
         let standing = |id: &String, a: &Act| !a.is_chain() && !matches!(a.kind.as_str(), "cancel" | "veto" | "delegate" | "delegate_end") && self.status(id) == ActStatus::Effective;
         for a in self.acts.iter().filter(|(id, a)| standing(id, a)).map(|(_, a)| a) {
             bytes += GovPool::weight(a);
@@ -588,6 +592,6 @@ impl GovPool {
             }
             acts.push(a.clone());
         }
-        JoinPayload { found: self.found.clone(), settled, delegates, acts }
+        Ok(JoinPayload { found: self.found.clone(), settled, delegates, acts })
     }
 }

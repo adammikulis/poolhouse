@@ -80,22 +80,23 @@ pub fn hello_request(node: &Node) -> Value {
 const JOIN_BYTES: usize = 256 * 1024;
 
 /// What a device that has just joined (``joiner``, by its certificate's fingerprint) is handed: the pool's id and its record and
-/// policy, or for a governed pool its founding act and the acts that stand.
-pub fn record_json(node: &Node, joiner: &str) -> Value {
-    match node.members.gov() {
+/// policy, or for a governed pool its founding act and the acts that stand; an error when a governed pool's history is too long to
+/// hand over in one message.
+pub fn record_json(node: &Node, joiner: &str) -> Result<Value> {
+    Ok(match node.members.gov() {
         Some(g) => {
-            let p = g.join_payload(JOIN_BYTES, joiner);
+            let p = g.join_payload(JOIN_BYTES, joiner)?;
             json!({"pool": g.id, "found": p.found, "settled": p.settled, "delegates": p.delegates, "acts": p.acts})
         }
         None => json!({"pool": node.members.id, "rows": node.members.export(), "policy": policy_json(node)}),
-    }
+    })
 }
 
 /// A device that asks to join under `open`: it is enrolled and handed the pool's record. A device that is a member already is handed
 /// the record again and nothing else changes.
 fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing) -> Result<Value> {
     if standing == Standing::Active {
-        return Ok(record_json(node, &cert_fingerprint(der)));
+        return record_json(node, &cert_fingerprint(der));
     }
     if node.members.policy != Policy::Open {
         return Err(Error::Denied("this pool takes a device only through a join code".into()));
@@ -104,8 +105,9 @@ fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Sta
         return Err(Error::Denied("this pool takes a device without a code only from its own network".into()));
     }
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
+    record_json(node, "")?;
     node.enrol_device(der, name, "open")?;
-    Ok(record_json(node, &cert_fingerprint(der)))
+    record_json(node, &cert_fingerprint(der))
 }
 
 /// The builds members report. The rows and the policy a member sends here are not read: who is in the pool and how it is joined are

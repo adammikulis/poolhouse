@@ -385,8 +385,9 @@ impl Net {
             }
             return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the join-code window is closed".into() }));
         }
+        peer::record_json(node, "")?;
         node.enrol_device(der, &name, "join-code")?;
-        let mut grant = peer::record_json(node, &fp);
+        let mut grant = peer::record_json(node, &fp)?;
         grant["v"] = json!(1);
         let grant = grant.to_string().into_bytes();
         *window = None;

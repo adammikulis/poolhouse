@@ -11,6 +11,7 @@
 //! | `keys` | an admin key, its role and strength, its acceptance |
 //! | `charter` | the charter, the pool id, thresholds and holds |
 //! | `act`, `body` | the signed act and the body of each kind |
+//! | `describe` | the sentence a person is asked to sign an act under |
 //! | `clock` | the awake time every hold is measured in |
 //! | `chain` | the admin-set acts one after the other: holds, cancels, vetoes, forks, disputes |
 //! | `logs` | what a removal does to the logs of the removed device on boards |
@@ -26,6 +27,7 @@ pub mod body;
 pub mod chain;
 pub mod charter;
 pub mod clock;
+pub mod describe;
 pub mod keys;
 pub mod logs;
 pub mod ops;

@@ -18,6 +18,7 @@ use crate::poolops::wall_ms;
 
 use super::act::{Act, ActSig, SigKind};
 use super::charter::{Charter, Class, Unit};
+use super::describe::{describe, quoted};
 use super::keys::{AdminKey, Role};
 use super::pool::{ActStatus, GovPool, Ingest};
 use super::signer::{KeyBinding, Signer, SignerKey};
@@ -81,22 +82,14 @@ fn device_sign(act: &mut Act, key: &SigningKey, fingerprint: &str) {
     act.add_signature(ActSig { kind: SigKind::Device, key: fingerprint.into(), sig });
 }
 
-fn quoted(name: &str) -> String {
-    format!("'{}'", name.chars().filter(|c| !c.is_control()).take(40).collect::<String>())
-}
-
-/// What a person is put when asked to sign ``act``: the kind and what it names, in a sentence.
-fn describe(act: &Act, roster: &BTreeMap<String, Device>) -> String {
-    let name_of = |fp: &str| roster.get(fp).map_or_else(|| fp.chars().take(12).collect(), |d| quoted(&d.name));
-    let subject = |field: &str| act.body[field].as_str().unwrap_or("").to_string();
-    match act.kind.as_str() {
-        "admit" => format!("Let the device {} join the pool.", quoted(act.body["name"].as_str().unwrap_or(""))),
-        "remove" => format!("Remove {} from the pool; it stops working with every device at once.", name_of(&subject("fingerprint"))),
-        "admin_add" => format!("Add the key {} as an admin of the pool.", quoted(act.body["entry"]["label"].as_str().unwrap_or(""))),
-        "admin_remove" => "Remove an admin key from the pool.".into(),
-        "delegate" => format!("Let {} admit devices for a while.", name_of(&subject("fingerprint"))),
-        other => format!("Sign a {other} for the pool."),
+/// The founding act in ``act`` and its charter, when the charter has a strong admin key: without one nobody could admit a device.
+fn founding_of(act: &Value) -> Result<(Act, Charter)> {
+    let found: Act = serde_json::from_value(act.clone()).map_err(|e| Error::Invalid(format!("that is not an act: {}", e.to_string().chars().take(80).collect::<String>())))?;
+    let charter = super::pool::founding(&found).map_err(|e| declined(&e.to_string()))?;
+    if charter.weak_only() {
+        return Err(declined("A pool needs a strong key, one that asks for your presence each time it signs, and that charter lists none."));
     }
+    Ok((found, charter))
 }
 
 fn reply(g: &GovPool, id: &str, kept: Ingest) -> Result<Value> {
@@ -128,7 +121,7 @@ fn propose(g: &mut GovPool, signer: Option<&Arc<dyn Signer>>, kind: &str, body: 
     if keys.is_empty() {
         return Err(not_admin());
     }
-    let summary = describe(&act, &g.devices());
+    let summary = describe(&act, g);
     sign_with(&mut act, signer.as_ref(), &keys, &summary)?;
     let id = act.id();
     let kept = g.ingest(act, wall);
@@ -285,7 +278,7 @@ impl Node {
                 if keys.is_empty() {
                     return Err(not_admin());
                 }
-                let summary = describe(&act, &g.devices());
+                let summary = describe(&act, g);
                 sign_with(&mut act, signer.as_ref(), &keys, &summary)?;
             }
             let id = act.id();
@@ -345,7 +338,7 @@ impl Node {
             if keys.is_empty() {
                 return Err(not_admin());
             }
-            let summary = describe(&act, &g.devices());
+            let summary = describe(&act, g);
             sign_with(&mut act, signer.as_ref(), &keys, &summary)?;
             let kept = g.ingest(act, wall);
             reply(g, id, kept)
@@ -417,11 +410,15 @@ impl Node {
         Ok(id)
     }
 
+    /// The name of the pool an act a person's keys signed elsewhere would found, for the grant that lets a session found it.
+    pub fn founding_name(&self, act: &Value) -> Result<String> {
+        Ok(founding_of(act)?.1.name)
+    }
+
     /// Found the pool of an act a person's keys signed elsewhere (each key's acceptance is inside its charter). The device is not
     /// a member until an admit signed for it is submitted.
     pub fn pool_found(&mut self, act: &Value) -> Result<Value> {
-        let found: Act = serde_json::from_value(act.clone()).map_err(|e| Error::Invalid(format!("that is not an act: {}", e.to_string().chars().take(80).collect::<String>())))?;
-        let charter = super::pool::founding(&found).map_err(|e| declined(&e.to_string()))?;
+        let (found, charter) = founding_of(act)?;
         let id = self.start_pool(found)?;
         self.record_event("pool_created", &id, &format!("{} ({})", charter.name.chars().take(40).collect::<String>(), charter.policy.name()))?;
         Ok(json!({"pool": id, "name": charter.name, "policy": charter.policy.name(), "epoch": 1}))
@@ -434,7 +431,7 @@ impl Node {
         let g = self.members.gov().ok_or_else(upgrade)?;
         let act = g.new_act(kind, body, wall_ms())?;
         super::body::parse(&act).map_err(|e| declined(&e.to_string()))?;
-        Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": describe(&act, &g.devices())}))
+        Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": describe(&act, g)}))
     }
 
     /// An `admin_remove` that names no cut keeps every act of that key this device holds. A `remove` names the logs of the device that
