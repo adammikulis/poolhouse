@@ -86,38 +86,6 @@ Everything runs on your own hardware. Nothing leaves the network.
 
 [Full list of what it does](docs/FEATURES.md).
 
-## Ask Qwen on another device to review documentation
-
-From this Git checkout, use the shared pool and board:
-
-```sh
-poolhouse-members ls
-poolhouse-workspace remote-agent --device DEVICE_NAME --json \
-  --max-output-tokens 4096 --max-rounds 12 --max-tool-calls 30 \
-  --max-model-calls 24 --max-task-seconds 600 \
-  --task "Read AGENTS.md, README.md and docs/workspace.md. Recommend documentation changes with file references, priorities and evidence. Do not edit files."
-```
-
-Replace `DEVICE_NAME` with the other device's name from `poolhouse-members ls`; omit
-`--device` when there is only one remote device. Both devices need running pool
-services; the target needs a registered checkout of this project and a downloaded Qwen.
-The broker admits the model on that device and the worker receives the task on the shared
-board. No invitation or credential copy is needed.
-
-Keep the returned `requested_by` (launcher), `identity` (worker), `model` and `task_seq`.
-Use those returned values to read the answer:
-
-```sh
-poolhouse-workspace inbox --agent LAUNCHER_ID --all
-poolhouse-workspace thread TASK_SEQ --agent LAUNCHER_ID
-```
-
-`state: starting` means the model is loading. Reuse the same launcher and worker name
-for follow-up jobs; an existing worker keeps its launch settings. Check the returned
-`effective_limits` before assigning a job. See
-[remote Qwen jobs](docs/workspace.md#run-a-qwen-model-on-another-dev-device) for follow-up
-messages, limits and troubleshooting.
-
 ## Security
 
 Treat every network, page, model file and model reply as untrusted. Fetches go through one
@@ -282,7 +250,7 @@ on whichever machine is free rather than the one you are typing at.
 | --- | --- |
 | [What it does](docs/FEATURES.md) | every feature; `docs/verify_release.py` checks claims from each section but Entities |
 | [Installing](docs/install.md) | the four modes, the one model cache per machine, Windows, and an install a script drives |
-| [The agent workspace](docs/workspace.md) | one bus for the agents on a machine: messages, boards and threads, subscriptions, notes, claims, and a read-only Board page for you |
+| [The agent workspace](docs/workspace.md) | one bus for the agents of a project, run by the node on each device: messages, rooms and threads, subscriptions, notes, claims, files, tasks, and the Board page for you |
 | [The commands](docs/commands.md) | every `poolhouse-<command>`, what it takes and what it prints |
 | [Pools](docs/fleet.md) | joining, placing people across machines, following a branch, and running work on devices from Python |
 | [Finding and serving a model](docs/serving.md) | one manager per machine, the settings each model scored best with, how many people fit in a card, llama.cpp builds and draft heads |
