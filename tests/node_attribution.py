@@ -23,7 +23,7 @@ MINE, FOREIGN, UNKNOWN, OURS = "mine", "foreign", "unknown", "ours"
 LARGEST = 8_000_000
 MOST_BOARDS = 256
 TOLERANCE_MS = 1500
-GUARDED_NAMES = frozenset({"device.key", "device.cert", "enroll_secret.json", "persons.json", "persons_removed.json",
+GUARDED_NAMES = frozenset({"device.key", "device.key.wrapped", "device.key.enc", "device.custody.json", "device.cert", "enroll_secret.json", "persons.json", "persons_removed.json",
                            "persons_nonces.json", "land_trust.json"})
 GUARDED_PARTS = frozenset({"person", "persons", "grants", "keystore"})
 GUARDED_SUFFIXES = (".key", ".cert", ".pem")

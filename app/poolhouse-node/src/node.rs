@@ -15,7 +15,7 @@ use crate::facts::Facts;
 use crate::grants::book::Book;
 use crate::grants::person::Persons;
 use crate::membership::Pool;
-use crate::device::{fingerprint, load_or_create};
+use crate::device::{self, fingerprint, Custody, Supplied};
 use crate::error::{Error, Result};
 use crate::fold::{self, check_local, Context, Entry};
 use crate::fsutil::private_dir;
@@ -55,6 +55,8 @@ pub struct Node {
     pub dir: PathBuf,
     pub pool: String,
     pub key: SigningKey,
+    /// Where the key is kept (`device`).
+    pub custody: Custody,
     /// The device certificate: its hash is the identity peers know this device by.
     pub cert: CertIdentity,
     /// The pool this device belongs to and its record of the devices in it.
@@ -116,13 +118,18 @@ impl Access {
 impl Node {
     /// Open the node whose state lives in ``dir`` (a directory only its owner can enter).
     pub fn open(dir: &Path) -> Result<Node> {
+        Node::open_with(dir, None)
+    }
+
+    /// Open the node of ``dir`` as the device ``supplied`` is the key of, or as the one its key file names when nothing is supplied.
+    pub fn open_with(dir: &Path, supplied: Option<&Supplied>) -> Result<Node> {
         private_dir(dir)?;
-        let key = load_or_create(dir)?;
+        let (key, custody) = device::load(dir, supplied)?;
         let cert = cert::load_or_create(dir, &key)?;
         let members = Pool::open(&dir.join("pool.json"))?;
         let facts = Facts::open(&dir.join("peers.json"))?;
         let mut node = Node {
-            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
+            dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,

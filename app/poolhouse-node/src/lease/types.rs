@@ -12,6 +12,10 @@ pub const CLAIM_KINDS: [&str; 7] = ["worktree", "branch", "area", "port", "serve
 /// Claim kinds named by an absolute path; two of them conflict when one path contains the other, whatever their kinds.
 pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
 pub const MAX_RESOURCES: usize = 8;
+/// The longest tag a request names itself with.
+pub const MAX_TAG: usize = 64;
+/// The longest a quiet lease lasts between renewals: a request takes one for the time it runs.
+pub const QUIET_MAX_TTL_S: u64 = 600;
 /// How long after it was granted a claim may be kept by renewals.
 pub const MAX_CLAIM_LIFETIME_S: u64 = 8 * 3600;
 
@@ -90,6 +94,12 @@ impl Resource {
             Resource::MemoryMb { mb, .. } => *mb,
             _ => 1,
         }
+    }
+
+    /// Whether a lease of only these resources may leave no board entry: the GPU and the request line of one server, which a
+    /// request takes and gives back many times a second.
+    pub fn may_be_quiet(&self) -> bool {
+        matches!(self, Resource::Gpu { .. }) || matches!(self, Resource::Claim { kind, .. } if kind == "server")
     }
 
     /// The path a worktree, install or area claim names.
@@ -209,9 +219,21 @@ pub struct Lease {
     pub local: bool,
     /// How long one renewal extends the lease.
     pub ttl_s: u64,
+    /// What names this request among the others of its holder: leases of one holder with different tags are different
+    /// parties and wait for each other; no tag is a party of its own.
+    #[serde(default)]
+    pub tag: String,
+    /// Leaves no board entry when granted or ended (`Resource::may_be_quiet`).
+    #[serde(default)]
+    pub quiet: bool,
 }
 
 impl Lease {
+    /// Who is asking in the eyes of the conflict rules: the holder and the tag of the request.
+    pub fn party(&self) -> (&str, &str) {
+        (&self.holder, &self.tag)
+    }
+
     /// When a claim ends at the latest however it is renewed; `None` for a lease that holds no claim of the user's.
     pub fn lifetime_end_ms(&self) -> Option<u64> {
         let claims = self.resources.iter().any(|r| matches!(r, Resource::Claim { kind, .. } if kind != "task"));
@@ -254,6 +276,16 @@ impl Default for Config {
     }
 }
 
+impl Config {
+    /// The settings in a configuration file; None when it does not parse or holds a value the table cannot run on (a longest lease of
+    /// no seconds, a share of more than all).
+    pub fn parse(bytes: &[u8]) -> Option<Config> {
+        let doc: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+        let cfg: Config = doc.is_object().then(|| serde_json::from_value(doc).ok()).flatten()?;
+        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100).then_some(cfg)
+    }
+}
+
 /// A request to hold resources, from one holder.
 #[derive(Clone, Debug)]
 pub struct Request {
@@ -269,4 +301,8 @@ pub struct Request {
     pub local: bool,
     /// Queue when not free now; otherwise answer `busy`.
     pub wait: bool,
+    /// See ``Lease::tag``.
+    pub tag: String,
+    /// See ``Lease::quiet``.
+    pub quiet: bool,
 }

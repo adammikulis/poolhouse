@@ -19,6 +19,9 @@ from poolhouse.serve.broker import Ask, Held
 from poolhouse.serve.lifecycle_cli import _asked_spec
 from poolhouse.testing.fakes import fake_llama_binary, fake_llama_server
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 def test_a_reranking_spec_starts_llama_server_with_the_reranking_flag(tmp_path):
     backend = LlamaServerBackend(binary=fake_llama_binary(tmp_path))
@@ -55,10 +58,11 @@ def test_a_reranking_server_never_shares_a_lease_with_chat_or_embedding(have, as
 
 def test_admission_does_not_reuse_a_reranker_for_chat_nor_chat_for_a_reranker():
     chat, rank = ServerSpec(model="m.gguf"), ServerSpec(model="m.gguf", reranking=True)
-    assert admission.compatible(chat, {}, [])
-    assert not admission.compatible(chat, {"reranking": True}, [])
-    assert not admission.compatible(rank, {"reranking": False}, [])
-    assert admission.compatible(rank, {"reranking": True}, [])
+    served = {"cache_type_k": "q8_0", "cache_type_v": "q8_0"}
+    assert admission.compatible(chat, served, [])
+    assert not admission.compatible(chat, {**served, "reranking": True}, [])
+    assert not admission.compatible(rank, {**served, "reranking": False}, [])
+    assert admission.compatible(rank, {**served, "reranking": True}, [])
     assert not admission.pending_serves(chat, {"context": 4096, "reranking": True})
     assert admission.pending_serves(rank, {"context": 4096, "reranking": True})
 

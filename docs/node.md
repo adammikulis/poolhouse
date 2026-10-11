@@ -69,7 +69,7 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
 - **Crash safety.** Append is one write plus `fsync`; it returns when the row is on disk. On open, a
   last line without its newline was never acknowledged and is cut off (a torn write from `kill -9`);
   damage anywhere else is an error, never a silent drop.
-- **Heads.** A head row signs (Ed25519, device key, `device.key` 0600) the row directly before it.
+- **Heads.** A head row signs (Ed25519, the device key: "Where the device key is kept") the row directly before it.
   Only rows through the last verified head are given to peers or stored from peers. A pool of one
   never needs to sign.
 - **Merge.** All rows sort by (wall, counter, origin, seq): one total order for any delivery order,
@@ -575,7 +575,9 @@ used to be admitted six ways: the GPU, CPU slots, memory, named claims, served m
 `src/lease/` (`types`, `policy`, `table`, `live`, `merge`, `rpc`). Config is `lease-config.json`
 (optional; every field has a default): `cpu_slots` (cores), `memory_mb` (0 = no budget),
 `max_wait_s` 600, `background_share_percent` 50, `unknown_background_s` 180, `queue_patience_s` 60,
-`default_ttl_s` 300, `max_ttl_s` 86400.
+`default_ttl_s` 300, `max_ttl_s` 86400. The file is read again whenever its bytes change (at the next lease call), so a
+budget a program writes there applies at once; a file that does not parse changes nothing (and neither does one that is not a
+JSON object, whose `max_ttl_s` is under 1 or whose `background_share_percent` is over 100), and a deleted one sets the defaults.
 
 **Resources** (JSON objects with a `type`; `device` defaults to `local`, the only device this node
 decides; another device is `denied`):
@@ -597,7 +599,16 @@ short run holds or waits for CPU slots of a device, a not-yet-aged long run may 
 resource.
 
 **Holder.** The holder is `board/name` from the token; a request that carries `holder`, `name` and the
-like is refused. Only the holder renews or releases. A holder may pass `pid`: the node records the
+like is refused. Only the holder renews or releases. A **tag** (up to 64 letters, digits, dots, dashes, colons
+and underscores) names one request among the others of its holder: leases of one holder with different tags are
+different parties and wait for each other, the same tag for the same resources is the same request, and no tag is a
+party of its own. A program that serves many callers (the serve broker, one generation at a time per request) holds
+them all under one session by giving each its own tag. A **quiet** lease (`quiet: true`, only for the GPU and a
+`server` claim, which a request takes and gives back many times a second) is granted and ended without a board
+entry, lasts at most ten minutes between renewals, is kept in memory (a table that changed only by one is not written to `leases.json`, and
+none outlives the node), and is not refused while the device is catching up: it only orders a request to a server already running here.
+`lease_list` on the device shows it; no other device does, so a program that keeps renewing one keeps the device's GPU until it
+gives it up or its process ends, as with any other holder, and only this device's listing shows who. A holder may pass `pid`: the node records the
 process start time and drops the lease when the process is gone, a zombie, or started at another
 moment (a reused pid). A `remote` holder has no pid and lives by expiry. Every lease expires
 `ttl_s` after the last renewal; a queued request not polled for `queue_patience_s` is dropped. The
@@ -612,8 +623,8 @@ audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming th
 
 | method | params | result |
 |---|---|---|
-| `lease_acquire` | `resources, class, estimate_s, ttl_s, pid, remote, wait` | the lease, or `{state: "busy", blockers}` when `wait` is false and it is not free |
-| `lease_renew` | `id, ttl_s` | the lease |
+| `lease_acquire` | `resources, class, estimate_s, ttl_s, pid, remote, wait, tag, quiet` | the lease, or `{state: "busy", blockers}` when `wait` is false and it is not free |
+| `lease_renew` | `id, ttl_s, pid` | the lease; `pid` binds a held lease to that running process, so it ends with it |
 | `lease_release` | `id` | `{id, released}` (a queued request is cancelled) |
 | `lease_list` | | `{leases, config}`; other boards' holders show as `other-board` |
 | `lease_wait` | `id, timeout_ms` | the lease once `held`, or still `queued` at the timeout (at most 10 minutes; the node's lock is not held while it waits) |
@@ -651,6 +662,33 @@ listener is the one network port.
   (`cert.rs`, `device.cert`, valid ten years). Its fingerprint is the SHA-256 of the DER and is the
   device's identity in the pool; the board fingerprint (hash of the public key, used for acks and
   origin binding) is read back out of the certificate a peer showed.
+- **Where the device key is kept** (`device.rs`, `poolhouse.node_key`). Its custody is `keystore`, `passphrase` or `file`, and
+  `pool_status` says it in `device_key` (`{custody, weak}`; `weak` here means a copy of the files, or of a passphrase, is a copy of the
+  device, and is not the strong and weak person keys of docs/pools-and-serving.md, 1.3). In the `keystore` the key is wrapped
+  under the computer's keystore (`poolhouse.keystore`, purpose `device-key`, owned by the state directory's path) as
+  `device.key.wrapped`; the supervisor unwraps it and gives it to the node on its standard input at every start
+  (`--key-stdin --key-custody keystore`), and the node writes no key anywhere, so a copy of the state directory, or a backup,
+  carries no identity and starts no node. Under a `passphrase` (`POOLHOUSE_DEVICE_KEY_PASSPHRASE`, for a computer with no keystore)
+  it is `device.key.enc`, the same way, and the supervisor does not pass that variable on to the node. A `file` is `device.key`
+  (0600), which the node makes when nothing else holds a key. The state directory records the custody and the fingerprint the key
+  must have in `device.custody.json`, and `device.key` then holds a note that is not a key, so a node from before this change stops on
+  it ("device key unreadable") instead of making another identity. A node with a record and no key refuses to start; a key that is
+  not the recorded one, or not the certificate's when there is no record, is refused; a record that is gone or damaged is refused
+  and never read as "new device", and no key is made for a directory that holds a device's files. Only a person starts over, by
+  moving the directory aside. A new device is born into the keystore when the keystore's master key exists, or when a person is at
+  the screen to be asked its one Keychain question, so nothing else is asked of anyone; otherwise it starts with a weak file.
+  `poolhouse node key` says where the key is kept, and `poolhouse node key --migrate` (a person at a terminal) moves a key out of
+  its file, leaves the note, and restarts the node; a backup made before the move still holds the old key file. A keystore that will
+  not answer (locked, not yet up) does not end the supervisor: it says why once a minute in `node.log` and in the error
+  `ensure_node` raises, and starts the node when the keystore answers. One that was refused (the person declined the prompt, or
+  the system said no) is asked again only after the keystore's own cooldown of ten minutes, and the supervisor leaves after the
+  third refusal, so nobody is asked until they give in; a person starts the node again. The node leaves no core file when it holds a given key, and
+  neither does the supervisor. What it does not protect: the key is in the node's memory while it runs, and a process of the same user
+  that can ask the keystore as the supervisor does signs as the device. The supervisor gives the key to the binary the pointer
+  (`node-binary.json`) or the selected runtime names, as it starts any node, and those are the user's files: a process of the
+  same user that can write them can have the supervisor hand the key to a program of its own, so the per-binary Keychain access
+  list is not a barrier to such a process. Ed25519 cannot be held non-exportable by the macOS Keychain or Windows CNG, and a Secure Enclave
+  key needs a paid developer account (docs/pool-encryption.md, 8.1).
 - **Transport** (`tls.rs`, rustls with the ring provider). TLS 1.3 only; a TLS 1.2 client is refused. Both
   sides show a certificate. A client pins the one fingerprint it expects (a changed digit is a refused
   handshake) or, when joining, takes any certificate and lets the exchange authenticate it. A server
@@ -875,8 +913,8 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   interval; today the supervisor starts it with `run --state` only (extra flags after `--`), so the network is off.
 - The always-on form: a `fleet/autostart` role for `node_launch supervise` (a person-installed unit); a wheel
   that carries a prebuilt node instead of a Rust toolchain at `runtime ensure` time.
-- Python lease clients (the serve broker, `gate.py` tickets, `testslots` permits, fleet `JobRunner` slots,
-  `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
+- Python lease clients for `testslots` permits, fleet `JobRunner` slots, `lock.only_one` and `claims.py` (the serve broker and the
+  request gate take their leases from the table: `poolhouse.leasetable`, docs/serving.md), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
   device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"),
   a person's approval of a new project (a typed yes at project_add, for a git project and for a place that is not one), a per-use

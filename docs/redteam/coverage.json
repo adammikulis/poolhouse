@@ -1,7 +1,7 @@
 {
- "surfaces": 789,
+ "surfaces": 791,
  "by_status": {
-  "covered": 469,
+  "covered": 471,
   "partial": 194,
   "uncovered": 52,
   "n/a": 74,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 63,
+   "covered": 64,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 86,
+   "covered": 87,
    "partial": 58,
    "uncovered": 0,
    "n/a": 2,
@@ -3335,6 +3335,23 @@
    "id": "human:net/cli.py:unlock",
    "kind": "human",
    "source": "net/cli.py:unlock",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:node_permission.py:_key_command",
+   "kind": "human",
+   "source": "node_permission.py:_key_command",
    "trust": "an agent process or a member",
    "attacker": "an agent or a forged grant takes an action only a person may take",
    "status": "covered",
@@ -9984,6 +10001,19 @@
     "tests/test_redteam_mcp.py::test_a_hostile_model_name_is_one_argument_never_a_shell_line"
    ],
    "note": ""
+  },
+  {
+   "id": "spawn:leasetable.py:Table._start",
+   "kind": "spawn",
+   "source": "leasetable.py:Table._start",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_leasetable.py::test_a_state_directory_named_like_an_option_or_a_command_is_one_argument_of_the_command_that_starts_the_node",
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the argv is fixed words and the state directory as the value of one --state= argument, never through a shell; a directory named like an option or a command is still one argument"
   },
   {
    "id": "spawn:net/git.py:_origin",

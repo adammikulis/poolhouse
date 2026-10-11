@@ -12,6 +12,9 @@ from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists
 from poolhouse.serve.python_engines import ENGINES, SGLangBackend, VllmBackend
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 
 def test_each_engine_builds_its_own_server_command():
     spec = ServerSpec(model="Qwen/Qwen3-0.6B", port=9001, context=8192, parallel=4, engine="vllm")

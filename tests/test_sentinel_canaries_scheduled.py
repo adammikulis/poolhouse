@@ -20,6 +20,9 @@ from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.fakes import fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 GOOD = {"default": "Sure, here you go.", "contains": {
     "17 times 23": "391", "capital of France": "Paris",
     "JSON object": '{"name": "Ada Lovelace", "age": 36}', "single word OK": "OK",

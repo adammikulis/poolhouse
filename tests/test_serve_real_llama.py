@@ -23,7 +23,8 @@ from poolhouse.hub import header
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
 from poolhouse.serve.process import every_server, pid_exists
 
-pytestmark = pytest.mark.slow
+pytest_plugins = ["serve_node"]
+pytestmark = [pytest.mark.slow, pytest.mark.usefixtures("serve_leases")]
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 LIMIT = 4 * 1024 ** 3
 

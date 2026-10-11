@@ -196,7 +196,7 @@ def test_a_session_whose_origin_cannot_be_placed_is_neither_excused_nor_refused(
     assert watch.judge([NAMES, TOKENS]) == (set(), {})
 
 
-@pytest.mark.parametrize("name", ["node/device.key", "node/device.cert", "node/enroll_secret.json", "node/persons.json",
+@pytest.mark.parametrize("name", ["node/device.key", "node/device.key.wrapped", "node/device.key.enc", "node/device.custody.json", "node/device.cert", "node/enroll_secret.json", "node/persons.json",
                                   "node/person/custody.json", "node/grants/book.json", "node/boards/demo/signing.key"])
 def test_keys_secrets_grants_and_person_files_are_never_excused(served, name):
     watch = NodeWatch(served.root)

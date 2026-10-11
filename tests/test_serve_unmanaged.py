@@ -22,11 +22,15 @@ from poolhouse import gate, limits
 from poolhouse.http import Server
 from poolhouse.serve import admission, unmanaged
 from poolhouse.serve.backend import ServerFailed, ServerSpec
+from poolhouse.serve.broker import Broker
 from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.manager import ServerManager, stop_all_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists
 from poolhouse.testing.fakes import FakeBackend, FakeLlamaServer, Served
+
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 LLAMA = {"pid": 0, "ip": "127.0.0.1", "uid": os.getuid(), "user": "me",
@@ -151,9 +155,11 @@ def test_a_local_process_imitating_llama_server_is_refused_without_being_asked_a
 
 
 def test_a_llama_server_is_counted_against_the_memory_and_listed_as_unmanaged(
-        monkeypatch, tmp_path):
+        monkeypatch, tmp_path, serve_leases):
     limits.changed(memory_bytes=10 * 1024 ** 3)
-    row = {"pid": 77, "port": 51000, "model": "/m/x.gguf", "rss": 8 * 1024 ** 3,
+    monkeypatch.setenv(admission.ENV_WAIT, "1")
+    process = sleeping()
+    row = {"pid": process.pid, "port": 51000, "model": "/m/x.gguf", "rss": 8 * 1024 ** 3,
            "defunct": False}
     monkeypatch.setattr(unmanaged, "every_server", lambda: [row])
     assert unmanaged.unmanaged_servers({}) == [row]
@@ -161,9 +167,17 @@ def test_a_llama_server_is_counted_against_the_memory_and_listed_as_unmanaged(
     weights = tmp_path / "m.gguf"
     with weights.open("wb") as handle:
         handle.truncate(2 * 1024 ** 3)
-    verdict = admission.check(ServerSpec(model=weights, port=1), {}, budget=10 * 1024 ** 3,
-                              unmanaged=[row])
-    assert verdict.rating == "red" and "unmanaged pid 77" in verdict.said()
+    broker = Broker(ServerManager(FakeBackend(), state_file=tmp_path / "servers.json"), scan=lambda: [row])
+    try:
+        broker.adopt()
+        with pytest.raises(admission.AdmissionRefused, match=f"unmanaged.51000.{process.pid}"):
+            broker.start(ServerSpec(model=weights, port=free_port()), timeout=5)
+        process.kill()
+        process.wait()
+        assert not [lease for lease in serve_leases.listing()["leases"] if lease["tag"].startswith("unmanaged.")]
+    finally:
+        process.kill()
+        process.wait()
 
 
 def lease_beside(tmp_path, served_port: int, *, model: str, roam: bool, state=None):
@@ -208,7 +222,7 @@ def test_auto_adopts_a_verified_server_and_it_is_queued_counted_and_never_stoppe
         entry = recorded_servers(state)[fake.port]
         assert entry["unmanaged"] is True and entry["owner_pid"] == process.pid
         assert any("adopted" in line and str(process.pid) in line for line in told)
-        assert admission.charge(entry) == LLAMA["rss"]
+        assert entry["est_mb"] == LLAMA["rss"] // 1024 ** 2
         assert gate.device_of(f"http://127.0.0.1:{fake.port}/v1/chat/completions") == "gpu"
 
         manager.release(info)

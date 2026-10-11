@@ -24,6 +24,9 @@ from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.fakes import fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 MIB = 1024 * 1024
 SLEEP = "import time; time.sleep(120)"
 

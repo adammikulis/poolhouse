@@ -11,6 +11,7 @@
 //! names one instead; `--no-project` turns this off), listens `--settle-ms N` for an `open` pool
 //! of that project to join, and makes one when it hears none.
 
+use std::io::{BufRead, Read};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -18,6 +19,8 @@ use std::time::Duration;
 
 use poolhouse_node::beacon::{BeaconConfig, GROUP};
 use poolhouse_node::client::Client;
+use poolhouse_node::device::{Custody, Supplied};
+use poolhouse_node::fsutil::unhex;
 use poolhouse_node::net::{Net, NetConfig, SETTLE};
 use poolhouse_node::projectid;
 use poolhouse_node::server::Server;
@@ -97,9 +100,34 @@ fn set_build(node: &mut poolhouse_node::node::Node, args: &[String]) -> Result<(
     Ok(())
 }
 
+/// The key the node was told to run as: one line of 64 hex digits on standard input when ``--key-stdin`` is given, with where it is
+/// kept (``--key-custody keystore|passphrase``, default keystore). Whatever starts the node gives it; nothing the node writes holds it.
+fn supplied_key(args: &[String]) -> Result<Option<Supplied>, String> {
+    if !args.iter().any(|a| a == "--key-stdin") {
+        return Ok(None);
+    }
+    let custody = flag(args, "--key-custody").map_or(Some(Custody::Keystore), Custody::parse).filter(|c| *c != Custody::File)
+        .ok_or("--key-custody is keystore or passphrase")?;
+    let mut line = String::new();
+    std::io::stdin().lock().take(130).read_line(&mut line).map_err(|e| format!("the key on standard input: {e}"))?;
+    let seed: [u8; 32] = unhex(line.trim()).and_then(|b| b.try_into().ok()).ok_or("standard input did not hold a key: 64 hex digits and a newline")?;
+    no_core_dumps();
+    Ok(Some(Supplied { seed, custody }))
+}
+
+/// A node that holds a key it was given leaves no core file behind, which would hold the key.
+fn no_core_dumps() {
+    #[cfg(unix)]
+    {
+        let none = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: setrlimit reads the one plain-data struct it is given.
+        unsafe { libc::setrlimit(libc::RLIMIT_CORE, &none) };
+    }
+}
+
 fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let config = net_config(args)?;
-    let mut server = Server::bind(state).map_err(|e| e.to_string())?;
+    let mut server = Server::bind_with(state, supplied_key(args)?.as_ref()).map_err(|e| e.to_string())?;
     let shared = server.node();
     set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
     if let Some(config) = config {
@@ -147,5 +175,17 @@ fn main() -> ExitCode {
             eprintln!("poolhouse-node: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    #[test]
+    fn a_node_that_holds_a_given_key_cannot_write_a_core_file() {
+        super::no_core_dumps();
+        let mut now = libc::rlimit { rlim_cur: 1, rlim_max: 1 };
+        // SAFETY: getrlimit writes the one plain-data struct it is given.
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_CORE, &mut now) }, 0);
+        assert_eq!((now.rlim_cur, now.rlim_max), (0, 0));
     }
 }

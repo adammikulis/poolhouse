@@ -19,6 +19,9 @@ from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_
 from poolhouse.serve.process import every_server, pid_exists
 from poolhouse.testing.fakes import LLAMA_SERVER_FLAGS, fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 MTP_HELP = "".join(
     f"{('--spec-type none,draft-simple,draft-mtp,ngram-mod' if flag == '--spec-type TYPE' else flag):<52}"
     "what it sets\n" for flag in LLAMA_SERVER_FLAGS)

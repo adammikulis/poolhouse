@@ -267,6 +267,7 @@ def _upkeep(broker: Broker, done: threading.Event, server: _Server, quiet_s: flo
         now = time.monotonic()
         if now - looked >= ADOPT_EVERY_S:
             broker.adopt()
+            broker.keep_leases()
             looked = now
         if broker.supervising():
             busy = now

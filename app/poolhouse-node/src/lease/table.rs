@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::live;
 use super::policy::{capped, default_estimate, sort_key};
-use super::types::{Config, Lease, Request, Resource, State, MAX_RESOURCES};
+use super::types::{Config, Lease, Request, Resource, State, MAX_RESOURCES, MAX_TAG, QUIET_MAX_TTL_S};
 use crate::error::{Error, Result};
 
 /// Pool-wide claims other devices hold, from the board: (board, resource key) to holder.
@@ -42,7 +42,7 @@ pub enum Event {
     Granted(Lease),
     Ended(Lease, Why),
     /// ``to`` was granted resources ``from`` held until it expired or its process died.
-    Takeover { from: Lease, why: Why, to: Lease },
+    Takeover { from: Box<Lease>, why: Why, to: Box<Lease> },
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -57,6 +57,12 @@ fn capacity(cfg: &Config, r: &Resource) -> Option<u64> {
         Resource::MemoryMb { .. } if cfg.memory_mb > 0 => Some(cfg.memory_mb),
         _ => None,
     }
+}
+
+/// The most seconds one renewal may keep a lease: what the configuration allows, and for a quiet lease no more than `QUIET_MAX_TTL_S`.
+fn longest(cfg: &Config, quiet: bool) -> u64 {
+    let allowed = cfg.max_ttl_s.max(1);
+    if quiet { allowed.min(QUIET_MAX_TTL_S) } else { allowed }
 }
 
 fn same_resources(a: &[Resource], b: &[Resource]) -> bool {
@@ -124,9 +130,15 @@ impl Table {
         if keys.iter().enumerate().any(|(i, k)| keys[..i].contains(k)) {
             return Err(Error::Invalid("a lease names each resource once".into()));
         }
+        if req.tag.len() > MAX_TAG || !req.tag.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b':')) {
+            return Err(Error::Invalid(format!("a tag is up to {MAX_TAG} letters, digits, dots, dashes, colons and underscores")));
+        }
+        if req.quiet && !req.resources.iter().all(Resource::may_be_quiet) {
+            return Err(Error::Invalid("only the GPU and the request line of a server are taken quietly".into()));
+        }
         let holder = format!("{}/{}", req.board, req.name);
-        let ttl_s = req.ttl_s.unwrap_or(cfg.default_ttl_s).clamp(1, cfg.max_ttl_s);
-        if let Some(mine) = self.leases.iter_mut().find(|l| l.holder == holder && same_resources(&l.resources, &req.resources)) {
+        let ttl_s = req.ttl_s.unwrap_or(cfg.default_ttl_s).clamp(1, longest(cfg, req.quiet));
+        if let Some(mine) = self.leases.iter_mut().find(|l| l.holder == holder && l.tag == req.tag && same_resources(&l.resources, &req.resources)) {
             mine.expires_ms = now + if mine.state == State::Held { ttl_s } else { cfg.queue_patience_s } * 1000;
             return Ok(mine.id.clone());
         }
@@ -136,7 +148,7 @@ impl Table {
             id: id.clone(), holder, board: req.board.clone(), name: req.name.clone(), resources: req.resources.clone(), class: req.class,
             state: State::Queued, estimate_s, seq: self.next_seq, since_ms: now, granted_ms: 0,
             expires_ms: now + cfg.queue_patience_s * 1000, pid: req.pid, pid_start: (req.pid != 0).then(|| live::start_of(req.pid)).flatten(),
-            remote: req.remote, local: req.local, ttl_s,
+            remote: req.remote, local: req.local, ttl_s, tag: req.tag.clone(), quiet: req.quiet,
         });
         Ok(id)
     }
@@ -150,7 +162,7 @@ impl Table {
                 return false;
             }
             let held = self.leases.iter().filter(|o| o.state == State::Held && o.id != l.id);
-            if held.clone().any(|o| o.holder != l.holder && o.resources.iter().any(|x| r.conflicts(x))) {
+            if held.clone().any(|o| o.party() != l.party() && o.resources.iter().any(|x| r.conflicts(x))) {
                 return false;
             }
             if let Some(cap) = capacity(cfg, r) {
@@ -159,7 +171,7 @@ impl Table {
                     return false;
                 }
             }
-            !ahead.iter().any(|o| o.holder != l.holder && o.resources.iter().any(|x| r.conflicts(x) || (!r.exclusive() && x.key() == r.key())))
+            !ahead.iter().any(|o| o.party() != l.party() && o.resources.iter().any(|x| r.conflicts(x) || (!r.exclusive() && x.key() == r.key())))
         })
     }
 
@@ -182,9 +194,9 @@ impl Table {
             mine.granted_ms = now;
             mine.expires_ms = now + mine.ttl_s * 1000;
             let granted = mine.clone();
-            for (old, why) in ended.iter().filter(|(o, w)| o.state == State::Held && matches!(w, Why::Expired | Why::DeadHolder) && o.holder != granted.holder) {
+            for (old, why) in ended.iter().filter(|(o, w)| o.state == State::Held && matches!(w, Why::Expired | Why::DeadHolder) && o.party() != granted.party()) {
                 if old.resources.iter().any(|x| granted.resources.iter().any(|r| r.conflicts(x) || (!r.exclusive() && r.key() == x.key()))) {
-                    events.push(Event::Takeover { from: old.clone(), why: *why, to: granted.clone() });
+                    events.push(Event::Takeover { from: Box::new(old.clone()), why: *why, to: Box::new(granted.clone()) });
                 }
             }
             events.push(Event::Granted(granted));
@@ -213,13 +225,28 @@ impl Table {
         }
         if l.state == State::Held {
             if ttl_s != 0 {
-                l.ttl_s = ttl_s.clamp(1, cfg.max_ttl_s);
+                l.ttl_s = ttl_s.clamp(1, longest(cfg, l.quiet));
             }
             let wanted = now + l.ttl_s * 1000;
             l.expires_ms = end.map_or(wanted, |end| l.expires_ms.max(wanted.min(end)));
         } else {
             l.expires_ms = now + cfg.queue_patience_s * 1000;
         }
+        Ok(&*l)
+    }
+
+    /// Bind a lease its holder has to the process ``pid``, which must be running: the lease then ends with that process.
+    pub fn bind(&mut self, id: &str, holder: &str, pid: u32) -> Result<&Lease> {
+        let start = live::start_of(pid).ok_or_else(|| Error::Invalid("pid is not a running process".into()))?;
+        let l = self.leases.iter_mut().find(|l| l.id == id).ok_or_else(|| Error::Invalid("no such lease".into()))?;
+        if l.holder != holder {
+            return Err(Error::Denied("that lease is held by another identity".into()));
+        }
+        if l.remote {
+            return Err(Error::Invalid("a remote holder has no local pid; its lease lives by expiry".into()));
+        }
+        l.pid = pid;
+        l.pid_start = Some(start);
         Ok(&*l)
     }
 
@@ -231,7 +258,7 @@ impl Table {
         let queue = self.queue(cfg, now);
         let place = queue.iter().position(|o| o.id == id).map_or(0, |i| i + 1);
         let overlap = |o: &Lease| o.resources.iter().any(|x| l.resources.iter().any(|r| r.conflicts(x) || (!r.exclusive() && r.key() == x.key())));
-        let blocking = self.leases.iter().filter(|o| o.state == State::Held && o.holder != l.holder && overlap(o));
+        let blocking = self.leases.iter().filter(|o| o.state == State::Held && o.party() != l.party() && overlap(o));
         let remaining = blocking.map(|o| (o.granted_ms + o.estimate_s * 1000).saturating_sub(now) / 1000).max().unwrap_or(0);
         let before: u64 = queue[..place.saturating_sub(1)].iter().filter(|o| overlap(o)).map(|o| o.estimate_s).sum();
         (place, remaining + before)

@@ -18,6 +18,9 @@ from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.process import kill_process_tree, offloaded_layers
 from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
 
+pytest_plugins = ["serve_node"]
+pytestmark = pytest.mark.usefixtures("serve_leases")
+
 LLAMA = {"pid": 4242, "ip": "127.0.0.1", "uid": os.getuid(), "user": "me",
          "exe": "/opt/llama.cpp/build/bin/llama-server", "rss": 1024 ** 3}
 
