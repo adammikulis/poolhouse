@@ -661,8 +661,13 @@ listener is the one network port.
   its certificate is dropped; revoked wins every merge and is never undone; a revoked certificate cannot
   be enrolled again. Members swap records with the `members` op; only an active member's rows are merged.
   Every request is checked against the record when it arrives, so a device removed after it connected is
-  refused at its next request on the same connection. Changes are written to the board `pool` as audit
-  entries; the record is the authority.
+  refused at its next request on the same connection. A device that records a removal also stops using the
+  connections it holds to the removed device: a sync cycle does not dial a member removed since the cycle
+  began, and a dial already open ends at its next request, so nothing is sent to, taken from or merged from
+  the removed device once the record says so (`netsync::locked_for`). A member that has not heard of the
+  removal yet still syncs with the removed device and passes on what it takes; the removal reaches it with
+  the next swap of records. Changes are written to the board `pool` as audit entries; the record is the
+  authority.
 - **Join policy**: one pool attribute, `open` or `secure` (default `secure`), newest change wins, set by
   `set_join_policy` and carried by the `members` op.
 - **Peer ops** (`peer.rs`, frames up to 4 MiB): `hello`, `join_open`, `join_exchange`, `join_confirm` for

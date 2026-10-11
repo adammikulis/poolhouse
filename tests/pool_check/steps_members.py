@@ -44,7 +44,7 @@ def a_removed_device_is_refused_by_every_member(world: World) -> str:
         before = victim.probe(host, port, {"op": "boards"})
         assert before["replies"] and before["replies"][0]["ok"], f"{device.name} refused {victim.name} before it was removed (the probe itself is wrong): {before}"
     world.first.admin("member_remove", fingerprint=victim.fingerprint)
-    removed_at, seen_at = time.monotonic(), {}
+    removed_at, seen_at = time.monotonic(), {"removed at (ms since the epoch)": int(time.time() * 1000)}
     for device in rest:
         eventually(lambda d=device: (d.member(victim.fingerprint) or {}).get("status") == "revoked", 30, f"{device.name} to record the removal of {victim.name}")
         seen_at[f"{device.name} recorded it"] = round(time.monotonic() - removed_at, 1)
@@ -75,7 +75,7 @@ def _what_each_knows(devices: list, victim, seen_at: dict[str, float]) -> str:
     for device in devices:
         mine = [m for m in device.members() if m["fingerprint"] == victim.fingerprint]
         seen[device.name] = {k: mine[0].get(k) for k in ("status", "addr", "connected", "reach", "last_seen_ms", "last_sync_ms", "last_error")} if mine else "(not listed)"
-    return f"held by {held}; what each device says of {victim.name}: {seen}; seconds after the removal: {seen_at}"
+    return f"held by {held}; what each device says of {victim.name}: {seen}; the removal and when each member saw it (seconds after it): {seen_at}"
 
 
 def a_swapped_certificate_is_refused(world: World) -> None:

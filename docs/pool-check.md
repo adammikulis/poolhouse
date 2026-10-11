@@ -201,7 +201,7 @@ that is not a CI runner (a laptop's firewall profile, a VPN). A runner's loopbac
 
 ### What the first real runs found
 
-Run 38092844765 failed three jobs; each was a defect of the rig, not of the node, except the one that is still open:
+Run 38092844765 failed three jobs; each was a defect of the rig, not of the node, except the last, which was a defect of the node:
 
 * **`build-update` on macOS (`no node answers`).** The step writes the runtime selection (`selected.json`) to make the device a checkout one
   commit behind, and the node's supervisor restarts the node whenever that file changes, so the updater's first question to the node met
@@ -213,8 +213,18 @@ Run 38092844765 failed three jobs; each was a defect of the rig, not of the node
   is also counted as two (it was counted as three, so three-device steps ran on two and failed), the Windows address in WSL is read from
   the route (the first line `wsl.exe` prints can be a proxy warning, which was taken as a host name), and the checkout path of the WSL
   device is spelled as a Linux path when the rig runs on Windows.
-* **`member-removal` in WSL: `linux took an entry from the removed linux2`.** Not reproduced: the step passed in every later run of the same
-  job and, on a Mac, seven times unloaded and four times with three busy processes per core. The step's refusal check accepts any error from
-  the probe as a refusal, so a transient error can end the wait before a member has learned of the removal; the failure message now says
-  what each member says of the removed device (standing, address, last error), so the next occurrence names its cause. Until it recurs with
-  that output, this is an open question, not a fixed defect.
+* **`member-removal` in WSL: `linux took an entry from the removed linux2`.** The step failed in the WSL job of runs 38092844765,
+  38097919556, 38152925094 and 38155459088 and passed in the seven other runs of that job and in every run of the other four jobs. In
+  each failure both members listed the removed device as removed when the entry was found, `linux` held no address for it, and `linux1`
+  held one and listed it `connected`: the entry reached `linux` through `linux1`, the member that dials the removed device. A sync cycle
+  chose the members to dial once, at its start, and a dial then sent every request on one connection without looking at the pool record
+  again. A member that heard of the removal while a cycle was running (from an earlier dial of the cycle, or from a member that dialed it)
+  went on to dial the removed device, which still believed it was a member: it pulled the entries the device had written since, sent it
+  the pool's rows, merged its pool record, and passed the entries on to the other members. A dial lasts seconds on a loaded device (2.7 to
+  3.3 s on a Mac at a load of 20, with no change to the node). Why only the WSL job lost the race in 11 runs of each job is not
+  established: the steps take as long in the other jobs, so the WSL job is not the slowest, and the logs hold no dial durations. The node
+  now stops at the first request after it records a removal and does not dial a removed member (`app/poolhouse-node/tests/removal.rs`).
+  Measured on 2026-10-11 on a Mac with every request a node answers delayed by 150 ms (a patched node, not committed): the previous node
+  failed 5 of 14 rounds of the step's sequence and 2 of 6 runs of the step; the fixed node failed none of 14 rounds and none of 8 runs.
+  The step now waits until every member lists the removed device as removed before it writes, and its failure message names who holds
+  the entry, each member's view of the removed device and the seconds at which each member recorded and refused it.
