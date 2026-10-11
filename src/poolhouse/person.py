@@ -1,14 +1,23 @@
-"""Whether the process is a person's: a terminal on stdin and stdout and no agent marker."""
+"""Whether the process is a person's: a terminal on stdin and stdout and no agent marker; and a question put to the
+person on the terminal device itself."""
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import importlib
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from pathlib import Path
+from typing import TextIO
 
-__all__ = ["AGENT_MARKERS", "HumanRequired", "is_terminal", "marked", "require_person"]
+if sys.platform != "win32":
+    import select
+    import signal
+    import termios
+
+__all__ = ["AGENT_MARKERS", "HumanRequired", "confirm", "controlling_terminal", "is_terminal", "marked", "require_person"]
 
 _MSVCRT = importlib.import_module("msvcrt") if sys.platform == "win32" else None
 
@@ -52,3 +61,55 @@ def require_person(action: str, terminal: tuple[bool, bool] | None = None,
                             f"({found} is set)")
     if not (tty_in and tty_out):
         raise HumanRequired(f"{action} needs a terminal on stdin and stdout")
+
+
+@contextlib.contextmanager
+def controlling_terminal() -> Iterator[tuple[TextIO, TextIO] | None]:
+    """The controlling terminal opened to read from and to write to, or None when this process has none."""
+    names = ("CONIN$", "CONOUT$") if sys.platform == "win32" else ("/dev/tty", "/dev/tty")
+    with contextlib.ExitStack() as stack:
+        try:
+            both = (stack.enter_context(Path(names[0]).open()), stack.enter_context(Path(names[1]).open("w")))
+        except OSError:
+            both = None
+        yield both
+
+
+@contextlib.contextmanager
+def _background_reads_fail() -> Iterator[None]:
+    """Within it, reading the terminal from outside its foreground group fails instead of stopping the process."""
+    if sys.platform == "win32":
+        yield
+        return
+    try:
+        previous = signal.signal(signal.SIGTTIN, signal.SIG_IGN)
+    except ValueError:
+        yield
+        return
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTTIN, previous)
+
+
+def confirm(prompt: str, *, wait_s: float = 120.0) -> bool:
+    """Ask ``prompt`` on the controlling terminal: whether the person typed `yes` there within ``wait_s``.
+
+    The terminal device is read and written itself, so what stdin and stdout are changes nothing; text typed before the
+    prompt appeared is dropped, and no terminal, no answer, or anything but `yes` is a no.
+    """
+    with controlling_terminal() as found, _background_reads_fail():
+        if found is None:
+            return False
+        reader, writer = found
+        try:
+            if sys.platform != "win32":
+                termios.tcflush(reader.fileno(), termios.TCIFLUSH)
+            writer.write(prompt)
+            writer.flush()
+            if sys.platform != "win32" and not select.select([reader], [], [], wait_s)[0]:
+                writer.write("\nno answer: nothing was done\n")
+                return False
+            return reader.readline().strip().lower() == "yes"
+        except (OSError, ValueError, UnicodeError):
+            return False

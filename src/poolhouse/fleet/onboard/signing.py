@@ -4,12 +4,12 @@ The key is generated on the controller and is a different key from the pool key,
 one is not losing the other. It is kept in a file wrapped under a subkey of the user's master
 key in the operating system's keystore (`poolhouse.keystore`). With no usable keystore it is
 kept in a file encrypted under a passphrase (scrypt, ChaCha20-Poly1305, from `cryptography`,
-mode 0600) with a warning; there is no plaintext path. Signing is automatic. Exporting,
+mode 0600) with a warning; there is no plaintext path. Signing is automatic, except for
+`ConfirmedKeys` (the person's grant key), which asks a person first every time. Exporting,
 rotating or revoking a key, and turning on confirm-before-signing, need a `HumanGrant`.
 
-What this protects: the key leaking through a file copy, a backup or a repository. What it does
-not: code running as you can ask the keystore for the key, unless the operating system prompts.
-A hardware key (a signing device that never releases the key) is the designed next step.
+It protects the key from a file copy, a backup or a repository, not from code running as you
+that can ask the keystore for it. A hardware key is the designed next step.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from .events import BUS, Bus
 from .human import HumanGrant
 from .manifest import VALID_S, Carried, Entry, Signer
 
-__all__ = ["UNLOCK_ENV", "KeyStoreError", "SigningKeys", "open_file", "seal_file"]
+__all__ = ["UNLOCK_ENV", "ConfirmedKeys", "KeyStoreError", "SigningKeys", "open_file", "seal_file"]
 
 SERVICE = legacy.KEYCHAIN_SERVICE
 PURPOSE = "fleet-signing"
@@ -95,6 +95,8 @@ def _ask_passphrase(prompt: str) -> str:
 
 class SigningKeys:
     """The signing key of the state directory ``directory``."""
+
+    always_confirm = False
 
     def __init__(self, directory: Path, *, passphrase: Callable[[str], str] = _ask_passphrase,
                  bus: Bus = BUS, say: Callable[[str], None] = warn,
@@ -209,7 +211,7 @@ class SigningKeys:
         signer = Signer.generate()
         store = self._put(signer)
         doc = {"store": store, "key_id": signer.key_id, "public": base64.b64encode(signer.public).decode(),
-               "created": time.time(), "rotations": [], "revoked": [], "confirm": False}
+               "created": time.time(), "rotations": [], "revoked": [], "confirm": self.always_confirm}
         self._write(doc)
         self.bus.emit("onboard.signing.created", "notice", f"key:{signer.key_id}", store=store)
         return doc
@@ -221,7 +223,7 @@ class SigningKeys:
         asked first and must say yes."""
         doc = self.meta()
         listed = list(entries)
-        if doc.get("confirm"):
+        if self.always_confirm or doc.get("confirm"):
             summary = f"sign a manifest of {len(listed)} files with key {doc['key_id'][:16]}"
             if confirm is None or not confirm(summary):
                 raise KeyStoreError("signing needs a person's confirmation and did not get it")
@@ -236,7 +238,7 @@ class SigningKeys:
         """The signature of this key over ``data``; with confirm-before-signing on, ``confirm``
         is asked first and must say yes."""
         doc = self.meta()
-        if doc.get("confirm") and (confirm is None or not confirm(f"sign {len(data)} bytes with key {doc['key_id'][:16]}")):
+        if (self.always_confirm or doc.get("confirm")) and (confirm is None or not confirm(f"sign {len(data)} bytes with key {doc['key_id'][:16]}")):
             raise KeyStoreError("signing needs a person's confirmation and did not get it")
         return self._get(doc["store"]).sign_bytes(data)
 
@@ -296,3 +298,9 @@ class SigningKeys:
         doc = self.meta()
         grant.check("confirm-signing", doc["key_id"])
         self._write({**doc, "confirm": bool(on)})
+
+
+class ConfirmedKeys(SigningKeys):
+    """A signing key that asks a person before every signature, whatever its record says, and starts with a record that says so."""
+
+    always_confirm = True

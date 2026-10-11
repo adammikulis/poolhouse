@@ -1,9 +1,9 @@
 """The grant commands of `poolhouse-workspace`: what sessions may do beyond the default, who allowed it and how often it was
 used (docs/node.md, "Standing grants").
 
-`grants` and `grant-log` read; any session may run them. `grant`, `revoke-grant`, `grants-setup`, `person-proof` and
-`person-enroll` are a person's: they refuse a process an agent started or one with no terminal, and they sign with the
-person's key, which only that person's keystore opens.
+`grants` and `grant-log` read; any session may run them. `grant`, `revoke-grant`, `grants-setup`, `person-proof`,
+`person-enroll` and `person-unenroll` are a person's: they refuse a process an agent started or one with no terminal, and
+they sign with the person's key, which asks for a typed `yes` on the terminal device for each thing it signs.
 """
 
 from __future__ import annotations
@@ -21,16 +21,18 @@ from poolhouse.board import grants, person as person_session, person_key
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.command import flag
-from poolhouse.log import say
+from poolhouse.log import say, warn
 from poolhouse.workspace import board_cli, render
 
 __all__ = ["PERSON", "TABLE", "person_runner", "reader"]
 
+OPEN = "--i-understand-registration-is-open"
 TO = [flag("--to", default="", metavar="NAME", help="one session, by its unique name"),
-      flag("--class", dest="family", default="", metavar="FAMILY", help="the main sessions of a model family (claude, qwen, ...)"),
-      flag("--account", dest="model", default="", metavar="MODEL", help="the sessions whose verified model is exactly MODEL"),
-      flag("--with-subagents", action="store_true", help="--class: the subagents of those sessions too"),
-      flag("--verified", action="store_true", help="--class: only sessions whose model the node verified")]
+      flag("--class", dest="family", default="", metavar="FAMILY", help="the main sessions that say they are of a model family (claude, qwen, ...); needs " + OPEN),
+      flag("--account", dest="model", default="", metavar="MODEL", help="the sessions whose verified model is exactly MODEL (no session is verified yet)"),
+      flag("--with-subagents", action="store_true", help="--to: its subagents too; --class: the subagents of those sessions too"),
+      flag("--verified", action="store_true", help="--class: only sessions whose model the node verified (no session is verified yet)"),
+      flag(OPEN, dest="open_registration", action="store_true", help="--class: any process can register under any model id, so a class grant is held by whatever claims the family")]
 
 
 @dataclass(slots=True)
@@ -48,23 +50,28 @@ def _when(ms: int) -> str:
 
 def _who(to: dict[str, Any]) -> str:
     if to["kind"] == "session":
-        return str(to["name"])
+        return f"{to['name']}{' and its subagents' if to.get('subagents') else ''}"
     if to["kind"] == "account":
         return f"{to['model']} (verified)"
     return f"{'' if not to.get('main', True) else 'main '}sessions of {to['family']}{' (verified)' if to.get('verified') else ''}"
 
 
+def _matches_nobody_yet(to: dict[str, Any]) -> bool:
+    return to["kind"] == "account" or bool(to.get("verified"))
+
+
 def _line(g: grants.Grant) -> str:
     left = "unlimited" if g.uses is None else f"{g.used}/{g.uses}"
     return (f"{g.gid}  {g.status:<9} {g.action:<18} {_who(g.to)}  on {g.scope['resource']}  until {_when(g.until_ms)}  used {left}"
-            f"{'  needs review' if g.review else ''}{'  (' + g.why + ')' if g.why else ''}")
+            f"{'  needs review' if g.review else ''}{'  (' + g.why + ')' if g.why else ''}"
+            f"{'  (names a verified model, and no session is verified yet: it matches nobody)' if _matches_nobody_yet(g.to) else ''}")
 
 
 def show_grants(args: argparse.Namespace, s: Session) -> Any:
     """Who holds which grant: its state, what it covers, when it ends and how often it was used."""
     got = grants.listing(s)
     rows = [g for g in got.grants if (not args.status or g.status == args.status) and (not args.mine or g.mine)]
-    return [asdict(g) for g in rows] if args.json else [_line(g) for g in rows] or ["(no grants)"]
+    return [{**asdict(g), "matches_nobody_yet": _matches_nobody_yet(g.to)} for g in rows] if args.json else [_line(g) for g in rows] or ["(no grants)"]
 
 
 def show_log(args: argparse.Namespace, s: Session) -> Any:
@@ -113,12 +120,20 @@ def _held(ctx: Ctx) -> Any:
     return ctx.key
 
 
+def _class_allowed(args: argparse.Namespace) -> None:
+    if not args.open_registration:
+        raise ValueError("a class grant is held by whatever process registers as that family, and registration is open: any process can say "
+                         f"it is a claude. Name the sessions with --to (or --session for grants-setup), or pass {OPEN} to grant the class anyway")
+    warn("registration is open: this grant is held by every session that says it is of that family, until sessions are authenticated")
+
+
 def _to(args: argparse.Namespace) -> dict[str, Any]:
     if [bool(args.to), bool(args.family), bool(args.model)].count(True) != 1:
         raise ValueError("name who it is for with exactly one of --to NAME, --class FAMILY, --account MODEL")
     if args.to:
-        return {"kind": "session", "name": args.to}
+        return {"kind": "session", "name": args.to, **({"subagents": True} if args.with_subagents else {})}
     if args.family:
+        _class_allowed(args)
         return {"kind": "class", "family": args.family, "main": not args.with_subagents, **({"verified": True} if args.verified else {})}
     return {"kind": "account", "model": args.model}
 
@@ -143,38 +158,54 @@ def revoke_grant(args: argparse.Namespace, ctx: Ctx) -> Any:
     return {"revoked": done["gid"]}
 
 
-def _family(args: argparse.Namespace, ctx: Ctx) -> str:
+def _leads(ctx: Ctx) -> dict[str, Any]:
+    """The live main sessions of the board, by name: what each said it runs on is a claim."""
+    return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and a.harness != person_session.HARNESS}
+
+
+def _chosen(args: argparse.Namespace, main: dict[str, Any]) -> list[str]:
+    if args.session:
+        return list(dict.fromkeys(args.session))
+    if not main:
+        raise ValueError("no session is registered on this board yet: start the lead, then run this again")
+    say("The main sessions on this board (the model and harness are what each session says about itself):")
+    for number, agent in enumerate(main.values(), 1):
+        say(f"  {number}. {agent.name}  model {agent.model or '?'}  harness {agent.harness or '?'}  last seen {_when(agent.seen_ms)}")
+    typed = input("The lead session or sessions to grant, by number or name: ").replace(",", " ").split()
+    names = [list(main)[int(t) - 1] if t.isdigit() and 0 < int(t) <= len(main) else t for t in typed]
+    if not names:
+        raise ValueError("no session was chosen")
+    return list(dict.fromkeys(names))
+
+
+def _who_gets(args: argparse.Namespace, ctx: Ctx) -> list[dict[str, Any]]:
     if args.family:
-        return str(args.family)
-    found = sorted({a.family for a in ctx.carrier.agents() if not a.parent and a.harness != person_session.HARNESS and a.family != "agent"})
-    if len(found) != 1:
-        raise ValueError(f"name the lead's model family with --family (main sessions here: {', '.join(found) or 'none'})")
-    return found[0]
-
-
-def _enrolled(ctx: Ctx) -> bool:
-    """Put this device's key on the node when it holds none; whether it did."""
-    if grants.fingerprint(ctx.key.public) in grants.listing(ctx.carrier).persons:
-        return False
-    if grants.listing(ctx.carrier).persons:
-        raise Denied("denied", "the node already holds another key: carry this one over with `person-proof` here and `person-enroll` where the other key is")
-    about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
-    grants.enrol(ctx.client, ctx.carrier.token, grants.enrolment(ctx.key, about))
-    return True
+        _class_allowed(args)
+        return [{"kind": "class", "family": args.family, "main": True}]
+    main = _leads(ctx)
+    names = _chosen(args, main)
+    if unknown := [n for n in names if n not in main]:
+        raise ValueError(f"not a main session of this board: {', '.join(unknown)}")
+    return [{"kind": "session", "name": n} for n in names]
 
 
 def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
-    """Approve once the grants the lead needs: the exact list is printed, every item is revoked by its own id."""
-    enrolled = _enrolled(ctx)
-    family, device = _family(args, ctx), grants.listing(ctx.carrier).device
-    bundle = grants.default_bundle(family, device, args.days)
-    say(f"These grants go to the main sessions of {family} on this device, each for {args.days} days, none for more:")
-    for number, (want, text) in enumerate(bundle, 1):
-        say(f"  {number}. {want.action}: {text}")
-    if not args.yes and input("Type yes to grant them: ").strip().lower() != "yes":
-        raise Denied("denied", "nothing was granted")
+    """Approve once the grants the lead needs: the exact list is printed and asked about at the terminal, every item is revoked by its own id."""
+    who = _who_gets(args, ctx)
+    held = grants.listing(ctx.carrier)
+    if held.persons and grants.fingerprint(ctx.key.public) not in held.persons:
+        raise Denied("denied", "the node already holds another key: carry this one over with `person-proof` here and `person-enroll` where the other key is")
+    bundle = grants.default_bundle(who, held.device, args.days)
+    about = "".join(c for c in socket.gethostname() if c.isascii() and c.isprintable())[:40] or "this device"
+    enrolling = not held.persons
+    lines = [*([grants.enrol_line(ctx.key.public, about)] if enrolling else []), *(grants.want_line(ctx.carrier.board, want) for want, _ in bundle)]
+    for action, text in dict.fromkeys((want.action, text) for want, text in bundle):
+        say(f"  {action}: {text}")
+    ctx.key.approve(lines, f"These {len(lines)} signatures give the lead sessions above the grants listed, each for {args.days} days, none for more:")
+    if enrolling:
+        grants.enrol_first(ctx.client, ctx.carrier.token, ctx.key, about)
     done = [grants.issue(ctx.carrier, ctx.key, want) for want, _ in bundle]
-    return {"key_enrolled": enrolled, "family": family, "granted": [{"gid": d["gid"], "action": d["action"]} for d in done],
+    return {"key_enrolled": enrolling, "to": [_who(to) for to in who], "granted": [{"gid": d["gid"], "action": d["action"]} for d in done],
             "revoke": "poolhouse-workspace revoke-grant ID", "see": "poolhouse-workspace grants"}
 
 
@@ -189,6 +220,11 @@ def enroll(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Put another device's key on this node, approved by the key this node already holds."""
     carried = json.loads(args.proof)
     return grants.enrol(ctx.client, ctx.carrier.token, grants.approve(carried, _held(ctx)))
+
+
+def unenroll(args: argparse.Namespace, ctx: Ctx) -> Any:
+    """Take a key off this node, signed by a key this node holds; the node keeps its last key."""
+    return grants.unenrol(ctx.client, ctx.carrier.token, _held(ctx), args.key)
 
 
 TABLE = (
@@ -206,12 +242,15 @@ PERSON = (
       flag("--uses", type=int, default=0, help="how often it may be used (default: as often as it is needed)"),
       flag("--review", action="store_true", help="each use needs an independent review behind it")], grant),
     ("revoke-grant", "a person ends a grant at once", [flag("gid"), flag("--reason", default="")], revoke_grant),
-    ("grants-setup", "a person approves, once, the grants the lead of this board needs",
-     [flag("--family", default="", help="the lead's model family (default: the one main session family on this board)"),
-      flag("--days", type=int, default=30, help="how long they last (default 30)"),
-      flag("--yes", action="store_true", help="grant the list printed above without typing yes")], setup),
+    ("grants-setup", "a person approves, once, the grants the lead sessions of this board need",
+     [flag("--session", action="append", metavar="NAME", help="a lead session, by its unique name (repeat for several; default: pick from the list the board shows)"),
+      flag("--family", default="", help="every main session that says it is of this model family; needs " + OPEN),
+      flag(OPEN, dest="open_registration", action="store_true", help="--family: any process can register under any model id, so the grants go to whatever claims the family"),
+      flag("--days", type=int, default=30, help="how long they last (default 30)")], setup),
     ("person-proof", "print this device's key proving it holds its private half, to carry to another node",
      [flag("--about", default="a person's key", help="what to call the key there")], proof),
     ("person-enroll", "put a key carried from another device on this node, approved by this node's key",
      [flag("--proof", required=True, help="what `person-proof` printed")], enroll),
+    ("person-unenroll", "take a key off this node, signed by a key this node holds (the last key stays)",
+     [flag("--key", required=True, metavar="FINGERPRINT", help="the fingerprint of the key to remove (`grants` lists the keys the node holds)")], unenroll),
 )

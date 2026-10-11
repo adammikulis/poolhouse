@@ -2,8 +2,8 @@
 
 The daemon registers one parentless session per board under the harness `poolhouse-ui`; the node names it like any
 session, and it holds no grant of its own: when the node refuses it for want of one, the person's key (kept beside the
-node, used only for a screen the person is sitting at) signs a grant for that one use. The token is kept in the
-daemon's private client folder and never reaches a page.
+node) is asked to sign a grant for that one use, which needs a typed yes on a terminal, so a daemon with none signs nothing.
+The token is kept in the daemon's private client folder and never reaches a page.
 """
 
 from __future__ import annotations

@@ -12,17 +12,24 @@ import json
 import re
 import secrets
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from poolhouse.board.client import Client
 from poolhouse.board.session import Session
+from poolhouse.files import write_json
+from poolhouse.platform import private_file
 
-__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "approve", "canonical", "default_bundle", "duration_ms",
-           "enrol", "enrolment", "fingerprint", "issue", "listing", "log", "revoke", "sign_issue", "sign_revoke"]
+__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "approve", "canonical", "default_bundle", "describe", "duration_ms",
+           "enrol", "enrol_first", "enrol_line", "enrolment", "expect_enrolment", "fingerprint", "issue", "listing", "log", "revoke", "sign_issue", "sign_revoke",
+           "sign_unenroll", "unenrol", "want_line"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
+UNENROLL_DOMAIN = b"poolhouse/person-unenroll/v1\n"
+ENROLMENT_HASH_FILE = "enroll_secret.json"
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
 
@@ -139,9 +146,41 @@ def approve(proof: dict[str, Any], approver: Signs) -> dict[str, Any]:
     return {**proof, "by": fingerprint(approver.public), "approval": approver.sign_bytes(ENROLL_DOMAIN + canonical(body).encode()).hex()}
 
 
+def expect_enrolment(state: Path, *, now_ms: int | None = None) -> str:
+    """Leave in the node's state directory the hash of a fresh one-time secret, and return the secret.
+
+    The node enrols the first person key only with that secret, within ten minutes, once; it reads the hash from this file
+    and from no request, so only a process that can write the state directory can make one.
+    """
+    secret = secrets.token_urlsafe(32)
+    path = Path(state) / ENROLMENT_HASH_FILE
+    write_json(path, {"sha256": hashlib.sha256(secret.encode()).hexdigest(), "at_ms": _now_ms() if now_ms is None else now_ms})
+    private_file(path)
+    return secret
+
+
 def enrol(client: Client, token: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Put a person key on the node: ``params`` from `enrolment` (the first key) or `approve` (every later one)."""
+    """Put a person key on the node: ``params`` from `enrolment` with the `expect_enrolment` secret (the first key) or `approve` (every later one)."""
     return dict(client.call("person_enroll", "", token, **params))
+
+
+def enrol_first(client: Client, token: str, key: Signs, about: str) -> dict[str, Any]:
+    """Put the first person key on the node: the secret the node asks for is made here, in this process, and used at once."""
+    secret = expect_enrolment(client.state)
+    return enrol(client, token, {**enrolment(key, about), "secret": secret})
+
+
+def sign_unenroll(key: Signs, fingerprint_: str, *, now_ms: int | None = None) -> dict[str, Any]:
+    """The `person_unenroll` params removing the enrolled key ``fingerprint_``, signed by ``key``, an enrolled key."""
+    at, by = _now_ms() if now_ms is None else now_ms, fingerprint(key.public)
+    body = {"op": "unenroll", "fingerprint": fingerprint_, "by": by, "at_ms": at}
+    _plain(body)
+    return {k: v for k, v in body.items() if k != "op"} | {"sig": key.sign_bytes(UNENROLL_DOMAIN + canonical(body).encode()).hex()}
+
+
+def unenrol(client: Client, token: str, key: Signs, fingerprint_: str) -> dict[str, Any]:
+    """Take the key ``fingerprint_`` off the node, signed by ``key``; the node keeps its last key."""
+    return dict(client.call("person_unenroll", "", token, **sign_unenroll(key, fingerprint_)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,16 +237,73 @@ DESCRIPTIONS = {
 }
 
 
-def default_bundle(family: str, device: str, days: int = 30) -> list[tuple[Want, str]]:
+def default_bundle(who: Sequence[dict[str, Any]], device: str, days: int = 30) -> list[tuple[Want, str]]:
     """The grants a person approves once at setup, each with a line saying what it lets the lead do.
 
-    They name the main sessions of one model family on one device, none for more than ``days`` days, and each one is
-    revoked by its own id.
+    ``who`` names the lead's main sessions: `{"kind": "session", "name": ...}` for one session, or a class. Each grant lasts
+    ``days`` days on ``device`` and is revoked by its own id. `note_verify` also reaches the subagents of the sessions named.
     """
     if not 1 <= days <= MOST_DAYS:
         raise ValueError(f"days is from 1 to {MOST_DAYS}")
     out = []
     for action in DEFAULT_ACTIONS:
-        to = {"kind": "class", "family": family, "main": action != "note_verify"}
-        out.append((Want(action, to, "*", device, days * SPANS["d"]), DESCRIPTIONS[action]))
+        for to in who:
+            widened = {**to, "subagents": True} if to["kind"] == "session" else {**to, "main": False}
+            out.append((Want(action, widened if action == "note_verify" else to, "*", device, days * SPANS["d"]), DESCRIPTIONS[action]))
     return out
+
+
+def _grantee(to: dict[str, Any]) -> str:
+    if to["kind"] == "session":
+        return f"the session {to['name']}" + (" and its subagents" if to.get("subagents") else "")
+    if to["kind"] == "account":
+        return f"every session whose verified model is {to['model']}"
+    kind = "every" if not to.get("main", True) else "every main"
+    return f"{kind} session that says it is a {to['family']}" + (" and is verified" if to.get("verified") else " (registration is open: any process can say so)")
+
+
+def _span(ms: int) -> str:
+    for unit, size in (("day", 86_400_000), ("hour", 3_600_000), ("minute", 60_000), ("second", 1000)):
+        if ms >= size and ms % size == 0:
+            return f"{ms // size} {unit}{'' if ms == size else 's'}"
+    return f"{ms} ms"
+
+
+def _issue_line(board: str, grant: dict[str, Any]) -> str:
+    uses, device, resource = grant["uses"], grant["device"], grant["resource"]
+    used = "as often as it is needed" if uses is None else f"{uses} use{'' if uses == 1 else 's'}"
+    where = "any device" if device == "*" else f"device {device[:12]}"
+    return (f"allow {_grantee(grant['to'])} to {grant['action']} on {'anything' if resource == '*' else resource} (board {board}, {where}), "
+            f"for {_span(grant['lasts_ms'])}, {used}" + (", each use behind an independent review" if grant["review"] else ""))
+
+
+def want_line(board: str, want: Want) -> str:
+    """What a person reads before signing ``want`` on ``board``."""
+    return _issue_line(board, {"to": want.to, "action": want.action, "device": want.device, "resource": want.resource,
+                               "lasts_ms": want.lasts_ms, "uses": want.uses, "review": want.review})
+
+
+def enrol_line(public: bytes, about: str) -> str:
+    """What a person reads before a key is enrolled as a person key."""
+    return f"let the key {public.hex()[:16]} ({about}) act as a person key on a node"
+
+
+def describe(data: bytes) -> str:
+    """What signing ``data`` does, in words, read from the bytes themselves; `ValueError` for anything a person key does not sign."""
+    domain, _, rest = data.partition(b"\n")
+    try:
+        body = json.loads(rest)
+        if domain + b"\n" == SIGN_DOMAIN and body["op"] == "issue":
+            scope = body["scope"]
+            return _issue_line(body["board"], {"to": body["to"], "action": body["action"], "device": scope["device"], "resource": scope["resource"],
+                                               "lasts_ms": body["until_ms"] - body["at_ms"], "uses": body.get("uses"),
+                                               "review": bool(body.get("conditions", {}).get("review"))})
+        if domain + b"\n" == SIGN_DOMAIN and body["op"] == "revoke":
+            return f"end the grant {body['gid']} on board {body['board']}" + (f" ({body['reason']})" if body.get("reason") else "")
+        if domain + b"\n" == ENROLL_DOMAIN:
+            return enrol_line(bytes.fromhex(body["public"]), body["about"])
+        if domain + b"\n" == UNENROLL_DOMAIN:
+            return f"take the person key {body['fingerprint'][:16]} off the node"
+    except (KeyError, TypeError, AttributeError, ValueError):
+        pass
+    raise ValueError("a person key signs a grant, the end of a grant, or the enrolment of a key, and this is none of them")

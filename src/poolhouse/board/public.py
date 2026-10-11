@@ -228,7 +228,7 @@ class Board:
         return self.task(ref)
 
     def link(self, to: str, *, channels: tuple[str, ...] = (), mode: str = "ro") -> dict[str, object]:
-        """Let the sessions of board ``to`` use ``channels`` of this one (all when none) read-only (``ro``) or read-write."""
+        """Let the sessions of board ``to``, a board the node hosts, use ``channels`` of this one (all when none) read-only (``ro``) or read-write (needs the grant `link_write`)."""
         return dict(self._session.call("link", to=to, channels=list(channels), mode=mode))
 
     def links(self) -> list[dict[str, object]]:
@@ -236,7 +236,7 @@ class Board:
         return list(self._session.call("links"))
 
     def unlink(self, link_id: str) -> None:
-        """Revoke a link at once."""
+        """Revoke a link at once (needs the grant `link_remove`)."""
         self._session.call("unlink", id=link_id)
 
     def projects(self) -> list[dict[str, object]]:

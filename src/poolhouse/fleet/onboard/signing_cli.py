@@ -6,11 +6,10 @@ import argparse
 import base64
 import getpass
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, person
 from poolhouse.files import read_json, write_json
 from poolhouse.log import say
 
@@ -22,10 +21,8 @@ __all__ = ["add_signing", "cmd_signing", "confirm_signing"]
 
 
 def confirm_signing(summary: str) -> bool:
-    """Ask a person at a terminal; anything else is a no."""
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return False
-    return input(f"{summary}? [y/N] ").strip().lower() == "y"
+    """Ask on the terminal device whether to sign; anything but a typed yes is a no."""
+    return person.confirm(f"{summary}? Type yes to sign: ")
 
 
 def add_signing(sub: Any, common: Any) -> None:

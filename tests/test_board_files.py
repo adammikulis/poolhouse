@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from node_kit import TYPED
 
 pytest_plugins = ["node_kit"]
 
@@ -133,7 +134,7 @@ def test_text_that_matches_an_injection_pattern_is_held_until_a_person_releases_
     assert held.returncode == 3 and "held as q1" in held.stderr and "ignore all" not in held.stdout + held.stderr
     assert run(team, bob, "file", h, "--out", "e.txt").returncode == 3 and not (team.work / "e.txt").exists()
     assert json.loads(run(team, bob, "file", h, "--json").stdout)["state"] == "quarantined"
-    assert team.terminal("quarantine-release", "q1", "--json", who=bob, )[0] == 0
+    assert team.terminal("quarantine-release", "q1", "--json", who=bob, typed=TYPED)[0] == 0
     freed = run(team, bob, "file", h, "--text")
     assert freed.returncode == 0 and "ignore all" in freed.stdout and freed.stdout.lstrip().startswith("<untrusted")
 
@@ -155,7 +156,7 @@ def test_only_a_person_at_a_terminal_deletes_a_file_and_its_message_stays(team):
     refused = run(team, lead, "file", "delete", h)
     assert refused.returncode == 3 and "terminal" in refused.stderr
     assert run(team, lead, "file", h, "--text").returncode == 0
-    code, _, err = team.terminal("file", "delete", h, who=lead)
+    code, _, err = team.terminal("file", "delete", h, who=lead, typed=TYPED)
     assert code == 0, err
     assert run(team, bob, "file", h, "--text").returncode == 3
     assert run(team, bob, "file", "list").stdout.strip() == "(none)"

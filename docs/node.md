@@ -157,7 +157,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
 | `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
-| `person_enroll`, `person_keys` | token (enrol), none (keys) | `public, about, at_ms, proof, by, approval` | `{fingerprint, keys}` / the enrolled person keys |
+| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval`; `fingerprint, at_ms, by, sig` | `{fingerprint, keys}` / the enrolled person keys |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
 device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
@@ -305,33 +305,63 @@ disk, so a killed node restarts with every committed entry and every token.
 ## Standing grants
 
 Nothing a session may do beyond reading and writing its own board's messages, notes, claims and leases is allowed until a
-grant names it. A grant is a `grant` entry on the board (channel `#grants`) that a person signed once; the node never
-reads a grant that a person key enrolled on it did not sign, so an agent cannot issue one, for itself or anyone, and a
-`grant` entry any writer puts on the board without that signature is listed as ignored and allows nothing.
+grant names it. A grant is a `grant` entry on the board (channel `#grants`) that a person signed once; the node counts a
+grant only when a person key enrolled on it signed it, so a session that does not hold that key makes none through the node's
+API, for itself or anyone, and a `grant` entry any writer puts on the board without that signature is listed as ignored and
+allows nothing. What keeps a process from signing is the custody of the key, which is the operating-system user and a typed
+confirmation, not the node ("Key custody" below says what that does not stop).
 
-**The registry.** Thirteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
-`sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release` and
-`file_delete`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
+**The registry.** Sixteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
+`sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release`,
+`file_delete`, `link_write`, `link_remove` and `source_add`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
 `keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
 owner's release authorization (docs/person-delegation.md); the GPU is leased one holder at a time (the Leases section).
 
-**An entry.** `op: issue` carries `gid` (`g-` and 16 to 32 hex digits, never reused on a board), `to` (`{kind: session, name}`,
-`{kind: class, family, main (default true), verified (default false)}` or `{kind: account, model}`; a class names the sessions
-whose model id says that family, an account those whose model the node verified), `action`, `scope` (`board` (the board
+**An entry.** `op: issue` carries `gid` (`g-` and 16 to 32 hex digits, never reused on a board), `to` (`{kind: session, name, subagents (default false)}`,
+`{kind: class, family, main (default true), verified (default false)}` or `{kind: account, model}`; `subagents: true` also names the
+session's subagents and theirs, by the parent links the node recorded when each registered with its parent's token; a class names
+the sessions whose model id says that family, an account those whose model the node verified), `action`, `scope` (`board` (the board
 the entry is on), `device` (a certificate fingerprint or `*`) and `resource` (an exact name, `*`, or a prefix before a final `*`;
 no `..`, plain ASCII)), `at_ms` and `until_ms` (at most 366 days apart), optional `uses` and `conditions` (`{review: true}`:
 each use needs an independent review behind it, which no call site supplies yet, so such a grant is refused everywhere), the
 `person` key's fingerprint and `sig`. `op: revoke` names a `gid`; `op: use` is written by the node for every use. The signature
 is Ed25519 over `poolhouse/grant/v1` and a line break, then the canonical JSON of the body without `sig` (including `op` and
 `board`); bodies are plain ASCII so Rust and Python canonicalise alike. `at_ms` must be within five minutes of the node's clock
-when it is issued, so a captured request cannot be replayed later, and a repeated `gid` is refused.
+when it is issued, so a captured request cannot be replayed later, and a repeated `gid` is refused. A grant with `uses` on an action
+another device may use (`task_authority`, `note_verify`, `sync_now`, `shard_call`) names the one device it is used on, so its count is
+kept where it is spent.
 
-**Who may sign.** The keys enrolled in `persons.json`. `person_enroll` takes `public`, `about`, `at_ms`, `proof` (the key's own signature
-over the enrolment) and, once a key is enrolled, `by` and `approval` (an enrolled key's signature over the same bytes), so a
-second key is added only by the first. The private half lives in the person's keystore (`board.person_key`, the same keystore
-and file fallback as the pool's signing key) and a process an agent started does not open it. The first key on a node is enrolled
-by whoever asks first and the enrolment is written to the pool board: enrol it at setup, before any agent runs.
+**Who may sign.** The keys enrolled in `persons.json`. `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
+signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal,
+makes a random secret, writes only its SHA-256 and the time beside `persons.json` (`enroll_secret.json`, mode 0600) and presents the
+secret to `person_enroll` in the same process. The node reads that hash from the file and from no request, accepts the secret once and
+for ten minutes, and spends it on any guess, so a wrong secret ends the attempt; a node that holds a key never asks for one. A session
+that registered first, or any session, therefore enrols no key. Once a key is enrolled, `by` and `approval` (an enrolled key's
+signature over the same bytes) add a second. `person_unenroll` (`fingerprint`, `at_ms`, `by`, `sig`) removes a key when an enrolled
+key signs the removal: what the removed key signed stops counting at once, the last key is never removed, and each enrolment and
+removal is written to the pool board. The hash file is a write to the state directory, so this keeps out every session that has only
+the API; a process of the same operating-system user that writes the directory can enrol a key too, which is the boundary of "Key custody".
+
+**Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` (and `enroll_secret.json`
+if there is one) in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
+the node stopped no session can ask for it, and every grant the deleted key signed reads as ignored until the new key signs new ones.
+It is the only way to remove a node's last key.
+
+**Key custody.** The private half lives in the person's keystore beside the node (`<state>/person`): the operating system's
+keychain when there is one, else a file under a passphrase typed at the terminal. The person key never reads
+`POOLHOUSE_SIGNING_PASSPHRASE`, which belongs to the pool's signing key. Every signature made with it is put to the person first. The
+question is read back from the bytes about to be signed (what is allowed, to which session or family, on which resource and device,
+for how long and how often; or which key is enrolled or removed), shown on the controlling terminal device (`/dev/tty`, whatever
+stdin and stdout are) and answered only by typing `yes`: Enter, `y`, text typed before the question was shown and no answer within
+two minutes are all refusals. `grants-setup` puts its whole list in one question. The key asks whatever its own record says, so editing
+the record turns nothing off, and the answer to a refusal that names a grant (`board.person_key.provider`) asks the same way. The
+boundary is the operating-system user plus that question. It does not stop a process of the same user that can type into the
+person's terminal (a keystroke injection into the terminal the question appears on), nor one that can read the keychain item, or
+the key file and its passphrase, and then signs without asking. The longer-term fix is a per-use operating-system user-presence
+prompt (Touch ID) or a hardware key that signs only on a touch, neither of which a process of the user can answer; it is planned and
+not built. The person's screen (the UI daemon) has no terminal, so it cannot sign: a refusal there names the grant and the person
+runs the command at a terminal; an approval dialog in the screen is planned.
 
 **What counts.** `grants::check(node, holder, action, scope)` answers true, and writes the use, only for a live grant: this
 board, this device (or `*`), a resource the pattern covers, a session or class the grant names (a class never covers a subagent
@@ -346,24 +376,39 @@ host), `sync_now`, `shard_call` (the device) and `shard_consent` before they run
 (the target branch, `*` for pause and resume) in the landing queue, besides having no parent; `task_authority` (the task, or `mode`)
 wherever a session with no parent acts for the person (assign, review in strict mode, block, recover, set the mode, record a
 landing), spent only where it is what lets the call through; `note_verify` (the note), `quarantine_release` (the held id) and
-`file_delete` (the handle). The use is on the board as a `use` entry naming the grant, the session, the action and the target.
+`file_delete` (the handle); `link_write` (`FROM>TO`, for a link of mode `rw`), `link_remove` (the link id) and `source_add` (the project id).
+`note_verify`, `quarantine_release` and `file_delete` are used only by a session registered on the board they act on, never through a
+link. A link goes only to a board this node already hosts, so `link` creates none; a link of mode `ro` stays open to any session of
+the sharing board. The use is on the board as a `use` entry naming the grant, the session, the action and the target.
 
-**Commands.** `poolhouse-workspace grant ACTION --to NAME|--class FAMILY|--account MODEL --scope RESOURCE --until 30d [--uses N]`,
-`revoke-grant ID`, `grants` (who holds what, and its state), `grant-log` (issues, revocations and uses), `grants-setup` (below),
-`person-proof` and `person-enroll` (carry a key from another device). The five that make or end a grant or a key need a person at a terminal with the key;
-`grants` and `grant-log` are for any session, and the public `ph.board.Board.grants()` is planned (docs/api.md). A refusal for want of a grant names it; a command a person runs, and the person's own
-screen, sign that grant for one use and two minutes and ask again, and an agent's process does not.
+**Commands.** `poolhouse-workspace grant ACTION --to NAME [--with-subagents]|--class FAMILY|--account MODEL --scope RESOURCE --until 30d [--uses N]`,
+`revoke-grant ID`, `grants` (who holds what, and its state; a grant that names a verified model says it matches nobody yet),
+`grant-log` (issues, revocations and uses), `grants-setup` (below), `person-proof` and `person-enroll` (carry a key from another
+device) and `person-unenroll --key FINGERPRINT`. The six that make or end a grant or a key need a person at a terminal with the key
+and a typed `yes` for each thing they sign; `grants` and `grant-log` are for any session, and the public
+`ph.board.Board.grants()` is planned (docs/api.md). A refusal for want of a grant names it; a command a person runs asks whether to
+sign that grant for one use and two minutes and, on a typed `yes`, asks again; a process an agent started, or one with no terminal,
+is not asked.
 
-**The first-run bundle.** `grants-setup` enrols the person's key if the node holds none, prints the exact list and, on a typed
-`yes` (or `--yes`), signs one grant per line for the main sessions of the lead's model family on this device, 30 days each:
-`land_control`, `task_authority`, `shard_consent`, `sync_now`, `shard_call`, and `note_verify` for subagents too. Nothing else:
-the pool actions, `land_trust`, `quarantine_release` and `file_delete` stay with the person's own commands and screen. Each is
-revoked by its id.
+**The first-run bundle.** `grants-setup` goes to the lead's own sessions, named at setup: `--session NAME` (repeat for several), or
+picked from the list of the board's main sessions it prints, where the model and harness are what each session says about itself.
+It enrols the person's key if the node holds none and signs one grant per action and session on this device, 30 days each:
+`land_control`, `task_authority`, `shard_consent`, `sync_now`, `shard_call`, and `note_verify` for the session's subagents too. The
+exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `land_trust`,
+`quarantine_release`, `file_delete`, `link_write`, `link_remove` and `source_add` stay with the person's own commands. Each is revoked
+by its id. A class grant stays in the registry but is refused by `grants-setup --family` and `grant --class` unless the person passes
+`--i-understand-registration-is-open`: it is held by every session that says it is of the family, which is any process.
 
-**Limits.** Registration is open, so a grant that names a session, a family or a model is held by whatever registers as it: a
-person-signed grant stops an agent making authority, not an agent claiming a name. Closing registration is the identity
-slice. The first enrolment on a node is trust on first use. The person key's custody is the keystore: a same-user process that removes the agent markers and gets a terminal can ask the keystore for it, which the operating system's prompt (and `poolhouse-security unlock`) gates, and on a machine with no keystore it is a passphrase file. The trust ledger (levels from outcomes, suspension on forgery
-signals, credit to a model-and-version account) is not built; a grant is the only thing that widens what a session may do.
+**Limits.** Registration is open: any process can register under any model id and so claims a family. A grant that names one session
+holds for no process that merely claims its family, but a session's name comes from its harness and native session id, which
+`register` takes on the caller's word and answers with a new token (up to eight per name): a process that knows both registers as
+that session and holds its grants. A class grant holds for whatever claims the family, which is why it asks for
+`--i-understand-registration-is-open`. Closing registration is the identity slice. `--account` and
+`--verified` name a verified model, no session is verified yet, and the listing says such a grant matches nobody. `project_add` needs
+no token and has no grant: any process that can reach the socket registers a project id for a directory no project holds, so the
+sessions that start there resolve to the board it chose; gating it needs a first-contact flow with the person's approval that works
+before a session exists, and it is open. The trust ledger (levels from outcomes, suspension on forgery signals, credit to a
+model-and-version account) is not built; a grant is the only thing that widens what a session may do.
 
 ## Leases
 
@@ -606,8 +651,8 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 
 The UI daemon acts for the person through one session of its own per board, `poolhouse.board.person.session(root)`: a
 parentless session registered under the harness `poolhouse-ui` and the model `person`. It holds no grant of its own: when the
-node refuses a call of the page for want of one, the person's key (kept beside the node, opened only for a screen the person is
-sitting at) signs a grant for that one use (`board.person_key`). Its token is kept in the daemon's private client folder
+node refuses a call of the page for want of one, the person's key (kept beside the node) is asked to sign a grant for that one use
+(`board.person_key`), which takes a typed `yes` on a terminal: a daemon with none signs nothing, and the person runs the command. Its token is kept in the daemon's private client folder
 (`<state>/client/<board>/`), never in a page; a page's request is checked (loopback, credentialed launch session, same
 origin) and then answered by that session. `root` is a project's checkout: `place.resolve` makes it the board, so a
 directory that is no project is refused (`403`) and never given another project's board. The Tasks page
@@ -681,9 +726,9 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
 - Python lease clients (the serve broker, `gate.py` tickets, `testslots` permits, fleet `JobRunner` slots,
   `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
-  device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"), owner-only
-  the owner-only grant of links and project sources (any session of a board makes a link, and `project_add` needs no token),
-  rebuilding the graph index from entries.
+  device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"),
+  a grant for `project_add` (it needs no token and is open; "Standing grants", Limits), a screen that asks the person the signing
+  question itself so the UI daemon can sign, rebuilding the graph index from entries.
 - Pools of two or more members do not merge: a device that already has members refuses to join another
   pool (`Pool::adopt`).
 - The head signature still uses an empty pool id as its domain (`Node.pool`); the pool id lives in

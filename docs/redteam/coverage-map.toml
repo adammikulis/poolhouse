@@ -614,8 +614,14 @@ tests = ["tests/test_board_grants.py::test_a_person_sets_up_the_lead_grants_once
          "tests/test_board_grants.py::test_a_second_key_is_enrolled_only_with_the_approval_of_the_first",
          "tests/test_board_grants.py::test_no_key_is_held_by_a_process_an_agent_started_or_with_no_terminal",
          "tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written",
+         "tests/test_board_grants.py::test_a_process_that_registers_as_the_leads_family_with_a_lying_model_inherits_nothing_from_the_setup",
+         "tests/test_board_grants.py::test_a_class_grant_needs_the_person_to_say_registration_is_open_and_then_does_hold_for_any_process_that_claims_the_family",
+         "tests/test_board_grants.py::test_a_key_is_taken_off_the_node_by_a_key_the_node_holds_and_the_last_key_stays",
+         "tests/test_board_person_key.py::test_a_process_with_a_terminal_and_the_passphrase_in_its_environment_signs_nothing_until_the_person_types_yes",
+         "tests/test_board_person_key.py::test_the_person_key_asks_every_time_whatever_its_record_says_and_the_pool_key_is_not_changed",
+         "tests/test_board_person_key.py::test_the_question_is_read_from_the_bytes_signed_and_only_a_grant_a_revocation_or_a_key_is_signed",
          "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"]
-note = "grant, revoke-grant, grants-setup, person-proof and person-enroll sign with the person's key and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign (app/poolhouse-node/tests/grants.rs, grants_hostile.rs, grants_foreign.rs)"
+note = "grant, revoke-grant, grants-setup, person-proof, person-enroll and person-unenroll sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, and a key removal an enrolled key did not sign (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_hostile.rs, grants_foreign.rs)"
 
 [[group]]
 match = ["human:*"]
