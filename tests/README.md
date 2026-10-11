@@ -219,6 +219,18 @@ Import them like the tests already do: `from conftest import write_gguf`.
   test (assert the seam was reached instead).
 - Name a test after the behaviour it pins, as a sentence.
 
+## The node binary
+
+Tests that start a node use the binary `scripts/test` builds once before the run, before the
+checkout is stamped (`scripts/testnode.py`). It is kept under the poolhouse cache in
+`test-node/<key>/`, where the key hashes the cargo workspace under `app/` and the compiler, so
+every checkout reuses a binary another built and a changed source gets a new one; a binary
+nothing has asked for in three days is removed. The build is staged at a fixed path under that
+folder with a cargo target folder of its own, so no run writes under a checkout's `app/target`.
+The `node_binary` fixture only finds the binary (`DEV_TEST_NODE_BINARY`) and fails, naming
+`scripts/test`, when a run the runner did not start has none. A pytest run started by hand
+exports it first: `export DEV_TEST_NODE_BINARY=$(python scripts/testnode.py build)`.
+
 ## Writes under the real state root
 
 Tests run with `HOME`, `POOLHOUSE_HOME` and `POOLHOUSE_CACHE` moved to a temporary directory, so a
@@ -235,6 +247,23 @@ other sessions write there too, so the rule is:
    was seen at the start or at the end of the run: CI, a calibration run, a quiet machine.
 3. When one was seen, the same files are a **warning**, printed once at teardown with the files
    and the writers seen, because the run cannot tell its own write from theirs.
+
+Under `node/` the writer is told first (`tests/node_attribution.py`). The node that holds
+`node/node.lock`, as `node/node-run.json` names it, must be a live process outside the run. Each
+entry that changed in `boards/*/names.json`, `tokens.json` and `leases.json` names the session it
+belongs to and the processes that session was registered from (its lineage), and a lease names the
+process that holds it.
+
+- A file whose changed entries all belong to sessions the run did not start (they existed before
+  the run, or were registered from a process that started before it) is left out of the report.
+- A file with an entry registered from a process of the run (the pytest process, its workers and
+  everything below the topmost of them), or a lease a process of the run holds, **fails** even when
+  other processes are live. So does every changed file under `node/` when the node itself is part of
+  the run.
+- A key, certificate, enrolment secret, grant or person file under `node/` **fails** whoever else is
+  live.
+- An entry whose lineage cannot place it, and any other file under `node/`, falls under rules 2
+  and 3.
 
 `tests/test_state_attribution.py` pins both outcomes with a child process that ignores the moved
 `HOME`, against a temporary directory standing in for the real root.

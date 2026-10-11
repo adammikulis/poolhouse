@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from node_kit import runner_binary
 
 from poolhouse import node_binary, node_launch, node_supervise, runtime
 from poolhouse.node_health import call, node_health
@@ -26,17 +27,8 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture(scope="session")
 def built() -> Path:
-    """The release node binary of this checkout, built once."""
-    owner = Path(pwd.getpwuid(os.getuid()).pw_dir)  # the suite points HOME at a scratch directory; rustup needs the real one
-    saved = {key: os.environ.get(key) for key in ("RUSTUP_HOME", "CARGO_HOME")}
-    os.environ.setdefault("RUSTUP_HOME", str(owner / ".rustup"))
-    os.environ.setdefault("CARGO_HOME", str(owner / ".cargo"))
-    try:
-        return node_binary.build(ROOT)
-    finally:
-        for key, value in saved.items():
-            if value is None:
-                os.environ.pop(key, None)
+    """The node binary the runner built before the run."""
+    return runner_binary()
 
 
 @pytest.fixture
@@ -229,6 +221,7 @@ def test_packaging_builds_the_node_with_its_checksum(home, built, monkeypatch):
     owner = Path(pwd.getpwuid(os.getuid()).pw_dir)
     monkeypatch.setenv("RUSTUP_HOME", str(owner / ".rustup"))
     monkeypatch.setenv("CARGO_HOME", str(owner / ".cargo"))
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(Path(tempfile.gettempdir()) / "poolhouse-packaging-target"))
     packaging = runpy.run_path(str(ROOT / "packaging" / "build.py"))
     made = packaging["node"](home / "dist")
     digest, name = (made.with_name(made.name + ".sha256").read_text(encoding="utf-8").split())

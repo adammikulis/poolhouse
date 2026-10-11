@@ -95,6 +95,7 @@ def test_the_gate_stops_for_a_diff_that_reaches_nothing_and_full_runs_it_anyway(
 
     runner = load_runner()
     ran = []
+    monkeypatch.setattr(runner, "build_node", lambda: 0)
     monkeypatch.setattr(runner.gatescope, "unreached", lambda root, base: "the change reaches no test (x)")
     monkeypatch.setattr(runner, "gate_steps", lambda workers, rest: ran.append("steps") or [])
     assert runner.gate(Namespace(full=False, base="0.2dev", workers=0, artifact_output=False), []) == 0

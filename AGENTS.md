@@ -939,6 +939,28 @@ ours with its own arguments, an environment variable that flips one of our param
 that says where its graph keeps its pointers, its copy and kinds handed to our page. When an app
 needs more than that, the missing piece is a command or a parameter here.
 
+### Only real decisions go to the owner
+
+A question to the owner is for a decision that is the owner's alone and that the agent cannot settle
+from the request, the code or the rules here (product direction, spending, anything outward-facing
+or irreversible, a hard floor). When one option is better, the agent takes it and goes on: it does
+not pitch a choice whose answer it already knows, does not offer a weaker option beside the better
+one to look careful, and does not ask permission for work inside what it was told to do. It says
+what it chose and why in the report, in a line. Timidity is a defect: stopping to ask when the
+answer is known costs the owner's attention and stops the work.
+
+### Options and recommendations are ranked by what is correct
+
+When an agent puts a choice to the owner or to another agent (a question, a plan, a report that
+recommends), it orders the options by what is correct for the product: security, intent,
+long-term cost. It never orders or marks "Recommended" by how easy an option is to build, and
+never drops an option for being more work. Effort and cost are stated as facts beside an option,
+never as its rank. Before recommending, the agent asks whether the first option weakens a guard,
+a test or a boundary; if it does, it is not the recommendation and is named as the weaker one.
+A guard is never loosened (a wider allowlist, an excused path, a skipped check) to turn a gate
+green: the cause is fixed, and a change that narrows a guard goes to the owner as a decision with
+the correct option first.
+
 ## 6. Safety
 
 ### An agent is never a human

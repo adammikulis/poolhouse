@@ -59,11 +59,13 @@ import gatescope
 import testextras
 import testhistory
 import testjobs
+import testnode
 import testphases
 import testprelude
 import testreuse_run
 import testreuse_store
 import testselectors
+import testslots
 import testslots_runner
 import testtime
 
@@ -443,6 +445,8 @@ def gate(args: argparse.Namespace, rest: list[str]) -> int:
     if reason:
         print(f"gate: skipped: {reason}; `--full` runs it anyway")
         return 0
+    if failed := build_node():
+        return failed
     held = gaterun.Gate(ROOT, gatescope.base_ref(ROOT, args.base), reuse_store().folder / "gate-steps", REUSE["on"])
     named = gate_steps(args.workers, rest)
     outcomes = held.run(gate_lanes(args, named))
@@ -579,6 +583,17 @@ def follow(argv: list[str], args: argparse.Namespace) -> int:
     return int(status.get("exit", 1))
 
 
+def build_node() -> int:
+    """Build the node binary the tests start, before anything is stamped, and name it for pytest; 4 when it cannot be built."""
+    try:
+        os.environ[testnode.ENV] = str(testnode.ensure(ROOT, admit=lambda: testslots.lease(2, 1, label="node build"),
+                                                       say=lambda text: print(text, file=sys.stderr, flush=True)))
+    except testnode.BuildError as error:
+        print(f"test: {error}", file=sys.stderr)
+        return 4
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse the tier and run it."""
     argv = sys.argv[1:] if argv is None else argv
@@ -633,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
         return testtime.check(ROOT, args.update, args.allow_increase)
     if args.tier == "record":
         testprelude.begin(args, rest, ROOT)
-        return record(args)          # takes its own lease: a nested one would wait on itself
+        return build_node() or record(args)          # takes its own lease: a nested one would wait on itself
     if args.tier != "gate":
         try:
             testselectors.validate(rest, ROOT)
@@ -643,6 +658,8 @@ def main(argv: list[str] | None = None) -> int:
     if not os.environ.get("DEV_TEST_JOB"):
         return follow(argv, args)
     testprelude.begin(args, rest, ROOT, reused_files(pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)))
+    if args.tier != "gate" and (failed := build_node()):
+        return failed
     if args.tier == "quick":
         return quick(args, rest)
     if args.tier == "gate":

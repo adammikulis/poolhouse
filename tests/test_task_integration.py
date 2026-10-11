@@ -351,6 +351,24 @@ def test_integration_returns_the_workers_checkout_and_branch_and_leaves_its_othe
     assert returned['worker'] == board.worker_id and task['integrations'][0]['owner'] == board.lead.name
 
 
+@pytest.mark.parametrize('project', ['native_claims'], indirect=True)
+def test_integration_frees_the_workers_areas_even_when_its_checkout_and_branch_claims_are_already_gone(board, project, tmp_path):
+    source, scope = project['source'], project['worktree']
+    target = str(source / 'sim.py')
+    shared = harness_claims.normal('area', target)
+    before = claims_of(board)
+    assert before[('area', target)] == board.worker_id and before[('area', shared)] == board.worker_id
+    unrelated = str(tmp_path / 'unrelated-worker-file')
+    board.child.claim('area', unrelated)
+    board.child.release('worktree', str(source))
+    board.child.release('branch', scope['branch'])
+    board.board.review(board.task['id'], accepted())
+    assert integrate(board, publish=True)['state'] == 'published'
+    after = claims_of(board)
+    assert ('area', target) not in after and ('area', shared) not in after
+    assert after[('area', unrelated)] == board.worker_id
+
+
 def test_the_board_shows_the_exact_published_review_and_a_once_only_attempt(board, project):
     review = board.board.review(board.task['id'], accepted())
     outcome = task_scheduler.integrate_completed(board.parent, board.base, board.worker_id)[0]

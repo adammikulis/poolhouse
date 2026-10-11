@@ -554,18 +554,19 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | person keys a node holds | 8 | `quota` |
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
-| messages, notes and claims one session writes | 30 a minute; a subagent 10, and what it writes counts against its parent's 30 | `quota` |
+| messages, notes and claims one session writes | 30 a minute; a subagent 10, and what its subagents write together is held to 120 a minute of their own, which is none of the parent's 30 | `quota` |
 | announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written and the board gets an `announce_over_quota` audit entry | none |
 | direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
 | notes an author keeps on a board | 500 | `quota` |
-| live subagents a session has | 8 (not retired, and active within eight hours) | `quota` |
+| live subagents a session has | 8 (not retired, and either holding a lease whose process still runs or heard from within 30 minutes) | `quota` |
 
 The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`; the limits on what a
-session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `sends`, `child_sends`, `window_s`,
-`announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `children` and `child_life_s`. A message
+session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `sends`, `child_sends`, `subagent_sends`,
+`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `children` and `child_beat_s`. A message
 is unread until its recipient reads its inbox with a `since` cursor past it: the node keeps the furthest cursor each session presented
 on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
-counts as a send, and the `reserve` of a harness hook does not.
+counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
+the log when the node starts), so a post is checked without folding the board.
 
 ## Leases
 
@@ -603,7 +604,8 @@ moment (a reused pid). A `remote` holder has no pid and lives by expiry. Every l
 sweep runs on every lease call, and at the first one after a restart, so a stale holder is dropped
 and a live one kept. A lease that holds a claim (not the node's own `task` claim) is renewed to at most eight hours after it was
 granted: a renewal that would reach past that is held to it and the lease shows `capped`, and once the eight hours are over a
-renewal, or a claim of the same name by its holder, is `denied` as a lifetime over, and the holder releases it and takes it again.
+renewal (`lease_renew`) is `denied` as a lifetime over, and a claim or reserve of the same name by its holder gives the old claim up and takes it
+anew, with a lifetime that starts then; another session's claim of it is refused until the old one ends.
 
 **Takeover.** When a request is granted resources a dead or expired holder had, the node writes an
 audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming the old holder and why).

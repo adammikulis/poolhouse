@@ -54,6 +54,7 @@ pub mod subs;
 pub mod sync;
 pub mod tasks;
 pub mod sys;
+pub mod tally;
 pub mod tls;
 pub mod wire;
 pub mod writes;

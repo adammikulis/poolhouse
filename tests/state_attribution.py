@@ -3,7 +3,9 @@
 The rule (``tests/README.md``, "Writes under the real state root"): a changed file that no
 existing attribution explains and that is not a zero-byte ``*.lock`` is a failure when no other
 live poolhouse process was seen at the start or the end of the run, and a warning, naming the
-files and the writers, when one was.
+files and the writers, when one was. A change under ``node/`` is judged by writer first
+(``tests/node_attribution.py``): one the live node made for another agent's session is left out,
+and one this run caused fails whoever else is live.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import psutil
+from node_attribution import Judgement, NodeWatch
 
 Row = tuple[int, str]  # pid, command line
 FIXED_WRITERS = "POOLHOUSE_TEST_OTHER_WRITERS"
@@ -75,17 +78,23 @@ class Watch:
 
     def __init__(self, root: Path, mtimes: Callable[[Path], dict[str, int]],
                  changes: Callable[[dict, dict], list[str]],
-                 processes: Callable[[], list[Row]] = live_poolhouse_processes) -> None:
+                 processes: Callable[[], list[Row]] = live_poolhouse_processes,
+                 attribute: Callable[[list[str]], Judgement] | None = None) -> None:
         self.root, self.mtimes, self.changes, self.processes = root, mtimes, changes, processes
+        self.attribute, self.refusals = attribute, dict[str, str]()
         self.writers = dict(self.processes())
         self.before = self.mtimes(root)
 
     def verdict(self) -> tuple[list[str], list[str], dict[int, str]]:
-        """``(failures, warnings, writers)`` for what changed since construction."""
+        """``(failures, warnings, writers)`` for what changed since construction. ``attribute`` names the changes
+        that are another writer's (left out) and the ones this run caused (failures even with other writers live)."""
         writers = {**self.writers, **dict(self.processes())}
         written = [n for n in self.changes(self.before, self.mtimes(self.root))
                    if not _empty_lock(self.root, n)]
-        return ([], written, writers) if writers and written else (written, [], writers)
+        excused, self.refusals = self.attribute(written) if self.attribute and written else (set(), {})
+        kept = [n for n in written if n not in excused]
+        failed = [n for n in kept if n in self.refusals or not writers]
+        return failed, [n for n in kept if n not in failed], writers
 
     def settle(self) -> str:
         """Warn once for a possibly external write; return the failure message, or ``""``."""
@@ -97,5 +106,10 @@ class Watch:
                           stacklevel=2)
         if failed:
             return (f"the real state root {self.root} was written during the run: "
-                    + ", ".join(failed[:20]))
+                    + ", ".join(f"{n} ({self.refusals[n]})" if n in self.refusals else n for n in failed[:20]))
         return ""
+
+
+def attributing(root: Path) -> Callable[[list[str]], Judgement]:
+    """The judgement of what changes under the node directory of ``root`` from now on."""
+    return NodeWatch(root).judge
