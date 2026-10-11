@@ -119,6 +119,27 @@ fn a_member_removed_while_it_is_being_dialed_is_not_recorded_as_a_failed_dial() 
     assert_eq!(a.member(&b.fp()).unwrap()["last_error"], "", "the refusal to talk to a removed member was recorded against it");
 }
 
+/// The documented limit (docs/node.md, Membership): a row of a removed device's log that a member relays is taken like any relayed row,
+/// whether or not the receiver has removed that device. The removal design (docs/pools-and-serving.md, slice 1) refuses such rows
+/// past a cut recorded with the removal, and this test then asserts the opposite.
+#[test]
+fn rows_of_a_removed_device_relayed_by_an_unaware_member_are_still_taken() {
+    let (a, b, c) = (device(), device(), device());
+    a.join_with_code(&b);
+    a.join_with_code(&c);
+    b.node.lock().unwrap().facts.set_addr(&c.fp(), &c.addr().to_string()).unwrap();
+    b.net.sync_once(true).unwrap();
+    assert!(b.is_member(&c.fp()), "the relay lists the device it will take the entry from");
+    remove(&a, &c);
+    let (wa, wc) = (writer(&a, "a"), writer(&c, "c"));
+    wc.say("written by the removed device");
+    let mut live = PeerClient::connect(&b.net.me, c.addr(), Some(&c.fp())).unwrap();
+    netsync::sync_all(&b.node, &mut live).unwrap();
+    a.net.sync_once(true).unwrap();
+    assert_eq!(a.member(&c.fp()).unwrap()["status"], "revoked");
+    assert!(wa.holds("written by the removed device"), "a relayed row of a removed device was refused");
+}
+
 #[test]
 fn a_cycle_dials_a_member_that_is_not_removed() {
     let (a, b) = (device(), device());
