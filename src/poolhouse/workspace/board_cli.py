@@ -143,13 +143,15 @@ def rollup(s: Session, ack: bool) -> str:
 
 def unanswered(s: Session) -> list[dict[str, Any]]:
     """Direct questions, tasks and handoffs to this session older than the owner's `owed_after_s` that it never
-    answered (it wrote to the sender, or in reply, after the request)."""
+    answered (it wrote to the sender, or in reply, after the request); one from a retired session it has read is closed."""
     now, older_s = s.clock(), limits.load(limits.root()).owed_after_s
     sent = s.read(channel="#dm", by=s.name).entries
     owed = []
-    for e in s.read(inbox=True).entries:
+    asked = [e for e in s.read(inbox=True).entries if e.fields.get("type") in nudge.URGENT and e.fields.get("to") == s.name]
+    settled = attention.closed(s, asked)
+    for e in asked:
         age = now - e.at_ms / 1000
-        if e.fields.get("type") not in nudge.URGENT or age < older_s or e.fields.get("to") != s.name:
+        if age < older_s or e.id in settled:
             continue
         if not any(m.at_ms > e.at_ms and (m.fields.get("to") == e.sender or m.fields.get("reply_id") == e.ref) for m in sent):
             owed.append({"seq": e.ref, "from": e.sender, "type": e.fields.get("type"), "age_s": age,

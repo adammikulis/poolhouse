@@ -191,7 +191,7 @@ python -m poolhouse.fleet.autostart install --manifest <the path prepare printed
 
 `prepare` takes `--launchers DIR`, the directory `poolhouse runtime ensure --launchers` keeps
 its stable launchers in, and `--system` to stage the system-wide location instead of your own. It writes the unit files and a
-`manifest.json` under `~/.poolhouse/autostart/staging/`. The manifest holds the role, platform, destination path, the
+`manifest.json` under `~/.poolhouse/autostart/staging/`. The manifest holds the Poolhouse version, the role, platform, destination path (one of a fixed set of locations), the
 sha256 of each unit, the exec argv (the launcher's absolute path and its options, never a shell
 string), a path-only environment, the working directory, the restart policy, the log paths, who
 prepared it, the device it is for and a 24-hour expiry.
@@ -201,7 +201,7 @@ manifest has not expired, was prepared for this device, names a launcher the run
 wrote (not a checkout, not an editable install), and every staged unit still has the recorded
 hash and is what `prepare` would write today. It backs up each file it replaces, writes the unit,
 loads it, checks that it is loaded and that the daemon answers its health probe, records the
-install in the authority audit log, and prints the command that undoes it:
+install in the authority audit log as a person's action, and prints the command that undoes it:
 
 ```
 python -m poolhouse.fleet.autostart rollback

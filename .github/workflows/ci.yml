@@ -94,7 +94,9 @@ jobs:
       # The node fixture starts the binary this step builds; a pytest run that is not started by scripts/test names it.
       - name: build the node the tests start
         if: steps.ready.outputs.ok == 'true'
-        run: echo "DEV_TEST_NODE_BINARY=$(python scripts/testnode.py build)" >> "$GITHUB_ENV"
+        run: |
+          binary=$(python scripts/testnode.py build)
+          echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
 
       - name: tests
         if: steps.ready.outputs.ok == 'true'
@@ -135,7 +137,9 @@ jobs:
         run: python packaging/build.py
 
       - name: build the node the tests start
-        run: echo "DEV_TEST_NODE_BINARY=$(python scripts/testnode.py build)" >> "$GITHUB_ENV"
+        run: |
+          binary=$(python scripts/testnode.py build)
+          echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
 
       - name: tests
         run: |

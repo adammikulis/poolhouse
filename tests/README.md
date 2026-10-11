@@ -169,6 +169,19 @@ lookup beyond loopback, the LAN and link-local addresses; the test fails and nam
 variable, or a spawn of the `claude` command anywhere under `tests/`. Local models served through
 the broker are not remote services and are untouched by all of this.
 
+## The real keystore
+
+No test reads, writes or prompts for an item in the real OS keystore (macOS Keychain). In process
+the real backends refuse (`tests/conftest.py`); `tests/conftest.py` also sets
+`POOLHOUSE_NO_REAL_KEYSTORE=1` for the whole run, and every process a test starts inherits it, so
+the keystore reads as absent there. A test child that needs a working keystore sets
+`PYTHON_KEYRING_BACKEND=onboard_support.FileKeyring` and `POOLHOUSE_TEST_KEYRING=<file>` (see
+`tests/onboard_support.py`) and puts `tests` on its `PYTHONPATH`; a test that spawns a child with
+an environment built from scratch must do the same. A test that stripped the agent markers
+(`CLAUDECODE`, `POOLHOUSE_NONINTERACTIVE`) to look like a person at a screen is the most likely to
+reach the keystore: give it the file keyring. Nothing in the repo pops more than one dialog; a
+notice goes through `sentinel/heads_up.py` only, and `POOLHOUSE_NOTIFY=off` silences all of it.
+
 ## Attack runs against a served model
 
 `poolhouse.testing.verdicts` is what a model-backed red-team, canary or guard-eval run uses to
