@@ -234,7 +234,8 @@ Message types are `task`, `status`, `handoff`, `question`, `answer`, `claim`, `r
 sent to you, older than the owner's `owed_after_s`, that you have not answered (you wrote to its sender, or in reply,
 after it). A request from a session that was retired (a subagent that stopped) and that you have read, by `ack` or by
 `dm` showing it, is closed and left out, so stale handoffs do not hide live questions; an unread one stays until you read
-it. `send NAME answer TEXT --reply-to SEQ` to a retired sender is accepted and recorded as an answer on the
+it. The `SubagentStop` hook ends a subagent with `done` and `retire`, so the handoffs it posted that were answered or acked
+close with it. `send NAME answer TEXT --reply-to SEQ` to a retired sender is accepted and recorded as an answer on the
 thread, which closes the request whether or not it was read ([docs/node.md](node.md), "Replies, threads and held text");
 any other message to a retired session is refused.
 

@@ -278,6 +278,30 @@ def test_a_subagent_that_stops_is_marked_done_with_its_branch_and_its_identity_e
         board.client.call('whoami', board.board, child.token)
 
 
+def test_a_handoff_the_subagent_posted_is_closed_when_it_stops_if_it_was_acked_or_answered(board, tmp_path):
+    repository = tmp_path / 'repo'
+    subprocess.run(['git', 'init', '-q', '-b', 'worker/topic', str(repository)], check=True)
+    event = {'agent_type': 'branch-worker', 'agent_id': 'cccccc333', 'session_id': 'sess1', 'cwd': str(repository)}
+    root = limits.root()
+    limits.save(root, replace(limits.load(root), owed_after_s=0.0))
+    child = board.session(start(board, event))
+
+    def post():
+        return child.post(board.lead.name, 'handoff', 'a branch is ready', subject='handoff')['id'].rsplit(':', 1)[-1]
+
+    answered = post()
+    time.sleep(0.01)
+    board.session(board.lead).post(child.name, 'answer', 'landed', reply_id=answered)
+    time.sleep(0.01)
+    acked, unseen = post(), post()
+    mail_cli.ack(argparse.Namespace(ref=acked), later(board, board.lead, HOUR))
+    assert owed(board) == [acked, unseen], 'while the subagent lives, a read handoff is still owed and an answered one is not'
+    assert hook('claude-subagent-stop', event).returncode == 0
+    assert owed(board) == [unseen], 'stopping closes the handoff that was acked and keeps the unread one'
+    shown = run(board.lead.name, 'attention').stdout
+    assert f'[{unseen}] handoff from {child.name}' in shown and f'[{acked}]' not in shown and f'[{answered}]' not in shown
+
+
 def test_lead_attention_hook_injects_once_per_interval_and_skips_subagents(board, monkeypatch):
     root = limits.root()
     limits.save(root, replace(limits.load(root), owed_after_s=0.0))
