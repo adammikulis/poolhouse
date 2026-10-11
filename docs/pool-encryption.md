@@ -409,20 +409,23 @@ is superseded by this section.
 
 ### Slice 3, the node's device key, done
 
-The node's device key (`device.key`, Ed25519) is kept in the operating system's keystore where the computer has one, through
+The node's device key (Ed25519) is kept in the operating system's keystore where the computer has one, through
 `poolhouse.keystore`: wrapped under a subkey (`device-key`, owned by the state directory) as `device.key.wrapped`, which opens only
 on this computer and for this directory. The supervisor unwraps it and gives it to the node on its standard input at each start;
-the node writes no key file, records the custody and the fingerprint the key must have in `device.custody.json`, and refuses to
-start a state directory that recorded a key kept elsewhere without it, so a copy of the state directory carries no identity. A
-computer with no keystore keeps it under `POOLHOUSE_DEVICE_KEY_PASSPHRASE` (`device.key.enc`, scrypt and ChaCha20-Poly1305, the
-signing key's format) or, with neither, in the plain file, which `pool_status.device_key` calls weak, as it does the passphrase
-file: the delegate of `docs/pools-and-serving.md` exists only where the custody is the keystore. A new device is born into the
-keystore when its master key already exists, so nothing is asked of a person; a key in a file moves with
-`poolhouse node key --migrate`, a person at a terminal (one Keychain prompt when the master key is new), and the node restarts
-on it. No test reads the machine's keystore: the tests use an in-memory ring and a file ring, and a real node started by its
-supervisor on the file ring. Not done, and why: a key the keystore holds non-exportable. Ed25519 is not a key type the macOS
-Keychain or Windows CNG keeps, and a Secure Enclave key needs a paid developer account (decision 8.1); until then the key is in the
-memory of the node while it runs.
+the node writes no key, records the custody and the fingerprint the key must have in `device.custody.json`, and leaves a note that
+is not a key in `device.key`, so a node from before this change stops on it and a copy of the state directory carries no identity.
+A state directory that is a device's and has no readable record is refused, and never given a new key; a key that is not the
+recorded one is refused. A computer with no keystore keeps the key under `POOLHOUSE_DEVICE_KEY_PASSPHRASE` (`device.key.enc`,
+scrypt and ChaCha20-Poly1305, the signing key's format; the supervisor does not hand that variable on to the node) or, with
+neither, in the plain file, which `pool_status.device_key` calls weak, as it does the passphrase file: the delegate of
+`docs/pools-and-serving.md` exists only where the custody is the keystore. A new device is born into the keystore when its master
+key already exists or a person is at the screen to be asked the one Keychain question, so nothing else is asked of anyone; a key in
+a file moves with `poolhouse node key --migrate`, a person at a terminal, and the node restarts on it (a backup made before the move
+still holds the old file). No test reads the machine's keystore: the tests use an in-memory ring and a file ring, and a real node
+started by its supervisor on the file ring. Not done, and why: a key the keystore holds non-exportable. Ed25519 is not a key type
+the macOS Keychain or Windows CNG keeps, and a Secure Enclave key needs a paid developer account (decision 8.1); until then the key
+is in the memory of the node while it runs, and a process of the same user that can write the supervisor's binary pointer can have
+the key handed to a program of its own.
 
 ### Left
 

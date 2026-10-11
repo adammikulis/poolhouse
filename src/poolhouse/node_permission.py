@@ -102,12 +102,14 @@ def _permission_command(args) -> int:
     return 0 if permission(args.seconds) == GRANTED else 1
 
 
+WHERE = {"keystore": "the keystore", "passphrase": "a file under a passphrase (weak)", "file": "a file (weak)", "none": "no key yet", "unknown": "an unknown place"}
+
+
 def _key_command(args) -> int:
     """``poolhouse node key [--migrate]``: say where the device key is kept; with ``--migrate``, move it out of its file."""
     state = Path(args.state) if args.state else node_launch.default_state()
     if not args.migrate:
-        said = node_key.status(state)
-        say(f"the device key is kept in {'a file (weak)' if said['custody'] == node_key.FILE else said['custody']}")
+        say(f"the device key is kept in {WHERE.get(node_key.status(state)['custody'], 'an unknown place')}")
         return 0
     try:
         human.require_person("move the device key")
@@ -118,10 +120,14 @@ def _key_command(args) -> int:
     if not moved["moved"]:
         say(moved["why"])
         return 0
-    say(f"the device key is now kept in the {moved['custody']}")
+    say(f"the device key is now kept in {WHERE[moved['custody']]}; a backup or copy of this device's files made before now still holds the old key file")
     if node_health.node_health(state) is not None:
-        node_launch.stop_node(state)
-        node_launch.ensure_node(state)
+        try:
+            node_launch.stop_node(state)
+            node_launch.ensure_node(state)
+        except OSError as why:
+            warn(f"node key: the key moved, and the node did not start again: {why}")
+            return 1
     return 0
 
 
