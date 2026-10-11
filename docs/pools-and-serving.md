@@ -33,6 +33,7 @@ admin starts a successor pool and every member joins it by its own consent.
 | M3 | A link never carries entries to a pool that is not already a participant of the source board. | Links are node-local and would otherwise route around the sharing charter. |
 | L1 | Leases stay per device. The GPU is one holder at a time across all pools; pools share it by least-recently-served first. | AGENTS.md hard floor; fairness without a second lock. |
 | L2 | Inbound work (tests, model calls) is off for every pool until the device's owner turns it on for that pool, with safe limits. | Being in a pool is not being allowed. |
+| T1 | Devices on different networks reach each other over the person's tailnet (Tailscale); we run no relay. The tailnet is a route, never an authority. | Owner decision 2026-10-11. Pinned device certificates stay the only authority, so tailnet membership, tags and ACLs authorise nothing. |
 | S1 | A device offers named models to named pools; the default is none. A call goes over the existing pinned member connection, takes a `model_slot` and a `gpu` lease on the owning device, and is metered per pool and per member. | The serving device decides what leaves it; callers cannot see another pool's traffic. |
 | S2 | Prompt caches are never shared across pools unless the serving device's owner declares it. The serving device sees prompts in the clear. | Isolation by default; the limit is stated, not hidden. |
 
@@ -175,7 +176,7 @@ The last admin cannot be removed, nor the set left below the sensitive threshold
   window (a six-digit code or a link, five minutes, three tries; SPAKE2 as today), and the device that held the window signs
   `admit` for the one certificate the code proved. The person did nothing but say it and read or hand over a code.
 * **Open pool.** A device on the same network segment is admitted by whichever member heard it, with that member's device key, as
-  today. Nobody is asked. This is what "open" means, and `docs/sentinel-open-join.md` still applies. An open pool is the lowest
+  today. Nobody is asked. This is what "open" means, and `docs/sentinel-open-join.md` still applies. An open pool is joined only from a device on the same network segment, never over a tailnet (4.4). An open pool is the lowest
   trust level: it cannot be members-governed (1.8), its devices are never carried over or shared with another pool without a
   review (1.9, 6.2), and an offer to it needs a plain warning (7.2).
 * **Removing a member** is an `admin` act: one tap, plain words naming the device ("Remove 'guest-laptop' from 'home'? It stops
@@ -469,13 +470,17 @@ Refusal examples the node must be able to say, each one sentence:
 | model busy | "The model is busy with a friend's request. You're number 2 in line, about 40 seconds." |
 | private message on a shared board | "This board is shared with a friend's pool, so private messages would be stored on their devices. Use a board of your own pool." |
 | pool moved | "This pool moved to a new one. Tap to approve the move on your phone." |
-| other network | "That device can't reach this one from outside your home network. Install Tailscale on both, or tell me to wait until you are home." |
+| other network, Tailscale missing | "To reach your other network I need Tailscale on this device. It isn't installed; get it from tailscale.com, sign in, and I'll carry on when it's up." |
+| Tailscale signed out | "Tailscale is installed here but signed out. Open it and sign in; I'll carry on when it's up." |
+| Tailscale on, no route | "Tailscale is on for both devices but isn't letting them talk. Check the access rules in your Tailscale account." |
+| a different device answered | "Another device answered at that address, so I ignored it. If you use a Tailscale exit node or subnet router, tell me which device you meant." |
 
 ## 3. The first ten minutes
 
 Onboarding is a first-order property: it is measured, budgeted and gated. A **human step** is one of: `install`, `os-prompt` (the
 operating system's own one-time prompt), `link-phone` (scan once so the person key exists), `say` (a plain sentence to the agent),
-`tap` (an approval). A **terminal step** (a typed command, a file edited, a key handled, a port or firewall named) is zero in every
+`tap` (an approval), `tailscale` (install Tailscale, sign in to it: two steps, each counted; the system's one-time VPN prompt is an
+`os-prompt`), needed only on a device that must reach another network and never for a same-network join. A **terminal step** (a typed command, a file edited, a key handled, a port or firewall named) is zero in every
 journey, and a journey that produces one fails its check. Every `link-phone` and `tap` is a security step and is counted in the
 same budget: in the normal case there is no other, so security adds no step the budget does not already show.
 
@@ -515,16 +520,21 @@ Budget: 2 steps, 0 taps, 0 terminal.
 Budget: 4 steps (install, os-prompt, say, tap), 0 terminal. Reason for the visible tap: a stranger on the Wi-Fi must not join, and
 only the person can see two screens agree.
 
-**2c: another network.**
+**2c: another network** (over the person's tailnet; 4.4). Tailscale is a human step: it is installed and signed in by the person,
+once per device, and the agent never does it for them.
 
 | # | The person sees and does | The agent does | What can go wrong, in the words shown |
 |---|---|---|---|
-| 1 | Says "Add a device that is on another network" on the first device (`say`) | Issues a ticket under the delegate (no tap), opens the join window, shows a link and a QR | "I can't give out a link yet: this device isn't reachable from outside. Install Tailscale on it, or wait until you are home." |
-| 2 | Installs Poolhouse on the second device; allows discovery once (`install`, `os-prompt`) | Starts the node | as 2a |
-| 3 | Says "Join this pool" and pastes the link, or scans the QR (`say`) | `join_pool` with the address, the first device's certificate fingerprint as the pin and the code from the link; nothing to type | "That code didn't match. Ask the first device for a new link; they last five minutes." |
+| 1 | Says "Add a device that is on another network" on the first device (`say`) | Reads whether Tailscale is up here. If it is: issues a ticket under the delegate (no tap), opens the join window, shows a link and a QR carrying the tailnet address. If not: says the sentence of the next row | "To reach your other network I need Tailscale on this device. It isn't installed; get it from tailscale.com, sign in, and I'll carry on when it's up." |
+| 1a | Only where Tailscale is missing here: installs it, signs in, allows its VPN prompt once (`tailscale` twice, `os-prompt`) | Reads the state every 30 seconds and goes on from row 1 by itself when it is up | "Tailscale is installed here but signed out. Open it and sign in; I'll carry on when it's up." |
+| 2 | On the second device installs Poolhouse and allows discovery once (`install`, `os-prompt`) | Starts the node | as 2a |
+| 2a | Only where Tailscale is missing there: installs it, signs in to the same account (or accepts the shared device), allows its VPN prompt once (`tailscale` twice, `os-prompt`) | Reads the state; says the same sentences | "Tailscale is on here, but 'home-desktop' isn't answering on it. Is Tailscale on and signed in there?" |
+| 3 | Says "Join this pool" and pastes the link, or scans the QR (`say`) | `join_pool` with the tailnet address, the first device's certificate fingerprint as the pin and the code from the link; nothing to type | "That code didn't match. Ask the first device for a new link; they last five minutes." |
 
-Budget: 4 steps (say, install, os-prompt, say), 0 taps, 0 terminal. Honest limit: a device on another network joins only when it
-can reach a member's address (a Tailscale address or a public one); without that it cannot, and the agent says so.
+Budget: 4 steps when Tailscale is already on both devices (say, install, os-prompt, say), 0 taps, 0 terminal; 10 from nothing (those
+four, and install, sign-in and os-prompt for Tailscale on each device). Both numbers are tracked (3.4). Honest limit: Tailscale is
+not ours, and the person's account, access rules and sharing are theirs; when it cannot reach, the agent says what blocks and where
+to tap and never changes Tailscale's settings.
 
 ### 3.3 A developer embedding the library (journey 3)
 
@@ -550,11 +560,24 @@ in the library reads a terminal.
   steps exceed `tests/onboarding-steps.json`, when a `terminal` step appears, when a refusal in the journey has no `say` or has a
   `say` over 160 characters, or when a person-facing string contains "run", "terminal", "config", "port", "firewall" or "key".
 * **`scripts/pool-check`** gets steps `onboarding-owner-one-device`, `onboarding-open-join`, `onboarding-secure-join`,
-  `onboarding-other-network` (the `--wsl` NAT device stands for the other network) and `onboarding-developer`, each counting its
+  `onboarding-other-network` (a second Docker network with no route to the first, joined only by a third network in the tailnet
+  range, with a stand-in `tailscale` command that prints the status of that network; section 10), `onboarding-away-from-home` (the stand-in in the states
+  missing, signed out and up: the agent's sentences and the 0 or 6 steps of 3.5) and `onboarding-developer`, each counting its
   steps against the same file.
-* **The metric** `onboarding-steps` (the sum of the budgets of journeys 1, 2a, 2b, 2c and 3, currently 6, 2, 4, 4 and 3 for 19)
-  is a ceiling in `scripts/gates` that only falls. Every slice below that adds a person-visible step must justify it in the line
+* **The metric** `onboarding-steps` is the sum of the budgets of journeys 1, 2a, 2b, 2c, 3 and 4 (3.5), counted twice: with
+  Tailscale missing on the devices that need it (6, 2, 4, 10, 3 and 6, for 31) and with it present (6, 2, 4, 4, 3 and 0, for 19).
+  Both are ceilings in `scripts/gates` that only fall. Every slice below that adds a person-visible step must justify it in the line
   "a visible step because ..." (1.12) or it is refused.
+
+### 3.5 Away from home (journey 4)
+
+A person approves from the phone while away from home, or reaches a device on another network, over the tailnet: the phone path is
+already HTTPS over the tailnet (`docs/pool.md`, 2.5; the mechanism is `docs/phone-approval.md`). At home on the same network the phone
+needs nothing (journey 1, row 2). Away from home the phone and the device must both be on the tailnet: Tailscale on the phone
+(`tailscale` twice, `os-prompt`) and on the device (the same three where it is missing), 6 steps from nothing and 0 where it is
+present, once per person and device. The agent says it when the person first asks for something that needs it ("I can reach your
+phone at home but not away from home. Install Tailscale on your phone and sign in; I'll carry on when it's up."). Until then the
+approval waits on the screen until the phone is reachable (`docs/phone-approval.md`).
 
 ## 4. One device, many pools
 
@@ -622,8 +645,8 @@ both; pools never merge. The automatic founding of an open pool per project (`se
 is an approval; a device still joins an open pool it hears (a pool that names a project is joined only by a device of that
 project), so devices of one repository on one network find each other as before once one pool is founded.
 
-**Beacons** carry the pool id (32 hex) and are sent once per pool per interval, signed by the device key, with `lone` and
-`project` as today. A pool may set `discovery: off`; it is then found only by a ticket or a link. Heads of board logs stay signed in
+**Beacons** carry the pool id (32 hex) and are sent once per pool per interval, signed by the device key, with `lone`, `project`
+and `tail` (this device's tailnet addresses, at most two, 4.4) as today's fields. A pool may set `discovery: off`; it is then found only by a ticket or a link. Heads of board logs stay signed in
 a domain with no pool id (the pool field of the head message is the empty string permanently): a board is not a pool's, so no pool
 id may enter its signatures, and the old note "the head signature uses an empty pool id" is a rule.
 
@@ -653,6 +676,94 @@ board, never to a shared board.
 Command line for agents (`--json` everywhere): `poolhouse pool list | status | create | join | add-device | remove | leave |
 reissue | admins | migrate`, `poolhouse board share | unshare | sharing`, `poolhouse-serve offer | withdraw | offers | offered |
 usage | stop`.
+
+### 4.4 Devices on different networks: the tailnet
+
+Owner decision, 2026-10-11: **devices on different networks reach each other over the person's tailnet (Tailscale). Poolhouse runs
+no relay and no rendezvous server of its own.** Devices on one network never need Tailscale: they find each other by beacon on the
+segment and dial each other there, and an `open` pool is joined from the segment only. The phone path is already HTTPS over the tailnet
+(`docs/pool.md`, 2.5; `docs/phone-approval.md`).
+
+**The tailnet is a route, never an authority.**
+
+* Pool membership, admission, grants, offers and shared boards never depend on tailnet membership, tags or access rules. **A device
+  on the tailnet is not a member**, and a member needs no tailnet. Mutual TLS 1.3 with the pinned device certificate decides every
+  request, as on a LAN. The node never asks Tailscale who a caller is (no tag, no tailnet identity: `docs/onboarding.md` already
+  says it is not checked).
+* Whatever the tailnet lets reach the node's port can start a handshake, as anything on a LAN can. An unknown certificate gets
+  `hello` and nothing else, and a join only inside an open join window (a code, three tries). `open` admission is never given to
+  a tailnet address: `on_segment` is the subnet of an up, non-point-to-point interface, so a tailnet address is outside it.
+* Tailscale's access rules and tags are the person's. We never read them for authority, never edit them and never ask the person to
+  loosen one beyond the plain sentence that names what blocks.
+
+**Detection, read-only, and what the agent says.** The node reads its own interfaces; the supervisor writes `tailnet.json` from
+`tailscale status --json` (the CLI on the path, the macOS app's copy, or `tailscale.exe`; `fleet/tailnet.py` today: bounded in size
+and time, scrubbed environment, only whitelisted fields, no authentication URL, key or token ever read) every 30 seconds and at each
+join. The state is `missing`, `signed-out` (installed, backend state `NeedsLogin` or `Stopped`) or `up`, with the device's own
+tailnet addresses. The agent reads it only when something needs the tailnet (journey 2c, a member that only the tailnet could
+reach, an approval away from home), says one plain sentence (section 2 lists them), and **never installs, signs in or changes
+Tailscale**: installing and signing in are the person's, as `docs/pool.md` 2.5(c) says of every system setting.
+
+**Addresses.** A member's addresses are kept per fingerprint and per route (`lan` or `tailnet`).
+
+* `lan` addresses are learned only from a beacon heard on a local segment and from the direct dial of a join. A statement that
+  arrives over the tailnet never teaches a private LAN address (an address is only good from where it was seen), and a device never
+  advertises a LAN address over the tailnet.
+* `tailnet` addresses (100.64.0.0/10) are learned from the join (the address dialed, or the source address the issuing device saw),
+  from the member's own signed beacon (`tail`), from the member's own `hello` over an authenticated connection (`addrs`), and as
+  **candidates** relayed by another member. A candidate is stored only after a handshake at it shows the pinned certificate (the
+  rule `fleet/tailnet.py` already keeps). **The tailnet's own device list** (`tailscale status` members, MagicDNS names) is only a
+  source of candidates to try, never trust, and a name is never an identifier.
+* A device advertises a tailnet address only when its own interface holds it **and** Tailscale's status lists it as this device's.
+  An address in 100.64.0.0/10 on a normal interface (some carriers hand them out) is a LAN address unless Tailscale says it is the
+  device's own. IPv4 only in the first release.
+* Dial order: `lan`, then `tailnet`; both failing is the existing backoff (a second, doubling to a minute).
+* Beacons are multicast and broadcast, which a tailnet does not carry, so devices on different networks do not discover each other
+  over it: they join by ticket and link (3.2, 2c) and learn addresses as above. The signed beacon heard at home carries `tail`, so
+  devices that have met at home reach each other later away from it.
+
+**Exit nodes and subnet routers.** An exit node moves the machine's default route; the address `route_address()` finds is then not
+a LAN address. The node advertises only the addresses of up, non-point-to-point, non-tailnet interfaces and the tailnet addresses
+Tailscale confirms, never the route address and never an address its own interface does not hold. A subnet router publishes
+private ranges into the tailnet, so a dial to `192.168.1.5` can reach a different machine: the pinned certificate refuses it
+("answered with another certificate"), the address is not stored, and the agent says the sentence of the "a different device
+answered" row of section 2.
+
+**Between people.** A friend's pool across two tailnets is a pool across two networks. A device shared into the other tailnet is
+reachable at the address and name that tailnet gives it; we keep addresses per route and never names, the device's own `hello`
+announces its address in its own tailnet, and every one of these is a candidate that the pinned certificate settles. Whether the
+sharing tailnet's access rules allow the node's port is the people's, and the agent says so ("Tailscale is on for both devices but
+isn't letting them talk. Check the access rules in your Tailscale account."). Two different tailnet accounts without a share is
+the sentence "These devices are on different Tailscale accounts. Ask the other person to share the device with you in Tailscale."
+Nothing here creates a share, an invitation or a rule.
+
+**Address changes and offline.** A device rereads its own tailnet addresses every 30 seconds and on an interface change; new ones go
+into the next beacon and `hello`, and members try them when the old one fails. A device that signs out of Tailscale stays a member:
+it is reachable on its LAN and unreachable from other networks until it signs in. A device that comes back dials the members whose
+addresses it holds, and its dial teaches them its source address, so a changed address heals from either end; work queued meanwhile
+syncs after (boards are append-only logs).
+
+**`reach` and `reach_hint`.** `reach` keeps `direct`, `channel`, `none` and `self`; a new `route` (`lan`, `tailnet` or empty)
+says which address answered. The hints are plain sentences the agent can say as they are:
+
+| Case | `reach` and `route` | `reach_hint` |
+|---|---|---|
+| answered on the tailnet | `direct`, `tailnet` | none |
+| no address, Tailscale missing or signed out here | `none` | "It is on another network, and Tailscale isn't on and signed in on this device." |
+| a tailnet candidate that did not answer | `none` | "It did not answer on the tailnet. Is Tailscale on and signed in there?" |
+| answered with another certificate | `none` | "Another device answered at that address, so I ignored it." |
+| on the tailnet, access rules deny | `none` | "Tailscale isn't letting these two devices talk. Check the access rules in your Tailscale account." |
+| a device only the other side can dial | `channel` | as today, and "give it a Tailscale address if it should be dialed" |
+
+**What we log.** Locally only, in `node.log` and `pool_status`: the route used per member (`lan` or `tailnet`), the Tailscale state
+word, this device's own tailnet addresses and members' tailnet addresses (so the person can see what the node dialed). Never in a
+board entry or an audit entry (those replicate to other pools, which hold the addresses they need already): no address, no tailnet
+name, no account name. Never stored or logged anywhere: the tailnet's name, the login name, authentication URLs, keys, tokens, and
+the MagicDNS names of other tailnet devices (a name is spoken in a sentence, not saved). Diagnostics redact tailnet addresses and
+names as they redact credentials. Counts of dials per route are kept as numbers.
+
+**Where it is a human step.** Tailscale is installed and signed in by the person on every device that must cross networks
+(`tailscale` steps, 3.2 and 3.5). Same-network joins never need it and never mention it.
 
 ## 5. One device, many pools: capacity, limits and fairness
 
@@ -935,6 +1046,11 @@ unchanged.
 | Two pools offered one model, one removes the other's right | Each offer is independent; the model server stays while any offer needs it | none |
 | Shared board and a pool leaves mid-sync | Next request refused; origins frozen | "'y' stopped sharing the board; what it already sent stays." |
 | A member ignores the old pool after a reissue | It is not in the new roster and is refused | "This pool moved and this device wasn't kept." |
+| Devices on different networks and Tailscale missing or signed out on one | Reach is `none` with the hint; nothing is lost, boards sync when they meet at home or when it is signed in | "To reach your other network I need Tailscale on this device..." (section 2) |
+| A member's tailnet address changed | Its next beacon or dial teaches the new one; the old one fails by backoff | none |
+| Tailscale access rules deny the node's port | `none` with the hint; no setting of ours changes | "Tailscale isn't letting these two devices talk. Check the access rules in your Tailscale account." |
+| An exit node or subnet router sends the dial to another machine | The pinned certificate refuses it; the address is not stored | "Another device answered at that address, so I ignored it." |
+| The person is away from home and the phone is off the tailnet | The approval waits on the screen and shows on the phone when it is reachable; the agent is told it is waiting, not failed | "I asked you on your phone; it can't reach this device away from home. Install Tailscale on it, or tap on the screen." |
 | Governance: no admin reachable | Pool keeps working unchanged; governing calls answer 1.8's sentence | "This pool has no admin left, so it can't be changed. You can start a new pool." |
 
 ## 10. The consolidated test plan
@@ -955,6 +1071,30 @@ unchanged.
   to B); `serve-stop`; `board-shared-two-pools` and `board-shared-non-member` (a board shared by two pools converges for members of
   both, and a member of neither cannot read it); the governance steps of 1.13; the onboarding steps of 3.4. A live model step
   (`serve-live`, a small Qwen3.8 through the broker, one GPU lease) is opt-in and needs the owner's lease; CI uses the stub.
+* **The tailnet in the rig** (`tests/pool_check/steps_tailnet.py`). The Docker rig makes a second "different network": two bridge
+  networks with no route between them, each device on one of them, plus a third bridge whose subnet is in 100.64.0.0/10 that every
+  device joins as a second interface; a stand-in `tailscale` command (on the container's path, like the rig's stand-ins for
+  `powershell.exe` and `wsl.exe`) prints `status --json` for that third network, with `up`, `signed-out` and `missing` selectable.
+  Production code is unchanged and reads the same command. Steps: `tailnet-join-by-link` (a device on the other bridge joins by link
+  over the tailnet bridge and syncs a board), `tailnet-not-authority` (a device on the tailnet bridge that is in no pool gets `hello`
+  and nothing else, and cannot join without a window and code; a member removed from a pool is refused although it is on the
+  tailnet), `tailnet-open-refused` (an `open` pool is not joined from a tailnet address), `tailnet-candidate-needs-pin` (a candidate
+  address answered by another certificate is refused and not stored), `tailnet-wrong-address` (an exit-node style route address and
+  a CGNAT address Tailscale does not list are not advertised), `tailnet-address-change` (a member's tailnet address changes and the
+  pool heals), `tailnet-detect` (missing, signed out and up each give the agent's sentence), `tailnet-no-lan-leak` (no LAN address
+  is learned from a tailnet-delivered statement and none is advertised over it), `tailnet-log` (a planted tailnet name, account name,
+  authentication URL and MagicDNS name appear in no board entry, no audit entry and no stored file). The Rust parts are tests of
+  `netif.rs`, `beacon.rs` (the `tail` field signed) and `reach.rs` (the hints). Windows and WSL run the same steps natively in CI;
+  none of this needs a Tailscale account.
+* **Real tailnet checks, later, on the owner's devices and phone, listed exactly** (each needs a real Tailscale and is not run by
+  CI): (1) a Mac and a Windows or Linux device on two different networks (one on a phone hotspot) join by link over the tailnet and
+  sync a board; (2) `tailscale status --json` parses on the macOS app's copy, on Windows and on Linux and WSL, in the states
+  signed out and stopped; (3) a sign-out and sign-in changes nothing about membership and the pool heals; (4) an exit node enabled
+  on one device does not make it advertise a wrong address; (5) a subnet router in front of a LAN does not make a dial reach the wrong
+  machine without being refused; (6) an access rule that blocks the port produces the sentence and is fixed only by the person;
+  (7) the phone approves a reissue and a share away from home over HTTPS on the tailnet (the mechanism is `docs/phone-approval.md`); (8)
+  a device shared into a second tailnet (this needs a second Tailscale account, the owner's) joins and syncs; (9) the Windows
+  firewall allows the node's port on the Tailscale adapter through the one prompt `device_setup` already plans.
 
 ## 11. Slices, in dependency order
 
@@ -971,17 +1111,18 @@ The first slice closes the hole; each later slice names what must exist before i
 | 4 | Many pools on one device | `pools/<id>/` layout, pool context on every member request, one-identity standing check, per-pool beacons and discovery, `pool_create/list/status/leave`, join of a second pool, lone-pool absorption, `scope.pool` and the new grant registry, board-pool binding and session pool, `ph.pool` and CLI additions. Step `pool-two-on-one-device`. | 1 (2 for migration) |
 | 5 | First-run bundle and plain refusals | The first-run bundle of standing grants, `NeedsApproval`, `say`/`needs`/`then` on every error, the `admin:<key>` pool scope. | 4, P1 |
 | 6 | Onboarding steps (tracked metric) | Step ledger, `tests/onboarding-steps.json`, the `onboarding` step of `scripts/cold-start-check`, the five pool-check journey steps, the `onboarding-steps` gate. Tracked from here on: no later slice may raise it. | 5 |
-| 7 | Join by tap and by link | Knock with three-word confirmation for secure same-network joins, join link and QR with address and pin, reachability messages. Journeys 2b, 2c. | 4, 5 |
-| 8 | Device capacity per pool | `pool` label and `quiet` flag on leases, per-pool limits and consent (`inbound_consent`, replacing `shard_consent`), pool-fair queue, usage accounting, `capacity {pool}`. | 4 |
-| 9 | Shared boards | Charter and sides, rolls, replication filter and rights, freeze on leave, link rule, refusal of direct messages and private rooms, `board_rebind`, `ph.board` additions. Steps `board-shared-*`. | 1, 4, 5 |
-| 10 | Serving offers and calls | Offers, the `serve` member op with streaming, `model_slot` and `gpu` leases, metering, isolation (slot erase), withdraw and stop. Steps `serve-two-pools`, `serve-not-offered`, `serve-stop`. | 8, P2 |
-| 11 | Discovery and the endpoint | Offers beside acts in the member exchange, `ph.serve` additions, the loopback relay and `/v1/models`, `docs/api.md` and `tests/api-signatures.json`. | 10 |
-| 12 | Live proof | `serve-live` with a real small model and real runners on the owner's devices; the three journeys timed on a clean machine. | 6, 7, 11 |
-| 13 | Sealed messages across pools | Lift the refusal of private rooms and direct messages on shared boards (`docs/pool-encryption.md`, slice 4). | 9 |
+| 7 | Reach across networks (Tailscale) | `tailnet.json` from the read-only status, tailnet detection states and the agent's sentences, the `tail` field of the signed beacon, `addrs` in `hello`, per-route addresses and dial order, the advertise rules (own interface and Tailscale's list), `route` and the new `reach_hint`s, the logging rules, `tailscale` steps in the step ledger. Steps `tailnet-*`. | 4, 5 |
+| 8 | Join by tap and by link | Knock with three-word confirmation for secure same-network joins, join link and QR with address (a tailnet one when the other device is on another network) and pin, reachability messages. Journeys 2b, 2c. | 4, 5, 7 |
+| 9 | Device capacity per pool | `pool` label and `quiet` flag on leases, per-pool limits and consent (`inbound_consent`, replacing `shard_consent`), pool-fair queue, usage accounting, `capacity {pool}`. | 4 |
+| 10 | Shared boards | Charter and sides, rolls, replication filter and rights, freeze on leave, link rule, refusal of direct messages and private rooms, `board_rebind`, `ph.board` additions. Steps `board-shared-*`. | 1, 4, 5 |
+| 11 | Serving offers and calls | Offers, the `serve` member op with streaming, `model_slot` and `gpu` leases, metering, isolation (slot erase), withdraw and stop. Steps `serve-two-pools`, `serve-not-offered`, `serve-stop`. | 9, P2 |
+| 12 | Discovery and the endpoint | Offers beside acts in the member exchange, `ph.serve` additions, the loopback relay and `/v1/models`, `docs/api.md` and `tests/api-signatures.json`. | 11 |
+| 13 | Live proof | `serve-live` with a real small model and real runners on the owner's devices; the journeys timed on a clean machine, and the real tailnet checks of section 10 on the owner's devices and phone. | 6, 7, 8, 12 |
+| 14 | Sealed messages across pools | Lift the refusal of private rooms and direct messages on shared boards (`docs/pool-encryption.md`, slice 4). | 10 |
 
-Order of arrival: P1 to P3 and slice 1 can start together; slices 2 and 3 follow slice 1; slice 4 follows slice 1; 5, 6, 7 and 8
-follow 4 (6 after 5); 9 and 10 follow their rows; 11, 12 and 13 last. The `onboarding steps` metric (slice 6) is a ceiling every
-later slice must stay under.
+Order of arrival: P1 to P3 and slice 1 can start together; slices 2 and 3 follow slice 1; slice 4 follows slice 1; 5, 6, 7, 8 and 9
+follow 4 (6 after 5, 7 after 5, 8 after 7); 10 and 11 follow their rows; 12, 13 and 14 last. The `onboarding steps` metric (slice 6)
+is a ceiling every later slice must stay under, with and without Tailscale present.
 
 ## 12. Documents and words that change
 
@@ -994,19 +1135,23 @@ later slice must stay under.
   a pool of one" stays; add "a device may belong to several pools". `left` joins `revoked` as a recorded state.
 * `docs/node.md`: the pool section becomes this document's governance; "Pools of two or more members do not merge" and "A device
   joins only if it is alone" are replaced by the lone-pool rule; the pool record's "newest change wins" is deleted.
+* `docs/onboarding.md`: "Devices on other networks (Tailscale)" becomes this document's 4.4 (per-route addresses, the beacon `tail`
+  field, the advertise rules); `docs/node.md`: discovery and reach (`route`); `docs/security.md`: the tailnet is a route and nothing
+  more.
 * `docs/api.md`: section 8's names; `docs/serving.md`: a section "Offering a model to pools"; `docs/test-farm.md`: consent per pool;
   `docs/pool-check.md`: the new steps; `docs/commands.md`: the new verbs.
 
 ## 13. Owner-only questions, and decisions taken
 
-**Two questions only the owner can answer** (each spends, goes outward or cannot be undone):
+**Two things only the owner can do** (each spends, goes outward or cannot be undone):
 
 1. **Migrating the real pool.** The owner's real pool is migrated once, at a safe boundary, by the owner's approval (1.14). It
    renames every device's pool id and rebinds its boards; it cannot be undone except by reissuing again. Needs the owner's tap, on
    a day the devices are all on. Nothing touches the real home before then.
-2. **Devices on different networks without Tailscale.** A device on another network can join and serve only when it can reach a
-   member (a Tailscale address or a public one). A hosted relay would remove that limit; it is outward-facing infrastructure with
-   running cost and a privacy surface. This design does not build one; the owner decides whether to.
+2. **Tailscale accounts.** The owner decided on Tailscale and no relay of ours (2026-10-11). Crossing networks needs the owner's
+   own Tailscale account, installed and signed in on each device (and the phone for approvals away from home); the real checks of
+   section 10 need it, and the node-sharing check needs a second account. Registering an account is outward-facing and is the
+   owner's; nothing here creates, pays for or changes one.
 
 **Decisions taken here, with the risk the owner should know** (not questions; the better option is taken):
 
