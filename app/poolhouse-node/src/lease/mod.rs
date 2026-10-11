@@ -31,6 +31,9 @@ pub struct Leases {
     pub cfg: Config,
     pub table: Table,
     path: PathBuf,
+    config_path: PathBuf,
+    /// The bytes of the configuration file the settings came from; None when there was none.
+    config_raw: Option<Vec<u8>>,
     pub clock: Box<dyn Fn() -> u64 + Send>,
 }
 
@@ -43,15 +46,37 @@ impl Leases {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e),
         };
-        let cfg = match read(CONFIG_FILE)? {
-            Some(bytes) => serde_json::from_slice(&bytes)?,
+        let config_raw = read(CONFIG_FILE)?;
+        let cfg = match &config_raw {
+            Some(bytes) => serde_json::from_slice(bytes)?,
             None => Config::default(),
         };
         let table = match read(TABLE_FILE)? {
             Some(bytes) => serde_json::from_slice(&bytes)?,
             None => Table::default(),
         };
-        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), clock: Box::new(wall_ms) })
+        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, clock: Box::new(wall_ms) })
+    }
+
+    /// Take the settings from the configuration file again when its bytes are not the ones they came from: a file that is gone
+    /// sets the defaults and one that does not parse changes nothing.
+    fn reload(&mut self) {
+        let raw = match std::fs::read(&self.config_path) {
+            Ok(bytes) => Some(bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => return,
+        };
+        if raw == self.config_raw {
+            return;
+        }
+        let fresh = match &raw {
+            Some(bytes) => serde_json::from_slice::<Config>(bytes).ok(),
+            None => Some(Config::default()),
+        };
+        self.config_raw = raw;
+        if let Some(cfg) = fresh {
+            self.cfg = cfg;
+        }
     }
 
     pub fn now(&self) -> u64 {
@@ -65,6 +90,7 @@ impl Leases {
     /// Drop the dead and the expired, grant what the freed resources allow, and save when
     /// anything changed. Returns what happened, for the board.
     pub fn tick(&mut self, foreign: &Foreign) -> Result<Vec<Event>> {
+        self.reload();
         let now = self.now();
         let mut ended = self.table.sweep(now);
         ended.extend(self.table.yield_to(foreign));

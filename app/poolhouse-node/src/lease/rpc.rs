@@ -22,8 +22,8 @@ const POLL: Duration = Duration::from_millis(25);
 /// The params each lease method takes.
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
-        "lease_acquire" => &["resources", "class", "estimate_s", "ttl_s", "pid", "remote", "local", "wait"],
-        "lease_renew" => &["id", "ttl_s"],
+        "lease_acquire" => &["resources", "class", "estimate_s", "ttl_s", "pid", "remote", "local", "wait", "tag", "quiet"],
+        "lease_renew" => &["id", "ttl_s", "pid"],
         "lease_release" => &["id"],
         "lease_list" => &[],
         "lease_wait" => &["id", "timeout_ms"],
@@ -42,7 +42,8 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
     p.get(key).and_then(Value::as_str).ok_or_else(|| Error::Invalid(format!("{key} is text")))
 }
 
-/// The pool-wide claims other devices hold on the boards this table has dealings with.
+/// The pool-wide claims other devices hold on the boards this table has dealings with: the boards of the leases in it that hold
+/// one, and ``also``. Only a board a pool-wide claim is on is folded.
 fn foreign(node: &mut Node, also: &[&str]) -> Result<Foreign> {
     let mut boards: Vec<String> = also.iter().map(|b| b.to_string()).collect();
     boards.extend(node.leases.table.leases.iter().filter(|l| l.resources.iter().any(Resource::pool_wide)).map(|l| l.board.clone()));
@@ -62,9 +63,16 @@ fn lines(l: &Lease) -> Vec<String> {
     l.resources.iter().map(Resource::line).collect()
 }
 
+/// Whether the lease an event is about asked to leave no board entry.
+fn quiet(event: &Event) -> bool {
+    match event {
+        Event::Granted(l) | Event::Ended(l, _) | Event::Takeover { to: l, .. } => l.quiet,
+    }
+}
+
 /// Write what happened to the boards of the holders it concerns.
 pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
-    for event in events {
+    for event in events.iter().filter(|e| !quiet(e)) {
         let (l, kind, body) = match event {
             Event::Granted(l) => (l, Kind::Lease, json!({"lease": l.id, "action": "acquire", "resources": lines(l)})),
             Event::Ended(l, why) if l.state == State::Held => (l, Kind::Lease, json!({"lease": l.id, "action": why.word(), "resources": lines(l)})),
@@ -93,7 +101,7 @@ fn show(t: &Table, node: &Node, l: &Lease, viewer: &str) -> Value {
            "resources": if own || l.state == State::Held { json!(l.resources) } else { json!([]) },
            "class": l.class, "estimate_s": l.estimate_s, "since_ms": l.since_ms, "granted_ms": l.granted_ms,
            "expires_ms": l.expires_ms, "ttl_s": l.ttl_s, "capped": l.capped(node.leases.now()), "pid": if own { l.pid } else { 0 }, "remote": l.remote,
-           "position": position, "wait_estimate_s": wait_estimate_s})
+           "tag": if own { l.tag.as_str() } else { "" }, "quiet": l.quiet, "position": position, "wait_estimate_s": wait_estimate_s})
 }
 
 fn authority(r: &Resource) -> Result<()> {
@@ -117,23 +125,26 @@ fn acquire(node: &mut Node, board: &str, who: &str, p: &Map<String, Value>) -> R
         board: board.into(), name: who.into(), resources, class, estimate_s: num(p, "estimate_s")?, ttl_s: num(p, "ttl_s")?,
         pid: num(p, "pid")?.map_or(Ok(0), |n| u32::try_from(n).map_err(|_| Error::Invalid("pid is a process id".into())))?,
         remote: p.get("remote").and_then(Value::as_bool).unwrap_or(false), local: p.get("local").and_then(Value::as_bool).unwrap_or(false), wait: p.get("wait").and_then(Value::as_bool).unwrap_or(true),
+        tag: p.get("tag").map_or(Ok(""), |v| v.as_str().ok_or_else(|| Error::Invalid("tag is text".into())))?.to_string(),
+        quiet: p.get("quiet").and_then(Value::as_bool).unwrap_or(false),
     };
     if req.pid != 0 && req.remote {
         return Err(Error::Invalid("a remote holder has no local pid; its lease lives by expiry".into()));
     }
-    tick(node, &[board])?;
+    let also: &[&str] = if req.resources.iter().any(Resource::pool_wide) { &[board] } else { &[] };
+    tick(node, also)?;
     let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
     let id = node.leases.table.enqueue(&node.leases.cfg, now, &req, id)?;
-    tick(node, &[board])?;
+    tick(node, also)?;
     node.leases.save()?;
     let table = &node.leases.table;
     let lease = table.find(&id).cloned().ok_or_else(|| Error::Invalid("the lease ended at once".into()))?;
     if lease.state == State::Queued && !req.wait {
-        let elsewhere = foreign(node, &[board])?;
+        let elsewhere = foreign(node, also)?;
         let table = &node.leases.table;
         let mut blockers: Vec<Value> = lease.resources.iter().filter_map(|r| elsewhere.get(&(board.to_string(), r.key())))
             .map(|holder| json!({"holder": holder, "expires_ms": 0})).collect();
-        blockers.extend(table.leases.iter().filter(|o| o.state == State::Held && o.holder != lease.holder
+        blockers.extend(table.leases.iter().filter(|o| o.state == State::Held && o.party() != lease.party()
             && o.resources.iter().any(|x| lease.resources.iter().any(|r| r.conflicts(x) || (!r.exclusive() && r.key() == x.key()))))
             .map(|o| json!({"holder": if o.board == board { o.holder.as_str() } else { "other-board" }, "expires_ms": o.expires_ms})));
         node.leases.table.release(&id, &lease.holder)?;
@@ -155,9 +166,13 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
     match method {
         "lease_acquire" => acquire(node, board, &who, p),
         "lease_renew" | "lease_wait" => {
-            tick(node, &[board])?;
+            tick(node, &[])?;
             let (now, id) = (node.leases.now(), text(p, "id")?.to_string());
             let ttl = if method == "lease_renew" { num(p, "ttl_s")?.unwrap_or(0) } else { 0 };
+            if let Some(pid) = if method == "lease_renew" { num(p, "pid")? } else { None } {
+                let pid = u32::try_from(pid).map_err(|_| Error::Invalid("pid is a process id".into()))?;
+                node.leases.table.bind(&id, &holder, pid)?;
+            }
             let Leases { cfg, table, .. } = &mut node.leases;
             table.renew(cfg, now, &id, &holder, ttl)?;
             if method == "lease_renew" {
@@ -167,15 +182,15 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
             Ok(show(&node.leases.table, node, &lease, board))
         }
         "lease_release" => {
-            tick(node, &[board])?;
+            tick(node, &[])?;
             let ended = node.leases.table.release(text(p, "id")?, &holder)?;
             node.leases.save()?;
             mirror(node, &[Event::Ended(ended.clone(), super::table::Why::Released)])?;
-            tick(node, &[board])?;
+            tick(node, &[])?;
             Ok(json!({"id": ended.id, "released": true}))
         }
         "lease_list" => {
-            tick(node, &[board])?;
+            tick(node, &[])?;
             let t = &node.leases.table;
             let all: Vec<Value> = t.leases.iter().map(|l| show(t, node, l, board)).collect();
             Ok(json!({"leases": all, "config": node.leases.cfg}))

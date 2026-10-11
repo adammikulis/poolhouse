@@ -575,7 +575,8 @@ used to be admitted six ways: the GPU, CPU slots, memory, named claims, served m
 `src/lease/` (`types`, `policy`, `table`, `live`, `merge`, `rpc`). Config is `lease-config.json`
 (optional; every field has a default): `cpu_slots` (cores), `memory_mb` (0 = no budget),
 `max_wait_s` 600, `background_share_percent` 50, `unknown_background_s` 180, `queue_patience_s` 60,
-`default_ttl_s` 300, `max_ttl_s` 86400.
+`default_ttl_s` 300, `max_ttl_s` 86400. The file is read again whenever its bytes change (at the next lease call), so a
+budget a program writes there applies at once; a file that does not parse changes nothing, and a deleted one sets the defaults.
 
 **Resources** (JSON objects with a `type`; `device` defaults to `local`, the only device this node
 decides; another device is `denied`):
@@ -597,7 +598,13 @@ short run holds or waits for CPU slots of a device, a not-yet-aged long run may 
 resource.
 
 **Holder.** The holder is `board/name` from the token; a request that carries `holder`, `name` and the
-like is refused. Only the holder renews or releases. A holder may pass `pid`: the node records the
+like is refused. Only the holder renews or releases. A **tag** (up to 64 letters, digits, dots, dashes, colons
+and underscores) names one request among the others of its holder: leases of one holder with different tags are
+different parties and wait for each other, the same tag for the same resources is the same request, and no tag is a
+party of its own. A program that serves many callers (the serve broker, one generation at a time per request) holds
+them all under one session by giving each its own tag. A **quiet** lease (`quiet: true`, only for the GPU and a
+`server` claim, which a request takes and gives back many times a second) is granted and ended without a board
+entry. A holder may pass `pid`: the node records the
 process start time and drops the lease when the process is gone, a zombie, or started at another
 moment (a reused pid). A `remote` holder has no pid and lives by expiry. Every lease expires
 `ttl_s` after the last renewal; a queued request not polled for `queue_patience_s` is dropped. The
@@ -612,8 +619,8 @@ audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming th
 
 | method | params | result |
 |---|---|---|
-| `lease_acquire` | `resources, class, estimate_s, ttl_s, pid, remote, wait` | the lease, or `{state: "busy", blockers}` when `wait` is false and it is not free |
-| `lease_renew` | `id, ttl_s` | the lease |
+| `lease_acquire` | `resources, class, estimate_s, ttl_s, pid, remote, wait, tag, quiet` | the lease, or `{state: "busy", blockers}` when `wait` is false and it is not free |
+| `lease_renew` | `id, ttl_s, pid` | the lease; `pid` binds a held lease to that running process, so it ends with it |
 | `lease_release` | `id` | `{id, released}` (a queued request is cancelled) |
 | `lease_list` | | `{leases, config}`; other boards' holders show as `other-board` |
 | `lease_wait` | `id, timeout_ms` | the lease once `held`, or still `queued` at the timeout (at most 10 minutes; the node's lock is not held while it waits) |
