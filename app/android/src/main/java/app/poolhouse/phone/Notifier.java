@@ -54,8 +54,8 @@ final class Notifier {
     }
 
     /**
-     * What a tap opens. A PendingIntent is told apart by its request code and its data, never by its extras, so each (request, button)
-     * pair has its own data: two requests whose ids hash near each other cannot take over each other's Approve or Deny.
+     * What a tap opens. A PendingIntent is told apart by its request code and its data, never by its extras, so each request and
+     * button together have their own data: two requests whose ids hash near each other cannot take over each other's Approve or Deny.
      */
     private static PendingIntent open(Context context, PushPayload payload, String prompt) {
         Uri data = new Uri.Builder().scheme("poolhouse").authority("approval").appendPath(payload.id).appendPath(prompt.isEmpty() ? "read" : prompt).build();
