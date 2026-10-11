@@ -79,7 +79,10 @@ fn sentence(act: &Act, g: &GovPool, deep: bool) -> String {
         Body::Remove(r) => format!("Remove {} from the pool; it stops working with every device at once.", device(g, &r.fingerprint)),
         Body::Leave(d) => format!("Let {} leave the pool.", device(g, &d.fingerprint)),
         Body::AdminAdd(a) => format!("Add the key {} of the pool.", key_line(&a.entry)),
-        Body::AdminRemove(d) => format!("Remove the admin key {} from the pool.", listed_key(g, &d.key)),
+        Body::AdminRemove(d) => {
+            let signed = g.acts().values().filter(|a| a.admin_keys().contains(&d.key.as_str())).count();
+            format!("Remove the admin key {} from the pool. It keeps {} of the {} acts this key signed.", listed_key(g, &d.key), d.cut.len(), signed.max(d.cut.len()))
+        }
         Body::SetThreshold(t) => threshold_line(&t),
         Body::SetHolds(h) => holds_line(&h),
         Body::SetMode(m) => format!("Change who may name admins to {}.", word(&m.mode)),

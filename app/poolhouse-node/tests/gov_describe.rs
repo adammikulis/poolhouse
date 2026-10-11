@@ -6,6 +6,7 @@ mod kit;
 use kit::gov::*;
 use kit::govnode::*;
 use kit::netkit::*;
+use poolhouse_node::gov::describe::describe;
 use serde_json::{json, Value};
 
 fn summary(dev: &Dev, kind: &str, body: Value) -> String {
@@ -32,6 +33,23 @@ fn an_admin_remove_names_the_key_and_its_person() {
     assert!(say.contains("ann") && say.contains(&current[..12]), "{say}");
     let stranger = summary(&a, "admin_remove", json!({"key": public(99), "cut": []}));
     assert!(stranger.contains("does not list"), "{stranger}");
+}
+
+#[test]
+fn an_admin_remove_keeps_every_act_the_key_signed_whatever_the_caller_names_and_says_how_many() {
+    let a = device();
+    found(&a, person(ANN, "ann"), "secure");
+    let held = a.node.lock().unwrap().members.gov().unwrap().acts().values().filter(|x| x.admin_keys().contains(&public(ANN).as_str())).count();
+    assert!(held > 0, "the founder signed its own admit");
+    let drafted = a.ok("pool_draft", "", &a.token, json!({"kind": "admin_remove", "body": {"key": public(ANN), "cut": []}}));
+    assert_eq!(drafted["act"]["body"]["cut"].as_array().unwrap().len(), held, "the caller's empty cut would have struck every act of the key: {drafted}");
+    let say = drafted["summary"].as_str().unwrap();
+    assert!(say.contains(&format!("keeps {held} of the {held} acts")), "{say}");
+    let mut hand_made = drafted["act"].clone();
+    hand_made["body"]["cut"] = json!([]);
+    let g = a.node.lock().unwrap();
+    let act: poolhouse_node::gov::act::Act = serde_json::from_value(hand_made).unwrap();
+    assert!(describe(&act, g.members.gov().unwrap()).contains(&format!("keeps 0 of the {held} acts")), "an act that strikes acts says so to the person who signs it");
 }
 
 #[test]

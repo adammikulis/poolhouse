@@ -465,13 +465,13 @@ impl Node {
         Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": describe(&act, g)}))
     }
 
-    /// An `admin_remove` that names no cut keeps every act of that key this device holds. A `remove` names the logs of the device that
+    /// An `admin_remove` keeps every act of that key this device holds, whatever the caller names: a cut the caller chose would strike what the person was never shown. A `remove` names the logs of the device that
     /// this device holds, whatever the caller says.
     fn with_cut(&self, kind: &str, mut body: Value) -> Value {
         if kind == "remove" {
             body["cut"] = json!(self.logs_of(body["fingerprint"].as_str().unwrap_or("")));
         }
-        if kind == "admin_remove" && body.get("cut").is_none() {
+        if kind == "admin_remove" {
             let key = body["key"].as_str().unwrap_or("").to_string();
             let cut: Vec<String> = self.members.gov().map(|g| g.acts().iter().filter(|(_, a)| a.admin_keys().contains(&key.as_str())).map(|(id, _)| id.clone()).collect()).unwrap_or_default();
             body["cut"] = json!(cut);
