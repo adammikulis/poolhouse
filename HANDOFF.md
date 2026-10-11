@@ -49,7 +49,7 @@ Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a 
 - **No idle unload and no Wake-on-LAN** for pool devices (`docs/home-pool.md` slice 12).
 - **A phone needs a person-credentialed device kind**: person-session routes are loopback-only (`host_ok` refuses a DNS Host and a `tailscale serve` proxy arrives as loopback), so slice 4 must add the kind before the PWA or a remote phone can command anything.
 
-- **The agent sandbox is staged, not installed or measured** (`docs/agent-sandbox.md`, `scripts/agent-sandbox`). The owner runs the fifteen acceptance steps; every sandboxed result in the compatibility matrix is predicted. Open design gaps: the workspace CLI writes `~/.poolhouse/workspace` from the agent's own process, so a sandboxed agent that may announce may also edit board files (needs the CLI to go through the daemon with `workspace/` read-only to agents); `testslots_rpc` binds an ephemeral loopback port that Linux and WSL cannot allow-list (needs a configurable fixed port); Codex's workspace-write cannot deny `.git/config` and `.git/hooks` in the shared git directory.
+- **The agent sandbox is staged, not installed or measured** (`docs/agent-sandbox.md`, `scripts/agent-sandbox`). The owner runs the fifteen acceptance steps; every sandboxed result in the compatibility matrix is predicted. Open design gaps: the node's device key, enrolment secret and the person's key custody (`node/person`) are not on the profile's read-deny list (only `node/client` is); `testslots_rpc` binds an ephemeral loopback port that Linux and WSL cannot allow-list (needs a configurable fixed port); Codex's workspace-write cannot deny `.git/config` and `.git/hooks` in the shared git directory.
 
 ## Landing queue phase 2 leftovers (2026-10-08)
 
