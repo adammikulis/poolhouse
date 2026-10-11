@@ -230,3 +230,83 @@ def test_the_command_prints_json_and_exits_by_the_outcome(machine, capsys):
     assert "linked" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         models_cli.run(["adopt", "now"])
+
+
+def test_a_drafter_on_another_volume_or_cut_short_is_refused_and_kept(machine, monkeypatch):
+    real = hfstore.volume
+    with monkeypatch.context() as other:
+        other.setattr(hfstore, "volume", lambda path: Path("/dev") if "poolhouse-derived" in str(path) else real(path))
+        report = models_adopt.run(apply=False)
+    assert "another volume" in row(report, machine.dflash.name).why and machine.dflash.exists()
+    machine.head.write_bytes(sup.safetensors("head", 4)[:-3])
+    report = models_adopt.run(apply=True)
+    assert "outside the data" in row(report, machine.head.name).why and machine.head.exists()
+
+
+def test_a_drafter_whose_link_fails_is_refused_and_kept(machine, monkeypatch):
+    def across(*_args, **_kw):
+        raise OSError(18, "cross-device link")
+
+    monkeypatch.setattr(os, "link", across)
+    report = models_adopt.run(apply=True)
+    assert row(report, machine.dflash.name).action == "blocked" and machine.dflash.exists()
+    assert derived.lookup(derived.Source(sup.DFLASH, sup.DFLASH_COMMIT, ""), "mlx-q4-g64") is None
+
+
+def test_a_drafter_the_cache_already_holds_is_a_duplicate_and_its_old_name_goes(machine):
+    source = derived.Source(sup.DFLASH, sup.DFLASH_COMMIT, "")
+    body = machine.dflash.read_bytes()
+    derived.save(source, "mlx-q4-g64", lambda stage: stage.write_bytes(body))
+    report = models_adopt.run(apply=True)
+    assert row(report, machine.dflash.name).action == "have" and not machine.dflash.exists()
+    assert derived.lookup(source, "mlx-q4-g64").read_bytes() == body
+
+
+def test_a_drafter_made_from_two_equal_snapshots_is_filed_under_the_one_main_names(machine):
+    heads = hfstore.repo_root(sup.HEADS)
+    (heads / "refs").mkdir(parents=True, exist_ok=True)
+    (heads / "refs" / "main").write_text(sup.HEADS_COMMITS[1])
+    models_adopt.run(apply=True)
+    assert derived.lookup(derived.Source(sup.HEADS, sup.HEADS_COMMITS[1], sup.HEAD_FILE), "mlx-q4-g32") is not None
+    assert derived.lookup(derived.Source(sup.HEADS, sup.HEADS_COMMITS[0], sup.HEAD_FILE), "mlx-q4-g32") is None
+
+
+def test_a_file_in_a_drafter_folder_that_is_not_named_for_its_source_is_left(machine):
+    stray = machine.dflash.with_name("mine.safetensors")
+    stray.write_bytes(sup.safetensors("x"))
+    report = models_adopt.run(apply=True)
+    assert "its name is not" in row(report, "mine.safetensors").why and stray.exists()
+
+
+def test_what_is_not_a_decide_folder_or_a_view_is_listed_and_left_alone(machine):
+    snapshots = home.cache("decide", "snapshots")
+    (snapshots / "Qwen--Qwen3.5-2B-Base" / "main").mkdir()
+    (snapshots / "Qwen--Qwen3.5-2B-Base" / "loose.txt").write_text("x")
+    (snapshots / "loose--folder").mkdir()
+    (snapshots / "stray.txt").write_text("x")
+    (home.cache("spec", "weights") / "notes").mkdir()
+    (home.cache("spec", "weights") / "loose.txt").write_text("x")
+    report = models_adopt.run(apply=True)
+    said = "\n".join(report.notes)
+    for name in ("Qwen--Qwen3.5-2B-Base/main", "Qwen--Qwen3.5-2B-Base/loose.txt", "stray.txt", "notes", "loose.txt"):
+        assert f"not adopted: {snapshots if 'Qwen' in name or name == 'stray.txt' else home.cache('spec', 'weights')}" in said
+    assert (snapshots / "stray.txt").exists() and (home.cache("spec", "weights") / "notes").exists()
+
+
+def test_main_is_named_only_when_the_hub_says_main_is_that_commit_and_nothing_names_one(machine):
+    base, strands = hfstore.repo_root(sup.BASE), hfstore.repo_root(sup.DECIDER)
+    (strands / "refs").mkdir(parents=True, exist_ok=True)
+    (strands / "refs" / "main").write_text("3" * 40)
+    machine.base.rename(machine.base.with_name("2" * 40))
+    models_adopt.run(apply=True)
+    assert (strands / "refs" / "main").read_text() == "3" * 40
+    assert not (base / "refs" / "main").exists()
+    assert (hfstore.repo_root(sup.VIEW) / "refs" / "main").read_text() == machine.rev[sup.VIEW]
+    assert not (hfstore.repo_root(sup.GEMMA) / "refs" / "main").exists()
+
+
+def test_a_decide_folder_that_lacks_a_file_the_hub_lists_is_not_told_to_pull(machine):
+    (machine.decider / "tokenizer_config.json").unlink()
+    report = models_adopt.run(apply=False)
+    part = next(part for part in report.parts if part.repo == sup.DECIDER)
+    assert part.notes == []
