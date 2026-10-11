@@ -1,7 +1,7 @@
 package app.poolhouse.phone;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -69,11 +69,11 @@ public final class PhonesActivity extends Activity {
         for (JSONObject phone : held) {
             if ("removed".equals(phone.optString("state"))) continue;
             String fingerprint = phone.optString("fingerprint", "");
-            String words = fingerprint.length() >= 12 ? fingerprint.substring(0, 4) + " " + fingerprint.substring(4, 8) + " " + fingerprint.substring(8, 12) : "";
+            String words = Hex.words(fingerprint);
             boolean here = phone.optBoolean("this");
             ui.line(phone.optString("name") + (here ? " (this phone)" : "") + (phone.optString("state").equals("pending") ? " - waiting to be approved" : ""), Ui.INK, true);
             ui.text("Key " + words + (phone.optBoolean("push") ? "  -  wake-up on" : "  -  wake-up off"), 14);
-            if (phone.optString("state").equals("active")) ui.button("Remove " + phone.optString("name"), () -> confirmRemove(phone.optString("id"), phone.optString("name")));
+            if (phone.optString("state").equals("active")) ui.button("Remove " + phone.optString("name"), () -> askToRemove(phone.optString("id")));
         }
         ui.button("Add another phone", this::offer);
         String distributor = UnifiedPushChannel.distributor(this);
@@ -87,19 +87,20 @@ public final class PhonesActivity extends Activity {
         ui.notice.bringToFront();
     }
 
-    private void confirmRemove(String id, String name) {
-        new AlertDialog.Builder(this).setTitle("Remove " + name + "?").setMessage("It stops being able to approve at once. One fingerprint from a phone that stays confirms it.")
-                .setNegativeButton("Keep", null).setPositiveButton("Remove", (dialog, which) -> worker.execute(() -> remove(id))).show();
+    /**
+     * Ask the node to take a phone off. What a key signs for that is a request like any other, so it opens on the same screen:
+     * the whole text, then Approve or Deny behind one fingerprint. Nothing about a removal is signed that was not shown.
+     */
+    private void askToRemove(String id) {
+        ui.say("Asking your computer...");
+        worker.execute(() -> remove(id));
     }
 
     private void remove(String id) {
         try {
             ApprovalView request = new ApprovalView(store.api().removePhone(store.token(), id));
-            runOnUiThread(() -> new Decider(store.api(), new BiometricAuthorizer(this), store.device()).decide(request, "approve", request.text, store.nodeNowMs(), new Decider.Done() {
-                @Override public void answered(String state) { runOnUiThread(() -> { ui.say("Removed."); worker.execute(PhonesActivity.this::load); }); }
-
-                @Override public void failed(String sentence) { runOnUiThread(() -> ui.say(sentence)); }
-            }));
+            Notifier.keep(this, request);
+            runOnUiThread(() -> startActivity(new Intent(this, ApprovalActivity.class).putExtra("id", request.id).putExtra("prompt", "")));
         } catch (NodeError refused) {
             runOnUiThread(() -> ui.say(refused.getMessage()));
         } catch (Exception failure) {

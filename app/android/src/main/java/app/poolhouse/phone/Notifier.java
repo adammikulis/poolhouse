@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.Icon;
+import android.net.Uri;
 import android.os.Build;
 import org.json.JSONObject;
 import java.io.File;
@@ -30,10 +31,10 @@ final class Notifier {
         return new File(context.getNoBackupFilesDir(), "pending-" + id + ".json");
     }
 
-    /** Keep the request a push carried, so the screen opens on it at once even when the device cannot be reached yet. */
+    /** Keep the request a push carried, sealed, so the screen opens on it at once even when the device cannot be reached yet. */
     static void keep(Context context, ApprovalView view) {
         try {
-            Files.write(cache(context, view.id).toPath(), view.raw.toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(cache(context, view.id).toPath(), PhoneStore.of(context).seal(view.raw.toString().getBytes(StandardCharsets.UTF_8), view.id));
         } catch (Exception unwritten) {
             return;
         }
@@ -41,7 +42,7 @@ final class Notifier {
 
     static ApprovalView kept(Context context, String id) {
         try {
-            return new ApprovalView(new JSONObject(new String(Files.readAllBytes(cache(context, id).toPath()), StandardCharsets.UTF_8)));
+            return new ApprovalView(new JSONObject(new String(PhoneStore.of(context).unseal(Files.readAllBytes(cache(context, id).toPath()), id), StandardCharsets.UTF_8)));
         } catch (Exception none) {
             return null;
         }
@@ -52,9 +53,15 @@ final class Notifier {
         context.getSystemService(NotificationManager.class).cancel(idOf(id));
     }
 
-    private static PendingIntent open(Context context, PushPayload payload, String prompt, int code) {
-        Intent intent = new Intent(context, ApprovalActivity.class).putExtra("id", payload.id).putExtra("prompt", prompt).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        return PendingIntent.getActivity(context, idOf(payload.id) + code, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    /**
+     * What a tap opens. A PendingIntent is told apart by its request code and its data, never by its extras, so each (request, button)
+     * pair has its own data: two requests whose ids hash near each other cannot take over each other's Approve or Deny.
+     */
+    private static PendingIntent open(Context context, PushPayload payload, String prompt) {
+        Uri data = new Uri.Builder().scheme("poolhouse").authority("approval").appendPath(payload.id).appendPath(prompt.isEmpty() ? "read" : prompt).build();
+        Intent intent = new Intent(context, ApprovalActivity.class).setData(data).putExtra("id", payload.id).putExtra("prompt", prompt)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     private static Notification.Action action(String label, PendingIntent intent) {
@@ -72,14 +79,14 @@ final class Notifier {
         channel.setDescription("Requests from your agents that wait for your approval");
         manager.createNotificationChannel(channel);
         Notification hidden = new Notification.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(model.publicTitle)
-                .setContentText(model.publicText).setVisibility(Notification.VISIBILITY_PUBLIC).build();
-        PendingIntent read = open(context, payload, "", 0);
+                .setContentText(model.publicText).setVisibility(Notification.VISIBILITY_PUBLIC).setLocalOnly(true).build();
+        PendingIntent read = open(context, payload, "");
         Notification shown = new Notification.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(model.title)
                 .setContentText(model.collapsed).setStyle(new Notification.BigTextStyle().bigText(model.body)).setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setPublicVersion(hidden).setCategory(Notification.CATEGORY_MESSAGE).setAutoCancel(true).setOnlyAlertOnce(true).setTimeoutAfter(model.timeoutMs)
-                .setContentIntent(read)
-                .addAction(action("Approve", model.approveOpensScreen ? read : open(context, payload, "approve", 1)))
-                .addAction(action("Deny", open(context, payload, "deny", 2))).build();
+                .setLocalOnly(true).setContentIntent(read)
+                .addAction(action("Approve", model.approveOpensScreen ? read : open(context, payload, "approve")))
+                .addAction(action("Deny", open(context, payload, "deny"))).build();
         manager.notify(idOf(payload.id), shown);
     }
 }

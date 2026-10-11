@@ -34,7 +34,7 @@ the node side is `app/poolhouse-node/src/approvals/` and `phone/`; the agent sid
 | Approval key (P-256) | Android Keystore, StrongBox when present; never leaves the phone | Signs a decision, a phone's own addition, a removal | Fingerprint or device credential for every signature; invalidated by a new fingerprint |
 | Push key (P-256 with a 16 byte secret) | A software key wrapped by a Keystore key that needs no prompt | Decrypts the notifications the node sends this phone | None: it must work while the screen is locked, and it reads only what a notification shows |
 | Phone token (32 random bytes) | Wrapped by a Keystore key that needs no prompt; the node keeps its SHA-256 | Reads the approvals, lists phones, updates the push address | The token alone decides nothing: a decision needs the approval key's signature |
-| Enrolment secret | In the QR code, once | Adds one phone, within ten minutes | The node spends it on any guess |
+| Enrolment secret | In the QR code, once | Adds one phone, within ten minutes | 256 random bits, spent by the one use that matches; a wrong guess is counted against its address (ten in ten minutes), never against the code |
 
 The token and the push key are not secret from the phone's own apps' point of view; they are secret from other phones, other
 people and the network. What matters is that none of them can approve: only the approval key signs, and it signs only after
@@ -53,21 +53,29 @@ poolhouse://add-phone?data=<base64url of {"v":1,"pin":"<64 hex>","endpoints":["h
 
 **The first phone.** A person runs `poolhouse-workspace phone add` once on the computer (a person's command: it refuses a
 process an agent started, like `grants-setup`). It leaves the hash of a one-time secret beside `persons.json`, as
-`grants-setup` does (`phone_offer.json`), and shows the QR code in the terminal and as an image file the screen can show. The
-person scans it. The phone's key is enrolled directly: the secret is the proof that someone at the computer asked for it.
-Nothing else is typed and no `yes` is asked, because the person's phone must scan a code that appeared only on that
+`grants-setup` does (`phone_offer.json`), and draws the QR code in the terminal; it writes no image file for the first phone,
+because a file could be read by any program that runs as the person and the first phone is added on the strength of the code
+alone. The person scans it. The phone's key is enrolled directly: the secret is the proof that someone at the computer asked
+for it. Nothing else is typed and no `yes` is asked, because the person's phone must scan a code that appeared only on that
 computer, within ten minutes, once, and approve with a fingerprint. The command then prints which phone was added and its
-key as three groups of four characters, so a code someone else scanned is seen at once and removed ("Removing a phone").
+key as six groups of four characters, so a code someone else scanned is seen at once and removed ("Removing a phone"). A code
+made through the node (`phone_offer`) is refused for the first phone.
 
 **Another phone, later.** The node enrols a second key only when a key it already holds approves it, so a code that an agent
 or a bystander saw cannot add a phone by itself. The code is made by the person's command, by an agent (`phone_offer`,
-allowed once a person key exists, three an hour), or by the app of a phone already added ("Phones and notifications", "Add another phone"). The
-new phone scans it and the node puts "Add the phone `<name>`, key `7f3a 91c2 d04e`" in front of every phone already added.
-One tap and one fingerprint on one of them adds it. The text says what it means: the new phone approves everything this one can.
+allowed once a person key exists, three an hour for each session), or by the app of a phone already added ("Phones and
+notifications", "Add another phone"). The new phone scans it and the node puts "Add the phone `<name>`, key `7f3a 91c2 d04e
+5b18 a6c3 7e20`" in front of every phone already added (24 characters of the key, 96 bits, so no key can be ground to look like
+another). One tap and one fingerprint on one of them adds it. The text says what it means: the new phone approves everything
+this one can. A code asked for through the node records who asked, and the request then carries a `FLAG:` line: "The code this
+phone used was made by the session `<name>` on board `<board>`, not by you at the computer. Approve only if you scanned it
+yourself just now." A code that is waiting to be scanned is never replaced by one a session or a phone asks for, so an agent
+cannot take over the code the person is showing.
 
 **Handing the code over.** An agent can make the code and hand the person an image or a link (`poolhouse-workspace phone
-add --image FILE`, `Board.offer_phone()`); a link opens the app. What an agent holds is the secret, which adds a phone only
-after an existing phone approves it, so it is safe to hand over. The first phone is the one exception and is a person's.
+offer --image FILE`, `Board.offer_phone()`, and `phone add --image FILE` once one phone is added); a link opens the app. What an
+agent holds is the secret, which adds a phone only after an existing phone approves it, and the approval says the agent made
+the code, so it is safe to hand over. The first phone is the one exception and is a person's, with no image.
 
 **The code is a bearer secret for ten minutes.** Anyone who photographs it can add their phone to the pending list; on the
 first phone that is an addition with no second approval, on every later phone the person sees the new phone's name and key
@@ -120,7 +128,7 @@ line, each line starting with a label, in this order:
 FLAG: <anything that looks off, one line each: first>
 POOL: <for anything that connects something: the pool is OPEN or SECURE and what that means, from the node's own state>
 RISK: ROUTINE | SENSITIVE | IRREVERSIBLE, and why
-WHO: <session name>, <model> in <harness>, a main session or a subagent of <parent>, on device <name>, board <board>
+WHO: <session name>, which says it is <model> in <harness>, a main session or a subagent of <parent>, on device <name>, board <board>
 ASK: <the one plain sentence: what it wants to do>          (one per ask, numbered when there are several)
 SCOPE: <to whom, on what, on which device, how long and until when, how often>
 CANNOT: <what it will not be able to do: other actions, other boards or devices, anything after the end, approve anything for you>
@@ -138,6 +146,10 @@ EXPIRES: This request ends at <time> UTC.
 - asks for a wildcard resource on a sensitive or irreversible action, or for a grant that lasts over a day;
 - would change the pool's join policy from secure to open;
 - names a task that is not on the board.
+
+A request to change how devices join names one policy, `open` or `secure`, and never a pattern: a resource of `*` or `op*`
+would cover `open` without the text saying so, so the node refuses it when it is asked. The model on the `WHO:` line is what
+the session said about itself when it registered; the node cannot check it, and the line says so.
 
 The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`, `link_read`,
 `link_remove`, `note_verify`, `land_control` are routine; `set_join_policy`, `add_device`, `join_pool`, `shard_call`,
@@ -215,7 +227,13 @@ Each refusal is one sentence the agent can pass to its person.
 | An agent's `expect_policy` that is not the node's | "The pool is secure, not open as you wrote; ask again with what is true." |
 | Text with other than printable ASCII | "That text must be plain English letters, digits and punctuation." |
 | A request beyond the limits | "6 requests in ten minutes is the most one session may make; try again later." |
-| A grant entry copied from an approval and changed (another session, other words, a longer time) | not an answer to anyone: the node lists it as ignored ("not signed by a person key enrolled on this device") and it counts for nothing |
+| A request to change how devices join with a pattern (`*`, `op*`) | "A request to change how devices join names one policy, open or secure, and no pattern." |
+| A code a session made, used to add the first phone | "A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`." |
+| An agent asking for a code while one waits to be scanned | "A code for a phone is already waiting to be scanned; use it or wait for it to run out." |
+| Wrong codes from one address (ten in ten minutes) | "Too many wrong codes came from this address; wait ten minutes." The code itself stays good for the person |
+| A host that opens connections and says nothing | the handshake and request have ten seconds in all, one address holds six connections, and the last eight of forty-eight are kept for addresses a phone answered from |
+| A phone removed while its request was being handled | "This phone is not added to this device, or it was removed." |
+| A grant entry copied from an approval and changed (another session, other words, a longer time, a start after the request ended) | not an answer to anyone: the node lists it as ignored ("not signed by a person key enrolled on this device") and it counts for nothing |
 
 Each grant an approval wrote carries the approval, text included, so what each key approved stays on the board and verifies on any
 device that holds the key.
@@ -281,9 +299,14 @@ nothing else; it does not sign. The notification:
 - **Deny** signs a deny after the same fingerprint (a signed deny, above); the person can swipe the notification away to leave the
   request pending;
 - **Approve** always asks for the fingerprint or the device credential before anything is signed, and never from a locked screen
-  without it. For a routine request the notification's Approve opens the prompt directly, with the text just read in the
-  expanded notification; for a sensitive or irreversible request it opens the approval screen first, so the full text is on the
-  screen when the prompt appears. No one tap approves a sensitive or irreversible request beyond the prompt.
+  without it. For a routine request that the node did not flag, the notification's Approve opens the prompt directly, with the
+  text just read in the expanded notification; for a sensitive or irreversible request, and for any request that carries a `FLAG:`
+  line, it opens the approval screen first, so the full text is on the screen when the prompt appears. The level and the flags
+  are read from the signed text (its `RISK:` and `FLAG:` lines), never from a field beside it that the signature does not cover.
+  No one tap approves a sensitive, irreversible or flagged request beyond the prompt.
+- the notification is local to the phone (`setLocalOnly`: it is not bridged to a watch), each button of each request has its own
+  intent so two requests cannot swap each other's Approve and Deny, and the request the app keeps between the push and the tap is
+  sealed by a Keystore key, bound to its id.
 
 **The node's side of the push** is a `Pusher` with two implementations: the real one POSTs the sealed body to the endpoint over TLS
 (only to an `https` address whose host resolves to a public address, unless a person lists the host in `push-hosts.json`:
@@ -328,11 +351,11 @@ The tap on the notification on the approving phone is the routine approval below
 | 1 | Approve on the notification | one tap |
 | 2 | Fingerprint | one biometric prompt |
 
-**A sensitive or irreversible approval.**
+**A sensitive or irreversible approval** (and a routine one the node flagged as looking off).
 
 | # | Step | Kind | Why it is needed |
 |---|---|---|---|
-| 1 | Tap the notification | one tap | the whole text must be on the screen before the prompt: it is sensitive or cannot be undone |
+| 1 | Tap the notification | one tap | the whole text must be on the screen before the prompt: it is sensitive, cannot be undone or looks off |
 | 2 | Approve on the screen | one tap | |
 | 3 | Fingerprint | one biometric prompt | |
 
@@ -352,7 +375,7 @@ On the local socket, with a session's token (docs/node.md, "Local API"):
 | `approval_pending` | | every pending request (any registered session may read the text it would show a person) |
 | `approval_decide` | `id`, `decision`, `key`, `sig`, `text_sha256` | `{id, state}`: needs a signature of an enrolled person key; a session only carries it |
 | `phone_info` | | `{pin, port, endpoints, device, policy}` |
-| `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour); the first is a person's command |
+| `phone_offer` | | a code for a further phone (needs a person key to exist; three an hour for each session; not while another code waits to be scanned; the request to approve the phone says which session made the code); the first is a person's command |
 | `phones` | | the phones: name, key, state, when added and last seen, whether a push address is set |
 | `phone_remove` | `phone` | the request "Remove the phone", for a key the node holds to approve |
 
@@ -391,7 +414,8 @@ The tests prove the protocol and the app's logic without a device (`PhoneApprova
 6. Turn off the phone's Wi-Fi, make a request, turn it on and open the app: the request is there; let another expire and see
    `expired`.
 7. Enrol a fingerprint on the phone: the old key is lost, the app says so and offers the scan.
-8. Add a second phone and remove the first from it.
+8. Add a second phone and remove the first from it: "Remove" opens the same full-text screen as any request (nothing about a
+   removal is signed that was not shown), and the second phone's request names the first phone's key in six groups of four.
 9. With a UnifiedPush distributor installed (ntfy): in "Phones and notifications" choose "Turn on wake-up", close the app, make a request: the
    notification arrives with the app closed, and a capture of the push server's side shows only ciphertext.
 10. Change the node's address (another network, then Tailscale): the app finds it from the code's other endpoint and says nothing.

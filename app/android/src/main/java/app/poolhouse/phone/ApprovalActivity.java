@@ -100,7 +100,7 @@ public final class ApprovalActivity extends Activity {
         ui.button("Deny", () -> decide("deny", onScreen)).setEnabled(open);
         if (!open) ui.say(view.state.equals("approved") ? "This request was approved." : view.state.equals("denied") ? "This request was denied." : "This request has ended.");
         tick();
-        boolean direct = open && !prompted && (prompt.equals("deny") || (prompt.equals("approve") && !ApprovalFlow.opensScreen(view.risk)));
+        boolean direct = open && !prompted && (prompt.equals("deny") || (prompt.equals("approve") && !view.opensScreen()));
         if (direct) {
             prompted = true;
             decide(prompt, onScreen);

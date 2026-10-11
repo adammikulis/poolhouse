@@ -12,9 +12,12 @@ final class ApprovalFlow {
 
     private ApprovalFlow() { }
 
-    /** Whether the notification's Approve opens the whole request first: any request that is not routine. */
-    static boolean opensScreen(String risk) {
-        return !"routine".equals(risk);
+    /**
+     * Whether the notification's Approve opens the whole request first: any request that is not routine, and any request the node
+     * flagged as looking off, however routine its action. {@code level} is the risk the signed text names.
+     */
+    static boolean opensScreen(String level, boolean flagged) {
+        return flagged || !"routine".equals(level);
     }
 
     /** What a person does to add the first phone. */
@@ -22,8 +25,8 @@ final class ApprovalFlow {
         return List.of(Step.RUN_COMMAND, Step.SCAN_CODE, Step.FINGERPRINT);
     }
 
-    /** What a person does to approve a request of this risk from its notification. */
-    static List<Step> approving(String risk) {
-        return opensScreen(risk) ? List.of(Step.TAP_NOTIFICATION, Step.TAP_APPROVE, Step.FINGERPRINT) : List.of(Step.TAP_APPROVE, Step.FINGERPRINT);
+    /** What a person does to approve a request of this risk (flagged or not) from its notification. */
+    static List<Step> approving(String level, boolean flagged) {
+        return opensScreen(level, flagged) ? List.of(Step.TAP_NOTIFICATION, Step.TAP_APPROVE, Step.FINGERPRINT) : List.of(Step.TAP_APPROVE, Step.FINGERPRINT);
     }
 }

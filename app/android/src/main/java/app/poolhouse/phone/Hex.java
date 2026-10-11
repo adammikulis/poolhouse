@@ -29,6 +29,14 @@ final class Hex {
         }
     }
 
+    /** The first 24 characters of a fingerprint in six groups of four, as the node shows them for two screens to be compared. */
+    static String words(String fingerprint) {
+        if (fingerprint.length() < 24) return "";
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < 24; i += 4) out.append(out.length() == 0 ? "" : " ").append(fingerprint, i, i + 4);
+        return out.toString();
+    }
+
     static String sha256(String text) {
         return sha256(text.getBytes(StandardCharsets.UTF_8));
     }

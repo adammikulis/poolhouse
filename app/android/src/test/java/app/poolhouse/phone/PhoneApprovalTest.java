@@ -180,26 +180,43 @@ public final class PhoneApprovalTest {
         check(!ApprovalText.parse("WHO: x\nsomething unlabelled").complete(), "a line that is not labelled is kept and the text is not complete");
     }
 
+    /** The challenge with the text's flags kept or dropped and its RISK line naming {@code level}: what the node would have signed for such a request. */
+    static JSONObject variant(JSONObject challenge, String level, boolean flagged) throws Exception {
+        StringBuilder text = new StringBuilder();
+        for (String line : challenge.getString("text").split("\n")) {
+            if (line.startsWith("FLAG:") && !flagged) continue;
+            String shown = line.startsWith("RISK: ") ? "RISK: " + level.toUpperCase(java.util.Locale.ROOT) + ". It is what it is." : line;
+            text.append(text.length() == 0 ? "" : "\n").append(shown);
+        }
+        return new JSONObject(challenge.toString()).put("text", text.toString());
+    }
+
     static void theNotification(JSONObject vectors) throws Exception {
-        JSONObject challenge = vectors.getJSONObject("challenge");
-        for (String risk : new String[] {"routine", "sensitive", "irreversible"}) {
-            JSONObject raw = new JSONObject().put("v", 1).put("id", challenge.getString("id")).put("title", "claude-1a2b3c asks for 2 things").put("agent", "claude-1a2b3c").put("risk", risk)
+        JSONObject vector = vectors.getJSONObject("challenge");
+        Object[][] cases = {{"routine", false, false}, {"routine", true, true}, {"sensitive", false, true}, {"irreversible", true, true}, {"surprising", false, true}};
+        for (Object[] one : cases) {
+            String level = (String) one[0];
+            boolean flagged = (Boolean) one[1];
+            JSONObject challenge = variant(vector, level, flagged);
+            // The unsigned field beside the challenge says routine every time: the text decides, never that.
+            JSONObject raw = new JSONObject().put("v", 1).put("id", challenge.getString("id")).put("title", "claude-1a2b3c asks for 2 things").put("agent", "claude-1a2b3c").put("risk", "routine")
                     .put("expires_ms", challenge.getLong("expires_ms")).put("challenge", challenge);
             PushPayload payload = PushPayload.parse(raw.toString().getBytes(StandardCharsets.UTF_8));
             NotificationModel model = NotificationModel.of(payload, challenge.getLong("created_ms"));
             equal("Approval waiting from claude-1a2b3c", model.publicTitle, "the lock screen names only the agent");
             check(!model.publicText.contains("add_device") && !model.publicText.contains("lab") && !model.publicTitle.contains("lab"), "nothing else shows while locked");
             equal(challenge.getString("text"), model.body, "the expanded notification is the whole text that is signed");
-            for (String label : new String[] {"FLAG:", "POOL:", "RISK:", "WHO:", "ASK 1:", "SCOPE 1:", "CANNOT:", "WHY:", "DENY:", "EXPIRES:"}) {
+            for (String label : new String[] {"POOL:", "RISK:", "WHO:", "ASK 1:", "SCOPE 1:", "CANNOT:", "WHY:", "DENY:", "EXPIRES:"}) {
                 check(model.body.contains(label), "the notification carries " + label);
             }
-            check(model.collapsed.startsWith("Check this one: "), "what looks off is first even when collapsed");
-            equal(!risk.equals("routine"), model.approveOpensScreen, "only a routine request is approved from the notification itself");
+            equal(flagged, model.body.contains("FLAG:"), "flags are carried when the node wrote them");
+            if (flagged) check(model.collapsed.startsWith("Check this one: "), "what looks off is first even when collapsed");
+            equal((Boolean) one[2], model.approveOpensScreen, "only a routine request with nothing flagged is approved from the notification itself: " + level + " flagged " + flagged);
             equal(1800000L, model.timeoutMs, "the notification goes when the request ends");
         }
-        JSONObject big = new JSONObject().put("v", 1).put("id", challenge.getString("id")).put("title", "claude-1a2b3c asks for 8 things").put("agent", "claude-1a2b3c")
-                .put("risk", "routine").put("expires_ms", challenge.getLong("expires_ms")).put("more", true);
-        NotificationModel more = NotificationModel.of(PushPayload.parse(big.toString().getBytes(StandardCharsets.UTF_8)), challenge.getLong("created_ms"));
+        JSONObject big = new JSONObject().put("v", 1).put("id", vector.getString("id")).put("title", "claude-1a2b3c asks for 8 things").put("agent", "claude-1a2b3c")
+                .put("risk", "routine").put("expires_ms", vector.getLong("expires_ms")).put("more", true);
+        NotificationModel more = NotificationModel.of(PushPayload.parse(big.toString().getBytes(StandardCharsets.UTF_8)), vector.getLong("created_ms"));
         check(more.approveOpensScreen && more.body.contains("Open to read the whole request."), "a request too large for a push is read on the screen first");
         refuses(() -> PushPayload.parse("{\"v\":2}".getBytes(StandardCharsets.UTF_8)), "a push of another version");
     }
@@ -226,7 +243,10 @@ public final class PhoneApprovalTest {
         Recording node = new Recording();
         NodeApi api = new NodeApi(node, "p".repeat(64), List.of("https://192.168.1.4:7449"));
         Decider decider = new Decider(api, key, device);
-        ApprovalView view = view(vectors, "sensitive");
+        ApprovalView view = view(vectors, "routine");
+        equal("sensitive", view.risk, "the risk is the one the signed text names, never the unsigned field beside it");
+        equal("a1b2 c3d4 e5f6 0718 293a 4b5c", Hex.words("a1b2c3d4e5f60718293a4b5c6d7e8f90"), "a key shows 24 characters in groups of four");
+        equal("", Hex.words("a1b2"), "a short fingerprint shows nothing rather than a part");
         String[] outcome = new String[2];
         Decider.Done done = new Decider.Done() {
             @Override public void answered(String state) { outcome[0] = state; }
@@ -333,13 +353,16 @@ public final class PhoneApprovalTest {
 
     static void theFrictionBudget(JSONObject contract) {
         equal(contract.getInt("first_run"), ApprovalFlow.firstRun().size(), "the steps of the first run");
-        equal(contract.getInt("approve_routine"), ApprovalFlow.approving("routine").size(), "the steps of a routine approval");
-        equal(contract.getInt("approve_sensitive"), ApprovalFlow.approving("sensitive").size(), "the steps of a sensitive approval");
-        equal(ApprovalFlow.approving("sensitive"), ApprovalFlow.approving("irreversible"), "an irreversible request takes the steps of a sensitive one");
+        equal(contract.getInt("approve_routine"), ApprovalFlow.approving("routine", false).size(), "the steps of a routine approval");
+        equal(contract.getInt("approve_sensitive"), ApprovalFlow.approving("sensitive", false).size(), "the steps of a sensitive approval");
+        equal(ApprovalFlow.approving("sensitive", false), ApprovalFlow.approving("irreversible", false), "an irreversible request takes the steps of a sensitive one");
+        equal(ApprovalFlow.approving("sensitive", false), ApprovalFlow.approving("routine", true), "a routine request the node flagged takes the steps of a sensitive one");
         for (String risk : new String[] {"routine", "sensitive", "irreversible"}) {
-            int prompts = 0;
-            for (ApprovalFlow.Step step : ApprovalFlow.approving(risk)) if (step == ApprovalFlow.Step.FINGERPRINT) prompts++;
-            equal(1, prompts, "one fingerprint to approve a " + risk + " request");
+            for (boolean flagged : new boolean[] {false, true}) {
+                int prompts = 0;
+                for (ApprovalFlow.Step step : ApprovalFlow.approving(risk, flagged)) if (step == ApprovalFlow.Step.FINGERPRINT) prompts++;
+                equal(1, prompts, "one fingerprint to approve a " + risk + " request" + (flagged ? " that was flagged" : ""));
+            }
         }
     }
 }

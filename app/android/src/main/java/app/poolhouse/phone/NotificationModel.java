@@ -35,6 +35,6 @@ final class NotificationModel {
         ApprovalText parts = payload.view.parts();
         String first = parts.flags.isEmpty() ? parts.asks.isEmpty() ? payload.title : parts.asks.get(0) : "Check this one: " + parts.flags.get(0);
         return new NotificationModel("Approval waiting from " + agent, "Unlock to read it.", payload.title, first, payload.view.text,
-                ApprovalFlow.opensScreen(payload.risk), left);
+                payload.view.opensScreen(), left);
     }
 }

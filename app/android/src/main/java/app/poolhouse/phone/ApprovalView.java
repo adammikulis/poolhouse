@@ -12,6 +12,7 @@ final class ApprovalView {
     final String id;
     final String state;
     final String title;
+    /** The level the signed text names (routine, sensitive or irreversible): never the unsigned field beside it. */
     final String risk;
     final String session;
     final String text;
@@ -23,9 +24,10 @@ final class ApprovalView {
         id = raw.getString("id");
         state = raw.getString("state");
         title = raw.optString("title", "");
-        risk = raw.optString("risk", "sensitive");
         session = raw.optString("session", "");
         text = raw.getString("text");
+        String level = ApprovalText.parse(text).level();
+        risk = level.isEmpty() ? "sensitive" : level;
         expiresMs = raw.getLong("expires_ms");
         challenge = new Challenge(raw.getJSONObject("challenge"));
         if (!id.matches("ap-[0-9a-f]{16}") || !challenge.id().equals(id) || !challenge.text().equals(text)) throw new JSONException("The request is not what it says it is.");
@@ -37,6 +39,11 @@ final class ApprovalView {
 
     ApprovalText parts() {
         return ApprovalText.parse(text);
+    }
+
+    /** Whether Approve opens the whole request before anything is signed: not routine, or flagged by the node. */
+    boolean opensScreen() {
+        return ApprovalFlow.opensScreen(risk, !parts().flags.isEmpty());
     }
 
     static List<ApprovalView> all(JSONArray list) throws JSONException {

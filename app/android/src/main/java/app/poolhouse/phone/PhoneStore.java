@@ -97,6 +97,27 @@ final class PhoneStore implements PushHandler.Keys {
         }
     }
 
+    /** {@code plain} sealed by this app's Keystore key, bound to {@code binding} (a request's id, so a file cannot be moved onto another): the IV, then the ciphertext. */
+    synchronized byte[] seal(byte[] plain, String binding) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, wrapKey());
+        cipher.updateAAD(binding.getBytes(StandardCharsets.UTF_8));
+        byte[] iv = cipher.getIV();
+        byte[] sealed = cipher.doFinal(plain);
+        byte[] out = new byte[iv.length + sealed.length];
+        System.arraycopy(iv, 0, out, 0, iv.length);
+        System.arraycopy(sealed, 0, out, iv.length, sealed.length);
+        return out;
+    }
+
+    /** What {@link #seal} made, opened; fails when it was changed or moved. */
+    synchronized byte[] unseal(byte[] sealed, String binding) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE, wrapKey(), new GCMParameterSpec(128, java.util.Arrays.copyOfRange(sealed, 0, 12)));
+        cipher.updateAAD(binding.getBytes(StandardCharsets.UTF_8));
+        return cipher.doFinal(sealed, 12, sealed.length - 12);
+    }
+
     /** A push key for this phone: made here, kept sealed, opened by nothing but this app. */
     static KeyPair newPushKey() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
