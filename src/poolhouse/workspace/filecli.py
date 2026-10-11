@@ -9,17 +9,20 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from poolhouse.board import credentials, sealed
 from poolhouse.board.session import Entry, Session
 from poolhouse.command import flag
+from poolhouse.errors import Denied
 from poolhouse.person import require_person
 from poolhouse.workspace import limits, plain
-from poolhouse.workspace.boardapi import Held, data_line
 from poolhouse.workspace.files import (
     HOUR_S,
+    NOT_AVAILABLE,
     classify,
     clean_name,
     human_size,
@@ -28,10 +31,10 @@ from poolhouse.workspace.files import (
     scan_verdict,
     valid_handle,
 )
-from poolhouse.workspace.identity import Denied
+from poolhouse.workspace.inbound import Held
 from poolhouse.workspace.screen import Refused, fence, injection_markers, refusals
 
-__all__ = ["ATTACH", "FILE", "TABLE", "attach", "file"]
+__all__ = ["ATTACH", "FILE", "TABLE", "Where", "attach", "file", "listing", "post", "save", "search", "show"]
 
 ATTACH = [
     flag("path", help="a file in your worktree, or - to read stdin"),
@@ -46,8 +49,16 @@ FILE = [
     flag("--out", default="", help="write the bytes to a new file inside your worktree"),
     flag("--limit", type=int, default=0), flag("--all", action="store_true"),
     flag("--room", default="", help="only files in this room"), flag("--by", default=""), flag("--derived-from", default="")]
-NOT_AVAILABLE = "file {} (not available to you)"
 LISTED = 50
+
+
+@dataclass(frozen=True, slots=True)
+class Where:
+    """Conditions on which files a listing or search covers: the room, the sender and the file one was derived from."""
+
+    room: str = ""
+    by: str = ""
+    derived_from: str = ""
 
 
 def _keys(s: Session) -> Path:
@@ -65,6 +76,11 @@ def _destination(s: Session, to: str, reply_to: str) -> tuple[str, str]:
         return (place if place.startswith("#") or head.sender == s.name else head.sender), head.ref
     if to == "#announcements" or not to:
         raise ValueError("attach to a board such as #general, an agent id, or thread:SEQ")
+    if to.startswith("#"):
+        if not any(r["name"] == to and r["member"] for r in s.rooms()):
+            raise Denied(f"no room {plain.line(to, 48)} that {s.name} belongs to; join it first")
+    elif to not in {a.name for a in s.agents()}:
+        raise ValueError(f"no session {plain.line(to, 48)} on this board")
     return to, reply_to
 
 
@@ -94,19 +110,31 @@ def _caps(s: Session, to: str, size: int, entries: list[Entry]) -> None:
         raise Refused(f"{to} holds {here} files; the limit is {lim.files_per_board}")
 
 
+def _stdin(cap: int) -> tuple[bytes, str]:
+    """What standard input holds, at most one byte over ``cap``."""
+    return sys.stdin.buffer.read(cap + 1), ""
+
+
 def attach(args: argparse.Namespace, s: Session) -> Any:
     """Post PATH (or stdin) as a file message."""
+    cap = limits.load(limits.root()).file_bytes
+    data, own = _stdin(cap) if args.path == "-" else read_source(args.path, cap, [limits.root(), s.client.state])
+    return post(s, args.to, data, args.name or own, note=args.note, reply_to=args.reply_to, derived_from=args.derived_from)
+
+
+def post(s: Session, to: str, data: bytes, name: str, **about: str) -> dict[str, Any]:
+    """Seal ``data`` under this device's key and post it as a file message to a room, a session or ``thread:REF``;
+    ``about`` may hold the ``note``, the ``reply_to`` message and the ``derived_from`` file or message."""
     lim = limits.load(limits.root())
-    data, own = read_source(args.path, lim.file_bytes, [limits.root(), s.client.state])
-    note = args.note.strip()
+    note = about.get("note", "").strip()
     if "\n" in note or len(note) > lim.file_note_chars:
         raise Refused(f"the note is one sentence of at most {lim.file_note_chars} characters; put detail in the file and keep the note to a sentence")
     if not data:
         raise Refused("the file is empty")
-    name = clean_name(args.name or own or "stdin.txt", lim.file_name_chars)
-    to, reply = _destination(s, args.to, args.reply_to)
+    name = clean_name(name or "stdin.txt", lim.file_name_chars)
+    to, reply = _destination(s, to, about.get("reply_to", ""))
     entries = [e for e in s.files() if not e.gone]
-    source = _source(entries, args.derived_from)
+    source = _source(entries, about.get("derived_from", ""))
     _caps(s, to, len(data), entries)
     kind, is_text = classify(name, data)
     text = data.decode("utf-8") if is_text else ""
@@ -139,28 +167,28 @@ def _reach(entries: list[Entry], handle: str) -> Entry:
 
 def _line(e: Entry) -> str:
     meta = e.fields["file"]
-    return f"file: {data_line(meta['name'], 80)} {human_size(int(meta['size']))} sha:{meta['sha'][:4]}… (file {meta['id']})"
+    return f"file: {plain.data_line(meta['name'], 80)} {human_size(int(meta['size']))} sha:{meta['sha'][:4]}… (file {meta['id']})"
 
 
 def _item(e: Entry, extra: str = "") -> dict[str, Any]:
     meta = e.fields["file"]
     place = e.channel if e.channel.startswith("#") and e.channel != "#dm" else "a conversation"
-    line = f"{_line(e)} by {e.sender} in {data_line(place, 48)}" + (f": {extra}" if extra else "")
-    return {"id": meta["id"], "handle": f"file:{meta['id']}", "name": data_line(meta["name"], 80), "size": meta["size"], "by": e.sender,
+    line = f"{_line(e)} by {e.sender} in {plain.data_line(place, 48)}" + (f": {extra}" if extra else "")
+    return {"id": meta["id"], "handle": f"file:{meta['id']}", "name": plain.data_line(meta["name"], 80), "size": meta["size"], "by": e.sender,
             "line": line, "text": fence(line, "workspace:files", "file names and notes written by agents").text, "authority": "none"}
 
 
-def _readable(s: Session, args: argparse.Namespace) -> list[Entry]:
-    """The files the caller may read that the conditions of ``args`` keep, newest message first, one message each."""
+def _readable(s: Session, where: Where) -> list[Entry]:
+    """The files the caller may read that the conditions of ``where`` keep, newest message first, one message each."""
     seen: set[str] = set()
     out = []
+    derived = where.derived_from.removeprefix("file:")
     for e in sorted(s.files(), key=lambda e: (-e.at_ms, e.id)):
         handle = e.fields["file"]["id"]
         if e.gone or handle in seen:
             continue
         seen.add(handle)
-        derived = args.derived_from.removeprefix("file:")
-        if (args.room and e.channel != args.room) or (args.by and e.sender != args.by) \
+        if (where.room and e.channel != where.room) or (where.by and e.sender != where.by) \
                 or (derived and e.fields["file"].get("derived_from") != f"file:{derived}"):
             continue
         out.append(e)
@@ -184,7 +212,7 @@ def _held(s: Session, e: Entry, text: str) -> None:
             raise Denied(f"file {e.fields['file']['id']} is held as {record['qid']} until a person releases it")
 
 
-def _search(s: Session, args: argparse.Namespace, rows: list[Entry], query: str) -> list[tuple[Entry, str]]:
+def _search(s: Session, rows: list[Entry], query: str) -> list[tuple[Entry, str]]:
     words = [w for w in " ".join(query.split()).casefold().split(" ") if w][:6]
     lim = limits.load(limits.root())
     ranked = []
@@ -212,46 +240,69 @@ def _snippet(fields: dict[str, str], words: list[str], width: int) -> str:
         at = min((low.find(w) for w in words if w in low), default=-1)
         if at >= 0:
             start = max(at - width // 4, 0)
-            return data_line(("…" if start else "") + body[start:start + width], width + 1)
+            return plain.data_line(("…" if start else "") + body[start:start + width], width + 1)
     return ""
+
+
+def listing(s: Session, where: Where, limit: int = 0, widen: bool = False) -> Held:
+    """The files the caller may read that ``where`` keeps, newest first: a few by default, ``limit`` of them, or every one with ``widen``."""
+    rows = _readable(s, where)
+    take = len(rows) if widen else limit if limit > 0 else limits.load(limits.root()).file_search_results
+    out = Held(_item(e) for e in rows[:take])
+    out.held = len(rows) - len(out)
+    return out
+
+
+def search(s: Session, query: str, where: Where, limit: int = 0) -> Held:
+    """The files whose name, note or text holds the words of ``query``, best first, each with a snippet."""
+    hits = _search(s, _readable(s, where), query)
+    take = min(limit if limit > 0 else limits.load(limits.root()).file_search_results, LISTED)
+    out = Held(_item(e, snippet) for e, snippet in hits[:take])
+    out.held = len(hits) - len(out)
+    return out
+
+
+def _entry(s: Session, handle: str) -> Entry:
+    """The message that lets the caller read the file ``handle`` (``file:`` and 12 hex characters)."""
+    handle = handle.removeprefix("file:")
+    if not valid_handle(handle):
+        raise ValueError("name one file handle (12 hex characters), or list, search QUERY, delete HANDLE")
+    return _reach(s.files(), handle)
+
+
+def show(s: Session, handle: str, text: bool = False, limit: int = 0, widen: bool = False) -> dict[str, Any]:
+    """Describe the file ``handle``; with ``text`` its fenced text, cut to ``limit`` characters unless ``widen``."""
+    e = _entry(s, handle)
+    return _text(s, e, limit, widen) if text else _meta(s, e)
+
+
+def save(s: Session, handle: str, out: str) -> dict[str, Any]:
+    """Write the bytes of the file ``handle`` to the new path ``out`` inside the working folder."""
+    return _save(s, _entry(s, handle), out)
 
 
 def file(args: argparse.Namespace, s: Session) -> Any:
     """Describe, read, list, search or delete files."""
     first, rest = (args.target[0] if args.target else "list"), args.target[1:]
-    lim = limits.load(limits.root())
+    where = Where(args.room, args.by, args.derived_from)
     if first == "list":
-        rows = _readable(s, args)
-        take = len(rows) if args.all else args.limit if args.limit > 0 else lim.file_search_results
-        out = Held(_item(e) for e in rows[:take])
-        out.held = len(rows) - len(out)
-        return out
+        return listing(s, where, args.limit, args.all)
     if first == "search":
-        hits = _search(s, args, _readable(s, args), " ".join(rest))
-        take = min(args.limit if args.limit > 0 else lim.file_search_results, LISTED)
-        out = Held(_item(e, snippet) for e, snippet in hits[:take])
-        out.held = len(hits) - len(out)
-        return out
-    handle = rest[0] if first == "delete" and rest else first.removeprefix("file:")
+        return search(s, " ".join(rest), where, args.limit)
     if first == "delete":
         require_person("file delete")
-        if not valid_handle(handle):
+        if not rest or not valid_handle(rest[0]):
             raise ValueError("a file handle is 12 hex characters")
-        return s.delete_file(handle)
-    if not valid_handle(handle) or rest:
+        return s.delete_file(rest[0])
+    if rest:
         raise ValueError("name one file handle (12 hex characters), or list, search QUERY, delete HANDLE")
-    e = _reach(s.files(), handle)
-    if args.out:
-        return _save(s, e, args.out)
-    if args.text:
-        return _text(s, e, args.limit, args.all)
-    return _meta(s, e)
+    return save(s, first, args.out) if args.out else show(s, first, args.text, args.limit, args.all)
 
 
 def _meta(s: Session, e: Entry) -> dict[str, Any]:
     meta = e.fields["file"]
     record = next((i for i in s.held() if i["id"] == e.id), None)
-    return {"id": meta["id"], "handle": f"file:{meta['id']}", "name": data_line(meta["name"], 80), "size": meta["size"], "type": meta["type"],
+    return {"id": meta["id"], "handle": f"file:{meta['id']}", "name": plain.data_line(meta["name"], 80), "size": meta["size"], "type": meta["type"],
             "is_text": bool(meta["text"]), "by": e.sender, "in": e.channel if e.channel != "#dm" else "a conversation", "message": e.ref,
             "state": record["state"] if record else "clear", "line": _line(e), "authority": "none"}
 
@@ -264,7 +315,7 @@ def _text(s: Session, e: Entry, limit: int, widen: bool) -> dict[str, Any]:
     _held(s, e, text)
     shown, cut = plain.text(text, len(text) if widen else limit if limit > 0 else limits.load(limits.root()).file_text_chars)
     screened = fence(shown, f"workspace:file:{meta['id']}", f"file posted by {e.sender}")
-    return {"id": meta["id"], "name": data_line(meta["name"], 80), "size": meta["size"], "text": screened.text, "flags": list(screened.markers),
+    return {"id": meta["id"], "name": plain.data_line(meta["name"], 80), "size": meta["size"], "text": screened.text, "flags": list(screened.markers),
             "authority": "none", "held": max(len(text) - len(shown), 0) if cut else 0}
 
 

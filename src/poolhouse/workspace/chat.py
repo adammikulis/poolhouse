@@ -1,40 +1,51 @@
-"""The person's live conversation in a terminal: the stream of one board or conversation, and
-every line typed sent to it."""
+"""The person's live conversation in a terminal: the stream of one room or conversation, and
+every line typed sent to it, over the person's session on the board."""
 
 from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any
 
 from poolhouse import activity
-from poolhouse.workspace import plain
-from poolhouse.workspace.boardapi import Follow
-from poolhouse.workspace.identity import HUMAN, Denied
-from poolhouse.workspace.rates import RateLimited
+from poolhouse.board import person
+from poolhouse.board.client import NodeError
+from poolhouse.board.session import Entry, Session
+from poolhouse.errors import Denied
+from poolhouse.workspace import board_cli, inbound, plain
 from poolhouse.workspace.screen import Refused
-from poolhouse.workspace.service import Workspace
 
-__all__ = ["QUIT", "Console", "render", "run"]
+__all__ = ["QUIT", "Console", "Target", "render", "run"]
 
 QUIT = "/quit"
-SLICE_S = 5.0
+POLL_S = 0.2
 
 
-def render(message: dict[str, Any]) -> str:
-    """One message as a line of plain text: its number, sender, and text with the line breaks kept
+def render(e: Entry) -> str:
+    """One message as a line of plain text: its number, sender, and subject and text with the line breaks kept
     as spaces."""
-    return f"[{message['seq']}] {plain.line(message['from'], 48)}: {plain.line(message['body'], 2000)}"
+    subject = str(e.fields.get("subject", ""))
+    text = f"{subject}: {e.text}" if subject else e.text
+    return f"[{e.ref}] {plain.line(e.sender, 48)}: {plain.line(text, 2000)}"
 
 
-def _send(ws: Workspace, token: str, target: str, text: str, out: Callable[[str], None]) -> None:
+def _send(s: Session, to: str, text: str, out: Callable[[str], None]) -> None:
     try:
-        ws.send(token, target, "note", text)
-        activity.record("board.post", subject=target if target.startswith("#") else "dm",
-                        meta={"size": len(text)})
-    except (Refused, RateLimited, Denied, ValueError) as err:
+        board_cli.delivered(s, to, "note", text)
+        activity.record("board.post", subject=to if to.startswith("#") else "dm", meta={"size": len(text)})
+    except (Refused, NodeError, Denied, ValueError) as err:
         out(f"! not sent: {plain.line(err, 200)}")
+
+
+@dataclass(frozen=True, slots=True)
+class Target:
+    """What a chat follows: the room ``board`` (such as ``#general``) or the conversation with the session ``dm``,
+    starting ``backlog`` messages back."""
+
+    board: str = ""
+    dm: str = ""
+    backlog: int = 20
 
 
 @dataclass(slots=True)
@@ -46,33 +57,35 @@ class Console:
     cancel: threading.Event = field(default_factory=threading.Event)
 
 
-def run(ws: Workspace, token: str, target: Follow, console: Console) -> None:
-    """Print the recent messages of ``target`` (a board or one conversation, with its ``backlog``),
-    then each new one as it arrives, and send every line of ``lines`` until ``/quit``, the end of
-    the lines or ``cancel``. The token must be the person's."""
-    lines, out, cancel = console.lines, console.out, console.cancel
-    me = ws.auth(token)
-    if me.role != HUMAN:
+def _typing(s: Session, to: str, console: Console) -> None:
+    for line in console.lines:
+        text = line.rstrip("\n")
+        if text.strip() == QUIT:
+            break
+        if text.strip():
+            _send(s, to, text, console.out)
+    console.cancel.set()
+
+
+def run(s: Session, target: Target, console: Console) -> None:
+    """Print the last ``target.backlog`` messages of the room or conversation ``target`` names, then each new one as it
+    arrives, and send every line of ``console.lines`` to it until ``/quit``, the end of the lines or ``console.cancel``.
+    ``s`` must be the person's session (`poolhouse.board.person`)."""
+    if s.whoami().harness != person.HARNESS:
         raise Denied("chat is for the person")
     if bool(target.board) == bool(target.dm):
         raise ValueError("chat with one board (--board) or one agent (--to)")
-    name = target.board or target.dm
-    if target.board and not ws.board.can_post(me, name):
-        ws.board.join(token, name)
-
-    def typed() -> None:
-        for line in lines:
-            text = line.rstrip("\n")
-            if text.strip() == QUIT:
-                break
-            if text.strip():
-                _send(ws, token, name, text, out)
-        cancel.set()
-
-    threading.Thread(target=typed, daemon=True, name="chat-input").start()
-    spec = replace(target, plain_text=True, suffix=".chat", timeout_s=SLICE_S)
-    while not cancel.is_set():
-        got = ws.follow(token, spec, cancel.is_set)
-        spec = replace(spec, after=got["seq"])
-        for message in got["messages"]:
-            out(render(message))
+    scope: dict[str, Any] = {"channel": target.board} if target.board else {"conversation": target.dm}
+    if target.board and not any(r["name"] == target.board and r["member"] for r in s.rooms()):
+        s.room("join", target.board)
+    seen = s.read_all(**scope)
+    for e in seen[-target.backlog:] if target.backlog > 0 else ():
+        console.out(render(e))
+    cursor = inbound.advanced(seen, {})
+    threading.Thread(target=_typing, args=(s, target.board or target.dm, console), daemon=True, name="chat-input").start()
+    while not console.cancel.is_set():
+        fresh = s.read_all(cursor, **scope)
+        cursor = inbound.advanced(fresh, cursor)
+        for e in fresh:
+            console.out(render(e))
+        console.cancel.wait(POLL_S)
