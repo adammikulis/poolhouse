@@ -251,7 +251,7 @@ pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpA
             (result, node.members.standing(&cert_fingerprint(der)) == Standing::Revoked)
         };
         write_frame_max(s, &reply_of(result), MAX_PEER_FRAME)?;
-        if req["op"] == "members" {
+        if matches!(req["op"].as_str(), Some("members" | "acts")) {
             net.drop_removed();
         }
         if revoked {
