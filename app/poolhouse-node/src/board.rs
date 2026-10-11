@@ -233,7 +233,17 @@ impl Board {
     fn store(&mut self, origin: &str, incoming: &[Row], authoritative: bool) -> Result<usize> {
         let pin = self.state.t.keys.get(origin).cloned();
         let key_of = |p: &Option<Pin>| p.as_ref().and_then(|p| unhex(&p.public)).and_then(|b| <[u8; 32]>::try_from(b).ok());
-        let cut = self.state.t.cuts.get(origin).cloned();
+        let mut cut = self.state.t.cuts.get(origin).cloned();
+        if cut.is_some() && pin.is_none() {
+            // the writer of this log was not known when the cut was named: a cut binds only a removed device's log, so it is lifted
+            // when the first rows show a device that is still in the pool
+            let writer = rules::accept(&self.id, origin, &[], incoming, None, &self.pool).ok().and_then(|t| t.public);
+            if writer.is_some_and(|p| !self.removed.contains(&sha256_hex(&p))) {
+                self.state.t.cuts.remove(origin);
+                self.state.save()?;
+                cut = None;
+            }
+        }
         let cap = cut.as_ref().map(|c| c.seq);
         let kept: Vec<Row> = incoming.iter().filter(|r| cap.is_none_or(|c| r.seq <= c)).cloned().collect();
         let (dropped, incoming) = (kept.len() < incoming.len(), kept);
@@ -333,15 +343,24 @@ impl Board {
     }
 
     /// Close the logs of removed devices: ``removed`` are their board fingerprints and ``named`` the cuts removals name by origin.
-    /// A log of a removed device that no removal names stands as far as this device holds it now.
+    /// A log of a removed device that no removal names stands as far as this device holds it now. A cut binds only the log of a removed
+    /// device, so one that names the log of a device still in the pool is not taken, and one taken before the removal that named it was
+    /// struck is lifted: the cuts are recomputed from the removals in force each time, and a log that was cut is fetched again.
     pub fn close_removed(&mut self, removed: BTreeSet<String>, named: &BTreeMap<String, Cut>) -> Result<()> {
         self.removed = removed;
+        let writer_in = |board: &Board, origin: &str| board.writer_fingerprint(origin).map(|w| board.removed.contains(&w));
+        let named: BTreeMap<&String, &Cut> = named.iter().filter(|(o, _)| writer_in(self, o) != Some(false)).collect();
+        let before = self.state.t.cuts.len();
+        let held: BTreeSet<String> = self.state.t.cuts.keys().filter(|o| named.contains_key(*o) || writer_in(self, o) == Some(true)).cloned().collect();
+        self.state.t.cuts.retain(|o, _| held.contains(o));
+        if self.state.t.cuts.len() != before {
+            self.state.save()?;
+        }
         for (origin, c) in named {
             self.cut(origin, c.seq, &c.hash)?;
         }
         for origin in self.origins() {
-            let writer = self.writer_fingerprint(&origin);
-            if writer.is_some_and(|w| self.removed.contains(&w)) && !self.state.t.cuts.contains_key(&origin) {
+            if writer_in(self, &origin) == Some(true) && !self.state.t.cuts.contains_key(&origin) {
                 let tip = self.rows(&origin).last().map(|r| (r.seq, r.hash.clone())).unwrap_or_default();
                 self.cut(&origin, tip.0, &tip.1)?;
             }

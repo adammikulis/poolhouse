@@ -231,3 +231,45 @@ fn entries_up_to_the_cut_still_arrive_through_a_relay_that_has_not_heard_of_the_
     assert!(d.texts("demo", &tokens[3]).contains(&"before the removal".to_string()));
     assert!(!d.texts("demo", &tokens[3]).contains(&"after the removal".to_string()));
 }
+
+/// A removal of ``victim`` that names ``cut`` (whatever it is), signed by ann outside the node and submitted to ``on``.
+fn removal_naming(on: &Dev, victim: &Dev, cut: Value) -> Value {
+    let mut act = on.node.lock().unwrap().members.gov().unwrap().new_act("remove", json!({"fingerprint": victim.fp(), "cut": cut}), poolhouse_node::poolops::wall_ms()).unwrap();
+    sign(&mut act, ANN);
+    on.ok("pool_submit", "", &on.token, json!({"act": act}))
+}
+
+#[test]
+fn a_removal_cannot_cut_the_log_of_a_device_it_does_not_remove() {
+    let (a, b, c) = pool_of_three();
+    let tokens = [&a, &b, &c].map(|d| d.session("demo", &format!("writer-{}", &d.fp()[..6])).1);
+    b.say("demo", &tokens[1], "written by an honest member");
+    meet(&a, &b);
+    let honest = origin_of(&b);
+    let before = held(&a, &honest);
+    assert!(before > 0);
+    let reply = removal_naming(&a, &c, json!([{"board": "demo", "origin": honest, "seq": 0, "hash": ""}]));
+    assert_eq!(reply["status"], "effective", "{reply}");
+    assert!(a.member(&c.fp()).is_some_and(|m| m["status"] == "revoked"), "the removal itself stands");
+    assert_eq!(held(&a, &honest), before, "a removal of c cut the log of b, which it did not remove");
+    assert_eq!(a.node.lock().unwrap().boards["demo"].board.cut_of(&honest), None);
+}
+
+#[test]
+fn a_cut_nothing_in_the_pool_supports_any_more_is_lifted_and_the_log_is_fetched_again() {
+    let (a, b, c) = pool_of_three();
+    let tokens = [&a, &b, &c].map(|d| d.session("demo", &format!("writer-{}", &d.fp()[..6])).1);
+    b.say("demo", &tokens[1], "written by an honest member");
+    meet(&a, &b);
+    let honest = origin_of(&b);
+    let before = held(&a, &honest);
+    {
+        let mut n = a.node.lock().unwrap();
+        n.boards.get_mut("demo").unwrap().board.cut(&honest, 0, "").unwrap();
+    }
+    assert_eq!(held(&a, &honest), 0, "the cut closed the log");
+    a.node.lock().unwrap().with_gov(|_, _| Ok(())).unwrap();
+    assert_eq!(a.node.lock().unwrap().boards["demo"].board.cut_of(&honest), None, "no removal names it, so it does not stand");
+    meet(&a, &b);
+    assert_eq!(held(&a, &honest), before, "the log is fetched again past the lifted cut");
+}
