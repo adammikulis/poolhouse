@@ -1228,3 +1228,18 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   and open followers.
 - [ ] **No board search, edit or delete, and no per-board retention.** Board messages age out with the bus
   (`retention_s`); `boards.jsonl` is never pruned.
+
+- [ ] **`poolhouse-models adopt run` has not been run on the real machine.** `plan` then `run` adopts
+  `<cache>/spec/weights/models--mlx-community--Qwen3.8-Flash-Next-4bit-07b5dc6c...` (17 of the 22 shards; the
+  PLE-only shards 2 to 6, the Hub's `config.json` and index are not on this machine, so the view cannot read
+  its PLE table until `poolhouse-models pull hf:mlx-community/Qwen3.8-Flash-Next-4bit@07b5dc6c54600a359b87f1e53e7adf6351c72a2c`
+  has fetched them), the decide snapshots (`Qwen--Qwen3.5-2B-Base` and `StrandsAgents--strands-decider-2B-hobson-v19`
+  are duplicates of the cache's; `google--gemma-4-E2B` is new), and `spec/dflash`, `spec/mtp`.
+- [ ] **The mutation campaign for `hub.derived`, `decide.fetch` and `hub.adopt._by_record` was not finished.**
+  `scripts/mutate --target ... --test tests/test_hub_derived.py tests/test_hub_adopt.py tests/test_models_adopt.py
+  tests/test_decide_fetch.py` was stopped before it reported; `same_bytes`, `_place`, `_by_hub`, `_one`,
+  `structure_problem`, `_missing`, `_draft_row`, `_point_main` and the discovery functions had 0 survivors.
+- [ ] **`tests/test_models_adopt.py` takes about 40 s on a cold run.** Each test builds a fake Hub and the
+  scenario; it is a candidate for `tests/heavy-modules.txt`.
+- [ ] **A drafter made from a GGUF that two snapshots hold with equal bytes is filed under the commit
+  `refs/main` names;** another commit's path with the same bytes quantizes a second time.
