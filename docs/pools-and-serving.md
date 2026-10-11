@@ -1178,6 +1178,29 @@ screen has the stop button without a grant. Removing a member ends its calls at 
 * Hard floors hold: one thing on the GPU at a time (the `gpu` lease), agents are never people, no `act_as_person`, no second GPU
   grant, and a model call cannot reach a person's credential.
 
+### 7.7 Routing goes only to devices that were really admitted
+
+A fake device (a Sybil enrolled through a member's rows, a cloned identity, an unreviewed open joiner, a removed device still
+believed in by an unaware member) captures whatever is routed to it: prompts, files, test shards, results. So routing is part of
+the membership rules, not a separate feature (owner, 2026-10-11: preventing fake devices is crucial because any compute or traffic
+routed to them can be captured):
+
+* **Route only to active members whose admit is a valid act** (admin- or delegate-signed, verified by the sender, not a row a
+  member relayed). A device whose admit is unverified, retracted or cut is never a target of a job, shard, prompt, file or lease
+  grant, whatever its certificate says.
+* **Probation.** A newly admitted device receives no prompts, files, shards or jobs until the device owner's own policy says so:
+  by default only the person's own enrolled devices receive anything; a device joined by `open` or by a delegate is listed but
+  receives nothing until a person approves it for serving (one line in the review list, no extra step for the person's own
+  devices).
+* **Check at send time and again at the reply.** Standing is re-read when the request is sent and when the reply is taken
+  (section 1.5 cut rule); a device removed between the two has its reply refused and the work redone elsewhere.
+* **Identity continuity.** Two live addresses presenting one fingerprint, a fingerprint whose key is not the keystore-held key
+  enrolled for it, or a name that changes owner mid-session stop routing to that device at once and flag the admins.
+* **Sealed where possible.** What can be sealed to a specific device key (files, results, prompts for a device the person owns)
+  is sealed to that key, so a device that merely holds a copied certificate cannot read it; the rest is stated in 7.6.
+* **Test.** A Sybil device enrolled while members were unaware receives nothing, and nothing is routed to it after its admitter
+  is removed; a cloned device identity is not routed to; mutation: the active/probation check deleted must turn the tests red.
+
 ## 8. Finding a served model: the public API
 
 All additions follow `docs/api.md`: each name is documented there, listed in `api.SURFACE`, exercised by `tests/test_api*.py`, and
