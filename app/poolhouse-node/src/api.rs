@@ -11,7 +11,7 @@ use serde_json::{json, Map, Value};
 use crate::error::{Error, Result};
 use crate::fold::Entry;
 use crate::node::{Node, READ_DEFAULT, READ_MAX};
-use crate::row::Kind;
+use crate::row::{valid_name, Kind};
 
 pub const API_VERSION: u64 = 1;
 const ENVELOPE: [&str; 6] = ["v", "id", "method", "board", "token", "params"];
@@ -137,10 +137,17 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
             .map_err(|_| Error::Invalid("channels is a list of #names".into()))?;
         let write = match str_of(p, "mode")? { "ro" | "" => false, "rw" => true, _ => return Err(Error::Invalid("mode is ro or rw".into())) };
         let to = str_of(p, "to")?;
-        node.host(to)?;
+        if !valid_name(to) || !node.boards.contains_key(to) {
+            return Err(Error::Invalid("a link goes to a board this node hosts".into()));
+        }
+        if write {
+            crate::poolapi::authorize(node, token, "link_write", &format!("{board}>{to}"))?;
+        }
         node.links.add(board, to, channels, write, &by)?
     } else {
-        node.links.revoke(board, str_of(p, "id")?)?
+        let id = str_of(p, "id")?;
+        crate::poolapi::authorize(node, token, "link_remove", id)?;
+        node.links.revoke(board, id)?
     };
     let detail = format!("{}>{} {} {}", done.from, done.to, if done.write { "rw" } else { "ro" }, done.channels.join(","));
     let event = if make { "link" } else { "unlink" };
@@ -161,6 +168,7 @@ fn project(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -
             if holder.is_none_or(|h| h.board != id) {
                 return Err(Error::Denied("only a session of the project adds a place to it".into()));
             }
+            crate::poolapi::authorize(node, token, "source_add", id)?;
             node.projects.add_source(id, kind, path)?
         }
     };

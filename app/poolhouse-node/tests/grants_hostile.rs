@@ -43,6 +43,9 @@ fn edits() -> Vec<(&'static str, Edit)> {
         ("a gid a megabyte long", |b| { b.insert("gid".into(), json!(format!("g-{}", "a".repeat(1 << 20)))); }),
         ("a gid that is not hex", |b| { b.insert("gid".into(), json!("g-zzzzzzzzzzzzzzzz")); }),
         ("a grantee of an unknown kind", |b| { b.insert("to".into(), json!({"kind": "root"})); }),
+        ("a session grantee whose subagents flag is text", |b| { b.insert("to".into(), json!({"kind": "session", "name": "claude-aaaaaa", "subagents": "yes"})); }),
+        ("a use count on an action another device may use, for every device", |b| { b.insert("uses".into(), json!(3)); }),
+        ("a link granted for a board that is not a name", |b| { b.insert("action".into(), json!("link_write")); b.insert("scope".into(), json!({"board": "demo", "device": "*", "resource": "a b>c"})); }),
         ("a grantee with a field of its own", |b| { b.insert("to".into(), json!({"kind": "session", "name": "claude-aaaaaa", "admin": true})); }),
         ("a grantee named in capitals", |b| { b.insert("to".into(), json!({"kind": "session", "name": "ROOT"})); }),
         ("a grantee nested forty deep", |b| { b.insert("to".into(), nested(40)); }),
@@ -79,7 +82,7 @@ fn a_person_signed_grant_with_a_malformed_body_is_refused_and_leaves_nothing() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (name, token) = session(&mut n, "demo", "a");
-    enrolled(&mut caller(&mut n), &token);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &token);
     for (what, edit) in edits() {
         let mut b = body(&name);
         edit(&mut b);
@@ -97,7 +100,7 @@ fn extra_params_and_borrowed_identities_are_refused_before_anything_is_checked()
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (name, token) = session(&mut n, "demo", "a");
-    enrolled(&mut caller(&mut n), &token);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &token);
     for (key, value) in [("admin", json!(true)), ("actor", json!("root")), ("as", json!("person")), ("sender", json!("human")), ("parent", json!("x")), ("board", json!("other"))] {
         let mut params = person().issue_params("demo", GID, &Spec::session(&name, "note_verify"));
         params[key] = value;
@@ -114,7 +117,7 @@ fn a_revocation_or_an_enrolment_with_hostile_input_changes_nothing() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (name, token) = session(&mut n, "demo", "a");
-    enrolled(&mut caller(&mut n), &token);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &token);
     assert_eq!(ok(person().issue(&mut caller(&mut n), "demo", &token, GID, &Spec::session(&name, "note_verify")))["gid"], GID);
     let me = Holder { board: "demo".into(), name: name.clone() };
 
@@ -146,7 +149,7 @@ fn a_grant_row_forged_on_the_log_is_ignored_and_the_use_of_it_is_refused() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (name, token) = session(&mut n, "demo", "a");
-    enrolled(&mut caller(&mut n), &token);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &token);
     let me = Holder { board: "demo".into(), name: name.clone() };
     let agent = Person { key: ed25519_dalek::SigningKey::from_bytes(&[0x13; 32]) };
     let mut forged = agent.issue_params("demo", GID, &Spec::session(&name, "land_control")).as_object().unwrap().clone();

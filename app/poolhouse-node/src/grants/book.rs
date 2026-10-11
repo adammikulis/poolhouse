@@ -17,7 +17,7 @@ use crate::rules::held_back;
 use super::person::Persons;
 use super::spec::{parse_issue, parse_revoke, signing_bytes, Issue, PORTABLE};
 
-/// How many entries of devices this one does not trust are read for the listing; the rest are not looked at.
+/// How many entries of each device this one does not trust are read for the listing; the rest are not looked at.
 const MOST_UNTRUSTED: usize = 200;
 
 /// Where the issue and revoke rows of every origin of a board sit in its log, and how often each origin wrote a use of
@@ -60,19 +60,16 @@ impl Book {
         }
     }
 
-    /// Every issue and revoke row in the board's total order, leaving out a foreign row dated too far ahead and every
-    /// entry of a device ``counted`` rejects past the first few.
+    /// Every issue and revoke row in the board's total order, leaving out a foreign row dated too far ahead and, for a
+    /// device ``counted`` rejects, all but its newest few; those are chosen before anything is sorted.
     pub fn ordered(&self, board: &Board, now_ms: u64, counted: &dyn Fn(&str) -> bool) -> Vec<Row> {
         let mut all: Vec<&Row> = self.rows.iter().flat_map(|(origin, at)| {
             let log = board.rows(origin);
-            at.iter().filter_map(move |i| log.get(*i))
+            let keep = if counted(origin) { at.len() } else { MOST_UNTRUSTED };
+            at.iter().rev().take(keep).filter_map(move |i| log.get(*i))
         }).filter(|r| r.origin == board.origin() || !held_back(r, now_ms)).collect();
         all.sort_by(|a, b| a.order().cmp(&b.order()));
-        let mut unlisted = 0;
-        all.into_iter().filter(|r| counted(&r.origin) || {
-            unlisted += 1;
-            unlisted <= MOST_UNTRUSTED
-        }).cloned().collect()
+        all.into_iter().cloned().collect()
     }
 
     /// Whether another device wrote any entry of this board's grants.

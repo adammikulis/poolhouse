@@ -149,7 +149,7 @@ fn two_boards_on_one_node_are_isolated() {
 fn a_link_shares_only_what_it_names_and_revoking_it_stops_it() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((_, at), (_, bt)) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
+    let ((aname, at), (_, bt)) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
     ok(post(&mut n, "alpha", &at, "public words"));
     ok(req(&mut n, "post", "alpha", &at, json!({"kind": "note", "fields": {"nkind": "fact", "title": "private", "body": "n"}})));
     // only a session of the sharing board may link
@@ -169,6 +169,10 @@ fn a_link_shares_only_what_it_names_and_revoking_it_stops_it() {
         let audit = ok(req(&mut n, "read", b, t, json!({"kind": "audit"})));
         assert_eq!(audit["entries"][0]["fields"]["event"], "link", "{b}");
     }
+    let ended = req(&mut n, "unlink", "alpha", &at, json!({"id": link["id"]}));
+    assert_eq!((code(&ended), ended["error"]["grant"]["action"].clone(), ended["error"]["grant"]["resource"].clone()), ("denied".to_string(), json!("link_remove"), link["id"].clone()), "ending a link is a grant");
+    ok(req(&mut n, "read", "alpha", &bt, json!({})));
+    allow(&mut n, "alpha", &at, &aname, &["link_remove"]);
     ok(req(&mut n, "unlink", "alpha", &at, json!({"id": link["id"]})));
     assert_eq!(code(&req(&mut n, "read", "alpha", &bt, json!({}))), "denied");
 }
@@ -177,7 +181,13 @@ fn a_link_shares_only_what_it_names_and_revoking_it_stops_it() {
 fn a_read_write_link_lets_a_foreign_session_post_only_into_its_channels() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((_, at), (bname, bt)) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
+    let ((aname, at), (bname, bt)) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
+    let refused = req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "rw"}));
+    assert_eq!((code(&refused), refused["error"]["grant"]["action"].clone(), refused["error"]["grant"]["resource"].clone()), ("denied".to_string(), json!("link_write"), json!("alpha>beta")), "a read-write link is a grant");
+    assert_eq!(code(&req(&mut n, "read", "alpha", &bt, json!({}))), "denied", "no link was made");
+    allow(&mut n, "alpha", &at, &aname, &["link_write"]);
+    assert_eq!(code(&req(&mut n, "link", "alpha", &at, json!({"to": "nowhere", "channels": ["#general"], "mode": "rw"}))), "invalid", "a link goes to a board this node hosts");
+    assert!(!n.boards.contains_key("nowhere"), "and creates none");
     ok(req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "rw"})));
     let wrote = ok(post(&mut n, "alpha", &bt, "hello from beta"));
     assert_eq!(wrote["sender"], format!("{bname}@beta"));

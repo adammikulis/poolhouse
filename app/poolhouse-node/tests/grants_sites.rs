@@ -66,7 +66,7 @@ fn a_granted_pool_action_can_be_used_only_as_often_as_it_was_granted() {
     let d = device();
     let (name, token) = d.session("demo", "plain");
     let mut call = |m: &str, b: &str, t: &str, p: Value| d.call(m, b, t, p);
-    enrolled(&mut call, &token);
+    enrolled(d.dir.path(), &mut call, &token);
     let reply = person().issue(&mut call, "demo", &token, "g-00000000000000f1", &Spec::session(&name, "set_join_policy").on("open").uses(1));
     assert_eq!(reply["ok"], true, "{reply}");
     assert_eq!(d.call("set_join_policy", "", &token, json!({"policy": "secure"}))["error"]["code"], "denied", "the grant names the policy `open`");
@@ -79,7 +79,8 @@ fn a_grant_held_on_one_board_is_not_used_on_another_board_through_a_link() {
     let d = device();
     let (lead, lead_token) = d.session("boarda", "lead");
     d.allow("boarda", &lead_token, &lead, &["note_verify", "quarantine_release", "file_delete"]);
-    let (_, other_token) = d.session("boardb", "other");
+    let (other, other_token) = d.session("boardb", "other");
+    d.allow("boardb", &other_token, &other, &["link_write"]);
     let note = d.ok("post", "boardb", &other_token, json!({"kind": "note", "fields": {"nkind": "fact", "title": "t", "body": "b", "verify_cmd": "echo hi"}}));
     let id = note["seq"].to_string();
     d.ok("link", "boardb", &other_token, json!({"to": "boarda", "channels": [], "mode": "rw"}));

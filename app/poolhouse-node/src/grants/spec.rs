@@ -8,9 +8,9 @@ use crate::error::{Error, Result};
 use crate::row::{canonical, valid_name};
 
 /// The actions of this node that need a grant. Anything else is refused by name.
-pub const ACTIONS: [&str; 13] = [
+pub const ACTIONS: [&str; 16] = [
     "member_remove", "set_join_policy", "add_device", "join_pool", "sync_now", "shard_call", "shard_consent", "land_trust", "land_control",
-    "task_authority", "note_verify", "quarantine_release", "file_delete",
+    "task_authority", "note_verify", "quarantine_release", "file_delete", "link_write", "link_remove", "source_add",
 ];
 /// The actions another device's grant may cover (when that device is trusted); every other action is this device's alone.
 pub const PORTABLE: [&str; 4] = ["task_authority", "note_verify", "sync_now", "shard_call"];
@@ -56,8 +56,8 @@ pub fn grantable(action: &str) -> Result<()> {
 /// Who a grant is for.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Grantee {
-    /// One session, by its unique name.
-    Session(String),
+    /// One session, by its unique name; with ``subagents``, the subagents of that session (and theirs) too.
+    Session { name: String, subagents: bool },
     /// Every session of a model family; `main` leaves out sessions that have a parent, `verified` those whose model is only claimed.
     Class { family: String, main: bool, verified: bool },
     /// Every session whose verified model is exactly ``model``.
@@ -93,9 +93,9 @@ fn object<'a>(map: &'a Map<String, Value>, key: &str) -> Result<&'a Map<String, 
 fn grantee(map: &Map<String, Value>) -> Result<Grantee> {
     match word(map, "kind", 12)? {
         "session" => {
-            only(map, &["kind", "name"])?;
+            only(map, &["kind", "name", "subagents"])?;
             let name = word(map, "name", 48)?;
-            if valid_name(name) { Ok(Grantee::Session(name.into())) } else { bad("name is a session name") }
+            if valid_name(name) { Ok(Grantee::Session { name: name.into(), subagents: flag(map, "subagents", false)? }) } else { bad("name is a session name") }
         }
         "class" => {
             only(map, &["kind", "family", "main", "verified"])?;
@@ -194,7 +194,11 @@ pub fn parse_issue(map: &Map<String, Value>) -> Result<Issue> {
     if word(map, "board", 48)? != place.board {
         return bad("a grant's scope is the board it is on");
     }
-    Ok(Issue { gid: gid.into(), to: grantee(object(map, "to")?)?, action: action.into(), place, at_ms, until_ms, uses: uses(map)?, review: conditions(map)?, person: person.into() })
+    let uses = uses(map)?;
+    if uses.is_some() && PORTABLE.contains(&action) && place.device == "*" {
+        return bad("a grant with a number of uses on an action another device may use names the one device it is used on");
+    }
+    Ok(Issue { gid: gid.into(), to: grantee(object(map, "to")?)?, action: action.into(), place, at_ms, until_ms, uses, review: conditions(map)?, person: person.into() })
 }
 
 /// What a `revoke` entry names: the grant, the key that signed it and why.

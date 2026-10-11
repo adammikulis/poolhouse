@@ -12,9 +12,11 @@ use super::book::{standing, Grant};
 use super::person::verifies;
 use super::spec::{self, signing_bytes, ACTIONS, FLOORS, PORTABLE, SKEW_MS};
 
-pub const METHODS: [&str; 6] = ["grant_issue", "grant_revoke", "grants", "grant_log", "person_enroll", "person_keys"];
+pub const METHODS: [&str; 7] = ["grant_issue", "grant_revoke", "grants", "grant_log", "person_enroll", "person_unenroll", "person_keys"];
 const MOST_LISTED: usize = 200;
+const MOST_LOGGED_PER_ORIGIN: usize = 500;
 const ENROLL_DOMAIN: &str = "poolhouse/person-enroll/v1\n";
+const UNENROLL_DOMAIN: &str = "poolhouse/person-unenroll/v1\n";
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -22,7 +24,8 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "grant_revoke" => &["gid", "at_ms", "reason", "person", "sig"],
         "grants" => &[],
         "grant_log" => &["limit"],
-        "person_enroll" => &["public", "about", "at_ms", "proof", "by", "approval"],
+        "person_enroll" => &["public", "about", "at_ms", "proof", "by", "approval", "secret"],
+        "person_unenroll" => &["fingerprint", "at_ms", "by", "sig"],
         "person_keys" => &[],
         _ => return None,
     })
@@ -30,7 +33,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
 
 /// The methods that name no board.
 pub fn boardless(method: &str) -> bool {
-    matches!(method, "person_enroll" | "person_keys")
+    matches!(method, "person_enroll" | "person_unenroll" | "person_keys")
 }
 
 fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
@@ -122,9 +125,9 @@ fn shown(g: &Grant, mine: bool) -> Value {
 
 fn listing(node: &mut Node, board: &str, token: &str) -> Result<Value> {
     let access = node.access(token, board, false)?;
-    let who = node.host(board)?.names.get(&access.actor).cloned();
     let st = standing(node, board)?;
-    let rows: Vec<Value> = st.grants.iter().take(MOST_LISTED).map(|g| shown(g, who.as_ref().is_some_and(|w| super::names(w, &access.actor, &g.issue.to)))).collect();
+    let registry = &node.host(board)?.names;
+    let rows: Vec<Value> = st.grants.iter().take(MOST_LISTED).map(|g| shown(g, super::names(registry, &access.actor, &g.issue.to))).collect();
     let ignored: Vec<Value> = st.ignored.iter().take(50).map(|(id, why)| json!({"entry": id, "why": why})).collect();
     let keys: Vec<&String> = node.persons.all().keys().collect();
     Ok(json!({"grants": rows, "ignored": ignored, "persons": keys, "now_ms": node.now_ms(),
@@ -137,7 +140,10 @@ fn log(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
     let now = node.now_ms();
     let hosted = node.host(board)?;
     let own = hosted.board.origin().to_string();
-    let mut rows: Vec<&Row> = hosted.board.origins().iter().flat_map(|o| hosted.board.rows(o)).filter(|r| r.kind == Kind::Grant && (r.origin == own || !held_back(r, now))).collect();
+    let mut rows: Vec<&Row> = hosted.board.origins().iter().flat_map(|o| {
+        let newest = hosted.board.rows(o).iter().rev().filter(|r| r.kind == Kind::Grant && (r.origin == own || !held_back(r, now)));
+        newest.take(MOST_LOGGED_PER_ORIGIN).collect::<Vec<&Row>>()
+    }).collect();
     rows.sort_by(|a, b| a.order().cmp(&b.order()));
     let out: Vec<Value> = rows.iter().rev().take(limit).map(|r| {
         let b = &r.body;
@@ -151,7 +157,8 @@ fn enrolment(public: &str, about: &str, at_ms: u64) -> Vec<u8> {
     format!("{ENROLL_DOMAIN}{}", canonical(&json!({"op": "enroll", "public": public, "about": about, "at_ms": at_ms}))).into_bytes()
 }
 
-/// Enrol a person key. The key signs its own enrolment; once one key is enrolled, an enrolled key must approve each new one.
+/// Enrol a person key. The key signs its own enrolment. The first key also presents the one-time secret a person's
+/// command at a terminal left on this device; once a key is enrolled, an enrolled key approves each new one.
 fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries a person key to enrol".into()))?;
     let (public, about) = (text(p, "public")?, text(p, "about")?);
@@ -163,11 +170,33 @@ fn enroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value>
     if !verifies(public, &message, text(p, "proof")?) {
         return Err(Error::Denied("a person key signs its own enrolment".into()));
     }
-    if !node.persons.is_empty() && !node.persons.signed(text(p, "by")?, &message, text(p, "approval")?) {
+    if node.persons.is_empty() {
+        if !node.persons.take_secret(text(p, "secret")?, node.now_ms()) {
+            return Err(Error::Denied("the first person key is enrolled by `poolhouse-workspace grants-setup` at a terminal, with the one-time secret it makes".into()));
+        }
+    } else if !node.persons.signed(text(p, "by")?, &message, text(p, "approval")?) {
         return Err(Error::Denied("an enrolled person key approves each new one".into()));
     }
     let fingerprint = node.persons.add(public, about, node.now_ms())?;
     node.record_event("person.enroll", &fingerprint, &format!("{about}; carried by {}/{}", holder.board, holder.name))?;
+    Ok(json!({"fingerprint": fingerprint, "keys": node.persons.all().len()}))
+}
+
+fn unenrolment(fingerprint: &str, by: &str, at_ms: u64) -> Vec<u8> {
+    format!("{UNENROLL_DOMAIN}{}", canonical(&json!({"op": "unenroll", "fingerprint": fingerprint, "by": by, "at_ms": at_ms}))).into_bytes()
+}
+
+/// Remove a person key: an enrolled key signs the removal. The last key stays; a key that is no longer enrolled signs
+/// no grant that counts.
+fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries the removal of a person key".into()))?;
+    let (fingerprint, by) = (text(p, "fingerprint")?, text(p, "by")?);
+    let at = fresh(node, p)?;
+    if !node.persons.signed(by, &unenrolment(fingerprint, by, at), text(p, "sig")?) {
+        return Err(Error::Denied("an enrolled person key signs the removal of a key".into()));
+    }
+    let key = node.persons.remove(fingerprint)?;
+    node.record_event("person.unenroll", fingerprint, &format!("{}; signed by {by}; carried by {}/{}", key.label, holder.board, holder.name))?;
     Ok(json!({"fingerprint": fingerprint, "keys": node.persons.all().len()}))
 }
 
@@ -183,6 +212,7 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         "grants" => listing(node, board, token),
         "grant_log" => log(node, board, token, p),
         "person_enroll" => enroll(node, token, p),
+        "person_unenroll" => unenroll(node, token, p),
         _ => Ok(keys(node)),
     }
 }

@@ -57,7 +57,7 @@ pub fn check_meta(meta: &Value) -> Result<()> {
     if !is_hex(text("id", 12)?, 12) || !is_hex(text("blob", 64)?, 64) || !is_hex(text("sha", 64)?, 64) {
         return Err(Error::Invalid("a file names its handle, blob and hash in hex".into()));
     }
-    if text("name", 240)?.is_empty() || text("type", 16)?.is_empty() || !map.get("size").is_some_and(|s| s.as_u64().is_some_and(|n| n <= MAX_BLOB as u64)) {
+    if text("name", 240)?.is_empty() || text("type", 16)?.is_empty() || map.get("size").is_none_or(|s| s.as_u64().is_none_or(|n| n > MAX_BLOB as u64)) {
         return Err(Error::Invalid("a file has a name, a type and a size".into()));
     }
     text("derived_from", 128)?;

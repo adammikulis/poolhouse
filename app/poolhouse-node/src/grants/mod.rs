@@ -20,7 +20,7 @@ pub mod spec;
 use serde_json::json;
 
 use crate::error::{Error, Result};
-use crate::identity::{Holder, Ident, ModelState};
+use crate::identity::{Holder, ModelState, Registry};
 use crate::node::Node;
 use crate::row::Kind;
 
@@ -44,10 +44,29 @@ impl<'a> Scope<'a> {
     }
 }
 
-/// Whether the grantee ``to`` names the session ``name`` whose identity is ``who``.
-pub fn names(who: &Ident, name: &str, to: &Grantee) -> bool {
+/// How far up the parent links a grant to a session's subagents reaches.
+const MOST_DEPTH: usize = 16;
+
+/// Whether ``name`` has ``top`` among its ancestors in ``registry``.
+fn under(registry: &Registry, name: &str, top: &str) -> bool {
+    let mut at = name;
+    for _ in 0..MOST_DEPTH {
+        at = match registry.get(at) {
+            Some(i) if !i.parent.is_empty() => i.parent.as_str(),
+            _ => return false,
+        };
+        if at == top {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether the grantee ``to`` names the session ``name`` of the board whose sessions ``registry`` holds.
+pub fn names(registry: &Registry, name: &str, to: &Grantee) -> bool {
+    let Some(who) = registry.get(name) else { return false };
     match to {
-        Grantee::Session(n) => n == name,
+        Grantee::Session { name: n, subagents } => n == name || (*subagents && under(registry, name, n)),
         Grantee::Class { family, main, verified } => who.family == *family && (!main || who.parent.is_empty()) && (!verified || who.model_state == ModelState::Verified),
         Grantee::Account { model } => who.model == *model && who.model_state == ModelState::Verified,
     }
@@ -56,12 +75,15 @@ pub fn names(who: &Ident, name: &str, to: &Grantee) -> bool {
 /// The id of the live grant that lets ``holder`` take ``action`` on ``scope`` now, if one does.
 pub fn find(node: &mut Node, holder: &Holder, action: &str, scope: &Scope) -> Result<Option<String>> {
     grantable(action)?;
-    let Some(who) = node.host(&holder.board)?.names.get(&holder.name).filter(|i| !i.retired).cloned() else { return Ok(None) };
+    if node.host(&holder.board)?.names.get(&holder.name).is_none_or(|i| i.retired) {
+        return Ok(None);
+    }
     let device = node.cert.fingerprint();
     let standing = book::standing(node, &holder.board)?;
+    let registry = &node.host(&holder.board)?.names;
     Ok(standing.grants.iter().find(|g| {
         let (i, p) = (&g.issue, &g.issue.place);
-        g.status == "live" && i.action == action && names(&who, &holder.name, &i.to) && p.board == holder.board && (p.device == "*" || p.device == device)
+        g.status == "live" && i.action == action && names(registry, &holder.name, &i.to) && p.board == holder.board && (p.device == "*" || p.device == device)
             && covers(&p.resource, scope.resource) && (!i.review || scope.reviewed)
     }).map(|g| g.issue.gid.clone()))
 }

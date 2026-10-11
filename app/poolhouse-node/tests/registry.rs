@@ -95,11 +95,16 @@ fn only_a_session_of_the_project_adds_a_place_to_it() {
     let mut n = node(state.path());
     ok(add(&mut n, "alpha", "folder", &a));
     ok(add(&mut n, "beta", "folder", &b));
-    let (_, alpha) = session(&mut n, "alpha", "s");
-    let (_, beta) = session(&mut n, "beta", "s");
+    let (alpha_name, alpha) = session(&mut n, "alpha", "s");
+    let (beta_name, beta) = session(&mut n, "beta", "s");
     let source = |n: &mut poolhouse_node::node::Node, token: &str| req(n, "source_add", "", token, json!({"id": "alpha", "kind": "onedrive", "path": extra.to_str().unwrap()}));
     assert_eq!(code(&source(&mut n, "")), "denied");
     assert_eq!(code(&source(&mut n, &beta)), "denied");
+    let held = source(&mut n, &alpha);
+    assert_eq!((code(&held), held["error"]["grant"]["action"].clone(), held["error"]["grant"]["resource"].clone()), ("denied".to_string(), json!("source_add"), json!("alpha")), "a place is added by a grant");
+    allow(&mut n, "beta", &beta, &beta_name, &["source_add"]);
+    assert_eq!(code(&source(&mut n, &beta)), "denied", "a grant on beta is not a grant on alpha");
+    allow(&mut n, "alpha", &alpha, &alpha_name, &["source_add"]);
     ok(source(&mut n, &alpha));
     assert_eq!(ok(resolve(&mut n, &extra))["board"], "alpha");
 }

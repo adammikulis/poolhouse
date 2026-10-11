@@ -1,5 +1,9 @@
 //! The person's keys: the Ed25519 public keys enrolled on this node. A grant counts only when one of them signed
 //! it. The private halves live in the person's keystore, never here, and nothing in this module signs.
+//!
+//! The first key is enrolled with a one-time secret: a person's command at a terminal writes the secret's hash into
+//! the state directory (`SECRET_FILE`) and presents the secret to `person_enroll`. The node reads the hash from that
+//! file only, so no request can set one.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -11,6 +15,10 @@ use crate::error::{Error, Result};
 use crate::fsutil::{hex, sha256_hex, unhex, write_atomic};
 
 const MOST_KEYS: usize = 8;
+/// The file beside `persons.json` that holds the hash of the secret the first key is enrolled with.
+pub const SECRET_FILE: &str = "enroll_secret.json";
+/// How long the secret a person's command made is good for.
+pub const SECRET_TTL_MS: u64 = 10 * 60 * 1000;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Key {
@@ -20,10 +28,20 @@ pub struct Key {
     pub at_ms: u64,
 }
 
+#[derive(Deserialize)]
+struct Secret {
+    sha256: String,
+    at_ms: u64,
+}
+
 /// The enrolled keys, by fingerprint (SHA-256 of the public key), kept in one atomically replaced file.
 pub struct Persons {
     path: PathBuf,
     keys: BTreeMap<String, Key>,
+}
+
+fn same(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
 }
 
 fn public_of(public: &str) -> Result<VerifyingKey> {
@@ -59,6 +77,28 @@ impl Persons {
     /// Whether the enrolled key ``fingerprint`` signed ``message``.
     pub fn signed(&self, fingerprint: &str, message: &[u8], sig: &str) -> bool {
         self.keys.get(fingerprint).is_some_and(|k| verifies(&k.public, message, sig))
+    }
+
+    /// Whether ``secret`` is the one a person's command left for the first enrolment, fresh at ``now_ms``. The file is
+    /// removed whatever the answer, so one guess is all a secret allows.
+    pub fn take_secret(&self, secret: &str, now_ms: u64) -> bool {
+        let file = self.path.with_file_name(SECRET_FILE);
+        let found = std::fs::read(&file).ok().and_then(|bytes| serde_json::from_slice::<Secret>(&bytes).ok());
+        let _ = std::fs::remove_file(&file);
+        found.is_some_and(|s| !secret.is_empty() && now_ms >= s.at_ms && now_ms - s.at_ms <= SECRET_TTL_MS && same(&s.sha256, &sha256_hex(secret.as_bytes())))
+    }
+
+    /// Remove the enrolled key ``fingerprint``; the last key stays.
+    pub fn remove(&mut self, fingerprint: &str) -> Result<Key> {
+        if !self.keys.contains_key(fingerprint) {
+            return Err(Error::Invalid("no such person key is enrolled on this node".into()));
+        }
+        if self.keys.len() == 1 {
+            return Err(Error::Denied("the last person key stays: to start again, stop the node and delete persons.json (docs/node.md, \"Standing grants\")".into()));
+        }
+        let key = self.keys.remove(fingerprint).expect("held above");
+        write_atomic(&self.path, &serde_json::to_vec(&self.keys)?)?;
+        Ok(key)
     }
 
     /// Enrol ``public``; its fingerprint. Enrolling a key already held changes nothing.

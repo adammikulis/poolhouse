@@ -33,7 +33,7 @@ fn status_of(n: &mut Node, token: &str, gid: &str) -> String {
 }
 
 fn put(n: &mut Node, token: &str, gid: &str, spec: &Spec) -> Value {
-    enrolled(&mut caller(n), token);
+    enrolled(&n.dir.clone(), &mut caller(n), token);
     person().issue(&mut caller(n), "demo", token, gid, spec).clone()
 }
 
@@ -53,7 +53,7 @@ fn nothing_is_allowed_until_a_grant_names_it() {
                              ("shard_consent", json!({"enabled": false}))] {
         assert_eq!(code(&req(&mut n, method, "", &token, params)), "denied", "{method}");
     }
-    enrolled(&mut caller(&mut n), &token);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &token);
     for action in ACTIONS {
         assert!(!check(&mut n, &me, action, &Scope::any()).unwrap(), "{action}: enrolling a person key grants nothing");
     }
@@ -70,7 +70,7 @@ fn an_agent_cannot_grant_itself_or_anyone_a_thing() {
     let reply = agent.issue(&mut caller(&mut n), "demo", &token, GID, &want);
     assert_eq!(code(&reply), "denied", "no person key is enrolled: {reply}");
 
-    enrolled(&mut caller(&mut n), &token);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &token);
     assert_eq!(code(&agent.issue(&mut caller(&mut n), "demo", &token, GID, &want)), "denied", "a key the person did not enrol signs nothing");
     let mut posing = agent.issue_params("demo", GID, &want);
     posing["person"] = json!(person().fingerprint());
@@ -94,13 +94,66 @@ fn an_agent_cannot_grant_itself_or_anyone_a_thing() {
     assert_eq!(ok(req(&mut n, "person_keys", "", "", json!({})))["keys"].as_array().unwrap().len(), 1);
 }
 
+fn subagent(n: &mut Node, parent_token: &str, id: &str) -> (String, String) {
+    let r = ok(req(n, "register", "demo", parent_token, json!({"model": "", "harness": "claude-code", "session": id})));
+    (r["name"].as_str().unwrap().into(), r["token"].as_str().unwrap().into())
+}
+
+#[test]
+fn a_grant_to_a_session_reaches_its_subagents_only_when_it_says_so_and_no_other_session() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((lead, lead_token), (stranger, _)) = (session(&mut n, "demo", "lead"), session(&mut n, "demo", "stranger"));
+    let (kid, kid_token) = subagent(&mut n, &lead_token, "kid");
+    let (grandkid, _) = subagent(&mut n, &kid_token, "grandkid");
+    let (_, other_token) = session(&mut n, "demo", "other-lead");
+    let (not_kin, _) = subagent(&mut n, &other_token, "not-kin");
+    let alone = Spec::to(json!({"kind": "session", "name": lead}), "note_verify");
+    ok(put(&mut n, &lead_token, GID, &alone));
+    for (name, held) in [(&lead, true), (&kid, false), (&grandkid, false), (&stranger, false), (&not_kin, false)] {
+        assert_eq!(holds(&mut n, &holder("demo", name), "note_verify", &Scope::any()).unwrap(), held, "{name} under a grant to {lead} alone");
+    }
+    let with_kin = Spec::to(json!({"kind": "session", "name": lead, "subagents": true}), "land_control");
+    ok(put(&mut n, &lead_token, "g-00000000000000a9", &with_kin));
+    for (name, held) in [(&lead, true), (&kid, true), (&grandkid, true), (&stranger, false), (&not_kin, false)] {
+        assert_eq!(holds(&mut n, &holder("demo", name), "land_control", &Scope::any()).unwrap(), held, "{name} under a grant to {lead} and its subagents");
+    }
+    let listed = listed(&mut n, &kid_token);
+    let mine: Vec<&Value> = listed["grants"].as_array().unwrap().iter().filter(|g| g["mine"] == true).collect();
+    assert_eq!(mine.len(), 1, "the subagent sees the grant that names its parent and its subagents as its own: {listed}");
+    let mut text = person().sign_params({
+        let mut b = person().issue_params("demo", "g-00000000000000ab", &with_kin).as_object().unwrap().clone();
+        b.insert("op".into(), json!("issue"));
+        b.insert("board".into(), json!("demo"));
+        b.insert("to".into(), json!({"kind": "session", "name": lead, "subagents": "yes"}));
+        b
+    });
+    text["to"] = json!({"kind": "session", "name": lead, "subagents": "yes"});
+    assert_eq!(code(&req(&mut n, "grant_issue", "demo", &lead_token, text)), "invalid", "subagents is true or false");
+}
+
+#[test]
+fn a_use_count_on_an_action_another_device_may_use_names_the_one_device() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (a, at) = session(&mut n, "demo", "a");
+    let here = n.cert.fingerprint();
+    for action in ["task_authority", "note_verify", "sync_now", "shard_call"] {
+        let anywhere = put(&mut n, &at, "g-00000000000000b9", &Spec::session(&a, action).uses(3));
+        assert_eq!(code(&anywhere), "invalid", "{action} for any device with a use count");
+        ok(put(&mut n, &at, &format!("g-00000000000000c{}", action.len()), &Spec::session(&a, action).uses(3).device(&here)));
+        ok(put(&mut n, &at, &format!("g-00000000000000d{}", action.len()), &Spec::session(&a, action)));
+    }
+    ok(put(&mut n, &at, "g-00000000000000b8", &Spec::session(&a, "set_join_policy").uses(3)));
+}
+
 #[test]
 fn a_session_of_another_board_or_without_a_token_carries_no_grant() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, at) = session(&mut n, "demo", "a");
     let (_, other) = session(&mut n, "other", "b");
-    enrolled(&mut caller(&mut n), &at);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &at);
     let params = person().issue_params("demo", GID, &Spec::session("x", "note_verify"));
     assert_eq!(code(&req(&mut n, "grant_issue", "demo", "", params.clone())), "denied");
     assert_eq!(code(&req(&mut n, "grant_issue", "demo", &other, params.clone())), "denied", "a session of another board does not carry this board's grants");
@@ -138,7 +191,8 @@ fn a_grant_ends_by_uses_by_time_and_by_revocation_and_each_use_is_on_the_board()
     let mut n = node(dir.path());
     let (a, at) = session(&mut n, "demo", "a");
     let me = holder("demo", &a);
-    ok(put(&mut n, &at, GID, &Spec::session(&a, "note_verify").uses(2)));
+    let here = n.cert.fingerprint();
+    ok(put(&mut n, &at, GID, &Spec::session(&a, "note_verify").uses(2).device(&here)));
     assert!(check(&mut n, &me, "note_verify", &Scope::on("note-1")).unwrap());
     assert!(holds(&mut n, &me, "note_verify", &Scope::on("note-1")).unwrap(), "asking spends nothing");
     assert!(check(&mut n, &me, "note_verify", &Scope::on("note-2")).unwrap());
@@ -227,7 +281,7 @@ fn the_floors_are_never_granted_even_by_a_person_entry() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (a, at) = session(&mut n, "demo", "a");
-    enrolled(&mut caller(&mut n), &at);
+    enrolled(&n.dir.clone(), &mut caller(&mut n), &at);
     let me = holder("demo", &a);
     for (i, floor) in FLOORS.iter().enumerate() {
         let gid = format!("g-0000000000000f{i:02x}");
@@ -258,7 +312,8 @@ fn grants_survive_a_restart_and_depend_on_the_enrolled_key() {
     let (a, at) = {
         let mut n = node(dir.path());
         let (a, at) = session(&mut n, "demo", "a");
-        ok(put(&mut n, &at, GID, &Spec::session(&a, "note_verify").uses(2)));
+        let here = n.cert.fingerprint();
+        ok(put(&mut n, &at, GID, &Spec::session(&a, "note_verify").uses(2).device(&here)));
         assert!(check(&mut n, &holder("demo", &a), "note_verify", &Scope::any()).unwrap());
         (a, at)
     };

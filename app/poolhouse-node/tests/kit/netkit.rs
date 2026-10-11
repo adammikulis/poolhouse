@@ -89,7 +89,7 @@ impl Dev {
     /// The test person grants the session ``name`` of ``board`` (``token`` is its own) the actions ``only`` names, or all of them.
     pub fn allow(&self, board: &str, token: &str, name: &str, only: &[&str]) {
         let mut call = |m: &str, b: &str, t: &str, p: Value| self.call(m, b, t, p);
-        super::grants::enrolled(&mut call, token);
+        super::grants::enrolled(self.dir.path(), &mut call, token);
         super::grants::person().allow(&mut call, board, token, name, only);
     }
 

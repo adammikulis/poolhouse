@@ -91,8 +91,9 @@ pub fn post(node: &mut Node, board: &str, token: &str, text: &str) -> Value {
 
 /// Enrol the test person on an in-process node and grant the session ``name`` of ``board`` (``token`` is its own) the actions ``only`` names, or all.
 pub fn allow(node: &mut Node, board: &str, token: &str, name: &str, only: &[&str]) {
+    let dir = node.dir.clone();
     let mut call = |m: &str, b: &str, t: &str, p: Value| req(node, m, b, t, p);
-    grants::enrolled(&mut call, token);
+    grants::enrolled(&dir, &mut call, token);
     grants::person().allow(&mut call, board, token, name, only);
 }
 

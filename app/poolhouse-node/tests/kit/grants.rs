@@ -5,6 +5,7 @@ use poolhouse_node::fsutil::{hex, sha256_hex};
 use poolhouse_node::grants::spec::{signing_bytes, ACTIONS};
 use poolhouse_node::row::canonical;
 use serde_json::{json, Map, Value};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const HOUR: u64 = 3_600_000;
@@ -46,6 +47,12 @@ impl Spec {
 
     pub fn uses(mut self, n: u64) -> Spec {
         self.uses = Some(n);
+        self
+    }
+
+    /// Only on the device with this certificate fingerprint.
+    pub fn device(mut self, fingerprint: &str) -> Spec {
+        self.device = fingerprint.into();
         self
     }
 
@@ -95,9 +102,22 @@ impl Person {
         params
     }
 
-    /// Enrol this key on the node ``call`` reaches, carried by the session ``token``.
-    pub fn enroll(&self, call: Call, token: &str) -> Value {
-        call("person_enroll", "", token, self.enrolment("a test person", None))
+    /// Enrol this key on the node ``call`` reaches (its state directory is ``dir``), carried by the session ``token``, with
+    /// the one-time secret a person's command at a terminal would have left there.
+    pub fn enroll(&self, dir: &Path, call: Call, token: &str) -> Value {
+        let mut params = self.enrolment("a test person", None);
+        params["secret"] = json!(expect_enrolment(dir));
+        call("person_enroll", "", token, params)
+    }
+
+    /// The `person_unenroll` params removing the key ``fingerprint``, signed by this key at ``at_ms``.
+    pub fn unenroll_params_at(&self, fingerprint: &str, at_ms: u64) -> Value {
+        let message = format!("poolhouse/person-unenroll/v1\n{}", canonical(&json!({"op": "unenroll", "fingerprint": fingerprint, "by": self.fingerprint(), "at_ms": at_ms})));
+        json!({"fingerprint": fingerprint, "at_ms": at_ms, "by": self.fingerprint(), "sig": hex(&self.key.sign(message.as_bytes()).to_bytes())})
+    }
+
+    pub fn unenroll_params(&self, fingerprint: &str) -> Value {
+        self.unenroll_params_at(fingerprint, now_ms())
     }
 
     /// The params of a request whose body (with its `op` and `board`) a test built by hand, signed by this key.
@@ -168,13 +188,22 @@ pub fn gid_of(name: &str, action: &str) -> String {
     format!("g-{}", &sha256_hex(format!("{name} {action}").as_bytes())[..20])
 }
 
-/// Enrol the test person on the node ``call`` reaches, unless it already is.
-pub fn enrolled(call: Call, token: &str) {
+/// Leave in the state directory ``dir`` what a person's command at a terminal leaves for the first enrolment: the hash of a
+/// fresh secret, which is returned.
+pub fn expect_enrolment(dir: &Path) -> String {
+    let secret = format!("secret-{}", sha256_hex(&now_ms().to_be_bytes()));
+    let hash = json!({"sha256": sha256_hex(secret.as_bytes()), "at_ms": now_ms()});
+    std::fs::write(dir.join("enroll_secret.json"), hash.to_string()).unwrap();
+    secret
+}
+
+/// Enrol the test person on the node ``call`` reaches (its state directory is ``dir``), unless it already is.
+pub fn enrolled(dir: &Path, call: Call, token: &str) {
     let held = call("person_keys", "", "", json!({}));
     if held["result"]["keys"].as_array().is_some_and(|k| !k.is_empty()) {
         return;
     }
-    let reply = person().enroll(call, token);
+    let reply = person().enroll(dir, call, token);
     assert_eq!(reply["ok"], true, "enrol the test person: {reply}");
 }
 
@@ -184,6 +213,6 @@ pub fn allow_process(state: &std::path::Path, board: &str, token: &str, name: &s
         Ok(v) => json!({"ok": true, "result": v}),
         Err(e) => json!({"ok": false, "error": {"code": e.code(), "message": e.to_string()}}),
     };
-    enrolled(&mut call, token);
+    enrolled(state, &mut call, token);
     person().allow(&mut call, board, token, name, only);
 }

@@ -82,7 +82,7 @@ fn a_revocation_or_a_use_from_an_untrusted_device_changes_nothing() {
     a.join_with_code(&b);
     let (x, xt) = a.session("demo", "x");
     both_ways(&a, &b);
-    issue(&a, NV, &Spec::session(&x, "note_verify").uses(1));
+    issue(&a, NV, &Spec::session(&x, "note_verify").uses(1).device(&a.fp()));
     both_ways(&a, &b);
 
     let revoked = person().revoke(&mut |m: &str, bd: &str, t: &str, p: Value| b.call(m, bd, t, p), "demo", &b.token, NV);
@@ -95,7 +95,7 @@ fn a_revocation_or_a_use_from_an_untrusted_device_changes_nothing() {
     assert_eq!(status(&a, &xt, NV), "live", "neither the revocation nor the uses of a device this one does not trust count");
     assert!(holds(&a, &x, "note_verify"));
 
-    issue(&a, "g-00000000000000e3", &Spec::session(&x, "sync_now").uses(1));
+    issue(&a, "g-00000000000000e3", &Spec::session(&x, "sync_now").uses(1).device(&a.fp()));
     trust(&a, &b, true);
     assert_eq!(status(&a, &xt, NV), "revoked", "the same revocation counts once the device is trusted");
     assert_eq!(status(&a, &xt, "g-00000000000000e3"), "live");
@@ -128,4 +128,23 @@ fn a_floor_or_an_unsigned_grant_from_a_trusted_device_is_still_no_grant() {
     assert_eq!(status(&a, &xt, LC), "ignored", "{all}");
     assert!(!holds(&a, &x, "note_verify"), "a signature that does not verify makes no grant");
     assert!(all["ignored"].as_array().unwrap().iter().any(|i| i["why"].as_str().unwrap().contains("floor")), "{all}");
+}
+
+#[test]
+fn a_flood_of_grant_entries_from_an_untrusted_device_is_read_newest_first_and_only_in_part() {
+    let (a, b) = (device(), device());
+    a.join_with_code(&b);
+    let (x, xt) = a.session("demo", "x");
+    both_ways(&a, &b);
+    let gid = |i: u32| format!("g-{i:016x}");
+    for i in 1..=205 {
+        issue(&b, &gid(i), &Spec::session(&x, "land_control"));
+    }
+    both_ways(&a, &b);
+    let all = a.ok("grants", "demo", &xt, json!({}));
+    let listed: Vec<&str> = all["grants"].as_array().unwrap().iter().map(|g| g["gid"].as_str().unwrap()).collect();
+    assert!(listed.len() <= 200, "a listing is bounded: {}", listed.len());
+    assert!(listed.contains(&gid(150).as_str()) && !listed.contains(&gid(1).as_str()) && !listed.contains(&gid(5).as_str()), "the newest of the untrusted device's entries are read, not the oldest");
+    assert_eq!(status(&a, &xt, &gid(150)), "ignored");
+    assert!(!holds(&a, &x, "land_control"), "and none of them counts");
 }
