@@ -620,8 +620,14 @@ tests = ["tests/test_board_grants.py::test_a_person_sets_up_the_lead_grants_once
          "tests/test_board_person_key.py::test_a_process_with_a_terminal_and_the_passphrase_in_its_environment_signs_nothing_until_the_person_types_yes",
          "tests/test_board_person_key.py::test_the_person_key_asks_every_time_whatever_its_record_says_and_the_pool_key_is_not_changed",
          "tests/test_board_person_key.py::test_the_question_is_read_from_the_bytes_signed_and_only_a_grant_a_revocation_or_a_key_is_signed",
+         "tests/test_board_person_key.py::test_a_confirm_passed_by_the_caller_answers_nothing_and_the_question_is_still_put",
+         "tests/test_board_person_key.py::test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_the_person_is_asked",
+         "tests/test_node_lineage.py::test_a_person_at_a_new_terminal_moves_the_session_there_and_the_harness_registers_from_that_terminal",
+         "tests/test_node_lineage.py::test_the_move_asks_the_person_and_a_no_moves_nothing",
+         "tests/test_node_lineage.py::test_an_agent_marked_process_is_not_offered_the_key_to_move_a_session",
+         "tests/test_node_lineage.py::test_a_captured_move_is_not_used_twice_and_is_for_one_node_and_one_session",
          "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"]
-note = "grant, revoke-grant, grants-setup, person-proof, person-enroll and person-unenroll sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, and a key removal an enrolled key did not sign (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_hostile.rs, grants_foreign.rs)"
+note = "grant, revoke-grant, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs)"
 
 [[group]]
 match = ["human:*"]

@@ -152,8 +152,12 @@ fn a_link_shares_only_what_it_names_and_revoking_it_stops_it() {
     let ((aname, at), (_, bt)) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
     ok(post(&mut n, "alpha", &at, "public words"));
     ok(req(&mut n, "post", "alpha", &at, json!({"kind": "note", "fields": {"nkind": "fact", "title": "private", "body": "n"}})));
-    // only a session of the sharing board may link
+    // only a session of the sharing board may link, and a link of any mode is a grant
     assert_eq!(code(&req(&mut n, "link", "alpha", &bt, json!({"to": "beta"}))), "denied");
+    let asked = req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "ro"}));
+    assert_eq!((code(&asked), asked["error"]["grant"]["action"].clone(), asked["error"]["grant"]["resource"].clone()), ("denied".to_string(), json!("link_read"), json!("alpha>beta")), "a read-only link is a grant");
+    assert_eq!(code(&req(&mut n, "read", "alpha", &bt, json!({}))), "denied", "no link was made");
+    allow(&mut n, "alpha", &at, &aname, &["link_read"]);
     let link = ok(req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "ro"})));
     let seen = ok(req(&mut n, "read", "alpha", &bt, json!({})));
     let kinds: Vec<_> = seen["entries"].as_array().unwrap().iter().map(|e| e["channel"].as_str().unwrap().to_string()).collect();
@@ -247,4 +251,38 @@ fn foreign_entries_are_built_from_allow_lists_and_checked() {
     assert_eq!(entries[0]["foreign"], true);
     assert!(ok(req(&mut b, "read", "demo", &bt, json!({"kind": "note"})))["entries"].as_array().unwrap().is_empty());
     assert_eq!(ok(req(&mut b, "status", "demo", &bt, json!({})))["board"]["rejected"], 8);
+}
+
+#[test]
+fn a_session_makes_a_few_links_a_minute_and_each_one_writes_to_both_boards_only_once() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((aname, at), (_, bt)) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
+    let (_, other) = session(&mut n, "alpha", "second");
+    allow(&mut n, "alpha", &at, &aname, &["link_read"]);
+    for _ in 0..6 {
+        ok(req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "ro"})));
+    }
+    let seventh = req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "ro"}));
+    assert_eq!(code(&seventh), "quota", "{seventh}");
+    let audit = ok(req(&mut n, "read", "beta", &bt, json!({"kind": "audit"})));
+    assert_eq!(audit["entries"].as_array().unwrap().len(), 6, "beta's board holds one audit entry for each link made, and none for the refusal");
+    assert_eq!(code(&req(&mut n, "link", "alpha", &other, json!({"to": "beta", "channels": [], "mode": "ro"}))), "denied", "the grant is the first session's alone");
+}
+
+#[test]
+fn a_link_refused_for_want_of_room_spends_no_use_of_the_grant() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let ((aname, at), _) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
+    kit::grants::enrolled(dir.path(), &mut |m, b, t, p| req(&mut n, m, b, t, p), &at);
+    let want = kit::grants::Spec::session(&aname, "link_read").uses(1);
+    ok(kit::grants::person().issue(&mut |m, b, t, p| req(&mut n, m, b, t, p), "alpha", &at, "g-00000000000000a1", &want));
+    for _ in 0..poolhouse_node::links::MOST_ACTIVE {
+        n.links.add("alpha", "beta", vec![], false, "alpha/x").unwrap();
+    }
+    let refused = req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": [], "mode": "ro"}));
+    assert_eq!(code(&refused), "quota", "{refused}");
+    let shown = ok(req(&mut n, "grants", "alpha", &at, json!({})));
+    assert_eq!((shown["grants"][0]["used"].clone(), shown["grants"][0]["status"].clone()), (json!(0), json!("live")), "{shown}");
 }

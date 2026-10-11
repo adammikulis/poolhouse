@@ -19,11 +19,17 @@ built and tested alone. The shipping section below puts it in every runtime and 
   only syncs boards it holds.
 - **Projects.** The node keeps a project registry (`projects.json`): project id (= board id) and
   its sources, each `git`, `folder`, `gdrive` or `onedrive` with a local path (the sync folder for
-  the last two). A client resolves its board with `project_resolve {path}`: the deepest source
-  containing the path wins; a linked git worktree resolves through the repository's common
+  the last two). A client resolves its board with `project_resolve {path}`: the project whose
+  source contains the path; a linked git worktree resolves through the repository's common
   directory, so every worktree of a repo is the same project; a directory that matches nothing
   gets `denied: this directory is not part of a project`, never another project's board. A git
-  source is stored as the repository's main working tree. One place cannot belong to two projects.
+  source is stored as the repository's main working tree. A place is never the same as, inside or
+  around a place of another project (`invalid`), so no project takes over where another's sessions
+  land. `project_add` needs the token of a session of the board the project names, a node takes ten
+  projects a minute and holds 256, and `source_add` is the grant of that name. The first session in a
+  repository registers a session on the board the repository names (harness `poolhouse-place`) and adds the
+  project with it (`board.place.resolve`). A person's approval of a project is not asked: it would
+  have to work before any session exists. A project is as trustworthy as whoever registered on its board first.
   `.poolhouse/project.toml` in a repo (`board = "id"`) is an optional hint only
   (`project::propose_id`, `project::init_project`); it is never required.
   `--board ID` still names a board directly, and is checked against the session's registration.
@@ -32,9 +38,10 @@ built and tested alone. The shipping section below puts it in every runtime and 
   named = the whole board) of `from`, read-only (`ro`) or read-write (`rw`). Channels are
   `#general`, `#announcements` (messages by their `to`), `#notes` (notes and their verifications),
   `#leases` (claims), `#identity`, `#audit`, `#grants`. Messages to one session are on `#dm`, which a link never
-  shares (see "Direct messages"). A linked session writes as `name@its-board`. `unlink {id}` revokes it at once. Making
-  and revoking a link writes an audit entry on both boards. Links are node-local for now, and any
-  session of the sharing board may make one; the owner-only grant arrives with the trust ledger.
+  shares (see "Direct messages"). A linked session writes as `name@its-board`. `unlink {id}` revokes it at once. A link of any
+  mode needs a grant on `FROM>TO`: `link_read` for `ro`, `link_write` for `rw`, and ending one needs `link_remove`. A board has at most
+  64 links open, a session makes six a minute, and making or ending a link writes one audit entry on both boards, so the
+  other board's log takes at most that from a session that was granted it. Links are node-local.
 - Unknown board, a token of another board without a link, and a write over a read-only link are all
   `denied`.
 
@@ -81,20 +88,45 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
 `register {model, harness, session}` on a board returns `{name, token}`. The name is the model
 family (`claude`, `chatgpt`, `qwen`, else `agent`), a dash, and the first six hex of
 SHA-256(`harness NUL session`), extended by two hex per collision, exactly the algorithm of
-`src/poolhouse/workspace/session_name.py`. The same session always gets the same name back. A
+`src/poolhouse/workspace/session_name.py`. The same session always gets the same name back, and a main
+session's token only from the lineage it was registered from (below). A
 `register` carrying the token of a session of the same board makes the new session its subagent
 (`parent` recorded in its identity entry); the parent is never a request field.
 
 The token is 32 random bytes as hex. The node stores only its SHA-256 in `tokens.json` (0600). A
 write's sender is the name the token resolves to; a request carrying `sender`, `name`, `parent`,
 `label`, `from`, `author`, `actor`, `identity` or `as` anywhere in its envelope, params or `fields`
-is refused `denied`. At most eight tokens per name; 10,000 sessions per board.
+is refused `denied`. At most eight tokens per name: a ninth ends the oldest one except the first the name was given, and
+a refused registration issues none and ends none. 10,000 sessions per board.
+
+**Lineage.** The node reads the process id of the client of the socket (`SO_PEERCRED` on Linux, `LOCAL_PEERPID` on macOS) and the
+processes above it, with their start times, up to and including the shell of its terminal (the leader of a session that has a
+controlling terminal), or to the top when it has none, and records them with a main session when the session is first registered.
+A harness that runs each command in a session of its own, with no terminal, is still its terminal's: the walk goes on past such a
+session. A later `register` of that session is answered with a token only to a process that has one of them in common: one started
+from the same terminal, or by the same process. Any other process gets `denied: this session is registered from another process
+lineage`, no token, and the tokens the session holds go on working. A session that does not exist yet registers from anywhere and
+holds no grant; a subagent registers with its parent's token from any process. A person at the terminal where a session now runs
+moves it there with `poolhouse-workspace rebind HARNESS SESSION`: an enrolled person key signs the board, the session's name, this
+node's device fingerprint, a nonce used once and the time (five minutes), with a typed `yes`; the node makes the caller's lineage the
+session's and ends the tokens it held; the harness started in that terminal registers as the session. Names registered before
+lineages were kept take the lineage of the first process that registers them again.
+
+What the lineage stops: a process in another terminal (or another app) than the one that registered a main session, such as another
+terminal's harness that read the session id from the transcript files of the first. What it does not: a process inside that
+lineage, which includes the subagents and tools of the lead's own harness (they run as children of its process, so as far as the
+node can tell they are the lead); a harness that has no terminal at all, where everything started by the same app shares the app
+at the top; a registrant whose parent has gone (a daemon) has no parents to share, is its own lineage, and is registered again only
+after a `rebind`; a process of the same user that starts itself from the lead's terminal; and Windows, where the peer is not read
+yet, so nothing is recorded or refused there. Programs that register a session of their own use one id per terminal
+(`board.terminal.terminal_id`), so each terminal has its own.
 
 ## Local API
 
 Frames are a 4-byte big-endian length (at most 1 MiB) and JSON. The socket is
 `<state>/node.sock`, mode 0600, in a 0700 directory; the peer's uid is read with `SO_PEERCRED`
-(Linux) or `getpeereid` (macOS) and a different uid gets one `denied` frame and is closed. One node
+(Linux) or `getpeereid` (macOS) and a different uid gets one `denied` frame and is closed; the peer's process id is read the same way
+and `register` and `rebind` use it ("Identity"). One node
 per state directory: `node.lock` is held with `flock`; a stale socket from a killed node is replaced
 by the next one.
 
@@ -117,8 +149,9 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 
 | method | needs | params | result |
 |---|---|---|---|
-| `hello` | | | `{node, version, pid, fingerprint}` |
-| `register` | board | `model, harness, session` (token = parent) | `{name, token, created, parent, origin}` |
+| `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
+| `register` | board | `model, harness, session` (token = parent) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage |
+| `rebind` | board | `harness, session, at_ms, nonce, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
 | `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms}]}` |
@@ -139,9 +172,9 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `claim`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{kind, key, released}` / `{claims}` |
 | `notes` | board, token | `ref, query, kind, all, limit` | `{notes}` |
 | `note_verify` | board, token | `note, exit, out_sha` | `{notes: [the note]}` |
-| `link`, `unlink`, `links` | board, token | `to, channels, mode` / `id` | the link |
-| `project_add` | | `id, kind, path` | the project |
-| `source_add` | token of that project | `id, kind, path` | the project |
+| `link`, `unlink`, `links` | board, token with the grant `link_read` or `link_write` (make), `link_remove` (end) | `to, channels, mode` / `id` | the link |
+| `project_add` | token of a session of that board | `id, kind, path` | the project |
+| `source_add` | token of that project, with the grant `source_add` | `id, kind, path` | the project |
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
 | `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
@@ -157,7 +190,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
 | `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
-| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval`; `fingerprint, at_ms, by, sig` | `{fingerprint, keys}` / the enrolled person keys |
+| `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce`; `fingerprint, at_ms, by, sig` | `{fingerprint, keys}` / the enrolled person keys |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
 device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
@@ -311,9 +344,9 @@ API, for itself or anyone, and a `grant` entry any writer puts on the board with
 allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
 ("Key custody" below says exactly what that does and does not protect).
 
-**The registry.** Sixteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
+**The registry.** Seventeen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `set_join_policy`, `add_device`, `join_pool`,
 `sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release`,
-`file_delete`, `link_write`, `link_remove` and `source_add`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
+`file_delete`, `link_read`, `link_write`, `link_remove` and `source_add`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
 `keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
 owner's release authorization (docs/person-delegation.md); the GPU is leased one holder at a time (the Leases section).
@@ -337,11 +370,17 @@ signature over the enrolment). The first key also takes `secret`: `poolhouse-wor
 makes a random secret, writes only its SHA-256 and the time beside `persons.json` (`enroll_secret.json`, mode 0600) and presents the
 secret to `person_enroll` in the same process. The node reads that hash from the file and from no request, accepts the secret once and
 for ten minutes, and spends it on any guess, so a wrong secret ends the attempt; a node that holds a key never asks for one. A session
-that registered first, or any session, therefore enrols no key. Once a key is enrolled, `by` and `approval` (an enrolled key's
-signature over the same bytes) add a second. `person_unenroll` (`fingerprint`, `at_ms`, `by`, `sig`) removes a key when an enrolled
-key signs the removal: what the removed key signed stops counting at once, the last key is never removed, and each enrolment and
+that registered first, or any session, therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms` and `nonce` add a second: `approval` is an enrolled key's signature over the
+new key's public key, name and proof time, the approver's fingerprint, this node's device fingerprint, the approval time (five minutes)
+and the nonce, which the node accepts once, so an approval enrols that key on that node once and nothing replays it after the key is
+removed. `person_unenroll` (`fingerprint`, `at_ms`, `by`, `sig`) removes a key when an enrolled
+key signs the removal: what the removed key signed stops counting at once, and stays void if the same key is enrolled again (the
+node keeps when each key was removed in `persons_removed.json`, and ignores a grant or revocation the key signed, or that was written to
+the board, at or before then); the last key is never removed, and each enrolment and
 removal is written to the pool board. The hash file is a write to the state directory, so this keeps out every session that has only
-the API; a process of the same operating-system user that writes the directory can enrol a key too, which is the boundary of "Key custody".
+the API. A process of the same operating-system user that writes the directory can enrol a key too, by planting the hash of a secret
+of its own in `enroll_secret.json` and presenting that secret, and any session can spend the person's one-time secret with a wrong
+guess so that the person runs `grants-setup` again: neither is stopped by the node; both are inside the boundary of "Key custody".
 
 **Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` (and `enroll_secret.json`
 if there is one) in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
@@ -380,10 +419,9 @@ host), `sync_now`, `shard_call` (the device) and `shard_consent` before they run
 (the target branch, `*` for pause and resume) in the landing queue, besides having no parent; `task_authority` (the task, or `mode`)
 wherever a session with no parent acts for the person (assign, review in strict mode, block, recover, set the mode, record a
 landing), spent only where it is what lets the call through; `note_verify` (the note), `quarantine_release` (the held id) and
-`file_delete` (the handle); `link_write` (`FROM>TO`, for a link of mode `rw`), `link_remove` (the link id) and `source_add` (the project id).
+`file_delete` (the handle); `link_read` and `link_write` (`FROM>TO`, for a link of mode `ro` and `rw`), `link_remove` (the link id) and `source_add` (the project id).
 `note_verify`, `quarantine_release` and `file_delete` are used only by a session registered on the board they act on, never through a
-link. A link goes only to a board this node already hosts, so `link` creates none; a link of mode `ro` stays open to any session of
-the sharing board. The use is on the board as a `use` entry naming the grant, the session, the action and the target.
+link. A link goes only to a board this node already hosts, so `link` creates none. The use is on the board as a `use` entry naming the grant, the session, the action and the target.
 
 **Commands.** `poolhouse-workspace grant ACTION --to NAME [--with-subagents]|--class FAMILY|--account MODEL --scope RESOURCE --until 30d [--uses N]`,
 `revoke-grant ID`, `grants` (who holds what, and its state; a grant that names a verified model says it matches nobody yet),
@@ -399,19 +437,20 @@ picked from the list of the board's main sessions it prints, where the model and
 It enrols the person's key if the node holds none and signs one grant per action and session on this device, 30 days each:
 `land_control`, `task_authority`, `shard_consent`, `sync_now`, `shard_call`, and `note_verify` for the session's subagents too. The
 exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `land_trust`,
-`quarantine_release`, `file_delete`, `link_write`, `link_remove` and `source_add` stay with the person's own commands. Each is revoked
+`quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own commands. Each is revoked
 by its id. A class grant stays in the registry but is refused by `grants-setup --family` and `grant --class` unless the person passes
 `--i-understand-registration-is-open`: it is held by every session that says it is of the family, which is any process.
 
-**Limits.** Registration is open: any process can register under any model id and so claims a family. A grant that names one session
-holds for no process that merely claims its family, but a session's name comes from its harness and native session id, which
-`register` takes on the caller's word and answers with a new token (up to eight per name): a process that knows both registers as
-that session and holds its grants. A class grant holds for whatever claims the family, which is why it asks for
-`--i-understand-registration-is-open`. Closing registration is the identity slice. `--account` and
-`--verified` name a verified model, no session is verified yet, and the listing says such a grant matches nobody. `project_add` needs
-no token and has no grant: any process that can reach the socket registers a project id for a directory no project holds, so the
-sessions that start there resolve to the board it chose; gating it needs a first-contact flow with the person's approval that works
-before a session exists, and it is open. The trust ledger (levels from outcomes, suspension on forgery signals, credit to a
+**What the grants protect against, and what they do not.** A grant names one session, and a main session's token goes only to the
+lineage it was registered from ("Identity"): a process that merely claims a model family holds nothing a grant for one name gives,
+and a process outside the terminal session and process tree of a registered lead cannot get a token for the lead, by knowing its
+harness and session id or otherwise. They do not protect against a process inside that lineage (the lead's own subagents and tools run
+as children of its harness and are the lead as far as the node can tell), against a process of the same operating-system user that
+starts itself from the lead's terminal or signs with the person's key ("Key custody"), or on Windows, where lineages are not read yet.
+A class grant holds for whatever claims the family, which is why it asks for `--i-understand-registration-is-open`. `--account` and
+`--verified` name a verified model, no session is verified yet, and the listing says such a grant matches nobody. A project is added by
+a session of its own board, ten a minute and 256 to a node, never in or around another project's place, and a person's approval is not
+asked ("Boards, projects, links"). The trust ledger (levels from outcomes, suspension on forgery signals, credit to a
 model-and-version account) is not built; a grant is the only thing that widens what a session may do.
 
 ## Leases
@@ -705,6 +744,7 @@ What `sys` (`src/sys/{unix,win}`) does on each platform, so nothing else in the 
 |---|---|---|
 | local API | socket file, mode 0600 | named pipe, protected DACL for the user's SID, remote clients refused, first instance exclusive |
 | who is calling | `SO_PEERCRED` / `getpeereid` | `ImpersonateNamedPipeClient` + token SID |
+| which process is calling (lineage) | `SO_PEERCRED` pid / `LOCAL_PEERPID`, then the parents up to the shell of its terminal | not read yet: no lineage is recorded and none refused |
 | private directory | `mkdir` 0700 | `SetNamedSecurityInfoW`: protected DACL, the user's SID only, inherited by files (`private_file` is then a no-op) |
 | atomic replace | `rename` + directory fsync | `MoveFileExW(REPLACE_EXISTING \| WRITE_THROUGH)`; no directory flush exists |
 | log append | `O_APPEND`, `fsync` | the log seeks to the end before each write (an append-only handle cannot be cut back), `FlushFileBuffers` |
@@ -731,8 +771,8 @@ Tests that need a socket path short enough for macOS use `kit::short_dir()`; `ki
   `lock.only_one` and `claims.py` calling the lease methods, and their own admission code deleted), a local
   holder yielding when the board shows a peer's earlier acquire of a pool-wide claim, leases on a remote
   device, the rest of the entry kinds (`reputation_event`), content screening of foreign text (still in Python; the node only keeps the quarantine records, see "Replies, threads and held text"),
-  a grant for `project_add` (it needs no token and is open; "Standing grants", Limits), a screen that asks the person the signing
-  question itself so the UI daemon can sign, rebuilding the graph index from entries.
+  a person's approval of a new project, the lineage of a registrant on Windows (`GetNamedPipeClientProcessId`), a screen that asks the person the
+  signing question itself so the UI daemon can sign, rebuilding the graph index from entries.
 - Pools of two or more members do not merge: a device that already has members refuses to join another
   pool (`Pool::adopt`).
 - The head signature still uses an empty pool id as its domain (`Node.pool`); the pool id lives in

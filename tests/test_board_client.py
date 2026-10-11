@@ -132,6 +132,23 @@ def test_a_repository_and_all_its_worktrees_are_one_board_and_a_stranger_directo
     assert place.resolve(workspace_node.client, repo) == "elsewhere"
 
 
+def test_a_project_is_added_by_a_session_of_its_own_board_and_never_inside_or_around_another(workspace_node, monkeypatch, tmp_path):
+    monkeypatch.delenv("POOLHOUSE_BOARD")
+    client = workspace_node.client
+    repo = tmp_path / "shop"
+    (repo / "src").mkdir(parents=True)
+    git("init", "-q", "-b", "main", cwd=repo)
+    board = place.resolve(client, repo)
+    reader = client.call("register", board, "", model="", harness="probe", session="p")["token"]
+    placers = [a for a in client.call("agents", board, reader)["agents"] if a["harness"] == place.PLACER]
+    assert len(placers) == 1 and placers[0]["parent"] == "", "the project was added by a session of its own board"
+    token = client.call("register", "inner-board", "", model="", harness=place.PLACER, session="again")["token"]
+    with pytest.raises(board_client.Invalid, match="is, is inside or holds a place of project"):
+        client.call("project_add", "", token, id="inner-board", kind="folder", path=str(repo / "src"))
+    with pytest.raises(board_client.Denied, match="registered session"):
+        client.call("project_add", id="loose", kind="folder", path=str(tmp_path))
+
+
 def test_a_registered_session_is_found_again_by_its_native_id_on_the_same_board(workspace_node):
     made = workspace_node.member("native-1")
     assert session.find("claude-code", "native-1") == made.name

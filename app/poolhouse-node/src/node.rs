@@ -21,6 +21,7 @@ use crate::fold::{self, check_local, Context, Entry};
 use crate::fsutil::private_dir;
 use crate::identity::{Holder, Ident, ModelState, Registry, Tokens, Who};
 use crate::lease::Leases;
+use crate::limits::Rates;
 use crate::lineage::Peer;
 use crate::landtrust::LandTrust;
 use crate::links::Links;
@@ -59,6 +60,8 @@ pub struct Node {
     pub links: Links,
     pub projects: Projects,
     pub leases: Leases,
+    /// How often a session or the node as a whole did what is limited (`limits`); not kept across a restart.
+    pub rates: Rates,
     pub stop: Arc<AtomicBool>,
     pub started: Instant,
     /// The build this device runs and advertises (`build`).
@@ -106,7 +109,7 @@ impl Node {
         let mut node = Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?,
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
             build: crate::build::Build::from_env(), network: crate::netif::network().into(),
         };

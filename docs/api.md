@@ -144,7 +144,7 @@ board.add_note("decision", "Parser", "Use the recursive-descent one.", tags=("pa
 
 `send` kinds are `task`, `status`, `handoff`, `question`, `answer`, `note`; `announce` kinds are `joined`,
 `milestone`, `done`, `blocked`. `link(to, channels=(), mode="ro")` lets another board read (or, with `"rw"`, write)
-channels of this one, to a board the node already hosts (`"rw"` needs the grant `link_write`); `unlink` ends it at once (the grant
+channels of this one, to a board the node already hosts (`"ro"` needs the grant `link_read`, `"rw"` `link_write`; a board has at most 64 open); `unlink` ends it at once (the grant
 `link_remove`).
 
 `tasks(state="")` lists the tasks of the board, `add_task(title, acceptance)` puts one on it and `review_task(ref, accepted,

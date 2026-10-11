@@ -15,8 +15,14 @@ fn resolve(n: &mut poolhouse_node::node::Node, path: &Path) -> serde_json::Value
     req(n, "project_resolve", "", "", json!({"path": path.to_str().unwrap()}))
 }
 
+/// ``id`` added as a project by a session of its own board.
 fn add(n: &mut poolhouse_node::node::Node, id: &str, kind: &str, path: &Path) -> serde_json::Value {
-    req(n, "project_add", "", "", json!({"id": id, "kind": kind, "path": path.to_str().unwrap()}))
+    let (_, token) = session(n, id, "placer");
+    add_as(n, &token, id, kind, path)
+}
+
+fn add_as(n: &mut poolhouse_node::node::Node, token: &str, id: &str, kind: &str, path: &Path) -> serde_json::Value {
+    req(n, "project_add", "", token, json!({"id": id, "kind": kind, "path": path.to_str().unwrap()}))
 }
 
 #[test]
@@ -70,19 +76,46 @@ fn an_unregistered_directory_is_not_part_of_a_project_and_never_gets_another_boa
 }
 
 #[test]
-fn the_deepest_source_wins_and_one_place_cannot_belong_to_two_projects() {
+fn a_place_is_never_inside_around_or_the_same_as_a_place_of_another_project() {
     let (state, work) = (tempdir().unwrap(), tempdir().unwrap());
-    let inner = work.path().join("mono/service");
+    let (mono, inner, around) = (work.path().join("mono"), work.path().join("mono/service"), work.path().join("elsewhere/deep"));
     std::fs::create_dir_all(&inner).unwrap();
+    std::fs::create_dir_all(&around).unwrap();
     let mut n = node(state.path());
-    ok(add(&mut n, "mono", "folder", &work.path().join("mono")));
-    ok(add(&mut n, "service", "folder", &inner));
-    assert_eq!(ok(resolve(&mut n, &inner))["board"], "service");
-    assert_eq!(ok(resolve(&mut n, &work.path().join("mono")))["board"], "mono");
-    assert_eq!(code(&add(&mut n, "thief", "folder", &inner)), "invalid");
-    assert_eq!(code(&add(&mut n, "mono", "folder", &inner)), "invalid", "an id is registered once");
-    assert_eq!(code(&add(&mut n, "BAD", "folder", &inner)), "invalid");
+    ok(add(&mut n, "mono", "folder", &mono));
+    assert_eq!(code(&add(&mut n, "service", "folder", &inner)), "invalid", "a place inside another project's place is refused");
+    assert_eq!(code(&add(&mut n, "thief", "folder", &mono)), "invalid", "and so is the very same place");
+    assert_eq!(code(&add(&mut n, "wide", "folder", work.path())), "invalid", "and one that holds another project's place");
+    ok(add(&mut n, "deep", "folder", &around));
+    assert_eq!(code(&add(&mut n, "shallow", "folder", around.parent().unwrap())), "invalid", "and the place above one");
+    assert_eq!(ok(resolve(&mut n, &inner))["board"], "mono", "a directory inside a project is that project's");
+    let (_, token) = session(&mut n, "mono", "second");
+    assert_eq!(code(&add_as(&mut n, &token, "mono", "folder", &inner)), "invalid", "an id is registered once");
+    assert_eq!(code(&add_as(&mut n, &token, "BAD", "folder", &around)), "denied", "a session adds the project of its own board only");
     assert_eq!(code(&add(&mut n, "k", "dropbox", &inner)), "invalid");
+}
+
+#[test]
+fn a_project_is_added_by_a_session_of_its_own_board_a_few_a_minute() {
+    let (state, work) = (tempdir().unwrap(), tempdir().unwrap());
+    let mut n = node(state.path());
+    let place = |name: &str| {
+        let dir = work.path().join(name);
+        std::fs::create_dir(&dir).unwrap();
+        dir
+    };
+    let (mine, other) = (place("mine"), place("other"));
+    assert_eq!(code(&add_as(&mut n, "", "mine", "folder", &mine)), "denied", "no session, no project");
+    assert_eq!(code(&add_as(&mut n, "not-a-token", "mine", "folder", &mine)), "denied");
+    let (_, token) = session(&mut n, "mine", "s");
+    assert_eq!(code(&add_as(&mut n, &token, "other", "folder", &other)), "denied", "a session adds the project of its own board only");
+    ok(add_as(&mut n, &token, "mine", "folder", &mine));
+    for i in 0..9 {
+        ok(add(&mut n, &format!("extra-{i}"), "folder", &place(&format!("extra-{i}"))));
+    }
+    let tenth = place("one-too-many");
+    assert_eq!(code(&add(&mut n, "one-too-many", "folder", &tenth)), "quota", "a node takes ten projects a minute");
+    assert!(ok(req(&mut n, "project_list", "", "", json!({}))).as_array().unwrap().len() == 10);
 }
 
 #[test]

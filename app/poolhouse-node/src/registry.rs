@@ -4,7 +4,8 @@
 //! cloud-synced folder (its local sync path). A client's working directory
 //! resolves to the project whose source contains it; a linked git worktree resolves through
 //! the repository's common directory. A directory that matches nothing is not part of any
-//! project, and is never given another project's board.
+//! project, and is never given another project's board. A place is never inside or around a
+//! place of another project, so no project takes over where another's sessions land.
 
 use std::path::{Path, PathBuf};
 
@@ -16,6 +17,8 @@ use crate::row::valid_name;
 
 pub const KINDS: [&str; 4] = ["git", "folder", "gdrive", "onedrive"];
 const MAX_SOURCES: usize = 32;
+/// How many projects a node holds.
+pub const MAX_PROJECTS: usize = 256;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Source {
@@ -87,6 +90,9 @@ impl Projects {
         if !valid_name(id) || self.get(id).is_some() {
             return Err(Error::Invalid("a project id is a new short lower-case word".into()));
         }
+        if self.all.len() >= MAX_PROJECTS {
+            return Err(Error::Quota(format!("a node holds at most {MAX_PROJECTS} projects")));
+        }
         let source = Projects::source(kind, path)?;
         self.claim_check(id, &source)?;
         self.all.push(Project { id: id.into(), sources: vec![source] });
@@ -110,24 +116,40 @@ impl Projects {
         Ok(done)
     }
 
-    /// The same place may not belong to two projects.
+    /// A place may not be, lie inside, or hold a place of another project.
     fn claim_check(&self, id: &str, source: &Source) -> Result<()> {
-        match self.all.iter().find(|p| p.id != id && p.sources.iter().any(|s| s.path == source.path)) {
-            Some(other) => Err(Error::Invalid(format!("that place already belongs to project {}", other.id))),
+        let overlaps = |s: &Source| source.path.starts_with(&s.path) || s.path.starts_with(&source.path);
+        match self.all.iter().find(|p| p.id != id && p.sources.iter().any(overlaps)) {
+            Some(other) => Err(Error::Invalid(format!("that place is, is inside or holds a place of project {}", other.id))),
             None => Ok(()),
         }
     }
 
-    /// The project whose source contains ``dir`` (the deepest wins), or `Denied` saying the
-    /// directory is not part of a project.
+    /// The project whose source contains ``dir``, or `Denied` saying the directory is not part of a project.
     pub fn resolve(&self, dir: &str) -> Result<&Project> {
         let not_part = || Error::Denied("this directory is not part of a project: register it with project_add".into());
         let real = Path::new(dir).canonicalize().map_err(|_| not_part())?;
         let mut places = vec![real.clone()];
         places.extend(git_root(&real));
-        let best = self.all.iter().flat_map(|p| p.sources.iter().map(move |s| (p, s)))
-            .filter(|(_, s)| places.iter().any(|d| d.starts_with(&s.path)))
-            .max_by_key(|(_, s)| s.path.components().count());
-        best.map(|(p, _)| p).ok_or_else(not_part)
+        self.all.iter().find(|p| p.sources.iter().any(|s| places.iter().any(|d| d.starts_with(&s.path)))).ok_or_else(not_part)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_node_holds_a_bounded_number_of_projects() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut projects = Projects::open(&dir.path().join("projects.json")).unwrap();
+        for i in 0..MAX_PROJECTS {
+            let place = dir.path().join(format!("p{i}"));
+            std::fs::create_dir(&place).unwrap();
+            projects.add(&format!("p{i}"), "folder", place.to_str().unwrap()).unwrap();
+        }
+        let more = dir.path().join("more");
+        std::fs::create_dir(&more).unwrap();
+        assert!(matches!(projects.add("more", "folder", more.to_str().unwrap()), Err(Error::Quota(_))));
     }
 }

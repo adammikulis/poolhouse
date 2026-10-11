@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use serde_json::{json, Map, Value};
 
@@ -15,6 +16,10 @@ use crate::node::{Native, Node, READ_DEFAULT, READ_MAX};
 use crate::row::{valid_name, Kind};
 
 pub const API_VERSION: u64 = 1;
+/// How many links one session makes in a minute, and how many projects a node takes in a minute.
+const MOST_LINKS_PER_MINUTE: usize = 6;
+const MOST_PROJECTS_PER_MINUTE: usize = 10;
+const MINUTE: Duration = Duration::from_secs(60);
 const ENVELOPE: [&str; 6] = ["v", "id", "method", "board", "token", "params"];
 const FORBIDDEN: [&str; 9] = ["sender", "name", "parent", "label", "from", "author", "actor", "identity", "as"];
 
@@ -141,9 +146,11 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
         if !valid_name(to) || !node.boards.contains_key(to) {
             return Err(Error::Invalid("a link goes to a board this node hosts".into()));
         }
-        if write {
-            crate::poolapi::authorize(node, token, "link_write", &format!("{board}>{to}"))?;
+        node.links.room_for(board)?;
+        if !node.rates.allow(&format!("link {by}"), MOST_LINKS_PER_MINUTE, MINUTE) {
+            return Err(Error::Quota("this session makes links as fast as it may: try again in a minute".into()));
         }
+        crate::poolapi::authorize(node, token, if write { "link_write" } else { "link_read" }, &format!("{board}>{to}"))?;
         node.links.add(board, to, channels, write, &by)?
     } else {
         let id = str_of(p, "id")?;
@@ -161,14 +168,18 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
 
 fn project(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let (id, kind, path) = (str_of(p, "id")?, str_of(p, "kind")?, str_of(p, "path")?);
+    let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session adds a project or a place to one".into()))?;
+    if holder.board != id {
+        return Err(Error::Denied("only a session of a board adds its project or a place to it".into()));
+    }
     let done = match method {
-        "project_add" => node.projects.add(id, kind, path)?,
-        _ => {
-            // adding a place to an existing project takes a session of that project
-            let holder = node.tokens.resolve(token).cloned();
-            if holder.is_none_or(|h| h.board != id) {
-                return Err(Error::Denied("only a session of the project adds a place to it".into()));
+        "project_add" => {
+            if !node.rates.allow("project_add", MOST_PROJECTS_PER_MINUTE, MINUTE) {
+                return Err(Error::Quota("this node takes projects as fast as it may: try again in a minute".into()));
             }
+            node.projects.add(id, kind, path)?
+        }
+        _ => {
             crate::poolapi::authorize(node, token, "source_add", id)?;
             node.projects.add_source(id, kind, path)?
         }

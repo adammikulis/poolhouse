@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import person
-from poolhouse.board import grants, person as person_session, person_key
+from poolhouse.board import grants, person as person_session, person_key, place
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.session import Session
 from poolhouse.command import flag
@@ -157,7 +157,7 @@ def revoke_grant(args: argparse.Namespace, ctx: Ctx) -> Any:
 
 def _leads(ctx: Ctx) -> dict[str, Any]:
     """The live main sessions of the board, by name: what each said it runs on is a claim."""
-    return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and a.harness != person_session.HARNESS}
+    return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and a.harness not in (person_session.HARNESS, place.PLACER)}
 
 
 def _chosen(args: argparse.Namespace, main: dict[str, Any]) -> list[str]:

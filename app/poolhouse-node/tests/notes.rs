@@ -118,8 +118,9 @@ fn recording_a_verification_is_a_grant() {
 fn a_link_shares_notes_only_when_it_names_them() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((_, at), (_, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "other", "b"));
+    let ((name, at), (_, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "other", "b"));
     ok(note(&mut n, &at, json!({})));
+    allow(&mut n, "demo", &at, &name, &["link_read"]);
     ok(req(&mut n, "link", "demo", &at, json!({"to": "other", "channels": ["#general"], "mode": "ro"})));
     assert_eq!(code(&req(&mut n, "notes", "demo", &bt, json!({}))), "denied");
     assert_eq!(code(&req(&mut n, "note_verify", "demo", &bt, json!({"note": "1", "exit": 0, "out_sha": SHA}))), "denied");

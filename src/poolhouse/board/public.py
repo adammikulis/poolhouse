@@ -229,7 +229,7 @@ class Board:
         return self.task(ref)
 
     def link(self, to: str, *, channels: tuple[str, ...] = (), mode: str = "ro") -> dict[str, object]:
-        """Let the sessions of board ``to``, a board the node hosts, use ``channels`` of this one (all when none) read-only (``ro``) or read-write (needs the grant `link_write`)."""
+        """Let the sessions of board ``to``, a board the node hosts, use ``channels`` of this one (all when none) read-only (``ro``, needs the grant `link_read`) or read-write (``rw``, needs `link_write`); a board has at most 64 open."""
         return dict(self._session.call("link", to=to, channels=list(channels), mode=mode))
 
     def links(self) -> list[dict[str, object]]:

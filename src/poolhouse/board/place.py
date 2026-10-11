@@ -10,10 +10,13 @@ import subprocess
 from pathlib import Path
 
 from poolhouse.board.client import Client, Denied, Invalid
+from poolhouse.board.terminal import terminal_id
 
-__all__ = ["BOARD_ENV", "board_id", "resolve"]
+__all__ = ["BOARD_ENV", "PLACER", "board_id", "resolve"]
 
 BOARD_ENV = "POOLHOUSE_BOARD"
+PLACER = "poolhouse-place"
+"""The harness of the session that adds the project of a board: the node takes a project from a session of its own board."""
 
 
 def _git(path: Path, *args: str) -> str:
@@ -50,6 +53,7 @@ def resolve(client: Client, path: Path | None = None, named: str = "") -> str:
         if found is None:
             raise
     board, tree = found
+    placer = client.call("register", board, "", model="", harness=PLACER, session=f"place-{terminal_id()}")["token"]
     with contextlib.suppress(Invalid):
-        client.call("project_add", id=board, kind="git", path=str(tree))
+        client.call("project_add", "", str(placer), id=board, kind="git", path=str(tree))
     return str(client.call("project_resolve", path=str(where))["board"])

@@ -40,10 +40,11 @@ fn a_direct_message_is_read_only_by_its_sender_and_its_recipient() {
 fn a_link_that_shares_the_whole_board_does_not_share_direct_messages() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
-    let ((_, at), (bob, _)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
+    let ((name, at), (bob, _)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
     let (_, ot) = session(&mut n, "other", "o");
     ok(dm(&mut n, &at, &bob, "private"));
     ok(post(&mut n, "demo", &at, "public"));
+    allow(&mut n, "demo", &at, &name, &["link_read"]);
     ok(req(&mut n, "link", "demo", &at, json!({"to": "other", "channels": [], "mode": "ro"})));
     assert_eq!(bodies(&ok(req(&mut n, "read", "demo", &ot, json!({})))), vec!["public"]);
 }
