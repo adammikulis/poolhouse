@@ -68,6 +68,8 @@ pub struct Node {
     pub leases: Leases,
     /// How often a lineage did what is limited (`limits`); not kept across a restart.
     pub rates: Rates,
+    /// What one session may write (`writes`).
+    pub writes: crate::writes::WriteLimits,
     /// Who is asking, while a request is answered (`lineage::Asking`).
     pub asking: Asking,
     pub stop: Arc<AtomicBool>,
@@ -117,7 +119,7 @@ impl Node {
         let mut node = Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?, land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), asking: Asking::default(),
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(),
             build: crate::build::Build::from_env(), network: crate::netif::network().into(),
         };
@@ -230,6 +232,7 @@ impl Node {
             return Err(Error::Quota("this process tree creates boards as fast as it may, or this node hosts as many as it will".into()));
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
+        crate::writes::check_children(self, board, &parent, &harness, session)?;
         self.make_room_for_a_token()?;
         let inherited = model.trim().is_empty().then(|| self.boards.get(board).and_then(|h| h.names.get(&parent)).map(|p| p.model.clone())).flatten().unwrap_or_default();
         let (model, state) = if inherited.is_empty() { (model, ModelState::Claimed) } else { (inherited, ModelState::Inherited) };
@@ -289,9 +292,12 @@ impl Node {
         body.insert(if kind == Kind::Note { "author" } else { "from" }.into(), Value::String(access.actor.clone()));
         let body = Value::Object(body);
         check_local(kind, &access.actor, &body, "")?;
+        let admitted = crate::writes::check_post(self, board, &access.holder, &access.actor, kind, fields)?;
         let hosted = self.hosted(board)?;
         let row = hosted.board.append(kind, &access.actor, body, idem)?;
-        Ok(json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])}))
+        let reply = json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])});
+        crate::writes::wrote(self, board, &access.holder, &access.actor, admitted)?;
+        Ok(reply)
     }
 
     /// Write the current state of the session ``name`` to its board as an identity entry.

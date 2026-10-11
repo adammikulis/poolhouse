@@ -68,11 +68,15 @@ fn read(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
         None => BTreeMap::new(),
         Some(v) => serde_json::from_value(v.clone()).map_err(|_| Error::Invalid("since maps origins to sequence numbers".into()))?,
     };
+    let presented = cursor.clone();
     let limit = p.get("limit").and_then(Value::as_u64).map_or(READ_DEFAULT, |n| (n as usize).clamp(1, READ_MAX));
     let (kind, channel, sender, with) = (str_of(p, "kind")?, str_of(p, "channel")?, str_of(p, "by")?, str_of(p, "with")?);
     let flag = |k: &str| p.get(k).and_then(Value::as_bool).unwrap_or(false);
     let (inbox, digest, mentioned, files) = (flag("inbox"), flag("digest"), flag("mentions"), flag("files"));
     let me = access.actor.as_str();
+    if inbox && access.holder.board == board {
+        node.host(board)?.names.note_inbox_read(me, &presented)?;
+    }
     let entries = node.view(board)?;
     if flag("head") {
         return Ok(json!({"entries": [], "cursor": node.host(board)?.board.vector().into_iter().map(|(o, t)| (o, t.seq)).collect::<BTreeMap<String, u64>>()}));

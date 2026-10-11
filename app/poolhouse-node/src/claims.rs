@@ -98,8 +98,10 @@ fn claim(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     let (kind, key) = (kind_of(p, true)?, text(p, "key")?);
     let access = node.access(token, board, true)?;
     let holder = format!("{board}/{}", access.holder.name);
+    crate::writes::check_send(node, &access.holder)?;
     rpc::tick(node, &[board])?;
     let (changed, l) = take(node, board, token, &holder, (kind, key), p)?;
+    crate::writes::sent(node, &access.holder);
     Ok(json!({"changed": changed, "claim": show(node, &l, kind, &held_as(kind, board, key), board)}))
 }
 

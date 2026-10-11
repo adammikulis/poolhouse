@@ -9,6 +9,7 @@ a pytest `tmp_path` can exceed. The node binary is built once per session with
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import pty
 import pwd
@@ -228,12 +229,18 @@ class WorkspaceNode:
         node_launch.stop_node(self.state)
 
 
+WRITE_LIMITS = {"sends": 1_000_000}
+"""What a test node's sessions may write: fixtures post whole pages of messages, so the send rate is out of the way. A test module
+that checks the limits sets ``NODE_WRITE_LIMITS`` to its own (``{}`` is the node's defaults)."""
+
+
 @pytest.fixture
-def workspace_node(node_binary, monkeypatch):
+def workspace_node(node_binary, monkeypatch, request):
     """A running node on a short temporary root; in-process clients and child commands find it by the environment."""
     root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
     state = root / "node"
     state.mkdir(mode=0o700)
+    (state / "write-limits.json").write_text(json.dumps(getattr(request.module, "NODE_WRITE_LIMITS", WRITE_LIMITS)))
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))
     monkeypatch.setenv("POOLHOUSE_BOARD", BOARD)
     for name in STRIPPED:

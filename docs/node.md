@@ -546,8 +546,18 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | person keys a node holds | 8 | `quota` |
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
+| messages, notes and claims one session writes | 30 a minute; a subagent 10, and what it writes counts against its parent's 30 | `quota` |
+| announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written and the board gets an `announce_over_quota` audit entry | none |
+| direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
+| notes an author keeps on a board | 500 | `quota` |
+| live subagents a session has | 8 (not retired, and active within eight hours) | `quota` |
 
-The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`.
+The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`; the limits on what a
+session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `sends`, `child_sends`, `window_s`,
+`announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `children` and `child_life_s`. A message
+is unread until its recipient reads its inbox with a `since` cursor past it: the node keeps the furthest cursor each session presented
+on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
+counts as a send, and the `reserve` of a harness hook does not.
 
 ## Leases
 
@@ -827,9 +837,8 @@ Not built, because the node has no counterpart or the person would gain a right 
 - Observations of the execution profile a harness reported about itself (`execution_profile`, `profilehook`): a session says
   its model and harness at registration and the node records what it was told.
 - The `board_host` authority of a project and the invitation to a board hosted on another device: every device keeps the board.
-- A per-sender message rate and a per-recipient inbox cap (the old store had both), a per-author cap on notes, and a screen of the text a
-  call writes to the node: the node keeps the 200,000-row cap of a log and the quotas of "Limits", and the commands screen text for
-  credentials and private terms before they write.
+- A screen of the text a call writes to the node: the node keeps the 200,000-row cap of a log and the quotas of "Limits", and the
+  commands screen text for credentials and private terms before they write.
 
 Tests that need a socket path short enough for macOS use `kit::short_dir()`; `kit::kill_hard` is `kill -9` or `taskkill /F`.
 

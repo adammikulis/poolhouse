@@ -67,6 +67,9 @@ pub struct Ident {
     /// The processes the session was registered from (`lineage`); empty when they were not known.
     #[serde(default)]
     pub lineage: Vec<Anchor>,
+    /// How far the session has read its inbox: the furthest cursor it presented when it read it, by origin.
+    #[serde(default)]
+    pub inbox_read: BTreeMap<String, u64>,
 }
 
 /// A model id or harness name as one short clean line.
@@ -164,6 +167,20 @@ impl Registry {
         }
     }
 
+    /// Note that ``name`` read its inbox from ``cursor`` on: what is before it was read. Written only when it moved.
+    pub fn note_inbox_read(&mut self, name: &str, cursor: &BTreeMap<String, u64>) -> Result<()> {
+        let Some(ident) = self.names.get_mut(name) else { return Ok(()) };
+        let mut moved = false;
+        for (origin, seq) in cursor {
+            let seen = ident.inbox_read.entry(origin.clone()).or_insert(0);
+            if *seq > *seen {
+                *seen = *seq;
+                moved = true;
+            }
+        }
+        if moved { self.save() } else { Ok(()) }
+    }
+
     /// ``name`` and everything below it by parent links.
     pub fn descendants(&self, name: &str) -> Vec<String> {
         let mut out = Vec::new();
@@ -211,7 +228,7 @@ impl Registry {
         let state = if model.is_empty() { ModelState::Unknown } else { state };
         self.names.insert(name.clone(), Ident {
             digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness, 64)?,
-            retired: false, retired_reason: String::new(), seen_ms: now_ms, lineage: lineage.to_vec(),
+            retired: false, retired_reason: String::new(), seen_ms: now_ms, lineage: lineage.to_vec(), inbox_read: BTreeMap::new(),
         });
         self.save()?;
         Ok((name, true))
