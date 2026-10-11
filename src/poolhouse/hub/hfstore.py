@@ -27,8 +27,8 @@ from poolhouse.safenames import safe_filename, safe_join
 COMMIT = re.compile(r"[a-f0-9]{40}")
 DIGEST = re.compile(r"[a-f0-9]{40}|[a-f0-9]{64}")
 
-__all__ = ["COMMIT", "DIGEST", "blob_name", "digest_of", "git_blob_sha1", "identify", "into_blobs", "link",
-           "main_commit", "point_ref", "repo_root", "same_bytes", "tidy", "volume"]
+__all__ = ["COMMIT", "DIGEST", "blob_name", "cache_problem", "digest_of", "git_blob_sha1", "identify",
+           "into_blobs", "link", "main_commit", "point_ref", "repo_root", "same_bytes", "tidy", "volume"]
 
 
 def repo_root(repo: str) -> Path:
@@ -178,3 +178,12 @@ def tidy(root: Path) -> None:
             Path(here).rmdir()
         except OSError:
             continue
+
+
+def cache_problem(cache: Path) -> str:
+    """Why the hub cache cannot be written, or '': judged off the nearest folder that exists, so a plan
+    creates nothing."""
+    near = volume(cache)
+    if not near.is_dir() or not os.access(near, os.W_OK | os.X_OK):
+        return f"the hub cache {cache} cannot be written ({near} is not a writable folder)"
+    return ""

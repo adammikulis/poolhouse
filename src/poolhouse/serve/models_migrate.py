@@ -41,10 +41,6 @@ def old_store() -> Path:
     return home.state("models")
 
 
-def log_file() -> Path:
-    return home.state(LOG)
-
-
 @dataclass(frozen=True, slots=True)
 class Item:
     """One file of the old store: ``repo`` is ``owner/name`` and ``rel`` its path inside it."""
@@ -112,15 +108,6 @@ def scan(root: Path) -> tuple[list[Item], list[str]]:
     return items, odd
 
 
-def _cache_problem(cache: Path) -> str:
-    """Why the hub cache cannot be written, or '': judged off the nearest folder that exists, so a plan
-    creates nothing."""
-    near = hfstore.volume(cache)
-    if not near.is_dir() or not os.access(near, os.W_OK | os.X_OK):
-        return f"the hub cache {cache} cannot be written ({near} is not a writable folder)"
-    return ""
-
-
 def broker_models() -> list[str]:
     """The model of every server the broker holds; none when no broker answers."""
     try:
@@ -143,9 +130,10 @@ def leased(root: Path, models: list[str]) -> list[str]:
     return sorted(held)
 
 
-def _log(lines: list[str]) -> None:
+def append_log(name: str, lines: list[str]) -> None:
+    """Append ``lines`` with a time to ``<state>/<name>``, the log a command keeps of what it did."""
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
-    where = log_file()
+    where = home.state(name)
     where.parent.mkdir(parents=True, exist_ok=True)
     with where.open("a", encoding="utf-8") as out:
         out.writelines(f"{stamp} {line}\n" for line in lines)
@@ -163,7 +151,7 @@ def plan(root: Path, cache: Path, models: list[str]) -> Report:
     if held:
         report.blocked.append("a model server holds " + ", ".join(held)
                               + "; stop it (poolhouse-serve leases lists them) and run again")
-    problem = _cache_problem(cache)
+    problem = hfstore.cache_problem(cache)
     if problem:
         report.blocked.append(problem)
     same = root.stat().st_dev == hfstore.volume(cache).stat().st_dev
@@ -225,12 +213,12 @@ def _one_repo(repo: str, items: list[Item], cache: Path, report: Report) -> None
         outcome, why = place(item, listed.get(item.rel), commit, cache)
         if outcome == "left":
             report.left.append(f"{item.path}: {why}")
-            _log([f"left {item.path}: {why}"])
+            append_log(LOG, [f"left {item.path}: {why}"])
             continue
         report.moved += 1
         report.deduped += outcome == "have"
         report.moved_bytes += item.size
-        _log([f"{'deduplicated' if outcome == 'have' else 'moved'} {item.path} -> {repo}@{commit[:8]}/{item.rel}"])
+        append_log(LOG, [f"{'deduplicated' if outcome == 'have' else 'moved'} {item.path} -> {repo}@{commit[:8]}/{item.rel}"])
     if report.moved and not (hfstore.repo_root(repo) / "refs" / "main").exists():
         hfstore.point_ref(repo, "main", commit)
 
@@ -245,14 +233,14 @@ def migrate(*, apply: bool, models: Callable[[], list[str]] = broker_models) -> 
     report.mode, report.left = "run", []
     items, odd = scan(root)
     report.left += odd
-    _log([f"run: {len(items)} file(s) from {root} into {cache}"])
+    append_log(LOG, [f"run: {len(items)} file(s) from {root} into {cache}"])
     grouped: dict[str, list[Item]] = {}
     for item in items:
         grouped.setdefault(item.repo, []).append(item)
     for repo, rows in grouped.items():
         _one_repo(repo, rows, cache, report)
     hfstore.tidy(root)
-    _log([f"done: moved {report.moved}, left {len(report.left)}"])
+    append_log(LOG, [f"done: moved {report.moved}, left {len(report.left)}"])
     return report
 
 
