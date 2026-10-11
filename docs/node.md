@@ -664,7 +664,10 @@ listener is the one network port.
   refused at its next request on the same connection. A device that records a removal also stops using the
   connections it holds to the removed device: a sync cycle does not dial a member removed since the cycle
   began, and a dial already open ends at its next request, so nothing is sent to, taken from or merged from
-  the removed device once the record says so (`netsync::locked_for`). A member that has not heard of the
+  the removed device once the record says so (`netsync::locked_for`); it closes the connections it keeps
+  open to the removed device and the ones the removed device opened to it (`Net::drop_removed`, run after
+  a removal is made here, after a `members` request is served and at the end of each sync cycle), so the
+  device shows as not connected. A member that has not heard of the
   removal yet still syncs with the removed device and passes on what it takes; it hears of the removal when
   it next reaches a member that knows. The entries the removed device wrote in that window are kept and
   relayed: `sync::take` and `Board::ingest` do not check the origin of a row against the active members, so
