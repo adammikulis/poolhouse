@@ -1,4 +1,4 @@
-//! The local API for the pool: `pool_status`, `member_remove`, `set_join_policy`, and the
+//! The local API for the pool: `pool_status`, `member_remove`, the governance calls, and the
 //! network ones (`add_device`, `join_pool`, `sync_now`) which `net::Net` answers.
 //!
 //! Reading the pool needs no token (the socket is the owner's); changing it needs a registered
@@ -23,7 +23,6 @@ pub fn params(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "pool_status" | "sync_now" => &[],
         "member_remove" => &["fingerprint"],
-        "set_join_policy" => &["policy"],
         "pool_create" => &["title", "policy", "project"],
         "pool_leave" => &[],
         "pool_propose" => &["kind", "body"],
@@ -100,13 +99,12 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             if fingerprint == node.cert.fingerprint() {
                 return Err(Error::Denied("a device does not revoke itself; leave by removing its state".into()));
             }
-            let device = node.remove_device(fingerprint, &format!("{}/{}", who.board, who.name))?;
+            let device = node.remove_device(fingerprint)?;
             if crate::shard::consent::forget(&node.dir, fingerprint)? {
                 node.record_event("shard_allow", fingerprint, &format!("removed: put out of the pool by {}/{}", who.board, who.name))?;
             }
             Ok(json!({"fingerprint": device.fingerprint, "status": device.status}))
         }
-        "set_join_policy" if !node.members.is_legacy() => Err(Error::say("invalid", "A pool's join policy never changes in place; reissue the pool to change it.", "none", "stop")),
         "pool_create" => {
             let (name, policy) = (text(p, "title")?, text(p, "policy")?);
             authorize(node, token, method, name)?;
@@ -139,12 +137,6 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             }
             node.rates.record("pool_submit", std::time::Duration::from_secs(60));
             node.pool_submit(p.get("act").unwrap_or(&Value::Null))
-        }
-        "set_join_policy" => {
-            let who = authorize(node, token, method, text(p, "policy")?)?;
-            let policy = Policy::parse(text(p, "policy")?)?;
-            let changed = node.change_policy(policy, &format!("{}/{}", who.board, who.name))?;
-            Ok(json!({"policy": policy.name(), "changed": changed}))
         }
         "shard_consent" => crate::shard::consent_call(node, token, p),
         _ => Err(Error::Invalid("this node's network is not running".into())),

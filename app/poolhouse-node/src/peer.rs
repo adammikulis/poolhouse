@@ -50,17 +50,6 @@ fn reply_of(result: Result<Value>) -> Value {
     }
 }
 
-/// The policy attribute as it is handed to a device that joins.
-pub fn policy_json(node: &Node) -> Value {
-    json!({"policy": node.members.policy.name(), "at": node.members.policy_at, "by": node.members.policy_by})
-}
-
-/// The policy a joining device is handed, read back: the policy, when it was set and by whom; None when it is not all there.
-pub fn policy_of(v: &Value) -> Option<(Policy, u64, String)> {
-    let policy = Policy::parse(v.get("policy")?.as_str()?).ok()?;
-    Some((policy, v.get("at")?.as_u64()?, v.get("by")?.as_str()?.chars().take(80).collect()))
-}
-
 fn hello(node: &Node, standing: Standing) -> Value {
     let boards: Vec<&String> = if standing == Standing::Active { node.boards.keys().collect() } else { Vec::new() };
     let mut out = json!({"pool": node.members.id, "policy": node.members.policy.name(), "fingerprint": node.cert.fingerprint(), "project": node.members.project,
@@ -79,17 +68,12 @@ pub fn hello_request(node: &Node) -> Value {
 /// The most bytes of acts a joining device is handed with its admit; the rest it takes in its first exchange.
 const JOIN_BYTES: usize = 256 * 1024;
 
-/// What a device that has just joined (``joiner``, by its certificate's fingerprint) is handed: the pool's id and its record and
-/// policy, or for a governed pool its founding act and the acts that stand; an error when a governed pool's history is too long to
-/// hand over in one message.
+/// What a device that has just joined (``joiner``, by its certificate's fingerprint) is handed: the pool's founding act and the acts
+/// that stand; an error when this device is in no pool, or the pool's history is too long to hand over in one message.
 pub fn record_json(node: &Node, joiner: &str) -> Result<Value> {
-    Ok(match node.members.gov() {
-        Some(g) => {
-            let p = g.join_payload(JOIN_BYTES, joiner)?;
-            json!({"pool": g.id, "found": p.found, "settled": p.settled, "delegates": p.delegates, "acts": p.acts})
-        }
-        None => json!({"pool": node.members.id, "rows": node.members.export(), "policy": policy_json(node)}),
-    })
+    let g = node.members.gov().ok_or_else(|| Error::Denied("this device is not in a pool yet".into()))?;
+    let p = g.join_payload(JOIN_BYTES, joiner)?;
+    Ok(json!({"pool": g.id, "found": p.found, "settled": p.settled, "delegates": p.delegates, "acts": p.acts}))
 }
 
 /// How many devices one address, and the whole pool, may ask to join without a code in ten minutes. The member that admits them signs

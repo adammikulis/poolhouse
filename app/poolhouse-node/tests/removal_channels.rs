@@ -75,7 +75,7 @@ fn a_connection_is_not_opened_to_a_member_removed_before_the_attach_thread_start
     let before = last_seen();
     let mut held = a.node.lock().unwrap();
     let thread = a.net.attach(&b.fp(), b.addr()).expect("no attach was running");
-    held.members.revoke(&b.fp(), "test", 1).unwrap();
+    held.remove_device(&b.fp()).unwrap();
     drop(held);
     eventually("the attach thread to end", 10, || thread.is_finished());
     thread.join().unwrap();

@@ -35,10 +35,10 @@ fn status_of(dev: &Dev, id: &str) -> String {
 #[test]
 fn a_device_founds_a_pool_whose_id_is_the_hash_of_its_charter_and_is_its_first_member() {
     let a = device();
-    let legacy = a.pool();
+    let before = a.pool();
     let id = found(&a, person(ANN, "ann"), "secure");
     assert_eq!(id.len(), 32);
-    assert_ne!(id, legacy);
+    assert_ne!(id, before);
     let view = a.status();
     assert_eq!((view["pool"].as_str(), view["policy"].as_str()), (Some(id.as_str()), Some("secure")));
     assert_eq!(view["governance"]["mode"], "governed");
@@ -61,8 +61,8 @@ fn a_device_joins_a_governed_pool_with_a_code_and_the_admin_signs_the_admit() {
     assert_eq!(a.member(&b.fp()).unwrap()["by"], "join-code");
     let n = b.node.lock().unwrap();
     assert!(n.members.gov().is_some(), "the joiner holds the pool as a governed pool");
-    assert!(!n.dir.join("pool.json").exists(), "its own pool of one is kept under pools/retired");
-    assert!(std::fs::read_dir(n.dir.join("pools").join("retired")).unwrap().count() == 1);
+    assert!(!n.dir.join("pool.json").exists(), "the pool of one it had was never written, so nothing is retired");
+    assert!(!n.dir.join("pools").join("retired").exists());
 }
 
 #[test]
@@ -78,27 +78,38 @@ fn a_device_that_cannot_sign_does_not_open_a_window_and_says_so_in_one_sentence(
 }
 
 #[test]
-fn the_join_policy_never_changes_in_place_and_the_refusal_says_to_reissue() {
+fn the_join_policy_has_no_method_that_changes_it_in_place() {
     let a = device();
     found(&a, person(ANN, "ann"), "secure");
     let reply = a.call("set_join_policy", "", &a.token, json!({"policy": "open"}));
-    assert_eq!(reply["ok"], false);
-    assert_eq!(reply["error"]["code"], "invalid");
-    assert_eq!(reply["error"]["message"], "invalid: A pool's join policy never changes in place; reissue the pool to change it.");
+    assert_eq!((reply["ok"].clone(), reply["error"]["code"].clone()), (json!(false), json!("invalid")), "{reply}");
     assert_eq!(a.status()["policy"], "secure");
 }
 
 #[test]
-fn a_legacy_pool_with_members_answers_a_new_method_with_the_one_time_upgrade_sentence() {
-    let (a, b) = (device(), device());
-    a.join_with_code(&b);
-    a.node.lock().unwrap().set_signer(person(ANN, "ann"));
-    let reply = a.call("pool_create", "", &a.token, json!({"title": "home"}));
-    assert_eq!(reply["error"]["say"], "This device's pool needs a one-time upgrade; ask the owner to approve it.");
+fn a_fresh_node_is_the_unfounded_pool_of_one_and_needs_no_signer_to_exist() {
+    let a = device();
     let view = a.status();
-    assert_eq!((view["governance"]["mode"].as_str(), view["governance"]["needs_migration"].as_bool()), (Some("legacy"), Some(true)));
-    let propose = a.call("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": b.fp()}}));
-    assert_eq!(propose["error"]["say"], "This device's pool needs a one-time upgrade; ask the owner to approve it.");
+    assert_eq!(view["governance"]["mode"], "unfounded");
+    assert_eq!(view["pool"], "", "no charter, so no id");
+    let members = view["members"].as_array().unwrap();
+    assert_eq!((members.len(), members[0]["fingerprint"].clone(), members[0]["self"].clone()), (1, json!(a.fp()), json!(true)), "the device is its own only member");
+    assert!(!a.dir.path().join("pool.json").exists() && !a.dir.path().join("pools").exists(), "nothing is written until a pool is founded");
+    let admit = a.call("add_device", "", &a.token, json!({}));
+    assert_eq!(admit["error"]["say"], "This device is not in a pool yet; make one, or join one.", "it admits nobody");
+    let propose = a.call("pool_propose", "", &a.token, json!({"kind": "remove", "body": {"fingerprint": "ab".repeat(32)}}));
+    assert_eq!(propose["error"]["say"], "This device is not in a pool yet; make one, or join one.");
+    let reopened = Node::open(a.dir.path());
+    assert!(reopened.is_ok(), "a fresh state directory opens again as it was");
+}
+
+#[test]
+fn a_state_directory_with_a_pool_json_of_the_old_format_is_refused_with_one_plain_message() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("pool.json"), br#"{"v":1,"pool":"0123456789abcdef","policy":"secure","devices":[]}"#).unwrap();
+    let refused = Node::open(dir.path()).err().expect("an old-format pool is refused");
+    assert_eq!(refused.to_string(), "denied: this device is in an old-format pool: create a new pool");
+    assert!(dir.path().join("pool.json").exists(), "the node changes nothing in it");
 }
 
 // -- convergence and removal ---------------------------------------------------------------------------------------------
@@ -279,23 +290,18 @@ fn an_act_a_person_signed_with_a_key_of_their_own_is_submitted_without_any_signe
     assert_eq!(b.member(&victim.fingerprint()).map(|m| m["status"].clone()), Some(json!("revoked")));
 }
 
-fn beacon_config(beacon_cfg: poolhouse_node::beacon::BeaconConfig, project: Option<&str>, settle_ms: u64) -> NetConfig {
-    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon_cfg), sync_every: None, project: project.map(project_key), settle: std::time::Duration::from_millis(settle_ms) }
+fn beacon_config(beacon_cfg: poolhouse_node::beacon::BeaconConfig, project: Option<&str>) -> NetConfig {
+    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon_cfg), sync_every: None, project: project.map(project_key) }
 }
 
 #[test]
-fn a_lone_device_that_hears_the_beacon_of_an_open_governed_pool_of_its_project_joins_it_whatever_its_id_sorts() {
+fn a_device_in_no_pool_that_hears_the_beacon_of_an_open_governed_pool_of_its_project_joins_it() {
     let (pa, pb) = (udp_port(), udp_port());
-    let a = device_with(beacon_config(beacon(pa, &[pb]), None, 0));
+    let a = device_with(beacon_config(beacon(pa, &[pb]), None));
     let id = found_for(&a, person(ANN, "ann"), "open", &project_key("poolhouse"));
     let dir = tempfile::tempdir().unwrap();
-    drop(Node::open(dir.path()).unwrap());
-    let path = dir.path().join("pool.json");
-    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    record["pool"] = json!("0000000000000000");
-    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
     let node = std::sync::Arc::new(std::sync::Mutex::new(Node::open(dir.path()).unwrap()));
-    let net = Net::start(node.clone(), beacon_config(beacon(pb, &[pa]), Some("poolhouse"), 60_000)).unwrap();
+    let net = Net::start(node.clone(), beacon_config(beacon(pb, &[pa]), Some("poolhouse"))).unwrap();
     let mut b = Dev { dir, node, net, token: String::new() };
     b.token = b.session("demo", "main").1;
     eventually("b to join the open governed pool it hears", 15, || a.is_member(&b.fp()) && b.is_member(&a.fp()));
@@ -469,12 +475,12 @@ fn a_person_is_asked_at_most_twelve_times_in_ten_minutes() {
 #[test]
 fn a_pool_is_not_founded_on_weak_keys_alone_and_nothing_is_left_half_made() {
     let a = device();
-    let legacy = a.pool();
+    let before = a.pool();
     a.node.lock().unwrap().set_signer(std::sync::Arc::new(RigSigner::new().with_key(ANN, "ann", Strength::Weak)));
     let denied = a.call("pool_create", "", &a.token, json!({"title": "home"}));
     assert_eq!(denied["ok"], false);
     assert!(denied["error"]["say"].as_str().unwrap().contains("asks for your presence"), "{denied}");
-    assert_eq!(a.pool(), legacy, "the pool of one it had is still its pool");
+    assert_eq!(a.pool(), before, "it is still in no pool");
     assert!(!a.dir.path().join("pools").exists() || std::fs::read_dir(a.dir.path().join("pools")).unwrap().count() == 0);
 }
 

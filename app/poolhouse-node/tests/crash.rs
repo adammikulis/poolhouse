@@ -87,12 +87,14 @@ fn a_node_killed_with_sigkill_while_taking_rows_recovers_and_converges() {
     let (a, mut b) = (Proc::new(), Proc::new());
     let (an, at, a_origin) = register(&a, "writer-a");
     let (bn, bt, _) = register(&b, "writer-b");
-    kit::grants::allow_process(a.state.path(), "demo", &at, &an, &["add_device"]);
+    kit::grants::allow_process(a.state.path(), "demo", &at, &an, &["add_device", "pool_create"]);
     kit::grants::allow_process(b.state.path(), "demo", &bt, &bn, &["join_pool", "sync_now"]);
     for i in 0..ROWS {
         a.call("post", "demo", &at, json!({"kind": "message", "fields": {"type": "status", "body": format!("a row {i}")}}));
     }
-    let code = a.call("add_device", "", &at, json!({}))["code"].as_str().unwrap().to_string();
+    let (a_der, b_der) = (kit::govnode::cert_of(a.state.path()), kit::govnode::cert_of(b.state.path()));
+    kit::govnode::found_remote(&mut |m, p| a.call(m, "", &at, p), &a_der, poolhouse_node::membership::Policy::Secure, &[b_der]);
+    let code = a.call("add_device", "", &at, json!({"presigned": true}))["code"].as_str().unwrap().to_string();
     b.call("join_pool", "", &bt, json!({"host": "127.0.0.1", "port": a.port(), "passphrase": code}));
     let copy = b.log_of(&a_origin);
 

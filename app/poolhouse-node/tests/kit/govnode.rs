@@ -31,6 +31,29 @@ pub fn pool_of_three() -> (Dev, Dev, Dev) {
     (a, b, c)
 }
 
+/// The certificate of the node whose state directory is ``state`` (a process the test started).
+pub fn cert_of(state: &std::path::Path) -> Vec<u8> {
+    std::fs::read(state.join(poolhouse_node::cert::FILE)).unwrap()
+}
+
+/// Found a pool of the test person's key on a node with no signer, reached by ``call(method, params)`` (a process the test started;
+/// the call answers the result and fails the test when it is refused): the node founds it, and an admit the key signed is
+/// submitted for the node itself and for each of ``others`` (certificates), so a window opened with `presigned` lets them in.
+pub fn found_remote(call: &mut dyn FnMut(&str, serde_json::Value) -> serde_json::Value, own: &[u8], policy: poolhouse_node::membership::Policy, others: &[Vec<u8>]) -> String {
+    use super::gov::{charter, found_act, sign, strong};
+    let charter = charter(&[strong(ANN, "ann")], policy, poolhouse_node::gov::charter::Unit::Person);
+    let founded = call("pool_found", json!({"act": found_act(&charter)}));
+    let devices = std::iter::once((own, "found")).chain(others.iter().map(|d| (d.as_slice(), "join-code")));
+    for (der, how) in devices {
+        let body = json!({"cert": poolhouse_node::fsutil::hex(der), "name": "dev", "how": how, "via": ""});
+        let draft = call("pool_draft", json!({"kind": "admit", "body": body}));
+        let mut act: poolhouse_node::gov::act::Act = serde_json::from_value(draft["act"].clone()).unwrap();
+        sign(&mut act, ANN);
+        call("pool_submit", json!({"act": act}));
+    }
+    founded["pool"].as_str().unwrap().to_string()
+}
+
 /// A node on this device that signs for ``signer`` and founds a pool.
 pub fn found(dev: &Dev, signer: Arc<RigSigner>, policy: &str) -> String {
     found_for(dev, signer, policy, "")

@@ -151,7 +151,7 @@ impl Node {
                 }
             }
         }
-        node.enrol_self()?;
+        node.enrol_self();
         Ok(node)
     }
 

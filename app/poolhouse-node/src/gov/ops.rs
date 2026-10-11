@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use crate::cert::{cert_fingerprint, valid_fingerprint};
 use crate::error::{Error, Result};
-use crate::fsutil::{hex, private_dir};
+use crate::fsutil::hex;
 use crate::membership::{Device, Policy, Pool, Status};
 use crate::node::Node;
 use crate::poolops::wall_ms;
@@ -29,8 +29,12 @@ const MOST_REPLIES: usize = 8;
 const COOLDOWN: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 const MOST_ASKS: usize = 12;
 
-fn upgrade() -> Error {
-    Error::say("denied", "This device's pool needs a one-time upgrade; ask the owner to approve it.", "approval", "ask-owner")
+fn no_pool() -> Error {
+    Error::say("denied", "This device is not in a pool yet; make one, or join one.", "approval", "ask-owner")
+}
+
+fn unknown_epoch() -> Error {
+    declined("That act follows a charter this device does not hold.")
 }
 
 fn no_signer() -> Error {
@@ -124,7 +128,7 @@ fn propose(g: &mut GovPool, signer: Option<&Arc<dyn Signer>>, kind: &str, body: 
     let class = class_of(kind)?;
     let mut act = g.new_act(kind, body, wall)?;
     let signer = signer.ok_or_else(no_signer)?;
-    let charter = g.state().chain.state_for(&act).ok_or_else(upgrade)?.charter.clone();
+    let charter = g.state().chain.state_for(&act).ok_or_else(unknown_epoch)?.charter.clone();
     let named = if kind == "veto" { g.acts().get(act.body["act"].as_str().unwrap_or("")).and_then(|a| a.body["key"].as_str().map(str::to_string)) } else { None };
     let mut keys = keys_for(signer.as_ref(), &charter, class.map_or(1, |c| charter.needed(c)), kind == "delegate_end", &[]);
     if let Some(key) = named {
@@ -172,7 +176,7 @@ impl Node {
     /// member added, removed or left on the pool board.
     pub fn with_gov<T>(&mut self, f: impl FnOnce(&mut GovPool, u64) -> Result<T>) -> Result<T> {
         let before: BTreeMap<String, Status> = self.members.devices().into_iter().map(|d| (d.fingerprint, d.status)).collect();
-        let gov = self.members.gov_mut().ok_or_else(upgrade)?;
+        let gov = self.members.gov_mut().ok_or_else(no_pool)?;
         let out = f(gov, wall_ms());
         gov.save()?;
         self.members.refresh();
@@ -214,10 +218,9 @@ impl Node {
         Ok(due)
     }
 
-    /// Whether this device can admit a device now: always in a legacy pool (the join code is its approval); in a governed pool only
-    /// with a signer whose key is an admin, or as a live delegate.
+    /// Whether this device can admit a device now: only in a pool, and then with a signer whose key is an admin, or as a live delegate.
     pub fn can_admit(&self) -> Result<()> {
-        let Some(g) = self.members.gov() else { return Ok(()) };
+        let g = self.members.gov().ok_or_else(no_pool)?;
         if self.key_binding == KeyBinding::Keystore && g.state().roster.delegates.contains_key(&self.cert.fingerprint()) {
             return Ok(());
         }
@@ -229,13 +232,10 @@ impl Node {
     }
 
     /// Found a pool of this device: the charter names the keys the signer holds, each accepting it, and the device is its first
-    /// member. A device alone in its pool may; the record it had is kept under `pools/retired/`.
+    /// member. A device in no pool yet may.
     pub fn pool_create(&mut self, name: &str, policy: Policy, project: &str) -> Result<Value> {
-        if !self.members.is_legacy() {
+        if !self.members.is_unfounded() {
             return Err(declined("This device already runs a pool; leave it before making another."));
-        }
-        if !self.members.alone() {
-            return Err(upgrade());
         }
         let signer = self.signer.clone().ok_or_else(no_signer)?;
         let now = wall_ms();
@@ -345,7 +345,7 @@ impl Node {
         let signer = self.signer.clone().ok_or_else(no_signer)?;
         self.asking("cosign", |n| n.with_gov(|g, wall| {
             let mut act = g.acts().get(id).cloned().ok_or_else(|| Error::Invalid("this device holds no such act".into()))?;
-            let charter = g.state().chain.state_for(&act).ok_or_else(upgrade)?.charter.clone();
+            let charter = g.state().chain.state_for(&act).ok_or_else(unknown_epoch)?.charter.clone();
             let class = class_of(&act.kind)?;
             let signed = act.admin_keys().into_iter().map(str::to_string).collect::<Vec<_>>();
             let keys = keys_for(signer.as_ref(), &charter, class.map_or(1, |c| charter.needed(c)), act.kind == "delegate_end", &signed.iter().map(String::as_str).collect::<Vec<_>>());
@@ -378,9 +378,9 @@ impl Node {
     /// in effect there (``settled``) and the rest that stand. This device must be in it, and must not be in a pool of its own.
     pub fn adopt_governed(&mut self, found: Act, settled: Vec<Act>, delegates: Vec<Act>, rest: Vec<Act>) -> Result<()> {
         if !self.members.can_join_other() {
-            return Err(Error::Denied("a device that already has members does not change pool".into()));
+            return Err(Error::Denied("a device that is in a pool does not change pool".into()));
         }
-        let (old, wall) = (self.members.id.clone(), wall_ms());
+        let wall = wall_ms();
         let mut pool = GovPool::create(&self.dir, found)?;
         pool.ingest_many(settled, wall, true);
         pool.ingest_many(delegates, wall, false);
@@ -392,35 +392,18 @@ impl Node {
             return Err(Error::Denied("the pool does not list this device".into()));
         }
         pool.save()?;
-        self.retire_legacy(&old)?;
-        self.members = Pool::governed(&self.dir, pool);
+        self.members = Pool::governed(pool);
         Ok(())
     }
 
-    /// Keep the `pool.json` of the pool of one this device had, under `pools/retired/`, once it is in a governed pool.
-    fn retire_legacy(&self, old: &str) -> Result<()> {
-        let legacy = self.dir.join("pool.json");
-        if legacy.is_file() {
-            let retired = self.dir.join("pools").join("retired");
-            private_dir(&retired)?;
-            std::fs::rename(&legacy, retired.join(format!("legacy-{old}.json")))?;
-        }
-        Ok(())
-    }
-
-    /// Start the governed pool of the founding act ``found``, which this device may do while it is alone in a pool no admin governs.
+    /// Start the governed pool of the founding act ``found``, which this device may do while it is in no pool.
     fn start_pool(&mut self, found: Act) -> Result<String> {
-        if !self.members.is_legacy() {
+        if !self.members.is_unfounded() {
             return Err(declined("This device already runs a pool; leave it before making another."));
         }
-        if !self.members.alone() {
-            return Err(upgrade());
-        }
-        let old = self.members.id.clone();
         let pool = GovPool::create(&self.dir, found)?;
-        self.retire_legacy(&old)?;
         let id = pool.id.clone();
-        self.members = Pool::governed(&self.dir, pool);
+        self.members = Pool::governed(pool);
         Ok(id)
     }
 
@@ -461,7 +444,7 @@ impl Node {
     /// a key that signs elsewhere and hands the act back through `pool_submit`.
     pub fn pool_draft(&mut self, kind: &str, body: Value) -> Result<Value> {
         let body = self.with_cut(kind, body);
-        let g = self.members.gov().ok_or_else(upgrade)?;
+        let g = self.members.gov().ok_or_else(no_pool)?;
         let act = g.new_act(kind, body, wall_ms())?;
         super::body::parse(&act).map_err(|e| declined(&e.to_string()))?;
         Ok(json!({"act": act, "sign_bytes": hex(&act.sign_bytes()), "summary": describe(&act, g)}))
@@ -484,9 +467,7 @@ impl Node {
     /// How this device's pool is governed, as `pool_status` shows it.
     pub fn gov_view(&self) -> Value {
         let Some(g) = self.members.gov() else {
-            let lone = self.members.alone();
-            let say = if lone { "This device is a pool of one; ask me to make a pool when you want others to join it." } else { "This device's pool needs a one-time upgrade; ask the owner to approve it." };
-            return json!({"mode": "legacy", "needs_migration": !lone, "say": say});
+            return json!({"mode": "unfounded", "say": "This device is a pool of one with no admins; ask me to make a pool when you want others to join it."});
         };
         let (s, now) = (g.state(), g.clock.now_ms());
         let latest = s.chain.latest();
