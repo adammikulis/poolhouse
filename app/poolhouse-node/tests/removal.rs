@@ -102,6 +102,20 @@ fn a_cycle_that_learns_of_a_removal_does_not_go_on_to_dial_the_removed_device() 
 }
 
 #[test]
+fn a_member_removed_while_it_is_being_dialed_is_not_recorded_as_a_failed_dial() {
+    let (a, b) = (device(), device());
+    a.join_with_code(&b);
+    let stalled = b.node.lock().unwrap();
+    let net = a.net.clone();
+    let dial = std::thread::spawn(move || net.sync_once(true).unwrap());
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    remove(&a, &b);
+    drop(stalled);
+    assert_eq!(dial.join().unwrap(), 0, "a dial that ended on a removed member was counted as reached");
+    assert_eq!(a.member(&b.fp()).unwrap()["last_error"], "", "the refusal to talk to a removed member was recorded against it");
+}
+
+#[test]
 fn a_cycle_dials_a_member_that_is_not_removed() {
     let (a, b) = (device(), device());
     a.join_with_code(&b);
