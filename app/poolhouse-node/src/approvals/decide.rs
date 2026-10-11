@@ -2,7 +2,7 @@
 
 use serde_json::{json, Value};
 
-use crate::approvals::fatigue::{kind_of, requester, Outcome, Requester};
+use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
 use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
@@ -49,8 +49,8 @@ pub fn audit(node: &mut Node, event: &str, a: &Approval, detail: &str) {
 
 /// Who made the request ``a``, as the brakes count them.
 pub fn requester_of(node: &mut Node, a: &Approval) -> Requester {
-    let (harness, model) = node.host(&a.board).ok().and_then(|h| h.names.get(&a.session).map(|i| (i.harness.clone(), i.model.clone()))).unwrap_or_default();
-    requester(&a.board, &a.session, &harness, &model)
+    let root = node.host(&a.board).map_or_else(|_| a.session.clone(), |h| h.names.root(&a.session));
+    requester(&a.board, &a.session, &root)
 }
 
 /// What a hold or a suspension that just began is told to the person and to the pool: an audit entry, an event the pool's other
@@ -70,18 +70,19 @@ fn report(node: &mut Node, a: &Approval, out: &Outcome) -> Result<()> {
     Ok(())
 }
 
-/// A request of grants was declined, blocked, answered with the wrong number or ran out: count it against its requester. Only a person's
-/// own answer (``explicit``) makes the scopes it asked for count as declined.
-pub fn count_against(node: &mut Node, a: &Approval, explicit: bool) -> Result<()> {
+/// A request of grants went wrong in the way ``cause`` says (the person declined it, blocked it or chose the wrong number, it ran out
+/// unanswered, or its requester withdrew it): count it against its requester. Only a person's own answer makes the scopes it asked for
+/// count as declined, and only a person's answer counts against the agent and the pool.
+pub fn count_against(node: &mut Node, a: &Approval, cause: Cause) -> Result<()> {
     let now = node.now_ms();
     let who = requester_of(node, a);
     let asks = a.asks();
     let scopes: Vec<(&str, &str)> = asks.iter().map(|k| (k["action"].as_str().unwrap_or(""), k["resource"].as_str().unwrap_or(""))).collect();
-    if explicit {
+    if cause == Cause::Person {
         node.fatigue.note_declined(&a.board, &scopes, now)?;
     }
     let actions: Vec<&str> = scopes.iter().map(|p| p.0).collect();
-    let out = node.fatigue.decline(&who, &kind_of(&actions), now)?;
+    let out = node.fatigue.decline(&who, &kind_of(&actions), cause, now)?;
     report(node, a, &out)
 }
 
@@ -95,7 +96,7 @@ pub fn sweep(node: &mut Node) -> Result<()> {
             crate::phone::drop_pending(node, &a);
         }
         if a.kind == GRANTS && !held {
-            count_against(node, &a, false)?;
+            count_against(node, &a, Cause::Timeout)?;
         }
     }
     for key in node.fatigue.ended(now)? {
@@ -192,7 +193,7 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
         _ => "approval.denied",
     }, &a, &format!("key {}{}", &d.key[..12], if matched { "" } else { "; the number chosen did not match" }));
     if !matched {
-        count_against(node, &a, true)?;
+        count_against(node, &a, Cause::Person)?;
         return denied(mismatch);
     }
     let result = if state == APPROVED { approved(node, &a, d, now) } else { declined(node, &a, d.decision, now) };
@@ -217,7 +218,7 @@ fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<(
         PHONE_ADD => crate::phone::drop_pending(node, a),
         HOLD => summary::apply(node, a, decision)?,
         GRANTS => {
-            count_against(node, a, true)?;
+            count_against(node, a, Cause::Person)?;
             if decision == "block" {
                 let key = requester_of(node, a).keys[0].clone();
                 let ms = node.fatigue.rules.block_ms;

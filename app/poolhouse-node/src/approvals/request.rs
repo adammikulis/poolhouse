@@ -120,7 +120,7 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     }
     let now = node.now_ms();
     let (model, harness, parent) = node.host(board)?.names.get(&name).map(|i| (i.model.clone(), i.harness.clone(), i.parent.clone())).unwrap_or_default();
-    let who = fatigue::requester(board, &name, &harness, &model);
+    let who = fatigue::requester(board, &name, &node.host(board)?.names.root(&name));
     let actions: Vec<&str> = asks.iter().map(|a| a.action.as_str()).collect();
     let held_key = match node.fatigue.standing(&who, &kind_of(&actions), now) {
         Standing::Refused { until_ms, cause } => {

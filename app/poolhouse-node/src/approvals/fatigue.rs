@@ -33,10 +33,13 @@ pub struct Rules {
     pub declined_ms: u64,
     /// After this long a requester may ask for the same kind again after its first decline.
     pub backoff_ms: u64,
-    /// The same-kind declines or timeouts of a session, of an agent (any kind) and of a pool (any kind) that hold it.
+    /// What holds a requester: the same-kind declines or timeouts of its session; the person's declines of any kind of its agent (the
+    /// session and the subagents under it); the person's declines of any kind on its pool. A timeout or a withdrawal counts at the session
+    /// only, so what one session leaves unanswered never holds another.
     pub hold_after: [usize; 3],
-    /// How long the first and the second hold of the last day last; a third suspends instead.
-    pub hold_steps_ms: [u64; 2],
+    /// How long the first, the second and the third hold of the last day last. A third hold that the person's own declines started
+    /// suspends the session instead; one that timeouts started does not, so an agent that runs while the person sleeps is held, never suspended.
+    pub hold_steps_ms: [u64; 3],
     pub suspend_ms: u64,
     /// What a deny and block lasts.
     pub block_ms: u64,
@@ -52,13 +55,14 @@ pub struct Rules {
 impl Default for Rules {
     fn default() -> Rules {
         Rules {
-            window_ms: DAY_MS, declined_ms: 30 * DAY_MS, backoff_ms: 30_000, hold_after: [2, 5, 20], hold_steps_ms: [HOUR_MS, 4 * HOUR_MS],
+            window_ms: DAY_MS, declined_ms: 30 * DAY_MS, backoff_ms: 30_000, hold_after: [2, 5, 20], hold_steps_ms: [HOUR_MS, 4 * HOUR_MS, DAY_MS],
             suspend_ms: DAY_MS, block_ms: DAY_MS, urgent_per_requester: 3, urgent_pending: 8, pushes_per_hour: 10, quiet_per_hour: 4, most_held: 8,
         }
     }
 }
 
-/// Who asks, as the three levels the brakes count at: the session, the agent (its harness and model) and the pool (the board).
+/// Who asks, as the three levels the brakes count at: the session, the agent (the main session it belongs to, which the node knows from
+/// who registered whom, never from the model or harness a session says it is) and the pool (the board).
 #[derive(Clone, Debug)]
 pub struct Requester {
     pub keys: [String; 3],
@@ -66,10 +70,18 @@ pub struct Requester {
     pub board: String,
 }
 
-/// The requester of the session ``name`` of ``board`` whose harness and model are as given.
-pub fn requester(board: &str, name: &str, harness: &str, model: &str) -> Requester {
-    let agent = if harness.is_empty() && model.is_empty() { name.to_string() } else { format!("{harness}/{model}") };
-    Requester { keys: [format!("session:{board}/{name}"), format!("agent:{board}/{agent}"), format!("pool:{board}")], session: name.into(), board: board.into() }
+/// The requester of the session ``name`` of ``board`` whose main session (the top of the chain of sessions that started it) is ``root``.
+pub fn requester(board: &str, name: &str, root: &str) -> Requester {
+    Requester { keys: [format!("session:{board}/{name}"), format!("agent:{board}/{root}"), format!("pool:{board}")], session: name.into(), board: board.into() }
+}
+
+/// How a request of a requester went wrong: the person said no (or chose the wrong number), it ran out unanswered, or the requester
+/// withdrew it after the person was told.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cause {
+    Person,
+    Timeout,
+    Cancel,
 }
 
 /// What the brakes say about a requester that asks for a kind of thing now.
@@ -95,10 +107,10 @@ pub struct Outcome {
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 struct Entry {
-    /// When each decline or timeout happened and of what kind of request.
-    declines: Vec<(u64, String)>,
-    /// When each hold of the last day began.
-    holds: Vec<u64>,
+    /// When each decline or timeout happened, of what kind of request, and whether the person made it.
+    declines: Vec<Mark>,
+    /// When each hold of the last day began, and whether the person's own declines started it.
+    holds: Vec<(u64, bool)>,
     hold_until_ms: u64,
     refuse_until_ms: u64,
     refuse_cause: String,
@@ -109,6 +121,13 @@ struct Entry {
     summary: String,
     summary_queued: u64,
     answered: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct Mark {
+    at: u64,
+    kind: String,
+    explicit: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -172,8 +191,8 @@ impl Fatigue {
     fn prune(&mut self, now: u64) {
         let (window, declined) = (self.rules.window_ms, self.rules.declined_ms);
         for e in self.file.entries.values_mut() {
-            e.declines.retain(|(at, _)| now.saturating_sub(*at) < window);
-            e.holds.retain(|at| now.saturating_sub(*at) < window);
+            e.declines.retain(|m| now.saturating_sub(m.at) < window);
+            e.holds.retain(|(at, _)| now.saturating_sub(*at) < window);
         }
         self.file.declined.retain(|d| now.saturating_sub(d.at_ms) < declined);
         self.file.pushes.retain(|at| now.saturating_sub(*at) < HOUR_MS);
@@ -187,7 +206,10 @@ impl Fatigue {
         if let Some(e) = entries.iter().filter_map(|(_, e)| *e).find(|e| e.refuse_until_ms > now) {
             return Standing::Refused { until_ms: e.refuse_until_ms, cause: e.refuse_cause.clone() };
         }
-        if let Some((key, e)) = entries.iter().find_map(|(k, e)| e.filter(|e| e.hold_until_ms > now).map(|e| ((*k).clone(), e))) {
+        // What holds an agent or a pool holds only the sessions of it that were themselves declined or left unanswered: a session nobody
+        // declined is never held for what others did.
+        let own = entries[0].1.is_some_and(|e| !e.declines.is_empty());
+        if let Some((key, e)) = entries.iter().enumerate().find_map(|(i, (k, e))| e.filter(|e| e.hold_until_ms > now && (i == 0 || own)).map(|e| ((*k).clone(), e))) {
             return Standing::Held { until_ms: e.hold_until_ms, key };
         }
         match entries[0].1 {
@@ -196,29 +218,31 @@ impl Fatigue {
         }
     }
 
-    /// A decline, or a request that ran out unanswered, of a request of ``kind`` by ``who``. Counted at the three levels; a level that
-    /// reaches its threshold starts a hold, and a third hold in a day suspends.
-    pub fn decline(&mut self, who: &Requester, kind: &str, now: u64) -> Result<Outcome> {
+    /// A request of ``kind`` by ``who`` went wrong in the way ``cause`` says. A decline by the person is counted at the session, the agent
+    /// and the pool; a timeout or a withdrawal at the session only. A level that reaches its threshold starts a hold, and a third hold in a
+    /// day that the person's own declines started suspends the session, never the agent or the pool.
+    pub fn decline(&mut self, who: &Requester, kind: &str, cause: Cause, now: u64) -> Result<Outcome> {
         self.prune(now);
-        let mut outcome = Outcome::default();
-        for (level, key) in who.keys.iter().enumerate() {
+        let (explicit, mut outcome) = (cause == Cause::Person, Outcome::default());
+        for (level, key) in who.keys.iter().enumerate().take(if explicit { 3 } else { 1 }) {
             let rules = self.rules.clone();
             let e = self.file.entries.entry(key.clone()).or_default();
-            e.declines.push((now, kind.to_string()));
-            let count = if level == 0 { e.declines.iter().filter(|(_, k)| k == kind).count() } else { e.declines.len() };
+            e.declines.push(Mark { at: now, kind: kind.to_string(), explicit });
+            let count = if level == 0 { e.declines.iter().filter(|m| m.kind == kind).count() } else { e.declines.len() };
             if count < rules.hold_after[level] || e.hold_until_ms > now || e.refuse_until_ms > now {
                 continue;
             }
-            e.holds.push(now);
+            let by_person = e.declines.iter().any(|m| m.explicit && (level != 0 || m.kind == kind));
+            e.holds.push((now, by_person));
             e.answered = false;
             e.summary.clear();
             e.summary_queued = 0;
-            if e.holds.len() > rules.hold_steps_ms.len() {
+            if level == 0 && e.holds.iter().filter(|h| h.1).count() > rules.hold_steps_ms.len() - 1 {
                 (e.refuse_until_ms, e.refuse_cause, e.penalty) = (now + rules.suspend_ms, "suspended".into(), e.penalty + 20);
                 e.hold_until_ms = 0;
                 outcome.suspended = Some(key.clone());
             } else {
-                let step = rules.hold_steps_ms[e.holds.len() - 1];
+                let step = rules.hold_steps_ms[(e.holds.len() - 1).min(rules.hold_steps_ms.len() - 1)];
                 (e.hold_until_ms, e.penalty) = (now + step, e.penalty + 5);
                 outcome.held = Some((key.clone(), step));
             }
@@ -235,7 +259,7 @@ impl Fatigue {
     pub fn approved(&mut self, who: &Requester, kind: &str) -> Result<()> {
         for key in &who.keys {
             if let Some(e) = self.file.entries.get_mut(key) {
-                e.declines.retain(|(_, k)| k != kind);
+                e.declines.retain(|m| m.kind != kind);
                 e.not_before_ms = 0;
             }
         }
@@ -307,9 +331,9 @@ impl Fatigue {
         self.save()
     }
 
-    /// Whether ``who`` is suspended now: a suspended session holds no grant.
+    /// Whether the session of ``who`` is suspended now: it holds no grant. The agent it belongs to and its pool are never suspended for it.
     pub fn suspended(&self, who: &Requester, now: u64) -> bool {
-        who.keys.iter().any(|k| self.file.entries.get(k).is_some_and(|e| e.refuse_until_ms > now && e.refuse_cause == "suspended"))
+        self.file.entries.get(&who.keys[0]).is_some_and(|e| e.refuse_until_ms > now && e.refuse_cause == "suspended")
     }
 
     /// The penalty ``key`` has earned for the trust ledger to read.
@@ -382,7 +406,7 @@ mod tests {
     }
 
     fn who() -> Requester {
-        requester("demo", "claude-a", "claude-code", "sonnet")
+        requester("demo", "claude-a", "lead-a")
     }
 
     #[test]
@@ -399,21 +423,21 @@ mod tests {
         let mut f = ledger();
         let (me, now) = (who(), 1_000_000);
         assert_eq!(f.standing(&me, "add_device", now), Standing::Free);
-        assert_eq!(f.decline(&me, "add_device", now).unwrap(), Outcome::default());
+        assert_eq!(f.decline(&me, "add_device", Cause::Person, now).unwrap(), Outcome::default());
         assert_eq!(f.standing(&me, "add_device", now + 10), Standing::Backoff { until_ms: now + 1000 });
         assert_eq!(f.standing(&me, "sync_now", now + 10), Standing::Free, "another kind is not held back");
         assert_eq!(f.standing(&me, "add_device", now + 2000), Standing::Free, "after the wait it may ask");
-        let second = f.decline(&me, "add_device", now + 2000).unwrap();
+        let second = f.decline(&me, "add_device", Cause::Person, now + 2000).unwrap();
         assert_eq!(second.held, Some(("session:demo/claude-a".to_string(), HOUR_MS)));
         assert!(matches!(f.standing(&me, "sync_now", now + 3000), Standing::Held { .. }), "a hold covers every kind");
         let later = now + HOUR_MS + 5000;
         assert_eq!(f.ended(later).unwrap(), vec!["session:demo/claude-a".to_string()]);
         assert_eq!(f.standing(&me, "add_device", later), Standing::Free);
-        let again = f.decline(&me, "add_device", later).unwrap();
+        let again = f.decline(&me, "add_device", Cause::Person, later).unwrap();
         assert_eq!(again.held.map(|h| h.1), Some(4 * HOUR_MS), "the first decline after a hold holds again, for longer");
         let t3 = later + 4 * HOUR_MS + 5000;
         f.ended(t3).unwrap();
-        let third = f.decline(&me, "add_device", t3).unwrap();
+        let third = f.decline(&me, "add_device", Cause::Person, t3).unwrap();
         assert!(third.suspended.is_some() && third.held.is_none(), "{third:?}");
         assert!(matches!(f.standing(&me, "sync_now", t3 + 20), Standing::Refused { cause, .. } if cause == "suspended"));
         assert!(f.suspended(&me, t3 + 20) && f.penalty("session:demo/claude-a") >= 30);
@@ -422,10 +446,10 @@ mod tests {
     #[test]
     fn an_approval_clears_what_that_kind_was_declined_for_and_a_block_refuses_only_that_session() {
         let mut f = ledger();
-        let (me, other, now) = (who(), requester("demo", "claude-b", "claude-code", "sonnet"), 5_000_000);
-        f.decline(&me, "add_device", now).unwrap();
+        let (me, other, now) = (who(), requester("demo", "claude-b", "lead-a"), 5_000_000);
+        f.decline(&me, "add_device", Cause::Person, now).unwrap();
         f.approved(&me, "add_device").unwrap();
-        assert_eq!(f.decline(&me, "add_device", now + 10).unwrap(), Outcome::default(), "the earlier decline no longer counts");
+        assert_eq!(f.decline(&me, "add_device", Cause::Person, now + 10).unwrap(), Outcome::default(), "the earlier decline no longer counts");
         f.block(&me.keys[0], now + 20, DAY_MS).unwrap();
         assert!(matches!(f.standing(&me, "sync_now", now + 30), Standing::Refused { cause, .. } if cause == "blocked"));
         assert!(!f.suspended(&me, now + 30), "a block does not take the grants");
@@ -435,21 +459,70 @@ mod tests {
     }
 
     #[test]
-    fn five_declines_of_one_agent_hold_every_session_of_it_and_a_scope_declined_is_remembered() {
+    fn five_declines_by_the_person_of_one_agent_hold_the_sessions_of_it_that_were_declined_and_a_scope_declined_is_remembered() {
         let mut f = ledger();
         let now = 9_000_000;
         for (i, name) in ["claude-a", "claude-b", "claude-c", "claude-d", "claude-g"].into_iter().enumerate() {
-            f.decline(&requester("demo", name, "claude-code", "sonnet"), "add_device", now + i as u64).unwrap();
+            f.decline(&requester("demo", name, "lead-a"), "add_device", Cause::Person, now + i as u64).unwrap();
         }
-        let sixth = requester("demo", "claude-e", "claude-code", "sonnet");
-        assert!(matches!(f.standing(&sixth, "sync_now", now + 10), Standing::Held { key, .. } if key == "agent:demo/claude-code/sonnet"));
-        assert_eq!(f.standing(&requester("demo", "claude-f", "other", "model"), "sync_now", now + 10), Standing::Free);
+        let declined = requester("demo", "claude-a", "lead-a");
+        assert!(matches!(f.standing(&declined, "sync_now", now + 10), Standing::Held { key, .. } if key == "agent:demo/lead-a"));
+        assert_eq!(f.standing(&requester("demo", "claude-e", "lead-a"), "sync_now", now + 10), Standing::Free, "a session of the agent nobody declined is not held");
+        assert_eq!(f.standing(&requester("demo", "claude-f", "lead-b"), "sync_now", now + 10), Standing::Free, "nor is another agent");
         assert_eq!(f.declined_before("demo", &[("add_device", "*")], now), 0);
         f.note_declined("demo", &[("add_device", "*")], now).unwrap();
         f.note_declined("demo", &[("add_device", "*"), ("sync_now", "*")], now + 1).unwrap();
         assert_eq!(f.declined_before("demo", &[("add_device", "*"), ("link_read", "a>b")], now + 2), 2);
         assert_eq!(f.declined_before("lab", &[("add_device", "*")], now + 2), 0, "another board");
         assert_eq!(f.declined_before("demo", &[("add_device", "*")], now + 31 * DAY_MS), 0, "forgotten after thirty days");
+    }
+
+    #[test]
+    fn timeouts_and_withdrawals_count_at_the_session_only_and_never_suspend() {
+        let mut f = ledger();
+        let (me, now) = (who(), 20_000_000);
+        for (i, name) in ["claude-a", "claude-b", "claude-c", "claude-d", "claude-g", "claude-h"].into_iter().enumerate() {
+            f.decline(&requester("demo", name, "lead-a"), "add_device", Cause::Timeout, now + i as u64).unwrap();
+        }
+        assert_eq!(f.standing(&requester("demo", "claude-e", "lead-a"), "sync_now", now + 10), Standing::Free, "six timeouts of other sessions hold nobody else");
+        let mut t = now + 100;
+        let mut suspended = false;
+        for _ in 0..8 {
+            t += DAY_MS / 20;
+            f.ended(t).unwrap();
+            suspended |= f.decline(&me, "add_device", Cause::Timeout, t).unwrap().suspended.is_some();
+            f.decline(&me, "add_device", Cause::Cancel, t + 1).unwrap();
+        }
+        assert!(!suspended && !f.suspended(&me, t), "a requester that only times out is held, never suspended");
+        let (mut steps, mut at, mut held) = (Vec::new(), t + 5 * DAY_MS, Fatigue::open(&tempfile::tempdir().unwrap().keep().join("fatigue.json")).unwrap());
+        for _ in 0..4 {
+            held.ended(at).unwrap();
+            for offset in 0..2 {
+                steps.extend(held.decline(&me, "add_device", Cause::Timeout, at + offset).unwrap().held.map(|h| h.1));
+            }
+            at += steps.last().copied().unwrap_or(0) + 10;
+        }
+        assert_eq!(steps[..3], [HOUR_MS, 4 * HOUR_MS, DAY_MS], "each hold of timeouts is longer, and none is a suspension");
+        assert_eq!(f.penalty("agent:demo/lead-a"), 0, "and the agent has no penalty for it");
+    }
+
+    #[test]
+    fn the_holds_of_an_agent_and_of_a_pool_never_suspend_anyone_however_often_they_come() {
+        let mut f = ledger();
+        let mut t = 40_000_000;
+        let mut kinds = Vec::new();
+        for round in 0..8 {
+            t += DAY_MS / 4;
+            f.ended(t).unwrap();
+            for i in 0..5 {
+                let session = requester("demo", &format!("claude-{round}-{i}"), "lead-a");
+                let out = f.decline(&session, &format!("kind-{round}-{i}"), Cause::Person, t + i).unwrap();
+                assert!(out.suspended.is_none(), "round {round}: {out:?}");
+                kinds.push(session);
+            }
+        }
+        assert!(kinds.iter().all(|s| !f.suspended(s, t + 100)), "no session was suspended for what its agent's other sessions did");
+        assert!(f.penalty("agent:demo/lead-a") > 0 && !f.suspended(&requester("demo", "claude-new", "lead-a"), t + 100));
     }
 
     #[test]

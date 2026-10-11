@@ -24,7 +24,7 @@ pub const FLOOD: &str = "flood";
 pub fn label_of(key: &str) -> String {
     match key.split_once(':') {
         Some(("session", rest)) => rest.split_once('/').map_or_else(|| rest.to_string(), |(b, n)| format!("the session {n} on board {b}")),
-        Some(("agent", rest)) => rest.split_once('/').map_or_else(|| rest.to_string(), |(b, a)| format!("the agent {a} on board {b}")),
+        Some(("agent", rest)) => rest.split_once('/').map_or_else(|| rest.to_string(), |(b, a)| format!("the agent led by {a} on board {b}")),
         Some(("pool", board)) => format!("the agents of board {board}"),
         _ => "the node".into(),
     }

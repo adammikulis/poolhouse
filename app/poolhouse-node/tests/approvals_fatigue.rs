@@ -163,20 +163,91 @@ fn an_approval_wipes_out_what_that_kind_was_declined_for_so_one_decline_before_i
     assert_eq!(d["state"], "pending", "a requester the person approved in between is not held for two declines far apart: {d}");
 }
 
+/// A session registered by the main session ``lead`` (a subagent): its name and token.
+fn child(rig: &Rig, lead_token: &str, id: &str) -> (String, String) {
+    let made = ok(rig.call("register", "demo", lead_token, json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": id})));
+    (made["name"].as_str().unwrap().into(), made["token"].as_str().unwrap().into())
+}
+
+/// The person's decline of a fresh request for ``resource`` by the session ``token``.
+fn declined(rig: &Rig, phone: &FakePhone, token: &str, resource: &str) {
+    let made = ok(rig.ask("demo", token, json!([ask("link_read", resource)]), json!({})));
+    ok(answer(rig, phone, made["id"].as_str().unwrap(), "deny"));
+}
+
 #[test]
-fn five_declines_across_the_sessions_of_one_agent_hold_every_session_of_it_with_one_notice_about_the_agent() {
+fn five_declines_by_the_person_across_one_agents_sessions_hold_those_sessions_that_were_declined_and_no_innocent_one() {
     let (rig, phone) = setup();
-    for i in 0..5 {
-        let (_, token) = rig.session("demo", &format!("agent-{i}"));
-        let made = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})));
-        ok(answer(&rig, &phone, made["id"].as_str().unwrap(), "deny"));
+    let (lead, lead_token) = rig.session("demo", "lead");
+    let kids: Vec<(String, String)> = (0..5).map(|i| child(&rig, &lead_token, &format!("kid-{i}"))).collect();
+    declined(&rig, &phone, &lead_token, "a>b");
+    for (i, (_, token)) in kids.iter().take(4).enumerate() {
+        declined(&rig, &phone, token, &format!("c>d{i}"));
     }
-    let (_, newcomer) = rig.session("demo", "agent-new");
-    let held = ok(rig.ask("demo", &newcomer, json!([ask("link_read", "a>b")]), json!({})));
-    assert_eq!(held["state"], "held", "a session that was never declined is held with the agent it belongs to");
+    let held = ok(rig.ask("demo", &kids[0].1, json!([ask("sync_now", "*")]), json!({})));
+    assert_eq!(held["state"], "held", "a session of the agent that was itself declined is held with it");
     let notice = of_kind(&rig, "hold", "pending");
     assert_eq!(notice.len(), 1);
-    assert!(notice[0]["text"].as_str().unwrap().contains("the agent claude-code/claude-sonnet-5-5 on board demo"), "{}", notice[0]["text"]);
+    assert!(notice[0]["text"].as_str().unwrap().contains(&format!("the agent led by {lead} on board demo")), "{}", notice[0]["text"]);
+    let innocent = ok(rig.ask("demo", &kids[4].1, json!([ask("sync_now", "*")]), json!({})));
+    assert_eq!(innocent["state"], "pending", "a sibling nobody declined is not held for what the others did: {innocent}");
+    let (_, stranger) = rig.session("demo", "stranger");
+    assert_eq!(ok(rig.ask("demo", &stranger, json!([ask("sync_now", "*")]), json!({})))["state"], "pending", "nor is another agent that says it is the same model");
+}
+
+#[test]
+fn what_one_session_leaves_unanswered_never_holds_another_of_the_same_agent_or_the_same_model() {
+    let (rig, _phone) = setup();
+    let (_, lead) = rig.session("demo", "lead");
+    for i in 0..7 {
+        let (_, token) = child(&rig, &lead, &format!("sleeper-{i}"));
+        let made = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})));
+        rig.node.lock().unwrap().approvals.update(made["id"].as_str().unwrap(), |a| a.expires_ms = 1).unwrap();
+    }
+    let (_, sibling) = child(&rig, &lead, "sibling");
+    let made = ok(rig.ask("demo", &sibling, json!([ask("sync_now", "*")]), json!({})));
+    assert_eq!(made["state"], "pending", "seven timeouts of sessions of the same agent hold no other session of it: {made}");
+    let (_, other) = rig.session("demo", "someone-else");
+    assert_eq!(ok(rig.ask("demo", &other, json!([ask("sync_now", "*")]), json!({})))["state"], "pending", "nor another agent that says it is the same model");
+    let (_, again) = child(&rig, &lead, "sleeper-0");
+    assert_eq!(ok(rig.ask("demo", &again, json!([ask("link_read", "a>b")]), json!({})))["state"], "pending", "and a session with one timeout is not held");
+}
+
+#[test]
+fn an_agent_that_runs_while_the_person_sleeps_is_held_by_its_timeouts_never_suspended() {
+    let (rig, phone) = setup();
+    rig.node.lock().unwrap().fatigue.rules.hold_steps_ms.fill(1);
+    let (name, token) = rig.session("demo", "night-agent");
+    let granted = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})));
+    ok(answer(&rig, &phone, granted["id"].as_str().unwrap(), "approve"));
+    let holder = poolhouse_node::identity::Holder { board: "demo".into(), name };
+    for round in 0..5 {
+        let made = rig.ask("demo", &token, json!([ask("link_read", &format!("a>b{round}"))]), json!({}));
+        assert!(made["ok"] == true, "round {round}: a timeout is never a reason to refuse the agent: {made}");
+        if made["result"]["state"] == "pending" {
+            rig.node.lock().unwrap().approvals.update(made["result"]["id"].as_str().unwrap(), |a| a.expires_ms = 1).unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(8));
+    }
+    assert!(poolhouse_node::grants::holds(&mut rig.node.lock().unwrap(), &holder, "sync_now", &poolhouse_node::grants::Scope::on("*")).unwrap(), "five rounds of timeouts take no grant");
+}
+
+#[test]
+fn a_suspension_takes_the_grants_of_the_one_session_that_earned_it_and_no_other() {
+    let (rig, phone) = setup();
+    rig.node.lock().unwrap().fatigue.rules.hold_steps_ms.fill(1);
+    let (innocent, innocent_token) = rig.session("demo", "innocent");
+    let granted = ok(rig.ask("demo", &innocent_token, json!([ask("sync_now", "*")]), json!({})));
+    ok(answer(&rig, &phone, granted["id"].as_str().unwrap(), "approve"));
+    for i in 0..9 {
+        let (_, token) = rig.session("demo", &format!("pest-{i}"));
+        let made = ok(rig.ask("demo", &token, json!([ask("link_read", &format!("a>b{i}"))]), json!({})));
+        ok(answer(&rig, &phone, made["id"].as_str().unwrap(), "deny"));
+        std::thread::sleep(std::time::Duration::from_millis(8));
+    }
+    let holder = poolhouse_node::identity::Holder { board: "demo".into(), name: innocent };
+    assert!(poolhouse_node::grants::holds(&mut rig.node.lock().unwrap(), &holder, "sync_now", &poolhouse_node::grants::Scope::on("*")).unwrap(), "nine other sessions of the same model, declined, took nothing from this one");
+    assert_eq!(ok(rig.ask("demo", &innocent_token, json!([ask("link_read", "x>y")]), json!({})))["state"], "pending", "and it is not held");
 }
 
 #[test]
@@ -404,7 +475,7 @@ fn three_holds_in_a_day_suspend_the_session_its_grants_stop_and_the_pool_is_told
     let (rig, phone) = setup();
     {
         let mut n = rig.node.lock().unwrap();
-        n.fatigue.rules.hold_steps_ms = [1, 1];
+        n.fatigue.rules.hold_steps_ms.fill(1);
     }
     let (name, token) = rig.session("demo", "agent-1");
     let granted = ok(rig.ask("demo", &token, json!([ask("sync_now", "*")]), json!({})));
@@ -581,7 +652,7 @@ fn the_ledger_survives_a_restart_so_a_hold_is_not_forgotten() {
     }
     drop(rig.node);
     let mut node = poolhouse_node::node::Node::open(rig.dir.path()).unwrap();
-    let who = requester("demo", &name, "claude-code", "claude-sonnet-5-5");
+    let who = requester("demo", &name, &name);
     let now = node.now_ms();
     assert!(matches!(node.fatigue.standing(&who, &kind_of(&["sync_now"]), now), poolhouse_node::approvals::fatigue::Standing::Held { .. }));
 }

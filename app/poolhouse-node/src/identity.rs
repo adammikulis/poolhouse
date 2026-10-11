@@ -105,6 +105,19 @@ impl Registry {
         self.names.get(name)
     }
 
+    /// The main session ``name`` belongs to: the top of the chain of sessions that started it, which the node knows from who registered
+    /// whom and not from anything a session says about itself.
+    pub fn root(&self, name: &str) -> String {
+        let mut at = name;
+        for _ in 0..16 {
+            match self.names.get(at) {
+                Some(i) if !i.parent.is_empty() => at = i.parent.as_str(),
+                _ => break,
+            }
+        }
+        at.to_string()
+    }
+
     pub fn all(&self) -> &BTreeMap<String, Ident> {
         &self.names
     }
