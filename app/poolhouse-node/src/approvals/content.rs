@@ -20,7 +20,6 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "link_remove" => (ROUTINE, "It ends a sharing link, and sharing can be made again."),
         "note_verify" => (ROUTINE, "It records that a note's command was run; it runs nothing."),
         "land_control" => (ROUTINE, "It can pause, resume and cancel landing requests; it lands nothing itself."),
-        "set_join_policy" => (SENSITIVE, "It changes who can join this pool; OPEN lets devices on the network in without asking."),
         "add_device" => (SENSITIVE, "It makes a code that lets another device join this pool."),
         "join_pool" => (SENSITIVE, "It joins this device to another pool and shares its boards with it."),
         "shard_call" => (SENSITIVE, "It sends tests and their files to run on another device."),
@@ -55,7 +54,7 @@ pub fn riskiest<'a>(levels: impl Iterator<Item = &'a str>) -> &'static str {
 
 /// Whether a request for ``action`` connects something, so the text states the pool's join policy.
 pub fn connects(action: &str) -> bool {
-    matches!(action, "add_device" | "join_pool" | "set_join_policy" | "link_read" | "link_write" | "shard_call" | "shard_consent" | "sync_now" | "phone_add")
+    matches!(action, "add_device" | "join_pool" | "link_read" | "link_write" | "shard_call" | "shard_consent" | "sync_now" | "phone_add")
 }
 
 /// A short phrase for what ``action`` does, for a title.
@@ -63,7 +62,6 @@ pub fn label_of(action: &str) -> &'static str {
     match action {
         "add_device" => "add a device",
         "join_pool" => "join a pool",
-        "set_join_policy" => "change how devices join",
         "member_remove" => "remove a device",
         "sync_now" => "sync the pool",
         "link_read" | "link_write" => "share a board",
@@ -119,13 +117,12 @@ pub fn resource_words(resource: &str) -> String {
 }
 
 /// One ask as the plain sentence of what it does; ``policy`` is the pool's join policy now.
-pub fn sentence(action: &str, resource: &str, policy: &str) -> String {
+pub fn sentence(action: &str, resource: &str) -> String {
     let named = resource_words(resource);
     let (from, to) = resource.split_once('>').unwrap_or((resource, "*"));
     let board = |b: &str| if b == "*" { "any board".to_string() } else { format!("the board {b}") };
     match action {
         "member_remove" => format!("Remove the device {named} from the pool."),
-        "set_join_policy" => format!("Change how devices join the pool, from {policy} to {resource}."),
         "add_device" => "Make a short code that lets one more device join this pool.".into(),
         "join_pool" => format!("Join this device to the pool at {named}."),
         "sync_now" => "Swap board entries with the pool's devices now.".into(),
@@ -146,12 +143,11 @@ pub fn sentence(action: &str, resource: &str, policy: &str) -> String {
 }
 
 /// The `POOL:` line: the join policy of this node's pool and what it means for the person.
-pub fn pool_line(policy: &str, would_become: Option<&str>, joining: bool) -> String {
+pub fn pool_line(policy: &str, joining: bool) -> String {
     let means = |p: &str| if p == "open" { "Devices on the same network join without asking." } else { "Each device needs your code to join." };
-    match (would_become, joining) {
-        (Some(next), _) => format!("POOL: {} now, would become {}. {}", policy.to_uppercase(), next.to_uppercase(), means(next)),
-        (None, true) => format!("POOL: this device's pool is {}; the pool it would join states its own policy when this device connects.", policy.to_uppercase()),
-        (None, false) => format!("POOL: {}. {}", policy.to_uppercase(), means(policy)),
+    match joining {
+        true => format!("POOL: this device's pool is {}; the pool it would join states its own policy when this device connects.", policy.to_uppercase()),
+        false => format!("POOL: {}. {}", policy.to_uppercase(), means(policy)),
     }
 }
 
@@ -208,9 +204,8 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     let worst = d.lines.iter().map(|l| risk_of(l.action)).find(|r| r.0 == risk).map_or("", |r| r.1);
     let mut out: Vec<String> = d.flags.iter().map(|f| format!("FLAG: {f}")).collect();
     out.extend(d.notes.iter().map(|n| format!("NOTE: {n}")));
-    if let Some(line) = d.lines.iter().find(|l| connects(l.action)) {
-        let next = (line.action == "set_join_policy" && line.resource != d.policy).then_some(line.resource);
-        out.push(pool_line(d.policy, next, d.lines.iter().any(|l| l.action == "join_pool")));
+    if d.lines.iter().any(|l| connects(l.action)) {
+        out.push(pool_line(d.policy, d.lines.iter().any(|l| l.action == "join_pool")));
     }
     out.push(format!("RISK: {}. {worst}", risk.to_uppercase()));
     out.push(d.ctx.said_line());
@@ -222,7 +217,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     let many = d.lines.len() > 1;
     for (i, l) in d.lines.iter().enumerate() {
         let n = if many { format!(" {}", i + 1) } else { String::new() };
-        out.push(format!("ASK{n}: {}", sentence(l.action, l.resource, d.policy)));
+        out.push(format!("ASK{n}: {}", sentence(l.action, l.resource)));
         out.push(format!("SCOPE{n}: {}", scope(d, l)));
     }
     out.extend(d.ctx.held_line());
@@ -250,7 +245,7 @@ pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, 
     let (risk, why) = risk_of(action);
     let mut out: Vec<String> = flags.iter().map(|f| format!("FLAG: {f}")).collect();
     if adding {
-        out.push(pool_line(policy, None, false));
+        out.push(pool_line(policy, false));
     }
     out.push(format!("RISK: {}. {why}", risk.to_uppercase()));
     out.push(format!("WHO: {by}."));
@@ -295,9 +290,7 @@ mod tests {
 
     #[test]
     fn the_pool_line_says_what_the_policy_means_and_what_a_change_would_do() {
-        assert!(pool_line("secure", None, false).starts_with("POOL: SECURE. Each device needs your code"));
-        assert!(pool_line("open", None, false).contains("without asking"));
-        let change = pool_line("secure", Some("open"), false);
-        assert!(change.contains("SECURE now, would become OPEN") && change.contains("without asking"), "{change}");
+        assert!(pool_line("secure", false).starts_with("POOL: SECURE. Each device needs your code"));
+        assert!(pool_line("open", false).contains("without asking"));
     }
 }

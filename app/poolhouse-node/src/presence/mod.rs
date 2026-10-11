@@ -183,7 +183,7 @@ impl Presence for Os {
         if !on_real_home(&self.state) {
             return Err(Error::Denied("The operating system's prompt is raised only for the node of this account's own state directory, never for a test, a checkout or a copy.".into()));
         }
-        let mut command = dialog(what).ok_or_else(|| Error::Denied("This computer has no operating system prompt the node can ask the person with, so the first key or phone cannot be added here yet.".into()))?;
+        let mut command = dialog(what).ok_or_else(|| Error::Denied(if cfg!(windows) { "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." } else { "This computer has no operating system prompt the node can ask the person with, so the first key or phone cannot be added here yet." }.into()))?;
         let child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| Error::Denied(format!("The operating system prompt did not open: {e}")))?;
         Ok(Box::new(OsPrompt(child)))
     }

@@ -258,32 +258,6 @@ fn a_request_that_does_not_connect_anything_states_no_pool_line_and_a_routine_on
 }
 
 #[test]
-fn a_change_of_join_policy_shows_both_values_and_secure_to_open_is_flagged_sensitive() {
-    let (rig, phone, _, _, made) = asked(json!([ask("set_join_policy", "open")]));
-    let seen = rig.get(&phone, made["id"].as_str().unwrap());
-    let text = seen["text"].as_str().unwrap();
-    assert!(text.contains("POOL: SECURE now, would become OPEN. Devices on the same network join without asking."), "{text}");
-    assert!(text.lines().next().unwrap().starts_with("FLAG:") && text.contains("FLAG: This would change the pool from secure to open."), "{text}");
-    assert!(text.contains("ASK: Change how devices join the pool, from secure to open."), "{text}");
-    assert_eq!(seen["risk"], "sensitive");
-    assert_eq!(rig.node.lock().unwrap().members.policy.name(), "secure", "asking changes nothing");
-}
-
-#[test]
-fn a_request_to_change_how_devices_join_names_one_policy_so_no_pattern_hides_secure_to_open() {
-    let rig = Rig::new();
-    let mut phone = FakePhone::new("Pixel");
-    rig.add(&mut phone, None);
-    let (_, token) = rig.session("demo", "agent-1");
-    for pattern in ["*", "op*", "o*", "ope*", "secure*", "open "] {
-        let refused = rig.ask("demo", &token, json!([ask("set_join_policy", pattern)]), json!({}));
-        assert!(code(&refused) == "invalid", "{pattern}: {refused}");
-    }
-    let made = ok(rig.ask("demo", &token, json!([ask("set_join_policy", "open")]), json!({})));
-    assert!(rig.get(&phone, made["id"].as_str().unwrap())["text"].as_str().unwrap().contains("FLAG: This would change the pool from secure to open."));
-}
-
-#[test]
 fn what_an_agent_believes_about_the_pool_is_checked_against_the_node() {
     let rig = Rig::new();
     let mut phone = FakePhone::new("Pixel");

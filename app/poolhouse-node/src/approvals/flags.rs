@@ -28,10 +28,10 @@ pub struct Findings {
     pub notes: Vec<String>,
 }
 
-/// What a request of grants from ``session`` on ``board`` earns. ``policy`` is the pool's join policy now; ``task_unknown`` says the
+/// What a request of grants from ``session`` on ``board`` earns. ``task_unknown`` says the
 /// request named a task the board does not have. That a session is new, and that an action was never asked for on this device, are facts
 /// every first request has: they are notes for a routine request, so it can be approved from the notification, and flags for anything else.
-pub fn for_grants(node: &mut Node, board: &str, session: &str, asks: &[Asked], policy: &str, task_unknown: bool) -> Result<Findings> {
+pub fn for_grants(node: &mut Node, board: &str, session: &str, asks: &[Asked], task_unknown: bool) -> Result<Findings> {
     let st = standing(node, board)?;
     let (parent, mine) = {
         let hosted = node.host(board)?;
@@ -76,9 +76,6 @@ pub fn for_grants(node: &mut Node, board: &str, session: &str, asks: &[Asked], p
         }
         if ask.lasts_ms > DAY_MS {
             out.push(format!("The {} grant would last more than a day.", ask.action));
-        }
-        if ask.action == "set_join_policy" && policy == "secure" && covers(ask.resource, "open") {
-            out.push("This would change the pool from secure to open.".into());
         }
     }
     if task_unknown {

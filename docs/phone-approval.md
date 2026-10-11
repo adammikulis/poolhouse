@@ -181,28 +181,25 @@ a line out. A source that is wired in later fills the same fields and changes no
 - is one nobody told the agent to make, when the node knows that (`You gave this agent no instruction to do this; it asked on its own.`);
 - came from a device that is not a member of the pool (`This request came from a device that is not a member of your pool.`).
 
-A request to change how devices join names one policy, `open` or `secure`, and never a pattern: a resource of `*` or `op*`
-would cover `open` without the text saying so, so the node refuses it when it is asked. The model and harness on the `WHO:` line are what
+The model and harness on the `WHO:` line are what
 the session said about itself when it registered, and the line says `(unverified)` unless the node checked the model. A session chooses
 those strings, so the node keeps only letters, digits and `._/-` of them, at most 48 characters, and a character that is anything
 else becomes a hyphen: a session cannot write a line of the text through its model name. A notice about a requester whose name
 is not plain shows the odd characters as hyphens, so every notice can be signed and the person can always block.
 
 The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`,
-`link_remove`, `note_verify`, `land_control` are routine; `link_read`, `set_join_policy`, `add_device`, `join_pool`, `shard_call`,
+`link_remove`, `note_verify`, `land_control` are routine; `link_read`, `add_device`, `join_pool`, `shard_call`,
 `shard_consent`, `land_trust`, `task_authority`, `quarantine_release`, `link_write`, `source_add` and adding a phone are
 sensitive; `member_remove` and `file_delete` are irreversible. A request is as risky as its riskiest ask.
 
 ### The pool line
 
-Every approval about connecting something (`add_device`, `join_pool`, `set_join_policy`, `link_read`, `link_write`,
+Every approval about connecting something (`add_device`, `join_pool`, `link_read`, `link_write`,
 `shard_call`, `shard_consent`, `sync_now`, and adding a phone) states the pool's join policy as a labelled line near the
 top, with what it means for the person, taken from the node's own pool state at the moment of the request:
 
 - `POOL: OPEN. Devices on the same network join without asking.`
 - `POOL: SECURE. Each device needs your code to join.`
-- For `set_join_policy`: `POOL: SECURE now, would become OPEN. Devices on the same network would join without asking.` and a
-  `FLAG:` line when the change is secure to open.
 - For `join_pool` the pool being joined tells its policy only when this device connects, so the line says that:
   `POOL: this device's pool is SECURE; the pool it would join states its own policy when it connects.`
 
@@ -310,9 +307,9 @@ Each refusal is one sentence the agent can pass to its person.
 | An agent's `expect_policy` that is not the node's | "The pool is secure, not open as you wrote; ask again with what is true." |
 | Text with other than printable ASCII | "That text must be plain English letters, digits and punctuation." |
 | A request beyond the limits | "6 requests in ten minutes is the most one session may make; try again later." |
-| A request to change how devices join with a pattern (`*`, `op*`) | "A request to change how devices join names one policy, open or secure, and no pattern." |
 | A code a session made, used to add the first phone | "A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`." |
-| The first key or phone asked of a node that has no way to ask the person (started with no `--presence`, or on Windows) | "This node was started with no way to ask the person, so the first key or phone cannot be added through it." |
+| The first key or phone asked of a node that has no way to ask the person (started with no `--presence`) | "This node was started with no way to ask the person, so the first key or phone cannot be added through it." |
+| The first key or phone on Windows | "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." |
 | The person says no, or nobody answers in two minutes | "You said no, so nothing was added." / "Nobody said yes in time, so nothing was added." The node asks again only after a few minutes |
 | An agent asking for a code while one waits to be scanned | "A code for a phone is already waiting to be scanned; use it or wait for it to run out." |
 | Wrong codes from one address (ten in ten minutes) | "Too many wrong codes came from this address; wait ten minutes." The code itself stays good for the person |
@@ -567,8 +564,7 @@ The tests prove the protocol and the app's logic without a device (`PhoneApprova
    open, the text is complete (FLAG, POOL, RISK, WHO, ASK, SCOPE, CANNOT, WHY, DENY, EXPIRES), Approve asks for the fingerprint, and
    the agent sees `approved`.
 4. Lock the phone, repeat: the lock screen says only `Approval waiting from <agent>`; unlock and the whole text shows.
-5. Request a sensitive action (`set_join_policy:open` on a secure pool): the notification opens the screen, not the prompt; the
-   FLAG line for secure to open is on top; deny it and the agent sees `denied`.
+5. Request a sensitive action (`add_device`): the notification opens the screen, not the prompt; deny it and the agent sees `denied`.
 6. Turn off the phone's Wi-Fi, make a request, turn it on and open the app: the request is there; let another expire and see
    `expired`.
 7. Enrol a fingerprint on the phone: the old key is lost, the app says so and offers the scan.

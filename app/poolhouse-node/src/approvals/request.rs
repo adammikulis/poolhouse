@@ -146,7 +146,7 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let unknown = !task.is_empty() && !task_known(node, token, board, &task);
     let ids: Vec<Asked> = asks.iter().map(|a| Asked { action: &a.action, resource: &a.resource, lasts_ms: a.lasts_ms, uses: a.uses }).collect();
     let policy = node.members.policy.name();
-    let found = for_grants(node, board, &name, &ids, policy, unknown)?;
+    let found = for_grants(node, board, &name, &ids, unknown)?;
     let risk = riskiest(asks.iter().map(|a| risk_of(&a.action).0));
     let (pick_code, options) = if risk == ROUTINE { (String::new(), Vec::new()) } else { pick_options()? };
     let facts = node.evidence.facts(board, &name, &asks.iter().map(|a| AskFacts { action: &a.action, resource: &a.resource }).collect::<Vec<_>>());

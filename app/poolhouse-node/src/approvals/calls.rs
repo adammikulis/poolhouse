@@ -77,9 +77,6 @@ fn read_ask(v: &Value) -> Result<Ask> {
         _ => return Err(Error::Invalid("A resource is text.".into())),
     };
     check_resource(resource)?;
-    if action == "set_join_policy" && resource != "open" && resource != "secure" {
-        return Err(Error::Invalid("A request to change how devices join names one policy, open or secure, and no pattern.".into()));
-    }
     let lasts_ms = map.get("lasts_ms").and_then(Value::as_u64).filter(|n| (MIN_LASTS_MS..=MAX_LASTS_MS).contains(n))
         .ok_or_else(|| Error::Invalid("An ask lasts from one minute to thirty days.".into()))?;
     let uses = match map.get("uses") {

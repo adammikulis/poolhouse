@@ -64,7 +64,7 @@ impl Presence for Terminal {
         #[cfg(not(unix))]
         {
             let _ = (what, terminal);
-            Err(Error::Denied("This computer reads no terminal for the node, so the first key or phone cannot be added here yet.".into()))
+            Err(Error::Denied("The first key and phone cannot be added on Windows yet: the node reads no terminal there.".into()))
         }
     }
 }
