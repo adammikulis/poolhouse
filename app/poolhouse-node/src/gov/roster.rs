@@ -41,7 +41,7 @@ pub struct Roster {
     pub standing: BTreeSet<String>,
     /// For each log (board and origin) of a removed device that a removal names, how many of its entries stand: the least any
     /// removal says.
-    pub log_cuts: BTreeMap<(String, String), u64>,
+    pub log_cuts: BTreeMap<(String, String), (u64, String)>,
 }
 
 pub enum Verdict {
@@ -96,7 +96,8 @@ fn removals(chain: &Chain, acts: &BTreeMap<String, Act>, out: &mut Roster) -> BT
         match verdict(id, a, Some(Class::Routine), chain, false) {
             Verdict::Ok => {
                 for c in d.cut {
-                    out.log_cuts.entry((c.board, c.origin)).and_modify(|s| *s = (*s).min(c.seq)).or_insert(c.seq);
+                    let tip = (c.seq, c.hash);
+                    out.log_cuts.entry((c.board, c.origin)).and_modify(|s| *s = (*s).clone().min(tip.clone())).or_insert(tip);
                 }
                 removed.entry(d.fingerprint).or_insert_with(|| id.clone());
             }

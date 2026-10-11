@@ -38,13 +38,16 @@ pub struct Device {
     pub fingerprint: String,
 }
 
-/// How much of one log of a board stands: the board, the origin that names the log, and its first ``seq`` entries.
+/// How much of one log of a board stands: the board, the origin that names the log, its first ``seq`` entries and the hash of the last
+/// of them (empty when the log holds none).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct LogCut {
     pub board: String,
     pub origin: String,
     pub seq: u64,
+    #[serde(default)]
+    pub hash: String,
 }
 
 /// The removal of a device: its fingerprint, and for each log of it that the removing admin holds, how much of it stands.
@@ -147,7 +150,7 @@ fn check_device(d: &Device) -> Result<()> {
 }
 
 fn check_removal(r: &Removal) -> Result<()> {
-    if !valid_fingerprint(&r.fingerprint) || r.cut.len() > MOST_LOG_CUTS || !r.cut.iter().all(|c| valid_name(&c.board) && valid_origin(&c.origin)) {
+    if !valid_fingerprint(&r.fingerprint) || r.cut.len() > MOST_LOG_CUTS || !r.cut.iter().all(|c| valid_name(&c.board) && valid_origin(&c.origin) && (valid_id(&c.hash) || (c.seq == 0 && c.hash.is_empty()))) {
         return bad("a device is removed by its fingerprint, with the logs of it that were seen named by board and origin");
     }
     Ok(())

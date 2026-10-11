@@ -80,7 +80,8 @@ fn a_removal_names_the_logs_of_the_device_by_the_key_that_signed_them_and_not_by
         n.members.gov().unwrap().acts().values().find(|x| x.kind == "remove" && x.body["fingerprint"] == fp).cloned().unwrap()
     };
     let c_removal = removal(&a, &c.fp());
-    assert!(c_removal.body["cut"].as_array().unwrap().contains(&json!({"board": "demo", "origin": origin, "seq": at_removal})), "{}", c_removal.body);
+    let tip = a.node.lock().unwrap().boards["demo"].board.rows(&origin).last().unwrap().hash.clone();
+    assert!(c_removal.body["cut"].as_array().unwrap().contains(&json!({"board": "demo", "origin": origin, "seq": at_removal, "hash": tip})), "{}", c_removal.body);
     let hostile = json!({"fingerprint": b.fp(), "cut": [{"board": "demo", "origin": origin, "seq": 999_999}]});
     a.ok("pool_propose", "", &a.token, json!({"kind": "remove", "body": hostile}));
     let b_removal = removal(&a, &b.fp());
@@ -154,7 +155,8 @@ fn a_cut_holds_for_a_log_even_when_this_device_does_not_know_which_key_was_remov
     exchange(&mut a, &mut c).unwrap();
     let origin = c.origin().to_string();
     let held = a.rows(&origin).len() as u64;
-    a.cut(&origin, held).unwrap();
+    let tip = a.rows(&origin).last().unwrap().hash.clone();
+    a.cut(&origin, held, &tip).unwrap();
     note(&mut c, "two");
     let report = exchange(&mut a, &mut c).unwrap();
     assert_eq!(a.rows(&origin).len() as u64, held, "nothing past the cut is taken, whoever the key was");
@@ -166,18 +168,18 @@ fn two_removals_of_one_device_that_name_different_points_stand_at_the_least() {
     let (_d, mut g) = pool(&[strong(1, "ann")], poolhouse_node::membership::Policy::Secure);
     let victim = ident(40);
     put_admit(&mut g, &victim, &[1]);
-    let origin = "ab".repeat(16);
+    let (origin, hash) = ("ab".repeat(16), "cd".repeat(32));
     for seq in [5u64, 3, 9] {
-        put(&mut g, "remove", json!({"fingerprint": victim.fingerprint(), "cut": [{"board": "demo", "origin": origin, "seq": seq}]}), &[1]);
+        put(&mut g, "remove", json!({"fingerprint": victim.fingerprint(), "cut": [{"board": "demo", "origin": origin, "seq": seq, "hash": hash}]}), &[1]);
     }
-    assert_eq!(g.state().roster.log_cuts[&("demo".to_string(), origin)], 3);
+    assert_eq!(g.state().roster.log_cuts[&("demo".to_string(), origin)], (3, hash));
 }
 
 #[test]
 fn a_board_opened_after_a_removal_is_closed_to_the_logs_it_names() {
     let (a, _b, c) = pool_of_three();
     let origin = "cd".repeat(16);
-    let body = json!({"fingerprint": c.fp(), "cut": [{"board": "late", "origin": origin, "seq": 2}]});
+    let body = json!({"fingerprint": c.fp(), "cut": [{"board": "late", "origin": origin, "seq": 2, "hash": "ef".repeat(32)}]});
     let mut n = a.node.lock().unwrap();
     n.with_gov(|g, wall| {
         let mut act = g.new_act("remove", body, wall)?;
@@ -187,4 +189,45 @@ fn a_board_opened_after_a_removal_is_closed_to_the_logs_it_names() {
     }).unwrap();
     assert!(!n.boards.contains_key("late"));
     assert_eq!(n.host("late").unwrap().board.cut_of(&origin), Some(2));
+}
+
+#[test]
+fn a_log_that_does_not_pass_through_the_point_a_removal_named_is_not_taken() {
+    let (dir_a, dir_c) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let mut a = Board::open(dir_a.path(), "demo", "pool", kit::key(1)).unwrap();
+    let mut c = Board::open(dir_c.path(), "demo", "pool", kit::key(2)).unwrap();
+    note(&mut c, "one");
+    exchange(&mut a, &mut c).unwrap();
+    let origin = c.origin().to_string();
+    let held = a.rows(&origin).len() as u64;
+    a.cut(&origin, held, &"00".repeat(32)).unwrap();
+    assert_eq!(a.rows(&origin).len(), 0, "a copy that does not reach the named point is not the log the removal saw");
+    let report = exchange(&mut a, &mut c).unwrap();
+    assert_eq!(a.rows(&origin).len(), 0, "and the log is not taken again from a device that holds another");
+    assert!(report.refused.contains_key(&origin), "{report:?}");
+}
+
+#[test]
+fn entries_up_to_the_cut_still_arrive_through_a_relay_that_has_not_heard_of_the_removal() {
+    let (a, b, c) = pool_of_three();
+    let d = device();
+    a.join_with_code(&d);
+    sync(&b);
+    let tokens = [&a, &b, &c, &d].map(|x| x.session("demo", &format!("writer-{}", &x.fp()[..6])).1);
+    c.say("demo", &tokens[2], "before the removal");
+    pair(&a, &c);
+    pair(&b, &c);
+    let origin = origin_of(&c);
+    let at_removal = held(&a, &origin);
+    a.ok("member_remove", "", &a.token, json!({"fingerprint": c.fp()}));
+    c.say("demo", &tokens[2], "after the removal");
+    pair(&b, &c);
+    assert!(held(&b, &origin) > at_removal, "b has not heard of the removal and takes what c wrote after it");
+    poolhouse_node::gov::wire::sync_acts(&d.node, &mut link(&d, &a)).unwrap();
+    assert!(d.member(&c.fp()).is_some_and(|m| m["status"] == "revoked"), "d holds the removal and the cut it carries");
+    assert_eq!(held(&d, &origin), 0, "and none of c's entries");
+    poolhouse_node::netsync::sync_board(&b.node, &mut link(&b, &d), "demo").unwrap();
+    assert_eq!(held(&d, &origin), at_removal, "d took what c wrote up to the cut from b, which pushed all of it, and nothing past it");
+    assert!(d.texts("demo", &tokens[3]).contains(&"before the removal".to_string()));
+    assert!(!d.texts("demo", &tokens[3]).contains(&"after the removal".to_string()));
 }

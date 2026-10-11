@@ -13,7 +13,7 @@ use crate::fsutil::{hex, private_dir, random_hex, sha256_hex, unhex, write_atomi
 use crate::log::Log;
 use crate::row::{check_body, valid_actor, valid_name, valid_origin, is_line, Kind, Row, GENESIS, MAX_ROW_BYTES, VERSION};
 use crate::rules::{self, head_message, held_back, tick};
-use crate::state::{Pin, State};
+use crate::state::{Cut, Pin, State};
 
 pub const MAX_ORIGINS: usize = 64;
 pub const MAX_LOG_ROWS: usize = 200_000;
@@ -233,7 +233,8 @@ impl Board {
     fn store(&mut self, origin: &str, incoming: &[Row], authoritative: bool) -> Result<usize> {
         let pin = self.state.t.keys.get(origin).cloned();
         let key_of = |p: &Option<Pin>| p.as_ref().and_then(|p| unhex(&p.public)).and_then(|b| <[u8; 32]>::try_from(b).ok());
-        let cap = self.state.t.cuts.get(origin).copied();
+        let cut = self.state.t.cuts.get(origin).cloned();
+        let cap = cut.as_ref().map(|c| c.seq);
         let kept: Vec<Row> = incoming.iter().filter(|r| cap.is_none_or(|c| r.seq <= c)).cloned().collect();
         let (dropped, incoming) = (kept.len() < incoming.len(), kept);
         let held: Vec<Row> = self.rows(origin).to_vec();
@@ -251,6 +252,13 @@ impl Board {
             took.rows.retain(|r| r.seq <= cap.unwrap_or(0));
         }
         let blocked = dropped || took.rows.len() < before;
+        if let Some(c) = cut.filter(|c| c.seq > 0) {
+            let held = self.rows(origin);
+            let reached = |at: usize| if at < held.len() { Some(held[at].hash.as_str()) } else { took.rows.get(at - held.len()).map(|r| r.hash.as_str()) };
+            if reached(c.seq as usize - 1).is_some_and(|h| h != c.hash) {
+                return Err(Error::Invalid("that log does not pass through the point the removal of its device named".into()));
+            }
+        }
         if self.rows(origin).len() + took.rows.len() > MAX_LOG_ROWS {
             return Err(Error::Quota("this log is past the rows a device keeps".into()));
         }
@@ -299,36 +307,43 @@ impl Board {
 
     /// How many entries of the log of ``origin`` stand, when a removal closed it.
     pub fn cut_of(&self, origin: &str) -> Option<u64> {
-        self.state.t.cuts.get(origin).copied()
+        self.state.t.cuts.get(origin).map(|c| c.seq)
     }
 
-    /// Keep only the first ``seq`` entries of the log of ``origin``, and take no later one, whoever relays it. The least ever named
-    /// stands; this device's own log is never cut.
-    pub fn cut(&mut self, origin: &str, seq: u64) -> Result<()> {
+    /// Keep only the first ``seq`` entries of the log of ``origin``, the last of which hashes to ``hash``, and take no later one,
+    /// whoever relays it. The least ever named stands; a copy held that does not pass through the point named is dropped, to be
+    /// fetched again up to it. This device's own log is never cut.
+    pub fn cut(&mut self, origin: &str, seq: u64, hash: &str) -> Result<()> {
         if origin == self.origin || !valid_origin(origin) {
             return Ok(());
         }
-        let cap = self.state.t.cuts.get(origin).map_or(seq, |c| (*c).min(seq));
-        if self.state.t.cuts.insert(origin.into(), cap) != Some(cap) {
+        let named = Cut { seq, hash: hash.into() };
+        let cap = self.state.t.cuts.get(origin).map_or(named.clone(), |c| c.clone().min(named));
+        if self.state.t.cuts.insert(origin.into(), cap.clone()) != Some(cap.clone()) {
             self.state.save()?;
         }
-        if let Some(log) = self.logs.get_mut(origin) {
-            log.truncate(usize::try_from(cap).unwrap_or(usize::MAX))?;
+        let keep = usize::try_from(cap.seq).unwrap_or(usize::MAX);
+        let forked = self.rows(origin).get(keep.wrapping_sub(1)).is_some_and(|r| cap.seq > 0 && r.hash != cap.hash);
+        if forked {
+            self.reset(origin)?;
+        } else if let Some(log) = self.logs.get_mut(origin) {
+            log.truncate(keep)?;
         }
         Ok(())
     }
 
     /// Close the logs of removed devices: ``removed`` are their board fingerprints and ``named`` the cuts removals name by origin.
     /// A log of a removed device that no removal names stands as far as this device holds it now.
-    pub fn close_removed(&mut self, removed: BTreeSet<String>, named: &BTreeMap<String, u64>) -> Result<()> {
+    pub fn close_removed(&mut self, removed: BTreeSet<String>, named: &BTreeMap<String, Cut>) -> Result<()> {
         self.removed = removed;
-        for (origin, seq) in named {
-            self.cut(origin, *seq)?;
+        for (origin, c) in named {
+            self.cut(origin, c.seq, &c.hash)?;
         }
         for origin in self.origins() {
             let writer = self.writer_fingerprint(&origin);
             if writer.is_some_and(|w| self.removed.contains(&w)) && !self.state.t.cuts.contains_key(&origin) {
-                self.cut(&origin, self.rows(&origin).len() as u64)?;
+                let tip = self.rows(&origin).last().map(|r| (r.seq, r.hash.clone())).unwrap_or_default();
+                self.cut(&origin, tip.0, &tip.1)?;
             }
         }
         Ok(())

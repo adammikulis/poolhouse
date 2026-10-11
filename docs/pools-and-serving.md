@@ -589,25 +589,27 @@ reissue**, started only by an explicit call, never by the node on start, and **i
 | 13 | Migration | Legacy mode keeps syncing but ignores member removals, policy and unknown rows; one originator; handshaken devices only; keys enrolled first | 1.14 | `reissue.rs` |
 | 14 | Cross-pool | Beacons rotate and seal; tokens bound to one pool; the least permissive right wins; origin cap counts live origins; bucketed timing | 4.2, 6.3, 7.4 | `pools.rs`, `board_share.rs` |
 
-### 1.16 What slice 1 must carry from the removal review (2026-10-11)
+### 1.16 What slice 1 carries from the removal review (2026-10-11), as built
 
-Today a device that records a removal stops exchanging with the removed device (`docs/node.md`, "Membership"), but a member that has not
-heard of the removal still syncs with it, and the entries it takes are kept and relayed: `sync::take` and `Board::ingest` check a row's
-signature and chain, never whether its origin belongs to a removed device. `app/poolhouse-node/tests/removal.rs`
-(`rows_of_a_removed_device_relayed_by_an_unaware_member_are_still_taken`) pins that behaviour, and slice 1 flips it. Two requirements:
+A device that records a removal stops exchanging with the removed device (`docs/node.md`, "Membership"), but a member that has not
+heard of the removal still syncs with it, and it used to take the entries the removed device wrote and relay them: `sync::take` and
+`Board::ingest` checked a row's signature and chain, never whether its origin belongs to a removed device. Two requirements, both built:
 
-* **F1: a removal carries a cut of the removed device's logs.** The act that removes a member (`remove`) lists, for each log origin of
-  the removed device, the tip (sequence and hash) the remover holds, as `admin_remove` does for a key's acts (1.5, "Removing a key
-  carries a cut"). Every receiver refuses the rows of such an origin past the cut, **whoever relays them**: a relayed row carries no
-  authority of its own, so a member that already removed the device and a member that has not heard yet end with the same rows. The
-  pinned test then asserts the opposite (the relayed row is refused), and a second test shows a row up to the cut still arrives by a relay
-  that has not heard.
-* **F2: a removal retracts what the removed key admitted.** While other members were unaware of a removal, the removed device could
-  enrol devices (rows of the `members` exchange today, `admit` acts in slice 1), and those devices would stay members after it. The
-  removal must be able to name them: an `admit` by the removed key that is not in its cut is void on every device, whenever it arrives,
-  and the devices it admitted before the cut go to the person's review list (keep or drop) with the removed key's name and the check
-  words of each, never silently kept. A test removes a device that enrolled a stranger while another member was unaware, and ends with
-  the stranger not a member on any device.
+* **F1: a removal carries a cut of the removed device's logs.** The `remove` act lists, for each log of boards that the removed
+  device wrote and the remover's device holds, the board, the origin and the tip it holds (sequence and hash), as `admin_remove` does
+  for a key's acts (1.5, "Removing a key carries a cut"; the node writes the list and ignores what a caller sent). Every receiver
+  refuses the rows of such an origin past the cut, **whoever relays them**, and drops a copy it holds that does not pass through the
+  tip named; a relayed row carries no authority of its own, so a member that already removed the device and a member that has not
+  heard yet end with the same rows. A log that no removal names stands as far as the device holds it, and no entry under the key of
+  a removed device is taken from a log started later. `app/poolhouse-node/tests/removal.rs`
+  (`rows_of_a_removed_device_relayed_by_an_unaware_member_are_refused_by_a_device_that_holds_the_removal`) pins the refusal, and
+  `tests/gov_removal.rs` shows the rows up to the cut still arrive through a relay that has not heard.
+* **F2: a removal retracts what the removed key admitted.** In a governed pool a device is a member only by an `admit` act: an admin's,
+  a live delegate's, or an open pool's member's. `members` rows enrol nobody, and an `admit` signed by a device that is removed (or by
+  an admin key whose removal does not name it in its cut) is void on every device, whenever it arrives, and an admin admits those
+  devices again if the person wants them (`gov_removal.rs`, `removing_a_device_removes_the_devices_it_admitted...`). **Not built:** the
+  review list that puts the devices a removed admin key admitted inside its cut to the person to keep or drop with the check words of
+  each (slices 5 and 8); until then they stay members.
 
 ## 2. Operated by agents, approved by a tap
 

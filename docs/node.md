@@ -832,8 +832,9 @@ pool, through admin keys; a device never does, and the one thing a member device
   device that was just admitted), a tick when a hold, a delegate or a dispute ends. An act a joiner took as settled can still be
   cancelled until its hold has run from the join.
 - **Removing a device and its logs** (`gov/logs.rs`, `Board::cut`): a `remove` carries, for each log of boards that the removed device
-  wrote and the removing admin's device holds (`{board, origin, seq}`, at most 256), how many entries of it stand; the node writes the
-  list itself, whatever the caller sent. A device that learns of the removal cuts those logs there and takes no later entry of them
+  wrote and the removing admin's device holds (`{board, origin, seq, hash}`, at most 256), how many entries of it stand and the
+  hash of the last; the node writes the list itself, whatever the caller sent. A device that learns of the removal cuts those logs
+  there (a copy that does not pass through the hash is dropped and fetched again up to it) and takes no later entry of them
   from any relay (an entry carries its own signature, and a relay proves nothing about it); a log of the removed device that no
   removal names stands as far as the device holds it; no entry under the key of a removed device is taken from a log no removal
   names. Several removals of one device stand at the least they name. What the removed device admitted goes with it, and an admin
