@@ -44,6 +44,7 @@ def test_announcement_over_real_udp_sockets_on_loopback():
         listener.close()
 
 
+@pytest.mark.lan_network
 def test_no_address_given_listens_on_the_unspecified_ipv4_address_and_a_bad_one_is_refused():
     open_ear = near.UdpTransport(port=0, destinations=[])
     try:
@@ -52,6 +53,15 @@ def test_no_address_given_listens_on_the_unspecified_ipv4_address_and_a_bad_one_
         open_ear.close()
     with pytest.raises(ValueError):
         near.UdpTransport(bind="not-an-address", port=0, destinations=[])
+
+
+def test_outside_the_real_home_no_address_given_listens_on_loopback_and_joins_no_group_and_sends_nowhere_else():
+    ear = near.UdpTransport(port=0, group=near.DEFAULT_GROUP)
+    try:
+        assert ear.sock.getsockname()[0] == "127.0.0.1"
+        assert [host for host, _ in ear.destinations] == ["127.0.0.1"]
+    finally:
+        ear.close()
 
 
 def test_the_address_is_the_datagrams_source_never_a_claimed_one():

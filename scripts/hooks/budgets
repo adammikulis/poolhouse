@@ -69,8 +69,8 @@ def counts(base: Path, names: list[str]) -> dict[str, Counter[str]]:
 
 def main() -> int:
     """Compare staged content against HEAD and refuse any added site."""
-    if os.environ.get("SKIP_BUDGETS"):
-        return 0
+    if os.environ.get("SKIP_BUDGETS") and not any(os.environ.get(m) for m in ("CLAUDECODE", "POOLHOUSE_AGENT")):
+        return 0  # a person's override; an agent's is ignored, as the budget rise below is refused to it
     if not BUDGETS.exists():
         return 0
     if _git("rev-parse", "-q", "--verify", "MERGE_HEAD").strip():
@@ -118,8 +118,9 @@ def main() -> int:
             print(f"    {finding.path}:{finding.line}  {finding.detail}", file=sys.stderr)
     if refused:
         print(
-            "\nA budget only falls. Use what already owns the job, or "
-            "SKIP_BUDGETS=1 git commit ... after reading the above.",
+            "\nA budget only falls. Use what already owns the job"
+            + ("." if os.environ.get("CLAUDECODE") or os.environ.get("POOLHOUSE_AGENT")
+               else ", or SKIP_BUDGETS=1 git commit ... after reading the above."),
             file=sys.stderr,
         )
     return refused

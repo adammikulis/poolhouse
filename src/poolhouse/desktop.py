@@ -1,7 +1,8 @@
 """Putting a question with real buttons on the person's own screen.
 
 ``POOLHOUSE_NOTIFY`` picks the way: ``system`` (default), ``console`` or ``off``; only the
-desktop (macOS ``osascript``, Linux ``notify-send`` or ``zenity``) shows anything. The text is
+desktop (macOS ``osascript``, Linux ``notify-send`` or ``zenity``) shows anything, and only for the installed software on the account's
+real state root (`lan.on_the_persons_machine`): a test or a moved root shows nothing with the variable unset. The text is
 cleaned, passed as an argument after ``--`` and never spliced into a script, and the button
 labels are the caller's fixed constants. The test suite sets ``console`` and puts shims for
 every desktop tool first on PATH; a shim records the attempt and the run fails.
@@ -17,6 +18,8 @@ import shutil
 import subprocess
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
+
+from poolhouse import lan
 
 __all__ = ["ENV", "WAIT_S", "Result", "Runner", "choose", "clean", "run", "which_way"]
 
@@ -70,8 +73,8 @@ def which_way(system: str | None = None, *, env: Mapping[str, str] | None = None
     honouring ``POOLHOUSE_NOTIFY``."""
     chosen = (os.environ if env is None else env).get(ENV, "system").strip().lower()
     system = system or platform.system()
-    if chosen != "system":
-        return "none"
+    if chosen != "system" or (env is None and not lan.on_the_persons_machine()):
+        return "none"  # a test, a rig or a moved state root never puts a dialog on a screen, whatever is or is not set
     if system == "Darwin" and which("osascript"):
         return "macos"
     if system == "Linux":

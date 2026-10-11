@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypedDict, Unpack
 
-from poolhouse import home, http, macauth, sealing
+from poolhouse import home, http, lan as lan_policy, macauth, sealing
 from poolhouse.files import write_json
 from poolhouse.log import warn
 from poolhouse.platform import private_file
@@ -387,6 +387,8 @@ LOOPBACK = "127.0.0.1"
 def _destinations(group: str, port: int) -> list[tuple[tuple[str, int], str]]:
     """Every way to say "anyone out there?" on this link, as ``(address, interface)``: a
     multicast with an interface goes out of that one, and every other out of the LAN's."""
+    if not lan_policy.allowed():
+        return [((LOOPBACK, port), "")]  # outside the real home, or under a test: this machine alone
     return [((group, port), ""), ((group, port), LOOPBACK),
             (("255.255.255.255", port), ""), ((LOOPBACK, port), "")]
 
@@ -450,6 +452,8 @@ def _socket(*, broadcast: bool = False, bind: tuple[str, int] | None = None,
 
 def _native_socket(*, broadcast: bool = False, bind: tuple[str, int] | None = None,
                    group: str | None = None) -> socket.socket:
+    if not lan_policy.allowed():  # no multicast join and no wildcard bind unless the real installed software runs on the real home
+        bind, group = (None if bind is None else (LOOPBACK, bind[1])), None
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     if os.name == "nt":
         wsl_network.disable_udp_reset(s)

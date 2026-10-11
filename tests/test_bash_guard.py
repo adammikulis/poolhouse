@@ -41,6 +41,12 @@ def guard(command: str, tool: str = "Bash", **env: str) -> int:
     ('hf download unsloth/Qwen3.5-4B-GGUF', "a download by hand"),
     ('pkill -f llama-server', "a kill that leaves the lease behind"),
     ('SKIP_NAME_CHECK=1 git commit -m x', "the name hook is not an agent's to skip"),
+    ('SKIP_BUDGETS=1 git commit -m x', "the budgets hook is not an agent's to skip"),
+    ('git commit --no-verify -m x', "no hook at all"),
+    ('git commit -n -m x', "the short spelling of the same"),
+    ('git commit -anm x', "a bundled short flag"),
+    ('git -C /w push --no-verify origin dev', "no pre-push hook"),
+    ('env SKIP_BUDGETS=1 git commit -m x', "through env"),
     ('git add -A && git commit -m x', "staging everything sweeps in another agent's half-written work"),
     ('git add --all', "the long spelling of the same"),
     ('git add . ', "the dot is the same"),
@@ -151,3 +157,9 @@ def test_the_refusal_names_the_command_that_leases():
         input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "llama-server -m x"}}))
     assert done.returncode == BLOCKED
     assert "poolhouse-serve up MODEL" in done.stderr and "poolhouse-serve down" in done.stderr
+
+
+@pytest.mark.parametrize("command", ["SKIP_BUDGETS=1 git commit -m x", "git commit --no-verify -m x", "git commit -n -m x"])
+def test_skipping_the_commit_hooks_stays_refused_with_the_guard_off(command):
+    """The off switch is for the soft rules: no spelling of a hook skip is one of them."""
+    assert guard(command, POOLHOUSE_GUARD="off") == BLOCKED

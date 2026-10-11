@@ -41,6 +41,10 @@ PERSON_STORE = (r"\.poolhouse/person\b|person/statements\.log|\bCLAUDE_CONFIG_DI
                 r"(import|from)\s+poolhouse\.workspace(\.|\s+import\s+[^;\n]*\b)person_\w+|"
                 r"-m\s+poolhouse\.workspace\.person_|"
                 + RUN + r"(\S*python\S*\s+|(ba)?sh\s+)?(\S*/)?(claude-user-prompt|person-consume(?!\s+propose\b))")
+SKIP_HOOKS = (PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(commit|push|merge|am|cherry-pick|rebase)\b[^;&|\n]*"
+              r"(--no-verify\b|--no-gpg-sign\b)"
+              r"|" + PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*commit\b[^;&|\n]*\s-[a-zA-Z]*n[a-zA-Z]*(\s|$)"
+              r"|(^|[;&|]\s*|\benv\s+)SKIP_BUDGETS=")
 HERE = Path(__file__).resolve().parent
 
 # (what it matches, what to do instead). Ordered: the first match wins.
@@ -114,6 +118,10 @@ REFUSE = [
      "The person record is written only by the harness hooks when the person types. An agent "
      "does not read its key, open its log or import its writers; `poolhouse-workspace "
      "attestations` shows what the hooks recorded."),
+    (SKIP_HOOKS,
+     "The commit and push hooks are the last checks between this tree and the owner's repository, and an "
+     "agent never skips them (--no-verify, commit -n, SKIP_BUDGETS=1): fix what the hook reported, take the "
+     "sites out of the tree, or say in the report that a budget is over. Skipping is a person's, at a terminal."),
     (r"(^|[;&|]\s*|\benv\s+)SKIP_NAME_CHECK=1",
      "SKIP_NAME_CHECK is a person's to set, not an agent's. The hook is the last thing "
      "between a real community and a public repository. If it flagged an invented name, add "
@@ -153,7 +161,7 @@ def without_search_patterns(command: str) -> str:
     return re.sub(rf"\b({SEARCHERS})\b[^|;&\n]*", strip, command)
 
 
-HARD = (PUSH_FLAGS, PUSH_MAIN, MINT, PERSON_STORE)
+HARD = (PUSH_FLAGS, PUSH_MAIN, MINT, PERSON_STORE, SKIP_HOOKS)
 """Patterns that stay in force when POOLHOUSE_GUARD=off is set: this guard only ever runs on an agent's call."""
 
 MESSAGE = re.compile(r"(-m|--message)(\s+|=)('[^']*'|\"[^\"]*\")")
