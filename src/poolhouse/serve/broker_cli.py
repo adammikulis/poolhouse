@@ -59,8 +59,7 @@ def cmd_queue(args: argparse.Namespace) -> int:
             f"{waiting['waited_s']}s -- {waiting['blocked_by'] or 'queued'}")
     for device, line in snapshot.get("requests", {}).items():
         for at, request in enumerate(line):
-            say(f"requests {device} #{at}: pid {request.get('pid')} "
-                f"({request.get('label') or '-'}) {request.get('url')}"
+            say(f"requests {device} #{at}: pid {request.get('pid')}"
                 + (" -- running" if request.get("running") else " -- waiting"))
     for name, held in snapshot["claims"].items():
         say(f"claim {name}: pid {held['pid']} {json.dumps(held['info'])}")

@@ -2,7 +2,7 @@
 
 The servers here are real HTTP servers in this process that record the window in which each
 generation was running; the callers are separate Python processes sending through
-`poolhouse.http`, the path every consumer uses.
+`poolhouse.http`, the path every consumer uses, and the line is the lease table of a real node.
 """
 
 from __future__ import annotations
@@ -20,9 +20,11 @@ from typing import NamedTuple
 
 import pytest
 
-from poolhouse import gate, home
+from poolhouse import gate, home, leasetable
 from poolhouse.http import Server, ServerError, request_json
 from poolhouse.serve.process import kill_process_tree
+
+pytest_plugins = ["node_kit"]
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 HOLD_S = 0.3
@@ -84,7 +86,7 @@ def register(*servers: Recorder, device: str = "gpu") -> None:
 
 
 @pytest.fixture
-def servers():
+def servers(workspace_node):
     made: list[Recorder] = []
 
     def make(n: int = 2, hold_s: float = HOLD_S) -> list[Recorder]:
@@ -147,24 +149,6 @@ def test_requests_sent_at_the_same_instant_never_overlap(servers):
     run_all([together([first.url, second.url][i % 2], str(i), at) for i in range(12)])
     windows = first.windows + second.windows
     assert len(windows) == 12 and overlap(windows) <= 0.0
-
-
-def test_a_ticket_sorts_after_every_ticket_already_in_the_line_even_when_the_clock_went_back(
-        monkeypatch, tmp_path):
-    import itertools
-
-    clock = itertools.count(10**18, -1000)
-    monkeypatch.setattr(gate.time, "time_ns", lambda: next(clock))
-    line = tmp_path / "line"
-    line.mkdir()
-    first = gate._take_ticket(line, "http://127.0.0.1:1")
-    second = gate._take_ticket(line, "http://127.0.0.1:1")
-    try:
-        assert first[0] < second[0]
-        assert gate._ahead(line, second[0]) == [first[0]]
-    finally:
-        for name, fd in (first, second):
-            gate._drop(line, name, fd)
 
 
 def test_parallel_requests_are_an_explicit_opt_out_and_do_overlap(servers):
@@ -355,3 +339,44 @@ def test_conversations_measured_in_flight_together_are_sent_in_parallel(servers,
     finally:
         kill_process_tree(held.process.pid, grace_s=0.1)
         held.process.wait(timeout=10)
+
+
+def test_a_turn_is_a_quiet_lease_of_the_nodes_table_that_belongs_to_its_process(servers):
+    (one,) = servers(1, hold_s=0.01)
+    held = holder(one.url)
+    try:
+        table = leasetable.default()
+        turns = [row for row in table.listing()["leases"] if row["tag"].startswith("turn.")]
+        assert [(row["state"], row["quiet"], row["pid"]) for row in turns] == [("held", True, held.pid)]
+        assert turns[0]["resources"] == [{"type": "gpu", "device": "local"}]
+        assert table.call("read", kind="lease")["entries"] == [], "a turn leaves nothing on the board"
+    finally:
+        kill_process_tree(held.process.pid, grace_s=0.1)
+        held.process.wait(timeout=10)
+
+
+def test_a_request_that_is_cancelled_while_it_waits_leaves_the_line(servers):
+    (one,) = servers(1, hold_s=0.01)
+    held = holder(one.url)
+    try:
+        stop = threading.Event()
+        threading.Timer(0.5, stop.set).start()
+        with pytest.raises(gate.QueueTimeout, match="cancelled"), gate.turn(one.url, cancelled=stop.is_set):
+            pytest.fail("the turn was never granted")
+        assert [row["pid"] for row in gate.snapshot()["gpu"]] == [held.pid], "the cancelled request is not left queued"
+    finally:
+        kill_process_tree(held.process.pid, grace_s=0.1)
+        held.process.wait(timeout=10)
+
+
+def test_a_device_the_table_cannot_be_asked_about_is_not_sent_to(servers, monkeypatch):
+    (one,) = servers(1, hold_s=0.01)
+
+    class Down(leasetable.Table):
+        def acquire(self, *_args, **_kwargs):
+            raise OSError("no socket")
+
+    monkeypatch.setattr(leasetable, "default", lambda: Down())
+    with pytest.raises(ServerError) as why:
+        request_json(one.url, payload={}, timeout=5)
+    assert why.value.status == 429 and "gpu" in str(why.value) and one.windows == []
