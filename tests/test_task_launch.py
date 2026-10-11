@@ -81,6 +81,21 @@ def test_exact_task_authority_denies_foreign_or_changed_assignment(audit, cause,
 
 
 @pytest.mark.redteam
+def test_the_parent_of_a_worker_manages_it_only_through_a_task_it_created_that_names_the_worker(board):
+    assert board.allocation is not None, 'a parent still allocates the next queued task to its own worker'
+    worker = board.runner.name
+    unassigned = board.board.create({**board.spec, 'source_key': 'unassigned-request'})
+    with pytest.raises(Denied, match='creator of a task that names the worker'):
+        task_authority.authorize(board.parent, board.base, worker, unassigned['id'])
+    elsewhere = Tasks(board.reviewer).create({**board.spec, 'source_key': 'stranger-names-it', 'assignees': [board.worker_id]})
+    with pytest.raises(Denied, match='creator of a task that names the worker'):
+        task_authority.authorize(board.parent, board.base, worker, elsewhere['id'])
+    named = board.board.create({**board.spec, 'source_key': 'named-request', 'assignees': [board.worker_id]})
+    runner, spec = task_authority.authorize(board.parent, board.base, worker, named['id'])
+    assert runner.name == worker and spec['id'] == named['id']
+
+
+@pytest.mark.redteam
 def test_native_tool_admission_refuses_exhausted_and_invalid_counter(tmp_path):
     path = tmp_path / 'counter.json'
     path.write_text(json.dumps({'version': 1, 'calls': 0, 'limit': 1}))

@@ -27,9 +27,9 @@ def runner_of(base: Path, s: Session, worker: str) -> la.Agent:
     return found[0]
 
 
-def authorize(s: Session, base: Path, worker: str, task: str) -> tuple[la.Agent, dict[str, Any]]:
-    """The saved worker and the task, after checking the caller's live task authority: the caller is the session that
-    started the worker or the creator of a task that names the worker, and both are on the board of the task."""
+def authorize(s: Session, base: Path, worker: str, task: str, *, parent_may: bool = False) -> tuple[la.Agent, dict[str, Any]]:
+    """The saved worker and the task, after checking the caller's live task authority: the caller created a task that names
+    the worker; with ``parent_may``, the worker's registered parent is enough (a parent allocating a queued task to its worker)."""
     if type(task) is not str or not TASK_ID.fullmatch(task):
         raise ValueError("a task ID is required")
     runner = runner_of(base, s, worker)
@@ -39,8 +39,8 @@ def authorize(s: Session, base: Path, worker: str, task: str) -> tuple[la.Agent,
     known = {a.name: a for a in s.agents()}
     parent = known[runner.identity].parent if runner.identity in known else ""
     named = runner.identity in spec.get("assignees", [])
-    if s.name != parent and not (spec["created_by"] == s.name and named):
-        raise Denied("only the worker's parent or the creator of a task that names the worker manages it")
+    if not ((spec["created_by"] == s.name and named) or (parent_may and s.name == parent)):
+        raise Denied("only the creator of a task that names the worker manages it")
     source = la.check_project(runner.project, base)
     if not source or not worktreerules.checkouts(source) or place.resolve(s.client, Path(source)) != s.board:
         raise Denied("the saved worker source must be a checkout of this board's project")

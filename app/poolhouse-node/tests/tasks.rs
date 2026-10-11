@@ -554,6 +554,36 @@ fn a_worker_and_its_parent_sponsor_a_task_only_through_an_assignment_that_stands
     ok(req(&mut n, "task_scope", "demo", &t.kid.1, scope(&claimed)));
 }
 
+const SPEC: [&str; 9] = ["title", "description", "acceptance", "deps", "capabilities", "limits", "source_key", "assignees", "reviewers"];
+
+fn specified(task: &Value) -> Vec<Value> {
+    SPEC.iter().map(|k| task[*k].clone()).collect()
+}
+
+#[test]
+fn a_task_specification_is_the_signed_create_entry_and_no_step_of_the_task_changes_it() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let t = team(&mut n);
+    let task = id_of(make(&mut n, &t.lead.1, json!({"source_key": "fixed-spec", "assignees": [t.kid.0], "reviewers": [t.other.0], "limits": {"max_retries": 2}})));
+    let made = specified(&get(&mut n, &t.lead.1, &task));
+    assert_eq!(made[6], json!("fixed-spec"));
+    let a = assign(&mut n, &t, &task);
+    ok(req(&mut n, "task_scope", "demo", &t.lead.1, json!({"task": task, "scope": {"state": "reserved"}})));
+    ok(claim(&mut n, &t, &task, &a));
+    ok(req(&mut n, "task_checkpoint", "demo", &t.kid.1, json!({"task": task, "summary": "half way"})));
+    ok(req(&mut n, "task_record", "demo", &t.lead.1, json!({"task": task, "kind": "allocation", "rid": a, "record": {"title": "another title", "acceptance": ["nothing"]}})));
+    assert_eq!(specified(&get(&mut n, &t.lead.1, &task)), made, "a record or a scope never reaches the specification");
+    submit(&mut n, &t, &task);
+    ok(judge(&mut n, &t.other.1, &task, accepted()));
+    assert_eq!(specified(&get(&mut n, &t.lead.1, &task)), made, "nor a proposal or a review");
+    for forged in [json!({"task": task, "title": "changed"}), json!({"task": task, "assignees": [t.other.0]})] {
+        assert_eq!(code(&req(&mut n, "task_assign", "demo", &t.lead.1, forged)), "invalid", "no call takes a specification for a task that exists");
+    }
+    assert_eq!(code(&make(&mut n, &t.lead.1, json!({"source_key": "fixed-spec", "title": "changed"}))), "invalid", "a changed request under the source key is refused");
+    assert_eq!(specified(&get(&mut n, &t.lead.1, &task)), made);
+}
+
 #[test]
 fn a_task_is_scoped_to_its_board_and_the_node_never_takes_a_sender_from_the_request() {
     let dir = tempdir().unwrap();

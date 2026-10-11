@@ -358,7 +358,11 @@ landing it (its worker, its parent, its maker, its reviewer, or a session that h
 records on the task the same way, each under a `kind` and an id: `integration`, `attempt`, `event` (appended; never merged),
 `allocation` (what the worker's parent recorded when it assigned the task: the model lease, the execution configuration, the checkout, the
 scheduler's process) and `evidence` (the runner entries a checkpoint or a proposal cites, verified on the worker's device before they are written);
-a later record of one id adds its fields to the first. Before the worker claims, only its parent writes `allocation` and the scope. A
+a later record of one id adds its fields to the first. Before the worker claims, only its parent writes `allocation` and the scope; they are
+written by the parent or the worker of an assignment that stands (a queued task: one whose lease is still a live grant of the worker's
+model; a task a worker holds: the assignment that worker claimed it with). A task's specification (title, description, acceptance, deps,
+capabilities, limits, source key, assignees, reviewers) is the signed `create` entry and no later entry or call carries one, so a task has
+no specification hash to check. A
 body holds no fractions: times are whole milliseconds. Followers (`task_watch`) hear each state change as a direct
 `status` message from whoever changed it. Only the entries of this device and of a device on the landing list count; the
 others are shown under `foreign_ignored`. The `task` claim kind is the node's own: `claim` refuses it and `claims` does not list it.

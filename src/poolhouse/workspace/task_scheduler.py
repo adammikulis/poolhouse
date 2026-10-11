@@ -65,7 +65,7 @@ def assign_next(s: Session, base: Path, worker: str, *, task: str = '') -> dict[
     parent = next((a.parent for a in s.agents() if a.name == runner.identity), '')
     for row in _ready(tasks.list()['tasks'], runner, parent, model, task):
         try:
-            _, spec = task_authority.authorize(s, base, worker, row['id'])
+            _, spec = task_authority.authorize(s, base, worker, row['id'], parent_may=True)
             scope = task_worktrees.plan(s.name, runner, spec) if runner.profile == 'coding' else None
             allocation = tasks.assign(row['id'], runner.identity, slot['id'], [runner.profile])
         except (Denied, ValueError):
