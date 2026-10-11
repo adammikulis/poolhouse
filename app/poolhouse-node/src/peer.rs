@@ -8,9 +8,9 @@
 //! | op | who | what |
 //! |---|---|---|
 //! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version, how the device is attached to the network (`network`); the boards held, to members |
-//! | `join_open` | anyone, under policy `open` | enrol the caller; reply with the pool record |
+//! | `join_open` | anyone, under policy `open`; a member gets the record again | enrol the caller; reply with the pool record |
 //! | `join_exchange`, `join_confirm` | anyone, while a join code is open | SPAKE2 (`join_code`) |
-//! | `members` | members | swap pool records |
+//! | `members` | members | swap the builds members report; no row and no policy in it is read |
 //! | `boards`, `vector`, `pull`, `push` | members | board sync (`netsync`) |
 //! | `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` | members | test shards (`shard`) |
 
@@ -49,20 +49,15 @@ fn reply_of(result: Result<Value>) -> Value {
     }
 }
 
-/// The policy attribute as it travels.
+/// The policy attribute as it is handed to a device that joins.
 pub fn policy_json(node: &Node) -> Value {
     json!({"policy": node.members.policy.name(), "at": node.members.policy_at, "by": node.members.policy_by})
 }
 
-/// Take a peer's policy if it is newer (the caller is an active member).
-pub fn take_policy(node: &mut Node, v: &Value) -> Result<()> {
-    let (Some(p), Some(at), Some(by)) = (v.get("policy").and_then(Value::as_str), v.get("at").and_then(Value::as_u64), v.get("by").and_then(Value::as_str)) else {
-        return Ok(());
-    };
-    if node.members.set_policy(Policy::parse(p)?, at, by)? {
-        node.record_event("join_policy", p, "by a peer")?;
-    }
-    Ok(())
+/// The policy a joining device is handed, read back: the policy, when it was set and by whom; None when it is not all there.
+pub fn policy_of(v: &Value) -> Option<(Policy, u64, String)> {
+    let policy = Policy::parse(v.get("policy")?.as_str()?).ok()?;
+    Some((policy, v.get("at")?.as_u64()?, v.get("by")?.as_str()?.chars().take(80).collect()))
 }
 
 fn hello(node: &Node, standing: Standing) -> Value {
@@ -80,7 +75,17 @@ pub fn hello_request(node: &Node) -> Value {
     out
 }
 
-fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr) -> Result<Value> {
+/// What a device that has just joined is handed: the pool's id, its record and its policy.
+pub fn record_json(node: &Node) -> Value {
+    json!({"pool": node.members.id, "rows": node.members.export(), "policy": policy_json(node)})
+}
+
+/// A device that asks to join under `open`: it is enrolled and handed the pool's record. A device that is a member already is handed
+/// the record again and nothing else changes.
+fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing) -> Result<Value> {
+    if standing == Standing::Active {
+        return Ok(record_json(node));
+    }
     if node.members.policy != Policy::Open {
         return Err(Error::Denied("this pool takes a device only through a join code".into()));
     }
@@ -89,22 +94,19 @@ fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr) -> Result<Val
     }
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
     node.enrol_device(der, name, "open")?;
-    Ok(json!({"pool": node.members.id, "rows": node.members.export(), "policy": policy_json(node)}))
+    Ok(record_json(node))
 }
 
+/// The builds members report. The rows and the policy a member sends here are not read: who is in the pool and how it is joined are
+/// changed by this device's own API and by the joins it takes part in, and by nothing a member says.
 fn members(node: &mut Node, fp: &str, req: &Value) -> Result<Value> {
-    let rows = req.get("rows").and_then(Value::as_array).ok_or_else(|| Error::Invalid("rows is a list".into()))?;
     if req.get("pool").and_then(Value::as_str) != Some(node.members.id.as_str()) {
         return Err(Error::Denied("this is not the same pool".into()));
-    }
-    let changed = node.members.merge(rows, fp)?;
-    if let Some(p) = req.get("policy") {
-        take_policy(node, p)?;
     }
     if let Some(builds) = req.get("builds") {
         node.take_builds(fp, builds);
     }
-    Ok(json!({"pool": node.members.id, "changed": changed, "rows": node.members.export(), "policy": policy_json(node), "builds": node.builds_known()}))
+    Ok(json!({"pool": node.members.id, "builds": node.builds_known()}))
 }
 
 fn hosted<'a>(node: &'a mut Node, req: &Value, bfp: &str) -> Result<&'a mut crate::node::Hosted> {
@@ -170,9 +172,9 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
             node.observe_build(&fp, req);
             Ok(hello(node, standing))
         }
-        ("join_open", Standing::Unknown) => join_open(node, der, req, ip),
+        ("join_open", _) => join_open(node, der, req, ip, standing),
         ("join_exchange" | "join_confirm", Standing::Unknown) => net.join_code_step(node, der, op, req),
-        ("join_open" | "join_exchange" | "join_confirm", _) => Err(Error::Denied("this device is already a member".into())),
+        ("join_exchange" | "join_confirm", _) => Err(Error::Denied("this device is already a member".into())),
         (_, Standing::Unknown) => Err(Error::Denied("this device is not a member of the pool".into())),
         ("members", _) => members(node, &fp, req),
         ("boards", _) => Ok(json!({"boards": node.boards.keys().collect::<Vec<_>>()})),

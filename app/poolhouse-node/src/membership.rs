@@ -3,12 +3,15 @@
 //!
 //! A device is its certificate; its fingerprint is the SHA-256 of the DER. A peer is served only
 //! when the certificate it showed in the handshake is listed here as active; a revoked one is
-//! refused at its next handshake and at its next request on a connection already open. Revoking
-//! is one record that spreads by `merge`, and a revocation is never undone: revoked wins every
-//! merge, and a revoked certificate cannot be enrolled again (a device returns with a new one).
-//! A row whose fingerprint is not the hash of the certificate beside it is dropped.
+//! refused at its next handshake and at its next request on a connection already open. A
+//! revocation is never undone, and a revoked certificate cannot be enrolled again (a device
+//! returns with a new one). A row whose fingerprint is not the hash of the certificate beside it
+//! is dropped.
 //!
-//! The join policy (`open` or `secure`) is one attribute of the pool; the newest change wins.
+//! This record is the legacy pool (`pool.json`). A member's word changes nothing in it: rows,
+//! removals and the join policy that other members send are ignored, and only this device's own
+//! local API (a grant), a join this device made and the join policy at the moment of joining
+//! write to it. The join policy (`open` or `secure`) is one attribute of the pool.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -152,7 +155,8 @@ impl Pool {
                         devices.insert(kept.fingerprint.clone(), kept);
                     }
                 }
-                Ok(Pool { path: path.into(), id: f.pool, policy: f.policy, policy_at: f.policy_at, policy_by: f.policy_by, project: f.project, devices })
+                let policy_at = f.policy_at.min(crate::poolops::wall_ms());
+                Ok(Pool { path: path.into(), id: f.pool, policy: f.policy, policy_at, policy_by: f.policy_by, project: f.project, devices })
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let pool = Pool { path: path.into(), id: random_hex(8)?, policy: Policy::Secure, policy_at: 0, policy_by: String::new(), project: String::new(), devices: BTreeMap::new() };
@@ -244,9 +248,9 @@ impl Pool {
         self.devices().iter().filter_map(|d| serde_json::to_value(d).ok()).collect()
     }
 
-    /// Take what a peer that is an active member knows: new devices are added and every
-    /// revocation is applied. Returns how many records changed.
-    pub fn merge(&mut self, rows: &[Value], by: &str) -> Result<usize> {
+    /// Take the rows of the device this one has just joined, which the join itself authenticated (the join code's exchange, or the
+    /// pinned certificate of an `open` pool). Rows a member sends in an ordinary exchange never come here.
+    fn absorb(&mut self, rows: &[Value], by: &str) -> Result<usize> {
         let mut altered = 0;
         for row in rows.iter().take(MOST_ROWS) {
             let Some(mut heard) = Device::read(row) else { continue };
@@ -296,15 +300,19 @@ impl Pool {
         self.save()
     }
 
-    /// Take the id of the pool this device joins; only a device alone in its pool may.
-    pub fn adopt(&mut self, id: &str) -> Result<()> {
-        if id == self.id {
-            return Ok(());
-        }
-        if !self.alone() || id.len() != 16 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+    /// Take the pool of the device ``host`` this device has joined. A device alone in its pool takes the pool's id, its rows and its
+    /// policy; a device that has members takes only the row of ``host``, inside the pool it is already in.
+    pub fn adopt(&mut self, id: &str, rows: &[Value], policy: Option<(Policy, u64, &str)>, host: &str) -> Result<()> {
+        if id != self.id && (!self.alone() || id.len() != 16 || !id.bytes().all(|b| b.is_ascii_hexdigit())) {
             return Err(Error::Denied("a device that already has members does not change pool".into()));
         }
+        let alone = self.alone();
         self.id = id.into();
+        let taken: Vec<Value> = if alone { rows.to_vec() } else { rows.iter().filter(|r| r.get("fingerprint").and_then(Value::as_str) == Some(host)).cloned().collect() };
+        self.absorb(&taken, host)?;
+        if let (true, Some((policy, at, by))) = (alone, policy) {
+            self.set_policy(policy, at.min(crate::poolops::wall_ms()), by)?;
+        }
         self.save()
     }
 }

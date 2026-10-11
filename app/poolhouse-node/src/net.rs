@@ -314,32 +314,20 @@ impl Net {
         if hello["policy"] != "open" {
             return Err(Error::Denied("that pool does not take a device without a code".into()));
         }
-        let reply = if hello["member"] == true {
-            // That device already lists this one (another member let it in): swap records instead.
-            let ask = {
-                let n = locked(&self.node)?;
-                json!({"op": "members", "pool": n.members.id, "rows": n.members.export(), "policy": peer::policy_json(&n)})
-            };
-            c.call(&ask)?
-        } else {
-            c.call(&json!({"op": "join_open", "name": name, "port": self.port}))?
-        };
+        let reply = c.call(&json!({"op": "join_open", "name": name, "port": self.port}))?;
         self.adopt(&c, &reply, addr, "open")
     }
 
-    /// Take the pool a peer's reply describes: its id, its record (which must list the
-    /// certificate the handshake showed), its policy.
+    /// Take the pool a device's reply describes, when this device has joined it: its id, its record (which must list the
+    /// certificate the handshake showed) and its policy.
     fn adopt(&self, c: &PeerClient, reply: &Value, addr: SocketAddr, by: &str) -> Result<()> {
         let rows = reply["rows"].as_array().ok_or_else(|| Error::Invalid("rows is a list".into()))?;
         let host = rows.iter().filter_map(Device::read).find(|d| d.fingerprint == c.fingerprint && d.status == Status::Active);
         let host = host.ok_or_else(|| Error::Denied("the pool record does not list the device that sent it".into()))?;
         let mut node = locked(&self.node)?;
-        node.members.adopt(reply["pool"].as_str().unwrap_or(""))?;
+        let policy = reply.get("policy").and_then(peer::policy_of);
+        node.members.adopt(reply["pool"].as_str().unwrap_or(""), rows, policy.as_ref().map(|(p, at, by)| (*p, *at, by.as_str())), &c.fingerprint)?;
         node.enrol_device(&host.der().unwrap_or_default(), &host.name, by)?;
-        node.members.merge(rows, &c.fingerprint)?;
-        if let Some(p) = reply.get("policy") {
-            peer::take_policy(&mut node, p)?;
-        }
         node.facts.set_addr(&c.fingerprint, &addr.to_string())?;
         node.facts.peer(&c.fingerprint).last_seen_ms = wall_ms();
         Ok(())
@@ -375,7 +363,9 @@ impl Net {
             return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the join-code window is closed".into() }));
         }
         node.enrol_device(der, &name, "join-code")?;
-        let grant = json!({"v": 1, "pool": node.members.id, "rows": node.members.export(), "policy": peer::policy_json(node)}).to_string().into_bytes();
+        let mut grant = peer::record_json(node);
+        grant["v"] = json!(1);
+        let grant = grant.to_string().into_bytes();
         *window = None;
         node.facts.join_code_until_ms = 0;
         Ok(json!({"confirmation": session.confirmation()?, "grant": crate::fsutil::hex(&grant), "tag": session.seal(&grant)?}))

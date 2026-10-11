@@ -67,7 +67,7 @@ impl crate::node::Node {
 
     /// Change the join policy; true when it changed.
     pub fn change_policy(&mut self, policy: Policy, by: &str) -> Result<bool> {
-        let changed = self.members.set_policy(policy, wall_ms().max(self.members.policy_at + 1), by)?;
+        let changed = self.members.set_policy(policy, wall_ms().max(self.members.policy_at.saturating_add(1)), by)?;
         if changed {
             self.record_event("join_policy", policy.name(), &format!("by {by}"))?;
         }
