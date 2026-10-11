@@ -12,8 +12,8 @@
 //!
 //! With the beacon on, the device finds a pool without a key or a code: it takes the project of
 //! the repository it runs in (`--project-dir DIR`, else the working directory; `--project NAME`
-//! names one instead; `--no-project` turns this off), listens `--settle-ms N` for an `open` pool
-//! of that project to join, and makes one when it hears none.
+//! names one instead; `--no-project` turns this off), and while it is in no pool joins an `open` pool
+//! of that project it hears. It never makes a pool by itself: founding one is a person's approval.
 
 use std::io::{BufRead, Read};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -25,7 +25,7 @@ use poolhouse_node::beacon::{BeaconConfig, GROUP};
 use poolhouse_node::client::Client;
 use poolhouse_node::device::{Custody, Supplied};
 use poolhouse_node::fsutil::unhex;
-use poolhouse_node::net::{Net, NetConfig, SETTLE};
+use poolhouse_node::net::{Net, NetConfig};
 use poolhouse_node::projectid;
 use poolhouse_node::server::Server;
 use serde_json::json;
@@ -83,9 +83,8 @@ fn net_config(args: &[String]) -> Result<Option<NetConfig>, String> {
     let beacon_bind = format!("0.0.0.0:{LAN_BEACON_PORT}");
     let beacon = flag(args, "--beacon-bind").or(lan(args).then_some(beacon_bind.as_str())).map(|b| beacon_config(args, b)).transpose()?;
     let sync_every = flag(args, "--sync-ms").map(|n| n.parse::<u64>().map(Duration::from_millis).map_err(|e| e.to_string())).transpose()?;
-    let settle = flag(args, "--settle-ms").map(|n| n.parse::<u64>().map(Duration::from_millis).map_err(|e| e.to_string())).transpose()?;
     let project = if beacon.is_some() && !args.iter().any(|a| a == "--no-project") { project_key(args)? } else { None };
-    Ok(Some(NetConfig { listen: addr(listen)?, beacon, sync_every, project, settle: settle.unwrap_or(SETTLE) }))
+    Ok(Some(NetConfig { listen: addr(listen)?, beacon, sync_every, project }))
 }
 
 /// The build this node advertises: `--build-id`, `--build-seq`, `--wire-version` and `--pinned` over the environment.

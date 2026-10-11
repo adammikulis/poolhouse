@@ -3,6 +3,8 @@ mod kit;
 use std::net::{IpAddr, UdpSocket};
 use std::time::Duration;
 
+use kit::govnode::{found, ANN};
+use kit::gov::person;
 use kit::netkit::*;
 use poolhouse_node::beacon::{advertisable, decode, encode, Beacon};
 use poolhouse_node::error::Error;
@@ -14,13 +16,13 @@ fn sample(addr: &str) -> (Beacon, ed25519_dalek::SigningKey) {
     let key = kit::key(7);
     let b = Beacon {
         pool: "0123456789abcdef".into(), fingerprint: "a".repeat(64), public: key.verifying_key().to_bytes(),
-        addr: addr.parse().unwrap(), port: 4000, ts: wall_ms(), project: String::new(), lone: true,
+        addr: addr.parse().unwrap(), port: 4000, ts: wall_ms(), project: String::new(),
     };
     (b, key)
 }
 
 fn cfg_with(beacon: poolhouse_node::beacon::BeaconConfig) -> NetConfig {
-    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon), sync_every: None, project: None, settle: Duration::ZERO }
+    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon), sync_every: None, project: None }
 }
 
 #[test]
@@ -59,16 +61,19 @@ fn a_node_does_not_send_a_loopback_address_unless_a_test_allows_it() {
     let mut quiet = beacon(udp_port(), &[port]);
     quiet.allow_loopback = false;
     let _a = device_with(cfg_with(quiet));
+    found(&_a, person(ANN, "ann"), "secure");
     let mut buf = [0u8; 1024];
     assert!(listener.recv(&mut buf).is_err(), "a loopback address was advertised");
     let _b = device_with(cfg_with(beacon(udp_port(), &[port])));
+    found(&_b, person(ANN, "ann"), "secure");
     let n = listener.recv(&mut buf).expect("the control node beacons");
     let heard = decode(&buf[..n], wall_ms(), true).unwrap();
     assert_eq!(heard.addr.to_string(), "127.0.0.1");
 }
 
+
 #[test]
-fn under_open_two_devices_on_one_segment_enrol_each_other_and_sync() {
+fn under_open_a_device_in_no_pool_joins_the_pool_whose_beacon_it_hears_and_syncs() {
     let (pa, pb) = (udp_port(), udp_port());
     let a = device_with(cfg_with(beacon(pa, &[pb])));
     let b = device_with(cfg_with(beacon(pb, &[pa])));
@@ -76,9 +81,9 @@ fn under_open_two_devices_on_one_segment_enrol_each_other_and_sync() {
     let (_, bt) = b.session("demo", "y");
     a.say("demo", &at, "from a");
     b.say("demo", &bt, "from b");
-    a.set_policy("open");
-    b.set_policy("open");
+    found(&a, person(ANN, "ann"), "open");
     eventually("the two devices to share a pool", 15, || a.pool() == b.pool() && a.is_member(&b.fp()) && b.is_member(&a.fp()));
+    assert!(!a.pool().is_empty(), "the pool they share was founded by a person");
     let by = [a.member(&b.fp()).unwrap()["by"].clone(), b.member(&a.fp()).unwrap()["by"].clone()];
     assert!(by.contains(&json!("open")), "enrolment is recorded as automatic: {by:?}");
     a.ok("sync_now", "", &a.token, json!({}));
@@ -95,10 +100,10 @@ fn under_secure_a_beacon_enrols_nobody() {
     let (pa, pb) = (udp_port(), udp_port());
     let a = device_with(cfg_with(beacon(pa, &[pb])));
     let b = device_with(cfg_with(beacon(pb, &[pa])));
-    a.set_policy("open");
+    found(&a, person(ANN, "ann"), "secure");
     std::thread::sleep(Duration::from_millis(1500));
-    assert!(!a.is_member(&b.fp()) && !b.is_member(&a.fp()), "b is secure, so it enrols no one; a's open policy alone enrols only whom b names");
-    assert_ne!(a.pool(), b.pool());
+    assert!(!a.is_member(&b.fp()) && !b.is_member(&a.fp()), "a's pool is secure, so it takes a device only through a code");
+    assert_eq!(b.pool(), "", "b is still in no pool");
 }
 
 /// Send `a` a beacon that `z` signed, claiming pool `claimed`, from the real address of `z`.
@@ -106,7 +111,7 @@ fn forge_beacon(to_port: u16, z: &Dev, claimed: &str) {
     let key = z.node.lock().unwrap().key.clone();
     let b = Beacon {
         pool: claimed.into(), fingerprint: z.fp(), public: key.verifying_key().to_bytes(),
-        addr: "127.0.0.1".parse().unwrap(), port: z.net.port, ts: wall_ms(), project: String::new(), lone: true,
+        addr: "127.0.0.1".parse().unwrap(), port: z.net.port, ts: wall_ms(), project: String::new(),
     };
     let out = UdpSocket::bind("127.0.0.1:0").unwrap();
     for _ in 0..3 {
@@ -116,41 +121,37 @@ fn forge_beacon(to_port: u16, z: &Dev, claimed: &str) {
 }
 
 #[test]
-fn a_beacon_from_another_pool_id_is_ignored_and_only_the_devices_own_pool_gets_through() {
+fn a_beacon_that_names_no_founded_pool_is_ignored_and_only_a_founded_open_pool_gets_through() {
     let pa = udp_port();
     let a = device_with(cfg_with(beacon(pa, &[])));
     let z = device();
-    a.set_policy("open");
-    z.set_policy("open");
+    found(&z, person(ANN, "ann"), "open");
     forge_beacon(pa, &z, "ffffffffffffffff");
+    forge_beacon(pa, &z, "");
     std::thread::sleep(Duration::from_millis(1200));
-    assert!(!a.is_member(&z.fp()) && !z.is_member(&a.fp()), "a beacon naming a pool this device would not join is ignored, even from an open device");
-    assert_ne!(a.pool(), z.pool());
-    forge_beacon(pa, &z, "0000000000000001");
-    eventually("the control beacon (a smaller pool id, which a lone open device joins) to enrol", 10, || a.is_member(&z.fp()) && z.is_member(&a.fp()));
+    assert!(!a.is_member(&z.fp()) && !z.is_member(&a.fp()), "a beacon naming no founded pool (an old id, or none) is ignored, even from an open device");
+    assert_eq!(a.pool(), "");
+    forge_beacon(pa, &z, &z.pool());
+    eventually("the control beacon (the id of z's founded pool) to enrol", 10, || a.is_member(&z.fp()) && z.is_member(&a.fp()));
     assert_eq!(a.pool(), z.pool());
 }
 
 #[test]
-fn a_device_with_members_answers_only_its_own_pool_and_a_secure_one_answers_nobody() {
+fn a_device_in_a_pool_answers_no_beacon_and_a_secure_pool_takes_nobody_that_asks() {
     let pa = udp_port();
     let a = device_with(cfg_with(beacon(pa, &[])));
     let (member, z, y) = (device(), device(), device());
     a.join_with_code(&member);
-    a.set_policy("open");
-    z.set_policy("open");
-    y.set_policy("open");
-    forge_beacon(pa, &z, "0000000000000001");
-    std::thread::sleep(Duration::from_millis(500));
-    assert!(!a.is_member(&z.fp()), "a device that has members does not follow a smaller pool id");
-    member.join_with_code(&z);
-    assert_eq!(z.pool(), a.pool(), "z is in a's pool through another member, which a has not heard of yet");
-    forge_beacon(pa, &z, &a.pool());
-    eventually("a beacon of the pool's own id from an open device to be answered", 10, || a.is_member(&z.fp()) && z.is_member(&a.fp()));
+    found(&z, person(ANN, "ann"), "open");
+    forge_beacon(pa, &z, &z.pool());
+    std::thread::sleep(Duration::from_millis(800));
+    assert!(!a.is_member(&z.fp()) && !z.is_member(&a.fp()), "a device that is in a pool joins no other, whatever the beacon says");
 
     let pl = udp_port();
     let lone = device_with(cfg_with(beacon(pl, &[])));
-    forge_beacon(pl, &y, &lone.pool());
+    found(&y, person(ANN, "ann"), "secure");
+    forge_beacon(pl, &y, &y.pool());
     std::thread::sleep(Duration::from_millis(1200));
-    assert!(!lone.is_member(&y.fp()), "this device's policy is secure, so a beacon enrols nobody");
+    assert!(!lone.is_member(&y.fp()) && !y.is_member(&lone.fp()), "y's pool is secure, so a beacon enrols nobody");
+    assert_eq!(lone.pool(), "");
 }

@@ -45,7 +45,6 @@ class Check:
     port: int
     beacon_port: int
     wait_s: float
-    policy: str
     binary: Path | None
     steps: list[Step] = field(default_factory=list)
     shown: dict = field(default_factory=dict)
@@ -146,11 +145,6 @@ def step_beacon_receive(c: Check) -> Step:
     return Step("beacon-receive", True, f"heard its own beacon {shown['beacon_own']} times (multicast and broadcast arrive)")
 
 
-def step_policy(c: Check) -> Step:
-    done = node_join.set_policy(c.state, c.policy)
-    return Step("policy", True, f"join policy is {done['policy']}" + (" (devices on this network enrol one another; revoke one with member_remove)" if c.policy == "open" else ""))
-
-
 def step_member_beacon(c: Check) -> Step:
     shown = _until(c, lambda s: s["beacon_heard"] > 0, c.wait_s)
     if shown["beacon_heard"] == 0:
@@ -164,7 +158,7 @@ def step_enrolled(c: Check) -> Step:
     others = node_join.others(shown)
     if not others:
         why = (shown.get("last_join") or {}).get("error") or "no enrolment was attempted"
-        return Step("enrolled", False, why, "both devices must be on policy open and on the same network; a device that already has members does not change pool")
+        return Step("enrolled", False, why, "one of the two devices must have founded an open pool, and both must be on the same network; a device that is in a pool does not change pool")
     first = others[0]
     return Step("enrolled", True, f"{first['fingerprint'][:16]} by {first['by']}, pool {shown['pool']}")
 
@@ -196,18 +190,13 @@ def _until(c: Check, ready: Callable[[dict], bool], seconds: float) -> dict:
 
 
 STEPS: list[Callable[[Check], Step]] = [step_platform, step_binary, step_node, step_listening, step_beacon_send,
-                                       step_beacon_receive, step_policy, step_member_beacon, step_enrolled, step_converge]
-
-
-def steps_for(c: Check) -> list[Callable[[Check], Step]]:
-    """All the steps under `open`; under `secure` the ones up to the policy, since nothing enrols by itself."""
-    return STEPS if c.policy == "open" else STEPS[:STEPS.index(step_policy) + 1]
+                                       step_beacon_receive, step_member_beacon, step_enrolled, step_converge]
 
 
 def walk(c: Check, out: Callable[[str], None] = print) -> bool:
     """Run the steps in order, printing each; a failed step stops the rest (they are shown SKIP). True when all passed."""
     failed = False
-    for make in steps_for(c):
+    for make in STEPS:
         if failed:
             out(f"SKIP  {make.__name__.removeprefix('step_').replace('_', '-')}")
             continue
@@ -226,7 +215,4 @@ def summary(c: Check) -> str:
     failed = next((s for s in c.steps if not s.ok), None)
     if failed is not None:
         return f"NOT READY at {failed.name}. The one fix: {failed.fix}\nThen run this again."
-    if c.policy != "open":
-        return "READY: the node runs with its network on and beacons; policy secure enrols nobody without a join code."
-    return (f"READY: this device and {len(node_join.others(c.shown))} other(s) share pool {c.shown.get('pool')}. "
-            f"Close the door again with: python -m poolhouse.node_join join --policy secure --state {c.state}")
+    return f"READY: this device and {len(node_join.others(c.shown))} other(s) share pool {c.shown.get('pool')}."

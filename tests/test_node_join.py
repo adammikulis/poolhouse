@@ -6,7 +6,6 @@ from __future__ import annotations
 import ast
 import os
 import socket
-import time
 from pathlib import Path
 
 import pytest
@@ -16,7 +15,7 @@ from poolhouse import node_join, node_join_check, node_launch
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Client
 from poolhouse.fleet.onboard.manifest import Signer
-from poolhouse.node_health import Refused, call
+from poolhouse.node_health import call
 from tests import test_node_launch as launch
 
 pytestmark = pytest.mark.slow
@@ -64,35 +63,11 @@ def bodies(state: Path, token: str) -> list[str]:
     return sorted(r["fields"]["body"] for r in rows)
 
 
-def test_two_nodes_enrol_each_other_under_open_share_a_board_and_a_revoked_one_stays_out(home, built):
-    a, b = two_devices(home, built)
-    try:
-        ta, tb = say(a, "from a"), say(b, "from b")
-        with pytest.raises(Refused, match="grant"):
-            node_join.set_policy(a, "open")
-        person = Signer.generate()
-        allowed(a, person, "set_join_policy", "member_remove")
-        allowed(b, Signer.generate(), "set_join_policy")
-        node_join.set_policy(a, "open")
-        node_join.set_policy(b, "open")
-        waited("both to list each other", lambda: node_join.others(node_join.status(a)) and node_join.others(node_join.status(b)), 30)
-        member = node_join.others(node_join.status(a))[0]
-        assert member["by"] == "open" and node_join.status(a)["pool"] == node_join.status(b)["pool"]
-        waited("the board to converge", lambda: bodies(a, ta) == bodies(b, tb) == ["from a", "from b"], 30)
-        call(a, "member_remove", {"fingerprint": member["fingerprint"]}, token=node_join._token(a))
-        time.sleep(2)  # several beacons and syncs: a removed device is not let back in
-        assert not node_join.others(node_join.status(a))
-        assert any(m["status"] == "revoked" for m in node_join.status(a)["members"])
-    finally:
-        node_launch.stop_node(a)
-        node_launch.stop_node(b)
-
-
 def test_the_check_stops_at_the_first_failing_step_and_says_what_to_change(home, tmp_path, monkeypatch):
     monkeypatch.setattr(node_join_check, "route_address", lambda: "192.0.2.5")
     monkeypatch.setattr(node_join_check, "is_wsl", lambda: False)
     lines: list[str] = []
-    check = node_join_check.Check(state=home / "c", port=1, beacon_port=2, wait_s=1, policy="open", binary=tmp_path / "missing" / "poolhouse-node")
+    check = node_join_check.Check(state=home / "c", port=1, beacon_port=2, wait_s=1, binary=tmp_path / "missing" / "poolhouse-node")
     assert node_join_check.walk(check, lines.append) is False
     joined = "\n".join(lines)
     assert lines[0].startswith("PASS  platform") and lines[1].startswith("FAIL  binary")
@@ -105,7 +80,7 @@ def test_wsl_in_nat_mode_is_named_as_the_problem_with_the_exact_fix(monkeypatch,
     monkeypatch.setattr(node_join_check, "is_wsl", lambda: True)
     monkeypatch.setattr(node_join_check, "route_address", lambda: "172.20.1.2")
     monkeypatch.setattr(node_join_check, "wsl_mode", lambda address: "nat")
-    check = node_join_check.Check(state=tmp_path, port=1, beacon_port=2, wait_s=0, policy="open", binary=None)
+    check = node_join_check.Check(state=tmp_path, port=1, beacon_port=2, wait_s=0, binary=None)
     step = node_join_check.step_platform(check)
     assert not step.ok and "networkingMode=mirrored" in step.fix and "wsl --shutdown" in step.fix and ".wslconfig" in step.fix
     monkeypatch.setattr(node_join_check, "wsl_mode", lambda address: "mirrored")
@@ -113,23 +88,21 @@ def test_wsl_in_nat_mode_is_named_as_the_problem_with_the_exact_fix(monkeypatch,
 
 
 if LAN:
-    def test_join_turns_the_network_on_for_a_node_that_ran_without_it_and_sets_the_policy(home, built):
+    def test_join_turns_the_network_on_for_a_node_that_ran_without_it(home, built):
         install_runtime(built, "a")
         state = home / "j"
         node_launch.ensure_node(state)
         assert node_join.status(state)["listen"] is None, "a node started the old way has no network"
         try:
-            shown = node_join.join(state, policy="open")
-            assert shown["policy"] == "open" and shown["listen"].endswith(":7447") and shown["beacon"] is True
-            assert shown["members"][0]["self"] is True and shown["pool"], "the first run made a pool with this device in it"
-            shown = node_join.join(state, policy="secure")
-            assert shown["policy"] == "secure"
+            shown = node_join.join(state)
+            assert shown["listen"].endswith(":7447") and shown["beacon"] is True
+            assert shown["members"][0]["self"] is True and shown["pool"] == "", "a fresh node is the unfounded pool of one: this device alone, no pool id"
         finally:
             node_launch.stop_node(state)
 
     def test_a_node_that_hears_nothing_is_told_what_to_allow(home, built):
         install_runtime(built, "a")
-        check = node_join_check.Check(state=home / "d", port=7447, beacon_port=7448, wait_s=1, policy="open", binary=None)
+        check = node_join_check.Check(state=home / "d", port=7447, beacon_port=7448, wait_s=1, binary=None)
         try:
             assert node_join_check.step_node(check).ok
             assert node_join_check.step_listening(check).ok

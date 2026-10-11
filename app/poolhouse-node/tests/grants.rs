@@ -49,7 +49,7 @@ fn nothing_is_allowed_until_a_grant_names_it() {
         assert!(!check(&mut n, &me, action, &Scope::any()).unwrap(), "{action} is refused by default");
         assert!(!holds(&mut n, &me, action, &Scope::any()).unwrap());
     }
-    for (method, params) in [("set_join_policy", json!({"policy": "open"})), ("member_remove", json!({"fingerprint": "ab".repeat(32)})),
+    for (method, params) in [("pool_leave", json!({})), ("member_remove", json!({"fingerprint": "ab".repeat(32)})),
                              ("shard_consent", json!({"enabled": false}))] {
         assert_eq!(code(&req(&mut n, method, "", &token, params)), "denied", "{method}");
     }
@@ -144,7 +144,7 @@ fn a_use_count_on_an_action_another_device_may_use_names_the_one_device() {
         ok(put(&mut n, &at, &format!("g-00000000000000c{}", action.len()), &Spec::session(&a, action).uses(3).device(&here)));
         ok(put(&mut n, &at, &format!("g-00000000000000d{}", action.len()), &Spec::session(&a, action)));
     }
-    ok(put(&mut n, &at, "g-00000000000000b8", &Spec::session(&a, "set_join_policy").uses(3)));
+    ok(put(&mut n, &at, "g-00000000000000b8", &Spec::session(&a, "pool_leave").uses(3)));
 }
 
 #[test]

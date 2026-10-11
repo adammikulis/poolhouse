@@ -75,25 +75,19 @@ def test_claims_conflict_notes_announcements_and_agents(mine):
 
 def test_a_pool_of_one_lists_this_device_and_capacity(mine):
     pool = ph.pool.status()
-    assert pool.policy in ("open", "secure") and pool.id and pool.listening == ""
+    assert pool.policy in ("open", "secure") and pool.id == "" and pool.listening == ""
     assert [m.this_device for m in ph.pool.members()] == [True] and ph.pool.policy() == pool.policy
     assert [(m.reach, m.reach_hint) for m in ph.pool.members()] == [("self", "")], "a member's reach is how this device gets to it; this device is `self`"
     cap = ph.pool.capacity()
     assert cap.cpu_cores >= 1 and cap.cpu_slots >= 1 and cap.memory_bytes > 0 and cap.leases_held == 0
     with pytest.raises(ph.Error, match="agreed=True"):
-        ph.pool.listen("open")
-    with pytest.raises(ph.Error, match="open, secure"):
-        ph.pool.set_policy("whenever")
+        ph.pool.listen()
     with pytest.raises(ph.Error, match="no member"):
         ph.pool.remove("ghost")
 
 
-def test_the_policy_changes_and_a_member_that_is_not_there_cannot_be_joined_by_a_wrong_code(mine):
-    with pytest.raises(ph.Denied):
-        ph.pool.set_policy("secure")
-    allow(_node.session(), mine.person, "set_join_policy", "join_pool")
-    assert ph.pool.set_policy("secure") == "secure" and ph.pool.policy() == "secure"
-    assert ph.pool.set_policy("open") == "open"
+def test_a_member_that_is_not_there_cannot_be_joined_by_a_wrong_code(mine):
+    allow(_node.session(), mine.person, "join_pool")
     with pytest.raises(ph.Error):
         ph.pool.join("127.0.0.1", "")
 

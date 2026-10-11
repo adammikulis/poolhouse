@@ -18,7 +18,7 @@ use crate::cert::{board_fingerprint, Identity};
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
 use crate::lineage::Peer;
-use crate::membership::{Device, Policy, Standing, Status};
+use crate::membership::{Device, Standing};
 use crate::netsync::sync_all;
 use crate::node::Node;
 use crate::join_code::{context_for, new_code, Session, Window};
@@ -28,8 +28,8 @@ use crate::poolops::wall_ms;
 use crate::shard::{self, Shards};
 use crate::tls::{server_config, StandingFn};
 
-/// How long a device with a project listens for a pool of it before it makes one.
-pub const SETTLE: Duration = Duration::from_secs(4);
+/// How long a device does not ask again a pool that refused it a join.
+const REFUSED_FOR: Duration = Duration::from_secs(10);
 
 /// How this node reaches other machines.
 #[derive(Clone, Debug)]
@@ -38,17 +38,15 @@ pub struct NetConfig {
     pub beacon: Option<BeaconConfig>,
     /// How often to swap pool records and boards with every member; None for only on request.
     pub sync_every: Option<Duration>,
-    /// The project key (`projectid::project_of`) this device finds a pool for on its own: it
-    /// listens for ``settle`` for an `open` pool of that project to join, and makes one if it
-    /// hears none. None leaves the pool as it is.
+    /// The project key (`projectid::project_of`) of this device: while it is in no pool it joins an `open` pool of that project that
+    /// it hears. A device never founds a pool by itself; founding is a person's approval. None leaves the device as it is.
     pub project: Option<String>,
-    pub settle: Duration,
 }
 
 impl NetConfig {
     /// Listen on every interface on ``port`` with the default beacon on ``beacon_port``.
     pub fn standard(port: u16, beacon_port: u16) -> NetConfig {
-        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(Duration::from_secs(20)), project: None, settle: SETTLE }
+        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(Duration::from_secs(20)), project: None }
     }
 }
 
@@ -61,11 +59,11 @@ pub struct Net {
     pub shards: Arc<Shards>,
     window: Mutex<Option<Window>>,
     joining: Mutex<BTreeSet<String>>,
+    /// Devices whose pool refused this one a join lately, and when.
+    refused: Mutex<BTreeMap<String, std::time::Instant>>,
     beacon_stats: OnceLock<Arc<BeaconStats>>,
     /// The last attempt to join a pool automatically, and how it ended.
     last_join: Mutex<Value>,
-    /// True while the device listens for a pool of its project before making one.
-    settling: AtomicBool,
     /// Members that opened a connection to this device and keep it open for requests to go down (they cannot be dialed: they are behind NAT).
     reverse: Mutex<BTreeMap<String, Arc<Mutex<PeerClient>>>>,
     /// Members this device is keeping such a connection to, so each is attached once, with a handle that closes the connection.
@@ -125,7 +123,7 @@ impl Net {
         let port = listener.local_addr()?.port();
         let net = Arc::new(Net {
             node, server_config: server_config(&me, standing)?, me, port, stop, shards,
-            window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), settling: AtomicBool::new(false), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
+            window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), refused: Mutex::new(BTreeMap::new()), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
             reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()), this: OnceLock::new(),
         });
         let _ = net.this.set(Arc::downgrade(&net));
@@ -133,7 +131,7 @@ impl Net {
         let n = net.clone();
         std::thread::spawn(move || n.accept_loop(listener));
         if let Some(project) = cfg.project.as_deref().filter(|_| cfg.beacon.is_some()) {
-            net.settle(project, cfg.settle)?;
+            locked(&net.node)?.members.claim_project(project);
         }
         if let Some(b) = cfg.beacon {
             net.start_beacon(b)?;
@@ -189,10 +187,9 @@ impl Net {
         let (a, b) = (self.clone(), self.clone());
         let hooks = Hooks {
             identity: Box::new(move || {
-                let quiet = a.settling.load(Ordering::SeqCst);
                 a.node.lock().map(|n| Advert {
-                    pool: if quiet { String::new() } else { n.members.id.clone() }, fingerprint: n.cert.fingerprint(), port: a.port,
-                    project: n.members.project.clone(), lone: n.members.alone(),
+                    pool: n.members.id.clone(), fingerprint: n.cert.fingerprint(), port: a.port,
+                    project: n.members.project.clone(),
                 }).unwrap_or_default()
             }),
             on_beacon: Box::new(move |beacon| b.heard(beacon)),
@@ -225,40 +222,9 @@ impl Net {
         }
     }
 
-    /// Take the project of this device (when it is alone) and look for an `open` pool of it: for
-    /// ``window`` this device is quiet and joins the first one heard; when none is, it makes its
-    /// pool `open` and beacons. A device that already belongs to the project is left as it is,
-    /// and one with members of another is not moved.
-    fn settle(self: &Arc<Net>, project: &str, window: Duration) -> Result<()> {
-        {
-            let mut node = locked(&self.node)?;
-            if node.members.project == project || !node.members.can_join_other() {
-                return Ok(());
-            }
-            node.members.claim_project(project)?;
-        }
-        self.settling.store(true, Ordering::SeqCst);
-        let net = self.clone();
-        std::thread::spawn(move || {
-            let end = std::time::Instant::now() + window;
-            while std::time::Instant::now() < end && !net.stop.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_millis(20));
-            }
-            if let Ok(mut node) = net.node.lock() {
-                if node.members.can_join_other() {
-                    let _ = node.members.set_policy(Policy::Open, wall_ms(), "auto");
-                }
-            }
-            net.settling.store(false, Ordering::SeqCst);
-        });
-        Ok(())
-    }
-
-    /// A valid beacon was heard. A member's address is remembered; a non-member is answered
-    /// only when its pool is of this device's project and the policy is `open` (or this device is
-    /// still settling), and only by a device in the same pool or one alone in a pool whose id
-    /// sorts later or whose sender is not alone (so two lone devices never join each other at once,
-    /// and a lone device always joins an established pool). Every other pool is ignored.
+    /// A valid beacon was heard. A member's address is remembered; a non-member is answered only by a device in no pool yet, only when
+    /// the sender's pool is founded (has an id) and is of this device's project, and not again for ten seconds after a refusal (a
+    /// pool that is not `open` refuses it). Two devices in no pool never join each other, and a device in a pool joins no other.
     fn heard(self: &Arc<Net>, b: Beacon) {
         let Ok(mut node) = self.node.lock() else { return };
         if b.fingerprint == node.cert.fingerprint() {
@@ -275,18 +241,19 @@ impl Net {
                 }
             }
             Standing::Unknown => {
-                let settling = self.settling.load(Ordering::SeqCst);
-                let lone_joins = node.members.can_join_other() && (b.pool.len() == 32 || b.pool < node.members.id || !b.lone);
-                let eligible = b.project == node.members.project
-                    && crate::netif::on_segment(b.addr)
-                    && ((node.members.policy == Policy::Open && (b.pool == node.members.id || lone_joins))
-                        || (settling && b.pool != node.members.id && lone_joins));
+                let eligible = node.members.can_join_other() && b.pool.len() == 32 && b.project == node.members.project && crate::netif::on_segment(b.addr);
                 drop(node);
-                if eligible && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
+                let waiting = self.refused.lock().is_ok_and(|r| r.get(&b.fingerprint).is_some_and(|at| at.elapsed() < REFUSED_FOR));
+                if eligible && !waiting && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
                     let (net, fp) = (self.clone(), b.fingerprint.clone());
                     std::thread::spawn(move || {
                         let result = net.join_open(addr, &fp);
                         net.record_join(&fp, addr, &result);
+                        if result.is_err() {
+                            if let Ok(mut r) = net.refused.lock() {
+                                r.insert(fp.clone(), std::time::Instant::now());
+                            }
+                        }
                         if let Ok(mut j) = net.joining.lock() {
                             j.remove(&fp);
                         }
@@ -315,30 +282,12 @@ impl Net {
             return Err(Error::Denied("that pool does not take a device without a code".into()));
         }
         let reply = c.call(&json!({"op": "join_open", "name": name, "port": self.port}))?;
-        self.adopt(&c, &reply, addr, "open")
+        self.adopt(&c, &reply, addr)
     }
 
-    /// Take the pool a device's reply describes, when this device has joined it: its id, its record (which must list the
-    /// certificate the handshake showed) and its policy.
-    fn adopt(&self, c: &PeerClient, reply: &Value, addr: SocketAddr, by: &str) -> Result<()> {
-        if reply.get("found").is_some() {
-            return self.adopt_governed(c, reply, addr);
-        }
-        let rows = reply["rows"].as_array().ok_or_else(|| Error::Invalid("rows is a list".into()))?;
-        let host = rows.iter().filter_map(Device::read).find(|d| d.fingerprint == c.fingerprint && d.status == Status::Active);
-        let host = host.ok_or_else(|| Error::Denied("the pool record does not list the device that sent it".into()))?;
-        let mut node = locked(&self.node)?;
-        let policy = reply.get("policy").and_then(peer::policy_of);
-        node.members.adopt(reply["pool"].as_str().unwrap_or(""), rows, policy.as_ref().map(|(p, at, by)| (*p, *at, by.as_str())), (&c.fingerprint, by))?;
-        node.enrol_device(&host.der().unwrap_or_default(), &host.name, by)?;
-        node.facts.set_addr(&c.fingerprint, &addr.to_string())?;
-        node.facts.peer(&c.fingerprint).last_seen_ms = wall_ms();
-        Ok(())
-    }
-
-    /// Take the governed pool a device's reply describes: this device becomes a member of it (an alone device that has no pool of
-    /// its own), or takes the acts the reply holds into the pool it is already in.
-    fn adopt_governed(&self, c: &PeerClient, reply: &Value, addr: SocketAddr) -> Result<()> {
+    /// Take the pool a device's reply describes, when this device has joined it: this device becomes a member of it (a device in no
+    /// pool yet), or takes the acts the reply holds into the pool it is already in.
+    fn adopt(&self, c: &PeerClient, reply: &Value, addr: SocketAddr) -> Result<()> {
         let read = |key: &str| -> Result<Vec<crate::gov::act::Act>> { serde_json::from_value(reply[key].clone()).map_err(|_| Error::Invalid(format!("{key} is a list of acts"))) };
         let found: crate::gov::act::Act = serde_json::from_value(reply["found"].clone()).map_err(|_| Error::Invalid("found is an act".into()))?;
         let (settled, delegates, rest) = (read("settled")?, read("delegates")?, read("acts")?);
@@ -421,7 +370,7 @@ impl Net {
             (n.members.can_join_other(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
         };
         if !alone {
-            return Err(Error::Denied("a device that already has members does not change pool".into()));
+            return Err(Error::Denied("a device that is in a pool does not change pool".into()));
         }
         if passphrase.is_empty() {
             if !crate::cert::valid_fingerprint(fingerprint) {
@@ -444,7 +393,7 @@ impl Net {
             return Err(Error::Denied("the grant does not carry the exchange's tag".into()));
         }
         let grant: Value = serde_json::from_slice(&grant)?;
-        self.adopt(&c, &grant, addr, "join-code")?;
+        self.adopt(&c, &grant, addr)?;
         let ask = peer::hello_request(&*locked(&self.node)?);
         if let Ok(hello) = c.call(&ask) {
             locked(&self.node)?.observe_build(&c.fingerprint, &hello);

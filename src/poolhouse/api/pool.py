@@ -14,9 +14,7 @@ from poolhouse import errors, hub, node_join, node_launch
 from poolhouse.api import _node
 
 __all__ = ["Capacity", "Member", "Pool", "add_device", "capacity", "join", "listen", "members", "policy", "remove",
-           "set_policy", "status", "sync"]
-
-POLICIES = ("open", "secure")
+           "status", "sync"]
 DEFAULT_PORT = 7447
 
 
@@ -102,23 +100,16 @@ def policy() -> str:
     return status().policy
 
 
-def set_policy(new: str) -> str:
-    """Set how devices join: ``open`` or ``secure``. Returns the policy now in force."""
-    if new not in POLICIES:
-        raise errors.Error(f"the join policy is one of {', '.join(POLICIES)}, not {new!r}")
-    return str(_node.call("set_join_policy", {"policy": new}, token=_node.session().token)["policy"])
-
-
-def listen(join_policy: str = "open", *, agreed: bool = False) -> Pool:
-    """Turn this device's network on so other devices can join, and set how: the node listens on TCP 7447 and
-    sends a signed beacon on UDP 7448 on the local network.
+def listen(*, agreed: bool = False) -> Pool:
+    """Turn this device's network on so other devices can join: the node listens on TCP 7447 and
+    sends a signed beacon on UDP 7448 on the local network. How devices join is the policy of the pool a person founded.
 
     This changes what the machine exposes, so it is a person's decision: ``agreed=True`` says one made it
     (the `poolhouse` first run asks; a script passes it on the person's order). Without it, `Error`.
     """
     if not agreed:
         raise errors.Error("turning the network on is a person's decision: pass agreed=True once they said yes")
-    node_join.join(node_launch.default_state(), policy=join_policy)
+    node_join.join(node_launch.default_state())
     return status()
 
 

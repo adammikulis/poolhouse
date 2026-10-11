@@ -18,7 +18,7 @@ pub struct Dev {
 }
 
 pub fn config(beacon: Option<BeaconConfig>) -> NetConfig {
-    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon, sync_every: None, project: None, settle: Duration::ZERO }
+    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon, sync_every: None, project: None }
 }
 
 /// A device with a session registered on board `demo`.
@@ -119,19 +119,40 @@ impl Dev {
         self.status()["pool"].as_str().unwrap().to_string()
     }
 
-    /// This device lists `other` as a member, as its owner could after joining it: members do not teach each other who is in the pool,
-    /// so a test that needs two members that never joined one another says so here. No address is learned.
+    /// This device (in a pool of the test person's, founded here when it is in none) lists `other` as a member, as its owner could after
+    /// joining it: members do not teach each other who is in the pool, so a test that needs two members that never joined one another
+    /// says so here. When `other` is in no pool it joins this one with a code (and so learns its address); when it is in one, only
+    /// this device lists it.
     pub fn know(&self, other: &Dev) {
+        if self.is_member(&other.fp()) {
+            return;
+        }
+        if other.node.lock().unwrap().members.is_unfounded() {
+            self.join_with_code(other);
+            return;
+        }
+        self.found_if_unfounded();
         let name = other.node.lock().unwrap().members.get(&other.fp()).map(|d| d.name.clone()).unwrap_or_default();
-        self.node.lock().unwrap().enrol_device(&other.net.me.der, &name, "test").unwrap();
+        self.node.lock().unwrap().enrol_device(&other.net.me.der, &name, "join-code").unwrap();
     }
 
-    pub fn set_policy(&self, policy: &str) {
-        self.ok("set_join_policy", "", &self.token, json!({"policy": policy}));
+    /// Found a secure pool for the test person here when this device is in none; a device that joined a pool of the test person's and
+    /// holds no signer is given the person's, so it can admit in turn.
+    pub fn found_if_unfounded(&self) {
+        let (unfounded, cannot_admit) = {
+            let n = self.node.lock().unwrap();
+            (n.members.is_unfounded(), n.can_admit().is_err())
+        };
+        if unfounded {
+            super::govnode::found(self, super::gov::person(super::govnode::ANN, "ann"), "secure");
+        } else if cannot_admit {
+            self.node.lock().unwrap().set_signer(super::gov::person(super::govnode::ANN, "ann"));
+        }
     }
 
-    /// Join `joiner` into this device's pool with a code.
+    /// Join `joiner` into this device's pool with a code (this device founds a secure pool of the test person first when it is in none).
     pub fn join_with_code(&self, joiner: &Dev) -> Value {
+        self.found_if_unfounded();
         let code = self.ok("add_device", "", &self.token, json!({}))["code"].as_str().unwrap().to_string();
         joiner.ok("join_pool", "", &joiner.token, json!({"host": "127.0.0.1", "port": self.net.port, "passphrase": code}))
     }

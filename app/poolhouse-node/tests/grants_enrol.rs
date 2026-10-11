@@ -36,9 +36,9 @@ fn a_session_that_registered_first_cannot_enrol_its_own_key_grant_itself_and_loc
     assert_eq!(code(&req(&mut n, "person_enroll", "", &evil_token, planted)), "invalid", "no request sets the hash a secret is checked against");
     assert!(held(&mut n).is_empty());
 
-    let want = Spec::session(&evil, "set_join_policy");
+    let want = Spec::session(&evil, "pool_leave");
     assert_eq!(code(&key.issue(&mut caller(&mut n), "demo", &evil_token, GID, &want)), "denied", "a grant signed by a key nobody enrolled");
-    assert_eq!(code(&req(&mut n, "set_join_policy", "", &evil_token, json!({"policy": "open"}))), "denied");
+    assert_eq!(code(&req(&mut n, "pool_leave", "", &evil_token, json!({}))), "denied");
 
     enrolled(dir.path(), &mut caller(&mut n), &lead_token);
     assert_eq!(held(&mut n), [person().fingerprint()], "the person's own key is the one enrolled");

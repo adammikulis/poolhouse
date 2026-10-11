@@ -1,12 +1,12 @@
-//! What the node does with its pool record: enrol, revoke, change the policy, and write each
-//! change to the board named `pool` so it is part of the signed history.
+//! What the node does with its pool record: admit and remove devices by the pool's acts, and write each change to the board named
+//! `pool` so it is part of the signed history.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
 use crate::error::Result;
-use crate::membership::{Device, Policy};
+use crate::membership::Device;
 use crate::row::Kind;
 
 /// The board that carries the pool's own history (members added and put out, policy changes).
@@ -29,13 +29,12 @@ impl crate::node::Node {
         wall_ms()
     }
 
-    /// List this device's own certificate in the pool, once.
-    pub fn enrol_self(&mut self) -> Result<()> {
-        if self.members.is_legacy() && self.members.get(&self.cert.fingerprint()).is_none() {
+    /// List this device itself as the only member of the pool of one it has until it founds or joins a pool.
+    pub fn enrol_self(&mut self) {
+        if self.members.is_unfounded() {
             let (der, now) = (self.cert.der.clone(), wall_ms());
-            self.members.enrol(&der, &host_name(), "self", now)?;
+            self.members.list_self(&der, &host_name(), now);
         }
-        Ok(())
     }
 
     /// Write one event to the pool board; the pool record stays the authority.
@@ -45,42 +44,15 @@ impl crate::node::Node {
         Ok(())
     }
 
-    /// Let the device with this certificate in, and note it on the pool board.
+    /// Let the device with this certificate in by an admit the pool's admins sign (or this device signs where the pool lets it); the
+    /// pool board notes it.
     pub fn enrol_device(&mut self, der: &[u8], name: &str, by: &str) -> Result<Device> {
-        if self.members.gov().is_some() {
-            return self.gov_admit(der, name, by);
-        }
-        let existed = self.members.get(&crate::cert::cert_fingerprint(der)).is_some();
-        let device = self.members.enrol(der, name, by, wall_ms())?;
-        if !existed {
-            self.record_event("member_added", &device.fingerprint, &format!("by {by}"))?;
-        }
-        Ok(device)
+        self.gov_admit(der, name, by)
     }
 
-    /// Put a device out for good, and note it on the pool board.
-    pub fn remove_device(&mut self, fingerprint: &str, by: &str) -> Result<Device> {
-        if self.members.gov().is_some() {
-            return self.gov_remove(fingerprint);
-        }
-        let was_out = self.members.get(fingerprint).is_some_and(|d| d.status == crate::membership::Status::Revoked);
-        let device = self.members.revoke(fingerprint, by, wall_ms())?;
-        if !was_out {
-            self.record_event("member_removed", fingerprint, &format!("by {by}"))?;
-        }
-        Ok(device)
-    }
-
-    /// Change the join policy; true when it changed.
-    pub fn change_policy(&mut self, policy: Policy, by: &str) -> Result<bool> {
-        if self.members.gov().is_some() {
-            return Err(crate::error::Error::say("invalid", "A pool's join policy never changes in place; reissue the pool to change it.", "none", "stop"));
-        }
-        let changed = self.members.set_policy(policy, wall_ms().max(self.members.policy_at.saturating_add(1)), by)?;
-        if changed {
-            self.record_event("join_policy", policy.name(), &format!("by {by}"))?;
-        }
-        Ok(changed)
+    /// Put a device out for good by a removal the pool's admins sign; the pool board notes it.
+    pub fn remove_device(&mut self, fingerprint: &str) -> Result<Device> {
+        self.gov_remove(fingerprint)
     }
 
     /// The pool as a local client sees it: members with what is known of each, the policy,

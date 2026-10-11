@@ -24,7 +24,7 @@ ERRORS = ("Error", "NotRunning", "Denied", "Conflict")
 """The exceptions the public API raises, available as ``ph.Error`` and so on."""
 
 SURFACE: dict[str, tuple[str, ...]] = {
-    "pool": ("status", "members", "policy", "set_policy", "listen", "add_device", "join", "remove", "sync", "capacity",
+    "pool": ("status", "members", "policy", "listen", "add_device", "join", "remove", "sync", "capacity",
              "Pool", "Member", "Capacity"),
     "board": ("connect", "register", "Board", "Message", "Note", "Claim", "Agent", "Task", "Ask", "Approval"),
     "leases": ("view", "acquire", "wait", "renew", "release", "cpu_slots", "memory_mb", "gpu", "model_slot", "claim", "LeaseRecord"),

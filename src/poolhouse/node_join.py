@@ -1,11 +1,10 @@
-"""Join this device to a pool by the beacon: start the node with its network on, set the join policy, and show who is in.
+"""Join this device to a pool by the beacon: start the node with its network on, and show who is in.
 
-    python -m poolhouse.node_join join [--policy open|secure] [--state DIR] [--binary PATH] [--wait SECONDS]
+    python -m poolhouse.node_join join [--state DIR] [--binary PATH] [--wait SECONDS]
     python -m poolhouse.node_join status [--state DIR]
 
-Under policy `open` two devices on the same network, each with its node running, hear each other's signed beacon and enrol
-one another on first contact; each enrolment is recorded (by `open`, with the certificate fingerprint) and can be revoked
-with `member_remove`. Under `secure` nothing enrols without a join code. `pool-join-check` (scripts/) walks every step
+A device in no pool joins an `open` pool whose signed beacon it hears on the same network; each enrolment is recorded (by `open`, with the certificate fingerprint) and can be revoked
+with `member_remove`. A `secure` pool takes no one without a join code; founding a pool is a person's approval. `pool-join-check` (scripts/) walks every step
 of this on one device and says which fails and what to change.
 """
 
@@ -29,7 +28,6 @@ DEFAULT_PORT = 7447
 DEFAULT_BEACON_PORT = 7448
 BOARD = "pool"
 SESSION = "pool-join"
-POLICIES = ("open", "secure")
 JOIN_CODE_ENV = "POOLHOUSE_JOIN_CODE"
 POLL_S = 1.0
 
@@ -41,11 +39,11 @@ class PoolError(OSError):
 EXPLANATION = """\
 This turns on the node's network so this device can find and join another one on the same network.
   What:  the node listens on TCP {port} and sends and listens for a small signed beacon on UDP {beacon_port}.
-  Why:   so two of your devices on the same wifi or cable can pool without a code (join policy open),
+  Why:   so two of your devices on the same wifi or cable can pool without a code (the pool's policy open),
          or be joined with one (secure). Nothing leaves this network.
   What you will see: your computer may ask to allow this program to find devices on your local network
          (macOS: Local Network; Windows: a firewall prompt). Allow it. It asks once, only now.
-  Undo:  python -m poolhouse.node_join join --policy secure, or stop the node with python -m poolhouse.node_launch stop.
+  Undo:  stop the node with python -m poolhouse.node_launch stop.
 """
 
 
@@ -91,13 +89,6 @@ def _act(state: Path, method: str, params: dict) -> dict:
     return person_key.retrying(state, token, lambda: call(state, method, params, token=token))
 
 
-def set_policy(state: Path, policy: str) -> dict:
-    """Set the join policy of this device's pool; `open` or `secure`."""
-    if policy not in POLICIES:
-        raise PoolError(f"the join policy is open or secure, not {policy!r}")
-    return _act(state, "set_join_policy", {"policy": policy})
-
-
 def _wants_restart(state: Path, port: int) -> bool:
     """Whether a running node has its network off, or on another port than the one asked for."""
     try:
@@ -125,10 +116,9 @@ def others(shown: dict) -> list[dict]:
     return [m for m in shown.get("members", []) if m.get("status") == "active" and not m.get("self")]
 
 
-def join(state: Path, *, policy: str = "open", wait_s: float = 0.0, **start_args) -> dict:
-    """Start the node with its network on, set the policy and wait up to ``wait_s`` for another device; the pool status."""
+def join(state: Path, *, wait_s: float = 0.0, **start_args) -> dict:
+    """Start the node with its network on and wait up to ``wait_s`` for another device; the pool status."""
     start(state, **start_args)
-    set_policy(state, policy)
     end = time.monotonic() + wait_s
     while True:
         shown = status(state)
@@ -154,13 +144,12 @@ STATE = flag("--state", default="", help="the node's state directory (default: t
 GROUP = Group("poolhouse.node_join", "Join this device to a pool by the beacon.")
 def _join(state: Path, a) -> dict:
     consent(DEFAULT_PORT, DEFAULT_BEACON_PORT, yes=a.yes)
-    return join(state, policy=a.policy, wait_s=a.wait, binary=Path(a.binary) if a.binary else None)
+    return join(state, wait_s=a.wait, binary=Path(a.binary) if a.binary else None)
 
 
 GROUP.add("join", _run(_join),
-    help="start the node with its network on and set the join policy",
-    options=[STATE, flag("--policy", default="open", choices=POLICIES, help="open: devices on this network enrol by themselves; secure: a join code"),
-             flag("--wait", type=float, default=0.0, help="seconds to wait for another device to appear"),
+    help="start the node with its network on, so a device in no pool joins an open pool it hears",
+    options=[STATE, flag("--wait", type=float, default=0.0, help="seconds to wait for another device to appear"),
              flag("--yes", action="store_true", help="agree to turning the network on without being asked"),
              flag("--binary", default="", help="run this poolhouse-node binary instead of the selected runtime's")])
 def _invite(state: Path, a) -> dict:

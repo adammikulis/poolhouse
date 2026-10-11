@@ -91,19 +91,19 @@ fn converge(a: &Proc, b: &Proc) {
     eventually("the boards to converge", 30, || a.texts() == vec!["from a", "from b"] && b.texts() == vec!["from a", "from b"]);
 }
 
-fn open(p: &Proc) {
-    p.call("set_join_policy", "", &p.token, json!({"policy": "open"}));
+/// Found a pool of the test person's key on ``p``, which has no signer: the key signs outside the node.
+fn found(p: &Proc, policy: poolhouse_node::membership::Policy) {
+    kit::govnode::found_remote(&mut |m, params| p.call(m, "", &p.token, params), &kit::govnode::cert_of(&p.state()), policy, &[]);
 }
 
 #[test]
-fn two_processes_find_each_other_by_unicast_beacon_enrol_under_open_and_converge() {
+fn a_process_in_no_pool_finds_an_open_pool_by_unicast_beacon_joins_it_and_converges() {
     let (pa, pb) = (free_udp(), free_udp());
     let a = Proc::start(&loopback_args(pa, pb), "x");
     let b = Proc::start(&loopback_args(pb, pa), "y");
     a.say("from a");
     b.say("from b");
-    open(&a);
-    open(&b);
+    found(&a, poolhouse_node::membership::Policy::Open);
     converge(&a, &b);
 }
 
@@ -112,10 +112,11 @@ fn under_secure_two_processes_hear_each_other_and_enrol_nobody() {
     let (pa, pb) = (free_udp(), free_udp());
     let a = Proc::start(&loopback_args(pa, pb), "x");
     let b = Proc::start(&loopback_args(pb, pa), "y");
+    found(&a, poolhouse_node::membership::Policy::Secure);
     std::thread::sleep(Duration::from_millis(2500));
     let fb = b.status()["fingerprint"].as_str().unwrap().to_string();
     assert!(a.member(&fb).is_none() && b.member(&a.status()["fingerprint"].as_str().unwrap().to_string()).is_none());
-    assert_ne!(a.status()["pool"], b.status()["pool"]);
+    assert_eq!(b.status()["pool"], "", "b is still in no pool");
 }
 
 // ---- OPT-IN BELOW: every test after this line is #[ignore]d. They use the machine's network (every interface,
@@ -134,8 +135,7 @@ fn two_processes_join_by_multicast_beacon_on_the_loopback_interface() {
     let b = Proc::start(&args(), "y");
     a.say("from a");
     b.say("from b");
-    open(&a);
-    open(&b);
+    found(&a, poolhouse_node::membership::Policy::Open);
     converge(&a, &b);
     assert!(a.status()["beacon_own"].as_u64().unwrap() > 0, "a node hears its own beacon on the group: {}", a.status());
 }

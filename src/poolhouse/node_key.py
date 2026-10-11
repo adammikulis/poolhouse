@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 PURPOSE = "device-key"
 PLAIN, WRAPPED, ENCRYPTED, RECORD = "device.key", "device.key.wrapped", "device.key.enc", "device.custody.json"
-IDENTITY = (WRAPPED, ENCRYPTED, "device.cert", "pool.json")
+IDENTITY = (WRAPPED, ENCRYPTED, "device.cert")
 """The files that say a state directory is a device's: a new key is made only where none of them is."""
 PASSPHRASE_ENV = "POOLHOUSE_DEVICE_KEY_PASSPHRASE"  # noqa: S105 - the name of a variable, not a secret
 KEYSTORE, PASSPHRASE, FILE = "keystore", "passphrase", "file"

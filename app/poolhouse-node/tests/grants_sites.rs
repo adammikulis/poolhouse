@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 fn sites() -> Vec<(&'static str, &'static str, Value, &'static str)> {
     vec![
         ("member_remove", "", json!({"fingerprint": "ab".repeat(32)}), "member_remove"),
-        ("set_join_policy", "", json!({"policy": "open"}), "set_join_policy"),
+        ("pool_leave", "", json!({}), "pool_leave"),
         ("add_device", "", json!({}), "add_device"),
         ("join_pool", "", json!({"host": "127.0.0.1", "port": 9, "passphrase": "x"}), "join_pool"),
         ("sync_now", "", json!({}), "sync_now"),
@@ -36,7 +36,7 @@ fn each_action_the_stub_allowed_is_refused_without_a_grant_and_works_with_one() 
     for (method, board, params, action) in sites() {
         d.allow("demo", &token, &name, &[action]);
         let reply = d.call(method, board, &token, params);
-        assert_ne!(reply["error"]["code"], "denied", "{method} with the grant {action}: {reply}");
+        assert!(reply["error"]["grant"].is_null(), "{method} with the grant {action} is refused for no grant: {reply}");
     }
     let log = d.ok("grant_log", "demo", &token, json!({"limit": 200}))["log"].clone();
     for (_, _, _, action) in sites() {
@@ -55,7 +55,7 @@ fn a_grant_for_one_action_opens_no_other() {
         if action == "sync_now" {
             assert_eq!(reply["ok"], true, "{reply}");
         } else {
-            assert_eq!(reply["error"]["code"], "denied", "{method}: {reply}");
+            assert_eq!(reply["error"]["grant"]["action"], json!(action), "{method} is refused for want of its own grant: {reply}");
         }
     }
 }
@@ -64,14 +64,15 @@ fn a_grant_for_one_action_opens_no_other() {
 fn a_granted_pool_action_can_be_used_only_as_often_as_it_was_granted() {
     use kit::grants::{enrolled, person, Spec};
     let d = device();
+    kit::govnode::found(&d, kit::gov::person(kit::govnode::ANN, "ann"), "secure");
     let (name, token) = d.session("demo", "plain");
     let mut call = |m: &str, b: &str, t: &str, p: Value| d.call(m, b, t, p);
     enrolled(d.dir.path(), &mut call, &token);
-    let reply = person().issue(&mut call, "demo", &token, "g-00000000000000f1", &Spec::session(&name, "set_join_policy").on("open").uses(1));
+    let reply = person().issue(&mut call, "demo", &token, "g-00000000000000f1", &Spec::session(&name, "pool_leave").uses(1));
     assert_eq!(reply["ok"], true, "{reply}");
-    assert_eq!(d.call("set_join_policy", "", &token, json!({"policy": "secure"}))["error"]["code"], "denied", "the grant names the policy `open`");
-    assert_eq!(d.call("set_join_policy", "", &token, json!({"policy": "open"}))["ok"], true);
-    assert_eq!(d.call("set_join_policy", "", &token, json!({"policy": "open"}))["error"]["code"], "denied", "one use was granted");
+    assert_eq!(d.call("pool_leave", "", &token, json!({}))["ok"], true);
+    let again = d.call("pool_leave", "", &token, json!({}));
+    assert_eq!((again["error"]["code"].clone(), again["error"]["grant"]["action"].clone()), (json!("denied"), json!("pool_leave")), "one use was granted: {again}");
 }
 
 fn used(d: &Dev, board: &str, token: &str, gid: &str) -> u64 {

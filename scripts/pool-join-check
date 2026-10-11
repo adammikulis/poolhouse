@@ -32,10 +32,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--binary", default="", help="run this poolhouse-node binary (default: the selected runtime's, else one built here)")
     ap.add_argument("--wait", type=float, default=90.0, help="seconds to wait for the other device at each step that needs it")
     ap.add_argument("--yes", action="store_true", help="agree to turning the network on without being asked")
-    ap.add_argument("--policy", choices=node_join.POLICIES, default="open")
     args = ap.parse_args(argv)
     check = Check(state=Path(args.state) if args.state else default_state(), port=node_join.DEFAULT_PORT, beacon_port=node_join.DEFAULT_BEACON_PORT,
-                  wait_s=args.wait, policy=args.policy, binary=Path(args.binary).resolve() if args.binary else None)
+                  wait_s=args.wait, binary=Path(args.binary).resolve() if args.binary else None)
     try:
         node_join.consent(node_join.DEFAULT_PORT, node_join.DEFAULT_BEACON_PORT, yes=args.yes)
     except node_join.PoolError as exc:

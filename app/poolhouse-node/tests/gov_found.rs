@@ -19,11 +19,11 @@ fn founding(keys: &[K]) -> Value {
 #[test]
 fn a_charter_with_no_strong_admin_key_founds_nothing_because_nobody_could_admit_a_device() {
     let a = device();
-    let legacy = a.pool();
+    let before = a.pool();
     let reply = a.call("pool_found", "", &a.token, json!({"act": founding(&[weak(ANN, "ann")])}));
     assert_eq!(reply["ok"], false, "{reply}");
     assert!(reply["error"]["say"].as_str().unwrap().contains("strong"), "{reply}");
-    assert_eq!(a.pool(), legacy, "the pool of one it had is still its pool");
+    assert_eq!(a.pool(), before, "it is still in no pool");
     assert_eq!(a.ok("pool_found", "", &a.token, json!({"act": founding(&[strong(ANN, "ann")])}))["policy"], "secure");
 }
 
@@ -89,13 +89,13 @@ fn a_node_drafts_a_charter_whose_acceptances_are_signed_outside_it_and_founds_th
 #[test]
 fn a_charter_a_key_did_not_accept_founds_nothing() {
     let a = device();
-    let legacy = a.pool();
+    let before = a.pool();
     let draft = drafted(&a, "secure", &[(ANN, "ann"), (BEN, "ben")]);
     let mut charter = accepted(&draft, &[ANN, BEN]);
     charter["admins"].as_array_mut().unwrap().iter_mut().find(|k| k["key"] == public(BEN)).unwrap()["acceptance"] = json!(RigSigner::sign_as(ANN, b"not what ben accepts"));
     let refused = a.call("pool_found", "", &a.token, json!({"charter": charter}));
     assert_eq!(refused["ok"], false, "{refused}");
-    assert_eq!(a.pool(), legacy, "the pool of one it had is still its pool");
+    assert_eq!(a.pool(), before, "it is still in no pool");
     let both = a.call("pool_found", "", &a.token, json!({"charter": accepted(&draft, &[ANN, BEN]), "act": founding(&[strong(ANN, "ann")])}));
     assert_eq!(both["ok"], false, "a charter and an act together name two things to found: {both}");
 }
