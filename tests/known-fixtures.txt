@@ -343,3 +343,8 @@ Embedding Poolhouse
 Flash Next
 Not Active
 Returns None
+Battery Power
+Low Power Mode
+Apple M9 Ultra
+Apple M1
+Some Editor

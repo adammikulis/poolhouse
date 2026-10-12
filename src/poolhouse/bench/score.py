@@ -787,6 +787,7 @@ def _flat(one: Mapping[str, Any], among: Sequence[Mapping[str, Any]] = ()) -> di
         # None for a run kept before the cache was counted per turn, or with no turn to judge
         "prefix_hits": (round(float(server["prefix_hits"]), 4)
                         if server.get("prefix_hits") is not None else None),
+        "system": server.get("system"),
         "context": server.get("context"), "slots": server.get("slots"),
         "cache_type": str(server.get("cache_type") or ""),
         "reasoning_budget": server.get("reasoning_budget"),

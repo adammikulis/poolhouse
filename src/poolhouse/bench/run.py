@@ -17,7 +17,7 @@ import os
 import signal
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,7 @@ from poolhouse.bench import (
     retrieval,
     selfcheck as bench_selfcheck,
     speed as bench_speed,
+    system,
     thinking,
 )
 from poolhouse.bench.askings import _asked, asking_from, halves, sampling_from, with_card
@@ -466,6 +467,12 @@ COMMANDS.borrow(lambda sub: _module("extract").add_arguments(sub),
                 options=options.checking)
 
 
+def _say_systems(runs: Sequence[Mapping[str, Any]]) -> None:
+    """The systems the runs were measured on, and what differs among them."""
+    for line in system.lines(runs):
+        say(line)
+
+
 @COMMANDS.command("show", help="compare two runs, or list what is kept",
                   options=options.show_options, allow_abbrev=False)
 def cmd_show(args: Any) -> int:
@@ -486,8 +493,10 @@ def cmd_show(args: Any) -> int:
         return 0
     if args.compare:
         say(compare(args.kept, *args.compare))
+        _say_systems([r for r in answering if r.get("label") in args.compare])
         return 0
     if args.rank:
+        _say_systems(answering)
         ranking(answering, args.rank, noise=args.noise / 100)
         say(args.rank)
         return 0
@@ -504,12 +513,14 @@ def cmd_show(args: Any) -> int:
         say(plot(answering, args.plot, cost=args.cost, noise=args.noise / 100))
         return 0
     if args.rates:
+        _say_systems(answering)
         rates(answering, cost=args.cost, noise=args.noise / 100)
         return 0
     if args.detail is not None:
         missed([r for r in answering if not args.detail or r.get("label") == args.detail],
                everything=args.all, among=answering)
         return 0
+    _say_systems(answering)
     table(answering)
     if kept.extracted:
         say()
@@ -728,6 +739,7 @@ def main(argv: list[str] | None = None) -> int:
                       announce=lambda line: warn(line)):
             remember(rest, pid=os.getpid())
             note_beside_the_run()
+            system.note_start()
             try:
                 return _main(rest)
             finally:

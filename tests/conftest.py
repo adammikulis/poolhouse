@@ -125,6 +125,7 @@ import testslots  # noqa: E402  (``scripts`` is on the path above)
 import walkbound  # noqa: E402
 from environ_guard import environment_is_restored  # noqa: E402,F401  (an autouse fixture)
 from network_guard import nothing_beyond_loopback  # noqa: E402,F401  (an autouse fixture)
+from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
 
 from poolhouse.http import Server  # noqa: E402
 from poolhouse.testing import live  # noqa: E402

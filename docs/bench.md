@@ -66,6 +66,48 @@ has no generated figures and shows `-`, never 0.
 `poolhouse-bench standard` (lm-eval) records the metric, the scored count and the seconds, not
 generated tokens, so its sets have no figure here yet.
 
+## System snapshot
+
+Every run measured on this machine keeps a `system` record in its `server` record
+(`poolhouse.bench.system`): the hardware, the operating system, the limits, and the state of
+the machine at the start of the run and again at its end. A run gathered from a member keeps
+the record that member took. A run kept before this was recorded shows `system: not recorded`.
+In a sweep the end of one run is the start of the next.
+
+Every probe is a fixed-argument command with a timeout, run once per snapshot and never
+through a shell; a probe that fails or is missing leaves its field out. The hardware is read
+once per process. A snapshot costs a few tens of milliseconds, and a test bounds it.
+
+- `hardware`: `chip` (`machdep.cpu.brand_string`), `model` (`hw.model`), `memory_bytes`
+  (`hw.memsize`), `performance_cores` and `efficiency_cores` (`hw.perflevel0` and
+  `hw.perflevel1`), `gpu_cores` (`system_profiler SPDisplaysDataType`, the one slow probe).
+  On Linux: `chip` and `performance_cores` from `lscpu`, `memory_bytes` from `/proc/meminfo`,
+  `gpus` (name and memory) from `nvidia-smi --query-gpu` when it is installed.
+- `os`: `name`, `version` and `build` (`sw_vers`; `/etc/os-release` on Linux) and `kernel`.
+- `limits`: `wired_limit_mb` (`iogpu.wired_limit_mb`; 0 is the system default and
+  `wired_limit_default` says so) and `memory_ceiling_bytes`, the memory the broker admits a
+  model against (`hub.room`, the figure `poolhouse-models` prints as "this machine can serve
+  about N").
+- `start` and `end`, each: `throttled` with `thermal_warning`, `performance_warning`,
+  `cpu_speed_limit`, `cpu_scheduler_limit` and `cpus_available` (`pmset -g therm`) and
+  `cpu_thermal_level` where `machdep.xcpm.cpu_thermal_level` exists; `power_source`,
+  `battery_percent` and `charging` (`pmset -g batt`); `low_power_mode` (`pmset -g`);
+  `load_average`; `free_bytes`, `wired_bytes`, `compressed_bytes` and `inactive_bytes`
+  (`vm_stat`); `swap_used_bytes` and `swap_total_bytes` (`sysctl vm.swapusage`); and
+  `top_processes`, the five largest by resident size as `name` and `rss_bytes`.
+
+Deliberately not recorded: any user or account name, the home directory or any path, a
+command line, a serial number, a hardware or platform UUID (`system_profiler
+SPHardwareDataType` is never run), a battery id, a network address or interface, the displays
+attached. A process is recorded by the last part of its command, cut to 40 characters, and its
+size. The hostname is already on the run and stays the only identifier.
+
+`show`, `show --rates` and `show --rank` print one `system:` line per distinct system (chip,
+memory, operating system, wired limit) and, when the runs shown differ in chip, memory, the
+operating system's major version, wired limit, power source, Low Power Mode or thermal
+throttling, one line naming the difference and saying the numbers are not directly
+comparable. `show --detail LABEL` prints the whole record and `show --export` carries it.
+
 ## Measuring a change to the asking
 
 ```
