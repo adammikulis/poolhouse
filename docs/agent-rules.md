@@ -194,14 +194,14 @@ not proof that it is disposable.
 - Known failures remain named tasks with evidence and ownership. A scoped pass is not a full-suite pass. Fix a known
   relevant regression before the affected change lands. A missing cold selector cache does not require a full suite
   for a leaf change; use reviewed explicit affected tests.
-- **Linux testing is resumed by the owner.** Use the available WSL device for Linux verification, under the same
+- **Linux testing is active and is not paused.** Use the available WSL device for Linux verification, under the same
   reviewed-selector and background-suite policy as other platforms. Report the exact device, operating system,
   runtime and tested commit; a Mac result or historical Linux receipt is not verification of the current WSL setup.
   Report platform gaps and known failures honestly. Do not run a second full suite before every merge.
 - Use the maintained test broker for every run; shared CPU/GPU admission and ownership apply before work starts. Do
   not bypass a queue, start a competing full run, or extend a temporary preview pause indefinitely to obtain a quiet
   gate. Attribute external writes from actual writer evidence; unknown or test-owned writes still fail isolation
-  checks. `scripts/test` and, when Linux resumes, `scripts/test-on-linux` acquire maintained CPU admission;
+  checks. `scripts/test` and `scripts/test-on-linux` acquire maintained CPU admission;
   `scripts/testslots.py status` shows ownership. Model-backed work also requires the model/GPU broker grant. A CPU
   lease is not a GPU lease, and an inherited lease must not lead to a nested admission deadlock. Do not bypass leases,
   disable platform isolation, or grant container privileges to make a check pass.

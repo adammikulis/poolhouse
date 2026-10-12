@@ -14,7 +14,7 @@ run the tiers, not a bare `pytest -n N`. `DEV_TEST_BUDGET` sets the budget (defa
 
 [AGENTS.md](../AGENTS.md#scoped-merge-gates-and-background-verification) defines when checks run. Agents test their own changed behavior. The main agent runs shared
 structural/security gates once per consolidated integration batch, handles full end-to-end
-checks and background suites, and honors the owner-directed Linux pause.
+checks and background suites, including the Linux run on the WSL device.
 
 | tier | what runs | when |
 | --- | --- | --- |

@@ -567,11 +567,11 @@ nobody runs a full suite after every intermediate commit.
   (`scripts/land run`). A tree that already passed a check is not checked again (`reused from <id>`); a failure that
   also fails on the clean target is `baseline`.
 - Known failures remain named tasks with evidence and ownership; a scoped pass is not a full-suite pass; fix a known
-  relevant regression before the affected change lands. **Linux testing is resumed by the owner**: use the available WSL
+  relevant regression before the affected change lands. **Linux testing is active, not paused** (the owner has said so repeatedly): use the available WSL
   device and report its exact device, operating system, runtime and tested commit (a Mac result or historical Linux
   receipt is not verification of it). Report platform gaps and known failures honestly. No second full suite before
   every merge.
-- Every run goes through the maintained test broker (`scripts/test`, `scripts/test-on-linux` when Linux resumes; shared
+- Every run goes through the maintained test broker (`scripts/test`, `scripts/test-on-linux`; shared
   CPU admission, `scripts/testslots.py status`; model-backed work also needs the model/GPU grant). Do not bypass a queue
   or a lease, start a competing full run, disable platform isolation, grant container privileges, or extend a temporary
   preview pause indefinitely to get a quiet gate. A CPU lease is not a GPU lease. Detail: docs/agent-rules.md, "Gate

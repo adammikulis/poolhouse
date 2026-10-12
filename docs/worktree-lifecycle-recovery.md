@@ -25,6 +25,6 @@ invalid credentials remain errors; a board selected on another device never fall
 
 ## Coverage
 
-Affected Windows checks use the maintained test broker. Linux testing remains paused until the
-owner explicitly resumes it. Full suites run in the background after reviewed batches; workers
+Affected Windows checks use the maintained test broker. Linux testing is active: it runs on the WSL
+device through `scripts/test-on-linux`. Full suites run in the background after reviewed batches; workers
 run affected checks and report exact commands, commits, results and platform gaps.
