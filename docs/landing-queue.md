@@ -122,7 +122,10 @@ foreign landing entry, so a device that joined the pool cannot stop landing here
 
 - Only a landing-level session may request or review: a live session of the board whose model is listed and
   above the lowest tier (a listed id counts as claimed until the node can verify models). A lowest-tier or
-  unlisted model is refused. `main` and `master` are never a branch or target. A subagent may request
+  unlisted model is refused. The tier source is `src/poolhouse/workspace/model_tiers.json`: the `anthropic`,
+  `openai` and `qwen` families, where the `qwen` family lists every quantisation of Qwen3.8-27B and
+  Qwen3.8-Flash-Next above its lowest tier (the Qwen3.5 0.8B, 2B and 4B ids), the owner's decision of
+  2026-10-12 (docs/model-benchmarks.md, 1.3). `main` and `master` are never a branch or target. A subagent may request
   its own work; it is not independent of its parent.
 - A request needs an independent accept recorded at its exact SHA by another landing-level identity
   that is neither the requester nor a delegate or parent of it. Without it the request is
