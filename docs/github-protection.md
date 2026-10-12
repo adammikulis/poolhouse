@@ -7,8 +7,9 @@ sets it.
   agent marker and a missing terminal, prints a diff and changes nothing unless given `--apply`, and saves the current
   settings before it changes any.
 - `scripts/github-protection --check` compares the repository with the target and prints one line per difference,
-  each pointing at a section below. It issues `gh api` GET requests only, and `tests/test_github_protection.py` fails
-  when its source gains a write.
+  each pointing at a section below. Every `gh api` request it makes is a GET, and `tests/test_github_protection.py`
+  fails when its source gains a write. With no `--repo` it first runs `gh repo view`, a read-only GraphQL query that
+  `gh` sends as a POST, and falls back to the origin remote's address.
 - The commands in the sections below are what the apply script runs, written out for anyone who wants to apply one
   setting by hand. `tests/test_github_protection_apply.py` fails when a JSON body here differs from the script's.
 
@@ -127,13 +128,30 @@ none or with a read-only one.
   not. The check does not detect the lander.
 - `scripts/github-protection --check --agent` is the mode of a device that is not the lander. It reads the
   repository with the credentials in use and reports `credential.push` when they hold `push`, `maintain` or `admin`,
-  and `credential.unknown` when the reply does not say what they may do (no `permissions`, or `null`).
-- A device where `gh` holds no credential (`gh` exits 4) makes no remote read; the repository is the origin remote's.
-  The device has no finding unless git can still push: `credential.unverified` when `git config` shows an ssh origin
-  (`ssh://` or `user@host:path`), an https origin that carries a login in its address, or a configured credential
-  helper (a helper set to nothing does not count). The check reads `git config` and `git remote get-url` only; it runs
-  neither `ssh` nor `git credential fill` and makes no network call, so the finding says git may push, not that it
-  can. A device clears it with an https origin and no helper.
+  and `credential.unknown` when the reply does not say what they may do (no `permissions`, or `null`). When the
+  credentials are read-only it goes on to judge what git can still push with (below).
+- With `gh` signed out (exit 4) no remote setting is read: the repository is the origin remote's when its host is
+  `github.com`, and what git can push with is judged at once. `--repo OTHER` on a signed-out device cannot read OTHER;
+  the checkout's git configuration is judged and the output says so.
+- `credential.unverified` means git may push from this checkout and the check cannot confirm it either way. It reads
+  `git config`, `git remote get-url`, the environment and the names in `~/.netrc` only; it runs neither `ssh` nor
+  `git credential fill`, runs no helper, makes no network call and prints no value. It is reported for:
+  - an ssh push address (`ssh://` or `user@host:path`), for the push remote of the current branch
+    (`branch.<name>.pushRemote`, else `remote.pushDefault`) and for `origin` (`remote.origin.pushurl`, `pushInsteadOf`);
+  - a push address that carries a login (a token as the username of an https address, or a user and password);
+  - an `Authorization` header in `http.extraHeader`, unscoped or scoped to github.com;
+  - an askpass program (`core.askPass`, `GIT_ASKPASS`, `SSH_ASKPASS`);
+  - a `machine github.com` line in `~/.netrc`;
+  - with `gh` signed out, a credential helper git would ask for github.com: unscoped, or scoped to github.com
+    (`credential.https://github.com.helper`), after git's own resets (an empty `credential.helper =` clears every
+    helper before it; a helper scoped to another host is not counted). With `gh` signed in the helper is not judged:
+    it is taken to answer with the credentials the check just read, as the helper under [Agent identity](#agent-identity)
+    does.
+- A device clears `credential.unverified` with an https origin that has no login, no ssh push address, no
+  `Authorization` header, askpass program or `~/.netrc` entry for github.com and, signed out, no helper for github.com.
+  macOS's system git configuration sets `osxkeychain`; with that helper alone the check cannot tell whether a token is
+  stored in the Keychain, so a Mac clears it only with `git config --global credential.helper ""` or by signing in to
+  `gh`.
 - `scripts/github-protection --check --agent --lander` is the lander's mode. It reports `credential.no-expiry` for
   credentials with no readable expiry (a classic token, a fine-grained token with none, or an installation token whose
   header is missing or malformed), `credential.expired` for an expiry in the past and `credential.long-lived` for
@@ -141,12 +159,13 @@ none or with a read-only one.
   kind of token does not bound its life: the `GITHUB_TOKEN` of a workflow run is also an installation token and lives
   up to 24 hours, so an installation token passes on its header alone. A lander whose `gh` holds no credential is not
   cleared.
-- Every request is a GET (`gh api PATH --include` for the repository read).
-- What the check cannot see: that a token was minted for the batch in hand (it sees the expiry, not the minting); the
-  owner's `gh` login and ssh keys when they are not the credentials in use; ssh keys in an agent, a stored git
-  credential or the address of a push on a device whose `gh` holds a read-only credential (only a signed-out device
-  has its git configuration read); a `gh` login under another `GH_CONFIG_DIR` than the one the check runs with; and
-  the credentials of a process other than the one running the check.
+- Every `gh api` request is a GET (`--include` for the repository read). `gh repo view` is the one POST, a read-only
+  GraphQL query.
+- What the check does not see: that a token was minted for the batch in hand (it sees the expiry, not the minting);
+  ssh keys, whether in an agent or in `~/.ssh`, which push to an ssh address typed on the command line or to a remote
+  other than the two judged without any configuration; what a credential helper answers (a token in the Keychain or in
+  `~/.git-credentials`) when `gh` is signed in; a `default` entry in `~/.netrc`; a `gh` login under another
+  `GH_CONFIG_DIR`; and the credentials of other processes and of other users of the device.
 
 ## Rulesets
 

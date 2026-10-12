@@ -10,12 +10,15 @@
                                                  expire within an hour
 
 One line per finding with the section of the document that fixes it; exit 1 when anything drifts,
-2 when there is no repository to read. The script issues GET requests only.
+2 when there is no repository to read. Every `gh api` request is a GET. With no --repo, the repository is
+the one `gh repo view` names (a read-only GraphQL query, which gh sends as a POST), else the origin remote's.
 """
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
+import os
 import re
 import subprocess
 import sys
@@ -443,7 +446,10 @@ def check_repository(repo: str, args: argparse.Namespace) -> list[str]:
                            "agent-identity"))
     if args.agent:
         app = is_installation()
-        out += agent_identity(repo, app) + agent_credential(body.get("permissions"), headers, args.lander)
+        held = agent_credential(body.get("permissions"), headers, args.lander)
+        out += agent_identity(repo, app) + held
+        if not args.lander and not held:
+            out += unverified_findings(True)
     return out
 
 
@@ -473,27 +479,91 @@ def git_out(*args: str) -> str:
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
+ORIGIN = re.compile(
+    r"(?:https?://(?:[^/@]+@)?(?:www\.)?github\.com/"
+    r"|ssh://(?:[^/@]+@)?github\.com(?::\d+)?/"
+    r"|[^/:@\s]+@github\.com:)"
+    r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$", re.IGNORECASE)
+SSH_ADDRESS = re.compile(r"ssh://|[^/:@\s]+@[^/:\s]+:")
+LOGIN_ADDRESS = re.compile(r"https?://[^/@\s]+@")
+
+
 def origin_repo() -> str:
-    """OWNER/NAME from the origin remote's address; empty when it is not a github.com address."""
-    found = re.search(r"github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$", git_out("remote", "get-url", "origin"))
+    """OWNER/NAME from the origin remote's address; empty when its host is not github.com."""
+    found = ORIGIN.match(git_out("remote", "get-url", "origin"))
     return f"{found[1]}/{found[2]}" if found else ""
 
 
-def unverified_findings() -> list[str]:
-    """Findings for a device whose gh is signed out but whose git can still push, from git config alone."""
-    address = git_out("remote", "get-url", "--push", "origin")
+def scoped_to_github(scope: str) -> bool:
+    """True for a git setting with no URL scope, or whose URL pattern names github.com."""
+    host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", scope.lower()).split("/")[0].rpartition("@")[2]
+    return not scope or host == "github.com"
+
+
+def effective(section: str, variable: str) -> list[str]:
+    """The values git applies to github.com for a multi-valued setting; an empty value clears those before it."""
+    values: list[str] = []
+    for line in git_out("config", "--get-regexp", rf"^{section}\..*{variable}$").splitlines():
+        key, _, value = line.partition(" ")
+        scope = key[len(section) + 1:-len(variable)]
+        if (scope and not scope.endswith(".")) or not scoped_to_github(scope.removesuffix(".")):
+            continue
+        if value.strip():
+            values.append(value.strip())
+        else:
+            values.clear()
+    return values
+
+
+def push_addresses() -> list[str]:
+    """Where `git push` goes from the current branch and where `git push origin` goes, after pushurl and rewrites."""
+    branch = git_out("symbolic-ref", "--short", "-q", "HEAD")
+    remote = ((git_out("config", f"branch.{branch}.pushremote") if branch else "")
+              or git_out("config", "remote.pushdefault") or "origin")
+    return [git_out("remote", "get-url", "--push", name) for name in dict.fromkeys((remote, "origin"))]
+
+
+def netrc_machines() -> set[str]:
+    """The machine names in ~/.netrc; no login or password is kept."""
+    try:
+        words = (Path.home() / ".netrc").read_text(encoding="utf-8", errors="replace").split()
+    except (OSError, RuntimeError):
+        return set()
+    return {word.lower() for before, word in itertools.pairwise(words) if before == "machine"}
+
+
+def helper_reasons() -> list[str]:
+    """Why the credential helpers git would ask for github.com leave it unverified."""
+    helpers = effective("credential", "helper")
+    if set(helpers) == {"osxkeychain"}:
+        return ["the macOS Keychain helper (osxkeychain) is configured and this check cannot tell whether "
+                "it holds a token"]
+    if helpers:
+        return ["a credential helper is configured and this check does not run it, so it cannot tell whether "
+                "it holds a token"]
+    return []
+
+
+def unverified_findings(signed_in: bool) -> list[str]:
+    """Findings for a device whose gh cannot push but whose git may, from git config, the environment and ~/.netrc."""
+    addresses = push_addresses()
     reasons = []
-    if address.startswith("ssh://") or re.match(r"[^/:@\s]+@[^/:\s]+:", address):
-        reasons.append("the origin is an ssh address")
-    if re.match(r"https?://[^/@\s]+@", address):
-        reasons.append("the origin address carries a login")
-    helpers = git_out("config", "--get-regexp", r"^credential\..*helper$").splitlines()
-    if any(line.partition(" ")[2].strip() for line in helpers):
-        reasons.append("a credential helper is configured")
+    if any(SSH_ADDRESS.match(address) for address in addresses):
+        reasons.append("git pushes to an ssh address")
+    if any(LOGIN_ADDRESS.match(address) for address in addresses):
+        reasons.append("a push address carries a login")
+    if any(header.lower().startswith("authorization") for header in effective("http", "extraheader")):
+        reasons.append("git sends an Authorization header from its configuration")
+    if git_out("config", "core.askpass") or os.environ.get("GIT_ASKPASS") or os.environ.get("SSH_ASKPASS"):
+        reasons.append("an askpass program is set")
+    if "github.com" in netrc_machines():
+        reasons.append("~/.netrc has an entry for github.com")
+    reasons += [] if signed_in else helper_reasons()
     if not reasons:
         return []
-    return [finding("credential.unverified", f"gh holds no credential, but git on this device may still push "
-                    f"({'; '.join(reasons)})", "push-credential")]
+    held = "gh's credential cannot push" if signed_in else "gh holds no credential"
+    return [finding("credential.unverified", f"{held}, but git may still push from this checkout: "
+                    f"{'; '.join(reasons)}", "push-credential")]
 
 
 def expiry(headers: dict[str, str]) -> datetime | None:
@@ -547,10 +617,13 @@ def agent_identity(repo: str, app: bool) -> list[str]:
     return out
 
 
-def check_remote(repo: str, args: argparse.Namespace) -> list[str]:
+def check_remote(repo: str, args: argparse.Namespace, notes: list[str]) -> list[str]:
     owner = repo.split("/")[0]
     if args.agent and not args.lander and not signed_in():
-        return unverified_findings()
+        if args.repo and args.repo.lower() != origin_repo().lower():
+            notes.append("note: gh holds no credential; judged the git configuration of this checkout, "
+                         f"not {args.repo}'s")
+        return unverified_findings(False)
     return (check_rulesets(repo, args) + check_environment(repo, owner)
             + check_actions(repo) + check_repository(repo, args))
 
@@ -587,14 +660,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--lander is a mode of --agent")
 
     findings = check_codeowners() + check_workflows()
+    notes: list[str] = []
     if not args.local:
         repo = args.repo or default_repo()
         if not repo:
             print("github-protection: no repository: pass --repo OWNER/NAME or sign in with gh",
                   file=sys.stderr)
             return 2
-        findings += check_remote(repo, args)
-    for line in findings:
+        findings += check_remote(repo, args, notes)
+    for line in findings + notes:
         print(line)
     print(f"{len(findings)} finding{'s' if len(findings) != 1 else ''}"
           f"{' (local only)' if args.local else ''}")

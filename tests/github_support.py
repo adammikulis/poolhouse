@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import json
 import os
+import subprocess
+from pathlib import Path
+
+import pytest
 
 REPO = "ownerlogin/poolhouse-test"
+SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "github-protection"
+GIT_ISOLATION = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+
+
+def codes(out):
+    """The finding codes in the output of the script."""
+    return {line.split()[0] for line in out.splitlines() if "->" in line}
 
 
 def ruleset(name, target, include, rules, bypass=()):
@@ -105,3 +118,40 @@ def serve(tmp_path, monkeypatch, replies, fail="", headers=None):
 def sign_out(monkeypatch):
     """Make every call of the `gh` from ``serve`` exit 4, as `gh` does when it holds no credential."""
     monkeypatch.setenv("GH_NOAUTH", "1")
+
+
+@pytest.fixture(scope="module")
+def gp():
+    """The script, loaded once per test module."""
+    loader = importlib.machinery.SourceFileLoader("github_protection", str(SCRIPT))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("github_protection", loader))
+    loader.exec_module(module)
+    return module
+
+
+def git_checkout(root, origin, *config):
+    """A checkout at ``root`` on branch trunk with ``origin``, then each of ``config`` run as a git command."""
+    root.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, **GIT_ISOLATION}
+    for args in (("init", "-q", "-b", "trunk"), ("remote", "add", "origin", origin), *config):
+        subprocess.run(["git", *args], cwd=root, env=env, check=True, capture_output=True)
+    return root
+
+
+@pytest.fixture(scope="module")
+def clean_checkout(tmp_path_factory):
+    """A checkout whose only configuration is an https origin with no login."""
+    return git_checkout(tmp_path_factory.mktemp("clean-checkout"), f"https://github.com/{REPO}.git")
+
+
+@pytest.fixture
+def device(gp, clean_checkout, tmp_path_factory, monkeypatch):
+    """The device a test runs on: no git configuration but the clean checkout's, an empty home, no askpass."""
+    for name, value in GIT_ISOLATION.items():
+        monkeypatch.setenv(name, value)
+    for name in ("GIT_ASKPASS", "SSH_ASKPASS"):
+        monkeypatch.delenv(name, raising=False)
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(gp, "CHECKOUT", clean_checkout)
+    return home
