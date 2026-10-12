@@ -1,6 +1,6 @@
 # Model lineups and published benchmarks
 
-Retrieved 2026-10-08. Every figure carries its source URL, the source's own date and the settings
+Retrieved 2026-10-08 (sections 1.3 and 2.7: 2026-10-12). Every figure carries its source URL, the source's own date and the settings
 the source states. Nothing here was measured by this repository. Where the vendor's figure and a
 third party's differ, both are shown. `unverified` means the page could not be fetched or only a
 secondary write-up was available. The repository's own measurements (JevBench, the decider sets,
@@ -64,7 +64,20 @@ Source: https://developers.openai.com/api/docs/models (retrieved 2026-10-08; pag
 
 Names as they appear in this repository's docs, not looked up externally: `Qwen3.8-27B`
 (`Qwen3.8-27B-UD-Q4_K_XL.gguf` is the owner's default 27B quant), `Qwen3.8-Flash-Next`, and the decider
-base `Qwen3.5-2B`. No public benchmark was collected for them.
+base `Qwen3.5-2B`. Vendor-reported and aggregator figures for the 27B and Flash-Next were collected on
+2026-10-12 (section 2.7); none was collected for the 2B.
+
+**The tier table's `qwen` family (owner's decision, 2026-10-12).** `src/poolhouse/workspace/model_tiers.json`
+lists every quantisation of Qwen3.8-27B and Qwen3.8-Flash-Next, with no per-quantisation exclusion, above the
+lowest tier of its family, so a local session on either counts as landing-level (docs/landing-queue.md,
+"Eligibility, review and brakes"). The Qwen3.5 0.8B, 2B and 4B models are the family's lowest tier, which never
+lands. The owner's view is that the 27B is at Claude Opus 4.6's level and Flash-Next comparable or higher.
+Section 2.7's figures are for full-precision weights, vendor-reported and unreproduced, and no published
+benchmark covers the low-bit quantisations, so the tier of every quantisation is the owner's decision and not
+a measurement; this file does not claim a quantisation matches full precision. A local agent registers the
+id `model_identity` gives (the quantisation removed, for example `qwen3.8-27b`), so the table cannot tell the
+quantisations of one model apart for an agent started by `agent start`; a named file or MLX id is matched by
+its model name and quantisation suffix. A draft head, a fine-tune or another Qwen is not listed.
 
 ## 2. Benchmarks
 
@@ -188,6 +201,46 @@ Reading it: Opus reaches about 64% at $3.9, which is cheaper than Sonnet xhigh a
 about $4 Opus flattens near 65% and falls at its top effort. Sonnet at max (70% for $13) is the highest
 point on the chart and beats Opus at its top effort, but it costs about 2.5 times Sonnet xhigh for about nine
 more points. `CLAUDE.md`, "Subagent effort", sets the delegation rule from this: avoid max.
+
+### 2.7 Qwen3.8-27B and Qwen3.8-Flash-Next (vendor-reported and aggregator figures, fetched 2026-10-12)
+
+Every figure here is vendor-reported or from a third-party aggregator, for full-precision weights, and none
+was reproduced by this repository or, as far as the pages say, by anyone else. No published benchmark
+covers a low-bit quantisation of either model (IQ1_M, IQ3_S and the like); section 1.3 says what that
+means for the tier table.
+
+Qwen3.8-27B against Claude Opus 4.6 Max, Alibaba's model-card figures as two aggregator pages quote them:
+
+| Benchmark | Qwen3.8-27B | Opus 4.6 Max | Note |
+| --- | --- | --- | --- |
+| Benchmarks won | 16 of 24 | | regolo.ai only; orcarouter.ai says "the majority" with no count |
+| SWE-bench Pro | 61.7 | 53.4 | Opus's published score, not re-run in the same harness; the page calls the two "not perfectly comparable"; orcarouter.ai gives no Opus figure |
+| Terminal-Bench 2.1 | 73.0 | 78.2 | both pages; Opus ahead |
+| NL2Repo-Bench | 42.3 | 47.6 | both pages; Opus ahead |
+| GPQA Diamond | 89.2 | 91.3 | both pages; Opus ahead |
+| Humanity's Last Exam | 30.8 | 40.0 | both pages; Opus ahead |
+
+Sources: `https://regolo.ai/qwen3-8-27b-benchmarks-every-test-where-alibabas-27b-model-beats-claude-opus-4-6-max/`
+(dated 2026-08-21; "vendor-reported by Alibaba as of the August 14, 2026 release"; "had not been independently
+reproduced at launch"; third-party evaluations "still pending as of August 19, 2026") and
+`https://www.orcarouter.ai/blog/qwen-3-8-27b-benchmarks` (published 2026-08-17, changed 2026-08-25; "vendor-reported
+and unreproduced"). Both name the Qwen3.8-27B model card as the origin. No independent reproduction was found.
+
+Qwen3.8-Flash-Next (a mixture-of-experts model of about 125 billion parameters with about 6 billion active, per the
+second source below):
+
+- `https://benchlm.ai/md/models/qwen3-8-flash-next.md`, last updated 2026-10-10 by the page, fetched 2026-10-12:
+  overall 64.23 of 100, rank 37 of 889, scored on 37 of 625 benchmarks (the page says the coverage is partial);
+  SWE-bench Pro 62.5, OSWorld 2.0 19.4, Toolathlon-Verified 73.5. The page also lists Qwen3.8-27B at an overall
+  58.27, from a different subset of benchmarks, with no per-benchmark comparison; this file does not read that as a
+  like-for-like result. An earlier read of the same page (last updated 2026-09-10) gave 56.84 of 100, rank 77 of 483,
+  38 of 435 benchmarks: the page moves between visits.
+- `https://www.mindstudio.ai/blog/qwen-3-8-flash-next-benchmarks`, dated 2026-08-29: 56 of 80 on a suite of eight
+  tasks scored out of 10, behind GLM 5.3 Flash at 63 of 80, mostly on 3D rendering and front-end tasks; the two tied
+  on math and agentic tasks. It makes no comparison with the 27B.
+
+Not claimed: that Flash-Next scores above the 27B in a like-for-like run, that either model matches Claude Opus
+4.6 in this repository's work, or that a quantisation matches full precision.
 
 ## 3. What to launch when
 

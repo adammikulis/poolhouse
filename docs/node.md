@@ -336,7 +336,11 @@ parent, every ancestor, model and model state at that moment (never taken from t
 then ends is therefore still landable; `land_queue` shows the stamp, and `foreign_claims` lists the `branch` claims
 of other devices on a branch this device lands onto as "foreign, ignored".
 A model's tier is not the node's to judge, so `landing.eligible` in Python bars the lowest tier and an
-unlisted model from requesting or reviewing, and the runner re-derives standing before it lands.
+unlisted model from requesting or reviewing, and the runner re-derives standing before it lands. The tier
+comes from `src/poolhouse/workspace/model_tiers.json` (families `anthropic`, `openai` and `qwen`;
+docs/model-benchmarks.md, section 1): a local agent claims the id `localmodel.model_identity` gives, which
+drops the quantisation, so the `qwen` family lists those short ids and every quantisation of Qwen3.8-27B and
+Qwen3.8-Flash-Next above its lowest tier, on the same claimed-id trust as the other families.
 
 Landing authority is this device's own. The fold counts a `landing` entry only when this device wrote it or the
 device that wrote it is on this device's landing list and still an active member of the pool; every other entry
