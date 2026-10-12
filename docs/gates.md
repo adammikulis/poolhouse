@@ -46,6 +46,7 @@ never a reason to delete.
 The size gates carry no number. `deep-files` (900 lines of Python) and `deep-components` (500 lines of the HTML,
 JavaScript and CSS a page is assembled from) set `HARD = True`, take no line in `budgets.json`, and fail on a
 single finding. A file over the limit is a file to split, never an allowance to record.
+`handoff-size` is a ratchet: every line of `HANDOFF.md` past line 500 is one finding and the count in `budgets.json` only falls, to zero; `scripts/budgets` prints a note from line 300. `HANDOFF.md` lists what is pending and nothing else, so a finished item is deleted in the commit that lands its work.
 `scripts/gates/duplicates.py` hashes normalised function bodies and reports each duplicate with its twin.
 `tests/test_gates_duplicates.py` names duplicates that must still be found, so a normalisation that quietly
 tightens is caught.
