@@ -189,6 +189,13 @@ boundary: if so it is not the recommendation and is named the weaker one. A guar
 an excused path, a skipped check) to turn a gate green: fix the cause; a change that narrows a guard goes to the owner
 as a decision with the correct option first.
 
+**Never hand the owner a command an agent can run** (owner, 2026-10-12). "Please run this" is the exception, not a way to
+finish a task. An agent runs every command it can, restarts what it stops, and fixes a service that needs a person's
+step after a normal stop (that is a defect in the service). It asks the owner to type a command only when the tooling
+itself refuses an agent for that command (a person-only gate: the keystore, a passphrase, the administrator prompt, a
+grant, `main`), and then only after running it and quoting the refusal, with the one command and why. A list of commands
+for the owner is a sign the work is not done.
+
 ### Reporting a problem
 
 Fix it, then say what you fixed. Raise a problem you did not fix only if you are **actually blocked**: you need a
