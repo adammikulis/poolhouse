@@ -105,6 +105,11 @@ fn a_name_that_is_not_plain_ascii_is_refused_before_a_card_is_made() {
         let admit = rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": body}));
         assert_eq!(admit["ok"], false, "{name:?}: {admit}");
     }
+    let pool = rig.node.lock().unwrap().members.gov().unwrap().id.clone();
+    let mut key = serde_json::to_value(kit::gov::entry(kit::gov::strong(2, "owner"), 2, &pool)).unwrap();
+    key["label"] = json!("caf\u{e9}'s key");
+    let added = rig.call("pool_ask_sign", "", &token, json!({"kind": "admin_add", "body": {"entry": key}}));
+    assert_eq!(added["ok"], false, "the label its adder wrote is as plain as the rest: {added}");
 }
 
 #[test]
