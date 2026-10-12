@@ -7,4 +7,4 @@
 - Reproduce and resolve the notice-storm failure under load.
 - Verify the implementation status of the utilization measurement, 27B profile, usage-aware router, and idle worker described by the self-improvement and compute plans.
 - The owner must exercise the macOS administrator prompt for wired-memory changes at their own screen.
-- Linux coverage remains paused until the owner resumes it.
+- Linux testing is active: it runs on the WSL device through `scripts/test-on-linux`.
