@@ -179,7 +179,6 @@ from poolhouse.bench.score import (  # noqa: F401
     _times,
     _total,
     _which,
-    _with_rates,
     _words,
     band,
     bands,

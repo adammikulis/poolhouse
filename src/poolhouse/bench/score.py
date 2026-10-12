@@ -20,6 +20,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse.bench.efficiency import (
+    HEAD,
+    RULE,
+    carried,
+    counted,
+    note,
+    relative,
+    row_cells,
+    with_rates,
+)
 from poolhouse.bench.keep import SHORT
 from poolhouse.bench.record import of
 from poolhouse.log import warn
@@ -345,20 +355,8 @@ def separated(first: Mapping[str, Any], second: Mapping[str, Any],
 
 
 def derived(one: Mapping[str, Any]) -> dict[str, float]:
-    """What a run cost per unit of getting the answer right.
-
-    A score on its own cannot choose between two models: one is more accurate and one is
-    cheaper, and which to serve depends on what is scarce. These put accuracy over each of
-    the three scarcities in turn -- time, tokens, and the memory a conversation holds -- so
-    the trade is a number rather than an argument.
-
-    Right-per-second and right-per-1k are rates: twice the figure is twice the accuracy for
-    the same cost. `per_right` inverts them into what one right answer cost, which is the
-    easier one to feel.
-
-    A point that carries ``derived`` already -- one `composed` built, with accuracy from one
-    run and cost from another -- is returned as it is.
-    """
+    """A run's accuracy and what it cost, as rates over time, tokens, generated tokens and
+    memory. A point that carries ``derived`` already (a `composed` one) is returned as it is."""
     if "derived" in one:
         return dict(one["derived"])
     rows = [r for r in (one.get("rows") or []) if r.get("expected")]
@@ -376,15 +374,15 @@ def derived(one: Mapping[str, Any]) -> dict[str, float]:
     # `right` is F1. Recall and precision are kept beside it because the pair is what says
     # *how* a run was wrong: a model that lights everything has high recall and no precision,
     # and under recall alone it looked like the most accurate model there was.
-    out = _with_rates({"right": got, "recall": recall, "precision": precision,
-                       "shown_per_question": shown, "wanted_per_question": wanted,
-                       "seconds": seconds, "paid_tokens": paid, "calls": _total(rows, "calls"),
-                       "kv_bytes": memory, "questions": float(len(rows)),
-                       "seconds_per_question": _total(rows, "seconds") / len(rows),
-                       # None, not 0, for a run from before this was counted
-                       "made_per_question": (_total(rows, "unread_named") / len(rows)
-                                             if any("unread_named" in r for r in rows)
-                                             else None)})
+    out = with_rates({"right": got, "recall": recall, "precision": precision,
+                      "shown_per_question": shown, "wanted_per_question": wanted,
+                      "seconds": seconds, "paid_tokens": paid, "calls": _total(rows, "calls"),
+                      "kv_bytes": memory, "questions": float(len(rows)), **counted(rows),
+                      "seconds_per_question": _total(rows, "seconds") / len(rows),
+                      # None, not 0, for a run from before this was counted
+                      "made_per_question": (_total(rows, "unread_named") / len(rows)
+                                            if any("unread_named" in r for r in rows)
+                                            else None)})
     # ...and what the questions can and cannot tell apart. `<key>_lo`/`<key>_hi` rather
     # than a pair, so `derived` stays a flat mapping of numbers that `rates` and `_flat`
     # can read a key at a time. Absent for a run of one question -- see `bands`.
@@ -397,28 +395,7 @@ def derived(one: Mapping[str, Any]) -> dict[str, float]:
 # tokens are per question, so a short run and a full one compare; the memory a
 # conversation holds is a total, whatever was asked.
 COSTS = {"seconds": "seconds_per_question", "paid_tokens": "tokens_per_question",
-         "kv_bytes": "kv_bytes"}
-
-
-def _with_rates(out: dict[str, float]) -> dict[str, float]:
-    """The rates, from the totals. Guarded: a run that took no time or paid nothing has
-    nothing to divide by, and a zero score is a real answer rather than a missing one."""
-    got, seconds, paid, memory = out["right"], out["seconds"], out["paid_tokens"], out["kv_bytes"]
-    questions = out.get("questions") or 0.0
-    if questions > 0:
-        out.setdefault("seconds_per_question", seconds / questions)
-        out["tokens_per_question"] = paid / questions
-        out["calls_per_question"] = out.get("calls", 0.0) / questions
-    if seconds > 0:
-        out["right_per_minute"] = got * 60.0 / seconds
-    if paid > 0:
-        out["right_per_1k"] = got * 1000.0 / paid
-    if memory > 0:
-        out["right_per_gb"] = got / (memory / 2**30)
-    if got > 0:
-        out["seconds_per_right"] = seconds / (got * out["questions"])
-        out["tokens_per_right"] = paid / (got * out["questions"])
-    return out
+         "kv_bytes": "kv_bytes", "generated_tokens": "generated_per_question"}
 
 
 def _which(graph: Mapping[str, Any]) -> str:
@@ -624,11 +601,11 @@ def composed(kept: Sequence[Mapping[str, Any]], *, noise: float = NOISE) -> list
                  "wanted_per_question": a["wanted_per_question"], "questions": a["questions"],
                  "made_per_question": a.get("made_per_question"),
                  "seconds": c["seconds"] * scale, "paid_tokens": c["paid_tokens"] * scale,
-                 "calls": c["calls"] * scale, "kv_bytes": c["kv_bytes"]}
+                 "calls": c["calls"] * scale, "kv_bytes": c["kv_bytes"], **carried(a)}
         out.append({"label": choice.model, "composed": True, "model": choice.model,
                     "from": str(choice.cost.get("label") or ""), "own": choice.own,
                     "server": {"host": host_of(choice.accuracy)},
-                    "derived": _with_rates(point)})
+                    "derived": with_rates(point)})
     return out
 
 
@@ -652,6 +629,7 @@ def ranking(kept: Sequence[Mapping[str, Any]], where: str | Path | None = None, 
     over, skipped = _over_invented(kept)
     chosen, too_few = choices(over, noise=noise)
     pts = noise * 100
+    table = relative({c.model: derived(c.accuracy) for c in chosen}, noise=noise)
     # which machine, only when more than one measured: a column nobody needs is noise
     several = len(hosts_of(over)) > 1
     lines = ["# Which model answers best",
@@ -669,10 +647,10 @@ def ranking(kept: Sequence[Mapping[str, Any]], where: str | Path | None = None, 
              "Every F1 below carries the interval its questions put around it: a difference",
              "smaller than the interval is a difference these questions did not measure.",
              "",
-             "| model | F1 | recall | precision | questions | s/question | load | resident "
-             "| kv+run | sampling | find | made |" + (" host |" if several else "")
-             + " cost from |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+             "| model | F1 | recall | precision | questions | s/question " + HEAD
+             + "| load | resident | kv+run | sampling | find | made |"
+             + (" host |" if several else "") + " cost from |",
+             "| --- | --- | --- | --- | --- | --- " + RULE + "| --- | --- | --- | --- | --- | --- |"
              + (" --- |" if several else "") + " --- |"]
     for choice in chosen:
         a, c = _flat(choice.accuracy, over), _flat(choice.cost, over)
@@ -697,7 +675,7 @@ def ranking(kept: Sequence[Mapping[str, Any]], where: str | Path | None = None, 
             f"| {(a.get('recall') or 0) * 100:.0f}% "
             f"| {(a.get('precision') or 0) * 100:.0f}% "
             f"| {a.get('questions') or '-'} "
-            f"| {per_question(choice.cost):.1f} "
+            f"| {per_question(choice.cost):.1f} {row_cells(table, choice.model)}"
             f"| {f'{float(load):.0f}s' if load is not None else '-'} "
             f"| {f'{gb / 2**30:.1f}G' if gb else '-'} "
             f"| {f'{kv / 2**30:.1f}G' if kv else '-'} "
@@ -706,6 +684,7 @@ def ranking(kept: Sequence[Mapping[str, Any]], where: str | Path | None = None, 
             f"| {of(choice.accuracy).made} "
             + (f"| {a.get('host') or '-'} " if several else "")
             + f"| {source} |")
+    lines += note(table, pts)
     refused = [(choice, run, fell) for choice in chosen for run, fell in choice.rejected]
     if refused:
         lines += ["", "Runs whose F1 fell clear of their model's -- separated, their 95% "

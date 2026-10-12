@@ -41,6 +41,31 @@ marker existed, because not knowing which graph a run read is not the same as kn
 invented. The ranking also ignores anything shorter than a short run, so a `--smoke` run
 cannot rank a model on two questions.
 
+## Accuracy per generated token
+
+Generated tokens are what a model writes, thinking included, and what a smaller quant or a
+fine-tune can halve. A run's figure is its rows' `completion_tokens` summed over the questions.
+llama-server counts every token it decodes in `usage.completion_tokens`, the thinking channel
+among them; a server that also reports `completion_tokens_details.reasoning_tokens` reports it
+as a part of that total, so nothing is added. A run whose server reported no completion count
+has no generated figures and shows `-`, never 0.
+
+- `show --rates` adds `F1/1k gen` (F1 per thousand generated tokens) and `gen per right`
+  (generated tokens per question's worth of F1). `--cost generated_tokens` draws the frontier
+  and `--plot` against generated tokens per question.
+- `show --rank FILE.md` adds four columns after `s/question`, from each model's most accurate
+  run: `gen/q`, `acc vs best` and `tok vs best` (its accuracy and its generated tokens per
+  question as shares of the most accurate model's, a tie going to the fewer tokens) and
+  `verdict`.
+- The verdict is `same accuracy, half the tokens` for a model other than that reference whose F1
+  is within `--noise` points of it (default 5, inclusive) and whose generated tokens per question
+  are 50 percent of the reference's or fewer (inclusive): three points down at half the tokens
+  fires, eight points down or sixty percent of the tokens does not. `efficient` marks every
+  model on the frontier of F1 against generated tokens, and `reference` the most accurate.
+
+`poolhouse-bench standard` (lm-eval) records the metric, the scored count and the seconds, not
+generated tokens, so its sets have no figure here yet.
+
 ## Measuring a change to the asking
 
 ```

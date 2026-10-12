@@ -27,8 +27,8 @@ def pareto(kept: Sequence[Mapping[str, Any]], *,
     on it is the best available at some budget, and choosing among them is choosing a budget
     rather than choosing a better run.
 
-    ``cost`` is a name in `COSTS` -- seconds, paid_tokens, kv_bytes -- compared on the key
-    it maps to: per question for time and tokens, a total for memory.
+    ``cost`` is a name in `COSTS` -- seconds, paid_tokens, generated_tokens, kv_bytes --
+    compared on the key it maps to: per question for time and tokens, a total for memory.
     """
     key = COSTS.get(cost, cost)
     scored = [(one, derived(one)) for one in kept]
@@ -45,6 +45,10 @@ def pareto(kept: Sequence[Mapping[str, Any]], *,
     return sorted(front, key=lambda one: derived(one)[key])
 
 
+def _num(d: Mapping[str, float], key: str, fmt: str) -> str:
+    return format(d[key], fmt) if key in d else "-"
+
+
 def rates(kept: Sequence[Mapping[str, Any]], *, cost: str = "seconds",
           noise: float = NOISE) -> None:
     """Every run by what it cost to be right, frontier marked -- and each model once more
@@ -57,15 +61,14 @@ def rates(kept: Sequence[Mapping[str, Any]], *, cost: str = "seconds",
     on_front = {id(one) for one in pareto(points, cost=cost)}
     several = len(hosts_of(points)) > 1
     head = (f"{'run':28} {'n':>3} {'F1':>5} {'rec':>5} {'prec':>5} {'lit/q':>6} "
-            f"{'F1/min':>8} {'F1/1k tok':>10} {'F1/GB':>7} {'s per':>7} {'tok per':>8}")
+            f"{'F1/min':>8} {'F1/1k tok':>10} {'F1/GB':>7} {'s per':>7} {'tok per':>8} "
+            f"{'F1/1k gen':>10} {'gen per right':>13}")
     say(head)
     say("-" * len(head))
     for one in sorted(points, key=lambda o: -(derived(o).get("right") or 0)):
         d = derived(one)
         if not d:
             continue
-        def num(key: str, fmt: str) -> str:
-            return format(d[key], fmt) if key in d else "-"
         mark = ("*" if id(one) in on_front else " ") + ("=" if one.get("composed") else " ")
         # by host when several measured: the frontier is one clock, and a point from
         # another machine is on it only by name
@@ -74,9 +77,10 @@ def rates(kept: Sequence[Mapping[str, Any]], *, cost: str = "seconds",
         say(f"{named:18}{mark} {d['questions']:>3.0f} "
             f"{100 * d['right']:>4.0f}% {100 * d['recall']:>4.0f}% "
             f"{100 * d['precision']:>4.0f}% {d['shown_per_question']:>6.1f} "
-            f"{num('right_per_minute', '8.2f')} {num('right_per_1k', '10.4f')} "
-            f"{num('right_per_gb', '7.3f')} {num('seconds_per_right', '7.1f')} "
-            f"{num('tokens_per_right', '8.0f')}")
+            f"{_num(d, 'right_per_minute', '8.2f')} {_num(d, 'right_per_1k', '10.4f')} "
+            f"{_num(d, 'right_per_gb', '7.3f')} {_num(d, 'seconds_per_right', '7.1f')} "
+            f"{_num(d, 'tokens_per_right', '8.0f')} {_num(d, 'right_per_1k_generated', '10.4f')} "
+            f"{_num(d, 'generated_per_right', '13.0f')}")
     say(f"\n* on the frontier for accuracy against {AXES.get(cost, cost)}: nothing is "
         f"both more accurate and cheaper.")
     say(f"= a model composed: accuracy from its largest run, cost from its fastest run "
@@ -85,8 +89,10 @@ def rates(kept: Sequence[Mapping[str, Any]], *, cost: str = "seconds",
 
 AXES = {"seconds": "wall clock per question (s)",
         "paid_tokens": "tokens paid for per question (read + written)",
-        "kv_bytes": "KV cache and runtime (GB)"}
-UNITS = {"seconds": "s", "paid_tokens": "tokens", "kv_bytes": "bytes"}
+        "kv_bytes": "KV cache and runtime (GB)",
+        "generated_tokens": "tokens generated per question (thinking included)"}
+UNITS = {"seconds": "s", "paid_tokens": "tokens", "kv_bytes": "bytes",
+         "generated_tokens": "generated tokens"}
 
 
 def plot(kept: Sequence[Mapping[str, Any]], where: str | Path, *,

@@ -327,7 +327,7 @@ def test_the_frontier_compares_runs_per_question_and_not_by_their_totals(tmp_pat
         "a run from before the count is not one that made nothing up"
 
     assert COSTS == {"seconds": "seconds_per_question", "paid_tokens": "tokens_per_question",
-                     "kv_bytes": "kv_bytes"}
+                     "kv_bytes": "kv_bytes", "generated_tokens": "generated_per_question"}
     assert [o["label"] for o in pareto([short, long], cost="seconds")] == ["long"]
     assert [o["label"] for o in pareto([short, long], cost="paid_tokens")] == ["long"]
     # what a conversation holds is not divided by how many were asked
