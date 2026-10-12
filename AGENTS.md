@@ -449,9 +449,11 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
 owner's tokens stop paying for routine review: a local or cheap model reads first and a person or a landing-level agent
 reads only what it flags.
 
-- **A report is advice, never an accept.** A model missing from the tier table (every local Qwen) is not landing-level
-  and cannot run `land-review`; a report never counts as the independent accept, and nothing it says changes a gate,
-  a budget or an authorization. The accept still comes from an independent landing-level session that is not in the
+- **A report is advice, never an accept.** Qwen3.8-27B and Qwen3.8-Flash-Next, in any quantisation, are listed above the
+  lowest tier and may request and review like any listed id, on the same claimed-id trust (the node verifies no model
+  yet); the smaller Qwens are the lowest tier, and an unlisted model cannot run `land-review`. A report from
+  `scripts/review-backlog` never counts as the independent accept, and nothing it says changes a gate, a budget or an
+  authorization. The accept still comes from an independent landing-level session that is not in the
   requester's lineage (the lead that files a request cannot have its own subagent accept it; the worker files its
   own request so the lead's reviewer is a sibling).
 - **The reviewer is a read-only role in a scratch directory** with a detached copy of the diff: no credential, no
