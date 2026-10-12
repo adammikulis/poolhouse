@@ -63,8 +63,9 @@ the person. The person scans it. The phone's key is enrolled directly: the secre
 adding a phone, and the phone's own fingerprint proves the key. The command then prints which phone was added and its key as six groups of
 four characters, **and the app shows the same words on its own screen after adding**, so a code someone else scanned first is seen at once
 (the first to scan wins, and the two screens then disagree) and removed ("Removing a phone"). A code made through the node (`phone_offer`) is
-refused for the first phone. **Windows** has no operating-system prompt the node can raise and reads no terminal for the node, so the first
-phone (and the first key) cannot be added on a Windows computer until a presence step is built for it; the node says so.
+refused for the first phone. **Windows** has no operating-system prompt the node can raise, so the first
+phone (and the first key) cannot be added on a Windows computer's own node directory until a presence step is built for it; the node says so. A node
+on any other directory there (a test, the pool check's rig) asks on a console it attaches to, as on Unix (docs/node.md, "Who may sign").
 
 **Another phone, later.** The node enrols a second key only when a key it already holds approves it, so a code that an agent
 or a bystander saw cannot add a phone by itself. The code is made by the person's command, by an agent (`phone_offer`,

@@ -172,9 +172,15 @@ pub(crate) fn on_real_home(state: &std::path::Path) -> bool {
     is_the_real_state(state, std::path::Path::new(&home))
 }
 
-#[cfg(not(unix))]
+/// On Windows the account's directory comes from the system; when it can not be read nothing is known, so every directory counts as the real one.
+#[cfg(windows)]
+pub(crate) fn on_real_home(state: &std::path::Path) -> bool {
+    crate::sys::account_home().is_none_or(|home| is_the_real_state(state, &home))
+}
+
+#[cfg(not(any(unix, windows)))]
 pub(crate) fn on_real_home(_state: &std::path::Path) -> bool {
-    false
+    true
 }
 
 /// Ask through the operating system, for the node of this state directory only.

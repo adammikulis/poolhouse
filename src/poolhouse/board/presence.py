@@ -26,9 +26,10 @@ POLL_S = 0.25
 
 
 def terminal_name() -> str:
-    """The terminal device this process runs in (`/dev/ttys004`), or an empty string when it has none (a node on Windows reads no terminal)."""
+    """The terminal this process runs in, as the node is told to find it: the device (`/dev/ttys004`) on Mac and Linux, this process's id on Windows (the
+    node attaches to the console it runs in), or an empty string when it has none."""
     if sys.platform == "win32":
-        return ""
+        return str(os.getpid()) if _has_console() else ""
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
             if stream.isatty():
@@ -36,6 +37,14 @@ def terminal_name() -> str:
         except (OSError, ValueError):
             continue
     return ""
+
+
+def _has_console() -> bool:
+    """Whether this Windows process is attached to a console (a command window, or a pseudo-console), which a program started with none is not."""
+    import ctypes
+
+    slot = (ctypes.c_uint * 1)()
+    return bool(ctypes.windll.kernel32.GetConsoleProcessList(slot, 1))  # type: ignore[attr-defined]
 
 
 def _where(kind: str) -> str:

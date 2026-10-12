@@ -44,8 +44,8 @@ now does what a person does, through the node's real paths and nothing else (`te
 * It makes one Ed25519 key for the run, in memory. The key is never written beside a node, never put in a keystore and never the account's;
   there is no switch in the node or in any production path for it, and nothing in the node knows a rig is running.
 * For each device it plays the person at the node's own question: the node started with `--presence terminal` (the node as shipped; it has no switch
-  that answers for anyone) writes "allow the session to add the first person key?" on a pseudo-terminal of that device, and the rig types `yes`
-  there (`wire.py presence`, run on the device, `answer_presence`). The one-time secret that yes makes comes back to the session that asked, and the
+  that answers for anyone) writes "allow the session to add the first person key?" on a pseudo-terminal of that device (a ConPTY pseudo-console on Windows, through `pywinpty`, which the Windows jobs install; `tests/pool_check/terminal.py`),
+  and the rig types `yes` there (`wire.py presence`, run on the device, `answer_presence`). The one-time secret that yes makes comes back to the session that asked, and the
   rig enrols the key through the node's `person_enroll` with it. Only the installed software on the real home asks with the operating system's own
   prompt, so no check raises a dialog.
 * It signs each grant through `grant_issue`, for the rig's named sessions on that device only (the device's own fingerprint), for six hours:
