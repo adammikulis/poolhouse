@@ -4,20 +4,30 @@
     scripts/github-protection --check            local checks, then read-only `gh api` GET calls
     scripts/github-protection --check --local    CODEOWNERS coverage and workflow rules only
     scripts/github-protection --check --agent    also fail when these credentials can administer the repository
+                                                 or push (a device that is not the lander holds no push credential)
+    scripts/github-protection --check --agent --lander
+                                                 the lander (declared, not detected): its credentials must
+                                                 expire within an hour
 
 One line per finding with the section of the document that fixes it; exit 1 when anything drifts,
-2 when there is no repository to read. The script issues GET requests only.
+2 when there is no repository to read. Every `gh api` request is a GET. With no --repo, the repository is
+the one `gh repo view` names (a read-only GraphQL query, which gh sends as a POST), else the origin remote's.
 """
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
+import os
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+CHECKOUT = ROOT
+"""The checkout whose git configuration names the origin and the credential helpers of this device."""
 DOC = "docs/github-protection.md"
 WORKFLOWS = ROOT / ".github" / "workflows"
 ENVIRONMENT = "release"
@@ -42,6 +52,10 @@ TAG_RULES = {"deletion", "non_fast_forward", "update"}
 MAIN_CHECKS = ("gates", "privacy", "licenses")
 SCANNING = ("secret_scanning", "secret_scanning_push_protection", "dependabot_security_updates")
 WRITE_ALLOWED = {"security-events"}
+PUSH_RIGHTS = ("push", "maintain", "admin")
+TOKEN_SECONDS = 3600
+EXPIRY_HEADER = "github-authentication-token-expiration"
+AUTH_REQUIRED = 4
 ID_TOKEN_WITHOUT_ENVIRONMENT = {"scorecard.yml"}
 
 
@@ -49,28 +63,54 @@ class Unreadable(Exception):
     """A GET that gh could not complete."""
 
 
+class Unauthenticated(Unreadable):
+    """gh holds no credential."""
+
+
+class GhMissing(Unreadable):
+    """gh is not installed."""
+
+
 def finding(code: str, text: str, section: str) -> str:
     return f"{code:<34} {text}  -> {DOC}#{section}"
 
 
-def gh_get(path: str):
-    """The JSON body of one GET request to the GitHub API."""
+def gh_run(path: str, *flags: str) -> str:
+    """The standard output of `gh api PATH`, a GET request."""
     try:
-        done = subprocess.run(["gh", "api", path], capture_output=True, text=True, check=False)
+        done = subprocess.run(["gh", "api", path, *flags], capture_output=True, text=True, check=False)
     except FileNotFoundError:
-        raise Unreadable("gh is not installed") from None
+        raise GhMissing("gh is not installed") from None
+    if done.returncode == AUTH_REQUIRED:
+        raise Unauthenticated("gh holds no credential")
     if done.returncode:
         raise Unreadable((done.stderr.strip() or done.stdout.strip() or "gh failed").splitlines()[0])
+    return done.stdout
+
+
+def as_json(path: str, text: str):
     try:
-        return json.loads(done.stdout)
+        return json.loads(text)
     except ValueError:
         raise Unreadable(f"{path} did not return JSON") from None
 
 
-def read(path: str, code: str, section: str, out: list[str]):
-    """The body at ``path``, or None after recording that it could not be read."""
+def gh_get(path: str):
+    """The JSON body of one GET request to the GitHub API."""
+    return as_json(path, gh_run(path))
+
+
+def gh_get_headers(path: str) -> tuple[dict[str, str], object]:
+    """The response headers (names in lower case) and the JSON body of one GET request."""
+    head, _, text = gh_run(path, "--include").replace("\r\n", "\n").partition("\n\n")
+    lines = (line.partition(":") for line in head.splitlines()[1:])
+    return {name.strip().lower(): value.strip() for name, _, value in lines}, as_json(path, text)
+
+
+def read(path: str, code: str, section: str, out: list[str], fetch=gh_get):
+    """What ``fetch`` returns for ``path``, or None after recording that it could not be read."""
     try:
-        return gh_get(path)
+        return fetch(path)
     except Unreadable as exc:
         out.append(finding(code, f"cannot read {path}: {exc}", section))
         return None
@@ -374,10 +414,9 @@ def check_entry_scope(repo: str) -> list[str]:
 def check_actions(repo: str) -> list[str]:
     out: list[str] = []
     flow = read(f"repos/{repo}/actions/permissions/workflow", "actions.read", "actions-settings", out)
-    if flow is not None:
-        if flow.get("default_workflow_permissions") != "read":
-            out.append(finding("actions.default-token", "the default workflow token is not read-only",
-                               "actions-settings"))
+    if flow is not None and flow.get("default_workflow_permissions") != "read":
+        out.append(finding("actions.default-token", "the default workflow token is not read-only",
+                           "actions-settings"))
     general = read(f"repos/{repo}/actions/permissions", "actions.read", "actions-settings", out)
     if general is not None:
         if general.get("allowed_actions") != "selected":
@@ -394,26 +433,201 @@ def check_actions(repo: str) -> list[str]:
     return out
 
 
-def check_repository(repo: str, agent: bool) -> list[str]:
+def check_repository(repo: str, args: argparse.Namespace) -> list[str]:
     out: list[str] = []
-    body = read(f"repos/{repo}", "repo.read", "code-security-settings", out)
-    if body is None:
+    got = read(f"repos/{repo}", "repo.read", "code-security-settings", out, gh_get_headers)
+    if got is None:
         return out
+    headers, body = got
     scanning = body.get("security_and_analysis") or {}
     for key in SCANNING:
         if (scanning.get(key) or {}).get("status") != "enabled":
             out.append(finding(f"security.{key}", f"{key} is not enabled", "code-security-settings"))
     if body.get("allow_auto_merge"):
         out.append(finding("repo.auto-merge", "auto-merge is allowed", "who-merges"))
-    if agent and (body.get("permissions") or {}).get("admin"):
+    if args.agent and (body.get("permissions") or {}).get("admin"):
         out.append(finding("identity.admin", "these credentials can administer the repository",
                            "agent-identity"))
-    if agent:
-        out += agent_identity(repo)
+    if args.agent:
+        app = is_installation()
+        held = agent_credential(body.get("permissions"), headers, args.lander)
+        out += agent_identity(repo, app) + held
+        if not args.lander and not held:
+            out += unverified_findings("in")
     return out
 
 
-def agent_identity(repo: str) -> list[str]:
+def is_installation() -> bool:
+    """True when the credentials are a GitHub App installation token, the only kind that reads its installation."""
+    try:
+        gh_get("installation/repositories")
+    except Unreadable:
+        return False
+    return True
+
+
+def gh_state() -> str:
+    """`out` when gh holds no credential, `missing` when gh is not installed, else `in`."""
+    try:
+        gh_get("rate_limit")
+    except GhMissing:
+        return "missing"
+    except Unauthenticated:
+        return "out"
+    except Unreadable:
+        pass
+    return "in"
+
+
+def git_out(*args: str) -> str:
+    """The output of a read-only git command in the checkout; empty when it fails."""
+    done = subprocess.run(["git", *args], capture_output=True, text=True, cwd=CHECKOUT, check=False)
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+ORIGIN = re.compile(
+    r"(?:https?://(?:[^/@]+@)?(?:www\.)?github\.com(?::443)?/"
+    r"|ssh://(?:[^/@]+@)?github\.com(?::\d+)?/"
+    r"|[^/:@\s]+@github\.com:)"
+    r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?", re.ASCII | re.IGNORECASE)
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+SSH_ADDRESS = re.compile(r"(?:ssh|git\+ssh|ssh\+git)://|[^/:\s]+@[^/:\s]+:|[^/:@\s]{2,}:(?!//)", re.IGNORECASE)
+LOGIN_ADDRESS = re.compile(r"https?://[^/@\s]+@")
+GH_SAYS = {"in": "gh's credential cannot push", "out": "gh holds no credential", "missing": "gh is not installed"}
+
+
+def repo_of(address: str) -> str:
+    """OWNER/NAME from an https, ssh:// or scp-style address on exactly github.com; else empty."""
+    found = None if CONTROL.search(address) else ORIGIN.fullmatch(address)
+    if not found or {found[1], found[2]} & {".", ".."}:
+        return ""
+    return f"{found[1]}/{found[2]}"
+
+
+def origin_repo() -> str:
+    """OWNER/NAME from the origin remote's address; empty when its host is not github.com."""
+    return repo_of(git_out("remote", "get-url", "origin"))
+
+
+def scoped_to_github(scope: str) -> bool:
+    """True for a git setting with no URL scope, or whose URL pattern names github.com."""
+    host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", scope.lower()).split("/")[0].rpartition("@")[2]
+    return not scope or host.removesuffix(":443") == "github.com"
+
+
+def effective(section: str, variable: str) -> list[str]:
+    """The values git applies to github.com for a multi-valued setting; an empty value clears those before it."""
+    values: list[str] = []
+    for line in git_out("config", "--get-regexp", rf"^{section}\..*{variable}$").splitlines():
+        key, _, value = line.partition(" ")
+        scope = key[len(section) + 1:-len(variable)]
+        if (scope and not scope.endswith(".")) or not scoped_to_github(scope.removesuffix(".")):
+            continue
+        if value.strip():
+            values.append(value.strip())
+        else:
+            values.clear()
+    return values
+
+
+def push_remote() -> str:
+    """The remote `git push` uses from the current branch: pushRemote, pushDefault, the branch's remote, else origin."""
+    branch = git_out("symbolic-ref", "--short", "-q", "HEAD")
+    named = [git_out("config", f"branch.{branch}.pushremote") if branch else "", git_out("config", "remote.pushdefault"),
+             git_out("config", f"branch.{branch}.remote") if branch else ""]
+    return next((name for name in named if name), "origin")
+
+
+def push_addresses() -> list[str]:
+    """Where `git push` goes and where `git push origin` goes, after pushurl and rewrites."""
+    return [git_out("remote", "get-url", "--push", name) for name in dict.fromkeys((push_remote(), "origin"))]
+
+
+def netrc_machines() -> set[str]:
+    """The machine names in ~/.netrc; no login or password is kept."""
+    try:
+        words = (Path.home() / ".netrc").read_text(encoding="utf-8", errors="replace").split()
+    except (OSError, RuntimeError):
+        return set()
+    return {word.lower() for before, word in itertools.pairwise(words) if before == "machine"}
+
+
+def helper_reasons() -> list[str]:
+    """Why the credential helpers git would ask for github.com leave it unverified."""
+    helpers = effective("credential", "helper")
+    if set(helpers) == {"osxkeychain"}:
+        return ["the macOS Keychain helper (osxkeychain) is configured and this check cannot tell whether "
+                "it holds a token"]
+    if helpers:
+        return ["a credential helper is configured and this check does not run it, so it cannot tell whether "
+                "it holds a token"]
+    return []
+
+
+def unverified_findings(gh: str) -> list[str]:
+    """Findings for a device whose gh cannot push but whose git may, from git config, the environment and ~/.netrc."""
+    addresses = push_addresses()
+    reasons = []
+    if any(SSH_ADDRESS.match(address) for address in addresses):
+        reasons.append("git pushes to an ssh address")
+    if any(LOGIN_ADDRESS.match(address) for address in addresses):
+        reasons.append("a push address carries a login")
+    if any(header.lower().startswith("authorization") for header in effective("http", "extraheader")):
+        reasons.append("git sends an Authorization header from its configuration")
+    if git_out("config", "core.askpass") or os.environ.get("GIT_ASKPASS") or os.environ.get("SSH_ASKPASS"):
+        reasons.append("an askpass program is set")
+    if "github.com" in netrc_machines():
+        reasons.append("~/.netrc has an entry for github.com")
+    reasons += [] if gh == "in" else helper_reasons()
+    if not reasons:
+        return []
+    return [finding("credential.unverified", f"{GH_SAYS[gh]}, but git may still push from this checkout: "
+                    f"{'; '.join(reasons)}", "push-credential")]
+
+
+def expiry(headers: dict[str, str]) -> datetime | None:
+    """When the credentials expire, from the response headers; None when absent or unreadable."""
+    text = headers.get(EXPIRY_HEADER, "").replace(" UTC", "+00:00").replace("Z", "+00:00")
+    try:
+        due = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return due if due.tzinfo else due.replace(tzinfo=UTC)
+
+
+def agent_credential(permissions: dict | None, headers: dict[str, str], lander: bool) -> list[str]:
+    """Findings for a push credential held off the lander, or a lander credential that outlives a batch."""
+    if lander:
+        return lander_lifetime(headers)
+    if not permissions:
+        return [finding("credential.unknown", "the repository reply does not say what these credentials "
+                        "may do", "push-credential")]
+    held = [right for right in PUSH_RIGHTS if permissions.get(right)]
+    if held:
+        return [finding("credential.push", f"this device is not the lander and these credentials hold "
+                        f"{', '.join(held)}", "push-credential")]
+    return []
+
+
+def lander_lifetime(headers: dict[str, str]) -> list[str]:
+    """Findings for lander credentials that do not report an expiry within the next hour."""
+    due = expiry(headers)
+    if due is None:
+        return [finding("credential.no-expiry", "these credentials report no expiry, or one that cannot be "
+                        "read; the lander's token is the App's installation token", "push-credential")]
+    left = (due - datetime.now(UTC)).total_seconds()
+    if left <= 0:
+        return [finding("credential.expired", "these credentials report an expiry in the past "
+                        f"({due:%Y-%m-%d %H:%M} UTC)", "push-credential")]
+    if left > TOKEN_SECONDS:
+        return [finding("credential.long-lived", f"these credentials last another {left / 3600:.1f} hours; "
+                        "the lander's token is minted per landing batch and lasts an hour", "push-credential")]
+    return []
+
+
+def agent_identity(repo: str, app: bool) -> list[str]:
+    if app:
+        return []
     out: list[str] = []
     who = read("user", "identity.read", "agent-identity", out)
     if who is not None and who.get("login") == repo.split("/")[0]:
@@ -422,17 +636,26 @@ def agent_identity(repo: str) -> list[str]:
     return out
 
 
-def check_remote(repo: str, args: argparse.Namespace) -> list[str]:
+def check_remote(repo: str, args: argparse.Namespace, notes: list[str]) -> list[str]:
     owner = repo.split("/")[0]
+    state = gh_state() if args.agent and not args.lander else "in"
+    if state != "in":
+        other = f", not {args.repo}'s" if args.repo and args.repo.lower() != origin_repo().lower() else ""
+        if state == "missing" or other:
+            notes.append(f"note: {GH_SAYS[state]}; judged the git configuration of this checkout{other}")
+        return unverified_findings(state)
     return (check_rulesets(repo, args) + check_environment(repo, owner)
-            + check_actions(repo) + check_repository(repo, args.agent))
+            + check_actions(repo) + check_repository(repo, args))
 
 
 def default_repo() -> str:
-    """OWNER/NAME of the repository gh is pointed at."""
-    done = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-                          capture_output=True, text=True, cwd=ROOT, check=False)
-    return done.stdout.strip() if done.returncode == 0 else ""
+    """OWNER/NAME of the repository gh is pointed at, else of the origin remote."""
+    try:
+        done = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+                              capture_output=True, text=True, cwd=ROOT, check=False)
+    except FileNotFoundError:
+        return origin_repo()
+    return done.stdout.strip() if done.returncode == 0 and done.stdout.strip() else origin_repo()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -441,7 +664,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--local", action="store_true", help="skip every GitHub request")
     parser.add_argument("--repo", help="OWNER/NAME; defaults to the repository gh is pointed at")
     parser.add_argument("--agent", action="store_true",
-                        help="the credentials in use are an agent's: fail when they are the owner's")
+                        help="the credentials in use are an agent's: fail when they are the owner's, can "
+                        "administer, or can push on a device that is not the lander")
+    parser.add_argument("--lander", action="store_true",
+                        help="with --agent: this device says it is the lander, so its credentials may push "
+                        "and must expire within an hour (declared, not detected)")
     parser.add_argument("--require-signatures", action="store_true",
                         help="also require signed commits on the default branch")
     parser.add_argument("--require-owner-review", action="store_true",
@@ -449,16 +676,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict-tags", action="store_true",
                         help="also require the tag ruleset to block creation of v* tags")
     args = parser.parse_args(argv)
+    if args.lander and not args.agent:
+        parser.error("--lander is a mode of --agent")
 
     findings = check_codeowners() + check_workflows()
+    notes: list[str] = []
     if not args.local:
         repo = args.repo or default_repo()
         if not repo:
             print("github-protection: no repository: pass --repo OWNER/NAME or sign in with gh",
                   file=sys.stderr)
             return 2
-        findings += check_remote(repo, args)
-    for line in findings:
+        findings += check_remote(repo, args, notes)
+    for line in findings + notes:
         print(line)
     print(f"{len(findings)} finding{'s' if len(findings) != 1 else ''}"
           f"{' (local only)' if args.local else ''}")

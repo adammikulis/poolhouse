@@ -7,8 +7,9 @@ sets it.
   agent marker and a missing terminal, prints a diff and changes nothing unless given `--apply`, and saves the current
   settings before it changes any.
 - `scripts/github-protection --check` compares the repository with the target and prints one line per difference,
-  each pointing at a section below. It issues `gh api` GET requests only, and `tests/test_github_protection.py` fails
-  when its source gains a write.
+  each pointing at a section below. Every `gh api` request it makes is a GET, and `tests/test_github_protection.py`
+  fails when its source gains a write. With no `--repo` it first runs `gh repo view`, a read-only GraphQL query that
+  `gh` sends as a POST, and falls back to the origin remote's address.
 - The commands in the sections below are what the apply script runs, written out for anyone who wants to apply one
   setting by hand. `tests/test_github_protection_apply.py` fails when a JSON body here differs from the script's.
 
@@ -50,7 +51,8 @@ Nothing after step 1 constrains an agent that still holds the owner's credential
 5. Run the apply command from step 3 again. It removes repository secrets, replaces the rulesets, sets the Actions
    and security settings, and ends with `scripts/github-protection --check`, which must print `0 findings`.
 6. Register the PyPI publisher with the `release` environment ([PyPI](#pypi)).
-7. From the agent's environment: `scripts/github-protection --check --agent`.
+7. From the environment of each device that runs agents: `scripts/github-protection --check --agent`; from the
+   lander's: `scripts/github-protection --check --agent --lander` ([Push credential](#push-credential)).
 
 What the owner does not know in advance and the first apply run shows: whether the repository is public or private
 (environment reviewers and rulesets on a private repository need a paid plan; an unavailable setting is a `*.read`
@@ -105,9 +107,76 @@ Limits that remain: a process of the same operating-system user can still read `
 the owner's own `gh` and `git` use. A separate operating-system account for agents closes that; the environment above
 removes the credentials from every command the harness runs by ordinary means, not from a process that goes looking.
 `scripts/github-protection --check --agent`, run from the agent's environment, fails when the credentials in use are
-the owner's account or can administer the repository.
+the owner's account or can administer the repository, and on a device that is not the lander when they can push
+([Push credential](#push-credential)). An installation token is the App acting as itself, so the account read is
+skipped for one.
 
 Rollback: unset the variables; the harness falls back to the owner's `gh` login.
+
+## Push credential
+
+One device pushes to the development branch: the lander, the device whose runner fast-forwards and pushes it
+([landing-queue.md](landing-queue.md)). Every other device that runs agents holds no push credential; it fetches with
+none or with a read-only one.
+
+- The lander's credential is the App's installation token, minted from the App's key for an hour. No code in the
+  repository mints it: whatever launches the lander's harness ([Agent identity](#agent-identity)) mints one from the
+  App's key, which stays in the lander's keystore, for each landing batch. The fine-grained token (up to a year) is the
+  weaker option, used only until the App exists.
+- **`--lander` is a self-attestation.** Nothing on the device, the board or GitHub says which device is the lander; the
+  person or agent running the check says so, and a device that does not say it is held to the rule for a device that is
+  not. The check does not detect the lander.
+- `scripts/github-protection --check --agent` is the mode of a device that is not the lander. It reads the
+  repository with the credentials in use and reports `credential.push` when they hold `push`, `maintain` or `admin`,
+  and `credential.unknown` when the reply does not say what they may do (no `permissions`, or `null`). When the
+  credentials are read-only it goes on to judge what git can still push with (below).
+- With `gh` signed out (exit 4) or not installed no remote setting is read: the repository is the origin remote's when
+  its host is exactly `github.com` (an https address, optionally with port 443, an `ssh://` address, or
+  an scp-style address with a user; an owner or name of `.` or `..`, a control character or a look-alike host names no repository),
+  and what git can push with is judged at once. A device without `gh` is told so in one line of output and is not
+  treated as signed in. `--repo OTHER` on such a device cannot read OTHER; the checkout's git configuration is judged
+  and the output says so.
+- `credential.unverified` means git may push from this checkout and the check cannot confirm it either way. It reads
+  `git config`, `git remote get-url`, the environment and the names in `~/.netrc` only; it runs neither `ssh` nor
+  `git credential fill`, runs no helper, makes no network call and prints no value. It is reported for:
+  - an ssh push address (`ssh://`, `git+ssh://`, `ssh+git://`, `user@host:path` or `host:path`, which includes an
+    ssh-config alias; whatever its host), for the remote `git push` uses from the current branch (`branch.<name>.pushRemote`,
+    else `remote.pushDefault`, else `branch.<name>.remote`, else `origin`) and for `origin`, after `pushurl` and
+    `pushInsteadOf`;
+  - a push address that carries a login (a token as the username of an https address, or a user and password);
+  - an `Authorization` header in `http.extraHeader`, unscoped or scoped to github.com;
+  - an askpass program (`core.askPass`, `GIT_ASKPASS`, `SSH_ASKPASS`);
+  - a `machine github.com` line in `~/.netrc`;
+  - with `gh` signed out or not installed, a credential helper git would ask for github.com: unscoped, or scoped to
+    github.com (`credential.https://github.com.helper`, also with `:443`), after git's own resets (an empty
+    `credential.helper =` clears every helper before it; a helper scoped to another host or port is not counted).
+    With `gh` signed in no helper is judged: the unscoped macOS Keychain helper and `~/.git-credentials` (the `store`
+    helper) can hold a token the check does not read, and the check does not look at either.
+- A device clears `credential.unverified` with an https origin that has no login, no ssh push address, no
+  `Authorization` header, askpass program or `~/.netrc` entry for github.com and, signed out, no helper for github.com.
+  macOS's system git configuration sets `osxkeychain`; with that helper alone the check cannot tell whether a token is
+  stored in the Keychain, so a Mac clears it only with `git config --global credential.helper ""` or by signing in to
+  `gh`.
+- `scripts/github-protection --check --agent --lander` is the lander's mode. It reports `credential.no-expiry` for
+  credentials with no readable expiry (a classic token, a fine-grained token with none, or an installation token whose
+  header is missing or malformed), `credential.expired` for an expiry in the past and `credential.long-lived` for
+  credentials that outlast an hour. The expiry is the `GitHub-Authentication-Token-Expiration` response header. The
+  kind of token does not bound its life: the `GITHUB_TOKEN` of a workflow run is also an installation token and lives
+  up to 24 hours, so an installation token passes on its header alone. A lander whose `gh` holds no credential is not
+  cleared.
+- Every `gh api` request is a GET (`--include` for the repository read). `gh repo view` is the one POST, a read-only
+  GraphQL query.
+- What the check does not see:
+  - that a token was minted for the batch in hand (it sees the expiry, not the minting);
+  - while `gh` is signed in, any credential helper: the unscoped macOS Keychain helper and `~/.git-credentials` are not
+    judged, and neither is a helper that answers from the environment, such as the one under
+    [Agent identity](#agent-identity);
+  - ssh keys, in an agent or in `~/.ssh`: a push to an ssh address typed on the command line, or to a remote other
+    than the two judged, needs no configuration;
+  - a `default` entry in `~/.netrc`, and a `netrc` other than the one in the home directory;
+  - a `gh` login under another `GH_CONFIG_DIR` than the one the check runs with;
+  - an ssh address is reported whatever its host, so one that cannot reach GitHub is a false report, not a gap;
+  - the credentials of other processes and of other users of the device.
 
 ## Rulesets
 
@@ -211,6 +280,10 @@ gh api -X POST repos/$R/rulesets --input - <<'JSON'
 }
 JSON
 ```
+
+The check reports `ruleset.dev.rule` for a missing `deletion` or `non_fast_forward` rule, `ruleset.dev.extra` for an
+`update`, `creation`, `pull_request` or `required_status_checks` rule, `ruleset.dev.bypass` for any bypass actor,
+`ruleset.dev.enforcement` for a ruleset that is not `active` and `ruleset.dev.missing` when none covers the branch.
 
 Rollback: `gh api -X DELETE repos/$R/rulesets/$(gh api repos/$R/rulesets --jq '.[]|select(.name=="development")|.id')`
 
@@ -421,7 +494,8 @@ Rollback: remove the environment name from the publisher and delete `environment
 
 ```sh
 scripts/github-protection --check                     # as the owner
-scripts/github-protection --check --agent             # from the agent's environment
+scripts/github-protection --check --agent             # from the environment of a device that is not the lander
+scripts/github-protection --check --agent --lander    # from the lander's environment
 scripts/github-protection --check --local             # CODEOWNERS and workflows, no network
 scripts/github-protection --check --require-owner-review --require-signatures --strict-tags   # the optional rules
 ```
