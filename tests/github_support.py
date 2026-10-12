@@ -57,9 +57,12 @@ if [ "$2" = -X ]; then
     case " $GH_FAIL " in *" $path "*) echo "gh: HTTP 422" >&2; exit 1;; esac
     echo '{}'; exit 0
 fi
-printf 'GET %s\\n' "$2" >> "$GH_LOG"
+if [ -n "$GH_NOAUTH" ]; then
+    [ "$1" = repo ] || printf 'GET %s\\n' "$2" >> "$GH_LOG"
+    echo "gh: To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4
+fi
 if [ "$1" = repo ]; then echo "$GH_REPO"; exit 0; fi
-if [ -n "$GH_NOAUTH" ]; then echo "gh: To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4; fi
+printf 'GET %s\\n' "$2" >> "$GH_LOG"
 name=$(printf '%s' "$2" | tr '/' '_')
 if [ -f "$GH_REPLIES/$name.json" ]; then
     if [ "$3" = --include ]; then

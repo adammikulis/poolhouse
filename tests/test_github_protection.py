@@ -5,7 +5,9 @@ from __future__ import annotations
 import copy
 import importlib.machinery
 import importlib.util
+import os
 import re
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -321,12 +323,105 @@ def test_a_read_only_credential_leaves_a_device_that_is_not_the_lander_clean(
     assert (status, out.strip().splitlines()[-1]) == (0, "0 findings"), out
 
 
-def test_a_device_with_no_credential_at_all_leaves_no_finding(gp, tmp_path, monkeypatch, capsys):
+def checkout(gp, tmp_path, monkeypatch, origin, *config):
+    """A checkout whose only configuration is written here; the script reads it as the device's own."""
+    for name in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"):
+        monkeypatch.setenv(name, os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    root = tmp_path / "checkout"
+    root.mkdir()
+    for args in (("init", "-q"), ("remote", "add", "origin", origin), *config):
+        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+    monkeypatch.setattr(gp, "CHECKOUT", root)
+
+
+def signed_out(gp, tmp_path, monkeypatch, capsys, origin, *config):
+    """A bare `--check --agent` on a device where gh holds no credential: status, output, gh's log."""
+    checkout(gp, tmp_path, monkeypatch, origin, *config)
     log = serve(tmp_path, monkeypatch, GOOD)
     sign_out(monkeypatch)
-    status, out = run(gp, capsys, "--agent")
+    code = gp.main(["--check", "--agent"])
+    return code, capsys.readouterr().out, log.read_text().splitlines()
+
+
+HTTPS = f"https://github.com/{REPO}.git"
+
+
+def test_a_device_with_no_credential_at_all_leaves_no_finding(gp, tmp_path, monkeypatch, capsys):
+    status, out, calls = signed_out(gp, tmp_path, monkeypatch, capsys, HTTPS)
     assert (status, out.strip().splitlines()[-1]) == (0, "0 findings"), out
-    assert all(line.startswith("GET ") for line in log.read_text().splitlines())
+    assert calls == ["GET rate_limit"]
+
+
+@pytest.mark.parametrize("origin", (
+    f"git@github.com:{REPO}.git", f"ssh://git@github.com/{REPO}.git",
+    f"https://x-access-token:noreply@github.com/{REPO}.git"))
+def test_a_signed_out_device_whose_origin_can_still_push_is_unverified(
+        gp, tmp_path, monkeypatch, capsys, origin):
+    status, out, calls = signed_out(gp, tmp_path, monkeypatch, capsys, origin)
+    assert status == 1 and codes(out) == {"credential.unverified"}, out
+    assert calls == ["GET rate_limit"]
+    assert "x-access-token" not in out
+
+
+def test_a_signed_out_device_with_a_credential_helper_is_unverified(gp, tmp_path, monkeypatch, capsys):
+    status, out, _ = signed_out(gp, tmp_path, monkeypatch, capsys, HTTPS,
+                                ("config", "credential.helper", "store"))
+    assert status == 1 and codes(out) == {"credential.unverified"}, out
+    assert "credential helper" in out
+
+
+def test_a_helper_set_to_nothing_is_not_a_credential_helper(gp, tmp_path, monkeypatch, capsys):
+    status, out, _ = signed_out(gp, tmp_path, monkeypatch, capsys, HTTPS,
+                                ("config", "credential.helper", ""))
+    assert (status, out.strip().splitlines()[-1]) == (0, "0 findings"), out
+
+
+def test_an_unverified_finding_points_at_a_heading(gp, tmp_path, monkeypatch, capsys):
+    out = signed_out(gp, tmp_path, monkeypatch, capsys, f"git@github.com:{REPO}.git")[1]
+    line = next(ln for ln in out.splitlines() if ln.startswith("credential.unverified"))
+    assert line.rsplit("#", 1)[1] == "push-credential" and "push-credential" in anchors()
+
+
+def test_a_signed_out_device_never_runs_ssh_or_a_credential_helper(gp, tmp_path, monkeypatch, capsys):
+    probes, ran = tmp_path / "probes", tmp_path / "ran"
+    probes.mkdir()
+    for name in ("ssh", "helper"):
+        (probes / name).write_text(f"#!/bin/sh\necho {name} >> {ran}\n")
+        (probes / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{probes}{os.pathsep}{os.environ['PATH']}")
+    status, out, _ = signed_out(gp, tmp_path, monkeypatch, capsys, f"git@github.com:{REPO}.git",
+                                ("config", "credential.helper", str(probes / "helper")))
+    assert status == 1 and codes(out) == {"credential.unverified"}, out
+    assert not ran.exists()
+
+
+def test_a_signed_out_device_with_no_github_origin_has_no_repository(gp, tmp_path, monkeypatch, capsys):
+    checkout(gp, tmp_path, monkeypatch, "https://example.org/some/where.git")
+    serve(tmp_path, monkeypatch, GOOD)
+    sign_out(monkeypatch)
+    assert gp.main(["--check", "--agent"]) == 2
+    assert "no repository" in capsys.readouterr().err
+
+
+def test_a_signed_out_lander_is_not_cleared(gp, tmp_path, monkeypatch, capsys):
+    checkout(gp, tmp_path, monkeypatch, HTTPS)
+    serve(tmp_path, monkeypatch, GOOD)
+    sign_out(monkeypatch)
+    status = gp.main(["--check", "--agent", "--lander"])
+    assert status == 1 and "repo.read" in codes(capsys.readouterr().out)
+
+
+def test_a_gh_failure_that_is_not_signing_out_clears_nothing(gp, tmp_path, monkeypatch, capsys):
+    log = serve(tmp_path, monkeypatch, {})
+    status, out = run(gp, capsys, "--agent")
+    assert status == 1 and {"repo.read", "ruleset.read"} <= codes(out), out
+    assert log.read_text().splitlines()[0] == "GET rate_limit"
+
+
+def test_a_reply_with_null_permissions_is_a_finding(gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, lambda r: r[f"repos/{REPO}"].update(permissions=None))
+    assert "credential.unknown" in codes(run(gp, capsys, "--agent")[1])
 
 
 def test_a_reply_that_does_not_say_what_the_credentials_may_do_is_a_finding(
@@ -341,7 +436,7 @@ def test_the_lander_flag_means_nothing_without_the_agent_flag(gp, capsys):
     assert stop.value.code == 2 and "--agent" in capsys.readouterr().err
 
 
-def test_the_token_is_minted_per_batch_and_expires(gp, tmp_path, monkeypatch, capsys):
+def test_the_lander_credential_must_expire_within_the_hour(gp, tmp_path, monkeypatch, capsys):
     for name in ("app", "year", "never"):
         (tmp_path / name).mkdir()
 
@@ -364,10 +459,29 @@ def test_an_installation_token_that_reports_a_long_life_is_refused(gp, tmp_path,
     assert "credential.long-lived" in codes(run(gp, capsys, "--agent", "--lander")[1])
 
 
-def test_an_installation_token_that_reports_no_expiry_is_the_apps_own_hour(
+def test_an_installation_token_with_no_expiry_header_is_not_accepted_on_the_lander(
         gp, tmp_path, monkeypatch, capsys):
     served(tmp_path, monkeypatch, app_token)
-    assert run(gp, capsys, "--agent", "--lander")[0] == 0
+    status, out = run(gp, capsys, "--agent", "--lander")
+    assert status == 1 and "credential.no-expiry" in codes(out), out
+
+
+def test_an_installation_token_with_a_malformed_expiry_header_is_not_accepted_on_the_lander(
+        gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, app_token, {"Github-Authentication-Token-Expiration": "soon"})
+    status, out = run(gp, capsys, "--agent", "--lander")
+    assert status == 1 and "credential.no-expiry" in codes(out), out
+
+
+def test_an_expiry_in_the_past_is_a_finding_on_the_lander(gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, app_token, expires_in(minutes=-5))
+    status, out = run(gp, capsys, "--agent", "--lander")
+    assert status == 1 and "credential.expired" in codes(out), out
+
+
+def test_a_device_that_is_not_the_lander_is_not_asked_for_an_expiry(gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, credential(push=False))
+    assert run(gp, capsys, "--agent")[0] == 0
 
 
 def test_an_expiry_that_cannot_be_read_counts_as_none(gp, tmp_path, monkeypatch, capsys):
@@ -398,3 +512,14 @@ def test_the_development_branch_ruleset_blocks_deletion_and_force_push_per_the_c
 def test_a_development_branch_with_no_ruleset_is_a_finding(gp, tmp_path, monkeypatch, capsys):
     served(tmp_path, monkeypatch, lambda r: r[f"repos/{REPO}/rulesets"].pop(1))
     assert "ruleset.dev.missing" in codes(run(gp, capsys)[1])
+
+
+def test_the_containment_row_and_the_protection_document_say_the_lander_flag_is_self_attested():
+    docs = SCRIPT.parent.parent / "docs"
+    row = next(ln for ln in (docs / "compromise-containment.md").read_text(encoding="utf-8").splitlines()
+               if ln.startswith("| C13 |"))
+    assert "self-attestation" in row
+    assert "self-attestation" in (docs / "github-protection.md").read_text(encoding="utf-8")
+    me = Path(__file__).read_text(encoding="utf-8")
+    for name in re.findall(r"`([a-z0-9_]{20,})`", row):
+        assert f"def test_{name}(" in me, name

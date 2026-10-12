@@ -6,7 +6,8 @@
     scripts/github-protection --check --agent    also fail when these credentials can administer the repository
                                                  or push (a device that is not the lander holds no push credential)
     scripts/github-protection --check --agent --lander
-                                                 the lander: its credentials must expire within an hour
+                                                 the lander (declared, not detected): its credentials must
+                                                 expire within an hour
 
 One line per finding with the section of the document that fixes it; exit 1 when anything drifts,
 2 when there is no repository to read. The script issues GET requests only.
@@ -22,6 +23,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+CHECKOUT = ROOT
+"""The checkout whose git configuration names the origin and the credential helpers of this device."""
 DOC = "docs/github-protection.md"
 WORKFLOWS = ROOT / ".github" / "workflows"
 ENVIRONMENT = "release"
@@ -440,8 +443,7 @@ def check_repository(repo: str, args: argparse.Namespace) -> list[str]:
                            "agent-identity"))
     if args.agent:
         app = is_installation()
-        out += agent_identity(repo, app) + agent_credential(body.get("permissions"), headers, app,
-                                                            args.lander)
+        out += agent_identity(repo, app) + agent_credential(body.get("permissions"), headers, args.lander)
     return out
 
 
@@ -465,6 +467,35 @@ def signed_in() -> bool:
     return True
 
 
+def git_out(*args: str) -> str:
+    """The output of a read-only git command in the checkout; empty when it fails."""
+    done = subprocess.run(["git", *args], capture_output=True, text=True, cwd=CHECKOUT, check=False)
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def origin_repo() -> str:
+    """OWNER/NAME from the origin remote's address; empty when it is not a github.com address."""
+    found = re.search(r"github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$", git_out("remote", "get-url", "origin"))
+    return f"{found[1]}/{found[2]}" if found else ""
+
+
+def unverified_findings() -> list[str]:
+    """Findings for a device whose gh is signed out but whose git can still push, from git config alone."""
+    address = git_out("remote", "get-url", "--push", "origin")
+    reasons = []
+    if address.startswith("ssh://") or re.match(r"[^/:@\s]+@[^/:\s]+:", address):
+        reasons.append("the origin is an ssh address")
+    if re.match(r"https?://[^/@\s]+@", address):
+        reasons.append("the origin address carries a login")
+    helpers = git_out("config", "--get-regexp", r"^credential\..*helper$").splitlines()
+    if any(line.partition(" ")[2].strip() for line in helpers):
+        reasons.append("a credential helper is configured")
+    if not reasons:
+        return []
+    return [finding("credential.unverified", f"gh holds no credential, but git on this device may still push "
+                    f"({'; '.join(reasons)})", "push-credential")]
+
+
 def expiry(headers: dict[str, str]) -> datetime | None:
     """When the credentials expire, from the response headers; None when absent or unreadable."""
     text = headers.get(EXPIRY_HEADER, "").replace(" UTC", "+00:00").replace("Z", "+00:00")
@@ -475,11 +506,10 @@ def expiry(headers: dict[str, str]) -> datetime | None:
     return due if due.tzinfo else due.replace(tzinfo=UTC)
 
 
-def agent_credential(permissions: dict | None, headers: dict[str, str], app: bool,
-                     lander: bool) -> list[str]:
+def agent_credential(permissions: dict | None, headers: dict[str, str], lander: bool) -> list[str]:
     """Findings for a push credential held off the lander, or a lander credential that outlives a batch."""
     if lander:
-        return lander_lifetime(headers, app)
+        return lander_lifetime(headers)
     if not permissions:
         return [finding("credential.unknown", "the repository reply does not say what these credentials "
                         "may do", "push-credential")]
@@ -490,13 +520,16 @@ def agent_credential(permissions: dict | None, headers: dict[str, str], app: boo
     return []
 
 
-def lander_lifetime(headers: dict[str, str], app: bool) -> list[str]:
-    """Findings for lander credentials that do not end within one landing batch's hour."""
+def lander_lifetime(headers: dict[str, str]) -> list[str]:
+    """Findings for lander credentials that do not report an expiry within the next hour."""
     due = expiry(headers)
     if due is None:
-        return [] if app else [finding("credential.no-expiry", "these credentials never expire; the "
-                                       "lander's token is the App's installation token", "push-credential")]
+        return [finding("credential.no-expiry", "these credentials report no expiry, or one that cannot be "
+                        "read; the lander's token is the App's installation token", "push-credential")]
     left = (due - datetime.now(UTC)).total_seconds()
+    if left <= 0:
+        return [finding("credential.expired", "these credentials report an expiry in the past "
+                        f"({due:%Y-%m-%d %H:%M} UTC)", "push-credential")]
     if left > TOKEN_SECONDS:
         return [finding("credential.long-lived", f"these credentials last another {left / 3600:.1f} hours; "
                         "the lander's token is minted per landing batch and lasts an hour", "push-credential")]
@@ -517,16 +550,19 @@ def agent_identity(repo: str, app: bool) -> list[str]:
 def check_remote(repo: str, args: argparse.Namespace) -> list[str]:
     owner = repo.split("/")[0]
     if args.agent and not args.lander and not signed_in():
-        return []
+        return unverified_findings()
     return (check_rulesets(repo, args) + check_environment(repo, owner)
             + check_actions(repo) + check_repository(repo, args))
 
 
 def default_repo() -> str:
-    """OWNER/NAME of the repository gh is pointed at."""
-    done = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-                          capture_output=True, text=True, cwd=ROOT, check=False)
-    return done.stdout.strip() if done.returncode == 0 else ""
+    """OWNER/NAME of the repository gh is pointed at, else of the origin remote."""
+    try:
+        done = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+                              capture_output=True, text=True, cwd=ROOT, check=False)
+    except FileNotFoundError:
+        return origin_repo()
+    return done.stdout.strip() if done.returncode == 0 and done.stdout.strip() else origin_repo()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -538,8 +574,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="the credentials in use are an agent's: fail when they are the owner's, can "
                         "administer, or can push on a device that is not the lander")
     parser.add_argument("--lander", action="store_true",
-                        help="with --agent: this device is the lander, so its credentials may push and "
-                        "must expire within an hour")
+                        help="with --agent: this device says it is the lander, so its credentials may push "
+                        "and must expire within an hour (declared, not detected)")
     parser.add_argument("--require-signatures", action="store_true",
                         help="also require signed commits on the default branch")
     parser.add_argument("--require-owner-review", action="store_true",

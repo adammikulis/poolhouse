@@ -118,23 +118,35 @@ One device pushes to the development branch: the lander, the device whose runner
 ([landing-queue.md](landing-queue.md)). Every other device that runs agents holds no push credential; it fetches with
 none or with a read-only one.
 
-- The lander's credential is the App's installation token, valid for an hour. No code in the repository mints it:
-  whatever launches the lander's harness ([Agent identity](#agent-identity)) mints a fresh one from the App's key,
-  which stays in the lander's keystore, for each landing batch. The fine-grained token (up to a year) is the weaker
-  option, used only until the App exists.
+- The lander's credential is the App's installation token, minted from the App's key for an hour. No code in the
+  repository mints it: whatever launches the lander's harness ([Agent identity](#agent-identity)) mints one from the
+  App's key, which stays in the lander's keystore, for each landing batch. The fine-grained token (up to a year) is the
+  weaker option, used only until the App exists.
+- **`--lander` is a self-attestation.** Nothing on the device, the board or GitHub says which device is the lander; the
+  person or agent running the check says so, and a device that does not say it is held to the rule for a device that is
+  not. The check does not detect the lander.
 - `scripts/github-protection --check --agent` is the mode of a device that is not the lander. It reads the
   repository with the credentials in use and reports `credential.push` when they hold `push`, `maintain` or `admin`,
-  and `credential.unknown` when the reply does not say what they may do. A device where `gh` holds no credential
-  makes no remote read and has no finding.
+  and `credential.unknown` when the reply does not say what they may do (no `permissions`, or `null`).
+- A device where `gh` holds no credential (`gh` exits 4) makes no remote read; the repository is the origin remote's.
+  The device has no finding unless git can still push: `credential.unverified` when `git config` shows an ssh origin
+  (`ssh://` or `user@host:path`), an https origin that carries a login in its address, or a configured credential
+  helper (a helper set to nothing does not count). The check reads `git config` and `git remote get-url` only; it runs
+  neither `ssh` nor `git credential fill` and makes no network call, so the finding says git may push, not that it
+  can. A device clears it with an https origin and no helper.
 - `scripts/github-protection --check --agent --lander` is the lander's mode. It reports `credential.no-expiry` for
-  credentials with no expiry (a classic token, or a fine-grained token with none) and `credential.long-lived` for
-  credentials that outlast an hour. The expiry is the `GitHub-Authentication-Token-Expiration` response header; an
-  installation token (recognised by its read of `installation/repositories`) with no header passes, since GitHub
-  ends it within the hour.
+  credentials with no readable expiry (a classic token, a fine-grained token with none, or an installation token whose
+  header is missing or malformed), `credential.expired` for an expiry in the past and `credential.long-lived` for
+  credentials that outlast an hour. The expiry is the `GitHub-Authentication-Token-Expiration` response header. The
+  kind of token does not bound its life: the `GITHUB_TOKEN` of a workflow run is also an installation token and lives
+  up to 24 hours, so an installation token passes on its header alone. A lander whose `gh` holds no credential is not
+  cleared.
 - Every request is a GET (`gh api PATH --include` for the repository read).
-- What the check cannot see: that a token was minted for the batch in hand (it sees the expiry, not the minting), the
-  owner's `gh` login and ssh keys when they are not the credentials in use, and the credentials of a process other
-  than the one running the check.
+- What the check cannot see: that a token was minted for the batch in hand (it sees the expiry, not the minting); the
+  owner's `gh` login and ssh keys when they are not the credentials in use; ssh keys in an agent, a stored git
+  credential or the address of a push on a device whose `gh` holds a read-only credential (only a signed-out device
+  has its git configuration read); a `gh` login under another `GH_CONFIG_DIR` than the one the check runs with; and
+  the credentials of a process other than the one running the check.
 
 ## Rulesets
 
