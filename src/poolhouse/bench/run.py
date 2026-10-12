@@ -496,9 +496,9 @@ def cmd_show(args: Any) -> int:
         _say_systems([r for r in answering if r.get("label") in args.compare])
         return 0
     if args.rank:
-        _say_systems(answering)
         ranking(answering, args.rank, noise=args.noise / 100)
         say(args.rank)
+        _say_systems(answering)
         return 0
     if args.export:
         say(export(answering, args.export,
@@ -513,15 +513,15 @@ def cmd_show(args: Any) -> int:
         say(plot(answering, args.plot, cost=args.cost, noise=args.noise / 100))
         return 0
     if args.rates:
-        _say_systems(answering)
         rates(answering, cost=args.cost, noise=args.noise / 100)
+        _say_systems(answering)
         return 0
     if args.detail is not None:
         missed([r for r in answering if not args.detail or r.get("label") == args.detail],
                everything=args.all, among=answering)
         return 0
-    _say_systems(answering)
     table(answering)
+    _say_systems(answering)
     if kept.extracted:
         say()
         bench_extract.table(kept.extracted)
