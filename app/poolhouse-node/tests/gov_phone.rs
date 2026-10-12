@@ -86,11 +86,65 @@ fn a_phone_founds_a_pool_with_its_own_key_as_the_strong_admin_and_admits_this_de
 #[test]
 fn the_card_names_the_pool_its_policy_and_the_key_in_plain_ascii() {
     let (rig, _phone, token) = linked();
-    let open = ask_found(&rig, &token, "caf\u{e9} home", "open");
+    let open = ask_found(&rig, &token, "home", "open");
     let text = open["result"]["text"].as_str().unwrap();
     assert!(text.contains("POOL: OPEN. Devices on the same network join without asking."), "{text}");
-    assert!(text.contains("'caf- home'") && text.is_ascii(), "a name that is not ASCII is shown with hyphens, never sent raw:\n{text}");
-    assert!(text.lines().all(|l| l.len() < 400));
+    assert!(text.is_ascii() && text.lines().all(|l| l.len() < 400));
+}
+
+#[test]
+fn a_name_that_is_not_plain_ascii_is_refused_before_a_card_is_made() {
+    let (rig, phone, token) = linked();
+    let pool = ask_found(&rig, &token, "caf\u{e9} home", "open");
+    assert_eq!(pool["ok"], false, "{pool}");
+    assert!(pool["error"]["say"].as_str().unwrap().contains("plain English letters"), "{pool}");
+    assert!(rig.phone("POST", "list", &phone.token, json!({})).1["result"]["approvals"].as_array().unwrap().is_empty(), "no card was made");
+    found(&rig, &phone, &token, "secure");
+    for name in ["caf\u{e9}", "tab\there", "del\u{7f}"] {
+        let body = json!({"cert": hex(&kit::gov::ident(9).der), "name": name, "how": "tap", "via": ""});
+        let admit = rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": body}));
+        assert_eq!(admit["ok"], false, "{name:?}: {admit}");
+    }
+}
+
+#[test]
+fn asking_again_for_the_same_act_is_the_same_card() {
+    let (rig, phone, token) = linked();
+    found(&rig, &phone, &token, "secure");
+    let body = json!({"cert": hex(&kit::gov::ident(9).der), "name": "laptop", "how": "tap", "via": ""});
+    let first = id_of(&rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": body})));
+    let again = id_of(&rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": body})));
+    assert_eq!(first, again, "a retry merges into the card that waits");
+    let other = json!({"cert": hex(&kit::gov::ident(10).der), "name": "laptop", "how": "tap", "via": ""});
+    assert_ne!(first, id_of(&rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": other}))), "another act is another card");
+    let waiting = rig.phone("POST", "list", &phone.token, json!({})).1["result"]["approvals"].clone();
+    assert_eq!(waiting.as_array().unwrap().iter().filter(|a| a["state"] == "pending").count(), 2);
+}
+
+#[test]
+fn the_bytes_the_phone_makes_again_from_a_card_are_the_bytes_the_card_asks_it_to_sign() {
+    let (rig, phone, token) = linked();
+    let sha = poolhouse_node::fsutil::sha256_hex;
+    let id = id_of(&ask_found(&rig, &token, "home", "secure"));
+    let action = rig.get(&phone, &id)["challenge"]["action"].clone();
+    let mut charter = action["charter"].clone();
+    let mut entry = charter["admins"][0].clone();
+    charter["admins"][0]["acceptance"] = json!("");
+    let anchor = sha(serde_json::to_string(&charter).unwrap().as_bytes());
+    for dropped in ["acceptance", "label"] {
+        entry.as_object_mut().unwrap().remove(dropped);
+    }
+    entry["v"] = json!(1);
+    entry["anchor"] = json!(anchor);
+    let accept = format!("poolhouse/pool-accept/v1\n{}", serde_json::to_string(&entry).unwrap());
+    assert_eq!(hex(accept.as_bytes()), action["message"].as_str().unwrap(), "what the phone makes of the charter it is shown");
+    assert_eq!(tap(&rig, &phone, &id)["ok"], true);
+    let admit = id_of(&rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": {"cert": own_cert(&rig), "name": "", "how": "found", "via": ""}})));
+    let action = rig.get(&phone, &admit)["challenge"]["action"].clone();
+    let mut act = action["act"].clone();
+    act.as_object_mut().unwrap().remove("signatures");
+    let bytes = format!("poolhouse/pool-act/v1\n{}", serde_json::to_string(&act).unwrap());
+    assert_eq!(hex(bytes.as_bytes()), action["message"].as_str().unwrap(), "and of the act");
 }
 
 #[test]

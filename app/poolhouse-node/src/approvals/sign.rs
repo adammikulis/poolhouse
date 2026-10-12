@@ -18,7 +18,8 @@ use crate::approvals::decide::{agent_view, audit, Decision};
 use crate::approvals::fatigue::{kind_of, Standing};
 use crate::approvals::{request, Approval, DEFAULT_TTL_MS, MOST_PENDING, MOST_PENDING_PER_SESSION, MOST_REQUESTS, PENDING, REQUEST_WINDOW_MS, SIGN};
 use crate::error::{Error, Result};
-use crate::fsutil::{hex, random_hex};
+use crate::fsutil::{hex, random_hex, sha256_hex};
+use crate::row::canonical;
 use crate::gov::act::{Act, ActSig, SigKind};
 use crate::gov::alg::Alg;
 use crate::gov::body::Body;
@@ -179,6 +180,7 @@ pub fn ask_found(node: &mut Node, token: &str, name: &str, policy: Policy, proje
         return Err(declined("This device already runs a pool; leave it before making another."));
     }
     let (public, fingerprint, label) = phone_key(node)?;
+    plain_only(&[name])?;
     let now = wall_ms();
     let admin = AdminKey { key: public.clone(), alg: Alg::P256Ecdsa, role: Role::Admin, strength: Strength::Strong, person: "owner".into(), since: 1, acceptance: String::new(), label };
     let charter = Charter::new(name, policy, project, vec![admin], now);
@@ -199,12 +201,22 @@ pub fn ask_found(node: &mut Node, token: &str, name: &str, policy: Policy, proje
     make(node, &who, card, action, &format!("found:{name}"), now)
 }
 
+/// Whether ``text`` is what a card can show as it is written: printable ASCII, so what the phone signs is what the person reads.
+fn plain(text: &str) -> bool {
+    text.bytes().all(|b| b.is_ascii_graphic() || b == b' ')
+}
+
+fn plain_only(texts: &[&str]) -> Result<()> {
+    if texts.iter().all(|t| plain(t)) { Ok(()) } else { Err(declined("Names on a card use plain English letters and digits; use those and ask again.")) }
+}
+
 /// The title, the sentence and the further lines of the card for an admit or an added key, which say whose they are in words that do not
 /// depend on what the asker wrote; None for any other act, which the pool's own description of it serves.
 fn act_words(parsed: &Body, own: &str, pool: &str) -> Result<Option<(String, String, Vec<String>)>> {
     let place = quoted(pool);
     Ok(match parsed {
         Body::Admit(a) => {
+            plain_only(&[&a.name])?;
             let (_, fingerprint) = crate::gov::body::cert_of(a)?;
             let mine = fingerprint == own;
             if a.how == "found" && !mine {
@@ -217,6 +229,7 @@ fn act_words(parsed: &Body, own: &str, pool: &str) -> Result<Option<(String, Str
         }
         Body::AdminAdd(a) => {
             let k = &a.entry;
+            plain_only(&[&k.label, &k.person])?;
             let ask = format!("Add a NEW key, not one of your phones, as {} of the pool {place}. Whoever asked wrote its person {} and its label {} (not checked), and says it is {}.",
                               if k.role == Role::Recovery { "the recovery key" } else { "an admin" }, quoted(&k.person), quoted(&k.label), if k.strength == Strength::Strong { "strong" } else { "weak" });
             let device = format!("DEVICE: The new key is {} ({}); check these words against the device that holds it.", words(&k.fingerprint()), k.alg.name());
@@ -232,6 +245,7 @@ pub fn ask_act(node: &mut Node, token: &str, kind: &str, body: Value) -> Result<
     class_of(kind)?;
     let (public, fingerprint, label) = phone_key(node)?;
     let body = node.with_cut(kind, body);
+    let subject = format!("act:{kind}:{}", sha256_hex(canonical(&body).as_bytes()));
     let now = wall_ms();
     let own = node.cert.fingerprint();
     let (act, (title, ask, details), charter_name, policy) = {
@@ -256,12 +270,11 @@ pub fn ask_act(node: &mut Node, token: &str, kind: &str, body: Value) -> Result<
         ask, scope: format!("Your phone's key signs this one act for the pool {} and nothing else.", quoted(&charter_name)), who: who_line(node, &who), details,
     };
     let action = json!({"kind": SIGN, "step": "act", "signer": fingerprint, "alg": Alg::P256Ecdsa, "key": public, "message": hex(&act.sign_bytes()), "act": act});
-    let subject = format!("act:{}", act.id());
     make(node, &who, card, action, &subject, now)
 }
 
 /// The phone's signature in the one spelling a pool takes: a phone's keystore does not choose the smaller of the two s values that verify.
-fn canonical(sig: &str) -> Result<String> {
+fn low_s(sig: &str) -> Result<String> {
     Alg::canonical_p256(sig).ok_or_else(|| Error::Invalid("That signature is not in the form a phone's key makes.".into()))
 }
 
@@ -271,7 +284,7 @@ pub fn finish(node: &mut Node, a: &Approval, d: &Decision) -> Result<()> {
     match a.action["step"].as_str() {
         Some("found") => {
             let mut charter: Charter = serde_json::from_value(a.action["charter"].clone()).map_err(|_| Error::Invalid("That request carries no charter.".into()))?;
-            charter.admins[0].acceptance = canonical(d.sig)?;
+            charter.admins[0].acceptance = low_s(d.sig)?;
             charter.check_founding().map_err(|e| declined(&e.to_string()))?;
             let found = Act::new(&charter.pool_id(), 1, "found", charter.body(), charter.at_ms, "")?;
             let made = node.pool_found(&serde_json::to_value(found)?)?;
@@ -280,7 +293,7 @@ pub fn finish(node: &mut Node, a: &Approval, d: &Decision) -> Result<()> {
         _ => {
             let mut act: Act = serde_json::from_value(a.action["act"].clone()).map_err(|_| Error::Invalid("That request carries no act.".into()))?;
             let key = a.action["key"].as_str().unwrap_or("").to_string();
-            act.add_signature(ActSig { kind: SigKind::Admin, key, alg: Alg::P256Ecdsa, sig: canonical(d.sig)? });
+            act.add_signature(ActSig { kind: SigKind::Admin, key, alg: Alg::P256Ecdsa, sig: low_s(d.sig)? });
             let reply = node.pool_submit(&serde_json::to_value(&act)?)?;
             let status = reply["status"].as_str().unwrap_or("").to_string();
             if matches!(status.as_str(), "void" | "stale") {
