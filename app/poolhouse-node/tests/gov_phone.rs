@@ -267,3 +267,19 @@ fn a_phone_that_is_not_an_admin_of_the_pool_is_not_asked_to_sign_for_it() {
     assert_eq!(asked["ok"], false, "{asked}");
     assert!(asked["error"]["say"].as_str().unwrap().contains("None of the keys"), "{asked}");
 }
+
+#[test]
+fn a_phone_signature_in_either_spelling_founds_the_pool_and_the_pool_keeps_the_one_spelling() {
+    use poolhouse_node::gov::alg::Alg;
+    let (rig, phone, token) = linked();
+    let id = id_of(&ask_found(&rig, &token, "home", "secure"));
+    let view = rig.get(&phone, &id);
+    let sig = phone.sign(&message(&view));
+    let high = if Alg::P256Ecdsa.sig_shape(&sig) { Alg::mirrored_p256(&sig).unwrap() } else { sig };
+    let mut body = approve_with(&phone, &view, &message(&view));
+    body["sig"] = json!(high);
+    let done = rig.phone("POST", "decide", "", body).1;
+    assert_eq!(done["ok"], true, "{done}");
+    let stored = rig.node.lock().unwrap().members.gov().unwrap().state().chain.latest().charter.admins[0].acceptance.clone();
+    assert!(Alg::P256Ecdsa.sig_shape(&stored), "the acceptance is stored in its one spelling: {stored}");
+}

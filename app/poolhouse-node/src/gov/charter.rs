@@ -113,9 +113,9 @@ impl Charter {
         sha256_hex(canonical(&self.body()).as_bytes())
     }
 
-    /// The pool id this charter makes when it is the first.
+    /// The pool id this charter makes when it is the first: from the charter before any key accepted it, so no signature changes it.
     pub fn pool_id(&self) -> String {
-        self.hash()[..32].to_string()
+        self.anchor()[..32].to_string()
     }
 
     /// The hash of this charter with every acceptance blanked: what the founding keys accept.

@@ -253,13 +253,18 @@ pub fn ask_act(node: &mut Node, token: &str, kind: &str, body: Value) -> Result<
     make(node, &who, card, action, &subject, now)
 }
 
+/// The phone's signature in the one spelling a pool takes: a phone's keystore does not choose the smaller of the two s values that verify.
+fn canonical(sig: &str) -> Result<String> {
+    Alg::canonical_p256(sig).ok_or_else(|| Error::Invalid("That signature is not in the form a phone's key makes.".into()))
+}
+
 /// The phone signed: do what the request asked. A pool is founded with the key's acceptance; an act is handed to the pool with its signature.
 pub fn finish(node: &mut Node, a: &Approval, d: &Decision) -> Result<()> {
     let note = |node: &mut Node, text: String| node.approvals.update(&a.id, |x| x.reason = text);
     match a.action["step"].as_str() {
         Some("found") => {
             let mut charter: Charter = serde_json::from_value(a.action["charter"].clone()).map_err(|_| Error::Invalid("That request carries no charter.".into()))?;
-            charter.admins[0].acceptance = d.sig.to_string();
+            charter.admins[0].acceptance = canonical(d.sig)?;
             charter.check_founding().map_err(|e| declined(&e.to_string()))?;
             let found = Act::new(&charter.pool_id(), 1, "found", charter.body(), charter.at_ms, "")?;
             let made = node.pool_found(&serde_json::to_value(found)?)?;
@@ -268,7 +273,7 @@ pub fn finish(node: &mut Node, a: &Approval, d: &Decision) -> Result<()> {
         _ => {
             let mut act: Act = serde_json::from_value(a.action["act"].clone()).map_err(|_| Error::Invalid("That request carries no act.".into()))?;
             let key = a.action["key"].as_str().unwrap_or("").to_string();
-            act.add_signature(ActSig { kind: SigKind::Admin, key, alg: Alg::P256Ecdsa, sig: d.sig.to_string() });
+            act.add_signature(ActSig { kind: SigKind::Admin, key, alg: Alg::P256Ecdsa, sig: canonical(d.sig)? });
             let reply = node.pool_submit(&serde_json::to_value(&act)?)?;
             let status = reply["status"].as_str().unwrap_or("").to_string();
             if matches!(status.as_str(), "void" | "stale") {

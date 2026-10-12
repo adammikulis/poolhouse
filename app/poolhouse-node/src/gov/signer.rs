@@ -91,7 +91,7 @@ impl Held {
     fn sign(&self, message: &[u8]) -> String {
         match self {
             Held::Ed(k) => hex(&k.sign(message).to_bytes()),
-            Held::P256(k) => hex(k.sign(&SystemRandom::new(), message).expect("a held key signs").as_ref()),
+            Held::P256(k) => Alg::canonical_p256(&hex(k.sign(&SystemRandom::new(), message).expect("a held key signs").as_ref())).expect("a held key signs in DER"),
         }
     }
 }
