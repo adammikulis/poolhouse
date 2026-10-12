@@ -731,7 +731,7 @@ were written with.
 
 ### HANDOFF.md
 
-It lists what is still pending. Nothing else. When something is done, **delete its entry**: no strike-through, no `[x]`,
+It lists what is still pending. Nothing else. **Standing rule (owner, 2026-10-12): prune an item as you complete it, in the same commit that lands the work**, never later and never left for a sweep. When something is done, **delete its entry**: no strike-through, no `[x]`,
 no "completed" section, no line saying it was finished. Anything that turned out to be wrong is deleted too, rather than
 annotated as mistaken. If a finished piece leaves something behind (a limit, a gap, a follow-up), write that as its own
 pending entry in its own words, not as a postscript to the item going away. An empty HANDOFF.md is a good state: delete
