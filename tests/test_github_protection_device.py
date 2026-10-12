@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import os
+import shutil
 
 import pytest
 
@@ -51,6 +52,7 @@ def judged(gp, tmp_path, monkeypatch, capsys):
     (SSH, REPO),
     (f"ssh://git@github.com/{REPO}.git", REPO),
     (f"ssh://git@github.com:22/{REPO}.git", REPO),
+    (f"https://github.com:443/{REPO}.git", REPO),
     ("https://evil.example/x?github.com/o/n", ""),
     ("https://notgithub.com/o/n", ""),
     ("https://github.com/a?b=1/n", ""),
@@ -64,6 +66,33 @@ def test_the_repository_is_the_one_the_origin_names_on_github_com_only(
         gp, tmp_path, monkeypatch, origin, expected):
     monkeypatch.setattr(gp, "CHECKOUT", git_checkout(tmp_path / "checkout", origin))
     assert gp.origin_repo() == expected
+
+
+@pytest.mark.parametrize("address", [
+    "https://g\u0131thub.com/o/n",
+    "http\u017f://github.com/o/n",
+    "https://github.com/./n",
+    "https://github.com/../n",
+    "https://github.com/o/.",
+    "https://github.com/o/..",
+    "https://github.com/o/..git",
+    "https://github.com/o/n\x1b[31m",
+    "https://github.com/o/\tn",
+    "https://github.com/o/n\n",
+    "https://git\x00hub.com/o/n",
+    "https://github.com:8443/o/n",
+    "https://github.com:443@evil.example/o/n",
+    "https://{}@github.com/o/n".format("a\x1bb"),
+    "ssh://{}@github.com/o/n".format("a\tb"),
+], ids=["dotless i", "long s", "dot owner", "dotdot owner", "dot name", "dotdot name", "dotdot name with suffix",
+        "escape", "tab", "newline", "nul", "other port", "port as login", "escape in the login", "tab in the login"])
+def test_an_address_that_is_not_exactly_github_com_names_no_repository(gp, address):
+    assert gp.repo_of(address) == ""
+
+
+def test_an_exact_github_com_address_names_its_repository(gp):
+    assert gp.repo_of(f"https://github.com:443/{REPO}.git") == REPO
+    assert gp.repo_of(f"HTTPS://GITHUB.COM/{REPO}") == REPO
 
 
 def test_an_origin_that_is_not_on_github_leaves_no_repository(gp, tmp_path, monkeypatch, capsys):
@@ -106,6 +135,18 @@ FLAGGED = {
     "an authorization header for github.com": {"config": (
         ("config", "http.https://github.com/.extraHeader", "authorization: basic Zm9v"),)},
     "an askpass program": {"config": (("config", "core.askPass", "/usr/bin/true"),)},
+    "an ssh remote the branch tracks": {"config": (
+        ("remote", "add", "upstream", SSH), ("config", "branch.trunk.remote", "upstream"))},
+    "an ssh origin with an https push default": {"origin": SSH, "config": (
+        ("remote", "add", "mirror", HTTPS), ("config", "remote.pushDefault", "mirror"))},
+    "an ssh origin with an https branch push remote": {"origin": SSH, "config": (
+        ("remote", "add", "mirror", HTTPS), ("config", "branch.trunk.pushRemote", "mirror"))},
+    "an scp address with no user": {"config": (("config", "remote.origin.pushurl", f"github.com:{REPO}.git"),)},
+    "an ssh config alias": {"config": (("config", "remote.origin.pushurl", f"gh-alias:{REPO}.git"),)},
+    "a git+ssh address": {"config": (
+        ("config", "remote.origin.pushurl", f"git+ssh://git@github.com/{REPO}.git"),)},
+    "an ssh+git address": {"config": (
+        ("config", "remote.origin.pushurl", f"ssh+git://git@github.com/{REPO}.git"),)},
 }
 CLEAN = {
     "an https origin": {},
@@ -120,6 +161,16 @@ CLEAN = {
         ("config", "--add", "http.extraHeader", "Authorization: basic Zm9v"),
         ("config", "--add", "http.extraHeader", ""))},
     "an empty askpass": {"config": (("config", "core.askPass", ""),)},
+    "a push default that beats an ssh branch remote": {"config": (
+        ("remote", "add", "upstream", SSH), ("remote", "add", "mirror", HTTPS),
+        ("config", "branch.trunk.remote", "upstream"), ("config", "remote.pushDefault", "mirror"))},
+    "a branch push remote that beats an ssh push default": {"config": (
+        ("remote", "add", "upstream", SSH), ("remote", "add", "mirror", HTTPS),
+        ("config", "remote.pushDefault", "upstream"), ("config", "branch.trunk.pushRemote", "mirror"))},
+    "a branch that tracks no remote": {"config": (("config", "branch.trunk.remote", "."),)},
+    "a local path": {"config": (("config", "remote.origin.pushurl", "/tmp/a:b"),)},
+    "a file address": {"config": (("config", "remote.origin.pushurl", "file:///tmp/some/where"),)},
+    "a drive letter": {"config": (("config", "remote.origin.pushurl", "C:/some/where"),)},
 }
 
 
@@ -205,6 +256,8 @@ def test_the_macos_keychain_helper_alone_is_unverified_in_plain_words(judged):
     pytest.param(helpers("osxkeychain", "", "store"), True, id="a reset between two leaves the second"),
     pytest.param(helpers("store", scope="https://example.org"), False, id="scoped to another host"),
     pytest.param(helpers("store", scope="https://github.com"), True, id="scoped to github.com"),
+    pytest.param(helpers("store", scope="https://github.com:443"), True, id="scoped to github.com port 443"),
+    pytest.param(helpers("store", scope="https://github.com:8443"), False, id="scoped to another port"),
     pytest.param(helpers("store") + helpers("", scope="https://example.org"), True,
                  id="a reset scoped to another host clears nothing"),
     pytest.param(helpers("store") + helpers("", scope="https://github.com"), False,
@@ -236,3 +289,34 @@ def test_the_repo_the_checkout_names_needs_no_such_note(judged):
 
 def test_a_signed_in_device_is_not_told_which_configuration_was_judged(judged):
     assert "judged the git configuration" not in judged(signed=True, flags=("--repo", "someone/else"))[1]
+
+
+# -- gh is not installed --------------------------------------------------------------------
+
+@pytest.fixture
+def no_gh(gp, tmp_path, monkeypatch, capsys):
+    """A bare `--check --agent` on a device where PATH holds git and nothing else: gh is not installed."""
+    only = tmp_path / "only-git"
+    only.mkdir()
+    (only / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(only))
+
+    def run(origin=HTTPS, flags=()):
+        monkeypatch.setattr(gp, "CHECKOUT", git_checkout(tmp_path / "checkout", origin))
+        return gp.main(["--check", "--agent", *flags]), capsys.readouterr().out
+
+    return run
+
+
+@pytest.mark.parametrize(("origin", "status"), [(HTTPS, 0), (SSH, 1)], ids=["clean", "flagged"])
+def test_a_device_without_gh_says_so_and_is_judged_by_its_git(no_gh, origin, status):
+    got, out = no_gh(origin)
+    assert got == status
+    assert "note: gh is not installed; judged the git configuration of this checkout" in out
+    assert codes(out) <= {"credential.unverified"}
+    assert ("gh is not installed, but git may still push" in out) == (status == 1)
+
+
+def test_a_lander_without_gh_is_not_cleared(no_gh):
+    status, out = no_gh(flags=("--lander",))
+    assert status == 1 and "repo.read" in codes(out) and "gh is not installed" in out

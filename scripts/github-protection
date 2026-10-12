@@ -67,6 +67,10 @@ class Unauthenticated(Unreadable):
     """gh holds no credential."""
 
 
+class GhMissing(Unreadable):
+    """gh is not installed."""
+
+
 def finding(code: str, text: str, section: str) -> str:
     return f"{code:<34} {text}  -> {DOC}#{section}"
 
@@ -76,7 +80,7 @@ def gh_run(path: str, *flags: str) -> str:
     try:
         done = subprocess.run(["gh", "api", path, *flags], capture_output=True, text=True, check=False)
     except FileNotFoundError:
-        raise Unreadable("gh is not installed") from None
+        raise GhMissing("gh is not installed") from None
     if done.returncode == AUTH_REQUIRED:
         raise Unauthenticated("gh holds no credential")
     if done.returncode:
@@ -449,7 +453,7 @@ def check_repository(repo: str, args: argparse.Namespace) -> list[str]:
         held = agent_credential(body.get("permissions"), headers, args.lander)
         out += agent_identity(repo, app) + held
         if not args.lander and not held:
-            out += unverified_findings(True)
+            out += unverified_findings("in")
     return out
 
 
@@ -462,15 +466,17 @@ def is_installation() -> bool:
     return True
 
 
-def signed_in() -> bool:
-    """False when gh holds no credential."""
+def gh_state() -> str:
+    """`out` when gh holds no credential, `missing` when gh is not installed, else `in`."""
     try:
         gh_get("rate_limit")
+    except GhMissing:
+        return "missing"
     except Unauthenticated:
-        return False
+        return "out"
     except Unreadable:
         pass
-    return True
+    return "in"
 
 
 def git_out(*args: str) -> str:
@@ -480,24 +486,33 @@ def git_out(*args: str) -> str:
 
 
 ORIGIN = re.compile(
-    r"(?:https?://(?:[^/@]+@)?(?:www\.)?github\.com/"
+    r"(?:https?://(?:[^/@]+@)?(?:www\.)?github\.com(?::443)?/"
     r"|ssh://(?:[^/@]+@)?github\.com(?::\d+)?/"
     r"|[^/:@\s]+@github\.com:)"
-    r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$", re.IGNORECASE)
-SSH_ADDRESS = re.compile(r"ssh://|[^/:@\s]+@[^/:\s]+:")
+    r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?", re.ASCII | re.IGNORECASE)
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+SSH_ADDRESS = re.compile(r"(?:ssh|git\+ssh|ssh\+git)://|[^/:\s]+@[^/:\s]+:|[^/:@\s]{2,}:(?!//)", re.IGNORECASE)
 LOGIN_ADDRESS = re.compile(r"https?://[^/@\s]+@")
+GH_SAYS = {"in": "gh's credential cannot push", "out": "gh holds no credential", "missing": "gh is not installed"}
+
+
+def repo_of(address: str) -> str:
+    """OWNER/NAME from an https, ssh:// or scp-style address on exactly github.com; else empty."""
+    found = None if CONTROL.search(address) else ORIGIN.fullmatch(address)
+    if not found or {found[1], found[2]} & {".", ".."}:
+        return ""
+    return f"{found[1]}/{found[2]}"
 
 
 def origin_repo() -> str:
     """OWNER/NAME from the origin remote's address; empty when its host is not github.com."""
-    found = ORIGIN.match(git_out("remote", "get-url", "origin"))
-    return f"{found[1]}/{found[2]}" if found else ""
+    return repo_of(git_out("remote", "get-url", "origin"))
 
 
 def scoped_to_github(scope: str) -> bool:
     """True for a git setting with no URL scope, or whose URL pattern names github.com."""
     host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", scope.lower()).split("/")[0].rpartition("@")[2]
-    return not scope or host == "github.com"
+    return not scope or host.removesuffix(":443") == "github.com"
 
 
 def effective(section: str, variable: str) -> list[str]:
@@ -515,12 +530,17 @@ def effective(section: str, variable: str) -> list[str]:
     return values
 
 
-def push_addresses() -> list[str]:
-    """Where `git push` goes from the current branch and where `git push origin` goes, after pushurl and rewrites."""
+def push_remote() -> str:
+    """The remote `git push` uses from the current branch: pushRemote, pushDefault, the branch's remote, else origin."""
     branch = git_out("symbolic-ref", "--short", "-q", "HEAD")
-    remote = ((git_out("config", f"branch.{branch}.pushremote") if branch else "")
-              or git_out("config", "remote.pushdefault") or "origin")
-    return [git_out("remote", "get-url", "--push", name) for name in dict.fromkeys((remote, "origin"))]
+    named = [git_out("config", f"branch.{branch}.pushremote") if branch else "", git_out("config", "remote.pushdefault"),
+             git_out("config", f"branch.{branch}.remote") if branch else ""]
+    return next((name for name in named if name), "origin")
+
+
+def push_addresses() -> list[str]:
+    """Where `git push` goes and where `git push origin` goes, after pushurl and rewrites."""
+    return [git_out("remote", "get-url", "--push", name) for name in dict.fromkeys((push_remote(), "origin"))]
 
 
 def netrc_machines() -> set[str]:
@@ -544,7 +564,7 @@ def helper_reasons() -> list[str]:
     return []
 
 
-def unverified_findings(signed_in: bool) -> list[str]:
+def unverified_findings(gh: str) -> list[str]:
     """Findings for a device whose gh cannot push but whose git may, from git config, the environment and ~/.netrc."""
     addresses = push_addresses()
     reasons = []
@@ -558,11 +578,10 @@ def unverified_findings(signed_in: bool) -> list[str]:
         reasons.append("an askpass program is set")
     if "github.com" in netrc_machines():
         reasons.append("~/.netrc has an entry for github.com")
-    reasons += [] if signed_in else helper_reasons()
+    reasons += [] if gh == "in" else helper_reasons()
     if not reasons:
         return []
-    held = "gh's credential cannot push" if signed_in else "gh holds no credential"
-    return [finding("credential.unverified", f"{held}, but git may still push from this checkout: "
+    return [finding("credential.unverified", f"{GH_SAYS[gh]}, but git may still push from this checkout: "
                     f"{'; '.join(reasons)}", "push-credential")]
 
 
@@ -619,11 +638,12 @@ def agent_identity(repo: str, app: bool) -> list[str]:
 
 def check_remote(repo: str, args: argparse.Namespace, notes: list[str]) -> list[str]:
     owner = repo.split("/")[0]
-    if args.agent and not args.lander and not signed_in():
-        if args.repo and args.repo.lower() != origin_repo().lower():
-            notes.append("note: gh holds no credential; judged the git configuration of this checkout, "
-                         f"not {args.repo}'s")
-        return unverified_findings(False)
+    state = gh_state() if args.agent and not args.lander else "in"
+    if state != "in":
+        other = f", not {args.repo}'s" if args.repo and args.repo.lower() != origin_repo().lower() else ""
+        if state == "missing" or other:
+            notes.append(f"note: {GH_SAYS[state]}; judged the git configuration of this checkout{other}")
+        return unverified_findings(state)
     return (check_rulesets(repo, args) + check_environment(repo, owner)
             + check_actions(repo) + check_repository(repo, args))
 
