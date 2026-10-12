@@ -61,10 +61,10 @@ pub fn ledger_step(journey: &str, kind: &str) {
 /// The seeds from this up make P-256 keys, drawn once for the process, so a test can hold a phone-shaped admin key by its seed.
 pub const P256_SEEDS: u8 = 200;
 
-fn p256_pair(seed: u8) -> Arc<EcdsaKeyPair> {
-    static PAIRS: OnceLock<Mutex<BTreeMap<u8, Arc<EcdsaKeyPair>>>> = OnceLock::new();
-    let mut pairs = PAIRS.get_or_init(Default::default).lock().expect("the key table is not poisoned");
-    pairs.entry(seed).or_insert_with(|| {
+fn p256_signing(seed: u8) -> Arc<EcdsaKeyPair> {
+    static DRAWN: OnceLock<Mutex<BTreeMap<u8, Arc<EcdsaKeyPair>>>> = OnceLock::new();
+    let mut drawn = DRAWN.get_or_init(Default::default).lock().expect("the key table is not poisoned");
+    drawn.entry(seed).or_insert_with(|| {
         let rng = SystemRandom::new();
         let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &rng).expect("the system draws a key");
         Arc::new(EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8.as_ref(), &rng).expect("a drawn key is well formed"))
@@ -78,7 +78,7 @@ enum Held {
 
 impl Held {
     fn of(seed: u8) -> Held {
-        if seed >= P256_SEEDS { Held::P256(p256_pair(seed)) } else { Held::Ed(SigningKey::from_bytes(&[seed; 32])) }
+        if seed >= P256_SEEDS { Held::P256(p256_signing(seed)) } else { Held::Ed(SigningKey::from_bytes(&[seed; 32])) }
     }
 
     fn public(&self) -> (String, Alg) {
