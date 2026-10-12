@@ -1,0 +1,54 @@
+# Every downloaded Qwen3.8 model, smallest to largest: a smoke, the ranking questions, then speed.
+# One piece of work on the device's compute at a time; each step is its own `poolhouse-bench`
+# process under the broker's lease.
+#
+# Read it first:  poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --dry-run
+# Run it with:    poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --yes --detach
+# After the restart (wired memory raised, nothing else resident), the same line with --resume skips every
+# step already kept and measures the models that did not fit before.
+#
+# The ladder ends with the three Flash-Next quants. The unsloth UD-IQ4_XS is 93.7 GB and the
+# ISTA IQ3_S is 83.6 GB: at the default wired limit they can be refused by the broker, which
+# skips that model's steps and moves on (a failed smoke skips the `then:` under it).
+# The official Flash-Next quant is not downloaded; add its `set` line and the three steps when
+# `poolhouse-models fetch` has it.
+
+set SERVING=--serve-kv q8_0 --context 65536 --per-question 300
+set M27_MLX=hf:lmstudio-community/Qwen3.8-27B-MLX-4bit
+set M27_KM=hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf
+set M27_KXL=hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_XL.gguf
+set FN_IQ1M=hf:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF/IQ1_M/Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf
+set FN_IQ3S=hf:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf
+set FN_IQ4XS=hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+
+# 16.1 GB
+smoke: sweep --serve ${M27_MLX} --label-suffix=-mlx4 ${SERVING} --plain-only --smoke
+then:  sweep --serve ${M27_MLX} --label-suffix=-mlx4 ${SERVING} --plain-only
+speed --serve ${M27_MLX} --label-suffix=-mlx4 --context 65536
+
+# 17.1 GB
+smoke: sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --plain-only --smoke
+then:  sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --plain-only
+speed --serve ${M27_KM} --label-suffix=-q4km --context 65536
+
+# 17.9 GB
+smoke: sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --plain-only --smoke
+then:  sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --plain-only
+speed --serve ${M27_KXL} --label-suffix=-q4kxl --context 65536
+
+# 58.4 GB
+smoke: sweep --serve ${FN_IQ1M} --label-suffix=-iq1m ${SERVING} --plain-only --smoke
+then:  sweep --serve ${FN_IQ1M} --label-suffix=-iq1m ${SERVING} --plain-only
+speed --serve ${FN_IQ1M} --label-suffix=-iq1m --context 65536
+
+# 83.6 GB
+smoke: sweep --serve ${FN_IQ3S} --label-suffix=-iq3s ${SERVING} --plain-only --smoke
+then:  sweep --serve ${FN_IQ3S} --label-suffix=-iq3s ${SERVING} --plain-only
+speed --serve ${FN_IQ3S} --label-suffix=-iq3s --context 65536
+
+# 93.7 GB
+smoke: sweep --serve ${FN_IQ4XS} --label-suffix=-iq4xs ${SERVING} --plain-only --smoke
+then:  sweep --serve ${FN_IQ4XS} --label-suffix=-iq4xs ${SERVING} --plain-only
+speed --serve ${FN_IQ4XS} --label-suffix=-iq4xs --context 65536
+
+show --rank docs/model-ranking.md
