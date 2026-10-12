@@ -36,6 +36,9 @@ const MOST_LABEL: usize = 40;
 /// A signature of the form a P-256 key makes, in the place of the acceptance the phone has not made yet, so the rest of the charter can be checked.
 const SHAPED: &str = "3006020101020101";
 
+/// What a person is told when a phone is linked but its key could not be shown to be kept in the phone's secure hardware.
+pub const NOT_PROVEN: &str = "Your phone is linked, but it cannot prove its key stays in its secure hardware, so it cannot sign a pool for you; update the Poolhouse app and tell me again.";
+
 pub const NEEDS_PHONE: &str = "A pool needs a key that asks for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again.";
 
 /// ``text`` as the printable ASCII a card is made of: anything else becomes a hyphen.
@@ -50,6 +53,10 @@ fn quoted(text: &str) -> String {
 /// The key of the phone that signs for this node: the oldest active phone, as its public point in hex and its fingerprint, and its name.
 fn phone_key(node: &Node) -> Result<(String, String, String)> {
     let mut active: Vec<_> = node.phones.all().filter(|p| p.state == ACTIVE).collect();
+    if !active.is_empty() && !active.iter().any(|p| p.attested) {
+        return Err(Error::say("denied", NOT_PROVEN, "device", "ask-owner"));
+    }
+    active.retain(|p| p.attested);
     active.sort_by(|a, b| (a.added_ms, &a.fingerprint).cmp(&(b.added_ms, &b.fingerprint)));
     let phone = active.first().ok_or_else(|| Error::say("denied", NEEDS_PHONE, "device", "ask-owner"))?;
     Ok((phone.key.clone(), phone.fingerprint.clone(), ascii(&phone.name, MOST_LABEL)))

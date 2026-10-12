@@ -70,6 +70,8 @@ pub struct Node {
     pub fatigue: crate::approvals::fatigue::Fatigue,
     pub evidence: Box<dyn crate::approvals::context::Evidence>,
     pub phones: crate::phone::Phones,
+    /// SHA-256 (hex) of the key of each root a phone's key attestation may end at.
+    pub attest_roots: Vec<String>,
     /// The certificate of the endpoint a phone talks to, and the port it listens on (0 while it does not).
     pub phone_cert: crate::phone::cert::Endpoint,
     pub phone_port: u16,
@@ -154,6 +156,7 @@ impl Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
+            attest_roots: crate::phone::attest::GOOGLE_ROOTS.iter().map(|r| (*r).to_string()).collect(),
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),

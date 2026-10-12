@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod attest;
 pub mod gov;
 pub mod govnode;
 pub mod grants;

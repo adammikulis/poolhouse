@@ -8,6 +8,7 @@ use poolhouse_node::approvals::challenge;
 use poolhouse_node::fsutil::{hex, sha256_hex};
 use poolhouse_node::node::Node;
 use poolhouse_node::phone::enrol::{add_bytes, make_offer};
+use super::attest::{Claims, Root};
 use super::grants::first_secret;
 use poolhouse_node::phone::push::{decrypt_with, Recording};
 use ring::agreement::{agree_ephemeral, EphemeralPrivateKey, UnparsedPublicKey, ECDH_P256};
@@ -20,6 +21,9 @@ pub const LOCAL: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50));
 
 pub struct FakePhone {
     signing: EcdsaKeyPair,
+    pub pkcs8: Vec<u8>,
+    /// The root that attests this phone's key when it is added, and what the attestation says; none for a phone that shows no chain.
+    pub attester: Option<(std::sync::Arc<Root>, Claims)>,
     pub public: String,
     pub name: String,
     pub token: String,
@@ -37,7 +41,12 @@ impl FakePhone {
         let push = EphemeralPrivateKey::generate(&ECDH_P256, &rng).unwrap();
         let push_public = push.compute_public_key().unwrap().as_ref().to_vec();
         let public = hex(signing.public_key().as_ref());
-        FakePhone { signing, public, name: name.into(), token: String::new(), id: String::new(), push: Some(push), push_public, auth: [9u8; 16] }
+        FakePhone { signing, pkcs8: pkcs8.as_ref().to_vec(), attester: None, public, name: name.into(), token: String::new(), id: String::new(), push: Some(push), push_public, auth: [9u8; 16] }
+    }
+
+    /// A phone whose secure hardware, signing as ``root``, says what ``claims`` says when the phone is added.
+    pub fn attested(name: &str, root: &std::sync::Arc<Root>, claims: Claims) -> FakePhone {
+        FakePhone { attester: Some((root.clone(), claims)), ..FakePhone::new(name) }
     }
 
     pub fn fingerprint(&self) -> String {
@@ -55,6 +64,10 @@ impl FakePhone {
         for (k, v) in [("secret", json!(secret)), ("name", json!(self.name)), ("key", json!(self.public)), ("p256dh", json!(hex(&self.push_public))),
                        ("auth", json!(hex(&self.auth))), ("at_ms", json!(now()))] {
             p.insert(k.into(), v);
+        }
+        if let Some((root, claims)) = &self.attester {
+            let chain = root.chain(&self.pkcs8, &poolhouse_node::phone::attest::challenge(node_fp, secret), *claims);
+            p.insert("attestation".into(), json!(chain));
         }
         let proof = self.sign(&add_bytes(node_fp, &p));
         p.insert("proof".into(), json!(proof));

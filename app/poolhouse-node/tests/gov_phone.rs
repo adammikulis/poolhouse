@@ -7,9 +7,12 @@ use kit::phone::{FakePhone, Rig};
 use poolhouse_node::fsutil::{hex, sha256_hex, unhex};
 use serde_json::{json, Value};
 
+/// A node that trusts a root of the test's own, and a phone that root attested when it was added.
 fn linked() -> (Rig, FakePhone, String) {
     let rig = Rig::new();
-    let mut phone = FakePhone::new("Pixel");
+    let root = std::sync::Arc::new(kit::attest::Root::new());
+    rig.node.lock().unwrap().attest_roots.push(root.pin.clone());
+    let mut phone = FakePhone::attested("Pixel", &root, kit::attest::Claims::default());
     rig.add(&mut phone, None);
     let (_, token) = rig.session("pool", "agent-one");
     (rig, phone, token)
@@ -149,8 +152,14 @@ fn a_node_with_no_phone_says_so_in_one_sentence_and_a_pool_is_not_founded_twice(
     assert_eq!(none["ok"], false, "{none}");
     let say = none["error"]["say"].as_str().unwrap();
     assert!(say.contains("your phone") && say.len() <= 160, "{say}");
-    let mut phone = FakePhone::new("Pixel");
-    rig.add(&mut phone, None);
+    let mut unproven = FakePhone::new("Pixel");
+    rig.add(&mut unproven, None);
+    let weak = ask_found(&rig, &token, "home", "secure");
+    assert!(weak["error"]["say"].as_str().unwrap().contains("cannot prove its key"), "a phone that shows no attestation is no signer: {weak}");
+    let root = std::sync::Arc::new(kit::attest::Root::new());
+    rig.node.lock().unwrap().attest_roots.push(root.pin.clone());
+    let mut phone = FakePhone::attested("Spare", &root, kit::attest::Claims::default());
+    rig.add(&mut phone, Some(&unproven));
     found(&rig, &phone, &token, "secure");
     let twice = ask_found(&rig, &token, "other", "secure");
     assert_eq!(twice["ok"], false);

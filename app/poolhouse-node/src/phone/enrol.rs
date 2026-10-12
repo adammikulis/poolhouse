@@ -153,8 +153,27 @@ fn plain_name(name: &str) -> bool {
 /// The bytes a phone's key signs to say it is the one being added to this node.
 pub fn add_bytes(node_fp: &str, p: &Map<String, Value>) -> Vec<u8> {
     let field = |k: &str| p.get(k).cloned().unwrap_or(Value::Null);
-    let body = json!({"op": "phone_add", "node": node_fp, "name": field("name"), "key": field("key"), "push": field("p256dh"), "auth": field("auth"), "at_ms": field("at_ms")});
+    let mut body = json!({"op": "phone_add", "node": node_fp, "name": field("name"), "key": field("key"), "push": field("p256dh"), "auth": field("auth"), "at_ms": field("at_ms")});
+    if let Some(chain) = p.get("attestation") {
+        body["attestation"] = json!(sha256_hex(canonical(chain).as_bytes()));
+    }
     format!("{ADD_DOMAIN}{}", canonical(&body)).into_bytes()
+}
+
+/// Whether the chain the phone sent shows its key is kept in secure hardware that asks for the person at each signature, made for this
+/// addition and rooted at a root this node trusts; why not goes to the log.
+fn attested(node: &mut Node, p: &Map<String, Value>, key: &str, fingerprint: &str) -> bool {
+    let Some(list) = p.get("attestation").and_then(Value::as_array) else { return false };
+    let chain: Option<Vec<Vec<u8>>> = list.iter().map(|c| c.as_str().and_then(crate::fsutil::unhex)).collect();
+    let secret = p.get("secret").and_then(Value::as_str).unwrap_or("");
+    let (Some(chain), Some(point)) = (chain, crate::grants::person::p256_point(key)) else { return false };
+    match crate::phone::attest::verify(&chain, &node.attest_roots, &point, &crate::phone::attest::challenge(&node.cert.fingerprint(), secret)) {
+        Ok(()) => true,
+        Err(why) => {
+            let _ = node.record_event("phone.attest", fingerprint, why);
+            false
+        }
+    }
 }
 
 /// Add the phone that ``ip`` sent ``p`` for: the first one at once, every later one after a key the node holds approves it.
@@ -174,6 +193,7 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     if !verifies_p256(&key, &add_bytes(&node.cert.fingerprint(), &signed), text(p, "proof")?) {
         return Err(Error::Denied("That phone did not prove it holds its key, so it was not added.".into()));
     }
+    let attested = attested(node, &signed, &key, &fingerprint);
     if node.persons.get(&fingerprint).is_some() || node.phones.by_key(&fingerprint).is_some_and(|f| f.state != crate::phone::REMOVED) {
         return Err(Error::Denied("That phone is already added.".into()));
     }
@@ -190,7 +210,7 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     }
     let phone = Phone {
         id: id.clone(), name: name.into(), fingerprint: fingerprint.clone(), key: key.clone(), token_sha256: sha256_hex(token.as_bytes()),
-        state: if first { ACTIVE } else { PENDING }.into(), push: Push { p256dh, auth, endpoint: String::new() }, added_ms: at, seen_ms: now,
+        state: if first { ACTIVE } else { PENDING }.into(), push: Push { p256dh, auth, endpoint: String::new() }, added_ms: at, seen_ms: now, attested,
     };
     node.phones.add(phone)?;
     let (mut approval, mut number) = (String::new(), String::new());
@@ -202,7 +222,7 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     }
     let me = node.cert.fingerprint();
     let device = node.members.get(&me).map(|d| d.name.clone()).unwrap_or_default();
-    Ok(json!({"phone": id, "token": token, "fingerprint": fingerprint, "words": words(&fingerprint), "state": if first { ACTIVE } else { PENDING },
+    Ok(json!({"phone": id, "token": token, "fingerprint": fingerprint, "words": words(&fingerprint), "state": if first { ACTIVE } else { PENDING }, "strong": attested,
               "approval": approval, "number": number, "device": me, "name": device, "policy": node.members.policy.name()}))
 }
 
@@ -240,6 +260,7 @@ fn ask_to_add(node: &mut Node, id: &str, phone: (&str, &str, &str), made: (&str,
 /// (`board/name`) when one does, which a held or blocked session may not, and which the text names.
 pub fn ask_to_remove(node: &mut Node, by: &str, by_key: &str, target: &str) -> Result<String> {
     let phone = node.phones.get(target).filter(|p| p.state == ACTIVE).cloned().ok_or_else(|| Error::Invalid("That is not one of this device's phones.".into()))?;
+    crate::phone::last_admin(node, &phone.fingerprint)?;
     if node.approvals.all().iter().any(|a| a.pending() && a.action.get("phone").and_then(Value::as_str) == Some(target) && a.kind == crate::approvals::PHONE_REMOVE) {
         return Err(Error::Invalid("Removing that phone is already waiting for a fingerprint.".into()));
     }

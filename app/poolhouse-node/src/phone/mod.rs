@@ -10,6 +10,7 @@
 //! | `cert` | the P-256 certificate of that endpoint, which the code pins |
 //! | `push` | the sealed notification and its delivery |
 
+pub mod attest;
 pub mod calls;
 pub mod cert;
 pub mod enrol;
@@ -62,6 +63,10 @@ pub struct Phone {
     pub push: Push,
     pub added_ms: u64,
     pub seen_ms: u64,
+    /// Whether the chain the phone showed when it was added proves its key is kept in secure hardware that asks for the person at each
+    /// signature (`attest`). A phone that did not is added all the same, and signs approvals, but its key is weak and founds nothing.
+    #[serde(default)]
+    pub attested: bool,
 }
 
 /// The phones of a node, kept in one atomically replaced file.
@@ -214,6 +219,18 @@ pub fn activate(node: &mut Node, a: &Approval) -> Result<()> {
     Ok(())
 }
 
+/// The sentence for removing the phone that is the only admin of the pool: nobody else could change the pool afterwards.
+pub fn last_admin(node: &Node, fingerprint: &str) -> Result<()> {
+    let only = node.members.gov().is_some_and(|g| {
+        let c = &g.state().chain.latest().charter;
+        c.strong().count() == 1 && c.strong().any(|k| k.fingerprint() == fingerprint) && !c.admins.iter().any(|k| k.role == crate::gov::keys::Role::Recovery)
+    });
+    if only {
+        return Err(Error::Denied("That phone is the only admin of your pool, so removing it would leave nobody who can change the pool. Add a second admin first; until a recovery key exists, a lost phone is a lost pool.".into()));
+    }
+    Ok(())
+}
+
 /// Take a phone and its key off the node; the last key stays.
 pub fn remove(node: &mut Node, a: &Approval) -> Result<()> {
     let id = a.action.get("phone").and_then(Value::as_str).unwrap_or("");
@@ -221,6 +238,7 @@ pub fn remove(node: &mut Node, a: &Approval) -> Result<()> {
     if a.action.get("fingerprint").and_then(Value::as_str) != Some(phone.fingerprint.as_str()) {
         return Err(Error::Invalid("That phone's key is not the key the request named, so nothing was removed.".into()));
     }
+    last_admin(node, &phone.fingerprint)?;
     let now = node.now_ms();
     node.persons.remove(&phone.fingerprint, now)?;
     node.phones.set_state(id, REMOVED)?;
