@@ -1,0 +1,44 @@
+# Head-to-head: stock Qwen3.8-27B Q4 against stock Qwen3.8-Flash-Next Q4, same questions, same build,
+# same context, one machine. Accuracy with thinking on and thinking off, then speed and memory by
+# prompt size out to 120k tokens, then the same speed grid with each model's draft head.
+#
+# DO NOT RUN until the system snapshot (feat/bench-system-snapshot) and the generated-token ratio
+# (feat/bench-token-ratio) are landed and installed, llama.cpp is on the newest build
+# (`poolhouse-serve llama-cpp status`), the machine has been restarted with nothing else resident and
+# the wired memory limit raised (a person's step) so the Flash-Next quant fits at this context.
+# Fetch first: poolhouse-models fetch hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf
+#
+# Read it first:  poolhouse-bench queue docs/examples/qwen3.8-head-to-head.queue --dry-run
+# Run it with:    poolhouse-bench queue docs/examples/qwen3.8-head-to-head.queue --yes --detach
+# Then:           poolhouse-bench show --rank docs/head-to-head-qwen3.8.md
+#
+# The Flash-Next UD-IQ4_XS build (87.2 GB, downloaded) is the arm that fits without the raised limit.
+
+set CTX=131072
+set SERVING=--serve-kv q8_0 --context ${CTX} --per-question 600 --no-draft --plain-only
+set DENSE=hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_XL.gguf
+set FLASH=hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf
+set FLASH_IQ=hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+set GRID=--prompts 512,4096,16384,32768,65536,120000 --streams 1,2,4 --generate 256
+
+# Qwen3.8-27B UD-Q4_K_XL
+smoke: sweep --serve ${DENSE} --label-suffix=-27b-h2h-think ${SERVING} --smoke
+then:  sweep --serve ${DENSE} --label-suffix=-27b-h2h-think ${SERVING}
+sweep --serve ${DENSE} --label-suffix=-27b-h2h-nothink ${SERVING} --reasoning-budget 0
+speed --serve ${DENSE} --label-suffix=-27b-h2h-plain --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
+speed --serve ${DENSE} --label-suffix=-27b-h2h-draft --serve-draft auto --context ${CTX} --serve-kv q8_0 ${GRID}
+
+# Qwen3.8-Flash-Next UD-Q4_K_XL
+smoke: sweep --serve ${FLASH} --label-suffix=-fn-q4kxl-h2h-think ${SERVING} --smoke
+then:  sweep --serve ${FLASH} --label-suffix=-fn-q4kxl-h2h-think ${SERVING}
+sweep --serve ${FLASH} --label-suffix=-fn-q4kxl-h2h-nothink ${SERVING} --reasoning-budget 0
+speed --serve ${FLASH} --label-suffix=-fn-q4kxl-h2h-plain --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
+speed --serve ${FLASH} --label-suffix=-fn-q4kxl-h2h-draft --serve-draft auto --context ${CTX} --serve-kv q8_0 ${GRID}
+
+# Qwen3.8-Flash-Next UD-IQ4_XS, the build that fits at the default wired limit
+smoke: sweep --serve ${FLASH_IQ} --label-suffix=-fn-iq4xs-h2h-think ${SERVING} --smoke
+then:  sweep --serve ${FLASH_IQ} --label-suffix=-fn-iq4xs-h2h-think ${SERVING}
+sweep --serve ${FLASH_IQ} --label-suffix=-fn-iq4xs-h2h-nothink ${SERVING} --reasoning-budget 0
+speed --serve ${FLASH_IQ} --label-suffix=-fn-iq4xs-h2h-plain --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
+
+show --rank docs/head-to-head-qwen3.8.md
