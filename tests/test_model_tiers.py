@@ -1,10 +1,13 @@
 """The tier table decides which main sessions may coordinate: the shipped table, a node's own sessions and the agents it lists."""
 import copy
 import json
+from fnmatch import fnmatchcase
 
 import pytest
 
+from poolhouse.board.client import Denied
 from poolhouse.board.session import Agent
+from poolhouse.workspace import landing
 from poolhouse.workspace.agent_display import SPAWN_NOTICE, describe, vacancy_notice
 from poolhouse.workspace.model_tiers import (
     LOWEST,
@@ -32,11 +35,45 @@ EXPECTED = {
     'gpt-6-luna': ('openai', 0), 'gpt-6-sol': ('openai', 1), 'gpt-6.1-sol': ('openai', 1),
     'gpt-6-astra': ('openai', 2),
 }
+QWEN_LOWEST = ('qwen3.5-0.8b', 'qwen3.5-2b', 'qwen3.5-4b', 'Qwen3.5-0.8B-Base', 'Qwen3.5-2B-Base')
+QWEN_MODELS = ('Qwen3.8-27B', 'Qwen3.8-Flash-Next', 'Qwen3.8-Flash-Next-GSQ-RCO')
+QWEN_SHORT = ('qwen3.8-27b', 'qwen3.8-flash-next', 'qwen3.8-flash-next-gsq-rco')
+EXPECTED.update(dict.fromkeys(QWEN_LOWEST, ('qwen', 0)))
+EXPECTED.update(dict.fromkeys((*QWEN_MODELS, *QWEN_SHORT), ('qwen', 1)))
+DYNAMIC = ('Q8_0', 'Q6_K', 'Q5_K_M', 'Q4_K_XL', 'Q4_K_M', 'Q4_1', 'Q3_K_S', 'Q2_K', 'IQ4_XS', 'IQ4_NL', 'IQ3_S', 'IQ3_XXS',
+           'IQ2_XS', 'IQ2_M', 'IQ1_S', 'IQ1_M')
+PLAIN = ('BF16', 'F16', 'F32', 'TQ1_0', 'MXFP4', 'MXFP4_MOE', 'NVFP4')
+QUANT_IDS = [f'{m}-{t}.gguf' for m in QWEN_MODELS for t in DYNAMIC + PLAIN]
+QUANT_IDS += [f'{m}-UD-{t}.gguf' for m in QWEN_MODELS for t in DYNAMIC]
+QUANT_IDS += [f'{m}-{t}-00001-of-00003.gguf' for m in QWEN_MODELS for t in (*DYNAMIC, 'BF16', 'F16', 'MXFP4_MOE')]
+QUANT_IDS += [f'{m}-MLX-{n}bit' for m in QWEN_MODELS for n in range(2, 9)] + [f'{m}-MLX-bf16' for m in QWEN_MODELS]
+LOOKALIKES = (
+    'Qwen3.8-27B-evil', 'Qwen3.8-27B-evil.gguf', 'Qwen3.8-27B-Qevil.gguf', 'Qwen3.8-27B-Q4_evil.gguf', 'Qwen3.8-27B-VL-Q4_K_M.gguf',
+    'Qwen3.8-27B-Q4_K_M.gguf.exe', 'Qwen3.8-27B-Q4_K_M.gguf ', 'Qwen3.8-27B-DFlash2-b32', 'Qwen3.8-27B-MTP-bf16',
+    'Qwen3.8-27B-MLX-9bit', 'Qwen3.8-27B-MLX-4bit-DWQ', 'ThinkingCap-Qwen3.8-27B-MLX-4bit-DWQ', 'Qwen3.8-270B-Q4_K_M.gguf',
+    'QWEN3.8-27B', 'qwen3.8-27b-evil', 'qwen3.8-27b-q4_k_m', 'Qwen3.8-Flash-Next-evil', 'Qwen3.8-Flash-Next-NVFP4-DFlash',
+    'Qwen3.8-Flash-Next-GSQ-evil', 'Qwen3.8-Flash-Next-GSQ-RCO-Coder', 'Qwen3.6-35B-A3B-Q4_K_M.gguf', 'Qwen3-VL-8B-Instruct',
+    'Qwen3.8', 'Qwen', 'Qwen*', 'qwen3.5-35b-a3b', 'Qwen3.8-27B-UD-BF16.gguf',
+)
 
 
 def agent(name, model='', state=VERIFIED, parent=''):
     """An agent record as the node lists it, with the model state the test needs (the node itself verifies none yet)."""
     return Agent(name, parent, 'claude', model, state, 'claude-code', False, 0)
+
+
+class Stub:
+    """A session that names ``who`` and records the calls that reach the node."""
+
+    def __init__(self, who):
+        self.who, self.sent = who, []
+
+    def whoami(self):
+        return self.who
+
+    def call(self, name, **fields):
+        self.sent.append((name, fields))
+        return {}
 
 
 def row(who):
@@ -52,13 +89,81 @@ def test_every_listed_id_lands_in_its_tier(model, place):
     assert tier.coordinator_eligible == (place[1] > 0)
 
 
+@pytest.mark.parametrize('model', QUANT_IDS)
+def test_every_quantisation_of_the_two_big_qwens_is_above_the_lowest_tier(model):
+    tier = tier_of(model, VERIFIED)
+    assert (tier.family, tier.index, tier.lowest, tier.coordinator_eligible) == ('qwen', 1, False, True)
+
+
+def test_the_quantisations_named_by_the_owner_are_all_listed():
+    for token in ('Q8_0', 'Q4_K_XL', 'IQ4_XS', 'IQ3_S', 'IQ1_M'):
+        assert tier_of(f'Qwen3.8-27B-{token}.gguf', VERIFIED).index == 1
+        assert tier_of(f'Qwen3.8-Flash-Next-GSQ-RCO-{token}-00001-of-00002.gguf', VERIFIED).index == 1
+    assert tier_of('Qwen3.8-27B-MLX-4bit', VERIFIED).index == 1
+    assert tier_of('Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf', VERIFIED).reason == ''
+    assert tier_of('Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf', VERIFIED).reason == ''
+
+
+@pytest.mark.parametrize('model', LOOKALIKES)
+def test_lookalike_qwen_ids_are_not_listed(model):
+    assert tier_of(model, VERIFIED).reason == NOT_LISTED
+
+
+@pytest.mark.parametrize('model', QUANT_IDS + list(LOOKALIKES) + list(QWEN_LOWEST) + list(EXPECTED))
+def test_no_example_id_matches_two_tiers(model):
+    owners = {(f, i) for f, i, _, globs in load_table(SHIPPED) if any(fnmatchcase(model, g) for g in globs)}
+    assert len(owners) <= 1
+
+
+@pytest.mark.parametrize('model', QWEN_LOWEST)
+def test_small_qwens_are_the_lowest_tier_and_landing_refuses_them(model):
+    shown = describe(agent('small', model))
+    assert not shown['coordinator_eligible'] and shown['coordinator_reason'] == LOWEST
+    assert landing.eligible(agent('small', model)) == LOWEST
+    stub = Stub(agent('small', model))
+    with pytest.raises(Denied):
+        landing.request(stub, {'branch': 'feat/x', 'sha': 'a' * 40})
+    with pytest.raises(Denied):
+        landing.review(stub, 'req-1', 'a' * 40, 'accept')
+    assert stub.sent == []
+
+
+@pytest.mark.parametrize('model', ['qwen3.8-27b', 'Qwen3.8-27B-UD-Q4_K_XL.gguf', 'qwen3.8-flash-next-gsq-rco'])
+def test_a_big_qwen_may_request_and_review_landing(model):
+    stub = Stub(agent('big', model, CLAIMED))
+    assert landing.eligible(stub.who) == ''
+    landing.request(stub, {'branch': 'feat/x', 'sha': 'a' * 40})
+    landing.review(stub, 'req-1', 'a' * 40, 'accept')
+    assert [name for name, _ in stub.sent] == ['land_request', 'land_review']
+
+
+def test_a_listed_qwen_that_is_not_verified_counts_as_an_unverified_claude_id_does():
+    for model in ('qwen3.8-27b', 'Qwen3.8-27B-UD-Q4_K_XL.gguf', 'claude-opus-5-5'):
+        for state in (CLAIMED, INHERITED):
+            assert tier_of(model, state).reason == NOT_VERIFIED and not tier_of(model, state).coordinator_eligible
+            assert describe(agent('unsure', model, state))['coordinator_reason'] == NOT_VERIFIED
+        assert tier_of(model, VERIFIED).coordinator_eligible
+        assert landing.eligible(agent('unsure', model, CLAIMED)) == ''
+    assert tier_of('qwen3.5-2b', CLAIMED).reason == NOT_VERIFIED
+
+
+def test_the_qwen_family_cannot_be_claimed_by_another_family_or_a_wider_glob():
+    for taken in ('qwen3.8-27b', 'Qwen3.8-27B', 'Qwen3.8-27B-Q4_K_M.gguf', 'qwen3.5-2b', 'Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf'):
+        table = mutated(lambda t, taken=taken: t['families'][1]['tiers'][1]['id_globs'].append(taken))
+        with pytest.raises(TierTableError):
+            load_table(table)
+    table = mutated(lambda t: t['families'][2]['tiers'][0]['id_globs'].append('gpt-6-luna'))
+    with pytest.raises(TierTableError):
+        load_table(table)
+
+
 def test_the_shipped_table_lists_exactly_the_ids_the_tests_name():
-    literal = {g for f in SHIPPED['families'] for t in f['tiers'] for g in t['id_globs'] if '*' not in g}
-    assert literal <= set(EXPECTED)
+    literal = {g for f in SHIPPED['families'] for t in f['tiers'] for g in t['id_globs'] if not set('*?[') & set(g)}
+    assert literal <= set(EXPECTED) | set(QUANT_IDS)
     assert load_table(SHIPPED)
 
 
-@pytest.mark.parametrize('model', ['claude-haiku-5-5', 'gpt-6-luna', 'anthropic.claude-haiku-5-5'])
+@pytest.mark.parametrize('model', ['claude-haiku-5-5', 'gpt-6-luna', 'anthropic.claude-haiku-5-5', 'qwen3.5-2b'])
 def test_lowest_tier_main_sessions_are_not_eligible(model):
     shown = describe(agent('lowest', model))
     assert not shown['coordinator_eligible']
@@ -66,7 +171,7 @@ def test_lowest_tier_main_sessions_are_not_eligible(model):
 
 
 @pytest.mark.parametrize('model', ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1',
-                                   'gpt-6-sol', 'gpt-6-astra'])
+                                   'gpt-6-sol', 'gpt-6-astra', 'qwen3.8-27b', 'Qwen3.8-27B-UD-Q4_K_XL.gguf'])
 def test_higher_tier_verified_main_sessions_are_eligible(model):
     shown = describe(agent('higher', model))
     assert shown['coordinator_eligible']
@@ -155,6 +260,10 @@ MALFORMED = {
     'non-boolean lowest': lambda t: _first(t)[1].update(lowest='no'),
     'duplicate family': lambda t: t['families'][1].update(family='anthropic'),
     'family without tiers': lambda t: t['families'][1].update(tiers=[]),
+    'qwen without a lowest tier': lambda t: t['families'][2]['tiers'][0].update(lowest=False),
+    'qwen with two lowest tiers': lambda t: t['families'][2]['tiers'][1].update(lowest=True),
+    'qwen lowest tier not first': lambda t: t['families'][2]['tiers'].reverse(),
+    'qwen quantisation glob listed twice': lambda t: t['families'][2]['tiers'][1]['id_globs'].append('qwen3.8-27b'),
 }
 
 
