@@ -21,8 +21,9 @@ instruction to schedule the next firing.
 > `scripts/worktrees` (exit 1 means an orphan tree or one over a limit: land, bundle or abandon each with
 > `scripts/worktrees close`, never by removing it by hand); (3) read `digest --status`: when the runner line says
 > NOT RUNNING run `scripts/land up`, and answer any request in needs-human; land by hand only a branch that is not
-> in the queue (rebase, verify the exact commit, fast-forward, push); (4) resume or brief
-> workers for the next item; (5) append one line to the log. If nothing needs doing, end with one line and
+> in the queue (rebase, verify the exact commit, fast-forward, push); (4) run
+> `poolhouse-serve llama-cpp ensure` and log one line only if it updated or deferred; (5) resume or brief
+> workers for the next item; (6) append one line to the log. If nothing needs doing, end with one line and
 > do nothing else.
 
 ## Reviewing the backlog
@@ -30,6 +31,14 @@ instruction to schedule the next firing.
 A firing may run `scripts/review-backlog --local --limit 3` (or `--cloud MODEL` for guard, hook, authorization or
 red-team work) when nothing else is running on the device's compute, then read `scripts/review-backlog --list` and send
 each flagged report to a person or a landing-level agent. The reports are advice, never the accept (docs/review-backlog.md).
+
+## The llama.cpp check
+
+Each firing runs `poolhouse-serve llama-cpp ensure` (one upstream check; docs/llama-cpp-tracking.md,
+"Keeping up to date"). It builds upstream master when the build is behind and nothing is computing, and
+otherwise prints one line (`deferred: ...`, `current: ...`, `skipped: ...`). The log gets a line only
+when it printed `updated:` or `deferred:`; `failed:` or an exit code of 2 or 3 is reported to the owner
+in one line. The compile uses every core, so a firing that finds a worker measuring does nothing.
 
 ## Rules
 

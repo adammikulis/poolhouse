@@ -278,6 +278,11 @@ status = "n/a"
 note = "The interpreter comes from the fixed library catalog or the running Python; the probe uses a fixed -c program and an argv list, without model, member or browser text"
 
 [[group]]
+match = ["spawn:bench/system.py:_out"]
+status = "n/a"
+note = "The system snapshot runs a fixed list of probes (sysctl, pmset, vm_stat, system_profiler, ps) with a constant argv, a short timeout and no shell; no model, member, browser or file text reaches an argument, and the output is parsed to numbers and basenames"
+
+[[group]]
 match = ["spawn:fleet/environment.py:Environment.require_current_runtime"]
 status = "covered"
 count = 1

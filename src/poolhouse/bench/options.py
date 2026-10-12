@@ -533,8 +533,9 @@ def show_options() -> tuple[Option, ...]:
              help="write the runs as a scatter of accuracy against --cost, with "
                   "the frontier joined; opens with no network and no packages"),
         flag("--cost", default="seconds",
-             choices=("seconds", "paid_tokens", "kv_bytes"),
-             help="which cost the frontier is drawn against (default: %(default)s)"),
+             choices=("seconds", "paid_tokens", "kv_bytes", "generated_tokens"),
+             help="which cost the frontier is drawn against; generated_tokens is the "
+                  "completion tokens written, thinking included (default: %(default)s)"),
     )
 
 

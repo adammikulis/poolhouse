@@ -21,7 +21,7 @@ __all__ = ["SERVER_KEYS", "gather", "import_runs"]
 
 SERVER_KEYS = ("model", "draft_model", "binary", "context", "slots", "cache_type",
                "reasoning_budget", "load_s", "resident_bytes", "kv_and_run_bytes", "mmapped",
-               "sampling", "finder", "concurrency")
+               "sampling", "finder", "concurrency", "system")
 """The fields ``show --export`` flattens out of a run's ``server``, put back there on import."""
 
 

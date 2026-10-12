@@ -327,7 +327,7 @@ def test_the_frontier_compares_runs_per_question_and_not_by_their_totals(tmp_pat
         "a run from before the count is not one that made nothing up"
 
     assert COSTS == {"seconds": "seconds_per_question", "paid_tokens": "tokens_per_question",
-                     "kv_bytes": "kv_bytes"}
+                     "kv_bytes": "kv_bytes", "generated_tokens": "generated_per_question"}
     assert [o["label"] for o in pareto([short, long], cost="seconds")] == ["long"]
     assert [o["label"] for o in pareto([short, long], cost="paid_tokens")] == ["long"]
     # what a conversation holds is not divided by how many were asked
@@ -1779,6 +1779,7 @@ def _serving(monkeypatch, tmp_path, *, load_s=12.5, warmup_s=1.2, fail_for=()):
     import poolhouse.bench as bench
     import poolhouse.client
     import poolhouse.serve
+    from poolhouse.bench import llamacpp_note
     from poolhouse.serve import ServerInfo
     from poolhouse.serve.preflight import PreflightFailed
 
@@ -1797,6 +1798,7 @@ def _serving(monkeypatch, tmp_path, *, load_s=12.5, warmup_s=1.2, fail_for=()):
     monkeypatch.setattr(bench, "footprint", lambda url: {"base_url": url, "context": 32768,
                                                           "slots": 1, "model": "tiny.gguf"})
     monkeypatch.setattr(hub, "located", lambda *a, **k: None)
+    monkeypatch.setattr(llamacpp_note, "announce", lambda *a, **k: None)
     monkeypatch.setattr(poolhouse.serve, "serve", fake_serve)
     monkeypatch.setattr(poolhouse.client, "Client", _ServedModel)
     graph = tmp_path / "g.json"

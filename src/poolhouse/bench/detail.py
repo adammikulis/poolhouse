@@ -15,6 +15,7 @@ from typing import Any
 # The package is the namespace the tests and `selfcheck` patch -- `bench.SHORT` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
+from poolhouse.bench import system
 from poolhouse.bench.score import _hit, _times, band, baseline, derived, speedup
 from poolhouse.bench.show import _shown, at_once, band_of, cache_turns, timeouts
 from poolhouse.log import say
@@ -53,6 +54,8 @@ def missed(kept: Sequence[Mapping[str, Any]], *, everything: bool = False,
             + (f", {late} timed out" if late else "") + ")"
             + (f"  speedup {_times(faster)} over draft:none ({base.get('label', '')})"
                  if faster is not None and base is not None else ""))
+        for line in system.detail_lines(server):
+            say(line)
         # what these questions could and could not settle, before the questions themselves:
         # a reader about to explain a five-point difference should see the band first
         got = derived(one)

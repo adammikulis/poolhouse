@@ -13,14 +13,16 @@ from typing import Any
 from poolhouse import home, runtime
 
 __all__ = [
-    "DAEMON_PORT", "ENV_ALLOWED", "ROLES", "TTL_S", "VERSION", "Manifest", "ManifestError", "Role",
+    "DAEMON_PORT", "ENV_ALLOWED", "ROLES", "SCHEDULED", "TTL_S", "VERSION", "Manifest", "ManifestError", "Role",
     "Unit", "allowed_dir", "destination_problem", "launcher_problem", "parse", "parse_role", "unit_names",
 ]
 
 VERSION = 1
 TTL_S = 24 * 3600
 SKEW_S = 300
-ROLES = ("pool-daemon", "runtime-ensure")
+ROLES = ("pool-daemon", "runtime-ensure", "llama-cpp-ensure")
+SCHEDULED = {"runtime-ensure": ("runtime", "ensure"), "llama-cpp-ensure": ("llama-cpp", "ensure")}
+"""The roles that run on a timer, each with the arguments its launcher takes."""
 DAEMON_PORT = 8770
 ENV_ALLOWED = ("HF_HOME", "HOME", "POOLHOUSE_CACHE", "POOLHOUSE_HOME", "PATH")
 PLATFORMS = ("darwin", "linux", "win32")
@@ -31,6 +33,8 @@ ROLE_INFO: dict[str, dict[str, Any]] = {
                     "launcher": "poolhouse-traind", "kinds": ("service",)},
     "runtime-ensure": {"label": "com.poolhouse.runtime-ensure", "service": "poolhouse-runtime-ensure",
                        "launcher": "poolhouse", "kinds": ("service", "timer")},
+    "llama-cpp-ensure": {"label": "com.poolhouse.llama-cpp-ensure", "service": "poolhouse-llama-cpp-ensure",
+                         "launcher": "poolhouse-serve", "kinds": ("service", "timer")},
 }
 _ID = re.compile(r"[0-9a-f]{12}")
 _HEX = re.compile(r"[0-9a-f]{64}")
@@ -146,7 +150,7 @@ def parse(raw: Any) -> Manifest:
         raise ManifestError("the platform and scope are recorded")
     roles = raw.get("roles")
     if not isinstance(roles, list) or not 1 <= len(roles) <= len(ROLES):
-        raise ManifestError("a manifest names one or two roles")
+        raise ManifestError("a manifest names each role at most once")
     parsed = tuple(parse_role(r) for r in roles)
     if len({r.role for r in parsed}) != len(parsed):
         raise ManifestError("a role appears once")

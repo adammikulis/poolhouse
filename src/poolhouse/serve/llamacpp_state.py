@@ -15,7 +15,8 @@ from poolhouse.serve.build_platform import server_name
 from poolhouse.serve.build_verify import point_current
 
 __all__ = ["KEEP", "STATE_VERSION", "Build", "activate", "active", "builds", "failed_dir",
-           "load", "pin", "prune_candidates", "remove", "rollback", "unpin"]
+           "load", "pin", "prune_candidates", "record_failure", "remember_seen", "remove", "rollback",
+           "unpin"]
 
 STATE_VERSION = 1
 KEEP = 3
@@ -53,12 +54,16 @@ def failed_dir() -> Path:
 
 
 def load() -> dict:
-    """The tracking state: ``previous`` (oldest first) and ``pinned`` (a build name or empty)."""
+    """The tracking state: ``previous`` (oldest first), ``pinned`` (a build name or empty),
+    ``failed`` (the upstream commit whose build failed its smoke test) and ``seen`` (what the
+    last upstream check found)."""
     state = files.read_json(_state_file(), {})
     if not isinstance(state, dict) or files.version_of(state) != STATE_VERSION:
         state = {}
     return {"version": STATE_VERSION, "previous": list(state.get("previous") or []),
-            "pinned": str(state.get("pinned") or "")}
+            "pinned": str(state.get("pinned") or ""),
+            "failed": dict(state["failed"]) if isinstance(state.get("failed"), dict) else {},
+            "seen": dict(state["seen"]) if isinstance(state.get("seen"), dict) else {}}
 
 
 def _save(state: dict) -> None:
@@ -131,6 +136,20 @@ def pin(name: str) -> Build:
     state["pinned"] = found.name
     _save(state)
     return found
+
+
+def record_failure(commit: str, detail: str, *, at: float) -> None:
+    """Remember the upstream ``commit`` whose build failed its smoke test, so it is not built again."""
+    state = load()
+    state["failed"] = {"commit": commit, "detail": detail, "at": at}
+    _save(state)
+
+
+def remember_seen(tag: str, master: str, *, at: float) -> None:
+    """Remember what the newest upstream check found and when."""
+    state = load()
+    state["seen"] = {"at": at, "tag": tag, "master": master}
+    _save(state)
 
 
 def unpin() -> None:

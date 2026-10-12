@@ -667,7 +667,7 @@ Owner's standing choices (2026-10-03); do not ask again.
   as a matrix row.
 - MTP (multi-token prediction) draft heads are on by default when the model has a matching trusted head and the managed
   llama.cpp build supports it; llama.cpp tracks the bleeding edge through the managed head builds, not a pinned stable
-  release.
+  release, and `poolhouse-serve llama-cpp ensure` updates to upstream master whenever the machine is idle.
 - Decision models are as easy to call locally as hosted ones (a state and closed questions in, typed answers with
   probabilities out, no text generation); the default decider is `StrandsAgents/strands-decider-2B-hobson-v19`
   (Qwen3.5-2B base). Fine-tuned deciders are never committed: datasets and weights stay in caches, the repo keeps

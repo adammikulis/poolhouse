@@ -17,7 +17,7 @@ import os
 import signal
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -28,11 +28,13 @@ from poolhouse import bench, hub, jobs, lock
 from poolhouse.bench import (
     extract as bench_extract,
     fitcontext,
+    llamacpp_note,
     ops,
     options,
     retrieval,
     selfcheck as bench_selfcheck,
     speed as bench_speed,
+    system,
     thinking,
 )
 from poolhouse.bench.askings import _asked, asking_from, halves, sampling_from, with_card
@@ -466,6 +468,12 @@ COMMANDS.borrow(lambda sub: _module("extract").add_arguments(sub),
                 options=options.checking)
 
 
+def _say_systems(runs: Sequence[Mapping[str, Any]]) -> None:
+    """The systems the runs were measured on, and what differs among them."""
+    for line in system.lines(runs):
+        say(line)
+
+
 @COMMANDS.command("show", help="compare two runs, or list what is kept",
                   options=options.show_options, allow_abbrev=False)
 def cmd_show(args: Any) -> int:
@@ -486,10 +494,12 @@ def cmd_show(args: Any) -> int:
         return 0
     if args.compare:
         say(compare(args.kept, *args.compare))
+        _say_systems([r for r in answering if r.get("label") in args.compare])
         return 0
     if args.rank:
         ranking(answering, args.rank, noise=args.noise / 100)
         say(args.rank)
+        _say_systems(answering)
         return 0
     if args.export:
         say(export(answering, args.export,
@@ -505,12 +515,14 @@ def cmd_show(args: Any) -> int:
         return 0
     if args.rates:
         rates(answering, cost=args.cost, noise=args.noise / 100)
+        _say_systems(answering)
         return 0
     if args.detail is not None:
         missed([r for r in answering if not args.detail or r.get("label") == args.detail],
                everything=args.all, among=answering)
         return 0
     table(answering)
+    _say_systems(answering)
     if kept.extracted:
         say()
         bench_extract.table(kept.extracted)
@@ -603,6 +615,8 @@ def cmd_queue(args: Any) -> int:
             f"  poolhouse-bench tail -f  -- follow the log\n"
             f"  poolhouse-bench stop     -- end the queue and the step inside it")
         return 0
+    if not args.dry_run:
+        llamacpp_note.announce()
     try:
         return run_queue(args.label, dry_run=args.dry_run, resume=args.resume,
                          yes=args.yes, ceiling=args.ceiling)
@@ -709,6 +723,8 @@ def main(argv: list[str] | None = None) -> int:
                  "repeat a run whose path the last one proved")
             return 4
         say(f"selfcheck: ok ({time.monotonic() - began:.1f} s) -- {proved}", flush=True)
+    if cmd == "sweep":
+        llamacpp_note.announce()
     # After the self-check and before the prefetch and the lock: what this will cost, from
     # what is kept, and a refusal over the ceiling before a download or a load is paid
     refused = _estimated(rest)
@@ -728,6 +744,7 @@ def main(argv: list[str] | None = None) -> int:
                       announce=lambda line: warn(line)):
             remember(rest, pid=os.getpid())
             note_beside_the_run()
+            system.note_start()
             try:
                 return _main(rest)
             finally:

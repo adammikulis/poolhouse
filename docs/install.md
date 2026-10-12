@@ -221,6 +221,7 @@ a runtime launcher, or the service manager does not hold the unit.
 |---|---|---|
 | `pool-daemon` | the daemon, at login | restart on failure, 30 s apart, at most five starts in five minutes (systemd), a throttle interval (launchd), a retry count (Windows) |
 | `runtime-ensure` | `poolhouse runtime ensure` at load and hourly, with no agent identity in its environment | a schedule, not a resident process |
+| `llama-cpp-ensure` | `poolhouse-serve llama-cpp ensure` at load and daily (optional; see [llama-cpp-tracking.md](llama-cpp-tracking.md)) | a schedule, not a resident process |
 
 The daemon holds a per-root lock, so a second start exits instead of competing, and rotates the
 log files under `~/.poolhouse/autostart/logs` when one passes 5 MiB (three copies kept; systemd

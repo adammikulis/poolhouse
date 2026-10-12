@@ -1,4 +1,4 @@
-"""``poolhouse-serve llama-cpp status|update|rollback|pin|list|prune``: following upstream llama.cpp."""
+"""``poolhouse-serve llama-cpp status|update|ensure|rollback|pin|list|prune``: following upstream llama.cpp."""
 
 from __future__ import annotations
 
@@ -9,19 +9,20 @@ from pathlib import Path
 from poolhouse import net
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
-from poolhouse.serve import llamacpp_state, llamacpp_status, llamacpp_update
+from poolhouse.serve import llamacpp_ensure, llamacpp_state, llamacpp_status, llamacpp_update
 from poolhouse.serve.build_paths import BuildFailed
 from poolhouse.serve.llamacpp_upstream import Upstream
 
 __all__ = ["OPTIONS", "cmd_llama_cpp"]
 
-ACTIONS = ("status", "update", "rollback", "pin", "list", "prune")
+ACTIONS = ("status", "update", "ensure", "rollback", "pin", "list", "prune")
 NEEDS_APPROVAL = 3
 
 OPTIONS = [
     flag("action", choices=ACTIONS, metavar="ACTION",
          help="status: the active llama-server and whether upstream is ahead; update: build "
-              "upstream and switch to it once it passes the smoke test; rollback: back to the "
+              "upstream and switch to it once it passes the smoke test; ensure: update when upstream "
+              "is ahead and the machine is idle, safe to schedule; rollback: back to the "
               "previous build; pin BUILD: stop tracking and use that build; list: the builds "
               "held; prune: delete older good builds after asking"),
     flag("build", nargs="?", default="", help="the build to pin (see 'list')"),
@@ -34,6 +35,8 @@ OPTIONS = [
     flag("--off", action="store_true", help="pin: resume tracking upstream"),
     flag("--keep", type=int, default=llamacpp_state.KEEP, metavar="N",
          help="prune: good builds to keep (default %(default)s)"),
+    flag("--max-behind-hours", type=float, default=0.0, metavar="N",
+         help="ensure: leave a build made less than N hours ago alone"),
     flag("--offline", action="store_true", help="status: skip the upstream check"),
     option("yes", help="prune: do not ask before deleting"),
     option("json"),
@@ -95,6 +98,16 @@ def _update(args, upstream, pipeline) -> int:
     return 1 if result.status == "failed" else 0
 
 
+def _ensure(args, upstream, pipeline) -> int:
+    env = llamacpp_ensure.default_env(upstream, pipeline, args.jobs, say=warn)
+    result = llamacpp_ensure.ensure(env, max_behind_hours=getattr(args, "max_behind_hours", 0.0))
+    if args.json:
+        say(json.dumps({"state": result.state, "line": result.line, "build": result.build, "exit": result.code}))
+    else:
+        (say if result.code == 0 else warn)(result.line)
+    return result.code
+
+
 def _rollback(args, upstream, pipeline) -> int:
     say(f"active: {llamacpp_state.rollback().name}")
     return 0
@@ -144,5 +157,5 @@ def _prune(args, upstream, pipeline) -> int:
     return 0
 
 
-_ACTIONS = {"status": _status, "update": _update, "rollback": _rollback, "pin": _pin,
+_ACTIONS = {"status": _status, "update": _update, "ensure": _ensure, "rollback": _rollback, "pin": _pin,
             "list": _list, "prune": _prune}

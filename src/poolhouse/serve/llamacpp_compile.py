@@ -23,6 +23,7 @@ from poolhouse.serve.llamacpp_upstream import Upstream
 __all__ = ["CMAKE_TARGET", "Job", "Toolchain", "checkout", "compile_source", "toolchain"]
 
 CMAKE_TARGET = "llama-server"
+HOMEBREW_PATH = "/opt/homebrew/bin:/usr/local/bin"
 WALL_SECONDS = 4 * 3600.0
 FIXED_FLAGS = ("-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF", "-DLLAMA_BUILD_TESTS=OFF",
                "-DLLAMA_BUILD_EXAMPLES=OFF", "-DLLAMA_BUILD_SERVER=ON", "-DLLAMA_CURL=OFF")
@@ -57,6 +58,11 @@ def _tree(path: str) -> str:
     return str(real.parent.parent if real.parent.name == "bin" else real.parent)
 
 
+def _which(name: str) -> str | None:
+    """``name`` on PATH, else in the Homebrew directories a launchd or systemd unit's PATH leaves out."""
+    return shutil.which(name) or shutil.which(name, path=HOMEBREW_PATH)
+
+
 def _xcode(*query: str) -> str:
     done = subprocess.run(["/usr/bin/xcrun", *query], capture_output=True, text=True, timeout=60,
                           check=False)
@@ -67,17 +73,17 @@ def find_make() -> str:
     """The build program cmake drives: ninja when present, else the real ``make`` (on macOS
     the one inside the developer tools, since ``/usr/bin/make`` is a shim that asks
     ``xcode-select``, which the sandbox cannot let it do)."""
-    if ninja := shutil.which("ninja"):
+    if ninja := _which("ninja"):
         return os.path.realpath(ninja)
     if platform.system() == "Darwin" and (found := _xcode("-f", "make")):
         return found
-    return os.path.realpath(shutil.which("make") or "")
+    return os.path.realpath(_which("make") or "")
 
 
 def toolchain() -> Toolchain:
     """The tools a build needs, found on this machine. `BuildFailed` names each one missing;
     nothing is installed."""
-    missing = [name for name in ("git", "cmake") if shutil.which(name) is None]
+    missing = [name for name in ("git", "cmake") if _which(name) is None]
     if platform.system() == "Windows":
         raise BuildFailed("building llama.cpp from source is not supported on Windows; "
                           "`poolhouse-serve build --from release` downloads a release instead")
@@ -88,8 +94,8 @@ def toolchain() -> Toolchain:
         if not (cc and cxx and sysroot):
             missing.append("a C/C++ compiler (the Xcode command line tools: `xcode-select --install`)")
     else:
-        cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang") or ""
-        cxx = shutil.which("c++") or shutil.which("g++") or shutil.which("clang++") or ""
+        cc = _which("cc") or _which("gcc") or _which("clang") or ""
+        cxx = _which("c++") or _which("g++") or _which("clang++") or ""
         if not (cc and cxx):
             missing.append("a C/C++ compiler (cc and c++)")
     make = find_make()
@@ -98,12 +104,12 @@ def toolchain() -> Toolchain:
     if missing:
         raise BuildFailed("cannot build llama.cpp: missing " + ", ".join(missing)
                           + "; poolhouse installs nothing, install them and run it again")
-    cmake = os.path.realpath(shutil.which("cmake") or "")
+    cmake = os.path.realpath(_which("cmake") or "")
     trees = {_tree(cmake), _tree(cc), _tree(cxx), _tree(make), "/usr", "/Library/Developer"}
     if sysroot:
         trees.add(_tree(sysroot) if "/Developer/" not in sysroot else sysroot.split("/Developer/")[0] + "/Developer")
-    if shutil.which("nvcc"):
-        trees.add(_tree(shutil.which("nvcc") or ""))
+    if _which("nvcc"):
+        trees.add(_tree(_which("nvcc") or ""))
     cached = llamacpp_ccache.find()
     trees.update(cached.reads if cached else ())
     return Toolchain(cmake, cc, cxx, sysroot,
