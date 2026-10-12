@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import socket
 import ssl
 from pathlib import Path
@@ -27,6 +26,11 @@ from typing import Any
 from poolhouse import node_binary, node_launch, node_supervise
 from poolhouse.board import phone
 from poolhouse.node_health import API_VERSION, exchange
+
+try:
+    from pool_check.terminal import at_terminal
+except ImportError:  # run as a script, where the rig's own directory is the one on the path
+    from terminal import at_terminal
 
 PRESENCE = ["--presence", "terminal"]
 """How a node of a rig or a test asks the person for the first key or phone: on a terminal the node reads itself, where `answer_presence` types
@@ -46,45 +50,32 @@ def call(state: Path, method: str, board: str = "", token: str = "", params: dic
     return {"ok": False, "code": reply["error"]["code"], "error": reply["error"]["message"]}
 
 
-def _screen_says(master: int, text: str, seconds: float) -> bool:
-    """Whether the pseudo-terminal's person side shows ``text`` within ``seconds``."""
-    import select
-    import time
-
-    end, shown = time.monotonic() + seconds, b""
-    while time.monotonic() < end and text.encode() not in shown:
-        if select.select([master], [], [], 0.2)[0]:
-            shown += os.read(master, 4096)
-    return text.encode() in shown
-
-
 def answer_presence(state: Path, token: str, purpose: str, public: str = "") -> dict:
     """Play the person at the node's own question: ask as the session ``token`` for the one-time secret of the first key or phone, name a
-    pseudo-terminal of this device as the terminal, and type `yes` there when the node has written its question on it.
+    terminal of this device (`terminal.at_terminal`: a pseudo-terminal, or a ConPTY pseudo-console on Windows) as where to ask, and type `yes` there when the
+    node has written its question on it.
 
     This is what a person does at a terminal, against the node as shipped: the node writes the question itself and reads the line itself,
     so the answer does not pass through the process that asked (docs/pool-check.md). Only the rig's person runs it; the node has no
     switch that answers for anyone.
     """
-    import pty
     import time
 
-    master, slave = pty.openpty()
+    terminal = at_terminal()
     try:
-        asked = call(state, "presence_ask", "", token, {"purpose": purpose, "public": public, "terminal": os.ttyname(slave)})
+        asked = call(state, "presence_ask", "", token, {"purpose": purpose, "public": public, "terminal": terminal.name})
         if not asked["ok"] or asked["result"]["state"] != "asking":
             return asked
-        if not _screen_says(master, "Type yes", 20.0):
+        if not terminal.shows("Type yes", 20.0):
             return {"ok": False, "code": "TimeoutError", "error": "the node wrote no question on the terminal it was given"}
-        os.write(master, b"yes\n")
+        terminal.types("yes" + terminal.ENTER)
         said, end = asked, time.monotonic() + 20
         while said["ok"] and said["result"]["state"] == "asking" and time.monotonic() < end:
             time.sleep(0.1)
             said = call(state, "presence_status", "", token)
         return said
     finally:
-        os.close(master)
-        os.close(slave)
+        terminal.close()
 
 
 def post_many(state: Path, session: tuple[str, str], count: int, size: int, prefix: str) -> dict:

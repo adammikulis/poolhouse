@@ -438,8 +438,15 @@ cannot ask and refuses the first key and the first phone. On a yes the node make
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
 attempt; a node that holds a key never asks. There is no cargo feature, argument or environment variable that answers for the person, in any
 binary: the crate's own tests put a stand-in on a library field that no binary sets, and the rig's person types `yes` at a pseudo-terminal
-(`tests/pool_check/wire.py`, `answer_presence`). Windows has no operating-system prompt the node can raise and reads no terminal for the node, so
-the first key and the first phone are refused there until a presence step is built for it. A session that registered first, or any session,
+(`tests/pool_check/wire.py`, `answer_presence`). Windows has no operating-system prompt the node can raise, so **the first key and the first phone
+on the account's own node directory are refused there** until a presence step is built for it. Windows has the terminal presence for any other state
+directory (a server, a test, the pool check's rig): the asker names the console by the id of a process that runs in it (`terminal` is a decimal
+process id, which `poolhouse.board.presence.terminal_name` gives for the command window it runs in), the node attaches to that console (a node
+started by its supervisor has none of its own), writes the question there, reads the typed `yes` itself with no echo or line editing but its own,
+and leaves the console before the answer is known. Only a process of the node's own user may be named, and only one question is on a console at a
+time. The real-home check there asks the system for the account's directory (never `USERPROFILE`) and refuses when it cannot. The pool check's
+rig plays the person there at a ConPTY pseudo-console (`pywinpty`, `tests/pool_check/terminal.py`) that holds one idle process, and types `yes` and
+Enter into it, against the same node binary. A session that registered first, or any session,
 therefore enrols no key. Once a key is enrolled, `by`, `approval`, `approved_ms`, `nonce` and `anchor` add a second: `approval` is an enrolled key's signature over the
 new key's public key, name and proof time, the approver's fingerprint, this node's device fingerprint, the approval time (five minutes),
 the nonce and the terminal it was signed in (`anchor`, the shell of that terminal, which the request must come from). The node accepts a

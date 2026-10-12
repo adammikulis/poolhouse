@@ -17,11 +17,13 @@ use windows_sys::Win32::System::IO::OVERLAPPED;
 use crate::error::Result;
 
 mod acl;
+mod console;
 mod pipe;
 mod proc;
 mod stop;
 
 pub use acl::{owner_only, private_dir};
+pub use console::{account_home, Console, Event};
 pub use pipe::{connect, peer, Listener, Stream};
 pub use proc::process_info;
 pub use stop::{signal_stop, stop_event_name, watch_stop};

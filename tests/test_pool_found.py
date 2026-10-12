@@ -15,7 +15,7 @@ from contextlib import contextmanager
 
 import pytest
 from phone_kit import add_phone, endpoint_of
-from pool_check import wire
+from pool_check import terminal
 
 from poolhouse.board import founding, presence, session as board_session
 from poolhouse.board.client import Denied
@@ -42,7 +42,7 @@ def person_at_a_terminal(yes: bool = True):
     leader, follower = pty.openpty()
 
     def answer() -> None:
-        if wire._screen_says(leader, "Type yes", 20.0):
+        if terminal.screen_says(leader, "Type yes", 20.0):
             os.write(leader, b"yes\n")
 
     if yes:
