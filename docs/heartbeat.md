@@ -25,6 +25,12 @@ instruction to schedule the next firing.
 > workers for the next item; (5) append one line to the log. If nothing needs doing, end with one line and
 > do nothing else.
 
+## Reviewing the backlog
+
+A firing may run `scripts/review-backlog --local --limit 3` (or `--cloud MODEL` for guard, hook, authorization or
+red-team work) when nothing else is running on the device's compute, then read `scripts/review-backlog --list` and send
+each flagged report to a person or a landing-level agent. The reports are advice, never the accept (docs/review-backlog.md).
+
 ## Rules
 
 - Every firing either does real work or ends in one line. A bare keep-warm ping is waste.
