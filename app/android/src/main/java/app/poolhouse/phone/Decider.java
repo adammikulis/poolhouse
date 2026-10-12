@@ -56,7 +56,7 @@ final class Decider {
      * for it. A deny or a block only takes authority away, so a PIN is enough for those.
      */
     private static boolean strong(ApprovalView view, String decision) {
-        return decision.startsWith("approve") && !"routine".equals(view.risk);
+        return decision.startsWith("approve") && (view.challenge.signsAct() || !"routine".equals(view.risk));
     }
 
     /** Which of the three buttons ({@code approve}, {@code deny}, {@code block}) a decision belongs to. */
@@ -77,7 +77,7 @@ final class Decider {
             rules(view, decision, picker);
             if (strong(view, decision) && !key.strongAvailable()) throw new SecurityException("This needs your fingerprint or a strong face unlock, which this phone has not set up: set one up in the phone's settings, or answer at your computer.");
             String fingerprint = Hex.sha256(key.publicPoint());
-            byte[] bytes = view.challenge.signsAct() && decision.startsWith("approve") ? view.challenge.actBytes() : view.challenge.bytes(decision, fingerprint);
+            byte[] bytes = view.challenge.signsAct() && decision.startsWith("approve") ? view.challenge.actBytes(Hex.of(key.publicPoint())) : view.challenge.bytes(decision, fingerprint);
             key.sign(bytes, view.labels()[slot(decision)], strong(view, decision), new Authorizer.Result() {
                 @Override public void signed(byte[] der) {
                     List<String> options = view.challenge.pick();

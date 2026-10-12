@@ -89,11 +89,15 @@ final class Challenge {
 
     /**
      * The bytes the key signs to approve a request to sign an act: made again here from the structure the action carries, never taken from the
-     * node's own hex of them, and refused unless they are what the node named.
+     * node's own hex of them, and refused unless they are what the node named and the request asks this phone's own key ({@code ownPoint}, the
+     * public point in hex). A charter must list exactly one admin, this key, as a P-256 key.
      */
-    byte[] actBytes() throws Exception {
+    byte[] actBytes(String ownPoint) throws Exception {
         JSONObject action = action();
         String step = action == null ? "" : action.optString("step");
+        if (action == null || !ownPoint.equals(action.optString("key")) || !"p256-ecdsa".equals(action.optString("alg"))) {
+            throw new SecurityException("That request asks a key that is not this phone's, so nothing was signed.");
+        }
         String text;
         if ("act".equals(step)) {
             JSONObject act = new JSONObject(action.getJSONObject("act").toString());
@@ -102,6 +106,9 @@ final class Challenge {
         } else if ("found".equals(step)) {
             JSONObject charter = new JSONObject(action.getJSONObject("charter").toString());
             JSONArray admins = charter.getJSONArray("admins");
+            if (admins.length() != 1 || !ownPoint.equals(admins.getJSONObject(0).optString("key")) || !"p256-ecdsa".equals(admins.getJSONObject(0).optString("alg"))) {
+                throw new SecurityException("That charter does not name this phone's key as its one admin, so nothing was signed.");
+            }
             JSONObject entry = new JSONObject(admins.getJSONObject(0).toString());
             for (int i = 0; i < admins.length(); i++) admins.getJSONObject(i).put("acceptance", "");
             entry.remove("acceptance");
