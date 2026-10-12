@@ -180,39 +180,33 @@ fn a_node_founds_a_pool_for_a_person_whose_strong_key_is_p256_and_the_pool_is_it
     assert_eq!(bad["ok"], false, "a key that names the other algorithm is not drafted");
 }
 
-fn der_of(sig: &str) -> Vec<u8> {
-    poolhouse_node::fsutil::unhex(sig).unwrap()
+/// A DER signature of r and s made of the bytes given, as hex: the integers are written as they are, with no checking.
+fn der_of(parts: &[&[u8]], tail: &[u8]) -> String {
+    let body: Vec<u8> = parts.iter().flat_map(|p| [vec![2, p.len() as u8], p.to_vec()].concat()).collect();
+    hex(&[vec![0x30, (body.len() + tail.len()) as u8], body, tail.to_vec()].concat())
 }
 
 #[test]
-fn the_high_s_twin_of_a_p256_signature_verifies_for_ring_and_is_refused_here() {
-    let message = b"poolhouse";
-    let sig = RigSigner::sign_as(PHONE, message);
-    let twin = Alg::mirrored_p256(&sig).unwrap();
-    assert_ne!(sig, twin);
-    assert!(poolhouse_node::grants::person::verifies_p256(&public(PHONE), message, &twin), "the twin is a valid ECDSA signature");
-    let (low, high) = if Alg::P256Ecdsa.sig_shape(&sig) { (sig.clone(), twin) } else { (twin, sig) };
-    assert!(Alg::P256Ecdsa.verifies(&public(PHONE), message, &low));
-    assert!(!Alg::P256Ecdsa.sig_shape(&high) && !Alg::P256Ecdsa.verifies(&public(PHONE), message, &high), "a signature has one spelling");
-    assert_eq!(Alg::canonical_p256(&high).unwrap(), low);
-    assert_eq!(Alg::mirrored_p256(&high).unwrap(), low);
-}
-
-#[test]
-fn a_der_signature_with_a_needless_leading_zero_or_trailing_bytes_is_refused() {
-    let sig = der_of(&RigSigner::sign_as(PHONE, b"poolhouse"));
-    let (rlen, mut padded) = (usize::from(sig[3]), sig.clone());
-    padded.splice(4..4, [0u8]);
-    padded[3] += 1;
-    padded[1] += 1;
-    if sig[4] & 0x80 == 0 {
-        assert!(!Alg::P256Ecdsa.sig_shape(&hex(&padded)), "a zero that the high bit does not need ({rlen} bytes of r)");
+fn a_der_signature_that_is_not_strict_is_neither_a_signature_nor_normalised_into_one() {
+    let (r, s) = ([0x11u8; 32], [0x22u8; 32]);
+    let good = der_of(&[&r, &s], &[]);
+    assert!(Alg::P256Ecdsa.sig_shape(&good) && Alg::canonical_p256(&good).as_deref() == Some(good.as_str()));
+    let padded_r = [&[0u8][..], &r[..]].concat();
+    let high_bit = [0x91u8; 32];
+    let padded_high = [&[0u8][..], &high_bit[..]].concat();
+    let cases = [
+        ("a zero the high bit does not need", der_of(&[&padded_r, &s], &[])),
+        ("trailing bytes", der_of(&[&r, &s], &[0, 0])),
+        ("a negative integer", der_of(&[&high_bit, &s], &[])),
+        ("an empty integer", der_of(&[&[], &s], &[])),
+        ("a zero r", der_of(&[&[0u8], &s], &[])),
+        ("an integer of 34 bytes", der_of(&[&[&[0u8][..], &padded_high[..]].concat(), &s], &[])),
+    ];
+    for (what, bad) in cases {
+        assert!(!Alg::P256Ecdsa.sig_shape(&bad), "{what} is not a signature");
+        assert_eq!(Alg::canonical_p256(&bad), None, "{what} is not made into one");
     }
-    let mut trailing = sig.clone();
-    trailing.push(0);
-    trailing[1] += 1;
-    assert!(!Alg::P256Ecdsa.sig_shape(&hex(&trailing)));
-    assert!(!Alg::P256Ecdsa.sig_shape(&hex(&sig[..sig.len() - 1])));
+    assert!(Alg::canonical_p256(&der_of(&[&padded_high, &s], &[])).is_some(), "the zero a high bit needs is minimal");
 }
 
 #[test]
