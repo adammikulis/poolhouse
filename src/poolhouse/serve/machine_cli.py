@@ -18,7 +18,7 @@ __all__ = ["OPTIONS_LIMITS", "OPTIONS_MEMORY", "OPTIONS_RECLAIM", "cmd_limits",
            "cmd_memory", "cmd_reclaim"]
 
 OPTIONS_MEMORY = [
-    flag("--persist", nargs="?", const="", default=None, metavar="MB",
+    flag("--persist", nargs="?", const="", default=None, metavar="MB|NG",
          help="keep the wiring limit across restarts: installs a boot-time daemon (one "
               "administrator prompt); the megabytes default to what --for needs, else what "
               "is set now. --print only prints the steps"),
@@ -34,7 +34,7 @@ OPTIONS_MEMORY = [
          help="with --for: serve with the MTP head, sharing the model's weights (default: on)"),
     flag("--cache-ram", type=int, default=8192, metavar="MB",
          help="with --for: the server's prompt cache cap in host RAM (default: %(default)s)"),
-    flag("--apply", nargs="?", const="", default=None, metavar="MB",
+    flag("--apply", nargs="?", const="", default=None, metavar="MB|NG",
          help="raise the limit for this boot to MB (default: what --for needs); sudo asks at "
               "a terminal, macOS's own password dialog otherwise"),
     flag("--unpersist", action="store_true",
