@@ -414,3 +414,33 @@ accuracy with another's cost -- a cost run from another machine is listed as
 the same line otherwise, planned, dispatched, waited for and gathered into `--kept`, then
 shown; a device on another commit is refused before anything is dispatched.
 
+
+## Context and thinking levels
+
+Both vary with the memory a model leaves and with how long it is let to think, so each is its
+own configuration and its own label.
+
+`--context fit[:MAX]` (`sweep`, `drafts`, `speed`) is the largest context one user can hold on
+this machine for that model file, its KV cache type and `--parallel`. It reads the model's fit
+record (`poolhouse-serve fit`, the "one user, longest context" line) for the same file and
+cache type; with none, it counts the GGUF header the way `poolhouse.serve.estimate` does
+against the room `hub.room()` gives. A tenth is left over, and the result stops at the model's
+own `context_length` and at MAX (`fit:128k`, `fit:131072`). Nothing is served to find out.
+One line says what it used (`context fit: 262144 (fit record)` or `(estimated from the
+header)`), the number is what the run records and the `ctx` column shows, and a `sweep` label
+carries `-ctxNk`, so a run at one context is never read as another. A model that leaves no room is
+named and skipped, and the sweep goes on. A queue line `--context fit` passes `queue --dry-run`.
+
+`--thinking-levels off,low,medium,high,unlimited` (`sweep`) measures each `--serve`'d model at
+each level, one after another, and `--thinking LEVEL` at one. The budgets are llama-server's
+`--reasoning-budget`: off 0, low 1024, medium 4096, high 16384, unlimited -1, so each level's
+label ends `-rbN` and starts with the level's name (`Qwen3.8-27B-low-plain-rb1024`). The
+llama.cpp build in use (`poolhouse-serve llama-cpp status`) lists `--reasoning-budget`,
+`--reasoning-effort` and `--chat-template-kwargs`. Qwen3.8's chat template has its own switch
+(`enable_thinking`) and its own effort (`reasoning_effort`: `xhigh`, the default, `medium` and
+`low`; `high` names `xhigh`), so for a model whose template has them a level also passes them
+as `--chat-template-kwargs`: off sets `enable_thinking` false, low and medium set that effort,
+high and unlimited set `high` and `xhigh`, and the budget caps the tokens. A template with
+only the switch gets the budgets and the switch for off; a template with neither is said to
+have `no thinking` and is measured once. Both flags are served settings, so each level is a
+load of the model; the `ctx` column shows `/rb` and `show` carries the budget.

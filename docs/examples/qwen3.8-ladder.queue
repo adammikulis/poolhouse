@@ -6,6 +6,9 @@
 # (feat/bench-token-ratio) are landed and installed: every benchmark records the device hardware
 # and the state of the system, and a run without it cannot be compared (owner, 2026-10-12).
 #
+# A step takes `--context fit` (the most one user holds for that model, 10 percent short of it)
+# and `--thinking-levels off,low,medium,high,unlimited`: docs/bench.md, "Context and thinking levels".
+#
 # Read it first:  poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --dry-run
 # Run it with:    poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --yes --detach
 # After the restart (wired memory raised, nothing else resident), the same line with --resume skips

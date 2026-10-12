@@ -27,11 +27,13 @@ import poolhouse.client
 from poolhouse import bench, hub, jobs, lock
 from poolhouse.bench import (
     extract as bench_extract,
+    fitcontext,
     ops,
     options,
     retrieval,
     selfcheck as bench_selfcheck,
     speed as bench_speed,
+    thinking,
 )
 from poolhouse.bench.askings import _asked, asking_from, halves, sampling_from, with_card
 from poolhouse.bench.backends import client_for, http_of, parse_on
@@ -65,6 +67,7 @@ from poolhouse.command import Group
 from poolhouse.graph.community import QUESTIONS, graph as invented
 from poolhouse.log import say, warn
 from poolhouse.serve.backend import ServerFailed
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.profile import ASK
 
 __all__ = ["COMMANDS", "main"]
@@ -186,7 +189,10 @@ def cmd_drafts(args: Any) -> int:
     loading = Loading(binary=args.binary, kept=args.kept, store=args.store or None,
                       embed_url=args.embed_url, embed_model=args.embed_model,
                       smoke=sample(everything, SMOKE) if wants_smoke(args) else ())
-    rows = drafts(ops.swept(args, model, None, context=args.context, head=None)
+    total_context, _ = fitcontext.total_for(
+        args, model, kv=getattr(args, "serve_kv", "") or DEFAULT_KV_CACHE,
+        default=int(args.context), headed=any(heads.heads))
+    rows = drafts(ops.swept(args, model, None, context=total_context, head=None)
                   .over(port=int(args.port)), heads, asked, invented(), loading)
     say()
     if getattr(args, "smoke", False):
@@ -308,8 +314,7 @@ def _served_by_the_sweep(args: Any, questions: Any, graph: Any, already: Any,
     loaded."""
     saved: list[str] = []
     unmeasured: list[str] = []
-    total_context = args.context or 32768 * max(1, args.parallel)
-    for n, wanted in enumerate(getattr(args, "serve", []) or []):
+    for n, wanted, level in thinking.expand(args):
         model = str(hub.located(wanted, loose=True) or wanted)
         heads = getattr(args, "serve_draft", []) or []
         head = heads[n] if n < len(heads) else ""
@@ -318,10 +323,24 @@ def _served_by_the_sweep(args: Any, questions: Any, graph: Any, already: Any,
             head = chosen.path
             say(f"    draft head: {head or 'none'} -- {chosen.why}"
                 + (f"\n      {chosen.note}" if chosen.note else ""))
+        best = ops.measured_run(args, model, head, heads, n)
+        kv = (getattr(args, "serve_kv", "") or (best.serving.cache_type if best else "")
+              or DEFAULT_KV_CACHE)
+        try:
+            total_context, fitted = fitcontext.total_for(
+                args, model, kv=kv, default=32768 * max(1, args.parallel), headed=bool(head))
+        except fitcontext.DoesNotFit as why:
+            say(f"{model}: {why}")
+            unmeasured.append(f"{Path(model).name}: {why}")
+            continue
         stem = ((str(getattr(args, "serve_label", "") or "")
                  or str(model).rsplit("/", 1)[-1].removesuffix(".gguf")[:14])
                 + ("-nodraft" if getattr(args, "no_draft", False) else "")
-                + str(getattr(args, "label_suffix", "") or ""))
+                + str(getattr(args, "label_suffix", "") or "")
+                + (f"-{level.name}" if level and level.name else "") + fitted)
+        if fitted and args.resume:
+            already = resumable(args.kept, questions=len(questions), context=total_context,
+                                parallel=args.parallel, since=args.since)
         # both halves and every `--also` of each, asked of one load
         parts = halves(args, f"{wanted} {model}")
         say(f"\n{stem}: " + ", ".join(suffix for suffix, _ in parts))
@@ -330,10 +349,11 @@ def _served_by_the_sweep(args: Any, questions: Any, graph: Any, already: Any,
             raise _NotIdle
         before = {r["key"] for r in bench._kept(args.kept)}
         # the best-scoring settings fill every flag not set here; --no-profile serves bare
-        chosen = ops.swept(args, model, ops.measured_run(args, model, head, heads, n),
-                           context=total_context,
+        chosen = ops.swept(args, model, best, context=total_context,
                            head=head if n < len(heads) else None).over(
                                port=int(args.serve_port))
+        if level:
+            chosen = level.over(chosen)
         try:
             bench.served(chosen, questions, graph,
                          Loading(binary=args.binary or "", kept=args.kept,
