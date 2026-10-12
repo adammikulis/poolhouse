@@ -18,6 +18,8 @@ import land_git as lg
 import testslots
 
 from poolhouse.activity.gate import Run, evidence, record_run, tree_hash
+from poolhouse.keystore import KeystoreError
+from poolhouse.real_machine import Refused
 
 FULL_FILES = 120
 FULL_LINES = 4000
@@ -120,16 +122,32 @@ def run_command(wt: Path, argv: list[str]) -> tuple[int, str]:
     return done.returncode, done.stdout + done.stderr
 
 
+def _prior(tree: str, check: Check):
+    """The earlier passing record of ``check`` on ``tree``, or None; also None when the activity log cannot be read here."""
+    try:
+        return evidence(tree, check.tier) if tree else None
+    except (KeystoreError, Refused):
+        return None
+
+
+def _remember(run: Run) -> None:
+    """Record a pass as evidence; nothing is recorded when the activity log cannot be written here."""
+    try:
+        record_run(run)
+    except (KeystoreError, Refused):
+        return
+
+
 def execute(wt: Path, check: Check, tree: str) -> Result:
     """Run one check unless this tree already passed it; record a pass as evidence."""
-    prior = evidence(tree, check.tier) if tree else None
+    prior = _prior(tree, check)
     if prior is not None:
         return Result(check.name, "reused", detail=f"reused from {prior.id}")
     began = time.monotonic()
     status, text = run_command(wt, check.argv)
     seconds = time.monotonic() - began
     if status == 0:
-        record_run(Run(wt, check.tier, check.argv, wt / ".land-no-junit", 0, seconds, tree))
+        _remember(Run(wt, check.tier, check.argv, wt / ".land-no-junit", 0, seconds, tree))
         return Result(check.name, "pass", seconds)
     tail = "\n".join(text.strip().splitlines()[-TAIL:])
     return Result(check.name, "fail", seconds, tail, sorted(set(FAILED.findall(text))))
