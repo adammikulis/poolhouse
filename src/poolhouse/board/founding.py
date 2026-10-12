@@ -167,6 +167,11 @@ def _admit_this_device(session: Session, admin: Admin, cert: str) -> None:
     session.client.call("pool_submit", "", session.token, act=act)
 
 
+def _member(status: dict[str, Any]) -> bool:
+    """Whether this device is an active member of its pool: a pool whose admit was never signed is founded and has no member."""
+    return any(m.get("self") and m.get("status") == "active" for m in status.get("members", []))
+
+
 def _already(status: dict[str, Any]) -> Founded | None:
     gov = status.get("governance", {})
     if gov.get("mode") != "governed":
@@ -213,7 +218,8 @@ def _ask_phone(session: Session, method: str, terms: Terms, **params: Any) -> No
     try:
         made = approval.Approval(session, dict(session.client.call(method, "", session.token, **params)))
     except NodeError as err:
-        raise _refused(err, where="your phone") from None
+        says_phone = "phone" in str(err).lower()
+        raise _refused(err, needs="device" if says_phone else "approval", where="the Poolhouse app on your phone" if says_phone else "your phone") from None
     terms.voice.say(f"Your phone is asking you: {made.title}.")
     _answered(made, terms.wait_s, terms.voice)
 
@@ -221,13 +227,17 @@ def _ask_phone(session: Session, method: str, terms: Terms, **params: Any) -> No
 def found_by_phone(session: Session, name: str, policy: str, terms: Terms | None = None) -> Founded:
     """Found the pool ``name`` of ``policy`` with the person's phone as its first admin: two taps, to accept the charter and to admit this device."""
     terms = terms or Terms()
-    if (done := _already(session.client.call("pool_status", "", session.token))) is not None:
+    status = session.client.call("pool_status", "", session.token)
+    done = _already(status)
+    if done is not None and _member(status):
         return done
     if policy not in POLICIES:
         raise Refusal("A pool lets devices join by themselves (open) or with a code (secure); say which.", needs="none")
-    _ask_phone(session, "pool_ask_found", terms, title=name, policy=policy, project="")
-    cert = terms.cert_hex or (Path(session.client.state) / "device.cert").read_bytes().hex()
-    _ask_phone(session, "pool_ask_sign", terms, kind="admit", body={"cert": cert, "name": device_name(), "how": "found", "via": ""})
+    if done is None:
+        _ask_phone(session, "pool_ask_found", terms, title=name, policy=policy, project="")
+    if not _member(session.client.call("pool_status", "", session.token)):
+        cert = terms.cert_hex or (Path(session.client.state) / "device.cert").read_bytes().hex()
+        _ask_phone(session, "pool_ask_sign", terms, kind="admit", body={"cert": cert, "name": device_name(), "how": "found", "via": ""})
     made = _already(session.client.call("pool_status", "", session.token))
     if made is None:
         raise Refusal("The pool was not founded; ask again.", needs="none", then="retry")

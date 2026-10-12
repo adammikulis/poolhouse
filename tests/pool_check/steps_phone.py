@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import json
-import threading
 import time
 
 from phone_keys import PhoneKeys
@@ -18,7 +17,7 @@ from pool_check.api_session import RigSession
 from pool_check.device import BOARD, Device
 from pool_check.world import World
 
-from poolhouse.board import founding, grants, presence
+from poolhouse.board import founding, grants
 
 ASK = {"action": "sync_now", "resource": "*", "lasts_ms": 600_000, "uses": 1}
 
@@ -135,51 +134,19 @@ def a_phone_approves_what_a_session_asks_on_every_device(world: World) -> str:
     return "; ".join(_on(world, device) for device in world.devices)
 
 
-def _waiting(device: Device, phone: PhoneKeys, wait_s: float = 60.0) -> dict:
-    """The next request that waits on ``phone``, as the phone reads it."""
-    end = time.monotonic() + wait_s
-    while time.monotonic() < end:
-        listed = [r for r in _phone(device, "list", phone.token)["result"]["approvals"] if r["state"] == "pending"]
-        if listed:
-            return dict(_phone(device, "get", phone.token, {"id": listed[0]["id"]})["result"])
-        time.sleep(0.3)
-    raise AssertionError(f"{device.name}: the agent never asked the phone")
-
-
-def a_phone_founds_the_pool_by_signing(world: World) -> str:
-    """On the first device a phone made of keys is added and the agent's founding path asks it twice, to accept the charter and to admit this device: the phone signs the bytes the node gave it and the pool is governed by its key."""
+def a_phone_that_shows_no_attestation_founds_nothing(world: World) -> str:
+    """On the first device a phone made of keys, which shows no attestation of its key, is added: it approves requests, but the node will not ask it to sign a pool and the agent's founding path says so in one sentence."""
     world.fresh()
     device = world.first
-    phone = _linked(world, device)
-    told: list[str] = []
-    done: dict = {}
+    _linked(world, device)
     session = RigSession(device)
-    terms = founding.Terms(voice=presence.Voice(say=told.append), wait_s=90.0, cert_hex=device.certificate())
-
-    def agent() -> None:
-        try:
-            done["made"] = founding.found_by_phone(session, "phone pool", "secure", terms)
-        except founding.Refusal as refused:
-            done["refused"] = refused
-
-    thread = threading.Thread(target=agent)
-    thread.start()
-    card = _waiting(device, phone)
-    assert card["challenge"]["action"]["kind"] == "sign" and "Found the pool 'phone pool', secure." in card["text"] and "POOL: SECURE." in card["text"], card["text"]
-    swapped = _phone(device, "decide", body=phone.decision(card, "approve"))
-    assert not swapped["ok"] and device.pool()["governance"]["mode"] == "unfounded", f"{device.name}: a signature over the challenge founded a pool: {swapped}"
-    signed = _phone(device, "decide", body=phone.signature(card))
-    assert signed["ok"] and signed["result"]["state"] == "approved", f"{device.name}: the phone's signature was not taken: {signed}"
-    admit = _waiting(device, phone)
-    assert "ASK: Admit THIS device" in admit["text"] and admit["id"] != card["id"], admit["text"]
-    assert _phone(device, "decide", body=phone.signature(admit))["ok"]
-    thread.join(60)
-    assert "made" in done, f"{device.name}: founding by phone ended with {done.get('refused')}"
-    gov = device.pool()["governance"]
-    assert (gov["mode"], gov["name"], gov["weak_keys_only"]) == ("governed", "phone pool", False), gov
-    assert [(a["strength"], a["fingerprint"]) for a in gov["admins"]] == [("strong", phone.fingerprint)], f"{device.name}: the phone's key is not the pool's one strong admin: {gov['admins']}"
-    assert [m["status"] for m in device.members() if m.get("self")] == ["active"], f"{device.name} is not the pool's first member"
-    again = founding.found_by_phone(session, "phone pool", "secure", terms)
-    assert again.already, "a second call founded another pool"
-    assert any("Found the pool" in line for line in told), told
-    return f"{device.name}: two cards (accept the charter, admit this device) were signed by the phone's P-256 key, a signature over the challenge was refused, and the pool is governed by that one strong key"
+    weak = device.try_call("pool_ask_found", "", session.token, title="phone pool", policy="secure", project="")
+    assert not weak["ok"] and "cannot prove its key stays in its secure hardware" in weak["error"], f"{device.name}: a phone with no attestation was asked to found a pool: {weak}"
+    try:
+        founding.found_by_phone(session, "phone pool", "secure", founding.Terms(cert_hex=device.certificate()))
+    except founding.Refusal as refused:
+        assert refused.needs == "device" and len(refused.say) <= 160, refused
+    else:
+        raise AssertionError(f"{device.name}: founding by a phone with no attestation did not refuse")
+    assert device.pool()["governance"]["mode"] == "unfounded", f"{device.name}: a pool was founded without a strong key"
+    return f"{device.name}: a phone with no attestation was added and approves requests, but was never asked to sign a pool, and the agent was told in one sentence"

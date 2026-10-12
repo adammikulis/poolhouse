@@ -49,12 +49,6 @@ class PhoneKeys:
         proof = {"op": "phone_add", "node": device, "name": self.name, "key": self.public, "push": push, "auth": self.auth.hex(), "at_ms": body["at_ms"]}
         return {**body, "proof": self.sign(b"poolhouse/phone-add/v1\n" + grants.canonical(proof).encode())}
 
-    def signature(self, view: dict[str, Any]) -> dict[str, Any]:
-        """The `decide` body approving a request to sign an act: the signature is over the act's own bytes, which the phone reads from the signed action."""
-        message = bytes.fromhex(view["challenge"]["action"]["message"])
-        return {"id": view["id"], "decision": "approve", "key": self.fingerprint, "sig": self.sign(message),
-                "text_sha256": hashlib.sha256(view["text"].encode()).hexdigest()}
-
     def decision(self, view: dict[str, Any], decision: str, pick: str = "") -> dict[str, Any]:
         """The `decide` body answering the request ``view`` as the node showed it; ``pick`` is the number the person chose when the request has one."""
         body = grants.sign_approval(_Signing(self), view, decision)

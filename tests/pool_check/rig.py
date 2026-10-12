@@ -52,7 +52,7 @@ STEPS = [
     ("grants-gate", steps_grants.a_session_with_no_grant_is_refused_until_a_person_signs_one),
     ("grants-key-removed", steps_grants.a_removed_key_stops_what_it_signed),
     ("phone-approval", steps_phone.a_phone_approves_what_a_session_asks_on_every_device),
-    ("found-by-phone", steps_phone.a_phone_founds_the_pool_by_signing),
+    ("found-by-phone", steps_phone.a_phone_that_shows_no_attestation_founds_nothing),
     ("partition-heal", steps_resilience.a_partition_heals_and_both_sides_merge),
     ("crash-mid-sync", steps_resilience.a_node_killed_mid_sync_resumes),
     ("tests-on-device", steps_tests.a_tiny_test_file_runs_on_a_linux_device),

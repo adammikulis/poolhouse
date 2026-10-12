@@ -170,3 +170,38 @@ def test_the_command_for_agents_says_one_sentence_and_exits_3_when_the_person_ha
     said = json.loads(done.stdout.strip().splitlines()[-1])
     assert done.returncode == 3 and said["founded"] is False and "phone" in said["say"] and said["needs"] == "device", done
     assert governance(workspace_node)["mode"] == "unfounded"
+
+
+class Scripted:
+    """A node that answers founding by phone from a script: what the person did with each card asked, in order."""
+
+    def __init__(self, outcomes: list[str]) -> None:
+        self.outcomes, self.asked, self.cards = list(outcomes), [], {}
+        self.founded = self.member = False
+        self.client, self.token, self.state = self, "token", "."
+
+    def call(self, method: str, *rest: str, **params):
+        if method == "pool_status":
+            gov = {"mode": "governed", "name": "home", "epoch": 1} if self.founded else {"mode": "unfounded"}
+            return {"pool": "p1", "policy": "secure", "governance": gov, "members": [{"self": True, "status": "active" if self.member else "left"}]}
+        if method in ("pool_ask_found", "pool_ask_sign"):
+            self.asked.append(method)
+            card = {"id": f"ap-{len(self.asked)}", "state": "pending", "title": "a card", "text": "x", "risk": "sensitive", "urgency": "urgent", "expires_ms": 1, "grants": [], "reason": ""}
+            self.cards[card["id"]] = (method, self.outcomes.pop(0), card)
+            return card
+        asked, outcome, card = self.cards[params["id"]]
+        self.founded |= outcome == "approved" and asked == "pool_ask_found"
+        self.member |= outcome == "approved" and asked == "pool_ask_sign"
+        return {**card, "state": outcome}
+
+
+def test_founding_by_phone_asks_again_only_for_the_admit_when_the_person_denied_it_the_first_time():
+    session = Scripted(["approved", "denied", "approved"])
+    terms = founding.Terms(wait_s=2.0, cert_hex="ab")
+    with pytest.raises(Refusal):
+        founding.found_by_phone(session, "home", "secure", terms)
+    assert session.asked == ["pool_ask_found", "pool_ask_sign"] and session.founded and not session.member
+    made = founding.found_by_phone(session, "home", "secure", terms)
+    assert session.asked == ["pool_ask_found", "pool_ask_sign", "pool_ask_sign"], "the pool that stands is not asked for again"
+    assert (made.name, made.already) == ("home", False) and session.member
+    assert founding.found_by_phone(session, "home", "secure", terms).already and len(session.asked) == 3
