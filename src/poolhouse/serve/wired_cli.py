@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import platform
+import re
 import sys
 
 from poolhouse.log import say, warn
@@ -95,11 +96,20 @@ def _kept_line(keep: bool | None) -> str:
     return "This resets on reboot unless it is persisted (--persist N)."
 
 
+def megabytes(given: object) -> int | None:
+    """The MB in ``given``: a plain number is MB, ``117G``, ``117GB`` or ``117GiB`` is that many GiB."""
+    text = str(given).strip().lower().replace(" ", "")
+    found = re.fullmatch(r"(\d+(?:\.\d+)?)(g|gb|gib)", text)
+    if found:
+        return int(float(found.group(1)) * 1024)
+    return int(text) if text.isdigit() else None
+
+
 def _number(args: argparse.Namespace, plan: wired.Plan | None) -> int | None:
-    """The MB asked for: a number after --apply/--persist, else the plan's proposal."""
+    """The MB asked for: a number or a size in GB after --apply/--persist, else the plan's proposal."""
     for given in (args.apply, args.persist):
-        if given not in (None, "", True, False) and str(given).lstrip("-").isdigit():
-            return int(given)
+        if given not in (None, "", True, False) and (mb := megabytes(given)):
+            return mb
     return plan.proposed_mb if plan and plan.proposed_mb else None
 
 
