@@ -59,15 +59,24 @@ if [ "$2" = -X ]; then
 fi
 printf 'GET %s\\n' "$2" >> "$GH_LOG"
 if [ "$1" = repo ]; then echo "$GH_REPO"; exit 0; fi
+if [ -n "$GH_NOAUTH" ]; then echo "gh: To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4; fi
 name=$(printf '%s' "$2" | tr '/' '_')
-if [ -f "$GH_REPLIES/$name.json" ]; then cat "$GH_REPLIES/$name.json"; exit 0; fi
+if [ -f "$GH_REPLIES/$name.json" ]; then
+    if [ "$3" = --include ]; then
+        printf 'HTTP/2.0 200 OK\\n'; cat "$GH_REPLIES/$name.headers" 2>/dev/null; printf '\\n'
+    fi
+    cat "$GH_REPLIES/$name.json"; exit 0
+fi
 echo "gh: Not Found (HTTP 404)" >&2
 exit 1
 """
 
 
-def serve(tmp_path, monkeypatch, replies, fail=""):
-    """Put a `gh` on PATH that answers each GET from ``replies`` and logs its arguments."""
+def serve(tmp_path, monkeypatch, replies, fail="", headers=None):
+    """Put a `gh` on PATH that answers each GET from ``replies`` and logs its arguments.
+
+    ``headers`` maps a path to the response headers printed under `--include`.
+    """
     bin_dir, store = tmp_path / "bin", tmp_path / "replies"
     bin_dir.mkdir()
     store.mkdir()
@@ -76,13 +85,20 @@ def serve(tmp_path, monkeypatch, replies, fail=""):
     gh.chmod(0o755)
     for path, body in replies.items():
         (store / f"{path.replace('/', '_')}.json").write_text(json.dumps(body))
+    for path, fields in (headers or {}).items():
+        (store / f"{path.replace('/', '_')}.headers").write_text(
+            "".join(f"{name}: {value}\n" for name, value in fields.items()))
     log = tmp_path / "gh.log"
     log.write_text("")
     monkeypatch.setenv("GH_LOG", str(log))
     monkeypatch.setenv("GH_REPLIES", str(store))
     monkeypatch.setenv("GH_REPO", REPO)
     monkeypatch.setenv("GH_FAIL", fail)
+    monkeypatch.setenv("GH_NOAUTH", "")
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     return log
 
 
+def sign_out(monkeypatch):
+    """Make every call of the `gh` from ``serve`` exit 4, as `gh` does when it holds no credential."""
+    monkeypatch.setenv("GH_NOAUTH", "1")

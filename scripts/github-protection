@@ -4,6 +4,9 @@
     scripts/github-protection --check            local checks, then read-only `gh api` GET calls
     scripts/github-protection --check --local    CODEOWNERS coverage and workflow rules only
     scripts/github-protection --check --agent    also fail when these credentials can administer the repository
+                                                 or push (a device that is not the lander holds no push credential)
+    scripts/github-protection --check --agent --lander
+                                                 the lander: its credentials must expire within an hour
 
 One line per finding with the section of the document that fixes it; exit 1 when anything drifts,
 2 when there is no repository to read. The script issues GET requests only.
@@ -15,6 +18,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +46,10 @@ TAG_RULES = {"deletion", "non_fast_forward", "update"}
 MAIN_CHECKS = ("gates", "privacy", "licenses")
 SCANNING = ("secret_scanning", "secret_scanning_push_protection", "dependabot_security_updates")
 WRITE_ALLOWED = {"security-events"}
+PUSH_RIGHTS = ("push", "maintain", "admin")
+TOKEN_SECONDS = 3600
+EXPIRY_HEADER = "github-authentication-token-expiration"
+AUTH_REQUIRED = 4
 ID_TOKEN_WITHOUT_ENVIRONMENT = {"scorecard.yml"}
 
 
@@ -49,28 +57,50 @@ class Unreadable(Exception):
     """A GET that gh could not complete."""
 
 
+class Unauthenticated(Unreadable):
+    """gh holds no credential."""
+
+
 def finding(code: str, text: str, section: str) -> str:
     return f"{code:<34} {text}  -> {DOC}#{section}"
 
 
-def gh_get(path: str):
-    """The JSON body of one GET request to the GitHub API."""
+def gh_run(path: str, *flags: str) -> str:
+    """The standard output of `gh api PATH`, a GET request."""
     try:
-        done = subprocess.run(["gh", "api", path], capture_output=True, text=True, check=False)
+        done = subprocess.run(["gh", "api", path, *flags], capture_output=True, text=True, check=False)
     except FileNotFoundError:
         raise Unreadable("gh is not installed") from None
+    if done.returncode == AUTH_REQUIRED:
+        raise Unauthenticated("gh holds no credential")
     if done.returncode:
         raise Unreadable((done.stderr.strip() or done.stdout.strip() or "gh failed").splitlines()[0])
+    return done.stdout
+
+
+def as_json(path: str, text: str):
     try:
-        return json.loads(done.stdout)
+        return json.loads(text)
     except ValueError:
         raise Unreadable(f"{path} did not return JSON") from None
 
 
-def read(path: str, code: str, section: str, out: list[str]):
-    """The body at ``path``, or None after recording that it could not be read."""
+def gh_get(path: str):
+    """The JSON body of one GET request to the GitHub API."""
+    return as_json(path, gh_run(path))
+
+
+def gh_get_headers(path: str) -> tuple[dict[str, str], object]:
+    """The response headers (names in lower case) and the JSON body of one GET request."""
+    head, _, text = gh_run(path, "--include").replace("\r\n", "\n").partition("\n\n")
+    lines = (line.partition(":") for line in head.splitlines()[1:])
+    return {name.strip().lower(): value.strip() for name, _, value in lines}, as_json(path, text)
+
+
+def read(path: str, code: str, section: str, out: list[str], fetch=gh_get):
+    """What ``fetch`` returns for ``path``, or None after recording that it could not be read."""
     try:
-        return gh_get(path)
+        return fetch(path)
     except Unreadable as exc:
         out.append(finding(code, f"cannot read {path}: {exc}", section))
         return None
@@ -374,10 +404,9 @@ def check_entry_scope(repo: str) -> list[str]:
 def check_actions(repo: str) -> list[str]:
     out: list[str] = []
     flow = read(f"repos/{repo}/actions/permissions/workflow", "actions.read", "actions-settings", out)
-    if flow is not None:
-        if flow.get("default_workflow_permissions") != "read":
-            out.append(finding("actions.default-token", "the default workflow token is not read-only",
-                               "actions-settings"))
+    if flow is not None and flow.get("default_workflow_permissions") != "read":
+        out.append(finding("actions.default-token", "the default workflow token is not read-only",
+                           "actions-settings"))
     general = read(f"repos/{repo}/actions/permissions", "actions.read", "actions-settings", out)
     if general is not None:
         if general.get("allowed_actions") != "selected":
@@ -394,26 +423,89 @@ def check_actions(repo: str) -> list[str]:
     return out
 
 
-def check_repository(repo: str, agent: bool) -> list[str]:
+def check_repository(repo: str, args: argparse.Namespace) -> list[str]:
     out: list[str] = []
-    body = read(f"repos/{repo}", "repo.read", "code-security-settings", out)
-    if body is None:
+    got = read(f"repos/{repo}", "repo.read", "code-security-settings", out, gh_get_headers)
+    if got is None:
         return out
+    headers, body = got
     scanning = body.get("security_and_analysis") or {}
     for key in SCANNING:
         if (scanning.get(key) or {}).get("status") != "enabled":
             out.append(finding(f"security.{key}", f"{key} is not enabled", "code-security-settings"))
     if body.get("allow_auto_merge"):
         out.append(finding("repo.auto-merge", "auto-merge is allowed", "who-merges"))
-    if agent and (body.get("permissions") or {}).get("admin"):
+    if args.agent and (body.get("permissions") or {}).get("admin"):
         out.append(finding("identity.admin", "these credentials can administer the repository",
                            "agent-identity"))
-    if agent:
-        out += agent_identity(repo)
+    if args.agent:
+        app = is_installation()
+        out += agent_identity(repo, app) + agent_credential(body.get("permissions"), headers, app,
+                                                            args.lander)
     return out
 
 
-def agent_identity(repo: str) -> list[str]:
+def is_installation() -> bool:
+    """True when the credentials are a GitHub App installation token, the only kind that reads its installation."""
+    try:
+        gh_get("installation/repositories")
+    except Unreadable:
+        return False
+    return True
+
+
+def signed_in() -> bool:
+    """False when gh holds no credential."""
+    try:
+        gh_get("rate_limit")
+    except Unauthenticated:
+        return False
+    except Unreadable:
+        pass
+    return True
+
+
+def expiry(headers: dict[str, str]) -> datetime | None:
+    """When the credentials expire, from the response headers; None when absent or unreadable."""
+    text = headers.get(EXPIRY_HEADER, "").replace(" UTC", "+00:00").replace("Z", "+00:00")
+    try:
+        due = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return due if due.tzinfo else due.replace(tzinfo=UTC)
+
+
+def agent_credential(permissions: dict | None, headers: dict[str, str], app: bool,
+                     lander: bool) -> list[str]:
+    """Findings for a push credential held off the lander, or a lander credential that outlives a batch."""
+    if lander:
+        return lander_lifetime(headers, app)
+    if not permissions:
+        return [finding("credential.unknown", "the repository reply does not say what these credentials "
+                        "may do", "push-credential")]
+    held = [right for right in PUSH_RIGHTS if permissions.get(right)]
+    if held:
+        return [finding("credential.push", f"this device is not the lander and these credentials hold "
+                        f"{', '.join(held)}", "push-credential")]
+    return []
+
+
+def lander_lifetime(headers: dict[str, str], app: bool) -> list[str]:
+    """Findings for lander credentials that do not end within one landing batch's hour."""
+    due = expiry(headers)
+    if due is None:
+        return [] if app else [finding("credential.no-expiry", "these credentials never expire; the "
+                                       "lander's token is the App's installation token", "push-credential")]
+    left = (due - datetime.now(UTC)).total_seconds()
+    if left > TOKEN_SECONDS:
+        return [finding("credential.long-lived", f"these credentials last another {left / 3600:.1f} hours; "
+                        "the lander's token is minted per landing batch and lasts an hour", "push-credential")]
+    return []
+
+
+def agent_identity(repo: str, app: bool) -> list[str]:
+    if app:
+        return []
     out: list[str] = []
     who = read("user", "identity.read", "agent-identity", out)
     if who is not None and who.get("login") == repo.split("/")[0]:
@@ -424,8 +516,10 @@ def agent_identity(repo: str) -> list[str]:
 
 def check_remote(repo: str, args: argparse.Namespace) -> list[str]:
     owner = repo.split("/")[0]
+    if args.agent and not args.lander and not signed_in():
+        return []
     return (check_rulesets(repo, args) + check_environment(repo, owner)
-            + check_actions(repo) + check_repository(repo, args.agent))
+            + check_actions(repo) + check_repository(repo, args))
 
 
 def default_repo() -> str:
@@ -441,7 +535,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--local", action="store_true", help="skip every GitHub request")
     parser.add_argument("--repo", help="OWNER/NAME; defaults to the repository gh is pointed at")
     parser.add_argument("--agent", action="store_true",
-                        help="the credentials in use are an agent's: fail when they are the owner's")
+                        help="the credentials in use are an agent's: fail when they are the owner's, can "
+                        "administer, or can push on a device that is not the lander")
+    parser.add_argument("--lander", action="store_true",
+                        help="with --agent: this device is the lander, so its credentials may push and "
+                        "must expire within an hour")
     parser.add_argument("--require-signatures", action="store_true",
                         help="also require signed commits on the default branch")
     parser.add_argument("--require-owner-review", action="store_true",
@@ -449,6 +547,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strict-tags", action="store_true",
                         help="also require the tag ruleset to block creation of v* tags")
     args = parser.parse_args(argv)
+    if args.lander and not args.agent:
+        parser.error("--lander is a mode of --agent")
 
     findings = check_codeowners() + check_workflows()
     if not args.local:

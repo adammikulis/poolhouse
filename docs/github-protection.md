@@ -50,7 +50,8 @@ Nothing after step 1 constrains an agent that still holds the owner's credential
 5. Run the apply command from step 3 again. It removes repository secrets, replaces the rulesets, sets the Actions
    and security settings, and ends with `scripts/github-protection --check`, which must print `0 findings`.
 6. Register the PyPI publisher with the `release` environment ([PyPI](#pypi)).
-7. From the agent's environment: `scripts/github-protection --check --agent`.
+7. From the environment of each device that runs agents: `scripts/github-protection --check --agent`; from the
+   lander's: `scripts/github-protection --check --agent --lander` ([Push credential](#push-credential)).
 
 What the owner does not know in advance and the first apply run shows: whether the repository is public or private
 (environment reviewers and rulesets on a private repository need a paid plan; an unavailable setting is a `*.read`
@@ -105,9 +106,35 @@ Limits that remain: a process of the same operating-system user can still read `
 the owner's own `gh` and `git` use. A separate operating-system account for agents closes that; the environment above
 removes the credentials from every command the harness runs by ordinary means, not from a process that goes looking.
 `scripts/github-protection --check --agent`, run from the agent's environment, fails when the credentials in use are
-the owner's account or can administer the repository.
+the owner's account or can administer the repository, and on a device that is not the lander when they can push
+([Push credential](#push-credential)). An installation token is the App acting as itself, so the account read is
+skipped for one.
 
 Rollback: unset the variables; the harness falls back to the owner's `gh` login.
+
+## Push credential
+
+One device pushes to the development branch: the lander, the device whose runner fast-forwards and pushes it
+([landing-queue.md](landing-queue.md)). Every other device that runs agents holds no push credential; it fetches with
+none or with a read-only one.
+
+- The lander's credential is the App's installation token, valid for an hour. No code in the repository mints it:
+  whatever launches the lander's harness ([Agent identity](#agent-identity)) mints a fresh one from the App's key,
+  which stays in the lander's keystore, for each landing batch. The fine-grained token (up to a year) is the weaker
+  option, used only until the App exists.
+- `scripts/github-protection --check --agent` is the mode of a device that is not the lander. It reads the
+  repository with the credentials in use and reports `credential.push` when they hold `push`, `maintain` or `admin`,
+  and `credential.unknown` when the reply does not say what they may do. A device where `gh` holds no credential
+  makes no remote read and has no finding.
+- `scripts/github-protection --check --agent --lander` is the lander's mode. It reports `credential.no-expiry` for
+  credentials with no expiry (a classic token, or a fine-grained token with none) and `credential.long-lived` for
+  credentials that outlast an hour. The expiry is the `GitHub-Authentication-Token-Expiration` response header; an
+  installation token (recognised by its read of `installation/repositories`) with no header passes, since GitHub
+  ends it within the hour.
+- Every request is a GET (`gh api PATH --include` for the repository read).
+- What the check cannot see: that a token was minted for the batch in hand (it sees the expiry, not the minting), the
+  owner's `gh` login and ssh keys when they are not the credentials in use, and the credentials of a process other
+  than the one running the check.
 
 ## Rulesets
 
@@ -211,6 +238,10 @@ gh api -X POST repos/$R/rulesets --input - <<'JSON'
 }
 JSON
 ```
+
+The check reports `ruleset.dev.rule` for a missing `deletion` or `non_fast_forward` rule, `ruleset.dev.extra` for an
+`update`, `creation`, `pull_request` or `required_status_checks` rule, `ruleset.dev.bypass` for any bypass actor,
+`ruleset.dev.enforcement` for a ruleset that is not `active` and `ruleset.dev.missing` when none covers the branch.
 
 Rollback: `gh api -X DELETE repos/$R/rulesets/$(gh api repos/$R/rulesets --jq '.[]|select(.name=="development")|.id')`
 
@@ -421,7 +452,8 @@ Rollback: remove the environment name from the publisher and delete `environment
 
 ```sh
 scripts/github-protection --check                     # as the owner
-scripts/github-protection --check --agent             # from the agent's environment
+scripts/github-protection --check --agent             # from the environment of a device that is not the lander
+scripts/github-protection --check --agent --lander    # from the lander's environment
 scripts/github-protection --check --local             # CODEOWNERS and workflows, no network
 scripts/github-protection --check --require-owner-review --require-signatures --strict-tags   # the optional rules
 ```

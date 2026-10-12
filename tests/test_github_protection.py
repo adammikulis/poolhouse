@@ -6,12 +6,13 @@ import copy
 import importlib.machinery
 import importlib.util
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "github-protection"
-from tests.github_support import GOOD, REPO, serve  # noqa: E402
+from tests.github_support import GOOD, REPO, serve, sign_out  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -41,7 +42,7 @@ def anchors():
 
 SECTIONS = ("rulesets", "codeowners", "workflow-rules", "agent-identity", "who-merges",
             "actions-settings", "code-security-settings", "the-release-environment",
-            "main-branch-ruleset", "development-branch-ruleset", "release-tag-ruleset")
+            "main-branch-ruleset", "development-branch-ruleset", "release-tag-ruleset", "push-credential")
 
 
 @pytest.mark.parametrize("section", SECTIONS)
@@ -267,3 +268,133 @@ def test_workflow_rules_name_each_unsafe_construct(gp, tmp_path, monkeypatch):
 
 def test_this_repository_workflows_follow_the_rules(gp):
     assert gp.check_workflows() == []
+
+
+def expires_in(**delta):
+    """The token-expiration header GitHub sends for a credential that ends ``delta`` from now."""
+    when = (datetime.now(UTC) + timedelta(**delta)).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return {"Github-Authentication-Token-Expiration": when}
+
+
+def credential(push=True, admin=False):
+    def apply(replies):
+        replies[f"repos/{REPO}"]["permissions"].update(push=push, admin=admin)
+    return apply
+
+
+def app_token(replies):
+    """An installation token: it reads the installation and cannot read the account behind `user`."""
+    replies["installation/repositories"] = {"total_count": 1, "repositories": []}
+    replies.pop("user")
+
+
+def served(tmp_path, monkeypatch, mutate, header=None, **kwargs):
+    headers = {f"repos/{REPO}": header} if header else None
+    return serve(tmp_path, monkeypatch, changed(mutate), headers=headers, **kwargs)
+
+
+def test_a_device_that_is_not_the_lander_holds_no_push_credential_per_the_check(
+        gp, tmp_path, monkeypatch, capsys):
+    (tmp_path / "member").mkdir()
+    (tmp_path / "lander").mkdir()
+    served(tmp_path / "member", monkeypatch, credential(push=True))
+    status, out = run(gp, capsys, "--agent")
+    assert status == 1 and "credential.push" in codes(out), out
+    line = next(ln for ln in out.splitlines() if ln.startswith("credential.push"))
+    assert line.rsplit("#", 1)[1] == "push-credential" and "push-credential" in anchors()
+    served(tmp_path / "lander", monkeypatch, credential(push=True), expires_in(minutes=50))
+    assert "credential.push" not in codes(run(gp, capsys, "--agent", "--lander")[1])
+
+
+@pytest.mark.parametrize("held", ({"push": True}, {"maintain": True}, {"admin": True}))
+def test_any_right_to_write_is_a_push_credential_on_a_device_that_is_not_the_lander(
+        gp, tmp_path, monkeypatch, capsys, held):
+    served(tmp_path, monkeypatch, lambda r: r[f"repos/{REPO}"]["permissions"].update(
+        {"push": False, "admin": False, **held}))
+    assert "credential.push" in codes(run(gp, capsys, "--agent")[1])
+
+
+def test_a_read_only_credential_leaves_a_device_that_is_not_the_lander_clean(
+        gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, credential(push=False))
+    status, out = run(gp, capsys, "--agent")
+    assert (status, out.strip().splitlines()[-1]) == (0, "0 findings"), out
+
+
+def test_a_device_with_no_credential_at_all_leaves_no_finding(gp, tmp_path, monkeypatch, capsys):
+    log = serve(tmp_path, monkeypatch, GOOD)
+    sign_out(monkeypatch)
+    status, out = run(gp, capsys, "--agent")
+    assert (status, out.strip().splitlines()[-1]) == (0, "0 findings"), out
+    assert all(line.startswith("GET ") for line in log.read_text().splitlines())
+
+
+def test_a_reply_that_does_not_say_what_the_credentials_may_do_is_a_finding(
+        gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, lambda r: r[f"repos/{REPO}"].pop("permissions"))
+    assert "credential.unknown" in codes(run(gp, capsys, "--agent")[1])
+
+
+def test_the_lander_flag_means_nothing_without_the_agent_flag(gp, capsys):
+    with pytest.raises(SystemExit) as stop:
+        gp.main(["--check", "--repo", REPO, "--lander"])
+    assert stop.value.code == 2 and "--agent" in capsys.readouterr().err
+
+
+def test_the_token_is_minted_per_batch_and_expires(gp, tmp_path, monkeypatch, capsys):
+    for name in ("app", "year", "never"):
+        (tmp_path / name).mkdir()
+
+    served(tmp_path / "app", monkeypatch, app_token, expires_in(minutes=50))
+    status, out = run(gp, capsys, "--agent", "--lander")
+    assert (status, out.strip().splitlines()[-1]) == (0, "0 findings"), out
+    served(tmp_path / "year", monkeypatch, lambda r: None, expires_in(days=300))
+    status, out = run(gp, capsys, "--agent", "--lander")
+    assert status == 1 and "credential.long-lived" in codes(out), out
+    served(tmp_path / "never", monkeypatch, lambda r: None, {"X-Oauth-Scopes": "repo, workflow"})
+    status, out = run(gp, capsys, "--agent", "--lander")
+    assert status == 1 and "credential.no-expiry" in codes(out), out
+    for line in out.splitlines():
+        if line.startswith("credential."):
+            assert line.rsplit("#", 1)[1] == "push-credential"
+
+
+def test_an_installation_token_that_reports_a_long_life_is_refused(gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, app_token, expires_in(hours=3))
+    assert "credential.long-lived" in codes(run(gp, capsys, "--agent", "--lander")[1])
+
+
+def test_an_installation_token_that_reports_no_expiry_is_the_apps_own_hour(
+        gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, app_token)
+    assert run(gp, capsys, "--agent", "--lander")[0] == 0
+
+
+def test_an_expiry_that_cannot_be_read_counts_as_none(gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, lambda r: None, {"Github-Authentication-Token-Expiration": "soon"})
+    assert "credential.no-expiry" in codes(run(gp, capsys, "--agent", "--lander")[1])
+
+
+def test_the_owner_check_still_runs_on_an_app_token_without_reading_the_account(
+        gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, app_token, expires_in(minutes=10))
+    status, out = run(gp, capsys, "--agent", "--lander")
+    assert "identity.read" not in codes(out) and status == 0, out
+    (tmp_path / "admin").mkdir()
+    served(tmp_path / "admin", monkeypatch, lambda r: (app_token(r), credential(admin=True)(r)))
+    assert "identity.admin" in codes(run(gp, capsys, "--agent", "--lander")[1])
+
+
+@pytest.mark.parametrize("rule", ("deletion", "non_fast_forward"))
+def test_the_development_branch_ruleset_blocks_deletion_and_force_push_per_the_check(
+        gp, tmp_path, monkeypatch, capsys, rule):
+    served(tmp_path, monkeypatch, lambda r: r[f"repos/{REPO}/rulesets/2"].update(rules=[
+        x for x in r[f"repos/{REPO}/rulesets/2"]["rules"] if x["type"] != rule]))
+    status, out = run(gp, capsys)
+    assert status == 1 and "ruleset.dev.rule" in codes(out), out
+    assert f"dev lacks the {rule} rule" in out
+
+
+def test_a_development_branch_with_no_ruleset_is_a_finding(gp, tmp_path, monkeypatch, capsys):
+    served(tmp_path, monkeypatch, lambda r: r[f"repos/{REPO}/rulesets"].pop(1))
+    assert "ruleset.dev.missing" in codes(run(gp, capsys)[1])
