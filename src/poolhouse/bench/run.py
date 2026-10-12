@@ -712,8 +712,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     refuse = "--no-queue" in rest
     rest = [a for a in rest if a != "--no-queue"]
-    if cmd == "sweep":
-        llamacpp_note.announce()
     if "--no-selfcheck" not in rest:
         began = time.monotonic()
         try:
@@ -725,6 +723,8 @@ def main(argv: list[str] | None = None) -> int:
                  "repeat a run whose path the last one proved")
             return 4
         say(f"selfcheck: ok ({time.monotonic() - began:.1f} s) -- {proved}", flush=True)
+    if cmd == "sweep":
+        llamacpp_note.announce()
     # After the self-check and before the prefetch and the lock: what this will cost, from
     # what is kept, and a refusal over the ceiling before a download or a load is paid
     refused = _estimated(rest)
