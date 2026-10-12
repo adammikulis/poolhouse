@@ -281,8 +281,20 @@ asked for under another name).
 * **The card** is written by the node from the structured act: `POOL:`, `RISK:` (sensitive; irreversible for a removal), `SAID:`/`WHO:`/`VERDICT:`/`TAINT:`, `ASK:`
   (the sentence of `gov/describe.rs`, or "Found the pool 'home', secure. ..."), `KEY:` (the phone's key in six groups of four), `SCOPE:`, `CANNOT:`,
   `WHY:`, `DENY:`, `EXPIRES:`, in plain ASCII. A name that is not ASCII is shown with hyphens.
-* A phone key counts as strong because it was added by the person's approval and signs only after their fingerprint; the node cannot yet check
-  the key is hardware-backed (Key Attestation, later).
+* A phone key counts as strong when the phone showed an Android Key Attestation chain when it was added (`phone/attest.rs`): a field
+  `attestation` of certificates in hex, the key's first, the root last, made with the challenge `poolhouse/phone-attest/v1`, the node's
+  fingerprint and the one-time code of the addition (the node checks it and the proof the phone signs covers the chain). The node checks every
+  signature along the chain, that it ends at a root it trusts, that the first certificate is about the key being added, and that the key
+  was made in hardware, is P-256 and needs the fingerprint for every signature. A phone that shows less is added weak and is never asked to
+  sign a pool. The list of Google's roots is empty (marked in `phone/attest.rs`), so no real phone is strong until the owner fills it in.
+* An admit card says THIS device or ANOTHER device, not yours, from the certificate compared with the node's own, with the certificate in
+  groups of four and the name the asker wrote quoted as unchecked; an added key reads as a new key, not one of the phones, with its person and
+  label quoted as unchecked. Names on a card are plain ASCII, or the request is refused before a card is made. A retried request for the same
+  act is the same card. A signature is accepted in one spelling only, strict DER with the smaller s (`Alg::canonical_p256`); the node
+  stores a phone's signature in that spelling.
+* The signature does not bind the request's id or expiry; the node's expiry and the act's own nonce and time stand for them.
+* The Android app asks for a strong authentication for every approval to sign an act, refuses a request for another key, algorithm or a
+  charter with any admin but its own key, and has not been compiled or run on a phone.
 * Not built: a number to match on this card; the phone rendering the plain words from the act itself; the Android change is small
   (`Challenge.signsAct`, `Challenge.actBytes`, one line in `Decider`) and has not been compiled or run on a phone.
 

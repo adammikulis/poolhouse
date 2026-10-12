@@ -99,10 +99,12 @@ when any process of the user's account can use it: a keystore item readable afte
 process can open for itself (the limit `docs/node.md` states under "Key custody"). The strength is declared when the key is
 enrolled and written in the charter; keys enrolled through the phone path are strong (`docs/phone-approval.md`). **Only strong keys
 count toward sensitive acts, toward removing a member and toward cancelling.** A weak key may sign only the end of a delegate (a
-reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` says "weak keys only" for a pool with no strong admin. **What is strong today:** the key of a phone added to this node (its
-Android Keystore key signs only after the person's fingerprint, once per signature; `docs/phone-approval.md`, "Signing an act"). The node
-takes that from the phone's addition, which the person approved; it cannot yet check that the key is hardware-backed or demands presence
-per signature (Key Attestation, which would let it check, is a later slice). A keystore key of the account, or a key kept in a file or put
+reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` says "weak keys only" for a pool with no strong admin. **What is strong today:** the key of a phone added to this node that showed an Android Key Attestation chain (`phone/attest.rs`): every
+certificate signed by the next, the last at a root the node trusts, the first about the key being added and made for this addition, and
+the key made in hardware, P-256, with the person's fingerprint needed for every signature (no use without authentication, no time window).
+A phone that shows less is added, and approves what it is asked, but its key is weak and founds nothing. **Until the owner fills in Google's
+published attestation roots (`GOOGLE_ROOTS` in `phone/attest.rs`, empty and marked) no real phone is strong.** Not checked: Google's
+revocation list and the validity dates of the chain. A keystore key of the account, or a key kept in a file or put
 in by a typed yes, is `weak`: any process of the account can use it after one prompt.
 
 **Roles.** `admin` signs and counts as above. `recovery` is a key kept offline (a phrase the person writes down, or a second phone
@@ -160,7 +162,7 @@ founders, each with its acceptance):
   from: null | {pool, handoff_hash}, at_ms }
 ```
 
-The **pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter body**, 32 hex digits. A copy of a pool with different
+The **pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter body with every acceptance blank**, 32 hex digits, so no signature changes it. A copy of a pool with different
 admins has a different id, and a stranger cannot make a pool with this id and other admins. The policy is part of the charter body
 and does not change inside a pool. The epoch rises when the admin set, a threshold, a hold or the mode changes; a reissue makes a
 new pool, not a new epoch. A **weakening** is any change to a smaller threshold, a shorter hold or delay, `mode: members`, a
@@ -648,7 +650,12 @@ what the agent does next. The node writes the `pool_created` event to the pool b
   is the node's, and a node that wrote text that did not match its act is caught only by the person reading the one-line summary.
 * **Several phones**: the oldest active phone is the admin; adding another phone as an admin is an `admin_add` it signs, which `pool_ask_sign`
   asks for but no command makes yet.
-* **Strength is declared, not attested** (1.3): Key Attestation recording is a later slice.
+* **Attestation roots are empty** (1.3): the node needs Google's published roots in `phone/attest.rs` before any real phone is strong, so
+  no pool is founded on a real machine until they are filled in. The pool check proves the refusal (`found-by-phone`); the success path is
+  proved in the node's own tests with a root the test makes. Nothing a shipped node honours adds a root.
+* **The only admin phone is not removed** (`phone::last_admin`): a lost phone is a lost pool until a second admin or a recovery key (slice 3)
+  exists.
+* **Retrying founding** after a denied admit asks the phone for the admit alone: the pool stands and this device is not yet its member.
 * A call that lists the open pools a device has heard (`ph.pool.join` needs the host and the fingerprint of an open pool's member, or a
   code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
 
