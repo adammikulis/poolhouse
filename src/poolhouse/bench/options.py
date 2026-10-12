@@ -15,6 +15,7 @@ from pathlib import Path
 # The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir()` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
+from poolhouse.bench import fitcontext, thinking
 from poolhouse.bench.askings import REACH
 from poolhouse.bench.counting import PER_QUESTION
 from poolhouse.bench.estimate import ceiling_default
@@ -248,7 +249,7 @@ def drafts_options() -> tuple[Option, ...]:
                   "f16, q4_0); a label ends -kv-TYPE for anything but q8_0 and "
                   "the table's ctx column shows it"),
         flag("--port", type=int, default=8099),
-        flag("--context", type=int, default=32768),
+        flag("--context", type=fitcontext.context_arg, default=32768, metavar="N|fit[:MAX]"),
         flag("--parallel", type=int, default=1, metavar="N",
              help="slots for a --serve'd model (default: %(default)s)"),
         flag("--binary", default="", help="a llama-server that reads this model"),
@@ -366,8 +367,18 @@ def sweep_options() -> tuple[Option, ...]:
                   "Repeat for each. Without this, --on measures servers somebody "
                   "else started -- which leaves the starting, stopping and waiting "
                   "to a shell loop that dies with its terminal"),
-        flag("--context", type=int, default=0, metavar="N",
-             help="total context for a --serve'd model (default: 32768 per slot)"),
+        flag("--context", type=fitcontext.context_arg, default=0, metavar="N|fit[:MAX]",
+             help="total context for a --serve'd model (default: 32768 per slot); "
+                  "fit is the most one user holds on this machine for each model, "
+                  "its cache type and --parallel, a tenth short of it, and at most "
+                  "the model's own context or MAX"),
+        flag("--thinking-levels", type=thinking.parse_levels, default=None,
+             metavar="off,low,medium,high,unlimited",
+             help="measure each --serve'd model at these thinking levels, one after "
+                  "another, each its own label and configuration (budgets 0, 1024, "
+                  "4096, 16384, unlimited; a model with no thinking runs once)"),
+        flag("--thinking", type=thinking.level_arg, default=None, metavar="LEVEL",
+             help="one thinking level for every --serve'd model"),
         flag("--parallel", type=int, default=1, metavar="N",
              help="slots for a --serve'd model (default: %(default)s)"),
         flag("--serve-port", type=int, default=8099,

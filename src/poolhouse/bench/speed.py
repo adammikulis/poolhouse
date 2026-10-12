@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from poolhouse import bench, gate, hub
+from poolhouse.bench import fitcontext
 from poolhouse.bench.askings import sampling_from
 from poolhouse.bench.backends import client_for, describe, http_of, parse_on, timings_of
 from poolhouse.bench.holding import _idle, said_by
@@ -30,6 +31,7 @@ from poolhouse.client.tokens import CHARS_PER_TOKEN
 from poolhouse.http import ServerError
 from poolhouse.log import say, warn
 from poolhouse.serve.backend import ServerFailed
+from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.preflight import PreflightFailed
 
 KIND = "speed"
@@ -310,9 +312,10 @@ def add_arguments(sub: Any) -> argparse.ArgumentParser:
                      help="tokens each request writes (default: %(default)s)")
     one.add_argument("--kept", default=str(bench.home_dir() / "runs.ladybug"),
                      help="where to keep the runs (default: %(default)s)")
-    one.add_argument("--context", type=int, default=0, metavar="N",
+    one.add_argument("--context", type=fitcontext.context_arg, default=0,
+                     metavar="N|fit[:MAX]",
                      help="total context for a --serve'd model (default: what the largest "
-                          "cell needs, per slot)")
+                          "cell needs, per slot; fit: the most one user holds here)")
     one.add_argument("--parallel", type=int, default=0, metavar="N",
                      help="slots for a --serve'd model (default: the most streams asked)")
     one.add_argument("--serve-port", type=int, default=8099)
@@ -406,12 +409,22 @@ def measure_served(args: Any, *, smoke: bool, smoking_first: bool) -> list[str]:
             say(f"    draft head: {head or 'none'} -- {chosen.why}")
         stem = (str(getattr(args, "serve_label", "") or "")
                 or str(model).rsplit("/", 1)[-1].removesuffix(".gguf")[:14])
+        args.parallel = slots
+        best = measured_run(args, model, head, heads, n)
+        try:
+            total, fitted = fitcontext.total_for(
+                args, model, default=per_slot * slots, headed=bool(head),
+                kv=getattr(args, "serve_kv", "") or (best.serving.cache_type if best else "")
+                or DEFAULT_KV_CACHE)
+        except fitcontext.DoesNotFit as why:
+            say(f"{model}: {why}")
+            continue
         label = (stem + ("-nodraft" if getattr(args, "no_draft", False) else "")
-                 + str(getattr(args, "label_suffix", "") or "") + "-speed")
+                 + str(getattr(args, "label_suffix", "") or "") + fitted + "-speed")
         say(f"\n{label}: {len(prompts)} prompt size(s) x {len(streams)} stream count(s)")
         args.parallel = slots
-        run = swept(args, model, measured_run(args, model, head, heads, n),
-                    context=per_slot * slots, head=head if n < len(heads) else None)
+        run = swept(args, model, best, context=total,
+                    head=head if n < len(heads) else None)
         run = run.over(port=int(args.serve_port), timeout=float(args.per_question),
                        n_predict=int(args.generate), temperature=0.0)
         try:

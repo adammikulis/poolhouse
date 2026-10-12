@@ -10,6 +10,9 @@
 # (`poolhouse-serve llama-cpp status`): every benchmark records the device hardware and system state
 # (owner, 2026-10-12). Models run smallest first, so a queue stopped early still holds the small ones.
 #
+# A step takes `--context fit` (the most one user holds for that model, 10 percent short of it)
+# and `--thinking-levels off,low,medium,high,unlimited`: docs/bench.md, "Context and thinking levels".
+#
 # Read it first:  poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --dry-run
 # Run it with:    poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --yes --detach
 # After the restart (wired memory raised, nothing else resident) the same line with --resume skips
