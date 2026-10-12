@@ -73,7 +73,7 @@ fn a_phone_founds_a_pool_with_its_own_key_as_the_strong_admin_and_admits_this_de
     assert_eq!(gov["weak_keys_only"], false);
     let admit = rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": {"cert": own_cert(&rig), "name": "", "how": "found", "via": ""}}));
     let (admit_id, card) = (id_of(&admit), admit["result"]["text"].as_str().unwrap().to_string());
-    assert!(card.contains("ASK: Let the device") && card.contains("join the pool."), "{card}");
+    assert!(card.contains("ASK: Admit THIS device, the computer your agent runs on"), "{card}");
     assert_eq!(rig.call("pool_status", "", "", json!({}))["result"]["members"].as_array().map_or(0, Vec::len), 0, "this device is no member until the phone signs");
     assert_eq!(tap(&rig, &phone, &admit_id)["ok"], true);
     let members = rig.call("pool_status", "", "", json!({}))["result"]["members"].clone();
@@ -210,6 +210,49 @@ fn a_phone_that_is_waiting_to_be_added_or_was_removed_is_not_a_signer() {
         assert_eq!(asked["ok"], false, "{state}: {asked}");
         assert!(asked["error"]["say"].as_str().unwrap().contains("your phone"), "{asked}");
     }
+}
+
+fn card(reply: &Value) -> String {
+    assert_eq!(reply["ok"], true, "{reply}");
+    reply["result"]["text"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn an_admit_card_says_whether_the_device_is_this_one_and_an_attackers_cert_named_like_the_owners_laptop_reads_another_device() {
+    let (rig, phone, token) = linked();
+    found(&rig, &phone, &token, "secure");
+    let own = card(&rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": {"cert": own_cert(&rig), "name": "laptop", "how": "found", "via": ""}})));
+    assert!(own.contains("ASK: Admit THIS device, the computer your agent runs on") && own.contains("DEVICE: This computer."), "{own}");
+    let attacker = kit::gov::ident(9);
+    let body = json!({"cert": hex(&attacker.der), "name": "laptop", "how": "tap", "via": ""});
+    let other = card(&rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": body})));
+    assert!(other.contains("ASK: Admit ANOTHER device, not yours,") && !other.contains("THIS device"), "{other}");
+    assert!(other.contains("It says its name is 'laptop' (not checked) and comes in by tap."), "{other}");
+    let words = other.lines().find(|l| l.starts_with("DEVICE:")).unwrap();
+    let fingerprint = attacker.fingerprint();
+    assert!(words.contains(&format!("{} {} {}", &fingerprint[0..4], &fingerprint[4..8], &fingerprint[8..12])), "the certificate is shown in groups of four: {words}");
+}
+
+#[test]
+fn a_certificate_that_is_not_this_devices_does_not_come_in_as_the_one_that_founds_the_pool() {
+    let (rig, phone, token) = linked();
+    found(&rig, &phone, &token, "secure");
+    let body = json!({"cert": hex(&kit::gov::ident(9).der), "name": "laptop", "how": "found", "via": ""});
+    let asked = rig.call("pool_ask_sign", "", &token, json!({"kind": "admit", "body": body}));
+    assert_eq!(asked["ok"], false, "{asked}");
+    assert!(asked["error"]["say"].as_str().unwrap().contains("own certificate"), "{asked}");
+}
+
+#[test]
+fn an_added_key_is_a_new_key_not_one_of_the_phones_and_what_its_adder_wrote_is_quoted_as_unchecked() {
+    use kit::gov::{entry, strong};
+    let (rig, phone, token) = linked();
+    found(&rig, &phone, &token, "secure");
+    let pool = rig.node.lock().unwrap().members.gov().unwrap().id.clone();
+    let key = serde_json::to_value(entry(strong(2, "owner"), 2, &pool)).unwrap();
+    let text = card(&rig.call("pool_ask_sign", "", &token, json!({"kind": "admin_add", "body": {"entry": key}})));
+    assert!(text.contains("ASK: Add a NEW key, not one of your phones, as an admin of the pool 'home'."), "{text}");
+    assert!(text.contains("label 'owner's key' (not checked)") && text.contains("DEVICE: The new key is "), "{text}");
 }
 
 #[test]

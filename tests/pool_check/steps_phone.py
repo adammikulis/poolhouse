@@ -171,7 +171,7 @@ def a_phone_founds_the_pool_by_signing(world: World) -> str:
     signed = _phone(device, "decide", body=phone.signature(card))
     assert signed["ok"] and signed["result"]["state"] == "approved", f"{device.name}: the phone's signature was not taken: {signed}"
     admit = _waiting(device, phone)
-    assert "ASK: Let the device" in admit["text"] and admit["id"] != card["id"], admit["text"]
+    assert "ASK: Admit THIS device" in admit["text"] and admit["id"] != card["id"], admit["text"]
     assert _phone(device, "decide", body=phone.signature(admit))["ok"]
     thread.join(60)
     assert "made" in done, f"{device.name}: founding by phone ended with {done.get('refused')}"

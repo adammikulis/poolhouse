@@ -21,6 +21,7 @@ use crate::error::{Error, Result};
 use crate::fsutil::{hex, random_hex};
 use crate::gov::act::{Act, ActSig, SigKind};
 use crate::gov::alg::Alg;
+use crate::gov::body::Body;
 use crate::gov::charter::Charter;
 use crate::gov::keys::{AdminKey, Role, Strength};
 use crate::gov::ops::{class_of, declined, no_pool, not_admin};
@@ -81,6 +82,8 @@ struct Card {
     ask: String,
     scope: String,
     key: String,
+    /// More lines the card carries after `KEY:`, each with its own label.
+    details: Vec<String>,
     who: String,
 }
 
@@ -93,6 +96,7 @@ fn card_text(c: &Card, ctx: &Context, expires_ms: u64) -> String {
     out.push(ctx.taint_line());
     out.push(format!("ASK: {}", c.ask));
     out.push(format!("KEY: {}", c.key));
+    out.extend(c.details.iter().cloned());
     out.push(format!("SCOPE: {}", c.scope));
     out.push("CANNOT: This signature is good for this one act and no other: not another pool, device or act. Your agent never holds your key and cannot sign for you.".into());
     out.push("WHY: You asked your agent for this. If you did not, deny it.".into());
@@ -182,10 +186,37 @@ pub fn ask_found(node: &mut Node, token: &str, name: &str, policy: Policy, proje
         why: "It makes a pool and makes your phone its first admin, which decides who joins.",
         pool: Some(pool_line(kind, false)), key: format!("Your phone's key {}", words(&fingerprint)),
         ask: format!("Found the pool {shown}, {kind}. {}. Your phone becomes its first admin, so only you can add or remove devices.", means(policy)),
-        scope: "Your phone's key signs that it accepts being the admin of this one new pool, and nothing else.".into(), who: who_line(node, &who),
+        scope: "Your phone's key signs that it accepts being the admin of this one new pool, and nothing else.".into(), who: who_line(node, &who), details: Vec::new(),
     };
     let action = json!({"kind": SIGN, "step": "found", "signer": fingerprint, "alg": Alg::P256Ecdsa, "key": public, "message": hex(&message), "charter": charter});
     make(node, &who, card, action, &format!("found:{name}"), now)
+}
+
+/// The title, the sentence and the further lines of the card for an admit or an added key, which say whose they are in words that do not
+/// depend on what the asker wrote; None for any other act, which the pool's own description of it serves.
+fn act_words(parsed: &Body, own: &str, pool: &str) -> Result<Option<(String, String, Vec<String>)>> {
+    let place = quoted(pool);
+    Ok(match parsed {
+        Body::Admit(a) => {
+            let (_, fingerprint) = crate::gov::body::cert_of(a)?;
+            let mine = fingerprint == own;
+            if a.how == "found" && !mine {
+                return Err(declined("Only this device's own certificate comes in as the device that founds the pool."));
+            }
+            let whose = if mine { "THIS device, the computer your agent runs on" } else { "ANOTHER device, not yours" };
+            let ask = format!("Admit {whose}, to the pool {place}. It says its name is {} (not checked) and comes in by {}.", quoted(&a.name), ascii(&a.how, MOST_LABEL));
+            let device = format!("DEVICE: {}. Its certificate is {}.", if mine { "This computer" } else { "Not this computer: approve only if you can see this certificate on that device" }, words(&fingerprint));
+            Some((format!("Admit {} to the pool {place}", if mine { "THIS device" } else { "ANOTHER device, not yours," }).chars().take(80).collect(), ask, vec![device]))
+        }
+        Body::AdminAdd(a) => {
+            let k = &a.entry;
+            let ask = format!("Add a NEW key, not one of your phones, as {} of the pool {place}. Whoever asked wrote its person {} and its label {} (not checked), and says it is {}.",
+                              if k.role == Role::Recovery { "the recovery key" } else { "an admin" }, quoted(&k.person), quoted(&k.label), if k.strength == Strength::Strong { "strong" } else { "weak" });
+            let device = format!("DEVICE: The new key is {} ({}); check these words against the device that holds it.", words(&k.fingerprint()), k.alg.name());
+            Some((format!("Add a NEW key, not one of your phones, to the pool {place}").chars().take(80).collect(), ask, vec![device]))
+        }
+        _ => None,
+    })
 }
 
 /// Ask the person's phone to sign the act of ``kind`` and ``body`` the pool would take next, when the phone's key is a strong admin of it;
@@ -195,22 +226,27 @@ pub fn ask_act(node: &mut Node, token: &str, kind: &str, body: Value) -> Result<
     let (public, fingerprint, label) = phone_key(node)?;
     let body = node.with_cut(kind, body);
     let now = wall_ms();
-    let (act, ask, charter_name, policy) = {
+    let own = node.cert.fingerprint();
+    let (act, (title, ask, details), charter_name, policy) = {
         let g = node.members.gov().ok_or_else(no_pool)?;
         let act = g.new_act(kind, body, now)?;
-        crate::gov::body::parse(&act).map_err(|e| declined(&e.to_string()))?;
+        let parsed = crate::gov::body::parse(&act).map_err(|e| declined(&e.to_string()))?;
         let charter = g.state().chain.state_for(&act).ok_or_else(|| declined("That act follows a charter this device does not hold."))?.charter.clone();
         if !charter.admin(&public).is_some_and(|k| k.role == Role::Admin && charter.is_strong(&public)) {
             return Err(not_admin());
         }
-        (act.clone(), ascii(&crate::gov::describe::describe(&act, g), 300), charter.name.clone(), node.members.policy.name())
+        let words = act_words(&parsed, &own, &charter.name)?.unwrap_or_else(|| {
+            let said = ascii(&crate::gov::describe::describe(&act, g), 300);
+            (said.chars().take(80).collect(), said, Vec::new())
+        });
+        (act.clone(), words, charter.name.clone(), node.members.policy.name())
     };
     let who = asker(node, token, now)?;
     let card = Card {
-        title: ask.chars().take(80).collect(), risk: if matches!(kind, "remove" | "admin_remove") { IRREVERSIBLE } else { SENSITIVE },
+        title, risk: if matches!(kind, "remove" | "admin_remove") { IRREVERSIBLE } else { SENSITIVE },
         why: if matches!(kind, "remove" | "admin_remove") { "A removed device or key does not come back." } else { "It changes who is in or runs this pool." },
         pool: Some(pool_line(policy, false)), key: format!("Your phone {} ({})", quoted(&label), words(&fingerprint)),
-        ask, scope: format!("Your phone's key signs this one act for the pool {} and nothing else.", quoted(&charter_name)), who: who_line(node, &who),
+        ask, scope: format!("Your phone's key signs this one act for the pool {} and nothing else.", quoted(&charter_name)), who: who_line(node, &who), details,
     };
     let action = json!({"kind": SIGN, "step": "act", "signer": fingerprint, "alg": Alg::P256Ecdsa, "key": public, "message": hex(&act.sign_bytes()), "act": act});
     let subject = format!("act:{}", act.id());
