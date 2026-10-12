@@ -11,13 +11,41 @@ trails master by days or weeks; the newest `bNNNN` tag is cut from master roughl
 |---|---|
 | `status [--json] [--offline]` | The active binary, its origin (env override, managed build, homebrew, PATH), version, build, commit; the newest build tag, the newest stable release and master upstream; `newer upstream commit: yes / no / unknown (offline)`. One check: three small GitHub API reads through `poolhouse.net`. |
 | `update [--ref master\|TAG\|SHA] [--force] [--jobs N] [--model GGUF]` | Resolves the ref to a full commit, fetches that commit, builds it, smoke-tests it, pins it and makes it active. Default ref is master. |
+| `ensure [--max-behind-hours N] [--json]` | Runs `status` (one upstream check) and, when upstream master is ahead of the active build and the track is not pinned, `update`. Safe to schedule: see "Keeping up to date". |
 | `rollback` | Back to the most recent earlier build that is still installed and still matches its pin. |
 | `pin BUILD` / `pin --off` | Makes BUILD active and stops tracking: `update` refuses until `pin --off`. |
 | `list` | The builds under `~/.poolhouse/llama.cpp/builds/`, which is active, previous or pinned, and the kept failures. |
 | `prune [--keep N] [--yes]` | Lists the good tracked builds beyond the newest 3 (never the active, previous or pinned one, never `failed/`) and deletes them only after you type `yes`. Nothing prunes on its own. |
 
 Exit codes: 0 done, 1 the new build failed its smoke test (the active build is unchanged), 2 an
-error (missing tool, unknown ref, pinned), 3 the source host needs approval.
+error (missing tool, unknown ref, pinned, upstream not reachable), 3 the source host needs approval.
+
+## Keeping up to date
+
+Owner requirement (2026-10-12): the machine is on the latest llama.cpp nearly always, and nothing
+used to run `update`, so an installed build was 59 builds behind. `ensure` is the one command a
+schedule runs. It prints one line:
+
+| Line | Meaning | Exit |
+|---|---|---|
+| `updated: build 11300 -> b11359-...` | built, smoke-tested and made active | 0 |
+| `current: ...` | already on master, or within `--max-behind-hours` (a build made less than N hours ago is left alone) | 0 |
+| `deferred: <reason>` | a broker lease holds a model for work, a `poolhouse-bench` measurement holds the measuring lock, or a bench queue is running; nothing changed, and a resident server keeps its binary while only new leases use the new one | 0 |
+| `skipped: master <sha> failed its smoke test ...` | that commit failed its smoke test and is not built again until upstream moves (recorded in `track.json` as `failed`) | 0 |
+| `failed: ... the active build is unchanged` | the smoke test failed | 1 |
+| `pinned: ...`, `offline: ...` | newer upstream exists but the track is pinned, or upstream could not be checked | 2 |
+| `approval: ...` | the source host needs approval | 3 |
+
+It never prunes. It builds the exact master commit it checked, so a failure is recorded against
+that commit. `track.json` also keeps `seen` (the last upstream answer), which the bench reads so a
+queue of sweeps asks GitHub once.
+
+Where it runs: the lead's heartbeat ([heartbeat.md](heartbeat.md)) each firing; the optional daily
+`llama-cpp-ensure` unit, which `python -m poolhouse.fleet.autostart prepare --role llama-cpp-ensure`
+stages and a person installs ([install.md](install.md)); and a read-only pre-step of
+`poolhouse-bench queue` and `sweep`, which prints `llama.cpp: build N, M behind master (age)` and a
+warning when the build is more than 24 hours old and behind. A queue never updates the build. Cmake and ninja are
+looked up in `/opt/homebrew/bin` and `/usr/local/bin` when a unit's `PATH` lacks them.
 
 ## Where things live
 

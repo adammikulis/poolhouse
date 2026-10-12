@@ -18,6 +18,7 @@ from typing import Any
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.bench.backends import short
+from poolhouse.bench.llamacpp_note import build_notes
 from poolhouse.bench.record import of
 from poolhouse.bench.score import (
     NOISE,
@@ -216,12 +217,13 @@ def band_of(one: Mapping[str, Any], key: str = "right", *, unit: str = "pts") ->
 
 def compare(store: str | Path, first: str, second: str) -> str:
     """The two labels side by side, and the difference between them."""
-    sides = []
+    sides, newest = [], []
     for label in (first, second):
         kept = bench.runs(store, label)
         if not kept:
             return f"no run labelled {label!r} in {store}"
         sides.append((label, kept[-1]["rows"]))
+        newest.append(kept[-1])
     lines = [f"{'':22} {first:>16} {second:>16}   difference"]
     scored = [[r for r in rows if r.get("expected")] for _, rows in sides]
 
@@ -260,7 +262,7 @@ def compare(store: str | Path, first: str, second: str) -> str:
         lines.append(row("expected shown (%)", hits(a), hits(b), unit="%"))
     failed = [sum(1 for r in rows if r.get("error")) for _, rows in sides]
     lines.append(row("failures", failed[0], failed[1]))
-    return "\n".join(lines)
+    return "\n".join(lines + build_notes(newest))
 
 
 def _shown(label: Any, width: int = 28) -> str:
@@ -390,7 +392,7 @@ def table(kept: Sequence[dict[str, Any]]) -> None:
         rows = one.get("rows") or []
         server = one.get("server") or {}
         scored = [r for r in rows if r.get("expected")]
-        def mean(f: Callable[[Mapping[str, Any]], float]) -> str:
+        def mean(f: Callable[[Mapping[str, Any]], float], scored: Sequence[Mapping[str, Any]] = scored) -> str:
             return f"{100 * sum(f(r) for r in scored) / len(scored):.0f}%" if scored else "-"
         right, rec, prec = mean(_hit), mean(_recall), mean(_precision)
         spread = band_of(one, "right")
@@ -421,7 +423,7 @@ def table(kept: Sequence[dict[str, Any]]) -> None:
             f"{prefixed(server):>4} "
             f"{drafting(rows):>6} "
             f"{_times(speedup(one, kept)):>6} "
-            f"{str(server.get('finder') or '-'):>7} "
+            f"{server.get('finder') or '-'!s:>7} "
             f"{at_once(server):>5} "
             f"{_gb(rss):>9} {_gb(server.get('footprint_peak')):>9} {wired_of(server):>8} "
             f"{of(one).beside_said:>7} "
@@ -429,6 +431,8 @@ def table(kept: Sequence[dict[str, Any]]) -> None:
             f"{(f'{per1k / 2**20:.1f}M' if per1k else '-'):>8} "
             f"{right:>8} {rec:>5} {prec:>5} {of(one).made:>5} {timeouts(one):>4}  "
             f"{sampled(server):14} {short(server.get('served_by'))}")
+    for line in build_notes(kept):
+        say(line)
 
 
 def by_serving(kept: Sequence[Mapping[str, Any]]) -> None:

@@ -6,11 +6,10 @@ import plistlib
 import subprocess
 import xml.etree.ElementTree as ET
 
-from .autostart_manifest import ROLE_INFO, Role
+from .autostart_manifest import ROLE_INFO, SCHEDULED, Role
 
-__all__ = ["ENSURE_INTERVAL_S", "render"]
+__all__ = ["render"]
 
-ENSURE_INTERVAL_S = 3600
 _NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 
 
@@ -25,7 +24,7 @@ def _plist(role: Role, scope: str, user: str) -> bytes:
     if role.role == "pool-daemon":
         unit["KeepAlive"] = {"SuccessfulExit": False}
     else:
-        unit.update(StartInterval=ENSURE_INTERVAL_S, LowPriorityIO=True, Nice=10)
+        unit.update(StartInterval=role.restart["interval_s"], LowPriorityIO=True, Nice=10)
     if scope == "system":
         unit["UserName"] = user
     return plistlib.dumps(unit, sort_keys=True)
@@ -66,7 +65,7 @@ def _timer(role: Role) -> bytes:
             f"Description=poolhouse {role.role.replace('-', ' ')} schedule\n\n"
             "[Timer]\n"
             "OnBootSec=120\n"
-            f"OnUnitActiveSec={ENSURE_INTERVAL_S}\n"
+            f"OnUnitActiveSec={role.restart['interval_s']}\n"
             "Persistent=true\n"
             "RandomizedDelaySec=120\n"
             f"Unit={name}\n\n"
@@ -85,10 +84,10 @@ def _task(role: Role) -> bytes:
     task = ET.Element(f"{{{_NS}}}Task", version="1.2")
     triggers = _sub(task, "Triggers")
     _sub(_sub(triggers, "LogonTrigger"), "Enabled", "true")
-    if role.role == "runtime-ensure":
+    if role.role in SCHEDULED:
         timed = _sub(triggers, "TimeTrigger")
         repeat = _sub(timed, "Repetition")
-        _sub(repeat, "Interval", f"PT{ENSURE_INTERVAL_S // 3600}H")
+        _sub(repeat, "Interval", f"PT{role.restart['interval_s'] // 3600}H")
         _sub(repeat, "StopAtDurationEnd", "false")
         _sub(timed, "StartBoundary", "2000-01-01T00:00:00")
     principal = _sub(_sub(task, "Principals"), "Principal", "")
@@ -116,6 +115,6 @@ def render(role: Role, platform: str, scope: str, user: str) -> dict[str, bytes]
     if platform == "win32":
         return {"task": _task(role)}
     out = {"service": _service(role, scope, user)}
-    if role.role == "runtime-ensure":
+    if role.role in SCHEDULED:
         out["timer"] = _timer(role)
     return out

@@ -28,6 +28,7 @@ from poolhouse import bench, hub, jobs, lock
 from poolhouse.bench import (
     extract as bench_extract,
     fitcontext,
+    llamacpp_note,
     ops,
     options,
     retrieval,
@@ -614,6 +615,8 @@ def cmd_queue(args: Any) -> int:
             f"  poolhouse-bench tail -f  -- follow the log\n"
             f"  poolhouse-bench stop     -- end the queue and the step inside it")
         return 0
+    if not args.dry_run:
+        llamacpp_note.announce()
     try:
         return run_queue(args.label, dry_run=args.dry_run, resume=args.resume,
                          yes=args.yes, ceiling=args.ceiling)
@@ -709,6 +712,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     refuse = "--no-queue" in rest
     rest = [a for a in rest if a != "--no-queue"]
+    if cmd == "sweep":
+        llamacpp_note.announce()
     if "--no-selfcheck" not in rest:
         began = time.monotonic()
         try:

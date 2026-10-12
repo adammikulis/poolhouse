@@ -16,6 +16,7 @@ from .autostart_manifest import (
     DAEMON_PORT,
     ENV_ALLOWED,
     ROLE_INFO,
+    SCHEDULED,
     SKEW_S,
     Manifest,
     Role,
@@ -63,7 +64,7 @@ def _argv_problem(role: Role, platform: str) -> str:
     problem = launcher_problem(want)
     if problem:
         return problem
-    ok = rest == ("runtime", "ensure") if role.role == "runtime-ensure" else all(_POOL_ARG.fullmatch(a) for a in rest)
+    ok = rest == SCHEDULED[role.role] if role.role in SCHEDULED else all(_POOL_ARG.fullmatch(a) for a in rest)
     return "" if ok else f"{role.role} takes only its own options, not {list(rest)}"
 
 

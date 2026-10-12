@@ -511,3 +511,12 @@ high and unlimited set `high` and `xhigh`, and the budget caps the tokens. A tem
 only the switch gets the budgets and the switch for off; a template with neither is said to
 have `no thinking` and is measured once. Both flags are served settings, so each level is a
 load of the model; the `ctx` column shows `/rb` and `show` carries the budget.
+
+## Which llama.cpp build a run used
+
+`show` prints `llama.cpp build N` under the table (from the run's `server.served_by.version`), and
+when the runs it shows used different builds it lists each build with its runs and says they are
+not directly comparable. `compare` does the same for its two runs. At the start of `queue` and
+`sweep`, `poolhouse-bench` prints `llama.cpp: build N, M behind master (age)` and a warning when
+the build is over 24 hours old and behind; it never updates the build
+(docs/llama-cpp-tracking.md, "Keeping up to date").

@@ -11,7 +11,7 @@ from poolhouse.serve import llamacpp_state
 from poolhouse.serve.binary import BinaryNotFound, find_binary, manifest_of
 from poolhouse.serve.build_paths import builds_dir
 from poolhouse.serve.build_platform import version_of
-from poolhouse.serve.llamacpp_upstream import Upstream, latest, tag_number
+from poolhouse.serve.llamacpp_upstream import Newest, Upstream, latest, tag_number
 
 __all__ = ["gather", "origin_of"]
 
@@ -46,9 +46,9 @@ def _numbers(line: str, info: dict) -> tuple[int | None, str]:
 
 
 def gather(upstream: Upstream | None = None, pipeline: net.Pipeline | None = None,
-           *, check: bool = True) -> dict:
-    """The facts `status` prints. ``upstream_checked`` is false when the one upstream check
-    could not be made, with the reason in ``upstream_note``."""
+           *, check: bool = True, newest: Newest | None = None) -> dict:
+    """The facts `status` prints. The one upstream check is skipped when ``newest`` (an earlier
+    answer) is given; when it could not be made the reason is in ``upstream_note``."""
     out: dict = {"binary": "", "origin": "", "version": "", "build": None, "commit": "",
                  "pinned": llamacpp_state.load()["pinned"], "problem": "",
                  "newer": "unknown (offline)", "upstream": {}, "upstream_note": ""}
@@ -67,7 +67,7 @@ def gather(upstream: Upstream | None = None, pipeline: net.Pipeline | None = Non
     if not check:
         return out
     try:
-        newest = latest(upstream, pipeline)
+        newest = newest or latest(upstream, pipeline)
     except net.NeedsApproval as exc:
         out["newer"], out["upstream_note"] = "unknown (source host not approved)", str(exc)
         return out

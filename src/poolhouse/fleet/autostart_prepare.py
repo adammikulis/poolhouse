@@ -22,6 +22,7 @@ from .autostart_manifest import (
     DAEMON_PORT,
     ROLE_INFO,
     ROLES,
+    SCHEDULED,
     TTL_S,
     Manifest,
     ManifestError,
@@ -40,6 +41,7 @@ __all__ = ["PrepareError", "Prepared", "Spec", "environment_for", "launcher_path
 
 LOG_BYTES = 5 * 1024 * 1024
 LOG_KEEP = 3
+DAY_S = 24 * 3600
 _LABEL = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 
@@ -95,8 +97,8 @@ def environment_for(platform: str) -> dict[str, str]:
 
 def role_argv(role: str, launcher: Path, spec: Spec) -> tuple[str, ...]:
     """The exec argv of ``role``: its launcher and options, each its own element."""
-    if role == "runtime-ensure":
-        return (str(launcher), "runtime", "ensure")
+    if role in SCHEDULED:
+        return (str(launcher), *SCHEDULED[role])
     if not isinstance(spec.slots, int) or not 1 <= spec.slots <= 64:
         raise PrepareError("slots is a number from 1 to 64")
     out = [str(launcher), f"--port={DAEMON_PORT}"]
@@ -125,7 +127,8 @@ def _role(name: str, platform: str, spec: Spec, launchers: Path) -> Role:
         name, ROLE_INFO[name]["label"], role_argv(name, launcher, spec), environment_for(platform),
         str(run),
         {"policy": "on-failure" if daemon else "schedule", "backoff_s": 30 if daemon else 60,
-         "burst": 5 if daemon else 1, "interval_s": 300 if daemon else 3600},
+         "burst": 5 if daemon else 1,
+         "interval_s": 300 if daemon else DAY_S if name == "llama-cpp-ensure" else 3600},
         {"mode": "log" if platform == "linux" else "files",
          "stdout": "log" if platform == "linux" else str(logs),
          "stderr": "log" if platform == "linux" else str(logs), "max_bytes": LOG_BYTES,
