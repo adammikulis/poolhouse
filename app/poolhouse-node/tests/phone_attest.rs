@@ -128,3 +128,16 @@ fn the_only_admin_phone_of_a_pool_is_not_removed_but_another_phone_is() {
     let allowed = rig.call("phone_remove", "", &token, json!({"phone": spare.id}));
     assert_eq!(allowed["ok"], true, "a phone that is not the pool's admin may be removed: {allowed}");
 }
+
+#[test]
+fn a_chain_put_in_after_the_phone_signed_its_addition_is_refused() {
+    let root = Arc::new(Root::new());
+    let (rig, _token) = trusting(&root);
+    let phone = FakePhone::new("Pixel");
+    let secret = rig.offer();
+    let mut body = phone.add_body(&rig.device(), &secret);
+    body["attestation"] = json!(root.chain(&phone.pkcs8, &challenge(&rig.device(), &secret), Claims::default()));
+    let (_, reply) = rig.phone("POST", "add", "", body);
+    assert_eq!(reply["ok"], false, "{reply}");
+    assert!(reply["error"]["message"].as_str().unwrap().contains("did not prove it holds its key"), "{reply}");
+}
