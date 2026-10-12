@@ -1,23 +1,30 @@
-# Every Qwen3.8 model and finetune on this machine, smallest to largest: a smoke, the ranking
-# questions, then speed. One piece of work on the device's compute at a time; each step is its own
-# `poolhouse-bench` process under the broker's lease.
+# Every Qwen3.8 model, quant and finetune on this machine, smallest to largest, one ladder. Per model:
+# a smoke, the ranking questions at each thinking level (off, low, medium, high, unlimited; the token
+# ratio between the levels is the point), then speed and memory by prompt size out to 120k tokens.
+# Same build, same questions and one context for every model (the CTX line below; 262144 is the
+# native limit, and a smaller value is a one-line change; `--context fit` picks the largest that fits). One piece of work on the
+# device's compute at a time; each step is its own `poolhouse-bench` process under the broker's lease.
 #
 # DO NOT RUN until the system snapshot (feat/bench-system-snapshot) and the generated-token ratio
-# (feat/bench-token-ratio) are landed and installed: every benchmark records the device hardware
-# and the state of the system, and a run without it cannot be compared (owner, 2026-10-12).
+# (feat/bench-token-ratio) are landed and installed, and llama.cpp is on the newest build
+# (`poolhouse-serve llama-cpp status`): every benchmark records the device hardware and system state
+# (owner, 2026-10-12). Models run smallest first, so a queue stopped early still holds the small ones.
 #
 # Read it first:  poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --dry-run
 # Run it with:    poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --yes --detach
-# After the restart (wired memory raised, nothing else resident), the same line with --resume skips
+# After the restart (wired memory raised, nothing else resident) the same line with --resume skips
 # every step already kept and measures the models that did not fit before.
 #
-# The Flash-Next quants are IQ builds: they are served with a warning on Metal and measured here
-# against the K-quants rather than refused. A model that will not load fails its smoke, which skips
-# its steps and moves on. The Bonsai ternary quants (Q2_0, PQ2_0, PTQ1_0) need a llama.cpp build that
-# reads them; the smoke says whether the managed build does. The official Flash-Next quant is not
-# downloaded: add its `set` line and three steps when `poolhouse-models fetch` has it.
+# IQ builds of Flash-Next are served with a warning on Metal and measured against the K-quants.
+# A model that will not load fails its smoke, which skips its steps and moves on; the Bonsai ternary
+# quants need a llama.cpp build that reads them, and the smoke says whether the managed build does.
+# The stock Flash-Next UD-Q4_K_XL (103.7 GB) is not downloaded:
+#   poolhouse-models fetch hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf
 
-set SERVING=--serve-kv q8_0 --context 65536 --per-question 300
+set CTX=262144
+set SERVING=--serve-kv q8_0 --context ${CTX} --per-question 600 --no-draft --plain-only
+set LEVELS=off,low,medium,high,unlimited
+set GRID=--prompts 512,4096,16384,32768,65536,120000 --streams 1,2,4 --generate 256
 
 set B8=hf:prism-ml/Ternary-Bonsai-8B-gguf/Ternary-Bonsai-8B-Q2_0.gguf
 set B2P1=hf:prism-ml/Ternary-Bonsai-2-27B-gguf/Ternary-Bonsai-2-27B-PTQ1_0.gguf
@@ -32,70 +39,76 @@ set M27_KXL=hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_XL.gguf
 set FN_IQ1M=hf:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF/IQ1_M/Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf
 set FN_IQ3S=hf:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf
 set FN_IQ4XS=hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+set FN_Q4=hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf
 
 # Ternary-Bonsai-8B Q2_0, 2.0 GB
-smoke: sweep --serve ${B8} --label-suffix=-bonsai8-q2 ${SERVING} --plain-only --smoke
-then:  sweep --serve ${B8} --label-suffix=-bonsai8-q2 ${SERVING} --plain-only
-speed --serve ${B8} --label-suffix=-bonsai8-q2 --context 65536
+smoke: sweep --serve ${B8} --label-suffix=-bonsai8-q2 ${SERVING} --smoke
+then:  sweep --serve ${B8} --label-suffix=-bonsai8-q2 ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${B8} --label-suffix=-bonsai8-q2-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Ternary-Bonsai-2-27B PTQ1_0, 5.5 GB
-smoke: sweep --serve ${B2P1} --label-suffix=-bonsai2-ptq1 ${SERVING} --plain-only --smoke
-then:  sweep --serve ${B2P1} --label-suffix=-bonsai2-ptq1 ${SERVING} --plain-only
-speed --serve ${B2P1} --label-suffix=-bonsai2-ptq1 --context 65536
+smoke: sweep --serve ${B2P1} --label-suffix=-bonsai2-ptq1 ${SERVING} --smoke
+then:  sweep --serve ${B2P1} --label-suffix=-bonsai2-ptq1 ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${B2P1} --label-suffix=-bonsai2-ptq1-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Ternary-Bonsai-2-27B PQ2_0, 6.7 GB
-smoke: sweep --serve ${B2P2} --label-suffix=-bonsai2-pq2 ${SERVING} --plain-only --smoke
-then:  sweep --serve ${B2P2} --label-suffix=-bonsai2-pq2 ${SERVING} --plain-only
-speed --serve ${B2P2} --label-suffix=-bonsai2-pq2 --context 65536
+smoke: sweep --serve ${B2P2} --label-suffix=-bonsai2-pq2 ${SERVING} --smoke
+then:  sweep --serve ${B2P2} --label-suffix=-bonsai2-pq2 ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${B2P2} --label-suffix=-bonsai2-pq2-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Ternary-Bonsai-27B Q2_0, 6.7 GB
-smoke: sweep --serve ${B27} --label-suffix=-bonsai27-q2 ${SERVING} --plain-only --smoke
-then:  sweep --serve ${B27} --label-suffix=-bonsai27-q2 ${SERVING} --plain-only
-speed --serve ${B27} --label-suffix=-bonsai27-q2 --context 65536
+smoke: sweep --serve ${B27} --label-suffix=-bonsai27-q2 ${SERVING} --smoke
+then:  sweep --serve ${B27} --label-suffix=-bonsai27-q2 ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${B27} --label-suffix=-bonsai27-q2-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # ThinkingCap-Qwen3.8-27B MLX 4-bit DWQ, 10.0 GB
-smoke: sweep --serve ${TC_MLX} --label-suffix=-tc-mlx4 ${SERVING} --plain-only --smoke
-then:  sweep --serve ${TC_MLX} --label-suffix=-tc-mlx4 ${SERVING} --plain-only
-speed --serve ${TC_MLX} --label-suffix=-tc-mlx4 --context 65536
+smoke: sweep --serve ${TC_MLX} --label-suffix=-tc-mlx4 ${SERVING} --smoke
+then:  sweep --serve ${TC_MLX} --label-suffix=-tc-mlx4 ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${TC_MLX} --label-suffix=-tc-mlx4-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # ThinkingCap-Qwen3.8-27B RCO 4.2bpw, 13.3 GB
-smoke: sweep --serve ${TC_RCO} --label-suffix=-tc-rco ${SERVING} --plain-only --smoke
-then:  sweep --serve ${TC_RCO} --label-suffix=-tc-rco ${SERVING} --plain-only
-speed --serve ${TC_RCO} --label-suffix=-tc-rco --context 65536
+smoke: sweep --serve ${TC_RCO} --label-suffix=-tc-rco ${SERVING} --smoke
+then:  sweep --serve ${TC_RCO} --label-suffix=-tc-rco ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${TC_RCO} --label-suffix=-tc-rco-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Qwen3.8-27B MLX 4-bit, 16.1 GB
-smoke: sweep --serve ${M27_MLX} --label-suffix=-mlx4 ${SERVING} --plain-only --smoke
-then:  sweep --serve ${M27_MLX} --label-suffix=-mlx4 ${SERVING} --plain-only
-speed --serve ${M27_MLX} --label-suffix=-mlx4 --context 65536
+smoke: sweep --serve ${M27_MLX} --label-suffix=-mlx4 ${SERVING} --smoke
+then:  sweep --serve ${M27_MLX} --label-suffix=-mlx4 ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${M27_MLX} --label-suffix=-mlx4-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # ThinkingCap-Qwen3.8-27B Q4_K_M, 16.2 GB
-smoke: sweep --serve ${TC_KM} --label-suffix=-tc-q4km ${SERVING} --plain-only --smoke
-then:  sweep --serve ${TC_KM} --label-suffix=-tc-q4km ${SERVING} --plain-only
-speed --serve ${TC_KM} --label-suffix=-tc-q4km --context 65536
+smoke: sweep --serve ${TC_KM} --label-suffix=-tc-q4km ${SERVING} --smoke
+then:  sweep --serve ${TC_KM} --label-suffix=-tc-q4km ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${TC_KM} --label-suffix=-tc-q4km-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Qwen3.8-27B Q4_K_M, 17.1 GB
-smoke: sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --plain-only --smoke
-then:  sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --plain-only
-speed --serve ${M27_KM} --label-suffix=-q4km --context 65536
+smoke: sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --smoke
+then:  sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${M27_KM} --label-suffix=-q4km-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
-# Qwen3.8-27B UD-Q4_K_XL, 17.9 GB
-smoke: sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --plain-only --smoke
-then:  sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --plain-only
-speed --serve ${M27_KXL} --label-suffix=-q4kxl --context 65536
+# Qwen3.8-27B UD-Q4_K_XL (stock Q4), 17.9 GB
+smoke: sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --smoke
+then:  sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${M27_KXL} --label-suffix=-q4kxl-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Qwen3.8-Flash-Next GSQ-RCO IQ1_M coder, 58.4 GB
-smoke: sweep --serve ${FN_IQ1M} --label-suffix=-iq1m ${SERVING} --plain-only --smoke
-then:  sweep --serve ${FN_IQ1M} --label-suffix=-iq1m ${SERVING} --plain-only
-speed --serve ${FN_IQ1M} --label-suffix=-iq1m --context 65536
+smoke: sweep --serve ${FN_IQ1M} --label-suffix=-iq1m ${SERVING} --smoke
+then:  sweep --serve ${FN_IQ1M} --label-suffix=-iq1m ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${FN_IQ1M} --label-suffix=-iq1m-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Qwen3.8-Flash-Next GSQ-RCO IQ3_S, 83.6 GB
-smoke: sweep --serve ${FN_IQ3S} --label-suffix=-iq3s ${SERVING} --plain-only --smoke
-then:  sweep --serve ${FN_IQ3S} --label-suffix=-iq3s ${SERVING} --plain-only
-speed --serve ${FN_IQ3S} --label-suffix=-iq3s --context 65536
+smoke: sweep --serve ${FN_IQ3S} --label-suffix=-iq3s ${SERVING} --smoke
+then:  sweep --serve ${FN_IQ3S} --label-suffix=-iq3s ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${FN_IQ3S} --label-suffix=-iq3s-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Qwen3.8-Flash-Next UD-IQ4_XS, 93.7 GB
-smoke: sweep --serve ${FN_IQ4XS} --label-suffix=-iq4xs ${SERVING} --plain-only --smoke
-then:  sweep --serve ${FN_IQ4XS} --label-suffix=-iq4xs ${SERVING} --plain-only
-speed --serve ${FN_IQ4XS} --label-suffix=-iq4xs --context 65536
+smoke: sweep --serve ${FN_IQ4XS} --label-suffix=-iq4xs ${SERVING} --smoke
+then:  sweep --serve ${FN_IQ4XS} --label-suffix=-iq4xs ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${FN_IQ4XS} --label-suffix=-iq4xs-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
+
+# Qwen3.8-Flash-Next UD-Q4_K_XL (stock Q4; needs the fetch, the restart and the raised wired limit), 103.7 GB
+smoke: sweep --serve ${FN_Q4} --label-suffix=-q4kxl-fn ${SERVING} --smoke
+then:  sweep --serve ${FN_Q4} --label-suffix=-q4kxl-fn ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${FN_Q4} --label-suffix=-q4kxl-fn-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 show --rank docs/model-ranking.md
