@@ -72,7 +72,8 @@ lists every quantisation of Qwen3.8-27B and Qwen3.8-Flash-Next, with no per-quan
 lowest tier of its family, so a local session on either counts as landing-level (docs/landing-queue.md,
 "Eligibility, review and brakes"). The Qwen3.5 0.8B, 2B and 4B models are the family's lowest tier, which never
 lands. The owner's view is that the 27B is at Claude Opus 4.6's level and Flash-Next comparable or higher.
-Section 2.7's figures are for full-precision weights, vendor-reported and unreproduced, and no published
+Qwen's own evaluation table, as three pages relay it, prints Flash-Next above the 27B on every row where
+both appear (section 2.7): a vendor claim, not reproduced here. Section 2.7's figures are for full-precision weights, vendor-reported and unreproduced, and no published
 benchmark covers the low-bit quantisations, so the tier of every quantisation is the owner's decision and not
 a measurement; this file does not claim a quantisation matches full precision. A local agent registers the
 id `model_identity` gives (the quantisation removed, for example `qwen3.8-27b`), so the table cannot tell the
@@ -226,8 +227,12 @@ reproduced at launch"; third-party evaluations "still pending as of August 19, 2
 `https://www.orcarouter.ai/blog/qwen-3-8-27b-benchmarks` (published 2026-08-17, changed 2026-08-25; "vendor-reported
 and unreproduced"). Both name the Qwen3.8-27B model card as the origin. No independent reproduction was found.
 
-Qwen3.8-Flash-Next (a mixture-of-experts model of about 125 billion parameters with about 6 billion active, per the
-second source below):
+Qwen3.8-Flash-Next is a sparse mixture-of-experts model. Qwen's technical report (section below) gives 125B
+parameters with 6B activated per token and an additional 51B of n-gram embedding tables held in host memory;
+two aggregators repeat 125B and 6B, and one counts "roughly 180B" stored once the n-gram table and the
+multi-token-prediction head are included, which is the same 125B plus the 51B the report calls additional. A
+reading of the model's config that gives a smaller stored size and fewer active parameters was reported to the
+author and could not be fetched, so no figure from it is used here.
 
 - `https://benchlm.ai/md/models/qwen3-8-flash-next.md`, last updated 2026-10-10 by the page, fetched 2026-10-12:
   overall 64.23 of 100, rank 37 of 889, scored on 37 of 625 benchmarks (the page says the coverage is partial);
@@ -239,7 +244,45 @@ second source below):
   tasks scored out of 10, behind GLM 5.3 Flash at 63 of 80, mostly on 3D rendering and front-end tasks; the two tied
   on math and agentic tasks. It makes no comparison with the 27B.
 
-Not claimed: that Flash-Next scores above the 27B in a like-for-like run, that either model matches Claude Opus
+Flash-Next against Qwen3.8-27B, Qwen's own evaluation table as three pages relay it (fetched 2026-10-12;
+vendor-reported, relayed by secondary sources, full-precision weights, no independent reproduction found):
+
+| Benchmark | Flash-Next | 27B | Pages that print the row |
+| --- | --- | --- | --- |
+| SWE-bench Pro | 62.5 | 61.7 | acecloud.ai, respan.ai |
+| DeepSWE 1.1 | 58.7 | 42.2 | acecloud.ai, respan.ai, datacamp.com (in its text) |
+| AndroidWorld | 84.5 | 81.9 | acecloud.ai, respan.ai |
+| SWE-bench Multilingual | 81.0 | 73.8 | acecloud.ai only; datacamp.com gives only 81.0 |
+| NL2Repo-Bench | 48.1 | 42.3 | acecloud.ai only |
+| RecreationBench, Vision2Web, CoWorkBench, JobBench | 49.9, 64, 73.9, 55.7 | 47.1, 62.9, 70.7, 33.4 | acecloud.ai only |
+| Toolathlon Verified | 73.5 | 67.1 | respan.ai only; datacamp.com gives only 73.5 |
+| GPQA Diamond | 91.7 | 89.2 | respan.ai only; datacamp.com gives only 91.7 |
+| HLE | 35.9 | 30.8 | respan.ai only; datacamp.com gives only 35.9 |
+| IFBench | 81.3 | 79.5 | respan.ai only |
+| RealWorldQA | 88.5 | 85.9 | respan.ai only |
+
+The pages agree on every figure more than one of them prints; they differ in which rows they print, so a row
+marked "only" rests on one page. `https://acecloud.ai/blog/qwen3-8-27b-vs-flash-next/` (last updated 2026-10-06,
+"Qwen's published evaluations") prints nine rows and Flash-Next is higher on all nine.
+`https://www.respan.ai/articles/qwen-3.8-models-comparison` (2026-09-24, attributed to the Flash-Next model card)
+prints eight and says Flash-Next is higher on every row of Qwen's shared table.
+`https://www.datacamp.com/blog/qwen3-8-flash-next` (2026-08-27, "Qwen's own release table", an image whose
+27B column could not be read) says Flash-Next beats its 27B sibling on every published benchmark; only the
+DeepSWE 1.1 pair is in its text. The 27B's GPQA Diamond and HLE here match its figures in the Opus table above.
+
+The technical report `https://arxiv.org/pdf/2608.30320` (Qwen Team, "On the Design of Qwen3.8-Next Architecture:
+Evaluation, Efficiency, and Training Stability", 2026-08-31) compares Flash-Next's base model with the 397B-A17B
+predecessor on fourteen pre-training benchmarks: ahead on eight and behind on the rest by at most 2.6 points
+(abstract and introduction; the first three pages were read, not the evaluation tables). Those pages show no
+comparison with a 27B base. datacamp.com says the base model "wins 8 of 14" against the 27B and Qwen3.7-Plus
+bases, which matches the report's eight of fourteen against the predecessor and not a 27B comparison. A claim
+that Flash-Next-Base beats 27B-Base on all fourteen is not confirmed and is not recorded here.
+
+This repository has no 27B-versus-Flash-Next run of six or more scored questions: `docs/report-2026-09-23.md`
+lists two short 27B runs, left out for fewer than six scored questions.
+
+Not claimed: that Flash-Next is above the 27B in a run of this repository or in any independent run (Qwen's
+table says it is, on every row it prints, and that is a vendor claim), that either model matches Claude Opus
 4.6 in this repository's work, or that a quantisation matches full precision.
 
 ## 3. What to launch when
