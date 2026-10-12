@@ -23,8 +23,11 @@ being edited (AGENTS.md, "Driving a model on this machine").
 both guards off.
 
 - The Bash guard refuses the command-line forms of the rules in AGENTS.md: `git add -A`, `.` and `-u`, `git commit -a`, `llama-server`
-  by hand, `poolhouse-serve up` flags that skip the lease, a push to `main` (a promotion is a pull request from a `promote/<date>`
-  snapshot, merged only under the owner's live `release-main` authorization; `POOLHOUSE_PUSH_MAIN=yes` opens nothing), and a force
+  by hand, `poolhouse-serve up` flags that skip the lease, a push to `main` until the person has selected the approval for that
+  one commit (the main session runs `scripts/hooks/person-consume propose`, asks its question with AskUserQuestion word for word, and
+  the guard and `pre-push` then let that one fast-forward through, once; `POOLHOUSE_PUSH_MAIN=yes` opens nothing; where the origin's
+  ruleset on `main` requires a pull request, the same approval covers a pull request from a `promote/<date>` snapshot that the main
+  session merges under the live `release-main` authorization), and a force
   push, a remote ref deletion, `--all` or `--tags` pushes, past any `NAME=value` written in front of the command.
 - The edit guard refuses, at the moment it is written, the writes AGENTS.md, "The gates" lists (a duplicate function body, a raw HTTP
   call, a docstring over twelve lines, a signature over eight parameters, a file over its line limit or made longer). It reads the two
