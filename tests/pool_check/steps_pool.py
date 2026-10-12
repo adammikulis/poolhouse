@@ -26,6 +26,8 @@ def join_open(world: World) -> str:
         notes.append(f"{second.name} was refused by {first.name} ({host} is not on its network): " + out["error"][:100])
     if world.count >= 3 and not world.native:
         third = world.others[1]
+        if not out["ok"]:
+            world.found(second, "open")
         world.join(third, second)
         world.converged([first, second, third] if out["ok"] else [second, third])
         by = {m["fingerprint"]: m["by"] for m in second.others() if m["fingerprint"] == third.fingerprint}
