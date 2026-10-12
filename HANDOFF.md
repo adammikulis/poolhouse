@@ -1,16 +1,6 @@
 # Handoff
-
-## Pending recovery work
-
-- NATS JetStream as an optional journal link: parked in `~/.poolhouse/bundles/nats-jetstream-parked-20261008.bundle` (verified complete history; tips from `git bundle list-heads`), branches fix/linux-immutable-runner, fix/linux-admission-stdio-current, fix/nats-*, feat/nats-*, feat/jetstream-message-store, fix/authenticated-agent-messages(-nats), docs/nats-coordination-quickstart, feat/canonical-writer-isolation, fix/test-kernel-isolation, fix/linux-runner-immutable. Depends on it: the message store replacing graph messages, the managed loopback broker, board-host/authority_machine checks (native task registration, CPU verification client), writer attribution in `chain.held`. Mesh journals are the board; JetStream may only become a link, never a host or authority.
-- Board delivery latency exceeds the existing budgets: measured single-recipient DM 479 ms and Board 363 ms against 50/150 ms. Reduce graph opening and integrity-query costs; preserve integrity, privacy and latency budgets. Evidence: `/private/tmp/poolhouse-board-observer-handoff.md`.
-- Preserve `/private/tmp/poolhouse-qwen-worker-project/published-source` while pending task scopes and the stopped worker reference it. Add an authenticated offline source-rebinding operation before removing this source anchor; preserve pending task states and grants.
-- Triage the remaining failures from the October 6 macOS background full red-team run at `920cf217`: 130 failed, 30 errors, 13,729 passed, 364 skipped. Re-run the remaining Board latency, serving, training, gym and fixture failures after scoped setup, pairing and installer repairs. Evidence: `/private/tmp/dev-final-background-full.log`, `/private/tmp/dev-full-failures.txt` and `/private/tmp/poolhouse-full-lifecycle-project-diagnosis.md`. Linux testing is active: use the WSL device and report its exact device, operating system, runtime and commit.
-- Verify an authenticated connection and a Board message/reply with the other physical device after separate Dev profile activation. Local discovery and browser checks do not establish this roundtrip.
-- Real-machine guard remainder (2026-10-11): `poolhouse.real_machine` now bars the machine's keystore, `security`, administrator-privileges `osascript` and the System Events query to anything but the installed software on the real `~/.poolhouse`. Left: (1) the caller of the ten administrator-password `osascript` dialogs at 16:53 on 2026-10-11 (responsible process VS Code, pid 9352) is not identified from the system log; (2) plain `osascript` display dialogs (`desktop.py`, `fleet/onboard/notify.py`) are still only PATH-shimmed in tests, not refused by `real_machine`; (3) test node supervisors and nodes from 2026-10-10 14:46 (`poolhouse.node_launch supervise --state /tmp/ml*/node`) are still running and should be stopped; (4) `poolhouse/lan.py` (another branch) has its own installed-software check: fold the two into one.
-
+# Priority 1: security
 ## Pools and serving, slice 1 (governance core, 2026-10-11)
-
 - **No signer is connected to the shipped node.** Until `docs/phone-approval.md` (slice P1) lands, `pool_create` answers that it needs an OK nothing can ask; the typed-yes person key path (`pool_found`, `pool_draft`, `pool_submit`) has no Python client, so no real pool can be founded on a device today. Slice 2 (reissue, the copy defence; the legacy pool is deleted, not migrated), slice 3 (the recovery key's time lock, `endorse`, members-governed mode, dispute banners), check words and the trusted-display joins (slices 5 and 8) and many pools on a device (slice 4) are not started.
 - **The delegate needs a keystore-bound device key** (`docs/pool-encryption.md`, slice 3; prerequisite P3): until it exists `Node::key_binding` is `File` on every device, so no device signs a delegate admit.
 - **Known limits of slice 1, from the attack-first review (2026-10-11), each in `docs/node.md` "Who governs a pool":**
@@ -35,7 +25,6 @@
     which this change does not touch.
 
 ## Phone approval (2026-10-11)
-
 - Nothing of the Android app has run on a phone: the camera scan, the fingerprint prompt, the notification and the push. The list is "Checks on a real phone" in `docs/phone-approval.md`; the debug APK builds with `python app/android/build.py GRADLE PLUGIN API debug` and its protocol checks and the pool check's `phone-approval` step pass.
 - The wake-up for a closed app is UnifiedPush, written from the connector specification (`org.unifiedpush.android.connector.*` broadcasts with the extras `token`, `endpoint` and `bytesMessage`) and never tried against a real distributor such as ntfy. An FCM sender needs a Firebase project, which is an account of the owner's.
 - The first phone is added on the strength of a one-time code and one fingerprint, with no second approval: a code photographed within its ten minutes adds a phone, which the terminal names with its key afterward (the first phone's code is drawn in the terminal only, never written as an image file). A comparison of the key on both screens before the node accepts it is not built.
@@ -48,7 +37,6 @@
 - Left from the second attack-first review of the phone approval (2026-10-11; findings 1, 2, 3, 5, 6, 7 and 10 and the strong-fingerprint half of 8 are fixed and landed with their tests; the rest is not built, none a way to approve without the person's key): **4** is built and tested but has never been answered by a person: the first person key and the first phone need the person's yes to a question the node itself asks (the operating system's prompt on macOS and Linux, raised only by the installed software on the real home with `--presence os`; a typed yes on a terminal the node reads, `--presence terminal`, for nodes that have no prompt, and for the pool check and the tests, which type it at a pseudo-terminal against the shipped binary), the one-time secrets live in the node's memory, and there is no cargo feature or switch that answers for the person (`tests/test_presence.py`, the Rust `presence` tests). Left: Windows has neither prompt nor terminal reading, so the first key and phone are refused there; a further phone's code made by `phone add` is asked of the node as a session's (the approval text says the session made it), and a person-signed `phone_offer` is not built; `persons.json` is a plain file the OS user can edit with the node stopped (accepted: the OS-level agent sandbox, slice S0 of docs/compromised-agents.md, closes it); on Linux a polkit rule that authenticates without a password makes the prompt answer itself; the yes for a phone is not bound to the phone's key (it is made by the phone after the scan and shown on both screens); the approval paths for `set_join_policy` are removed (a pool's policy is fixed at founding, so a change is a new pool), and an approval kind that says "create a new pool with policy X" is not built; a program that can open a pseudo-terminal can answer a node that asks on a terminal (the reason the system prompt is used wherever there is one). **8**, the Keystore attestation chain is not recorded at enrolment and the app does not say hardware key or software key; the node cannot yet treat a software key as weak. **9**, the wake-up is not signed, the first UnifiedPush distributor that answers is still used, pushes are not padded, the unauthenticated `hello` still returns the device name, policy and version, `phone add` still restarts the node and binds `0.0.0.0`, and one address may hold six of the 48 connections (seven addresses hold them all).
 
 ## Standing grants (2026-10-10)
-
 - A person approves the lead's grants once on each device after the node is swapped: `poolhouse-workspace grants-setup --session LEAD-NAME` at a terminal (the exact list is printed and asked about with one typed yes; without `--session` the board's main sessions are listed to pick from). Until then no agent session holds `land_control`, `task_authority`, `shard_call` or `note_verify`; `shard_consent`, `sync_now`, the pool actions, `land_trust`, `quarantine_release`, `file_delete`, `link_write`, `link_remove` and `source_add` work only for a command a person runs at a terminal, which asks on the terminal device before it signs a one-use grant. A session registered before this node was swapped has no lineage recorded: its harness presents the token it holds when it registers again, or a person runs `rebind`.
 - Registration is open, so a class grant (`--class`, `grants-setup --family`, both behind `--i-understand-registration-is-open`) is held by whatever claims the family. A grant that names a session is spent only by a request from the process lineage that registered the token it carries; the token is a file any process of the user can read, so a process inside the lead's lineage (its subagents and tools) holds what the bundle gives the lead for 30 days (docs/node.md, "What the lead's lineage can do with the bundle"). Proving who holds a token on every request, not only when a grant is spent, is planned.
 - The person key's custody is the operating-system user plus a typed yes on `/dev/tty`; a same-user process that can type into the person's terminal or read the keychain item still signs. A per-use operating-system user-presence prompt (Touch ID) or a hardware key is the planned fix (docs/node.md, "Key custody"). The person's screen has no terminal, so it cannot sign until it shows the same question itself.
@@ -57,46 +45,61 @@
 - A second device's person key is enrolled with `person-proof` there and `person-enroll` here; until then a grant written there is listed as ignored. The first key on a node is enrolled by `grants-setup` with a one-time secret; the last key on a node is removed only by stopping the node and deleting `persons.json` (docs/node.md, "Recovery").
 - `ph.board.Board.grants()` is planned in docs/api.md; nothing public issues or revokes a grant.
 
-## Overnight landing run (2026-10-08 to 2026-10-09, lead claude-828605)
-
-Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a green gate: gate made read-only and incremental (`173e52f1`), reranker (`efaccdfe`), measuring scheduler (`d92d5634`), keystore audit F-1..F-7 (`4fa7686d`), admission queue of 128 and the keystore_guard layer (`e3761c51`), admission failure runs unscheduled (`f405f6b3`), result-cache fix (`3bb493a0`), selector precision (`80e3c389`), ccache (`7c0ffdb3`), restart idle-retry and the recovery test (`d80d7621`), UI publication stack with chat capabilities (`ae9dcca0`).
-
-- **The gate fails inside an agent session** (4 `tests/test_redteam_human_floor.py` cases and 13 `tests/test_worker_completion.py` tests see the session's own agent markers). Run it with `env -u CLAUDECODE -u AI_AGENT -u POOLHOUSE_WORKSPACE_AGENT -u POOLHOUSE_SESSION_HARNESS -u POOLHOUSE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT` until the baseline branch lands.
-- **The installed `poolhouse` in the pyenv site-packages is a 0.2.1 wheel from 2026-10-07**; the `poolhouse*` launchers follow `~/.poolhouse/runtimes` but the library import does not. Owner order: use our latest code continuously. A `.pth` or editable install of the primary checkout is needed (`editables` is missing; the auto-mode classifier refused the write to the shared pyenv). The old install is saved in the `pyenv-poolhouse` tarball in `~/.poolhouse/bundles`.
-- **The Board is unreachable from this checkout** (`poolhouse-workspace inbox`: "the project host was not authenticated by cluster discovery", later "this project already names another Board"), so no contact from the Windows-side Claude was read.
-- **Tests that fail on a clean tip:** four `tests/test_testslots.py` timing tests under heavy load (`test_invalid_rpc_token_cannot_acquire_capacity`, `test_idle_tail_workers_release_capacity_for_another_suite`, `test_short_tests_do_not_wait_for_a_polling_tail_between_batches`, `test_disconnected_rpc_waiter_releases_its_queue_entry`); the launch-ticket browser tests in `tests/test_conversations_workspace.py`; the `FakeDaemon` fixture in `tests/test_fleet_join.py` (no `device` argument); `tests/test_redteam_human_floor.py` depends on the session environment; the `scripts/test` broker still has no queue position or calibration run for agents.
-- **Restart audit issues not fixed:** capacity held for an uncertain launch has no person-gated release (`src/poolhouse/fleet/jobs.py:263`); a verification receipt is trusted from a file the run wrote (`src/poolhouse/runtime_store.py:55,62`); the chat repair path cannot register a candidate runtime (`src/poolhouse/fleet/runtime_repair.py:115-146`).
-- **Parked Codex work:** about 450 distinct unlanded patches, of which 8 NATS-stack branches are in `~/.poolhouse/bundles/codex-parked-20261008.bundle` and the old land branch in the `land-old` bundle beside it (restore: `git fetch <bundle> <branch>:<branch>`, branch names from `git bundle list-heads`). Still unlanded: `integrate/dev-cpu`, the workspace reputation and attribution commits `133dd374` and `7f31bc29`, Studio (`feat/poolhouse-studio-mlx`), board-history rebuild-conversations, coordination batch.
-
-## Open from the claude session (2026-10-08)
-
+## Keystore, hooks, sandbox and authority (from the 2026-10-08 session)
 - **Keystore decisions D-1..D-8 are done (2026-10-09), with these unverified:** the Windows `icacls` call is tested with a mocked subprocess and no real ACL was read back; the frozen build was run on a Mac only, so the bundled Windows and Secret Service backends were not exercised; the macOS Keychain behaviour behind "D-1 stays a single prompt" is argued in `docs/keystore.md`, not measured on a real item; a `--system` boot with no unlocked keystore was not run at boot.
 - **The real-state write denial (`scripts/testwritedeny.py`) ran on macOS only.** The Linux `bwrap` branch is probed at run time and never exercised here, Windows runs unwrapped. A new test module that starts `sandbox-exec` fails under it with `sandbox_apply: Operation not permitted` until it is added to `tests/seatbelt-modules.txt`; the slow and heavy tiers were not run with the denial, so modules only they reach may still need listing.
-
-- **Broker branches 2-5 of the one-thing-computing rule are not started** (branch 1, the device field, is landed). `broker-purpose-not-exclusive`: `Broker._decide` in `src/poolhouse/serve/broker.py` still serialises same-purpose asks behind a held server (`busy`, `_first_for_purpose`); a different model under one purpose must get its own resident server when memory admits. Then `gate-compute-lease-per-device` (`serve/gate.py`), `workspace-allocation-device`, and `rule-docs-and-bench-profiles` (measure a CPU model beside a GPU one for memory-bandwidth cost; per-platform setting, default allowed). Rule: `AGENTS.md`, "One thing computing on the GPU at a time".
-- **Leases from the node, what is left of P2** (`docs/pools-and-serving.md`, slice P2): the serve broker, the request gate and a training run's `gpu-training` claim take their leases from the node's table (`poolhouse.leasetable`). Still kept apart from it: the test runners' core grants (`Broker.take_cores`, `scripts/testslots*`), `fleet.jobs.JobRunner` slots, `lock.only_one` and `workspace/claims.py`. A broker server's slot is named `serve:<file>@<port>` so it never meets a task worker's slot (the model's name); slice 11 decides what an offer's server takes. Each lease call on a node with a large `pool` board folded the board before this change; only a request that names a branch or area claim does now.
 - **The device key moves into the keystore on a person's command** (`docs/node.md`, "Where the device key is kept"): a new device is born into the keystore when its master key exists or a person is at the screen, and every existing device keeps `device.key` (weak in `pool_status`) until a person runs `poolhouse node key --migrate` at a terminal on it; nothing ran it on the owner's devices, and no test touched a real Keychain, Windows or Secret Service keystore (fake rings only). `device_setup` does not ask for the one Keychain prompt yet, so a first-run device started by a service with no master key starts weak. Accepted and written in `docs/node.md`: the supervisor hands the key to the binary a user-writable pointer names, a process of the same user that can ask the keystore signs as the device, and a backup made before the move still holds the old key file.
-- **Old GPU-rule wording remains** in `HANDOFF.md` (the serving section), `docs/experiments/iq-vs-kquant-metal.md:53`, `src/poolhouse/ingest/serving.py:87`, `src/poolhouse/bench/queue.py:21` and `tests/workspace_screen_corpus.py:35`; each states "one model on the GPU" and needs rewording or a decision.
-- **Branch hygiene rule (f) has no mechanical check**: a bound on `scripts/test` fixed cost needs an opt-in timing harness (AGENTS.md, "Branch hygiene and landing").
 - **Hooks are not verified end to end on the restored runtime.** SessionStart, SubagentStart/Stop and the nudge push (message text shown in the TUI) have only run from source; the nudge board fix needs a Board host restart. The installed `poolhouse-workspace` was down for a time during another agent's runtime deploy.
 - **`authority_machine` removal (`4ee616e7`) is unverified on two real machines**: discovery, certificate pinning and the host-address path are covered by fakes and in-process TLS only. The Projects and Tasks pages were not driven in a browser (browser tests fail on this machine). `board_host` is self-declared and tied to a device only by the pinned certificate.
 - **Owner has not reviewed the `AGENTS.md` rules changes** (authority registry, GPU rule, "The agents push; the owner does not").
 - **Not built, discussed:** attested instructions (one-time hash on UserPromptSubmit, taint tracking for delegated gates) and decision-model screening of board messages at ingest.
-- **Home pool, slices 1-12 not started** (`docs/home-pool.md`, section 3): tailnet IPv4 route display, device capability block with a `Requires` filter, board-fed landing queue, phone person credential, remote test runner, mesh board stage 1, remote-broker lease, phone capabilities, pool MCP tools, Tailscale prepare/verify, PWA client, wake and idle unload. Start with slices 1, 2 and 3 (independent). The tailnet IPv4 admission in `Invitations.mint`, `companion_routes` and `invite_routes` is fixed; the route display per device is not.
 - **Pool encryption: slices 1 (no TLS-off, TLS 1.3 floor) and 2 (per-device certificates, membership, revocation) are done, see `docs/pool-encryption.md` section 10; not started, in this order** (`docs/pool-encryption.md`, section 5, decisions 8.1): remove `POOLHOUSE_FLEET_TLS=off` and `http://` LAN project hosts and seal streams (1); per-device keys, signed membership and per-device revocation (2); TLS 1.3 mutual with pinned per-device certificates (2b); end-to-end DMs and notes via HPKE (4); encrypted-at-rest for the cluster key, TLS key and board graph (3); guest tenancy G1-G5 (Level 1 only unless attestation hardware is bought).
-- **Blocked until the product takes off: anything needing a paid Apple developer account** (owner constraint 2026-10-08): app attest or a signed helper, Level 2 guest tenancy on Apple silicon, secure enclave keys through a signed app, notarized or signed macOS and iOS builds for others, a native iPhone app, TestFlight, APNs push. Unblocked: PWA over HTTPS over Tailscale for phones, sideloaded Android app, unsigned local Mac builds, Level 1 guest tenancy (`docs/pool-encryption.md` section 8.1).
-- **Fleet jobs cannot run tests** (the `fleet/commands.py` allowlist has no test kind) and there is no pool-wide test dispatch; `docs/home-pool.md` slice 5 is the design.
-- **No idle unload and no Wake-on-LAN** for pool devices (`docs/home-pool.md` slice 12).
-- **A phone needs a person-credentialed device kind**: person-session routes are loopback-only (`host_ok` refuses a DNS Host and a `tailscale serve` proxy arrives as loopback), so slice 4 must add the kind before the PWA or a remote phone can command anything.
-
 - **The agent sandbox is staged, not installed or measured** (`docs/agent-sandbox.md`, `scripts/agent-sandbox`). The owner runs the fifteen acceptance steps; every sandboxed result in the compatibility matrix is predicted. Open design gaps: the node's device key, enrolment secret and the person's key custody (`node/person`) are not on the profile's read-deny list (only `node/client` is); `testslots_rpc` binds an ephemeral loopback port that Linux and WSL cannot allow-list (needs a configurable fixed port); Codex's workspace-write cannot deny `.git/config` and `.git/hooks` in the shared git directory.
 
-## Landing queue phase 2 leftovers (2026-10-08)
+## Real-machine guard
+- Real-machine guard remainder (2026-10-11): `poolhouse.real_machine` now bars the machine's keystore, `security`, administrator-privileges `osascript` and the System Events query to anything but the installed software on the real `~/.poolhouse`. Left: (1) the caller of the ten administrator-password `osascript` dialogs at 16:53 on 2026-10-11 (responsible process VS Code, pid 9352) is not identified from the system log; (2) plain `osascript` display dialogs (`desktop.py`, `fleet/onboard/notify.py`) are still only PATH-shimmed in tests, not refused by `real_machine`; (3) test node supervisors and nodes from 2026-10-10 14:46 (`poolhouse.node_launch supervise --state /tmp/ml*/node`) are still running and should be stopped; (4) `poolhouse/lan.py` (another branch) has its own installed-software check: fold the two into one.
 
-- Implemented: board requests, independent review, runner, pause and cancel, push of the development branch only (`docs/landing-queue.md`, "What is implemented"). Not built: (1) the task-lifecycle entry (an accepted task enters the queue from `reviewed()`; completion and rework through the `finish` and `blocked` events); (2) the SessionStart suggestion line when the queue is non-empty and no runner holds the claim; (3) the gate runs `scripts/test` synchronously inside `land_check.execute`, not through `scripts/test submit|wait`, so a cancel kills the gate process rather than cancelling a job; (4) a request from another device lands only if the runner's checkout already has the branch (no fetch from the requester); (5) a verified batch whose fast-forward is blocked is left `needs-human` and not retried; (6) stuck detection is output silence only, not broker job state.
+## Agent sandbox (0.3.0 integration)
+- [ ] **Sandbox: Linux is argv-only.** `bubblewrap.arguments` is tested as a list; no Linux host
+  has run it. Landlock and seccomp are not written.
+- [ ] **Sandbox: container backend.** `sandbox/container.py` raises `NotImplementedError`; Apple
+  `container` was installed but its service was not started, so latency and mounts are unmeasured.
+- [ ] **Sandbox: host allow-lists.** Network is deny, loopback or named ports. Host names need the
+  `sandbox-runtime` proxy as an optional backend.
+- [ ] **Sandbox: confined model server is opt-in** (`POOLHOUSE_SANDBOX_SERVE=1`). Make it the default
+  after speculative heads, mmproj and multi-shard models have run inside it.
+- [ ] **Sandbox: Claude Code's Bash sandbox** is configured in `harness.confined_bash()` and
+  checked as options only; no model-driven run has exercised it.
 
-## Deferred by the second landing batch (2026-10-08)
+## Security (Poolhouse issue #18)
+What the 2026-10 hardening pass left open; `docs/security.md` has the model and the findings.
+- [ ] **Task grants remain tied to their original cluster after Dev rekey.**
+  Automatic Dev renewal preserves the agent capability and Board history, but task eligibility
+  and remote task authorization compare the complete project grant, including `cluster_id`.
+  Compare stable project authority without changing task specs or hashes; retain negative
+  authorization coverage for different projects and authorities.
+- [ ] **A device certificate lasts ten years and a replacement is a new pairing.** It is the device's
+  identity in every cluster's record (`fleet/membership.py`), so there is no in-place renewal; rotation with a
+  signed handover is slice 7 of `docs/pool-encryption.md`.
+- [ ] **File and model downloads and the `/infer` stream are signed and not sealed by the
+  application.** They travel inside the daemon's TLS 1.3 (no switch turns it off). Sealing them
+  needs a framed stream of sealed chunks (`docs/pool-encryption.md`, slice 1, the part not yet done).
+- [ ] **A machine that joined from a recovery file holds no hash of the passphrase**, so it cannot
+  take other machines in by passphrase and the web interface cannot sign it in by passphrase.
+- [ ] **`web.py`, `scrape/` and `ingest/run.py` still fetch through `http.check` and urllib.**
+  `poolhouse.httpguard.fetch` pins the checked address for the connection and checks every
+  redirect; the page reader and the browser (a redirect or a sub-request inside Playwright
+  reaches a private address unchecked) should use it, or a `page.route` that applies
+  `httpguard.resolve`. Another branch owns `web.py`.
+- [ ] **37 `except ...: pass` sites report as S110 and S112** (device probes, memory
+  readings, the accelerator reports in `train/accelerator.py`). Each should name the
+  exception it expects and log the rest at debug.
+- [ ] **`scripts/test-on-linux` was not run for this pass,** and CI's `pip install` lines are
+  unpinned and unhashed (there is no lockfile to audit with `pip-audit` or `osv-scanner`).
+- [ ] **Windows job objects.** A server survives a killed host only until the watchdog
+  notices; on Windows the watchdog is all there is, and it was not run there.
 
+## Mesh journals and launch tickets
 - **Mesh journals (signed, `docs/mesh-board.md`).**
   - A person-only command to clear a damaged origin through `Journals.forgive` is not built. It needs an authority entry and human-floor registry entries, so no agent can run it.
   - Acknowledgements are not signed, and `keys.json` and `damaged.json` are not sealed; a local writer can rewrite them.
@@ -107,42 +110,11 @@ Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a 
   - `POST /ui/setup/join` on a machine with no cluster still opens an uncredentialed session.
   - The Windows and WSL window is not handled.
   - Packaged-app acceptance for the owner: (1) fresh install, first run; (2) quit and reopen; (3) a stale window and Reopen; (4) a typed URL, then `poolhouse peers open` once; (5) an agent's `peers open` is refused and a curl with a forged `X-Poolhouse-Launch` header gets 403; (6) Production asks for the passphrase.
-- **Restart and durable jobs.** `job_exit` is untested on Windows; the other restart gaps are in the overnight section above.
-- **Unblock.**
-  - Three `project_connection` / remote failures still need tracing (see the baseline list in the batch 2 report).
-  - Hook diagnostics `post.reader-timeout` and `host not authenticated by cluster discovery` entries are untouched.
-- **Runtime cost.** `poolhouse runtime ensure --settle` has not run end to end on a real checkout.
 
-## Deferred by the third landing batch (2026-10-08)
-
-- **UI publication stack.**
-  - `GET /ui/board/agents` takes 4-8 s for 43 agents because `registered()` opens a store per agent; board routes are still O(N) in the verified log read.
-  - The python launcher `_health` accepts any JSON dict.
-  - `fix/poolhouse-chat-capabilities` landed with the UI publication batch (`ae9dcca0`), with its `RecursionError` fix.
-  - Not driven for real: the Tauri window, an MLX run in Studio, runtime repair.
-  - The Development pool sign-in (the `local-session` route, its screen and pool scoping) was dropped because launch tickets replaced it; a pool choice after sign-out needs a new design on the ticket model.
-  - About 22 older UI browser tests drift from the current page (credentials, invites, model_tasks, pool_browser, sdk_chat, simple_controls, workspace_browser, startup_model_page, tasks_ui, agent_controls, workspace_board_ui).
-- **Disk writes (`docs/disk-writes.md`, "What remains").** `claude-edit-guard` rewrites its whole index (4.5 s, 0.75 MB) after any `src/poolhouse` edit and agents may not edit it, so the HEAD-keyed index is the owner's change; bytes per SQLite/ladybug touch need `fs_usage` under sudo; `HEARTBEAT_S` for task leases needs a liveness decision.
+## Earned trust
 - **Earned trust (`docs/earned-trust.md`).** Section 8 slices (landing record M1, reviewer concentration M7, suspension rules, signed-head anchor in the keystore, coordinator eligibility from the ledger) are not built; the owner decisions are recorded in section 9 and its wording for AGENTS.md (section 10) is not yet added.
-- **Service and home pool (`docs/service.md`, `docs/home-pool.md`, `docs/pool-encryption.md`).** Plans only; the section 8 checklist items marked Violates (one cluster key, one account per device, no tenant id) are open.
-- **Coordination plumbing.** The lead-answer rule is in AGENTS.md; whether the claude-lead-attention hook nudges often enough is unmeasured.
 
-## Autostart units (prepare and install)
-
-- **`runtime-ensure` has not run unattended against a real checkout.** The unit runs `poolhouse runtime ensure` as no agent (no `POOLHOUSE_WORKSPACE_AGENT` in its environment) from the `poolhouse` launcher in the `--launchers` directory; it needs a first `ensure --checkout --launchers` run by a person or agent, and hourly runs on a checkout with local edits or a held commit have not been observed.
-- **No unit has run under a real service manager here.** The `launchctl bootstrap`/`bootout`, `systemctl --user`, `schtasks /XML` commands and copy-truncate log rotation under launchd are covered by a recorder and real files, not by a loaded unit. Run the reboot checklist in `docs/install.md` on a Mac and on the WSL device; the Windows task XML has not been loaded on Windows. systemd units have no watchdog because the daemon sends no `sd_notify`.
-- **`autostart.install` (UI toggle, join, `--persist`) still writes units from a running process.** The Settings and join flows call it without a manifest; moving them to prepare plus a person's `install` is the rest of the owner's decision that agents never install units.
-
-## Active work (2026-10-06)
-
-- **Speed up checks without reducing coverage.** `scripts/gates/_floors.py` now reuses the gate's
-  full tree fingerprint for its collection cache. An uncached `scripts/budgets` run still took
-  95.6 seconds; further profiling and safe optimization remain.
-
-
-
-## Pending setup and coverage
-
+## Keys, grants and requests
 - [ ] **The release signing key does not exist yet.** Run `scripts/release-key create --write` at a
   terminal and commit `src/poolhouse/fleet/signing.py`. `packaging/install.sh` and `install.ps1`
   still install an unsigned download.
@@ -173,13 +145,22 @@ Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a 
   the terminal's second prompt.
 - [ ] **A background process that cannot read the keystore keeps no requests on disk.** Sentinel's
   dialog keeps its own in memory for that process; the page does not see them.
-## Fixes
 
-What is broken, unproven, or claims more than it does. Nothing here is a new
-capability; every line is something that already exists not being what it says.
+## Restart audit
+- **Restart audit issues not fixed:** capacity held for an uncertain launch has no person-gated release (`src/poolhouse/fleet/jobs.py:263`); a verification receipt is trusted from a file the run wrote (`src/poolhouse/runtime_store.py:55,62`); the chat repair path cannot register a candidate runtime (`src/poolhouse/fleet/runtime_repair.py:115-146`).
 
-### The agent loop
+## Destructive actions
+- [ ] **The destructive-action classifier's model layer has not been measured on a real decider**
+  (`docs/destructive-actions.md`); only the stub logprob server has exercised it.
+- [ ] **Destructive verdicts are not written to the activity log.** They reach `Run.events` and
+  `DestructiveRail.on_verdict` only.
+- [ ] **An approved plan is not classified when it is approved.** A destructive or unsure call asks
+  even when a step names it.
+- [ ] **The Board is not in the MCP tools or the chat tools.** Agents reach it through
+  `poolhouse-workspace board ...` only; an MCP `workspace_board_*` set needs the same membership checks
+  and a red-team pass.
 
+## The agent loop
 - [ ] **Taint tracking has been run against one served model only.** `docs/taint.md` has Qwen3-4B
   (20 web attempts per arm, 18 planted-text runs per guard). A larger model, more repetitions
   and the red-team's direct-injection arms would say how the usability cost and the proven
@@ -205,8 +186,7 @@ capability; every line is something that already exists not being what it says.
 - The general local agent has no worktree of its own; Coding mode works in the selected project
   directly, so edits need a separate checkout when isolation is required.
 
-### Sentinel wiring (`docs/sentinel.md`, "What is armed by default")
-
+## Sentinel wiring (`docs/sentinel.md`, "What is armed by default")
 - [ ] **Still not wired:** the scan loop, canaries and decoy listener live in the daemons only (a
   library user who calls `serve.serve()` or runs an `Agent` in a script gets start-time checks
   and the per-session score, no timer and no decoy endpoint); nothing quarantines an MCP server
@@ -226,17 +206,7 @@ capability; every line is something that already exists not being what it says.
   round**, not at start (the start skips the hash when path, size, mtime and inode match the last
   full verification).
 
-### Serving: one broker, one request at a time per pool
-- [ ] **The machine's broker does not deliver `on_event` or `say` to its caller.** Over
-  its socket `RemoteBroker.start` answers once, and the caller is told only that the
-  server is ready. A load's progress (`loading`, `restoring`, a memory wait) belongs
-  streamed back as lines.
-- [ ] **`adopt_unmanaged = ask` has no prompt.** `ServerManager.confirm` is the hook; no
-  command sets it, so `ask` adopts nothing from the CLI. vLLM, SGLang and MLX servers
-  started by hand are not found at all, only `llama-server`.
-
-### What still reaches the internet around the pipeline
-
+## What still reaches the internet around the pipeline
 `docs/internet.md` is the list; each of these is a path in it.
 
 - [ ] **`ddgs` makes its own requests.** `web.ddgs_engine` hands the query to the library, which
@@ -270,8 +240,189 @@ capability; every line is something that already exists not being what it says.
   `pip install -e .` after a fast-forward of a branch a person chose to follow. Show the diff
   of the packaging files to the person, or install only from a tag with a digest.
 
-### Getting it onto a machine that is not this one
+## Text it was never licensed to keep
+- [ ] **A runtime redactor** (`tooling/compliance/{text_sanitizer,llm_sanitization}.py`,
+  ~380 lines): a Presidio sanitizer built once per configuration and applied to prompts,
+  model output and the turns a page stores. `poolhouse.redact` audits a repository at commit
+  time and has nothing for the ask path, which is where a graph page sends real text.
+- [ ] **The copyright carve-out gate** (`tooling/graph/ingestion/copyright_carveout.py`,
+  183 lines): refuses a verbatim provenance snippet taken from a source that embeds
+  third-party material under a permission granted to somebody else. Every ingested node
+  keeps a snippet, so this is the same problem here.
 
+- [ ] **Nothing refuses a snippet from a source that may not be redistributed.** There is no
+  licence field on a source and no check anywhere in `ingest/` or `graph/`: `ingest/judge.py`
+  stores the whole re-read span as `quote` and `verbatim`, uncapped, and the extractor asks
+  for the book's own words by design. The caps that exist are on length, not on permission.
+  For a corpus of standards a subscription grants one reader -- CSA, ASME -- this is the
+  failure that matters, and the app driving this library had to invent `attrs.licensed` and
+  a note about the reader's own subscription because the library offers nothing. A `licence`
+  on the source record, and a refusal in `fold` and in `judge`'s quote path.
+- [ ] **Nothing redacts at runtime.** `redact.Redactor` and `redact.names_in` have no caller
+  anywhere in `src/`; the only non-test use is `world/check.py`, which imports the
+  commit-time recogniser, and `poolhouse-audit` runs over `git ls-files` -- repository
+  source, not the text a person feeds it. Prompts, answers and stored turns pass through
+  unfiltered. A redaction pass in `ingest/fold.py` before the write and in
+  `graph/serve.py`'s remember path, on by default, off by a flag.
+- [ ] **The licence and redaction gates have to run before `_keep_reads`, not only before
+  the store.** `<store>.<slug>.reads.json` is written as each unit comes back, with
+  `extracted` (every concept with its source-worded definition) and `raw` (the model's whole
+  reply when it failed) in plaintext. A refusal in `fold` or `judge` alone leaves both on
+  disk until someone runs `poolhouse-ingest forget`.
+
+## Red-teaming
+`python -m poolhouse.redteam` and `docs/redteam.md` exist; what is missing from them:
+
+- [ ] **Re-run `docs/redteam/baseline-2026-10-02.json` after each of agent, decide, hardening and
+  model-discovery lands.** `python -m poolhouse.redteam run --against docs/redteam/baseline-2026-10-02.json`
+  needs an installed GGUF and `pip install -e ".[redteam]"` in its own virtualenv. The kept baseline
+  was measured on `0.2dev` merged with `agent/port-pcbe` and `agent/hardening` (see the baseline's
+  header); the `loop` and `compaction` scenarios import `poolhouse.agent`, so
+  `.github/workflows/redteam.yml` runs only `extraction,chat,fleet` until it is on the
+  development branch -- add `loop,compaction` to its `--scenarios` then.
+- [ ] **The guard benchmark is not written.** The brief's precision/recall of tool-call guards on
+  injected against benign calls needs a `guard` scenario: labelled tool-call contexts built from
+  `styles.json`, the pages and the PyRIT converters, each guard asked `before_tool_call`, recall and
+  false-positive rate reported per guard. `scenarios/loop.py:PolicyGuard` is the reference guard to
+  start from. `poolhouse.decide.guard.ToolCallGuard` uses its own `poolhouse.interventions` (`Call`,
+  `Context`, `Verdict`), not `poolhouse.agent.interventions`; one of the two has to go before the
+  benchmark can take both.
+- [ ] **Multi-turn attacks and a judge are not wired.** PyRIT's `CrescendoAttack`, `PAIRAttack` and
+  `RedTeamingAttack` need an adversarial chat target and a scorer that is not a canary; the local
+  model could play both (`pyrit_bridge.ResponderTarget` wraps any `Responder`), with its scores
+  reported as noisy. Every scorer today is objective evidence.
+- [ ] **The findings in `docs/redteam/findings.md` marked open have an owner and no fix.** Each
+  names the file, a reproducing `python -m poolhouse.redteam run --scenarios ...` line and the
+  test that should go red when it is fixed.
+- [ ] **Check the `redteam` extra on Python 3.11, 3.12 and 3.14 by installing it.** PyRIT 1.1.0
+  declares `>=3.10,<3.15` and `uv pip compile` resolves it for all three; only 3.13 was installed
+  and run.
+
+# Priority 2: pool usage
+## Pools across devices
+- NATS JetStream as an optional journal link: parked in `~/.poolhouse/bundles/nats-jetstream-parked-20261008.bundle` (verified complete history; tips from `git bundle list-heads`), branches fix/linux-immutable-runner, fix/linux-admission-stdio-current, fix/nats-*, feat/nats-*, feat/jetstream-message-store, fix/authenticated-agent-messages(-nats), docs/nats-coordination-quickstart, feat/canonical-writer-isolation, fix/test-kernel-isolation, fix/linux-runner-immutable. Depends on it: the message store replacing graph messages, the managed loopback broker, board-host/authority_machine checks (native task registration, CPU verification client), writer attribution in `chain.held`. Mesh journals are the board; JetStream may only become a link, never a host or authority.
+- Board delivery latency exceeds the existing budgets: measured single-recipient DM 479 ms and Board 363 ms against 50/150 ms. Reduce graph opening and integrity-query costs; preserve integrity, privacy and latency budgets. Evidence: `/private/tmp/poolhouse-board-observer-handoff.md`.
+- Verify an authenticated connection and a Board message/reply with the other physical device after separate Dev profile activation. Local discovery and browser checks do not establish this roundtrip.
+- **Broker branches 2-5 of the one-thing-computing rule are not started** (branch 1, the device field, is landed). `broker-purpose-not-exclusive`: `Broker._decide` in `src/poolhouse/serve/broker.py` still serialises same-purpose asks behind a held server (`busy`, `_first_for_purpose`); a different model under one purpose must get its own resident server when memory admits. Then `gate-compute-lease-per-device` (`serve/gate.py`), `workspace-allocation-device`, and `rule-docs-and-bench-profiles` (measure a CPU model beside a GPU one for memory-bandwidth cost; per-platform setting, default allowed). Rule: `AGENTS.md`, "One thing computing on the GPU at a time".
+- **Leases from the node, what is left of P2** (`docs/pools-and-serving.md`, slice P2): the serve broker, the request gate and a training run's `gpu-training` claim take their leases from the node's table (`poolhouse.leasetable`). Still kept apart from it: the test runners' core grants (`Broker.take_cores`, `scripts/testslots*`), `fleet.jobs.JobRunner` slots, `lock.only_one` and `workspace/claims.py`. A broker server's slot is named `serve:<file>@<port>` so it never meets a task worker's slot (the model's name); slice 11 decides what an offer's server takes. Each lease call on a node with a large `pool` board folded the board before this change; only a request that names a branch or area claim does now.
+- **Home pool, slices 1-12 not started** (`docs/home-pool.md`, section 3): tailnet IPv4 route display, device capability block with a `Requires` filter, board-fed landing queue, phone person credential, remote test runner, mesh board stage 1, remote-broker lease, phone capabilities, pool MCP tools, Tailscale prepare/verify, PWA client, wake and idle unload. Start with slices 1, 2 and 3 (independent). The tailnet IPv4 admission in `Invitations.mint`, `companion_routes` and `invite_routes` is fixed; the route display per device is not.
+- **Fleet jobs cannot run tests** (the `fleet/commands.py` allowlist has no test kind) and there is no pool-wide test dispatch; `docs/home-pool.md` slice 5 is the design.
+- **No idle unload and no Wake-on-LAN** for pool devices (`docs/home-pool.md` slice 12).
+- **A phone needs a person-credentialed device kind**: person-session routes are loopback-only (`host_ok` refuses a DNS Host and a `tailscale serve` proxy arrives as loopback), so slice 4 must add the kind before the PWA or a remote phone can command anything.
+- **Service and home pool (`docs/service.md`, `docs/home-pool.md`, `docs/pool-encryption.md`).** Plans only; the section 8 checklist items marked Violates (one cluster key, one account per device, no tenant id) are open.
+
+## Serving: one broker, one request at a time per pool
+- [ ] **The machine's broker does not deliver `on_event` or `say` to its caller.** Over
+  its socket `RemoteBroker.start` answers once, and the caller is told only that the
+  server is ready. A load's progress (`loading`, `restoring`, a memory wait) belongs
+  streamed back as lines.
+- [ ] **`adopt_unmanaged = ask` has no prompt.** `ServerManager.confirm` is the hook; no
+  command sets it, so `ask` adopts nothing from the CLI. vLLM, SGLang and MLX servers
+  started by hand are not found at all, only `llama-server`.
+
+## Measuring across the fleet
+- [ ] **Run it for real across two machines.** Everything is tested against fakes and
+  loopback; nothing has crossed a real network or a real Windows box. One visit:
+  `packaging/install.ps1` from the release repository (the app) or the `--headless` mode, then from here `poolhouse-fleet status`, a
+  `poolhouse-fleet plan --users 3 --context 16384 --apply`, and a `sweep --fleet --serve
+  gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf --sample 6`. Expect bugs; the daemon's log and
+  `poolhouse-doctor` are the first two places to look. After that the Windows box follows
+  releases or main on its own (`fleet status` shows COMMIT/UPDATES).
+
+## The agent workspace
+`poolhouse.workspace` (`docs/workspace.md`) is a library, a command and MCP tools over a state
+directory. What it does not do yet:
+- [ ] **A loopback daemon** answering `macauth` signed requests, for an agent that runs as
+  another user or in a sandbox that cannot share the directory. Today the boundary is the
+  account.
+- [ ] **A repair command** for a damaged log: a broken chain refuses new rows until someone
+  moves the file aside by hand.
+- [ ] **Claims keyed to a process start time**, so a reused pid does not keep a dead owner's
+  claim alive until its TTL.
+- [ ] **Scratch size enforced as files are written**: the limit is checked when a folder is
+  made and when `scratch-ls` runs, not on each write.
+- [ ] **Embedding search over notes** through the graph store; keyword search through
+  `graph.search.lexical` is what exists.
+- [ ] **Embedding search over files**: `file search` ranks words with `graph.search.lexical`
+  fused per word; vectors are not used.
+- [ ] **A request to the person for a held file**: a held file waits in the quarantine
+  (`quarantine-ls`); nothing raises a `requests` item for it.
+- [ ] **The verified or claimed model on a file's `posted_by` edge**, once model identity is
+  on the integration branch; the edge carries `agent-claimed` only.
+- [ ] **The Board page lists a file's download on its message** but has no per-board file list.
+- [ ] **Files outlive their message only for the person**: `gc` shreds the content of a
+  file once its messages are pruned; a longer-lived file store needs its own retention.
+
+## A router across the fleet
+- [ ] **A router across the fleet.** `poolhouse-fleet plan --apply` serves the placement;
+  nothing yet sends a new session to a free slot on the best model. The daemon's `/infer`
+  proxies by model name on one machine; the router picks the machine.
+## Autostart units (prepare and install)
+- **`runtime-ensure` has not run unattended against a real checkout.** The unit runs `poolhouse runtime ensure` as no agent (no `POOLHOUSE_WORKSPACE_AGENT` in its environment) from the `poolhouse` launcher in the `--launchers` directory; it needs a first `ensure --checkout --launchers` run by a person or agent, and hourly runs on a checkout with local edits or a held commit have not been observed.
+- **No unit has run under a real service manager here.** The `launchctl bootstrap`/`bootout`, `systemctl --user`, `schtasks /XML` commands and copy-truncate log rotation under launchd are covered by a recorder and real files, not by a loaded unit. Run the reboot checklist in `docs/install.md` on a Mac and on the WSL device; the Windows task XML has not been loaded on Windows. systemd units have no watchdog because the daemon sends no `sd_notify`.
+- **`autostart.install` (UI toggle, join, `--persist`) still writes units from a running process.** The Settings and join flows call it without a manifest; moving them to prepare plus a person's `install` is the rest of the owner's decision that agents never install units.
+
+## Board
+- [ ] **Board subscriptions deliver a board's older messages to a new member.** A subscription made
+  after others posted delivers every unread row after the inbox cursor, bounded by `--limit` only.
+- [ ] **The page's live feed is a long poll on one wake pipe name per person (`<id>.web`).** Two open tabs
+  share one pipe, so one of them can wake up to 2 s late; `board.view` is recorded for thread lists only.
+- [ ] **A board post wakes every member's follower pipes, and a waiting `wait` rescans on each.** The cost is
+  fine at 40 agents (p99 38 ms); a board with hundreds of members needs the signal limited to subscribers
+  and open followers.
+- [ ] **No board search, edit or delete, and no per-board retention.** Board messages age out with the bus
+  (`retention_s`); `boards.jsonl` is never pruned.
+
+# Everything else
+## Pending recovery work
+- Preserve `/private/tmp/poolhouse-qwen-worker-project/published-source` while pending task scopes and the stopped worker reference it. Add an authenticated offline source-rebinding operation before removing this source anchor; preserve pending task states and grants.
+- Triage the remaining failures from the October 6 macOS background full red-team run at `920cf217`: 130 failed, 30 errors, 13,729 passed, 364 skipped. Re-run the remaining Board latency, serving, training, gym and fixture failures after scoped setup, pairing and installer repairs. Evidence: `/private/tmp/dev-final-background-full.log`, `/private/tmp/dev-full-failures.txt` and `/private/tmp/poolhouse-full-lifecycle-project-diagnosis.md`. Linux testing is active: use the WSL device and report its exact device, operating system, runtime and commit.
+
+## Overnight landing run (2026-10-08 to 2026-10-09, lead claude-828605)
+Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a green gate: gate made read-only and incremental (`173e52f1`), reranker (`efaccdfe`), measuring scheduler (`d92d5634`), keystore audit F-1..F-7 (`4fa7686d`), admission queue of 128 and the keystore_guard layer (`e3761c51`), admission failure runs unscheduled (`f405f6b3`), result-cache fix (`3bb493a0`), selector precision (`80e3c389`), ccache (`7c0ffdb3`), restart idle-retry and the recovery test (`d80d7621`), UI publication stack with chat capabilities (`ae9dcca0`).
+
+- **The gate fails inside an agent session** (4 `tests/test_redteam_human_floor.py` cases and 13 `tests/test_worker_completion.py` tests see the session's own agent markers). Run it with `env -u CLAUDECODE -u AI_AGENT -u POOLHOUSE_WORKSPACE_AGENT -u POOLHOUSE_SESSION_HARNESS -u POOLHOUSE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT` until the baseline branch lands.
+- **The installed `poolhouse` in the pyenv site-packages is a 0.2.1 wheel from 2026-10-07**; the `poolhouse*` launchers follow `~/.poolhouse/runtimes` but the library import does not. Owner order: use our latest code continuously. A `.pth` or editable install of the primary checkout is needed (`editables` is missing; the auto-mode classifier refused the write to the shared pyenv). The old install is saved in the `pyenv-poolhouse` tarball in `~/.poolhouse/bundles`.
+- **The Board is unreachable from this checkout** (`poolhouse-workspace inbox`: "the project host was not authenticated by cluster discovery", later "this project already names another Board"), so no contact from the Windows-side Claude was read.
+- **Tests that fail on a clean tip:** four `tests/test_testslots.py` timing tests under heavy load (`test_invalid_rpc_token_cannot_acquire_capacity`, `test_idle_tail_workers_release_capacity_for_another_suite`, `test_short_tests_do_not_wait_for_a_polling_tail_between_batches`, `test_disconnected_rpc_waiter_releases_its_queue_entry`); the launch-ticket browser tests in `tests/test_conversations_workspace.py`; the `FakeDaemon` fixture in `tests/test_fleet_join.py` (no `device` argument); `tests/test_redteam_human_floor.py` depends on the session environment; the `scripts/test` broker still has no queue position or calibration run for agents.
+- **Parked Codex work:** about 450 distinct unlanded patches, of which 8 NATS-stack branches are in `~/.poolhouse/bundles/codex-parked-20261008.bundle` and the old land branch in the `land-old` bundle beside it (restore: `git fetch <bundle> <branch>:<branch>`, branch names from `git bundle list-heads`). Still unlanded: `integrate/dev-cpu`, the workspace reputation and attribution commits `133dd374` and `7f31bc29`, Studio (`feat/poolhouse-studio-mlx`), board-history rebuild-conversations, coordination batch.
+
+## Open from the claude session (2026-10-08)
+- **Old GPU-rule wording remains** in `HANDOFF.md` (the serving section), `docs/experiments/iq-vs-kquant-metal.md:53`, `src/poolhouse/ingest/serving.py:87`, `src/poolhouse/bench/queue.py:21` and `tests/workspace_screen_corpus.py:35`; each states "one model on the GPU" and needs rewording or a decision.
+- **Branch hygiene rule (f) has no mechanical check**: a bound on `scripts/test` fixed cost needs an opt-in timing harness (AGENTS.md, "Branch hygiene and landing").
+- **Blocked until the product takes off: anything needing a paid Apple developer account** (owner constraint 2026-10-08): app attest or a signed helper, Level 2 guest tenancy on Apple silicon, secure enclave keys through a signed app, notarized or signed macOS and iOS builds for others, a native iPhone app, TestFlight, APNs push. Unblocked: PWA over HTTPS over Tailscale for phones, sideloaded Android app, unsigned local Mac builds, Level 1 guest tenancy (`docs/pool-encryption.md` section 8.1).
+
+## Landing queue phase 2 leftovers (2026-10-08)
+- Implemented: board requests, independent review, runner, pause and cancel, push of the development branch only (`docs/landing-queue.md`, "What is implemented"). Not built: (1) the task-lifecycle entry (an accepted task enters the queue from `reviewed()`; completion and rework through the `finish` and `blocked` events); (2) the SessionStart suggestion line when the queue is non-empty and no runner holds the claim; (3) the gate runs `scripts/test` synchronously inside `land_check.execute`, not through `scripts/test submit|wait`, so a cancel kills the gate process rather than cancelling a job; (4) a request from another device lands only if the runner's checkout already has the branch (no fetch from the requester); (5) a verified batch whose fast-forward is blocked is left `needs-human` and not retried; (6) stuck detection is output silence only, not broker job state.
+
+## Deferred by the second landing batch (2026-10-08)
+- **Restart and durable jobs.** `job_exit` is untested on Windows; the other restart gaps are in the overnight section above.
+- **Unblock.**
+  - Three `project_connection` / remote failures still need tracing (see the baseline list in the batch 2 report).
+  - Hook diagnostics `post.reader-timeout` and `host not authenticated by cluster discovery` entries are untouched.
+- **Runtime cost.** `poolhouse runtime ensure --settle` has not run end to end on a real checkout.
+
+## Deferred by the third landing batch (2026-10-08)
+- **UI publication stack.**
+  - `GET /ui/board/agents` takes 4-8 s for 43 agents because `registered()` opens a store per agent; board routes are still O(N) in the verified log read.
+  - The python launcher `_health` accepts any JSON dict.
+  - `fix/poolhouse-chat-capabilities` landed with the UI publication batch (`ae9dcca0`), with its `RecursionError` fix.
+  - Not driven for real: the Tauri window, an MLX run in Studio, runtime repair.
+  - The Development pool sign-in (the `local-session` route, its screen and pool scoping) was dropped because launch tickets replaced it; a pool choice after sign-out needs a new design on the ticket model.
+  - About 22 older UI browser tests drift from the current page (credentials, invites, model_tasks, pool_browser, sdk_chat, simple_controls, workspace_browser, startup_model_page, tasks_ui, agent_controls, workspace_board_ui).
+- **Disk writes (`docs/disk-writes.md`, "What remains").** `claude-edit-guard` rewrites its whole index (4.5 s, 0.75 MB) after any `src/poolhouse` edit and agents may not edit it, so the HEAD-keyed index is the owner's change; bytes per SQLite/ladybug touch need `fs_usage` under sudo; `HEARTBEAT_S` for task leases needs a liveness decision.
+- **Coordination plumbing.** The lead-answer rule is in AGENTS.md; whether the claude-lead-attention hook nudges often enough is unmeasured.
+
+## Active work (2026-10-06)
+- **Speed up checks without reducing coverage.** `scripts/gates/_floors.py` now reuses the gate's
+  full tree fingerprint for its collection cache. An uncached `scripts/budgets` run still took
+  95.6 seconds; further profiling and safe optimization remain.
+
+## Fixes
+What is broken, unproven, or claims more than it does. Nothing here is a new
+capability; every line is something that already exists not being what it says.
+
+### Getting it onto a machine that is not this one
 - [ ] **`poolhouse` needs a similarity waiver from PyPI before anything can be uploaded.**
   PyPI's check ignores `-`, `_` and `.`, so `poolhouse` reads as `poolhouse` -- 1.0b3,
   "Machine Learning toolkit and algorithms library", last uploaded 2018-09-14 -- and a
@@ -296,39 +447,7 @@ capability; every line is something that already exists not being what it says.
   `tests/test_graph_engine_contract.py` has one test for each that goes red when a ladybug
   release no longer needs it; drop the workaround in the same commit as that test.
 
-### Text it was never licensed to keep
-- [ ] **A runtime redactor** (`tooling/compliance/{text_sanitizer,llm_sanitization}.py`,
-  ~380 lines): a Presidio sanitizer built once per configuration and applied to prompts,
-  model output and the turns a page stores. `poolhouse.redact` audits a repository at commit
-  time and has nothing for the ask path, which is where a graph page sends real text.
-- [ ] **The copyright carve-out gate** (`tooling/graph/ingestion/copyright_carveout.py`,
-  183 lines): refuses a verbatim provenance snippet taken from a source that embeds
-  third-party material under a permission granted to somebody else. Every ingested node
-  keeps a snippet, so this is the same problem here.
-
-
-- [ ] **Nothing refuses a snippet from a source that may not be redistributed.** There is no
-  licence field on a source and no check anywhere in `ingest/` or `graph/`: `ingest/judge.py`
-  stores the whole re-read span as `quote` and `verbatim`, uncapped, and the extractor asks
-  for the book's own words by design. The caps that exist are on length, not on permission.
-  For a corpus of standards a subscription grants one reader -- CSA, ASME -- this is the
-  failure that matters, and the app driving this library had to invent `attrs.licensed` and
-  a note about the reader's own subscription because the library offers nothing. A `licence`
-  on the source record, and a refusal in `fold` and in `judge`'s quote path.
-- [ ] **Nothing redacts at runtime.** `redact.Redactor` and `redact.names_in` have no caller
-  anywhere in `src/`; the only non-test use is `world/check.py`, which imports the
-  commit-time recogniser, and `poolhouse-audit` runs over `git ls-files` -- repository
-  source, not the text a person feeds it. Prompts, answers and stored turns pass through
-  unfiltered. A redaction pass in `ingest/fold.py` before the write and in
-  `graph/serve.py`'s remember path, on by default, off by a flag.
-- [ ] **The licence and redaction gates have to run before `_keep_reads`, not only before
-  the store.** `<store>.<slug>.reads.json` is written as each unit comes back, with
-  `extracted` (every concept with its source-worded definition) and `raw` (the model's whole
-  reply when it failed) in plaintext. A refusal in `fold` or `judge` alone leaves both on
-  disk until someone runs `poolhouse-ingest forget`.
-
 ### The vocabulary
-
 Words this library coined that a reader has to learn before the code means anything. the owner,
 2026-09-09, on `measured shape`: "it tells you nothing"; "look at the other jargon and see
 if it's AI-ese". `lease` stays -- it says what it does for server talk. Counts are uses
@@ -350,7 +469,6 @@ across `src/`.
   only the tests caught it.
 
 ### The interface
-
 - [ ] **A graph of a few thousand nodes is drawn whole, and the pane holds about that
   many.** Measured 2026-09-10 headless at 1400x900 on synthetic graphs at 2.7 edges a node:
   at 3,000 nodes the marks settle 10 px apart -- two mark diameters -- over 61% of the pane,
@@ -367,7 +485,6 @@ across `src/`.
   setting tried, and a citation or hierarchy graph may not.
 
 ### The commands
-
 - [ ] **Nineteen commands still build their own parser and keep their work in the handler.**
   `poolhouse.command` holds the shared options and a `Group` that collects subcommands and
   answers as `main`; `poolhouse.cli.reference` holds one line per command and the README's
@@ -402,7 +519,6 @@ across `src/`.
   an agent driving them writes.
 
 ### Layers
-
 - [ ] **Fourteen imports still cross the layers `tests/test_layers.py` sets out.** The
   layers are core, model, graph, machine, tools; a package may import downwards, and
   sideways only when the other package does not import it back. `KNOWN` in that file lists
@@ -417,37 +533,7 @@ across `src/`.
   moves below `graph`; the other two are a page and a request handler leasing a server,
   which is what the machine layer is for.
 
-### Red-teaming
-
-`python -m poolhouse.redteam` and `docs/redteam.md` exist; what is missing from them:
-
-- [ ] **Re-run `docs/redteam/baseline-2026-10-02.json` after each of agent, decide, hardening and
-  model-discovery lands.** `python -m poolhouse.redteam run --against docs/redteam/baseline-2026-10-02.json`
-  needs an installed GGUF and `pip install -e ".[redteam]"` in its own virtualenv. The kept baseline
-  was measured on `0.2dev` merged with `agent/port-pcbe` and `agent/hardening` (see the baseline's
-  header); the `loop` and `compaction` scenarios import `poolhouse.agent`, so
-  `.github/workflows/redteam.yml` runs only `extraction,chat,fleet` until it is on the
-  development branch -- add `loop,compaction` to its `--scenarios` then.
-- [ ] **The guard benchmark is not written.** The brief's precision/recall of tool-call guards on
-  injected against benign calls needs a `guard` scenario: labelled tool-call contexts built from
-  `styles.json`, the pages and the PyRIT converters, each guard asked `before_tool_call`, recall and
-  false-positive rate reported per guard. `scenarios/loop.py:PolicyGuard` is the reference guard to
-  start from. `poolhouse.decide.guard.ToolCallGuard` uses its own `poolhouse.interventions` (`Call`,
-  `Context`, `Verdict`), not `poolhouse.agent.interventions`; one of the two has to go before the
-  benchmark can take both.
-- [ ] **Multi-turn attacks and a judge are not wired.** PyRIT's `CrescendoAttack`, `PAIRAttack` and
-  `RedTeamingAttack` need an adversarial chat target and a scorer that is not a canary; the local
-  model could play both (`pyrit_bridge.ResponderTarget` wraps any `Responder`), with its scores
-  reported as noisy. Every scorer today is objective evidence.
-- [ ] **The findings in `docs/redteam/findings.md` marked open have an owner and no fix.** Each
-  names the file, a reproducing `python -m poolhouse.redteam run --scenarios ...` line and the
-  test that should go red when it is fixed.
-- [ ] **Check the `redteam` extra on Python 3.11, 3.12 and 3.14 by installing it.** PyRIT 1.1.0
-  declares `>=3.10,<3.15` and `uv pip compile` resolves it for all three; only 3.13 was installed
-  and run.
-
 ### Finding a model
-
 - [ ] **Two callers still decide for themselves what an `hf:` reference means.**
   `hub.located` is the one finder now, and it answers `None` for an `hf:` reference
   because the bench and `poolhouse-serve up` hand that string to llama.cpp for it to
@@ -477,7 +563,6 @@ across `src/`.
   through the first and route the redirect target through the second.
 
 ### The shared fakes
-
 - [ ] **Eighteen tests monkeypatch `serve()` with a `fake_serve` of their own.** Each takes
   `**lease` and records the dict, which is the shape that lets a keyword `ServerSpec` does
   not have through unnoticed; `poolhouse.testing.fakes.FakeServe` builds a real `ServerSpec`
@@ -494,17 +579,7 @@ across `src/`.
   `Client.__init__`'s signature and `tests/test_testing_fakes.py` diffs it against the real
   one every run, so a keyword the real `Client` would refuse is refused there too.
 
-### Measuring across the fleet
-- [ ] **Run it for real across two machines.** Everything is tested against fakes and
-  loopback; nothing has crossed a real network or a real Windows box. One visit:
-  `packaging/install.ps1` from the release repository (the app) or the `--headless` mode, then from here `poolhouse-fleet status`, a
-  `poolhouse-fleet plan --users 3 --context 16384 --apply`, and a `sweep --fleet --serve
-  gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf --sample 6`. Expect bugs; the daemon's log and
-  `poolhouse-doctor` are the first two places to look. After that the Windows box follows
-  releases or main on its own (`fleet status` shows COMMIT/UPDATES).
-
 ### The window
-
 - [ ] **The Tauri window is proven on macOS only.** `app/`
   is a Tauri 2 project (`app/src-tauri`, tauri 2.11.5, tauri-plugin-shell 2.3.6,
   tauri-plugin-window-state 2.4.1, CLI 2.11.4 pinned in `app/package.json`). It bundles no
@@ -536,7 +611,6 @@ across `src/`.
     stopped writing it.
 
 ### What the window has not been driven through
-
 - [ ] **What WKWebView renders the same as Chromium, so far.** Light-DOM custom elements,
   `[hidden]`, the sheet's backdrop blur, the context `input[type=range]`, the styled
   checkbox and radio rows, a card taller than the window with its own scrollbar, and the
@@ -553,7 +627,6 @@ across `src/`.
   "..."`.
 
 ### The code itself
-
 - [ ] **The hard 900-line file gate does not look at `tests/` at all.**
   `scripts/gates/deep_files.py` sets `ROOTS = ("src/poolhouse",)`, so thirteen test files
   are over the limit and invisible to the gate that refuses a source file at 901 lines:
@@ -587,7 +660,6 @@ across `src/`.
   that is not the daemon's own process.
 
 ### The test suite
-
 - [ ] **The red-team runs do not use the verdict cache yet.** `poolhouse.testing.verdicts` has the
   cache (key: model-file hash, attack id, guard or prompt version, source of the modules the
   attack touches; a failing verdict is never served), `sample` (seeded tenth plus every class
@@ -630,38 +702,11 @@ across `src/`.
   the slow tier has not been run under `_no_public_network`, which refuses a connection or name
   lookup beyond the LAN in every test.
 
-### The agent workspace
-
-`poolhouse.workspace` (`docs/workspace.md`) is a library, a command and MCP tools over a state
-directory. What it does not do yet:
-- [ ] **A loopback daemon** answering `macauth` signed requests, for an agent that runs as
-  another user or in a sandbox that cannot share the directory. Today the boundary is the
-  account.
-- [ ] **A repair command** for a damaged log: a broken chain refuses new rows until someone
-  moves the file aside by hand.
-- [ ] **Claims keyed to a process start time**, so a reused pid does not keep a dead owner's
-  claim alive until its TTL.
-- [ ] **Scratch size enforced as files are written**: the limit is checked when a folder is
-  made and when `scratch-ls` runs, not on each write.
-- [ ] **Embedding search over notes** through the graph store; keyword search through
-  `graph.search.lexical` is what exists.
-- [ ] **Embedding search over files**: `file search` ranks words with `graph.search.lexical`
-  fused per word; vectors are not used.
-- [ ] **A request to the person for a held file**: a held file waits in the quarantine
-  (`quarantine-ls`); nothing raises a `requests` item for it.
-- [ ] **The verified or claimed model on a file's `posted_by` edge**, once model identity is
-  on the integration branch; the edge carries `agent-claimed` only.
-- [ ] **The Board page lists a file's download on its message** but has no per-board file list.
-- [ ] **Files outlive their message only for the person**: `gc` shreds the content of a
-  file once its messages are pruned; a longer-lived file store needs its own retention.
-
 ## Measurements
-
 Each needs the GPU and the owner's call. Estimate before it runs, smoke it before it is
 paid for, and one thing on the card at a time.
 
 ### Served shapes with no paired baseline
-
 `docs/report-2026-09-23.md` pairs a drafted run only with the undrafted run whose identity
 is the same minus the head. Three served shapes in `src/poolhouse/data/profiles.json` have
 no such pair, so what their head buys is unmeasured; each is read again with
@@ -691,7 +736,6 @@ no such pair, so what their head buys is unmeasured; each is read again with
   on the profile's serving (`--sample 20`, ~10 minutes an arm) settles both.
 
 ### The store
-
 - [ ] **The store holds APBiology and Biology2e chapter 2, sound; seven textbook PDFs are
   unread.** `~/.poolhouse/sources.ladybug` on ladybug 0.20.2: ~9,700 concepts with
   definitions, page provenance and the run that read each, after the judged pass (362
@@ -725,7 +769,6 @@ no such pair, so what their head buys is unmeasured; each is read again with
   ~/.poolhouse/sources.ladybug`, ~an hour.
 
 ### Per-request draft depth
-
 `docs/llama-cpp-per-request-speculative.md` is the patch written up as a pull request would
 put it. `patches/llama.cpp/0001-speculative-per-request.patch` is the patch;
 `poolhouse-serve build --from source` applies it and names the build directory after its
@@ -754,7 +797,6 @@ digest.
   sending something the server would drop.
 
 ### Draft trees for llama.cpp
-
 `patches/llama.cpp/0003-speculative-tree.patch` verifies a tree of drafted nodes in one pass
 -- ancestor-masked attention, per-path DeltaNet state, a commit that keeps the accepted path
 -- and `poolhouse-serve up --spec-tree W` asks for it. `docs/llama-cpp-tree-speculative.md`
@@ -792,7 +834,6 @@ says what it does and what it refuses.
   that followed the last n-gram; only the MTP tree drafter has been driven end to end.
 
 ### What a draft head costs, and where the draft stops paying
-
 `patches/llama.cpp/0002-speculative-timings.patch` splits generation into `draft_ms` and
 `verify_ms` with `verify_n` passes, per request. `poolhouse.client.counters` reads the four
 `llamacpp:spec_decode_*` counters off `/metrics` and differences them across a block of
@@ -843,7 +884,6 @@ works against any client, lm-eval included. Servers are now launched with `--met
   only if that curve shows a knee worth chasing.
 
 ### Flash-Next, two builds: llama.cpp (unsloth GGUF Q4_K_XL, with and without the draft head) against Ollama (MLX, nvfp4)
-
 the owner, 2026-09-03: which is better, faster, or both; a LinkedIn graphic; "if ollama can't
 keep up due to lack of drafting head, points in llama.cpp's favor"; "make sure we're
 measuring actual max mem usage during the test". The machine has 128 GB; the GGUF serves at
@@ -883,7 +923,6 @@ time with the page's server down for the Ollama half.
   process is called on 0.33.3 (found from source, not seen). Then the Ollama half.
 
 ### Driving what is built
-
 - [ ] **A number for the local harness beside the page's.** `poolhouse-claude <flash-next>
   -- --print "say hello"` and `poolhouse-agent "read README.md and say in two sentences what
   this is" --model <flash-next> --allow Read` both ran for real on 2026-09-05 (the agent: 5
@@ -893,7 +932,6 @@ time with the page's server down for the Ollama half.
   `/metrics`. Then a small task set measured the bench's way.
 
 ### Tree speculative decoding on MLX
-
 - [ ] **The full tree-decoding table has not been run.** Smoke numbers only, on a busy
   card. One model on the card at a time, the embedding and page servers down, AC power:
   ```
@@ -1063,17 +1101,9 @@ plan` names them as unplaceable rather than guessing.
   says. Its benchmark runs were produced with an agent, per its own disclosure.
 
 ## New
-
 Capabilities that do not exist yet.
 
-### A router across the fleet
-
-- [ ] **A router across the fleet.** `poolhouse-fleet plan --apply` serves the placement;
-  nothing yet sends a new session to a free slot on the best model. The daemon's `/infer`
-  proxies by model name on one machine; the router picks the machine.
-
 ### Decision models
-
 - [ ] **Trained deciders are not in model discovery.** `poolhouse.decide.registry` records them
   by name under the state root; `hub.discover` (model-discovery branch) should list a directory
   holding `decider.json` as a model of format `decider`.
@@ -1108,7 +1138,6 @@ Capabilities that do not exist yet.
   audio.
 
 ### The tensor toolkit
-
 - [ ] **`batch_graphs`, `resolvent_sweep` and `decompose_to_dags` have no caller outside
   `tests/test_graph.py`.** `graph.tensors` (the mapping graph as arrays) is called by
   `graph.smooth`, and `topology.knn_edges` by `graph.places.geocode`.
@@ -1127,7 +1156,6 @@ Capabilities that do not exist yet.
   MST parts of `build_topology` entirely.
 
 ### A terminal command centre
-
 `~/Documents/repos/beehavior` is the other repository that grew these shapes, and its own
 `POOLHOUSE_MIGRATION.md` lists what it should now delete rather than keep. Two pieces came
 here on 2026-09-05 (`poolhouse-suite`, `poolhouse-serve limits|reclaim`); three are still
@@ -1136,37 +1164,7 @@ worth taking, in this order:
   facts the fleet app's cluster view already shows, in a terminal. Worth it only if a
   headless machine wants one.
 
-### Security (Poolhouse issue #18)
-
-What the 2026-10 hardening pass left open; `docs/security.md` has the model and the findings.
-- [ ] **Task grants remain tied to their original cluster after Dev rekey.**
-  Automatic Dev renewal preserves the agent capability and Board history, but task eligibility
-  and remote task authorization compare the complete project grant, including `cluster_id`.
-  Compare stable project authority without changing task specs or hashes; retain negative
-  authorization coverage for different projects and authorities.
-- [ ] **A device certificate lasts ten years and a replacement is a new pairing.** It is the device's
-  identity in every cluster's record (`fleet/membership.py`), so there is no in-place renewal; rotation with a
-  signed handover is slice 7 of `docs/pool-encryption.md`.
-- [ ] **File and model downloads and the `/infer` stream are signed and not sealed by the
-  application.** They travel inside the daemon's TLS 1.3 (no switch turns it off). Sealing them
-  needs a framed stream of sealed chunks (`docs/pool-encryption.md`, slice 1, the part not yet done).
-- [ ] **A machine that joined from a recovery file holds no hash of the passphrase**, so it cannot
-  take other machines in by passphrase and the web interface cannot sign it in by passphrase.
-- [ ] **`web.py`, `scrape/` and `ingest/run.py` still fetch through `http.check` and urllib.**
-  `poolhouse.httpguard.fetch` pins the checked address for the connection and checks every
-  redirect; the page reader and the browser (a redirect or a sub-request inside Playwright
-  reaches a private address unchecked) should use it, or a `page.route` that applies
-  `httpguard.resolve`. Another branch owns `web.py`.
-- [ ] **37 `except ...: pass` sites report as S110 and S112** (device probes, memory
-  readings, the accelerator reports in `train/accelerator.py`). Each should name the
-  exception it expects and log the rest at debug.
-- [ ] **`scripts/test-on-linux` was not run for this pass,** and CI's `pip install` lines are
-  unpinned and unhashed (there is no lockfile to audit with `pip-audit` or `osv-scanner`).
-- [ ] **Windows job objects.** A server survives a killed host only until the watchdog
-  notices; on Windows the watchdog is all there is, and it was not run there.
-
 ### Integration (0.3.0)
-
 `docs/INTEGRATION-REPORT.md` has the merge order, the commands and the numbers.
 - [ ] **Two integration decisions to check by a person.** (1) `redteam/tools.py` reads a page with
   the plain extractor on purpose, so the hidden-text attacks still reach the guards behind the
@@ -1194,39 +1192,8 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   run.
 - [ ] **Record `tests-collected` on a machine with every extra installed.** `scripts/budgets
   --update` refuses without `nemoguardrails`.
-- [ ] **Sandbox: Linux is argv-only.** `bubblewrap.arguments` is tested as a list; no Linux host
-  has run it. Landlock and seccomp are not written.
-- [ ] **Sandbox: container backend.** `sandbox/container.py` raises `NotImplementedError`; Apple
-  `container` was installed but its service was not started, so latency and mounts are unmeasured.
-- [ ] **Sandbox: host allow-lists.** Network is deny, loopback or named ports. Host names need the
-  `sandbox-runtime` proxy as an optional backend.
-- [ ] **Sandbox: confined model server is opt-in** (`POOLHOUSE_SANDBOX_SERVE=1`). Make it the default
-  after speculative heads, mmproj and multi-shard models have run inside it.
-- [ ] **Sandbox: Claude Code's Bash sandbox** is configured in `harness.confined_bash()` and
-  checked as options only; no model-driven run has exercised it.
 
 ## Pending verification
-
-- [ ] **The destructive-action classifier's model layer has not been measured on a real decider**
-  (`docs/destructive-actions.md`); only the stub logprob server has exercised it.
-- [ ] **Destructive verdicts are not written to the activity log.** They reach `Run.events` and
-  `DestructiveRail.on_verdict` only.
-- [ ] **An approved plan is not classified when it is approved.** A destructive or unsure call asks
-  even when a step names it.
-- [ ] **The Board is not in the MCP tools or the chat tools.** Agents reach it through
-  `poolhouse-workspace board ...` only; an MCP `workspace_board_*` set needs the same membership checks
-  and a red-team pass.
-
-- [ ] **Board subscriptions deliver a board's older messages to a new member.** A subscription made
-  after others posted delivers every unread row after the inbox cursor, bounded by `--limit` only.
-- [ ] **The page's live feed is a long poll on one wake pipe name per person (`<id>.web`).** Two open tabs
-  share one pipe, so one of them can wake up to 2 s late; `board.view` is recorded for thread lists only.
-- [ ] **A board post wakes every member's follower pipes, and a waiting `wait` rescans on each.** The cost is
-  fine at 40 agents (p99 38 ms); a board with hundreds of members needs the signal limited to subscribers
-  and open followers.
-- [ ] **No board search, edit or delete, and no per-board retention.** Board messages age out with the bus
-  (`retention_s`); `boards.jsonl` is never pruned.
-
 - [ ] **`poolhouse-models adopt run` has not been run on the real machine.** `plan` then `run` adopts
   `<cache>/spec/weights/models--mlx-community--Qwen3.8-Flash-Next-4bit-07b5dc6c...` (17 of the 22 shards; the
   PLE-only shards 2 to 6, the Hub's `config.json` and index are not on this machine, so the view cannot read
@@ -1243,7 +1210,6 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   `refs/main` names;** another commit's path with the same bytes quantizes a second time.
 
 ## Benchmarks, local review and landing (2026-10-12)
-
 - **Remaining before the benchmark ladder:** add the `poolhouse-serve llama-cpp ensure` step to the live heartbeat prompt (no heartbeat has been started this session); run `scripts/test-on-linux` on the final tip on the WSL device (nothing from 2026-10-12 has run on Linux); read the background full-suite result of the last landing batch (`.git/land/full-*.log`).
 - **Benchmarks are held** until the runtime is active. `poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --dry-run` must pass against the installed runtime first. The stock Flash-Next UD-Q4_K_XL (downloaded) at 262144 context needs the machine restarted with nothing else resident and the wired limit raised (the macOS administrator dialog); `poolhouse-serve memory --for Qwen3.8-Flash-Next-UD-Q4_K_XL --ctx 262144 --kv q8_0` gives the exact limit (estimate about 118 GiB with the MTP head, 115 GiB without).
 - **Not driven for real, only tested against fakes:** `scripts/review-backlog --local` on a model (try Qwen3.8-27B UD-Q4_K_XL against a branch with a known bug before trusting a report; its read-only `poolhouse-claude` command line and default model pick are untested); the system snapshot probes on this machine; `poolhouse-serve llama-cpp ensure` building, updating and its unit; `--context fit` and `--thinking-levels` against a served model; the Bonsai ternary quants (Q2_0, PQ2_0, PTQ1_0) loading on the managed llama.cpp.
