@@ -127,6 +127,15 @@ def test_pmset_therm_reads_throttling():
                    "cpu_scheduler_limit": 100, "cpus_available": 12}
 
 
+def test_a_speed_limit_or_a_thermal_level_alone_is_throttling(boundary):
+    assert system.parse_therm("CPU_Speed_Limit \t= 80\n")["throttled"] is True
+    assert system.parse_therm("CPU_Scheduler_Limit \t= 60\n")["throttled"] is True
+    assert system.parse_therm("CPU_Speed_Limit \t= 100\n")["throttled"] is False
+    boundary.answers[("sysctl", "-n", "machdep.xcpm.cpu_thermal_level")] = "3\n"
+    got = system.snapshot()
+    assert got["cpu_thermal_level"] == 3 and got["throttled"] is True
+
+
 def test_pmset_batt_reads_the_source_and_never_the_battery_id():
     ac = system.parse_batt(BATT_AC)
     assert ac == {"power_source": "AC Power", "battery_percent": 100, "charging": False}
