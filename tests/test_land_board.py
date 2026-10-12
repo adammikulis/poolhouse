@@ -246,3 +246,17 @@ def test_a_runner_started_by_another_supervisor_registers_a_session_of_its_own(w
     second = land_board.runner_session(world.proj.root, DEV)
     assert second.name != first.name
     assert land_board.runner_session(world.proj.root, DEV).name == second.name
+
+
+def test_a_runner_launched_by_init_or_a_reused_parent_pid_gets_a_session_of_its_own(world, monkeypatch):
+    first = land_board.runner_native_id(world.proj.root, DEV)
+    monkeypatch.setattr(land_board.os, "getppid", lambda: 1)
+    monkeypatch.setattr(land_board.os, "getpid", lambda: 111)
+    by_init = land_board.runner_native_id(world.proj.root, DEV)
+    monkeypatch.setattr(land_board.os, "getpid", lambda: 222)
+    assert by_init != land_board.runner_native_id(world.proj.root, DEV) != first
+    monkeypatch.setattr(land_board.os, "getppid", lambda: 4242)
+    monkeypatch.setattr(land_board.psutil, "Process", lambda pid: type("P", (), {"create_time": lambda self: 100.0})())
+    one = land_board.runner_native_id(world.proj.root, DEV)
+    monkeypatch.setattr(land_board.psutil, "Process", lambda pid: type("P", (), {"create_time": lambda self: 200.0})())
+    assert one != land_board.runner_native_id(world.proj.root, DEV)

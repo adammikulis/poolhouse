@@ -27,6 +27,7 @@ from pathlib import Path
 import land_entries
 import land_git as lg
 import land_recover as recover
+import psutil
 
 from poolhouse.board import place, session
 from poolhouse.board.client import Client, Conflict, Denied, NodeError
@@ -399,7 +400,14 @@ class Runner:
 def runner_native_id(root: Path, target: str) -> str:
     """The native session id of a runner: one per launching supervisor, so a restart under the same supervisor
     keeps its session and a new supervisor registers a new one."""
-    return f"{root}:{target}:{os.getppid()}"
+    parent = os.getppid()
+    if parent <= 1:
+        return f"{root}:{target}:self{os.getpid()}"
+    try:
+        started = int(psutil.Process(parent).create_time())
+    except psutil.Error:
+        started = 0
+    return f"{root}:{target}:{parent}:{started}"
 
 
 def runner_session(root: Path, target: str) -> Session:
