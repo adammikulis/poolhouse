@@ -396,12 +396,18 @@ class Runner:
                 "push": problem}
 
 
+def runner_native_id(root: Path, target: str) -> str:
+    """The native session id of a runner: one per launching supervisor, so a restart under the same supervisor
+    keeps its session and a new supervisor registers a new one."""
+    return f"{root}:{target}:{os.getppid()}"
+
+
 def runner_session(root: Path, target: str) -> Session:
-    """The board session of this checkout's runner: registered once under a name of its own, its token kept
-    in the client's private credentials."""
+    """The board session of this checkout's runner: registered once per launching supervisor under a name of
+    its own, its token kept in the client's private credentials."""
     client = Client()
     board = place.resolve(client, root)
-    made = session.register(client, board, Native("", "land-runner", f"{root}:{target}"))
+    made = session.register(client, board, Native("", "land-runner", runner_native_id(root, target)))
     return Session(client, board, made.token, made.name)
 
 

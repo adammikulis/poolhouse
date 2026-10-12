@@ -236,5 +236,13 @@ def test_the_runner_registers_itself_and_keeps_its_token_in_the_client_credentia
     again = land_board.runner_session(world.proj.root, DEV)
     assert made.name == again.name and made.name not in {m.name for m in world.members.values()}
     assert (world.node.state / "client" / world.node.board / f"{made.name}.token").exists()
-    assert session.find("land-runner", f"{world.proj.root}:{DEV}", client=world.node.client) == made.name
+    assert session.find("land-runner", land_board.runner_native_id(world.proj.root, DEV), client=world.node.client) == made.name
     assert made.whoami().harness == "land-runner"
+
+
+def test_a_runner_started_by_another_supervisor_registers_a_session_of_its_own(world, monkeypatch):
+    first = land_board.runner_session(world.proj.root, DEV)
+    monkeypatch.setattr(land_board.os, "getppid", lambda: 4242)
+    second = land_board.runner_session(world.proj.root, DEV)
+    assert second.name != first.name
+    assert land_board.runner_session(world.proj.root, DEV).name == second.name
