@@ -28,6 +28,10 @@ def registry(monkeypatch, tmp_path):
     for name in (*authority.DELEGATING, "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_WORKSPACE_AGENT"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
+    folder = tmp_path / "state" / "node" / "client" / "board"
+    folder.mkdir(parents=True)
+    (folder / "claude-code.token").write_text("t\n", encoding="utf-8")
+    (folder / "claude-code.parent").write_text("\n", encoding="utf-8")
 
 
 def uses():
@@ -110,6 +114,7 @@ def test_a_person_at_a_terminal_passes_a_delegated_gate_unaudited():
 
 def test_a_delegated_quarantine_gate_grants_without_the_typed_confirmation(monkeypatch):
     monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", "claude-code")
 
     def typed(prompt):
         raise AssertionError("asked a person to type")

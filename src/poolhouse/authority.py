@@ -126,18 +126,22 @@ def set_state(names: Iterable[str], new: str, *, by: str, project: str = "",
     return changes
 
 
-def workspace_helper(name: str) -> bool:
-    """Whether the node's record, kept beside the session ``name``'s token when it registered, says it is a subagent (it has a
-    parent). A session with no record is not one; a record that cannot be read counts as one: a delegated pass fails closed."""
-    if not name:
-        return False
+def _parents(name: str) -> list[str] | None:
+    """The parent records the node kept beside the tokens of session ``name``, one per board; None when they cannot be read
+    or ``name`` is not a session name."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,47}", name):
-        return True
+        return None
     try:
-        kept = [path.read_text("utf-8").strip() for path in (home.state("node") / "client").glob(f"*/{name}.parent")]
+        boards = (home.state("node") / "client").glob(f"*/{name}.token")
+        return [path.with_suffix(".parent").read_text("utf-8").strip() for path in boards]
     except (OSError, ValueError):
-        return True
-    return any(kept)
+        return None
+
+
+def workspace_lead(name: str) -> bool:
+    """Whether the node's record names ``name`` as a main session: a token on at least one board and no parent on any."""
+    parents = _parents(name) if name else None
+    return bool(parents) and not any(parents)
 
 
 def require(gate: str, action: str, terminal: tuple[bool, bool] | None = None,
@@ -153,8 +157,8 @@ def require(gate: str, action: str, terminal: tuple[bool, bool] | None = None,
         require_person(action, terminal, env)
         return PERSON
     who = found.get(AGENT_ENV, "")
-    if "/" in who or workspace_helper(who):
-        raise HumanRequired(f"{action} is delegated to the lead agent, not a helper")
+    if not workspace_lead(who):
+        raise HumanRequired(f"{action} is delegated to a lead agent the node has a session for, not a helper or an unnamed process")
     _log({"event": "authority.use", "gate": gate, "action": action, "agent": who or marker,
           "project": project})
     return DELEGATED

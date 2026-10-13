@@ -351,7 +351,9 @@ board's unread rows (sender, kind and time of each, text only for the cases abov
 [GATE ...] [--project KEY]` changes some, and `authority preset dev|prod` changes all of them and the board's task
 enforcement mode together (see AGENTS.md, "System settings and the authority registry"). A lead agent or a person
 flips; a subagent is refused. Each flip is audited in `authority-audit.jsonl` under the state root, which also records
-each use of a delegated gate by an agent. The registry gates what a person has delegated to a lead; the grants above
+each use of a delegated gate by an agent. A delegated gate passes an agent only under a session name the node
+recorded as a main session (a token on a board and no parent): an unnamed process, a name the node does not know and
+a subagent are refused. The registry gates what a person has delegated to a lead; the grants above
 gate what the node lets a session do. Neither widens the other.
 
 ## Rooms

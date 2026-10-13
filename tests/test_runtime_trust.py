@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent
 SRC = str(ROOT.parent / "src")
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.org",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.org"}
+LEAD = "agent-lead01"
 
 
 def git(repo, *words):
@@ -58,6 +59,10 @@ class World:
         git(self.repo, "checkout", "-q", "dev")
         runtime_deploy.prepare_root()
         runtime_store.write_state({"checkout": str(self.repo)})
+        folder = self.home / "node" / "client" / "board"
+        folder.mkdir(parents=True)
+        (folder / f"{LEAD}.token").write_text("t\n", encoding="utf-8")
+        (folder / f"{LEAD}.parent").write_text("\n", encoding="utf-8")
 
     def env(self, **extra) -> dict:
         env = {key: value for key, value in os.environ.items()
@@ -67,7 +72,8 @@ class World:
                 "POOLHOUSE_TEST_KEYRING": str(self.keyring), "PIP_NO_INDEX": "1", **extra}
 
     def cli(self, *argv: str, agent: bool = True, **extra) -> subprocess.CompletedProcess:
-        env = self.env(**({"CLAUDECODE": "1"} if agent else {}), **extra)
+        marked = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": LEAD} if agent else {}
+        env = self.env(**{**marked, **extra})
         return subprocess.run([sys.executable, "-m", "poolhouse.runtime_cli", *argv], capture_output=True,
                               text=True, timeout=120, env=env, stdin=subprocess.DEVNULL)
 
@@ -177,7 +183,7 @@ def test_background_ensure_of_the_tip_needs_no_agent_identity(world):
 def test_unmerged_deploys_are_refused_to_an_agent_even_at_a_terminal(world):
     master, slave = pty.openpty()
     child = subprocess.Popen([sys.executable, "-m", "poolhouse.runtime_cli", "ensure", "--ref", world.evil, "--allow-unmerged"],
-                             env=world.env(CLAUDECODE="1"), stdin=slave, stdout=slave, stderr=slave, close_fds=True)
+                             env=world.env(CLAUDECODE="1", POOLHOUSE_WORKSPACE_AGENT=LEAD), stdin=slave, stdout=slave, stderr=slave, close_fds=True)
     os.close(slave)
     assert child.wait(timeout=60) != 0
     os.close(master)
