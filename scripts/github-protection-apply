@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Apply the GitHub protection target of docs/github-protection.md. The owner runs it at a terminal.
 
-    scripts/github-protection-apply [--repo OWNER/NAME]                       print what would change
-    scripts/github-protection-apply --apply --identity-ready
+    scripts/github-protection-apply [--repo OWNER/NAME]                   print what would change
+    scripts/github-protection-apply [--repo OWNER/NAME] --apply
     scripts/github-protection-apply --restore BACKUP [--apply]            put a backup's settings back
 
 A run without --apply changes nothing and prints a diff per step. --apply saves the current
 settings to a file under the state root, applies the steps in order, stops at the first error,
-prints the restore command, and ends with `scripts/github-protection --check`. An agent marker
+prints the restore command, and ends with `scripts/github-protection --check`. It refuses until
+`scripts/agent-identity check` finds the agent identity stored for the repository. An agent marker
 or a missing terminal refuses.
 """
 from __future__ import annotations
@@ -32,9 +33,7 @@ CHECKS = ("gates", "privacy", "licenses", "test (ubuntu-latest, 3.13, --slow)")
 SECURITY = {"secret_scanning": {"status": "enabled"},
             "secret_scanning_push_protection": {"status": "enabled"},
             "dependabot_security_updates": {"status": "enabled"}}
-IDENTITY = ("The agent identity comes first and has no API: create the GitHub App (or fine-grained token) "
-            "with Contents, Pull requests and Workflows write and Metadata read, and start the harness "
-            "with it (docs/github-protection.md#agent-identity). Pass --identity-ready once that is done.")
+AGENT_IDENTITY = ROOT / "scripts" / "agent-identity"
 
 
 class Failed(RuntimeError):
@@ -47,6 +46,14 @@ class Step:
     method: str
     path: str
     body: dict | None = None
+
+
+def identity(repo: str) -> tuple[bool, str]:
+    """Whether `scripts/agent-identity check` finds the agent identity stored for ``repo``, and its one line."""
+    done = subprocess.run([sys.executable, str(AGENT_IDENTITY), "check", "--repo", repo],
+                          capture_output=True, text=True, check=False)
+    line = done.stdout.strip() or done.stderr.strip() or "agent identity: the check printed nothing"
+    return done.returncode == 0, line
 
 
 def gh(method: str, path: str, body: dict | None = None):
@@ -248,15 +255,16 @@ def run(args: argparse.Namespace) -> int:
     else:
         repo = args.repo
         steps, stop = plan(repo, args)
+    named, line = (True, "restore: nothing is changed without --apply") if args.restore else identity(repo)
     if not args.apply:
-        print(IDENTITY if not args.restore else "restore: nothing is changed without --apply")
+        print(line)
         for step in steps:
             show(step)
         if stop:
             print(f"\nNote: {stop}")
         return 0
-    if not args.restore and not args.identity_ready:
-        raise Failed(IDENTITY)
+    if not named:
+        raise Failed(line)
     saved_to = backup(repo) if not args.restore else None
     if saved_to:
         print(f"saved the current settings to {saved_to}")
@@ -283,7 +291,6 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
     parser = argparse.ArgumentParser(prog="github-protection-apply", description=__doc__.splitlines()[0])
     parser.add_argument("--repo", help="OWNER/NAME")
     parser.add_argument("--apply", action="store_true", help="make the changes; without it, print them")
-    parser.add_argument("--identity-ready", action="store_true", help="the agent identity is in use")
     parser.add_argument("--restore", help="a backup file written by --apply")
     parser.add_argument("--owner-review", action="store_true",
                         help="GitHub requires the owner's approval on pull requests to the default branch")

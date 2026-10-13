@@ -18,7 +18,9 @@ from tests.github_support import GOOD, REPO, ruleset, serve
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "github-protection-apply"
 TERMINAL = (True, True)
-APPLY = ["--repo", REPO, "--apply", "--identity-ready"]
+APPLY = ["--repo", REPO, "--apply"]
+READY = (True, "agent identity: ready: App test-agents (id 1), installation 2 on " + REPO)
+MISSING = (False, "agent identity: not set up; run scripts/agent-identity setup")
 
 
 @pytest.fixture
@@ -30,6 +32,8 @@ def ap(tmp_path, monkeypatch):
     module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
     monkeypatch.setitem(sys.modules, loader.name, module)
     loader.exec_module(module)
+    module.real_identity = module.identity
+    monkeypatch.setattr(module, "identity", lambda _repo: READY)
     return module
 
 
@@ -69,15 +73,53 @@ def test_without_apply_nothing_is_changed_and_the_diff_is_printed(ap, tmp_path, 
     assert "== release environment" in out and "== remove the ruleset named default" in out
     assert re.search(r'^\s+-\s+"allow_auto_merge": true', out, re.M)
     assert re.search(r'^\s+\+\s+"allow_auto_merge": false', out, re.M)
-    assert "agent identity comes first" in out
+    assert READY[1] in out
     assert not (tmp_path / "home" / "github-protection").exists()
 
 
-def test_apply_without_the_identity_confirmed_changes_nothing(ap, tmp_path, monkeypatch, capsys):
+def test_apply_without_a_stored_identity_changes_nothing_and_names_the_next_step(
+        ap, tmp_path, monkeypatch, capsys):
     log = serve(tmp_path, monkeypatch, before_state())
+    monkeypatch.setattr(ap, "identity", lambda _repo: MISSING)
     assert ap.main(["--repo", REPO, "--apply"], TERMINAL) == 1
     assert writes(log) == []
-    assert "identity" in capsys.readouterr().err
+    assert "scripts/agent-identity setup" in capsys.readouterr().err
+    assert not (tmp_path / "home" / "github-protection").exists()
+
+
+def test_a_dry_run_says_the_identity_is_missing_and_still_prints_the_diff(ap, tmp_path, monkeypatch, capsys):
+    serve(tmp_path, monkeypatch, before_state())
+    monkeypatch.setattr(ap, "identity", lambda _repo: MISSING)
+    assert ap.main(["--repo", REPO], TERMINAL) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(MISSING[1]) and "== release environment" in out
+
+
+def test_the_flag_that_stood_for_the_identity_is_gone(ap, tmp_path, monkeypatch):
+    log = serve(tmp_path, monkeypatch, before_state())
+    with pytest.raises(SystemExit) as raised:
+        ap.main([*APPLY, "--identity-ready"], TERMINAL)
+    assert raised.value.code == 2 and writes(log) == []
+
+
+def check_script(tmp_path, code, line):
+    script = tmp_path / "agent-identity"
+    script.write_text("import pathlib, sys\n"
+                      f"pathlib.Path({str(tmp_path / 'argv')!r}).write_text(' '.join(sys.argv[1:]))\n"
+                      f"print({line!r})\nsys.exit({code})\n")
+    return script
+
+
+@pytest.mark.parametrize("code,ready", [(0, True), (1, False)])
+def test_the_identity_is_what_agent_identity_check_says_for_this_repository(
+        ap, tmp_path, monkeypatch, code, ready):
+    monkeypatch.setattr(ap, "AGENT_IDENTITY", check_script(tmp_path, code, "agent identity: a line"))
+    assert ap.real_identity(REPO) == (ready, "agent identity: a line")
+    assert (tmp_path / "argv").read_text().split() == ["check", "--repo", REPO]
+
+
+def test_with_nothing_stored_the_real_check_says_so(ap):
+    assert ap.real_identity(REPO) == (False, "agent identity: not set up; run scripts/agent-identity setup")
 
 
 def test_the_changes_are_made_in_order_after_a_backup(ap, tmp_path, monkeypatch, capsys):

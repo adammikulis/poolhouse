@@ -5,7 +5,8 @@ sets it.
 
 - `scripts/github-protection-apply` applies the target. It is the owner's, run at his own terminal: it refuses an
   agent marker and a missing terminal, prints a diff and changes nothing unless given `--apply`, and saves the current
-  settings before it changes any.
+  settings before it changes any. `--apply` also refuses until `scripts/agent-identity check` finds the
+  [agent identity](#agent-identity) stored for the repository; the dry run prints that check's line first.
 - `scripts/github-protection --check` compares the repository with the target and prints one line per difference,
   each pointing at a section below. Every `gh api` request it makes is a GET, and `tests/test_github_protection.py`
   fails when its source gains a write. With no `--repo` it first runs `gh repo view`, a read-only GraphQL query that
@@ -42,10 +43,11 @@ carry no right to change the server's rules. What the red-team pass found:
 
 Nothing after step 1 constrains an agent that still holds the owner's credentials, so step 1 comes first.
 
-1. [Give agents their own identity](#agent-identity) and start the harness with it.
-2. `scripts/github-protection-apply --repo $R` prints what would change.
-3. `scripts/github-protection-apply --repo $R --apply --identity-ready` creates the `release` environment, then stops
-   because the environment has no signing key yet.
+1. `scripts/agent-identity setup` ([Agent identity](#agent-identity)) gives agents their own identity; start the
+   harness with the token `scripts/agent-identity token` prints.
+2. `scripts/github-protection-apply --repo $R` prints what would change, and the identity check's line.
+3. `scripts/github-protection-apply --repo $R --apply` creates the `release` environment, then stops because the
+   environment has no signing key yet.
 4. `scripts/release-key create --write` (or `rotate`) stores the key in the environment; commit
    `src/poolhouse/fleet/signing.py` ([release.md](release.md)).
 5. Run the apply command from step 3 again. It removes repository secrets, replaces the rulesets, sets the Actions
@@ -61,13 +63,37 @@ deletes merged branches on its own (the target sets `delete_branch_on_merge` to 
 
 ## Agent identity
 
-Agents authenticate as something other than the owner, and push everything with it, workflow files included.
+Agents authenticate as something other than the owner, and push everything with it, workflow files included. The
+identity is a GitHub App installed on this repository only, with Contents, Pull requests and Workflows read and write,
+and Metadata read. No Administration, no Secrets, no Environments. An installation token lasts an hour; whatever
+launches the harness mints a fresh one.
 
-- **GitHub App** (preferred): installed on this repository only, with Contents, Pull requests and Workflows read and
-  write, and Metadata read. No Administration, no Secrets, no Environments. An installation token lasts an hour;
-  whatever launches the harness mints a fresh one.
-- **Fine-grained personal access token** on the owner's account, limited to this repository, with the same
-  permissions. The user interface is the only place to make one; it can last up to a year.
+`scripts/agent-identity` makes and uses it, at the owner's terminal. The repository defaults to the one `gh` or the
+origin remote names; every error names the next step.
+
+- `scripts/agent-identity setup` uses GitHub's App manifest flow. It opens the browser twice: on GitHub's create page
+  with the permissions above filled in (press Create GitHub App), then on the App's install page (choose only this
+  repository, press Install). It exchanges the one-time code for the App id and private key, stores the key in the OS
+  keystore (never a file, never printed), waits until the installation exists, checks it, and records the App id and
+  installation id with the key. A run that stopped after the App was made resumes at the install step.
+- `scripts/agent-identity token` prints one installation token on stdout, for this repository and the permissions
+  above, and nothing else. It refuses a token for another installation, another repository, wider permissions or a
+  longer life.
+- `scripts/agent-identity check [--repo OWNER/NAME] [--online]` prints one line saying whether the identity is ready.
+  `scripts/github-protection-apply` runs it. `--online` also asks GitHub whether the installation is still there.
+
+What `setup` refuses, and what a person's gate means here:
+
+- The loopback listener binds `127.0.0.1` on a random port, takes a random state value from GitHub's redirect, serves
+  the manifest page once and accepts the one redirect, then closes. A wrong or repeated state, another `Host` header,
+  another method or path and a second request are refused and use nothing up.
+- The App must belong to the repository's owner with exactly the permissions asked; the installation must be on
+  selected repositories, be this App's, and reach this repository and no other. Anything else is not stored as ready.
+- `setup`, `token` and `check --online` refuse an agent marker and a missing terminal. `token` needs a terminal on stdin
+  and on stdout or stderr, so `GH_TOKEN="$(scripts/agent-identity token)"` works at a prompt.
+- The script runs again, isolated, under the selected runtime (`runtime.rerun`; `scripts/release-key` does the same),
+  the one copy of Poolhouse the machine's keystore admits (`poolhouse.real_machine`). `poolhouse runtime ensure`
+  installs what it needs: the `memory` (keyring) and `github-app` (PyJWT) extras are in `installed.STANDARD`.
 
 Workflows write is acceptable because nothing a workflow pushed to a branch can read is worth taking: the signing key
 is a secret of the `release` environment, which deploys from `main` only; no repository-level secret exists
@@ -80,7 +106,7 @@ his own:
 
 ```sh
 export GH_CONFIG_DIR="$HOME/.config/gh-agent"     # an empty directory: no stored login
-export GH_TOKEN="<the agent token>"
+export GH_TOKEN="$(scripts/agent-identity token)"
 unset GITHUB_TOKEN GH_ENTERPRISE_TOKEN
 export GIT_CONFIG_GLOBAL="$HOME/.config/git/agent-config"
 export GIT_CONFIG_NOSYSTEM=1
@@ -119,10 +145,9 @@ One device pushes to the development branch: the lander, the device whose runner
 ([landing-queue.md](landing-queue.md)). Every other device that runs agents holds no push credential; it fetches with
 none or with a read-only one.
 
-- The lander's credential is the App's installation token, minted from the App's key for an hour. No code in the
-  repository mints it: whatever launches the lander's harness ([Agent identity](#agent-identity)) mints one from the
-  App's key, which stays in the lander's keystore, for each landing batch. The fine-grained token (up to a year) is the
-  weaker option, used only until the App exists.
+- The lander's credential is the App's installation token, minted from the App's key for an hour. `scripts/agent-identity
+  token` mints it ([Agent identity](#agent-identity)); the key stays in the lander's keystore, and whatever launches the
+  lander's harness runs the command for each landing batch.
 - **`--lander` is a self-attestation.** Nothing on the device, the board or GitHub says which device is the lander; the
   person or agent running the check says so, and a device that does not say it is held to the rule for a device that is
   not. The check does not detect the lander.

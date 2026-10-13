@@ -202,6 +202,14 @@ def forward(module: str, argv: list[str]) -> bool:
     return True
 
 
+def rerun(script: Path, argv: list[str]) -> None:
+    """Run ``script`` again, isolated, under the selected runtime; return when this is it, or none is selected."""
+    chosen = available()
+    if sys.flags.isolated or chosen is None or Path(sys.prefix) == chosen.prefix:
+        return
+    os.execve(str(chosen.python), [str(chosen.python), "-I", str(script), *argv], environment())  # noqa: S606
+
+
 LAUNCHER = """#!/usr/bin/env python3
 import glob,json,os,subprocess,sys,time
 root = {root!r}

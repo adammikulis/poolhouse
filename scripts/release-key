@@ -6,7 +6,8 @@
     scripts/release-key rotate [--write]     replace the stored key and the environment secret
     scripts/release-key agent                load the stored key into ssh-agent
 
-A person runs it at a terminal; an agent marker or a missing terminal refuses.
+A person runs it at a terminal; an agent marker or a missing terminal refuses. It runs again under the
+selected runtime, the one copy of Poolhouse the machine's keystore admits.
 """
 from __future__ import annotations
 
@@ -21,7 +22,13 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
+if not sys.flags.isolated:
+    sys.path.insert(0, str(ROOT / "src"))
+
+from poolhouse import runtime  # noqa: E402
+
+if __name__ == "__main__" and not sys.flags.isolated:
+    runtime.rerun(Path(__file__).resolve(), sys.argv[1:])
 
 from cryptography.hazmat.primitives import serialization  # noqa: E402
 

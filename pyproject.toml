@@ -49,7 +49,7 @@ privacy = ["presidio-analyzer>=2.2.364", "spacy>=3.8"]
 # presidio over a transformers NER model rather than spaCy's own
 privacy-transformers = ["poolhouse[privacy]", "presidio-analyzer[transformers]>=2.2.364"]
 test = [
-    "poolhouse[agents,memory,store,arrays]", "distlib", "pip", "hatchling", "pytest>=9.1.1",
+    "poolhouse[agents,memory,store,arrays,github-app]", "distlib", "pip", "hatchling", "pytest>=9.1.1",
     "pytest-xdist>=3.8.0", "pytest-testmon>=2.2", "pyyaml>=6.0", "defusedxml>=0.7",
 ]
 
@@ -69,6 +69,8 @@ train-mlx = ["poolhouse[train,mlx]", "mlx-lm>=0.31.3", "huggingface_hub>=1.32"]
 # base frozen. What makes an 8B tool caller trainable on one machine, where a full
 # fine-tune of it would need ~128G of optimizer state.
 train-lora = ["poolhouse[train,torch,transformers]", "peft>=0.21.0"]
+# `scripts/agent-identity`: the GitHub App agents sign in as, its key kept in the OS keystore
+github-app = ["pyjwt[crypto]>=2.10", "cryptography>=50", "keyring>=24"]
 # a daemon on the LAN makes its own TLS certificate with this (or with openssl on PATH)
 fleet-tls = ["cryptography>=50"]
 # verifying the signature on a release or a tracked commit (`poolhouse-pool` updates)
@@ -279,7 +281,7 @@ markers = [
 line-length = 100
 target-version = "py312"
 # python with no .py on it: ruff matches by extension unless the name is spelled out
-extend-include = ["scripts/budgets", "scripts/release-key", "scripts/hooks/budgets",
+extend-include = ["scripts/agent-identity", "scripts/budgets", "scripts/release-key", "scripts/hooks/budgets",
                   "scripts/hooks/claude-bash-guard", "scripts/hooks/claude-edit-guard"]
 
 [tool.ruff.lint]

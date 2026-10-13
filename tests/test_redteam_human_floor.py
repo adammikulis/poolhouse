@@ -332,7 +332,7 @@ def apply_child(tmp_path: Path, *, agent: bool, terminal: bool) -> tuple[int, st
     env = {**os.environ, "POOLHOUSE_HOME": str(tmp_path / "home"), **CLEAN,
            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
            **({"CLAUDECODE": "1"} if agent else {})}
-    argv = [sys.executable, str(APPLY_SCRIPT), "--repo", "o/r", "--apply", "--identity-ready"]
+    argv = [sys.executable, str(APPLY_SCRIPT), "--repo", "o/r", "--apply"]
     if not terminal:
         done = subprocess.run(argv, env=env, capture_output=True, text=True,
                               stdin=subprocess.DEVNULL, timeout=60)
