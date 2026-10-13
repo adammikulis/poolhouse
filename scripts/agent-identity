@@ -38,7 +38,7 @@ if not sys.flags.isolated:
 
 from poolhouse import runtime  # noqa: E402
 
-if __name__ == "__main__":
+if __name__ == "__main__" and not sys.flags.isolated:
     runtime.rerun(Path(__file__).resolve(), sys.argv[1:])
 
 try:
@@ -233,9 +233,9 @@ def owner_kind(owner: str) -> str:
 
 # -- the loopback listener ---------------------------------------------------------------------
 
-def from_here(peer: str, hosts: list[str], port: int) -> bool:
+def from_here(caller: str, hosts: list[str], port: int) -> bool:
     """Whether a request comes from this machine and was addressed to this listener."""
-    return peer == LOOPBACK and hosts == [f"{LOOPBACK}:{port}"]
+    return caller == LOOPBACK and hosts == [f"{LOOPBACK}:{port}"]
 
 
 def state_ok(query: dict[str, list[str]], state: str) -> bool:

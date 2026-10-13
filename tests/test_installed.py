@@ -43,6 +43,11 @@ def test_the_module_each_extra_is_read_by_is_one_that_extra_installs():
         assert package in named, f"[{one.extra}] does not install {one.module} through {package}"
 
 
+def test_a_full_install_holds_what_the_scripts_that_keep_a_key_in_the_keystore_import():
+    """scripts/agent-identity and scripts/release-key run under the selected runtime, which installs STANDARD."""
+    assert {"keyring", "jwt"} <= {one.module for one in STANDARD}
+
+
 def test_a_module_that_is_here_reads_as_present():
     assert Capability("core", "the standard library", "reads JSON", "json").present()
 
