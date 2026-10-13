@@ -82,7 +82,8 @@ with no model, and each one asks (`unsure`, a request of kind `tool_call_destruc
   A shell redirect, `tee`, `cp`, `mv`, `ln`, `install`, `dd`, `sed -i` and `curl -o` onto such a file ask the same way.
 - **Text written to any file** is read for a download piped to a shell (`curl ... | sh`,
   `bash <(curl ...)`, `eval "$(curl ...)"`), text decoded and run, a shell opened to another machine
-  and a credential sent out. A call or pipeline spread over several lines is read as one. The ask
+  and a credential sent out. A call or pipeline spread over several lines is read as one, and an
+  `Edit` or `MultiEdit` is read together with the file it changes, so a download split over two edits is caught. The ask
   quotes the flagged statement with its line number (the part around the match when it is long),
   every character outside ASCII written as a visible escape, so a direction mark, a zero-width
   character or a lookalike letter cannot hide it. A direction mark in written code asks on its own.

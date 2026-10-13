@@ -45,7 +45,7 @@ WILD_ABSOLUTE = ("/proc/self/environ", "/proc/1/environ", "/etc/shadow", "/etc/s
 MAX_ALTERNATIVES = 64
 MAX_WALK = 20_000
 WALK_SECONDS = 0.3
-SKIP_DIRS = frozenset({".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", ".mypy_cache", ".ruff_cache", ".pytest_cache", "site-packages"})
+SKIP_DIRS = frozenset({".git", ".worktrees", "worktrees", "node_modules", ".venv", "venv", "__pycache__", ".tox", ".mypy_cache", ".ruff_cache", ".pytest_cache", "site-packages"})
 TOO_LARGE = "too many files to check"
 WILD = re.compile(r"[*?\[]")
 GUESSES = (*NAMES, ".env.local", ".env.production", ".env.development", "id_rsa_work", *(f"x{s}" for s in SUFFIXES),
@@ -90,6 +90,8 @@ def _normal(text: str, base: str) -> Path | None:
     if not text or "\0" in text or len(text) > 4096:
         return None
     path = home.expand(text)
+    if text.startswith("~") and not path.is_absolute():
+        return Path(os.path.normpath("/" + text))
     return Path(os.path.normpath(path if path.is_absolute() else (Path(base) if base else Path.cwd()) / path))
 
 
@@ -163,6 +165,21 @@ def _may_match(part: str) -> str:
     return next((name for name in GUESSES if (dotted or not name.startswith(".")) and fnmatch.fnmatchcase(name, part)), "")
 
 
+def _part_matches(part: str, want: str) -> bool:
+    return fnmatch.fnmatchcase(want.lower(), part.lower()) and (part.startswith(".") or not want.startswith("."))
+
+
+def _window_hit(parts: list[str]) -> str:
+    """The credential folder a run of pattern parts could spell, such as ``.config/g?``; a run with no wildcard is `path_hit`'s."""
+    for entry in HOME_DIRS:
+        want = entry.split("/")
+        for at in range(len(parts) - len(want) + 1):
+            window = parts[at:at + len(want)]
+            if any(WILD.search(p) for p in window) and all(_part_matches(p, w) for p, w in zip(window, want, strict=True)):
+                return entry
+    return ""
+
+
 def glob_hit(text: str, base: str = "") -> Hit | None:
     """The credential entry a pattern could expand to; a wildcard that matches no credential name is nothing."""
     for alt in _braces(expanded(text)):
@@ -171,6 +188,8 @@ def glob_hit(text: str, base: str = "") -> Hit | None:
         if hit := path_hit(alt, base):
             return hit
         parts = [p for p in alt.split("/") if p]
+        if found := _window_hit(parts):
+            return Hit(found, Path(alt))
         for part in parts:
             if found := _may_match(part):
                 return Hit(found, Path(alt))
@@ -191,7 +210,7 @@ def sensitive_path() -> re.Pattern[str]:
     tail = r"(?:$|[\s\"'/\\])"
     return re.compile(
         rf"(?i)(?:^|[\s\"'=:@/\\~])(?:{folders}|{always}|\.env(?:\.\w+)?|id_(?:rsa|dsa|ecdsa|ed25519|xmss)\w*){tail}"
-        rf"|(?:^|[/\\~])(?:{inside}){tail}"
+        rf"|(?:^|[/\\~])(?:{inside})(?:$|[\s\"'\\])"
         r"|/etc/(?:passwd|shadow|gshadow|sudoers)|/proc/(?:self|\d+)/environ|\bKeychains?\b")
 
 

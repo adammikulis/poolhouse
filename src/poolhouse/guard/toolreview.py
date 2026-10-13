@@ -16,8 +16,9 @@ from poolhouse.guard.verbs import words_of
 __all__ = ["findings"]
 
 U, D = "unsure", "destructive"
+GLOBS = frozenset({"glob", "globs", "include", "includes"})
 READ_KEYS = frozenset({"path", "paths", "file", "files", "filepath", "filename", "file_path", "dir", "directory", "src", "source", "folder",
-                       "root", "from", "notebook_path", "glob"})
+                       "root", "from", "notebook_path"}) | GLOBS
 URL_KEYS = frozenset({"url", "uri", "href", "link", "urls"})
 LISTING = frozenset({"Glob", "LS", "list_dir"})
 SEARCHES = frozenset({"grep", "search", "find"})
@@ -30,11 +31,11 @@ def _values(value: Any) -> list[str]:
 
 def _read(name: str, key: str, value: str, roots: Sequence[str]) -> list[Finding]:
     base = roots[0] if roots else ""
-    hit = secretpaths.glob_hit(value, base) if key == "glob" else secretpaths.holds_secrets(value, base)
+    hit = secretpaths.glob_hit(value, base) if key in GLOBS else secretpaths.holds_secrets(value, base)
     if hit:
         return [execchain.closed(hit, roots)]
     full = resolve(secretpaths.expanded(value), roots)
-    if key != "glob" and set(words_of(name)) & SEARCHES and secretpaths.inside_home(full) and outside(str(full), roots):
+    if key not in GLOBS and set(words_of(name)) & SEARCHES and secretpaths.inside_home(full) and outside(str(full), roots):
         return [Finding(D, "searches the whole home folder, where credentials are kept", forbidden=True)]
     return []
 

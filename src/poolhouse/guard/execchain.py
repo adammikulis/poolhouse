@@ -58,7 +58,7 @@ FETCHING: dict[str, frozenset[str]] = {
     "poetry": frozenset({"install", "add", "update"}), "conda": INSTALL, "mamba": INSTALL, "micromamba": INSTALL,
     "npm": INSTALL - {"run"}, "yarn": INSTALL - {"run", "exec"}, "pnpm": INSTALL - {"run"}, "bun": INSTALL - {"run"},
     "cargo": frozenset({"run", "install", "add", "fetch", "update"}), "go": frozenset({"run", "install", "get", "generate"}),
-    "gem": frozenset({"install", "update"}), "bundle": frozenset({"install", "update", "add", "exec"}),
+    "gem": frozenset({"install", "update"}), "bundle": frozenset({"install", "update", "add"}),
     "composer": frozenset({"install", "require", "update", "create-project"}),
     "brew": frozenset({"install", "reinstall", "upgrade", "tap", "bundle"}),
     **dict.fromkeys(("apt", "apt-get", "aptitude", "dnf", "yum", "zypper", "pacman", "apk", "snap", "flatpak", "choco", "winget", "scoop", "port",
@@ -331,7 +331,7 @@ def _reads(name: str, args: list[str], roots: Sequence[str], supplied: bool, fee
         found += _trees(name, args, roots, _walks(name, args))
     if supplied and name in READERS and not _safe_feeder(feeder, roots):
         found.append(Finding(U, "reads files another command picks, which could include credential files"))
-    return found[:3]
+    return sorted({f.reason: f for f in found}.values(), key=lambda f: not f.forbidden)[:4]
 
 
 def review(argv: Sequence[str], roots: Sequence[str] = (), supplied: bool = False, feeder: Sequence[str] = ()) -> list[Finding]:

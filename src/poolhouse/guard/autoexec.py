@@ -57,6 +57,7 @@ PATH_KEYS = ("file_path", "path", "notebook_path", "filepath", "filename", "file
 TEXT_KEYS = ("content", "contents", "text", "file_text", "new_string", "new_text", "new_source", "data", "body")
 BEGIN = "*** Begin Patch"
 EXCERPT = 2
+MAX_FILE = 1 << 20
 SHOWN = 90
 
 
@@ -126,19 +127,43 @@ def _edits(args: Mapping[str, Any]) -> Iterator[str]:
 
 def written(name: str, args: Mapping[str, Any]) -> list[tuple[str, str]]:
     """The ``(path, text)`` pairs a write tool call would put on disk; empty for any other call."""
-    patches = [v for v in args.values() if isinstance(v, str) and BEGIN in v]
-    if patches:
-        return [pair for patch in patches for pair in _patch(patch)]
+    pairs = [pair for v in args.values() if isinstance(v, str) and BEGIN in v for pair in _patch(v)]
     if name not in WRITE_TOOLS and not set(words_of(name)) & EDITS:
-        return []
-    path = next((str(args[k]) for k in PATH_KEYS if isinstance(args.get(k), str)), "")
+        return pairs
     text = "\n".join([*(str(args[k]) for k in TEXT_KEYS if isinstance(args.get(k), str)), *_edits(args)])
-    return [(path, text)] if path else []
+    return [*pairs, *((str(args[k]), text) for k in PATH_KEYS if isinstance(args.get(k), str) and args[k])]
 
 
 def _excerpt(text: str) -> str:
     lines = [fetchexec.ascii_line(x, SHOWN) for x in text.splitlines() if x.strip()][:EXCERPT]
     return "; ".join(lines)
+
+
+def _merged(path: str, roots: Sequence[str], args: Mapping[str, Any]) -> tuple[str, str] | None:
+    """The text of the file before and after an edit call, or None when the call is no edit or the file cannot be read."""
+    edits = [args] if "old_string" in args else [e for e in args.get("edits") or () if isinstance(e, Mapping)]
+    full = resolve(path, roots)
+    try:
+        if not edits or not full.is_file() or full.stat().st_size > MAX_FILE:
+            return None
+        before = full.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    after = before
+    for edit in edits:
+        if isinstance(edit.get("old_string"), str) and isinstance(edit.get("new_string"), str) and edit["old_string"]:
+            after = after.replace(edit["old_string"], edit["new_string"], -1 if edit.get("replace_all") else 1)
+    return before, after
+
+
+def _flags(text: str, path: str, roots: Sequence[str], args: Mapping[str, Any], strict: bool) -> list[fetchexec.Flag]:
+    """What ``text`` flags, plus what the whole file flags once the edit is applied that it did not flag before."""
+    flags = fetchexec.scan(text, strict=strict)
+    merged = _merged(path, roots, args)
+    if merged is not None:
+        seen = {f.text for f in fetchexec.scan(merged[0], strict=strict)} | {f.text for f in flags}
+        flags += [f for f in fetchexec.scan(merged[1], strict=strict) if f.text not in seen]
+    return flags
 
 
 def write_findings(name: str, args: Mapping[str, Any], roots: Sequence[str] = ()) -> list[Finding]:
@@ -147,7 +172,7 @@ def write_findings(name: str, args: Mapping[str, Any], roots: Sequence[str] = ()
     found: list[Finding] = []
     for path, text in written(name, args):
         why = path_reason(path, roots)
-        flags = fetchexec.scan(text, strict=bool(why))
+        flags = _flags(text, path, roots, args, bool(why))
         shown = fetchexec.describe(flags)
         base = fetchexec.ascii_line(Path(path).name or path, SHOWN)
         if why:
