@@ -11,7 +11,6 @@
 ## Model acquisition: publisher trust (2026-10-12), what is left
 - **Other readers of `resolve/main`.** `decide/fetch.py` and `guard/classifier.py` fetch their own checkpoints from `resolve/main`; the MLX bench default (`mlx-community/Qwen3.8-Flash-Next-4bit`, `bench/options.py`, `bench/tree.py`) is loaded by `mlx_lm` with its own download and is not checked by Poolhouse.
 - **Peer-shared models.** A copy offered by a device that is not on the Hub has no publisher and nothing asks about it; member-first copies are checked against the Hub's digest only on a pull that already passed the publisher check.
-- **The shipped publisher list is code.** A signed list with updates (and a revocation of a publisher whose namespace is compromised) is not built; the list has no add path, by design, until it is.
 - **A compromised known namespace.** A first pull of a replaced file from a known publisher passes, because the digest comes from the same Hub listing; an independent digest source (a signed list of release digests, or a transparency record) is needed. Model cards, tags and `base_model` are not read for altered-model markers; only repository and file names are.
 - **A server started by a process of its own.** `ServerManager` runs `guarded.verify` in the broker daemon on the default route (`poolhouse-serve up`, the `Client`); with `POOLHOUSE_BROKER_LOCAL=1`, another state file or a backend subclass it runs in the caller's process, under the caller's environment, where `POOLHOUSE_SENTINEL=off` (it needs `POOLHOUSE_SENTINEL_BECAUSE`) turns the load check off. Sealed pin files sit beside their key in the state directory, so code running as the same user can write a pin; only `sentinel baseline` is gated.
 - **Approvals live in the request inbox** (kept seven days, 400 rows): an approval older than that asks again, and a process that can read the keystore can edit the inbox file like any other request.
@@ -32,17 +31,14 @@
   - A `veto` by the key a removal names pauses the admin-set acts for seven days, and a stolen admin key can veto each new removal of itself; the recovery path that ends it is slice 3.
   - The join code's three tries can be burned by any TLS client that does not know the code; `on_segment` counts loopback (and, on Windows, any RFC 1918 address), so an open pool admits local processes by design.
   - A removal names the logs of the removed device that the removing device holds; a board that device wrote on, that the remover never synced, has no named cut and stands as far as each device holds it when it learns of the removal. The entries a removed device wrote before its removal stay on the boards; they are not rewritten.
-  - Merging with `worktree-agent-a6db85690baf91182` (the removal-race fix: `is_active` checks, `locked_for` in `net.rs` and `netsync.rs`) is expected to conflict in those two files; keep its checks.
   - From the second attack review (2026-10-11), kept and not fixed: a `leave` and an `admit` of one device are ordered by the signer's `at_ms`, which a device chooses, so a device can order its own leave against an admin's later admit; `pool_leave` takes the device out of `can_join_other`, so a device that left cannot join another pool until its state directory is replaced; the `how` label of a delegate's admit is the delegate's own word and shows in the roster as written; admin acts are never pruned, so a long-lived pool's `join_payload` can pass the 256 KB a join message holds and refuse a joiner whole (it says so); `gov/clock` measures awake time with `Instant`, which on Windows does not run while the machine sleeps, so a hold there can be longer than its hours.
   - Legacy pools are deleted (2026-10-11, branch of the legacy deletion): a fresh node is the unfounded pool of one (no signer needed,
     nothing written, `governance.mode: unfounded`), a `pool.json` is renamed to `pool.json.old-format` with the line "this device was in an old-format pool: it now
     starts unfounded; create a new pool" and the node keeps serving its boards, and `set_join_policy`, `needs_migration`, `settle`, the beacon's `lone` flag and the 16-character pool id are gone.
-    Left, in this order: (1) `docs/api.md` section "Under the `open` policy (the default)" and the Python quickstart still describe a
-    device founding an open pool by itself; rewrite them to the governed path once `docs/phone-approval.md` slice P1 gives the Python
-    side a signer; (2) the Python test `tests/test_node_join.py` two-node open join was deleted, and `ph.pool.listen` now only turns the
+    Left, in this order: (1) the Python quickstart in `docs/api.md` goes from `ph.pool.listen` to `add_device` with no founding step;
+    give it the governed path once `docs/phone-approval.md` slice P1 gives the Python side a signer; (2) the Python test `tests/test_node_join.py` two-node open join was deleted, and `ph.pool.listen` now only turns the
     network on: a Python path that founds a pool (pool_draft_found, pool_found, pool_submit, as `tests/pool_check/person.py` does) is
-    the next client work; (3) `docs/windows-wsl.md`, `docs/pool.md` and the glossary-scanned docs were checked for the removed words and
-    hold none, but their prose about a device that "makes its own pool" is still the old journey; (4) `tests/test_api_live.py::
+    the next client work; (3) `tests/test_api_live.py::
     test_serve_up_status_and_down_under_the_broker_lease` fails here with "no runtime is selected" (no built runtime on this machine),
     which this change does not touch.
 
@@ -68,7 +64,7 @@
 - `ph.board.Board.grants()` is planned in docs/api.md; nothing public issues or revokes a grant.
 
 ## Keystore, hooks, sandbox and authority (from the 2026-10-08 session)
-- **Publisher trust follow-ups (owner, 2026-10-13):** the shipped publisher list stays code-only for phase 0. Next branch after `feat/publisher-trust` lands: `poolhouse-models distrust OWNER`, a person-only command that only removes trust (an agent cannot run it; it cannot add a publisher), and unpins and quarantines every model that publisher supplied and stops their servers. A signed, updatable list (a signing key held offline, a version counter and sealed high-water mark against rollback, a freshness rule, revocation that unpins) is a phase-1 item with its own attack-first pass (`docs/service.md`).
+- **Publisher trust follow-ups (owner, 2026-10-13):** the shipped publisher list stays code-only for phase 0. Next branch after `feat/publisher-trust` lands: `poolhouse-models distrust OWNER`, a person-only command that only removes trust (an agent cannot run it; it cannot add a publisher), and unpins and quarantines every model that publisher supplied and stops their servers. The list has no add path until a signed, updatable list exists (a signing key held offline, a version counter and sealed high-water mark against rollback, a freshness rule, revocation of a publisher whose namespace is compromised, which unpins) is a phase-1 item with its own attack-first pass (`docs/service.md`).
 - **Harness hook, left undecided after the exec-chain fixes (docs/harnesses.md, "What is not covered"):** (1) the hook holds no list of allowed hosts, so a plain GET to a host the model picks can carry a few bytes per call in a short path or sub-domain; (2) obfuscated code the model writes to an ordinary file is not read, and a download that a later `make`, `npm test` or `cargo test` runs without naming the file is not linked to it; (3) files brought in by `git pull`, `merge` or `rebase` run later without a question; (4) a token kept anywhere other than a remote address in the git settings (a credential helper's store, an environment variable the model is not shown) is not seen; (5) the written-text scan follows a name through assignments in one file, not through a function, an import or a name built from pieces; (6) `sh -c` with a body the classifier reads and finds harmless, such as `sh -c id`, is allowed; (7) a relative credential name after `cd` is read against the project folder, not the new directory (the download record does follow `cd`).
 - **Break-it pass on an agent widening its own access (2026-10-12, non-author review; findings 3 and 4 checked against `src/poolhouse/authority.py`), in fix order:**
   - **Server rulesets are not applied** (`scripts/github-protection --check` prints 12 findings: `main` lacks pull-request and status-check rules, no ruleset covers the development branch or tags, `PYPI_API_TOKEN` is a repository secret any branch's workflow can read), so the local guards are the only wall; the Bash guard passed 14 bypasses (`sed -i`, `cat >`, `tee`, `cp` onto guards and settings, `git config core.hooksPath`, `git -c core.hooksPath=/dev/null push`, `gh pr merge`, `gh api -X PUT .../rulesets`, `bash -c`, a `python3 -` heredoc) and `pre-push` exits 0 once `CLAUDECODE` is unset in a re-parented process. A person runs `scripts/github-protection-apply` (it refuses agents) and the agents get a separate low-right `gh` and git identity (`docs/github-protection.md`).
@@ -121,7 +117,7 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   redirect; the page reader and the browser (a redirect or a sub-request inside Playwright
   reaches a private address unchecked) should use it, or a `page.route` that applies
   `httpguard.resolve`. Another branch owns `web.py`.
-- [ ] **37 `except ...: pass` sites report as S110 and S112** (device probes, memory
+- [ ] **21 `except ...: pass` sites report as S110 and S112** (device probes, memory
   readings, the accelerator reports in `train/accelerator.py`). Each should name the
   exception it expects and log the rest at debug.
 - [ ] **`scripts/test-on-linux` was not run for this pass,** and CI's `pip install` lines are
@@ -268,15 +264,6 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   of the packaging files to the person, or install only from a tag with a digest.
 
 ## Text it was never licensed to keep
-- [ ] **A runtime redactor** (`tooling/compliance/{text_sanitizer,llm_sanitization}.py`,
-  ~380 lines): a Presidio sanitizer built once per configuration and applied to prompts,
-  model output and the turns a page stores. `poolhouse.redact` audits a repository at commit
-  time and has nothing for the ask path, which is where a graph page sends real text.
-- [ ] **The copyright carve-out gate** (`tooling/graph/ingestion/copyright_carveout.py`,
-  183 lines): refuses a verbatim provenance snippet taken from a source that embeds
-  third-party material under a permission granted to somebody else. Every ingested node
-  keeps a snippet, so this is the same problem here.
-
 - [ ] **Nothing refuses a snippet from a source that may not be redistributed.** There is no
   licence field on a source and no check anywhere in `ingest/` or `graph/`: `ingest/judge.py`
   stores the whole re-read span as `quote` and `verbatim`, uncapped, and the extractor asks
@@ -284,13 +271,18 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   For a corpus of standards a subscription grants one reader -- CSA, ASME -- this is the
   failure that matters, and the app driving this library had to invent `attrs.licensed` and
   a note about the reader's own subscription because the library offers nothing. A `licence`
-  on the source record, and a refusal in `fold` and in `judge`'s quote path.
+  on the source record, and a refusal in `fold` and in `judge`'s quote path. The beehavior
+  repository has the gate to port (`src/beehavior/tooling/graph/ingestion/copyright_carveout.py`,
+  183 lines): it refuses a verbatim provenance snippet from a source that embeds third-party
+  material under a permission granted to somebody else.
 - [ ] **Nothing redacts at runtime.** `redact.Redactor` and `redact.names_in` have no caller
   anywhere in `src/`; the only non-test use is `world/check.py`, which imports the
   commit-time recogniser, and `poolhouse-audit` runs over `git ls-files` -- repository
   source, not the text a person feeds it. Prompts, answers and stored turns pass through
   unfiltered. A redaction pass in `ingest/fold.py` before the write and in
-  `graph/serve.py`'s remember path, on by default, off by a flag.
+  `graph/serve.py`'s remember path, on by default, off by a flag. The beehavior repository has
+  the sanitizer to port (`src/beehavior/tooling/compliance/{text_sanitizer,llm_sanitization}.py`,
+  ~380 lines): a Presidio sanitizer built once per configuration.
 - [ ] **The licence and redaction gates have to run before `_keep_reads`, not only before
   the store.** `<store>.<slug>.reads.json` is written as each unit comes back, with
   `extracted` (every concept with its source-worded definition) and `raw` (the model's whole
@@ -406,16 +398,12 @@ directory. What it does not do yet:
 - Triage the remaining failures from the October 6 macOS background full red-team run at `920cf217`: 130 failed, 30 errors, 13,729 passed, 364 skipped. Re-run the remaining Board latency, serving, training, gym and fixture failures after scoped setup, pairing and installer repairs. Evidence: `/private/tmp/dev-final-background-full.log`, `/private/tmp/dev-full-failures.txt` and `/private/tmp/poolhouse-full-lifecycle-project-diagnosis.md`. Linux testing is active: use the WSL device and report its exact device, operating system, runtime and commit.
 
 ## Overnight landing run (2026-10-08 to 2026-10-09, lead claude-828605)
-Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a green gate: gate made read-only and incremental (`173e52f1`), reranker (`efaccdfe`), measuring scheduler (`d92d5634`), keystore audit F-1..F-7 (`4fa7686d`), admission queue of 128 and the keystore_guard layer (`e3761c51`), admission failure runs unscheduled (`f405f6b3`), result-cache fix (`3bb493a0`), selector precision (`80e3c389`), ccache (`7c0ffdb3`), restart idle-retry and the recovery test (`d80d7621`), UI publication stack with chat capabilities (`ae9dcca0`).
-
-- **The gate fails inside an agent session** (4 `tests/test_redteam_human_floor.py` cases and 13 `tests/test_worker_completion.py` tests see the session's own agent markers). Run it with `env -u CLAUDECODE -u AI_AGENT -u POOLHOUSE_WORKSPACE_AGENT -u POOLHOUSE_SESSION_HARNESS -u POOLHOUSE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT` until the baseline branch lands.
 - **The installed `poolhouse` in the pyenv site-packages is a 0.2.1 wheel from 2026-10-07**; the `poolhouse*` launchers follow `~/.poolhouse/runtimes` but the library import does not. Owner order: use our latest code continuously. A `.pth` or editable install of the primary checkout is needed (`editables` is missing; the auto-mode classifier refused the write to the shared pyenv). The old install is saved in the `pyenv-poolhouse` tarball in `~/.poolhouse/bundles`.
-- **The Board is unreachable from this checkout** (`poolhouse-workspace inbox`: "the project host was not authenticated by cluster discovery", later "this project already names another Board"), so no contact from the Windows-side Claude was read.
-- **Tests that fail on a clean tip:** four `tests/test_testslots.py` timing tests under heavy load (`test_invalid_rpc_token_cannot_acquire_capacity`, `test_idle_tail_workers_release_capacity_for_another_suite`, `test_short_tests_do_not_wait_for_a_polling_tail_between_batches`, `test_disconnected_rpc_waiter_releases_its_queue_entry`); the launch-ticket browser tests in `tests/test_conversations_workspace.py`; the `FakeDaemon` fixture in `tests/test_fleet_join.py` (no `device` argument); `tests/test_redteam_human_floor.py` depends on the session environment; the `scripts/test` broker still has no queue position or calibration run for agents.
+- **Tests that fail on a clean tip:** four `tests/test_testslots.py` timing tests under heavy load (`test_invalid_rpc_token_cannot_acquire_capacity`, `test_idle_tail_workers_release_capacity_for_another_suite`, `test_short_tests_do_not_wait_for_a_polling_tail_between_batches`, `test_disconnected_rpc_waiter_releases_its_queue_entry`); the launch-ticket browser tests in `tests/test_conversations_workspace.py`; the `scripts/test` broker still has no queue position or calibration run for agents.
 - **Parked Codex work:** about 450 distinct unlanded patches, of which 8 NATS-stack branches are in `~/.poolhouse/bundles/codex-parked-20261008.bundle` and the old land branch in the `land-old` bundle beside it (restore: `git fetch <bundle> <branch>:<branch>`, branch names from `git bundle list-heads`). Still unlanded: `integrate/dev-cpu`, the workspace reputation and attribution commits `133dd374` and `7f31bc29`, Studio (`feat/poolhouse-studio-mlx`), board-history rebuild-conversations, coordination batch.
 
 ## Open from the claude session (2026-10-08)
-- **Old GPU-rule wording remains** in `HANDOFF.md` (the serving section), `docs/experiments/iq-vs-kquant-metal.md:53`, `src/poolhouse/ingest/serving.py:87`, `src/poolhouse/bench/queue.py:21` and `tests/workspace_screen_corpus.py:35`; each states "one model on the GPU" and needs rewording or a decision.
+- **Old GPU-rule wording remains** in `HANDOFF.md` ("One model on the card at a time", the tree decoding table) and `docs/experiments/iq-vs-kquant-metal.md:53`; each states "one model on the GPU" and needs rewording or a decision.
 - **Branch hygiene rule (f) has no mechanical check**: a bound on `scripts/test` fixed cost needs an opt-in timing harness (AGENTS.md, "Branch hygiene and landing").
 - **Blocked until the product takes off: anything needing a paid Apple developer account** (owner constraint 2026-10-08): app attest or a signed helper, Level 2 guest tenancy on Apple silicon, secure enclave keys through a signed app, notarized or signed macOS and iOS builds for others, a native iPhone app, TestFlight, APNs push. Unblocked: PWA over HTTPS over Tailscale for phones, sideloaded Android app, unsigned local Mac builds, Level 1 guest tenancy (`docs/pool-encryption.md` section 8.1).
 
@@ -423,17 +411,13 @@ Landed on origin/0.2dev, each after a run that exited 0 with a pass count and a 
 - Implemented: board requests, independent review, runner, pause and cancel, push of the development branch only (`docs/landing-queue.md`, "What is implemented"). Not built: (1) the task-lifecycle entry (an accepted task enters the queue from `reviewed()`; completion and rework through the `finish` and `blocked` events); (2) the SessionStart suggestion line when the queue is non-empty and no runner holds the claim; (3) the gate runs `scripts/test` synchronously inside `land_check.execute`, not through `scripts/test submit|wait`, so a cancel kills the gate process rather than cancelling a job; (4) a request from another device lands only if the runner's checkout already has the branch (no fetch from the requester); (5) a verified batch whose fast-forward is blocked is left `needs-human` and not retried; (6) stuck detection is output silence only, not broker job state.
 
 ## Deferred by the second landing batch (2026-10-08)
-- **Restart and durable jobs.** `job_exit` is untested on Windows; the other restart gaps are in the overnight section above.
-- **Unblock.**
-  - Three `project_connection` / remote failures still need tracing (see the baseline list in the batch 2 report).
-  - Hook diagnostics `post.reader-timeout` and `host not authenticated by cluster discovery` entries are untouched.
+- **Restart and durable jobs.** `job_exit` is untested on Windows.
 - **Runtime cost.** `poolhouse runtime ensure --settle` has not run end to end on a real checkout.
 
 ## Deferred by the third landing batch (2026-10-08)
 - **UI publication stack.**
   - `GET /ui/board/agents` takes 4-8 s for 43 agents because `registered()` opens a store per agent; board routes are still O(N) in the verified log read.
   - The python launcher `_health` accepts any JSON dict.
-  - `fix/poolhouse-chat-capabilities` landed with the UI publication batch (`ae9dcca0`), with its `RecursionError` fix.
   - Not driven for real: the Tauri window, an MLX run in Studio, runtime repair.
   - The Development pool sign-in (the `local-session` route, its screen and pool scoping) was dropped because launch tickets replaced it; a pool choice after sign-out needs a new design on the ticket model.
   - About 22 older UI browser tests drift from the current page (credentials, invites, model_tasks, pool_browser, sdk_chat, simple_controls, workspace_browser, startup_model_page, tasks_ui, agent_controls, workspace_board_ui).
@@ -627,15 +611,6 @@ across `src/`.
     has not happened is a person installing the NSIS setup or the AppImage on a real
     machine of that kind and using it -- which is what `install.ps1` and `install.sh`
     expect to exist. The Linux AppImage is installed as `~/.local/bin/poolhouse`.
-  - **`release.yml`'s `it starts and serves the interface` step curls a file that does
-    not exist.** `curl -sf ... http://127.0.0.1:8899/ui/static/app.js` 404s against a
-    freshly built headless binary: the page has no separate `app.js` (`shell.html`'s
-    `__SCRIPTS__` is filled with each component's own inline `<script>`, and
-    `poolhouse/fleet/web/` holds only `shell.html`, `style.css` and `components/`), and
-    nothing in the tree writes one. Either the step is checking for a file this UI
-    architecture never produces and should check something that does exist (`style.css`,
-    or a real screen), or `app.js` is meant to exist and something upstream of packaging
-    stopped writing it.
 
 ### What the window has not been driven through
 - [ ] **What WKWebView renders the same as Chromium, so far.** Light-DOM custom elements,
@@ -1183,13 +1158,9 @@ Capabilities that do not exist yet.
   MST parts of `build_topology` entirely.
 
 ### A terminal command centre
-`~/Documents/repos/beehavior` is the other repository that grew these shapes, and its own
-`POOLHOUSE_MIGRATION.md` lists what it should now delete rather than keep. Two pieces came
-here on 2026-09-05 (`poolhouse-suite`, `poolhouse-serve limits|reclaim`); three are still
-worth taking, in this order:
-- [ ] **A terminal command centre** (`tooling/daemon/tui.py`, 477 lines, Textual): the
-  facts the fleet app's cluster view already shows, in a terminal. Worth it only if a
-  headless machine wants one.
+- [ ] **A terminal command centre** (`~/Documents/repos/beehavior/src/beehavior/tooling/daemon/tui.py`,
+  477 lines, Textual): the facts the pool app's view already shows, in a terminal. Worth it only
+  if a headless machine wants one.
 
 ### Integration (0.3.0)
 `docs/INTEGRATION-REPORT.md` has the merge order, the commands and the numbers.
