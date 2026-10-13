@@ -1,4 +1,10 @@
 # Handoff
+# Release cut
+- **Two audiences, one build:** a person on the desktop or phone app taps and reads plain sentences and never meets a terminal, key or port; a developer using the library keeps their workflow with no new flag, prompt or wait, and gets the same protection. A release item that adds a visible step for either is redesigned first.
+- **Existing harnesses are the way in:** Claude Code, Codex and other coding agents work through hooks, settings and the library with no change to how they are launched or used; the release is checked by driving one of them through a pool journey, not by tests alone.
+- **Blocks a release:** the release signing key (owner terminal); `scripts/github-protection-apply` (owner terminal); independent accepts for land-1726, land-2506, land-2367 and land-2878; phone-signed charters so a real pool can be founded; the access-widening fixes (subagent as lead, authority loosening, protected paths, person-record forgery, hook coverage); the backdoored-model slices B2, B4, B5 and B6; the owner's decision on pools founded before F1 that keep a declared-strong key.
+- **Not in the first release:** the Box enforcer, decoys, two-box layering and lab mode (`docs/strands-box.md`); the default stays the Poolhouse proxy and kernel sandbox.
+- **The session-start hook records no model after a clear** (`scripts/hooks/claude-session-start`), so the next land-request is refused as "model not in the tier table" until `poolhouse-workspace whoami --model` is run.
 # Priority 1: security
 - **The release signing key does not exist (owner: yes, 2026-10-13); every pin and every trusted build roots in it, ours or the pinned Box build.** `scripts/release-key create --write` refuses an agent ("scripts/release-key is for a person; this process was started by an agent (CLAUDECODE is set)"), so a person runs it at a terminal and commits `src/poolhouse/fleet/signing.py`; `packaging/install.sh` and `install.ps1` still install an unsigned download until then. After it: sign the runtime and the pinned Box build with it so a device verifies one key.
 ## Pools and serving, slice 1 (governance core, 2026-10-11)
