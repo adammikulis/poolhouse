@@ -12,7 +12,7 @@ const ORDER: [u8; 32] = [
 ];
 
 pub struct PhoneKey {
-    pair: EcdsaKeyPair,
+    signing: EcdsaKeyPair,
     /// The uncompressed point, 130 hex digits.
     pub public: String,
 }
@@ -45,13 +45,13 @@ impl PhoneKey {
     pub fn new() -> PhoneKey {
         let rng = SystemRandom::new();
         let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
-        let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &rng).unwrap();
-        let public = hex(pair.public_key().as_ref());
-        PhoneKey { pair, public }
+        let signing = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &rng).unwrap();
+        let public = hex(signing.public_key().as_ref());
+        PhoneKey { signing, public }
     }
 
     fn scalars(&self, message: &[u8]) -> ([u8; 32], [u8; 32]) {
-        let raw = self.pair.sign(&SystemRandom::new(), message).unwrap();
+        let raw = self.signing.sign(&SystemRandom::new(), message).unwrap();
         let (r, s) = raw.as_ref().split_at(32);
         (r.try_into().unwrap(), s.try_into().unwrap())
     }
