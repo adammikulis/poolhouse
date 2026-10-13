@@ -26,11 +26,12 @@ from poolhouse.sentinel.cli import status as security_status
 from poolhouse.sentinel.store import Holding
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec
 from poolhouse.serve.broker import Ask, Broker, BrokerError
-from poolhouse.serve.guarded import SentinelRefused
+from poolhouse.serve.guarded import SentinelRefused, _first_use as FIRST_USE
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.fakes import fake_llama_binary
+from tests.model_approval import approve
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -75,10 +76,16 @@ def person(record):
                       env={})
 
 
-def test_an_unpinned_model_is_pinned_on_first_use_and_served(broker, model):
+def test_a_hand_placed_model_waits_for_a_person_and_is_then_pinned_and_served(
+        broker, model, monkeypatch):
+    monkeypatch.setattr("poolhouse.serve.guarded._first_use", FIRST_USE)
+    with pytest.raises(BrokerError, match="was not downloaded by Poolhouse"):
+        broker.lease(ask(model), timeout=30)
+    assert str(model) not in sentinel.default().manifest.pins() and broker.servers == {}
+    assert approve("model_file") == 1
     grant = broker.lease(ask(model), timeout=30)
     pin = sentinel.default().manifest.pins()[str(model)]
-    assert pin.source == "first-use" and pin.kind == "model"
+    assert pin.source == "approved" and pin.kind == "model"
     assert [e.kind for e in sentinel.default().bus.recent(kind="model.pinned")]
     assert grant.port in broker.servers
     broker.release(grant.lease)

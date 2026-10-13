@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any
 
 from poolhouse.http import Server
+from poolhouse.hub import publishers
 from poolhouse.testing.fakes import http_handler
 
 __all__ = ["FakeHub", "fake_hub"]
@@ -30,7 +31,7 @@ class FakeHub:
     ``cut_after`` closes the connection after that many body bytes the first time a file is
     read; ``ignore_range`` answers a range request with the whole file; ``corrupt`` names paths whose served bytes differ from the listed sha256;
     ``redirect`` sends file reads through the CDN socket. ``plain`` names ``repo/path`` files listed as
-    small non-LFS files (an object id, no sha256); ``commit(repo)`` is the commit every revision means. ``hub_seen`` and ``cdn_seen`` are
+    small non-LFS files (an object id, no sha256); ``commit(repo)`` is the commit every revision means (``moved[repo] += 1`` makes a new one). ``hub_seen`` and ``cdn_seen`` are
     ``(method, path, range, authorization)`` for every request.
     """
 
@@ -42,6 +43,7 @@ class FakeHub:
         self.ignore_range = False
         self.corrupt: set[str] = set()
         self.plain: set[str] = set()
+        self.moved: dict[str, int] = {}
         self.downloads: dict[str, int] = {}
         self.hub_seen: list[tuple[str, str, str, str]] = []
         self.cdn_seen: list[tuple[str, str, str, str]] = []
@@ -55,10 +57,19 @@ class FakeHub:
         for thread in self._threads:
             thread.start()
 
-    def point(self, monkeypatch: Any) -> None:
+    def know(self, monkeypatch: Any) -> None:
+        """Count the owners of this hub's repositories as known publishers for the test's length."""
+        owners = frozenset(name.split("/")[0] for name in self.repos)
+        monkeypatch.setattr("poolhouse.hub.publishers.TRUSTED", publishers.TRUSTED | owners)
+
+    def point(self, monkeypatch: Any, *, known: bool = True) -> None:
         """Point ``$HF_ENDPOINT`` at this hub, and name its CDN socket as a host that may be reached
         and may be on this machine, as a person running against a mirror would. The hub itself is
-        the endpoint; without this a redirect to the CDN is refused like any other private host."""
+        the endpoint; without this a redirect to the CDN is refused like any other private host.
+        With ``known`` (the default) the owners of its repositories count as known publishers for
+        the test's length; ``known=False`` leaves the shipped list as it is."""
+        if known:
+            self.know(monkeypatch)
         cdn = self.cdn_url.split("//", 1)[1]
         monkeypatch.setenv("HF_ENDPOINT", self.url)
         monkeypatch.setenv("POOLHOUSE_NET_ALLOW_HOSTS", cdn)
@@ -83,7 +94,9 @@ class FakeHub:
 
     def commit(self, repo: str) -> str:
         """The commit id the Hub names for ``repo``."""
-        return hashlib.sha1(f"commit {repo}".encode(), usedforsecurity=False).hexdigest()
+        moved = self.moved.get(repo, 0)
+        return hashlib.sha1(f"commit {repo}{f' {moved}' if moved else ''}".encode(),
+                            usedforsecurity=False).hexdigest()
 
     def search(self, query: str) -> list[dict[str, Any]]:
         return [{"id": name, "downloads": 1000 - n * 100, "likes": n,

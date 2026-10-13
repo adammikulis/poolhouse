@@ -16,8 +16,11 @@ $ poolhouse-models files unsloth/gemma-4-E4B-it-qat-GGUF
 
 Publishers in `PREFER` are ranked first — the Hub's own ordering puts whatever is popular
 at the top, which for a model released last week is somebody's remix rather than the
-release. The printed reference is what `poolhouse-serve up` takes; llama-server downloads and
-caches it on first use, so there is no separate fetching step.
+release. The printed reference is what `poolhouse-serve up` takes; Poolhouse fetches it into the
+Hub cache on first use through the same pull as `poolhouse-models fetch` (llama-server is handed the
+file, never a reference), so there is no separate fetching step. A repository whose publisher is
+not in `PREFER`, or whose name says the model was altered, waits for a person's approval first
+(`docs/model-discovery.md`, "Publisher trust").
 
 ## Serving a model
 
@@ -554,7 +557,7 @@ Where the layer comes from, in order:
    `serve.mtp.mismatch`: same architecture, embedding width, block count (or one more),
    tokenizer model and prefix, vocabulary size, and a prediction layer in the head.
 3. **Trust.** A head from any other repository is not used unless sentinel holds a pin a
-   download made for it (`source` other than `first-use`). A head the default picks is
+   download made for it (`source` other than `first-use`; a file a person approved is `approved`). A head the default picks is
    checked against its sentinel pin before the weights load; a mismatch quarantines it as it
    does a model, and the lease goes on without it. A head named with `draft=` is checked the
    same way and a mismatch refuses the lease.

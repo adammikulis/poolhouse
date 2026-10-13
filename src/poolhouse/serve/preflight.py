@@ -17,7 +17,7 @@ import logging
 import re
 import struct
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -618,15 +618,11 @@ def _flags_check(spec, binary: str | Path, *,
     known = (flags or flags_of)(binary)
     if not known:
         return Check("flags", True, "could not read this build's --help; no opinion")
-    # A draft named by hf: file is fetched and served by path at start(); this check is
-    # about flags, not files, so it builds the argv with a stand-in path rather than
-    # refusing the reference (measured 2026-09-02: it refused, and E4B's heads never ran).
-    parts = spec.hf_parts(spec.draft) if spec.draft else None
-    if parts and parts[1]:
-        from dataclasses import replace
-
-        spec = replace(spec, draft=Path("draft-head.gguf"))
-    argv = LlamaServerBackend(binary=binary).command(spec)
+    # An `hf:` reference is fetched and served by path at start(); this check is about flags,
+    # not files, so it builds the argv with a stand-in path for each.
+    held = {name: Path(f"{name}.gguf") for name in ("model", "draft", "mmproj")
+            if getattr(spec, name) and spec.hf_parts(getattr(spec, name)) is not None}
+    argv = LlamaServerBackend(binary=binary).command(replace(spec, **held))
     lacking = unknown_flags(argv, known)
     wrong = wrong_cache_types(spec, binary, values=values_of)
     if lacking or wrong:

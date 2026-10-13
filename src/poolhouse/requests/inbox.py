@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from poolhouse import authority, keystore
+from poolhouse.person import require_person
 from poolhouse.requests.model import PENDING, Request
 from poolhouse.requests.store import Ask, Inbox, Refused, Unavailable, build
 
@@ -140,13 +141,19 @@ class Context:
 
 def answer(ident: str, choice: str, fingerprint: str, via: str, ctx: Context | None = None) -> Request:
     """A person's answer. Refused (`person.HumanRequired`) from a process an agent started, and
-    from a ``terminal`` answer that is not at a tty; `Refused` when the request was already
+    from a ``terminal`` answer that is not at a tty; an answer to a human-only kind is a person's
+    whatever the authority registry delegates; `Refused` when the request was already
     resolved, changed since ``fingerprint`` was shown or has no such choice;
     `Unavailable` when the store cannot be used (nothing is approved)."""
     ctx = ctx or Context()
-    authority.require("requests.answer", "answering a request",
-                      ctx.terminal if via == "terminal" else (True, True), ctx.env)
-    done = (ctx.inbox or default()).answer(ident, choice, fingerprint, via)
+    box = ctx.inbox or default()
+    terminal = ctx.terminal if via == "terminal" else (True, True)
+    asked = box.get(ident)
+    if asked is not None and asked.human_only:
+        require_person("answering a request that only a person answers", terminal, ctx.env)
+    else:
+        authority.require("requests.answer", "answering a request", terminal, ctx.env)
+    done = box.answer(ident, choice, fingerprint, via)
     _record("request.answered", done, done.state, via, actor="person")
     return done
 

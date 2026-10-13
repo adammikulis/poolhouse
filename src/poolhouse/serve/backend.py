@@ -21,6 +21,7 @@ from poolhouse.client import families, wait_for_health
 from poolhouse.platform import process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache
 from poolhouse.serve.binary import child_env, require_binary
+from poolhouse.serve.downloads import clean_env, download_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.logs import prune
@@ -381,7 +382,7 @@ class ServerSpec:
 
     @property
     def is_hf_ref(self) -> bool:
-        """``hf:owner/repo/file.gguf`` -- let llama-server do the download and caching."""
+        """``hf:owner/repo/file.gguf`` -- fetched through `poolhouse.hub` before the server starts."""
         return isinstance(self.model, str) and self.model.startswith("hf:")
 
     @staticmethod
@@ -486,7 +487,7 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     started_at = time.monotonic()
     with log_path.open("wb") as log_handle:
         process = subprocess.Popen(argv, stdout=log_handle, stderr=subprocess.STDOUT,
-                                   env=sentinel.default().scrub_env(env),
+                                   env=sentinel.default().scrub_env(clean_env(env)),
                                    cwd=cwd, **process_group_kwargs())
     if lease.stop_on_exit:
         exit_guard.protect(process.pid)
@@ -569,21 +570,16 @@ class LlamaServerBackend(ServerBackend):
                          for flag in spec.extra_args)
         if defaults and spec.jinja and not spec.embedding and not spec.reranking and not overridden:
             argv += ["--chat-template-kwargs", json.dumps(defaults, separators=(",", ":"))]
+        if flag := download_flag(list(spec.extra_args)):
+            raise ServerFailed(f"{flag} makes llama-server download a model itself; models are "
+                               f"fetched through poolhouse.hub and served by path")
         argv += list(spec.extra_args)
         return argv
 
     @staticmethod
     def _model_source_argv(spec: ServerSpec) -> list[str]:
         """The model itself: where it comes from, its context, layers and slots."""
-        argv: list[str] = []
-        if spec.is_hf_ref:
-            repo, name = spec.hf_parts(spec.model)
-            argv += ["--hf-repo", repo]
-            if name:
-                argv += ["--hf-file", name]
-        else:
-            argv += ["-m", str(spec.model)]
-
+        argv: list[str] = ["-m", str(never_downloaded(spec.model, "model"))]
         argv += ["-c", str(spec.context)]
 
         if spec.device == "cpu":
@@ -605,33 +601,9 @@ class LlamaServerBackend(ServerBackend):
         """A projector and a draft model, each served beside the main one."""
         argv: list[str] = []
         if spec.mmproj:
-            # `--mmproj` takes a file on disk, so an `hf:` reference has to become the URL
-            # it stands for; `--mmproj-url` fetches it. Passing the reference itself is a
-            # path that does not exist, and llama-server says so in a way that reads like
-            # the projector is corrupt rather than misspelled.
-            seeing = spec.hf_parts(spec.mmproj)
-            if seeing is None:
-                argv += ["--mmproj", str(spec.mmproj)]
-            else:
-                repo, name = seeing
-                argv += ["--mmproj-url",
-                         f"https://huggingface.co/{repo}/resolve/main/{name}"]
+            argv += ["--mmproj", str(never_downloaded(spec.mmproj, "projector"))]
         if spec.draft:
-            # A draft guesses several tokens ahead and the large model checks them in one
-            # pass, so an agreeing run costs about what one token used to. The flags differ
-            # from the main model's: -hfd takes owner/repo[:quant], not a separate file.
-            drafted = spec.hf_parts(spec.draft)
-            if drafted is None:
-                argv += ["-md", str(spec.draft)]
-            elif not drafted[1]:
-                argv += ["-hfd", drafted[0]]
-            else:
-                # llama-server's -hfd takes owner/repo[:quant], never a file, so a head named
-                # by file is fetched into the cache first (`resolved_draft`) and passed as a
-                # path. Reaching here means start() was bypassed.
-                raise ServerFailed(
-                    f"a draft named by file ({spec.draft}) must be fetched before serving; "
-                    f"LlamaServerBackend.start does that, or `poolhouse-models fetch`")
+            argv += ["-md", str(never_downloaded(spec.draft, "draft"))]
         return argv
 
     @staticmethod
@@ -734,12 +706,8 @@ class LlamaServerBackend(ServerBackend):
 
     @staticmethod
     def resolved_draft(spec: ServerSpec) -> ServerSpec:
-        """The spec with a draft named by `hf:` file turned into the cached file's path.
-
-        `-hfd` downloads a repository's quant, not a file, and a head under `MTP/` is a file;
-        so the file is fetched (or found in the cache) with `poolhouse.hub.fetch` and served
-        by path. A quant-style reference (`hf:owner/repo`) is left for the server.
-        """
+        """The spec with a draft named by `hf:` reference turned into the cached file's path, fetched
+        (or found in the cache) through `poolhouse.hub` and served by path."""
         return replace(spec, draft=fetched(spec.draft, "draft")) if spec.draft else spec
 
     @staticmethod
@@ -868,6 +836,15 @@ class LlamaServerBackend(ServerBackend):
             logger.debug("warm-up request to %s did not complete: %s", base_url, exc)
             return None
         return time.monotonic() - started
+
+
+def never_downloaded(ref: str | Path, what: str) -> str | Path:
+    """``ref`` when it is a path; `ServerFailed` when it is an `hf:` reference, which `fetched` brings
+    in through `poolhouse.hub` first: llama-server is handed paths only."""
+    if ServerSpec.hf_parts(ref) is not None:
+        raise ServerFailed(f"the {what} {ref} must be fetched before serving; llama-server is never "
+                           f"asked to download (`poolhouse-models fetch`)")
+    return ref
 
 
 def fetched(ref: str | Path, what: str) -> str | Path:

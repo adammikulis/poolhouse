@@ -239,7 +239,7 @@ class MemberSession:
         try:
             accept(staged, final, Want(
                 kind=sniff.expected_kind(wanted.name), sha256=pin, size=entry.size,
-                purpose="member download"), f"member:{who.name}")
+                purpose="member download", pin_notes=dict(wanted.pin_notes)), f"member:{who.name}")
         except Blocked as exc:
             self._distrust(members, wanted, f"the finished file was refused: {exc}")
             shutil.rmtree(stage, ignore_errors=True)

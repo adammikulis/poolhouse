@@ -204,6 +204,15 @@ that very file (name, size and digest), orders them by how fast they answered, a
 file chunk by chunk, resumably, from several at once. `on_progress`, `CancelToken` and the
 sentinel events work as for a Hub pull.
 
+**Publisher trust.** A pull is refused until a person approves it when the owner of the repository is not one of the
+known publishers (`Qwen`, `unsloth`, `ggml-org`, `google`, `bartowski`, `lmstudio-community`; matched exactly, so `qwen`,
+`Qwen.` and a lookalike are unknown), when the repository or a file name says the model was altered (abliterated,
+uncensored, no refusal), or when a file's digest differs from the one pulled before for that path. The question is one
+sentence (a `model_publisher` request in `poolhouse-requests` or the Requests page); the approval is for that publisher,
+repository and commit, and an agent cannot give it. A reference is resolved to its 40-character commit first and the
+listing, the downloads and the pin all name that commit, never `main`. Ranking in `poolhouse-models find` (`PREFER`) never
+approves anything.
+
 **What is trusted.** Not the device. The digest a file must have is the Hub's own listing
 (fetched through `poolhouse.net`); a device whose manifest lists the file with another digest is
 not used, and a digest a device states never replaces the pin. Only when the listing carries no

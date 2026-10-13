@@ -38,6 +38,12 @@ class Pin:
     digest_from: str = ""
     """``expected`` when the digest is one the download was verified against (the Hub's, the
     release's, a signed manifest's); ``computed`` when it is that of the bytes as they arrived."""
+    publisher: str = ""
+    """The owner of the Hub repository a pulled file came from; empty for any other pin."""
+    commit: str = ""
+    """The 40-character commit a pulled Hub file was listed at; empty for any other pin."""
+    source_ref: str = ""
+    """``owner/repo/path`` of a pulled Hub file, so a later pull of that path is compared with this digest."""
 
     def to_json(self) -> dict[str, Any]:
         return {f: getattr(self, f) for f in self.__slots__}
@@ -69,6 +75,15 @@ class Manifest:
         if found is None and where.is_symlink():
             found = pins.get(str(where.resolve()))
         return found
+
+    def pins_for(self, source_ref: str) -> list[Pin]:
+        """The pins of the Hub file ``owner/repo/path``, newest first."""
+        found = [p for p in self.pins().values() if p.source_ref == source_ref]
+        return sorted(found, key=lambda p: -p.pinned_at)
+
+    def pin_with_digest(self, sha256: str) -> Pin | None:
+        """A pin whose digest is ``sha256``, or None."""
+        return next((p for p in self.pins().values() if p.sha256 == sha256.lower()), None)
 
     def _save(self, pins: dict[str, Pin]) -> None:
         self._file.save({"pins": {p: v.to_json() for p, v in sorted(pins.items())}})

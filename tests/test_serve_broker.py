@@ -21,6 +21,7 @@ from poolhouse.serve import LlamaServerBackend, ServerManager
 from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.process import every_server, kill_process_tree, pid_exists
 from poolhouse.testing.fakes import fake_llama_binary
+from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -49,6 +50,7 @@ def models(tmp_path):
     for name in (f"first-M1-{tag}.gguf", f"second-M2-{tag}.gguf"):
         path = tmp_path / name
         path.write_bytes(b"GGUF" + b"\x00" * 64)
+        approved(path)
         out.append(str(path))
     return out
 

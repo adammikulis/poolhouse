@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from poolhouse import credentials, http, net
 from poolhouse.httpguard import Refused
 from poolhouse.hub.naming import _SHARD, QUANT, aside
+from poolhouse.hub.publishers import namespace
 from poolhouse.net.untrusted import clean_text
 
 DEFAULT_ENDPOINT = "https://huggingface.co"
@@ -70,6 +71,8 @@ class Ref:
     file: str = ""
     quant: str = ""
     revision: str = "main"
+    commit: str = ""
+    """The 40-character commit ``revision`` meant when `resolve` ran; listings and downloads name it, never the revision."""
 
     @property
     def text(self) -> str:
@@ -86,6 +89,7 @@ def parse(ref: str) -> Ref:
     parts = [p for p in text.split("/") if p]
     if len(parts) < 2 or (quant and not _QUANT_TAG.match(quant)):
         raise ValueError(f"{ref!r} should look like hf:owner/repo[/file.gguf][:QUANT]")
+    namespace(f"{parts[0]}/{parts[1]}")
     return Ref(f"{parts[0]}/{parts[1]}", "/".join(parts[2:]), quant, revision or "main")
 
 
@@ -160,6 +164,11 @@ def commit(repo: str, revision: str = "main", auth: str | None = None) -> str:
     if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise RemoteError(f"{endpoint()} did not name a commit for {repo}@{revision}")
     return sha
+
+
+def resolve(ref: Ref, auth: str | None = None) -> Ref:
+    """``ref`` with its commit named; a revision that already is a commit costs no request."""
+    return ref if ref.commit else replace(ref, commit=commit(ref.repo, ref.revision, auth))
 
 
 def members(files: list[RemoteFile], ref: Ref) -> list[RemoteFile]:

@@ -323,7 +323,7 @@ A process that does nothing about sentinel gets this (tests: `tests/test_sentine
 |---|---|---|
 | Every `agent.Agent` | Each tool call goes through `agent_gate` before the rails: a call naming a sentinel verb or path, a decoy, a tool or session sentinel holds is refused with the reason. A call the rails refuse is reported to sentinel, which parks it as a `tool_call` and counts the denial. Each tool result is screened with the rails' own answer: held text, a decoy value or a text the rails withhold becomes a placeholder. A frozen session ends the run (`Done("denied")`) before the next model call. | `Agent(..., sentinel=agent.unwatched(because="..."))`, or `interventions=guard.off(because="...")`. Both need a reason, log a `sentinel.opt_out` event and print a warning. `POOLHOUSE_SENTINEL=off` turns the whole sentinel off only together with `POOLHOUSE_SENTINEL_BECAUSE=<reason>`: it then logs `sentinel.opt_out` with the reason and `poolhouse security status` shows `mode: off` and `off_because`. Without a reason the switch is ignored, sentinel stays armed and `sentinel.off_refused` is logged. |
 | First run of an agent, the Broker daemon or the fleet daemon | The decoy files are planted under `POOLHOUSE_HOME` (never in a project). | `POOLHOUSE_SENTINEL=off` with a reason, or `poolhouse security honey remove`, which the next run plants again. |
-| Every server start (`ServerManager._launch`, the one place a process is asked for) | `serve/guarded.verify`: a model held by sentinel is refused; a pinned model must equal its pin (it is hashed in full the first time, and again whenever its size, mtime or inode differ from the last full verification, which is remembered in the sealed `verified.json`), else it is refused and, when it sits under a managed root, moved aside; a model with no pin is pinned on first use (`source=first-use`, event `model.pinned_first_use`, a warning in the log), so the next start is checked against it; a model Poolhouse pulled already has its pin (below), so first use is only for files it did not bring in. After the pin check, `verify` looks the file up by name in the signed manifests this machine accepted and returns `verified by manifest serial N` (event `model.manifest_verified`), or, when a manifest names the file and lists other bytes, quarantines it and refuses (finding `integrity.manifest_mismatch`; the file is not pinned). A directory or a name that is not a file here (an MLX directory, a repository id) is not pinned. The check also runs in `ServerManager._permitted` and `Broker.lease`/`start` against the store only, so a held model is not shared from a server that is still up. | `POOLHOUSE_SENTINEL=off` with `POOLHOUSE_SENTINEL_BECAUSE`. |
+| Every server start (`ServerManager._launch`, the one place a process is asked for) | `serve/guarded.verify`: a model held by sentinel is refused; a pinned model must equal its pin (it is hashed in full the first time, and again whenever its size, mtime or inode differ from the last full verification, which is remembered in the sealed `verified.json`), else it is refused and, when it sits under a managed root, moved aside; a model with no pin is pinned only when a signed manifest names it (`source=manifest`), its bytes equal a digest already pinned (`source=pinned-digest`) or a person approved that path and those bytes (`source=approved`, a `model_file` request); any other file is refused with one plain sentence and a request until a person answers (in sentinel's `observe` mode it is pinned as `first-use` and logged), so the next start is checked against the pin; a model Poolhouse pulled already has its pin (below). The projector is verified at load like the weights and the draft. After the pin check, `verify` looks the file up by name in the signed manifests this machine accepted and returns `verified by manifest serial N` (event `model.manifest_verified`), or, when a manifest names the file and lists other bytes, quarantines it and refuses (finding `integrity.manifest_mismatch`; the file is not pinned). A directory or a name that is not a file here (an MLX directory, a repository id) is not pinned. The check also runs in `ServerManager._permitted` and `Broker.lease`/`start` against the store only, so a held model is not shared from a server that is still up. | `POOLHOUSE_SENTINEL=off` with `POOLHOUSE_SENTINEL_BECAUSE`. |
 | Stop hooks | `serve_hooks` is registered with the manager's lease file on first use: quarantining a `model` or a `server` stops the servers Poolhouse recorded for it (`ServerManager.reclaim`). A process not in the lease file is never touched. | `POOLHOUSE_SENTINEL=off` with `POOLHOUSE_SENTINEL_BECAUSE`. |
 | Broker daemon and fleet daemon | A scan loop in a daemon thread: every pin and decoy once at start (hashing every file), then every `POOLHOUSE_SENTINEL_SCAN` seconds (default 300), hashing everything every twelfth round. It writes a sealed heartbeat `scanner.json`; `poolhouse security status` reports `scanner: armed, pid N, every Ns` or `NOT ARMED (reason)`, and is armed when a process beat within three intervals and did not stop it. | `POOLHOUSE_SENTINEL_SCAN=off` together with `POOLHOUSE_SENTINEL_SCAN_BECAUSE="..."`. `off` without a reason is ignored (the scan runs at the default and `sentinel.scan_off_refused` is logged); with one it logs `sentinel.opt_out`. A number sets the cadence in seconds. |
 | Fleet daemon | The request authenticator is wrapped by `watch_authenticator`: forged, replayed and locked-out requests count against the sender's address, and an address sentinel holds is refused. | `POOLHOUSE_SENTINEL=off` with `POOLHOUSE_SENTINEL_BECAUSE`. |
@@ -358,9 +358,27 @@ not caught at the next start. The scan loop's deep rounds (every twelfth, and th
 deep rounds (about an hour at the default cadence) the window is open. The window is pinned by
 `test_an_edit_that_restores_size_and_mtime_passes_the_start_and_fails_the_deep_scan`.
 
-### Supply chain: pins at pull time and signed manifests at load
+### Supply chain: publishers, pins at pull time and signed manifests at load
 
-Armed (tests: `tests/test_supply_chain_pins.py`, `tests/test_supply_chain_audit.py`):
+Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`, `tests/test_supply_chain_audit.py`):
+
+* **Publisher trust at fetch.** `hub/publishers.py` holds the known publishers (`Qwen`, `unsloth`, `ggml-org`, `google`,
+  `bartowski`, `lmstudio-community`) and matches the whole owner of `owner/repo` character for character: a different case,
+  a trailing dot, a lookalike or zero-width character, a longer name or a fork of the same repository name under another owner
+  is not a known publisher, and a name that is not a Hub name (ASCII letters, digits, `.`, `-`, `_`, no `..`) is not parsed.
+  A pull resolves the revision to its 40-character commit before anything is listed or fetched, so every request names the
+  commit and a branch that moves between the listing and the download is not followed. `hub/admission.py` then refuses until a
+  person approves when the publisher is unknown, when the repository or a file name carries an altered-model marker
+  (abliterated, uncensored, no-refusal and the like, compared without case, separators or lookalikes), or when a file's digest
+  differs from the one pinned for the same repository path under another commit. The request is a human-only `model_publisher`
+  request with one sentence ("This model is from X, who Poolhouse does not know. Models can hide behaviour that tests do not
+  show. Use it anyway?"), approved for that publisher, repository and commit only; answering it passes `require_person`
+  whatever the authority registry delegates, and the shipped list has no add path. A digest that differs at a commit already
+  pulled (a commit cannot change) is not downloaded; the file is quarantined under `hub:<repo>/<path>@<commit>` and a person
+  releases it with `poolhouse-security release`. The pin records `publisher`, `commit` and `source_ref`.
+* **llama-server downloads nothing.** `LlamaServerBackend.command` refuses an `hf:` model, projector or draft (`--hf-repo`,
+  `-hfd` and `--mmproj-url` are not emitted), refuses a download flag in `extra_args`, and the child's `LLAMA_ARG_` repository,
+  URL and token variables are removed; the draft and projector are fetched through the same pull as the model.
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps
   (so `hub.pull`, `hub.fetch`, `hub.snapshot`, a file from a member in member-first, and the other
@@ -382,6 +400,12 @@ Armed (tests: `tests/test_supply_chain_pins.py`, `tests/test_supply_chain_audit.
 
 Not armed:
 
+* A known publisher's namespace can be compromised: a first pull of a replaced file from a known publisher passes (the
+  digest comes from the same Hub listing), and a re-upload under a new commit asks only when this machine pulled that path
+  before. The list ships with the code and is not signed or updatable.
+* A model from another device (member-first copies are pinned against the Hub's digest, but the repository's publisher is
+  checked on the pull that asked for it), a model a person loads from a path, and the fleet's own model download
+  (`fleet/models.py`, `hf:` references and plain URLs) are not covered by the publisher check.
 * A manifest is matched by file name. A list that names `x.gguf` applies to any local file called `x.gguf`.
 * A list reaches the load check only after a fetch ran on this machine (member-first pull or the onboarding `fetch` command);
   there is no command yet that accepts a list from a file, and no vendor-published digest list is read.
