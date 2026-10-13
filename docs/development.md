@@ -59,6 +59,20 @@ and local-model sessions the launchers start (add a `[[hooks.PreToolUse]]` entry
 Codex config the launchers did not write), and `scripts/hooks/primary-only` refuses a commit by an
 agent in the primary checkout or on the development branch. Tests: `tests/test_worktree_rules.py`.
 
+The paths an agent never writes, and the shell forms that write them, are in `src/poolhouse/protectedwrites.py`,
+which `worktreerules` loads for both guards and for the local-model harness. The guards, `.claude/settings*.json`,
+`.claude/agents`, `commands`, `skills` and `hooks`, git's hooks and config, the person record's code and the
+authority registry are refused to the file tools and to a shell redirection, `tee`, `cp`, `mv`, `ln`, `rm`,
+`sed -i`, `dd`, `find -delete`, `git checkout` and `restore` of such a path, `bash -c`, `eval`, command
+substitution, a heredoc or a script file handed to an interpreter, with variables, `~`, braces, globs, `cd` and
+links resolved. The person record and the session tokens are not read or listed either. `git config core.hooksPath`
+and the other settings that decide what git runs, `gh pr merge` without the person's release approval, and `gh` or
+`curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
+the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
+session stop a task. The landing runner settles a request whose diff touches these paths `needs-human`
+(`protectedwrites.REVIEWED`). Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
+`tests/test_land_guards.py`.
+
 What `no-real-names` takes for a name, and what stands a name-shaped pair down, is data:
 `contracts/name-shapes.json` holds the place prefixes and suffixes (a gazetteer's
 "North Carolina", "Colorado River"), the job-title endings (a role catalogue's
