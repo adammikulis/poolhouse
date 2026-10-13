@@ -498,29 +498,31 @@ because its feature is not built is a stop-ship unless the owner has moved that 
 A completed drive is a record: date, build, devices and operating systems, person, the pass or fail of each step, and the screenshots
 or logs. The record is committed under `docs/notes/`, and each row of sections 3 and 4 it covers moves to `driven by a person`.
 
-## 8. Open questions for the owner
+## 8. Decisions and open questions
 
-Each is the owner's alone to settle. Nothing in this page decides them.
+Decided by the owner on 2026-10-13:
+
+- Box is not in 0.3 and no work on it continues for this release.
+- The backdoored-model defences that block 0.3 are the proxy path: B0, B1, B10, B2, B12, B3, B9. The Box slices B4, B5 and B6 are after 0.3.
+- Serving a model to a pool ships in 0.3 (P1 step 6, D1 step 4).
+- Windows is a platform for a person's whole journey in 0.3, so the first key and the first phone must be made on Windows.
+- 0.3 waits for a signed app download for a person with no terminal; the one-line terminal install is not the release path.
+- Pools founded before the F1 fix are refused; a shut-down pool is deleted after 3 days; a pool shut down for a security issue keeps a sealed record.
+
+Open, the owner's alone to settle. Nothing in this page decides them.
 
 1. Is 0.3 the first release an external person runs (phase 1 of `docs/agent-rules.md`, "Release phases")? AGENTS.md says the owner
    names phase 1 and records it; it is not recorded. If yes, a persisted format or wire message that leaves the owner's machines changes
    only with a version and a migration, and an interface an outside party calls is not renamed without a release note.
-2. `HANDOFF.md` lists the backdoored-model slices B2, B4, B5 and B6 as blocking and the Box enforcer as not in the first release.
-   B4 installs the Box build, B5 is the Box adapter, B6 the claim of a Box device. Which set blocks 0.3: the proxy path (B0, B1, B10, B2,
-   B12, B3, B9) with the Box slices after, or B2 to B6 as written?
-3. How does a person with no terminal install on macOS and Windows? Today it is a one-line command in a terminal (README) and a
-   PowerShell command; a notarized download is blocked (`docs/service.md` 9.1). Is the one-liner a named known limit of 0.3?
 4. Which governance slices ship: reissue and the copy defence (slice 2), the recovery key and time lock (slice 3), many pools on a
    device (slice 4), check words and trusted-display joins (slices 5 and 8)? None is started.
 5. Does the `open` join policy ship in 0.3, given the sentinel that makes it safe (`docs/sentinel-open-join.md`) is a design?
 6. Does a device on another network (over the person's tailnet, journey 2c) ship in 0.3? Not built.
-7. Does serving a model to a pool (offers, `docs/pools-and-serving.md` section 7) ship in 0.3? It is P1 step 6 and D1 step 4.
 8. Are the compromised-agent defences S0 to S15 (`docs/compromised-agents.md`: the installed sandbox, taint, evidence) a gate of
    0.3 or known limits? None is built.
 9. Which accepted-risk candidates of 4.4 does the owner accept?
 10. Is the ceiling proposed for D2 (the harness's own steps, P1's human steps once, the P3 counts, nothing of Poolhouse's own) the
     count to record?
-11. Is Windows a platform for a person's journey in 0.3, or compute only? The first key and the first phone are refused on Windows.
 12. Is the compromise and three-day-delete behaviour of POOL-9 specified well enough to build, or does it need a design first?
 13. Is `pip install poolhouse` part of the 0.3 quickstart (it needs the PyPI waiver) or does 0.3 install from git?
 14. Are the deferred items of section 6 out of 0.3?
