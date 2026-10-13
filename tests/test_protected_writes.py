@@ -32,6 +32,7 @@ def why(command: str, tree: Path, released: bool = False, environ: dict | None =
 WRITES_A_GUARD = [
     "sed -i 's/exit 0/exit 1/' scripts/hooks/pre-push",
     "sed -i.bak -e 's/a/b/' scripts/hooks/claude-bash-guard",
+    "sed -i s/a/b/ scripts/hooks/claude-tool-guard",
     "perl -pi -e 's/a/b/' scripts/hooks/claude-edit-guard",
     "cat > scripts/hooks/claude-bash-guard",
     "echo x >> scripts/hooks/claude-edit-guard",
@@ -235,7 +236,8 @@ def test_the_edit_rules_refuse_what_the_file_tools_may_not_write(tree):
 def test_the_files_a_person_reviews_before_they_land_are_named_in_one_place():
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", "docs/a.md"]) == []
     named = ["AGENTS.md", "CLAUDE.md", ".claude/agents/a.md", ".claude/settings.json", "scripts/hooks/pre-push",
-             "scripts/hooks/claude-edit-guard", "src/poolhouse/workspace/person_release.py", ".github/workflows/ci.yml",
+             "scripts/hooks/claude-edit-guard", "scripts/hooks/claude-tool-guard", "scripts/hooks/weakened-assertions",
+             "src/poolhouse/workspace/person_release.py", ".github/workflows/ci.yml",
              ".github/CODEOWNERS", "scripts/github-protection", "scripts/land_board.py", "scripts/land",
              "src/poolhouse/worktreerules.py", "src/poolhouse/protectedwrites.py"]
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", *named]) == named

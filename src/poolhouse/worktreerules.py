@@ -12,8 +12,8 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-__all__ = ["AGENT_MARKERS", "bash_refusal", "checkouts", "commit_refusal", "edit_refusal",
-           "patch_paths", "switched_off"]
+__all__ = ["AGENT_MARKERS", "bash_refusal", "checkouts", "commit_refusal", "edit_refusal", "hard_bash_refusal",
+           "hard_edit_refusal", "patch_paths", "protected", "switched_off"]
 
 AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")
 CHANGES_THE_TREE = frozenset({"add", "commit", "checkout", "switch", "reset", "restore", "stash",
@@ -142,16 +142,27 @@ def released(cwd: str) -> bool:
     return done.returncode == 0
 
 
-def edit_refusal(paths: Iterable[str], cwd: str) -> str:
-    """Why a write to any of `paths` is refused, empty for permitted development changes."""
-    if switched_off():
-        return ""
+def hard_edit_refusal(paths: Iterable[str], cwd: str) -> str:
+    """Why a write to any of `paths` is refused whatever POOLHOUSE_GUARD says: a guard, a hook setting, the hooks and
+    settings of the version control, the person record or the authority registry."""
     base = Path(cwd or Path.cwd())
     for raw in filter(None, paths):
         target = base / _unquote(raw)
         place = os.path.normpath(str(target))
         if protected().guarded(place) or protected().guarded(os.path.realpath(place)) or protected().secret(place):
             return f"{target} is one of the guards, hook settings, the person record or the authority registry: a person changes it."
+    return ""
+
+
+def edit_refusal(paths: Iterable[str], cwd: str) -> str:
+    """Why a write to any of `paths` is refused, empty for permitted development changes."""
+    if switched_off():
+        return ""
+    if why := hard_edit_refusal(paths, cwd):
+        return why
+    base = Path(cwd or Path.cwd())
+    for raw in filter(None, paths):
+        target = base / _unquote(raw)
         found = checkouts(target.parent)
         if found and _enforced(found[1]) and _branch(found[0]) == "main":
             return f"{target} is on main; development changes require a development branch."
@@ -233,14 +244,20 @@ def _worktree_target(segment: str) -> str | None:
             return word
     return None
 
+def hard_bash_refusal(command: str, cwd: str) -> str:
+    """Why `command` may not run whatever POOLHOUSE_GUARD says: it writes a guard or the authority registry, touches the
+    person record or the session tokens, or changes what protects the repository."""
+    return protected().refusal(command, cwd or str(Path.cwd()), released)
+
+
 def bash_refusal(command: str, cwd: str) -> str:
     """Why `command` may not run from `cwd`, empty when it may."""
     if switched_off():
         return ""
     here = Path(cwd or Path.cwd())
-    if why := protected().refusal(command, str(here), released):
+    if why := hard_bash_refusal(command, str(here)):
         return why
-    for segment in _segments(command):
+    for segment in _segments(protected().without_heredocs(command)):
         moved = _cd(segment, here)
         if moved is not None:
             here = moved

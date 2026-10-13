@@ -11,11 +11,13 @@ import shlex
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-__all__ = ["guarded", "refusal", "secret", "touches_guards"]
+__all__ = ["guarded", "holds_secret", "other_agent", "refusal", "secret", "tool_refusal", "touches_guards",
+           "without_heredocs"]
 
 GUARD_PATHS = (
     r"src/poolhouse/workspace/person_\w+\.py",
-    r"scripts/hooks/(claude-user-prompt|person-consume|claude-bash-guard|claude-edit-guard|pre-push|rules_loader\.py)",
+    r"scripts/hooks/(claude-user-prompt|person-consume|claude-bash-guard|claude-edit-guard|claude-tool-guard|pre-push"
+    r"|rules_loader\.py)",
     r"\.claude/(settings(\.local)?\.json|(agents|commands|skills|hooks)(/.*)?)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
@@ -68,6 +70,7 @@ GH_BLOCKED: dict[str, frozenset[str] | None] = {
     "workflow": frozenset({"run", "enable", "disable"}), "release": frozenset({"create", "delete", "edit", "upload"}),
     "auth": frozenset({"login", "logout", "refresh", "setup-git", "token", "switch"}),
     "alias": frozenset({"set", "import"}), "config": frozenset({"set"})}
+READERS = re.compile(r"read|get|list|search|view|find|stat|head|tail|cat|show|describe|query|fetch")
 DEPTH = 3
 SCRIPT_BYTES = 65536
 PERSON = "the guards, the hook settings, git's hooks and the person record are changed by a person at a terminal"
@@ -315,11 +318,13 @@ def _shell_code(args: list[str]) -> str:
 
 def _code(verb: str, args: list[str], bodies: list[str], shell: Shell) -> str:
     """Why interpreted code (inline, a heredoc or a script file) is refused: it names a guard, a secret or git's hooks."""
+    if verb not in INLINE and verb not in SHELLS and verb not in ("source", "."):
+        return ""
     flag = INLINE.get(verb, "")
     given = args[args.index(flag) + 1:][:1] if flag in args else []
     texts = [*given, *bodies]
     scripts = [a for a in args if not a.startswith("-")]
-    if (verb in INLINE or verb in SHELLS or verb in ("source", ".")) and scripts:
+    if scripts:
         texts.append(_script_text(shell.here / scripts[0]))
     found = next((m.group(0) for t in texts for m in [MENTION.search(t)] if m), "")
     return f"code run from a shell names {found}: {PERSON}; use the file tools for anything else." if found else ""
@@ -490,3 +495,88 @@ class Reader:
 def refusal(command: str, cwd: str, released: Callable[[str], bool], environ: Mapping[str, str] | None = None) -> str:
     """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may."""
     return Reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, released)).command(command)
+
+
+def without_heredocs(command: str) -> str:
+    """``command`` without its heredoc bodies, which are data being written or code handed to an interpreter."""
+    return _heredocs(command)[0]
+
+
+def other_agent(command: str, own: str) -> str:
+    """Why a subagent named ``own`` may not run ``command``: it names another session by `--agent`, a token file, a token or
+    `POOLHOUSE_WORKSPACE_AGENT`; an empty string when it does not."""
+    flat, subs = _substitutions(_flatten(_heredocs(command)[0]))
+    for inner in subs:
+        if why := other_agent(inner, own):
+            return why
+    for words in _commands(_words(flat)):
+        for i, word in enumerate(words):
+            if why := _names_another(word, words[i + 1:i + 2], own):
+                return why
+        if (inner := _shell_code(words[1:])) and (why := other_agent(inner, own)):
+            return why
+    return ""
+
+
+def _names_another(word: str, after: list[str], own: str) -> str:
+    name, _, value = word.partition("=")
+    if name in ("--agent", "POOLHOUSE_WORKSPACE_AGENT") and (value or after) and (value or after[0]) != own:
+        return f"you are {own}: run as yourself, not as {value or after[0]}."
+    if name in ("--token-file", "POOLHOUSE_WORKSPACE_TOKEN"):
+        return f"you are {own}: another session's token is not yours to use."
+    return ""
+
+
+def _strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Mapping):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, (list, tuple)):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def _place(text: str, here: Path, environ: Mapping[str, str]) -> str:
+    home = environ.get("HOME", "~")
+    return os.path.normpath(here / (home + text[1:] if text == "~" or text.startswith("~/") else text))
+
+
+def holds_secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
+    """Whether ``path`` is the person record's folder, a folder it sits in directly, or an ancestor of the home folder."""
+    folder, found = path.rstrip("/"), environ or os.environ
+    home = os.path.normpath(found["HOME"]) if found.get("HOME") else ""
+    roots = [*_roots(found), *([f"{home}/.poolhouse"] if home else [])]
+    if any(root == folder or f"{root}/node" == folder for root in roots):
+        return True
+    return any(own == folder or own.startswith(folder + "/") for own in [home, *roots] if own)
+
+
+def _reaches_secrets(text: str, here: Path, environ: Mapping[str, str]) -> bool:
+    place = _place(re.split(r"[*?\[{]", text)[0] or ".", here, environ)
+    return secret(place, environ) or holds_secret(place, environ)
+
+
+def tool_refusal(name: str, given: Mapping[str, object], *, cwd: str = "", environ: Mapping[str, str] | None = None,
+                 subagent: bool = False) -> str:
+    """Why the tool call ``name`` with input ``given`` is refused: it drives the owner's browser, runs code outside the shell
+    rules, stops a task from a subagent, or reaches the person record or a guard; an empty string when it may run."""
+    found, here = environ or os.environ, Path(cwd or Path.cwd())
+    if name.startswith("mcp__claude-in-chrome__"):
+        return "the owner's own browser is not driven by an agent: use a headless browser of your own."
+    if name == "mcp__ide__executeCode":
+        return "code run in the editor's kernel skips the shell rules: use Bash."
+    if name == "TaskStop":
+        return "only the main session stops a task." if subagent else ""
+    keys = {"Read": ("file_path", "notebook_path"), "Glob": ("pattern", "path"), "Grep": ("path", "glob")}.get(name)
+    if keys is None and not name.startswith("mcp__"):
+        return ""
+    texts = _strings(given) if keys is None else [str(given[k]) for k in keys if given.get(k)]
+    for text in texts:
+        place = _place(text, here, found)
+        writes = name.startswith("mcp__") and not READERS.search(name.rsplit("__", 1)[-1])
+        if secret(place, found) or (writes and guarded(place, found)):
+            return f"{text} is the person record, a session token or a guard: " + PERSON + "."
+        if name in ("Glob", "Grep") and _reaches_secrets(text, here, found):
+            return f"a search from {text} reaches the person record: search a folder of the project."
+    return ""

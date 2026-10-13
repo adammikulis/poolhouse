@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""A PreToolUse hook on the tools the Bash and edit guards do not see: reads and searches of the person record and the
+session tokens, MCP tools, the owner's browser, and task control.
+
+Claude Code runs this before every call of those tools. Exit 2 blocks the call and hands the message back. Every rule
+here is a hard rule: POOLHOUSE_GUARD=off does not open it.
+
+Wire it in as a PreToolUse hook in `.claude/settings.json`:
+
+    {"matcher": "Read|Glob|Grep|Agent|TaskStop|LSP|mcp__.*", "hooks": [
+        {"type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-tool-guard"}]}
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rules_loader
+
+
+def main() -> int:
+    try:
+        event = json.load(sys.stdin)
+        rules = rules_loader.load()
+    except Exception:
+        return 0
+    given = event.get("tool_input")
+    if rules is None or not isinstance(event, dict) or not isinstance(given, dict):
+        return 0
+    why = rules.protected().tool_refusal(str(event.get("tool_name") or ""), given, cwd=str(event.get("cwd") or ""),
+                                         subagent=bool(event.get("agent_id")))
+    if why:
+        print(f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-tool-guard. No switch opens this rule.)", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
