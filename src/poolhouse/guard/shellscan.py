@@ -30,12 +30,13 @@ OBFUSCATION = (
 
 @dataclass(slots=True)
 class Segment:
-    """One command: its ``argv``, the ``redirects`` as (operator, target) and whether a pipe
-    feeds it."""
+    """One command: its ``argv``, the ``redirects`` as (operator, target), whether a pipe
+    feeds it and whether a trailing ``&`` runs it in the background."""
 
     argv: list[str] = field(default_factory=list)
     redirects: list[tuple[str, str]] = field(default_factory=list)
     piped: bool = False
+    background: bool = False
 
 
 def has_expansion(token: str) -> bool:
@@ -91,6 +92,7 @@ def segments(command: str) -> tuple[list[Segment], list[Finding]]:
     for tok in it:
         if set(tok) <= CONTROL and not tok.startswith("&>") and tok != "|&":
             if cur.argv or cur.redirects:
+                cur.background = tok == "&"
                 out.append(cur)
             cur = Segment(piped=tok == "|")
         elif tok == "|&":

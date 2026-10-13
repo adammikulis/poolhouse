@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any
 
-from poolhouse import hook_bootstrap, hook_diagnostics
+from poolhouse import hook_bootstrap, hook_diagnostics, safetext
 
 if __name__ == "__main__":
     sys.excepthook = hook_bootstrap.block
@@ -49,6 +49,8 @@ CLEANUP_RESERVE_S = 1.5
 NUDGE_S = hook_bootstrap.POST_SECONDS - CLEANUP_RESERVE_S
 NUDGE_MOST = 500
 NOTIFIER = "poolhouse.workspace.notification_reader"
+SUMMARY_MOST = 250
+SUMMARY_FIRST = ("file_path", "notebook_path", "path", "url", "pattern", "query", "input")
 FAILURES = (Denied, OSError, ValueError, TypeError, KeyError, AttributeError, LookupError, RuntimeError)
 HOOK_EVENTS = {"pre": "PreToolUse", "post": "PostToolUse", "stop": "Stop"}
 
@@ -63,18 +65,37 @@ def _diagnostic(error: BaseException) -> str:
     return hook_diagnostics.reason(error)
 
 
-def _summary(args: object) -> str:
-    try:
-        return json.dumps(args, ensure_ascii=False, default=str)[:200]
-    except (TypeError, ValueError):
+def _shown(text: str, most: int = SUMMARY_MOST) -> str:
+    """``text`` as one ASCII line; a line over ``most`` keeps its start and its end."""
+    plain = safetext.escape(text.encode("ascii", "backslashreplace").decode("ascii"), 1 << 20)
+    if len(plain) <= most:
+        return plain
+    head = most * 3 // 5
+    return f"{plain[:head]} ... {plain[len(plain) - (most - head - 5):]}"
+
+
+def _summary(name: str, args: object) -> str:
+    """What the person is shown of a call: the command, or the file or address first, then the other argument names."""
+    if not isinstance(args, dict):
         return "arguments that could not be read"
+    line = _shell_line(name, args)
+    if line:
+        return _shown(line)
+    first = next((k for k in SUMMARY_FIRST if isinstance(args.get(k), str)), "")
+    if not first:
+        try:
+            return _shown(json.dumps(args, default=str))
+        except (TypeError, ValueError):
+            return "arguments that could not be read"
+    rest = ", ".join(_shown(str(k), 20) for k in args if k != first)
+    return _shown(args[first]) + (f" (also {rest})"[:80] if rest else "")
 
 
 def _ask(payload: dict[str, Any], decision: Decision, agent: str, wait_s: float,
          inbox: requests.Inbox | None) -> tuple[bool, str]:
     name = str(payload.get("tool_name", ""))
     origin = requests.Origin(agent, Path(str(payload.get("cwd", ""))).name, str(payload.get("session_id", "")))
-    ask = requests.Ask(decision.kind, f"{name} {_summary(payload.get('tool_input'))}",
+    ask = requests.Ask(decision.kind, f"{name} {_summary(name, payload.get('tool_input'))}",
                        decision.reason, ("allow-once", "deny"), origin, ttl=wait_s)
     outcome = requests.raise_request(ask, inbox=inbox).wait(timeout=wait_s)
     return outcome.approved, outcome.why or outcome.state

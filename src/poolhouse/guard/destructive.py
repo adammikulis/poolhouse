@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
-from poolhouse.guard import argscan
+from poolhouse.guard import argscan, toolreview
 from poolhouse.guard.harm import ASKS, LABELS, RANK, Finding, Verdict, worst
 from poolhouse.guard.verbs import verb_finding, words_of
 from poolhouse.interventions import Call
@@ -80,16 +81,19 @@ def classify(call: Call, *, roots: Sequence[str] = (), catalog: Mapping[str, str
         more, read = argscan.content(call.name, args, where)
         found += more
     found += argscan.generic(call.name, args, where, worst(named) if named else "")
+    found += toolreview.findings(call.name, args, where)
     if not found:
         return Verdict("unsure", [f"{call.name} is not a tool the classifier knows and its "
                                   "arguments say nothing about what it does"], confidence=0.0)
     if not read and not named:
         found.append(Finding("unsure", f"{call.name} is not a tool the classifier knows"))
     label = worst(found)
-    reasons = list(dict.fromkeys(f.reason for f in found if f.label == label))
+    floor = min(RANK[label], RANK["unsure"])
+    reasons = list(dict.fromkeys(f.reason for f in sorted(found, key=lambda f: -RANK[f.label]) if RANK[f.label] >= floor))
     if label == "safe":
         reasons = ["only reads"]
-    return Verdict(label, reasons[:MAX_REASONS], confidence=0.0 if label == "unsure" else 1.0)
+    return Verdict(label, reasons[:MAX_REASONS], confidence=0.0 if label == "unsure" else 1.0,
+                   forbidden=any(f.forbidden for f in found))
 
 
 def combine(base: Verdict, other: Verdict | None) -> Verdict:
@@ -97,4 +101,4 @@ def combine(base: Verdict, other: Verdict | None) -> Verdict:
     lower it."""
     if other is None or RANK[other.label] <= RANK[base.label]:
         return base
-    return other
+    return replace(other, forbidden=base.forbidden or other.forbidden)

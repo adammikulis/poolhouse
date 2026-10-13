@@ -118,6 +118,8 @@ def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence
         return _denied("reversible", "tests must use the maintained scripts/test broker queue")
     verdict = classify(Call(name, args), roots=roots, catalog=CATALOG)
     why = reason_text(verdict)
+    if verdict.forbidden:
+        return _denied(verdict.label, f"{why}; an agent never opens one")
     if verdict.label == "safe":
         return Decision("allow", "safe", why)
     if refusal := refusal_for(_shell_line(name, args)):

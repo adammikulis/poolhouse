@@ -13,6 +13,7 @@ import unicodedata
 import zipfile
 from pathlib import Path, PurePosixPath
 
+from poolhouse import secretpaths
 from poolhouse.files import promote, write_json
 from poolhouse.home import DEFAULT_NAME
 from poolhouse.net import git
@@ -22,9 +23,9 @@ MAX_FILE = 8 << 20
 MAX_SOURCE = 128 << 20
 MAX_FILES = 10_000
 MAX_ARCHIVE = MAX_SOURCE + (8 << 20)
-EXCLUDED = {".git", ".worktrees", ".aws", ".codex", ".claude", ".agents", ".ssh",
-            DEFAULT_NAME, ".venv", "node_modules", "__pycache__"}
-SECRET_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".keystore", ".kdbx"}
+EXCLUDED = {".git", ".worktrees", ".codex", ".claude", ".agents", DEFAULT_NAME, ".venv", "node_modules", "__pycache__",
+            *(entry.casefold() for entry in secretpaths.HOME_DIRS if "/" not in entry)}
+SECRET_SUFFIXES = set(secretpaths.SUFFIXES)
 CONFIG_SUFFIXES = {".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".txt"}
 ID = re.compile(r"[a-f0-9]{32}\Z")
 DIGEST = re.compile(r"[a-f0-9]{64}\Z")
@@ -60,7 +61,7 @@ def excluded(name: str) -> bool:
     return (any(p.casefold() in EXCLUDED or p.casefold().startswith(DEFAULT_NAME) for p in parts)
             or any(p.casefold().startswith(".env") for p in parts)
             or PurePosixPath(name).suffix.casefold() in SECRET_SUFFIXES
-            or parts[-1].casefold() in {"credentials", "credentials.json", "id_rsa", "id_ed25519"})
+            or parts[-1].casefold() in secretpaths.NAMES)
 
 
 def sensitive(data: bytes, name: str) -> bool:

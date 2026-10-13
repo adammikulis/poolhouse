@@ -51,6 +51,20 @@ The label is the most severe of these.
 - Arguments of any tool: `force`/`yes`/`overwrite` set true, an `action` or HTTP `method` that
   deletes or sends, a write over an existing file or over a path with almost nothing, a list of more
   than 25 items, `production` in an environment-like key, a download over 5 GiB.
+- Code that arrives and credentials (`guard/execchain.py`, `toolreview.py`, `autoexec.py`, `fetchexec.py`,
+  `secretcmds.py`, `urlscan.py`; the credential list is `poolhouse.secretpaths` alone). A write to a file
+  that something runs by itself later (a git hook, an agent settings folder, `conftest.py`, `Makefile`,
+  `package.json`, a CI workflow, a shell startup file) is `unsure`, and text written to any file that
+  downloads and runs code, decodes and runs text, opens a shell to another machine or sends a credential
+  out is `unsure` with the flagged line in the reason. `git clone`, package installs and runs
+  (`pip install`, `npm install`, `pipx run`, `cargo run`, `go run`), `git config` of a command git
+  runs, servers, tunnels, background commands, unpacking an archive and `git apply` are `unsure` or
+  `destructive`. A word, wildcard, redirect target, link or `file:` address that names a credential file,
+  a recursive search of a folder that holds one, and a command that prints the environment or a key are
+  `destructive`; the verdict is `forbidden` when the credential is outside the project, and the harness
+  hook then denies the call in every role (the chat agent still asks). An address that carries data after
+  `?` or `#`, or names an internal host, is `unsure`. The reasons of every finding at `unsure` or above are
+  listed, worst first, so the person sees why each one fired.
 - Anything that cannot be read is `unsure`: quoting that hides a name (`$'\x72m'`), command
   substitution, backticks, process substitution, `eval`, `source`, here-documents, an unbalanced quote,
   `sh -c` nested more than three deep, `python -c`/`node -e` code that is not clearly harmless,
@@ -93,18 +107,20 @@ per tool and exact arguments (not per argument shape, which would let `ls x` sta
 
 ## Measured
 
-2026-10-03, `scripts/experiments/destructive_eval.py` (add `--misses` to list each wrong call),
+2026-10-12, `scripts/experiments/destructive_eval.py` (add `--misses` to list each wrong call),
 layer 1 only, on this machine, no model. Sets: the corpus in `poolhouse.decide.guards.destructive`
-(30 safe, 30 reversible, 31 destructive) and `destructive_adversarial` (166 safe look-alikes, 76
-reversible, 374 destructive, with obfuscation). Recall counts `unsure` as caught; strict counts only
-`destructive`. The script fails below 0.99 recall or above 5% of safe calls asked.
+(30 safe, 29 reversible, 32 destructive) and `destructive_adversarial` (164 safe look-alikes, 72
+reversible, 380 destructive, with obfuscation). Recall counts `unsure` as caught; strict counts only
+`destructive`. The script fails below 0.99 recall or above 5% of safe calls asked. Six rows moved from
+safe or reversible to destructive when installs (`npm install`, `npm ci`, `pip install`) and `env`
+began to ask, so figures from before 2026-10-12 are not comparable on those rows.
 
 | set | recall | strict | safe calls asked | reversible calls asked |
 | --- | --- | --- | --- | --- |
-| corpus | 1.000 | 1.000 | 0.000 | 0.000 |
-| held-out | 1.000 | 0.890 | 0.000 | 0.000 |
+| corpus | 1.000 | 0.969 | 0.000 | 0.000 |
+| held-out | 1.000 | 0.874 | 0.000 | 0.000 |
 
-Latency per call: mean 0.05 ms, 95th percentile 0.11 ms, maximum about 1 ms.
+Latency per call: mean 0.24 ms, 95th percentile 0.65 ms, maximum about 9 ms.
 
 Read these as optimistic. The held-out rows were written by the author of the rules in three
 batches. Before the rules were adjusted to them, the first pass asked about 202 of 204 (99.0%) of

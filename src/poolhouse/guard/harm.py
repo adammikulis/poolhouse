@@ -7,7 +7,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from poolhouse import home
+from poolhouse import home, secretpaths
 
 __all__ = ["ASKS", "LABELS", "RANK", "Finding", "Verdict", "outside", "protected", "resolve", "worst"]
 
@@ -20,30 +20,31 @@ RANK = {label: at for at, label in enumerate(LABELS)}
 PROTECTED = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/dev", "/proc", "/sys",
              "/var", "/opt", "/system", "/library", "/applications", "/private/etc", "/volumes",
              "/root", "/srv")
-PROTECTED_HOME = (".ssh", ".aws", ".gnupg", ".kube", ".config", ".docker", "library", ".netrc",
-                  ".git-credentials", ".password-store")
-SECRET_NAMES = frozenset({".env", ".netrc", ".npmrc", ".pypirc", "id_rsa", "id_ed25519",
-                          "authorized_keys", "known_hosts", "credentials", ".git-credentials"})
+PROTECTED_HOME = (".config", "library")
 
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    """One thing the classifier noticed: a ``label`` and the plain-words ``reason``."""
+    """One thing the classifier noticed: a ``label`` and the plain-words ``reason``; ``forbidden``
+    marks a call no answer from the person makes acceptable."""
 
     label: str
     reason: str
+    forbidden: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class Verdict:
     """What the classifier concluded about one call: the ``label``, the ``reasons`` in plain
-    words, the ``layer`` that decided (``deterministic`` or ``model``) and a ``confidence``
-    between 0 and 1 (1 for a structural rule, 0 for ``unsure``)."""
+    words, the ``layer`` that decided (``deterministic`` or ``model``), a ``confidence``
+    between 0 and 1 (1 for a structural rule, 0 for ``unsure``) and whether the call is
+    ``forbidden`` (a credential read the person is not asked about)."""
 
     label: str
     reasons: list[str] = field(default_factory=list)
     layer: str = "deterministic"
     confidence: float = 1.0
+    forbidden: bool = False
 
     @property
     def asks(self) -> bool:
@@ -90,6 +91,8 @@ def protected(path: str) -> bool:
         return True
     if any(low == p or low.startswith(p + "/") for p in PROTECTED):
         return True
+    if secretpaths.path_hit(str(text)) is not None:
+        return True
     if base in text.parents:
         return text.relative_to(base).parts[0].lower() in PROTECTED_HOME
-    return ".git" in text.parts[:-1] or text.name.lower() in SECRET_NAMES
+    return ".git" in text.parts[:-1]

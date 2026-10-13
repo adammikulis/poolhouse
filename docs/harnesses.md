@@ -67,6 +67,46 @@ block. The role names are those of `docs/agent-roles.md`.
 The hook's output is a fixed sentence per outcome, so it adds a few identical tokens to a
 conversation and nothing that changes the prompt prefix.
 
+### Code that arrives, and credentials
+
+A tampered model, or text it takes for an order, can write a script that downloads code and then
+run it through a tool that looks harmless. The hook reads these in every role, by fixed rules and
+with no model, and each one asks (`unsure`, a request of kind `tool_call_destructive`) or is denied:
+
+- **A write to a file that runs by itself later** asks even when its content looks harmless: a git
+  hook, `.git/config`, the agent folders (`.claude`, `.codex`, `.cursor`, `.agents`), `conftest.py`,
+  `setup.py`, `pyproject.toml`, `package.json`, `Makefile`, a CI workflow, `.envrc`, an editor task
+  file, `sitecustomize.py`, a `.pth` file, a shell startup file. The ask names the file, says when it
+  runs and quotes what the write starts with. Paths are read relative to the project folder, case-folded and through links,
+  so `.git/Hooks/x`, `src/../.git/hooks/x` and a link to the hooks folder are the same file.
+  A shell redirect, `tee`, `cp`, `mv`, `ln`, `install`, `dd`, `sed -i` and `curl -o` onto such a file ask the same way.
+- **Text written to any file** is read for a download piped to a shell (`curl ... | sh`,
+  `bash <(curl ...)`, `eval "$(curl ...)"`), text decoded and run, a shell opened to another machine
+  and a credential sent out. A call or pipeline spread over several lines is read as one. The ask
+  quotes the flagged statement with its line number (the part around the match when it is long),
+  every character outside ASCII written as a visible escape, so a direction mark, a zero-width
+  character or a lookalike letter cannot hide it. A direction mark in written code asks on its own.
+- **Commands that bring code in** ask: `git clone`, `git submodule update`, `pip install`, `npm install`
+  and the other package managers' installs, `pipx run`, `npx`, `cargo run`, `go run`, unpacking an
+  archive, `git apply`, a `git config` or `git -c` that sets a command git runs (hooks path, alias,
+  pager, ssh command, filters, credential helper), a server or tunnel, and a command left running in the background.
+- **Credential files** are listed once, in `poolhouse.secretpaths` (folders such as `.ssh` and `.aws`,
+  names such as `.env` and `id_ed25519`, key suffixes, the state root's keys). A read of one outside the
+  project folder is denied in every role, whichever tool or command reads it (`Read`, `Grep`, `cat`, `cp`, `curl -d @file`,
+  `xargs -a`, a `python -c` that opens it, a link to it); inside the project folder it asks. A wildcard that could expand to one (`cat .e*`),
+  a variable that builds a path, a search of a folder that holds one (`grep -r KEY .`, `rg --hidden`, `tar` of the folder) and files another
+  command picks (`find ... | xargs cat`) ask; a search of the home folder is denied. A command that prints the environment, a
+  variable named like a key, or a key or token from a cloud or package CLI asks.
+- **An address** (`WebFetch`, `curl`, `wget`) asks when it carries data after `?` or `#`, has a user
+  name or password, names an internal host, uses a scheme other than http or https, or has a long encoded
+  host name or path segment; `file:` of a credential file is denied.
+
+What the person sees is the command, or the file or address first and then the names of the other
+arguments, as one ASCII line of at most 250 characters that keeps both its start and its end, with the
+classifier's reasons (up to 700 characters) beside it. Code: `poolhouse.guard.execchain` (commands),
+`toolreview` and `autoexec` (tool arguments and written files), `fetchexec` (written text),
+`secretcmds`, `urlscan`; tests: `tests/test_harness_exec_chain.py`.
+
 ### The workspace
 
 Codex receives a workspace-only MCP server that runs as its assigned session: the session's name, the board and the
@@ -109,6 +149,14 @@ says the model is not recorded.
 - The Requests answer comes from the terminal or the UI, so an unattended session in `approve-first`
   stops at its first acting call (denied, with the reason shown to the model).
 - Only the deterministic classifier layer runs in the hook; the model-assisted layer does not.
+- What the rules above cannot decide: code the model writes in an ordinary file in a form no rule
+  recognises (a name built piece by piece, an indirect call) and then runs through the project's own
+  `make`, `npm test` or `cargo test`; files that a `git pull`, `merge` or `rebase` brings in and a
+  later command runs; a plain GET to a host the model chooses, which can carry a few bytes in a short
+  path or sub-domain on each call (the hook holds no list of allowed hosts); instruction files such as
+  `AGENTS.md`, which are read, not run; a file replaced by a link between the check and the call;
+  the folder after a `cd` (a relative name is read against the project folder); and a project folder
+  with more than 20,000 entries, which asks instead of being searched for credential files.
 - The harness talks to the server directly, not through `poolhouse.http`, so the per-pool request queue (`poolhouse.gate`) does not order its calls. One slot per session keeps two sessions from sharing a cache.
 
 ## Local models and large harness prompts
