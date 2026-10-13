@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import os
 import secrets
 import shutil
 import threading
 import time
-import urllib.error
-import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from poolhouse import hub
-from poolhouse.files import UNVERSIONED, promote, read_json, version_of, versioned, write_json
-from poolhouse.httpguard import Limits, Refused, stream
+from poolhouse.files import promote
+from poolhouse.httpguard import Refused
+from poolhouse.hub.remote import RemoteError
 from poolhouse.log import say
 from poolhouse.net import sniff
 from poolhouse.safenames import Unsafe, safe_filename
@@ -26,51 +24,17 @@ from poolhouse.safenames import Unsafe, safe_filename
 from . import model_components
 from .download_progress import Transfer
 from .model_library import library
-from .weights import ModelError, is_beside, resolve
+from .weights import ModelError, is_beside, reference
 
 __all__ = ["CHUNK", "Downloads", "Getting", "Model", "Models", "caches",
            "draft_beside", "holding", "sized"]
 
 CHUNK = 1 << 20
-MODEL_LIMITS = Limits(max_bytes=1 << 40, timeout=120.0, deadline_s=7 * 86400.0)
-"""A model download: a terabyte, a week, two minutes of silence."""
 
-#: 1 -- the url a partial download came from and its validator.
-STAMP_VERSION = 1
 MIN_SIZE = 1 << 20
 # A download in progress writes continuously, so a part file untouched for this
 # long belongs to one that stopped.
 STALE_PART_S = 3600.0
-
-
-def _read_stamp(stamp: Path) -> dict[str, Any]:
-    """What a half-finished download recorded about where it came from.
-
-    A stamp with no version key was written before the key existed and carries the same
-    ``url`` and ``validator``; one from a version this code does not know is discarded, so
-    the download starts again rather than resuming on a guess.
-    """
-    raw = read_json(stamp, None)
-    if not isinstance(raw, dict):
-        return {}
-    return raw if version_of(raw) in (UNVERSIONED, STAMP_VERSION) else {}
-
-
-def _write_stamp(stamp: Path, url: str, headers: Any) -> None:
-    validator = headers.get("ETag") or headers.get("Last-Modified") or ""
-    with contextlib.suppress(OSError):
-        write_json(stamp, versioned({"url": url, "validator": validator}, STAMP_VERSION),
-                   indent=None)
-
-
-@dataclass(frozen=True, slots=True)
-class Resume:
-    """One download: what it is called, where it lands, how much is already there and from where."""
-
-    name: str
-    target: Path
-    start: int
-    url: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,87 +276,26 @@ class Models:
         return Model(target.name, target, stat.st_size, stat.st_mtime)
 
     def _from_internet(self, name: str, source: str, on_progress: Any) -> Model:
-        url = resolve(source)
+        """Pull a Hugging Face reference through `hub.pull` (publisher, commit, digest and scan checks, and the
+        pin) and put the file in the store as ``name``."""
         self.store.mkdir(parents=True, exist_ok=True)
-        # The name that was asked for wins: saving it under whatever the URL happened
-        # to call it means find() will not match it afterwards.
-        wanted = Path(name).name
-        if Path(wanted).suffix.lower() not in hub.WEIGHT_SUFFIXES:
-            wanted = Path(urllib.parse.urlparse(url).path).name or wanted
+        report = (lambda got: on_progress(got.done_bytes, got.total_bytes)) if on_progress else None
         try:
+            pulled = hub.pull(reference(source), on_progress=report, members=False).resolve()
+            wanted = Path(name).name
+            if Path(wanted).suffix.lower() not in hub.WEIGHT_SUFFIXES:
+                wanted = pulled.name
             target = self.store / safe_filename(wanted)
         except Unsafe as exc:
             raise ModelError(f"{name}: {exc}") from None
-        partial = target.with_suffix(target.suffix + ".part")
-        stamp = Path(str(partial) + ".from")
-
-        start = partial.stat().st_size if partial.exists() else 0
-        origin = _read_stamp(stamp)
-        if start and origin.get("url") not in (None, url):
-            partial.unlink(missing_ok=True)
-            stamp.unlink(missing_ok=True)
-            start, origin = 0, {}
-
-        headers: dict[str, str] = {}
-        if start:
-            headers["Range"] = f"bytes={start}-"
-            if origin.get("validator"):
-                headers["If-Range"] = str(origin["validator"])
+        except (RemoteError, Refused, OSError, ValueError) as exc:
+            raise ModelError(str(exc)) from None
+        target.unlink(missing_ok=True)
         try:
-            with stream(url, headers=headers, limits=MODEL_LIMITS) as got:
-                saved = self._save(got, Resume(name, target, start, url), on_progress)
-                model_components.remember(saved.path, source)
-                return saved
-        except Refused as exc:
-            raise ModelError(f"could not download {name}: {exc}") from None
-
-    def _save(self, got: Any, plan: Resume, on_progress: Any) -> Model:
-        """Write one answer to the target's ``.part`` file, resuming it at ``plan.start``."""
-        from .remote import range_total
-
-        name, target, start, url = plan.name, plan.target, plan.start, plan.url
-        partial = target.with_suffix(target.suffix + ".part")
-        stamp = Path(str(partial) + ".from")
-        if got.status == 416 and start:
-            size = range_total(got.headers.get("content-range", ""))
-            if size is not None and size == start:
-                _require_weights(partial, target.name, stamp)
-                promote(partial, target)
-                stamp.unlink(missing_ok=True)
-                stat = target.stat()
-                return Model(target.name, target, stat.st_size, stat.st_mtime)
-            partial.unlink(missing_ok=True)
-            stamp.unlink(missing_ok=True)
-            raise ModelError(
-                f"{name}: the part here is {start} bytes but the file is "
-                f"{size}; discarded it, ask again")
-        if got.status >= 400:
-            raise ModelError(f"could not download {name}: {got.status}")
-
-        # A server that does not honour Range answers 200 with the whole file.
-        if start and got.status != 206:
-            start = 0
-        if start:
-            total = range_total(got.headers.get("content-range", "")) or 0
-        else:
-            total = int(got.headers.get("content-length") or 0)
-
-        _write_stamp(stamp, url, {"ETag": got.headers.get("etag", ""),
-                                  "Last-Modified": got.headers.get("last-modified", "")})
-        done = start
-        with partial.open("ab" if start else "wb") as fh:
-            for block in got.chunks:
-                fh.write(block)
-                done += len(block)
-                if on_progress:
-                    on_progress(done, total)
-        if total and partial.stat().st_size != total:
-            raise ModelError(
-                f"{name}: got {partial.stat().st_size} of {total} bytes; "
-                f"left {partial.name} to resume from")
-        _require_weights(partial, target.name, stamp)
-        promote(partial, target)
-        stamp.unlink(missing_ok=True)
+            os.link(pulled, target)
+        except OSError:
+            shutil.copyfile(pulled, target)
+        model_components.remember(target, source)
         stat = target.stat()
         return Model(target.name, target, stat.st_size, stat.st_mtime)
 

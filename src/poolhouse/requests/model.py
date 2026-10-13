@@ -59,6 +59,9 @@ KINDS: dict[str, Kind] = {
     "join-code": Kind("a machine or agent asking to join", human_only=True),
     "grant": Kind("a grant of a human-only action", human_only=True),
     "keystore_unlock": Kind("the keystore asking to be unlocked", human_only=True),
+    "model_publisher": Kind("a model from a publisher Poolhouse does not know, or changed since it was pulled",
+                            human_only=True),
+    "model_file": Kind("a model file Poolhouse did not fetch", human_only=True),
     "rule_suggestion": Kind("a rule the agent suggests"),
 }
 

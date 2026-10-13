@@ -12,6 +12,7 @@ def listed(monkeypatch):
         "config.json", "tokenizer.json", "model-00001-of-00002.safetensors",
         "model-00002-of-00002.safetensors", "weights.bin", ".gitattributes")]
     monkeypatch.setattr(transfer.remote, "listing", lambda *args: files)
+    monkeypatch.setattr(transfer.remote, "commit", lambda *args: "c" * 40)
     calls = []
     monkeypatch.setattr(transfer, "_bring", lambda *args: calls.append(args) or args[2])
     return files, calls
@@ -73,6 +74,7 @@ def test_download_rejects_paths_outside_destination(name, tmp_path, monkeypatch)
 def test_snapshot_pull_preserves_endpoint_errors(error, monkeypatch, tmp_path):
     def refuse(*args):
         raise error("endpoint refused")
+    monkeypatch.setattr(transfer.remote, "commit", lambda *args: "c" * 40)
     monkeypatch.setattr(transfer.remote, "listing", refuse)
     with pytest.raises(error, match="endpoint refused"):
         transfer.pull("hf:maker/model/model.safetensors", tmp_path)

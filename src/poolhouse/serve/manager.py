@@ -415,9 +415,9 @@ class ServerManager(Admitting):
                 f"{measurement_said(held)}. Loading a second model onto it would spoil "
                 f"that measurement and this one. Wait for it to finish, stop it with "
                 f"'poolhouse-bench stop', or pass --anyway to load beside it.")
-        guarded.verify(spec.model, state_file=self.state_file, stop=self.reclaim)
-        if spec.draft and spec.mtp is not True:
-            guarded.verify(spec.draft, state_file=self.state_file, stop=self.reclaim)
+        for part in guarded.parts_of(spec):
+            if part:
+                guarded.verify(part, state_file=self.state_file, stop=self.reclaim)
         emit(on_event, "loading", port=spec.port, model=Path(str(spec.model)).name,
               slots=max(1, int(spec.parallel or 1)))
         admitted = self._admitted(spec, on_event=on_event, reuse=reuse, load_s=timeout)

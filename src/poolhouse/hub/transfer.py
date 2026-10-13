@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import home, http, hub, lock, net
-from poolhouse.hub import hfstore, members as peering, remote
+from poolhouse.hub import admission, hfstore, members as peering, publishers, remote
 from poolhouse.hub.remote import GatedRepo, NotFound, RemoteFile
 from poolhouse.net.download import staged_part
 from poolhouse.units import human_bytes
@@ -34,8 +34,20 @@ CHUNK = 1 << 20
 MARGIN = 256 * 1024 * 1024
 """Free space left over after a download."""
 
-__all__ = ["CancelToken", "Cancelled", "ChecksumMismatch", "GatedRepo", "NotEnoughSpace",
-           "NotFound", "Progress", "held_snapshot", "plan", "pull", "snapshot"]
+__all__ = [
+    "CancelToken",
+    "Cancelled",
+    "ChecksumMismatch",
+    "GatedRepo",
+    "NotEnoughSpace",
+    "NotFound",
+    "Progress",
+    "base_folder",
+    "held_snapshot",
+    "plan",
+    "pull",
+    "snapshot",
+]
 
 
 class Cancelled(Exception):
@@ -101,24 +113,24 @@ class _Target:
 def _targets(parsed: remote.Ref, chosen: list[RemoteFile],
              dest: str | Path | None) -> tuple[Path, list[_Target]]:
     """The folder the files can be read from, and where each goes: a plain ``dest`` folder, or the
-    Hub cache's ``blobs/`` with a link in ``snapshots/<commit>/`` for the commit the revision means."""
+    Hub cache's ``blobs/`` with a link in ``snapshots/<commit>/`` for the commit ``parsed`` is resolved to."""
     if dest is not None:
         folder = home.expand(dest)
         return folder, [_Target(f, folder / f.path) for f in chosen]
     root = hfstore.repo_root(parsed.repo)
-    folder = root / "snapshots" / remote.commit(parsed.repo, parsed.revision)
+    folder = root / "snapshots" / parsed.commit
     return folder, [_Target(f, root / "blobs" / hfstore.blob_name(f), folder / f.path)
                     for f in chosen]
 
 
-def plan(ref: str) -> tuple[remote.Ref, list[RemoteFile]]:
-    """The reference parsed and the files it means, listed on the endpoint.
+def plan(ref: str | remote.Ref) -> tuple[remote.Ref, list[RemoteFile]]:
+    """The reference parsed, resolved to its commit, and the files it means, listed at that commit.
 
     A reference naming a repository only is resolved to the largest build under 85% of
     this machine's room when it is known, else to ``Q4_K_M``.
     """
-    parsed = remote.parse(ref)
-    listed = remote.listing(parsed.repo, parsed.revision)
+    parsed = remote.resolve(remote.parse(ref) if isinstance(ref, str) else ref)
+    listed = remote.listing(parsed.repo, parsed.commit)
     chosen = remote.members(listed, parsed)
     if not chosen and not parsed.file and not parsed.quant:
         chosen = _default_build(listed)
@@ -147,8 +159,7 @@ def _default_build(listed: list[RemoteFile]) -> list[RemoteFile]:
 
 def _url(parsed: remote.Ref, one: RemoteFile) -> str:
     quoted = urllib.parse.quote(one.path)
-    rev = urllib.parse.quote(parsed.revision, safe="")
-    return f"{remote.endpoint()}/{parsed.repo}/resolve/{rev}/{quoted}"
+    return f"{remote.endpoint()}/{parsed.repo}/resolve/{parsed.commit}/{quoted}"
 
 
 class _Meter:
@@ -186,10 +197,16 @@ def _by_object_id(one: RemoteFile) -> Callable[[Path, dict[str, str]], str] | No
                                    else f"{one.path} differs from the object id the Hub lists")
 
 
-def _want(one: RemoteFile, auth: str) -> net.Want:
+def _notes(parsed: remote.Ref, one: RemoteFile) -> dict[str, str]:
+    return {"publisher": publishers.namespace(parsed.repo), "commit": parsed.commit,
+            "source_ref": f"{parsed.repo}/{one.path}"}
+
+
+def _want(parsed: remote.Ref, one: RemoteFile, auth: str) -> net.Want:
     return net.Want(kind=_kind(one.path), sha256=one.sha256, size=one.size, token=auth,
                     max_bytes=int(one.size * 1.001) + MARGIN if one.size else 1 << 41,
-                    purpose="model download", verify=_by_object_id(one))
+                    purpose="model download", verify=_by_object_id(one),
+                    pin_notes=_notes(parsed, one))
 
 
 def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> bool:
@@ -198,7 +215,8 @@ def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Mete
     cancel = meter.cancel
     try:
         return meter.session.fetch(  # type: ignore[union-attr]
-            peering.Wanted(parsed.repo, one.path, one.size, one.sha256), final,
+            peering.Wanted(parsed.repo, one.path, one.size, one.sha256,
+                           tuple(_notes(parsed, one).items())), final,
             cancelled=lambda: bool(cancel and cancel.cancelled),
             progress=lambda done: meter.send("downloading", one, done),
             phase=lambda name: meter.send(name, one, one.size, force=True))
@@ -218,7 +236,7 @@ def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> N
     hooks = net.Hooks(cancel=cancel, progress=lambda done, _t: meter.send("downloading", one, done),
                       phase=lambda name: meter.send(name, one, one.size, force=True))
     try:
-        net.download(url, final, _want(one, auth), hooks=hooks)
+        net.download(url, final, _want(parsed, one, auth), hooks=hooks)
     except net.Truncated as exc:
         if cancel and cancel.cancelled:
             raise Cancelled(one.path) from exc
@@ -279,18 +297,18 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
     Members are asked first (``members=False`` skips them; `poolhouse.hub.members`): their
     bytes count only if they hash to the Hub's own digest, else the Hub is used.
     """
-    parsed = remote.parse(ref)
+    parsed = remote.resolve(remote.parse(ref))
     if parsed.file.lower().endswith(".safetensors"):
-        files = remote.listing(parsed.repo, parsed.revision)
+        files = remote.listing(parsed.repo, parsed.commit)
         if parsed.file not in {one.path for one in files}:
             raise NotFound(f"{parsed.repo} has no {parsed.file}")
         return _snapshot_files(parsed, files, dest, _Run(on_progress, cancel, members))
     try:
-        parsed, chosen = plan(ref)
+        parsed, chosen = plan(parsed)
     except NotFound:
         if parsed.quant or parsed.file:
             raise
-        files = remote.listing(parsed.repo, parsed.revision)
+        files = remote.listing(parsed.repo, parsed.commit)
         names = {one.path for one in files}
         if "config.json" not in names or not any(name.lower().endswith(".safetensors")
                                                    for name in names):
@@ -319,6 +337,7 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
         if (relative.is_absolute() or ".." in relative.parts
                 or not (folder / relative.parent).resolve().is_relative_to(root)):
             raise ValueError(f"Unsafe model file path: {one.path}")
+    admission.admit(parsed, chosen)
     _space(targets[0].final.parent, sum(_remaining(parsed, t) for t in targets))
     meter = _Meter(parsed.text, sum(f.size for f in chosen), len(chosen), run.report)
     meter.cancel = run.cancel
@@ -347,8 +366,8 @@ def snapshot(repo: str, revision: str = "main", on_progress: Report | None = Non
              cancel: CancelToken | None = None, *, dest: str | Path | None = None) -> Path:
     """Every file of ``repo`` but its pickle-based weights, in the Hub cache (or ``dest``);
     returns the snapshot folder. For a repository that holds safetensors."""
-    parsed = remote.Ref(repo, "", "", revision)
-    return _snapshot_files(parsed, remote.listing(repo, revision), dest,
+    parsed = remote.resolve(remote.Ref(repo, "", "", revision))
+    return _snapshot_files(parsed, remote.listing(repo, parsed.commit), dest,
                            _Run(on_progress, cancel))
 
 
@@ -359,6 +378,14 @@ def _snapshot_files(parsed: remote.Ref, files: list[RemoteFile], dest: str | Pat
     if not chosen:
         raise NotFound(f"{parsed.repo} has no files")
     return _bring(parsed, chosen, dest, run)
+
+
+def base_folder(base: str) -> str:
+    """A base model to train from, as a folder: ``base`` when it is one on this machine, else the snapshot
+    of the repository (``hf:owner/repo`` or ``owner/repo``) pulled through the publisher check."""
+    if Path(base).expanduser().is_dir():
+        return str(Path(base).expanduser())
+    return str(snapshot(base.removeprefix("hf:")))
 
 
 def held_snapshot(repo: str) -> Path | None:

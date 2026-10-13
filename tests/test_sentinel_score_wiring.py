@@ -24,6 +24,7 @@ from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.fakes import fake_llama_binary
 from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from tests.model_approval import approved
 from tests.sandbox_kit import policy, seatbelt  # noqa: F401
 
 FETCH = {"name": "web_fetch", "description": "Read a page.", "inputSchema": {
@@ -120,7 +121,7 @@ def model(name: str):
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.gguf"
     path.write_bytes(b"GGUF" + b"\x00" * 4096)
-    return path
+    return approved(path)
 
 
 def ask(path, label: str) -> Ask:

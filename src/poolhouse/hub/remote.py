@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from poolhouse import credentials, http, net
 from poolhouse.httpguard import Refused
 from poolhouse.hub.naming import _SHARD, QUANT, aside
+from poolhouse.hub.publishers import namespace
 from poolhouse.net.untrusted import clean_text
 
 DEFAULT_ENDPOINT = "https://huggingface.co"
@@ -70,6 +71,8 @@ class Ref:
     file: str = ""
     quant: str = ""
     revision: str = "main"
+    commit: str = ""
+    """The 40-character commit ``revision`` meant when `resolve` ran; listings and downloads name it, never the revision."""
 
     @property
     def text(self) -> str:
@@ -86,6 +89,7 @@ def parse(ref: str) -> Ref:
     parts = [p for p in text.split("/") if p]
     if len(parts) < 2 or (quant and not _QUANT_TAG.match(quant)):
         raise ValueError(f"{ref!r} should look like hf:owner/repo[/file.gguf][:QUANT]")
+    namespace(f"{parts[0]}/{parts[1]}")
     return Ref(f"{parts[0]}/{parts[1]}", "/".join(parts[2:]), quant, revision or "main")
 
 
@@ -160,6 +164,42 @@ def commit(repo: str, revision: str = "main", auth: str | None = None) -> str:
     if not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{40}", sha):
         raise RemoteError(f"{endpoint()} did not name a commit for {repo}@{revision}")
     return sha
+
+
+def endpoint_host() -> str:
+    """The host and port of the Hub address in use, as the sentence a person reads and the approval name it."""
+    return urllib.parse.urlsplit(endpoint()).netloc.lower()
+
+
+def on_branch(repo: str, sha: str, auth: str | None = None) -> bool:
+    """Whether ``sha`` is the head of a branch or tag of ``repo``, or one of the newest commits of its
+    ``main``: a pull request's commit is neither. False when the Hub cannot say."""
+    quoted = urllib.parse.quote(repo, safe="/")
+    token_ = token() if auth is None else auth
+    try:
+        refs = _get(f"{endpoint()}/api/models/{quoted}/refs", auth=token_, repo=repo)
+        heads = refs if isinstance(refs, dict) else {}
+        named = [row for key in ("branches", "tags") for row in heads.get(key) or () if isinstance(row, dict)]
+        if sha in {row.get("targetCommit") for row in named}:
+            return True
+        for page in range(HISTORY_PAGES):
+            rows = _get(f"{endpoint()}/api/models/{quoted}/commits/main?p={page}", auth=token_, repo=repo)
+            if not isinstance(rows, list) or not rows:
+                return False
+            if any(isinstance(row, dict) and row.get("id") == sha for row in rows):
+                return True
+    except RemoteError:
+        return False
+    return False
+
+
+HISTORY_PAGES = 4
+"""How many pages of a branch's history are read to find a commit named by hash."""
+
+
+def resolve(ref: Ref, auth: str | None = None) -> Ref:
+    """``ref`` with its commit named; a revision that already is a commit costs no request."""
+    return ref if ref.commit else replace(ref, commit=commit(ref.repo, ref.revision, auth))
 
 
 def members(files: list[RemoteFile], ref: Ref) -> list[RemoteFile]:

@@ -11,7 +11,7 @@ from typing import Any
 
 from poolhouse import net
 from poolhouse.http import ServerError
-from poolhouse.hub import kinds
+from poolhouse.hub import kinds, publishers
 
 from .weights import QUANTS, is_a_piece, is_beside
 
@@ -87,16 +87,13 @@ class Suggestion:
 
 MODALITY = {"text": "💬", "image": "🖼", "audio": "🔊", "video": "🎬"}
 
-# Names publishers give a model whose refusals have been trained or edited out.
-UNFILTERED = ("uncensored", "abliterated", "obliterated", "unfiltered",
-              "unleashed", "unchained", "heretic", "nsfw", "jailbreak",
-              "norefusal", "no-refusal", "unaligned", "unsafe")
+UNFILTERED = publishers.MARKERS
+"""Name fragments of a model whose refusals have been trained or edited out: the one list `hub.publishers` keeps."""
 
 
 def is_unfiltered(name: str) -> bool:
     """Whether a model is published as one that will not decline."""
-    low = name.lower()
-    return any(word in low for word in UNFILTERED)
+    return bool(publishers.marker(name))
 
 
 # What to fall back on when Hugging Face cannot be reached. Anything shipped here is
@@ -112,13 +109,6 @@ SUGGESTED: tuple[Suggestion, ...] = (
     Suggestion("Gemma 4 12B",
                "hf:unsloth/gemma-4-12b-it-GGUF/gemma-4-12b-it-Q4_K_M.gguf", 6.7,
                "For a machine with room to spare."),
-    Suggestion("Qwen3.8 27B · GSQ IQ3_S",
-               "hf:ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF/Qwen3.8-27B-GSQ-RCO-IQ3_S.gguf", 11.8e9 / 2**30,
-               "Smaller weights with optional integrated prediction and vision.", params_b=27,
-               mtp_ref="hf:ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf",
-               mtp_gb=12.1e9 / 2**30,
-               vision_ref="hf:ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF/mmproj-Qwen3.8-27B-BF16.gguf",
-               vision_gb=0.9e9 / 2**30),
     Suggestion("Qwen3.8 27B",
                "hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_XL.gguf", 16.35,
                "For a GPU with 24 GB or more, with multi-token prediction.", params_b=27,

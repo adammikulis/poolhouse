@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import hub
-from poolhouse.hub import remote
+from poolhouse.hub import publishers, remote
 from poolhouse.hub.naming import _SHARD, _precision
 from poolhouse.hub.transfer import pull
 
-# Publishers whose quantisations tend to be there first and be right. Ordered: the first one
-# that has a model wins. Override with --prefer; pass --prefer '' to rank by downloads alone.
-PREFER = ("unsloth", "ggml-org", "google", "bartowski", "lmstudio-community")
+# The known publishers, best first; the first one that has a model wins. Override with --prefer;
+# pass --prefer '' to rank by downloads alone. Ranking never approves a repository: `admission` does.
+PREFER = publishers.ORDER
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,7 @@ def find(query: str, *, prefer: tuple[str, ...] = PREFER, gguf: bool = True,
                                likes=int(model.get("likes") or 0))
 
     def rank(one: Found) -> tuple[int, int]:
-        owner = one.owner.lower()
-        where = prefer.index(owner) if owner in prefer else len(prefer)
+        where = prefer.index(one.owner) if one.owner in prefer else len(prefer)
         return (where, -one.downloads)
 
     return sorted(seen.values(), key=rank)[:limit]

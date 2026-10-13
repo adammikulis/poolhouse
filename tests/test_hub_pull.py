@@ -269,6 +269,8 @@ def guarded(monkeypatch):
     monkeypatch.delenv("POOLHOUSE_FETCH_ALLOW_HOSTS", raising=False)
     monkeypatch.setenv("HF_HOME", "/nonexistent-hf-home")
     with fake_hub(REPOS) as hub_:
+        hub_.know(monkeypatch)
+        hub_.official(monkeypatch)
         monkeypatch.setenv("HF_ENDPOINT", hub_.url)
         yield hub_
 
@@ -306,7 +308,10 @@ def test_a_host_the_operator_names_may_be_redirected_to(guarded, tmp_path, monke
 
 def test_a_pull_pins_each_file_to_the_size_and_digest_the_listing_gives():
     one = remote.RemoteFile("UD/a-Q4_K_M.gguf", 1000, "ab" * 32)
-    want = pulling._want(one, "tok")
+    parsed = remote.Ref("unsloth/thing", commit="c" * 40)
+    want = pulling._want(parsed, one, "tok")
     assert (want.sha256, want.size, want.token, want.kind) == ("ab" * 32, 1000, "tok", "gguf")
     assert 1000 <= want.max_bytes < 1000 + 2 * pulling.MARGIN
-    assert pulling._want(remote.RemoteFile("README.md", 5), "").kind == ""
+    assert want.pin_notes == {"publisher": "unsloth", "commit": "c" * 40,
+                              "source_ref": "unsloth/thing/UD/a-Q4_K_M.gguf"}
+    assert pulling._want(parsed, remote.RemoteFile("README.md", 5), "").kind == ""

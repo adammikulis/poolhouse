@@ -116,19 +116,21 @@ class TestCommand:
         argv = LlamaServerBackend(binary=binary).command(ServerSpec(model=gguf))
         assert argv[argv.index("--host") + 1] == "127.0.0.1"
 
-    def test_hf_reference_defers_the_download_to_the_server(self, binary):
-        """Re-implementing the fetch here is how a machine ends up with two model caches."""
-        argv = LlamaServerBackend(binary=binary).command(
-            ServerSpec(model="hf:owner/repo/weights-Q4_K_M.gguf")
-        )
-        assert argv[argv.index("--hf-repo") + 1] == "owner/repo"
-        assert argv[argv.index("--hf-file") + 1] == "weights-Q4_K_M.gguf"
-        assert "-m" not in argv
+    def test_hf_reference_is_refused_rather_than_downloaded_by_the_server(self, binary):
+        """llama-server is handed paths only; the reference is fetched through `poolhouse.hub`."""
+        with pytest.raises(ServerFailed, match="must be fetched before serving"):
+            LlamaServerBackend(binary=binary).command(
+                ServerSpec(model="hf:owner/repo/weights-Q4_K_M.gguf"))
 
-    def test_hf_reference_without_a_file_is_allowed(self, binary):
-        argv = LlamaServerBackend(binary=binary).command(ServerSpec(model="hf:owner/repo"))
-        assert argv[argv.index("--hf-repo") + 1] == "owner/repo"
-        assert "--hf-file" not in argv
+    def test_hf_reference_without_a_file_is_refused_too(self, binary):
+        with pytest.raises(ServerFailed, match="must be fetched before serving"):
+            LlamaServerBackend(binary=binary).command(ServerSpec(model="hf:owner/repo"))
+
+    def test_a_download_flag_in_the_extra_arguments_is_refused(self, binary, gguf):
+        for flag in ("-hf", "--hf-repo", "-hfd", "--model-url", "--mmproj-url=http://x/y.gguf"):
+            with pytest.raises(ServerFailed, match="is not a flag Poolhouse passes"):
+                LlamaServerBackend(binary=binary).command(
+                    ServerSpec(model=gguf, extra_args=(flag, "owner/repo")))
 
     def test_malformed_hf_reference_is_rejected(self, binary):
         with pytest.raises(ServerFailed, match="malformed HF reference"):
@@ -758,21 +760,16 @@ class TestDrafting:
             ServerSpec(model=tmp_path / "big.gguf", draft=tmp_path / "small.gguf"))
         assert "-md" in argv and argv[argv.index("-md") + 1].endswith("small.gguf")
 
-    def test_a_draft_named_by_repository_is_one_argument(self, tmp_path):
-        """`-hfd` takes owner/repo[:quant]. A draft named by *file* is not one argument --
-        llama-server has no flag for that -- so it is fetched first and served by path
-        (`LlamaServerBackend.resolved_draft`); measured 2026-09-01 when a head under MTP/
-        passed as repo:file started the server with an empty draft path."""
+    def test_a_draft_named_by_reference_is_refused_until_it_is_fetched(self, tmp_path):
+        """Neither a repository (`-hfd`) nor a file reference reaches llama-server: both are fetched
+        through `poolhouse.hub` first (`LlamaServerBackend.resolved_draft`) and served by path."""
+        for draft in ("hf:unsloth/gemma-4-E2B-it-qat-GGUF", "hf:unsloth/gemma-4-E2B-it-qat-GGUF/small.gguf"):
+            with pytest.raises(ServerFailed, match="must be fetched before serving"):
+                self.backend(tmp_path).command(ServerSpec(
+                    model=tmp_path / "big.gguf", draft=draft))
         argv = self.backend(tmp_path).command(ServerSpec(
-            model="hf:unsloth/gemma-4-E4B-it-qat-GGUF/big.gguf",
-            draft="hf:unsloth/gemma-4-E2B-it-qat-GGUF"))
-        assert argv[argv.index("--hf-repo") + 1] == "unsloth/gemma-4-E4B-it-qat-GGUF"
-        assert argv[argv.index("--hf-file") + 1] == "big.gguf"
-        assert argv[argv.index("-hfd") + 1] == "unsloth/gemma-4-E2B-it-qat-GGUF"
-        with pytest.raises(ServerFailed, match="fetched before serving"):
-            self.backend(tmp_path).command(ServerSpec(
-                model="hf:unsloth/gemma-4-E4B-it-qat-GGUF/big.gguf",
-                draft="hf:unsloth/gemma-4-E2B-it-qat-GGUF/small.gguf"))
+            model=tmp_path / "big.gguf", draft=tmp_path / "small.gguf"))
+        assert "-hfd" not in argv and "-md" in argv
 
     def test_no_draft_asks_for_none(self, tmp_path):
         argv = self.backend(tmp_path).command(ServerSpec(model=tmp_path / "big.gguf"))
@@ -834,19 +831,16 @@ class TestServingBeside:
             held.lease(ServerSpec(model=big, port=instance.port))
 
 
-def test_a_projector_reference_becomes_a_url_and_a_path_stays_a_path(binary):
-    """`--mmproj` takes a file on disk. Handing it an `hf:` reference is a path that does
-    not exist, and the server's complaint reads like a corrupt projector rather than a
-    misspelled one."""
+def test_a_projector_reference_is_refused_and_a_path_stays_a_path(binary):
+    """`--mmproj` takes a file on disk: a reference is fetched through `poolhouse.hub` first,
+    never turned into a URL for llama-server to download from `main`."""
     from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 
     backend = LlamaServerBackend(binary=binary)
 
-    argv = backend.command(ServerSpec(model="hf:maker/thing-GGUF/w.gguf", port=1,
-                                      mmproj="hf:maker/thing-GGUF/mmproj-F32.gguf"))
-    assert "--mmproj" not in argv
-    at = argv.index("--mmproj-url")
-    assert argv[at + 1] == "https://huggingface.co/maker/thing-GGUF/resolve/main/mmproj-F32.gguf"
+    with pytest.raises(ServerFailed, match=r"projector.*must be fetched before serving"):
+        backend.command(ServerSpec(model="/m/w.gguf", port=1,
+                                   mmproj="hf:maker/thing-GGUF/mmproj-F32.gguf"))
 
     argv = backend.command(ServerSpec(model="/m/w.gguf", port=1, mmproj="/m/mmproj-F32.gguf"))
     assert "--mmproj-url" not in argv

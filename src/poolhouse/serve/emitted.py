@@ -11,8 +11,7 @@ def emitted_flags(backend: LlamaServerBackend) -> list[str]:
     """Every flag ``backend.command`` can emit, from specs with every field set.
 
     Several shapes are needed because they exclude each other: an embedding server drops
-    ``--jinja`` for ``--embeddings``, an ``hf:`` reference swaps ``-m`` for ``--hf-repo``,
-    and a ``--no-`` flag is only emitted where its positive form is not. Values are harmless placeholders; nothing here is run.
+    ``--jinja`` for ``--embeddings``, and a ``--no-`` flag is only emitted where its positive form is not. Values are harmless placeholders; nothing here is run.
     """
     full = ServerSpec(
         model="model.gguf", parallel=2, mmproj="mmproj-model.gguf", draft="draft.gguf",
@@ -31,9 +30,7 @@ def emitted_flags(backend: LlamaServerBackend) -> list[str]:
     shapes = (full,
               ServerSpec(model="model.gguf", kv_unified=False, cache_idle_slots=False,
                          mmap=False),
-              ServerSpec(model="model.gguf", embedding=True),
-              ServerSpec(model="hf:owner/repo/model.gguf", mmproj="hf:owner/repo/mmproj.gguf",
-                         draft="hf:owner/repo"))
+              ServerSpec(model="model.gguf", embedding=True))
     flags: list[str] = []
     for shape in shapes:
         for token in backend.command(shape)[1:]:

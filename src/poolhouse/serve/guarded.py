@@ -1,5 +1,5 @@
 """What the Broker asks sentinel before a model server starts: a quarantined model or server is
-refused, a pinned model must still hash to its pin, and an unpinned model is pinned on first use."""
+refused, a pinned model must still hash to its pin, and an unpinned model waits for a person."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from typing import Any
 from poolhouse import sentinel
 from poolhouse.files import sha256_file
 from poolhouse.fleet.onboard.trusted import TrustedLists
+from poolhouse.requests import approvals
+from poolhouse.requests.model import shown
 from poolhouse.sentinel import Sentinel
 from poolhouse.sentinel.adapters import broker_listener, serve_hooks
 from poolhouse.sentinel.events import Event, Severity
@@ -34,6 +36,9 @@ class SentinelRefused(ServerFailed):
 
 
 _HOOKED: weakref.WeakKeyDictionary[Sentinel, set[str]] = weakref.WeakKeyDictionary()
+
+VOUCHING = frozenset({"pull", "approved", "manifest", "pinned-digest"})
+"""The pin sources whose bytes another file may be matched to: a download, a person, a signed list."""
 
 
 def file_of(model: object) -> Path | None:
@@ -156,11 +161,34 @@ def _by_manifest(node: Sentinel, path: Path, digest: str, name: str) -> str:
                           f"quarantined by sentinel; the file was moved aside")
 
 
+def _first_use(node: Sentinel, path: Path, digest: str, vouched: bool) -> str:
+    """The source of the pin for a file with none: a signed list that names it, bytes already pinned
+    elsewhere (a pin a download, a person or a signed list made), or a person's approval of this path
+    and these bytes. Otherwise a person is asked and `SentinelRefused` is raised, in every mode."""
+    if vouched:
+        return "manifest"
+    if (held := node.manifest.pin_with_digest(digest)) is not None and held.source in VOUCHING:
+        return "pinned-digest"
+    sentence = (f"{path.name} was not downloaded by Poolhouse and Poolhouse has not seen it before. "
+                f"It is {shown(str(path), 'subject')} (sha256 {digest[:12]}). "
+                f"Models can hide behaviour that tests do not show. Use it anyway?")
+    if approvals.approved("model_file", path.name, sentence, path=str(path), sha256=digest):
+        return "approved"
+    raise SentinelRefused(approvals.ask("model_file", path.name, sentence, path=str(path), sha256=digest))
+
+
+def parts_of(spec: Any) -> tuple[object, ...]:
+    """What a start reads from disk and so verifies: the weights, the draft unless its head is embedded,
+    the projector, the chat template and the static lookup cache."""
+    drafted = spec.draft if spec.mtp is not True else None
+    return (spec.model, drafted, spec.mmproj, spec.chat_template_file, spec.lookup_static)
+
+
 def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> str:
     """Refuse to start a server for ``model`` when sentinel holds it, its bytes differ from
     the pin, or a signed manifest this machine accepted lists other bytes for it. A model with
-    no pin is pinned now with source ``first-use`` (a model poolhouse pulled has its pin from
-    the pull). Returns ``verified by manifest serial N`` when a manifest vouched for the file,
+    no pin is pinned only when a signed list vouches for it, its bytes are already pinned or a
+    person approved it (a model poolhouse pulled has its pin from the pull). Returns ``verified by manifest serial N`` when a manifest vouched for the file,
     else ''."""
     node = sentinel.armed()
     register(node, state_file, stop)
@@ -174,16 +202,16 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
     name = path.name
     pin = node.manifest.pin_of(path)
     if pin is None:
-        # a link into the Hub cache is pinned as the blob it points at, which is what a pull pins
+        # a link into the Hub cache is pinned as the blob it points at, which is what a pull pinned
         path = path.resolve() if path.is_symlink() else path
         digest = sha256_file(path)
         said = _by_manifest(node, path, digest, name)
-        node.manifest.pin_verified(path, "model", digest, source="first-use",
-                                   digest_from="computed")
-        logger.warning("%s was not pulled by poolhouse and had no pin: pinned on first use "
-                       "(its bytes are trusted as they are now)", name)
+        source = _first_use(node, path, digest, bool(said))
+        node.manifest.pin_verified(path, "model", digest, source=source, digest_from="computed")
+        logger.warning("%s was not pulled by poolhouse and had no pin: pinned as %s (its bytes are "
+                       "trusted as they are now)", name, source)
         node.bus.emit(Event("model.pinned_first_use", Severity.NOTICE, "serve", f"model:{path}",
-                            {"name": name, "manifest": said}, node.clock()))
+                            {"name": name, "manifest": said, "source": source}, node.clock()))
         return said
     if not node.verify_before_load(path, cached=True):
         raise SentinelRefused(f"{name} does not match its pin and is quarantined by "

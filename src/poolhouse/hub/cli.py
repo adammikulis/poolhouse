@@ -108,7 +108,7 @@ def _layout(args) -> int:
 
 def _find(args) -> int:
     """``poolhouse-models find``: repositories matching some words."""
-    prefer = tuple(p.strip().lower() for p in args.prefer.split(",") if p.strip())
+    prefer = tuple(p.strip() for p in args.prefer.split(",") if p.strip())
     found = hub.find(" ".join(args.words), prefer=prefer, gguf=not args.all,
                      limit=args.limit)
     if not found:

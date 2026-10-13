@@ -13,6 +13,7 @@ from typing import Any
 from poolhouse import requests, sentinel
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
+from poolhouse.person import require_person
 from poolhouse.sandbox import cli as sandbox_cli
 from poolhouse.sentinel import human, inert, observers, review
 from poolhouse.sentinel.events import Severity
@@ -238,7 +239,9 @@ def scan(args: argparse.Namespace) -> int:
     flag("--kind", default="model", choices=FILE_KINDS), flag("--source", default=""),
     flag("--honey", action="store_true", help="plant the decoy files")))
 def baseline(args: argparse.Namespace) -> int:
-    """Pin the named files as they are now."""
+    """Pin the named files as they are now; pinning a model is a person's, since a pin is what lets it load."""
+    if args.kind == "model" and args.pin:
+        require_person("pinning a model file by hand")
     node = sentinel.default()
     pins = [node.manifest.pin(p, args.kind, args.source) for p in args.pin]
     if args.honey:

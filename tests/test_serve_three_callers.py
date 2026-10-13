@@ -21,6 +21,7 @@ from poolhouse.serve import admission, broker_wire
 from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.fakes import fake_llama_binary
+from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
 pytestmark = [pytest.mark.slow, pytest.mark.usefixtures("serve_leases")]
@@ -92,7 +93,7 @@ def model(tmp_path: Path, name: str, gib: float) -> str:
     path = tmp_path / name
     with path.open("wb") as handle:
         handle.truncate(int(gib * GIB))
-    return str(path)
+    return str(approved(path))
 
 
 def caller(path: str, hold: float = 60) -> subprocess.Popen:

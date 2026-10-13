@@ -164,9 +164,11 @@ sys.path.insert(0, {src!r})
 from pathlib import Path
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
 from poolhouse.testing import fake_llama_binary
+from poolhouse import sentinel
 root = Path({root!r})
 model = root / "model.gguf"
 model.write_bytes(b"GGUF" + b"\\x00" * 64)
+sentinel.default().manifest.pin(model, "model", source="approved")
 manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(root)),
                         state_file=root / "servers.json", stop_on_exit={stop})
 info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False, timeout=30.0,

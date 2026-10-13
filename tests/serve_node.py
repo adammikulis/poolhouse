@@ -34,7 +34,9 @@ def lease_node(node_binary):
 
 @pytest.fixture
 def serve_leases(monkeypatch, lease_node):
-    """The lease table of the session's node, with no lease held and no memory budget, under a state root of this test's own."""
+    """The lease table of the session's node, with no lease held and no memory budget, under a state root of this test's own.
+    A model file the test places is served as a person approved it (`tests/test_publisher_trust.py` has the ask)."""
+    monkeypatch.setattr("poolhouse.serve.guarded._first_use", lambda *_found: "approved")
     home = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
     (home / "node").symlink_to(lease_node)
     monkeypatch.setenv("POOLHOUSE_HOME", str(home))

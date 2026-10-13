@@ -26,7 +26,10 @@ def test_status_json_reports_the_mode_and_a_verified_log(capsys):
     assert data["subjects"]["watch"] == 1
 
 
-def test_baseline_pins_then_scan_finds_a_change(capsys):
+def test_baseline_pins_then_scan_finds_a_change(capsys, monkeypatch):
+    for marker in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE"):
+        monkeypatch.delenv(marker, raising=False)
+    monkeypatch.setattr("poolhouse.person.is_terminal", lambda _stream: True)
     model = home.home() / "m.gguf"
     model.parent.mkdir(parents=True, exist_ok=True)
     model.write_bytes(b"GGUF" * 1000)

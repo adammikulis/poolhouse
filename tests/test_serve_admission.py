@@ -26,6 +26,7 @@ from poolhouse.serve.process import pid_exists
 from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
 from poolhouse.testing.registry import record_server
 from poolhouse.ui.verdict import THRESHOLDS
+from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -256,7 +257,7 @@ def test_two_processes_that_do_not_fit_together_do_not_both_start(tmp_path, mach
     """The second process is refused while the first, which has been killed, leaves its
     server running; then that leaked server is stopped and the second one starts."""
     binary = fake_llama_binary(tmp_path)
-    first = weights(tmp_path, "first.gguf", 6)
+    first = approved(weights(tmp_path, "first.gguf", 6))
     second = weights(tmp_path, "second.gguf", 6)
     code = ("import sys, time\n"
             "import poolhouse.serve.unmanaged as u\n"

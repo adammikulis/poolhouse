@@ -24,6 +24,8 @@ cut to a bound before it is stored.
 | `hold`, `rule_suggestion` | a held call, a suggested rule | |
 | `quarantine_release` | what sentinel holds | yes: the sentinel re-checks at the click |
 | `host_approval`, `join-code`, `grant`, `keystore_unlock` | declared kinds; their sources still own their prompts | yes |
+| `model_publisher` | a model from a publisher Poolhouse does not know, named as modified, or whose file differs from the one pulled before; approved for one repository at one commit (`docs/model-discovery.md`, "Publisher trust") | yes |
+| `model_file` | a model file Poolhouse did not fetch and holds no pin for; approved for that path and those bytes | yes |
 
 States: `pending`, `approved`, `denied`, `expired`, `cancelled`, `superseded`. Choices: allow this
 time, always allow, never allow, no, cancel, release, keep held, later, approve. A request that

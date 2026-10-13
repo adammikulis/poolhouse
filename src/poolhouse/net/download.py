@@ -68,7 +68,8 @@ class Want:
     """What a download must be: its ``kind`` (from the name when empty), the ``sha256`` it is
     pinned to, whether a digest is ``require_digest``, and how an unscanned file is treated.
     ``verify(path, headers)`` returns why a staged file is not acceptable, or ''. ``rename(final_url,
-    headers)`` picks the file name once the answer is known."""
+    headers)`` picks the file name once the answer is known. ``pin_notes`` (``publisher``, ``commit``,
+    ``source_ref``) are recorded in the pin of a model that is kept."""
 
     kind: str = ""
     sha256: str = ""
@@ -85,6 +86,7 @@ class Want:
     admit: bool = True
     verify: Callable[[Path, dict[str, str]], str] | None = None
     rename: Callable[[str, dict[str, str]], str] | None = None
+    pin_notes: dict[str, str] = field(default_factory=dict)
 
 
 class Cancel:
@@ -341,11 +343,12 @@ def _pin_pulled(final: Path, kind: str, want: Want, digest: str, arrival: Arriva
         if node.mode == sentinel.Mode.OFF:
             return
         node.manifest.pin_verified(final, what, digest, source="pull", origin=arrival.final_url,
-                                   digest_from="expected" if want.sha256 else "computed")
+                                   digest_from="expected" if want.sha256 else "computed",
+                                   **want.pin_notes)
         node.bus.emit(Event("model.pinned_at_pull", Severity.INFO, "net", f"model:{final}",
                             {"name": final.name, "sha256": digest, "origin": arrival.final_url,
-                             "digest_from": "expected" if want.sha256 else "computed"},
-                            time.time()))
+                             "digest_from": "expected" if want.sha256 else "computed",
+                             **want.pin_notes}, time.time()))
     except (OSError, ValueError) as exc:
         logger.warning("%s was kept but could not be pinned (it will be pinned on first use): %s",
                        final.name, exc)

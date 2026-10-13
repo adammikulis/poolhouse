@@ -227,8 +227,10 @@ class TestConversationCacheFlags:
 class TestEmittedFlags:
     def test_every_flag_the_argv_builder_knows_appears(self, tmp_path):
         flags = emitted_flags(LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)))
-        for flag in ("-m", "--hf-repo", "--hf-file", "--mmproj", "--mmproj-url", "-md",
-                     "-hfd", "--spec-type", "--spec-draft-n-max", "--spec-draft-p-min",
+        for flag in ("--hf-repo", "--hf-file", "--mmproj-url", "-hfd"):
+            assert flag not in flags, flag
+        for flag in ("-m", "--mmproj", "-md",
+                     "--spec-type", "--spec-draft-n-max", "--spec-draft-p-min",
                      "--spec-draft-ngl",
                      "--override-tensor", "--cpu-moe", "--n-cpu-moe", "--cache-reuse",
                      "--no-warmup", "--kv-unified-per-slot", "--lookup-cache-static",
@@ -489,12 +491,12 @@ class TestLaunchRefusal:
                             lambda *a, **k: (_ for _ in ()).throw(AssertionError("started")))
         gguf = tmp_path / "model.gguf"
         gguf.write_bytes(b"GGUF" + b"\x00" * 64)
-        spec = ServerSpec(model=gguf, extra_args=("--draft-max", "3", "--zzqx", "1"))
+        spec = ServerSpec(model=gguf, extra_args=("--draft-max", "3", "--swa-full", "1"))
         with pytest.raises(UnknownFlag) as caught:
             leased(LlamaServerBackend(binary=binary), spec, timeout=1.0)
         assert str(caught.value).splitlines() == [
             "this llama-server has no --draft-max; it has --spec-draft-n-max",
-            "this llama-server has no --zzqx",
+            "this llama-server has no --swa-full",
         ]
 
     def test_it_is_a_value_error_and_not_a_failed_server(self, tmp_path):
@@ -571,7 +573,8 @@ def test_a_draft_named_by_file_is_fetched_and_served_by_path(monkeypatch, tmp_pa
     with pytest.raises(be.ServerFailed, match="fetched before serving"):
         be.LlamaServerBackend(binary=binary).command(spec)
     quant = be.ServerSpec(model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF")
-    assert "-hfd" in be.LlamaServerBackend(binary=binary).command(quant)
+    with pytest.raises(be.ServerFailed, match="must be fetched before serving"):
+        be.LlamaServerBackend(binary=binary).command(quant)
 
 
 def test_a_model_named_by_file_is_fetched_and_served_by_path(monkeypatch, tmp_path):
