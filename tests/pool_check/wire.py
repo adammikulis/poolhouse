@@ -1,6 +1,6 @@
 """What runs on a device, Mac or Linux: start or stop its node under the real supervisor, and make one call to the node's local API.
 
-    python tests/pool_check/wire.py start --state DIR --binary PATH [--arg ARG ...]
+    python tests/pool_check/wire.py start --state DIR --binary PATH [--arg ARG ...] [--phone-key HEX]
     python tests/pool_check/wire.py stop  --state DIR
     python tests/pool_check/wire.py call  --state DIR METHOD [--board B] [--token T] [--params JSON]
     python tests/pool_check/wire.py presence --state DIR --token T --purpose key|phone [--public HEX]
@@ -17,6 +17,7 @@ that is not running: a node the rig killed stays dead until the supervisor, or t
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import socket
 import ssl
@@ -125,13 +126,31 @@ def phone_call(state: Path, op: str, token: str, body: dict, method: str) -> dic
     return {"ok": True, "result": {"status": status, "reply": reply}}
 
 
-def start(state: Path, binary: Path, args: list[str]) -> dict:
-    """Pin ``binary`` for the node of ``state`` and start it under its supervisor with ``args``; its health."""
+def plant_phone_key(state: Path, public: str) -> None:
+    """Write the Ed25519 key ``public`` (hex) into the person keys file of ``state`` marked as a phone's own enrolment marks a key: the node
+    reads the file when it starts and derives the key as strong. Only a file the account owns can do this."""
+    path = state / "persons.json"
+    held = json.loads(path.read_text()) if path.exists() else {}
+    held[hashlib.sha256(bytes.fromhex(public)).hexdigest()] = {"public": public, "label": "the pool check's phone", "at_ms": 1, "alg": "ed25519", "phone": True}
+    path.write_text(json.dumps(held))
+
+
+def start(state: Path, binary: Path, args: list[str], phone_key: str = "") -> dict:
+    """Pin ``binary`` for the node of ``state`` and start it under its supervisor with ``args``, after ``phone_key`` was written to its person keys; its health."""
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if phone_key:
+        plant_phone_key(state, phone_key)
     node_supervise.point(state, binary, node_binary.sha256(binary))
     # the rig posts 1,500 entries in one burst to cut a sync in half: the per-sender limit of a session is the node's, not the step's subject
     (state / "write-limits.json").write_text(json.dumps({"sends": 1_000_000, "subagent_sends": 1_000_000}))
     return {"ok": True, "result": node_launch.ensure_node(state, extra=args)}
+
+
+def start_options(one: argparse.ArgumentParser) -> None:
+    """The options of `start`: the node binary, its arguments and the key written to its person keys before it starts."""
+    one.add_argument("--binary", required=True)
+    one.add_argument("--arg", action="append", default=[])
+    one.add_argument("--phone-key", default="")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,8 +169,7 @@ def main(argv: list[str] | None = None) -> int:
             one.add_argument("--body", default="{}")
             one.add_argument("--method", default="POST")
         if name == "start":
-            one.add_argument("--binary", required=True)
-            one.add_argument("--arg", action="append", default=[])
+            start_options(one)
         if name == "post-many":
             one.add_argument("--board", required=True)
             one.add_argument("--token", required=True)
@@ -167,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     state = Path(args.state)
     try:
         if args.cmd == "start":
-            out = start(state, Path(args.binary), [f"{a}" for a in args.arg])
+            out = start(state, Path(args.binary), [f"{a}" for a in args.arg], args.phone_key)
         elif args.cmd == "presence":
             out = answer_presence(state, args.token, args.purpose, args.public)
         elif args.cmd == "phone-listen":

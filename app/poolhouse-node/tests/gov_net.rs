@@ -9,7 +9,6 @@ use kit::netkit::*;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::error::Error;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
-use poolhouse_node::gov::keys::Strength;
 use poolhouse_node::gov::signer::RigSigner;
 use poolhouse_node::net::{Net, NetConfig};
 use poolhouse_node::node::Node;
@@ -333,6 +332,7 @@ fn a_device_in_no_pool_that_hears_the_beacon_of_an_open_governed_pool_of_its_pro
 #[test]
 fn a_pool_is_founded_drafted_and_signed_by_a_key_outside_the_node_with_no_signer_on_it() {
     let (a, b) = (device(), device());
+    enrol_phone_key(&a, ANN);
     let charter = charter(&[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
     let founded = a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
     assert_eq!(founded["pool"], charter.pool_id().as_str());
@@ -354,6 +354,7 @@ fn a_pool_is_founded_drafted_and_signed_by_a_key_outside_the_node_with_no_signer
 #[test]
 fn a_window_opened_with_no_signer_on_the_node_admits_only_the_device_an_admin_already_signed_for() {
     let (a, b, c) = (device(), device(), device());
+    enrol_phone_key(&a, ANN);
     let charter = charter(&[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
     a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
     for dev in [&a, &b] {
@@ -496,7 +497,7 @@ fn a_person_is_asked_at_most_twelve_times_in_ten_minutes() {
 fn a_pool_is_not_founded_on_weak_keys_alone_and_nothing_is_left_half_made() {
     let a = device();
     let before = a.pool();
-    a.node.lock().unwrap().set_signer(std::sync::Arc::new(RigSigner::new().with_key(ANN, "ann", Strength::Weak)));
+    a.node.lock().unwrap().set_signer(std::sync::Arc::new(RigSigner::new().with_key(ANN, "ann")));
     let denied = a.call("pool_create", "", &a.token, json!({"title": "home"}));
     assert_eq!(denied["ok"], false);
     assert!(denied["error"]["say"].as_str().unwrap().contains("asks for your presence"), "{denied}");

@@ -142,7 +142,7 @@ pub fn admins(g: &GovPool) -> Vec<String> {
     g.state().chain.latest().charter.admins.iter().map(|k| k.key.clone()).collect()
 }
 
-/// One person with one strong key made from ``seed``.
+/// One person with one key made from ``seed``; a node founds a pool of it only once a phone enrolled the key there (`govnode::found`).
 pub fn person(seed: u8, name: &str) -> Arc<RigSigner> {
-    Arc::new(RigSigner::new().with_key(seed, name, Strength::Strong))
+    Arc::new(RigSigner::new().with_key(seed, name))
 }

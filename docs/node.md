@@ -215,7 +215,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
 | `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
-| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, strength, label}`) | `{charter, anchor, accept, summary}`: the charter with blank acceptances and, for each key, the bytes it signs to accept it; the rig or person signs them and hands the charter back to `pool_found` |
+| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; a key that names its strength is refused) | `{charter, anchor, accept, summary}`: the charter with blank acceptances, each key `strong` only when a phone enrolled it on this device and `weak` otherwise, and for each key the bytes it signs to accept it; the rig or person signs them and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the device is a member once an admit signed for it is submitted |
 | `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
@@ -469,10 +469,11 @@ without a password (or `pkexec` set up to allow the action to anyone) lets the p
 the person who runs such a rule has already given that power to every program of the account.
 
 **Accepted residual: `persons.json` is a plain file.** The OS user can edit it with the node stopped (documented at `src/grants/person.rs`), so
-a program that can stop the node and write its state directory can plant a key; the operating-system sandbox of agents (slice S0 of
+a program that can stop the node and write its state directory can plant a key, including one marked `phone: true`, which a pool's charter
+then lists as strong; the operating-system sandbox of agents (slice S0 of
 `docs/compromised-agents.md`) is what closes it, not the node.
 
-**A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` (its fingerprint is the SHA-256 of its 65-byte
+**A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` and `phone: true` (its fingerprint is the SHA-256 of its 65-byte
 public point) and signs only approvals (docs/phone-approval.md): an agent asks (`approval_request`), the node writes the question in plain words, the phone's key
 signs a challenge that binds the text, the node and the request, and an approved request writes ordinary `grant` entries whose body carries that approval instead
 of a signature over the grant, so they count wherever a grant a person typed `yes` for counts. The phone endpoint (`--phone ADDR`, or the address in
@@ -894,7 +895,8 @@ pool, through admin keys; a device never does, and the one thing a member device
   a person signs an act under (`gov/describe.rs`, at most 300 characters) names the key with its person, strength and fingerprint, the
   device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. `pool_found` is
   granted by the name of the pool the act founds and refuses a charter with no strong admin key, which nobody could admit a device
-  under.
+  under, and a charter that calls a key strong that no phone enrolled on this device (the strength is this node's to derive, from the `phone`
+  mark of the key in `persons.json`, and is never read from a caller).
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
 - **The unfounded pool of one.** A fresh device (no `pools/<id>/`) is its own only member: `pool_status` says `governance.mode:
   unfounded` with an empty `pool`, nothing is written, it needs no signer to exist and it admits nobody (`add_device` answers "This
@@ -1004,8 +1006,8 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 **Founding a pool from Python.** `board/founding.py` is the client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`:
 `found(session, admin, name, policy)` drafts the charter, has the person's key sign its acceptance and the first `admit`, and submits both,
 after the grant `pool_create` came from the phone's card (`with_card` asks the card for any missing grant and sends the call again after the
-tap) or from the first key. It answers "already in the pool X" for a device that is founded, and refuses a key that is not strong before the
-person is asked. `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
+tap) or from the first key. It answers "already in the pool X" for a device that is founded, and refuses a key the node does not derive as
+strong before the person is asked (the node's draft of the charter says which keys it derives as strong). `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
 wrap it, and `poolhouse-workspace pool found` is the agent's command; docs/pools-and-serving.md, 1.17, says what is built and what remains.
 
 ## The person's session (the UI)

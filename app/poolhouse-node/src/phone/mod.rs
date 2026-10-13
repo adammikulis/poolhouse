@@ -208,7 +208,7 @@ pub fn activate(node: &mut Node, a: &Approval) -> Result<()> {
         return Err(Error::Invalid("That phone's key is not the key the request named, so nothing was added.".into()));
     }
     let now = node.now_ms();
-    node.persons.add_key(P256, &phone.key, &phone.name, now)?;
+    node.persons.add_phone_key(P256, &phone.key, &phone.name, now)?;
     node.phones.set_state(id, ACTIVE)?;
     let _ = node.record_event("phone.add", &phone.fingerprint, &format!("{}; approved by {}", phone.name, a.decided_by.get(..12).unwrap_or("")));
     Ok(())

@@ -104,6 +104,7 @@ class World:
         for index, device in enumerate(self.everyone):
             build, seq = (builds or {}).get(index, BUILD)
             device.build_args = ["--build-id", build, "--build-seq", str(seq), *(["--wire-version", str(wire[index])] if wire and index in wire else [])]
+            device.phone_key = self.person.key.public.hex()
             device.start_node()
             device.token = device.admin_token = device.admin_name = ""
             device.register(f"dev{index}")

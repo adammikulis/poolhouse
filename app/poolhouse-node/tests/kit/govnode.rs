@@ -11,6 +11,8 @@ use super::netkit::{device, Dev};
 
 pub const ANN: u8 = 1;
 pub const BEN: u8 = 2;
+/// The seed of the test person's grant key, which a node process founds pools of once `plant_phone_person` enrolled it.
+pub const PERSON: u8 = 0x70;
 
 pub fn sync(dev: &Dev) {
     dev.ok("sync_now", "", &dev.token, json!({}));
@@ -41,14 +43,14 @@ pub fn cert_of(state: &std::path::Path) -> Vec<u8> {
 /// submitted for the node itself and for each of ``others`` (certificates), so a window opened with `presigned` lets them in.
 pub fn found_remote(call: &mut dyn FnMut(&str, serde_json::Value) -> serde_json::Value, own: &[u8], policy: poolhouse_node::membership::Policy, others: &[Vec<u8>]) -> String {
     use super::gov::{charter, found_act, sign, strong};
-    let charter = charter(&[strong(ANN, "ann")], policy, poolhouse_node::gov::charter::Unit::Person);
+    let charter = charter(&[strong(PERSON, "ann")], policy, poolhouse_node::gov::charter::Unit::Person);
     let founded = call("pool_found", json!({"act": found_act(&charter)}));
     let devices = std::iter::once((own, "found")).chain(others.iter().map(|d| (d.as_slice(), "join-code")));
     for (der, how) in devices {
         let body = json!({"cert": poolhouse_node::fsutil::hex(der), "name": "dev", "how": how, "via": ""});
         let draft = call("pool_draft", json!({"kind": "admit", "body": body}));
         let mut act: poolhouse_node::gov::act::Act = serde_json::from_value(draft["act"].clone()).unwrap();
-        sign(&mut act, ANN);
+        sign(&mut act, PERSON);
         call("pool_submit", json!({"act": act}));
     }
     founded["pool"].as_str().unwrap().to_string()
@@ -61,9 +63,33 @@ pub fn found(dev: &Dev, signer: Arc<RigSigner>, policy: &str) -> String {
 
 /// Like `found`, for the project ``project`` (a project key, or empty).
 pub fn found_for(dev: &Dev, signer: Arc<RigSigner>, policy: &str, project: &str) -> String {
+    enrol_as_phone_keys(dev, &signer);
     dev.node.lock().unwrap().set_signer(signer);
     let reply = dev.ok("pool_create", "", &dev.token, json!({"title": "home", "policy": policy, "project": project}));
     reply["pool"].as_str().unwrap().to_string()
+}
+
+/// Enrol every key ``signer`` holds on the node of ``dev`` as a phone's key, which is what makes a key strong there.
+pub fn enrol_as_phone_keys(dev: &Dev, signer: &RigSigner) {
+    use poolhouse_node::gov::signer::Signer;
+    let mut node = dev.node.lock().unwrap();
+    for key in signer.keys() {
+        node.persons.add_phone_key(poolhouse_node::grants::person::ED25519, &key.public, &key.label, poolhouse_node::poolops::wall_ms()).unwrap();
+    }
+}
+
+/// Enrol the key made from ``seed`` on the node of ``dev`` as a phone's key.
+pub fn enrol_phone_key(dev: &Dev, seed: u8) {
+    enrol_as_phone_keys(dev, &RigSigner::new().with_key(seed, "phone"));
+}
+
+/// Write the state directory ``state`` of a node process not yet started with the test person's key (the grant key) enrolled as a phone's:
+/// the process founds pools of that key, which signs outside it.
+pub fn plant_phone_person(state: &std::path::Path) {
+    let key = super::grants::person();
+    std::fs::create_dir_all(state).unwrap();
+    let entry = json!({"public": key.public(), "label": "a test phone", "at_ms": 1, "alg": "ed25519", "phone": true});
+    std::fs::write(state.join("persons.json"), json!({ key.fingerprint(): entry }).to_string()).unwrap();
 }
 
 /// Freeze the awake clock of the device's pool and move it on by ``ms``.

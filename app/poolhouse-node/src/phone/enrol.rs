@@ -195,7 +195,7 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     node.phones.add(phone)?;
     let (mut approval, mut number) = (String::new(), String::new());
     if first {
-        node.persons.add_key(P256, &key, name, now)?;
+        node.persons.add_phone_key(P256, &key, name, now)?;
         let _ = node.record_event("phone.add", &fingerprint, &format!("{name}; the first key, added by a code a person asked for at this device"));
     } else {
         (approval, number) = ask_to_add(node, &id, (name, &key, &fingerprint), (&made_by, &by), now)?;

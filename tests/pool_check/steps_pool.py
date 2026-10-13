@@ -61,12 +61,12 @@ def a_wrong_code_is_refused(world: World) -> None:
 
 
 def found_by_api(world: World) -> str:
-    """An agent founds the pool through the library's own founding code, as the shipped API runs it: the person's key (the one the rig's person typed yes for) signs the charter, the node takes it, this device is the first member, a second try says it is there and a charter no key accepted founds nothing."""
+    """An agent founds the pool through the library's own founding code, as the shipped API runs it: the admin key the node holds as a phone's signs the charter, the node takes it, this device is the first member, a second try says it is there and a charter no key accepted founds nothing."""
     world.fresh()
     first = world.first
-    session, admin = RigSession(first), founding.Admin(world.person.key, founding.STRONG)
+    session, admin = RigSession(first), founding.Admin(world.person.admin)
     assert first.pool()["governance"]["mode"] == "unfounded", "a fresh device is a pool of one that no person founded"
-    unsigned = first.admin("pool_draft_found", title="no key", policy="secure", project="", keys=[{"key": admin.key.public.hex(), "person": "rig", "strength": "strong", "label": "x"}])
+    unsigned = first.admin("pool_draft_found", title="no key", policy="secure", project="", keys=[{"key": admin.key.public.hex(), "person": "rig", "label": "x"}])
     refused = first.try_call("pool_found", token=session.token, charter=unsigned["charter"])
     assert not refused["ok"] and first.pool()["governance"]["mode"] == "unfounded", f"a charter nobody's key accepted founded a pool: {refused}"
     made = founding.found(session, admin, "api pool", "secure", founding.Terms(cert_hex=first.certificate()))

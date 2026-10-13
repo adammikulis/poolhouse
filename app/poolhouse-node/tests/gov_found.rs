@@ -24,12 +24,14 @@ fn a_charter_with_no_strong_admin_key_founds_nothing_because_nobody_could_admit_
     assert_eq!(reply["ok"], false, "{reply}");
     assert!(reply["error"]["say"].as_str().unwrap().contains("strong"), "{reply}");
     assert_eq!(a.pool(), before, "it is still in no pool");
+    enrol_phone_key(&a, ANN);
     assert_eq!(a.ok("pool_found", "", &a.token, json!({"act": founding(&[strong(ANN, "ann")])}))["policy"], "secure");
 }
 
 #[test]
 fn pool_found_asks_for_the_grant_by_the_name_of_the_pool_it_founds() {
     let a = device();
+    enrol_phone_key(&a, ANN);
     let (name, token) = a.session("demo", "scoped");
     let mut call = |m: &str, b: &str, t: &str, p: Value| a.call(m, b, t, p);
     enrolled(a.dir.path(), &mut call, &token);
@@ -58,7 +60,8 @@ fn a_join_whose_history_does_not_fit_the_frame_is_refused_whole_and_says_so() {
 }
 
 fn drafted(a: &Dev, policy: &str, keys: &[(u8, &str)]) -> Value {
-    let listed: Vec<Value> = keys.iter().map(|(seed, person)| json!({"key": public(*seed), "person": person, "strength": "strong", "label": format!("{person}'s key")})).collect();
+    keys.iter().for_each(|(seed, _)| enrol_phone_key(a, *seed));
+    let listed: Vec<Value> = keys.iter().map(|(seed, person)| json!({"key": public(*seed), "person": person, "label": format!("{person}'s key")})).collect();
     a.ok("pool_draft_found", "", &a.token, json!({"title": "home", "policy": policy, "project": "", "keys": listed}))
 }
 
@@ -103,7 +106,7 @@ fn a_charter_a_key_did_not_accept_founds_nothing() {
 #[test]
 fn a_draft_names_no_key_that_is_not_an_ed25519_key() {
     let a = device();
-    let bad = a.call("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"key": "ab".repeat(32), "person": "ann", "strength": "strong", "label": ""}]}));
+    let bad = a.call("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"key": "ab".repeat(32), "person": "ann", "label": ""}]}));
     assert_eq!(bad["ok"], false, "{bad}");
     let none = a.call("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": []}));
     assert_eq!(none["ok"], false, "{none}");

@@ -40,6 +40,9 @@ pub struct Key {
     pub at_ms: u64,
     #[serde(default = "ed25519")]
     pub alg: String,
+    /// Whether a phone's own enrolment put the key here: only such a key may be a strong admin key of a pool.
+    #[serde(default)]
+    pub phone: bool,
 }
 
 /// The enrolled keys, by fingerprint (SHA-256 of the public key), kept in one atomically replaced file.
@@ -165,6 +168,15 @@ impl Persons {
 
     /// Enrol the key ``public`` of algorithm ``alg`` (`ed25519` or `p256`), as `add` does.
     pub fn add_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64) -> Result<String> {
+        self.enrol(alg, public, label, at_ms, false)
+    }
+
+    /// Enrol the key ``public`` of algorithm ``alg`` as a phone's. A key already held keeps how it was enrolled.
+    pub fn add_phone_key(&mut self, alg: &str, public: &str, label: &str, at_ms: u64) -> Result<String> {
+        self.enrol(alg, public, label, at_ms, true)
+    }
+
+    fn enrol(&mut self, alg: &str, public: &str, label: &str, at_ms: u64, phone: bool) -> Result<String> {
         let fingerprint = fingerprint_of(alg, public)?;
         if self.removed.contains_key(&fingerprint) {
             return Err(Error::Denied("that key was removed from this node and is not enrolled again: make a new key on that device".into()));
@@ -173,10 +185,15 @@ impl Persons {
             if self.keys.len() >= MOST_KEYS {
                 return Err(Error::Quota("this node holds as many person keys as it will".into()));
             }
-            self.keys.insert(fingerprint.clone(), Key { public: public.to_ascii_lowercase(), label: label.into(), at_ms, alg: alg.into() });
+            self.keys.insert(fingerprint.clone(), Key { public: public.to_ascii_lowercase(), label: label.into(), at_ms, alg: alg.into(), phone });
             write_atomic(&self.path, &serde_json::to_vec(&self.keys)?)?;
         }
         Ok(fingerprint)
+    }
+
+    /// Whether ``public`` (hex) is a key a phone enrolled on this node and that was not removed.
+    pub fn is_phone_key(&self, public: &str) -> bool {
+        self.keys.values().any(|k| k.phone && k.public == public)
     }
 
     /// The enrolled key ``fingerprint``.
@@ -206,6 +223,30 @@ mod tests {
         assert!(!persons.once("0123456789abcdef", 1_100_000).unwrap(), "the node remembers it after a restart");
         assert!(persons.once("fedcba9876543210", 1_100_000).unwrap(), "another nonce is free");
         assert!(persons.once("0123456789abcdef", 1_000_000 + 2 * SKEW_MS + 1).unwrap(), "ten minutes on, a nonce is forgotten: no signature is fresh that long");
+    }
+
+    #[test]
+    fn only_a_key_a_phone_enrolled_is_a_phone_key_and_enrolling_again_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("persons.json");
+        let mut persons = Persons::open(&path).unwrap();
+        persons.add(&public(1), "typed", 1).unwrap();
+        persons.add_phone_key(ED25519, &public(2), "phone", 2).unwrap();
+        assert!(!persons.is_phone_key(&public(1)) && persons.is_phone_key(&public(2)) && !persons.is_phone_key(&public(3)));
+        persons.add_phone_key(ED25519, &public(1), "phone", 3).unwrap();
+        persons.add(&public(2), "typed", 4).unwrap();
+        assert!(!persons.is_phone_key(&public(1)), "a key held as a typed yes made it does not become a phone's");
+        assert!(persons.is_phone_key(&public(2)), "nor does a phone's key stop being one");
+        assert!(Persons::open(&path).unwrap().is_phone_key(&public(2)), "a restart keeps it");
+    }
+
+    #[test]
+    fn a_key_the_file_holds_without_the_mark_is_not_a_phone_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("persons.json");
+        let key = format!(r#"{{"{}": {{"public": "{}", "label": "old", "at_ms": 1, "alg": "ed25519"}}}}"#, "ab".repeat(32), public(1));
+        std::fs::write(&path, key).unwrap();
+        assert!(!Persons::open(&path).unwrap().is_phone_key(&public(1)));
     }
 
     #[test]
