@@ -1,5 +1,5 @@
 //! What a session can ask about sessions: `whoami` (and say what model it runs), find the name
-//! of a native session, list the sessions of its board, and retire one.
+//! of a native session, list the sessions of its board (marking the idle ones), and retire one.
 
 use serde_json::{json, Map, Value};
 
@@ -32,9 +32,15 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
     }
 }
 
-fn show(name: &str, i: &Ident) -> Value {
+fn show(name: &str, i: &Ident, idle: bool) -> Value {
     json!({"name": name, "parent": i.parent, "family": i.family, "model": i.model, "model_state": i.model_state,
-           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "seen_ms": i.seen_ms})
+           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "seen_ms": i.seen_ms, "idle": idle})
+}
+
+/// Whether ``i`` is idle: not retired and neither heard from lately nor holding a live lease.
+fn idle_now(node: &mut Node, board: &str, name: &str, i: &Ident) -> Result<bool> {
+    let now = node.host(board)?.board.now_ms();
+    Ok(!i.retired && !crate::writes::is_live(node, board, name, i, now))
 }
 
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
@@ -105,8 +111,9 @@ fn whoami(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         }
     }
     let mut out = json!({"name": access.actor, "board": access.holder.board, "target": board});
-    if let Some(i) = node.host(board)?.names.get(&access.actor) {
-        out["identity"] = show(&access.actor, i);
+    if let Some(i) = node.host(board)?.names.get(&access.actor).cloned() {
+        let idle = idle_now(node, board, &access.actor, &i)?;
+        out["identity"] = show(&access.actor, &i, idle);
     }
     Ok(out)
 }
@@ -117,7 +124,12 @@ fn agents(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         return Err(Error::Denied("identities are not shared with this session".into()));
     }
     let all = p.get("retired").and_then(Value::as_bool).unwrap_or(false);
-    let list: Vec<Value> = node.host(board)?.names.all().iter().filter(|(_, i)| all || !i.retired).map(|(n, i)| show(n, i)).collect();
+    crate::idle::sweep(node, board)?;
+    let kept: Vec<(String, Ident)> = node.host(board)?.names.all().iter().filter(|(_, i)| all || !i.retired).map(|(n, i)| (n.clone(), i.clone())).collect();
+    let mut list = Vec::new();
+    for (name, ident) in &kept {
+        list.push(show(name, ident, idle_now(node, board, name, ident)?));
+    }
     Ok(json!({"agents": list}))
 }
 
@@ -138,23 +150,39 @@ fn retire(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     if ident.retired {
         return Err(Error::Denied(format!("{target} is already retired")));
     }
+    let main = ident.parent.is_empty();
     if target == caller {
         if reason != "done" {
             return Err(Error::Denied("a session cannot revoke or flag itself; its parent does".into()));
         }
-        if ident.parent.is_empty() {
-            return Err(Error::Denied("only a spawned subagent retires itself; a main session ends with its harness".into()));
-        }
     } else if !names.descendants(&caller).contains(&target) {
         return Err(Error::Denied(format!("{target} is not below {caller}; only a parent retires its subagent")));
     }
-    let freed = release_leases(node, board, &target)?;
-    let revoked = node.tokens.revoke_name(board, &target)?;
-    node.host(board)?.names.retire(&target, reason)?;
-    node.write_identity(board, &target)?;
-    let detail = format!("retired by {caller} ({reason}): {revoked} tokens revoked, {freed} leases released");
-    node.host(board)?.board.append(Kind::Audit, &caller, json!({"event": "retire", "subject": target, "detail": detail}), "")?;
-    Ok(json!({"name": target, "retired": true, "reason": reason, "by": caller, "tokens_revoked": revoked, "leases_released": freed}))
+    let (revoked, freed) = end(node, board, &target, &caller, reason)?;
+    let below = if main { end_below(node, board, &target, &caller, reason)? } else { 0 };
+    Ok(json!({"name": target, "retired": true, "reason": reason, "by": caller, "tokens_revoked": revoked, "leases_released": freed,
+              "subagents_retired": below}))
+}
+
+/// End ``target`` and say so on the board: its tokens, its leases and its name; how many of each of the first two there were.
+pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -> Result<(usize, usize)> {
+    let freed = release_leases(node, board, target)?;
+    let revoked = node.tokens.revoke_name(board, target)?;
+    node.host(board)?.names.retire(target, reason)?;
+    node.write_identity(board, target)?;
+    let detail = format!("retired by {by} ({reason}): {revoked} tokens revoked, {freed} leases released");
+    node.host(board)?.board.append(Kind::Audit, by, json!({"event": "retire", "subject": target, "detail": detail}), "")?;
+    Ok((revoked, freed))
+}
+
+/// End every subagent below the main session ``top`` that is not retired; how many there were.
+fn end_below(node: &mut Node, board: &str, top: &str, by: &str, reason: &str) -> Result<usize> {
+    let names = &node.host(board)?.names;
+    let live: Vec<String> = names.descendants(top).into_iter().filter(|n| names.get(n).is_some_and(|i| !i.retired)).collect();
+    for name in &live {
+        end(node, board, name, by, reason)?;
+    }
+    Ok(live.len())
 }
 
 /// End every lease of ``name``, held or queued, and tell the board; how many there were.

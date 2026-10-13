@@ -260,3 +260,37 @@ def test_a_runner_launched_by_init_or_a_reused_parent_pid_gets_a_session_of_its_
     one = land_board.runner_native_id(world.proj.root, DEV)
     monkeypatch.setattr(land_board.psutil, "Process", lambda pid: type("P", (), {"create_time": lambda self: 200.0})())
     assert one != land_board.runner_native_id(world.proj.root, DEV)
+
+
+SERVE = {"remote": "origin", "stall_minutes": 20, "request_minutes": 60, "batch_minutes": 120, "once": True, "interval": 0}
+
+
+def retired(world, name: str) -> bool:
+    return {a.name: a.retired for a in world.who["alice"].agents(retired=True)}[name]
+
+
+def test_a_runner_that_stops_or_runs_its_pass_retires_its_own_session_and_one_that_crashes_keeps_it(world, monkeypatch):
+    monkeypatch.setattr(land_board.Runner, "once", lambda self: {"status": "idle"})
+    name = land_board.runner_session(world.proj.root, DEV).name
+    assert land_board.serve(world.proj.root, DEV, SERVE) == 0
+    assert retired(world, name)
+    assert not (world.node.state / "client" / world.node.board / f"{name}.token").exists()
+    monkeypatch.setattr(land_board.os, "getppid", lambda: 4343)
+    other = land_board.runner_session(world.proj.root, DEV).name
+    monkeypatch.setattr(land_board.Runner, "once", lambda self: (_ for _ in ()).throw(KeyboardInterrupt()))
+    assert land_board.serve(world.proj.root, DEV, {**SERVE, "once": False}) == 0
+    assert retired(world, other)
+    monkeypatch.setattr(land_board.os, "getppid", lambda: 4444)
+    crashing = land_board.runner_session(world.proj.root, DEV).name
+    monkeypatch.setattr(land_board.Runner, "once", lambda self: (_ for _ in ()).throw(SystemExit(3)))
+    with pytest.raises(SystemExit):
+        land_board.serve(world.proj.root, DEV, {**SERVE, "once": False})
+    assert not retired(world, crashing), "a runner that crashed is started again by its supervisor under the session it had"
+
+
+def test_ending_a_runner_session_that_the_board_refuses_says_so_and_ends_nothing_else(world, capsys):
+    stranger = world.runner_session("a-stranger")
+    land_board.end_session(stranger)
+    land_board.end_session(stranger)
+    assert "was not retired" in capsys.readouterr().err
+    assert not retired(world, world.lead.name)

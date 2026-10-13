@@ -272,14 +272,19 @@ impl Node {
             return Err(Error::Quota("this process tree creates boards as fast as it may, or this node hosts as many as it will".into()));
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
-        crate::writes::check_children(self, board, &parent, &harness, session)?;
+        if parent.is_empty() {
+            crate::idle::admit_main(self, board, &harness, session, &lineage)?;
+        } else {
+            crate::writes::check_children(self, board, &parent, &harness, session)?;
+        }
+        let revived = self.boards.get(board).and_then(|h| h.names.find(&harness, session).and_then(|n| h.names.get(n))).is_some_and(|i| i.retired);
         self.make_room_for_a_token()?;
         let inherited = model.trim().is_empty().then(|| self.boards.get(board).and_then(|h| h.names.get(&parent)).map(|p| p.model.clone())).flatten().unwrap_or_default();
         let (model, state) = if inherited.is_empty() { (model, ModelState::Claimed) } else { (inherited, ModelState::Inherited) };
         let hosted = self.host(board)?;
         let now = hosted.board.now_ms();
         let (name, created) = hosted.names.assign(Who { harness: &harness, session, parent: &parent }, &model, state, now, &lineage, proven)?;
-        if created {
+        if created || revived {
             self.write_identity(board, &name)?;
         }
         let origin = self.host(board)?.board.origin().to_string();

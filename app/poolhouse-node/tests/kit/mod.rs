@@ -84,10 +84,12 @@ impl poolhouse_node::presence::Presence for SaysYes {
     }
 }
 
-/// A node on ``dir`` whose person says yes to the prompt of the first key or phone.
+/// A node on ``dir`` whose person says yes to the prompt of the first key or phone, and whose bound on live main sessions is lifted: a
+/// test registers as many sessions as it needs from the one process it is (`idle.rs` tests the bound).
 pub fn node(dir: &Path) -> Node {
     let mut node = Node::open(dir).unwrap();
     node.firsts = poolhouse_node::presence::Firsts::new(Box::new(SaysYes));
+    (node.writes.sessions_per_harness, node.writes.sessions_per_lineage) = (usize::MAX, usize::MAX);
     node
 }
 

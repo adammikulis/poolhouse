@@ -233,8 +233,8 @@ class WorkspaceNode:
         node_launch.stop_node(self.state)
 
 
-WRITE_LIMITS = {"sends": 1_000_000, "subagent_sends": 1_000_000}
-"""What a test node's sessions may write: fixtures post whole pages of messages, so the send rate is out of the way. A test module
+WRITE_LIMITS = {"sends": 1_000_000, "subagent_sends": 1_000_000, "sessions_per_harness": 1_000_000, "sessions_per_lineage": 1_000_000}
+"""What a test node's sessions may write and how many it holds: fixtures post whole pages of messages and register many sessions from one process tree, so both are out of the way. A test module
 that checks the limits sets ``NODE_WRITE_LIMITS`` to its own (``{}`` is the node's defaults)."""
 
 

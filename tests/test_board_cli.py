@@ -269,9 +269,11 @@ def test_retire_ends_the_identity_and_releases_its_claims(team):
     assert json.loads(team.cli("who", "branch", f"{child.name}/work", "--json", who=team.lead).stdout) == {"owner": None}
     after = team.cli("whoami", who=child)
     assert after.returncode == 3 and "no usable token" in after.stderr
-    main = team.cli("retire", "--json", who=team.lead)
-    assert main.returncode == 3 and "only a spawned subagent" in main.stdout
     assert child.name not in [row["id"] for row in json.loads(team.cli("agents", "--json", who=team.lead).stdout)]
+    main = json.loads(team.cli("retire", "--json", who=team.lead).stdout)
+    assert main.get("id") == team.lead.name and main["subagents_retired"] == 0, main
+    assert team.cli("whoami", who=team.lead).returncode == 3
+    assert json.loads(team.cli("whoami", "--json", who=team.bob).stdout)["id"] == team.bob.name
 
 
 def test_whoami_records_the_model_a_session_says_it_runs(team):

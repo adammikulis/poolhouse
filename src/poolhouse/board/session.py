@@ -77,6 +77,7 @@ class Agent:
     retired: bool
     seen_ms: int
     retired_reason: str = ""
+    idle: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +139,8 @@ def _entry(raw: dict[str, Any]) -> Entry:
 
 def _agent(raw: dict[str, Any]) -> Agent:
     return Agent(raw["name"], raw["parent"], raw["family"], raw["model"], raw["model_state"], raw["harness"],
-                 raw["retired"], raw["seen_ms"], raw.get("retired_reason", ""))
+                 raw["retired"], raw["seen_ms"], raw.get("retired_reason", ""),
+                 bool(raw.get("idle", False)))
 
 
 def _claim(raw: dict[str, Any], changed: bool = True) -> Claim:
@@ -184,7 +186,7 @@ class Session:
         return [_agent(a) for a in self.call("agents", retired=retired)["agents"]]
 
     def retire(self, target: str = "", reason: str = "") -> dict[str, Any]:
-        """End ``target`` (default this session): its tokens, leases and name.
+        """End ``target`` (default this session): its tokens, leases and name, and its subagents when it is a main session.
 
         ``reason`` is ``done`` (the default, an ordinary end) or, only for a subagent and by its parent, ``revoked``
         or ``forged``: an end for cause, which the landing runner holds against the work it asked for.

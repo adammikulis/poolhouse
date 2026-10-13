@@ -64,7 +64,7 @@ to use, and the token decides who is sending. `inbox`, `brief`, `claim` and `ann
 message from a subagent shows its own name and its model; `agents` and `status` show its parent. The SubagentStop
 hook announces `done` as the subagent and then runs `retire`: its tokens end and its claims are released; the
 launchers retire the session they registered when they exit. A parent (any ancestor) can end a descendant through
-the node, and a main session never retires itself. A parent frees a claim its subagent can no longer release with
+the node. A parent frees a claim its subagent can no longer release with
 `release KIND KEY --held-by NAME`.
 
 A subagent makes no room, joins and subscribes to nothing, has no scratch folder, spends only the grants that name it
@@ -72,6 +72,22 @@ A subagent makes no room, joins and subscribes to nothing, has no scratch folder
 coordinator-eligible. Without the hook, a parent runs `spawn --session UNIQUE-ID` and `brief --agent NAME` itself.
 There is no label: no flag, header or field names a sender, parent or name, and the node refuses a request that
 carries one.
+
+### How long an identity lives
+
+A main session is one identity from its `SessionStart` to its end. The `SessionEnd` hook (`claude-session-end`) runs
+`retire` as the session when it ends for good (a closed prompt, a logout, the end of a headless `claude -p` run): its tokens
+end, its claims are released and so are its subagents, and `agents` no longer lists it. It does nothing when the session
+goes on under another id (`reason` `clear` or `resume`) and for any event of a subagent, which has its own stop hook. A
+session resumed later from the same terminal registers again and is the same name. The landing runner retires its own
+session when it is stopped or has run its one pass; a supervisor started again registers a session of its own.
+
+`agents` marks a session `idle` when it has made no request for 30 minutes and holds no lease whose process still runs. The
+node retires a session that has been idle for 24 hours, so a terminal left overnight keeps its session. An idle session
+does not count toward the bound: a device holds at most 24 live main sessions of one harness and
+8 started from one terminal, and refuses the next with one sentence that says to end one. A person in another terminal is
+not held back by a terminal that starts sessions in a loop. The numbers are in
+[docs/node.md](node.md), "Limits" and "Idle sessions and the bound".
 
 ### Reading one agent's records: `--for-agent NAME`
 
@@ -210,7 +226,7 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 | Area | Commands |
 | --- | --- |
 | setup | `doctor`, `hello NAME`, `snippet NAME`, `brief` (the subagent you run as), `hook-snippet claude-code\|codex`, `install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code\|codex]` |
-| identity | `whoami [--model ID] [--harness H]`, `agents [--for-agent NAME]`, `spawn --session ID [--harness H] [--model ID]` (a hook runs it), `retire` (the subagent you run as) |
+| identity | `whoami [--model ID] [--harness H]`, `agents [--for-agent NAME]` (idle ones marked), `spawn --session ID [--harness H] [--model ID]` (a hook runs it), `retire` (the session you run as; a hook runs it) |
 | grants | `grants`, `grant-log`, `grant`, `revoke-grant`, `grants-setup`, `person-proof`, `person-enroll`, `person-unenroll`, `rebind` (above) |
 | messages | `send TO TYPE BODY [--subject S] [--reply-to SEQ]`, `announce KIND TEXT`, `inbox [--ack] [--raw] [--limit N\|--all] [--children]`, `attention`, `wait [--timeout S]`, `watch [--once] [--room R\|--thread N\|--dm NAME] [--since SEQ] [--timeout S]`, `outbox`, `ack REF`, `thread ROOT`, `dm [NAME [BODY]]`, `digest [--thread N] [--status] [--ack]`, `nudge [--hook post\|stop\|prompt]` |
 | rooms | `board list\|read NAME\|post NAME TEXT\|threads NAME\|create NAME [TITLE] [--private]\|add NAME AGENT\|mentions`, `join-board NAME`, `leave-board NAME`, `subscribe board\|thread\|agent\|kind\|mentions [TARGET] [--mode inbox\|digest\|silent] [--force]`, `unsubscribe`, `subs`, `chat [--room R\|--to NAME]` (the person, at a terminal), `board-serve [--port N]` |

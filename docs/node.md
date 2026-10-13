@@ -182,8 +182,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `rebind` | board | `harness, session, at_ms, nonce, anchor, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
-| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms}]}` |
-| `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released}` |
+| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms, idle}]}`; retires the sessions idle for a day first |
+| `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released, subagents_retired}` |
 | `post` | board, token | `kind` (message or note), `idem`, `fields` | `{id, seq, sender, status}` |
 | `read` | board, token | `since` (cursor map), `kind`, `channel`, `by` (sender), `limit`, `inbox` (direct messages and what the caller's subscriptions and mentions send to its inbox), `digest` (what its digest subscriptions collected), `mentions`, `with`, `thread` (a message and every reply under it), `head` (no entries: the cursor of now), `files` (file messages only) | `{entries, cursor}` |
 | `rooms` | board, token | | `{rooms}`: `#general`, `#announcements`, every open room and the private ones the caller belongs to, each with `member`, `members`, `posts` and `last_ms` |
@@ -293,13 +293,23 @@ subagent has none. The node removes a session's expired folders whenever it list
 model gets its parent's, `inherited`, and the name's family comes from it; the node itself may mark
 one `verified`, and a claim can never lower a verified one); `whoami` with `model`/`harness`
 changes the claim. Each change is an identity entry. Registering a session that has a parent without
-that parent's token, or under another parent, is `denied`, and so is registering a retired one.
+that parent's token, or under another parent, is `denied`, and so is registering a retired subagent.
 `retire` revokes every token of the session, ends its leases (written to the board), marks the
-identity retired and writes an `audit` entry. A subagent retires itself; a parent (any ancestor)
-retires a descendant; a main session never retires itself. The end has a reason, recorded on the identity and in the
+identity retired and writes an `audit` entry. A session retires itself, and a main session takes its subagents with it;
+a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in the
 audit entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
 by a session about itself, `revoked` or `forged` (an end for cause, which the landing runner holds against the work
-the session asked for or reviewed).
+the session asked for or reviewed). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+`idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
+(a retired subagent never does); its old tokens stay refused and it is given a new one.
+
+**Idle sessions and the bound.** A session is *idle* when it is not retired and has neither made a request within 30 minutes
+(`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. The node refuses to register a main
+session (`quota`, in one plain sentence) when the board already holds 24 live ones of its harness, or 8 live ones started from the
+same terminal; an idle session counts for neither, so a forgotten session never keeps a person from starting a new one, and one
+terminal that starts sessions in a loop stops at 8 while another terminal is not held back. A session already registered is not
+new, so it is given its token again at the bound. The node retires a session that has been idle for 24 hours (`idle_retire_s`;
+its tokens end, its leases are released and the board gets an `audit` entry by `node`) whenever it lists sessions or registers one.
 
 **Claims** are leases of one `claim` resource taken without waiting. `reserve` takes a set of them in one call of the
 node: the set is checked against what others hold before the first is taken, so it is taken whole or refused whole (the
@@ -613,10 +623,12 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
 | notes an author keeps on a board | 500 | `quota` |
 | live subagents a session has | 8 (not retired, and either holding a lease whose process still runs or heard from within 30 minutes) | `quota` |
+| live main sessions of one harness on a board; of one harness started from one terminal (process lineage) | 24; 8 (live as for subagents; an idle session counts for neither) | `quota` |
+| idle time before the node retires a session | 24 hours (no lease held, not heard from) | none |
 
 The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`; the limits on what a
 session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `sends`, `child_sends`, `subagent_sends`,
-`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `children` and `child_beat_s`. A message
+`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `children`, `child_beat_s`, `sessions_per_harness`, `sessions_per_lineage` and `idle_retire_s`. A message
 is unread until its recipient reads its inbox with a `since` cursor past it: the node keeps the furthest cursor each session presented
 on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
 counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from

@@ -140,13 +140,12 @@ fn a_retired_subagent_loses_its_token_its_leases_and_its_name() {
 }
 
 #[test]
-fn only_a_parent_retires_a_child_and_a_main_session_does_not_retire_itself() {
+fn only_a_parent_retires_a_child_and_a_session_retires_itself_and_nobody_else() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let ((lead, lt), (_, st)) = (session(&mut n, "demo", "lead"), session(&mut n, "demo", "stranger"));
     let (mid, mt) = sub(&mut n, &lt, "mid");
     let (leaf, _) = sub(&mut n, &mt, "leaf");
-    assert_eq!(code(&req(&mut n, "retire", "demo", &lt, json!({}))), "denied", "a main session ends with its harness");
     assert_eq!(code(&req(&mut n, "retire", "demo", &st, json!({"target": leaf}))), "denied", "a stranger");
     assert_eq!(code(&req(&mut n, "retire", "demo", &mt, json!({"target": lead}))), "denied", "a child cannot retire its parent");
     assert_eq!(code(&req(&mut n, "retire", "demo", &mt, json!({"target": "claude-nobody"}))), "denied");
@@ -156,6 +155,11 @@ fn only_a_parent_retires_a_child_and_a_main_session_does_not_retire_itself() {
     assert_eq!((done["by"].as_str().unwrap(), done["retired"].clone()), (lead.as_str(), json!(true)));
     assert_eq!(code(&req(&mut n, "retire", "demo", &lt, json!({"target": leaf}))), "denied", "already retired");
     assert_eq!(ok(req(&mut n, "retire", "demo", &lt, json!({"target": mid})))["name"], mid.as_str());
+    assert_eq!(code(&req(&mut n, "retire", "demo", &lt, json!({"target": "stranger-name-nobody-holds"}))), "denied");
+    let stranger = ok(req(&mut n, "whoami", "demo", &st, json!({})))["name"].as_str().unwrap().to_string();
+    assert_eq!(code(&req(&mut n, "retire", "demo", &lt, json!({"target": stranger}))), "denied", "a main session does not retire another main session");
+    assert_eq!(code(&req(&mut n, "retire", "demo", &st, json!({"target": lead}))), "denied", "nor is it retired by another");
+    assert_eq!(ok(req(&mut n, "whoami", "demo", &lt, json!({})))["name"], lead.as_str(), "and the refusals ended nothing");
 }
 
 #[test]

@@ -231,7 +231,7 @@ impl Registry {
         let model = clean(model)?;
         let known = self.names.iter().find(|(_, i)| i.digest == full).map(|(n, _)| n.clone());
         if let Some(name) = known {
-            self.admit(&name, parent, lineage, proven)?;
+            self.admit(&name, (parent, lineage, proven), now_ms)?;
             return Ok((name, false));
         }
         if self.names.len() >= MAX_IDENTITIES {
@@ -248,15 +248,28 @@ impl Registry {
         Ok((name, true))
     }
 
-    /// Whether the session ``name`` may be registered again by a process of ``lineage`` under ``parent``: a retired session
-    /// never, a subagent only under its own parent, a main session only from the lineage it was registered from. A main
+    /// Whether the session ``name`` may be registered again by a process of ``lineage`` under ``parent``: a retired subagent or a main
+    /// session retired for cause never; a main session that ended (``done``) or was retired idle comes back to life, on the same terms as
+    /// one that never ended; a subagent only under its own parent, a main session only from the lineage it was registered from. A main
     /// session with no lineage recorded (registered before lineages were kept, or by a process that could not be read) is taken
     /// by a process that presents a token of that name (``proven``), and by nobody else until a person moves it.
-    fn admit(&mut self, name: &str, parent: &str, lineage: &[Anchor], proven: bool) -> Result<()> {
-        let known = self.names.get_mut(name).expect("found above");
-        if known.retired {
+    fn admit(&mut self, name: &str, from: (&str, &[Anchor], bool), now_ms: u64) -> Result<()> {
+        let known = self.names.get(name).expect("found above");
+        let back = known.retired;
+        if back && !(known.parent.is_empty() && matches!(known.retired_reason.as_str(), "" | "done" | "idle")) {
             return Err(Error::Denied(format!("{name} was retired; its session cannot register again")));
         }
+        self.admit_from(name, from)?;
+        if back {
+            let known = self.names.get_mut(name).expect("found above");
+            (known.retired, known.retired_reason, known.seen_ms) = (false, String::new(), now_ms);
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    fn admit_from(&mut self, name: &str, (parent, lineage, proven): (&str, &[Anchor], bool)) -> Result<()> {
+        let known = self.names.get_mut(name).expect("found above");
         if known.parent != parent {
             return Err(Error::Denied(format!("{name} is already registered under another parent")));
         }

@@ -40,6 +40,12 @@ pub struct WriteLimits {
     /// Live subagents one session has: not retired, and either holding a live lease or heard from within `child_beat_s`.
     pub children: usize,
     pub child_beat_s: u64,
+    /// Live main sessions of one harness a board holds, and live ones one process lineage (a terminal) started; a session is live while it is
+    /// not idle (see `child_beat_s`).
+    pub sessions_per_harness: usize,
+    pub sessions_per_lineage: usize,
+    /// Seconds a session may be idle before the node retires it.
+    pub idle_retire_s: u64,
 }
 
 impl Default for WriteLimits {
@@ -47,6 +53,7 @@ impl Default for WriteLimits {
         WriteLimits {
             sends: 30, child_sends: 10, subagent_sends: 120, window_s: 60.0, announces: 6, announce_window_s: 600.0,
             inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, children: 8, child_beat_s: 1800,
+            sessions_per_harness: 24, sessions_per_lineage: 8, idle_retire_s: 86_400,
         }
     }
 }
@@ -174,16 +181,18 @@ pub fn wrote(node: &mut Node, board: &str, who: &Holder, actor: &str, post: Admi
     Ok(())
 }
 
+/// Whether ``name`` of ``board`` holds a lease that is held and whose holder process is still the one that took it.
+pub fn holds_lease(node: &Node, board: &str, name: &str) -> bool {
+    let at = node.leases.now();
+    node.leases.table.leases.iter().any(|l| {
+        l.board == board && l.name == name && l.state == State::Held && l.expires_ms > at && (l.pid == 0 || live::is_alive(l.pid, l.pid_start))
+    })
+}
+
 /// Whether the session ``name`` of ``board`` is live: not retired, and either holding a lease that is held and whose holder process is
-/// still the one that took it, or heard from within `child_beat_s`.
-fn is_live(node: &Node, board: &str, name: &str, ident: &Ident, now: u64) -> bool {
-    let leased = || {
-        let at = node.leases.now();
-        node.leases.table.leases.iter().any(|l| {
-            l.board == board && l.name == name && l.state == State::Held && l.expires_ms > at && (l.pid == 0 || live::is_alive(l.pid, l.pid_start))
-        })
-    };
-    !ident.retired && (now.saturating_sub(ident.seen_ms) <= node.writes.child_beat_s * 1000 || leased())
+/// still the one that took it, or heard from within `child_beat_s`. A session that is not retired and not live is idle.
+pub fn is_live(node: &Node, board: &str, name: &str, ident: &Ident, now: u64) -> bool {
+    !ident.retired && (now.saturating_sub(ident.seen_ms) <= node.writes.child_beat_s * 1000 || holds_lease(node, board, name))
 }
 
 /// Refuse a registration that would give ``parent`` more live subagents than it may have; a session already registered is not new.
