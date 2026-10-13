@@ -13,8 +13,6 @@ use serde_json::json;
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, write_atomic};
 
-use super::keys::Strength;
-
 /// The file a check names in the environment to have every step it asks of a person written to it, one JSON line each.
 pub const LEDGER_ENV: &str = "POOLHOUSE_STEP_LEDGER";
 
@@ -25,11 +23,10 @@ pub enum KeyBinding {
     Keystore,
 }
 
-/// A key a signer holds: its public key, the strength its holder declares and the person it belongs to.
+/// A key a signer holds: its public key and the person it belongs to.
 #[derive(Clone, Debug)]
 pub struct SignerKey {
     pub public: String,
-    pub strength: Strength,
     pub person: String,
     pub label: String,
 }
@@ -64,10 +61,10 @@ impl RigSigner {
     }
 
     /// Add the key made from ``seed``, belonging to ``person``.
-    pub fn with_key(mut self, seed: u8, person: &str, strength: Strength) -> RigSigner {
+    pub fn with_key(mut self, seed: u8, person: &str) -> RigSigner {
         let key = SigningKey::from_bytes(&[seed; 32]);
         let public = hex(key.verifying_key().as_bytes());
-        self.keys.push((key, SignerKey { public, strength, person: person.into(), label: format!("{person}'s key") }));
+        self.keys.push((key, SignerKey { public, person: person.into(), label: format!("{person}'s key") }));
         self
     }
 

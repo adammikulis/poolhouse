@@ -19,7 +19,7 @@ use crate::poolops::wall_ms;
 use super::act::{Act, ActSig, SigKind};
 use super::charter::{Charter, Class, Unit};
 use super::describe::{describe, quoted};
-use super::keys::{AdminKey, Role};
+use super::keys::{AdminKey, Role, Strength};
 use super::pool::{ActStatus, GovPool, Ingest};
 use super::signer::{KeyBinding, Signer, SignerKey};
 
@@ -98,15 +98,21 @@ pub fn founding_act(act: Option<&Value>, charter: Option<&Value>) -> Result<Valu
     }
 }
 
-/// The founding act in ``act`` and its charter, when the charter has a strong admin key: without one nobody could admit a device.
-fn founding_of(act: &Value) -> Result<(Act, Charter)> {
+/// The founding act in ``act`` and the charter it carries, as far as the charter itself says: nothing of this device is read.
+fn charter_of(act: &Value) -> Result<(Act, Charter)> {
     let found: Act = serde_json::from_value(act.clone()).map_err(|e| Error::Invalid(format!("that is not an act: {}", e.to_string().chars().take(80).collect::<String>())))?;
     let charter = super::pool::founding(&found).map_err(|e| declined(&e.to_string()))?;
-    if charter.weak_only() {
-        return Err(declined("A pool needs a strong key, one that asks for your presence each time it signs, and that charter lists none."));
-    }
     Ok((found, charter))
 }
+
+/// The name of the pool an act a person's keys signed elsewhere would found, for the grant that lets a session found it; what this device
+/// derives about the keys is not read, so a session that holds no grant learns none of it.
+pub fn founding_name(act: &Value) -> Result<String> {
+    Ok(charter_of(act)?.1.name)
+}
+
+const NO_STRONG_KEY: &str = "A pool needs a strong key, one that asks for your presence each time it signs, and that charter lists none.";
+const UNCONFIRMED_STRONG_KEY: &str = "That charter calls a key strong that is not a phone's key on this device, so I will not make that pool.";
 
 fn reply(g: &GovPool, id: &str, kept: Ingest) -> Result<Value> {
     if let Ingest::Refused(why) = kept {
@@ -145,6 +151,25 @@ fn propose(g: &mut GovPool, signer: Option<&Arc<dyn Signer>>, kind: &str, body: 
 }
 
 impl Node {
+    /// The strength of ``public`` in a charter this device founds: strong for a key a phone enrolled on this device, weak for every other.
+    pub fn key_strength(&self, public: &str) -> Strength {
+        if self.persons.is_phone_key(public) { Strength::Strong } else { Strength::Weak }
+    }
+
+    /// The founding act in ``act`` and its charter, when the strong keys it lists are keys this device derives as strong and at
+    /// least one is an admin key: without one nobody could admit a device.
+    fn founding_of(&self, act: &Value) -> Result<(Act, Charter)> {
+        let (found, charter) = charter_of(act)?;
+        let confirmed = |k: &&AdminKey| k.strength == Strength::Strong && self.key_strength(&k.key) == Strength::Strong;
+        if !charter.admins.iter().filter(confirmed).any(|k| k.role == Role::Admin) {
+            return Err(declined(NO_STRONG_KEY));
+        }
+        if charter.admins.iter().any(|k| k.strength == Strength::Strong && !confirmed(&k)) {
+            return Err(declined(UNCONFIRMED_STRONG_KEY));
+        }
+        Ok((found, charter))
+    }
+
     /// Connect the signer that answers for a person.
     pub fn set_signer(&mut self, signer: Arc<dyn Signer>) {
         self.signer = Some(signer);
@@ -240,11 +265,11 @@ impl Node {
         let signer = self.signer.clone().ok_or_else(no_signer)?;
         let now = wall_ms();
         let held = signer.keys();
-        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), role: Role::Admin, strength: k.strength, person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
+        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), role: Role::Admin, strength: self.key_strength(&k.public), person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
         if admins.is_empty() {
             return Err(no_signer());
         }
-        if !held.iter().any(|k| k.strength == super::keys::Strength::Strong) {
+        if !admins.iter().any(|k| k.strength == Strength::Strong) {
             return Err(declined("A pool needs a key that asks for your presence each time it signs, and none is connected yet."));
         }
         let mut charter = Charter::new(name, policy, project, admins, now);
@@ -407,29 +432,28 @@ impl Node {
         Ok(id)
     }
 
-    /// The name of the pool an act a person's keys signed elsewhere would found, for the grant that lets a session found it.
-    pub fn founding_name(&self, act: &Value) -> Result<String> {
-        Ok(founding_of(act)?.1.name)
-    }
-
     /// Found the pool of an act a person's keys signed elsewhere (each key's acceptance is inside its charter). The device is not
     /// a member until an admit signed for it is submitted.
     pub fn pool_found(&mut self, act: &Value) -> Result<Value> {
-        let (found, charter) = founding_of(act)?;
+        let (found, charter) = self.founding_of(act)?;
         let id = self.start_pool(found)?;
         self.record_event("pool_created", &id, &format!("{} ({})", charter.name.chars().take(40).collect::<String>(), charter.policy.name()))?;
         Ok(json!({"pool": id, "name": charter.name, "policy": charter.policy.name(), "epoch": 1}))
     }
 
-    /// The charter of a pool of ``keys`` (each `{key, person, strength, label}`, an admin) with every acceptance blank, and the bytes each
-    /// key signs to accept it: for keys that sign elsewhere, which hand the accepted charter back through `pool_found`.
+    /// The charter of a pool of ``keys`` (each `{key, person, label}`, an admin, strong when this device derives it so) with every
+    /// acceptance blank, and the bytes each key signs to accept it: for keys that sign elsewhere, which hand the accepted charter back
+    /// through `pool_found`.
     pub fn pool_draft_found(&self, name: &str, policy: Policy, project: &str, keys: &Value) -> Result<Value> {
         let listed = keys.as_array().filter(|k| !k.is_empty() && k.len() <= super::MAX_ADMINS).ok_or_else(|| Error::Invalid("a pool names one to sixteen admin keys".into()))?;
         let text = |k: &Value, field: &str| k[field].as_str().unwrap_or("").to_string();
         let mut admins = Vec::new();
         for k in listed {
-            let strength = serde_json::from_value(k["strength"].clone()).map_err(|_| Error::Invalid("a key is strong or weak".into()))?;
-            admins.push(AdminKey { key: text(k, "key"), role: Role::Admin, strength, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
+            if !k.as_object().is_some_and(|o| o.keys().all(|f| matches!(f.as_str(), "key" | "person" | "label"))) {
+                return Err(Error::Invalid("a key is named by its key, person and label; how strong it is, this device says".into()));
+            }
+            let key = text(k, "key");
+            admins.push(AdminKey { strength: self.key_strength(&key), key, role: Role::Admin, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
         }
         if let Some(bad) = admins.iter().find(|k| !super::keys::valid_public(&k.key)) {
             return Err(Error::Invalid(format!("{} is not an Ed25519 public key", bad.key.chars().take(16).collect::<String>())));

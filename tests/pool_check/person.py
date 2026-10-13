@@ -1,17 +1,16 @@
 """The person of the rig's throwaway pool: a key the rig made, enrolled on each node it starts, that signs the standing grants the rig's sessions need.
 
 A node allows a session nothing beyond its own board's messages, notes, claims and leases until a grant names it, and counts a grant only
-when a person key enrolled on that node signed it (docs/node.md, "Standing grants"). The rig runs the pool as a person would, so it does what
-a person does and nothing else: it says yes to the question the node itself writes on a terminal (`wire.answer_presence`, a typed `yes` at a
-pseudo-terminal, against the node as shipped, which has no switch that answers for anyone), enrols its key through the node's real `person_enroll`
-with the one-time secret that yes made, and signs each grant through the real `grant_issue`. The
-key is an in-memory Ed25519 key that belongs to this run alone: it is never written beside a node, never in a keystore and never the key of
-the account, and nothing here is reachable from the node's own code or from a production path, so there is no switch for a node to honour.
-What the rig does not exercise is the custody of a person's real key: the typed `yes` on a terminal and the keystore (docs/pool-check.md).
+when a person key enrolled on that node signed it (docs/node.md, "Standing grants"). The key is an in-memory Ed25519 key that belongs to this
+run alone: never in a keystore and never the key of the account. It is enrolled the way a phone's key is, as a file the account owns that the
+node reads when it starts (`wire.plant_phone_key`), because a node derives a key as strong only when a phone enrolled it, and no call of the
+node, and no switch it honours, can enrol one that way. The rig signs each grant through the real `grant_issue`. What the rig does not exercise
+is the person's yes to the question the node writes on a terminal, the custody of a person's real key and the phone's own signing
+(docs/pool-check.md); founding no longer asks for it, and only the node's own tests and the test kit's `enrol_first` type it.
 
-The same person is the admin of the pools the rig founds (`found`, `admit`, `remove`): a second key, also in memory and also the run's alone,
-named in each pool's charter. The node never holds it. It drafts an act (`pool_draft`, `pool_draft_found`), the rig signs the bytes it is given
-outside the node, and the node takes the signed act back (`pool_submit`, `pool_found`), as a person's own device would hand it one.
+The same key is the admin of the pools the rig founds (`found`, `admit`, `remove`), named in each pool's charter. The node never holds it. It
+drafts an act (`pool_draft`, `pool_draft_found`), the rig signs the bytes it is given outside the node, and the node takes the signed act back
+(`pool_submit`, `pool_found`), as a person's own device would hand it one.
 """
 
 from __future__ import annotations
@@ -51,20 +50,23 @@ class RigPerson:
 
     def __init__(self) -> None:
         self.key = Signer.generate()
-        self.admin = Signer.generate()  # the admin key of the pools the rig founds: it signs acts outside every node
+        self.admin = self.key  # the admin key of the pools the rig founds: it signs acts outside every node
 
     @property
     def fingerprint(self) -> str:
         return grants.fingerprint(self.key.public)
 
     def enrol(self, holder: Holder, key: Signer | None = None) -> dict:
-        """Put the run's key (or ``key``, approved by the run's key) on the node of ``holder``'s device, carried by ``holder``'s session.
+        """Put ``key`` (the run's, already on the node from its start, by default) on the node of ``holder``'s device, carried by ``holder``'s session.
 
-        The first key goes in with the one-time secret the node makes when the rig's person types yes to its question; a later key with the approval of one
-        the node holds, for this node, once, from this process's terminal.
+        A key the node holds stays as it is; the first key on an empty node goes in with the one-time secret the node makes when the rig's person types
+        yes to its question; a later key with the approval of one the node holds, for this node, once, from this process's terminal.
         """
         device, carried = holder.device, key or self.key
-        if key is None or not device.call("person_keys")["keys"]:
+        held = {k["fingerprint"] for k in device.call("person_keys")["keys"]}
+        if grants.fingerprint(carried.public) in held:
+            return {"fingerprint": grants.fingerprint(carried.public)}
+        if not held:
             secret = self.says_yes(device, holder.token, "key", carried.public.hex())["secret"]
             return device.call("person_enroll", "", holder.token, **grants.enrolment(carried, ABOUT), secret=secret)
         return device.call("person_enroll", "", holder.token, **grants.approve(grants.enrolment(carried, ABOUT), self.key, self.where(device)))
@@ -134,7 +136,7 @@ class RigPerson:
 
     def found(self, device: Device, policy: str, title: str = "pool check") -> dict:
         """``device`` founds a pool of ``policy`` governed by the admin key and is its first member: the charter is accepted by the key outside the node."""
-        keys = [{"key": self.admin.public.hex(), "person": "pool-check", "strength": "strong", "label": "the pool check's admin"}]
+        keys = [{"key": self.admin.public.hex(), "person": "pool-check", "label": "the pool check's admin"}]
         draft = device.admin("pool_draft_found", title=title, policy=policy, project="", keys=keys)
         charter = draft["charter"]
         for wanted in draft["accept"]:

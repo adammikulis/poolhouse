@@ -9,6 +9,7 @@ import threading
 import time
 
 import pytest
+from node_kit import enrol_as_phone_key
 from phone_kit import add_phone, endpoint_of
 
 import poolhouse as ph
@@ -47,7 +48,8 @@ def test_found_on_a_device_with_no_strong_key_says_in_one_sentence_where_to_tap(
 
 def test_found_with_a_linked_phone_asks_the_phone_and_a_second_call_says_it_is_there(phone_node):
     phone = add_phone(phone_node)
-    admin = founding.Admin(Signer.generate(), founding.STRONG)
+    admin = founding.Admin(Signer.generate())
+    enrol_as_phone_key(phone_node, admin.key)
     told: list[str] = []
     done: dict = {}
     thread = threading.Thread(target=lambda: done.update(made=ph.pool.found("home", "open", admin=admin, say=told.append)))

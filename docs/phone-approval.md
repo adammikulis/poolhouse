@@ -19,7 +19,7 @@ the node side is `app/poolhouse-node/src/approvals/` and `phone/`; the agent sid
 - **The key is a person key.** The phone makes an ECDSA P-256 key in Android Keystore (hardware-backed where there is
   hardware, StrongBox where the phone has it) that signs only after the fingerprint or the device credential, once per
   use, and is lost on a new fingerprint. Its public half is enrolled on the node in `persons.json` beside the Ed25519 keys
-  a typed `yes` uses (`alg: p256`). Grants it signs count exactly as grants a person typed `yes` for.
+  a typed `yes` uses (`alg: p256`, `phone: true`: the mark only a phone's own enrolment sets, and the only way a pool's charter lists a key as strong). Grants it signs count exactly as grants a person typed `yes` for.
 - **The hard floors do not move.** An agent never approves, never acts as a person, and `grant_issue`, `grant_revoke`,
   `person_enroll`, `act_as_person` and the other floors (docs/node.md, "Standing grants") are refused by name whatever
   anyone signs. An agent can ask; it cannot complete.

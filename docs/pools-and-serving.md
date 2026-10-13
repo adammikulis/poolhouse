@@ -92,8 +92,10 @@ standing grants. A person decides on a key by its **fingerprint as three check w
 **Strength.** A key is `strong` when the platform enforces a per-signature presence that the signing process cannot supply for
 itself: a phone's biometric or device credential, a hardware key's touch, a hardware-backed key with a presence prompt. It is `weak`
 when any process of the user's account can use it: a keystore item readable after login, a key file, a `yes` typed at a terminal a
-process can open for itself (the limit `docs/node.md` states under "Key custody"). The strength is declared when the key is
-enrolled and written in the charter; keys enrolled through the phone path are strong (`docs/phone-approval.md`). **Only strong keys
+process can open for itself (the limit `docs/node.md` states under "Key custody"). The strength is fixed when the key is
+enrolled and written in the charter. The node derives it when it drafts or founds a charter and never reads it from a caller: a key is strong
+when a phone enrolled it on that node (`persons.json`, `phone: true`; `docs/phone-approval.md`) and weak otherwise, and a charter that calls any other
+key strong is refused. A key added later carries the strength the strong quorum signed. **Only strong keys
 count toward sensitive acts, toward removing a member and toward cancelling.** A weak key may sign only the end of a delegate (a
 reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` says "weak keys only" for a pool with no strong admin.
 
@@ -625,11 +627,11 @@ taps and what the agent does next. The node writes the `pool_created` event to t
 **What remains, exactly.** A pool needs a strong admin key (1.3), and no strong key can sign a charter yet: the phone's key is P-256 and signs
 approvals of grants only, a charter's admin key is Ed25519 (`gov/keys.rs`), and the node has no production `Signer` that asks the phone
 (`gov/signer.rs` holds the rig's). The key the first-key flow makes is kept in the account's keystore, which any process of the account can
-use, so it is `weak` (`founding.FIRST_KEY_STRENGTH`) and the call refuses it before the person is asked anything: "A pool needs a key that asks
+use, so the node derives it as weak (a key is strong only when a phone enrolled it on the node) and the call refuses it before the person is asked anything: "A pool needs a key that asks
 for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again." With a phone linked the sentence
 is "Your phone is linked, but it cannot sign a new pool's charter yet; update the Poolhouse app, then tell me again." The path is real
-and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's `found-by-api`) with a key the test made declared strong, as
-the rig's person always did. To close it: the phone signs a charter acceptance and an act (`alg: p256` admin keys, verified by
+and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's `found-by-api`) with a key the test wrote into the node's person keys file marked as a phone's, which is how the node comes to
+derive it as strong (the pool check's person is enrolled that way). To close it: the phone enrols the key that signs charters as a phone's (which is what makes the node derive it as strong), signs a charter acceptance and an act (`alg: p256` admin keys, verified by
 `grants::person::verifies`, or an Ed25519 key in the phone's keystore with a per-signature prompt), and the node's `Signer` becomes the
 phone approval. Also not built: the card's text for `pool_create` (it falls to the node's default, "It is not an action this node knows the
 cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and the fingerprint of an open pool's member,

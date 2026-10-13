@@ -92,6 +92,17 @@ def enrol_first(client: board_client.Client, token: str, key: Signer | Confirmed
     return board_grants.enrol(client, token, {**board_grants.enrolment(key, "a test person"), "secret": said["result"]["secret"]})
 
 
+def enrol_as_phone_key(node: WorkspaceNode, key: Signer) -> None:
+    """Write ``key`` into the person keys file of ``node`` marked as a phone's own enrolment marks a key, and start the node again, which
+    reads the file only when it starts: the node then derives the key as strong. Nothing but a file the account owns can do this."""
+    node.stop()
+    path = node.state / "persons.json"
+    held = json.loads(path.read_text()) if path.exists() else {}
+    held[board_grants.fingerprint(key.public)] = {"public": key.public.hex(), "label": "a test phone", "at_ms": 1, "alg": "ed25519", "phone": True}
+    path.write_text(json.dumps(held))
+    node.start()
+
+
 def allow(carrier: board_session.Session, person: Signer, *actions: str, to: dict | None = None, **limits: Any) -> list[str]:
     """``person`` (a test key, enrolled on the node first) grants the session ``carrier`` (or ``to``) every action of the
     registry, or just ``actions``, within ``limits`` (``resource``, ``uses``, ``lasts_ms``); the grant ids. The carrier

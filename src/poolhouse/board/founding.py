@@ -2,9 +2,9 @@
 
 Nothing here signs for anyone. The signature that makes the pool true is the person's admin key, put to the person where only the
 person can answer: the operating system's own prompt for the first key, or the phone's card for a grant (docs/phone-approval.md).
-`Admin` is that key and how strong it is, and a key that is not strong is refused before the person is asked anything, since
-the node takes no pool whose charter lists no strong key. Every refusal is a `Refusal`: one sentence an agent passes on, what is needed
-and where the person taps.
+`Admin` is that key. How strong it is, the node says: a key no phone enrolled on the node is weak, and the node's draft of the charter
+shows it before the person is asked anything, since the node takes no pool whose charter lists no strong key. Every refusal is a
+`Refusal`: one sentence an agent passes on, what is needed and where the person taps.
 """
 
 from __future__ import annotations
@@ -13,10 +13,10 @@ import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from poolhouse import errors
-from poolhouse.board import approval, grants, person_key, phone, presence
+from poolhouse.board import approval, grants, phone, presence
 from poolhouse.board.client import Client, NodeError
 from poolhouse.board.session import Session
 from poolhouse.board.terminal import terminal_id
@@ -27,10 +27,6 @@ POOL_GRANT_LASTS = "10m"
 CARD_WAIT_S = 120.0
 POLICIES = ("open", "secure")
 STRONG = "strong"
-WEAK = "weak"
-FIRST_KEY_STRENGTH = WEAK
-"""What the key the first-key flow makes can honestly claim: it is kept in the account's keystore, which any process of the account can use,
-so it is `weak` (docs/pools-and-serving.md, 1.3) until a presence prompt stands in front of each of its signatures."""
 NEEDS_PHONE = "A pool needs a key that asks for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again."
 
 
@@ -48,8 +44,6 @@ class Admin:
     """The person's key that governs the pool: it signs each act itself, so the person is asked by whatever stands behind ``key``."""
 
     key: grants.Signs
-    strength: str
-    """`strong` when every signature needs a presence this process cannot supply, `weak` when any process of the account can sign."""
     person: str = "owner"
     label: str = "the owner's key"
     about: str = "the owner's key"
@@ -142,10 +136,19 @@ def _allowed(session: Session, admin: Admin, name: str, wait_s: float, voice: pr
         raise _refused(err, where="the question this computer asks you") from None
 
 
-def _charter(session: Session, admin: Admin, name: str, policy: str) -> dict[str, Any]:
+def _draft(session: Session, admin: Admin, name: str, policy: str) -> dict[str, Any]:
+    """The node's draft of the charter of the admin key: the strength of the key is what the node derives."""
+    key = {"key": admin.key.public.hex(), "person": admin.person, "label": admin.label}
+    return dict(session.client.call("pool_draft_found", "", session.token, title=name, policy=policy, project="", keys=[key]))
+
+
+def _strong(draft: dict[str, Any]) -> bool:
+    """Whether the node's draft lists an admin key it derives as strong."""
+    return any(k["role"] == "admin" and k["strength"] == STRONG for k in draft["charter"]["admins"])
+
+
+def _charter(admin: Admin, draft: dict[str, Any]) -> dict[str, Any]:
     """The node's draft of the charter with the admin key's acceptance filled in, signed outside the node."""
-    key = {"key": admin.key.public.hex(), "person": admin.person, "strength": admin.strength, "label": admin.label}
-    draft = session.client.call("pool_draft_found", "", session.token, title=name, policy=policy, project="", keys=[key])
     charter = draft["charter"]
     for wanted in draft["accept"]:
         listed = next(k for k in charter["admins"] if k["key"] == wanted["key"])
@@ -192,11 +195,15 @@ def found(session: Session, admin: Admin, name: str, policy: str = "secure", ter
         return done
     if policy not in POLICIES:
         raise Refusal("A pool lets devices join by themselves (open) or with a code (secure); say which.", needs="none")
-    if admin.strength != STRONG:
+    try:
+        draft = _draft(session, admin, name, policy)
+    except NodeError as err:
+        raise _refused(err, needs="none") from None
+    if not _strong(draft):
         raise Refusal(NEEDS_PHONE, needs="device", where="the Poolhouse app on your phone")
     _allowed(session, admin, name, terms.wait_s, terms.voice)
     try:
-        charter = _charter(session, admin, name, policy)
+        charter = _charter(admin, draft)
         made = session.client.call("pool_found", "", session.token, charter=charter)
         _admit_this_device(session, admin, terms.cert_hex or (Path(session.client.state) / "device.cert").read_bytes().hex())
     except NodeError as err:
@@ -204,15 +211,12 @@ def found(session: Session, admin: Admin, name: str, policy: str = "secure", ter
     return Founded(str(made["pool"]), str(made["name"]), str(made["policy"]), int(made["epoch"]))
 
 
-def default_admin(session: Session) -> Admin:
-    """The admin key this device can offer a pool today: the person's key kept beside the node, as strong as it honestly is.
-
-    A linked phone is the strong key, but it signs approvals of grants and no charter yet, so with one linked the sentence says so.
-    """
+def default_admin(session: Session) -> NoReturn:
+    """Always refuses: no key this process holds is one the node derives as strong, and a linked phone signs no charter yet."""
     if _phone_linked(session):
         raise Refusal("Your phone is linked, but it cannot sign a new pool's charter yet; update the Poolhouse app, then tell me again.",
                       needs="device", where="the Poolhouse app on your phone")
-    return Admin(person_key.keys(session.client.state), FIRST_KEY_STRENGTH)
+    raise Refusal(NEEDS_PHONE, needs="device", where="the Poolhouse app on your phone")
 
 
 def pool_session(client: Client) -> Session:

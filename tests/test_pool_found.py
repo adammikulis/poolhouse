@@ -1,24 +1,22 @@
 """An agent founds a pool for a person: the node as shipped, a key the test made that stands for the person, and the person's answers given the way a person gives them.
 
-The person's yes is typed at a pseudo-terminal the node itself wrote its question on (the node never answers for anyone); the phone's tap is a
-decision signed by a key the test made. What the tests check is that nothing is founded without the person's key, and that everything the person
-sees is a sentence an agent can pass on.
+The key is strong only where the node holds it as a phone's: the test writes it into the node's person keys file marked as a phone's own
+enrolment marks it (`enrol_as_phone_key`); the phone's tap is a decision signed by a key the test made. What the tests check is that
+nothing is founded without the person's key, that a key the node does not hold as a phone's is never strong, and that everything the
+person sees is a sentence an agent can pass on.
 """
 
 from __future__ import annotations
 
-import os
-import pty
 import threading
 import time
-from contextlib import contextmanager
 
 import pytest
+from node_kit import enrol_as_phone_key, enrol_first
 from phone_kit import add_phone, endpoint_of
-from pool_check import terminal
 
 from poolhouse.board import founding, presence, session as board_session
-from poolhouse.board.client import Denied
+from poolhouse.board.client import Denied, Invalid
 from poolhouse.board.founding import Admin, Refusal
 from poolhouse.fleet.onboard.manifest import Signer
 
@@ -31,38 +29,21 @@ def pool_session(node) -> board_session.Session:
     return board_session.Session(node.client, "pool", made.token, made.name)
 
 
-def person(strength: str = "strong") -> Admin:
-    """The person's key, in memory, for this test alone."""
-    return Admin(Signer.generate(), strength)
-
-
-@contextmanager
-def person_at_a_terminal(yes: bool = True):
-    """A terminal of the test's own that the node writes its question on; the person types yes when it appears, or nobody does."""
-    leader, follower = pty.openpty()
-
-    def answer() -> None:
-        if terminal.screen_says(leader, "Type yes", 20.0):
-            os.write(leader, b"yes\n")
-
-    if yes:
-        threading.Thread(target=answer, daemon=True).start()
-    try:
-        yield presence.Voice(terminal=os.ttyname(follower))
-    finally:
-        os.close(leader)
-        os.close(follower)
+def person() -> Admin:
+    """The person's key, in memory, for this test alone; the node holds it as a phone's only where the test enrols it."""
+    return Admin(Signer.generate())
 
 
 def governance(node) -> dict:
     return node.client.call("pool_status")["governance"]
 
 
-def test_an_agent_founds_a_pool_when_the_person_says_yes_and_a_second_try_says_it_is_there(workspace_node):
-    session, admin = pool_session(workspace_node), person()
+def test_an_agent_founds_a_pool_of_a_key_a_phone_enrolled_and_a_second_try_says_it_is_there(workspace_node):
+    admin = person()
+    enrol_as_phone_key(workspace_node, admin.key)
+    session = pool_session(workspace_node)
     assert governance(workspace_node)["mode"] == "unfounded"
-    with person_at_a_terminal() as voice:
-        made = founding.found(session, admin, "home", "secure", founding.Terms(voice=voice))
+    made = founding.found(session, admin, "home", "secure")
     assert (made.name, made.policy, made.epoch, made.already) == ("home", "secure", 1, False)
     gov = governance(workspace_node)
     assert gov["mode"] == "governed" and gov["name"] == "home" and gov["admins"][0]["strength"] == "strong"
@@ -75,28 +56,48 @@ def test_an_agent_founds_a_pool_when_the_person_says_yes_and_a_second_try_says_i
     assert any("pool_created" in str(e) for e in audit), "founding is on the pool board's audit"
 
 
-def test_nobody_says_yes_and_no_pool_and_no_key_exist(workspace_node, monkeypatch):
-    monkeypatch.setattr(presence, "WAIT_S", 1.0)
-    session = pool_session(workspace_node)
-    with person_at_a_terminal(yes=False) as voice, pytest.raises(Refusal) as refused:
-        founding.found(session, person(), "home", "secure", founding.Terms(voice=voice))
-    assert "Nobody said yes" in refused.value.say and refused.value.then == "stop"
-    assert governance(workspace_node)["mode"] == "unfounded"
-    assert workspace_node.client.call("person_keys")["keys"] == [], "a key nobody answered for was not enrolled"
+def test_nobody_taps_the_phone_and_no_pool_and_no_key_exist(phone_node):
+    add_phone(phone_node)
+    admin = person()
+    enrol_as_phone_key(phone_node, admin.key)
+    session = pool_session(phone_node)
+    held = phone_node.client.call("person_keys")["keys"]
+    with pytest.raises(Refusal) as refused:
+        founding.found(session, admin, "home", "secure", founding.Terms(wait_s=1.0))
+    assert refused.value.then == "wait" and refused.value.needs == "approval" and len(refused.value.say) <= 160
+    assert governance(phone_node)["mode"] == "unfounded"
+    assert phone_node.client.call("person_keys")["keys"] == held, "a card nobody answered enrolled no key"
 
 
-def test_a_key_that_asks_nothing_of_the_person_each_time_is_refused_before_anyone_is_asked(workspace_node):
+def test_a_key_the_node_does_not_hold_as_a_phones_is_refused_before_anyone_is_asked(workspace_node):
     session = pool_session(workspace_node)
     with pytest.raises(Refusal) as refused:
-        founding.found(session, person("weak"), "home")
+        founding.found(session, person(), "home")
     assert "your phone" in refused.value.say and refused.value.needs == "device" and len(refused.value.say) <= 160
     assert workspace_node.client.call("person_keys")["keys"] == [] and governance(workspace_node)["mode"] == "unfounded"
 
 
-def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspace_node):
-    session = pool_session(workspace_node)
+def test_a_key_the_person_typed_yes_for_is_not_strong_whatever_the_agent_says(workspace_node):
     admin = person()
+    enrol_first(workspace_node.client, workspace_node.member("agent").token, admin.key)
+    session = pool_session(workspace_node)
+    with pytest.raises(Refusal) as refused:
+        founding.found(session, admin, "home")
+    assert "your phone" in refused.value.say and governance(workspace_node)["mode"] == "unfounded"
     key = [{"key": admin.key.public.hex(), "person": "owner", "strength": "strong", "label": "the owner's key"}]
+    with pytest.raises(Invalid):
+        workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
+    plain = dict(key[0])
+    del plain["strength"]
+    drafted = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=[plain])
+    assert [k["strength"] for k in drafted["charter"]["admins"]] == ["weak"]
+
+
+def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspace_node):
+    admin = person()
+    enrol_as_phone_key(workspace_node, admin.key)
+    session = pool_session(workspace_node)
+    key = [{"key": admin.key.public.hex(), "person": "owner", "label": "the owner's key"}]
     draft = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
     with pytest.raises(Denied, match=r"grant|accept|denied"):
         workspace_node.client.call("pool_found", "", session.token, charter=draft["charter"])
@@ -106,7 +107,9 @@ def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspa
 def test_the_phone_is_asked_for_the_grant_and_the_pool_is_founded_when_the_person_taps(phone_node):
     node = phone_node
     phone = add_phone(node)
-    session, admin = pool_session(node), person()
+    admin = person()
+    enrol_as_phone_key(node, admin.key)
+    session = pool_session(node)
     told: list[str] = []
     result: dict = {}
 
@@ -137,10 +140,12 @@ def test_the_phone_is_asked_for_the_grant_and_the_pool_is_founded_when_the_perso
 def test_the_phone_says_no_and_the_agent_has_a_sentence_and_nothing_is_founded(phone_node):
     node = phone_node
     phone = add_phone(node)
+    admin = person()
+    enrol_as_phone_key(node, admin.key)
     session = pool_session(node)
     outcome: list = []
     told: list[str] = []
-    thread = threading.Thread(target=lambda: outcome.append(_tried(session, told)))
+    thread = threading.Thread(target=lambda: outcome.append(_tried(session, told, admin)))
     thread.start()
     endpoint, seen = endpoint_of(node), None
     for _ in range(100):
@@ -155,9 +160,9 @@ def test_the_phone_says_no_and_the_agent_has_a_sentence_and_nothing_is_founded(p
     assert isinstance(outcome[0], Refusal) and "You said no" in outcome[0].say and governance(node)["mode"] == "unfounded"
 
 
-def _tried(session, told):
+def _tried(session, told, admin):
     try:
-        return founding.found(session, person(), "home", "secure", founding.Terms(presence.Voice(say=told.append), 30))
+        return founding.found(session, admin, "home", "secure", founding.Terms(presence.Voice(say=told.append), 30))
     except Refusal as refused:
         return refused
 

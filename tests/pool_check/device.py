@@ -67,6 +67,8 @@ class Device:
     admin_token: str = ""
     admin_name: str = ""
     extra: list[str] = field(default_factory=list)
+    phone_key: str = ""
+    """The public key (hex) the node of this device holds as a phone's from its next start: the key the pool check's pools are governed by."""
     driver: Driver | None = field(default=None, repr=False)
 
     state_text = ""
@@ -175,6 +177,10 @@ class Device:
         if not out["ok"]:
             raise Refused(out.get("code", "error"), out.get("error", ""))
         return out["result"]
+
+    def planted(self) -> list[str]:
+        """The arguments that have `wire.py start` write ``phone_key`` into the node's person keys file before the node starts."""
+        return ["--phone-key", self.phone_key] if self.phone_key else []
 
     def start_node(self, *more: str) -> dict:
         raise NotImplementedError
@@ -316,7 +322,7 @@ class LocalDevice(Device):
     def start_node(self, *more):
         args = ["--listen", self.listen_text(), "--sync-ms", SYNC_MS, *PRESENCE, *self.build_args, *self.extra, *more]
         flags = [f"--arg={a}" for a in args]
-        return self.wire("start", "--state", self.state_text, "--binary", str(self.binary), *flags)["result"]
+        return self.wire("start", "--state", self.state_text, "--binary", str(self.binary), *flags, *self.planted())["result"]
 
     def kill_node(self):
         pid = int(self.hello()["pid"])
@@ -392,7 +398,7 @@ class ContainerDevice(Device):
     def start_node(self, *more):
         args = ["--listen", f"0.0.0.0:{self.port}", "--sync-ms", SYNC_MS, *PRESENCE, *self.build_args, *self.extra, *more]
         flags = [f"--arg={a}" for a in args]
-        return self.wire("start", "--state", STATE, "--binary", CONTAINER_NODE, *flags)["result"]
+        return self.wire("start", "--state", STATE, "--binary", CONTAINER_NODE, *flags, *self.planted())["result"]
 
     def kill_node(self):
         pid = int(self.hello()["pid"])
@@ -483,7 +489,7 @@ class WslHostedDevice(Device):
 
     def start_node(self, *more):
         args = ["--listen", self.listen_text(), "--sync-ms", SYNC_MS, *PRESENCE, *self.build_args, *self.extra, *more]
-        return self.wire("start", "--state", self.state_text, "--binary", self.binary_text, *[f"--arg={a}" for a in args])["result"]
+        return self.wire("start", "--state", self.state_text, "--binary", self.binary_text, *[f"--arg={a}" for a in args], *self.planted())["result"]
 
     def kill_node(self):
         pid = int(self.hello()["pid"])
