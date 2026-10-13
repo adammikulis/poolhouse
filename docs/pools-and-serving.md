@@ -24,7 +24,7 @@ admin starts a successor pool and every member joins it by its own consent.
 
 | # | Decision | Why |
 |---|---|---|
-| G1 | A pool is governed by an admin set of person keys named in its signed charter; the pool id is the hash of the first charter. | Authority belongs to people; an id that commits to the admins cannot be copied onto other admins. |
+| G1 | A pool is governed by an admin set of person keys named in its signed charter; the pool id is the anchor of the first charter. | Authority belongs to people; an id that commits to the admins cannot be copied onto other admins. |
 | G2 | Every change to a pool is a signed act, checked by each member against the admin keys it holds. Rows a member relays carry no authority. | Closes the hole of section 1.1: today any member's word is the pool's word. |
 | G3 | A member device can only leave. Only strong keys (per-signature presence) sign sensitive acts and removals; the recovery key signs no immediate act; every lever that takes a pool is held, and any strong admin cancels it. | A stolen file or an agent on the laptop signs nothing that cannot be undone; the hold costs the normal case nothing. |
 | G4 | The join policy is immutable. Changing it reissues the pool under a signed handoff. | An in-place flip leaves every earlier joiner a member; a reissue keeps only reviewed ones. |
@@ -83,8 +83,9 @@ slice closes it; nothing else in this document is safe to build on until it does
 
 ### 1.3 Keys: roles, strength, thresholds and the delegate
 
-An **admin** is an Ed25519 public key named in the pool's charter. Every entry carries the key's **own acceptance**: a signature by
-that key over the pool, the epoch, its role and its strength. A key is therefore listed only by its holder: adding a key needs the
+An **admin** is a public key named in the pool's charter: Ed25519, or a phone's P-256 key (`alg`, 130 hex digits, signatures in strict
+DER with `s` in the lower half of the group). Every entry carries the key's **own acceptance**: a signature by
+that key over the pool, the charter it follows, its algorithm, its role and its strength. A key is therefore listed only by its holder: adding a key needs the
 added key's signature as well as the admins' (1.5), so nobody can list someone else's public key to borrow its name or its
 standing grants. A person decides on a key by its **fingerprint as three check words** ("maple-river-ten"); the label an adder wrote
 ("the owner's phone") is untrusted text, quoted and styled apart wherever it appears, and is never what an approval rests on.
@@ -146,16 +147,18 @@ in section 3.5).
 founders, each with its acceptance):
 
 ```
-{ v: 1, epoch, name, policy: "open"|"secure", mode: "admins"|"members", project: "" | <project key>,
-  admins: [{key, role, strength, acceptance, label}],
+{ v: 2, epoch, name, policy: "open"|"secure", mode: "admins"|"members", project: "" | <project key>,
+  admins: [{key, alg: "ed25519"|"p256", role, strength, person, since, acceptance, label}],
   thresholds: {routine, sensitive, unit: "person"|"key"},
   holds: {admin_add_h: 24, admin_remove_h: 24, handoff_min: 15, dispute_d: 7},
   recover_delay_days (1..30, default 7), succession: {quorum, delay_days, min_key_age_days: 30} | null,
   from: null | {pool, handoff_hash}, at_ms }
 ```
 
-The **pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter body**, 32 hex digits. A copy of a pool with different
-admins has a different id, and a stranger cannot make a pool with this id and other admins. The policy is part of the charter body
+The **pool id is the first 16 bytes of the anchor**, 32 hex digits: the SHA-256 of the epoch-1 charter body with every key's acceptance
+left out. A copy of a pool with different admins has a different id, a stranger cannot make a pool with this id and other admins,
+and one set of terms is one pool however its keys sign it (an ECDSA signature is different each time it is made). The hash an act's
+`prev` names leaves out the founding keys' acceptances for the same reason. The policy is part of the charter body
 and does not change inside a pool. The epoch rises when the admin set, a threshold, a hold or the mode changes; a reissue makes a
 new pool, not a new epoch. A **weakening** is any change to a smaller threshold, a shorter hold or delay, `mode: members`, a
 relaxed strength rule, or `policy: open`; everything else strengthens or is neutral.

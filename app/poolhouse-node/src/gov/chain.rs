@@ -198,7 +198,7 @@ fn check_add(add: &body::Add, s: &EpochState, pool: &str) -> Option<Check> {
         "a pool names at most sixteen keys"
     } else if e.role == Role::Recovery && s.charter.admins.iter().any(|k| k.role == Role::Recovery) {
         "the recovery key is replaced only by its own signature"
-    } else if !e.accepted(pool) {
+    } else if !e.accepted(pool, &s.hash) {
         "the added key did not accept being listed"
     } else {
         return None;

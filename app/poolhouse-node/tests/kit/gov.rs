@@ -7,7 +7,7 @@ use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
 use poolhouse_node::gov::charter::{Charter, Unit};
-use poolhouse_node::gov::keys::{AdminKey, Role, Strength};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
 use poolhouse_node::gov::pool::{GovPool, Ingest};
 use poolhouse_node::gov::signer::RigSigner;
 use poolhouse_node::membership::Policy;
@@ -39,11 +39,21 @@ pub fn public(seed: u8) -> String {
     RigSigner::public(seed)
 }
 
-/// The listing of the key ``k`` at epoch ``since``, accepted against ``anchor``.
-pub fn entry(k: K, since: u64, anchor: &str) -> AdminKey {
-    let mut e = AdminKey { key: public(k.0), role: k.2, strength: k.3, person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
-    e.acceptance = RigSigner::sign_as(k.0, &e.acceptance_message(anchor));
+/// The listing of the key ``k`` at epoch ``since``, accepted against ``anchor`` and the charter ``prev`` it follows (empty at epoch 1).
+pub fn entry_on(k: K, since: u64, anchor: &str, prev: &str) -> AdminKey {
+    let mut e = AdminKey { key: public(k.0), alg: Alg::Ed25519, role: k.2, strength: k.3, person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
+    e.acceptance = RigSigner::sign_as(k.0, &e.acceptance_message(anchor, prev));
     e
+}
+
+/// The listing of the founding key ``k``, accepted against ``anchor``.
+pub fn entry(k: K, since: u64, anchor: &str) -> AdminKey {
+    entry_on(k, since, anchor, "")
+}
+
+/// The listing of ``k`` at epoch ``since`` that follows the charter now in force in ``g``.
+pub fn entry_after(k: K, since: u64, g: &GovPool) -> AdminKey {
+    entry_on(k, since, &g.id, &g.context().1)
 }
 
 /// An epoch-1 charter of the keys, each accepting it.
@@ -58,7 +68,7 @@ pub fn charter(keys: &[K], policy: Policy, unit: Unit) -> Charter {
 }
 
 pub fn found_act(c: &Charter) -> Act {
-    Act::new(&c.pool_id(), 1, "found", c.body(), c.at_ms, "").unwrap()
+    c.found_act()
 }
 
 /// A pool of the keys on a frozen clock, in a directory of its own.

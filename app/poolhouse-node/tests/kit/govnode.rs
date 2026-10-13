@@ -14,6 +14,12 @@ pub const BEN: u8 = 2;
 /// The seed of the test person's grant key, which a node process founds pools of once `plant_phone_person` enrolled it.
 pub const PERSON: u8 = 0x70;
 
+/// The listing of ``k`` at epoch ``since`` that follows the charter now in force on the pool of ``dev``.
+pub fn entry_for(dev: &Dev, k: super::gov::K, since: u64) -> poolhouse_node::gov::keys::AdminKey {
+    let node = dev.node.lock().unwrap();
+    super::gov::entry_after(k, since, node.members.gov().unwrap())
+}
+
 pub fn sync(dev: &Dev) {
     dev.ok("sync_now", "", &dev.token, json!({}));
 }

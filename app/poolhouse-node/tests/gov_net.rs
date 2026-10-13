@@ -173,7 +173,7 @@ fn two_admins_removing_different_devices_while_apart_end_with_both_removed_on_bo
     sync(&b);
     sync(&c);
     // ben becomes a second admin of the pool and signs on b
-    let entry = json!(entry(strong(BEN, "ben"), 2, &a.pool()));
+    let entry = json!(entry_for(&a, strong(BEN, "ben"), 2));
     a.ok("pool_propose", "", &a.token, json!({"kind": "admin_add", "body": {"entry": entry}}));
     for d in [&a, &b, &c] {
         sync(d);
@@ -262,7 +262,7 @@ fn a_member_cannot_replay_a_stale_act_or_flood_the_acts_op() {
 #[test]
 fn a_second_person_cosigns_on_another_device_and_the_act_takes_effect_everywhere() {
     let (a, b, c) = pool_of_three();
-    let entry = json!(entry(strong(BEN, "ben"), 2, &a.pool()));
+    let entry = json!(entry_for(&a, strong(BEN, "ben"), 2));
     let added = a.ok("pool_propose", "", &a.token, json!({"kind": "admin_add", "body": {"entry": entry}}));
     assert_eq!(added["status"], "pending", "{added}");
     for d in [&a, &b, &c] {

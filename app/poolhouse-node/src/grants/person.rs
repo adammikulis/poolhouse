@@ -79,19 +79,21 @@ pub fn verifies_p256(public: &str, message: &[u8], sig: &str) -> bool {
     sig.len() <= 72 && ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_ASN1, point).verify(message, &sig).is_ok()
 }
 
-/// Whether ``sig`` is the signature of the key ``public`` of algorithm ``alg`` over ``message``.
+/// Whether ``sig`` is the signature of the key ``public`` of algorithm ``alg`` over ``message``; an algorithm this build does not know verifies nothing.
 pub fn verifies_with(alg: &str, public: &str, message: &[u8], sig: &str) -> bool {
     match alg {
+        ED25519 => verifies(public, message, sig),
         P256 => verifies_p256(public, message, sig),
-        _ => verifies(public, message, sig),
+        _ => false,
     }
 }
 
 /// The fingerprint a key of ``alg`` is known by: SHA-256 of its public bytes.
 pub fn fingerprint_of(alg: &str, public: &str) -> Result<String> {
     let bytes = match alg {
+        ED25519 => public_of(public)?.as_bytes().to_vec(),
         P256 => p256_point(public).ok_or_else(|| Error::Invalid("a phone's key is an uncompressed P-256 point of 130 hex digits".into()))?,
-        _ => public_of(public)?.as_bytes().to_vec(),
+        _ => return Err(Error::Invalid("a person's key is an Ed25519 key or a P-256 key".into())),
     };
     Ok(sha256_hex(&bytes))
 }

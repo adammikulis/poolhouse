@@ -215,7 +215,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
 | `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
-| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; a key that names its strength is refused) | `{charter, anchor, accept, summary}`: the charter with blank acceptances, each key `strong` only when a phone enrolled it on this device and `weak` otherwise, and for each key the bytes it signs to accept it; the rig or person signs them and hands the charter back to `pool_found` |
+| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its strength is refused) | `{charter, anchor, accept, summary}`: the charter with blank acceptances, each key `strong` only when a phone enrolled it on this device and `weak` otherwise, and for each key its `alg` and the bytes it signs to accept it; the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the device is a member once an admit signed for it is submitted |
 | `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
@@ -840,10 +840,17 @@ the fix for the first that fails.
 pool, through admin keys; a device never does, and the one thing a member device does alone is leave.
 
 - **The charter** (`gov/charter.rs`): the pool's name, join policy (`open` or `secure`, fixed for the pool's life), admin keys,
-  thresholds, holds. The pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter, 32 hex digits, so a copy of a pool
-  with other admins is another pool. `charter.json` holds the founding act; the epoch rises with each step of the chain below.
-- **Admin keys** (`gov/keys.rs`): Ed25519 public keys, each listed with its own acceptance (its signature over the pool, the epoch
-  it joins at, its role, strength and person), so a key is listed only by its holder. `strong` keys (a presence the signing process
+  thresholds, holds; version 2 (a charter of another version is not read). The pool id is the first 16 bytes of the anchor, 32 hex
+  digits: the SHA-256 of the epoch-1 charter with its keys' signatures left out, so a copy of a pool with other admins is another
+  pool and one set of terms is one pool however its keys sign it (an ECDSA signature differs each time it is made). An act's `prev`
+  names the charter's hash, which also leaves out the signatures of the founding keys. `charter.json` holds the founding act, which
+  is made of the charter alone (`Charter::found_act`); the epoch rises with each step of the chain below.
+- **Admin keys** (`gov/keys.rs`): an Ed25519 public key (64 hex digits, signatures of 64 bytes) or a phone's ECDSA P-256 public
+  point (130 hex digits, signatures in strict DER with no padding and `s` in the lower half of the group, the one form a pool
+  takes), each listed with its `alg` and its own acceptance (its signature over the pool, the charter it follows, its algorithm,
+  role, strength and person), so a key is listed only by its holder and an acceptance holds for the one charter it names. An
+  algorithm this build does not know, a key whose length does not match its `alg` and a signature of the wrong form for its key are
+  refused; the verifier picks the algorithm from the key. `strong` keys (a presence the signing process
   cannot supply) are the only ones that count toward a threshold, a removal or a cancel; a `weak` key may end a delegate and
   nothing else. The `recovery` role counts toward no immediate act and leaves the admin set only with its own signature.
   Thresholds count distinct people (`unit: person`) or keys: `routine` (remove, cancel, end a delegate) 1 by default, `sensitive`
@@ -914,6 +921,10 @@ pool, through admin keys; a device never does, and the one thing a member device
   unfounded` with an empty `pool`, nothing is written, it needs no signer to exist and it admits nobody (`add_device` answers "This
   device is not in a pool yet; make one, or join one."). It joins a pool with a code or an open pool it hears, or founds one
   (`pool_create`, or `pool_draft_found` and `pool_found` with a key outside the node). A device never founds a pool by itself.
+- **A pool of another charter version is set aside the same way.** A `pools/<id>/` whose founding act or charter is not of the version
+  this build reads is moved (never deleted) to `pools-old-format/<id>` and the device starts unfounded with the same one line; a
+  charter of another version that is offered to found a pool is refused with "this pool was made by another version of Poolhouse and
+  cannot be used: make a new pool".
 - **An old-format pool is set aside, not refused.** A state directory with a `pool.json` makes the node rename it (never delete it) to
   `pool.json.old-format` (`.1`, `.2` ... when that name exists), print one line, "this device was in an old-format pool: it now starts
   unfounded; create a new pool", and start as the unfounded pool of one, whatever the file held (it is never read). Every board it
