@@ -274,6 +274,7 @@ on whichever machine is free rather than the one you are typing at.
 | [Model ranking](docs/model-ranking.md) | one line per model: its best run, and what that run cost |
 | [Architectures](docs/architectures/README.md) | the models that behave unlike a dense transformer when served |
 | [Working on Poolhouse](docs/development.md) | `contracts/`, the git hooks, and how the tests are written |
+| [Release readiness](docs/release-readiness.md) | what the release must do and what is tested before it ships: the journeys and their step counts, a checklist by area, the security gates, the owner-only steps and the final drive |
 
 ## Licence
 
