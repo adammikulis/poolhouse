@@ -53,6 +53,31 @@ def test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged(t
     assert "PYTHONPATH" not in env
 
 
+def test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter(tmp_path, monkeypatch):
+    chosen = runtime.Runtime(tmp_path / "prefix", "a" * 40, "0", runtime.identity())
+    seen = []
+    monkeypatch.setattr(runtime, "available", lambda: chosen)
+    monkeypatch.setattr(os, "execve", lambda path, argv, env: seen.append((path, argv, env)))
+    script = tmp_path / HOSTILE / "setup.py"
+    runtime.rerun(script, ["--x; touch PWNED", "$(id)", "`id`"])
+    path, argv, env = seen[0]
+    assert path == str(chosen.python)
+    assert argv == [str(chosen.python), "-I", str(script), "--x; touch PWNED", "$(id)", "`id`"]
+    assert "PYTHONPATH" not in env
+
+
+def test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected(tmp_path, monkeypatch):
+    chosen = runtime.Runtime(tmp_path / "prefix", "a" * 40, "0", runtime.identity())
+    seen = []
+    monkeypatch.setattr(os, "execve", lambda path, argv, env: seen.append(argv))
+    monkeypatch.setattr(runtime, "available", lambda: None)
+    runtime.rerun(tmp_path / "x.py", ["a"])
+    monkeypatch.setattr(runtime, "available", lambda: chosen)
+    monkeypatch.setattr(runtime.sys, "flags", type("Flags", (), {"isolated": 1})())
+    runtime.rerun(tmp_path / "x.py", ["a"])
+    assert seen == []
+
+
 def test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers(world, tmp_path, monkeypatch):  # noqa: F811
     repo, _, _ = world
     odd = tmp_path / HOSTILE
