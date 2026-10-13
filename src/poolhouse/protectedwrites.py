@@ -324,7 +324,7 @@ def _code(verb: str, args: list[str], bodies: list[str], shell: Shell) -> str:
     given = args[args.index(flag) + 1:][:1] if flag in args else []
     texts = [*given, *bodies]
     scripts = [a for a in args if not a.startswith("-")]
-    if scripts:
+    if scripts and not shell.guarded(scripts[:1]):
         texts.append(_script_text(shell.here / scripts[0]))
     found = next((m.group(0) for t in texts for m in [MENTION.search(t)] if m), "")
     return f"code run from a shell names {found}: {PERSON}; use the file tools for anything else." if found else ""
@@ -487,7 +487,7 @@ class Reader:
             return _git_config(args) or _git_paths(args, shell)
         if verb in FETCHERS or verb in ("http", "https", "xh"):
             return _fetch(rest, shell)
-        script = _script_text(shell.here / rest[0]) if "/" in rest[0] else ""
+        script = _script_text(shell.here / rest[0]) if "/" in rest[0] and not shell.guarded(rest[:1]) else ""
         return _writes(verb, args, shell) or _code(verb, args, bodies, shell) or (
             f"the script {rest[0]} names {m.group(0)}: {PERSON}." if (m := MENTION.search(script)) else "")
 
