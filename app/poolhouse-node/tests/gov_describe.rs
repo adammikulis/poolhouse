@@ -16,11 +16,11 @@ fn summary(dev: &Dev, kind: &str, body: Value) -> String {
 #[test]
 fn an_admin_add_names_the_person_the_strength_and_the_key() {
     let a = device();
-    let id = found(&a, person(ANN, "ann"), "secure");
-    let added = entry(strong(BEN, "ben"), 2, &id);
+    found(&a, person(ANN, "ann"), "secure");
+    let added = entry_for(&a, strong(BEN, "ben"), 2);
     let say = summary(&a, "admin_add", json!({"entry": added}));
     assert!(say.contains("ben") && say.contains("strong") && say.contains(&added.fingerprint()[..12]), "{say}");
-    let weak_one = entry(weak(BEN, "ben"), 2, &id);
+    let weak_one = entry_for(&a, weak(BEN, "ben"), 2);
     assert!(summary(&a, "admin_add", json!({"entry": weak_one})).contains("weak"));
 }
 

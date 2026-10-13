@@ -27,8 +27,7 @@ fn refused(i: Ingest) -> String {
 /// An `admin_add` of the key ``k`` signed by ``seeds`` and the key's own acceptance.
 fn add(g: &poolhouse_node::gov::pool::GovPool, k: K, seeds: &[u8]) -> poolhouse_node::gov::act::Act {
     let since = g.state().chain.latest().n + 1;
-    let anchor = g.id.clone();
-    make(g, "admin_add", json!({"entry": entry(k, since, &anchor)}), seeds)
+    make(g, "admin_add", json!({"entry": entry_after(k, since, g)}), seeds)
 }
 
 fn put_add(g: &mut poolhouse_node::gov::pool::GovPool, k: K, seeds: &[u8]) -> Ingest {
@@ -37,7 +36,7 @@ fn put_add(g: &mut poolhouse_node::gov::pool::GovPool, k: K, seeds: &[u8]) -> In
 }
 
 #[test]
-fn a_pool_id_is_the_hash_of_its_first_charter_so_a_copy_with_other_admins_is_another_pool() {
+fn a_pool_id_is_the_anchor_of_its_first_charter_so_a_copy_with_other_admins_is_another_pool() {
     let one = charter(&[strong(A, "ann")], Policy::Secure, Unit::Person);
     let other = charter(&[strong(B, "ben")], Policy::Secure, Unit::Person);
     assert_eq!(one.pool_id().len(), 32);
@@ -113,7 +112,7 @@ fn a_replayed_act_is_a_no_op_and_a_signature_counted_twice_counts_once() {
     let before = g.acts().len();
     assert_eq!(take(&mut g, admit_act), Ingest::Known);
     assert_eq!(g.acts().len(), before);
-    let mut twice = make(&g, "admin_add", json!({"entry": entry(strong(C, "cy"), 2, &g.id)}), &[A]);
+    let mut twice = make(&g, "admin_add", json!({"entry": entry_after(strong(C, "cy"), 2, &g)}), &[A]);
     let dup = twice.signatures[0].clone();
     twice.signatures.push(dup);
     assert!(refused(take(&mut g, twice.clone())).contains("once by each signer"), "a signer signs an act once");
@@ -125,9 +124,8 @@ fn a_replayed_act_is_a_no_op_and_a_signature_counted_twice_counts_once() {
 #[test]
 fn a_signature_repeated_to_pad_an_act_does_not_win_a_fork() {
     let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben"), strong(C, "cy")], Policy::Secure);
-    let anchor = g.id.clone();
-    let honest = make(&g, "admin_add", json!({"entry": entry(strong(D, "dee"), 2, &anchor)}), &[A, B]);
-    let mut padded = make(&g, "admin_add", json!({"entry": entry(strong(5, "eve"), 2, &anchor)}), &[C, A]);
+    let honest = make(&g, "admin_add", json!({"entry": entry_after(strong(D, "dee"), 2, &g)}), &[A, B]);
+    let mut padded = make(&g, "admin_add", json!({"entry": entry_after(strong(5, "eve"), 2, &g)}), &[C, A]);
     let again = padded.signatures.iter().find(|s| s.key == public(C)).unwrap().clone();
     (0..6).for_each(|_| padded.signatures.push(again.clone()));
     take(&mut g, honest.clone());
@@ -324,10 +322,11 @@ fn a_cancel_seen_in_the_hold_still_ends_the_act_after_a_restart() {
 #[test]
 fn a_backdated_act_and_a_wall_clock_a_month_ahead_shorten_no_hold() {
     let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
-    let mut act = g.new_act("admin_add", json!({"entry": entry(strong(B, "ben"), 2, &g.id)}), wall_ms() - 3 * 24 * 3_600_000).unwrap();
+    let mut act = g.new_act("admin_add", json!({"entry": entry_after(strong(B, "ben"), 2, &g)}), wall_ms() - 3 * 24 * 3_600_000).unwrap();
     sign(&mut act, A);
     let month_ahead = wall_ms() + 30 * 24 * 3_600_000;
-    assert_eq!(g.ingest(act, month_ahead), Ingest::Accepted);
+    let relayed = g.ingest_many(vec![act], month_ahead, false);
+    assert!(matches!(relayed[0].1, Ingest::Accepted), "a member relays it a month on: {relayed:?}");
     advance(&mut g, HOUR);
     assert!(!admins(&g).contains(&public(B)), "the signer wrote three days ago and the wall clock says a month later: the hold is awake time here");
     advance(&mut g, 24 * HOUR);
@@ -395,10 +394,10 @@ fn a_removed_admins_flood_of_acts_for_an_old_epoch_evicts_no_act_of_the_admins_t
     put(&mut g, "admin_remove", json!({"key": public(C), "cut": []}), &[A, B]);
     advance(&mut g, 25 * HOUR);
     assert!(!admins(&g).contains(&public(C)));
-    let legit = make(&g, "admin_add", json!({"entry": entry(strong(D, "dee"), 3, &g.id)}), &[A, B]);
+    let legit = make(&g, "admin_add", json!({"entry": entry_after(strong(D, "dee"), 3, &g)}), &[A, B]);
     assert_eq!(take(&mut g, legit.clone()), Ingest::Accepted);
     for n in 0..300u64 {
-        let mut act = poolhouse_node::gov::act::Act::new(&g.id, epoch_one.0, "admin_add", json!({"entry": entry(strong(5, "eve"), 2, &g.id)}), wall_ms() - n, &epoch_one.1).unwrap();
+        let mut act = poolhouse_node::gov::act::Act::new(&g.id, epoch_one.0, "admin_add", json!({"entry": entry_on(strong(5, "eve"), 2, &g.id, &epoch_one.1)}), wall_ms() - n, &epoch_one.1).unwrap();
         sign(&mut act, C);
         assert!(matches!(take(&mut g, act), Ingest::Refused(_)));
     }
@@ -440,7 +439,7 @@ fn an_act_dated_in_the_future_is_refused() {
 /// A joiner that took the admin-set act ``add`` as settled from its host, and the cancel of it that the host withheld.
 fn joiner_with_settled_add() -> (tempfile::TempDir, GovPool, poolhouse_node::gov::act::Act) {
     let (_d, mut g) = pool(&[strong(A, "ann"), strong(B, "ben")], Policy::Secure);
-    let add = make(&g, "admin_add", json!({"entry": entry(strong(D, "dee"), 2, &g.id.clone())}), &[A, B]);
+    let add = make(&g, "admin_add", json!({"entry": entry_after(strong(D, "dee"), 2, &g)}), &[A, B]);
     take(&mut g, add.clone());
     let cancel = make(&g, "cancel", json!({"act": add.id()}), &[A]);
     let dir = tempfile::tempdir().unwrap();
@@ -663,14 +662,14 @@ fn an_act_over_sixteen_kib_or_with_a_field_nobody_defined_is_refused() {
 #[test]
 fn the_acceptance_of_a_key_is_for_the_pool_and_epoch_it_names_and_cannot_list_a_key_for_another_person() {
     let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
-    let mut borrowed = entry(strong(B, "ben"), 2, &g.id);
+    let mut borrowed = entry_after(strong(B, "ben"), 2, &g);
     borrowed.acceptance = RigSigner::sign_as(C, b"someone else's acceptance");
     let act = make(&g, "admin_add", json!({"entry": borrowed}), &[A]);
     take(&mut g, act.clone());
     advance(&mut g, 25 * HOUR);
     assert!(!admins(&g).contains(&public(B)), "a pool cannot list a public key its holder did not accept");
     assert!(matches!(g.status(&act.id()), ActStatus::Void(w) if w.contains("did not accept")));
-    let stale = entry(strong(B, "ben"), 5, &g.id);
+    let stale = entry_after(strong(B, "ben"), 5, &g);
     let act = make(&g, "admin_add", json!({"entry": stale}), &[A]);
     take(&mut g, act.clone());
     advance(&mut g, 25 * HOUR);

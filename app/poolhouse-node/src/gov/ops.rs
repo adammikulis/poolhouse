@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use crate::cert::{cert_fingerprint, valid_fingerprint};
 use crate::error::{Error, Result};
 use crate::fsutil::hex;
+use crate::grants::spec::SKEW_MS;
 use crate::membership::{Device, Policy, Pool, Status};
 use crate::node::Node;
 use crate::poolops::wall_ms;
@@ -19,7 +20,7 @@ use crate::poolops::wall_ms;
 use super::act::{Act, ActSig, SigKind};
 use super::charter::{Charter, Class, Unit};
 use super::describe::{describe, quoted};
-use super::keys::{AdminKey, Role, Strength};
+use super::keys::{Alg, AdminKey, Role, Strength};
 use super::pool::{ActStatus, GovPool, Ingest};
 use super::signer::{KeyBinding, Signer, SignerKey};
 
@@ -92,7 +93,7 @@ pub fn founding_act(act: Option<&Value>, charter: Option<&Value>) -> Result<Valu
         (Some(act), None) => Ok(act.clone()),
         (None, Some(charter)) => {
             let c: Charter = serde_json::from_value(charter.clone()).map_err(|e| Error::Invalid(format!("that is not a charter: {}", e.to_string().chars().take(80).collect::<String>())))?;
-            Ok(json!(Act::new(&c.pool_id(), 1, "found", c.body(), c.at_ms, "")?))
+            Ok(json!(c.found_act()))
         }
         _ => Err(Error::Invalid("a pool is founded by an act or by a charter, one of them".into())),
     }
@@ -265,7 +266,7 @@ impl Node {
         let signer = self.signer.clone().ok_or_else(no_signer)?;
         let now = wall_ms();
         let held = signer.keys();
-        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), role: Role::Admin, strength: self.key_strength(&k.public), person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
+        let admins: Vec<AdminKey> = held.iter().map(|k| AdminKey { key: k.public.clone(), alg: Alg::of_public(&k.public).unwrap_or(Alg::Ed25519), role: Role::Admin, strength: self.key_strength(&k.public), person: k.person.clone(), since: 1, acceptance: String::new(), label: k.label.clone() }).collect();
         if admins.is_empty() {
             return Err(no_signer());
         }
@@ -275,11 +276,10 @@ impl Node {
         let mut charter = Charter::new(name, policy, project, admins, now);
         let anchor = charter.anchor();
         for key in charter.admins.iter_mut() {
-            key.acceptance = signer.sign(&key.key, &key.acceptance_message(&anchor), &format!("Make the pool {}.", quoted(name)))?;
+            key.acceptance = signer.sign(&key.key, &key.acceptance_message(&anchor, ""), &format!("Make the pool {}.", quoted(name)))?;
         }
         charter.check_founding().map_err(|e| declined(&e.to_string()))?;
-        let found = Act::new(&charter.pool_id(), 1, "found", charter.body(), now, "")?;
-        let id = self.start_pool(found)?;
+        let id = self.start_pool(charter.found_act())?;
         self.gov_admit(&self.cert.der.clone(), &crate::poolops::host_name(), "found")?;
         self.record_event("pool_created", &id, &format!("{} ({})", name.chars().take(40).collect::<String>(), policy.name()))?;
         Ok(json!({"pool": id, "name": name, "policy": policy.name(), "epoch": 1}))
@@ -426,6 +426,10 @@ impl Node {
         if !self.members.is_unfounded() {
             return Err(declined("This device already runs a pool; leave it before making another."));
         }
+        let wall = wall_ms();
+        if found.at_ms > wall.saturating_add(SKEW_MS) || found.not_after.saturating_add(SKEW_MS) < wall {
+            return Err(Error::say("denied", "That charter was signed too long ago or is dated ahead: draft it again and ask your person to sign it again.", "approval", "retry"));
+        }
         let pool = GovPool::create(&self.dir, found)?;
         let id = pool.id.clone();
         self.members = Pool::governed(pool);
@@ -453,14 +457,14 @@ impl Node {
                 return Err(Error::Invalid("a key is named by its key, person and label; how strong it is, this device says".into()));
             }
             let key = text(k, "key");
-            admins.push(AdminKey { strength: self.key_strength(&key), key, role: Role::Admin, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
+            admins.push(AdminKey { alg: Alg::of_public(&key).unwrap_or(Alg::Ed25519), strength: self.key_strength(&key), key, role: Role::Admin, person: text(k, "person"), since: 1, acceptance: String::new(), label: text(k, "label") });
         }
         if let Some(bad) = admins.iter().find(|k| !super::keys::valid_public(&k.key)) {
-            return Err(Error::Invalid(format!("{} is not an Ed25519 public key", bad.key.chars().take(16).collect::<String>())));
+            return Err(Error::Invalid(format!("{} is not a public key", bad.key.chars().take(16).collect::<String>())));
         }
         let charter = Charter::new(name, policy, project, admins, wall_ms());
         let anchor = charter.anchor();
-        let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "sign_bytes": hex(&k.acceptance_message(&anchor))})).collect();
+        let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "alg": k.alg, "sign_bytes": hex(&k.acceptance_message(&anchor, ""))})).collect();
         Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": format!("Make the pool {}.", quoted(name))}))
     }
 

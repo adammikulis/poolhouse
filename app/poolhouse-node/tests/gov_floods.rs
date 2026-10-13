@@ -144,8 +144,8 @@ fn a_pool_is_folded_again_when_a_hold_or_a_delegate_ends_and_not_for_the_time_th
     g.clock.advance_ms(10_000);
     assert!(!g.tick());
     assert_eq!(g.folds(), folds, "nothing is pending, so the time that passes needs no fold");
-    let anchor = g.id.clone();
-    put(&mut g, "admin_add", json!({"entry": entry(strong(2, "ben"), 2, &anchor)}), &[A]);
+    let ben = entry_after(strong(2, "ben"), 2, &g);
+    put(&mut g, "admin_add", json!({"entry": ben}), &[A]);
     let folds = g.folds();
     g.clock.advance_ms(10_000);
     assert!(!g.tick());

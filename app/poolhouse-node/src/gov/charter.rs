@@ -1,8 +1,9 @@
 //! The charter: the signed document that names a pool's admin keys, thresholds, holds and join policy.
 //!
-//! The pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter, 32 hex digits, so a copy of a pool with other admins is
-//! another pool and a stranger cannot make a pool with this id and other admins. The join policy is part of the body and never
-//! changes inside a pool. Epoch 1 is the founding charter; each later epoch is the charter the acts of `chain` produce.
+//! The pool id is the first 16 bytes of the anchor, 32 hex digits: the SHA-256 of the epoch-1 charter with the signatures of its keys
+//! left out, so a copy of a pool with other admins is another pool, a stranger cannot make a pool with this id and other admins, and
+//! one set of terms is one pool however its keys happen to sign it. The join policy is part of the body and never changes inside a
+//! pool. Epoch 1 is the founding charter; each later epoch is the charter the acts of `chain` produce.
 
 use std::collections::BTreeSet;
 
@@ -14,8 +15,14 @@ use crate::fsutil::sha256_hex;
 use crate::membership::Policy;
 use crate::row::canonical;
 
+use super::act::{Act, WINDOW_MS};
 use super::keys::{AdminKey, Role, Strength};
 use super::MAX_ADMINS;
+
+/// The version of the charter this build reads and writes; a pool of another version is not one this build can run.
+pub const VERSION: u32 = 2;
+/// What a device that meets a charter of another version says.
+pub const OTHER_VERSION: &str = "this pool was made by another version of Poolhouse and cannot be used: make a new pool";
 
 /// Which threshold an act is held to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,7 +106,7 @@ impl Charter {
     pub fn new(name: &str, policy: Policy, project: &str, mut admins: Vec<AdminKey>, at_ms: u64) -> Charter {
         admins.sort_by(|a, b| a.key.cmp(&b.key));
         Charter {
-            v: 1, epoch: 1, name: name.into(), policy, mode: Mode::Admins, project: project.into(), admins, thresholds: Thresholds::default(),
+            v: VERSION, epoch: 1, name: name.into(), policy, mode: Mode::Admins, project: project.into(), admins, thresholds: Thresholds::default(),
             holds: Holds::default(), recover_delay_days: 7, succession: None, from: None, at_ms,
         }
     }
@@ -108,21 +115,35 @@ impl Charter {
         serde_json::to_value(self).unwrap_or(Value::Null)
     }
 
-    /// The hash of this charter, 64 hex digits: what an act's `prev` names.
-    pub fn hash(&self) -> String {
-        sha256_hex(canonical(&self.body()).as_bytes())
+    fn hashed(&self, blank: impl Fn(&AdminKey) -> bool) -> String {
+        let mut bare = self.clone();
+        bare.admins.iter_mut().filter(|k| blank(k)).for_each(|k| k.acceptance = String::new());
+        sha256_hex(canonical(&bare.body()).as_bytes())
     }
 
-    /// The pool id this charter makes when it is the first.
+    /// The hash of this charter, 64 hex digits: what an act's `prev` names. The acceptances of the keys the pool was founded with
+    /// are left out, so every copy of one founding charter is one charter whatever its keys signed with; a later key's acceptance
+    /// is in the act that listed it.
+    pub fn hash(&self) -> String {
+        self.hashed(|k| k.since == 1)
+    }
+
+    /// The pool id this charter makes when it is the first: the first 32 digits of its anchor.
     pub fn pool_id(&self) -> String {
-        self.hash()[..32].to_string()
+        self.anchor()[..32].to_string()
     }
 
     /// The hash of this charter with every acceptance blanked: what the founding keys accept.
     pub fn anchor(&self) -> String {
-        let mut bare = self.clone();
-        bare.admins.iter_mut().for_each(|k| k.acceptance = String::new());
-        bare.hash()
+        self.hashed(|_| true)
+    }
+
+    /// The act that founds the pool of this charter: made of nothing but the charter, so every device that holds the charter makes the same one.
+    pub fn found_act(&self) -> Act {
+        Act {
+            v: super::act::VERSION, pool: self.pool_id(), epoch: 1, kind: "found".into(), body: self.body(), at_ms: self.at_ms, not_after: self.at_ms.saturating_add(WINDOW_MS),
+            nonce: self.anchor()[..32].into(), prev: String::new(), signatures: Vec::new(),
+        }
     }
 
     pub fn admin(&self, key: &str) -> Option<&AdminKey> {
@@ -189,7 +210,10 @@ impl Charter {
 
     /// Whether this is a charter a pool can start from: the shape, the keys and each key's acceptance.
     pub fn check_founding(&self) -> Result<()> {
-        if self.v != 1 || self.epoch != 1 || self.mode != Mode::Admins || self.succession.is_some() || self.from.is_some() || self.at_ms == 0 {
+        if self.v != VERSION {
+            return bad(OTHER_VERSION);
+        }
+        if self.epoch != 1 || self.mode != Mode::Admins || self.succession.is_some() || self.from.is_some() || self.at_ms == 0 {
             return bad("this build founds a pool of epoch 1 governed by admins, with no succession and no earlier pool");
         }
         if self.name.is_empty() || self.name.chars().count() > 40 || !self.name.chars().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-')) {
@@ -200,7 +224,7 @@ impl Charter {
         }
         self.check_keys(1)?;
         let anchor = self.anchor();
-        if !self.admins.iter().all(|k| k.accepted(&anchor)) {
+        if !self.admins.iter().all(|k| k.accepted(&anchor, "")) {
             return bad("every admin key accepts the charter it is listed in");
         }
         self.check_numbers()

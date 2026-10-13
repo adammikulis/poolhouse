@@ -1,9 +1,10 @@
 //! An act: one signed change to a pool.
 //!
-//! `{v, pool, epoch, kind, body, at_ms, nonce, prev, signatures}`, signed over `poolhouse/pool-act/v1`, a line break and the
+//! `{v, pool, epoch, kind, body, at_ms, not_after, nonce, prev, signatures}`, signed over `poolhouse/pool-act/v2`, a line break and the
 //! canonical JSON of everything but the signatures. The id of an act is the hash of those same bytes, so every co-signer of one
 //! act signs the same bytes and the signature sets of two copies of it merge. `prev` is the hash of the charter the signer
-//! knew; `epoch` is that charter's epoch.
+//! knew; `epoch` is that charter's epoch. The signatures are good until `not_after`: a pool takes a new act, or a new signature on
+//! one, from the person's signer only before it, so an act signed and never used cannot be used later.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,10 +15,15 @@ use crate::fsutil::{hex, random_hex, sha256_hex, unhex};
 use crate::grants::person::verifies;
 use crate::row::canonical;
 
-use super::keys::valid_public;
+use super::keys::Alg;
 use super::{MAX_ACT_BYTES, MAX_SIGNATURES};
 
-const DOMAIN: &str = "poolhouse/pool-act/v1\n";
+const DOMAIN: &str = "poolhouse/pool-act/v2\n";
+/// The version of the act this build reads and writes.
+pub const VERSION: u32 = 2;
+/// How long the signatures of an act a person's key signs are good for: an hour, or a week for an act that needs several people.
+pub const WINDOW_MS: u64 = 3_600_000;
+pub const LONG_WINDOW_MS: u64 = 7 * 24 * WINDOW_MS;
 
 /// Every kind of act this build knows.
 pub const KINDS: [&str; 13] = [
@@ -51,6 +57,8 @@ pub struct Act {
     pub kind: String,
     pub body: Value,
     pub at_ms: u64,
+    /// The wall time (ms) after which a pool takes no new signature on this act from a person's signer.
+    pub not_after: u64,
     pub nonce: String,
     pub prev: String,
     pub signatures: Vec<ActSig>,
@@ -72,7 +80,7 @@ pub fn valid_id(id: &str) -> bool {
 impl Act {
     /// An act with no signature yet, made at ``at_ms`` for the charter ``prev`` of epoch ``epoch``.
     pub fn new(pool: &str, epoch: u64, kind: &str, body: Value, at_ms: u64, prev: &str) -> Result<Act> {
-        Ok(Act { v: 1, pool: pool.into(), epoch, kind: kind.into(), body, at_ms, nonce: random_hex(16)?, prev: prev.into(), signatures: Vec::new() })
+        Ok(Act { v: VERSION, pool: pool.into(), epoch, kind: kind.into(), body, at_ms, not_after: at_ms.saturating_add(WINDOW_MS), nonce: random_hex(16)?, prev: prev.into(), signatures: Vec::new() })
     }
 
     /// The act without its signatures, as the JSON that is signed.
@@ -100,8 +108,14 @@ impl Act {
 
     /// The shape of the act: version, kind, sizes and the form of every field. Whether it is authorised is for the fold.
     pub fn check_shape(&self) -> Result<()> {
-        if self.v != 1 || !KINDS.contains(&self.kind.as_str()) {
+        if self.v != VERSION {
+            return bad("that act is of another version of Poolhouse");
+        }
+        if !KINDS.contains(&self.kind.as_str()) {
             return bad("this build does not know that kind of act");
+        }
+        if self.not_after.checked_sub(self.at_ms).is_none_or(|window| window == 0 || window > LONG_WINDOW_MS) {
+            return bad("an act's signatures are good for a time after it is written, at most a week");
         }
         if !is_hex(&self.pool, 32) || !is_hex(&self.nonce, 32) || !(self.prev.is_empty() || valid_id(&self.prev)) || self.epoch == 0 || self.at_ms == 0 {
             return bad("an act names its pool, epoch, time, nonce and the charter it follows");
@@ -114,12 +128,12 @@ impl Act {
             if !signers.insert((s.kind, s.key.as_str())) {
                 return bad("an act is signed once by each signer");
             }
-            let key_ok = match s.kind {
-                SigKind::Admin => valid_public(&s.key),
-                SigKind::Device => valid_fingerprint(&s.key),
+            let fits = match s.kind {
+                SigKind::Admin => Alg::of_public(&s.key).is_some_and(|alg| alg.sig_shape(&s.sig)),
+                SigKind::Device => valid_fingerprint(&s.key) && s.sig.len() == 128 && unhex(&s.sig).is_some(),
             };
-            if !key_ok || s.sig.len() != 128 || unhex(&s.sig).is_none() {
-                return bad("a signature names its key and is 64 bytes");
+            if !fits {
+                return bad("a signature names its key and is 64 bytes, or a canonical signature of a P-256 key");
             }
         }
         Ok(())
@@ -127,15 +141,14 @@ impl Act {
 
     /// Whether ``sig`` is a signature of these bytes: an admin by the key it names, a device by the certificate ``der`` it names.
     pub fn verifies(&self, sig: &ActSig, der: Option<&[u8]>) -> bool {
-        let public = match (sig.kind, der) {
-            (SigKind::Admin, _) => sig.key.clone(),
+        match (sig.kind, der) {
+            (SigKind::Admin, _) => Alg::of_public(&sig.key).is_some_and(|alg| alg.verifies(&sig.key, &self.sign_bytes(), &sig.sig)),
             (SigKind::Device, Some(der)) => match device_public(der) {
-                Ok(p) if crate::cert::cert_fingerprint(der) == sig.key => hex(&p),
-                _ => return false,
+                Ok(p) if crate::cert::cert_fingerprint(der) == sig.key => verifies(&hex(&p), &self.sign_bytes(), &sig.sig),
+                _ => false,
             },
-            (SigKind::Device, None) => return false,
-        };
-        verifies(&public, &self.sign_bytes(), &sig.sig)
+            (SigKind::Device, None) => false,
+        }
     }
 
     /// Add ``sig`` if this act has no signature by that key yet; whether it was added.

@@ -24,7 +24,7 @@ admin starts a successor pool and every member joins it by its own consent.
 
 | # | Decision | Why |
 |---|---|---|
-| G1 | A pool is governed by an admin set of person keys named in its signed charter; the pool id is the hash of the first charter. | Authority belongs to people; an id that commits to the admins cannot be copied onto other admins. |
+| G1 | A pool is governed by an admin set of person keys named in its signed charter; the pool id is the anchor of the first charter. | Authority belongs to people; an id that commits to the admins cannot be copied onto other admins. |
 | G2 | Every change to a pool is a signed act, checked by each member against the admin keys it holds. Rows a member relays carry no authority. | Closes the hole of section 1.1: today any member's word is the pool's word. |
 | G3 | A member device can only leave. Only strong keys (per-signature presence) sign sensitive acts and removals; the recovery key signs no immediate act; every lever that takes a pool is held, and any strong admin cancels it. | A stolen file or an agent on the laptop signs nothing that cannot be undone; the hold costs the normal case nothing. |
 | G4 | The join policy is immutable. Changing it reissues the pool under a signed handoff. | An in-place flip leaves every earlier joiner a member; a reissue keeps only reviewed ones. |
@@ -83,8 +83,9 @@ slice closes it; nothing else in this document is safe to build on until it does
 
 ### 1.3 Keys: roles, strength, thresholds and the delegate
 
-An **admin** is an Ed25519 public key named in the pool's charter. Every entry carries the key's **own acceptance**: a signature by
-that key over the pool, the epoch, its role and its strength. A key is therefore listed only by its holder: adding a key needs the
+An **admin** is a public key named in the pool's charter: Ed25519, or a phone's P-256 key (`alg`, 130 hex digits, signatures in strict
+DER with `s` in the lower half of the group). Every entry carries the key's **own acceptance**: a signature by
+that key over the pool, the charter it follows, its algorithm, its role and its strength. A key is therefore listed only by its holder: adding a key needs the
 added key's signature as well as the admins' (1.5), so nobody can list someone else's public key to borrow its name or its
 standing grants. A person decides on a key by its **fingerprint as three check words** ("maple-river-ten"); the label an adder wrote
 ("the owner's phone") is untrusted text, quoted and styled apart wherever it appears, and is never what an approval rests on.
@@ -146,16 +147,18 @@ in section 3.5).
 founders, each with its acceptance):
 
 ```
-{ v: 1, epoch, name, policy: "open"|"secure", mode: "admins"|"members", project: "" | <project key>,
-  admins: [{key, role, strength, acceptance, label}],
+{ v: 2, epoch, name, policy: "open"|"secure", mode: "admins"|"members", project: "" | <project key>,
+  admins: [{key, alg: "ed25519"|"p256", role, strength, person, since, acceptance, label}],
   thresholds: {routine, sensitive, unit: "person"|"key"},
   holds: {admin_add_h: 24, admin_remove_h: 24, handoff_min: 15, dispute_d: 7},
   recover_delay_days (1..30, default 7), succession: {quorum, delay_days, min_key_age_days: 30} | null,
   from: null | {pool, handoff_hash}, at_ms }
 ```
 
-The **pool id is the first 16 bytes of the SHA-256 of the epoch-1 charter body**, 32 hex digits. A copy of a pool with different
-admins has a different id, and a stranger cannot make a pool with this id and other admins. The policy is part of the charter body
+The **pool id is the first 16 bytes of the anchor**, 32 hex digits: the SHA-256 of the epoch-1 charter body with every key's acceptance
+left out. A copy of a pool with different admins has a different id, a stranger cannot make a pool with this id and other admins,
+and one set of terms is one pool however its keys sign it (an ECDSA signature is different each time it is made). The hash an act's
+`prev` names leaves out the founding keys' acceptances for the same reason. The policy is part of the charter body
 and does not change inside a pool. The epoch rises when the admin set, a threshold, a hold or the mode changes; a reissue makes a
 new pool, not a new epoch. A **weakening** is any change to a smaller threshold, a shorter hold or delay, `mode: members`, a
 relaxed strength rule, or `policy: open`; everything else strengthens or is neutral.
@@ -164,8 +167,10 @@ A pool has no key of its own and no secret shared by its members. Nothing in a m
 
 ### 1.5 Acts
 
-Every act is `{v, pool, epoch, kind, body, at_ms, nonce, prev, signatures: [{kind: admin|device, key, sig}]}`, signed over
-`poolhouse/pool-act/v1` and a line break and the canonical JSON of everything but the signatures. `prev` is the hash of the charter in force that the
+Every act is `{v, pool, epoch, kind, body, at_ms, not_after, nonce, prev, signatures: [{kind: admin|device, key, sig}]}`, signed over
+`poolhouse/pool-act/v2` and a line break and the canonical JSON of everything but the signatures. `not_after` (at most a week after `at_ms`,
+an hour for an act one person signs) is the last moment a person's signer may hand the pool the act or a signature on it: an act that was
+signed and not used cannot be used later, and what a member relays is taken as it comes. `prev` is the hash of the charter in force that the
 signer knew (an epoch's charter is derived from the acts, so its hash is the same on every device that applied the same acts, whatever order a
 hold ended in). The member record (`roster.json`) is a view folded from the acts; it is not an input and a `members`
 row is never believed again. A **hold** is a delay before an act takes effect, in which any strong admin may `cancel` it.
@@ -624,18 +629,21 @@ system's prompt on the real home), and that key signs the grant. A device alread
 X" and changes nothing. Every refusal is a `Refusal` (an `ph.Denied`): one sentence of at most 160 characters, what is needed, where the person
 taps and what the agent does next. The node writes the `pool_created` event to the pool board's audit.
 
-**What remains, exactly.** A pool needs a strong admin key (1.3), and no strong key can sign a charter yet: the phone's key is P-256 and signs
-approvals of grants only, a charter's admin key is Ed25519 (`gov/keys.rs`), and the node has no production `Signer` that asks the phone
-(`gov/signer.rs` holds the rig's). The key the first-key flow makes is kept in the account's keystore, which any process of the account can
-use, so the node derives it as weak (a key is strong only when a phone enrolled it on the node) and the call refuses it before the person is asked anything: "A pool needs a key that asks
-for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again." With a phone linked the sentence
-is "Your phone is linked, but it cannot sign a new pool's charter yet; update the Poolhouse app, then tell me again." The path is real
-and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's `found-by-api`) with a key the test wrote into the node's person keys file marked as a phone's, which is how the node comes to
-derive it as strong (the pool check's person is enrolled that way). To close it: the phone enrols the key that signs charters as a phone's (which is what makes the node derive it as strong), signs a charter acceptance and an act (`alg: p256` admin keys, verified by
-`grants::person::verifies`, or an Ed25519 key in the phone's keystore with a per-signature prompt), and the node's `Signer` becomes the
-phone approval. Also not built: the card's text for `pool_create` (it falls to the node's default, "It is not an action this node knows the
-cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and the fingerprint of an open pool's member,
-or a code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
+**What remains, exactly.** A pool needs a strong admin key (1.3). The node takes a charter whose admin key is a phone's P-256 key (`alg: p256`,
+signatures in strict DER with `s` in the lower half of the group, an acceptance that names the charter it follows) and derives the key as strong when a
+phone enrolled it on the node; what is not built is the phone's part and the node's production `Signer` (`gov/signer.rs` holds the rig's). The key
+the first-key flow makes is kept in the account's keystore, which any process of the account can use, so the node derives it as weak and the call
+refuses it before the person is asked anything: "A pool needs a key that asks for you each time it signs, which is your phone; link your phone in
+the Poolhouse app and tell me again." With a phone linked the sentence is "Your phone is linked, but it cannot sign a new pool's charter yet; update
+the Poolhouse app, then tell me again." The path is real and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's
+`found-by-api`, `app/poolhouse-node/tests/gov_charter.rs` with a P-256 key) with a key the test wrote into the node's person keys file marked as a
+phone's, which is how the node comes to derive it as strong (the pool check's person is enrolled that way). To close it: the phone makes one
+biometric-only Keystore P-256 key for each pool, renders the whole charter (the anchor it recomputes, the policy, every key with its algorithm and
+derived strength, the thresholds, holds and recovery days) and signs the acceptance and the acts, each as an approval on the fatigue ledger, and the
+node's `Signer` becomes the phone approval; the first device's certificate is folded into the founding charter so the acceptance is the whole
+authorization (`HANDOFF.md`, "Break-it pass on phone-signed charters"). Also not built: the card's text for `pool_create` (it falls to the node's
+default, "It is not an action this node knows the cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and
+the fingerprint of an open pool's member, or a code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
 
 ## 2. Operated by agents, approved by a tap
 
