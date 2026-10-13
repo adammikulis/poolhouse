@@ -3,6 +3,7 @@ hooks, the harness hook and the git hooks. Standard library only: the hook scrip
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import shlex
@@ -119,6 +120,28 @@ def _branch(directory: Path) -> str:
                           env=_git_environment()).stdout.strip()
 
 
+def protected():
+    """The `protectedwrites` module beside this file, loaded by file as the hook scripts load this one."""
+    name = "_poolhouse_protectedwrites"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name("protectedwrites.py"))
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def released(cwd: str) -> bool:
+    """Whether the person's release approval for the repository at `cwd` is live (`person-consume peek`)."""
+    tool = Path(__file__).resolve().parents[2] / "scripts" / "hooks" / "person-consume"
+    try:
+        done = subprocess.run([sys.executable, str(tool), "peek"], cwd=cwd or None, capture_output=True, timeout=10,
+                              check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode == 0
+
+
 def edit_refusal(paths: Iterable[str], cwd: str) -> str:
     """Why a write to any of `paths` is refused, empty for permitted development changes."""
     if switched_off():
@@ -126,6 +149,9 @@ def edit_refusal(paths: Iterable[str], cwd: str) -> str:
     base = Path(cwd or Path.cwd())
     for raw in filter(None, paths):
         target = base / _unquote(raw)
+        place = os.path.normpath(str(target))
+        if protected().guarded(place) or protected().guarded(os.path.realpath(place)) or protected().secret(place):
+            return f"{target} is one of the guards, hook settings, the person record or the authority registry: a person changes it."
         found = checkouts(target.parent)
         if found and _enforced(found[1]) and _branch(found[0]) == "main":
             return f"{target} is on main; development changes require a development branch."
@@ -212,6 +238,8 @@ def bash_refusal(command: str, cwd: str) -> str:
     if switched_off():
         return ""
     here = Path(cwd or Path.cwd())
+    if why := protected().refusal(command, str(here), released):
+        return why
     for segment in _segments(command):
         moved = _cd(segment, here)
         if moved is not None:
