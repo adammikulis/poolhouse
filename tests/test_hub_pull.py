@@ -270,6 +270,7 @@ def guarded(monkeypatch):
     monkeypatch.setenv("HF_HOME", "/nonexistent-hf-home")
     with fake_hub(REPOS) as hub_:
         hub_.know(monkeypatch)
+        hub_.official(monkeypatch)
         monkeypatch.setenv("HF_ENDPOINT", hub_.url)
         yield hub_
 

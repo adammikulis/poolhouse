@@ -44,6 +44,7 @@ class FakeHub:
         self.corrupt: set[str] = set()
         self.plain: set[str] = set()
         self.moved: dict[str, int] = {}
+        self.prs: dict[str, dict[str, str]] = {}
         self.downloads: dict[str, int] = {}
         self.hub_seen: list[tuple[str, str, str, str]] = []
         self.cdn_seen: list[tuple[str, str, str, str]] = []
@@ -62,14 +63,22 @@ class FakeHub:
         owners = frozenset(name.split("/")[0] for name in self.repos)
         monkeypatch.setattr("poolhouse.hub.publishers.TRUSTED", publishers.TRUSTED | owners)
 
-    def point(self, monkeypatch: Any, *, known: bool = True) -> None:
+    def official(self, monkeypatch: Any) -> None:
+        """Count this hub's host as the official Hub for the test's length."""
+        host = urllib.parse.urlsplit(self.url).hostname or ""
+        monkeypatch.setattr("poolhouse.hub.publishers.HOSTS", publishers.HOSTS | {host}, raising=False)
+
+    def point(self, monkeypatch: Any, *, known: bool = True, official: bool = True) -> None:
         """Point ``$HF_ENDPOINT`` at this hub, and name its CDN socket as a host that may be reached
         and may be on this machine, as a person running against a mirror would. The hub itself is
         the endpoint; without this a redirect to the CDN is refused like any other private host.
         With ``known`` (the default) the owners of its repositories count as known publishers for
-        the test's length; ``known=False`` leaves the shipped list as it is."""
+        the test's length; ``known=False`` leaves the shipped list as it is. With ``official`` (the
+        default) its host counts as the official Hub; ``official=False`` leaves it a mirror."""
         if known:
             self.know(monkeypatch)
+        if official:
+            self.official(monkeypatch)
         cdn = self.cdn_url.split("//", 1)[1]
         monkeypatch.setenv("HF_ENDPOINT", self.url)
         monkeypatch.setenv("POOLHOUSE_NET_ALLOW_HOSTS", cdn)
@@ -92,11 +101,41 @@ class FakeHub:
                          "lfs": {"oid": digest, "size": len(body)}})
         return rows
 
-    def commit(self, repo: str) -> str:
-        """The commit id the Hub names for ``repo``."""
-        moved = self.moved.get(repo, 0)
+    def commit(self, repo: str, generation: int | None = None) -> str:
+        """The commit id the Hub names for ``repo`` (its ``generation``-th, the newest by default)."""
+        moved = self.moved.get(repo, 0) if generation is None else generation
         return hashlib.sha1(f"commit {repo}{f' {moved}' if moved else ''}".encode(),
                             usedforsecurity=False).hexdigest()
+
+    def refs(self, repo: str) -> dict[str, Any]:
+        """What ``/api/models/<repo>/refs`` answers: the branch, no tags and the pull requests in ``prs``."""
+        pulls = [{"ref": ref, "targetCommit": sha} for ref, sha in self.prs.get(repo, {}).items()]
+        return {"branches": [{"name": "main", "ref": "refs/heads/main",
+                              "targetCommit": self.commit(repo)}],
+                "tags": [], "converts": [], "pullRequests": pulls}
+
+    def about(self, bits: list[str], query: dict[str, list[str]]) -> tuple[int, bytes]:
+        """The status and body for ``/api/models/<owner>/<repo>/{tree,refs,commits,revision}``."""
+        repo = "/".join(bits[2:4])
+        if repo not in self.repos:
+            return 404, b"{}"
+        body: Any
+        if "tree" in bits:
+            body = self.listing(repo)
+        elif bits[-1] == "refs":
+            body = self.refs(repo)
+        elif "commits" in bits:
+            body = self.history(repo) if query.get("p", ["0"])[0] == "0" else []
+        elif "revision" in bits:
+            ref = "/".join(bits[bits.index("revision") + 1:])
+            body = {"id": repo, "sha": self.prs.get(repo, {}).get(ref) or self.commit(repo)}
+        else:
+            return 404, b"{}"
+        return 200, json.dumps(body).encode()
+
+    def history(self, repo: str) -> list[dict[str, str]]:
+        """The commits of ``main``, newest first."""
+        return [{"id": self.commit(repo, n)} for n in range(self.moved.get(repo, 0), -1, -1)]
 
     def search(self, query: str) -> list[dict[str, Any]]:
         return [{"id": name, "downloads": 1000 - n * 100, "likes": n,
@@ -144,18 +183,8 @@ class FakeHub:
                 if bits[:2] == ["api", "models"] and len(bits) == 2:
                     query = urllib.parse.parse_qs(parts.query).get("search", [""])[0]
                     self._send(200, json.dumps(hub.search(query)).encode())
-                elif bits[:2] == ["api", "models"] and "tree" in bits:
-                    repo = "/".join(bits[2:4])
-                    if repo not in hub.repos:
-                        self._send(404, b"{}")
-                    else:
-                        self._send(200, json.dumps(hub.listing(repo)).encode())
-                elif bits[:2] == ["api", "models"] and "revision" in bits:
-                    repo = "/".join(bits[2:4])
-                    if repo not in hub.repos:
-                        self._send(404, b"{}")
-                    else:
-                        self._send(200, json.dumps({"id": repo, "sha": hub.commit(repo)}).encode())
+                elif bits[:2] == ["api", "models"]:
+                    self._send(*hub.about(bits, urllib.parse.parse_qs(parts.query)))
                 elif "resolve" in bits:
                     self._file("/".join(bits[:2]), "/".join(bits[bits.index("resolve") + 2:]))
                 elif cdn and bits[0] == "cdn":

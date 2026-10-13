@@ -128,7 +128,7 @@ class TestCommand:
 
     def test_a_download_flag_in_the_extra_arguments_is_refused(self, binary, gguf):
         for flag in ("-hf", "--hf-repo", "-hfd", "--model-url", "--mmproj-url=http://x/y.gguf"):
-            with pytest.raises(ServerFailed, match="download a model itself"):
+            with pytest.raises(ServerFailed, match="is not a flag Poolhouse passes"):
                 LlamaServerBackend(binary=binary).command(
                     ServerSpec(model=gguf, extra_args=(flag, "owner/repo")))
 

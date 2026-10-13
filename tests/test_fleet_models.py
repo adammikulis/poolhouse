@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import http.server
 import json
 import os
@@ -12,9 +13,11 @@ from pathlib import Path
 import pytest
 from conftest import threaded_server
 
+from poolhouse import http as phttp, hub as hubmod
 from poolhouse.fleet.models import Models
-from poolhouse.fleet.weights import ModelError, resolve
+from poolhouse.fleet.weights import ModelError, reference
 from poolhouse.http import Server
+from poolhouse.testing.fakehub import fake_hub
 from tests.net_site import gguf_bytes
 
 
@@ -35,6 +38,21 @@ def store(tmp_path):
     d = tmp_path / "models"
     d.mkdir()
     return Models([d], d)
+
+
+@pytest.fixture
+def hub_of(monkeypatch, tmp_path):
+    """``hub_of(repos)``: a fake Hub the store pulls from, whose owners are known publishers."""
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hubcache"))
+    monkeypatch.setattr(phttp, "check", lambda url: url)
+    with contextlib.ExitStack() as stack:
+        def make(repos):
+            server = stack.enter_context(fake_hub(repos))
+            server.point(monkeypatch)
+            return server
+
+        yield make
 
 
 def a_model(folder, name="qwen3-4b-q4.gguf", mb=2):
@@ -97,15 +115,15 @@ def handler_replying(status: int, body: dict):
 
 
 class TestSources:
-    def test_a_hugging_face_reference_becomes_a_url(self):
-        url = resolve("hf:Qwen/Qwen3-4B-GGUF/qwen3-4b-q4.gguf")
-        assert url.startswith("https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/")
-        assert url.endswith("qwen3-4b-q4.gguf?download=true")
+    def test_a_hugging_face_reference_is_taken_as_it_is(self):
+        assert reference("hf:Qwen/Qwen3-4B-GGUF/qwen3-4b-q4.gguf") == "hf:Qwen/Qwen3-4B-GGUF/qwen3-4b-q4.gguf"
 
-    @pytest.mark.parametrize("bad", ["just-a-name", "hf:owner", "ftp://somewhere/x.gguf"])
+    @pytest.mark.parametrize("bad", ["just-a-name", "hf:owner", "ftp://somewhere/x.gguf",
+                                     "http://somewhere/x.gguf",
+                                     "https://huggingface.co/o/r/resolve/main/x.gguf"])
     def test_something_that_is_not_a_source_is_refused(self, bad):
         with pytest.raises(ModelError):
-            resolve(bad)
+            reference(bad)
 
     def test_a_repository_alone_is_answered_with_its_q4_build(self, monkeypatch, loopback_net):
         listing = {"siblings": [{"rfilename": n} for n in (
@@ -113,13 +131,13 @@ class TestSources:
             "m-q4_k_m-00001-of-00002.gguf")]}
         with threaded_server(handler_replying(200, listing)) as base:
             monkeypatch.setattr("poolhouse.fleet.weights.LISTING", base + "/api/models")
-            assert resolve("hf:owner/repo").endswith("/owner/repo/resolve/main/m-q4_k_m.gguf?download=true")
+            assert reference("hf:owner/repo") == "hf:owner/repo/m-q4_k_m.gguf"
 
     def test_a_repository_the_hub_does_not_know_is_refused(self, monkeypatch, loopback_net):
         with threaded_server(handler_replying(404, {"error": "not found"})) as base:
             monkeypatch.setattr("poolhouse.fleet.weights.LISTING", base + "/api/models")
             with pytest.raises(ModelError, match="could not read hf:owner/repo"):
-                resolve("hf:owner/repo")
+                reference("hf:owner/repo")
 
 
 class TestGetting:
@@ -136,174 +154,13 @@ class TestGetting:
         with pytest.raises(ModelError, match="no machine on this network"):
             store.ensure("absent.gguf")
 
-    def test_it_downloads_when_no_machine_has_it(self, store, tmp_path):
+    def test_it_downloads_when_no_machine_has_it(self, store, tmp_path, hub_of):
         payload = gguf_bytes(extra=2 * 1024 * 1024)
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        srv = Server(("127.0.0.1", free_port()), H)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        try:
-            got = store.ensure(
-                "far.gguf",
-                source=f"http://127.0.0.1:{srv.server_address[1]}/far.gguf")
-        finally:
-            srv.shutdown()
+        hub_of({"unsloth/far-GGUF": {"far.gguf": payload}})
+        got = store.ensure("far.gguf", source="hf:unsloth/far-GGUF/far.gguf")
 
         assert got.path.read_bytes() == payload
         assert got.path.parent == store.store
-
-    def test_a_short_download_is_left_to_resume_from(self, store):
-        payload = gguf_bytes(extra=1024 * 1024)
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                self.send_response(200)
-                # Claims more than it sends.
-                self.send_header("Content-Length", str(len(payload) * 2))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        srv = Server(("127.0.0.1", free_port()), H)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        try:
-            with pytest.raises(ModelError, match="resume"):
-                store.ensure("short.gguf",
-                             source=f"http://127.0.0.1:{srv.server_address[1]}/s.gguf")
-        finally:
-            srv.shutdown()
-        assert not (store.store / "short.gguf").exists()
-        assert (store.store / "short.gguf.part").exists()
-
-
-class TestResuming:
-    """A .part on disk is a claim about a file. Each test breaks that claim."""
-
-    def serve(self, handler):
-        srv = Server(("127.0.0.1", free_port()), handler)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        return srv
-
-    def test_a_server_that_ignores_range_does_not_get_spliced_onto_the_part(
-            self, store):
-        payload = gguf_bytes(extra=512 * 1024)
-        part = store.store / "m.gguf.part"
-        part.write_bytes(b"\xff" * 4096)
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                # Answers 200 with the whole file even though Range was asked for.
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        srv = self.serve(H)
-        try:
-            got = store.ensure(
-                "m.gguf", source=f"http://127.0.0.1:{srv.server_address[1]}/m.gguf")
-        finally:
-            srv.shutdown()
-
-        assert got.path.read_bytes() == payload
-        assert got.size == len(payload)
-        assert not part.exists()
-
-    def test_a_part_left_by_a_different_file_is_discarded(self, store):
-        payload = gguf_bytes(extra=256 * 1024)
-        part = store.store / "m.gguf.part"
-        part.write_bytes(b"\x00" * 8192)
-        Path(str(part) + ".from").write_text(json.dumps(
-            {"url": "http://elsewhere.invalid/other.gguf", "validator": '"x"'}))
-        seen = []
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                seen.append(self.headers.get("Range"))
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        srv = self.serve(H)
-        try:
-            got = store.ensure(
-                "m.gguf", source=f"http://127.0.0.1:{srv.server_address[1]}/m.gguf")
-        finally:
-            srv.shutdown()
-
-        assert seen == [None], "asked to resume a part belonging to another file"
-        assert got.path.read_bytes() == payload
-
-    def test_a_part_longer_than_the_file_is_refused_not_promoted(self, store):
-        part = store.store / "m.gguf.part"
-        part.write_bytes(b"\x01" * (64 * 1024))
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                self.send_response(416)
-                self.send_header("Content-Range", "bytes */1024")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-
-        srv = self.serve(H)
-        try:
-            with pytest.raises(ModelError, match="discarded"):
-                store.ensure(
-                    "m.gguf",
-                    source=f"http://127.0.0.1:{srv.server_address[1]}/m.gguf")
-        finally:
-            srv.shutdown()
-
-        assert not (store.store / "m.gguf").exists()
-        assert not part.exists()
-
-    def test_a_genuine_resume_asks_for_the_rest_and_keeps_what_it_had(self, store):
-        head, tail = gguf_bytes(extra=4096 - 24), b"B" * 4096
-        part = store.store / "m.gguf.part"
-        part.write_bytes(head)
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                assert self.headers.get("Range") == "bytes=4096-"
-                self.send_response(206)
-                self.send_header("Content-Range", "bytes 4096-8191/8192")
-                self.send_header("Content-Length", str(len(tail)))
-                self.end_headers()
-                self.wfile.write(tail)
-
-        srv = self.serve(H)
-        try:
-            got = store.ensure(
-                "m.gguf", source=f"http://127.0.0.1:{srv.server_address[1]}/m.gguf")
-        finally:
-            srv.shutdown()
-
-        assert got.path.read_bytes() == head + tail
-        assert not part.exists()
 
 
 class TestChoosingAQuant:
@@ -344,8 +201,7 @@ class TestChoosingAQuant:
             raise AssertionError("went to the network for a reference that named a file")
 
         monkeypatch.setattr(mod, "repo_files", refuse)
-        url = mod.resolve("hf:owner/repo/exact-Q8_0.gguf")
-        assert url.endswith("exact-Q8_0.gguf?download=true")
+        assert mod.reference("hf:owner/repo/exact-Q8_0.gguf") == "hf:owner/repo/exact-Q8_0.gguf"
 
 
 class TestReadingWhatAModelIs:
@@ -448,28 +304,12 @@ class TestDraftModels:
         big = a_model(tmp_path / "models", name="lonely.gguf", mb=2)
         assert draft_beside(big) is None
 
-    def test_getting_a_draft_puts_it_next_to_the_model(self, store, tmp_path):
+    def test_getting_a_draft_puts_it_next_to_the_model(self, store, tmp_path, hub_of):
         payload = gguf_bytes(extra=2 * 1024 * 1024)
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        srv = Server(("127.0.0.1", free_port()), H)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        hub_of({"unsloth/join-GGUF": {"d.gguf": payload}})
         big = a_model(tmp_path / "models", name="join.gguf", mb=2)
         model = store.find("join.gguf")
-        try:
-            got = store.ensure_draft(
-                model, f"http://127.0.0.1:{srv.server_address[1]}/d.gguf")
-        finally:
-            srv.shutdown()
+        got = store.ensure_draft(model, "hf:unsloth/join-GGUF/d.gguf")
 
         assert got == big.with_suffix(".draft.gguf")
         assert got.read_bytes() == payload
@@ -652,13 +492,12 @@ class TestPagingAndSearching:
 class TestSuggestions:
     def test_every_one_is_a_reference_this_code_can_resolve(self):
         from poolhouse.fleet.catalogue import SUGGESTED
-        from poolhouse.fleet.weights import resolve
+        from poolhouse.fleet.weights import reference
 
         assert SUGGESTED, "nothing offered at all would pass every check below"
         for pick in SUGGESTED:
             assert pick.ref.startswith("hf:"), pick.ref
-            url = resolve(pick.ref)
-            assert url.startswith("https://huggingface.co/"), url
+            assert reference(pick.ref) == pick.ref
             assert pick.file.endswith(".gguf"), pick.file
             assert pick.gb > 0 and pick.what and pick.name
 
@@ -695,32 +534,15 @@ class TestSuggestions:
 
 
 class TestProgress:
-    def test_the_two_kinds_of_progress_do_not_share_a_callback(self, store):
+    def test_the_two_kinds_of_progress_do_not_share_a_callback(self, store, hub_of):
         """ensure() reports a stage as text and bytes as two numbers. One callback
         taking both would be called with a string and then with a second value."""
         payload = gguf_bytes(extra=512 * 1024)
-
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
-
-        srv = Server(("127.0.0.1", free_port()), H)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        hub_of({"unsloth/m-GGUF": {"m.gguf": payload}})
 
         notes, seen = [], []
-        try:
-            store.ensure("m.gguf",
-                         source=f"http://127.0.0.1:{srv.server_address[1]}/m.gguf",
-                         on_note=notes.append,
-                         on_progress=lambda done, total: seen.append((done, total)))
-        finally:
-            srv.shutdown()
+        store.ensure("m.gguf", source="hf:unsloth/m-GGUF/m.gguf", on_note=notes.append,
+                     on_progress=lambda done, total: seen.append((done, total)))
 
         assert notes == ["Downloading m.gguf"]
         assert seen, "no byte counts arrived"
@@ -730,26 +552,23 @@ class TestProgress:
 
 
 class TestGettingInTheBackground:
-    def serve(self, payload, delay=0.0):
-        import time as clock
+    def held(self, monkeypatch, tmp_path, payload):
+        """A pull that reports half the bytes, waits to be released, then lands the file."""
+        release, halfway = threading.Event(), threading.Event()
 
-        class H(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
+        def pull(ref, dest=None, on_progress=None, cancel=None, *, members=None):
+            from poolhouse.hub.transfer import Progress
 
-            def do_GET(self):
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                for i in range(0, len(payload), 65536):
-                    self.wfile.write(payload[i:i + 65536])
-                    self.wfile.flush()
-                    if delay:
-                        clock.sleep(delay)
+            on_progress(Progress(ref, "downloading", "f", 0, 1, len(payload) // 2, len(payload)))
+            halfway.set()
+            release.wait(20)
+            path = tmp_path / "pulled.gguf"
+            path.write_bytes(payload)
+            on_progress(Progress(ref, "done", "f", 0, 1, len(payload), len(payload)))
+            return path
 
-        srv = Server(("127.0.0.1", free_port()), H)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        return srv
+        monkeypatch.setattr(hubmod, "pull", pull)
+        return release, halfway
 
     def waited(self, downloads, gid, want, timeout=20.0):
         import time as clock
@@ -762,51 +581,33 @@ class TestGettingInTheBackground:
             clock.sleep(0.05)
         raise AssertionError(f"still {row.state} after {timeout}s: {row.error}")
 
-    def test_a_download_runs_without_holding_the_caller(self, store):
+    def test_a_download_runs_without_holding_the_caller(self, store, monkeypatch, tmp_path):
         from poolhouse.fleet.models import Downloads
 
         payload = gguf_bytes(extra=1024 * 1024)
-        srv = self.serve(payload)
+        release, _ = self.held(monkeypatch, tmp_path, payload)
         downloads = Downloads(store)
-        try:
-            started = downloads.start(
-                "big.gguf",
-                source=f"http://127.0.0.1:{srv.server_address[1]}/big.gguf")
-            assert started.state == "getting"
-            done = self.waited(downloads, started.id, "done")
-        finally:
-            srv.shutdown()
+        started = downloads.start("big.gguf", source="hf:unsloth/big-GGUF/big.gguf")
+        assert started.state == "getting"
+        release.set()
+        done = self.waited(downloads, started.id, "done")
 
         assert done.total == len(payload)
         assert done.done == len(payload)
         assert (store.store / "big.gguf").read_bytes() == payload
 
-    def test_how_far_along_it_is_can_be_read_while_it_runs(self, store):
-        """Bigger than one CHUNK, or the whole body arrives in a single read and
-        the only counts ever seen are nothing and everything."""
-        from poolhouse.fleet.models import CHUNK, Downloads
+    def test_how_far_along_it_is_can_be_read_while_it_runs(self, store, monkeypatch, tmp_path):
+        from poolhouse.fleet.models import Downloads
 
-        payload = gguf_bytes(extra=4 * CHUNK)
-        srv = self.serve(payload, delay=0.01)
+        payload = gguf_bytes(extra=4 * 1024 * 1024)
+        release, halfway = self.held(monkeypatch, tmp_path, payload)
         downloads = Downloads(store)
-        try:
-            started = downloads.start(
-                "slow.gguf",
-                source=f"http://127.0.0.1:{srv.server_address[1]}/slow.gguf")
-            import time as clock
-            seen = []
-            for _ in range(200):
-                row = next(g for g in downloads.active() if g.id == started.id)
-                seen.append(row.done)
-                if row.state != "getting":
-                    break
-                clock.sleep(0.05)
-            self.waited(downloads, started.id, "done")
-        finally:
-            srv.shutdown()
-
-        assert any(0 < d < len(payload) for d in seen), (
-            f"only ever saw {sorted(set(seen))}")
+        started = downloads.start("slow.gguf", source="hf:unsloth/slow-GGUF/slow.gguf")
+        assert halfway.wait(10)
+        row = next(g for g in downloads.active() if g.id == started.id)
+        assert 0 < row.done < len(payload), f"saw {row.done}"
+        release.set()
+        self.waited(downloads, started.id, "done")
 
     def test_a_failure_is_reported_rather_than_raised_into_nowhere(self, store):
         from poolhouse.fleet.models import Downloads
@@ -817,20 +618,17 @@ class TestGettingInTheBackground:
         assert row.error
         assert not (store.store / "nope.gguf").exists()
 
-    def test_asking_twice_for_the_same_model_does_not_start_it_twice(self, store):
+    def test_asking_twice_for_the_same_model_does_not_start_it_twice(self, store, monkeypatch, tmp_path):
         from poolhouse.fleet.models import Downloads
 
-        payload = gguf_bytes(extra=512 * 1024)
-        srv = self.serve(payload, delay=0.05)
+        release, _ = self.held(monkeypatch, tmp_path, gguf_bytes(extra=512 * 1024))
         downloads = Downloads(store)
-        try:
-            source = f"http://127.0.0.1:{srv.server_address[1]}/twice.gguf"
-            first = downloads.start("twice.gguf", source=source)
-            again = downloads.start("twice.gguf", source=source)
-            assert again.id == first.id
-            self.waited(downloads, first.id, "done")
-        finally:
-            srv.shutdown()
+        source = "hf:unsloth/twice-GGUF/twice.gguf"
+        first = downloads.start("twice.gguf", source=source)
+        again = downloads.start("twice.gguf", source=source)
+        assert again.id == first.id
+        release.set()
+        self.waited(downloads, first.id, "done")
         assert len([g for g in downloads.active() if g.name == "twice.gguf"]) == 1
 
 
@@ -983,36 +781,6 @@ class TestCaches:
 
 
 
-class TestTheResumeStamp:
-    """A resume sends ``If-Range`` from what this record holds, so reading one whose shape
-    is unknown would resume a download against the wrong validator."""
-
-    def test_a_stamp_round_trips_with_its_version(self, tmp_path):
-        from poolhouse.files import version_of
-        from poolhouse.fleet.models import STAMP_VERSION, _read_stamp, _write_stamp
-
-        stamp = tmp_path / "m.gguf.part.from"
-        _write_stamp(stamp, "http://x/y.gguf", {"ETag": "abc"})
-        assert version_of(json.loads(stamp.read_text())) == STAMP_VERSION
-        assert _read_stamp(stamp) == {"version": STAMP_VERSION, "url": "http://x/y.gguf",
-                                 "validator": "abc"}
-
-    def test_a_stamp_written_before_the_key_existed_is_still_read(self, tmp_path):
-        from poolhouse.fleet.models import _read_stamp
-
-        stamp = tmp_path / "m.gguf.part.from"
-        stamp.write_text(json.dumps({"url": "http://x/y.gguf", "validator": "abc"}))
-        assert _read_stamp(stamp)["url"] == "http://x/y.gguf"
-
-    def test_a_stamp_from_a_newer_poolhouse_is_not_resumed_against(self, tmp_path):
-        from poolhouse.fleet.models import STAMP_VERSION, _read_stamp
-
-        stamp = tmp_path / "m.gguf.part.from"
-        stamp.write_text(json.dumps({"version": STAMP_VERSION + 1, "url": "http://x/y.gguf",
-                                     "validator": "abc"}))
-        assert _read_stamp(stamp) == {}
-
-
 class TestWhereADownloadMayComeFrom:
     def test_a_source_on_this_machine_or_its_network_is_refused_unless_named(
             self, store, monkeypatch):
@@ -1020,7 +788,7 @@ class TestWhereADownloadMayComeFrom:
         for source in ("http://127.0.0.1:9/m.gguf", "http://169.254.169.254/latest/m.gguf",
                        "http://localhost/m.gguf", "http://192.168.1.9/m.gguf",
                        "http://[::1]/m.gguf"):
-            with pytest.raises(ModelError, match=r"not on the public internet|this machine"):
+            with pytest.raises(ModelError, match="not a Hugging Face reference"):
                 store.ensure("m.gguf", source=source)
         assert not list(store.store.glob("*"))
 
@@ -1029,25 +797,6 @@ class TestWhereADownloadMayComeFrom:
     def test_a_file_name_that_is_not_one_plain_name_is_refused(self, store, name):
         with pytest.raises(ModelError):
             store.ensure(name, source="http://127.0.0.1:9/whatever.gguf")
-        assert not list(store.store.glob("*"))
-
-    def test_a_redirect_to_a_private_address_is_refused(self, store):
-        class Redirecting(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                self.send_response(302)
-                self.send_header("Location", "http://169.254.169.254/latest/meta-data/")
-                self.end_headers()
-
-        srv = Server(("127.0.0.1", free_port()), Redirecting)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        try:
-            with pytest.raises(ModelError, match=r"169\.254\.169\.254"):
-                store.ensure("far.gguf", source=f"http://127.0.0.1:{srv.server_address[1]}/f")
-        finally:
-            srv.shutdown()
         assert not list(store.store.glob("*"))
 
 

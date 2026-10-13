@@ -21,7 +21,7 @@ from poolhouse.client import families, wait_for_health
 from poolhouse.platform import process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache
 from poolhouse.serve.binary import child_env, require_binary
-from poolhouse.serve.downloads import clean_env, download_flag
+from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.logs import prune
@@ -570,9 +570,9 @@ class LlamaServerBackend(ServerBackend):
                          for flag in spec.extra_args)
         if defaults and spec.jinja and not spec.embedding and not spec.reranking and not overridden:
             argv += ["--chat-template-kwargs", json.dumps(defaults, separators=(",", ":"))]
-        if flag := download_flag(list(spec.extra_args)):
-            raise ServerFailed(f"{flag} makes llama-server download a model itself; models are "
-                               f"fetched through poolhouse.hub and served by path")
+        if flag := unlisted_flag(list(spec.extra_args), LLAMA_FLAGS):
+            raise ServerFailed(f"{flag} is not a flag Poolhouse passes to llama-server: a flag that "
+                               f"names a file or a repository is set on the spec and verified")
         argv += list(spec.extra_args)
         return argv
 

@@ -20,7 +20,7 @@ from poolhouse.testing.fakehub import fake_hub
 from poolhouse.testing.fakes import fake_binary
 
 FILE = "thing-Q4_K_M.gguf"
-SENTENCE = ("This model is from {who}, who Poolhouse does not know. "
+SENTENCE = ("This model is from {who}, who Poolhouse does not know. It is {repo} at {commit}. "
             "Models can hide behaviour that tests do not show. Use it anyway?")
 
 
@@ -105,12 +105,14 @@ def test_a_model_from_an_unlisted_publisher_is_refused_and_asks_a_person(stand):
     server = stand(repos("maker/thing-GGUF"))
     with pytest.raises(admission.NotApproved) as raised:
         hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
-    assert str(raised.value).startswith(SENTENCE.format(who="maker"))
+    said = SENTENCE.format(who="maker", repo="maker/thing-GGUF", commit=server.commit("maker/thing-GGUF")[:12])
+    assert str(raised.value).startswith(said)
     assert server.downloads == {} and pins() == {}
     (waiting,) = asked()
-    assert waiting.human_only and waiting.reason.startswith(SENTENCE.format(who="maker"))
+    assert waiting.human_only and waiting.reason == said
     assert dict(waiting.extra) == {"publisher": "maker", "repo": "maker/thing-GGUF",
-                                   "commit": server.commit("maker/thing-GGUF")}
+                                   "commit": server.commit("maker/thing-GGUF"),
+                                   "host": server.url.split("//", 1)[1]}
     assert [c.id for c in waiting.choices] == ["approve", "deny"]
 
 
@@ -183,8 +185,10 @@ def test_a_request_in_other_words_is_not_an_approval_of_the_pull(stand):
     server = stand(repos("maker/thing-GGUF"))
     commit = server.commit("maker/thing-GGUF")
     requests.raise_request(requests.Ask(
-        "model_publisher", "maker/thing-GGUF", "Allow a harmless background task?", ("approve", "deny"),
-        extra=(("publisher", "maker"), ("repo", "maker/thing-GGUF"), ("commit", commit))))
+        "model_publisher", f"maker/thing-GGUF@{commit[:12]}", "Allow a harmless background task?",
+        ("approve", "deny"),
+        extra=(("publisher", "maker"), ("repo", "maker/thing-GGUF"), ("commit", commit),
+               ("host", server.url.split("//", 1)[1]))))
     assert approve("model_publisher") == 1
     with pytest.raises(admission.NotApproved):
         hub.pull(f"hf:maker/thing-GGUF/{FILE}", members=False)
@@ -316,8 +320,8 @@ def test_the_download_flags_and_variables_of_llama_server_are_never_passed(monke
 
     for flag in ("-hf", "-hfd", "--hf-repo", "--hf-file=x", "-mu", "--model-url", "--mmproj-url",
                  "--hf-token", "-dr"):
-        assert downloads.download_flag(["--ctx-size", "8", flag, "owner/x"]) == flag.split("=")[0]
-    assert downloads.download_flag(["--ctx-size", "8", "--jinja"]) == ""
+        assert downloads.unlisted_flag(["--ctx-size", "8", flag, "owner/x"], downloads.LLAMA_FLAGS) == flag.split("=")[0]
+    assert downloads.unlisted_flag(["--ctx-size", "8", "--threads", "4", "-1"], downloads.LLAMA_FLAGS) == ""
     kept = downloads.clean_env({"LLAMA_ARG_HF_REPO": "a/b", "LLAMA_ARG_HFD_REPO": "a/b",
                                 "LLAMA_ARG_MODEL_URL": "http://x", "LLAMA_ARG_MMPROJ_URL": "u",
                                 "LLAMA_ARG_N_GPU_LAYERS": "99", "PATH": "/bin"})

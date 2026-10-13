@@ -366,19 +366,32 @@ Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`
   `bartowski`, `lmstudio-community`) and matches the whole owner of `owner/repo` character for character: a different case,
   a trailing dot, a lookalike or zero-width character, a longer name or a fork of the same repository name under another owner
   is not a known publisher, and a name that is not a Hub name (ASCII letters, digits, `.`, `-`, `_`, no `..`) is not parsed.
-  A pull resolves the revision to its 40-character commit before anything is listed or fetched, so every request names the
-  commit and a branch that moves between the listing and the download is not followed. `hub/admission.py` then refuses until a
-  person approves when the publisher is unknown, when the repository or a file name carries an altered-model marker
-  (abliterated, uncensored, no-refusal and the like, compared without case, separators or lookalikes), or when a file's digest
-  differs from the one pinned for the same repository path under another commit. The request is a human-only `model_publisher`
-  request with one sentence ("This model is from X, who Poolhouse does not know. Models can hide behaviour that tests do not
-  show. Use it anyway?"), approved for that publisher, repository and commit only; answering it passes `require_person`
-  whatever the authority registry delegates, and the shipped list has no add path. A digest that differs at a commit already
-  pulled (a commit cannot change) is not downloaded; the file is quarantined under `hub:<repo>/<path>@<commit>` and a person
-  releases it with `poolhouse-security release`. The pin records `publisher`, `commit` and `source_ref`.
-* **llama-server downloads nothing.** `LlamaServerBackend.command` refuses an `hf:` model, projector or draft (`--hf-repo`,
-  `-hfd` and `--mmproj-url` are not emitted), refuses a download flag in `extra_args`, and the child's `LLAMA_ARG_` repository,
-  URL and token variables are removed; the draft and projector are fetched through the same pull as the model.
+  A publisher is known only on the official Hub (`huggingface.co`, `hf.co`): on any other `HF_ENDPOINT` host every
+  publisher asks, with the host in the words and in the fields the approval binds. A pull resolves the revision to its
+  40-character commit before anything is listed or fetched, so every request names the commit. A known publisher's commit must
+  be the head of a branch or tag, or in the first pages of `main`'s history (`/refs`, `/commits/main`); a pull request's commit
+  (`@refs/pr/7` or its hash) asks, saying the file is not from the publisher's own branch. `hub/admission.py` refuses until a
+  person approves when the publisher is unknown, the file is not from the publisher's branch, the repository or a file name
+  carries an altered-model marker (`publishers.MARKERS`: abliterated, uncensored, no-refusal, unleashed, nsfw, dolphin and the
+  like, compared without case, separators, lookalikes or leet spelling; `fleet/catalogue.py` reads the same list), or a file's
+  digest differs from the one pinned for the same repository path under another commit. The request is a human-only
+  `model_publisher` request whose words carry the publisher (and host), the repository and the first 12 hex of the commit
+  ("This model is from X, who Poolhouse does not know. It is X/repo at 1a2b3c4d5e6f. Models can hide behaviour that tests do not
+  show. Use it anyway?"). It is approved for that publisher, host, repository and commit only, and only when the approved
+  request's subject, words and fields are exactly the ones the check builds, so a request raised in other words by anything else
+  approves nothing. At most ten such requests wait. Answering it passes `require_person` whatever the authority registry
+  delegates, and the shipped list has no add path. A digest that differs at a commit already pulled (a commit cannot change) is
+  not downloaded; the file is quarantined under `hub:<repo>/<path>@<commit>` and a person releases it with
+  `poolhouse-security release`. The pin records `publisher`, `commit` and `source_ref`. Every other way a model arrives goes
+  through the same pull: the fleet's model download (`fleet/models.py`, Hugging Face references only), the vLLM and SGLang
+  engines (a local path, no token, offline) and a training base (`hub.base_folder`).
+* **llama-server downloads nothing and loads only what was verified.** `LlamaServerBackend.command` refuses an `hf:` model,
+  projector or draft (`--hf-repo`, `-hfd` and `--mmproj-url` are not emitted); `extra_args` (a profile's too) may carry only the
+  tuning flags of `serve/downloads.py` (`LLAMA_FLAGS`), so `-m`, `--model`, `-md`, `--mmproj`, `--lora`, `--control-vector`,
+  `--chat-template-file`, `--lookup-cache-static`, `-mv`, `-Hf` and any flag not on the list are refused; the child's `LLAMA_ARG_`
+  repository, URL and token variables are removed. A start verifies the weights, the draft, the projector, the chat template and
+  the static lookup cache (`guarded.parts_of`). `sentinel baseline --pin FILE --kind model` is a person's, and a pin counts
+  as vouching for another file's bytes only when it came from a pull, a person, or a signed list.
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps
   (so `hub.pull`, `hub.fetch`, `hub.snapshot`, a file from a member in member-first, and the other
@@ -403,9 +416,9 @@ Not armed:
 * A known publisher's namespace can be compromised: a first pull of a replaced file from a known publisher passes (the
   digest comes from the same Hub listing), and a re-upload under a new commit asks only when this machine pulled that path
   before. The list ships with the code and is not signed or updatable.
-* A model from another device (member-first copies are pinned against the Hub's digest, but the repository's publisher is
-  checked on the pull that asked for it), a model a person loads from a path, and the fleet's own model download
-  (`fleet/models.py`, `hf:` references and plain URLs) are not covered by the publisher check.
+* A copy from another device that is not on the Hub has no publisher and nothing asks about it (member-first copies are
+  checked against the Hub's digest on a pull that already passed the publisher check), and a model a person loads from a path
+  is asked about once (`model_file`), not checked for who made it.
 * A manifest is matched by file name. A list that names `x.gguf` applies to any local file called `x.gguf`.
 * A list reaches the load check only after a fetch ran on this machine (member-first pull or the onboarding `fetch` command);
   there is no command yet that accepts a list from a file, and no vendor-published digest list is read.

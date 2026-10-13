@@ -7,8 +7,16 @@ import re
 from poolhouse import net
 from poolhouse.http import ServerError
 
-__all__ = ["BESIDE", "QUANTS", "ModelError", "is_a_piece", "is_beside", "quant_in",
-           "repo_files", "resolve"]
+__all__ = [
+    "BESIDE",
+    "QUANTS",
+    "ModelError",
+    "is_a_piece",
+    "is_beside",
+    "quant_in",
+    "reference",
+    "repo_files",
+]
 
 
 class ModelError(RuntimeError):
@@ -21,25 +29,21 @@ QUANTS = ("q4_k_m", "q4_k_s", "q4_1", "q4_0", "q5_k_m", "q8_0")
 LISTING = "https://huggingface.co/api/models"
 
 
-def resolve(source: str) -> str:
-    """``hf:owner/repo/file.gguf``, ``hf:owner/repo``, or a plain URL.
+def reference(source: str) -> str:
+    """``hf:owner/repo/file.gguf``, or ``hf:owner/repo`` answered with its Q4 build, as `hub.pull` takes it.
 
-    A reference naming only a repository is answered with its Q4 build, which is the
-    one worth having on a machine that has to fit the model in memory.
+    Only a Hugging Face reference is a source: it is fetched at its commit, from a publisher a person
+    has approved or Poolhouse knows.
     """
     source = source.strip()
-    if source.startswith("hf:"):
-        ref = source[3:].strip("/")
-        parts = ref.split("/")
-        if len(parts) == 2:
-            parts = [parts[0], parts[1], quant_in(parts[0], parts[1])]
-        if len(parts) < 3:
-            raise ModelError(f"{source!r} should look like hf:owner/repo/file.gguf")
-        owner, repo, path = parts[0], parts[1], "/".join(parts[2:])
-        return f"https://huggingface.co/{owner}/{repo}/resolve/main/{path}?download=true"
-    if source.startswith(("http://", "https://")):
-        return source
-    raise ModelError(f"{source!r} is not a URL or an hf: reference")
+    if not source.startswith("hf:"):
+        raise ModelError(f"{source!r} is not a Hugging Face reference (hf:owner/repo/file.gguf)")
+    parts = source[3:].strip("/").split("/")
+    if len(parts) == 2:
+        parts = [parts[0], parts[1], quant_in(parts[0], parts[1])]
+    if len(parts) < 3:
+        raise ModelError(f"{source!r} should look like hf:owner/repo/file.gguf")
+    return "hf:" + "/".join(parts)
 
 
 def repo_files(owner: str, repo: str) -> list[str]:

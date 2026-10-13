@@ -34,8 +34,20 @@ CHUNK = 1 << 20
 MARGIN = 256 * 1024 * 1024
 """Free space left over after a download."""
 
-__all__ = ["CancelToken", "Cancelled", "ChecksumMismatch", "GatedRepo", "NotEnoughSpace",
-           "NotFound", "Progress", "held_snapshot", "plan", "pull", "snapshot"]
+__all__ = [
+    "CancelToken",
+    "Cancelled",
+    "ChecksumMismatch",
+    "GatedRepo",
+    "NotEnoughSpace",
+    "NotFound",
+    "Progress",
+    "base_folder",
+    "held_snapshot",
+    "plan",
+    "pull",
+    "snapshot",
+]
 
 
 class Cancelled(Exception):
@@ -366,6 +378,14 @@ def _snapshot_files(parsed: remote.Ref, files: list[RemoteFile], dest: str | Pat
     if not chosen:
         raise NotFound(f"{parsed.repo} has no files")
     return _bring(parsed, chosen, dest, run)
+
+
+def base_folder(base: str) -> str:
+    """A base model to train from, as a folder: ``base`` when it is one on this machine, else the snapshot
+    of the repository (``hf:owner/repo`` or ``owner/repo``) pulled through the publisher check."""
+    if Path(base).expanduser().is_dir():
+        return str(Path(base).expanduser())
+    return str(snapshot(base.removeprefix("hf:")))
 
 
 def held_snapshot(repo: str) -> Path | None:

@@ -6,18 +6,23 @@ from __future__ import annotations
 import re
 import unicodedata
 
-__all__ = ["MARKERS", "ORDER", "TRUSTED", "marker", "namespace", "trusted", "valid_name"]
+__all__ = ["HOSTS", "MARKERS", "ORDER", "TRUSTED", "marker", "namespace", "official", "trusted", "valid_name"]
 
 ORDER = ("Qwen", "unsloth", "ggml-org", "google", "bartowski", "lmstudio-community")
 """The known publishers, best first. A name is matched to one exactly, character for character."""
 
 TRUSTED = frozenset(ORDER)
 
+HOSTS = frozenset({"huggingface.co", "hf.co"})
+"""The hosts of the official Hub: a known publisher is known only on one of them."""
+
 _NAME = re.compile(r"[A-Za-z0-9_](?:[A-Za-z0-9._-]{0,94}[A-Za-z0-9_])?")
 
-MARKERS = ("abliterat", "uncensor", "decensor", "unfilter", "norefusal", "refusalfree",
-           "withoutrefusal", "jailbr", "unaligned", "unrestricted", "orthogonaliz", "heretic")
-"""Name fragments, with case and separators removed, of models changed to answer what the original refuses."""
+MARKERS = ("abliterat", "ablit", "obliterat", "uncensor", "decensor", "unfilter", "norefusal", "refusalfree",
+           "withoutrefusal", "jailbr", "unaligned", "unrestricted", "unleashed", "unchained", "nsfw", "unsafe",
+           "lorablated", "dolphin", "orthogonaliz", "heretic")
+"""Name fragments, with case, separators, lookalikes and leet spelling removed, of models changed to answer what
+the original refuses."""
 
 
 def valid_name(name: str) -> bool:
@@ -43,15 +48,25 @@ def trusted(repo: str) -> bool:
 
 
 _LOOKALIKES = str.maketrans("\u0430\u0435\u043e\u0440\u0441\u0456\u0443\u0445\u0458\u0455", "aeopciuxjs")
+_LEET = str.maketrans("1l|!034@57$", "iiiioeaasts")
 
 
-def _plain(text: str) -> str:
-    folded = unicodedata.normalize("NFKD", text).casefold().translate(_LOOKALIKES)
-    kept = (c for c in folded if not unicodedata.combining(c) and c.isalnum())
-    return "".join(kept)
+def _fold(text: str) -> str:
+    folded = unicodedata.normalize("NFKD", text).casefold().translate(_LOOKALIKES).translate(_LEET)
+    return "".join(c for c in folded if not unicodedata.combining(c) and c.isalnum())
+
+
+_FOLDED = tuple((word, _fold(word)) for word in MARKERS)
+
+
+def official(host: str) -> bool:
+    """Whether ``host`` (a host name, with or without a port) is the official Hub."""
+    name = host.lower().rsplit("@", 1)[-1]
+    name = name.split(":", 1)[0] if name.count(":") == 1 else name
+    return name.rstrip(".") in HOSTS
 
 
 def marker(*names: str) -> str:
     """The first name marker found in ``names`` (a repository or file name), or ''."""
-    flat = "|".join(_plain(name) for name in names)
-    return next((m for m in MARKERS if m in flat), "")
+    flat = "|".join(_fold(name) for name in names)
+    return next((word for word, folded in _FOLDED if folded in flat), "")

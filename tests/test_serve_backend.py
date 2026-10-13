@@ -491,12 +491,12 @@ class TestLaunchRefusal:
                             lambda *a, **k: (_ for _ in ()).throw(AssertionError("started")))
         gguf = tmp_path / "model.gguf"
         gguf.write_bytes(b"GGUF" + b"\x00" * 64)
-        spec = ServerSpec(model=gguf, extra_args=("--draft-max", "3", "--zzqx", "1"))
+        spec = ServerSpec(model=gguf, extra_args=("--draft-max", "3", "--swa-full", "1"))
         with pytest.raises(UnknownFlag) as caught:
             leased(LlamaServerBackend(binary=binary), spec, timeout=1.0)
         assert str(caught.value).splitlines() == [
             "this llama-server has no --draft-max; it has --spec-draft-n-max",
-            "this llama-server has no --zzqx",
+            "this llama-server has no --swa-full",
         ]
 
     def test_it_is_a_value_error_and_not_a_failed_server(self, tmp_path):

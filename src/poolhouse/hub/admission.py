@@ -4,9 +4,10 @@ model was altered, and bytes that match what was pulled before. Anything else wa
 from __future__ import annotations
 
 from poolhouse import sentinel
-from poolhouse.hub import publishers
+from poolhouse.hub import publishers, remote
 from poolhouse.hub.remote import Ref, RemoteError, RemoteFile
 from poolhouse.requests.approvals import approved, ask
+from poolhouse.requests.model import shown
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HIGH, finding
 
@@ -61,17 +62,24 @@ def admit(ref: Ref, files: list[RemoteFile]) -> None:
     if len(ref.commit) != 40:
         raise ValueError(f"{ref.text} must be resolved to a commit before it is fetched")
     publisher = publishers.namespace(ref.repo)
+    host = remote.endpoint_host()
+    official = publishers.official(host)
     why = []
-    if publisher not in publishers.TRUSTED:
+    if not official:
+        why.append(f"This model is from {publisher} on {host}, a Hub Poolhouse does not know.")
+    elif publisher not in publishers.TRUSTED:
         why.append(f"This model is from {publisher}, who Poolhouse does not know.")
+    elif not remote.on_branch(ref.repo, ref.commit):
+        why.append(f"This file is not from {publisher}'s own branch.")
     if publishers.marker(ref.repo, *(f.path for f in files)):
         why.append("Its name says it was changed to answer what the original would refuse.")
     if moved := _changed(ref, files):
-        why.append(f"{moved[0]} is not the file Poolhouse pulled from {ref.repo} before.")
+        why.append(f"{shown(moved[0], 'label')} is not the file Poolhouse pulled from {ref.repo} before.")
     if not why:
         return
-    fields = {"publisher": publisher, "repo": ref.repo, "commit": ref.commit}
-    sentence = " ".join((*why, CLOSING))
-    if approved("model_publisher", sentence, **fields):
+    fields = {"publisher": publisher, "repo": ref.repo, "commit": ref.commit, "host": host}
+    subject = f"{ref.repo}@{ref.commit[:12]}"
+    sentence = " ".join((*why, f"It is {ref.repo} at {ref.commit[:12]}.", CLOSING))
+    if approved("model_publisher", subject, sentence, **fields):
         return
-    raise NotApproved(ask("model_publisher", f"{ref.repo}@{ref.commit[:12]}", sentence, **fields))
+    raise NotApproved(ask("model_publisher", subject, sentence, **fields))

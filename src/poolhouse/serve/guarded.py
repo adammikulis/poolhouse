@@ -13,6 +13,7 @@ from poolhouse import sentinel
 from poolhouse.files import sha256_file
 from poolhouse.fleet.onboard.trusted import TrustedLists
 from poolhouse.requests import approvals
+from poolhouse.requests.model import shown
 from poolhouse.sentinel import Sentinel
 from poolhouse.sentinel.adapters import broker_listener, serve_hooks
 from poolhouse.sentinel.events import Event, Severity
@@ -35,6 +36,9 @@ class SentinelRefused(ServerFailed):
 
 
 _HOOKED: weakref.WeakKeyDictionary[Sentinel, set[str]] = weakref.WeakKeyDictionary()
+
+VOUCHING = frozenset({"pull", "approved", "manifest", "pinned-digest"})
+"""The pin sources whose bytes another file may be matched to: a download, a person, a signed list."""
 
 
 def file_of(model: object) -> Path | None:
@@ -159,20 +163,25 @@ def _by_manifest(node: Sentinel, path: Path, digest: str, name: str) -> str:
 
 def _first_use(node: Sentinel, path: Path, digest: str, vouched: bool) -> str:
     """The source of the pin for a file with none: a signed list that names it, bytes already pinned
-    elsewhere, or a person's approval of this path and these bytes. Otherwise a person is asked and
-    `SentinelRefused` is raised (sentinel in ``observe`` mode records the file and goes on)."""
+    elsewhere (a pin a download, a person or a signed list made), or a person's approval of this path
+    and these bytes. Otherwise a person is asked and `SentinelRefused` is raised, in every mode."""
     if vouched:
         return "manifest"
-    if node.manifest.pin_with_digest(digest) is not None:
+    if (held := node.manifest.pin_with_digest(digest)) is not None and held.source in VOUCHING:
         return "pinned-digest"
     sentence = (f"{path.name} was not downloaded by Poolhouse and Poolhouse has not seen it before. "
+                f"It is {shown(str(path), 'subject')} (sha256 {digest[:12]}). "
                 f"Models can hide behaviour that tests do not show. Use it anyway?")
-    if approvals.approved("model_file", sentence, path=str(path), sha256=digest):
+    if approvals.approved("model_file", path.name, sentence, path=str(path), sha256=digest):
         return "approved"
-    if node.mode == sentinel.Mode.OBSERVE:
-        return "first-use"
-    asked = approvals.ask("model_file", path.name, sentence, path=str(path), sha256=digest)
-    raise SentinelRefused(asked)
+    raise SentinelRefused(approvals.ask("model_file", path.name, sentence, path=str(path), sha256=digest))
+
+
+def parts_of(spec: Any) -> tuple[object, ...]:
+    """What a start reads from disk and so verifies: the weights, the draft unless its head is embedded,
+    the projector, the chat template and the static lookup cache."""
+    drafted = spec.draft if spec.mtp is not True else None
+    return (spec.model, drafted, spec.mmproj, spec.chat_template_file, spec.lookup_static)
 
 
 def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> str:

@@ -16,8 +16,8 @@ pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
 
 
-def test_each_engine_builds_its_own_server_command():
-    spec = ServerSpec(model="Qwen/Qwen3-0.6B", port=9001, context=8192, parallel=4, engine="vllm")
+def test_each_engine_builds_its_own_server_command(tmp_path):
+    spec = ServerSpec(model=str(tmp_path), port=9001, context=8192, parallel=4, engine="vllm")
     vllm = VllmBackend().command(spec)
     assert vllm[:3] == [sys.executable, "-m", "vllm.entrypoints.openai.api_server"]
     assert vllm[vllm.index("--max-model-len") + 1] == "8192"
