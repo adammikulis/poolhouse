@@ -29,7 +29,8 @@ SECRET_CLI: dict[str, re.Pattern[str]] = {
     "pip3": re.compile(r"config (?:list|get|debug)"),
 }
 OPENERS = frozenset({"open", "xdg-open", "gnome-open", "kde-open", "start", "explorer", "wslview", "gio"})
-PROGRAM_SUFFIXES = (".command", ".app", ".pkg", ".dmg", ".sh", ".scpt", ".workflow", ".terminal", ".jar", ".py", ".bat", ".cmd", ".ps1", ".exe", ".msi")
+PROGRAM_SUFFIXES = (".command", ".app", ".pkg", ".dmg", ".sh", ".scpt", ".workflow", ".terminal", ".jar", ".py", ".bat", ".cmd", ".ps1", ".exe", ".msi", ".plist")
+ADMIN = frozenset({"sudo", "doas", "su", "pkexec", "runuser", "gosu", "sudoedit"})
 PACKAGE_CONFIG = re.compile(r"config (?:list|ls)\b|token\b|config get \S*(?:auth|token|password)")
 NETWORK = frozenset({"curl", "wget", "http", "https", "xh", "aria2c"})
 LOOKUPS = frozenset({"ping", "host", "dig", "nslookup", "traceroute", "tracepath", "whois", "mtr"})
@@ -48,8 +49,19 @@ def _environment(name: str, args: list[str]) -> list[Finding]:
     dump = (name == "set" and not args) or (name in ("export", "declare", "typeset") and ("-p" in flags or "-x" in flags or not args))
     if dump or (name == "compgen" and "-v" in flags):
         return [Finding(U, f"{name} lists the shell's variables, and some hold keys")]
-    bsd = name == "ps" and any((re.fullmatch(r"[A-Za-z]*e[A-Za-z]*", a) and not a.startswith("-")) or a in ("-E", "--environment") for a in args)
-    return [Finding(U, "ps shows each process's environment, where keys are kept")] if bsd else []
+    return _processes(name, args)
+
+
+def _processes(name: str, args: list[str]) -> list[Finding]:
+    if name != "ps":
+        return []
+    for at, arg in enumerate(args):
+        bundle = arg.lstrip("-") if re.fullmatch(r"-?[A-Za-z]+", arg) else ""
+        shows = ("E" in bundle) or (bool(bundle) and not arg.startswith("-") and "e" in bundle)
+        listed = at and args[at - 1] in ("-o", "-O", "--format") and re.search(r"\benv(?:iron)?\b", arg)
+        if arg in ("--environment", "--format=environ") or shows or listed or re.fullmatch(r"-[oO].*\benv\b.*|--format=.*\benv.*", arg):
+            return [Finding(U, "ps shows each process's environment, where keys are kept")]
+    return []
 
 
 def _cli(name: str, args: list[str]) -> list[Finding]:
@@ -78,10 +90,8 @@ def _opens(name: str, args: list[str]) -> list[Finding]:
         return []
     for word in (a for a in args if not a.startswith("-")):
         if urlscan.looks_like_url(word):
-            why = urlscan.reason(word)
-            if why:
-                return [Finding(U, f"{name} opens an address that {why}")]
-        elif word.lower().endswith(PROGRAM_SUFFIXES):
+            return [Finding(U, f"{name} opens an address in the person's browser" + (f", and it {why}" if (why := urlscan.reason(word)) else ""))]
+        if word.lower().endswith(PROGRAM_SUFFIXES):
             return [Finding(U, f"{name} starts a program or script")]
     return []
 
@@ -90,6 +100,8 @@ def review(name: str, args: list[str]) -> list[Finding]:
     """Findings for one command: a dump of keys or the environment, a variable holding a secret, a
     long encoded host name, a variable sent over the network or an archive or patch unpacked."""
     found = _environment(name, args) + _cli(name, args) + _unpacks(name, args) + _opens(name, args)
+    if name in ADMIN:
+        found.append(Finding(U, f"{name} runs a command with administrator rights"))
     if any(SECRET_VAR.search(a) for a in args):
         found.append(Finding(U, "uses a variable that holds a key, token or password"))
     if name in NETWORK and any(has_expansion(a) for a in args):

@@ -4,50 +4,17 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
+from exec_chain_kit import BODY, ROLES, asks, bash, stops
 
 from poolhouse import harnesshook, requests, secretpaths
 from poolhouse.guard import harm, policy
 from poolhouse.harnesspolicy import decide
-from poolhouse.net import git
-from poolhouse.requests import store
 
-ROLES = ("approve-first", "plan-and-go")
+pytest_plugins = ["exec_chain_kit"]
 SRC = Path(__file__).resolve().parent.parent / "src" / "poolhouse"
 
-
-@pytest.fixture
-def world(tmp_path, monkeypatch):
-    home = tmp_path / "home"
-    for sub in (".ssh", ".aws", ".config/gh", ".poolhouse/node", ".gnupg", ".kube", ".docker", "Library/Keychains"):
-        (home / sub).mkdir(parents=True)
-    (home / ".ssh" / "id_ed25519").write_text("private")
-    proj = tmp_path / "proj"
-    for sub in (".git/hooks", "src", "tests", "scripts", "docs"):
-        (proj / sub).mkdir(parents=True)
-    git.run(["init", "-q", str(proj)])
-    (proj / ".env").write_text("TOKEN=1\n")
-    (proj / "src" / "app.py").write_text("print(1)\n")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("POOLHOUSE_HOME", str(home / ".poolhouse"))
-    return SimpleNamespace(home=home, proj=proj, roots=(str(proj),), tmp=tmp_path)
-
-
-def bash(world, role, command):
-    return decide(role, "Bash", {"command": command}, roots=world.roots)
-
-
-def asks(got):
-    return got.action == "ask" and got.kind == "tool_call_destructive"
-
-
-def stops(got):
-    return got.action in ("ask", "deny")
-
-
-BODY = "import json\n\n\ndef load(path):\n    return json.loads(path.read_text())\n"
 
 AUTO_RUN = [
     ".git/hooks/pre-commit", ".git/hooks/post-merge", ".git/config", ".claude/settings.local.json",
@@ -461,7 +428,7 @@ QUIET = [
     "sed -n 1,20p src/app.py", "cat .gitignore", "scripts/test all tests/test_app.py", "ruff check src", "ruff format src/app.py",
     "git branch --show-current", "git show HEAD --stat", "mkdir -p src/new", "touch src/new/__init__.py", "chmod 600 .env",
     "curl -s https://docs.python.org/3/library/re.html", "cat src/*.py", "head -5 tests/test_*.py", "git fetch origin",
-    "cp -r src src_copy", "mv src/app.py src/app2.py", "ln -s app.py src/link.py", "open https://docs.python.org/3/", "ls docs | xargs grep x",
+    "cp -r src src_copy", "mv src/app.py src/app2.py", "ln -s app.py src/link.py", "ls docs | xargs grep x",
     "tar czf /tmp/x.tgz src", "git ls-files -m | xargs git diff --", "grep -rn token src | head", "rg -g '*.py' TODO src", "printenv HOME", "echo $PATH",
     "git config --get remote.origin.url", "git diff --name-only | xargs grep -l foo", "bundle exec rspec spec/a_spec.rb", "cat ~nosuchaccount/notes.txt",
     "scripts/test all tests/test_app.py -k credentials", "git log --grep=secrets.json --oneline",
@@ -501,23 +468,6 @@ class TestOrdinarySessions:
     def test_a_read_only_session_still_reads_the_project(self, world):
         got = decide("read-only", "Read", {"file_path": str(world.proj / "src" / "app.py")}, roots=world.roots)
         assert got.action == "allow"
-
-
-@pytest.fixture
-def raised(monkeypatch):
-    """Run the hook on a payload and return the request the person would be shown, with its text escaped and cut as the inbox does."""
-    def run(payload, role="plan-and-go", roots=("/w",)):
-        seen = []
-
-        class Waiting:
-            def wait(self, timeout):
-                return SimpleNamespace(approved=False, why="", state="expired")
-
-        monkeypatch.setattr(requests, "raise_request", lambda ask, inbox=None: seen.append(ask) or Waiting())
-        harnesshook.pre(payload, harnesshook.Rail(role, "local-test", roots, (), 0.2), requests.Inbox(memory=True))
-        return store.build(seen[0], 0.0)
-
-    return run
 
 
 class TestWhatThePersonSees:

@@ -12,6 +12,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 from poolhouse import safetext, secretpaths
+from poolhouse.guard import flowscan
 
 __all__ = ["Flag", "ascii_line", "describe", "scan"]
 
@@ -92,13 +93,16 @@ def scan(text: str, *, strict: bool = False) -> list[Flag]:
     ``strict`` adds characters that cannot be seen."""
     flags: list[Flag] = []
     rules = (*RULES, *STRICT) if strict else RULES
-    for number, line in _logical(text):
+    statements = list(_logical(text))
+    for number, line in statements:
         found = next(((why, m.start()) for why, rule in rules if (m := rule.search(line))), None) or _piped(line)
         if not found[0] and CREDENTIAL.search(line) and (hit := SENDS.search(line)):
             found = ("sends a credential file out", hit.start())
         if found[0]:
             flags.append(Flag(number, line, *found))
-    return flags
+    seen = {f.line for f in flags}
+    flags += [Flag(*flow) for flow in flowscan.flows(statements) if flow[0] not in seen]
+    return sorted(flags, key=lambda f: f.line)
 
 
 def ascii_line(text: str, limit: int = SHOWN, at: int = 0) -> str:

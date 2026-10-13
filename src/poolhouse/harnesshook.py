@@ -30,9 +30,11 @@ if __name__ == "__main__":
 
 from poolhouse import harness_claims, platform, requests
 from poolhouse.errors import Denied
+from poolhouse.guard import fetchlog
 from poolhouse.harnesspolicy import (
     Decision,
     _shell_line,
+    after_downloads,
     decide,
     primary_decision,
     workspace_authority,
@@ -122,6 +124,7 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
     try:
         name = str(payload.get("tool_name", ""))
         inputs = args if isinstance(args, dict) else None
+        fetched = fetchlog.read(agent)
         try:
             ownership = harness_claims.conflict(name, inputs, str(payload.get('cwd') or (roots[0] if roots else Path.cwd())), agent, roots)
         except BoardUnavailable as error:  # no board to ask: local work goes on, with a warning
@@ -130,18 +133,24 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
         decision = (Decision('deny', 'destructive', ownership) if ownership else None) or (primary_decision(name, inputs, str(payload.get("cwd", "")))
                     or workspace_authority(_shell_line(name, inputs), agent)
                     or decide(role, name, inputs, roots=roots, protected=protected))
+        decision = after_downloads(decision, name, inputs, roots, fetched)
     except Denied as error:
         decision = Decision('deny', 'destructive', hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings()))
     except FAILURES as error:
         decision = Decision("deny", "unsure", f"the call could not be classified: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
-    if decision.action == "allow":
-        return _owned_answer(payload, rail, event, f"poolhouse: {decision.label}{warning}")
     if decision.action == "deny":
         return _answer(event, "deny", f"poolhouse: {decision.reason}")
-    approved, state = _ask(payload, decision, agent, wait_s, inbox)
-    if approved:
-        return _owned_answer(payload, rail, event, "poolhouse: the person allowed this call")
-    return _answer(event, "deny", f"poolhouse: the person did not allow this call ({state})")
+    reason = f"poolhouse: {decision.label}{warning}"
+    if decision.action == "ask":
+        approved, state = _ask(payload, decision, agent, wait_s, inbox)
+        if not approved:
+            return _answer(event, "deny", f"poolhouse: the person did not allow this call ({state})")
+        reason = "poolhouse: the person allowed this call"
+    try:
+        fetchlog.note(agent, fetchlog.targets(_shell_line(str(payload.get("tool_name", "")), args if isinstance(args, dict) else None), roots, str(payload.get("cwd") or ""), fetched))
+    except FAILURES as error:
+        return _answer(event, "deny", f"poolhouse: a download could not be recorded: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
+    return _owned_answer(payload, rail, event, reason)
 
 
 def _owned_answer(payload, rail, event, reason):

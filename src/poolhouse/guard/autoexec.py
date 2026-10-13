@@ -12,14 +12,14 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, secretpaths
 from poolhouse.guard import fetchexec
-from poolhouse.guard.harm import Finding, resolve
+from poolhouse.guard.harm import Finding, outside, resolve
 from poolhouse.guard.verbs import words_of
 
 __all__ = ["path_reason", "write_findings", "written"]
 
-U = "unsure"
+U, D = "unsure", "destructive"
 HOOKS = "runs when git commits, merges or pushes"
 AGENT = "changes what the coding agent may run or is told to do"
 BUILD = "runs when the project is built or tested"
@@ -29,7 +29,9 @@ EDITOR = "runs when an editor opens the project"
 RUNS = {
     (".git", "hooks"): HOOKS, (".git", "config"): "sets commands git runs on its own", (".github", "workflows"): CI,
     (".github", "actions"): CI, (".local", "bin"): "puts a program on the command search path",
-    (".cargo", "config.toml"): BUILD, (".cargo", "config"): BUILD,
+    (".cargo", "config.toml"): BUILD, (".cargo", "config"): BUILD, (".git", "info"): "sets commands git runs on its own",
+    ("scripts", "test"): "runs when the project is tested", ("scripts", "land"): "runs when work is landed", ("scripts", "hooks"): HOOKS,
+    (".config", "systemd"): "starts programs for the person", (".config", "autostart"): "starts programs at login",
 }
 FOLDERS = {
     ".githooks": HOOKS, ".husky": HOOKS, ".claude": AGENT, ".codex": AGENT, ".cursor": AGENT, ".agents": AGENT,
@@ -46,10 +48,12 @@ FILES = {
     **dict.fromkeys((".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".profile", ".zshrc", ".zshenv", ".zprofile", ".zlogin",
                      ".zlogout", ".cshrc", ".tcshrc", ".kshrc", "config.fish", ".vimrc", ".exrc", "init.vim", "init.lua", ".emacs", "init.el",
                      ".xinitrc", ".xprofile", "crontab"), SHELL_START),
-    **dict.fromkeys((".gitconfig", ".gitmodules"), "sets commands git runs on its own"),
+    **dict.fromkeys((".gitconfig", ".gitmodules", ".gitattributes"), "sets commands git runs on its own"),
+    **dict.fromkeys((".mcp.json", "claude.md", "agents.md", "gemini.md", ".cursorrules"), AGENT),
     **dict.fromkeys((".gitlab-ci.yml", ".travis.yml", "azure-pipelines.yml", "bitbucket-pipelines.yml", "jenkinsfile", ".drone.yml"), CI),
 }
-SUFFIX = ((".pth", "runs every time python starts"), (".mk", BUILD), (".gemspec", BUILD))
+SUFFIX = ((".pth", "runs every time python starts"), (".mk", BUILD), (".gemspec", BUILD), (".plist", "can start a program when launchd loads it"),
+          (".service", "can start a program when systemd loads it"), (".timer", "can start a program when systemd loads it"))
 CONFIGS = re.compile(r"(?i).+\.config\.(?:js|mjs|cjs|ts)|\.(?:eslintrc|babelrc)\.(?:js|cjs)")
 EDITS = frozenset({"edit", "write", "append", "create", "update", "patch", "replace", "insert", "save", "put"})
 WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"})
@@ -139,6 +143,16 @@ def _excerpt(text: str) -> str:
     return "; ".join(lines)
 
 
+def escapes(path: str, roots: Sequence[str]) -> list[Finding]:
+    """Findings for a write to ``path``: a credential file outside the project is forbidden, and a link that leads out of it is a question."""
+    hit = secretpaths.path_hit(path, roots[0] if roots else "")
+    if hit and secretpaths.beyond(hit.path, roots):
+        return [Finding(D, f"writes a credential file ({hit.rule}) outside the project, which an agent never does", forbidden=True)]
+    if roots and not outside(path, roots) and secretpaths.beyond(path, roots):
+        return [Finding(D, f"writes through a link to {fetchexec.ascii_line(os.path.realpath(resolve(path, roots)), SHOWN)}, outside the project")]
+    return []
+
+
 def _merged(path: str, roots: Sequence[str], args: Mapping[str, Any]) -> tuple[str, str] | None:
     """The text of the file before and after an edit call, or None when the call is no edit or the file cannot be read."""
     edits = [args] if "old_string" in args else [e for e in args.get("edits") or () if isinstance(e, Mapping)]
@@ -171,6 +185,7 @@ def write_findings(name: str, args: Mapping[str, Any], roots: Sequence[str] = ()
     downloads and runs code, sends a credential out or hides its meaning."""
     found: list[Finding] = []
     for path, text in written(name, args):
+        found += escapes(path, roots)
         why = path_reason(path, roots)
         flags = _flags(text, path, roots, args, bool(why))
         shown = fetchexec.describe(flags)

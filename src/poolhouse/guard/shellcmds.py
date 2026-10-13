@@ -27,14 +27,16 @@ D, R, S, U = "destructive", "reversible", "safe", "unsure"
 @dataclass(frozen=True, slots=True)
 class Ctx:
     """What a command is read against: the ``roots`` writes may go to, how deep the line is
-    nested, whether another command's output feeds the arguments (``fed``) and whether
-    another command (``feeder``) picks the files it is given (``supplied``)."""
+    nested, whether another command's output feeds the arguments (``fed``), whether
+    another command (``feeder``) picks the files it is given (``supplied``) and whether
+    what the command reads on its input came from a download (``streaming``)."""
 
     roots: tuple[str, ...] = ()
     depth: int = 0
     fed: bool = False
     supplied: bool = False
     feeder: tuple[str, ...] = ()
+    streaming: bool = False
 
 
 READ_ONLY = frozenset([
@@ -421,6 +423,8 @@ def _interpreter(name: str, args: list[str], ctx: Ctx) -> list[Finding]:
             if ctx.depth >= MAX_DEPTH:
                 return [Finding(U, "shell commands nested too deeply to read")]
             inner = scan(text, ctx.roots, ctx.depth + 1)
+            if has_expansion(text):
+                inner.append(Finding(U, "runs shell text that a variable or command builds"))
             return inner or [Finding(U, "an empty shell -c string")]
         return [Finding(U, f"{name} runs a script or reads commands from input")]
     if code_flag:
@@ -501,7 +505,7 @@ def _wrapper(name: str, args: list[str], ctx: Ctx) -> list[Finding]:
     if not inner:
         return [Finding(S if name in ("env", "time", "command") else R, f"{name} with no command")]
     fed = ctx.fed or name == "xargs"
-    found = analyse(inner, Ctx(ctx.roots, ctx.depth + 1, fed, ctx.supplied or name == "xargs", ctx.feeder))
+    found = analyse(inner, Ctx(ctx.roots, ctx.depth + 1, fed, ctx.supplied or name == "xargs", ctx.feeder, ctx.streaming))
     if name in ("sudo", "doas"):
         found.append(Finding(R, "runs with administrator rights"))
     if name == "exec":
@@ -568,7 +572,7 @@ def _fixed(name: str, args: list[str], ctx: Ctx) -> list[Finding] | None:
 
 def analyse(argv: list[str], ctx: Ctx) -> list[Finding]:
     """The findings for one command, ``argv`` being its words with the assignments removed."""
-    return [*execchain.review(argv, ctx.roots, ctx.supplied, ctx.feeder), *_classify(argv, ctx)]
+    return [*execchain.review(argv, ctx.roots, ctx.supplied, ctx.feeder, ctx.streaming), *_classify(argv, ctx)]
 
 
 def _classify(argv: list[str], ctx: Ctx) -> list[Finding]:
@@ -632,6 +636,7 @@ def scan(command: str, roots: tuple[str, ...] = (), depth: int = 0) -> list[Find
     found = list(found)
     ctx = Ctx(roots, depth)
     prev: Segment | None = None
+    stream = False
     for seg in parsed:
         argv = list(seg.argv)
         while argv and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[0]):
@@ -639,7 +644,8 @@ def scan(command: str, roots: tuple[str, ...] = (), depth: int = 0) -> list[Find
             if variable in LOADER_VARS or variable.startswith(COMMAND_VAR_PREFIXES):
                 found.append(Finding(U, "sets a variable that changes how programs load code"))
             argv.pop(0)
-        piped_ctx = Ctx(roots, depth, seg.piped, False, tuple(prev.argv) if seg.piped and prev else ())
+        stream = bool(argv) and (_base(argv[0]).lower() in execchain.DOWNLOADERS or (seg.piped and stream))
+        piped_ctx = Ctx(roots, depth, seg.piped, False, tuple(prev.argv) if seg.piped and prev else (), stream and seg.piped)
         found += analyse(argv, piped_ctx)
         if seg.background:
             found.append(Finding(U, "runs in the background, where nothing shows what it does or stops it"))
@@ -648,7 +654,7 @@ def scan(command: str, roots: tuple[str, ...] = (), depth: int = 0) -> list[Find
             if hit is not None:
                 found.append(hit)
         for op, target in seg.redirects:
-            found += execchain.redirect(op, target, roots)
+            found += execchain.redirect(op, target, roots, stream)
             hit = _redirect(op, target, ctx)
             if hit is not None:
                 found.append(hit)

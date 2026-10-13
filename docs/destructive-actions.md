@@ -51,8 +51,9 @@ The label is the most severe of these.
 - Arguments of any tool: `force`/`yes`/`overwrite` set true, an `action` or HTTP `method` that
   deletes or sends, a write over an existing file or over a path with almost nothing, a list of more
   than 25 items, `production` in an environment-like key, a download over 5 GiB.
-- Code that arrives and credentials (`guard/execchain.py`, `toolreview.py`, `autoexec.py`, `fetchexec.py`,
-  `secretcmds.py`, `urlscan.py`; the credential list is `poolhouse.secretpaths` alone). A write to a file
+- Code that arrives and credentials (`guard/execchain.py`, `gitcmds.py`, `toolreview.py`, `autoexec.py`, `fetchexec.py`,
+  `flowscan.py`, `secretcmds.py`, `urlscan.py`; the credential list is `poolhouse.secretpaths` alone; the harness hook also
+  keeps the files a session downloaded, `fetchlog.py`, and asks when a later command that runs files names one). A write to a file
   that something runs by itself later (a git hook, an agent settings folder, `conftest.py`, `Makefile`,
   `package.json`, a CI workflow, a shell startup file) is `unsure`, and text written to any file that
   downloads and runs code, decodes and runs text, opens a shell to another machine or sends a credential

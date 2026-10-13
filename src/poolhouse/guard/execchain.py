@@ -7,14 +7,15 @@ run by themselves, and any word that names a credential file. `redirect` does th
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
 from poolhouse import secretpaths
-from poolhouse.guard import autoexec, fetchexec, secretcmds, urlscan
-from poolhouse.guard.harm import Finding, outside, resolve
+from poolhouse.guard import autoexec, fetchexec, gitcmds, secretcmds, urlscan
+from poolhouse.guard.harm import Finding, resolve
 from poolhouse.guard.shellscan import has_expansion
 
 __all__ = ["closed", "redirect", "review"]
@@ -45,12 +46,6 @@ RUNNERS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", 
 TREE_NAMES = GREPS | {"rg", "ag", "ack", "ln", "cp", "mv", "rsync", "scp", "tar", "zip", "7z", "7za", "diff"}
 WALKERS = frozenset({"tar", "zip", "7z", "7za", "rsync", "rclone", "ack"})
 HIDDEN_FLAGS = {"rg": {"--hidden", "-uu", "-uuu", "--unrestricted", "-."}, "ag": {"--hidden", "-a", "-u", "--unrestricted", "--all-types"}}
-EXEC_KEY = re.compile(
-    r"core\.(?:hookspath|fsmonitor|pager|editor|sshcommand|askpass|gitproxy)|alias\..+|credential(?:\..+)?\.helper|diff\.external"
-    r"|diff\..+\.(?:command|textconv)|merge\..+\.driver|(?:difftool|mergetool|man|browser)\..+\.cmd|filter\..+\.(?:clean|smudge|process)"
-    r"|sequence\.editor|gpg(?:\..+)?\.program|include(?:if\..+)?\.path|url\..+\.insteadof|remote\..+\.(?:uploadpack|receivepack|proxy)"
-    r"|(?:uploadpack|receive|pager|protocol)\..+|web\.browser|submodule\..+\.update")
-GIT_RUNS = ("--upload-pack", "--receive-pack", "--exec=", "--exec-path", "ext::")
 INSTALL = frozenset({"install", "i", "add", "ci", "update", "upgrade", "reinstall", "dlx", "exec", "x", "create", "require", "download", "wheel", "run"})
 FETCHING: dict[str, frozenset[str]] = {
     "pip": frozenset({"install", "download", "wheel"}), "pip3": frozenset({"install", "download", "wheel"}),
@@ -71,7 +66,16 @@ TUNNELS = frozenset({"ngrok", "cloudflared", "localtunnel", "lt", "serveo", "bor
 SERVERS = frozenset({"httpd", "nginx", "lighttpd", "caddy", "miniserve", "http-server", "live-server", "simplehttpserver", "webfsd", "darkhttpd"})
 SERVING_MODULES = frozenset({"http.server", "SimpleHTTPServer", "pyftpdlib", "smtpd"})
 DETACH = frozenset({"nohup", "setsid", "disown", "daemonize", "at", "batch", "screen", "tmux", "systemd-run", "start-stop-daemon"})
-WRITING_FLAGS = {"curl": ("-o", "--output", "-O"), "wget": ("-O", "--output-document", "-P", "--directory-prefix")}
+DOWNLOADERS = frozenset({"curl", "wget", "aria2c", "http", "https", "xh"})
+INERT = frozenset({
+    ".json", ".jsonl", ".ndjson", ".csv", ".tsv", ".txt", ".md", ".rst", ".html", ".htm", ".xml", ".yaml", ".yml", ".toml", ".log", ".png", ".jpg", ".jpeg", ".gif",
+    ".svg", ".webp", ".ico", ".pdf", ".gz", ".tgz", ".zip", ".tar", ".bz2", ".xz", ".7z", ".gguf", ".safetensors", ".onnx", ".parquet", ".mp3", ".mp4", ".wav",
+    ".css", ".woff", ".woff2", ".ttf", ".otf", ".patch", ".diff",
+})
+BUILD_FOLDERS = frozenset({"tests", "test", "scripts", "bin"})
+PERSIST_READ = frozenset({"list", "print", "print-cache", "print-disabled", "blame", "dumpstate", "hostinfo", "managerpid", "manageruid", "managername",
+                          "version", "help", "error", "resolveport", "examine"})
+ENABLE_VERBS = frozenset({"enable", "reenable", "link", "edit", "set-default", "add-wants", "add-requires", "preset", "import-environment"})
 SPLIT = re.compile(r"[@=:,]")
 COMMAND_FLAGS = {
     "tar": ("--to-command", "--checkpoint-action", "--use-compress-program", "--rsh-command", "--info-script", "--new-volume-script", "-I", "-F"),
@@ -81,7 +85,7 @@ COMMAND_FLAGS = {
 
 def closed(hit: secretpaths.Hit, roots: Sequence[str], verb: str = "reads") -> Finding:
     """The finding for a command or tool that ``verb`` a credential file; forbidden when the file is outside the project."""
-    away = outside(str(hit.path), roots)
+    away = secretpaths.beyond(hit.path, roots)
     if hit.rule == secretpaths.TOO_LARGE:
         return Finding(U, f"searches a folder with {hit.rule} for credential files")
     return Finding(D, f"{verb} a credential file ({hit.rule}){' outside the project' if away else ''}", forbidden=away)
@@ -90,42 +94,6 @@ def closed(hit: secretpaths.Hit, roots: Sequence[str], verb: str = "reads") -> F
 def _unseen(words: Iterable[str]) -> list[Finding]:
     return [Finding(U, f"has an invisible or direction-changing character ({fetchexec.ascii_line(w, 40)})")
             for w in words if any(unicodedata.category(c) == "Cf" for c in w)][:1]
-
-
-def _options(args: list[str]) -> tuple[list[str], list[str]]:
-    """The settings given with ``git -c`` and the words from the subcommand on."""
-    keys, at = [], 0
-    while at < len(args) and args[at].startswith("-"):
-        word = args[at]
-        if word == "-c" and at + 1 < len(args):
-            keys.append(args[at + 1].partition("=")[0].lower())
-            at += 1
-        elif word.startswith("--config-env="):
-            keys.append(word.split("=", 2)[1].lower())
-        elif word in ("-C", "--git-dir", "--work-tree", "--namespace"):
-            at += 1
-        elif word.startswith("--exec-path"):
-            keys.append("core.hookspath")
-        at += 1
-    return keys, args[at:]
-
-
-def _git(args: list[str]) -> list[Finding]:
-    keys, rest = _options(args)
-    found = [Finding(D, f"sets {k}, a command git runs on its own") for k in keys if EXEC_KEY.fullmatch(k)]
-    sub, more = (rest[0], rest[1:]) if rest else ("", [])
-    words = [w for w in more if not w.startswith("-")]
-    if sub == "config" and (len(words) >= 2 or "--add" in more):
-        key = words[0].lower() if words else ""
-        if EXEC_KEY.fullmatch(key):
-            found.append(Finding(D, f"sets {key}, a command git runs on its own"))
-    if sub in ("clone", "submodule") and (sub == "clone" or words[:1] in (["add"], ["update"], ["init"], ["sync"])):
-        found.append(Finding(U, "downloads a repository whose hooks and build scripts are not read"))
-    if sub == "bisect" and "run" in words[:1]:
-        found.append(Finding(U, "runs a command at each step (git bisect run)"))
-    if any(a.startswith(GIT_RUNS) for a in more):
-        found.append(Finding(D, "names a program git runs to reach the remote"))
-    return found
 
 
 def _python(args: list[str], words: list[str]) -> list[Finding]:
@@ -167,30 +135,96 @@ def _serving(name: str, args: list[str]) -> list[Finding]:
     return []
 
 
+def _url_name(url: str) -> str:
+    name = url.split("#", 1)[0].split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+    return name if name and "://" not in name else "index.html"
+
+
+def _values(args: list[str], short: str, longs: tuple[str, ...]) -> list[str]:
+    """What follows the option letter ``short`` (alone, ending a bundle or with its value attached) and the long options ``longs``."""
+    out: list[str] = []
+    for at, arg in enumerate(args):
+        if arg.startswith("--"):
+            out += [args[at + 1] for long in longs if arg == long and at + 1 < len(args)]
+            out += [arg.split("=", 1)[1] for long in longs if arg.startswith(long + "=")]
+        elif short and re.fullmatch(rf"-[A-Za-z]*{short}", arg):
+            out += args[at + 1:at + 2]
+        elif short and (attached := re.fullmatch(rf"-[A-Za-z]*{short}(.+)", arg)):
+            out.append(attached.group(1))
+    return out
+
+
+def downloads(name: str, args: list[str]) -> list[str]:
+    """The files a download command writes, as it names them; standard output is not a file."""
+    urls = [a for a in args if urlscan.looks_like_url(a)]
+    if name not in ("curl", "wget", "aria2c"):
+        return []
+    named = _values(args, "o" if name != "wget" else "O", ("--output", "--out") if name != "wget" else ("--output-document",))
+    kept = [n for n in named if n and n != "-" and not n.startswith(("/dev/null", "/dev/stdout", "/dev/stderr"))]
+    if name == "curl":
+        remote = any(re.fullmatch(r"-[A-Za-z]*O[A-Za-z]*", a) or a in ("--remote-name", "--remote-name-all") for a in args)
+        folder = next(iter(_values(args, "", ("--output-dir",))), "")
+        return [str(Path(folder) / n) if folder else n for n in kept + ([_url_name(u) for u in urls] if remote else [])]
+    if named:
+        return kept
+    folders = _values(args, "P" if name == "wget" else "d", ("--directory-prefix", "--dir"))
+    return [str(Path(folders[0] if folders else "") / _url_name(u)) for u in urls]
+
+
+def _runnable(dest: str, roots: Sequence[str]) -> bool:
+    path = Path(dest)
+    if not dest or dest == "-":
+        return False
+    full = resolve(dest, roots)
+    executable = secretpaths.exists(full) and os.access(full, os.X_OK) and not secretpaths.is_dir(full)
+    return (path.suffix.lower() not in INERT or bool({p.lower() for p in path.parts[:-1]} & BUILD_FOLDERS)
+            or bool(autoexec.path_reason(dest, roots)) or executable)
+
+
+def _saves(name: str, args: list[str], roots: Sequence[str], streaming: bool) -> list[Finding]:
+    dests = downloads(name, args)
+    if name == "tee" and streaming:
+        dests = [a for a in args if not a.startswith("-")]
+    if name == "curl" and any(a in ("-K", "--config") or re.fullmatch(r"-[A-Za-z]*K", a) for a in args):
+        return [Finding(U, "curl takes its options from a file, which can name files to save, any of which can be run")]
+    if name in ("wget", "aria2c") and (set(args) & {"-i", "--input-file", "-r", "--recursive", "-m", "--mirror", "-p"} or any(re.fullmatch(r"-[A-Za-z]*[irm]", a) for a in args)):
+        return [Finding(U, f"{name} downloads many files, to names it does not show, any of which can be run")]
+    return [Finding(U, f"saves a download as {fetchexec.ascii_line(Path(d).name or d, 60)}, a file that can be run") for d in dests if _runnable(d, roots)][:2]
+
+
+def _persist(name: str, args: list[str]) -> list[Finding]:
+    words = [a for a in args if not a.startswith("-")]
+    verb = words[0] if words else ""
+    if name == "launchctl" and verb not in PERSIST_READ:
+        return [Finding(D, f"launchctl {verb} can make a program start at login or at once".replace("  ", " "))]
+    if name == "systemctl" and (verb in ENABLE_VERBS or ("--user" in args and verb in ("start", "restart", "reload", "try-restart", "reload-or-restart"))):
+        return [Finding(U, f"systemctl {verb} makes a service start by itself or at once")]
+    return []
+
+
 def _destinations(name: str, args: list[str]) -> list[str]:
     words = [a for a in args if not a.startswith("-")]
     if name in ("cp", "mv", "install", "ln", "rsync", "scp"):
         target = next((args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-t", "--target-directory")), "")
         return [target or (words[-1] if words else "")]
-    if name == "tee":
+    if name in ("tee", "truncate", "rm", "rmdir", "unlink", "shred", "touch"):
         return words
     if name == "dd":
         return [a[3:] for a in args if a.startswith("of=")]
     if name in ("sed", "perl") and any(IN_PLACE.fullmatch(a) for a in args):
         return words[1:] if name == "sed" else words
-    if name == "truncate":
-        return words
     if name in ("tar", "unzip"):
         return [args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-C", "-d", "--directory")]
-    flags = WRITING_FLAGS.get(name, ())
-    return [args[i + 1] for i, a in enumerate(args[:-1]) if a in flags] + [a[2:] for a in args if len(a) > 2 and a[:2] in flags]
+    return downloads(name, args)
 
 
-def _writes(name: str, args: list[str], roots: Sequence[str]) -> list[Finding]:
-    found = []
+def _writes(name: str, args: list[str], roots: Sequence[str], streaming: bool = False) -> list[Finding]:
+    found = _saves(name, args, roots, streaming)
     for dest in _destinations(name, args):
-        why = autoexec.path_reason(dest, roots) if dest else ""
-        if why:
+        if not dest:
+            continue
+        found += autoexec.escapes(dest, roots)
+        if why := autoexec.path_reason(dest, roots):
             found.append(Finding(U, f"writes {fetchexec.ascii_line(Path(dest).name or dest, 60)}, which {why}"))
     return found
 
@@ -261,7 +295,7 @@ def _trees(name: str, args: list[str], roots: Sequence[str], deep: bool = True) 
         full = resolve(secretpaths.expanded(word), roots)
         if not secretpaths.is_dir(full):
             continue
-        if secretpaths.inside_home(full) and outside(str(full), roots):
+        if secretpaths.inside_home(full) and secretpaths.beyond(full, roots):
             found.append(Finding(D, "searches or copies the whole home folder, where credentials are kept", forbidden=True))
         elif deep and (hit := secretpaths.tree_hit(full)):
             found.append(closed(hit, roots, "searches or copies a folder that holds"))
@@ -307,7 +341,7 @@ def _globs(args: list[str], roots: Sequence[str]) -> list[Finding]:
 
 def _reads(name: str, args: list[str], roots: Sequence[str], supplied: bool, feeder: Sequence[str]) -> list[Finding]:
     if name == "git":
-        _, rest = _options(args)
+        _, rest = gitcmds.options(args)
         args = _file_flags(rest[1:]) if rest and rest[0] in GIT_NAMES else rest[1:]
         if not rest or not args:
             return []
@@ -334,24 +368,31 @@ def _reads(name: str, args: list[str], roots: Sequence[str], supplied: bool, fee
     return sorted({f.reason: f for f in found}.values(), key=lambda f: not f.forbidden)[:4]
 
 
-def review(argv: Sequence[str], roots: Sequence[str] = (), supplied: bool = False, feeder: Sequence[str] = ()) -> list[Finding]:
+def review(argv: Sequence[str], roots: Sequence[str] = (), supplied: bool = False, feeder: Sequence[str] = (), streaming: bool = False) -> list[Finding]:
     """Findings for one command: ``argv`` is its words, ``supplied`` says another command supplies its
-    arguments (``xargs``, ``find -exec``) and ``feeder`` is that command."""
+    arguments (``xargs``, ``find -exec``), ``feeder`` is that command and ``streaming`` says its input is a download."""
     if not argv:
         return []
     name, args = Path(argv[0]).name.lower(), list(argv[1:])
     found = _unseen(argv)
-    found += _git(args) if name == "git" else _fetch(name, args)
-    found += _serving(name, args) + _runs(name, args) + _writes(name, args, roots) + secretcmds.review(name, args)
+    found += gitcmds.findings(args, roots) if name == "git" else _fetch(name, args)
+    found += _serving(name, args) + _runs(name, args) + _persist(name, args) + _writes(name, args, roots, streaming) + secretcmds.review(name, args)
     if name in ("curl", "wget", "http", "https", "xh"):
         found += [Finding(U, f"fetches an address that {why}") for a in args if urlscan.looks_like_url(a) and (why := urlscan.reason(a))][:1]
     return found + _reads(name, args, roots, supplied, feeder)
 
 
-def redirect(op: str, target: str, roots: Sequence[str] = ()) -> list[Finding]:
-    """Findings for ``op target``: a ``<`` that reads a credential file, a ``>`` or ``>>`` onto a file that runs by itself."""
+def redirect(op: str, target: str, roots: Sequence[str] = (), fetching: bool = False) -> list[Finding]:
+    """Findings for ``op target``: a ``<`` that reads a credential file, a ``>`` or ``>>`` onto a file that runs by itself,
+    reaches a credential or leaves the project through a link, or saves a download (``fetching``) as a file that can be run."""
     if op.startswith("<"):
         hit = secretpaths.holds_secrets(target, roots[0] if roots else "")
         return [closed(hit, roots)] if hit else []
-    why = autoexec.path_reason(target, roots) if target else ""
-    return [Finding(U, f"writes {fetchexec.ascii_line(Path(target).name or target, 60)}, which {why}")] if why else []
+    if not target or target.startswith("&") or target.isdigit():
+        return []
+    found = autoexec.escapes(target, roots)
+    if why := autoexec.path_reason(target, roots):
+        found.append(Finding(U, f"writes {fetchexec.ascii_line(Path(target).name or target, 60)}, which {why}"))
+    if fetching and _runnable(target, roots):
+        found.append(Finding(U, f"saves a download as {fetchexec.ascii_line(Path(target).name or target, 60)}, a file that can be run"))
+    return found

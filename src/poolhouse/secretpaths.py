@@ -11,12 +11,13 @@ import fnmatch
 import os
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import home
 
-__all__ = ["ABSOLUTE", "HOME_DIRS", "NAMES", "STATE_NAMES", "SUFFIXES", "TOO_LARGE", "WEAK", "Hit", "exists", "expanded", "find_hit", "glob_hit",
+__all__ = ["ABSOLUTE", "HOME_DIRS", "NAMES", "STATE_NAMES", "SUFFIXES", "TOO_LARGE", "WEAK", "Hit", "beyond", "exists", "expanded", "find_hit", "glob_hit",
            "holds_secrets", "inside_home", "is_dir", "path_hit", "sensitive_path", "tree_hit"]
 
 HOME_DIRS = (".ssh", ".aws", ".gnupg", ".kube", ".azure", ".password-store", ".docker", ".config/gh", ".config/gcloud",
@@ -33,7 +34,7 @@ NAMES = frozenset({
 })
 """File names that hold credentials wherever they are."""
 SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".kdbx", ".tfvars")
-STATE_NAMES = ("node", "keystore", "pool.key", "server-keys.json", "credentials.toml", "person", "authority.json", "harness")
+STATE_NAMES = ("node", "keystore", "pool.key", "server-keys.json", "credentials.toml", "person", "authority.json", "harness", "harness-fetched")
 """What the state root holds that is a key, a credential or a launcher's session."""
 ABSOLUTE = ("/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/sudoers.d", "/etc/master.passwd", "/etc/ssh", "/etc/kubernetes",
             "/private/etc/sudoers", "/private/etc/ssh", "/private/var/db/dslocal", "/var/run/secrets", "/run/secrets")
@@ -212,6 +213,21 @@ def sensitive_path() -> re.Pattern[str]:
         rf"(?i)(?:^|[\s\"'=:@/\\~])(?:{folders}|{always}|\.env(?:\.\w+)?|id_(?:rsa|dsa|ecdsa|ed25519|xmss)\w*){tail}"
         rf"|(?:^|[/\\~])(?:{inside})(?:$|[\s\"'\\])"
         r"|/etc/(?:passwd|shadow|gshadow|sudoers)|/proc/(?:self|\d+)/environ|\bKeychains?\b")
+
+
+def beyond(path: Path | str, roots: Sequence[str]) -> bool:
+    """Whether ``path`` (relative ones read against the first root), once links are followed, is outside every root."""
+    if not roots:
+        return False
+    full = _normal(str(path), roots[0])
+    if full is None:
+        return False
+    try:
+        real = Path(os.path.realpath(full))
+        bases = [Path(os.path.realpath(home.expand(r))) for r in roots]
+    except (OSError, ValueError):
+        return False
+    return not any(real == base or base in real.parents for base in bases)
 
 
 def find_hit(pattern: str) -> str:

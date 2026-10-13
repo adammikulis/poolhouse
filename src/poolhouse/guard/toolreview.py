@@ -10,7 +10,7 @@ from typing import Any
 
 from poolhouse import secretpaths
 from poolhouse.guard import argscan, autoexec, execchain, fetchexec, urlscan
-from poolhouse.guard.harm import Finding, outside, resolve
+from poolhouse.guard.harm import Finding, resolve
 from poolhouse.guard.verbs import words_of
 
 __all__ = ["findings"]
@@ -35,7 +35,7 @@ def _read(name: str, key: str, value: str, roots: Sequence[str]) -> list[Finding
     if hit:
         return [execchain.closed(hit, roots)]
     full = resolve(secretpaths.expanded(value), roots)
-    if key not in GLOBS and set(words_of(name)) & SEARCHES and secretpaths.inside_home(full) and outside(str(full), roots):
+    if key not in GLOBS and set(words_of(name)) & SEARCHES and secretpaths.inside_home(full) and secretpaths.beyond(full, roots):
         return [Finding(D, "searches the whole home folder, where credentials are kept", forbidden=True)]
     return []
 

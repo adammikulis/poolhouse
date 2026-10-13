@@ -76,14 +76,31 @@ with no model, and each one asks (`unsure`, a request of kind `tool_call_destruc
 - **A write to a file that runs by itself later** asks even when its content looks harmless: a git
   hook, `.git/config`, the agent folders (`.claude`, `.codex`, `.cursor`, `.agents`), `conftest.py`,
   `setup.py`, `pyproject.toml`, `package.json`, `Makefile`, a CI workflow, `.envrc`, an editor task
-  file, `sitecustomize.py`, a `.pth` file, a shell startup file. The ask names the file, says when it
+  file, `sitecustomize.py`, a `.pth` file, a shell startup file, an agent instruction file (`CLAUDE.md`,
+  `AGENTS.md`, `.mcp.json`, `.cursorrules`), `.gitattributes`, `.git/info/`, `scripts/test`, `scripts/land`,
+  `scripts/hooks/*`, a `.plist`, `.service` or `.timer` file. The ask names the file, says when it
   runs and quotes what the write starts with. Paths are read relative to the project folder, case-folded and through links,
   so `.git/Hooks/x`, `src/../.git/hooks/x` and a link to the hooks folder are the same file.
   A shell redirect, `tee`, `cp`, `mv`, `ln`, `install`, `dd`, `sed -i` and `curl -o` onto such a file ask the same way.
+  A write whose target, once links are followed, is a credential file outside the project (`~/.ssh/authorized_keys`,
+  `~/.aws/config`, `~/.gnupg`, `~/.config/gh`, a link in the project that leads to one) is denied; a write through a
+  link that leads out of the project to anything else asks.
+- **A download that can be run** asks: `curl -o`, `curl -O`, `wget`, `aria2c`, a redirect or `tee` of a download, onto a file
+  that is not plainly data (a `.json`, `.csv`, `.html`, an archive or an image is data; anything under `tests`, `scripts` or `bin`,
+  a source file, a program with no suffix or an executable is not), and `wget -r`, `wget -i` and `curl -K`, which name their files elsewhere.
+  Every path a session's shell calls download, clone or copy from a download is kept in the state root (`harness-fetched/<session>.log`,
+  closed to the model like the keystore), and a later command that runs files (an interpreter, `scripts/test`, `make -f`, `source`, `./file`,
+  `cd` into the folder and run) and names one of them, or a folder that holds one, asks "which this session downloaded";
+  a download renamed or copied in the same line counts too. Reading, listing, deleting and `git add` are not questions.
+- **Login and schedule persistence** asks: `launchctl` with any verb that is not a listing, `systemctl enable` and `--user start`,
+  `crontab`, `at`, `batch`, `open x.plist`, `sudo`, `doas`, `su` and `pkexec`.
 - **Text written to any file** is read for a download piped to a shell (`curl ... | sh`,
   `bash <(curl ...)`, `eval "$(curl ...)"`), text decoded and run, a shell opened to another machine
   and a credential sent out. A call or pipeline spread over several lines is read as one, and an
-  `Edit` or `MultiEdit` is read together with the file it changes, so a download split over two edits is caught. The ask
+  `Edit` or `MultiEdit` is read together with the file it changes, so a download split over two edits is caught. A name is
+  followed from the statement that assigns it a download (or a copy of the environment) to a later statement that runs it (or sends it
+  out), a file from the statement that downloads it to the one that makes it executable or runs it, and a remote shell built
+  from a socket and `dup2` or `pty.spawn` in separate statements is read as a whole. The ask
   quotes the flagged statement with its line number (the part around the match when it is long),
   every character outside ASCII written as a visible escape, so a direction mark, a zero-width
   character or a lookalike letter cannot hide it. A direction mark in written code asks on its own.
@@ -97,7 +114,11 @@ with no model, and each one asks (`unsure`, a request of kind `tool_call_destruc
   `xargs -a`, a `python -c` that opens it, a link to it); inside the project folder it asks. A wildcard that could expand to one (`cat .e*`),
   a variable that builds a path, a search of a folder that holds one (`grep -r KEY .`, `rg --hidden`, `tar` of the folder) and files another
   command picks (`find ... | xargs cat`) ask; a search of the home folder is denied. A command that prints the environment, a
-  variable named like a key, or a key or token from a cloud or package CLI asks.
+  variable named like a key, a process listing that shows environments (`ps eww`, `ps -E`, `ps -o command,env`), `git config --list` or a
+  `--get-regexp` that could match a credential or an address, `git remote -v`, `git remote show` or `git config --get remote.*.url` when a
+  remote address holds a password, a repository fetched or added from a host the project does not list (github.com, gitlab.com,
+  bitbucket.org, codeberg.org, sr.ht, dev.azure.com, huggingface.co and the hosts in the project's own remotes are listed), a shell string
+  that a variable or command builds (`bash -c 'echo $X'`), and opening an address in the person's browser ask. A key or token from a cloud or package CLI asks.
 - **An address** (`WebFetch`, `curl`, `wget`) asks when it carries data after `?` or `#`, has a user
   name or password, names an internal host, uses a scheme other than http or https, or has a long encoded
   host name or path segment; `file:` of a credential file is denied.
@@ -105,8 +126,9 @@ with no model, and each one asks (`unsure`, a request of kind `tool_call_destruc
 What the person sees is the command, or the file or address first and then the names of the other
 arguments, as one ASCII line of at most 250 characters that keeps both its start and its end, with the
 classifier's reasons (up to 700 characters) beside it. Code: `poolhouse.guard.execchain` (commands),
-`toolreview` and `autoexec` (tool arguments and written files), `fetchexec` (written text),
-`secretcmds`, `urlscan`; tests: `tests/test_harness_exec_chain.py`.
+`gitcmds`, `toolreview` and `autoexec` (tool arguments and written files), `fetchexec` and `flowscan` (written text),
+`fetchlog` (the downloads of a session), `secretcmds`, `urlscan`; tests: `tests/test_harness_exec_chain.py` and
+`tests/test_harness_exec_chain_more.py`.
 
 ### The workspace
 
@@ -155,7 +177,10 @@ says the model is not recorded.
   `make`, `npm test` or `cargo test`; files that a `git pull`, `merge` or `rebase` brings in and a
   later command runs; a plain GET to a host the model chooses, which can carry a few bytes in a short
   path or sub-domain on each call (the hook holds no list of allowed hosts); instruction files such as
-  `AGENTS.md`, which are read, not run; a file replaced by a link between the check and the call;
+  `AGENTS.md`, which are read, not run (their writes ask, but what an injected line in one says is not judged); a download that a
+  later `make`, `npm test` or `cargo test` runs without naming the file; the written-text scan follows a name through assignments
+  in one file, not through a function, an import or a name built from pieces; `sh -c` with a body the classifier reads and finds
+  harmless (`sh -c id`); a file replaced by a link between the check and the call;
   the folder after a `cd` (a relative name is read against the project folder); and a project folder
   with more than 20,000 entries, which asks instead of being searched for credential files.
 - The harness talks to the server directly, not through `poolhouse.http`, so the per-pool request queue (`poolhouse.gate`) does not order its calls. One slot per session keeps two sessions from sharing a cache.
