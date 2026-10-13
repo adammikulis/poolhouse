@@ -59,7 +59,8 @@ def asked(kind: str = "model_publisher"):
 # -- the rule that matches a repository to a publisher -------------------------------------
 def test_the_known_publishers_match_by_their_whole_owner():
     for repo in ("Qwen/Qwen3.8-27B-GGUF", "unsloth/Qwen3.8-27B-GGUF", "ggml-org/gemma-GGUF",
-                 "google/gemma-GGUF", "bartowski/x-GGUF", "lmstudio-community/x-GGUF"):
+                 "google/gemma-GGUF", "bartowski/x-GGUF", "lmstudio-community/x-GGUF",
+                 "mlx-community/Qwen3.8-Flash-Next-4bit"):
         assert publishers.trusted(repo), repo
     assert set(publishers.ORDER) == set(publishers.TRUSTED)
 
