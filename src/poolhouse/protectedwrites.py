@@ -19,8 +19,10 @@ GUARD_PATHS = (
     r"\.claude/(settings(\.local)?\.json|(agents|commands|skills|hooks)(/.*)?)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
-REVIEWED = (*GUARD_PATHS, r"scripts/hooks/.*", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*", r"docs/github-protection\.md",
-            r"scripts/github-protection[\w-]*", r"scripts/land[\w.-]*", r"src/poolhouse/(protectedwrites|worktreerules)\.py")
+REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pushed|primary-only|no-real-names|no-data-files|budgets"
+            r"|budgets-only-fall|weakened-assertions|guard_index\.py)", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
+            r"docs/github-protection\.md", r"scripts/github-protection[\w-]*", r"scripts/land[\w.-]*",
+            r"src/poolhouse/(protectedwrites|worktreerules)\.py")
 GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$")
 REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$")
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)")

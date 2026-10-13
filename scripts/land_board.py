@@ -115,6 +115,12 @@ class Runner:
         except ValueError as error:
             self.settle(req, "refused", str(error))
             return False
+        held = land_entries.guards(self.root, req["target"], req["sha"])
+        if held:
+            shown = ", ".join(held[:6]) + (f" and {len(held) - 6} more" if len(held) > 6 else "")
+            self.settle(req, "needs-human", f"it changes {shown}: a person reviews a change to the guards, the hook "
+                        "settings, the rules or the landing code, and lands it at a terminal")
+            return False
         return True
 
     def screen(self, queue: landing.Queue) -> list[dict]:

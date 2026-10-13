@@ -7,6 +7,8 @@ from pathlib import Path
 
 import land_git as lg
 
+from poolhouse import protectedwrites
+
 
 def check(root: Path, target: str, branch: str, tip: str) -> None:
     """Raise ValueError unless ``branch`` is at exactly ``tip`` and shares history with the target.
@@ -23,6 +25,13 @@ def check(root: Path, target: str, branch: str, tip: str) -> None:
     base = f"origin/{target}" if lg.exists(root, f"origin/{target}") else target
     if lg.git(root, "merge-base", base, branch, check=False).returncode:
         raise ValueError(f"{branch} shares no history with {base}")
+
+
+def guards(root: Path, target: str, branch: str) -> list[str]:
+    """The paths ``branch`` changes against ``target`` that a person reviews before they land: the guards, the hook
+    settings, the rules and the landing code."""
+    base = f"origin/{target}" if lg.exists(root, f"origin/{target}") else target
+    return protectedwrites.touches_guards(lg.lines(root, "diff", "--name-only", "--no-renames", f"{base}...{branch}"))
 
 
 def load(root: Path, target: str, path: Path) -> list[str]:

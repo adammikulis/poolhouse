@@ -28,6 +28,7 @@ and reason, sent to the requester by name, while the rest of the batch merges, g
 | what goes wrong | outcome |
 | --- | --- |
 | tip moved, SHA differs, branch missing | `refused` before the batch, with "request it again" |
+| the diff changes a guard: `.claude/` settings and agents, the claude and git hooks that refuse, the person record's code, `AGENTS.md`, `CLAUDE.md`, `.github/`, the GitHub protection scripts, the landing code or the rules the guards read (`protectedwrites.GUARD_PATHS` and `REVIEWED`) | `needs-human` before the batch, naming the paths: a person reviews and lands it at a terminal; the runner never lands it, and the rest of the queue goes on |
 | does not merge cleanly | `needs-human`, "merge conflict: files" |
 | the merge step itself crashes | `needs-human`, "merge failed: ..."; the tree is reset to the last good merge |
 | red test | `failed`, naming the failing test files and whether `<dev>` is red too |
