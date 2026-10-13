@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use crate::cert::{cert_fingerprint, valid_fingerprint};
 use crate::error::{Error, Result};
 use crate::fsutil::hex;
+use crate::grants::spec::SKEW_MS;
 use crate::membership::{Device, Policy, Pool, Status};
 use crate::node::Node;
 use crate::poolops::wall_ms;
@@ -424,6 +425,10 @@ impl Node {
     fn start_pool(&mut self, found: Act) -> Result<String> {
         if !self.members.is_unfounded() {
             return Err(declined("This device already runs a pool; leave it before making another."));
+        }
+        let wall = wall_ms();
+        if found.at_ms > wall.saturating_add(SKEW_MS) || found.not_after.saturating_add(SKEW_MS) < wall {
+            return Err(Error::say("denied", "That charter was signed too long ago or is dated ahead: draft it again and ask your person to sign it again.", "approval", "retry"));
         }
         let pool = GovPool::create(&self.dir, found)?;
         let id = pool.id.clone();

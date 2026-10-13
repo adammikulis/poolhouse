@@ -15,7 +15,7 @@ use crate::fsutil::sha256_hex;
 use crate::membership::Policy;
 use crate::row::canonical;
 
-use super::act::Act;
+use super::act::{Act, WINDOW_MS};
 use super::keys::{AdminKey, Role, Strength};
 use super::MAX_ADMINS;
 
@@ -140,7 +140,10 @@ impl Charter {
 
     /// The act that founds the pool of this charter: made of nothing but the charter, so every device that holds the charter makes the same one.
     pub fn found_act(&self) -> Act {
-        Act { v: super::act::VERSION, pool: self.pool_id(), epoch: 1, kind: "found".into(), body: self.body(), at_ms: self.at_ms, nonce: self.anchor()[..32].into(), prev: String::new(), signatures: Vec::new() }
+        Act {
+            v: super::act::VERSION, pool: self.pool_id(), epoch: 1, kind: "found".into(), body: self.body(), at_ms: self.at_ms, not_after: self.at_ms.saturating_add(WINDOW_MS),
+            nonce: self.anchor()[..32].into(), prev: String::new(), signatures: Vec::new(),
+        }
     }
 
     pub fn admin(&self, key: &str) -> Option<&AdminKey> {

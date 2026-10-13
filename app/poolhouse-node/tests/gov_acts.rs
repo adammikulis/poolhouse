@@ -325,7 +325,8 @@ fn a_backdated_act_and_a_wall_clock_a_month_ahead_shorten_no_hold() {
     let mut act = g.new_act("admin_add", json!({"entry": entry_after(strong(B, "ben"), 2, &g)}), wall_ms() - 3 * 24 * 3_600_000).unwrap();
     sign(&mut act, A);
     let month_ahead = wall_ms() + 30 * 24 * 3_600_000;
-    assert_eq!(g.ingest(act, month_ahead), Ingest::Accepted);
+    let relayed = g.ingest_many(vec![act], month_ahead, false);
+    assert!(matches!(relayed[0].1, Ingest::Accepted), "a member relays it a month on: {relayed:?}");
     advance(&mut g, HOUR);
     assert!(!admins(&g).contains(&public(B)), "the signer wrote three days ago and the wall clock says a month later: the hold is awake time here");
     advance(&mut g, 24 * HOUR);

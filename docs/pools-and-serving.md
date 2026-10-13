@@ -167,8 +167,10 @@ A pool has no key of its own and no secret shared by its members. Nothing in a m
 
 ### 1.5 Acts
 
-Every act is `{v, pool, epoch, kind, body, at_ms, nonce, prev, signatures: [{kind: admin|device, key, sig}]}`, signed over
-`poolhouse/pool-act/v1` and a line break and the canonical JSON of everything but the signatures. `prev` is the hash of the charter in force that the
+Every act is `{v, pool, epoch, kind, body, at_ms, not_after, nonce, prev, signatures: [{kind: admin|device, key, sig}]}`, signed over
+`poolhouse/pool-act/v2` and a line break and the canonical JSON of everything but the signatures. `not_after` (at most a week after `at_ms`,
+an hour for an act one person signs) is the last moment a person's signer may hand the pool the act or a signature on it: an act that was
+signed and not used cannot be used later, and what a member relays is taken as it comes. `prev` is the hash of the charter in force that the
 signer knew (an epoch's charter is derived from the acts, so its hash is the same on every device that applied the same acts, whatever order a
 hold ended in). The member record (`roster.json`) is a view folded from the acts; it is not an input and a `members`
 row is never believed again. A **hold** is a delay before an act takes effect, in which any strong admin may `cancel` it.

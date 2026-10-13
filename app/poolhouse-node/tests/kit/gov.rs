@@ -58,8 +58,13 @@ pub fn entry_after(k: K, since: u64, g: &GovPool) -> AdminKey {
 
 /// An epoch-1 charter of the keys, each accepting it.
 pub fn charter(keys: &[K], policy: Policy, unit: Unit) -> Charter {
+    charter_at(keys, policy, unit, wall_ms())
+}
+
+/// An epoch-1 charter made at ``at_ms``, each key accepting it.
+pub fn charter_at(keys: &[K], policy: Policy, unit: Unit, at_ms: u64) -> Charter {
     let bare: Vec<AdminKey> = keys.iter().map(|k| entry(*k, 1, "")).collect();
-    let mut c = Charter::new("home", policy, "", bare, wall_ms());
+    let mut c = Charter::new("home", policy, "", bare, at_ms);
     c.thresholds.unit = unit;
     let anchor = c.anchor();
     c.admins = keys.iter().map(|k| entry(*k, 1, &anchor)).collect();

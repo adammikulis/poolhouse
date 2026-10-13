@@ -18,10 +18,10 @@ use crate::fsutil::{private_dir, sha256_hex, unhex, write_atomic};
 use crate::grants::spec::SKEW_MS;
 use crate::membership::{Device, Policy, Status};
 
-use super::act::{Act, ActSig, SigKind};
+use super::act::{Act, ActSig, SigKind, LONG_WINDOW_MS};
 use super::body::{self, Body};
 use super::chain::{self, Chain, Seen};
-use super::charter::Charter;
+use super::charter::{Charter, Class};
 use super::clock::Awake;
 use super::keys::{AdminKey, Role, Strength};
 use super::roster::{self, Roster};
@@ -299,9 +299,15 @@ impl GovPool {
     }
 
     /// An act of ``kind`` with no signature yet, following the charter now in force.
+    /// The signatures on it are good for an hour, or for a week when the charter in force asks several people for it.
     pub fn new_act(&self, kind: &str, body: Value, at_ms: u64) -> Result<Act> {
         let (epoch, prev) = self.context();
-        Act::new(&self.id, epoch, kind, body, at_ms, &prev)
+        let mut act = Act::new(&self.id, epoch, kind, body, at_ms, &prev)?;
+        let c = &self.state.chain.latest().charter;
+        if !matches!(kind, "admit" | "leave" | "veto") && (c.needed(Class::Routine) > 1 || c.needed(Class::Sensitive) > 1) {
+            act.not_after = at_ms.saturating_add(LONG_WINDOW_MS);
+        }
+        Ok(act)
     }
 
     fn refuse(&mut self, act: &Act, why: &str) -> Ingest {
@@ -417,12 +423,13 @@ impl GovPool {
 
     /// Hand one act to the pool, ``wall_ms`` being this device's wall clock (read only to refuse an act dated in the future).
     pub fn ingest(&mut self, act: Act, wall_ms: u64) -> Ingest {
-        let out = self.take(act, wall_ms, false);
+        let out = self.take(act, wall_ms, false, true);
         self.refold();
         out
     }
 
-    fn take(&mut self, mut act: Act, wall_ms: u64, settled: bool) -> Ingest {
+    /// ``local``: a person's signer handed the act in, so its signatures must still be inside their window; a member's relay is not held to it.
+    fn take(&mut self, mut act: Act, wall_ms: u64, settled: bool, local: bool) -> Ingest {
         act.signatures.sort();
         let id = act.id();
         if let Err(e) = act.check_shape() {
@@ -443,6 +450,9 @@ impl GovPool {
         }
         if self.acts.get(&id).is_some_and(|held| act.signatures.iter().all(|s| held.signatures.iter().any(|h| h.kind == s.kind && h.key == s.key))) {
             return Ingest::Known;
+        }
+        if local && act.not_after.saturating_add(SKEW_MS) < wall_ms {
+            return self.refuse(&act, "the signatures on that act ran out before it was handed in");
         }
         match self.verify_signatures(&act) {
             Ok(()) => {}
@@ -493,7 +503,7 @@ impl GovPool {
                     self.refold();
                     moved = Moved::default();
                 }
-                let out = self.take(act.clone(), wall_ms, settled);
+                let out = self.take(act.clone(), wall_ms, settled, false);
                 if matches!(out, Ingest::Accepted | Ingest::Merged) {
                     progress = true;
                     moved.note(&act);

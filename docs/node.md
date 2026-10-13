@@ -855,9 +855,15 @@ pool, through admin keys; a device never does, and the one thing a member device
   nothing else. The `recovery` role counts toward no immediate act and leaves the admin set only with its own signature.
   Thresholds count distinct people (`unit: person`) or keys: `routine` (remove, cancel, end a delegate) 1 by default, `sensitive`
   (admin changes, thresholds, holds, a delegate) 1 while one person is listed and 2 once two are.
-- **Acts** (`gov/act.rs`, `gov/body.rs`): `{v, pool, epoch, kind, body, at_ms, nonce, prev, signatures}` signed over
-  `poolhouse/pool-act/v1`, a line break and the canonical JSON without the signatures; the id of an act is the hash of those bytes,
+- **Acts** (`gov/act.rs`, `gov/body.rs`): `{v, pool, epoch, kind, body, at_ms, not_after, nonce, prev, signatures}` (version 2) signed over
+  `poolhouse/pool-act/v2`, a line break and the canonical JSON without the signatures; the id of an act is the hash of those bytes,
   so co-signers sign the same bytes and the signature sets of two copies merge. `prev` is the hash of the charter the signer knew.
+  `not_after` is signed: a pool takes a new act, or a new signature on one, from a person's signer (`pool_submit`, `pool_cosign`, the
+  signer path) only until `not_after` (five minutes of clock skew allowed), an hour after `at_ms` for an act one person signs and a
+  week for one that needs several; an act whose window is empty or over a week is refused whatever it is signed with. What a
+  member relays is taken as it comes, so a removal reaches a device that was away for longer than the window; an act held already is
+  `known`, never refused for its age. A charter is founded (`pool_create`, `pool_found`) only within an hour of its `at_ms`, which
+  every key accepted, and never when it is dated ahead.
   Kinds: `found`, `admit`, `remove`, `leave`, `admin_add`, `admin_remove`, `veto`, `cancel`, `set_threshold`, `set_holds`,
   `set_mode`, `delegate`, `delegate_end`. A body field nobody defined, an act over 16 KiB, more than eight signatures, one signer
   named twice, a kind this build does not know, an act for another pool, one dated more than five minutes ahead and one whose
