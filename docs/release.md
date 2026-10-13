@@ -58,7 +58,8 @@ The `release` environment must exist before `scripts/release-key create` runs
 (`scripts/github-protection-apply` creates it; [github-protection.md](github-protection.md)), since the secret is set on it.
 
 The key is made and kept by `scripts/release-key`, run by a person at a terminal (it refuses an agent and a process
-with no terminal). It needs `ssh-keygen` and an authenticated `gh` in this repository.
+with no terminal). It needs `ssh-keygen` and an authenticated `gh` in this repository, and it runs again under the
+selected runtime (`runtime.rerun`), the one copy of Poolhouse the OS keystore admits.
 
 - `scripts/release-key create [--write]` generates an Ed25519 key, sets the secret `RELEASE_SIGNING_KEY` of the
   `release` environment from stdin, stores the private key in the OS keystore (credential `POOLHOUSE_RELEASE_SIGNING_KEY`) and prints the

@@ -60,6 +60,10 @@ STANDARD: tuple[Capability, ...] = (
     Capability("plot", "plots", "draws the panels poolhouse-serve fit --plot writes",
                "matplotlib"),
     Capability("graph", "graph maths", "builds a graph out of what it has read", "numpy"),
+    Capability("memory", "the OS keystore", "keeps keys in the macOS Keychain or Secret Service",
+               "keyring"),
+    Capability("github-app", "agent identity", "signs in as the GitHub App agents work under",
+               "jwt"),
 )
 
 
