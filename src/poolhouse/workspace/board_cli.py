@@ -169,7 +169,8 @@ def whoami(args: argparse.Namespace, s: Session) -> Any:
 def agents(args: argparse.Namespace, s: Session) -> Any:
     """Every live identity with its model and whether it may coordinate."""
     return [{"id": a.name, "role": "agent", "parent": a.parent, "model": safe(a.model), "model_state": a.model_state,
-             "harness": a.harness, "last_acted": a.seen_ms / 1000, "retired": a.retired, **agent_display.describe(a)}
+             "harness": a.harness, "last_acted": a.seen_ms / 1000, "retired": a.retired, "idle": a.idle,
+             **agent_display.describe(a)}
             for a in s.agents()]
 
 
@@ -180,11 +181,12 @@ def spawn(args: argparse.Namespace, s: Session) -> Any:
 
 
 def retire(args: argparse.Namespace, s: Session) -> Any:
-    """End the subagent the caller runs as."""
+    """End the session the caller runs as, and the subagents below it."""
     name = s.name
     done = s.retire()
     credentials.forget(s.client.state, s.board, name)
-    return {"id": done["name"], "tokens_revoked": done["tokens_revoked"], "leases_released": done["leases_released"]}
+    return {"id": done["name"], "tokens_revoked": done["tokens_revoked"], "leases_released": done["leases_released"],
+            "subagents_retired": done.get("subagents_retired", 0)}
 
 
 def announced(s: Session, kind: str, text: str) -> dict[str, Any]:
@@ -380,9 +382,10 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      [flag("--session", help="the subagent's native session id (its agent id)"),
       flag("--harness", default="claude-code", help="the harness the subagent runs in"),
       flag("--model", default="", help="the subagent's model id, recorded as claimed")], spawn),
-    ("retire", "end the subagent you run as: its token stops working and its claims are released; run by its stop hook",
+    ("retire", "end the session you run as: its token stops working and its claims are released, and so are its subagents'; "
+               "run by the stop and end hooks",
      [], retire),
-    ("agents", "every live identity with its model and whether the model is verified; --for-agent shows one",
+    ("agents", "every live identity with its model, whether the model is verified and whether it is idle; --for-agent shows one",
      [FOR_AGENT], agents),
     ("send", "send a message (BODY - reads stdin)", [
         flag("to", help="an agent id, or * for the announcements board (joined, milestone, done, blocked only)"),

@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""A SessionEnd hook: retires the main session's own identity when the session ends for good, never when it goes on under /clear or /resume."""
+
+from __future__ import annotations
+
+import workspace_hook
+
+CONTINUES = ("clear", "resume")
+
+
+def main() -> int:
+    event = workspace_hook.event("SessionEnd")
+    if event is None or event.get("agent_id") or event.get("reason") in CONTINUES:
+        return 0
+    environment = workspace_hook.session_environment(event, "SessionEnd")
+    if environment is None or not environment.get("POOLHOUSE_WORKSPACE_AGENT"):
+        return 0
+    workspace_hook.run(["poolhouse-workspace", "retire"], "SessionEnd", environment=environment)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

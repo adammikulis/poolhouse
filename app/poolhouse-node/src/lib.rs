@@ -20,6 +20,7 @@ pub mod fsutil;
 pub mod gov;
 pub mod grants;
 pub mod identity;
+pub mod idle;
 pub mod landing;
 pub mod landtrust;
 pub mod lease;

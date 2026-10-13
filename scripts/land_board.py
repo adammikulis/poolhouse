@@ -29,7 +29,7 @@ import land_git as lg
 import land_recover as recover
 import psutil
 
-from poolhouse.board import place, session
+from poolhouse.board import credentials, place, session
 from poolhouse.board.client import Client, Conflict, Denied, NodeError
 from poolhouse.board.session import Native, Session
 from poolhouse.devbranch import development_branch
@@ -419,11 +419,22 @@ def runner_session(root: Path, target: str) -> Session:
     return Session(client, board, made.token, made.name)
 
 
+def end_session(s: Session) -> None:
+    """Retire the runner's own board session and forget its token; a failure is printed and ends nothing else."""
+    try:
+        s.retire()
+        credentials.forget(s.client.state, s.board, s.name)
+    except STEP_ERRORS as error:
+        print(f"land: the runner's session was not retired: {type(error).__name__}: {error}"[:300], file=sys.stderr)
+
+
 def serve(root: Path, target: str, flags: dict) -> int:
-    """Run passes as the runner's own session until interrupted, or one pass with ``once``."""
+    """Run passes as the runner's own session until interrupted, or one pass with ``once``; the session is retired when
+    the runner is stopped or has run its pass, and kept when it exits for any other reason."""
     runner = Runner(runner_session(root, target), root, target, flags["remote"], flags["stall_minutes"] * 60.0,
                     request_s=flags["request_minutes"] * 60.0, batch_s=flags["batch_minutes"] * 60.0)
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    stopped = False
     try:
         while True:
             try:
@@ -432,9 +443,13 @@ def serve(root: Path, target: str, flags: dict) -> int:
                 result = {"status": "error", "error": f"{type(error).__name__}: {error}"[:300]}
             print(json.dumps(result, sort_keys=True), flush=True)
             if flags["once"]:
+                stopped = True
                 return 0
             time.sleep(flags["interval"])
     except KeyboardInterrupt:
+        stopped = True
         return 0
     finally:
         runner.close()
+        if stopped:
+            end_session(runner.s)
