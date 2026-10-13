@@ -629,18 +629,21 @@ system's prompt on the real home), and that key signs the grant. A device alread
 X" and changes nothing. Every refusal is a `Refusal` (an `ph.Denied`): one sentence of at most 160 characters, what is needed, where the person
 taps and what the agent does next. The node writes the `pool_created` event to the pool board's audit.
 
-**What remains, exactly.** A pool needs a strong admin key (1.3), and no strong key can sign a charter yet: the phone's key is P-256 and signs
-approvals of grants only, a charter's admin key is Ed25519 (`gov/keys.rs`), and the node has no production `Signer` that asks the phone
-(`gov/signer.rs` holds the rig's). The key the first-key flow makes is kept in the account's keystore, which any process of the account can
-use, so the node derives it as weak (a key is strong only when a phone enrolled it on the node) and the call refuses it before the person is asked anything: "A pool needs a key that asks
-for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again." With a phone linked the sentence
-is "Your phone is linked, but it cannot sign a new pool's charter yet; update the Poolhouse app, then tell me again." The path is real
-and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's `found-by-api`) with a key the test wrote into the node's person keys file marked as a phone's, which is how the node comes to
-derive it as strong (the pool check's person is enrolled that way). To close it: the phone enrols the key that signs charters as a phone's (which is what makes the node derive it as strong), signs a charter acceptance and an act (`alg: p256` admin keys, verified by
-`grants::person::verifies`, or an Ed25519 key in the phone's keystore with a per-signature prompt), and the node's `Signer` becomes the
-phone approval. Also not built: the card's text for `pool_create` (it falls to the node's default, "It is not an action this node knows the
-cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and the fingerprint of an open pool's member,
-or a code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
+**What remains, exactly.** A pool needs a strong admin key (1.3). The node takes a charter whose admin key is a phone's P-256 key (`alg: p256`,
+signatures in strict DER with `s` in the lower half of the group, an acceptance that names the charter it follows) and derives the key as strong when a
+phone enrolled it on the node; what is not built is the phone's part and the node's production `Signer` (`gov/signer.rs` holds the rig's). The key
+the first-key flow makes is kept in the account's keystore, which any process of the account can use, so the node derives it as weak and the call
+refuses it before the person is asked anything: "A pool needs a key that asks for you each time it signs, which is your phone; link your phone in
+the Poolhouse app and tell me again." With a phone linked the sentence is "Your phone is linked, but it cannot sign a new pool's charter yet; update
+the Poolhouse app, then tell me again." The path is real and tested (`tests/test_pool_found.py`, `tests/test_api_found.py`, the pool check's
+`found-by-api`, `app/poolhouse-node/tests/gov_charter.rs` with a P-256 key) with a key the test wrote into the node's person keys file marked as a
+phone's, which is how the node comes to derive it as strong (the pool check's person is enrolled that way). To close it: the phone makes one
+biometric-only Keystore P-256 key for each pool, renders the whole charter (the anchor it recomputes, the policy, every key with its algorithm and
+derived strength, the thresholds, holds and recovery days) and signs the acceptance and the acts, each as an approval on the fatigue ledger, and the
+node's `Signer` becomes the phone approval; the first device's certificate is folded into the founding charter so the acceptance is the whole
+authorization (`HANDOFF.md`, "Break-it pass on phone-signed charters"). Also not built: the card's text for `pool_create` (it falls to the node's
+default, "It is not an action this node knows the cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and
+the fingerprint of an open pool's member, or a code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
 
 ## 2. Operated by agents, approved by a tap
 
