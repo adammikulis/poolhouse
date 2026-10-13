@@ -98,6 +98,19 @@ pub fn founding_act(act: Option<&Value>, charter: Option<&Value>) -> Result<Valu
     }
 }
 
+/// The founding act in ``act`` and the charter it carries, as far as the charter itself says: nothing of this device is read.
+fn charter_of(act: &Value) -> Result<(Act, Charter)> {
+    let found: Act = serde_json::from_value(act.clone()).map_err(|e| Error::Invalid(format!("that is not an act: {}", e.to_string().chars().take(80).collect::<String>())))?;
+    let charter = super::pool::founding(&found).map_err(|e| declined(&e.to_string()))?;
+    Ok((found, charter))
+}
+
+/// The name of the pool an act a person's keys signed elsewhere would found, for the grant that lets a session found it; what this device
+/// derives about the keys is not read, so a session that holds no grant learns none of it.
+pub fn founding_name(act: &Value) -> Result<String> {
+    Ok(charter_of(act)?.1.name)
+}
+
 const NO_STRONG_KEY: &str = "A pool needs a strong key, one that asks for your presence each time it signs, and that charter lists none.";
 const UNCONFIRMED_STRONG_KEY: &str = "That charter calls a key strong that is not a phone's key on this device, so I will not make that pool.";
 
@@ -146,8 +159,7 @@ impl Node {
     /// The founding act in ``act`` and its charter, when the strong keys it lists are keys this device derives as strong and at
     /// least one is an admin key: without one nobody could admit a device.
     fn founding_of(&self, act: &Value) -> Result<(Act, Charter)> {
-        let found: Act = serde_json::from_value(act.clone()).map_err(|e| Error::Invalid(format!("that is not an act: {}", e.to_string().chars().take(80).collect::<String>())))?;
-        let charter = super::pool::founding(&found).map_err(|e| declined(&e.to_string()))?;
+        let (found, charter) = charter_of(act)?;
         let confirmed = |k: &&AdminKey| k.strength == Strength::Strong && self.key_strength(&k.key) == Strength::Strong;
         if !charter.admins.iter().filter(confirmed).any(|k| k.role == Role::Admin) {
             return Err(declined(NO_STRONG_KEY));
@@ -418,11 +430,6 @@ impl Node {
         let id = pool.id.clone();
         self.members = Pool::governed(pool);
         Ok(id)
-    }
-
-    /// The name of the pool an act a person's keys signed elsewhere would found, for the grant that lets a session found it.
-    pub fn founding_name(&self, act: &Value) -> Result<String> {
-        Ok(self.founding_of(act)?.1.name)
     }
 
     /// Found the pool of an act a person's keys signed elsewhere (each key's acceptance is inside its charter). The device is not

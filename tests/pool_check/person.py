@@ -6,7 +6,7 @@ run alone: never in a keystore and never the key of the account. It is enrolled 
 node reads when it starts (`wire.plant_phone_key`), because a node derives a key as strong only when a phone enrolled it, and no call of the
 node, and no switch it honours, can enrol one that way. The rig signs each grant through the real `grant_issue`. What the rig does not exercise
 is the person's yes to the question the node writes on a terminal, the custody of a person's real key and the phone's own signing
-(docs/pool-check.md); the tests of the node and of the founding path run the yes.
+(docs/pool-check.md); founding no longer asks for it, and only the node's own tests and the test kit's `enrol_first` type it.
 
 The same key is the admin of the pools the rig founds (`found`, `admit`, `remove`), named in each pool's charter. The node never holds it. It
 drafts an act (`pool_draft`, `pool_draft_found`), the rig signs the bytes it is given outside the node, and the node takes the signed act back

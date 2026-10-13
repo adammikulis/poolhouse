@@ -895,7 +895,7 @@ pool, through admin keys; a device never does, and the one thing a member device
   a person signs an act under (`gov/describe.rs`, at most 300 characters) names the key with its person, strength and fingerprint, the
   device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. `pool_found` is
   granted by the name of the pool the act founds and refuses a charter with no strong admin key, which nobody could admit a device
-  under, and a charter that calls a key strong that no phone enrolled on this device (the strength is this node's to derive, from the `phone`
+  under, and, once the grant is held (a session without it is told only that the grant is missing), a charter that calls a key strong that no phone enrolled on this device (the strength is this node's to derive, from the `phone`
   mark of the key in `persons.json`, and is never read from a caller).
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
 - **The unfounded pool of one.** A fresh device (no `pools/<id>/`) is its own only member: `pool_status` says `governance.mode:

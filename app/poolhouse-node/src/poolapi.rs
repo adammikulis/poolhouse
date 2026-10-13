@@ -116,7 +116,7 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
         }
         "pool_found" => {
             let act = crate::gov::ops::founding_act(p.get("act"), p.get("charter"))?;
-            let name = node.founding_name(&act)?;
+            let name = crate::gov::ops::founding_name(&act)?;
             authorize(node, token, "pool_create", &name)?;
             node.pool_found(&act)
         }

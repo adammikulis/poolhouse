@@ -4,7 +4,7 @@ mod kit;
 
 use kit::gov::*;
 use kit::govnode::*;
-use kit::grants::person as grantor;
+use kit::grants::{enrolled, person as grantor};
 use kit::netkit::*;
 use poolhouse_node::gov::charter::Unit;
 use poolhouse_node::membership::Policy;
@@ -45,6 +45,10 @@ fn the_same_charter_handed_over_whole_founds_nothing() {
 fn a_key_a_person_enrolled_with_a_typed_yes_is_not_strong() {
     let a = device();
     let typed = grantor().public();
+    let mut call = |m: &str, b: &str, t: &str, p: Value| a.call(m, b, t, p);
+    enrolled(a.dir.path(), &mut call, &a.token);
+    let held = a.ok("person_keys", "", "", json!({}));
+    assert!(held["keys"].as_array().unwrap().iter().any(|k| k["fingerprint"] == grantor().fingerprint().as_str()), "the typed key is enrolled on this node: {held}");
     let reply = a.call("pool_found", "", &a.token, json!({"act": act_of(&[strong(0x70, "ann")])}));
     assert_eq!(reply["ok"], false, "a key the person typed yes for is a key a process of the account can use: {reply}");
     let drafted = a.ok("pool_draft_found", "", &a.token, json!({"title": "home", "policy": "secure", "project": "", "keys": [{"key": typed, "person": "ann", "label": "x"}]}));
@@ -99,6 +103,25 @@ fn a_phone_key_that_was_removed_is_strong_no_more() {
 }
 
 #[test]
+fn a_session_without_the_grant_learns_nothing_about_which_keys_a_phone_enrolled() {
+    let (knows, ignorant) = (device(), device());
+    enrol_phone_key(&knows, ANN);
+    let act = act_of(&[strong(ANN, "ann")]);
+    let ask = |d: &Dev| {
+        let (_name, token) = d.session("demo", "ungranted");
+        d.call("pool_found", "", &token, json!({"act": act.clone()}))
+    };
+    let (held, not_held) = (ask(&knows), ask(&ignorant));
+    for reply in [&held, &not_held] {
+        assert_eq!(reply["ok"], false, "{reply}");
+        assert!(reply["error"]["message"].as_str().is_some_and(|m| m.contains("pool_create")), "the refusal is the missing grant: {reply}");
+    }
+    let shown = |reply: &Value| (reply["error"]["code"].clone(), reply["error"]["message"].clone(), reply["error"]["grant"]["action"].clone(), reply["error"]["grant"]["resource"].clone());
+    assert_eq!(shown(&held), shown(&not_held), "the same answer whether or not the key is a phone's here");
+    assert_eq!((knows.status()["governance"]["mode"].as_str(), ignorant.status()["governance"]["mode"].as_str()), (Some("unfounded"), Some("unfounded")));
+}
+
+#[test]
 fn a_founding_act_handed_to_the_other_pool_calls_founds_nothing() {
     let a = device();
     let act = act_of(&[strong(ANN, "ann")]);
@@ -119,15 +142,42 @@ fn sources(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
     }
 }
 
+type Sources = Vec<(std::path::PathBuf, String)>;
+
+/// The files, as paths under `src`, that name `add_phone_key` in any form (a method call, a path, a function value, a `use`) and are neither
+/// its definition nor the phone's enrolment.
+fn naming_it_outside_the_phone(files: &Sources) -> Vec<std::path::PathBuf> {
+    let own = std::path::Path::new("grants").join("person.rs");
+    files.iter().filter(|(path, text)| text.contains("add_phone_key") && *path != own && !path.starts_with("phone")).map(|(path, _)| path.clone()).collect()
+}
+
 #[test]
 fn only_a_phones_own_enrolment_marks_a_key_as_a_phones() {
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = Vec::new();
-    sources(&src, &mut files);
-    let callers: Vec<std::path::PathBuf> = files.iter().filter(|f| std::fs::read_to_string(f).unwrap().contains(".add_phone_key(")).map(|f| f.strip_prefix(&src).unwrap().to_path_buf()).collect();
-    let own = std::path::Path::new("grants").join("person.rs");
-    let elsewhere: Vec<&std::path::PathBuf> = callers.iter().filter(|c| **c != own).collect();
-    assert!(!elsewhere.is_empty() && elsewhere.iter().all(|c| c.starts_with("phone")), "a key is enrolled as a phone's only by the phone's enrolment: {callers:?}");
+    let mut paths = Vec::new();
+    sources(&src, &mut paths);
+    let files: Sources = paths.iter().map(|p| (p.strip_prefix(&src).unwrap().to_path_buf(), std::fs::read_to_string(p).unwrap())).collect();
+    assert_eq!(naming_it_outside_the_phone(&files), Vec::<std::path::PathBuf>::new(), "a key is enrolled as a phone's only by the phone's enrolment");
+    assert!(files.iter().any(|(path, text)| path.starts_with("phone") && text.contains("add_phone_key")), "the phone's enrolment is what the scan expects to find");
+}
+
+#[test]
+fn the_scan_catches_every_way_of_naming_the_phone_enrolment() {
+    let planted = |text: &str| -> Sources { vec![(std::path::Path::new("gov").join("ops.rs"), text.to_string())] };
+    for text in [
+        "node.persons.add_phone_key(ED25519, key, label, now)?;",
+        "Persons::add_phone_key(&mut node.persons, ED25519, key, label, now)?;",
+        "Persons::add_phone_key ::<>(&mut p, a, b, c, d)?;",
+        "let enrol = Persons::add_phone_key;",
+        "use crate::grants::person::Persons as P; P::add_phone_key(&mut p, a, b, c, d)",
+    ] {
+        assert_eq!(naming_it_outside_the_phone(&planted(text)).len(), 1, "{text}");
+    }
+    let allowed: Sources = [("grants/person.rs", "pub fn add_phone_key"), ("phone/mod.rs", "node.persons.add_phone_key("), ("phone/enrol.rs", "add_phone_key")]
+        .iter().map(|(p, t)| (std::path::PathBuf::from(p), t.to_string())).collect();
+    assert!(naming_it_outside_the_phone(&allowed).is_empty());
+    let lookalike: Sources = vec![(std::path::Path::new("phonebook").join("mod.rs"), "x.add_phone_key(".into())];
+    assert_eq!(naming_it_outside_the_phone(&lookalike).len(), 1, "a path that only starts with the word phone is not the phone");
 }
 
 #[test]
