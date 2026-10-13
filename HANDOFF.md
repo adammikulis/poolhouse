@@ -1,5 +1,6 @@
 # Handoff
 # Priority 1: security
+- **The release signing key does not exist (owner: yes, 2026-10-13); every pin and every trusted build roots in it, ours or the pinned Box build.** `scripts/release-key create --write` refuses an agent ("scripts/release-key is for a person; this process was started by an agent (CLAUDECODE is set)"), so a person runs it at a terminal and commits `src/poolhouse/fleet/signing.py`; `packaging/install.sh` and `install.ps1` still install an unsigned download until then. After it: sign the runtime and the pinned Box build with it so a device verifies one key.
 ## Pools and serving, slice 1 (governance core, 2026-10-11)
 - **No strong key can sign a pool's charter, so no real pool can be founded on a device today.** `ph.pool.found` and `poolhouse pool found` exist and are tested (`src/poolhouse/board/founding.py`); they refuse the key the first-key flow makes because it is `weak`, and a linked phone's P-256 key signs grant approvals only. Needed: the phone signs a charter acceptance and an act (`alg: p256` admin keys, or an Ed25519 key in the phone's keystore with a per-signature prompt) and the node's `Signer` becomes the phone approval (`docs/pools-and-serving.md`, "What remains, exactly"; `docs/phone-approval.md`, slice P1). Slice 2 (reissue, the copy defence; the legacy pool is deleted, not migrated), slice 3 (the recovery key's time lock, `endorse`, members-governed mode, dispute banners), check words and the trusted-display joins (slices 5 and 8) and many pools on a device (slice 4) are not started.
 - **Break-it pass on phone-signed charters (2026-10-12, non-author review; findings F1 to F10 stand until fixed or accepted by the owner), in build order:**
@@ -127,9 +128,6 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
 - **Earned trust (`docs/earned-trust.md`).** Section 8 slices (landing record M1, reviewer concentration M7, suspension rules, signed-head anchor in the keystore, coordinator eligibility from the ledger) are not built; the owner decisions are recorded in section 9 and its wording for AGENTS.md (section 10) is not yet added.
 
 ## Keys, grants and requests
-- [ ] **The release signing key does not exist yet.** Run `scripts/release-key create --write` at a
-  terminal and commit `src/poolhouse/fleet/signing.py`. `packaging/install.sh` and `install.ps1`
-  still install an unsigned download.
 
 - [ ] **No real OS keystore prompt has been driven by hand.** Tests use fakes and the real-keystore
   guard stays on; what a person sees on a first Keychain prompt is as documented in `docs/keystore.md`
