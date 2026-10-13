@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import authority_kit
 import pytest
 from test_runtime_deploy import agent, builder, commit, world  # noqa: F401
 
@@ -78,7 +79,7 @@ def test_revoking_the_delegation_refuses_the_next_deploy_and_keeps_the_selection
     commit(repo, "b")
     assert runtime_cli.main(["ensure"]) == 1
     assert selected() == first
-    authority.set_state(["runtime.deploy"], authority.DELEGATED, by="lead")
+    authority_kit.delegate(["runtime.deploy"])
     assert runtime_cli.main(["ensure"]) == 0 and selected() != first
 
 
@@ -90,7 +91,7 @@ def test_rollback_follows_the_same_gate(lead):
     runtime_cli.main(["ensure"])
     authority.set_state(["runtime.deploy"], authority.PERSON, by="lead")
     assert runtime_cli.main(["rollback"]) == 1 and selected() != first
-    authority.set_state(["runtime.deploy"], authority.DELEGATED, by="lead")
+    authority_kit.delegate(["runtime.deploy"])
     assert runtime_cli.main(["rollback"]) == 0 and selected() == first
     assert [e.meta["command"] for e in deploys()].count("rollback") == 2
 
@@ -131,7 +132,7 @@ def test_restart_host_follows_the_same_gate_and_is_audited(lead, capsys):
     authority.set_state(["runtime.deploy"], authority.PERSON, by="lead")
     assert runtime_cli.main(["restart-host", "--port", "1"]) == 1
     assert deploys()[-1].outcome == "refused" and deploys()[-1].meta["command"] == "restart-host"
-    authority.set_state(["runtime.deploy"], authority.DELEGATED, by="lead")
+    authority_kit.delegate(["runtime.deploy"])
     assert runtime_cli.main(["restart-host", "--port", "1"]) == 0
     assert "not-running" in capsys.readouterr().out
     last = deploys()[-1]

@@ -6,15 +6,16 @@ import json
 import os
 import re
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, person
 from poolhouse.files import read_json, write_json
 from poolhouse.person import HumanRequired, require_person
 
-__all__ = ["DELEGATED", "FLOOR_ENV", "GATES", "PERSON", "PRESETS", "audit_rows", "record", "require",
-           "resolve", "set_state", "show", "state_of"]
+__all__ = ["DELEGATED", "FLOOR_ENV", "GATES", "PERSON", "PRESETS", "Asking", "Scope", "audit_rows", "record",
+           "require", "resolve", "set_state", "show", "state_of"]
 
 DELEGATED = "delegated"
 PERSON = "person"
@@ -38,6 +39,23 @@ GATES: dict[str, str] = {
     "runtime.deploy": "runtime",
 }
 """Each delegable gate and its group."""
+
+MEANS: dict[str, str] = {
+    "workspace.setup": "install the agent hooks on this device",
+    "workspace.model": "record which model a session runs",
+    "workspace.agents": "start, stop and replace local agents",
+    "sentinel.quarantine": "release or purge what the sentinel quarantined",
+    "sentinel.policy": "change the sentinel's mode",
+    "requests.answer": "answer the requests that are waiting for you",
+    "memory.admin": "administer the memory store",
+    "reputation.admin": "change reputation records",
+    "activity.export": "export the activity log",
+    "fleet.recovery": "export the pool's recovery file",
+    "serve.wired-limit": "raise the memory limit models may use",
+    "chat.policy": "change what the chat refuses",
+    "runtime.deploy": "deploy a new runtime build on this device",
+}
+"""What a lead agent may do without asking the person while a gate is delegated."""
 
 PROD_DELEGATED = frozenset({"workspace.setup", "workspace.model", "workspace.agents"})
 PRESETS = ("dev", "prod")
@@ -104,16 +122,47 @@ def audit_rows() -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text("utf-8").splitlines() if line] if path.exists() else []
 
 
-def set_state(names: Iterable[str], new: str, *, by: str, project: str = "",
-              preset: str = "") -> list[dict[str, str]]:
+@dataclass(frozen=True, slots=True)
+class Scope:
+    """Where a change applies: a project (empty for the machine) and the preset it came from."""
+
+    project: str = ""
+    preset: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Asking:
+    """How a loosening reaches the person: the terminal flags and environment `require_person` reads, and the typed line."""
+
+    terminal: tuple[bool, bool] | None = None
+    env: Mapping[str, str] | None = None
+    typed: Callable[[str], str] | None = None
+
+
+def _ask_to_loosen(gates: list[str], asking: Asking) -> None:
+    """Raise `HumanRequired` unless a person at a terminal types `yes` to the list of what ``gates`` would let a lead do."""
+    require_person("loosening " + ", ".join(gates), asking.terminal, asking.env)
+    lines = "\n".join(f"  - {MEANS[g]} ({g})" for g in gates)
+    prompt = f"A lead agent would be able to do this without asking you:\n{lines}\nType yes to allow it: "
+    if (asking.typed or person.typed)(prompt).strip().lower() != "yes":
+        raise HumanRequired("loosening not confirmed: nothing was changed")
+
+
+def set_state(names: Iterable[str], new: str, *, by: str, scope: Scope | None = None,
+              asking: Asking | None = None) -> list[dict[str, str]]:
     """Set the selected gates to ``new`` for the machine (or ``project``) and audit who changed what.
-    Returns each gate's change; a helper identity (``parent/name``) is refused."""
+    Returns each gate's change; a helper identity (``parent/name``) is refused, and moving a gate from `person` to
+    `delegated` is made only by a person at a terminal who types `yes` to what it allows."""
     if "/" in by:
         raise HumanRequired("authority is flipped by a lead agent or a person, not a helper")
     if new not in (PERSON, DELEGATED):
         raise ValueError(f"authority state must be {PERSON} or {DELEGATED}")
+    project, preset = (scope.project, scope.preset) if scope else ("", "")
     gates = resolve(names)
     before = {g: state_of(g, project) for g in gates}
+    loosened = [g for g in gates if new == DELEGATED and before[g] == PERSON]
+    if loosened:
+        _ask_to_loosen(loosened, asking or Asking())
     data = _read()
     target = data.setdefault("projects", {}).setdefault(project, {}) if project else data.setdefault("gates", {})
     target.update(dict.fromkeys(gates, new))

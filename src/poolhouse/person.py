@@ -17,7 +17,7 @@ if sys.platform != "win32":
     import signal
     import termios
 
-__all__ = ["AGENT_MARKERS", "HumanRequired", "confirm", "controlling_terminal", "is_terminal", "marked", "require_person"]
+__all__ = ["AGENT_MARKERS", "HumanRequired", "confirm", "controlling_terminal", "is_terminal", "marked", "require_person", "typed"]
 
 _MSVCRT = importlib.import_module("msvcrt") if sys.platform == "win32" else None
 

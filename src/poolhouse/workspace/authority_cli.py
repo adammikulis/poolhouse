@@ -25,7 +25,7 @@ OPTIONS = [
 
 def _flip(who: str, gates: list[str], new: str, where: tuple[str, str]) -> list[dict[str, str]]:
     scope, preset = where
-    return authority.set_state(gates, new, by=who, project=scope, preset=preset)
+    return authority.set_state(gates, new, by=who, scope=authority.Scope(scope, preset))
 
 
 def _preset(s: Session, name: str, scope: str) -> dict[str, Any]:

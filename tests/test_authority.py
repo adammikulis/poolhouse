@@ -8,7 +8,7 @@ import re
 import pytest
 from taskboard_kit import board as _board_fixture
 
-from poolhouse import authority, chatpolicy
+from poolhouse import authority, chatpolicy, person
 from poolhouse.board.tasks import Tasks
 from poolhouse.errors import Denied
 from poolhouse.net import cli as net_cli
@@ -48,7 +48,8 @@ def test_set_selects_all_a_group_or_a_gate_and_persists():
     assert authority.state_of("sentinel.quarantine") == authority.state_of("sentinel.policy") == authority.PERSON
     assert authority.state_of("serve.wired-limit") == authority.DELEGATED
     authority.set_state(["ALL"], authority.PERSON, by="lead")
-    authority.set_state(["serve.wired-limit", "fleet.recovery"], authority.DELEGATED, by="lead")
+    authority.set_state(["serve.wired-limit", "fleet.recovery"], authority.DELEGATED, by="lead",
+                        asking=authority.Asking(terminal=(True, True), env={}, typed=lambda prompt: "yes"))
     held = {row["gate"]: row["state"] for row in authority.show()["gates"]}
     assert held["serve.wired-limit"] == held["fleet.recovery"] == authority.DELEGATED
     assert held["sentinel.policy"] == authority.PERSON
@@ -61,7 +62,7 @@ def test_an_unknown_name_is_refused_and_changes_nothing():
 
 
 def test_a_project_has_its_own_state_over_the_machine_s():
-    authority.set_state(["chat.policy"], authority.PERSON, by="lead", project="alpha")
+    authority.set_state(["chat.policy"], authority.PERSON, by="lead", scope=authority.Scope(project="alpha"))
     assert authority.state_of("chat.policy", "alpha") == authority.PERSON
     assert authority.state_of("chat.policy", "beta") == authority.state_of("chat.policy") == authority.DELEGATED
 
@@ -207,12 +208,14 @@ def test_show_set_and_preset_through_the_workspace_command(board):
     assert (flip["by"], flip["from"], flip["to"]) == (board.lead.name, ["delegated"], "person")
 
 
-def test_prod_makes_the_sensitive_gates_a_person_s_and_enforcement_strict_and_dev_undoes_both(board):
+def test_prod_makes_the_sensitive_gates_a_person_s_and_enforcement_strict_and_dev_undoes_both(board, monkeypatch):
     prod = authority_cli.run(args("preset", "prod", project="alpha"), board.parent)
     assert prod["enforcement"]["mode"] == "strict" and Tasks(board.parent).mode()["mode"] == "strict"
     assert prod["preflight"]["clear"] and prod["preflight"]["stranded"] == []
     assert authority.state_of("sentinel.quarantine", "alpha") == authority.PERSON
     assert authority.state_of("workspace.setup", "alpha") == authority.DELEGATED
+    monkeypatch.setattr(person, "is_terminal", lambda stream: True)
+    monkeypatch.setattr(person, "typed", lambda prompt, wait_s=0: "yes")
     dev = authority_cli.run(args("preset", "dev", project="alpha"), board.parent)
     assert dev["enforcement"]["mode"] == "open" and Tasks(board.parent).mode()["mode"] == "open"
     assert {row["state"] for row in authority.show("alpha")["gates"]} == {authority.DELEGATED}

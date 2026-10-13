@@ -350,7 +350,9 @@ board's unread rows (sender, kind and time of each, text only for the cases abov
 `poolhouse-workspace authority show` lists the delegable gates, `authority set person|delegated ALL|GROUP|GATE
 [GATE ...] [--project KEY]` changes some, and `authority preset dev|prod` changes all of them and the board's task
 enforcement mode together (see AGENTS.md, "System settings and the authority registry"). A lead agent or a person
-flips; a subagent is refused. Each flip is audited in `authority-audit.jsonl` under the state root, which also records
+tightens (a gate to `person`); a subagent is refused. Loosening (a gate from `person` to `delegated`, including
+`preset dev` over a stricter registry) is a person's alone: a person at a terminal types `yes` to a list that names, in
+plain words, what a lead agent may then do without asking, and any agent-marked process is refused. Each flip is audited in `authority-audit.jsonl` under the state root, which also records
 each use of a delegated gate by an agent. A delegated gate passes an agent only under a session name the node
 recorded as a main session (a token on a board and no parent): an unnamed process, a name the node does not know and
 a subagent are refused. The registry gates what a person has delegated to a lead; the grants above

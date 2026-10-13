@@ -6,6 +6,7 @@ import argparse
 import json
 import tomllib
 
+import authority_kit
 import pytest
 from node_kit import node_binary, workspace_node  # noqa: F401
 
@@ -135,11 +136,16 @@ def test_install_names_every_agent_it_is_told_to(machine):
 def test_the_install_command_follows_the_registry(machine, monkeypatch):
     args = argparse.Namespace(settings=str(machine / "s.json"), codex_config="", only=[], agent="")
     authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
+    folder = machine / "state" / "node" / "client" / "board"
+    folder.mkdir(parents=True)
+    (folder / "agent-lead01.token").write_text("t\n", encoding="utf-8")
+    (folder / "agent-lead01.parent").write_text("\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", "agent-lead01")
     with pytest.raises(HumanRequired):
         hooks_cli.install(args)
     assert not (machine / "s.json").exists()
-    authority.set_state(["workspace.setup"], authority.DELEGATED, by="lead")
+    authority_kit.delegate(["workspace.setup"])
     assert hooks_cli.install(args) == 0
     assert (machine / "s.json").is_file()
 
