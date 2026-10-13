@@ -17,7 +17,7 @@ poolhouse                     # first run: this device is a pool of one
 ```python
 import poolhouse as ph
 
-ph.pool.listen("secure", agreed=True)       # let other devices join; you said yes to the network
+ph.pool.listen(agreed=True)                  # let other devices join; you said yes to the network
 print(ph.pool.add_device())                  # a short code; type it on the second device
 ph.pool.join("192.168.2.27", "THE-CODE")     # ...there (or: same network, policy open, no code)
 print([m.name for m in ph.pool.members()])   # both devices
