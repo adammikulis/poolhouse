@@ -54,6 +54,13 @@ def writes(log):
     return [(m, p) for m, p, *_ in calls(log) if m != "GET"]
 
 
+def test_the_repository_comes_from_gh_when_not_named(ap, tmp_path, monkeypatch, capsys):
+    log = serve(tmp_path, monkeypatch, before_state())
+    monkeypatch.setattr(ap, "this_repo", lambda: REPO)
+    assert ap.main([], TERMINAL) == 0
+    assert writes(log) == [] and f"repos/{REPO}" in str(calls(log))
+
+
 def test_without_apply_nothing_is_changed_and_the_diff_is_printed(ap, tmp_path, monkeypatch, capsys):
     log = serve(tmp_path, monkeypatch, before_state())
     assert ap.main(["--repo", REPO], TERMINAL) == 0
