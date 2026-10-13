@@ -506,7 +506,7 @@ Decided by the owner on 2026-10-13:
 - The backdoored-model defences that block 0.3 are the proxy path: B0, B1, B10, B2, B12, B3, B9. The Box slices B4, B5 and B6 are after 0.3.
 - Serving a model to a pool ships in 0.3 (P1 step 6, D1 step 4).
 - Windows is a platform for a person's whole journey in 0.3, so the first key and the first phone must be made on Windows.
-- 0.3 waits for a signed app download for a person with no terminal; the one-line terminal install is not the release path.
+- A person with no terminal installs a Mac app that is not notarized (the owner has no Apple developer account): the first-run page shows the taps to open it anyway, and the app updates itself under the Poolhouse release key. The one-line terminal install is not the release path.
 - Pools founded before the F1 fix are refused; a shut-down pool is deleted after 3 days; a pool shut down for a security issue keeps a sealed record.
 
 Open, the owner's alone to settle. Nothing in this page decides them.
