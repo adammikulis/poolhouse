@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Apply the GitHub protection target of docs/github-protection.md. The owner runs it at a terminal.
 
-    scripts/github-protection-apply --repo OWNER/NAME                     print what would change
-    scripts/github-protection-apply --repo OWNER/NAME --apply --identity-ready
+    scripts/github-protection-apply [--repo OWNER/NAME]                       print what would change
+    scripts/github-protection-apply --apply --identity-ready
     scripts/github-protection-apply --restore BACKUP [--apply]            put a backup's settings back
 
 A run without --apply changes nothing and prints a diff per step. --apply saves the current
@@ -269,6 +269,16 @@ def run(args: argparse.Namespace) -> int:
     return 0 if args.restore else check(repo, args)
 
 
+def this_repo() -> str:
+    """OWNER/NAME of the repository this checkout belongs to, from gh."""
+    done = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+                          capture_output=True, text=True, cwd=ROOT, check=False)
+    name = done.stdout.strip()
+    if done.returncode or "/" not in name:
+        raise Failed("could not read the repository from gh; name it with --repo OWNER/NAME")
+    return name
+
+
 def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="github-protection-apply", description=__doc__.splitlines()[0])
     parser.add_argument("--repo", help="OWNER/NAME")
@@ -282,7 +292,7 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
     try:
         person.require_person("scripts/github-protection-apply", terminal)
         if not (args.repo or args.restore):
-            raise Failed("name the repository with --repo OWNER/NAME")
+            args.repo = this_repo()
         return run(args)
     except (Failed, person.HumanRequired) as exc:
         print(f"github-protection-apply: {exc}", file=sys.stderr)

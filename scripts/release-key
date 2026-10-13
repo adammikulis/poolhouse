@@ -87,7 +87,8 @@ def _set_secret(private: bytes) -> None:
         _run(["gh", "secret", "set", REPO_NAME, "--env", "release"], data=private, cwd=ROOT)
     except Failed as exc:
         raise Failed(f"{exc}\nthe environment secret, the keystore and signing.py are unchanged; run "
-                     "`gh auth status` in this repository and run the command again") from None
+                     "`gh auth status` in this repository and run the command again; an HTTP 404 means the environment "
+                     "does not exist yet: `scripts/github-protection-apply --apply --identity-ready` creates it") from None
 
 
 def _record(public: str, write: bool) -> None:
