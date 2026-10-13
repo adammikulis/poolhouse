@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
+from poolhouse import secretpaths
 from poolhouse.interventions import Base, Call, Context, Deny, Proceed, Verdict
 
 __all__ = ["SENSITIVE", "Limits", "ToolPolicyRail", "check_arguments", "tool_schemas"]
@@ -22,10 +23,7 @@ SENSITIVE = frozenset({
 """Tools that start processes, write files or download."""
 
 URL = re.compile(r"(?i)\b(?:https?|ftp|wss?)://[^\s\"'<>)]+")
-SENSITIVE_PATH = re.compile(
-    r"(?i)(?:^|[\s\"'=:/\\~])(?:\.ssh|\.aws|\.gnupg|\.netrc|\.pypirc|\.git-credentials|\.docker/config"
-    r"|id_rsa|id_ed25519|\.env(?:\.\w+)?|authorized_keys|known_hosts)(?:$|[\s\"'/\\])"
-    r"|/etc/(?:passwd|shadow|sudoers)|/proc/self/environ|\bKeychains?\b")
+SENSITIVE_PATH = secretpaths.sensitive_path()
 TRAVERSAL = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)")
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 

@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse.guard import codescan, workspacecmds
+from poolhouse.guard import codescan, execchain, workspacecmds
 from poolhouse.guard.harm import Finding, outside, protected, resolve
 from poolhouse.guard.shellscan import Segment, has_expansion, has_glob, segments
 from poolhouse.guard.verbs import verb_finding, words_of
@@ -27,11 +27,16 @@ D, R, S, U = "destructive", "reversible", "safe", "unsure"
 @dataclass(frozen=True, slots=True)
 class Ctx:
     """What a command is read against: the ``roots`` writes may go to, how deep the line is
-    nested and whether another command's output feeds the arguments (``fed``)."""
+    nested, whether another command's output feeds the arguments (``fed``), whether
+    another command (``feeder``) picks the files it is given (``supplied``) and whether
+    what the command reads on its input came from a download (``streaming``)."""
 
     roots: tuple[str, ...] = ()
     depth: int = 0
     fed: bool = False
+    supplied: bool = False
+    feeder: tuple[str, ...] = ()
+    streaming: bool = False
 
 
 READ_ONLY = frozenset([
@@ -80,7 +85,10 @@ VALUE_FLAGS = {"sudo": "ugChpCDRTU", "doas": "uC", "env": "uC", "nice": "n", "io
                "stdbuf": "ioe", "timeout": "ks", "xargs": "IiLnPsdEaJ", "watch": "ndp"}
 LOADER_VARS = frozenset({"LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
                          "PATH", "BASH_ENV", "ENV", "IFS", "PROMPT_COMMAND", "PYTHONPATH", "NODE_OPTIONS",
-                         "PYTHONSTARTUP", "PERL5OPT", "RUBYOPT"})
+                         "PYTHONSTARTUP", "PERL5OPT", "RUBYOPT", "LD_AUDIT", "PYTHONHOME", "NODE_PATH", "RUBYLIB", "PERL5LIB",
+                         "RUSTC_WRAPPER", "EDITOR", "VISUAL", "PAGER", "SHELL", "SSH_ASKPASS", "SUDO_ASKPASS", "BROWSER"})
+COMMAND_VAR_PREFIXES = ("GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_EDITOR", "GIT_ASKPASS", "GIT_PROXY_COMMAND", "GIT_CONFIG",
+                        "GIT_EXEC_PATH", "GIT_TEMPLATE_DIR", "PIP_", "NPM_CONFIG_", "npm_config_")
 HELP = frozenset({"--help", "--version", "-V", "-h", "-version", "version"})
 
 
@@ -185,7 +193,7 @@ def _sed(args: list[str], ctx: Ctx) -> list[Finding]:
     flags, words = split_args(args)
     if flags & {"i", "--in-place"} or any(a.startswith("-i") for a in args):
         return [Finding(D, "edits files in place (sed -i)")]
-    if any(re.search(r"(^|[;{}\s])[we]\b|/[we]\s*$|/[gpI]*e", a) for a in words[:1]):
+    if any(re.search(r"(^|[;{}\s0-9$])[we]\b|/[we]\s*$|/[gpI]*e", a) for a in words[:1]):
         return [Finding(U, "a sed script that can write files or run commands")]
     return [Finding(S, "sed prints its result")]
 
@@ -203,7 +211,7 @@ def _find(args: list[str], ctx: Ctx) -> list[Finding]:
             end = next((i for i in range(at + 1, len(args)) if args[i] in (";", "+", "\\;")),
                        len(args))
             inner = [x for x in args[at + 1:end] if x != "{}"]
-            found += analyse(inner, Ctx(ctx.roots, ctx.depth + 1, True)) if inner else [
+            found += analyse(inner, Ctx(ctx.roots, ctx.depth + 1, True, True, ("find", *args))) if inner else [
                 Finding(U, "find -exec with no command")]
             at = end
         at += 1
@@ -415,6 +423,8 @@ def _interpreter(name: str, args: list[str], ctx: Ctx) -> list[Finding]:
             if ctx.depth >= MAX_DEPTH:
                 return [Finding(U, "shell commands nested too deeply to read")]
             inner = scan(text, ctx.roots, ctx.depth + 1)
+            if has_expansion(text):
+                inner.append(Finding(U, "runs shell text that a variable or command builds"))
             return inner or [Finding(U, "an empty shell -c string")]
         return [Finding(U, f"{name} runs a script or reads commands from input")]
     if code_flag:
@@ -427,7 +437,7 @@ def _interpreter(name: str, args: list[str], ctx: Ctx) -> list[Finding]:
             return [Finding(R, f"python -m {mod} runs project code")]
         if mod == "pip":
             return _pkg("pip", args[2:], ctx)
-        if mod in ("json.tool", "http.server", "this", "platform", "sysconfig", "site"):
+        if mod in ("json.tool", "this", "platform", "sysconfig", "site"):
             return [Finding(S, f"python -m {mod}")]
     if name in ("python", "python3") and _queued_tests(args, ctx):
         return [Finding(R, "runs the maintained test queue in the authorized isolated worktree")]
@@ -495,7 +505,7 @@ def _wrapper(name: str, args: list[str], ctx: Ctx) -> list[Finding]:
     if not inner:
         return [Finding(S if name in ("env", "time", "command") else R, f"{name} with no command")]
     fed = ctx.fed or name == "xargs"
-    found = analyse(inner, Ctx(ctx.roots, ctx.depth + 1, fed))
+    found = analyse(inner, Ctx(ctx.roots, ctx.depth + 1, fed, ctx.supplied or name == "xargs", ctx.feeder, ctx.streaming))
     if name in ("sudo", "doas"):
         found.append(Finding(R, "runs with administrator rights"))
     if name == "exec":
@@ -562,6 +572,10 @@ def _fixed(name: str, args: list[str], ctx: Ctx) -> list[Finding] | None:
 
 def analyse(argv: list[str], ctx: Ctx) -> list[Finding]:
     """The findings for one command, ``argv`` being its words with the assignments removed."""
+    return [*execchain.review(argv, ctx.roots, ctx.supplied, ctx.feeder, ctx.streaming), *_classify(argv, ctx)]
+
+
+def _classify(argv: list[str], ctx: Ctx) -> list[Finding]:
     if not argv:
         return []
     first = argv[0]
@@ -622,19 +636,25 @@ def scan(command: str, roots: tuple[str, ...] = (), depth: int = 0) -> list[Find
     found = list(found)
     ctx = Ctx(roots, depth)
     prev: Segment | None = None
+    stream = False
     for seg in parsed:
         argv = list(seg.argv)
         while argv and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[0]):
-            if argv[0].split("=", 1)[0] in LOADER_VARS:
+            variable = argv[0].split("=", 1)[0]
+            if variable in LOADER_VARS or variable.startswith(COMMAND_VAR_PREFIXES):
                 found.append(Finding(U, "sets a variable that changes how programs load code"))
             argv.pop(0)
-        piped_ctx = Ctx(roots, depth, seg.piped)
+        stream = bool(argv) and (_base(argv[0]).lower() in execchain.DOWNLOADERS or (seg.piped and stream))
+        piped_ctx = Ctx(roots, depth, seg.piped, False, tuple(prev.argv) if seg.piped and prev else (), stream and seg.piped)
         found += analyse(argv, piped_ctx)
+        if seg.background:
+            found.append(Finding(U, "runs in the background, where nothing shows what it does or stops it"))
         if prev is not None:
             hit = _stdin_code(seg, prev)
             if hit is not None:
                 found.append(hit)
         for op, target in seg.redirects:
+            found += execchain.redirect(op, target, roots, stream)
             hit = _redirect(op, target, ctx)
             if hit is not None:
                 found.append(hit)

@@ -56,8 +56,11 @@ def account_roots() -> tuple[Path, Path]:
 
 
 def expand(path: str | Path) -> Path:
-    """A path somebody named, with a leading ``~`` resolved."""
-    return Path(path).expanduser()
+    """A path somebody named, with a leading ``~`` resolved; ``~name`` of an account that does not exist stays as written."""
+    try:
+        return Path(path).expanduser()
+    except RuntimeError:
+        return Path(path)
 
 
 def home() -> Path:

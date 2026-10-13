@@ -17,6 +17,7 @@ from typing import Any
 
 from poolhouse import worktreerules
 from poolhouse.chatpolicy import APPROVE_FIRST, PLAN_AND_GO, READ_ONLY, refusal_for
+from poolhouse.guard import fetchlog
 from poolhouse.guard.destructive import classify, reason_text
 from poolhouse.guard.shellscan import segments
 from poolhouse.interventions import Call
@@ -118,6 +119,8 @@ def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence
         return _denied("reversible", "tests must use the maintained scripts/test broker queue")
     verdict = classify(Call(name, args), roots=roots, catalog=CATALOG)
     why = reason_text(verdict)
+    if verdict.forbidden:
+        return _denied(verdict.label, f"{why}; an agent never opens one")
     if verdict.label == "safe":
         return Decision("allow", "safe", why)
     if refusal := refusal_for(_shell_line(name, args)):
@@ -129,6 +132,17 @@ def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence
     if role == APPROVE_FIRST:
         return Decision("ask", verdict.label, why)
     return Decision("allow", verdict.label, why)
+
+
+def after_downloads(decision: Decision, name: str, args: dict[str, Any] | None, roots: Sequence[str], fetched: Sequence[str]) -> Decision:
+    """``decision``, turned into a question when the call runs a file this session downloaded."""
+    line = _shell_line(name, args)
+    used = fetchlog.uses(line, roots, [*fetched, *fetchlog.targets(line, roots, "", fetched)]) if line else ""
+    if not used or decision.action == "deny":
+        return decision
+    why = f"runs {used}, which this session downloaded"
+    label = decision.label if decision.label in ("unsure", "destructive") else "unsure"
+    return Decision("ask", label, f"{decision.reason}; {why}" if decision.action == "ask" else why, "tool_call_destructive")
 
 
 def workspace_authority(line: str, actor: str) -> Decision | None:
