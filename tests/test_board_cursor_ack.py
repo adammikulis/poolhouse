@@ -196,3 +196,42 @@ def test_shared_private_parent_is_refused_without_changing_its_mode(tmp_path):
         credentials.remember(state, 'board', 'reader', 'inbox', {'device': 1})
     assert stat.S_IMODE(state.stat().st_mode) == 0o755
     assert list(state.iterdir()) == []
+
+
+def test_cursor_cache_uses_authenticated_identity_instead_of_cached_label(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from poolhouse.board.session import Session
+
+    reader = Session(SimpleNamespace(state=tmp_path), 'board', 'own-test-token', named='other-label')
+    monkeypatch.setattr(Session, 'whoami', lambda _self: SimpleNamespace(name='reader'))
+    reader.keep('inbox', {'device': 4})
+    assert reader.cursor('inbox') == {'device': 4}
+    assert credentials.cursors(tmp_path, 'board', 'reader') == {'inbox': {'device': 4}}
+    assert not (tmp_path / 'client' / 'board' / 'other-label.cursors.json').exists()
+
+
+@pytest.mark.parametrize('operation', ['cursor', 'keep'])
+def test_invalid_token_cannot_read_or_write_a_cursor_cache(tmp_path, monkeypatch, operation):
+    from types import SimpleNamespace
+
+    from poolhouse.board.client import Denied
+    from poolhouse.board.session import Session
+
+    reader = Session(SimpleNamespace(state=tmp_path), 'board', 'invalid-test-token', named='other-label')
+
+    def refuse(_self):
+        raise Denied('denied', 'token is not known')
+
+    def touched(*_args):
+        raise AssertionError('unauthenticated cursor path must not be accessed')
+
+    monkeypatch.setattr(Session, 'whoami', refuse)
+    monkeypatch.setattr(credentials, 'cursors', touched)
+    monkeypatch.setattr(credentials, 'remember', touched)
+    with pytest.raises(Denied):
+        if operation == 'cursor':
+            reader.cursor('inbox')
+        else:
+            reader.keep('inbox', {'device': 4})
+    assert list(tmp_path.iterdir()) == []

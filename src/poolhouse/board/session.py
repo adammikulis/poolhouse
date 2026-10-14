@@ -395,10 +395,10 @@ class Session:
         return renewed
 
     def cursor(self, question: str) -> dict[str, int]:
-        return credentials.cursors(self.client.state, self.board, self.name).get(question, {})
+        return credentials.cursors(self.client.state, self.board, self.whoami().name).get(question, {})
 
     def keep(self, question: str, cursor: dict[str, int]) -> None:
-        credentials.remember(self.client.state, self.board, self.name, question, cursor)
+        credentials.remember(self.client.state, self.board, self.whoami().name, question, cursor)
 
 
 def _own_token(client: Client, board: str, native: Native) -> str:
