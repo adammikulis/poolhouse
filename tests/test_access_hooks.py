@@ -1,4 +1,4 @@
-"""The hooks the person applies from docs/access-widening-protected.patch: the tool guard is wired, the hard forms hold
+"""The hooks the settings wire: the tool guard is wired, the hard forms hold
 when POOLHOUSE_GUARD=off, a subagent acts only as itself and the release question names the guards a release changes."""
 
 from __future__ import annotations
