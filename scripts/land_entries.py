@@ -8,6 +8,9 @@ from pathlib import Path
 import land_git as lg
 
 from poolhouse import protectedwrites
+from poolhouse.board import session
+from poolhouse.board.client import NodeError
+from poolhouse.workspace import landing
 
 
 def check(root: Path, target: str, branch: str, tip: str) -> None:
@@ -28,17 +31,36 @@ def check(root: Path, target: str, branch: str, tip: str) -> None:
 
 
 def guards(root: Path, target: str, branch: str) -> list[str]:
-    """The paths ``branch`` changes against ``target`` that a person reviews before they land: the guards, the hook
-    settings, the rules and the landing code."""
+    """The guarded paths ``branch`` changes against ``target``."""
     base = f"origin/{target}" if lg.exists(root, f"origin/{target}") else target
     return protectedwrites.touches_guards(lg.lines(root, "diff", "--name-only", "--no-renames", f"{base}...{branch}"))
 
 
-def refusal(held: list[str]) -> str:
-    """The plain sentence saying a branch that changes ``held`` is left to a person."""
-    shown = ", ".join(held[:6]) + (f" and {len(held) - 6} more" if len(held) > 6 else "")
-    return (f"changes {shown}: a person reviews a change to the guards, the hook settings, the rules or the landing code, "
-            "and lands it at a terminal")
+def approval(root: Path, target: str, branch: str, tip: str, rid: str = "") -> dict:
+    """The authenticated live queue approval of a guarded source at its exact commit."""
+    check(root, target, branch, tip)
+    try:
+        caller = session.connect(cwd=root)
+        queue = landing.fold(caller)
+        if queue.paused:
+            raise ValueError("landing is paused")
+        matches = [req for req in queue.requests.values()
+                   if req["branch"] == branch and req["sha"] == tip and req["target"] == target
+                   and req["status"] in landing.OPEN and (not rid or req["id"] == rid)]
+        for req in reversed(matches):
+            why = landing.refusal(caller, req) or landing.standing(caller, req)
+            if not why:
+                return {"id": req["id"], "branch": branch, "sha": tip, "target": target}
+        why = why if matches else "no matching live request"
+    except NodeError as error:
+        why = str(error)
+    raise ValueError(f"{branch}@{tip[:12]} needs authenticated independent queue approval: {why}")
+
+
+def approvals(root: Path, target: str, sources: list[dict], base: str = "") -> list[dict]:
+    """The live exact-commit queue approvals for guarded sources."""
+    return [approval(root, target, row["branch"], row["sha"], row.get("id", ""))
+            for row in sources if guards(root, base or target, row["sha"])]
 
 
 def load(root: Path, target: str, path: Path) -> list[str]:

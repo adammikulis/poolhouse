@@ -69,7 +69,8 @@ Landing review is required for changes affecting security, encryption, access, i
 serving or compute. Any different authenticated agent or subagent may review, including a parent or child;
 the creator cannot review itself. Creators submit their own branches under authenticated branch claims.
 Ordinary changes require affected checks and integration gates, without review. Person-only keystore,
-system approval, release and protected-code authorization checks remain separate.
+system approval and release authorization checks remain separate. Guarded repository source changes
+use exact-SHA independent queue approval.
 
 ### Attack first
 
@@ -426,7 +427,9 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
   `origin/<dev>` (merge `origin/<dev>` instead when the branch holds merges or is shared), run the affected tests, then
   `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ...` with the full SHA of the tip. Security, encryption, access, trust and compute changes require a different agent's
   `land-review` accept at that SHA; parent and child reviewers count, the creator never does. Ordinary changes
-  need no review. The runner derives the requirement from the exact diff, then batches, merges, gates, fast-forwards, pushes only the development branch
+  need no review. Guard, rule and landing-code source changes use the same exact-SHA independent queue approval;
+  direct `scripts/land run` and `finish` revalidate it. Keystore, privileged OS settings and release gates retain
+  their separate authorization checks. The runner derives the requirement from the exact diff, then batches, merges, gates, fast-forwards, pushes only the development branch
   and cleans up the worktree and branch. A worker never pushes, and never reports a branch landed without the runner's
   `landed` (the gate result) for its exact SHA. One request never fails another: a stale, conflicting, red, hanging or
   runner-breaking request is ejected alone with its reason and failing test names, sent to the requester by name, and

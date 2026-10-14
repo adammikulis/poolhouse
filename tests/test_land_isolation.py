@@ -126,10 +126,10 @@ def test_a_merge_step_that_crashes_ejects_that_branch_and_merges_the_rest(world,
     world.branch("calm", plus(37))
     real = land_run.merge_one
 
-    def merge_one(wt, branch):
+    def merge_one(wt, branch, tip=""):
         if branch == "boom":
             raise RuntimeError("git exploded")
-        return real(wt, branch)
+        return real(wt, branch, tip)
 
     monkeypatch.setattr(land_run, "merge_one", merge_one)
     batch = land_run.create(world.proj.root, DEV, ["boom", "calm"])

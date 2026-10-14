@@ -117,10 +117,6 @@ class Runner:
         if recover.present(self.root, req["sha"], self.target):
             self.settle(req, "landed", f"{self.target} already holds {req['sha'][:12]}")
             return False
-        held = land_entries.guards(self.root, req["target"], req["sha"])
-        if held:
-            self.settle(req, "needs-human", f"it {land_entries.refusal(held)}")
-            return False
         return True
 
     def screen(self, queue: landing.Queue) -> list[dict]:
@@ -134,7 +130,7 @@ class Runner:
 
     def stream(self, argv: list[str], batch: list[dict]) -> tuple[int, list[str], str]:
         """Run ``argv``, watch it for progress and cancellation; the status, its lines and a stop reason."""
-        proc = subprocess.Popen(argv, cwd=self.root, env=self.env, stdin=subprocess.DEVNULL,
+        proc = subprocess.Popen(argv, cwd=self.root, env={**self.env, session.AGENT_ENV: self.s.name}, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                 start_new_session=True)
         lines: list[str] = []

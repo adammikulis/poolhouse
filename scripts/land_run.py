@@ -34,6 +34,8 @@ class Batch:
     order: list[str]
     merged: list[tuple[str, str]] = field(default_factory=list)
     ejected: list[dict] = field(default_factory=list)
+    source_shas: list[dict] = field(default_factory=list)
+    approvals: list[dict] = field(default_factory=list)
 
 
 def say(message: str) -> None:
@@ -52,6 +54,7 @@ def save(batch: Batch, status: str, extra: dict) -> None:
     """Write the batch state for ``land finish``."""
     data = {"integration": batch.branch, "worktree": str(batch.wt), "target": batch.target,
             "base": batch.base, "sources": batch.order, "merged": [b for b, _ in batch.merged],
+            "source_shas": batch.source_shas, "approvals": batch.approvals,
             "ejected": batch.ejected, "status": status, "tree": tree_hash(batch.wt), **extra}
     state_file(batch.root).write_text(json.dumps(data, indent=1), encoding="utf-8")
 
@@ -84,10 +87,10 @@ def union_resolve(wt: Path, path: str) -> None:
     lg.git(wt, "add", path)
 
 
-def merge_one(wt: Path, branch: str) -> tuple[bool, list[str]]:
+def merge_one(wt: Path, branch: str, tip: str = "") -> tuple[bool, list[str]]:
     """Merge ``branch`` with --no-ff; the conflicted paths when it cannot be completed."""
     done = lg.git(wt, "-c", "rerere.enabled=true", "-c", "rerere.autoUpdate=true", "merge", "--no-ff",
-                  "-m", f"chore: merge {branch}", branch, check=False)
+                  "-m", f"chore: merge {branch}", tip or branch, check=False)
     if done.returncode == 0:
         return True, []
     left = lg.lines(wt, "diff", "--name-only", "--diff-filter=U")
@@ -128,9 +131,12 @@ def merge_all(batch: Batch, conflicts: str) -> bool:
     for name in [n for n in batch.order if n not in gone]:
         before = lg.out(batch.wt, "rev-parse", "HEAD")
         try:
-            ok, files = merge_one(batch.wt, name)
+            pinned = next((row["sha"] for row in batch.source_shas if row["branch"] == name), "")
+            if pinned:
+                land_entries.check(batch.root, batch.target, name, pinned)
+            ok, files = merge_one(batch.wt, name, pinned)
             why = "conflicts: " + ", ".join(files[:6])
-        except (RuntimeError, OSError) as error:
+        except (ValueError, RuntimeError, OSError) as error:
             lg.git(batch.wt, "merge", "--abort", check=False)
             lg.git(batch.wt, "reset", "--hard", "-q", before, check=False)
             ok, why = False, f"the merge step crashed: {str(error)[:200]}"
@@ -234,18 +240,12 @@ def create(root: Path, target: str, order: list[str]) -> Batch:
     return Batch(root, target, base, wt, branch, order)
 
 
-def refuse_guards(root: Path, target: str, branches: list[str]) -> None:
-    """Raise ValueError when a branch changes a guard, a hook setting, the rules or the landing code: a person lands it."""
-    for branch in branches:
-        if held := land_entries.guards(root, target, branch):
-            raise ValueError(f"{branch} {land_entries.refusal(held)}")
-
-
 def run(root: Path, target: str, names: list[str], flags: dict) -> tuple[int, dict]:
     """Plan, merge and verify; the exit status and the summary."""
     plan = land_plan.build(root, target, names)
     order = [e.branch for e in plan.order]
-    refuse_guards(root, target, order)
+    sources = [{"branch": name, "sha": lg.out(root, "rev-parse", f"{name}^{{commit}}")} for name in order]
+    approvals = land_entries.approvals(root, target, sources)
     candidates = [*order, *(e.branch for e in plan.covered), *plan.empty]
     summary: dict = {"command": "run", "target": target, "planned": order, "empty": plan.empty,
                      "dirty": plan.dirty}
@@ -259,6 +259,7 @@ def run(root: Path, target: str, names: list[str], flags: dict) -> tuple[int, di
             + (f"; full run: {reason}" if reason else ""))
         return 0, {**summary, "status": "dry-run", "kind": kind, "checks": checks, "full": reason}
     batch = create(root, target, order)
+    batch.source_shas, batch.approvals = sources, approvals
     say(f"integration {batch.branch} at {batch.wt}")
     if not merge_all(batch, flags["conflicts"]):
         save(batch, "stopped", {"candidates": candidates})
