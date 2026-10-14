@@ -104,25 +104,33 @@ class FakeDaemon:
 @pytest.fixture
 def loopback_advertisers(monkeypatch):
     logical, live = {}, {}
-    lock = threading.Lock()
+    lock = threading.RLock()
     initialize, start, stop = Advertiser.__init__, Advertiser.start, Advertiser.stop
+    announce = Advertiser.announce
 
     def isolated_initialize(advertiser, beacon, key, **options):
         requested = options.get('port')
         initialize(advertiser, beacon, key, **{**options, 'port': 0})
         logical[advertiser] = discovery.default_port() if requested is None else requested
 
+    def isolated_announce(advertiser):
+        with lock:
+            if advertiser._stop.is_set():
+                return
+            if advertiser not in live:
+                assert advertiser._ready.is_set() and isinstance(advertiser._sock, socket.socket)
+                actual = advertiser._sock.getsockname()[1]
+                assert actual and actual not in live.values()
+                advertiser.port = actual
+                live[advertiser] = actual
+            announce(advertiser)
+
     def isolated_start(advertiser, **options):
         registered = False
         try:
             result = start(advertiser, **options)
-            assert advertiser._ready.is_set() and isinstance(advertiser._sock, socket.socket)
-            actual = advertiser._sock.getsockname()[1]
-            with lock:
-                assert actual and actual not in live.values()
-                advertiser.port = actual
-                live[advertiser] = actual
-            registered = True
+            registered = advertiser in live
+            assert registered
             return result
         finally:
             if not registered:
@@ -130,17 +138,19 @@ def loopback_advertisers(monkeypatch):
 
     def isolated_stop(advertiser):
         with lock:
+            advertiser._stop.set()
             live.pop(advertiser, None)
         stop(advertiser)
 
     def destinations(_group, port):
         with lock:
             return [(('127.0.0.1', actual), '') for advertiser, actual in live.items()
-                    if logical[advertiser] == port]
+                    if logical[advertiser] == port or actual == port]
 
     monkeypatch.setattr(Advertiser, '__init__', isolated_initialize)
     monkeypatch.setattr(Advertiser, 'start', isolated_start)
     monkeypatch.setattr(Advertiser, 'stop', isolated_stop)
+    monkeypatch.setattr(Advertiser, 'announce', isolated_announce)
     monkeypatch.setattr(discovery, '_destinations', destinations)
     try:
         yield destinations
