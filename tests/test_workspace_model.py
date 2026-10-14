@@ -69,9 +69,12 @@ def test_an_empty_model_changes_nothing_and_safe_ids_are_accepted(duo):
     with pytest.raises(ValueError):
         clean_model("")
     assert duo.session(duo.bob).whoami().model == "claude-sonnet-5-5"
-    for ok in ("claude-sonnet-5-5", "Qwen3.8-35B-A3B-UD-Q4_K_XL", "gpt-5.1:high", "org/m+x@1", "x" * 80):
-        assert clean_model(ok) == ok
-        assert duo.session(duo.bob).whoami(model=ok).model == ok
+    for raw, stored in (("claude-sonnet-5-5", "claude-sonnet-5-5"),
+                        ("Qwen3.8-35B-A3B-UD-Q4_K_XL", "Qwen3.8-35B-A3B-UD-Q4_K_XL"),
+                        ("gpt-5.1:high", "gpt-5.1-high"), ("org/m+x@1", "org/m-x-1"), ("x" * 80, "x" * 48)):
+        assert clean_model(raw) == raw
+        who = duo.session(duo.bob).whoami(model=raw)
+        assert (who.model, who.model_state) == (stored, "claimed")
 
 
 def test_a_model_is_only_ever_claimed_never_verified_by_what_a_session_says(duo):

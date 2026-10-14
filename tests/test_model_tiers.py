@@ -71,6 +71,9 @@ class Stub:
     def whoami(self):
         return self.who
 
+    def claim(self, kind, key):
+        self.sent.append(("claim", {"kind": kind, "key": key}))
+
     def call(self, name, **fields):
         self.sent.append((name, fields))
         return {}
@@ -134,7 +137,21 @@ def test_a_big_qwen_may_request_and_review_landing(model):
     assert landing.eligible(stub.who) == ''
     landing.request(stub, {'branch': 'feat/x', 'sha': 'a' * 40})
     landing.review(stub, 'req-1', 'a' * 40, 'accept')
-    assert [name for name, _ in stub.sent] == ['land_request', 'land_review']
+    assert [name for name, _ in stub.sent] == ['claim', 'land_request', 'land_review']
+    assert stub.sent[0][1] == {'kind': 'branch', 'key': 'feat/x'}
+
+
+def test_a_denied_branch_claim_prevents_a_landing_request(monkeypatch):
+    stub = Stub(agent('big', 'qwen3.8-27b', CLAIMED))
+
+    def refuse(kind, key):
+        assert (kind, key) == ('branch', 'feat/x')
+        raise Denied('denied', 'branch held')
+
+    monkeypatch.setattr(stub, 'claim', refuse)
+    with pytest.raises(Denied, match='branch held'):
+        landing.request(stub, {'branch': 'feat/x', 'sha': 'a' * 40})
+    assert stub.sent == []
 
 
 def test_a_listed_qwen_that_is_not_verified_counts_as_an_unverified_claude_id_does():
