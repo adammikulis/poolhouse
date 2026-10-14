@@ -316,16 +316,22 @@ pub struct PhoneServer {
 
 /// Listen on ``listen`` for phones, answering each request from ``node``. The port is recorded on the node so a code can carry it.
 pub fn start(node: Arc<Mutex<Node>>, listen: SocketAddr) -> Result<PhoneServer> {
-    let (config, stop) = {
-        let n = lock(&node)?;
-        (n.phone_cert.server_config()?, n.stop.clone())
-    };
+    let mut held = lock(&node)?;
+    start_locked(&mut held, node.clone(), listen)
+}
+
+/// Bind while the owning local API already holds its node lock, without locking it again.
+/// The caller supplies only the built-in address after a live person-confirmed phone prompt.
+pub(crate) fn start_locked(held: &mut Node, node: Arc<Mutex<Node>>, listen: SocketAddr) -> Result<PhoneServer> {
+    if held.phone_port != 0 {
+        return Ok(PhoneServer { port: held.phone_port });
+    }
+    let (config, stop) = (held.phone_cert.server_config()?, held.stop.clone());
     let listener = TcpListener::bind(listen)?;
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
-    lock(&node)?.phone_port = port;
     let gate = Gate::new(MOST_CONNECTIONS, MOST_PER_ADDRESS, RESERVED);
-    std::thread::spawn(move || {
+    std::thread::Builder::new().name("phone-listener".into()).spawn(move || {
         while !stop.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((tcp, from)) => {
@@ -340,13 +346,48 @@ pub fn start(node: Arc<Mutex<Node>>, listen: SocketAddr) -> Result<PhoneServer> 
                 Err(_) => std::thread::sleep(Duration::from_millis(100)),
             }
         }
-    });
+        if let Ok(mut n) = node.lock() {
+            if n.phone_port == port {
+                n.phone_port = 0;
+            }
+        }
+    })?;
+    held.phone_port = port;
     Ok(PhoneServer { port })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn activation_is_serialized_and_bind_failure_leaves_the_node_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let node = Arc::new(Mutex::new(Node::open(dir.path()).unwrap()));
+        let occupied = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = occupied.local_addr().unwrap();
+        {
+            let mut held = node.lock().unwrap();
+            assert!(start_locked(&mut held, node.clone(), address).is_err());
+            assert_eq!(held.phone_port, 0);
+        }
+        drop(occupied);
+        let port = {
+            let mut held = node.lock().unwrap();
+            let first = start_locked(&mut held, node.clone(), address).unwrap();
+            assert_eq!(first.port, address.port());
+            let again = start_locked(&mut held, node.clone(), address).unwrap();
+            assert_eq!(again.port, first.port, "no second bind or endpoint");
+            first.port
+        };
+        assert!(TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).is_ok());
+        node.lock().unwrap().stop.store(true, Ordering::SeqCst);
+        let until = Instant::now() + Duration::from_secs(2);
+        while node.lock().unwrap().phone_port != 0 && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(node.lock().unwrap().phone_port, 0, "stopped endpoint is not advertised");
+    }
 
     fn connected() -> (TcpStream, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
