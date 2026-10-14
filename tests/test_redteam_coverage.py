@@ -138,3 +138,9 @@ def test_json_stream_and_text_parsers_remain_inventoried(call):
     found = {}
     coverage().find_parsers(found, "src/poolhouse/files.py", ast.parse(call))
     assert "parser:files.py" in found
+
+
+def test_extracted_private_integer_map_parser_remains_inventoried():
+    found = {}
+    coverage().find_parsers(found, "src/poolhouse/private_counters.py", ast.parse("json.loads(value)"))
+    assert "parser:private_counters.py" in found

@@ -1,7 +1,7 @@
 {
- "surfaces": 809,
+ "surfaces": 810,
  "by_status": {
-  "covered": 486,
+  "covered": 487,
   "partial": 194,
   "uncovered": 52,
   "n/a": 77,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 76,
+   "covered": 77,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -6169,6 +6169,24 @@
     "tests/test_model_capabilities.py::test_hostile_model_metadata_is_refused_without_a_crash"
    ],
    "note": ""
+  },
+  {
+   "id": "parser:private_counters.py",
+   "kind": "parser",
+   "source": "private_counters.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_board_cursor_ack.py::test_malformed_saved_cursor_is_not_silently_reset",
+    "tests/test_board_cursor_ack.py::test_cursor_replaced_during_open_is_refused",
+    "tests/test_board_cursor_ack.py::test_concurrent_cursor_updates_keep_every_origin_and_question",
+    "tests/test_notification_attempts.py::test_generic_private_map_refuses_fifo_without_blocking",
+    "tests/test_notification_attempts.py::test_cache_symlink_is_refused_without_touching_target",
+    "tests/test_notification_attempts.py::test_concurrent_attempts_are_serialized_for_one_authenticated_actor",
+    "tests/test_notification_attempts.py::test_invalid_token_and_mismatched_label_never_select_cache"
+   ],
+   "note": "The extracted private integer-map reader validates one bounded regular owned file descriptor and its path before parsing; malformed maps, replacement, symlinks, FIFO files and concurrent cursor/attempt updates are exercised without reading another identity's cache"
   },
   {
    "id": "parser:records.py",
