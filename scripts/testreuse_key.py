@@ -14,7 +14,6 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass
-from functools import lru_cache
 from importlib import metadata
 from pathlib import Path
 
@@ -143,13 +142,12 @@ def marks_in(source: str) -> set[str]:
             and isinstance(node.value, ast.Attribute) and node.value.attr == "mark"}
 
 
-@lru_cache(maxsize=512)
-def _import_facts(source: str, module: str, is_package: bool) -> tuple[frozenset[str], bool]:
+def import_names(source: str, module: str, is_package: bool) -> tuple[set[str], bool]:
     """The dotted names ``source`` imports, and whether it imports a module chosen at run time."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return frozenset(), True
+        return set(), True
     names, dynamic = set(), False
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -163,13 +161,7 @@ def _import_facts(source: str, module: str, is_package: bool) -> tuple[frozenset
                 names.add(node.args[0].value)
             else:
                 dynamic = True
-    return frozenset(names), dynamic
-
-
-def import_names(source: str, module: str, is_package: bool) -> tuple[set[str], bool]:
-    """The dotted imports and dynamic-import flag, copied from content-bound cached facts."""
-    names, dynamic = _import_facts(source, module, is_package)
-    return set(names), dynamic
+    return names, dynamic
 
 
 class Closures:
