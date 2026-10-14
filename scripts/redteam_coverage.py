@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import tomllib
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -88,6 +89,7 @@ EGRESS = {
     "socket.create_connection",
 }
 EGRESS_PREFIX = ("poolhouse.http.", "poolhouse.httpguard.")
+HTTP_DATA_CONSTRUCTORS = {"poolhouse.http.Options", "poolhouse.http.Retry"}
 HUMAN = {"require_person", "mint", "mint_gated", "mint_pressed", "mint_clicked", "protect", "agent_may"}
 DESKTOP_WORDS = ("osascript", "notify-send", "powershell", "toast")
 KEYSTORE_WORDS = ("add-generic-password", "find-generic-password", "keyring", "secret-tool")
@@ -255,9 +257,44 @@ def find_handlers(found: dict[str, Surface], where: str, tree: ast.Module) -> No
             add(found, "handler", f"{sub}:{node.name}", f"{sub}:{node.name}")
 
 
+def binding_head(target: ast.expr) -> str:
+    """The named root of a binding target, or every import head."""
+    while isinstance(target, (ast.Attribute, ast.Subscript)):
+        target = target.value
+    return target.id if isinstance(target, ast.Name) else "*"
+
+
+def rebound_heads(tree: ast.Module) -> set[str]:
+    """Names whose values can differ from their imported bindings."""
+    found, imported = set(), []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            found.add(binding_head(node))
+        elif isinstance(node, ast.arg):
+            found.add(node.arg)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) or (isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name):
+            found.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            found.add(node.rest)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            imported.extend(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+    for node, name in calls(tree):
+        leaf = name.rsplit(".", 1)[-1]
+        if leaf in {"setattr", "delattr", "__setattr__", "__delattr__"}:
+            found.add(binding_head(node.args[0]) if node.args else "*")
+        elif leaf in {"exec", "eval", "globals", "locals", "vars"}:
+            found.add("*")
+        elif (leaf in {"update", "setdefault", "pop", "clear"}
+              and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Attribute)
+              and node.func.value.attr == "__dict__"):
+            found.add(binding_head(node.func.value))
+    return found | {name for name, count in Counter(imported).items() if count > 1}
+
+
 def find_calls(found: dict[str, Surface], where: str, tree: ast.Module) -> None:
     sub = short(where)
     table = spans(tree)
+    rebound = rebound_heads(tree)
     for node, name in calls(tree):
         sym = symbol(table, node.lineno)
         last = name.rsplit(".", 1)[-1]
@@ -265,7 +302,8 @@ def find_calls(found: dict[str, Surface], where: str, tree: ast.Module) -> None:
             add(found, "spawn", f"{sub}:{sym}", f"{sub}:{sym}")
         elif name in LISTEN or (last in LISTEN_ATTRS and not name.startswith("poolhouse")) or (last == "bind" and node.args):
             add(found, "listener", f"{sub}:{sym}", f"{sub}:{sym}")
-        elif name in EGRESS or name.startswith(EGRESS_PREFIX):
+        elif name in EGRESS or (name.startswith(EGRESS_PREFIX) and (name not in HTTP_DATA_CONSTRUCTORS
+                or "*" in rebound or dotted(node.func).split(".", 1)[0] in rebound)):
             add(found, "egress", f"{sub}:{sym}", f"{sub}:{sym}")
         elif name in ("authority.require", "poolhouse.authority.require") or (last in HUMAN and (name == last or "human" in name or name.startswith("poolhouse"))):
             add(found, "human", f"{sub}:{sym}", f"{sub}:{sym}")
