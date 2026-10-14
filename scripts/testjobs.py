@@ -122,7 +122,7 @@ class Jobs:
                 who = self.read(held[0], "spec.json").get("owner", {}).get("id") or "unknown"
                 raise Busy(f"job {held[0]} ({who}) already runs a whole tier; wait for it or cancel it")
             self.write(job, "spec.json", {"id": job, "argv": argv, "owner": owner, "created": time.time(),
-                                          "secret": secrets.token_hex(16), **extra})
+                                          "secret": secrets.token_hex(16), **extra, "root": str(root.resolve())})
             self.write(job, "status.json", {"state": "queued", "at": time.time()})
         log = (self.path(job) / "log").open("ab")
         child = subprocess.Popen([sys.executable, str(script), "_job", job, *self.passthrough(extra)], cwd=root,

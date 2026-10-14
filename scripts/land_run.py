@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-import json
+import hashlib
 import tempfile
 import time
 from collections.abc import Iterator
@@ -19,6 +19,7 @@ from poolhouse import trees
 from poolhouse.activity.gate import tree_hash
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import connect
+from poolhouse.files import write_json
 
 UNION_FILES = {"HANDOFF.md"}
 OWNER_KEYS = ("Agent-Label", "Agent", "Label")
@@ -58,7 +59,11 @@ def save(batch: Batch, status: str, extra: dict) -> None:
             "base": batch.base, "sources": batch.order, "merged": [b for b, _ in batch.merged],
             "source_shas": batch.source_shas, "approvals": batch.approvals,
             "ejected": batch.ejected, "status": status, "tree": tree_hash(batch.wt), **extra}
-    state_file(batch.root).write_text(json.dumps(data, indent=1), encoding="utf-8")
+    write_json(state_file(batch.root), data, indent=1)
+    folder = lg.common_dir(batch.root) / "land" / "batches"
+    folder.mkdir(exist_ok=True)
+    key = hashlib.sha256(batch.branch.encode()).hexdigest()
+    write_json(folder / (key + ".json"), data)
 
 
 def resolve_base(root: Path, target: str) -> str:
@@ -268,6 +273,8 @@ def run(root: Path, target: str, names: list[str], flags: dict) -> tuple[int, di
         save(batch, "stopped", {"candidates": candidates})
         return 2, {**summary, "status": "stopped", "ejected": batch.ejected}
     results, kind, reason = verify(batch, flags["workers"])
+    if reason and batch.merged:
+        save(batch, "full-pending", {"kind": kind, "full": {"status": "pending"}, "candidates": candidates})
     full = lc.start_full(batch.wt, lg.common_dir(root)) if reason and batch.merged else {}
     blocked = [r.name for r in results if r.status in ("fail", "ejected")]
     status = "verified" if batch.merged and not [r for r in results if r.status == "fail"] else "failed"

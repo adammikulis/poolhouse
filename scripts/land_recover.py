@@ -8,6 +8,7 @@ with the new tip and re-gated before it is tried again.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -65,7 +66,19 @@ def sweep(root: Path) -> list[str]:
     A tree whose background full run is still alive is left for it.
     """
     state = land_finish.load(root)
-    if land_finish.full_running(state):
+    retained = []
+    folder = lg.common_dir(root) / "land" / "batches"
+    for record in folder.glob("*.json"):
+        try:
+            if record.is_symlink() or record.stat().st_size > 65536:
+                return []
+            value = json.loads(record.read_text())
+            if not isinstance(value, dict):
+                return []
+            retained.append(value)
+        except (OSError, ValueError):
+            return []
+    if any(land_finish.full_running(root, batch) for batch in [state, *retained]):
         return []
     top = lg.primary(root).path
     gone = []
@@ -77,6 +90,10 @@ def sweep(root: Path) -> list[str]:
     for name in lg.lines(root, "for-each-ref", "--format=%(refname:short)", f"refs/heads/{INTEGRATION}"):
         lg.git(top, "branch", "-D", name, check=False)
         gone.append(name)
+    live_paths = {str(tree.path) for tree in lg.trees(root)}
+    for record in folder.glob("*.json"):
+        if json.loads(record.read_text()).get("worktree") not in live_paths:
+            record.unlink()
     land_run.state_file(root).unlink(missing_ok=True)
     return gone
 
