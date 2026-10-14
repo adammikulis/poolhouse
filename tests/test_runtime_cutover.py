@@ -38,6 +38,11 @@ def source(tmp_path, monkeypatch):
     return repo, head
 
 
+@pytest.fixture(autouse=True)
+def released_key(monkeypatch):
+    monkeypatch.setattr(node_supervise.node_key, "release", lambda _: None)
+
+
 def test_runtime_and_real_runner_use_the_same_lock_even_from_a_worktree(source, tmp_path, monkeypatch):
     repo, head = source
     checkout = tmp_path / "integration"
@@ -136,7 +141,7 @@ def test_supervisor_holds_boundary_until_replacement_answers(source, tmp_path, m
     monkeypatch.setattr(node_supervise, "end", end)
     monkeypatch.setattr(node_supervise, "_spawn", spawn)
     monkeypatch.setattr(node_supervise, "_ready", ready)
-    custody = (None, node_supervise._identity(state))
+    custody = node_supervise._Cutover(node_supervise._identity(state))
     assert runner.acquire()
     try:
         assert node_supervise._cutover(child, state, [], custody, lambda: False) is None
@@ -217,7 +222,7 @@ def test_missing_source_context_defers_automatic_stop(tmp_path, monkeypatch):
 def test_changed_device_identity_keeps_current_node(source, tmp_path, monkeypatch):
     state = tmp_path / "node"
     state.mkdir()
-    custody = (None, node_supervise._identity(state))
+    custody = node_supervise._Cutover(node_supervise._identity(state))
     (state / "device.cert").write_text("changed")
     stopped = []
     monkeypatch.setattr(node_supervise, "end", lambda *args: stopped.append(args))
@@ -334,8 +339,8 @@ def test_initial_certificate_binds_after_hello_once(source, tmp_path, monkeypatc
         return None
 
     def cutover(item, folder, extra, custody, stop):
-        bindings.append(custody[1])
-        assert custody[1] == node_supervise._identity(state)
+        bindings.append(custody.identity)
+        assert custody.identity == node_supervise._identity(state)
         stopping.append(True)
         child.returncode = 0
         return child, node_supervise.signature(state)
@@ -378,7 +383,7 @@ def test_replacement_failure_restores_prior_while_runner_stays_excluded(source, 
 
     monkeypatch.setattr(node_supervise, "_spawn", spawn)
     monkeypatch.setattr(node_supervise, "_ready", ready)
-    result = node_supervise._cutover(child, state, [], (None, node_supervise._identity(state)), lambda: False)
+    result = node_supervise._cutover(child, state, [], node_supervise._Cutover(node_supervise._identity(state)), lambda: False)
     assert result == (restored, node_supervise.signature(state))
     assert "admit old" in events and "pin old" in events and events[-1] == "hello old"
     assert runner.acquire()
@@ -440,7 +445,7 @@ def test_spawn_metadata_failure_stops_new_child_before_prior_recovery(source, tm
     monkeypatch.setattr(old, "terminate", lambda: None, raising=False)
     monkeypatch.setattr(old, "wait", lambda **kwargs: 0)
     monkeypatch.setattr(node_supervise, "_ready", lambda *args: True)
-    result = node_supervise._cutover(old, state, [], (None, node_supervise._identity(state)), lambda: False)
+    result = node_supervise._cutover(old, state, [], node_supervise._Cutover(node_supervise._identity(state)), lambda: False)
     assert result is not None
     assert events == ["start", "terminate", "start"]
     assert len(writes) == 2
@@ -457,3 +462,95 @@ def test_observer_recovery_uses_current_restored_node_instead_of_failed_previous
     monkeypatch.setattr(node_supervise, "point", lambda *args: points.append(args))
     assert node_launch._rollback_pointer(state, {}, "new") == (old, "old")
     assert points == [(state, old, "old")]
+
+
+@pytest.mark.parametrize("changed", ["busy", "identity", "signature", "denied"])
+def test_release_race_or_refusal_preserves_child_and_obeys_cooldown(source, tmp_path, monkeypatch, changed):
+    repo, _ = source
+    state = tmp_path / "node"
+    state.mkdir()
+    binding = node_supervise._Cutover(node_supervise._identity(state))
+    plan = node_supervise._Replacement(state, repo, worktreerules.landing_lock(repo), tmp_path / "new", "new",
+                                       node_supervise.signature(state), [], False)
+    monkeypatch.setattr(node_supervise, "_prepare", lambda *args: plan)
+    monkeypatch.setattr(node_supervise, "_replace", lambda *args: pytest.fail("old node must remain running"))
+    runner = land_recover.RunnerLock(repo)
+    calls = []
+
+    def release(_):
+        calls.append("release")
+        if changed == "busy":
+            assert runner.acquire()
+        elif changed == "identity":
+            (state / "device.cert").write_text("rotation")
+        elif changed == "signature":
+            node_supervise.point(state, tmp_path / "other", "other")
+        else:
+            raise node_supervise.node_key.KeyUnavailable("refused", denied=True)
+        return None
+
+    monkeypatch.setattr(node_supervise.node_key, "release", release)
+    try:
+        for _ in range(2):
+            assert node_supervise._cutover(WaitingChild(), state, [], binding, lambda: False) is None
+        assert calls == ["release"]
+        assert binding.denials == int(changed == "denied")
+    finally:
+        if changed == "busy":
+            runner.release()
+
+
+def test_non_git_recorded_source_defers_without_key_release_or_stop(source, tmp_path, monkeypatch):
+    invalid = tmp_path / "not-git"
+    invalid.mkdir()
+    runtime_store.write_state({"checkout": str(invalid)})
+    state = tmp_path / "node"
+    state.mkdir()
+    binding = node_supervise._Cutover(node_supervise._identity(state))
+    monkeypatch.setattr(node_supervise.node_key, "release", lambda _: pytest.fail("must validate before release"))
+    monkeypatch.setattr(node_supervise, "end", lambda *args: pytest.fail("old node must remain running"))
+    assert node_supervise._cutover(WaitingChild(), state, [], binding, lambda: False) is None
+
+
+@pytest.mark.parametrize("person,exact", [(False, True), (True, False), (True, True)])
+def test_person_node_exception_is_exact_and_keeps_authentication(source, tmp_path, monkeypatch, person, exact):
+    repo, _ = source
+    unpublished = commit(repo, "unpublished")
+    prefix = tmp_path / "runtime"
+    binary = prefix / "bin" / "poolhouse-node"
+    monkeypatch.setattr(node_binary, "record_of", lambda _: {"commit": unpublished})
+    monkeypatch.setattr(node_binary, "verified", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runtime_store, "rejected", lambda _: False)
+    monkeypatch.setattr(runtime_store, "epoch_of", lambda _: 0)
+    monkeypatch.setattr(runtime_source.person, "marked", lambda: not person)
+    monkeypatch.setattr(runtime_source.person, "is_terminal", lambda _: person)
+    allowed = unpublished if exact else "0" * 40
+    if person and exact:
+        node_supervise._admitted(binary, "sha", repo, allow_unmerged_commit=allowed)
+    else:
+        with pytest.raises(runtime_source.DeployError):
+            node_supervise._admitted(binary, "sha", repo, allow_unmerged_commit=allowed)
+
+
+def test_three_denied_releases_stop_future_authorization_requests(source, tmp_path, monkeypatch):
+    repo, _ = source
+    state = tmp_path / "node"
+    state.mkdir()
+    binding = node_supervise._Cutover(node_supervise._identity(state))
+    plan = node_supervise._Replacement(state, repo, worktreerules.landing_lock(repo), tmp_path / "new", "new",
+                                       node_supervise.signature(state), [], False)
+    monkeypatch.setattr(node_supervise, "_prepare", lambda *args: plan)
+    clock = [0.0]
+    calls = []
+    monkeypatch.setattr(node_supervise.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(node_supervise, "_replace", lambda *args: pytest.fail("refusal cannot stop the old node"))
+
+    def release(_):
+        calls.append(clock[0])
+        raise node_supervise.node_key.KeyUnavailable("refused", denied=True)
+
+    monkeypatch.setattr(node_supervise.node_key, "release", release)
+    for _ in range(5):
+        assert node_supervise._cutover(WaitingChild(), state, [], binding, lambda: False) is None
+        clock[0] += node_supervise.keystore.COOLDOWN_S + 1
+    assert len(calls) == binding.denials == node_supervise.DENIED_GIVE_UP == 3

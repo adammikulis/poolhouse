@@ -455,6 +455,7 @@ def test_the_supervisor_does_not_keep_the_key_it_gave_while_the_node_runs(tmp_pa
     monkeypatch.setattr(node_key, "release", release)
     monkeypatch.setattr(node_supervise, "resolve", lambda _state: (node.path, "0" * 64))
     monkeypatch.setattr(node_supervise, "_spawn", lambda *_args, **_kw: type("Child", (), {"pid": 1, "returncode": 0})())
+    monkeypatch.setattr(node_supervise, "_ready", lambda *_args: True)
     monkeypatch.setattr(node_supervise, "_wait", waiting)
     monkeypatch.setattr(node_supervise, "_pause", lambda *_args, **_kw: None)
     stops = iter([False, True])

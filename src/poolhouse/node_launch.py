@@ -168,7 +168,7 @@ def _answers_as(state: Path, sha: str, not_pid: int) -> dict | None:
     return said if said and run.get("sha256") == sha and said.get("pid") == run.get("pid") != not_pid else None
 
 
-def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S) -> dict:
+def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerged_commit: str = "") -> dict:
     """Make the node run the selected runtime's binary; on a new node that does not answer put the previous binary back.
 
     The supervisor follows the runtime selection by itself, so this checks and finishes the move: it starts a supervisor
@@ -199,9 +199,13 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S) -> dict:
         with only_one(boundary, wait=False, note="node runtime swap"):
             if runtime.selection_prefix() != prefix:
                 return {"action": "deferred", "detail": "node runtime selection changed"}
-            node_supervise._admitted(node_binary.location(prefix), new_sha, Path(source))
+            if allow_unmerged_commit:
+                node_supervise._admitted(node_binary.location(prefix), new_sha, Path(source),
+                                         allow_unmerged_commit=allow_unmerged_commit)
+            else:
+                node_supervise._admitted(node_binary.location(prefix), new_sha, Path(source))
             node_supervise.point(state, None)
-            if not supervised(state):
+            if allow_unmerged_commit or not supervised(state):
                 try:
                     stop_node(state)
                     _start_supervisor(state, [])

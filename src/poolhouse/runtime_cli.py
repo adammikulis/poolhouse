@@ -161,16 +161,17 @@ def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.
     previous = str(runtime_store.selection().get("commit", ""))
     outcome = runtime_deploy.ensure(plan, force=args.force, force_build=args.force_build)
     if outcome.action in ("switched", "recovered"):
-        outcome = _with_node(outcome)
+        allowed = plan.commit if plan.allow_unmerged and outcome.commit == plan.commit else ""
+        outcome = _with_node(outcome, allowed)
     _audited(args, "ensure", plan, outcome.action, outcome.detail)
     runtime_board.announce(outcome, previous, runtime_deploy.acting(plan), verb="ensure")
     say(f"{outcome.action} {outcome.commit[:7]} {outcome.detail}".strip())
     return outcome
 
 
-def _with_node(outcome: runtime_deploy.Outcome) -> runtime_deploy.Outcome:
+def _with_node(outcome: runtime_deploy.Outcome, allow_unmerged_commit: str = "") -> runtime_deploy.Outcome:
     """Move the running node onto the new runtime's binary and say what happened; the board is on disk, so nothing is lost."""
-    moved = node_launch.swap()
+    moved = node_launch.swap(allow_unmerged_commit=allow_unmerged_commit)
     detail = "; ".join(part for part in (outcome.detail, f"node {moved['action']}: {moved['detail']}") if part)
     return runtime_deploy.Outcome("failed" if moved["action"] == "failed" else outcome.action, outcome.commit, detail)
 
