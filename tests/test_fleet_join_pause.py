@@ -31,6 +31,7 @@ from tests.test_fleet_join import DEVICE, WORDS, _free_tcp
 key = support.key
 udp = support.udp
 machine_looks_fine = support.machine_looks_fine
+loopback_advertisers = support.loopback_advertisers
 
 
 class PausableDaemon:
@@ -256,7 +257,7 @@ class TestStatusSaysWhoIsPaused:
         assert "paused" in text and "somebody is here" in text
 
     @pytest.mark.slow
-    def test_a_real_daemon_boots_into_a_paused_pool_paused(self, pool, tmp_path):
+    def test_a_real_daemon_boots_into_a_paused_pool_paused(self, pool, tmp_path, loopback_advertisers):
         """The whole path: a daemon started as a process reads the beacons and writes
         down the pause before it takes work."""
         import os
@@ -269,7 +270,9 @@ class TestStatusSaysWhoIsPaused:
         env = {**os.environ, "POOLHOUSE_POOL_KEY": str(key),
                "POOLHOUSE_DISCOVERY_PORT": str(udp),
                "PYTHONPATH": str(Path(joining.__file__).parents[2])}
-        code = ("from poolhouse.fleet.daemon import serve, DaemonOptions;"
+        code = ("from poolhouse.fleet import discovery;"
+                f"discovery._destinations=lambda group, port: {loopback_advertisers('', udp)!r};"
+                "from poolhouse.fleet.daemon import serve, DaemonOptions;"
                 f"serve(DaemonOptions(root={str(root)!r}, host='127.0.0.1',"
                 f" port={_free_tcp()}, name='windermere', web=False, announce=False))")
         proc = subprocess.Popen([sys.executable, "-c", code], env=env,

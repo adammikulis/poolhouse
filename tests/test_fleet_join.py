@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse.checks import Finding
-from poolhouse.fleet import join as joining, ui as fleet_ui
+from poolhouse.fleet import discovery, join as joining, ui as fleet_ui
 from poolhouse.fleet.discovery import (
     Advertiser,
     Beacon,
@@ -101,8 +101,56 @@ class FakeDaemon:
         self.httpd.server_close()
 
 
+@pytest.fixture
+def loopback_advertisers(monkeypatch):
+    logical, live = {}, {}
+    lock = threading.Lock()
+    initialize, start, stop = Advertiser.__init__, Advertiser.start, Advertiser.stop
+
+    def isolated_initialize(advertiser, beacon, key, **options):
+        requested = options.get('port')
+        initialize(advertiser, beacon, key, **{**options, 'port': 0})
+        logical[advertiser] = discovery.default_port() if requested is None else requested
+
+    def isolated_start(advertiser, **options):
+        registered = False
+        try:
+            result = start(advertiser, **options)
+            assert advertiser._ready.is_set() and isinstance(advertiser._sock, socket.socket)
+            actual = advertiser._sock.getsockname()[1]
+            with lock:
+                assert actual and actual not in live.values()
+                advertiser.port = actual
+                live[advertiser] = actual
+            registered = True
+            return result
+        finally:
+            if not registered:
+                stop(advertiser)
+
+    def isolated_stop(advertiser):
+        with lock:
+            live.pop(advertiser, None)
+        stop(advertiser)
+
+    def destinations(_group, port):
+        with lock:
+            return [(('127.0.0.1', actual), '') for advertiser, actual in live.items()
+                    if logical[advertiser] == port]
+
+    monkeypatch.setattr(Advertiser, '__init__', isolated_initialize)
+    monkeypatch.setattr(Advertiser, 'start', isolated_start)
+    monkeypatch.setattr(Advertiser, 'stop', isolated_stop)
+    monkeypatch.setattr(discovery, '_destinations', destinations)
+    try:
+        yield destinations
+    finally:
+        for advertiser in list(live):
+            isolated_stop(advertiser)
+
+
 @pytest.fixture(autouse=True)
-def machine_looks_fine(monkeypatch):
+def machine_looks_fine(monkeypatch, loopback_advertisers):
     """The checks read sysctl and libllama; here they read a list."""
     monkeypatch.setattr(joining, "_machine_findings", lambda: [
         Finding(name="memory a model may use", good=True, said="96G of 128G (75%)"),
@@ -693,3 +741,20 @@ class TestTheStartedRecord:
         assert joining._started_pid(tmp_path) is None
 
 
+def test_loopback_fanout_reaches_each_live_device_and_refuses_the_wrong_key(key, udp):
+    join_pool_by_passphrase(WORDS, group='home', path=key)
+    held = load_pool_key(key)
+    assert held is not None
+    devices = [Advertiser(Beacon(name=name, machine=f'fixture-{name}'), secret,
+                        port=udp, interval_s=0.05).start()
+             for name, secret in [('first-device', held), ('second-device', held),
+                                  ('wrong-device', b'\xff' * 32)]]
+    try:
+        assert len({advertiser.port for advertiser in devices}) == 3
+        found = discovery.discover(held, port=udp, timeout_s=0.3)
+        assert {device.name for device in found} == {'first-device', 'second-device'}
+        devices[0].stop()
+        assert {device.name for device in discovery.discover(held, port=udp, timeout_s=0.3)} == {'second-device'}
+    finally:
+        for advertiser in devices:
+            advertiser.stop()
