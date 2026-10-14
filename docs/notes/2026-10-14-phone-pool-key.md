@@ -16,6 +16,7 @@ Verification on the feature branch:
 
 - Gradle `protocolChecks`: 29 pool key binding/provider assertions, 116 founding assertions and 66 governance act assertions, plus the existing approval and chat checks, pass.
 - `scripts/test all tests/test_phone_friction.py`: 3 passed.
+- Removing the selected strong-admin guard made the recomputed hostile test fail with `accepted invalid pool key binding`; the exact source was restored and all protocol checks passed again.
 - A preliminary SDK 36 debug APK compile passed before the final typed-request review refinement. The coordinator owns the final published APK build.
 
 The signature provider test uses a software P-256 key in memory. It does not exercise Android Keystore, StrongBox, biometric enrollment invalidation, cancellation callbacks or hardware authentication. Those remain unverified on available hardware. Production per-pool public-key enrollment, node-derived strength, authenticated request transport, the prompt/refusal ledger, a full-card screen and the production signer are separate prerequisites. No owner risk acceptance is inferred.
