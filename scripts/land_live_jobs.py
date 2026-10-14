@@ -17,9 +17,22 @@ from poolhouse.activity import reuse
 from poolhouse.workspace import testruns
 
 
+def regular_fd(path: Path, flags: int) -> int:
+    """Open a same-user regular file without following links or blocking."""
+    descriptor = os.open(path, flags | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise ValueError("invalid job file")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
 def record(path: Path) -> dict:
     """Read a bounded regular job record."""
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    descriptor = regular_fd(path, os.O_RDONLY)
     with os.fdopen(descriptor, "rb") as handle:
         info = os.fstat(handle.fileno())
         if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
@@ -99,8 +112,8 @@ def cleanup_allowed(root: Path, paths: set[Path]) -> Iterator[bool]:
     jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(root))
     try:
         jobs.folder.mkdir(parents=True, exist_ok=True)
-        handle = (jobs.folder / "lock").open("a")
-    except OSError:
+        handle = os.fdopen(regular_fd(jobs.folder / "lock", os.O_RDWR | os.O_CREAT), "a")
+    except (OSError, ValueError):
         yield False
         return
     with handle:

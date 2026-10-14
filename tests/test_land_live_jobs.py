@@ -140,3 +140,37 @@ def test_oversized_record_retains_tree(protected):
     (jobs.path("fixture-job") / "spec.json").write_bytes(b" " * 65537)
     with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
         assert not allowed
+
+
+@pytest.mark.parametrize("filename", ["spec.json", "lock"])
+def test_fifo_file_refuses_without_blocking(protected, filename):
+    jobs, tree, root = protected
+    path = jobs.folder / "lock" if filename == "lock" else jobs.path("fixture-job") / filename
+    path.unlink(missing_ok=True)
+    os.mkfifo(path)
+    code = """import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import land_live_jobs
+try:
+    land_live_jobs.regular_fd(Path(sys.argv[2]), 0)
+except (OSError, ValueError):
+    pass
+else:
+    raise AssertionError('FIFO accepted')
+"""
+    result = subprocess.run([sys.executable, "-c", code, str(Path(land_live_jobs.__file__).parent), str(path)],
+                            capture_output=True, timeout=3, check=False)
+    assert result.returncode == 0, result.stderr
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert not allowed
+
+
+def test_symlink_lock_refuses_without_touching_target(protected):
+    jobs, tree, root = protected
+    target = root / "other-lock"
+    target.write_text("unchanged")
+    (jobs.folder / "lock").symlink_to(target)
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert not allowed
+    assert target.read_text() == "unchanged"
