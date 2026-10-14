@@ -9,7 +9,7 @@ import re
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 __all__ = ["AGENT_MARKERS", "bash_refusal", "checkouts", "commit_refusal", "edit_refusal", "hard_bash_refusal",
@@ -33,10 +33,10 @@ def switched_off() -> bool:
     return os.environ.get("POOLHOUSE_GUARD") == "off"
 
 
-def _git_environment() -> dict[str, str]:
+def _git_environment(source: Mapping[str, str] | None = None) -> dict[str, str]:
     selectors = {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_NAMESPACE",
                  "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}
-    return {name: value for name, value in os.environ.items() if name not in selectors}
+    return {name: value for name, value in (os.environ if source is None else source).items() if name not in selectors}
 
 
 def checkout_metadata(directory: str | Path) -> dict[str, str]:
@@ -98,6 +98,14 @@ def checkouts(directory: str | Path) -> tuple[Path, Path] | None:
         return None
     top, common = Path(lines[0]).resolve(), Path(lines[1]).resolve()
     return top, common.parent if common.name == ".git" else common
+
+
+def landing_lock(directory: Path) -> Path:
+    """The shared landing and runtime cutover lock of a source repository."""
+    found = checkouts(directory)
+    if found is None:
+        raise ValueError(f"{directory} is not a source repository")
+    return found[1] / ".git" / "land" / "runner.lock"
 
 
 def in_primary(directory: str | Path) -> Path | None:

@@ -23,6 +23,7 @@ from poolhouse import (
     runtime_stale,
     runtime_store,
     runtime_trust,
+    worktreerules,
 )
 from poolhouse.command import Group, flag
 from poolhouse.fleet import runtime_wheel
@@ -66,9 +67,10 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
     if deploying:
-        runtime_trust.admit(primary, commit, allow_unmerged=getattr(args, "allow_unmerged", False))
+        runtime_deploy.admit(primary, commit, allow_unmerged=getattr(args, "allow_unmerged", False))
     return runtime_deploy.Plan(primary, commit, _launchers(args.launchers),
-                               runtime_trust.floor(primary), args.timeout, args.wait, args.agent)
+                               runtime_trust.floor(primary), args.timeout, args.wait, args.agent,
+                               allow_unmerged=getattr(args, "allow_unmerged", False))
 
 
 def _start_background(argv: list[str]) -> None:
@@ -211,6 +213,8 @@ def _status(args: argparse.Namespace) -> int:
 
 def _reported(run: Callable[[argparse.Namespace], int]) -> Callable[[argparse.Namespace], int]:
     def wrapped(args: argparse.Namespace) -> int:
+        for name in os.environ.keys() - worktreerules._git_environment().keys():
+            os.environ.pop(name, None)
         for name in runtime_trust.ignore_redirects():
             warn(f"poolhouse runtime: ignoring {name}: this process was started by an agent")
         try:

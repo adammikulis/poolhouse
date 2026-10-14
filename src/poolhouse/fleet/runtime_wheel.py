@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from email.parser import BytesParser
 from pathlib import Path
 
-from poolhouse import runtime
+from poolhouse import runtime, worktreerules
 from poolhouse.files import writing
 from poolhouse.fleet.wheel_provenance import ORIGIN, stamp, wheel_commit
 from poolhouse.installed import extras
@@ -150,7 +150,7 @@ def _install(python: Path, spec: str, timeout: float) -> None:
 
 def _run(argv: list[str], timeout: float) -> str:
     done = (packages.run(argv[0], argv[3:], timeout=timeout, env=runtime.installer_environment()) if argv[1:3] == ["-m", "pip"]
-            else subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=runtime.installer_environment()))
+            else subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=worktreerules._git_environment(runtime.installer_environment())))
     output = f"{done.stdout}{done.stderr}".strip()
     if done.returncode:
         raise ValueError(output or f"{argv[0]} exited {done.returncode}")

@@ -7,6 +7,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -15,7 +16,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import node_build, runtime, runtime_launchers, runtime_store
+from poolhouse import node_build, person, runtime, runtime_launchers, runtime_store, worktreerules
 from poolhouse.board import session
 from poolhouse.board.client import Conflict, NodeError
 from poolhouse.files import writing
@@ -54,6 +55,7 @@ class Plan:
     timeout: float = BUILD_TIMEOUT
     wait_s: float = CLAIM_WAIT_S
     agent: str = ""
+    allow_unmerged: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +76,7 @@ Builder = Callable[[Plan, Path, Path], runtime.Runtime]
 
 def git(checkout: Path, *words: str, check: bool = True) -> str:
     """Run git in a checkout and return stdout."""
-    done = subprocess.run(["git", "-C", str(checkout), *words], capture_output=True, text=True, timeout=60)
+    done = subprocess.run(["git", "-C", str(checkout), *words], capture_output=True, text=True, timeout=60, env=worktreerules._git_environment())
     if check and done.returncode:
         raise DeployError(f"git {words[0]} failed: {(done.stderr or done.stdout).strip()[:300]}")
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -88,6 +90,26 @@ def resolve_commit(checkout: Path, ref: str = "HEAD") -> str:
     if not COMMIT.fullmatch(commit):
         raise DeployError(f"{ref} does not name a commit")
     return commit
+
+
+def admit(checkout: Path, commit: str, *, allow_unmerged: bool = False) -> None:
+    """Require a commit published on the primary development branch, or the terminal person's explicit exception."""
+    found = worktreerules.checkouts(checkout)
+    if found is None or found[0] != found[1]:
+        raise DeployError("runtime selection must use the primary source checkout")
+    branch = git(checkout, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    expected = os.environ.get("POOLHOUSE_DEV_BRANCH", "").strip()
+    if (not branch or branch in {"main", "master"} or branch.startswith(("land/", "promote/"))
+            or (expected and branch != expected)):
+        raise DeployError("the primary checkout must be on its development branch")
+    if allow_unmerged:
+        if person.marked() or not person.is_terminal(sys.stdin) or not person.is_terminal(sys.stdout):
+            raise DeployError("only a person at a terminal may deploy an unmerged commit")
+        return
+    for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
+        published = resolve_commit(checkout, ref)
+        if git(checkout, "merge-base", commit, published, check=False) != commit:
+            raise DeployError(f"{commit[:7]} is not on the development branch published at origin/{branch}")
 
 
 def parse_epoch(text: str) -> int:
@@ -215,10 +237,15 @@ def _record(plan: Plan) -> None:
 
 def switch(chosen: runtime.Runtime, plan: Plan) -> None:
     """Rewrite every launcher atomically, publish the selection, then record the layout."""
-    if plan.launchers is not None:
-        runtime_launchers.install(plan.launchers, chosen)
-    runtime.publish(chosen)
-    _record(plan)
+    with only_one(worktreerules.landing_lock(plan.checkout), wait=False, note="runtime cutover"):
+        admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged and chosen.commit == plan.commit)
+        floor = max(plan.floor, floor_of(plan.checkout, resolve_commit(plan.checkout)))
+        if runtime_store.epoch_of(chosen.prefix) < floor:
+            raise DeployError(f"runtime epoch is below the source floor {floor}")
+        if plan.launchers is not None:
+            runtime_launchers.install(plan.launchers, chosen)
+        runtime.publish(chosen)
+        _record(plan)
 
 
 def _switch_paths(plan: Plan) -> list[Path]:
@@ -254,7 +281,7 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
     with owning([prefix, *_switch_paths(plan)], wait_s=plan.wait_s, who=who), \
             tempfile.TemporaryDirectory(prefix="poolhouse-runtime-") as temporary:
         stage, original = Path(temporary).resolve(), _snapshot(plan.launchers)
-        built, published = builder(plan, stage, prefix), False
+        built, published, deferred = builder(plan, stage, prefix), False, False
         try:
             runtime_store.mark_created(built.prefix, who.name if who else plan.agent or os.environ.get(session.AGENT_ENV, ""), "ensure")
             if built.commit != plan.commit:
@@ -264,15 +291,16 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
             if epoch < plan.floor:
                 raise DeployError(f"built epoch {epoch} is below the floor {plan.floor}")
             runtime_store.mark_verified(built, epoch, node_build.mark(built.prefix))
-            if plan.launchers is not None:
-                runtime_launchers.install(plan.launchers, built)
-            runtime.publish(built)
+            try:
+                switch(built, plan)
+            except Busy:
+                deferred = True
+                raise
             published = True
         finally:
-            if not published:
+            if not published and not deferred:
                 _restore(plan.launchers, original)
                 runtime_store.discard(built.prefix)
-        _record(plan)
         return built
 
 

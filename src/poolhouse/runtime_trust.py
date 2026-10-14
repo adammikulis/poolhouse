@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import authority, home, person, runtime_store
+from poolhouse import authority, home, person, runtime_store, worktreerules
 from poolhouse.activity import writer
 from poolhouse.board.session import AGENT_ENV
 from poolhouse.runtime_deploy import DeployError, floor_of
@@ -79,7 +79,7 @@ def primary_for(supplied: Path, *, deploying: bool = True, delegated: bool = Fal
 
 
 def _git(primary: Path, *words: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(primary), *words], capture_output=True, text=True, timeout=60)
+    return subprocess.run(["git", "-C", str(primary), *words], capture_output=True, text=True, timeout=60, env=worktreerules._git_environment())
 
 
 def tip(primary: Path) -> str:
@@ -90,14 +90,6 @@ def tip(primary: Path) -> str:
     if done.returncode:
         raise DeployError(f"git rev-parse HEAD failed in {primary}: {done.stderr.strip()[:200]}")
     return done.stdout.strip()
-
-
-def admit(primary: Path, commit: str, *, allow_unmerged: bool = False) -> None:
-    """Raise DeployError unless `commit` is the development branch tip or an ancestor of it (or `allow_unmerged`)."""
-    head = tip(primary)
-    if commit == head or allow_unmerged or _git(primary, "merge-base", "--is-ancestor", commit, head).returncode == 0:
-        return
-    raise DeployError(f"{commit[:7]} is not on the development branch ({head[:7]}); a person may deploy it with --allow-unmerged")
 
 
 def floor(primary: Path) -> int:

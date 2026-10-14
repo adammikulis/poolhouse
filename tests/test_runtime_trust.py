@@ -57,6 +57,7 @@ class World:
         git(self.repo, "checkout", "-q", "-b", "evil", self.base)
         self.evil = commit(self.repo, "packaging/runtime-floor", "99\n")
         git(self.repo, "checkout", "-q", "dev")
+        git(self.repo, "update-ref", "refs/remotes/origin/dev", self.tip)
         runtime_deploy.prepare_root()
         runtime_store.write_state({"checkout": str(self.repo)})
         folder = self.home / "node" / "client" / "board"
@@ -119,11 +120,12 @@ def test_an_agent_child_never_makes_the_master_key_for_its_audit(world):
 
 
 def test_a_commit_before_the_tip_is_admitted_and_one_beside_it_is_not(world):
-    runtime_trust.admit(world.repo, world.tip)
-    runtime_trust.admit(world.repo, world.base)
+    runtime_deploy.admit(world.repo, world.tip)
+    runtime_deploy.admit(world.repo, world.base)
     with pytest.raises(runtime_deploy.DeployError, match="development branch"):
-        runtime_trust.admit(world.repo, world.evil)
-    runtime_trust.admit(world.repo, world.evil, allow_unmerged=True)
+        runtime_deploy.admit(world.repo, world.evil)
+    with pytest.raises(runtime_deploy.DeployError, match="person at a terminal"):
+        runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
 
 
 def test_the_floor_comes_from_the_development_tip_never_from_the_deployed_commit(world):
@@ -252,3 +254,48 @@ def test_a_forged_state_root_naming_a_hostile_clone_is_ignored_by_an_agent(world
     done = world.cli("ensure", "--checkout", str(clone), POOLHOUSE_HOME=str(world.tmp / "forged"))
     assert done.returncode == 1 and "ignoring POOLHOUSE_HOME" in done.stderr and "recorded repository" in done.stderr
     assert sorted(p.name for p in (world.tmp / "forged").iterdir()) == ["marker", "runtimes"]
+
+
+def test_inherited_git_context_cannot_select_an_integration_commit(world, monkeypatch):
+    integration = world.tmp / "integration"
+    git(world.repo, "worktree", "add", "--detach", str(integration), world.evil)
+    gitdir = integration.joinpath(".git").read_text().strip().split(": ", 1)[1]
+    monkeypatch.setenv("GIT_DIR", gitdir)
+    monkeypatch.setenv("GIT_WORK_TREE", str(integration))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(integration / "foreign-index"))
+    assert runtime_trust.tip(world.repo) == world.tip
+    assert runtime_deploy.resolve_commit(world.repo) == world.tip
+    assert runtime_trust.floor(world.repo) == 2
+
+
+def test_normal_source_must_be_published_on_origin(world):
+    unpublished = commit(world.repo, "unpublished.txt")
+    with pytest.raises(runtime_deploy.DeployError, match="published at origin"):
+        runtime_deploy.admit(world.repo, unpublished)
+    git(world.repo, "update-ref", "-d", "refs/remotes/origin/dev")
+    with pytest.raises(runtime_deploy.DeployError):
+        runtime_deploy.admit(world.repo, world.base)
+
+
+def test_integration_checkout_cannot_supply_runtime_admission(world):
+    integration = world.tmp / "integration"
+    git(world.repo, "worktree", "add", "--detach", str(integration), world.tip)
+    with pytest.raises(runtime_deploy.DeployError, match="primary source checkout"):
+        runtime_deploy.admit(integration, world.tip)
+
+
+def test_unmerged_exception_requires_the_existing_actual_person_terminal(world, monkeypatch):
+    monkeypatch.setattr(runtime_deploy.person, "is_terminal", lambda _stream: True)
+    monkeypatch.setattr(runtime_deploy.person, "marked", lambda: True)
+    with pytest.raises(runtime_deploy.DeployError, match="person at a terminal"):
+        runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
+    monkeypatch.setattr(runtime_deploy.person, "marked", lambda: False)
+    runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
+
+
+@pytest.mark.parametrize("branch", ["main", "master", "land/integration", "promote/snapshot"])
+def test_protected_or_integration_primary_branch_cannot_be_a_runtime_source(world, branch):
+    git(world.repo, "checkout", "-q", "-b", branch)
+    git(world.repo, "update-ref", f"refs/remotes/origin/{branch}", world.tip)
+    with pytest.raises(runtime_deploy.DeployError, match="development branch"):
+        runtime_deploy.admit(world.repo, world.tip)

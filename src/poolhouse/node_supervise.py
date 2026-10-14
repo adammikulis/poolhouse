@@ -14,7 +14,17 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from poolhouse import build_update, keystore, node_app, node_binary, node_key, runtime, win32
+from poolhouse import (
+    build_update,
+    keystore,
+    node_app,
+    node_binary,
+    node_key,
+    runtime,
+    runtime_store,
+    win32,
+    worktreerules,
+)
 from poolhouse.files import read_json, write_json
 from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, only_one
@@ -122,8 +132,19 @@ def _wait(child: subprocess.Popen, state: Path, wanted: tuple[bytes, bytes], sto
         try:
             return child.wait(timeout=POLL_S)
         except subprocess.TimeoutExpired:
-            if stopping() or signature(state) != wanted:
+            if stopping():
                 return None
+            if signature(state) != wanted:
+                source = runtime_store.read_state().get("checkout")
+                if not isinstance(source, str) or not source:
+                    continue
+                try:
+                    with only_one(worktreerules.landing_lock(Path(source)), wait=False, note="node runtime cutover"):
+                        if signature(state) != wanted:
+                            end(child, state)
+                            return None
+                except (Busy, OSError, ValueError):
+                    continue
 
 
 def _pause(state: Path, seconds: float, seen: tuple[bytes, bytes], stopping: Callable[[], bool]) -> None:
@@ -222,7 +243,7 @@ def _loop(state: Path, extra: list[str], stopping: Callable[[], bool]) -> int:
         child = _spawn(state, binary, sha, extra, key)
         key = None
         code = _wait(child, state, seen, stopping)
-        if code is None:
+        if code is None and child.returncode is None:
             end(child, state)
         _note(state, f"node {child.pid} exited {child.returncode}")
         delay = MIN_DELAY_S if code is None or code == -signal.SIGTERM or time.monotonic() - began >= STABLE_S else min(delay * 2, MAX_DELAY_S)
