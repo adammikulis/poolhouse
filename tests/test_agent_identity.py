@@ -538,3 +538,22 @@ def test_the_document_names_the_permissions_the_script_asks_for_and_the_order(ai
     assert set(ai.PERMISSIONS) == {"contents", "metadata", "pull_requests", "workflows"}
     assert "scripts/agent-identity setup" in text.split("## Order of work")[1].split("## Agent identity")[0]
     assert "--identity-ready" not in text
+
+
+def test_api_preserves_authorization_timeout_and_headers_in_http_options(ai, monkeypatch):
+    asked = []
+    payload = {"operation": "scratch"}
+
+    def request(url, *, payload=None, method=None, options):
+        asked.append((url, payload, method, options))
+        return {"accepted": True}
+
+    monkeypatch.setattr(ai.client, "request_json", request)
+    assert ai.api("POST", "/scratch", hint="retry", bearer="scratch-bearer", payload=payload) == {"accepted": True}
+    assert len(asked) == 1
+    url, sent, method, options = asked[0]
+    assert (url, sent, method) == (ai.API + "/scratch", payload, "POST")
+    assert options.token == "scratch-bearer"
+    assert options.timeout == 30.0
+    assert options.headers == ai.HEADERS
+    assert "scratch-bearer" not in repr(options)
