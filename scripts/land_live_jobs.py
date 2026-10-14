@@ -20,14 +20,16 @@ from poolhouse.workspace import testruns
 def regular_fd(path: Path, flags: int) -> int:
     """Open a same-user regular file without following links or blocking."""
     descriptor = os.open(path, flags | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600)
+    accepted = False
     try:
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
             raise ValueError("invalid job file")
+        accepted = True
         return descriptor
-    except BaseException:
-        os.close(descriptor)
-        raise
+    finally:
+        if not accepted:
+            os.close(descriptor)
 
 
 def record(path: Path) -> dict:
