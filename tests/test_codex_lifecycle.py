@@ -206,3 +206,28 @@ def test_completion_guard_failures_block_separately_from_advisory_notices(monkey
     assert lifecycle.run(argparse.Namespace(assigned="", completion=True, worker=True)) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["decision"] == "block"
+
+
+@pytest.mark.parametrize("completion", [False, True])
+def test_hostile_worker_arguments_are_single_argv_values_with_deadline(monkeypatch, capsys, completion):
+    hostile = 'own;$(touch attacker-marker) --worker'
+    payload = json.dumps(event("Stop" if completion else "PostToolUse", cwd='/tmp/hostile;$(touch other-marker)'))
+    captured = {}
+
+    def timed_out(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+
+    monkeypatch.setattr(sys, "stdin", __import__("io").StringIO(payload))
+    monkeypatch.setattr(lifecycle.subprocess, "run", timed_out)
+    assert lifecycle.run(argparse.Namespace(assigned=hostile, completion=completion, worker=False)) == 0
+    assert captured['command'] == [sys.executable, '-m', 'poolhouse.workspace.cli',
+                                   'codex-stop' if completion else 'codex-hook', '--worker', '--assigned', hostile]
+    assert captured['input'] == payload
+    assert captured['timeout'] == lifecycle.WAIT
+    assert not captured.get('shell', False)
+    output = capsys.readouterr()
+    if completion:
+        assert json.loads(output.out)['decision'] == 'block'
+    else:
+        assert not output.out and 'workspace lifecycle:' in output.err
