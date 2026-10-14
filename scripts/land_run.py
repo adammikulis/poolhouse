@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import os
 import tempfile
 import time
 from collections.abc import Iterator
@@ -39,6 +40,7 @@ class Batch:
     ejected: list[dict] = field(default_factory=list)
     source_shas: list[dict] = field(default_factory=list)
     approvals: list[dict] = field(default_factory=list)
+    run_id: str = ""
 
 
 def say(message: str) -> None:
@@ -57,7 +59,7 @@ def save(batch: Batch, status: str, extra: dict) -> None:
     """Write the batch state for ``land finish``."""
     data = {"integration": batch.branch, "worktree": str(batch.wt), "target": batch.target,
             "base": batch.base, "sources": batch.order, "merged": [b for b, _ in batch.merged],
-            "source_shas": batch.source_shas, "approvals": batch.approvals,
+            "source_shas": batch.source_shas, "approvals": batch.approvals, "run_id": batch.run_id,
             "ejected": batch.ejected, "status": status, "tree": tree_hash(batch.wt), **extra}
     write_json(state_file(batch.root), data, indent=1)
     folder = lg.common_dir(batch.root) / "land" / "batches"
@@ -245,7 +247,7 @@ def create(root: Path, target: str, order: list[str]) -> Batch:
     with contextlib.suppress(RuntimeError, OSError, NodeError):
         owner = connect(cwd=root).whoami().name
         trees.claim(root, wt, owner, time.time(), {"purpose": "integration batch"})
-    return Batch(root, target, base, wt, branch, order)
+    return Batch(root, target, base, wt, branch, order, run_id=os.environ.get("POOLHOUSE_LAND_RUN_ID", ""))
 
 
 def run(root: Path, target: str, names: list[str], flags: dict) -> tuple[int, dict]:
