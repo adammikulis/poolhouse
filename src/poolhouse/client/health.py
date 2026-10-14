@@ -51,18 +51,26 @@ def is_healthy(base_url: str, *, timeout: float = 2.0, path: str | None = None) 
     return False
 
 
+@dataclass(frozen=True, slots=True)
+class PollingDelays:
+    initial: float = 0.25
+    maximum: float = 2.0
+
+
+DEFAULT_DELAYS = PollingDelays()
+
+
 def wait_for_health(
     base_url: str,
     *,
     timeout: float = 120.0,
     is_alive: Callable[[], bool] | None = None,
     path: str | None = None,
-    initial_delay: float = 0.25,
-    max_delay: float = 2.0,
+    delays: PollingDelays = DEFAULT_DELAYS,
 ) -> bool:
     """Poll until the server answers, the process dies, or the deadline passes."""
     deadline = time.monotonic() + timeout
-    delay = initial_delay
+    delay = delays.initial
 
     while time.monotonic() < deadline:
         if is_alive is not None and not is_alive():
@@ -70,7 +78,7 @@ def wait_for_health(
         if is_healthy(base_url, path=path):
             return True
         time.sleep(delay)
-        delay = min(delay * 1.5, max_delay)
+        delay = min(delay * 1.5, delays.maximum)
 
     return False
 

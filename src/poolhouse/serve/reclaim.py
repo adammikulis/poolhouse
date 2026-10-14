@@ -38,6 +38,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -209,27 +210,31 @@ def reclaim_idle(*, older_than: float, idleness: Idleness | None = None,
     return stopped
 
 
+@dataclass(frozen=True, slots=True)
+class WatchHooks:
+    servers: Callable[[], Mapping[int, Mapping[str, Any]]] = _recorded
+    stop: Callable[[int, Mapping[str, Any]], bool] = _stop
+    say: Callable[[str], None] = lambda _line: None
+
+
+DEFAULT_WATCH_HOOKS = WatchHooks()
+
+
 @contextmanager
 def watching(*, older_than: float, every: float = EVERY_S,
              idleness: Idleness | None = None,
-             servers: Callable[[], Mapping[int, Mapping[str, Any]]] = _recorded,
-             stop: Callable[[int, Mapping[str, Any]], bool] = _stop,
-             say: Callable[[str], None] = lambda _line: None) -> Iterator[threading.Event]:
-    """Reclaim idle servers every ``every`` seconds for the length of the block.
-
-    Yields the event that ends it, so a caller can stop early. Nothing is reclaimed on the
-    way in: the first look only starts the clocks.
-    """
+             hooks: WatchHooks = DEFAULT_WATCH_HOOKS) -> Iterator[threading.Event]:
+    """Reclaim idle servers periodically and return the event that stops the watcher."""
     done = threading.Event()
     watcher = idleness or Idleness()
 
     def loop() -> None:
         while not done.is_set():
             try:
-                reclaim_idle(older_than=older_than, idleness=watcher, servers=servers,
-                             stop=stop, say=say)
+                reclaim_idle(older_than=older_than, idleness=watcher, servers=hooks.servers,
+                             stop=hooks.stop, say=hooks.say)
             except Exception as why:  # noqa: BLE001 - a watcher that dies stops watching
-                say(f"reclaim: {type(why).__name__}: {why}")
+                hooks.say(f"reclaim: {type(why).__name__}: {why}")
             done.wait(every)
 
     thread = threading.Thread(target=loop, name="poolhouse-reclaim", daemon=True)

@@ -25,6 +25,7 @@ BATCH = 32
 
 # How far the best match must stand above the rest before a ranking is worth acting on.
 MARGIN = 0.04
+DEFAULT_EMBED_OPTIONS = Options(timeout=60.0, retry=Retry(tries=3))
 
 
 class EmbeddingError(ServerError):
@@ -60,9 +61,7 @@ def embed(
     base_url: str = "http://127.0.0.1:8080",
     model: str | None = None,
     expect_dim: int | None = None,
-    timeout: float = 60.0,
-    tries: int = 3,
-    api_key: str | None = None,
+    options: Options = DEFAULT_EMBED_OPTIONS,
 ) -> list[list[float]]:
     """Embed one string or a batch. Always returns a list of vectors."""
     batch = [texts] if isinstance(texts, str) else list(texts)
@@ -73,7 +72,7 @@ def embed(
     if model:
         body["model"] = model
 
-    payload = request_json(f"{base_url.rstrip('/')}/v1/embeddings", payload=body, options=Options(timeout=timeout, headers={"Authorization": f"Bearer {api_key}"} if api_key else {}, retry=Retry(tries=tries)))
+    payload = request_json(f"{base_url.rstrip('/')}/v1/embeddings", payload=body, options=options)
 
     if not isinstance(payload, dict) or "data" not in payload:
         raise EmbeddingError(f"embedding response has no 'data': {str(payload)[:200]}")

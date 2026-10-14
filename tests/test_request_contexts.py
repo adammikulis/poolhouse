@@ -44,3 +44,45 @@ def test_member_uses_its_own_token_and_original_timeout_fallback(monkeypatch, ti
     assert forwarded.token == 'member-token' and options.token == 'substituted-token'
     assert forwarded.timeout == (timeout or 7) and forwarded.retry == remote.READS
     assert dict(forwarded.headers) == {'X-Check': 'yes'}
+
+
+def test_embedding_delivery_defaults_and_explicit_options_are_preserved(monkeypatch):
+    import importlib
+
+    embedding = importlib.import_module('poolhouse.client.embed')
+    assert embedding.DEFAULT_EMBED_OPTIONS.timeout == 60.0
+    assert embedding.DEFAULT_EMBED_OPTIONS.retry == http.Retry(tries=3)
+    seen = []
+    def response(url, *, payload, options):
+        seen.append((url, payload, options))
+        return {'data': [{'embedding': [1.0, 2.0]}]}
+    monkeypatch.setattr(embedding, 'request_json', response)
+    options = http.Options(token='fixture-token', timeout=0.25, retry=http.Retry(tries=4))
+    assert embedding.embed('hello', model='fixture-model', options=options) == [[1.0, 2.0]]
+    assert seen == [('http://127.0.0.1:8080/v1/embeddings',
+                     {'input': ['hello'], 'model': 'fixture-model'}, options)]
+
+
+def test_health_polling_delays_keep_the_original_defaults():
+    from poolhouse.client.health import DEFAULT_DELAYS
+
+    assert DEFAULT_DELAYS.initial == 0.25 and DEFAULT_DELAYS.maximum == 2.0
+
+
+@pytest.mark.parametrize('error', [PermissionError('private-token'), RuntimeError('unexpected')])
+def test_unavailable_benchmark_memory_is_not_a_zero_measurement(monkeypatch, capsys, error):
+    from poolhouse.bench import backends, holding
+
+    monkeypatch.setattr(backends, 'props_of', lambda _url: {})
+    monkeypatch.setattr(backends, 'llama_served_by', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(holding, 'serving_pids', lambda *_args: [123])
+    def processes(_pids):
+        raise error
+    monkeypatch.setattr(holding, 'process_tree', processes)
+    if isinstance(error, RuntimeError):
+        with pytest.raises(RuntimeError, match='unexpected'):
+            holding.footprint('http://127.0.0.1:12345')
+    else:
+        result = holding.footprint('http://127.0.0.1:12345')
+        assert 'resident_bytes' not in result and 'resident_peak' not in result
+        assert 'private-token' not in capsys.readouterr().err
