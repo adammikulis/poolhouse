@@ -15,9 +15,10 @@ VERIFIER = Path(__file__).resolve().parents[1] / "docs" / "verify_release.py"
 
 def imported() -> list[tuple[int, str, str]]:
     """``(line, module, name)`` for every poolhouse name the verifier imports."""
-    tree = ast.parse(VERIFIER.read_text(encoding="utf-8"), filename=str(VERIFIER))
     out = []
-    for node in ast.walk(tree):
+    nodes = (node for path in (VERIFIER, VERIFIER.with_name("verify_services.py"))
+             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))))
+    for node in nodes:
         if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("poolhouse"):
             out.extend((node.lineno, node.module or "", alias.name) for alias in node.names)
         elif isinstance(node, ast.Import):
@@ -64,3 +65,73 @@ def test_offline_setup_checks_use_random_keys_and_group_scoped_join_authenticati
         assert isinstance(FunctionType(code, scope)(), str)
         ran.append(claim)
     assert len(ran) == 3
+
+
+def service_checks(tmp_path):
+    import importlib.util
+
+    path = VERIFIER.with_name('verify_services.py')
+    spec = importlib.util.spec_from_file_location('verify_services', path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    checks = []
+
+    def collect(area, claim, *, network=False):
+        def keep(fn):
+            checks.append((area, claim, network, fn))
+            return fn
+        return keep
+
+    module.register(collect, tmp_path, lambda: 0)
+    return checks
+
+
+def test_service_check_extraction_preserves_order_and_network_markers(tmp_path):
+    checks = service_checks(tmp_path)
+    assert [area for area, _, _, _ in checks] == ['Models'] * 6 + ['Chat'] * 3
+    assert [network for _, _, network, _ in checks] == [False] * 4 + [True] * 2 + [False] * 3
+    source = VERIFIER.read_text()
+    assert source.index('register(check, TMP, free_port)') < source.index('@check("Updating"')
+
+
+@pytest.mark.parametrize('size', [2**30, 0, 3 * 2**30])
+def test_catalogue_verification_uses_pinned_public_metadata(tmp_path, monkeypatch, size):
+    from poolhouse.fleet import catalogue
+    from poolhouse.hub import remote
+
+    calls = []
+    ref = remote.Ref('sample/model', 'model.gguf', commit='a' * 40)
+    pick = catalogue.Suggestion('model', 'hf:sample/model/model.gguf', 1.0, 'text')
+    monkeypatch.setattr(catalogue, 'SUGGESTED', [pick])
+
+    def parse(text):
+        calls.append(('parse', text))
+        return remote.Ref('sample/model', 'model.gguf')
+
+    def resolve(parsed, auth):
+        assert parsed.commit == '' and auth == ''
+        calls.append(('resolve', parsed.repo))
+        return ref
+
+    def listing(repo, revision, auth):
+        assert (repo, revision, auth) == (ref.repo, ref.commit, '')
+        calls.append(('listing', revision))
+        return [remote.RemoteFile('model.gguf', size)]
+
+    actual_members = remote.members
+
+    def members(files, selected):
+        assert selected == ref
+        calls.append(('members', selected.commit))
+        return actual_members(files, selected)
+
+    for name, fn in [('parse', parse), ('resolve', resolve), ('listing', listing), ('members', members)]:
+        monkeypatch.setattr(remote, name, fn)
+    fn = next(fn for _, claim, _, fn in service_checks(tmp_path) if 'pinned Hub commit' in claim)
+    if size == 2**30:
+        assert fn() == '1 available: model'
+    else:
+        with pytest.raises(AssertionError):
+            fn()
+    assert calls == [('parse', pick.ref), ('resolve', ref.repo), ('listing', ref.commit), ('members', ref.commit)]
