@@ -65,6 +65,22 @@ def test_the_node_client_folder_holding_every_session_token_is_closed_to_reads_a
     assert not any("workspace/tokens" in path for path in profile.deny_read(layout) + profile.deny_write(layout))
 
 
+def test_the_person_key_custody_is_closed_to_reads_and_writes_and_to_every_file_tool(layout):
+    custody = str(layout.state / "node" / "person")
+    settings = profile.claude_settings(layout)
+    for files in (settings["sandbox"]["filesystem"], profile.srt_settings(layout)["filesystem"]):
+        assert custody in files["denyRead"] and custody in files["denyWrite"]
+    for tool in ("Read", "Edit", "Write"):
+        assert f"{tool}(/{custody}/**)" in settings["permissions"]["deny"], tool
+
+
+def test_the_file_tools_are_refused_every_path_the_sandbox_denies_to_reads(layout):
+    settings = profile.claude_settings(layout)
+    for path in profile.deny_read(layout):
+        assert f"Read(/{path}/**)" in settings["permissions"]["deny"], path
+    assert f"Read(/{layout.state / 'node' / 'client'}/**)" in settings["permissions"]["deny"]
+
+
 def test_the_credentials_of_the_machine_are_denied_to_reads(layout):
     files = profile.claude_settings(layout)["sandbox"]["filesystem"]
     for name in (".ssh", ".aws", ".config/gh"):

@@ -27,17 +27,17 @@ SCRUBBED_ENV = (
 )
 
 STATE_DENY_READ = (
-    "node/client", "workspace/local-agents", "keystore", "server-keys.json", "pool.key.old", "pool.json",
+    "node/client", "node/person", "workspace/local-agents", "keystore", "server-keys.json", "pool.key.old", "pool.json",
     "credentials.endpoint", "credentials.toml.bak", "onboard",
 )
-"""`node/client` holds a token file and a `.parent` file for each session and its read cursors."""
+"""`node/client` holds a token file and a `.parent` file for each session and its read cursors; `node/person` is the person key's custody."""
 STATE_ALLOW_READ: tuple[str, ...] = ()
 STATE_ALLOW_WRITE = (
     "workspace", "logs", "activity", "requests", "holds", "hook-diagnostics",
     "broker.lock", "broker-leases.json", "servers.json", "servers.lock", "servers.admission.lock",
 )
 STATE_DENY_WRITE = (
-    "node/client", "workspace/local-agents", "keystore", "runtimes", "hooks", "gate", "guard", "machine-id",
+    "node/client", "node/person", "workspace/local-agents", "keystore", "runtimes", "hooks", "gate", "guard", "machine-id",
     "wired-limit.json",
 )
 HOME_DENY_READ = (".ssh", ".aws", ".gnupg", ".config/gh", ".netrc", ".git-credentials", ".docker/config.json",
@@ -113,10 +113,11 @@ def allow_read(layout: Layout) -> list[str]:
 
 
 def edit_rules(layout: Layout) -> list[str]:
-    """Permission rules that refuse the file tools (outside the Bash sandbox) the same paths."""
+    """Permission rules that refuse the file tools (outside the Bash sandbox) the same paths: Edit and Write where a write is
+    denied, Read where a read is."""
     rules: list[str] = []
-    for tool in ("Edit", "Write"):
-        for path in deny_write(layout):
+    for tool, paths in (("Edit", deny_write(layout)), ("Write", deny_write(layout)), ("Read", deny_read(layout))):
+        for path in paths:
             rules += [f"{tool}(/{path})", f"{tool}(/{path}/**)"]
     return rules
 

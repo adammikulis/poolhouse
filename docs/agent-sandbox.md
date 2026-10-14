@@ -35,7 +35,7 @@ outside the sandbox, so the same paths are also refused by `permissions.deny` ru
 | Memory | one Seatbelt/bubblewrap process per command | one wrapper per harness | a second login session |
 | Friction | loopback ports, ssh, sibling worktrees (see matrix) | the same, and the harness itself is confined: its own API host must be listed | highest: every shared path needs a group, ACL or copy |
 | File tools, MCP, hooks | not covered | covered | covered |
-| Reading the tokens and `.parent` files of the sessions (`~/.poolhouse/node/client`) | closed by `denyRead` (Bash only) | closed for every tool | closed by file mode |
+| Reading the tokens and `.parent` files of the sessions (`~/.poolhouse/node/client`) and the person key's custody (`node/person`) | closed by `denyRead` for Bash and by `Read` permission rules for the file tools | closed for every tool | closed by file mode |
 | Forging transcripts, the person store | Bash closed; Edit/Write closed by permission rules | closed | closed |
 | Editing hooks and settings | Bash closed by `denyWrite`; file tools by rules; managed file is root-owned | closed | closed (owner-owned checkout) |
 | pty tricks (a command attaching to the person's terminal) | open: sandbox does not isolate ttys | open | closed: different user cannot open the person's ttys |
@@ -53,8 +53,8 @@ harness, which Claude Code's setting does not reach. Revisit a separate account 
 
 - **The node's files.** The node writes the boards, the lease table and the token hashes under `~/.poolhouse/node`, and
   `poolhouse-workspace` asks it over its socket; that folder is not on the write list, so a sandboxed command cannot
-  edit them. Only `node/client` is on the read-deny list: the node's device key, its enrolment secret and the
-  person's key custody (`node/person`) stay readable to a sandboxed command.
+  edit them. Only `node/client` and `node/person` (the person key's custody) are on the read-deny list: the node's
+  device key and its enrolment secret stay readable to a sandboxed command.
 - **The session tokens.** `~/.poolhouse/node/client/<board>/` holds a `<name>.token` file and a `<name>.parent`
   file for every session of the node, and the read cursors of each. The folder is closed to reads and writes for
   Bash commands (`denyRead`, `denyWrite`) and to the file tools by permission rules, and no path inside it is
@@ -85,8 +85,8 @@ The values come from `scripts/agent_sandbox_profile.py`; the file the person ins
 | `sandbox.excludedCommands` | `poolhouse runtime ensure`, `poolhouse runtime rollback`, `poolhouse runtime restart-host`: the three deploy commands, guarded by the `runtime.deploy` authority gate (see the matrix) |
 | `sandbox.allowUnsandboxedCommands`, `autoAllowBashIfSandboxed` | `false` |
 | `sandbox.filesystem.allowWrite` | every checkout from `git worktree list` (explicit paths: Linux does not expand wildcards), the primary `.git`, the scratch and temp directories, `~/.poolhouse/{workspace,logs,activity,requests,holds,hook-diagnostics}` and the broker, server and lock files, `~/.cache/{dev-test-slots,poolhouse,huggingface,pip,ms-playwright}` |
-| `sandbox.filesystem.denyWrite` | per checkout `scripts/hooks`, `.claude`, `.mcp.json`, `.githooks`, `.git/config`, `.git/hooks`; in the primary `.git`: `config`, `hooks`, `info`, `worktrees/*/config.worktree`, `worktrees/*/hooks`; `~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.gitconfig`, shell rc files, `~/.pyenv/{versions,shims}`, `~/.local/bin`, `~/Library/LaunchAgents` (macOS) or the systemd user and autostart directories (Linux); under `~/.poolhouse`: `runtimes`, `keystore`, `hooks`, `gate`, `guard`, `machine-id`, `wired-limit.json`, `node/client`, and in `workspace` the local-agents |
-| `sandbox.filesystem.denyRead` | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, browser profiles (Chrome, Firefox, Safari, Keychains, Cookies), and under `~/.poolhouse`: `node/client`, `workspace/local-agents`, `keystore`, `server-keys.json`, `pool.key.old`, `pool.json`, `credentials.*`, `onboard` |
+| `sandbox.filesystem.denyWrite` | per checkout `scripts/hooks`, `.claude`, `.mcp.json`, `.githooks`, `.git/config`, `.git/hooks`; in the primary `.git`: `config`, `hooks`, `info`, `worktrees/*/config.worktree`, `worktrees/*/hooks`; `~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.gitconfig`, shell rc files, `~/.pyenv/{versions,shims}`, `~/.local/bin`, `~/Library/LaunchAgents` (macOS) or the systemd user and autostart directories (Linux); under `~/.poolhouse`: `runtimes`, `keystore`, `hooks`, `gate`, `guard`, `machine-id`, `wired-limit.json`, `node/client`, `node/person`, and in `workspace` the local-agents |
+| `sandbox.filesystem.denyRead` | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, browser profiles (Chrome, Firefox, Safari, Keychains, Cookies), and under `~/.poolhouse`: `node/client`, `node/person`, `workspace/local-agents`, `keystore`, `server-keys.json`, `pool.key.old`, `pool.json`, `credentials.*`, `onboard` |
 | `sandbox.filesystem.allowRead` | none |
 | `sandbox.network.allowedDomains` | `huggingface.co`, `*.huggingface.co`, `hf.co`, `*.hf.co` (hub, CDN, LFS and xet hosts), `github.com`, `api.github.com`, `codeload.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `raw.githubusercontent.com`, `pypi.org`, `files.pythonhosted.org`, `127.0.0.1:8770` |
 | `sandbox.network.allowLocalBinding` | `true` on macOS only |
