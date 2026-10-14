@@ -333,39 +333,34 @@ fn a_device_in_no_pool_that_hears_the_beacon_of_an_open_governed_pool_of_its_pro
 fn a_pool_is_founded_drafted_and_signed_by_a_key_outside_the_node_with_no_signer_on_it() {
     let (a, b) = (device(), device());
     enrol_phone_key(&a, ANN);
-    let charter = charter(&[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    let charter = charter_for(&a, &[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
     let founded = a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
     assert_eq!(founded["pool"], charter.pool_id().as_str());
-    assert!(!a.is_member(&a.fp()), "the pool exists and the device is not yet in it");
-    let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&a.net.me, "this-device", "found", "")}));
+    assert!(a.is_member(&a.fp()), "the charter names the device, which is the pool's first member with no admit");
+    assert!(!a.is_member(&b.fp()));
+    let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&b.net.me, "this-device", "join-code", "")}));
     let mut admit: Act = serde_json::from_value(draft["act"].clone()).unwrap();
     assert_eq!(draft["sign_bytes"], poolhouse_node::fsutil::hex(&admit.sign_bytes()).as_str(), "the bytes a person's key signs are the act's");
     assert!(draft["summary"].as_str().unwrap().contains("this-device"));
     sign(&mut admit, ANN);
     assert_eq!(a.ok("pool_submit", "", &a.token, json!({"act": admit}))["status"], "effective");
-    assert!(a.is_member(&a.fp()));
+    assert!(a.is_member(&b.fp()));
     let again = a.call("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
     assert_eq!(again["ok"], false, "a device that runs a pool does not found a second");
     let refused = a.call("pool_found", "", &a.token, json!({"act": {"v": 1}}));
     assert_eq!(refused["ok"], false);
-    let _ = b;
 }
 
 #[test]
 fn a_window_opened_with_no_signer_on_the_node_admits_only_the_device_an_admin_already_signed_for() {
     let (a, b, c) = (device(), device(), device());
     enrol_phone_key(&a, ANN);
-    let charter = charter(&[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure, poolhouse_node::gov::charter::Unit::Person);
+    let charter = charter_for(&a, &[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
     a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
-    for dev in [&a, &b] {
-        let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&dev.net.me, "dev", "join-code", "")}));
-        let mut act: Act = serde_json::from_value(draft["act"].clone()).unwrap();
-        if dev.fp() == a.fp() {
-            act.body["how"] = json!("found");
-        }
-        sign(&mut act, ANN);
-        a.ok("pool_submit", "", &a.token, json!({"act": act}));
-    }
+    let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&b.net.me, "dev", "join-code", "")}));
+    let mut act: Act = serde_json::from_value(draft["act"].clone()).unwrap();
+    sign(&mut act, ANN);
+    a.ok("pool_submit", "", &a.token, json!({"act": act}));
     let closed = a.call("add_device", "", &a.token, json!({}));
     assert_eq!(closed["ok"], false, "with no signer a window opens only for what was signed before: {closed}");
     let code = a.ok("add_device", "", &a.token, json!({"presigned": true}))["code"].as_str().unwrap().to_string();
@@ -484,10 +479,10 @@ fn a_person_is_asked_at_most_twelve_times_in_ten_minutes() {
     let a = device();
     found(&a, person(ANN, "ann"), "secure");
     let remove = |n: usize| a.call("member_remove", "", &a.token, json!({"fingerprint": format!("{n:064x}")}));
-    for n in 0..11 {
+    for n in 0..12 {
         assert_eq!(remove(n)["ok"], true, "ask {n}");
     }
-    let refused = remove(11);
+    let refused = remove(12);
     assert_eq!(refused["ok"], false, "{refused}");
     assert_eq!((refused["error"]["needs"].as_str(), refused["error"]["then"].as_str()), (Some("time"), Some("wait")));
     assert!(refused["error"]["say"].as_str().unwrap().len() <= 160);

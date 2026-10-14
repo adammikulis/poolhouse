@@ -45,21 +45,25 @@ pub fn cert_of(state: &std::path::Path) -> Vec<u8> {
 }
 
 /// Found a pool of the test person's key on a node with no signer, reached by ``call(method, params)`` (a process the test started;
-/// the call answers the result and fails the test when it is refused): the node founds it, and an admit the key signed is
-/// submitted for the node itself and for each of ``others`` (certificates), so a window opened with `presigned` lets them in.
+/// the call answers the result and fails the test when it is refused): the charter puts the node (certificate ``own``) in the pool first,
+/// and an admit the key signed is submitted for each of ``others`` (certificates), so a window opened with `presigned` lets them in.
 pub fn found_remote(call: &mut dyn FnMut(&str, serde_json::Value) -> serde_json::Value, own: &[u8], policy: poolhouse_node::membership::Policy, others: &[Vec<u8>]) -> String {
-    use super::gov::{charter, found_act, sign, strong};
-    let charter = charter(&[strong(PERSON, "ann")], policy, poolhouse_node::gov::charter::Unit::Person);
+    use super::gov::{charter_of, first_of, found_act, sign, strong};
+    let charter = charter_of(&[strong(PERSON, "ann")], policy, poolhouse_node::gov::charter::Unit::Person, poolhouse_node::poolops::wall_ms(), first_of(own));
     let founded = call("pool_found", json!({"act": found_act(&charter)}));
-    let devices = std::iter::once((own, "found")).chain(others.iter().map(|d| (d.as_slice(), "join-code")));
-    for (der, how) in devices {
-        let body = json!({"cert": poolhouse_node::fsutil::hex(der), "name": "dev", "how": how, "via": ""});
+    for der in others {
+        let body = json!({"cert": poolhouse_node::fsutil::hex(der), "name": "dev", "how": "join-code", "via": ""});
         let draft = call("pool_draft", json!({"kind": "admit", "body": body}));
         let mut act: poolhouse_node::gov::act::Act = serde_json::from_value(draft["act"].clone()).unwrap();
         sign(&mut act, PERSON);
         call("pool_submit", json!({"act": act}));
     }
     founded["pool"].as_str().unwrap().to_string()
+}
+
+/// A charter of ``keys`` that puts the device ``dev`` in the pool first, each key accepting it.
+pub fn charter_for(dev: &Dev, keys: &[super::gov::K], policy: poolhouse_node::membership::Policy) -> poolhouse_node::gov::charter::Charter {
+    super::gov::charter_of(keys, policy, poolhouse_node::gov::charter::Unit::Person, poolhouse_node::poolops::wall_ms(), super::gov::first_of(&dev.net.me.der))
 }
 
 /// A node on this device that signs for ``signer`` and founds a pool.

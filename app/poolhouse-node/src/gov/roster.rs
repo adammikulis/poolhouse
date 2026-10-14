@@ -1,7 +1,7 @@
 //! The members of a pool, folded from the acts: who was admitted, removed or left, and which devices are delegates.
 //!
 //! The roster is a view. It is built from scratch from the acts held and the chain (`chain`), so no row of it is ever believed on
-//! the word of the member that sent it. A removal is a union and is never undone; an admit of a removed certificate is refused;
+//! the word of the member that sent it. The first device is admitted by the charter itself (`how: found`), ahead of every act. A removal is a union and is never undone; an admit of a removed certificate is refused;
 //! a `leave` is undone by a later `admit`. A delegate's admits and an open pool's member admits are counted by the order this
 //! device first saw them, and those past the rate are refused.
 
@@ -141,6 +141,15 @@ fn candidates(acts: &BTreeMap<String, Act>) -> Vec<Candidate> {
     }).collect()
 }
 
+/// The admit the charter makes of its first device: the keys that accepted the charter named it, so it stands before any act and is
+/// named by the hash of the founding charter, which no act has.
+fn founding(chain: &Chain) -> Option<Candidate> {
+    let genesis = chain.epochs.first()?;
+    let (der, fingerprint) = genesis.charter.first.device()?;
+    let (cert, name) = (genesis.charter.first.cert.clone(), genesis.charter.first.name.clone());
+    Some(Candidate { id: genesis.hash.clone(), admit: Admit { cert, name, how: "found".into(), via: String::new() }, fingerprint, der, at_ms: genesis.charter.at_ms, signers: Vec::new() })
+}
+
 /// The admits that stand, given the device that has already been let in: an admin's, then those of a live delegate or (in an open
 /// pool) of a member, each of which needs its signer to be let in first.
 fn standing<'a>(cands: &'a [Candidate], cx: &Facts, gone: &BTreeSet<String>, limited: &BTreeSet<String>) -> (Vec<&'a Candidate>, BTreeMap<String, String>) {
@@ -257,10 +266,13 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64)
     let mut out = Roster::default();
     let removed = removals(chain, acts, &mut out);
     delegates(chain, acts, seen, now, &mut out);
-    let cands = candidates(acts);
-    let seen_of: BTreeMap<String, i64> = cands.iter().map(|c| (c.id.clone(), seen.get(&c.id).copied().unwrap_or(now))).collect();
+    let mut cands = candidates(acts);
+    let found = founding(chain);
+    let found_id = found.as_ref().map(|c| c.id.clone()).unwrap_or_default();
+    cands.extend(found);
+    let first = |id: &String| if *id == found_id { SETTLED } else { seen.get(id).copied().unwrap_or(now) };
+    let seen_of: BTreeMap<String, i64> = cands.iter().map(|c| (c.id.clone(), first(&c.id))).collect();
     let mut life: BTreeMap<String, Vec<(i64, u64, String, bool)>> = BTreeMap::new();
-    let first = |id: &String| seen.get(id).copied().unwrap_or(now);
     for c in &cands {
         life.entry(c.fingerprint.clone()).or_default().push((first(&c.id), c.at_ms, c.id.clone(), true));
     }
@@ -269,6 +281,10 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64)
     }
     life.values_mut().for_each(|events| events.sort());
     let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, life, windows: out.windows.clone(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
+    if let Some(admin) = chain.epochs.first().and_then(|e| e.charter.admins.first()).filter(|_| !found_id.is_empty()) {
+        facts.admin_ok.insert(found_id.clone());
+        facts.admin_of.insert(found_id.clone(), admin.fingerprint());
+    }
     for c in &cands {
         if let Some(a) = acts.get(&c.id).filter(|a| !chain.signers(&c.id, a).is_empty()) {
             match verdict(&c.id, a, None, chain, false) {
@@ -292,7 +308,7 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64)
         limited.extend(more);
         (ok, by) = standing(&cands, &facts, &gone, &limited);
     }
-    for c in &cands {
+    for c in cands.iter().filter(|c| c.id != found_id) {
         if limited.contains(&c.id) {
             out.void.insert(c.id.clone(), "it is past the rate a delegate or a member may admit devices".into());
         } else if gone.contains(&c.fingerprint) {

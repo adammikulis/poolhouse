@@ -27,7 +27,7 @@ fn phone_entry(phone: &PhoneKey, person: &str, since: u64) -> AdminKey {
 
 /// A charter of one phone key, accepted by the phone with the signature ``sign`` makes.
 fn phone_charter(phone: &PhoneKey, sign: impl Fn(&PhoneKey, &[u8]) -> String) -> Charter {
-    let mut c = Charter::new("home", Policy::Secure, "", vec![phone_entry(phone, "ann", 1)], wall_ms());
+    let mut c = Charter::new("home", Policy::Secure, "", vec![phone_entry(phone, "ann", 1)], first_of(&ident(FIRST).der), wall_ms());
     let anchor = c.anchor();
     c.admins[0].acceptance = sign(phone, &c.admins[0].acceptance_message(&anchor, ""));
     c

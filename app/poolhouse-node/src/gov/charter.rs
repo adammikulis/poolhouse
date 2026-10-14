@@ -1,17 +1,20 @@
-//! The charter: the signed document that names a pool's admin keys, thresholds, holds and join policy.
+//! The charter: the signed document that names a pool's admin keys, thresholds, holds, join policy and first device.
 //!
 //! The pool id is the first 16 bytes of the anchor, 32 hex digits: the SHA-256 of the epoch-1 charter with the signatures of its keys
 //! left out, so a copy of a pool with other admins is another pool, a stranger cannot make a pool with this id and other admins, and
 //! one set of terms is one pool however its keys happen to sign it. The join policy is part of the body and never changes inside a
-//! pool. Epoch 1 is the founding charter; each later epoch is the charter the acts of `chain` produce.
+//! pool. The first device (its certificate and name) is part of the body too: the keys that accept the charter accept that device as the
+//! pool's first member, so founding is one signature and no later admit. Epoch 1 is the founding charter; each later epoch is the
+//! charter the acts of `chain` produce.
 
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::cert::{cert_fingerprint, device_public, parses};
 use crate::error::{Error, Result};
-use crate::fsutil::sha256_hex;
+use crate::fsutil::{sha256_hex, unhex};
 use crate::membership::Policy;
 use crate::row::canonical;
 
@@ -20,7 +23,7 @@ use super::keys::{AdminKey, Role, Strength};
 use super::MAX_ADMINS;
 
 /// The version of the charter this build reads and writes; a pool of another version is not one this build can run.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 /// What a device that meets a charter of another version says.
 pub const OTHER_VERSION: &str = "this pool was made by another version of Poolhouse and cannot be used: make a new pool";
 
@@ -77,6 +80,42 @@ impl Default for Holds {
     }
 }
 
+/// The first device of a pool: the certificate (hex DER) and the name the founding keys put in it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct First {
+    pub cert: String,
+    pub name: String,
+}
+
+/// The longest name a device carries in a charter.
+pub const MOST_DEVICE_NAME: usize = 40;
+
+impl First {
+    /// The first device of the device whose certificate is ``der``, called ``name``.
+    pub fn of(der: &[u8], name: &str) -> First {
+        First { cert: crate::fsutil::hex(der), name: name.chars().filter(|c| !c.is_control()).take(MOST_DEVICE_NAME).collect() }
+    }
+
+    /// The certificate as DER and its fingerprint, when it is a device certificate of an Ed25519 key spelled in lower-case hex, so one
+    /// device is one charter text.
+    pub fn device(&self) -> Option<(Vec<u8>, String)> {
+        let der = unhex(&self.cert).filter(|d| parses(d) && device_public(d).is_ok() && crate::fsutil::hex(d) == self.cert)?;
+        let fingerprint = cert_fingerprint(&der);
+        Some((der, fingerprint))
+    }
+
+    fn check(&self) -> Result<()> {
+        if self.device().is_none() {
+            return bad("a pool's first device is named by its certificate, which holds an Ed25519 key");
+        }
+        if self.name.is_empty() || self.name.chars().count() > MOST_DEVICE_NAME || self.name.chars().any(char::is_control) {
+            return bad("a pool's first device has a name of at most 40 characters");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Charter {
@@ -87,6 +126,8 @@ pub struct Charter {
     pub mode: Mode,
     /// The project key this pool belongs to, or empty.
     pub project: String,
+    /// The device the pool is founded on, which the pool admits as its first member with `how: found`.
+    pub first: First,
     /// Sorted by key.
     pub admins: Vec<AdminKey>,
     pub thresholds: Thresholds,
@@ -103,16 +144,24 @@ fn bad<T>(why: &str) -> Result<T> {
 
 impl Charter {
     /// An epoch-1 charter with the default thresholds and holds; the keys are sorted.
-    pub fn new(name: &str, policy: Policy, project: &str, mut admins: Vec<AdminKey>, at_ms: u64) -> Charter {
+    pub fn new(name: &str, policy: Policy, project: &str, mut admins: Vec<AdminKey>, first: First, at_ms: u64) -> Charter {
         admins.sort_by(|a, b| a.key.cmp(&b.key));
         Charter {
-            v: VERSION, epoch: 1, name: name.into(), policy, mode: Mode::Admins, project: project.into(), admins, thresholds: Thresholds::default(),
+            v: VERSION, epoch: 1, name: name.into(), policy, mode: Mode::Admins, project: project.into(), first, admins, thresholds: Thresholds::default(),
             holds: Holds::default(), recover_delay_days: 7, succession: None, from: None, at_ms,
         }
     }
 
     pub fn body(&self) -> Value {
         serde_json::to_value(self).unwrap_or(Value::Null)
+    }
+
+    /// The charter ``value`` holds: one of another version says so in one sentence, before a field of it is read.
+    pub fn read(value: &Value) -> Result<Charter> {
+        if value["v"].as_u64() != Some(u64::from(VERSION)) {
+            return bad(OTHER_VERSION);
+        }
+        serde_json::from_value(value.clone()).map_err(|e| Error::Invalid(format!("that is not a charter: {}", e.to_string().chars().take(80).collect::<String>())))
     }
 
     fn hashed(&self, blank: impl Fn(&AdminKey) -> bool) -> String {
@@ -219,9 +268,10 @@ impl Charter {
         if self.name.is_empty() || self.name.chars().count() > 40 || !self.name.chars().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '.' | '_' | '-')) {
             return bad("a pool's name is at most 40 letters, digits, spaces and dots");
         }
-        if !self.project.is_empty() && !(self.project.len() == 16 && self.project.bytes().all(|b| b.is_ascii_hexdigit())) {
+        if !(self.project.is_empty() || (self.project.len() == 16 && self.project.bytes().all(|b| b.is_ascii_hexdigit()))) {
             return bad("a pool's project is a project key");
         }
+        self.first.check()?;
         self.check_keys(1)?;
         let anchor = self.anchor();
         if !self.admins.iter().all(|k| k.accepted(&anchor, "")) {

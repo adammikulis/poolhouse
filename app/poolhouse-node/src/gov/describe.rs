@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use super::act::Act;
 use super::body::{self, Body};
+use super::charter::Charter;
 use super::keys::{fingerprint_of, AdminKey, Role, Strength};
 use super::pool::GovPool;
 
@@ -64,6 +65,12 @@ fn threshold_line(t: &body::Thresholds) -> String {
     format!("Change how many sign: {}.", parts.join(", "))
 }
 
+/// The sentence a person is asked to accept a charter under: the pool and the computer it starts with.
+pub fn founding_line(c: &Charter) -> String {
+    let fingerprint = c.first.device().map(|(_, f)| short(&f)).unwrap_or_default();
+    format!("Make the pool {} and put the computer {} (certificate {fingerprint}) in it.", quoted(&c.name), quoted(&c.first.name))
+}
+
 /// The sentence a person is asked to sign ``act`` under, as this pool reads it now: at most 300 characters.
 pub fn describe(act: &Act, g: &GovPool) -> String {
     sentence(act, g, true).chars().take(300).collect()
@@ -93,6 +100,6 @@ fn sentence(act: &Act, g: &GovPool, deep: bool) -> String {
             let what = held.map_or_else(|| format!("the act {}", short(&t.act)), |h| sentence(h, g, false));
             format!("{} this: {what}", if act.kind == "cancel" { "Cancel" } else { "Veto" })
         }
-        Body::Found(_) => "Found the pool.".into(),
+        Body::Found(c) => founding_line(&c),
     }
 }

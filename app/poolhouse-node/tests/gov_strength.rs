@@ -88,7 +88,7 @@ fn one_enrolled_key_does_not_vouch_for_another_the_charter_calls_strong() {
     assert_eq!(a.status()["governance"]["mode"], "unfounded");
     let recovery = a.call("pool_found", "", &a.token, json!({"act": act_of(&[strong(ANN, "ann"), recovery(BEN, "ann")])}));
     assert_eq!(recovery["ok"], false, "a recovery key the charter calls strong is held to the same rule: {recovery}");
-    let honest = a.call("pool_found", "", &a.token, json!({"act": act_of(&[strong(ANN, "ann"), weak(BEN, "ben")])}));
+    let honest = a.call("pool_found", "", &a.token, json!({"act": serde_json::to_value(found_act(&charter_for(&a, &[strong(ANN, "ann"), weak(BEN, "ben")], Policy::Secure))).unwrap()}));
     assert_eq!(honest["ok"], true, "a key the charter calls weak needs no enrolment: {honest}");
 }
 
