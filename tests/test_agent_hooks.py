@@ -74,28 +74,28 @@ def test_claude_hooks_are_idempotent_keep_other_hooks_and_replace_earlier_nudges
     assert data["hooks"]["PostToolUse"][-1]["matcher"] == "*"
 
 
-def test_codex_hooks_keep_every_other_setting_and_do_not_double_the_launcher_nudge(machine):
+def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(machine):
     path = machine / "config.toml"
     path.write_text(CODEX_BEFORE)
-    assert agent_hooks.install_codex(path) == ["Stop", "UserPromptSubmit"]
+    assert agent_hooks.install_codex(path) == list(agent_hooks.codex_lifecycle.EVENTS)
     text = path.read_text()
-    assert text.startswith(CODEX_BEFORE.rstrip("\n"))
+    assert "poolhouse.harnesshook post" not in text
     data = tomllib.loads(text)
     assert data["model"] == "gpt-6.1-sol" and data["agents"] == {"max_threads": 32}
-    assert commands(data, "Stop") == ["poolhouse-workspace nudge --agent codex --hook stop"]
-    assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace nudge --agent codex --hook prompt"]
-    assert commands(data, "PostToolUse") == ["python -m poolhouse.harnesshook post --agent codex"]
+    assert commands(data, "Stop") == ["poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop"]
+    assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace codex-hook"]
+    assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
     agent_hooks.install_codex(path)
     assert path.read_text() == text
 
 
 def test_codex_hooks_write_the_post_hook_when_no_launcher_hook_nudges(machine):
     path = machine / "config.toml"
-    assert agent_hooks.install_codex(path) == ["PostToolUse", "Stop", "UserPromptSubmit"]
+    assert agent_hooks.install_codex(path) == list(agent_hooks.codex_lifecycle.EVENTS)
     data = tomllib.loads(path.read_text())
     assert data["features"] == {"hooks": True}
     assert data["hooks"]["PostToolUse"][0]["matcher"] == ".*"
-    assert commands(data, "PostToolUse") == ["poolhouse-workspace nudge --agent codex --hook post"]
+    assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
 
 
 def test_codex_turns_the_hooks_feature_on_and_replaces_an_earlier_notify_nudge(machine):
@@ -187,8 +187,20 @@ def test_the_install_command_writes_both_agents_into_named_files(machine, capsys
     args = argparse.Namespace(settings=str(machine / "s.json"), codex_config=str(machine / "c.toml"), only=[], agent="")
     assert hooks_cli.install(args) == 0
     out = capsys.readouterr().out
-    assert "claude-code: PostToolUse, Stop, UserPromptSubmit" in out and "codex: PostToolUse, Stop" in out
+    assert "claude-code: PostToolUse, Stop, UserPromptSubmit" in out and "codex: SessionStart, SubagentStart" in out
     assert (machine / "s.json").is_file() and (machine / "c.toml").is_file()
     args.only = ["codex"]
     assert hooks_cli.install(args) == 0
     assert "claude-code" not in capsys.readouterr().out
+
+
+def test_codex_preserves_pretool_security_and_unknown_post_hooks(machine):
+    path = machine / "config.toml"
+    path.write_text(CODEX_BEFORE + "\n[[hooks.PreToolUse]]\n[[hooks.PreToolUse.hooks]]\n" +
+                    'type = "command"\ncommand = "security-check"\n' +
+                    '\n[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\n' +
+                    'type = "command"\ncommand = "other-notice"\n')
+    agent_hooks.install_codex(path)
+    data = tomllib.loads(path.read_text())
+    assert commands(data, "PreToolUse") == ["security-check"]
+    assert commands(data, "PostToolUse") == ["other-notice", "poolhouse-workspace codex-hook"]

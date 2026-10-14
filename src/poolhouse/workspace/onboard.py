@@ -29,23 +29,7 @@ Add this to ~/.claude/settings.json (or the project's .claude/settings.json), me
 }
 `poolhouse-workspace install-hooks` writes the hooks for Claude Code and Codex.
 """,
-    "codex": """\
-Add this to ~/.codex/config.toml, with `hooks = true` under [features]. Nothing is written for you.
-[[hooks.PostToolUse]]
-matcher = ".*"
-[[hooks.PostToolUse.hooks]]
-type = "command"
-command = "poolhouse-workspace nudge --agent NAME --hook post"
-[[hooks.UserPromptSubmit]]
-[[hooks.UserPromptSubmit.hooks]]
-type = "command"
-command = "poolhouse-workspace nudge --agent NAME --hook prompt"
-[[hooks.Stop]]
-[[hooks.Stop.hooks]]
-type = "command"
-command = "poolhouse-workspace nudge --agent NAME --hook stop"
-`poolhouse-workspace install-hooks` writes the hooks for Claude Code and Codex.
-""",
+
 }
 
 __all__ = ["Finding", "brief", "doctor", "hello", "hook_snippet", "snippet"]
@@ -108,6 +92,8 @@ def check_names(names: list[str]) -> None:
 def hook_snippet(tool: str, name: str) -> str:
     """The setting to paste so a tool runs `nudge` after each step; never written anywhere."""
     check_names([name])
+    if tool == "codex":
+        return agent_hooks.codex_hooks(True, True)
     return HOOKS[tool].replace("NAME", name)
 
 

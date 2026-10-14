@@ -8,6 +8,7 @@ import sys
 import threading
 from pathlib import Path
 
+from poolhouse import codex_lifecycle
 from poolhouse.board import person
 from poolhouse.board.session import AGENT_ENV
 from poolhouse.command import Group, flag, option
@@ -124,6 +125,14 @@ COMMANDS.add("nudge", board_cli.guarded(board_cli.nudging),
 COMMANDS.add("watch", board_cli.guarded(rooms_cli.watching),
              help="print messages as they arrive; --once exits after one",
              options=[*NODE_COMMON, *rooms_cli.WATCH])
+COMMANDS.add("codex-hook", codex_lifecycle.cli,
+             help="register native Codex lifecycle identities and deliver advisory workspace notices",
+             options=[flag("--assigned", default="", help="the launcher-bound session, when provided by its config"),
+                      flag("--worker", action="store_true", help="run the bounded internal hook worker")])
+COMMANDS.add("codex-stop", codex_lifecycle.completion_cli,
+             help="check the actual native Codex actor has finished its owned checkout cleanup",
+             options=[flag("--assigned", default="", help="the launcher-bound session, when provided by its config"),
+                      flag("--worker", action="store_true", help="run the bounded internal hook worker")])
 main = COMMANDS.run
 
 
