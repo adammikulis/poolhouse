@@ -32,18 +32,18 @@ fn own(dev: &Dev) -> Vec<u8> {
 /// A certificate for the Ed25519 key ``key`` under another name than the one a device gives its own.
 fn reissued(key: &SigningKey) -> Vec<u8> {
     let pkcs8 = key.to_pkcs8_der().unwrap();
-    let pair = KeyPair::from_pkcs8_der_and_sign_algo(&PrivatePkcs8KeyDer::from(pkcs8.as_bytes().to_vec()), &PKCS_ED25519).unwrap();
+    let signing = KeyPair::from_pkcs8_der_and_sign_algo(&PrivatePkcs8KeyDer::from(pkcs8.as_bytes().to_vec()), &PKCS_ED25519).unwrap();
     let mut name = DistinguishedName::new();
     name.push(DnType::CommonName, "another-name");
     let mut params = CertificateParams::new(Vec::<String>::new()).unwrap();
     params.distinguished_name = name;
-    params.self_signed(&pair).unwrap().der().to_vec()
+    params.self_signed(&signing).unwrap().der().to_vec()
 }
 
 /// A well formed certificate of an ECDSA key, which no device is made from.
 fn ecdsa_cert() -> Vec<u8> {
-    let pair = KeyPair::generate().unwrap();
-    CertificateParams::new(Vec::<String>::new()).unwrap().self_signed(&pair).unwrap().der().to_vec()
+    let signing = KeyPair::generate().unwrap();
+    CertificateParams::new(Vec::<String>::new()).unwrap().self_signed(&signing).unwrap().der().to_vec()
 }
 
 /// The founding act of a charter of ann's key that puts ``first`` in the pool first.
