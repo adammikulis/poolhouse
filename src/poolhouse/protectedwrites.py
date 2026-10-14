@@ -54,6 +54,7 @@ DEEP_WITH_R = frozenset({"rm", "chmod", "chown", "chattr", "setfacl", "xattr", "
 MODE = re.compile(r"[0-7]{3,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*")
 FIND_EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 FIND_FILES = frozenset({"-fprint", "-fprint0", "-fprintf", "-fls"})
+FIND_LOGIC = frozenset({"-o", "-or", "!", "-not"})
 READ_ONLY = frozenset({"wc", "grep", "egrep", "fgrep", "cat", "head", "tail", "ls", "stat", "du", "diff", "cmp", "sha1sum",
                        "sha256sum", "shasum", "md5", "md5sum", "od", "strings", "echo", "printf", "true", "basename", "dirname",
                        "realpath", "readlink", "test"})
@@ -339,15 +340,16 @@ def _find_starts(args: list[str]) -> list[str]:
 
 def _find_hit(args: list[str], shell: Shell) -> str:
     """The guard a `find` writes with `-fprint`, or the folder it may reach a guard in when it deletes or runs a command that
-    is not a plain reader and its name patterns could match one."""
+    is not a plain reader; name patterns limit it only when no `-o`, `-or`, `!` or `-not` joins or negates the tests."""
     written = shell.guarded([args[i + 1] for i, a in enumerate(args[:-1]) if a in FIND_FILES])
     verbs = [args[i + 1] for i, a in enumerate(args[:-1]) if a in FIND_EXEC]
     if written or ("-delete" not in args and all(v in READ_ONLY for v in verbs)):
         return written
     patterns = [args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-name", "-iname", "-path", "-ipath", "-wholename")]
     names = [Path("/".join(held)) for held in HELD]
-    could = not patterns or any(fnmatch.fnmatchcase(text.casefold(), p.casefold())
-                                for p in patterns for n in names for text in (n.name, str(n), "./" + str(n)))
+    limited = bool(patterns) and not FIND_LOGIC.intersection(args)
+    could = not limited or any(fnmatch.fnmatchcase(text.casefold(), p.casefold())
+                               for p in patterns for n in names for text in (n.name, str(n), "./" + str(n)))
     return shell.guarded(_find_starts(args), deep=True) if could else ""
 
 
