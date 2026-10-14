@@ -5,11 +5,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+import envcheck
+
 HOOKS = ("pre-commit", "commit-msg", "pre-push", "post-merge", "post-commit")
 MARKER = "# poolhouse managed hook"
 
 
 def install() -> None:
+    status, text = envcheck.report(["commit"])
+    if status:
+        print(text, file=sys.stderr)
+        raise SystemExit(status)
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     destination = Path(subprocess.check_output(
         ["git", "rev-parse", "--path-format=absolute", "--git-path", "hooks"], text=True).strip())

@@ -1,5 +1,16 @@
 # Working on Poolhouse
 
+## Fresh clone setup
+
+Follow [CONTRIBUTING.md](../CONTRIBUTING.md) to create an isolated virtual environment, install
+`.[test,privacy]` as a regular wheel, install the spaCy English model and pinned gate tools, and
+run `python scripts/preflight dev commit gate`. Tests read the checkout's `src/` tree; an editable
+install is unnecessary. Hook installation checks commit dependencies before writing any hooks.
+
+Contributors submit a pull request and affected test evidence. Maintainers handle authenticated
+queue landing, publication and installed-runtime verification. A local test run needs no owner
+board membership, pool credential or real keystore.
+
 ## `contracts/` is data, not code
 
 `contracts/` holds JSON describing things a runtime and a non-Python host both need to
@@ -17,8 +28,8 @@ because that is what its version was tested against.
 ## Hooks
 
 `python scripts/install-hooks.py` installs the Git hooks using that Python interpreter,
-including on Windows, and preserves hooks managed by someone else. Run it from the primary
-checkout after landing the reviewed branch. The POSIX `scripts/install-hooks.sh` remains
+including on Windows, and preserves hooks managed by someone else. Run it from your clone using the prepared virtual environment. Maintainers refresh it from the
+primary checkout after landing installer changes. The POSIX `scripts/install-hooks.sh` remains
 available for existing shell setups. Installed hooks run the checks in the invoking checkout:
 `no-real-names` refuses a commit whose staged files carry a person's name, `commit-msg`
 refuses one whose message does. A third hook there is for Claude Code rather than git:
@@ -71,8 +82,9 @@ a file into, and a `chmod -R` that only adds permissions is not refused. The per
 and the other settings that decide what git runs, `gh pr merge` without the person's release approval, and `gh` or
 `curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
 the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
-session stop a task. The landing runner settles a request whose diff touches these paths `needs-human`
-(`protectedwrites.REVIEWED`). Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
+session stop a task. The landing runner requires live independent queue approval at the exact commit for guarded
+repository source changes (`protectedwrites.REVIEWED`). Keystore, system approval and release
+authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
 `tests/test_land_guards.py`.
 
 What `no-real-names` takes for a name, and what stands a name-shaped pair down, is data:

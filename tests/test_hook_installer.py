@@ -30,3 +30,21 @@ def test_installed_hook_runs_in_git_and_preserves_foreign_hook(tmp_path):
     dirty = subprocess.run(command, cwd=repo, env=env, text=True, capture_output=True)
     assert dirty.returncode == 0, "a dirty tree is reported and never blocks a push"
     assert "uncommitted changes" in dirty.stderr
+
+
+def test_missing_commit_model_leaves_every_hook_unchanged(tmp_path):
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    hooks = repo / ".git" / "hooks"
+    foreign = hooks / "commit-msg"
+    foreign.write_text("#!/bin/sh\nexit 0\n")
+    before = {path.name: (path.read_bytes(), path.stat().st_mode) for path in hooks.iterdir()}
+    script = ("import sys, runpy; sys.modules['en_core_web_sm'] = None; "
+              f"sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
+              f"runpy.run_path({str(ROOT / 'scripts/install-hooks.py')!r}, run_name='__main__')")
+    done = subprocess.run([sys.executable, "-c", script], cwd=repo, capture_output=True, text=True, check=False)
+    assert done.returncode == 1
+    assert "en_core_web_sm is not installed" in done.stderr
+    assert "-m spacy download en_core_web_sm" in done.stderr
+    assert "Traceback" not in done.stderr
+    assert {path.name: (path.read_bytes(), path.stat().st_mode) for path in hooks.iterdir()} == before
