@@ -7,16 +7,13 @@ next read of that question returns only what is new.
 
 from __future__ import annotations
 
-import json
 import os
 import stat
-import time
-from contextlib import contextmanager
 from pathlib import Path
 
-from poolhouse import lock
+from poolhouse import private_counters
 from poolhouse.board.client import Denied
-from poolhouse.files import read_json, write_json, writing
+from poolhouse.files import writing
 from poolhouse.private_path import problem, redirected, windows_mount
 from poolhouse.sentinel import human
 from poolhouse.windows_private import restrict, validate
@@ -111,86 +108,21 @@ def load(state: Path, board: str, name: str) -> str:
 
 def cursors(state: Path, board: str, name: str) -> dict[str, dict[str, int]]:
     """The saved cursors of ``name``, by question."""
-    found = read_json(state / "client" / board / f"{name}.cursors.json", {})
-    return found if isinstance(found, dict) else {}
+    return private_counters.read(_folder(state, board) / f"{name}.cursors.json")
 
 
 def remember(state: Path, board: str, name: str, question: str, cursor: dict[str, int]) -> None:
     """Keep ``cursor`` as the place ``name`` has read up to for ``question``."""
     target = _folder(state, board) / f"{name}.cursors.json"
-    if not isinstance(question, str) or not question or not _valid_cursor(cursor):
+    if not isinstance(question, str) or not question or not private_counters.valid(cursor):
         raise ValueError("read cursor must map origins to nonnegative integers")
-    with _cursor_lock(target):
-        saved = _read_cursors(target)
+    with private_counters.locked(target):
+        saved = private_counters.read(target)
         previous = saved.get(question, {})
         saved[question] = {origin: max(previous.get(origin, 0), number)
                            for origin, number in {**previous, **cursor}.items()}
-        write_json(target, saved)
-        if os.name == "nt":
-            restrict(target)
-        else:
-            target.chmod(0o600)
+        private_counters.write(target, saved)
 
-
-def _valid_cursor(value: object) -> bool:
-    return isinstance(value, dict) and all(isinstance(origin, str) and type(number) is int and number >= 0
-                                          for origin, number in value.items())
-
-
-def _read_cursors(target: Path) -> dict[str, dict[str, int]]:
-    why = problem(target)
-    if why == "missing":
-        return {}
-    if why:
-        raise ValueError(f"read cursor {why}")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    handle = os.open(target, flags)
-    with os.fdopen(handle, "rb") as stream:
-        info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or redirected(info):
-            raise ValueError("read cursor must be a regular file")
-        if os.name != "nt" and (info.st_uid != os.getuid() or info.st_mode & 0o077):
-            raise ValueError("read cursor must be private and owned")
-        current = target.lstat()
-        if redirected(current) or (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
-            raise ValueError("read cursor changed while opening")
-        text = stream.read((1 << 20) + 1)
-    if len(text) > 1 << 20:
-        raise ValueError("read cursor exceeds 1 MiB")
-    saved = json.loads(text)
-    if not isinstance(saved, dict) or any(not isinstance(key, str) or not _valid_cursor(value)
-                                          for key, value in saved.items()):
-        raise ValueError("saved read cursor is malformed")
-    return saved
-
-
-@contextmanager
-def _cursor_lock(target: Path):
-    path = target.with_suffix(".lock")
-    why = problem(path)
-    if why not in {"", "missing"}:
-        raise ValueError(f"cursor lock {why}")
-    handle = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-    try:
-        info = os.fstat(handle)
-        if not stat.S_ISREG(info.st_mode) or redirected(info):
-            raise ValueError("cursor lock must be a regular file")
-        if os.name == "nt":
-            restrict(path)
-            validate(path)
-        elif info.st_uid != os.getuid() or info.st_mode & 0o077:
-            raise ValueError("cursor lock must be private and owned")
-        deadline = time.monotonic() + 3.0
-        while not lock.take(handle):
-            if time.monotonic() >= deadline:
-                raise OSError("read cursor is busy; retry the read acknowledgment")
-            time.sleep(0.01)
-        try:
-            yield
-        finally:
-            lock.release(handle)
-    finally:
-        os.close(handle)
 
 
 def forget(state: Path, board: str, name: str) -> None:
