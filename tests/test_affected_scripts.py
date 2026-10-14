@@ -6,10 +6,13 @@ Each case builds a small repository on disk, so what is selected comes from real
 
 from __future__ import annotations
 
+import ast
+import io
 import json
 import re
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 
 import pytest
@@ -215,6 +218,42 @@ def recent_scripts(count: int) -> list[str]:
     return sorted(found)
 
 
+def executable_source(text: str) -> str:
+    """Source with actual docstrings and comments replaced by spaces."""
+    try:
+        tree = ast.parse(text)
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (SyntaxError, ValueError, tokenize.TokenError, IndentationError):
+        return text
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+
+    def position(row: int, column: int, byte_column: bool = False) -> int:
+        line = lines[row - 1]
+        if byte_column:
+            column = len(line.encode("utf-8")[:column].decode("utf-8"))
+        return offsets[row - 1] + column
+
+    spans = [(position(token.start[0], token.start[1]),
+              position(token.end[0], token.end[1])) for token in tokens
+             if token.type == tokenize.COMMENT]
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                value = first.value
+                spans.append((position(value.lineno, value.col_offset, True),
+                              position(value.end_lineno, value.end_col_offset, True)))
+    chars = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+    return "".join(chars)
+
+
 def plain_oracle(script: str) -> set[str]:
     """Test files that import the script or put its path in quotes, found with plain regexes."""
     stem = Path(script).stem if script.endswith(".py") else Path(script).name
@@ -222,7 +261,7 @@ def plain_oracle(script: str) -> set[str]:
     quoted = re.compile(rf"""["']{re.escape(script)}(?![\w.-])""")
     out = set()
     for path in sorted((REPO / "tests").glob("test_*.py")):
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = executable_source(path.read_text(encoding="utf-8", errors="replace"))
         if (script.endswith(".py") and imports.search(text)) or quoted.search(text):
             out.add(f"tests/{path.name}")
     return out
@@ -239,3 +278,38 @@ def test_every_test_a_plain_search_finds_for_a_recently_changed_script_is_select
         if not shared and (gap := plain_oracle(script) - set(why)):
             missed[script] = sorted(gap)
     assert not missed
+
+
+@pytest.mark.parametrize("source", [
+    '\"\"\"scripts/runner\"\"\"',
+    'class Scope:\n    \"\"\"scripts/runner\"\"\"',
+    'def scope():\n    \"\"\"scripts/runner\"\"\"',
+    'async def scope():\n    \"\"\"scripts/runner\"\"\"',
+    '# "scripts/runner"',
+])
+def test_oracle_excludes_actual_docstrings_and_comments(source):
+    assert "scripts/runner" not in executable_source(source)
+
+
+@pytest.mark.parametrize("source", [
+    'value = "scripts/runner"',
+    'value = \"\"\"scripts/runner\"\"\"',
+    'value = f"scripts/runner"',
+    'def scope():\n    pass\n    \"\"\"scripts/runner\"\"\"',
+    'class Scope:\n    value: "scripts/runner"',
+    'def scope():\n    "docstring"\n    return "scripts/runner"',
+    'label = "é"; value = "scripts/runner"',
+])
+def test_oracle_retains_executable_strings(source):
+    assert "scripts/runner" in executable_source(source)
+
+
+def test_oracle_keeps_imports_and_nested_executable_references():
+    source = '\"\"\"module docs\"\"\"\nimport alpha\ndef scope():\n    "docs"\n    return "scripts/runner"'
+    result = executable_source(source)
+    assert "import alpha" in result and '"scripts/runner"' in result
+
+
+def test_oracle_keeps_unparseable_source_conservatively():
+    source = 'broken = (\n"scripts/runner"'
+    assert executable_source(source) == source
