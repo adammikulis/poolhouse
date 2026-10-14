@@ -69,3 +69,28 @@ def test_external_source_symlink_is_rejected_before_read(project, tmp_path, monk
     monkeypatch.setattr(keys, "file_sha", guarded)
     with pytest.raises(ValueError, match="escapes checkout"):
         keys.tree_digest(project)
+
+
+def test_broken_source_link_refuses_reuse(project):
+    linked = project / "app/poolhouse-node/src/missing.rs"
+    linked.symlink_to("absent.rs")
+    with pytest.raises(FileNotFoundError):
+        keys.tree_digest(project)
+
+
+def test_same_bytes_symlink_retarget_changes_fallback(project):
+    folder = project / "app/poolhouse-node/src"
+    (folder / "other.rs").write_bytes((folder / "lib.rs").read_bytes())
+    linked = folder / "linked.rs"
+    linked.symlink_to("lib.rs")
+    before = keys.tree_digest(project)
+    linked.unlink()
+    linked.symlink_to("other.rs")
+    assert keys.tree_digest(project) != before
+
+
+def test_source_mode_change_invalidates_fallback(project):
+    before = keys.tree_digest(project)
+    source = project / "app/poolhouse-node/src/lib.rs"
+    source.chmod(source.stat().st_mode | 0o100)
+    assert keys.tree_digest(project) != before

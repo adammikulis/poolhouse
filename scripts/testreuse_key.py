@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -113,11 +114,20 @@ def tree_digest(root: Path) -> str:
                 rows.append(f"{path.relative_to(root).as_posix()} {file_sha(path)}")
     app = root / "app"
     if app.exists():
-        for name in testnode.sources(app):
-            source = (app / name).resolve(strict=True)
-            if not source.is_relative_to(root.resolve()):
+        for name in testnode.sources(app, existing_only=False):
+            source = app / name
+            try:
+                mode = source.lstat().st_mode
+            except FileNotFoundError:
+                rows.append(f"app/{name} missing")
+                continue
+            link = source.readlink().as_posix() if stat.S_ISLNK(mode) else ""
+            resolved = source.resolve(strict=True)
+            if not resolved.is_relative_to(root.resolve()):
                 raise ValueError("reuse: Rust source escapes checkout")
-            rows.append(f"app/{name} {file_sha(source)}")
+            if not resolved.is_file():
+                raise ValueError("reuse: Rust source is not a regular file")
+            rows.append(f"app/{name} {mode} {link} {file_sha(resolved)}")
     rows += [f"{name} {file_sha(root / name)}" for name in TREE_FILES if (root / name).is_file()]
     head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=False)
     return sha("\n".join([*rows, f"HEAD {head.stdout.strip() if head.returncode == 0 else ''}"]))
