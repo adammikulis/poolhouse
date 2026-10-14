@@ -13,7 +13,7 @@ from typing import Any
 
 from poolhouse import authority, home
 from poolhouse.files import read_json, write_json, writing
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import say
 from poolhouse.person import require_person
@@ -48,7 +48,7 @@ def healthy(health: Mapping[str, Any]) -> bool:
     end = time.monotonic() + float(health.get("timeout_s", 30))
     while True:
         try:
-            request_json(str(health["url"]), timeout=3)
+            request_json(str(health["url"]), options=Options(timeout=3))
             return True
         except (ServerError, OSError):
             if time.monotonic() > end:

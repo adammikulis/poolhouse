@@ -21,7 +21,7 @@ from poolhouse.decide.rules import RulesDecider
 from poolhouse.decide.sources import local_source, strands_source
 from poolhouse.decide.types import BackendUnavailable, DecideError, Decision, Options, options_of
 from poolhouse.home import expand
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options as HTTPOptions, ServerError, request_json
 
 BACKENDS = ("pointer", "logprob", "embed", "rules")
 URL_ENV = "POOLHOUSE_DECIDE_URL"
@@ -64,7 +64,7 @@ def _reachable(url: str, token: str) -> str:
     except DecideError as exc:
         return str(exc)
     try:
-        request_json(f"{url.rstrip('/')}/v1/models", timeout=1.5, token=token)
+        request_json(f"{url.rstrip('/')}/v1/models", options=HTTPOptions(timeout=1.5, token=token))
     except ServerError as exc:
         return f"{url} did not answer ({exc})"
     return ""

@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from poolhouse import sealing
-from poolhouse.http import Sealed, ServerError, ServerUnreachable, open_stream
+from poolhouse.http import Options, Sealed, ServerError, ServerUnreachable, open_stream
 
 from .discovery import derive_token, memberships
 from .onboard.lan import require_local_url
@@ -25,10 +25,7 @@ def register_local(root, key, project_id, port):
             raise ProjectError("local project registration cannot redirect")
         return url
     try:
-        with open_stream(endpoint, method="POST", token=derive_token(key),
-                         data=json.dumps({"root": str(root.resolve()), "project_id": project_id}).encode(),
-                         headers={"Content-Type": "application/json", sealing.HEADER: "2"},
-                         timeout=2, guard=destination) as response:
+        with open_stream(endpoint, method="POST", data=json.dumps({"root": str(root.resolve()), "project_id": project_id}).encode(), options=Options(token=derive_token(key), headers={"Content-Type": "application/json", sealing.HEADER: "2"}, timeout=2, guard=destination)) as response:
             if not response.headers.get(sealing.HEADER):
                 raise ProjectError("local project registration was not authenticated and sealed")
             limit = 65536 + sealing.NONCE_BYTES + 16
@@ -60,8 +57,7 @@ def read(member: Member, path: str, limit: int, *, deadline: float | None = None
         timeout = min(timeout, deadline - time.monotonic())
         if timeout <= 0:
             raise ProjectError("Project discovery exceeded its time limit")
-    with open_stream(guard(endpoint), token=member.token, guard=guard,
-                     headers={sealing.HEADER: "2"}, timeout=timeout) as response:
+    with open_stream(guard(endpoint), options=Options(token=member.token, guard=guard, headers={sealing.HEADER: "2"}, timeout=timeout)) as response:
         if not response.headers.get(sealing.HEADER):
             raise ProjectError("Project response was not authenticated and sealed")
         if deadline is None:

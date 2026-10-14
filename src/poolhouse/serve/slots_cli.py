@@ -7,7 +7,7 @@ import argparse
 import json
 
 from poolhouse.command import flag, option
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 from poolhouse.serve import ops
 from poolhouse.serve.slotdump import SlotGuardRefused, restore_all, save_all
@@ -34,7 +34,7 @@ def _slots(args: argparse.Namespace) -> dict[str, int]:
         named[name.strip()] = int(sid)
     if named:
         return named
-    rows = request_json(f"{ops.base_url_for(args.port)}/slots", method="GET", timeout=10.0)
+    rows = request_json(f"{ops.base_url_for(args.port)}/slots", method="GET", options=Options(timeout=10.0))
     return {f"slot{row['id']}": int(row["id"]) for row in rows}
 
 

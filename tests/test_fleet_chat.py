@@ -21,7 +21,7 @@ from poolhouse.fleet.chat import find, targets
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.serving import Serving
-from poolhouse.http import Server, ServerError, open_stream
+from poolhouse.http import Options, Server, ServerError, open_stream
 from poolhouse.testing.fakes import FakeLlamaServer, Served
 from tests.keystore_support import counting  # noqa: F401
 from tests.net_site import gguf_bytes
@@ -213,8 +213,7 @@ class TestChattingThroughTheInterface:
 
         began = time.monotonic()
         arrived = []
-        with open_stream(req.full_url, data=req.data, method=req.get_method(),
-                         headers=dict(req.header_items()), timeout=10) as r:
+        with open_stream(req.full_url, data=req.data, method=req.get_method(), options=Options(headers=dict(req.header_items()), timeout=10)) as r:
             while True:
                 block = r.read1(4096)
                 if not block:
@@ -447,7 +446,7 @@ class TestAnsweringToSeveralPools:
 
         req = build_request(f"{base}/jobs", token=token)
         try:
-            with open_stream(req.full_url, headers=dict(req.header_items()), timeout=5) as r:
+            with open_stream(req.full_url, options=Options(headers=dict(req.header_items()), timeout=5)) as r:
                 return r.status
         except ServerError as exc:
             return exc.status

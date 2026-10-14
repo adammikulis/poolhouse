@@ -81,10 +81,10 @@ def busy_now(base_url: str, *, timeout: float = 2.0) -> bool | None:
     A build served with ``--no-slots``, or anything else on the port, says nothing -- and
     nothing is not idle.
     """
-    from poolhouse.http import ServerError, request_json
+    from poolhouse.http import Options, ServerError, request_json
 
     try:
-        slots = request_json(f"{base_url.rstrip('/')}/slots", timeout=timeout)
+        slots = request_json(f"{base_url.rstrip('/')}/slots", options=Options(timeout=timeout))
     except ServerError:
         return None
     if not isinstance(slots, list):

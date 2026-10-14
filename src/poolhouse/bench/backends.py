@@ -19,7 +19,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from poolhouse.client.settings import Request, Transport
-from poolhouse.http import request_json
+from poolhouse.http import Options, request_json
 
 # The programs a URL can name ahead of its host, and the api each is spoken to with.
 SCHEMES = {"ollama": "ollama", "openai": "openai"}
@@ -108,7 +108,7 @@ def props_of(base_url: str) -> dict[str, Any]:
     if not base_url:
         return {}
     try:
-        props = request_json(f"{http_of(base_url)}/props", timeout=5.0, method="GET") or {}
+        props = request_json(f"{http_of(base_url)}/props", method="GET", options=Options(timeout=5.0)) or {}
     except Exception:  # noqa: BLE001 - nothing on that port
         return {}
     return dict(props) if isinstance(props, Mapping) else {}

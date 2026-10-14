@@ -13,11 +13,12 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from poolhouse import gate, http_cancel, macauth, sealing, serverkeys
@@ -67,6 +68,23 @@ class Retry:
 
 
 ONCE = Retry()
+
+
+@dataclass(frozen=True, slots=True)
+class Options:
+    """Authentication, delivery and destination policy for an HTTP request."""
+
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+    token: str = field(default='', repr=False)
+    timeout: float | None = 180.0
+    retry: Retry = ONCE
+    guard: Callable[[str], str] | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, 'headers', MappingProxyType(dict(self.headers)))
+
+
+DEFAULT_OPTIONS = Options()
 
 _TRUSTED: ssl.SSLContext | None = None
 
@@ -237,22 +255,20 @@ def _open(request: urllib.request.Request, timeout: float | None, guard: Callabl
 
 
 def open_stream(url: str, *, data: bytes | None = None, method: str | None = None,
-                headers: dict[str, str] | None = None, token: str = "",
-                timeout: float | None = 180.0, retry: Retry = ONCE,
-                guard: Callable[[str], str] | None = None) -> Any:
+                options: Options = DEFAULT_OPTIONS) -> Any:
     """The open response for ``url``, for a caller that reads the body itself; only http(s).
 
     ``guard`` is called with every redirect target before it is followed (``check`` is the
     usual one); what it raises ends the request.
     """
-    delay = retry.backoff
-    tries = max(1, retry.tries)
+    delay = options.retry.backoff
+    tries = max(1, options.retry.tries)
     last: ServerError | None = None
 
     for attempt in range(tries):
-        request = build_request(url, data=data, method=method, headers=headers, token=token)
+        request = build_request(url, data=data, method=method, headers=dict(options.headers), token=options.token)
         try:
-            response = _open(request, timeout, guard)
+            response = _open(request, options.timeout, options.guard)
             response.sealed = request.sealed
             return response
 
@@ -261,12 +277,12 @@ def open_stream(url: str, *, data: bytes | None = None, method: str | None = Non
             detail = raw.decode("utf-8", "replace")[:500]
             last = ServerError(f"{shown(url)} -> HTTP {exc.code}: {detail}", status=exc.code,
                                body=detail, headers=exc.headers)
-            if exc.code not in retry.on_status:
+            if exc.code not in options.retry.on_status:
                 raise last from exc
 
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
             last = ServerUnreachable(f"cannot reach {shown(url)} ({exc})")
-            if not retry.when_unreachable:
+            if not options.retry.when_unreachable:
                 raise last from exc
 
         if attempt < tries - 1:
@@ -320,29 +336,24 @@ def head_once(url: str, *, headers: dict[str, str] | None = None, token: str = "
 
 
 def request_bytes(url: str, *, data: bytes | None = None, method: str | None = None,
-                  headers: dict[str, str] | None = None, token: str = "",
-                  timeout: float | None = 180.0, retry: Retry = ONCE,
-                  guard: Callable[[str], str] | None = None) -> Reply:
+                  options: Options = DEFAULT_OPTIONS) -> Reply:
     """Send a request and read the whole answer, opened when the server sealed it."""
-    asking = {**(headers or {}), sealing.HEADER: "2"}
-    with _queued(url), open_stream(url, data=data, method=method, headers=asking,
-                                   token=token, timeout=timeout, retry=retry, guard=guard) as response:
+    asking = {**options.headers, sealing.HEADER: "2"}
+    with _queued(url), open_stream(url, data=data, method=method,
+                                   options=replace(options, headers=asking)) as response:
         status = int(response.status)
         opens = getattr(response, "sealed", Sealed())
         return Reply(status, opens.open(status, response.headers, response.read()), response.headers)
 
 
 def request_json(url: str, *, payload: dict[str, Any] | None = None,
-                 method: str | None = None, timeout: float | None = 180.0, tries: int = 1,
-                 backoff: float = 0.5, headers: dict[str, str] | None = None,
-                 token: str = "", guard: Callable[[str], str] | None = None) -> Any:
+                 method: str | None = None, options: Options = DEFAULT_OPTIONS) -> Any:
     """Send a JSON request and parse the JSON response."""
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     sent = {"Content-Type": "application/json"}
-    sent.update(headers or {})
+    sent.update(options.headers)
 
-    reply = request_bytes(url, data=data, method=method, headers=sent, token=token,
-                          timeout=timeout, retry=Retry(tries=tries, backoff=backoff), guard=guard)
+    reply = request_bytes(url, data=data, method=method, options=replace(options, headers=sent))
     body = reply.body.decode("utf-8")
     try:
         return json.loads(body) if body else None
@@ -357,8 +368,7 @@ def request_stream(url: str, *, payload: dict[str, Any], timeout: float | None =
     sent.update(headers or {})
     data = json.dumps(payload).encode("utf-8")
     try:
-        with _queued(url), open_stream(url, data=data, method="POST", headers=sent,
-                                       token=token, timeout=timeout) as response:
+        with _queued(url), open_stream(url, data=data, method="POST", options=Options(headers=sent, token=token, timeout=timeout)) as response:
             for raw in response:
                 line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data:"):

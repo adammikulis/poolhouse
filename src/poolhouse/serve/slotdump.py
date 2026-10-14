@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 from poolhouse.serve.backend import default_slot_save_path
 
 __all__ = ["GUARD_FIELDS", "SlotDump", "SlotGuardRefused", "current_guard", "dump_name",
@@ -50,7 +50,7 @@ def dump_name(model: str, slot: int, name: str = "slot") -> str:
 
 def current_guard(base_url: str, *, timeout: float = 10.0) -> dict[str, Any]:
     """The model, per-slot context, slot count and build the server at ``base_url`` reports."""
-    props = request_json(f"{base_url.rstrip('/')}/props", method="GET", timeout=timeout)
+    props = request_json(f"{base_url.rstrip('/')}/props", method="GET", options=Options(timeout=timeout))
     if not isinstance(props, dict):
         raise ServerError(f"{base_url}/props answered with {type(props).__name__}, not an object")
     settings = props.get("default_generation_settings") or {}
@@ -73,8 +73,7 @@ def save_slot(base_url: str, slot: int, filename: str, *,
     """Save ``slot``'s cache as ``filename`` and write the guard file beside it."""
     root = Path(directory) if directory else default_slot_save_path()
     guard = {**current_guard(base_url), "slot_id": slot, "filename": filename}
-    reply = request_json(f"{base_url.rstrip('/')}/slots/{slot}?action=save",
-                         payload={"filename": filename}, timeout=timeout)
+    reply = request_json(f"{base_url.rstrip('/')}/slots/{slot}?action=save", payload={"filename": filename}, options=Options(timeout=timeout))
     root.mkdir(parents=True, exist_ok=True)
     guard_path(root, filename).write_text(json.dumps(guard, indent=2), encoding="utf-8")
     return SlotDump(slot, filename, _tokens(reply, "n_saved", "n_written_tokens"))
@@ -96,8 +95,7 @@ def restore_slot(base_url: str, slot: int, filename: str, *,
     if differ:
         raise SlotGuardRefused(
             f"{filename} was saved by a different server layout ({'; '.join(differ)})")
-    reply = request_json(f"{base_url.rstrip('/')}/slots/{slot}?action=restore",
-                         payload={"filename": filename}, timeout=timeout)
+    reply = request_json(f"{base_url.rstrip('/')}/slots/{slot}?action=restore", payload={"filename": filename}, options=Options(timeout=timeout))
     return SlotDump(slot, filename, _tokens(reply, "n_restored", "n_read_tokens"))
 
 

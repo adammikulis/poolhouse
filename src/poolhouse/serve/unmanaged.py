@@ -18,7 +18,7 @@ from typing import Any
 
 from poolhouse import limits
 from poolhouse.client.health import is_healthy
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 from poolhouse.serve import admission
 from poolhouse.serve.ports import DEFAULT_HOST, SERVER_BINARIES
 from poolhouse.serve.process import every_server, listener
@@ -86,7 +86,7 @@ def examine(port: int, *, find: Callable[[int], dict[str, Any] | None] | None = 
     if not is_healthy(base_url, timeout=2.0):
         return Examined(False, f"pid {pid} does not answer /health", pid)
     try:
-        props = request_json(f"{base_url}/props", timeout=5.0)
+        props = request_json(f"{base_url}/props", options=Options(timeout=5.0))
     except ServerError as exc:
         return Examined(False, f"pid {pid} does not answer /props: {exc}", pid)
     settings = props.get("default_generation_settings") if isinstance(props, dict) else None

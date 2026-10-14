@@ -25,7 +25,7 @@ import threading
 import pytest
 
 from poolhouse.fleet.ui import asset_bytes, serve_page
-from poolhouse.http import ServerError, open_stream
+from poolhouse.http import Options, ServerError, open_stream
 from poolhouse.serve import charts, fit as fit_mod
 from poolhouse.serve.fit import Fit
 
@@ -68,7 +68,7 @@ class Page:
     def call(self, path: str, *, ui_header: bool = True) -> tuple[int, dict, str]:
         headers = {"X-Poolhouse-UI": "1"} if ui_header else {}
         try:
-            with open_stream(f"http://127.0.0.1:{self.port}{path}", headers=headers, timeout=10) as response:
+            with open_stream(f"http://127.0.0.1:{self.port}{path}", options=Options(headers=headers, timeout=10)) as response:
                 raw, status, kind = response.read(), response.status, response.headers.get("Content-Type", "")
         except ServerError as exc:
             raw, status, kind = exc.body.encode(), exc.status, exc.headers.get("Content-Type", "")
@@ -359,9 +359,9 @@ class TestTheCliFlag:
             seen["url"] = str(where)
 
             def visit():
-                with open_stream(str(where), headers={"X-Poolhouse-UI": "1"}, timeout=10) as r:
+                with open_stream(str(where), options=Options(headers={"X-Poolhouse-UI": "1"}, timeout=10)) as r:
                     seen["status"], seen["page"] = r.status, r.read().decode()
-                with open_stream(str(where) + ".json", headers={"X-Poolhouse-UI": "1"}, timeout=10) as r:
+                with open_stream(str(where) + ".json", options=Options(headers={"X-Poolhouse-UI": "1"}, timeout=10)) as r:
                     seen["records"] = json.loads(r.read())["records"]
                 made["server"].shutdown()
 

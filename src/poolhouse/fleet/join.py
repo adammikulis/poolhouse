@@ -28,7 +28,7 @@ from typing import Any
 from poolhouse import home
 from poolhouse.checks import line as fix_line
 from poolhouse.files import UNVERSIONED, read_json, version_of, versioned, write_json
-from poolhouse.http import ServerError, ServerUnreachable, json_body, request_bytes
+from poolhouse.http import Options, ServerError, ServerUnreachable, json_body, request_bytes
 from poolhouse.jobs import detach
 from poolhouse.log import say, warn
 from poolhouse.units import human_bytes
@@ -268,8 +268,7 @@ def _enrol_via_daemon(port: int, passphrase: str, group: str, mode: str | None) 
     def call(path: str, body: dict[str, Any], cookie: str = "") -> tuple[int, dict, str]:
         sent = {**headers, **({"Cookie": cookie} if cookie else {})}
         try:
-            reply = request_bytes(f"{base}{path}", data=json.dumps(body).encode(),
-                                  method="POST", headers=sent, timeout=30)
+            reply = request_bytes(f"{base}{path}", data=json.dumps(body).encode(), method="POST", options=Options(headers=sent, timeout=30))
             return reply.status, json_body(reply.body), reply.headers.get("Set-Cookie", "")
         except ServerUnreachable as e:
             raise JoinError(f"the daemon on port {port} did not take the passphrase: {e}") \

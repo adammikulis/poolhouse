@@ -6,7 +6,7 @@ import socket
 
 import pytest
 
-from poolhouse.http import request_bytes
+from poolhouse.http import Options, request_bytes
 from poolhouse.redteam.egress import EgressRefused, local_only
 from poolhouse.testing.fakes import fake_llama_server
 
@@ -28,7 +28,7 @@ def test_connect_ex_is_guarded_as_well():
 
 def test_a_server_on_loopback_is_still_reachable_inside_the_block():
     with fake_llama_server() as server, local_only():
-        assert request_bytes(f"{server.base_url}/health", timeout=5).status == 200
+        assert request_bytes(f"{server.base_url}/health", options=Options(timeout=5)).status == 200
 
 
 def test_the_socket_methods_are_the_originals_again_afterwards():

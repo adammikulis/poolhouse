@@ -14,7 +14,7 @@ from typing import Any
 
 from poolhouse import jsonl
 from poolhouse.home import machine_id
-from poolhouse.http import Server, ServerError, open_stream
+from poolhouse.http import Options, Server, ServerError, open_stream
 
 from . import pausing, recovery
 from .discovery import (
@@ -73,7 +73,7 @@ def _scraped(source: str) -> dict[str, Any]:
     if not source.startswith(("http://", "https://")):
         return {"error": "a /metrics address starts with http:// or https://"}
     try:
-        with open_stream(source, timeout=SCRAPE_TIMEOUT_S) as got:
+        with open_stream(source, options=Options(timeout=SCRAPE_TIMEOUT_S)) as got:
             raw = got.read(1_000_000)
         return {"serving": True, "metrics": json.loads(raw or b"{}")}
     except (ServerError, OSError, ValueError) as exc:

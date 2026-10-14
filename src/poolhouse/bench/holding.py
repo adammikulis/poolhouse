@@ -20,7 +20,7 @@ from typing import Any
 # at import.
 from poolhouse import bench
 from poolhouse.bench.backends import http_of, processes, served_by
-from poolhouse.http import request_json
+from poolhouse.http import Options, request_json
 from poolhouse.log import warn
 from poolhouse.serve.process import (  # noqa: F401 - the package's own re-export
     PHYS_FOOTPRINT_AT,
@@ -459,7 +459,7 @@ def slot_count(base_url: str) -> int:
     more of them than slots, and a turn waits for a slot before a token is read.
     """
     try:
-        slots = request_json(f"{base_url.rstrip('/')}/slots", timeout=5.0, method="GET")
+        slots = request_json(f"{base_url.rstrip('/')}/slots", method="GET", options=Options(timeout=5.0))
     except Exception:  # noqa: BLE001 - a server that will not answer has an unknown count
         return -1
     return len(slots) if isinstance(slots, list) else -1
@@ -487,7 +487,7 @@ def busy(base_url: str) -> int:
     -1 when the server will not say, which is not the same as idle and is not treated as it.
     """
     try:
-        slots = request_json(f"{base_url.rstrip('/')}/slots", timeout=5.0, method="GET")
+        slots = request_json(f"{base_url.rstrip('/')}/slots", method="GET", options=Options(timeout=5.0))
     except Exception:  # noqa: BLE001 - a server that will not answer is not known to be idle
         return -1
     if not isinstance(slots, list):

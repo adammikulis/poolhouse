@@ -13,7 +13,7 @@ from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.deciding import MAX_REQUEST, Deciding
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.http import Server, ServerError, request_bytes
+from poolhouse.http import Options, Server, ServerError, request_bytes
 
 
 @pytest.fixture
@@ -32,8 +32,7 @@ def api(tmp_path, server):
     def post(body, *, token=good, raw=None):
         data = raw if raw is not None else json.dumps(body).encode()
         try:
-            got = request_bytes(f"{base}/decide", data=data, method="POST", token=token,
-                                headers={"Content-Type": "application/json"}, timeout=10)
+            got = request_bytes(f"{base}/decide", data=data, method="POST", options=Options(token=token, headers={"Content-Type": "application/json"}, timeout=10))
         except ServerError as exc:
             return exc.status, json.loads(exc.body or "{}")
         return got.status, json.loads(got.body)
@@ -106,8 +105,7 @@ def test_a_daemon_without_a_decider_answers_501(tmp_path):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         with pytest.raises(ServerError) as err:
-            request_bytes(f"http://127.0.0.1:{httpd.server_address[1]}/decide", data=b"{}",
-                          method="POST", token=good, timeout=5)
+            request_bytes(f"http://127.0.0.1:{httpd.server_address[1]}/decide", data=b"{}", method="POST", options=Options(token=good, timeout=5))
         assert err.value.status == 501
     finally:
         runner.shutdown()

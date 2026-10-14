@@ -16,7 +16,7 @@ from pathlib import Path
 from poolhouse import macauth, sealing
 from poolhouse.files import writing
 from poolhouse.fleet import updates
-from poolhouse.http import Sealed, ServerError, open_stream
+from poolhouse.http import Options, Sealed, ServerError, open_stream
 from poolhouse.lock import Busy
 from poolhouse.serve.reclaim import busy_now
 from poolhouse.windows_private import restrict, validate
@@ -122,8 +122,7 @@ def request_replacement(root: Path, port: int, running: dict, expected: str, *, 
 def _acknowledge(endpoint, request, capability, guard, timeout):
     body = json.dumps(request).encode()
     instance = request['instance']
-    with open_stream(endpoint, method='POST', data=body, token=capability, timeout=timeout,
-                     headers={'Content-Type': 'application/json', sealing.HEADER: '2'}, guard=guard) as response:
+    with open_stream(endpoint, method='POST', data=body, options=Options(token=capability, timeout=timeout, headers={'Content-Type': 'application/json', sealing.HEADER: '2'}, guard=guard)) as response:
         if response.headers.get(sealing.HEADER) != '1':
             raise ControlError('Daemon replacement acknowledgment must authenticate with sealing.')
         if response.headers.get('Content-Type', '').split(';', 1)[0].strip().lower() != 'application/json':

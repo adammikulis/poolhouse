@@ -21,7 +21,7 @@ from typing import NamedTuple
 import pytest
 
 from poolhouse import gate, home, leasetable
-from poolhouse.http import Server, ServerError, request_json
+from poolhouse.http import Options, Server, ServerError, request_json
 from poolhouse.serve.process import kill_process_tree
 
 pytest_plugins = ["node_kit"]
@@ -100,8 +100,8 @@ def servers(workspace_node):
 
 
 def worker(url: str, who: str, *, env: dict[str, str] | None = None) -> subprocess.Popen:
-    code = ("import sys\nfrom poolhouse.http import request_json\n"
-            "request_json(sys.argv[1], payload={'messages': []}, headers={'X-Who': sys.argv[2]})\n")
+    code = ("import sys\nfrom poolhouse.http import Options, request_json\n"
+            "request_json(sys.argv[1], payload={'messages': []}, options=Options(headers={'X-Who': sys.argv[2]}))\n")
     return subprocess.Popen([sys.executable, "-c", code, url, who],
                             env={**os.environ, "PYTHONPATH": SRC, **(env or {})},
                             stderr=subprocess.PIPE)
@@ -109,9 +109,9 @@ def worker(url: str, who: str, *, env: dict[str, str] | None = None) -> subproce
 
 def together(url: str, who: str, at: float) -> subprocess.Popen:
     """A worker that sends its request at the clock time ``at``."""
-    code = ("import sys, time\nfrom poolhouse.http import request_json\n"
+    code = ("import sys, time\nfrom poolhouse.http import Options, request_json\n"
             "while time.time() < float(sys.argv[3]):\n    pass\n"
-            "request_json(sys.argv[1], payload={}, headers={'X-Who': sys.argv[2]})\n")
+            "request_json(sys.argv[1], payload={}, options=Options(headers={'X-Who': sys.argv[2]}))\n")
     return subprocess.Popen([sys.executable, "-c", code, url, who, str(at)],
                             env={**os.environ, "PYTHONPATH": SRC}, stderr=subprocess.PIPE)
 
@@ -229,10 +229,10 @@ def test_only_generation_on_registered_local_servers_is_queued(servers):
     (one,) = servers(1)
     held = holder(one.url)
     try:
-        assert request_json(f"http://127.0.0.1:{one.port}/props", timeout=5) == {}
+        assert request_json(f"http://127.0.0.1:{one.port}/props", options=Options(timeout=5)) == {}
         free = Recorder(0.0)
         try:
-            request_json(free.url, payload={}, timeout=5)
+            request_json(free.url, payload={}, options=Options(timeout=5))
             assert len(free.windows) == 1, "a server nobody registered is not queued"
         finally:
             free.close()
@@ -248,7 +248,7 @@ def test_devices_queue_apart(servers):
     home.state("servers.json").write_text(json.dumps(entries))
     held = holder(first.url)
     try:
-        request_json(second.url, payload={}, timeout=5)
+        request_json(second.url, payload={}, options=Options(timeout=5))
         assert len(second.windows) == 1
     finally:
         kill_process_tree(held.process.pid, grace_s=0.1)
@@ -258,7 +258,7 @@ def test_devices_queue_apart(servers):
 def test_a_thread_holding_the_device_can_send_a_nested_request(servers):
     (one,) = servers(1, hold_s=0.01)
     with gate.turn(one.url):
-        request_json(one.url, payload={}, timeout=5)
+        request_json(one.url, payload={}, options=Options(timeout=5))
     assert len(one.windows) == 1
 
 
@@ -293,7 +293,7 @@ def test_parallel_block_is_named_and_logged(servers, caplog):
     held = holder(one.url)
     try:
         with caplog.at_level("WARNING", logger="poolhouse.gate"), gate.parallel("bench sweep"):
-            request_json(one.url, payload={}, timeout=5)
+            request_json(one.url, payload={}, options=Options(timeout=5))
         assert len(one.windows) == 1
         assert "bench sweep" in caplog.text
     finally:
@@ -378,7 +378,7 @@ def test_a_device_the_table_cannot_be_asked_about_is_not_sent_to(servers, monkey
 
     monkeypatch.setattr(leasetable, "default", lambda: Down())
     with pytest.raises(ServerError) as why:
-        request_json(one.url, payload={}, timeout=5)
+        request_json(one.url, payload={}, options=Options(timeout=5))
     assert why.value.status == 429 and "gpu" in str(why.value) and one.windows == []
 
 

@@ -113,7 +113,7 @@ class Toolbox:
 
     def _fetch(self, url: str) -> http.Reply:
         port, path = self._port(url)
-        return http.request_bytes(f"http://127.0.0.1:{port}{path}", timeout=10)
+        return http.request_bytes(f"http://127.0.0.1:{port}{path}", options=http.Options(timeout=10))
 
     def _read(self, url: str) -> str:
         if self.guarded:
@@ -159,7 +159,7 @@ class Toolbox:
         try:
             port, path = self._port(url)
             http.request_bytes(f"http://127.0.0.1:{port}{path}", data=json.dumps(
-                {"body": body}).encode(), method="POST", timeout=10)
+                {"body": body}).encode(), method="POST", options=http.Options(timeout=10))
         except (ValueError, http.ServerError) as exc:
             return self._record("send_report", args, False, str(exc))
         return self._record("send_report", args, True, "sent")

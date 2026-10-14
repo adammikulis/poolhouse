@@ -11,7 +11,7 @@ import httpx
 from agents import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
-from poolhouse.http import ServerError, open_stream
+from poolhouse.http import Options, ServerError, open_stream
 from poolhouse.http_cancel import Cancellation, scope
 
 
@@ -43,9 +43,8 @@ class _Body(httpx.AsyncByteStream):
 def _open_response(url: str, token: str, data: bytes, cancelled: Cancellation,
                    timeout: float | None = None) -> Any:
     with scope(cancelled):
-        response = open_stream(url, data=data, method="POST", token=token,
-                               headers={"Content-Type": "application/json",
-                                        "Accept": "text/event-stream"}, timeout=timeout)
+        response = open_stream(url, data=data, method="POST", options=Options(token=token, headers={"Content-Type": "application/json",
+                                        "Accept": "text/event-stream"}, timeout=timeout))
     if cancelled.is_set():
         response.close()
     return response

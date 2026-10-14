@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from poolhouse import home
-from poolhouse.http import request_json
+from poolhouse.http import Options, request_json
 from poolhouse.hub import header
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port, slotdump
 
@@ -93,15 +93,15 @@ def _checks(result: Result, base: str, slots: Path, say: Callable[[str], None]) 
             return result.add(name, False, f"{type(exc).__name__}: {exc}"[:600])
 
     def health() -> str:
-        reply = request_json(f"{base}/health", method="GET", timeout=30)
+        reply = request_json(f"{base}/health", method="GET", options=Options(timeout=30))
         if (reply or {}).get("status") != "ok":
             raise ValueError(f"/health said {reply!r}")
         return "ok"
 
     def chat(extra: dict) -> dict:
-        reply = request_json(f"{base}/v1/chat/completions", timeout=120, payload={
+        reply = request_json(f"{base}/v1/chat/completions", payload={
             "messages": [{"role": "user", "content": "Say hi."}], "max_tokens": 8,
-            "temperature": 0, **extra})
+            "temperature": 0, **extra}, options=Options(timeout=120))
         if not reply or not reply.get("choices"):
             raise ValueError(f"no choices in {reply!r}"[:200])
         return reply["choices"][0]

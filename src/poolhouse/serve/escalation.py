@@ -10,7 +10,7 @@ from typing import Any
 
 from poolhouse.client.chat import Client
 from poolhouse.client.settings import Request, Transport
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.fit import records
@@ -74,8 +74,7 @@ def _fit_for(model: str | Path, *, room: int) -> Any:
 def slots_on(run: Escalating) -> tuple[list[tuple[int, int]], dict[int, str]]:
     """The slots holding a conversation, as ``(id, tokens)``, and every slot's prompt text."""
     try:
-        slots = request_json(f"{run.base_url}/slots", method="GET",
-                             timeout=run.timeout or 30.0)
+        slots = request_json(f"{run.base_url}/slots", method="GET", options=Options(timeout=run.timeout or 30.0))
     except ServerError as exc:
         raise ServerFailed(
             f"port {run.port} has no /slots endpoint to escalate from: {exc}") from exc
@@ -132,8 +131,7 @@ def save_live(run: Escalating, live: list[tuple[int, int]]) -> dict[int, str]:
         emit(run.on_event, "saving", port=run.port, slot=sid, tokens=tok,
              filename=filename)
         try:
-            request_json(f"{run.base_url}/slots/{sid}?action=save",
-                        payload={"filename": filename}, timeout=run.wait)
+            request_json(f"{run.base_url}/slots/{sid}?action=save", payload={"filename": filename}, options=Options(timeout=run.wait))
         except ServerError as exc:
             raise ServerFailed(
                 f"could not save slot {sid} on port {run.port}: {exc}") from exc
@@ -209,8 +207,7 @@ def restore(run: Escalating, live: list[tuple[int, int]], *, summaries: dict[int
         else:
             emit(run.on_event, "restoring", port=run.port, slot=sid, mode="cache")
             try:
-                request_json(f"{run.base_url}/slots/{sid}?action=restore",
-                            payload={"filename": saved[sid]}, timeout=run.wait)
+                request_json(f"{run.base_url}/slots/{sid}?action=restore", payload={"filename": saved[sid]}, options=Options(timeout=run.wait))
             except ServerError as exc:
                 raise ServerFailed(
                     f"could not restore slot {sid} on port {run.port} from "

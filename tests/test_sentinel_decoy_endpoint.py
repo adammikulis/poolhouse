@@ -20,7 +20,7 @@ from poolhouse import home, sentinel
 from poolhouse.agent import Agent, Done, FunctionTools
 from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 from poolhouse.sentinel import State, human, watch
 from poolhouse.serve import decoy
 from poolhouse.testing.tool_server import ToolCallingServer, Turn
@@ -169,7 +169,7 @@ def test_the_broker_daemon_starts_the_listener_and_stops_it(tmp_path) -> None:
         daemon.terminate()
         daemon.wait(timeout=30)
     with pytest.raises(ServerError):
-        request_json(url, timeout=2)
+        request_json(url, options=Options(timeout=2))
 
 
 # -- the false-positive corpus ---------------------------------------------------------

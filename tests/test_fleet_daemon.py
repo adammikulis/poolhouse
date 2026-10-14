@@ -30,7 +30,7 @@ from poolhouse.fleet.files import DIGEST_HEADER, safe_relpath
 from poolhouse.fleet.jobs import DaemonError, JobRunner
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.settings import Settings
-from poolhouse.http import Server, ServerError, request_bytes
+from poolhouse.http import Options, Server, ServerError, request_bytes
 from tests.pool_support import any_command, join_pool_by_passphrase
 
 
@@ -1098,9 +1098,9 @@ def test_job_reads_refuse_unknown_or_traversing_identifiers(daemon, path):
     secret = b"private-job-boundary-fixture"
     (root.parent / "private.txt").write_bytes(secret)
     with pytest.raises(ServerError) as refused:
-        request_bytes(client.base_url + path, token=token, timeout=2)
+        request_bytes(client.base_url + path, options=Options(token=token, timeout=2))
     assert refused.value.status in (400, 403, 404)
     assert secret.decode() not in refused.value.body
     with pytest.raises(ServerError) as unsigned:
-        request_bytes(client.base_url + path, timeout=2)
+        request_bytes(client.base_url + path, options=Options(timeout=2))
     assert unsigned.value.status == 401

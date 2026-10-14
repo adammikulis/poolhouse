@@ -7,7 +7,7 @@ import math
 import time
 from typing import Any
 
-from poolhouse.http import ServerError, open_stream, shown
+from poolhouse.http import Options, ServerError, open_stream, shown
 
 
 class RerankError(ServerError):
@@ -27,8 +27,7 @@ def _read(url: str, body: dict[str, Any], timeout: float) -> bytes:
     deadline = time.monotonic() + timeout
     data = json.dumps(body).encode("utf-8")
     try:
-        with open_stream(url, data=data, method="POST", timeout=timeout,
-                         headers={"Content-Type": "application/json"}) as response:
+        with open_stream(url, data=data, method="POST", options=Options(timeout=timeout, headers={"Content-Type": "application/json"})) as response:
             raw = b""
             while len(raw) <= MAX_REPLY:
                 if time.monotonic() > deadline:

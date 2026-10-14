@@ -69,7 +69,7 @@ class Served:
         context = tls.pinned_context(self.server.cert, who=caller.ident) if caller else _anonymous(self.server.cert)
         http.pin(f"127.0.0.1:{self.port}", context)
         try:
-            return 200, http.request_json(f"https://127.0.0.1:{self.port}{path}", payload=payload, token=self.token)
+            return 200, http.request_json(f"https://127.0.0.1:{self.port}{path}", payload=payload, options=http.Options(token=self.token))
         except http.ServerError as error:
             if error.status is None:
                 raise

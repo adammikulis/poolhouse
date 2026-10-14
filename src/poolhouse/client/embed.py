@@ -7,7 +7,7 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, Retry, ServerError, request_json
 
 # embeddinggemma is trained to be told what the embedding is for. Searching is asymmetric:
 # a three-word question and a paragraph about somebody are not the same kind of text, and
@@ -73,13 +73,7 @@ def embed(
     if model:
         body["model"] = model
 
-    payload = request_json(
-        f"{base_url.rstrip('/')}/v1/embeddings",
-        payload=body,
-        timeout=timeout,
-        tries=tries,
-        headers={"Authorization": f"Bearer {api_key}"} if api_key else None,
-    )
+    payload = request_json(f"{base_url.rstrip('/')}/v1/embeddings", payload=body, options=Options(timeout=timeout, headers={"Authorization": f"Bearer {api_key}"} if api_key else {}, retry=Retry(tries=tries)))
 
     if not isinstance(payload, dict) or "data" not in payload:
         raise EmbeddingError(f"embedding response has no 'data': {str(payload)[:200]}")

@@ -16,6 +16,7 @@ from poolhouse import home
 from poolhouse.files import promote, sha256_file
 from poolhouse.http import (
     ONCE,
+    Options,
     Retry,
     ServerError,
     ServerUnreachable,
@@ -166,9 +167,7 @@ class Member:
                  timeout: float | None = None,
                  retry: Retry = ONCE) -> tuple[int, bytes, Any]:
         try:
-            reply = request_bytes(f"{self.base_url}{path}", data=data, method=method,
-                                  headers=headers, token=self.token,
-                                  timeout=timeout or self.timeout, retry=retry)
+            reply = request_bytes(f"{self.base_url}{path}", data=data, method=method, options=Options(headers=headers or {}, token=self.token, timeout=timeout or self.timeout, retry=retry))
         except ServerError as exc:
             raise _member_error(f"{method} {path}", exc) from None
         return reply.status, reply.body, reply.headers
@@ -309,9 +308,7 @@ class Member:
         start = partial.stat().st_size if partial.exists() else 0
 
         try:
-            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET",
-                               headers={"Range": f"bytes={start}-"} if start else None,
-                               token=self.token, timeout=timeout)
+            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET", options=Options(headers={"Range": f"bytes={start}-"} if start else None, token=self.token, timeout=timeout))
         except ServerError as exc:
             if exc.status == 416:
                 size = range_total(exc.headers.get("Content-Range", ""))

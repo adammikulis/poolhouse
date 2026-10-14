@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from poolhouse.http import ServerError, request_bytes, request_json
+from poolhouse.http import Options, ServerError, request_bytes, request_json
 
 HEALTH_PATHS = ("/health", "/v1/models", "/models", "/props")
 
@@ -44,7 +44,7 @@ def is_healthy(base_url: str, *, timeout: float = 2.0, path: str | None = None) 
     """One probe. ``True`` if any of `HEALTH_PATHS`, or ``path``, answers 2xx."""
     for candidate in (path,) if path is not None else HEALTH_PATHS:
         try:
-            request_bytes(f"{base_url.rstrip('/')}{candidate}", timeout=timeout)
+            request_bytes(f"{base_url.rstrip('/')}{candidate}", options=Options(timeout=timeout))
             return True
         except ServerError:
             continue
@@ -79,7 +79,7 @@ def serving_params(base_url: str, *, timeout: float = 5.0,
                    guard: Callable[[str], str] | None = None) -> ServingParams | None:
     """Read ``/props`` to learn what the server actually came up with."""
     try:
-        props = request_json(f"{base_url.rstrip('/')}/props", timeout=timeout, guard=guard)
+        props = request_json(f"{base_url.rstrip('/')}/props", options=Options(timeout=timeout, guard=guard))
     except ServerError:
         return None
 
@@ -137,7 +137,7 @@ def reported_models(base_url: str, *, timeout: float = 5.0,
                     guard: Callable[[str], str] | None = None) -> list[str]:
     """Model ids the server admits to serving, via ``/v1/models``."""
     try:
-        payload = request_json(f"{base_url.rstrip('/')}/v1/models", timeout=timeout, guard=guard)
+        payload = request_json(f"{base_url.rstrip('/')}/v1/models", options=Options(timeout=timeout, guard=guard))
     except ServerError:
         return []
     if not isinstance(payload, dict):
