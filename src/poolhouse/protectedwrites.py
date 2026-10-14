@@ -5,6 +5,7 @@ reach them. Standard library only: the hook scripts load it by file through `wor
 from __future__ import annotations
 
 import fnmatch
+import itertools
 import os
 import re
 import shlex
@@ -24,10 +25,12 @@ GUARD_PATHS = (
 REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pushed|primary-only|no-real-names|no-data-files|budgets"
             r"|budgets-only-fall|weakened-assertions|guard_index\.py)", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
             r"docs/github-protection\.md", r"scripts/github-protection[\w-]*", r"scripts/land[\w.-]*",
-            r"src/poolhouse/(protectedwrites|worktreerules)\.py")
-GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$")
-REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$")
-SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)")
+            r"src/poolhouse/(protectedwrites|worktreerules|authority|person|real_machine)\.py",
+            r"src/poolhouse/board/credentials\.py", r"src/poolhouse/workspace/authority_cli\.py",
+            r"scripts/agent_sandbox_profile\.py")
+GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
+REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$", re.I)
+SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
 HELD = tuple(tuple(path.split("/")) for path in (
     "src/poolhouse/workspace/person_store.py", "scripts/hooks/pre-push", "scripts/hooks/claude-bash-guard",
     "scripts/hooks/claude-edit-guard", "scripts/hooks/person-consume", "scripts/hooks/claude-user-prompt",
@@ -36,7 +39,7 @@ HELD = tuple(tuple(path.split("/")) for path in (
 MENTION = re.compile(
     r"claude-(bash|edit)-guard|claude-user-prompt|person-consume|rules_loader\.py|scripts/hooks/pre-push|\.git/(hooks|config)"
     r"|workspace/person_\w+|\.claude/(settings|agents|commands|skills|hooks)|core\.hooksPath|\.gitconfig"
-    r"|\.poolhouse/(person|node/client|node/person|authority)")
+    r"|\.poolhouse/(person|node/client|node/person|authority)", re.I)
 
 WRAPPERS = frozenset({"sudo", "doas", "command", "exec", "nohup", "time", "nice", "ionice", "env", "setsid", "caffeinate",
                       "stdbuf", "unbuffer", "builtin", "timeout", "xargs"})
@@ -44,12 +47,16 @@ SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish"})
 INLINE = {"python": "-c", "python3": "-c", "node": "-e", "nodejs": "-e", "bun": "-e", "ruby": "-e", "perl": "-e", "php": "-r",
           "lua": "-e", "osascript": "-e"}
 EDITORS = frozenset({"vi", "vim", "nvim", "nano", "emacs", "ed", "ex", "patch", "sponge", "tee"})
-MODIFIERS = frozenset({"rm", "unlink", "rmdir", "truncate", "touch", "chmod", "chown", "chattr", "setfacl", "xattr", "shred",
-                       "mv"})
+MODIFIERS = frozenset({"rm", "unlink", "rmdir", "truncate", "touch", "chmod", "chown", "chattr", "setfacl", "xattr", "shred"})
 IN_PLACE = frozenset({"sed", "awk", "gawk", "perl"})
 COPIERS = frozenset({"cp", "install", "ln", "rsync", "cpio", "dd"})
-DEEP = frozenset({"mv"})
 DEEP_WITH_R = frozenset({"rm", "chmod", "chown", "chattr", "setfacl", "xattr", "shred"})
+MODE = re.compile(r"[0-7]{3,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*")
+FIND_EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
+FIND_FILES = frozenset({"-fprint", "-fprint0", "-fprintf", "-fls"})
+READ_ONLY = frozenset({"wc", "grep", "egrep", "fgrep", "cat", "head", "tail", "ls", "stat", "du", "diff", "cmp", "sha1sum",
+                       "sha256sum", "shasum", "md5", "md5sum", "od", "strings", "echo", "printf", "true", "basename", "dirname",
+                       "realpath", "readlink", "test"})
 FETCHERS = {"curl": ("-o", "--output"), "wget": ("-O", "--output-document")}
 GIT_CONFIG = re.compile(r"^(core\.(hookspath|fsmonitor|sshcommand|askpass)|credential\..*helper|include(if\..*)?\.path)$", re.I)
 GIT_ENV = re.compile(r"^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|GLOBAL|SYSTEM|PARAMETERS)$")
@@ -79,25 +86,27 @@ PERSON = "the guards, the hook settings, git's hooks and the person record are c
 
 
 def _roots(environ: Mapping[str, str]) -> list[str]:
+    """The case-folded active state root, as a list of at most one."""
     named = environ.get("POOLHOUSE_HOME")
-    return [os.path.normpath(named)] if named else []
+    return [os.path.normpath(named).casefold()] if named else []
 
 
 def secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
     """Whether ``path`` lies in the person record or the session tokens."""
     if SECRETS.search(path):
         return True
-    places = ("/person", "/node/client", "/node/person")
-    return any(path == root + p or path.startswith(root + p + "/") for root in _roots(environ or os.environ) for p in places)
+    places, low = ("/person", "/node/client", "/node/person"), path.casefold()
+    return any(low == root + p or low.startswith(root + p + "/") for root in _roots(environ or os.environ) for p in places)
 
 
 def _holds_a_guard(path: str) -> bool:
     """Whether ``path`` is a folder that holds one of the guard files, as the repository root or as `scripts/hooks`."""
     folder = path.rstrip("/")
+    low = folder.casefold()
     for held in HELD:
         for i in range(len(held)):
             head = "/".join(held[:i])
-            inside = not head or folder == head or folder.endswith("/" + head)
+            inside = not head or low == head or low.endswith("/" + head)
             if inside and os.path.lexists(f"{folder}/{'/'.join(held[i:])}"):
                 return True
     return False
@@ -107,7 +116,8 @@ def file_guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
     """Whether ``path`` is itself a person's: a guard, a hook setting, git's hooks or config, the authority registry."""
     if GUARDS.search(path):
         return True
-    return any(path in (f"{root}/authority.json", f"{root}/authority-audit.jsonl") for root in _roots(environ or os.environ))
+    return any(path.casefold() in (f"{root}/authority.json", f"{root}/authority-audit.jsonl")
+               for root in _roots(environ or os.environ))
 
 
 def guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
@@ -188,9 +198,14 @@ def _words(text: str) -> list[str]:
 
 
 def _commands(words: list[str]) -> list[list[str]]:
+    """``words`` split into commands; a `;` that ends a `find -exec` clause and the parentheses that group its tests stay in it."""
     out: list[list[str]] = [[]]
-    for word in words:
-        if word in SPLIT:
+    for i, word in enumerate(words):
+        ends_exec = word == ";" and FIND_EXEC.intersection(out[-1]) and words[i + 1:i + 2] and words[i + 1].startswith("-")
+        groups = word in ("(", ")") and any(w.rsplit("/", 1)[-1] == "find" for w in out[-1])
+        if ends_exec or groups:
+            out[-1].append(word)
+        elif word in SPLIT:
             out.append([])
         else:
             out[-1].append(word)
@@ -247,24 +262,26 @@ class Shell:
         return known.get("HOME", "~") + word[1:] if word == "~" or word.startswith("~/") else word
 
     def paths(self, word: str) -> list[str]:
-        """The absolute paths ``word`` names: variables, `~`, braces and globs expanded, links resolved when present."""
+        """The absolute paths ``word`` names: variables, `~`, braces and globs expanded, links resolved through the deepest
+        folder that exists."""
         out: list[str] = []
         for one in _braces(self.home(word)):
             joined = os.path.normpath(self.here / one)
-            out.append(joined)
+            real = os.path.realpath(joined)
+            out += [joined, real]
             if re.search(r"[*?\[]", one):
-                out += self.matches(joined)
-            elif os.path.lexists(joined):
-                out.append(os.path.realpath(joined))
+                out += [*self.matches(joined), *self.matches(real)]
         return out
 
     def matches(self, pattern: str) -> list[str]:
-        """The existing paths a glob ``pattern`` matches, and the guard files it would match if they existed."""
+        """The existing paths a glob ``pattern`` matches with their links resolved, and the guard files it would match if
+        they existed."""
         anchor = Path(pattern).anchor
         found = [str(p) for p in Path(anchor).glob(pattern[len(anchor):])] if anchor else []
         roots = [self.here, *self.here.parents]
         guards = [os.path.normpath(root / "/".join(held)) for root in roots for held in HELD]
-        return found + [g for g in guards if fnmatch.fnmatchcase(g, pattern)]
+        folded = pattern.casefold()
+        return [*found, *map(os.path.realpath, found), *(g for g in guards if fnmatch.fnmatchcase(g.casefold(), folded))]
 
     def hits(self, words: list[str], test: Callable[[str], bool]) -> str:
         """The first of ``words`` that names a path for which ``test`` holds, else an empty string."""
@@ -282,34 +299,73 @@ class Shell:
             out += [f"{place}/{Path(s).name}" for s in sources] if Path(place).is_dir() else [place]
         return out
 
+    def lands_on(self, sources: list[str], dests: list[str]) -> str:
+        """The first guard file that a copy or move of ``sources`` to ``dests`` writes, else an empty string."""
+        written = [p for dest in dests for p in self.landing(sources, dest)]
+        return next((p for p in written if file_guarded(p, self.environ)), "")
+
+
+def _transfer(args: list[str]) -> tuple[list[str], list[str]]:
+    """The sources and the destinations of a cp, mv, install or ln command line (``-t`` names the destination folder)."""
+    plain = [a for a in args if not a.startswith("-")]
+    into = [a.split("=", 1)[1] for a in args if a.startswith("--target-directory=")]
+    into += [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-t"]
+    return ([a for a in plain if a not in into], into) if into else (plain[:-1], plain[-1:])
+
 
 def _copy_hit(verb: str, args: list[str], shell: Shell) -> str:
-    """The first file a cp, install, ln or dd writes that is a guard, else an empty string."""
+    """The first file a cp, install, ln, mv or dd writes that is a guard, else an empty string."""
     if verb == "dd":
         written = [p for a in args if a.startswith("of=") for p in shell.paths(a[3:])]
-    else:
-        plain = [a for a in args if not a.startswith("-")]
-        into = [a.split("=", 1)[1] for a in args if a.startswith("--target-directory=")]
-        into += [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-t"]
-        sources = [a for a in plain if a not in into]
-        dests = into or plain[-1:]
-        written = [p for dest in dests for p in shell.landing(sources if into else plain[:-1], dest)]
-    return next((p for p in written if file_guarded(p, shell.environ)), "")
+        return next((p for p in written if file_guarded(p, shell.environ)), "")
+    return shell.lands_on(*_transfer(args))
+
+
+def _move_hit(args: list[str], shell: Shell) -> str:
+    """The first guard (or folder holding one) that a `mv` takes away, or the first guard file it writes."""
+    sources, _ = _transfer(args)
+    return shell.guarded(sources, deep=True) or _copy_hit("mv", args, shell)
 
 
 def _recursive(args: list[str]) -> bool:
     return any(re.fullmatch(r"-[a-zA-Z]*[rR][a-zA-Z]*", a) or a == "--recursive" for a in args)
 
 
-def _find_hit(plain: list[str], args: list[str], shell: Shell) -> str:
-    """The folder a `find` that deletes or runs a command may reach a guard in, when its name patterns could match one."""
-    if not any(a in ("-delete", "-exec", "-execdir") for a in args):
-        return ""
+def _find_starts(args: list[str]) -> list[str]:
+    """The folders a `find` searches: the words before its first primary, or the working folder when it names none."""
+    body = [a for a in args if a not in ("-H", "-L", "-P")]
+    return list(itertools.takewhile(lambda a: not a.startswith(("-", "!", "(")), body)) or ["."]
+
+
+def _find_hit(args: list[str], shell: Shell) -> str:
+    """The guard a `find` writes with `-fprint`, or the folder it may reach a guard in when it deletes or runs a command that
+    is not a plain reader and its name patterns could match one."""
+    written = shell.guarded([args[i + 1] for i, a in enumerate(args[:-1]) if a in FIND_FILES])
+    verbs = [args[i + 1] for i, a in enumerate(args[:-1]) if a in FIND_EXEC]
+    if written or ("-delete" not in args and all(v in READ_ONLY for v in verbs)):
+        return written
     patterns = [args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-name", "-iname", "-path", "-ipath", "-wholename")]
     names = [Path("/".join(held)) for held in HELD]
-    could = not patterns or any(fnmatch.fnmatch(n.name, p) or fnmatch.fnmatch(str(n), p) or fnmatch.fnmatch("./" + str(n), p)
-                                for p in patterns for n in names)
-    return shell.guarded(plain[:1], deep=True) if could else ""
+    could = not patterns or any(fnmatch.fnmatchcase(text.casefold(), p.casefold())
+                                for p in patterns for n in names for text in (n.name, str(n), "./" + str(n)))
+    return shell.guarded(_find_starts(args), deep=True) if could else ""
+
+
+def _only_adds(mode: str) -> bool:
+    """Whether a chmod ``mode`` leaves the owner's read and execute permissions in place."""
+    if mode[0].isdigit():
+        return (int(mode[-3]) & 5) == 5
+    clauses = [re.fullmatch(r"([ugoa]*)([-+=])[rwxXstugo]*", c) for c in mode.split(",")]
+    return all(c and (c.group(2) == "+" or (c.group(1) != "" and set(c.group(1)) <= set("go"))) for c in clauses)
+
+
+def _deep(verb: str, args: list[str]) -> bool:
+    """Whether the folders named reach every file in them: a recursive rm, chmod or the like, other than a chmod that only
+    adds permissions or leaves the owner's alone."""
+    if verb not in DEEP_WITH_R or not _recursive(args):
+        return False
+    modes = [a for a in args if MODE.fullmatch(a)]
+    return not (verb == "chmod" and modes and all(_only_adds(m) for m in modes))
 
 
 def _in_place(args: list[str]) -> bool:
@@ -326,10 +382,12 @@ def _writes(verb: str, args: list[str], shell: Shell) -> str:
     plain = [a for a in args if not a.startswith("-")]
     if verb in COPIERS:
         found = _copy_hit(verb, args, shell)
+    elif verb == "mv":
+        found = _move_hit(args, shell)
     elif verb == "find":
-        found = _find_hit(plain, args, shell)
+        found = _find_hit(args, shell)
     elif verb in MODIFIERS or verb in EDITORS:
-        found = shell.guarded(plain, deep=verb in DEEP or (verb in DEEP_WITH_R and _recursive(args)))
+        found = shell.guarded(plain, deep=_deep(verb, args))
     elif verb in IN_PLACE:
         found = shell.guarded(plain) if _in_place(args) else ""
     else:
@@ -451,7 +509,10 @@ def _git_paths(args: list[str], shell: Shell) -> str:
     if moved:
         shell.move(moved)
     try:
-        found = shell.guarded(named, deep=sub in ("rm", "mv") or from_a_commit)
+        if sub == "mv":
+            found = shell.guarded(named[:-1], deep=True) or shell.lands_on(named[:-1], named[-1:])
+        else:
+            found = shell.guarded(named, deep=sub == "rm" or from_a_commit)
     finally:
         shell.here = here
     return f"`git {sub}` would change {found}: {PERSON}." if found else ""
@@ -576,8 +637,8 @@ def _place(text: str, here: Path, environ: Mapping[str, str]) -> str:
 
 def holds_secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
     """Whether ``path`` is the person record's folder, a folder it sits in directly, or an ancestor of the home folder."""
-    folder, found = path.rstrip("/"), environ or os.environ
-    home = os.path.normpath(found["HOME"]) if found.get("HOME") else ""
+    folder, found = path.rstrip("/").casefold(), environ or os.environ
+    home = os.path.normpath(found["HOME"]).casefold() if found.get("HOME") else ""
     roots = [*_roots(found), *([f"{home}/.poolhouse"] if home else [])]
     if any(root == folder or f"{root}/node" == folder for root in roots):
         return True

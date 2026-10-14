@@ -18,10 +18,13 @@ GUARD = Path(__file__).resolve().parent.parent / "scripts" / "hooks" / "claude-b
 @pytest.fixture
 def tree(tmp_path):
     for name in ("scripts/hooks/pre-push", "scripts/hooks/claude-bash-guard", "scripts/hooks/claude-edit-guard",
-                 ".claude/settings.json", ".git/config", ".git/hooks/pre-push", "src/poolhouse/x.py", "docs/x.md"):
+                 ".claude/settings.json", ".git/config", ".git/hooks/pre-push", "src/poolhouse/x.py", "docs/x.md",
+                 "src/poolhouse/workspace/person_store.py"):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("x\n", encoding="utf-8")
+    (tmp_path / "l").symlink_to(tmp_path / ".claude")
+    (tmp_path / "hl").symlink_to(tmp_path / ".git" / "hooks")
     return tmp_path
 
 
@@ -98,6 +101,45 @@ WRITES_A_GUARD = [
     "git restore -s origin/dev scripts",
     "git rm -r scripts/hooks",
     "mv scripts /tmp/scripts",
+    "mv scripts/hooks /tmp/h",
+    "mv . /tmp/everything",
+    "mv /tmp/pre-push scripts/hooks/",
+    "mv -t scripts/hooks /tmp/pre-push",
+    "git mv scripts/hooks/pre-push /tmp/gone",
+    "git mv /tmp/x scripts/hooks/pre-push",
+    "git mv scripts/hooks /tmp/h",
+    "find . -name '*.py' -exec rm {} +",
+    "find src -name '*.py' -exec sed -i s/a/b/ {} +",
+    "find . -name '*.py' -exec sh -c 'echo x' \\;",
+    "find . -name person_store.py -delete",
+    "find . -exec echo {} \\; -delete",
+    "find . -name '*.py' -exec wc -l {} \\; -exec rm {} \\;",
+    "find . -exec ./wc {} +",
+    "find .claude -delete",
+    "find docs .claude -delete",
+    "find -L docs scripts -exec rm {} +",
+    "find . \\( -name '*.json' -o -name '*.js' \\) -delete",
+    "find . \\( -name '*.py' \\) -exec rm {} +",
+    "find . -name x -fprint .claude/settings.json",
+    "chmod -R 000 .",
+    "chmod -R a-x .",
+    "chmod -R 644 .",
+    "chmod -R -x .",
+    "chmod -R u-x scripts",
+    "chmod -R u+w .claude/settings.json",
+    "echo x > .Claude/settings.json",
+    "echo x > .claude/SETTINGS.JSON",
+    "cp /tmp/x Scripts/Hooks/Claude-Bash-Guard",
+    "sed -i s/a/b/ .GIT/Hooks/Pre-Push",
+    "mv /tmp/x SCRIPTS/hooks/PRE-PUSH",
+    "echo x > ~/.Poolhouse/Authority.json",
+    "echo x > l/settings.local.json",
+    "cp /tmp/x l/agents/new.md",
+    "echo x > hl/pre-commit",
+    "cd l && echo x > settings.local.json",
+    "tee l/commands/new.md",
+    "echo x > l/settings.local.js*",
+    "echo x > l/*.json",
 ]
 
 TOUCHES_GIT_OR_GITHUB = [
@@ -130,6 +172,7 @@ TOUCHES_A_SECRET = [
     "cat ~/.poolhouse/node/client/board/agent-aaaaaa.token",
     "ls ~/.poolhouse/person",
     "cat $HOME/.poolhouse/person/statements.log.key",
+    "ls ~/.Poolhouse/PERSON",
     "cd ~/.poolhouse && cat node/person/x",
     "grep -r token ~/.poolhouse/node/client",
 ]
@@ -232,6 +275,24 @@ ALLOWED = [
     "HOME_COPY=$HOME; echo $HOME_COPY",
     "bash -c 'echo hello'",
     "eval 'echo hello'",
+    "find . -name '*.py' -exec wc -l {} +",
+    "find src -name '*.py' -exec grep -l foo {} +",
+    "find . -name '*.py' -exec wc -l {} \\;",
+    "find . -type f -exec grep -l foo {} \\; -exec wc -l {} \\;",
+    "find . -name '*.py' -exec wc -l {} + | tail -1",
+    "find docs src/poolhouse -name '*.py' -exec wc -l {} +",
+    "find -L docs -type f -exec wc -l {} +",
+    "mv foo.txt .",
+    "mv foo.txt src/",
+    "mv -t src foo.txt",
+    "mv foo.txt scripts/hooks/note.md",
+    "git mv a.txt .",
+    "chmod -R u+w .",
+    "chmod -R +x .",
+    "chmod -R 755 .",
+    "chmod -R go-w .",
+    "chmod -R u+w .claude scripts",
+    "echo x > l/notes.txt",
 ]
 
 
@@ -264,12 +325,23 @@ def test_the_edit_rules_refuse_what_the_file_tools_may_not_write(tree):
 
 def test_the_files_a_person_reviews_before_they_land_are_named_in_one_place():
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", "docs/a.md"]) == []
-    named = ["AGENTS.md", "CLAUDE.md", ".claude/agents/a.md", ".claude/settings.json", "scripts/hooks/pre-push",
+    named = ["AGENTS.md", "CLAUDE.md", "src/poolhouse/authority.py", "src/poolhouse/person.py",
+             "src/poolhouse/real_machine.py", "src/poolhouse/board/credentials.py", "scripts/agent_sandbox_profile.py",
+             "src/poolhouse/workspace/authority_cli.py", ".claude/agents/a.md", ".claude/settings.json", "scripts/hooks/pre-push",
              "scripts/hooks/claude-edit-guard", "scripts/hooks/claude-tool-guard", "scripts/hooks/weakened-assertions",
              "src/poolhouse/workspace/person_release.py", ".github/workflows/ci.yml",
              ".github/CODEOWNERS", "scripts/github-protection", "scripts/land_board.py", "scripts/land",
              "src/poolhouse/worktreerules.py", "src/poolhouse/protectedwrites.py"]
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", *named]) == named
+
+
+def test_a_path_that_differs_only_in_case_is_the_same_guard_and_the_same_reviewed_file():
+    spelled = [".Claude/settings.json", ".claude/SETTINGS.JSON", "Scripts/Hooks/Claude-Bash-Guard", "agents.md",
+               "Src/Poolhouse/Authority.py", ".GITHUB/workflows/ci.yml"]
+    assert protectedwrites.touches_guards(["src/poolhouse/x.py", *spelled]) == spelled
+    assert protectedwrites.guarded("/r/.Claude/Settings.json") and protectedwrites.guarded("/r/.GIT/Hooks/pre-push")
+    assert protectedwrites.secret("/home/me/.Poolhouse/Person/key")
+    assert not protectedwrites.guarded("/r/.claude/worktrees/x")
 
 
 def test_reading_a_command_line_costs_milliseconds(tree):

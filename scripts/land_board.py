@@ -117,9 +117,7 @@ class Runner:
             return False
         held = land_entries.guards(self.root, req["target"], req["sha"])
         if held:
-            shown = ", ".join(held[:6]) + (f" and {len(held) - 6} more" if len(held) > 6 else "")
-            self.settle(req, "needs-human", f"it changes {shown}: a person reviews a change to the guards, the hook "
-                        "settings, the rules or the landing code, and lands it at a terminal")
+            self.settle(req, "needs-human", f"it {land_entries.refusal(held)}")
             return False
         return True
 

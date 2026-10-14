@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import land_check as lc
+import land_entries
 import land_git as lg
 import land_plan
 
@@ -233,10 +234,18 @@ def create(root: Path, target: str, order: list[str]) -> Batch:
     return Batch(root, target, base, wt, branch, order)
 
 
+def refuse_guards(root: Path, target: str, branches: list[str]) -> None:
+    """Raise ValueError when a branch changes a guard, a hook setting, the rules or the landing code: a person lands it."""
+    for branch in branches:
+        if held := land_entries.guards(root, target, branch):
+            raise ValueError(f"{branch} {land_entries.refusal(held)}")
+
+
 def run(root: Path, target: str, names: list[str], flags: dict) -> tuple[int, dict]:
     """Plan, merge and verify; the exit status and the summary."""
     plan = land_plan.build(root, target, names)
     order = [e.branch for e in plan.order]
+    refuse_guards(root, target, order)
     candidates = [*order, *(e.branch for e in plan.covered), *plan.empty]
     summary: dict = {"command": "run", "target": target, "planned": order, "empty": plan.empty,
                      "dirty": plan.dirty}

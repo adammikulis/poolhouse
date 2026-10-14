@@ -34,6 +34,13 @@ def guards(root: Path, target: str, branch: str) -> list[str]:
     return protectedwrites.touches_guards(lg.lines(root, "diff", "--name-only", "--no-renames", f"{base}...{branch}"))
 
 
+def refusal(held: list[str]) -> str:
+    """The plain sentence saying a branch that changes ``held`` is left to a person."""
+    shown = ", ".join(held[:6]) + (f" and {len(held) - 6} more" if len(held) > 6 else "")
+    return (f"changes {shown}: a person reviews a change to the guards, the hook settings, the rules or the landing code, "
+            "and lands it at a terminal")
+
+
 def load(root: Path, target: str, path: Path) -> list[str]:
     """The branch names of an entries file, a JSON list of ``{"branch": name, "tip": full sha}``."""
     entries = json.loads(path.read_text(encoding="utf-8"))

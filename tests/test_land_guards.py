@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from land_support import Project
 from land_world import World, mod
 
 pytest_plugins = ["node_kit"]
@@ -18,6 +19,12 @@ GUARDS = {
     "src/poolhouse/workspace/person_store.py": "X = 1\n",
     "src/poolhouse/worktreerules.py": "X = 1\n",
     "scripts/land_board.py": "X = 1\n",
+    "src/poolhouse/authority.py": "X = 1\n",
+    "src/poolhouse/person.py": "X = 1\n",
+    "src/poolhouse/real_machine.py": "X = 1\n",
+    "src/poolhouse/board/credentials.py": "X = 1\n",
+    "src/poolhouse/workspace/authority_cli.py": "X = 1\n",
+    "scripts/agent_sandbox_profile.py": "X = 1\n",
     "scripts/github-protection": "X = 1\n",
     ".github/workflows/ci.yml": "on: push\n",
 }
@@ -50,3 +57,27 @@ def test_a_guarded_request_does_not_hold_back_the_one_beside_it(world):
     free, _ = world.ready("plain", mod(4), who="bob")
     world.runner.once()
     assert (world.status(held), world.status(free)) == ("needs-human", "landed")
+
+
+@pytest.fixture
+def proj(tmp_path):
+    return Project(tmp_path)
+
+
+@pytest.mark.parametrize("path", ["AGENTS.md", "src/poolhouse/authority.py", "scripts/hooks/pre-push", ".claude/settings.json"])
+def test_the_hand_landing_leaves_a_branch_that_changes_a_guard_to_a_person(proj, path):
+    proj.branch("held", {path: "x\n"})
+    for args in (("run", "held"), ("run", "--dry-run", "held")):
+        code, out, summary = proj.land(*args)
+        assert code == 4 and summary["status"] == "error", out
+        assert path in summary["error"] and "person" in summary["error"]
+    assert proj.calls() == []
+
+
+def test_the_hand_landing_still_lands_the_branch_beside_a_guarded_one_when_it_is_named_alone(proj):
+    proj.branch("held", {"AGENTS.md": "x\n"})
+    proj.branch("plain", {"docs/a.md": "changed\n"})
+    code, _, summary = proj.land("run", "plain")
+    assert code == 0 and summary["merged"] == ["plain"]
+    code, _, summary = proj.land("run", "plain", "held")
+    assert code == 4 and "AGENTS.md" in summary["error"]

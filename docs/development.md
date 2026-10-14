@@ -63,9 +63,11 @@ The paths an agent never writes, and the shell forms that write them, are in `sr
 which `worktreerules` loads for both guards and for the local-model harness. The guards, `.claude/settings*.json`,
 `.claude/agents`, `commands`, `skills` and `hooks`, git's hooks and config, the person record's code and the
 authority registry are refused to the file tools and to a shell redirection, `tee`, `cp`, `mv`, `ln`, `rm`,
-`sed -i`, `dd`, `find -delete`, `git checkout` and `restore` of such a path, `bash -c`, `eval`, command
-substitution, a heredoc or a script file handed to an interpreter, with variables, `~`, braces, globs, `cd` and
-links resolved. The person record and the session tokens are not read or listed either. `git config core.hooksPath`
+`sed -i`, `dd`, `find -delete`, `-fprint` or `-exec` of anything but a plain reader, `git checkout` and `restore` of
+such a path, `bash -c`, `eval`, command substitution, a heredoc or a script file handed to an interpreter, with
+variables, `~`, braces, globs, `cd` and links resolved (a new file under a link to a guard folder is a guard) and
+letter case ignored. A `mv` or `git mv` is refused for what it takes away or writes over, not for the folder it moves
+a file into, and a `chmod -R` that only adds permissions is not refused. The person record and the session tokens are not read or listed either. `git config core.hooksPath`
 and the other settings that decide what git runs, `gh pr merge` without the person's release approval, and `gh` or
 `curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
 the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
