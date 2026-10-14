@@ -628,9 +628,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.workspace_only:
         global TOOLS, _BY_NAME
-        names = {"workspace_inbox", "workspace_send", "workspace_thread", "workspace_claim",
-                 "workspace_who_owns", "workspace_announce", "workspace_ack", "workspace_status",
-                 "workspace_reputation"}
+        names = set(workspace_tools.NAMES)
         TOOLS = [tool for tool in TOOLS if tool.name in names]
         _BY_NAME = {tool.name: tool for tool in TOOLS}
     if args.list:
