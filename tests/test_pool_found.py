@@ -56,6 +56,42 @@ def test_an_agent_founds_a_pool_of_a_key_a_phone_enrolled_and_a_second_try_says_
     assert any("pool_created" in str(e) for e in audit), "founding is on the pool board's audit"
 
 
+class Watching:
+    """A person's key that remembers the bytes it was asked to sign."""
+
+    def __init__(self, key: Signer) -> None:
+        self.key, self.asked = key, []
+
+    @property
+    def public(self) -> bytes:
+        return self.key.public
+
+    def sign_bytes(self, data: bytes) -> bytes:
+        self.asked.append(data)
+        return self.key.sign_bytes(data)
+
+
+def test_founding_asks_the_persons_key_for_the_charter_once_and_for_nothing_after_it(workspace_node):
+    key = Watching(Signer.generate())
+    enrol_as_phone_key(workspace_node, key.key)
+    session = pool_session(workspace_node)
+    founding.found(session, Admin(key), "home", "secure")
+    about_the_pool = [data.split(b"\n", 1)[0] for data in key.asked if data.startswith(b"poolhouse/pool-")]
+    assert about_the_pool == [b"poolhouse/pool-accept/v2"], "the acceptance of the charter is the only signature about the pool"
+    me = next(m for m in workspace_node.client.call("pool_status")["members"] if m["self"])
+    assert (me["status"], me["by"]) == ("active", "found"), "this device is a member by the charter, not by an admit"
+
+
+def test_the_draft_names_this_device_as_the_pools_first_member_and_the_card_says_so(workspace_node):
+    admin = person()
+    enrol_as_phone_key(workspace_node, admin.key)
+    session = pool_session(workspace_node)
+    key = [{"key": admin.key.public.hex(), "person": "owner", "label": "the owner's key"}]
+    draft = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
+    assert draft["charter"]["first"]["cert"] == (workspace_node.state / "device.cert").read_bytes().hex()
+    assert "put the computer" in draft["summary"] and "'home'" in draft["summary"], draft["summary"]
+
+
 def test_nobody_taps_the_phone_and_no_pool_and_no_key_exist(phone_node):
     add_phone(phone_node)
     admin = person()

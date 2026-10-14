@@ -640,8 +640,9 @@ the Poolhouse app, then tell me again." The path is real and tested (`tests/test
 phone's, which is how the node comes to derive it as strong (the pool check's person is enrolled that way). To close it: the phone makes one
 biometric-only Keystore P-256 key for each pool, renders the whole charter (the anchor it recomputes, the policy, every key with its algorithm and
 derived strength, the thresholds, holds and recovery days) and signs the acceptance and the acts, each as an approval on the fatigue ledger, and the
-node's `Signer` becomes the phone approval; the first device's certificate is folded into the founding charter so the acceptance is the whole
-authorization (`HANDOFF.md`, "Break-it pass on phone-signed charters"). Also not built: the card's text for `pool_create` (it falls to the node's
+node's `Signer` becomes the phone approval. The first device's certificate and name are in the founding charter (charter version 3, `first`, part of the
+anchor), so the acceptance is the whole of founding: no admit follows and the card reads "Make the pool 'home' and put the computer 'name' in it"
+(`HANDOFF.md`, "Break-it pass on phone-signed charters"). Also not built: the card's text for `pool_create` (it falls to the node's
 default, "It is not an action this node knows the cost of"), a call that lists the open pools a device has heard (`ph.pool.join` needs the host and
 the fingerprint of an open pool's member, or a code), and the audit entry naming the agent that asked (`audit_event` takes two events only).
 

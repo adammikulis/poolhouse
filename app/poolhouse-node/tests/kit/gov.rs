@@ -6,7 +6,7 @@ use std::sync::Arc;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
-use poolhouse_node::gov::charter::{Charter, Unit};
+use poolhouse_node::gov::charter::{Charter, First, Unit};
 use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
 use poolhouse_node::gov::pool::{GovPool, Ingest};
 use poolhouse_node::gov::signer::RigSigner;
@@ -56,15 +56,28 @@ pub fn entry_after(k: K, since: u64, g: &GovPool) -> AdminKey {
     entry_on(k, since, &g.id, &g.context().1)
 }
 
-/// An epoch-1 charter of the keys, each accepting it.
+/// The seed of the device a test charter puts in the pool first, unless the test names another.
+pub const FIRST: u8 = 250;
+
+/// The first device of a charter: the device with certificate ``der``.
+pub fn first_of(der: &[u8]) -> First {
+    First::of(der, "first")
+}
+
+/// An epoch-1 charter of the keys, each accepting it, that puts the device made from `FIRST` in the pool first.
 pub fn charter(keys: &[K], policy: Policy, unit: Unit) -> Charter {
     charter_at(keys, policy, unit, wall_ms())
 }
 
-/// An epoch-1 charter made at ``at_ms``, each key accepting it.
+/// Like `charter`, made at ``at_ms``.
 pub fn charter_at(keys: &[K], policy: Policy, unit: Unit, at_ms: u64) -> Charter {
+    charter_of(keys, policy, unit, at_ms, first_of(&ident(FIRST).der))
+}
+
+/// An epoch-1 charter made at ``at_ms`` that puts ``first`` in the pool first, each key accepting it.
+pub fn charter_of(keys: &[K], policy: Policy, unit: Unit, at_ms: u64, first: First) -> Charter {
     let bare: Vec<AdminKey> = keys.iter().map(|k| entry(*k, 1, "")).collect();
-    let mut c = Charter::new("home", policy, "", bare, at_ms);
+    let mut c = Charter::new("home", policy, "", bare, first, at_ms);
     c.thresholds.unit = unit;
     let anchor = c.anchor();
     c.admins = keys.iter().map(|k| entry(*k, 1, &anchor)).collect();

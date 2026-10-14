@@ -124,8 +124,8 @@ fn what_a_member_relays_is_taken_after_its_window_so_a_removal_reaches_a_device_
     assert!(!is_removed(&away, &phone));
 }
 
-fn drafted_at(at_ms: u64) -> serde_json::Value {
-    charter_at(&[strong(A, "ann")], Policy::Secure, Unit::Person, at_ms).body()
+fn drafted_at(dev: &Dev, at_ms: u64) -> serde_json::Value {
+    charter_of(&[strong(A, "ann")], Policy::Secure, Unit::Person, at_ms, first_of(&dev.net.me.der)).body()
 }
 
 #[test]
@@ -134,11 +134,11 @@ fn a_charter_whose_acceptance_is_older_than_an_hour_or_dated_ahead_founds_nothin
     enrol_phone_key(&a, A);
     let before = a.pool();
     for (what, at_ms) in [("two hours old", wall_ms() - 2 * HOUR_U), ("ten minutes ahead", wall_ms() + 10 * 60_000)] {
-        let refused = a.call("pool_found", "", &a.token, json!({"charter": drafted_at(at_ms)}));
+        let refused = a.call("pool_found", "", &a.token, json!({"charter": drafted_at(&a, at_ms)}));
         assert_eq!(refused["ok"], false, "{what}: {refused}");
         assert!(refused["error"]["say"].as_str().unwrap().contains("too long ago or is dated ahead"), "{what}: {refused}");
         assert_eq!(a.pool(), before, "{what}: it is still in no pool");
     }
-    let ok = a.call("pool_found", "", &a.token, json!({"charter": drafted_at(wall_ms() - 10 * 60_000)}));
+    let ok = a.call("pool_found", "", &a.token, json!({"charter": drafted_at(&a, wall_ms() - 10 * 60_000)}));
     assert_eq!(ok["ok"], true, "a charter signed ten minutes ago founds: {ok}");
 }

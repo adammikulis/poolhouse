@@ -215,8 +215,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
 | `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
-| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its strength is refused) | `{charter, anchor, accept, summary}`: the charter with blank acceptances, each key `strong` only when a phone enrolled it on this device and `weak` otherwise, and for each key its `alg` and the bytes it signs to accept it; the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
-| `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the device is a member once an admit signed for it is submitted |
+| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its strength is refused) | `{charter, anchor, accept, summary}`: the charter with this device as its `first` device and blank acceptances, each key `strong` only when a phone enrolled it on this device and `weak` otherwise, and for each key its `alg` and the bytes it signs to accept it; the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
+| `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the charter must name this device as its `first`, which is then the pool's first member with no admit |
 | `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
 | `sync_now` | token with the grant `sync_now` | | `{reached}` |
@@ -839,8 +839,13 @@ the fix for the first that fails.
 `gov/` (design: `docs/pools-and-serving.md`, section 1). A pool is its **charter** and the **acts** that change it. People govern a
 pool, through admin keys; a device never does, and the one thing a member device does alone is leave.
 
-- **The charter** (`gov/charter.rs`): the pool's name, join policy (`open` or `secure`, fixed for the pool's life), admin keys,
-  thresholds, holds; version 2 (a charter of another version is not read). The pool id is the first 16 bytes of the anchor, 32 hex
+- **The charter** (`gov/charter.rs`): the pool's name, join policy (`open` or `secure`, fixed for the pool's life), first device,
+  admin keys, thresholds, holds; version 3 (a charter of another version is not read). The first device is the founding computer's
+  certificate (lower-case hex of an Ed25519 device certificate) and name (at most 40 characters, the computer's own word, shown quoted
+  beside the certificate's fingerprint), part of the anchor, so the keys that accept the charter
+  accept that computer as the pool's first member and no admit follows; the roster folds it as an admit with `how: found`, ahead of
+  every act. A node founds only a charter that names its own certificate (`pool_found`: "That charter puts another computer in the
+  pool first"), so a charter copied to another computer makes no pool and no member there. The pool id is the first 16 bytes of the anchor, 32 hex
   digits: the SHA-256 of the epoch-1 charter with its keys' signatures left out, so a copy of a pool with other admins is another
   pool and one set of terms is one pool however its keys sign it (an ECDSA signature differs each time it is made). An act's `prev`
   names the charter's hash, which also leaves out the signatures of the founding keys. `charter.json` holds the founding act, which
@@ -918,7 +923,9 @@ pool, through admin keys; a device never does, and the one thing a member device
   node: `pool_draft` makes the act and the bytes to sign, `pool_found` and `pool_submit` take the signed act back. A no from the
   person is respected for ten minutes for that kind of act, and a person is asked at most twelve times in ten minutes. The sentence
   a person signs an act under (`gov/describe.rs`, at most 300 characters) names the key with its person, strength and fingerprint, the
-  device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. `pool_found` is
+  device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. A charter is accepted
+  under one sentence, "Make the pool 'home' and put the computer 'name' (certificate ...) in it.", so founding is one signature per
+  key and no second prompt. `pool_found` is
   granted by the name of the pool the act founds and refuses a charter with no strong admin key, which nobody could admit a device
   under, and, once the grant is held (a session without it is told only that the grant is missing), a charter that calls a key strong that no phone enrolled on this device (the strength is this node's to derive, from the `phone`
   mark of the key in `persons.json`, and is never read from a caller).
@@ -1033,7 +1040,7 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 (`screen`, still Python). Tests use `tests/node_kit.py`: a real node on a short `/tmp` root.
 
 **Founding a pool from Python.** `board/founding.py` is the client of `pool_draft_found`, `pool_found`, `pool_draft` and `pool_submit`:
-`found(session, admin, name, policy)` drafts the charter, has the person's key sign its acceptance and the first `admit`, and submits both,
+`found(session, admin, name, policy)` drafts the charter (which names this device as the pool's first member), has the person's key sign its acceptance and submits it,
 after the grant `pool_create` came from the phone's card (`with_card` asks the card for any missing grant and sends the call again after the
 tap) or from the first key. It answers "already in the pool X" for a device that is founded, and refuses a key the node does not derive as
 strong before the person is asked (the node's draft of the charter says which keys it derives as strong). `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)

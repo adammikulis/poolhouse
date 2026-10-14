@@ -12,7 +12,6 @@ from __future__ import annotations
 import socket
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, NoReturn
 
 from poolhouse import errors
@@ -156,16 +155,6 @@ def _charter(admin: Admin, draft: dict[str, Any]) -> dict[str, Any]:
     return dict(charter)
 
 
-def _admit_this_device(session: Session, admin: Admin, cert: str) -> None:
-    """The admin key admits this device, the pool's first member: the node drafts the act, the key signs it, the node takes it back."""
-    drafted = session.client.call("pool_draft", "", session.token, kind="admit", body={"cert": cert, "name": "", "how": "found", "via": ""})
-    act = dict(drafted["act"])
-    sig = admin.key.sign_bytes(bytes.fromhex(drafted["sign_bytes"])).hex()
-    listed = [*act["signatures"], {"kind": "admin", "key": admin.key.public.hex(), "sig": sig}]
-    act["signatures"] = sorted(listed, key=lambda s: (s["kind"], s["key"]))
-    session.client.call("pool_submit", "", session.token, act=act)
-
-
 def _already(status: dict[str, Any]) -> Founded | None:
     gov = status.get("governance", {})
     if gov.get("mode") != "governed":
@@ -175,16 +164,16 @@ def _already(status: dict[str, Any]) -> Founded | None:
 
 @dataclass(frozen=True, slots=True)
 class Terms:
-    """How founding waits on the person: ``voice`` says where they answer (the terminal the node asks on and the words told to them), ``wait_s``
-    how long the phone's card is waited for, and ``cert_hex`` is this device's certificate when its state directory is not where this runs."""
+    """How founding waits on the person: ``voice`` says where they answer (the terminal the node asks on and the words told to them) and
+    ``wait_s`` how long the phone's card is waited for."""
 
     voice: presence.Voice = presence.SILENT
     wait_s: float = CARD_WAIT_S
-    cert_hex: str = ""
 
 
 def found(session: Session, admin: Admin, name: str, policy: str = "secure", terms: Terms | None = None) -> Founded:
-    """Found the pool ``name`` of ``policy`` on this device, governed by the person's ``admin`` key; the device is its first member.
+    """Found the pool ``name`` of ``policy`` on this device, governed by the person's ``admin`` key; the charter the key accepts names this
+    device as the pool's first member, so accepting it is the whole of founding.
 
     A device that is already in a founded pool answers with that pool and changes nothing. ``terms`` says how the person is waited for.
     Raises `Refusal`: a key that is not strong, a no, a question nobody answered.
@@ -205,7 +194,6 @@ def found(session: Session, admin: Admin, name: str, policy: str = "secure", ter
     try:
         charter = _charter(admin, draft)
         made = session.client.call("pool_found", "", session.token, charter=charter)
-        _admit_this_device(session, admin, terms.cert_hex or (Path(session.client.state) / "device.cert").read_bytes().hex())
     except NodeError as err:
         raise _refused(err, needs="none") from None
     return Founded(str(made["pool"]), str(made["name"]), str(made["policy"]), int(made["epoch"]))

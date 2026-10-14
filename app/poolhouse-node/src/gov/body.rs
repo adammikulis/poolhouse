@@ -170,7 +170,7 @@ fn check_drop(d: &Dismiss) -> Result<()> {
 /// The body of ``act``, read strictly for its kind.
 pub fn parse(act: &Act) -> Result<Body> {
     Ok(match act.kind.as_str() {
-        "found" => Body::Found(Box::new(read(act)?)),
+        "found" => Body::Found(Box::new(Charter::read(&act.body)?)),
         "admit" => {
             let a: Admit = read(act)?;
             check_admit(&a)?;

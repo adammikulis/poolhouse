@@ -18,8 +18,8 @@ use crate::node::Node;
 use crate::poolops::wall_ms;
 
 use super::act::{Act, ActSig, SigKind};
-use super::charter::{Charter, Class, Unit};
-use super::describe::{describe, quoted};
+use super::charter::{Charter, Class, First, Unit};
+use super::describe::{describe, founding_line, quoted};
 use super::keys::{Alg, AdminKey, Role, Strength};
 use super::pool::{ActStatus, GovPool, Ingest};
 use super::signer::{KeyBinding, Signer, SignerKey};
@@ -92,7 +92,7 @@ pub fn founding_act(act: Option<&Value>, charter: Option<&Value>) -> Result<Valu
     match (act, charter) {
         (Some(act), None) => Ok(act.clone()),
         (None, Some(charter)) => {
-            let c: Charter = serde_json::from_value(charter.clone()).map_err(|e| Error::Invalid(format!("that is not a charter: {}", e.to_string().chars().take(80).collect::<String>())))?;
+            let c = Charter::read(charter).map_err(|e| declined(&e.to_string()))?;
             Ok(json!(c.found_act()))
         }
         _ => Err(Error::Invalid("a pool is founded by an act or by a charter, one of them".into())),
@@ -114,6 +114,7 @@ pub fn founding_name(act: &Value) -> Result<String> {
 
 const NO_STRONG_KEY: &str = "A pool needs a strong key, one that asks for your presence each time it signs, and that charter lists none.";
 const UNCONFIRMED_STRONG_KEY: &str = "That charter calls a key strong that is not a phone's key on this device, so I will not make that pool.";
+const OTHER_FIRST: &str = "That charter puts another computer in the pool first, and a pool is made on the computer it names: draft it again here.";
 
 fn reply(g: &GovPool, id: &str, kept: Ingest) -> Result<Value> {
     if let Ingest::Refused(why) = kept {
@@ -157,8 +158,14 @@ impl Node {
         if self.persons.is_phone_key(public) { Strength::Strong } else { Strength::Weak }
     }
 
+    /// The first device a charter this device makes names: this device, called by its host name.
+    fn first_device(&self) -> First {
+        First::of(&self.cert.der, &crate::poolops::host_name())
+    }
+
     /// The founding act in ``act`` and its charter, when the strong keys it lists are keys this device derives as strong and at
-    /// least one is an admin key: without one nobody could admit a device.
+    /// least one is an admin key: without one nobody could admit a device. The first device it names is this one, so a charter copied
+    /// to another device makes no pool there.
     fn founding_of(&self, act: &Value) -> Result<(Act, Charter)> {
         let (found, charter) = charter_of(act)?;
         let confirmed = |k: &&AdminKey| k.strength == Strength::Strong && self.key_strength(&k.key) == Strength::Strong;
@@ -167,6 +174,9 @@ impl Node {
         }
         if charter.admins.iter().any(|k| k.strength == Strength::Strong && !confirmed(&k)) {
             return Err(declined(UNCONFIRMED_STRONG_KEY));
+        }
+        if charter.first.cert != hex(&self.cert.der) {
+            return Err(declined(OTHER_FIRST));
         }
         Ok((found, charter))
     }
@@ -257,8 +267,8 @@ impl Node {
         }
     }
 
-    /// Found a pool of this device: the charter names the keys the signer holds, each accepting it, and the device is its first
-    /// member. A device in no pool yet may.
+    /// Found a pool of this device: the charter names the keys the signer holds, each accepting it, and this device as the pool's
+    /// first member, so the one acceptance is the whole of founding. A device in no pool yet may.
     pub fn pool_create(&mut self, name: &str, policy: Policy, project: &str) -> Result<Value> {
         if !self.members.is_unfounded() {
             return Err(declined("This device already runs a pool; leave it before making another."));
@@ -273,14 +283,13 @@ impl Node {
         if !admins.iter().any(|k| k.strength == Strength::Strong) {
             return Err(declined("A pool needs a key that asks for your presence each time it signs, and none is connected yet."));
         }
-        let mut charter = Charter::new(name, policy, project, admins, now);
-        let anchor = charter.anchor();
+        let mut charter = Charter::new(name, policy, project, admins, self.first_device(), now);
+        let (anchor, summary) = (charter.anchor(), founding_line(&charter));
         for key in charter.admins.iter_mut() {
-            key.acceptance = signer.sign(&key.key, &key.acceptance_message(&anchor, ""), &format!("Make the pool {}.", quoted(name)))?;
+            key.acceptance = signer.sign(&key.key, &key.acceptance_message(&anchor, ""), &summary)?;
         }
         charter.check_founding().map_err(|e| declined(&e.to_string()))?;
         let id = self.start_pool(charter.found_act())?;
-        self.gov_admit(&self.cert.der.clone(), &crate::poolops::host_name(), "found")?;
         self.record_event("pool_created", &id, &format!("{} ({})", name.chars().take(40).collect::<String>(), policy.name()))?;
         Ok(json!({"pool": id, "name": name, "policy": policy.name(), "epoch": 1}))
     }
@@ -436,8 +445,8 @@ impl Node {
         Ok(id)
     }
 
-    /// Found the pool of an act a person's keys signed elsewhere (each key's acceptance is inside its charter). The device is not
-    /// a member until an admit signed for it is submitted.
+    /// Found the pool of an act a person's keys signed elsewhere (each key's acceptance is inside its charter). The charter names
+    /// this device, which is the pool's first member.
     pub fn pool_found(&mut self, act: &Value) -> Result<Value> {
         let (found, charter) = self.founding_of(act)?;
         let id = self.start_pool(found)?;
@@ -462,10 +471,10 @@ impl Node {
         if let Some(bad) = admins.iter().find(|k| !super::keys::valid_public(&k.key)) {
             return Err(Error::Invalid(format!("{} is not a public key", bad.key.chars().take(16).collect::<String>())));
         }
-        let charter = Charter::new(name, policy, project, admins, wall_ms());
+        let charter = Charter::new(name, policy, project, admins, self.first_device(), wall_ms());
         let anchor = charter.anchor();
         let accept: Vec<Value> = charter.admins.iter().map(|k| json!({"key": k.key, "alg": k.alg, "sign_bytes": hex(&k.acceptance_message(&anchor, ""))})).collect();
-        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": format!("Make the pool {}.", quoted(name))}))
+        Ok(json!({"charter": charter.body(), "anchor": anchor, "accept": accept, "summary": founding_line(&charter)}))
     }
 
     /// The act of ``kind`` this device's pool would take next, with the bytes a person's key signs and what the person is shown: for

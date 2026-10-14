@@ -149,7 +149,10 @@ impl Moved {
 /// The charter a founding act carries, when the act is one a pool can start from.
 pub fn founding(act: &Act) -> Result<Charter> {
     act.check_shape()?;
-    let Ok(Body::Found(charter)) = body::parse(act) else { return bad("a pool starts from a founding act") };
+    if act.kind != "found" {
+        return bad("a pool starts from a founding act");
+    }
+    let Body::Found(charter) = body::parse(act)? else { return bad("a pool starts from a founding act") };
     charter.check_founding()?;
     if *act != charter.found_act() {
         return bad("a founding act is made of its charter and nothing else");
