@@ -204,7 +204,7 @@ def test_cursor_cache_uses_authenticated_identity_instead_of_cached_label(tmp_pa
     from poolhouse.board.session import Session
 
     reader = Session(SimpleNamespace(state=tmp_path), 'board', 'own-test-token', named='other-label')
-    monkeypatch.setattr(Session, 'whoami', lambda _self: SimpleNamespace(name='reader'))
+    monkeypatch.setattr(Session, 'call', lambda _self, method: {'name': 'reader'} if method == 'whoami' else None)
     reader.keep('inbox', {'device': 4})
     assert reader.cursor('inbox') == {'device': 4}
     assert credentials.cursors(tmp_path, 'board', 'reader') == {'inbox': {'device': 4}}
@@ -220,13 +220,13 @@ def test_invalid_token_cannot_read_or_write_a_cursor_cache(tmp_path, monkeypatch
 
     reader = Session(SimpleNamespace(state=tmp_path), 'board', 'invalid-test-token', named='other-label')
 
-    def refuse(_self):
+    def refuse(_self, _method):
         raise Denied('denied', 'token is not known')
 
     def touched(*_args):
         raise AssertionError('unauthenticated cursor path must not be accessed')
 
-    monkeypatch.setattr(Session, 'whoami', refuse)
+    monkeypatch.setattr(Session, 'call', refuse)
     monkeypatch.setattr(credentials, 'cursors', touched)
     monkeypatch.setattr(credentials, 'remember', touched)
     with pytest.raises(Denied):
