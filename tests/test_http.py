@@ -107,3 +107,94 @@ def test_only_http_and_https_are_opened(url):
         open_stream(url)
     with pytest.raises(ServerError, match="only http"):
         request_bytes(url)
+
+
+@pytest.mark.parametrize(('host', 'direct'), [('127.0.0.1', True), ('127.9.8.7', True),
+    ('[::1]', True), ('localhost', False), ('127.0.0.1.example', False),
+    ('192.0.2.1', False), ('127.1', False)])
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_guarded_numeric_loopback_has_no_ambient_proxy(monkeypatch, host, direct, cancelled):
+    import urllib.request
+    from types import SimpleNamespace
+
+    from poolhouse import http
+
+    seen, guarded = [], []
+    control = object() if cancelled else None
+    monkeypatch.setattr(http.http_cancel, 'active', lambda: control)
+    monkeypatch.setattr(http.http_cancel, 'handlers', lambda *_: [])
+    monkeypatch.setattr(urllib.request, 'build_opener', lambda *handlers:
+                        SimpleNamespace(open=lambda *_args, **_kwargs: seen.extend(handlers)))
+    url = f'https://{host}:16443/status'
+    http._open(http.build_request(url), 1, lambda value: guarded.append(value) or value)
+    proxy = [handler for handler in seen if isinstance(handler, urllib.request.ProxyHandler)]
+    assert bool(proxy) is direct
+    assert not proxy or proxy[0].proxies == {}
+    assert guarded == ([url] if direct else [])
+
+
+def test_unguarded_loopback_keeps_the_default_opener(monkeypatch):
+    import urllib.request
+
+    from poolhouse import http
+
+    seen = []
+    monkeypatch.setattr(urllib.request, 'urlopen', lambda request, **kwargs: seen.append(request.full_url))
+    http._open(urllib.request.Request('http://127.0.0.1/status'), 1, None)
+    assert seen == ['http://127.0.0.1/status']
+
+
+def test_loopback_initial_guard_refusal_precedes_networking(monkeypatch):
+    import urllib.request
+
+    from poolhouse import http
+
+    def network(*_args, **_kwargs):
+        pytest.fail('a rejected destination reached the opener')
+    def refuse(_url):
+        raise Refused('destination changed')
+    monkeypatch.setattr(urllib.request, 'build_opener', network)
+    with pytest.raises(Refused, match='destination changed'):
+        http._open(urllib.request.Request('http://127.0.0.1/status'), 1, refuse)
+
+
+def test_guarded_loopback_reaches_local_server_without_ambient_proxy(monkeypatch):
+    import threading
+    from http.server import BaseHTTPRequestHandler
+
+    from poolhouse import http
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'local')
+        def log_message(self, *_args):
+            pass
+    server = Server(('127.0.0.1', 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    monkeypatch.setenv('http_proxy', 'http://127.0.0.1:9')
+    monkeypatch.setenv('HTTP_PROXY', 'http://127.0.0.1:9')
+    monkeypatch.setenv('no_proxy', '')
+    monkeypatch.setenv('NO_PROXY', '')
+    url = f'http://127.0.0.1:{server.server_port}/status'
+    try:
+        assert http.request_bytes(url, timeout=1, guard=lambda value: value).body == b'local'
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(2)
+
+
+def test_loopback_direct_opener_still_refuses_a_remote_redirect():
+    from poolhouse import http
+
+    url = 'http://127.0.0.1/status'
+    def exact(value):
+        if value != url:
+            raise Refused('destination changed')
+        return value
+    with pytest.raises(Refused, match='destination changed'):
+        http._Guarded(exact).redirect_request(http.build_request(url), None, 302,
+                                             'Found', {}, 'http://192.0.2.1/status')

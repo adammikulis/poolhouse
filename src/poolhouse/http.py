@@ -3,6 +3,7 @@ fetched at all."""
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import socket
@@ -214,14 +215,23 @@ class _Guarded(urllib.request.HTTPRedirectHandler):
 def _open(request: urllib.request.Request, timeout: float | None, guard: Callable[[str], str] | None
           ) -> Any:
     context = _https_context(request.full_url)
+    proxies = []
+    if guard is not None:
+        try:
+            loopback = ipaddress.ip_address(urllib.parse.urlsplit(request.full_url).hostname or '').is_loopback
+        except ValueError:
+            loopback = False
+        if loopback:
+            guard(request.full_url)
+            proxies.append(urllib.request.ProxyHandler({}))
     if control := http_cancel.active():
-        handlers = [*http_cancel.handlers(control, context)]
+        handlers = [*proxies, *http_cancel.handlers(control, context)]
         if guard is not None:
             handlers.append(_Guarded(guard))
         return urllib.request.build_opener(*handlers).open(request, timeout=timeout)
     if guard is None:
         return urllib.request.urlopen(request, timeout=timeout, context=context)  # noqa: S310
-    opener = urllib.request.build_opener(_Guarded(guard), urllib.request.HTTPSHandler(
+    opener = urllib.request.build_opener(*proxies, _Guarded(guard), urllib.request.HTTPSHandler(
         context=context))
     return opener.open(request, timeout=timeout)
 
