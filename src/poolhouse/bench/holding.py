@@ -15,12 +15,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from psutil import Error as ProcessError
+
 # The package is the namespace the tests and `selfcheck` patch -- `bench.footprint`,
 # `bench.busy` -- so anything patchable is looked up there at call time, never bound here
 # at import.
 from poolhouse import bench
 from poolhouse.bench.backends import http_of, processes, served_by
-from poolhouse.http import request_json
+from poolhouse.http import Options, request_json
 from poolhouse.log import warn
 from poolhouse.serve.process import (  # noqa: F401 - the package's own re-export
     PHYS_FOOTPRINT_AT,
@@ -168,7 +170,7 @@ def process_tree(pids: Sequence[int]) -> list[Any]:
         try:
             for child in parent.children(recursive=True):
                 out.setdefault(int(getattr(child, "pid", 0) or 0), child)
-        except Exception:  # noqa: BLE001
+        except (ProcessError, OSError, ValueError):
             continue
     return list(out.values())
 
@@ -228,7 +230,7 @@ class Watching:
                     resident += int(process.memory_info().rss)
                     footprint += footprint_of(process)
                     counted += 1
-                except Exception:  # noqa: BLE001 - one that has gone is not an error here
+                except (ProcessError, OSError, ValueError):
                     continue
             if counted:
                 self.process = tree[0]
@@ -346,8 +348,8 @@ class _Peak:
                 out.pop(derived_key, None)
             try:
                 out = beyond_weights(out)
-            except Exception:  # noqa: BLE001 - a summary line is never worth a run's answers
-                pass
+            except (ValueError, OSError) as error:
+                warn(f'Benchmark memory summary unavailable ({type(error).__name__}).')
         return out
 
 
@@ -386,12 +388,12 @@ def footprint(base_url: str, client: Any = None) -> dict[str, Any]:
         for process in tree:
             try:
                 held += int(process.memory_info().rss)
-            except Exception:  # noqa: BLE001 - one that has gone holds nothing
+            except (ProcessError, OSError):
                 continue
         if tree and held:
             out["resident_bytes"] = held
-    except Exception:  # noqa: BLE001 - a number we could not get is not a failed run
-        pass
+    except (ProcessError, OSError, ValueError) as error:
+        warn(f'Benchmark process memory unavailable ({type(error).__name__}).')
     # The weights come from /props, not the command line: a model served by `hf:` reference
     # is on the command line as a repository, and only the server knows where it landed.
     if "weights_bytes" not in out:
@@ -400,8 +402,8 @@ def footprint(base_url: str, client: Any = None) -> dict[str, Any]:
             if where.exists():
                 shards = sorted(where.parent.glob(where.name.replace("00001", "*"))) or [where]
                 out["weights_bytes"] = sum(s.stat().st_size for s in shards if s.is_file())
-        except Exception:  # noqa: BLE001 - a number we could not get is not a failed run
-            pass
+        except (OSError, ValueError) as error:
+            warn(f'Benchmark weight size unavailable ({type(error).__name__}).')
     # Resident minus weights, when that means anything. It does not always: llama.cpp mmaps
     # the weights, so a page is resident only once it has been touched, and an MoE that uses
     # ten experts of five hundred never touches most of them. Qwen3.8-Flash-Next sat at 63G
@@ -459,7 +461,7 @@ def slot_count(base_url: str) -> int:
     more of them than slots, and a turn waits for a slot before a token is read.
     """
     try:
-        slots = request_json(f"{base_url.rstrip('/')}/slots", timeout=5.0, method="GET")
+        slots = request_json(f"{base_url.rstrip('/')}/slots", method="GET", options=Options(timeout=5.0))
     except Exception:  # noqa: BLE001 - a server that will not answer has an unknown count
         return -1
     return len(slots) if isinstance(slots, list) else -1
@@ -487,7 +489,7 @@ def busy(base_url: str) -> int:
     -1 when the server will not say, which is not the same as idle and is not treated as it.
     """
     try:
-        slots = request_json(f"{base_url.rstrip('/')}/slots", timeout=5.0, method="GET")
+        slots = request_json(f"{base_url.rstrip('/')}/slots", method="GET", options=Options(timeout=5.0))
     except Exception:  # noqa: BLE001 - a server that will not answer is not known to be idle
         return -1
     if not isinstance(slots, list):

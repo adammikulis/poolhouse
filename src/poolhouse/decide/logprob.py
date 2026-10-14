@@ -17,7 +17,7 @@ from poolhouse.client import Client, thinking
 from poolhouse.decide.base import Asked, BaseDecider
 from poolhouse.decide.calibrate import Calibration
 from poolhouse.decide.types import DecideError, Option
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 
 LETTERS = string.ascii_uppercase
 SYSTEM = ("You answer multiple-choice questions about a situation. "
@@ -145,9 +145,7 @@ class LogprobDecider(BaseDecider):
             raise DecideError(f"the logprob backend labels at most {len(LETTERS)} options, "
                               f"got {count}")
         try:
-            reply = request_json(f"{self.base_url}/v1/chat/completions",
-                                 payload=self.body(asked), timeout=self.chat.timeout,
-                                 token=self.chat.key)
+            reply = request_json(f"{self.base_url}/v1/chat/completions", payload=self.body(asked), options=Options(timeout=self.chat.timeout, token=self.chat.key))
         except ServerError as exc:
             raise DecideError(f"{self.base_url} did not answer: {exc}") from exc
         try:

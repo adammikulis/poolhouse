@@ -20,7 +20,7 @@ from poolhouse.client.families import Family
 from poolhouse.client.health import reported_models
 from poolhouse.client.settings import Request, Transport
 from poolhouse.extraction import Checking, Kept, Prompting
-from poolhouse.http import ServerError, request_json, request_stream
+from poolhouse.http import Options, Retry, ServerError, request_json, request_stream
 
 logger = logging.getLogger(__name__)
 
@@ -225,10 +225,10 @@ class Client:
             if self.api != "llama":
                 return {}
             try:
-                from poolhouse.http import request_json
+                from poolhouse.http import Options, request_json
                 from poolhouse.hub import in_gguf
 
-                props = request_json(f"{self.base_url}/props", timeout=5.0, method="GET") or {}
+                props = request_json(f"{self.base_url}/props", method="GET", options=Options(timeout=5.0)) or {}
                 where = str(props.get("model_path") or "")
                 if where:
                     self._carded = in_gguf(where)
@@ -352,13 +352,7 @@ class Client:
         if self.api == "ollama":
             from poolhouse.client import ollama
 
-            payload = request_json(
-                f"{self.base_url}/api/chat",
-                payload=body,
-                timeout=timeout or self.transport.timeout,
-                tries=self.transport.tries,
-                headers=self._headers(),
-            )
+            payload = request_json(f"{self.base_url}/api/chat", payload=body, options=Options(timeout=timeout or self.transport.timeout, headers=self._headers(), retry=Retry(tries=self.transport.tries)))
             if not isinstance(payload, dict):
                 raise ServerError(f"unexpected response shape: {type(payload).__name__}")
             return self.normalize(ollama.to_openai(payload), self.pinned_family or self.family)
@@ -551,14 +545,12 @@ class Client:
         """One request, sent again without its speculative field if the server refuses
         that field."""
         try:
-            return request_json(where, payload=body, timeout=timeout or self.transport.timeout,
-                                tries=self.transport.tries, headers=self._headers())
+            return request_json(where, payload=body, options=Options(timeout=timeout or self.transport.timeout, headers=self._headers(), retry=Retry(tries=self.transport.tries)))
         except ServerError as exc:
             served = self._served_depth(body, exc)
             if served is None:
                 raise
-            return request_json(where, payload=served, timeout=timeout or self.transport.timeout,
-                                tries=self.transport.tries, headers=self._headers())
+            return request_json(where, payload=served, options=Options(timeout=timeout or self.transport.timeout, headers=self._headers(), retry=Retry(tries=self.transport.tries)))
 
     def assert_grammar_support(self) -> None:
         """Fail now if constrained decoding is broken on this server."""
@@ -577,25 +569,13 @@ class Client:
 
     def tokenize(self, text: str, *, with_pieces: bool = False) -> list[Any]:
         """Token ids the SERVER assigns to ``text``, via llama.cpp's /tokenize."""
-        payload = request_json(
-            f"{self.base_url}/tokenize",
-            payload={"content": text, "with_pieces": with_pieces},
-            timeout=self.transport.timeout,
-            tries=self.transport.tries,
-            headers=self._headers(),
-        )
+        payload = request_json(f"{self.base_url}/tokenize", payload={"content": text, "with_pieces": with_pieces}, options=Options(timeout=self.transport.timeout, headers=self._headers(), retry=Retry(tries=self.transport.tries)))
         tokens = payload.get("tokens") if isinstance(payload, dict) else None
         return list(tokens) if tokens is not None else []
 
     def detokenize(self, tokens: Sequence[int]) -> str:
         """The round trip. A tokenizer can encode consistently and still fail to"""
-        payload = request_json(
-            f"{self.base_url}/detokenize",
-            payload={"tokens": list(tokens)},
-            timeout=self.transport.timeout,
-            tries=self.transport.tries,
-            headers=self._headers(),
-        )
+        payload = request_json(f"{self.base_url}/detokenize", payload={"tokens": list(tokens)}, options=Options(timeout=self.transport.timeout, headers=self._headers(), retry=Retry(tries=self.transport.tries)))
         content = payload.get("content") if isinstance(payload, dict) else None
         return str(content or "")
 
@@ -612,9 +592,8 @@ class Client:
             return ollama.served_by(self.base_url, self.model,
                                     timeout=min(self.transport.timeout, 10.0)
                                     if self.transport.timeout is not None else 10.0)
-        props = request_json(f"{self.base_url}/props", timeout=min(self.transport.timeout, 10.0)
-                             if self.transport.timeout is not None else 10.0,
-                             method="GET", headers=self._headers()) or {}
+        props = request_json(f"{self.base_url}/props", method="GET", options=Options(timeout=min(self.transport.timeout, 10.0)
+                             if self.transport.timeout is not None else 10.0, headers=self._headers())) or {}
         where = str(props.get("model_path") or "")
         name = where.replace("\\", "/").rsplit("/", 1)[-1] or self.model
         size: int | None = None

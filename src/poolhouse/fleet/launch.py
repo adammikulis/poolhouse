@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import runtime
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 
 from . import launch_open
@@ -41,7 +41,7 @@ HEALTH_TIMEOUT_S = 5.0
 def _health(port: int, timeout: float = HEALTH_TIMEOUT_S) -> dict[str, Any] | None:
     """What the poolhouse daemon on ``port`` says about itself, or None."""
     try:
-        said = request_json(f"http://127.0.0.1:{port}/health", timeout=timeout)
+        said = request_json(f"http://127.0.0.1:{port}/health", options=Options(timeout=timeout))
     except ServerError:
         return None
     return said if isinstance(said, dict) else {}

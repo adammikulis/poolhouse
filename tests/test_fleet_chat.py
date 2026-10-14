@@ -21,7 +21,7 @@ from poolhouse.fleet.chat import find, targets
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.serving import Serving
-from poolhouse.http import Server, ServerError, open_stream
+from poolhouse.http import Options, Server, ServerError, open_stream
 from poolhouse.testing.fakes import FakeLlamaServer, Served
 from tests.keystore_support import counting  # noqa: F401
 from tests.net_site import gguf_bytes
@@ -213,8 +213,7 @@ class TestChattingThroughTheInterface:
 
         began = time.monotonic()
         arrived = []
-        with open_stream(req.full_url, data=req.data, method=req.get_method(),
-                         headers=dict(req.header_items()), timeout=10) as r:
+        with open_stream(req.full_url, data=req.data, method=req.get_method(), options=Options(headers=dict(req.header_items()), timeout=10)) as r:
             while True:
                 block = r.read1(4096)
                 if not block:
@@ -311,35 +310,13 @@ class TestChattingThroughTheInterface:
         """A multi-gigabyte fetch must not be held open inside one request."""
         import os
         import time as clock
-        from dataclasses import replace
-        from http.server import BaseHTTPRequestHandler
 
-        from poolhouse.fleet import models as model_module
+        from test_fleet_models import TestGettingInTheBackground
+
         from poolhouse.fleet.models import CHUNK, Downloads, Models
 
         payload = gguf_bytes() + os.urandom(2 * CHUNK)
-        seen = threading.Event()
-
-        class Slow(BaseHTTPRequestHandler):
-            """The first chunk, then the rest once the screen has shown the first."""
-
-            def log_message(self, *a):
-                pass
-
-            def do_GET(self):
-                self.send_response(200)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload[:CHUNK])
-                self.wfile.flush()
-                seen.wait(30)
-                self.wfile.write(payload[CHUNK:])
-
-        blob = Server(("127.0.0.1", _free_port()), Slow)
-        monkeypatch.setattr(model_module, "MODEL_LIMITS", replace(
-            model_module.MODEL_LIMITS,
-            allow_hosts=frozenset({f"127.0.0.1:{blob.server_address[1]}"})))
-        threading.Thread(target=blob.serve_forever, daemon=True).start()
+        seen, _ = TestGettingInTheBackground().held(monkeypatch, tmp_path, payload)
 
         ui, cookie = bare
         models_dir = tmp_path / "bare" / "models"
@@ -351,7 +328,7 @@ class TestChattingThroughTheInterface:
             status, body, _ = ui.call(
                 "/ui/models", method="POST", cookie=cookie,
                 body={"name": "big.gguf",
-                      "source": f"http://127.0.0.1:{blob.server_address[1]}/big.gguf"})
+                      "source": "hf:unsloth/big-GGUF/big.gguf"})
             answered = clock.monotonic() - began
 
             assert status == 202, body
@@ -374,8 +351,6 @@ class TestChattingThroughTheInterface:
                 clock.sleep(0.05)
         finally:
             seen.set()
-            blob.shutdown()
-            blob.server_close()
 
         assert saw_partial, "the screen could never show how far along it was"
         assert (models_dir / "big.gguf").read_bytes() == payload
@@ -447,7 +422,7 @@ class TestAnsweringToSeveralPools:
 
         req = build_request(f"{base}/jobs", token=token)
         try:
-            with open_stream(req.full_url, headers=dict(req.header_items()), timeout=5) as r:
+            with open_stream(req.full_url, options=Options(headers=dict(req.header_items()), timeout=5)) as r:
                 return r.status
         except ServerError as exc:
             return exc.status

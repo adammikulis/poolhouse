@@ -180,7 +180,7 @@ def cmd_reclaim(args: argparse.Namespace) -> int:
     Idleness is asked of each server and what the looks found is kept, so a pass adds
     `--settle` seconds of its own watching to whatever the daemon has already seen.
     """
-    from poolhouse.serve.reclaim import watching
+    from poolhouse.serve.reclaim import WatchHooks, watching
     from poolhouse.units import parse_duration
 
     try:
@@ -193,7 +193,7 @@ def cmd_reclaim(args: argparse.Namespace) -> int:
         say(f"watching every {every:.0f}s, reclaiming after {older:.0f}s idle; "
             "Ctrl-C to stop", flush=True)
         try:
-            with watching(older_than=older, every=every, idleness=watcher, say=print):
+            with watching(older_than=older, every=every, idleness=watcher, hooks=WatchHooks(say=print)):
                 while True:
                     time.sleep(3600)
         except KeyboardInterrupt:

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import gate, limits
-from poolhouse.http import request_json
+from poolhouse.http import Options, request_json
 from poolhouse.serve import admission, broker_wire
 from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.process import kill_process_tree, pid_exists
@@ -130,9 +130,7 @@ def test_three_callers_three_models_one_broker_holding_every_lease(tmp_path, mac
 
         for one in got:
             assert gate.device_of(f"http://127.0.0.1:{one['port']}/v1/chat/completions") == "gpu"
-            assert request_json(f"http://127.0.0.1:{one['port']}/v1/chat/completions",
-                                payload={"messages": [{"role": "user", "content": "hi"}]},
-                                timeout=30)
+            assert request_json(f"http://127.0.0.1:{one['port']}/v1/chat/completions", payload={"messages": [{"role": "user", "content": "hi"}]}, options=Options(timeout=30))
     finally:
         for proc in procs:
             proc.kill()

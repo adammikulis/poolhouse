@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse.http import ServerError, ServerUnreachable, open_stream
+from poolhouse.http import Options, ServerError, ServerUnreachable, open_stream
 from poolhouse.hub.capabilities import allows_chat, capabilities as model_capabilities
 
 __all__ = ["ChatError", "Target", "find", "reply_text", "stream", "targets"]
@@ -98,10 +98,8 @@ def stream(target: Target, payload: dict[str, Any], *,
     """The model server's reply, in the pieces it arrives in."""
     data = json.dumps(payload).encode()
     try:
-        response = open_stream(
-            target.url, data=data, method="POST", token=target.token, timeout=timeout,
-            headers={"Content-Type": "application/json",
-                     "Accept": "text/event-stream" if payload.get("stream") else "*/*"})
+        response = open_stream(target.url, data=data, method="POST", options=Options(token=target.token, timeout=timeout, headers={"Content-Type": "application/json",
+                     "Accept": "text/event-stream" if payload.get("stream") else "*/*"}))
     except ServerUnreachable as exc:
         raise ChatError(
             f"{target.member or 'this machine'} did not answer: {exc}") from None

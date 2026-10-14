@@ -12,6 +12,7 @@ import contextlib
 import threading
 
 from poolhouse import home
+from poolhouse.fleet.remote import Discovery
 
 from .discovery import DiscoveryError, Membership, memberships
 from .membership import fingerprint_of
@@ -32,7 +33,7 @@ def exchange(pool: Pool, member: Member, group: str) -> int:
 
 
 def _members(member: Membership, pool: Pool, port: int | None) -> list[Member]:
-    found = Member.discover(timeout_s=1.5, key=member.key, pool_key_path=pool.path, port=port)
+    found = Member.discover(discovery=Discovery(timeout_s=1.5, key=member.key, pool_key_path=pool.path, port=port))
     return [p for p in found if p.beacon and p.beacon.machine != home.machine_id()]
 
 

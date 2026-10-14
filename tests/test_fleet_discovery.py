@@ -39,7 +39,7 @@ from poolhouse.fleet.discovery import (
     load_pool_key,
     named_apart,
 )
-from poolhouse.fleet.remote import Member, MemberError
+from poolhouse.fleet.remote import Discovery, Member, MemberError
 
 #: Real UDP on a real interface and a real daemon subprocess, per the docstring
 #: above -- so every test here waits out a network timeout at least once.
@@ -421,8 +421,7 @@ def test_a_booted_daemon_is_found_and_driven_with_no_address_configured(traind, 
     """The whole point: nobody typed a host, a port, or a token anywhere."""
     keyfile, disco_port, http_port, log = traind
     try:
-        rtx = Member.find_one(pool_key_path=keyfile, timeout_s=3.0,
-                                     port=disco_port)
+        rtx = Member.find_one(discovery=Discovery(pool_key_path=keyfile, timeout_s=3.0, port=disco_port))
     except DiscoveryError as exc:
         pytest.fail(f"{exc}\n--- traind said ---\n{log.read_text(errors='replace')}")
     assert rtx.beacon.name == "testbox"
@@ -494,8 +493,7 @@ def test_a_daemon_pointed_at_a_held_bench_home_keeps_training_queued_and_says_so
 def test_find_one_says_why_when_no_member_matches(traind):
     keyfile, disco_port, _, _log = traind
     with pytest.raises(DiscoveryError, match="no member matches"):
-        Member.find_one(name="not-this-box", pool_key_path=keyfile,
-                               timeout_s=3.0, port=disco_port)
+        Member.find_one(name="not-this-box", discovery=Discovery(pool_key_path=keyfile, timeout_s=3.0, port=disco_port))
 
 
 @pytest.mark.lan_network
@@ -512,8 +510,7 @@ def test_a_daemon_that_can_hear_is_found_by_asking_for_speech(traind):
     deadline = time.time() + 120
     while True:
         try:
-            member = Member.find_one(require="speech", pool_key_path=keyfile,
-                                 timeout_s=3.0, port=disco_port)
+            member = Member.find_one(require="speech", discovery=Discovery(pool_key_path=keyfile, timeout_s=3.0, port=disco_port))
             break
         except DiscoveryError as exc:
             if time.time() > deadline:
@@ -528,7 +525,7 @@ def test_a_daemon_that_can_hear_is_found_by_asking_for_speech(traind):
 def test_discovery_without_a_key_is_an_error_not_an_empty_list(tmp_path):
     """Silence and 'you have no key' are different facts and must read that way."""
     with pytest.raises(DiscoveryError, match="no pool key"):
-        Member.find_one(pool_key_path=tmp_path / "absent.key")
+        Member.find_one(discovery=Discovery(pool_key_path=tmp_path / "absent.key"))
 
 
 @pytest.mark.lan_network

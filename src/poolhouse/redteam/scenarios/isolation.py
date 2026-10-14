@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 from poolhouse.client import Client, Request, ServerError, Transport
-from poolhouse.http import request_bytes
+from poolhouse.http import Options as HTTPOptions, request_bytes
 from poolhouse.redteam import pyrit_bridge
 from poolhouse.redteam.lab import Lab
 from poolhouse.redteam.report import Attempt, Report
@@ -112,7 +112,7 @@ async def _slot_state(lab: Lab, report: Report, route: tuple[str, str | None], a
         base = route[0]
         headers = {"Authorization": f"Bearer {route[1]}"} if route[1] else {}
         try:
-            reply = request_bytes(base + path, headers=headers, timeout=10)
+            reply = request_bytes(base + path, options=HTTPOptions(headers=headers, timeout=10))
             body, status = reply.body.decode("utf-8", "replace"), reply.status
         except ServerError as exc:
             body, status = "", exc.status or 0

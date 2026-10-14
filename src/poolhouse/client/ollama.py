@@ -29,7 +29,7 @@ import sys
 from typing import Any
 
 from poolhouse.client.settings import Request
-from poolhouse.http import request_json
+from poolhouse.http import Options, request_json
 
 PLATFORM = sys.platform
 
@@ -184,7 +184,7 @@ def runtime_for(format: str | None, platform: str = PLATFORM) -> str:
 def fetch(path: str, payload: dict[str, Any] | None = None, *, base_url: str,
           timeout: float = 5.0) -> dict[str, Any]:
     """One ``/api/...`` call, parsed; ``payload`` makes it a POST."""
-    return request_json(f"{base_url}{path}", payload=payload, timeout=timeout) or {}
+    return request_json(f"{base_url}{path}", payload=payload, options=Options(timeout=timeout)) or {}
 
 
 def served_by(base_url: str, model: str | None, *, timeout: float = 5.0) -> dict[str, Any]:

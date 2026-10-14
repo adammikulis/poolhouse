@@ -20,6 +20,7 @@ from poolhouse.fleet.discovery import (
     memberships,
 )
 from poolhouse.fleet.join import leave_machine, main
+from poolhouse.fleet.join_request import JoinHooks, JoinRequest, LeaveRequest
 from poolhouse.fleet.onboard.joining import matches
 from poolhouse.keystore import Keystore, Wires
 from tests.keystore_support import counting  # noqa: F401
@@ -125,10 +126,10 @@ def test_leave_clears_the_stored_passphrase(tmp_path, ks):
     key = tmp_path / "pool.key"
     _join(key)
     _join(key, group="home")
-    leave_machine(group="lab", root=tmp_path, pool_key_path=key, say=lambda s: None, unpersist=lambda: [])
+    leave_machine(request=LeaveRequest(group="lab", root=tmp_path, pool_key_path=key), say=lambda s: None, unpersist=lambda: [])
     assert recovery.recall("lab", key) is None
     assert recovery.recall("home", key) == WORDS
-    leave_machine(root=tmp_path, pool_key_path=key, say=lambda s: None, unpersist=lambda: [])
+    leave_machine(request=LeaveRequest(root=tmp_path, pool_key_path=key), say=lambda s: None, unpersist=lambda: [])
     assert not recovery.passphrases_path(key).exists()
 
 
@@ -139,9 +140,7 @@ def test_join_machine_stores_the_passphrase(tmp_path, ks, monkeypatch):
     monkeypatch.setattr(joining, "already_running", lambda port: {"name": "quince", "machine": "m1"})
     monkeypatch.setattr(joining, "checks", lambda *a, **k: [])
     monkeypatch.setattr(joining, "members", lambda **k: [])
-    joining.join_machine(passphrase=WORDS, group="lab", root=tmp_path, pool_key_path=key,
-                         enrol=lambda words, group: join_pool_by_passphrase(words, group=group, path=key),
-                         say=lambda s: None)
+    joining.join_machine(request=JoinRequest(passphrase=WORDS, group="lab", root=tmp_path, pool_key_path=key), hooks=JoinHooks(enrol=lambda words, group: join_pool_by_passphrase(words, group=group, path=key), say=lambda s: None))
     assert recovery.recall("lab", key) == WORDS
 
 

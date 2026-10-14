@@ -9,6 +9,7 @@ import json
 import time
 import urllib.parse
 from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +17,7 @@ from poolhouse import home
 from poolhouse.files import promote, sha256_file
 from poolhouse.http import (
     ONCE,
+    Options,
     Retry,
     ServerError,
     ServerUnreachable,
@@ -42,6 +44,19 @@ DIGEST_HEADER = "X-Poolhouse-SHA256"
 
 # A read is safe to send again; an unreachable member is not worth waiting on twice.
 READS = Retry(tries=3, when_unreachable=False)
+
+
+@dataclass(frozen=True, slots=True)
+class Discovery:
+    timeout_s: float = 2.0
+    key: bytes | None = field(default=None, repr=False)
+    pool_key_path: Path | str | None = None
+    group: str | None = None
+    port: int | None = None
+
+
+DEFAULT_DISCOVERY = Discovery()
+DEFAULT_REQUEST = Options(timeout=None)
 
 
 def device_address(member, declared: str) -> bool:
@@ -114,30 +129,23 @@ class Member:
 
     # -- discovery -------------------------------------------------------
     @classmethod
-    def discover(cls, *, timeout_s: float = 2.0, key: bytes | None = None,
-                 pool_key_path: Path | str | None = None,
-                 timeout: float = 60.0, group: str | None = None,
-                 port: int | None = None) -> list[Member]:
+    def discover(cls, *, discovery: Discovery = DEFAULT_DISCOVERY,
+                 timeout: float = 60.0) -> list[Member]:
         """Every daemon on the LAN that proves it holds the pool key."""
-        key = key or load_pool_key(pool_key_path)
+        key = discovery.key or load_pool_key(discovery.pool_key_path)
         if key is None:
             raise DiscoveryError(
-                f"no pool key at {key_path(pool_key_path)} -- "
+                f"no pool key at {key_path(discovery.pool_key_path)} -- "
                 "run 'poolhouse-members init' here and copy the key to each box")
         token = derive_token(key)
         return [cls(b.base_url, token, timeout=timeout, beacon=b)
-                for b in discover(key, timeout_s=timeout_s, group=group, port=port)]
+                for b in discover(key, timeout_s=discovery.timeout_s, group=discovery.group, port=discovery.port)]
 
     @classmethod
     def find_one(cls, *, require: str = "", name: str = "",
-                 timeout_s: float = 2.0, key: bytes | None = None,
-                 pool_key_path: Path | str | None = None,
-                 timeout: float = 60.0, group: str | None = None,
-                 port: int | None = None) -> Member:
+                 discovery: Discovery = DEFAULT_DISCOVERY, timeout: float = 60.0) -> Member:
         """The one member to use, or an error saying exactly why there isn't one."""
-        members = cls.discover(timeout_s=timeout_s, key=key,
-                             pool_key_path=pool_key_path, timeout=timeout,
-                             group=group, port=port)
+        members = cls.discover(discovery=discovery, timeout=timeout)
         if not members:
             raise DiscoveryError(
                 "no members answered -- is traind running there, is it on this "
@@ -162,13 +170,10 @@ class Member:
 
     # -- plumbing --------------------------------------------------------
     def _request(self, method: str, path: str, *, data: bytes | None = None,
-                 headers: dict[str, str] | None = None,
-                 timeout: float | None = None,
-                 retry: Retry = ONCE) -> tuple[int, bytes, Any]:
+                 options: Options = DEFAULT_REQUEST) -> tuple[int, bytes, Any]:
         try:
             reply = request_bytes(f"{self.base_url}{path}", data=data, method=method,
-                                  headers=headers, token=self.token,
-                                  timeout=timeout or self.timeout, retry=retry)
+                                  options=replace(options, token=self.token, timeout=options.timeout or self.timeout))
         except ServerError as exc:
             raise _member_error(f"{method} {path}", exc) from None
         return reply.status, reply.body, reply.headers
@@ -176,13 +181,12 @@ class Member:
     def _json(self, method: str, path: str, payload: Any = None) -> Any:
         data = json.dumps(payload).encode() if payload is not None else None
         headers = {"Content-Type": "application/json"} if data else {}
-        _, body, _ = self._request(method, path, data=data, headers=headers,
-                                   retry=READS if method == "GET" else ONCE)
+        _, body, _ = self._request(method, path, data=data, options=Options(headers=headers, retry=READS if method == "GET" else ONCE, timeout=None))
         return json.loads(body or b"{}")
 
     # -- status ----------------------------------------------------------
     def health(self) -> dict:
-        _, body, _ = self._request("GET", "/health", timeout=10, retry=READS)
+        _, body, _ = self._request("GET", "/health", options=Options(timeout=10, retry=READS))
         return json.loads(body or b"{}")
 
     def members(self, group: str, rows: list[dict]) -> dict:
@@ -256,9 +260,7 @@ class Member:
         query = urllib.parse.urlencode(
             {k: v for k, v in (("language", language or ""), ("provider", provider or ""))
              if v})
-        _, body, _ = self._request("POST", "/speech/transcribe" + (f"?{query}" if query else ""),
-                                   data=data,
-                                   headers={"Content-Type": "audio/wav"}, timeout=timeout)
+        _, body, _ = self._request("POST", "/speech/transcribe" + (f"?{query}" if query else ""), data=data, options=Options(headers={"Content-Type": "audio/wav"}, timeout=timeout))
         got = json.loads(body or b"{}")
         return Transcript(
             text=str(got.get("text", "")),
@@ -290,8 +292,7 @@ class Member:
                     headers["Content-Range"] = f"bytes {sent}-{sent+len(chunk)-1}/{total}"
                 if last:
                     headers[DIGEST_HEADER] = digest.hexdigest()
-                _, body, _ = self._request("PUT", f"/files/{remote}", data=chunk,
-                                           headers=headers, timeout=300)
+                _, body, _ = self._request("PUT", f"/files/{remote}", data=chunk, options=Options(headers=headers, timeout=300))
                 sent += len(chunk)
                 if on_progress:
                     on_progress(sent, total)
@@ -309,9 +310,7 @@ class Member:
         start = partial.stat().st_size if partial.exists() else 0
 
         try:
-            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET",
-                               headers={"Range": f"bytes={start}-"} if start else None,
-                               token=self.token, timeout=timeout)
+            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET", options=Options(headers={"Range": f"bytes={start}-"} if start else {}, token=self.token, timeout=timeout))
         except ServerError as exc:
             if exc.status == 416:
                 size = range_total(exc.headers.get("Content-Range", ""))

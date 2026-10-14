@@ -106,7 +106,7 @@ def test_project_source_redirect_stays_on_exact_authority(monkeypatch, target):
 
     @contextmanager
     def redirect(_url, **kwargs):
-        kwargs["guard"](target)
+        kwargs["options"].guard(target)
         followed.append(target)
         yield None
 

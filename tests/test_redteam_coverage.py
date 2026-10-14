@@ -144,3 +144,91 @@ def test_extracted_private_integer_map_parser_remains_inventoried():
     found = {}
     coverage().find_parsers(found, "src/poolhouse/private_counters.py", ast.parse("json.loads(value)"))
     assert "parser:private_counters.py" in found
+
+
+@pytest.mark.parametrize("source", [
+    "from poolhouse.http import Options; value = Options(timeout=2)",
+    "from poolhouse.http import Retry; value = Retry(tries=2)",
+    "from poolhouse.http import Options as Delivery; value = Delivery(timeout=2)",
+    "import poolhouse.http as transport; value = transport.Options(timeout=2)",
+])
+def test_http_data_constructors_do_not_create_egress_surfaces(source):
+    found = {}
+    coverage().find_calls(found, "src/poolhouse/fixture.py", ast.parse(source))
+    assert found == {}
+
+
+@pytest.mark.parametrize("call", [
+    "http.open_stream(url)", "http.request_bytes(url)", "http.request_json(url)",
+    "http.unfamiliar_transport(url)", "urllib.request.urlopen(url)",
+    "socket.create_connection(address)",
+])
+def test_http_data_in_a_function_does_not_hide_its_transport(call):
+    source = ("import poolhouse.http as http\nimport urllib.request\nimport socket\n"
+              "def send():\n    options = http.Options(timeout=2)\n    " + call)
+    found = {}
+    coverage().find_calls(found, "src/poolhouse/fixture.py", ast.parse(source))
+    assert set(found) == {"egress:fixture.py:send"}
+
+
+def test_transport_added_to_a_constructor_is_still_inventoried():
+    source = ("from poolhouse.http import request_bytes\n"
+              "class Options:\n    def __post_init__(self):\n        request_bytes(url)")
+    found = {}
+    coverage().find_calls(found, "src/poolhouse/fixture.py", ast.parse(source))
+    assert set(found) == {"egress:fixture.py:Options.__post_init__"}
+
+
+def test_http_data_construction_does_not_open_a_connection(monkeypatch):
+    from poolhouse import http
+
+    def network(*_args, **_kwargs):
+        pytest.fail("request data construction reached the network")
+    monkeypatch.setattr(http, "open_stream", network)
+    monkeypatch.setattr(http, "_open", network)
+    monkeypatch.setattr(http.urllib.request, "urlopen", network)
+    settings = http.Options(headers={"X-Fixture": "yes"}, retry=http.Retry(tries=2))
+    assert dict(settings.headers) == {"X-Fixture": "yes"}
+    assert settings.retry.tries == 2
+
+
+@pytest.mark.parametrize("source", [
+    "from poolhouse.http import Options\nOptions = arbitrary_transport\nOptions(url)",
+    "from poolhouse.http import Options\ndef send(Options):\n    Options(url)",
+    "import poolhouse.http as delivery\ndelivery = arbitrary_transport\ndelivery.Options(url)",
+    "import poolhouse.http as delivery\ndelivery.Options = arbitrary_transport\ndelivery.Options(url)",
+    "from elsewhere import Options\nfrom poolhouse.http import Options\nOptions(url)",
+    "from poolhouse.http import Options\ntry: pass\nexcept Exception as Options: Options(url)",
+    "from poolhouse.http import Options\nmatch value:\n    case {'x': Options}: Options(url)",
+    "from poolhouse.http import Options\nmatch value:\n    case [*Options]: Options(url)",
+    "from poolhouse.http import Options\nmatch value:\n    case {**Options}: Options(url)",
+    "from poolhouse.http import Options\n(Options := arbitrary_transport)\nOptions(url)",
+    "from poolhouse.http import Options\n[Options(url) for Options in transports]",
+    "from poolhouse.http import Options\ndel Options\nOptions(url)",
+    "from poolhouse.http import Options\ndef Options(): pass\nOptions(url)",
+    "from poolhouse.http import Options\nclass Options: pass\nOptions(url)",
+    "import poolhouse.http as http\nsetattr(http, 'Options', transport)\nhttp.Options(url)",
+    "import poolhouse.http as http\ndelattr(http, 'Options')\nhttp.Options(url)",
+    "from poolhouse.http import Options\nsetattr(Options, '__new__', transport)\nOptions(url)",
+    "from poolhouse.http import Options\ndelattr(Options, '__new__')\nOptions(url)",
+    "import poolhouse.http as http\nmonkeypatch.setattr(http, 'Options', transport)\nhttp.Options(url)",
+    "from poolhouse.http import Options\nmonkeypatch.setattr('poolhouse.http.Options', transport)\nOptions(url)",
+    "from poolhouse.http import Options\nmonkeypatch.delattr('poolhouse.http.Options')\nOptions(url)",
+    "from poolhouse.http import Options\nsetattr(target(), 'Options', transport)\nOptions(url)",
+    "from poolhouse.http import Options\nobject.__setattr__(Options, '__new__', transport)\nOptions(url)",
+    "import poolhouse.http as http\nhttp.__dict__['Options'] = transport\nhttp.Options(url)",
+    "import poolhouse.http as http\ndel http.__dict__['Options']\nhttp.Options(url)",
+    "from poolhouse.http import Options\nglobals()['Options'] = transport\nOptions(url)",
+    "from poolhouse.http import Options\nlocals()['Options'] = transport\nOptions(url)",
+    "from poolhouse.http import Options\nfrom builtins import setattr as change\nchange(Options, '__new__', transport)\nOptions(url)",
+    "from poolhouse.http import Options\nfrom builtins import delattr as remove\nremove(Options, '__new__')\nOptions(url)",
+    "from poolhouse.http import Options\nexec('Options = transport')\nOptions(url)",
+    "from poolhouse.http import Options\neval(expression)\nOptions(url)",
+    "from poolhouse.http import Options\nglobals().update(Options=transport)\nOptions(url)",
+    "import poolhouse.http as http\nhttp.__dict__.update(Options=transport)\nhttp.Options(url)",
+    "from poolhouse.http import Options\nvars(Options).update(__new__=transport)\nOptions(url)",
+])
+def test_rebound_or_shadowed_constructor_names_remain_conservative(source):
+    found = {}
+    coverage().find_calls(found, "src/poolhouse/fixture.py", ast.parse(source))
+    assert found and all(row["kind"] == "egress" for row in found.values())

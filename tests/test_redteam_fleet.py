@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from poolhouse.http import request_bytes
+from poolhouse.http import Options as HTTPOptions, request_bytes
 from poolhouse.redteam import daemon
 from poolhouse.redteam.evidence import Honeypot
 from poolhouse.redteam.lab import lab as make_lab
@@ -34,7 +34,7 @@ def test_no_protected_route_answers_without_the_right_token(served):
 
 
 def test_a_correct_token_does_open_a_protected_route(served):
-    got = request_bytes(f"{served.daemon_url}/jobs", token=served.token, timeout=10)
+    got = request_bytes(f"{served.daemon_url}/jobs", options=HTTPOptions(token=served.token, timeout=10))
     assert got.status == 200
 
 

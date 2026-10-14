@@ -179,10 +179,10 @@ def cmd_ls(args: argparse.Namespace) -> int:
 
 
 def _member(args: argparse.Namespace) -> Any:
-    from .remote import Member
+    from .remote import Discovery, Member
     key = _require_key(args.pool_key)
     if args.name:
-        return Member.find_one(name=args.name, key=key)
+        return Member.find_one(name=args.name, discovery=Discovery(key=key))
     return Member(f"http://127.0.0.1:{args.port}", derive_token(key))
 
 

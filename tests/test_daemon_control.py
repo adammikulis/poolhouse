@@ -14,7 +14,7 @@ from poolhouse.fleet.daemon_control import (
     protected,
     request_replacement,
 )
-from poolhouse.http import Server, ServerError, request_json
+from poolhouse.http import Options, Server, ServerError, request_json
 from poolhouse.lock import Busy, only_one
 
 
@@ -139,7 +139,7 @@ def test_pool_or_unsigned_identity_cannot_replace_daemon(device):
     body = json.dumps({'instance': control.instance}).encode()
     for token in ('', 'mac:unrelated-pool'):
         with pytest.raises(ServerError):
-            request_json(f'http://127.0.0.1:{port}{ROUTE}', method='POST', payload=json.loads(body), token=token)
+            request_json(f'http://127.0.0.1:{port}{ROUTE}', method='POST', payload=json.loads(body), options=Options(token=token))
     assert not stopped.is_set()
 
 

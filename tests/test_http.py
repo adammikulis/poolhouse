@@ -91,10 +91,10 @@ def test_a_message_about_a_url_carries_no_password_and_no_secret_parameter():
 
 
 def test_an_unreachable_url_is_reported_without_its_secrets():
-    from poolhouse.http import ServerUnreachable, request_json
+    from poolhouse.http import Options, ServerUnreachable, request_json
 
     with pytest.raises(ServerUnreachable) as caught:
-        request_json("http://127.0.0.1:9/x?access_token=SUPERSECRET&a=1", timeout=1)
+        request_json("http://127.0.0.1:9/x?access_token=SUPERSECRET&a=1", options=Options(timeout=1))
     assert "SUPERSECRET" not in str(caught.value) and "a=1" in str(caught.value)
 
 
@@ -107,3 +107,146 @@ def test_only_http_and_https_are_opened(url):
         open_stream(url)
     with pytest.raises(ServerError, match="only http"):
         request_bytes(url)
+
+
+@pytest.mark.parametrize(('host', 'direct'), [('127.0.0.1', True), ('127.9.8.7', True),
+    ('[::1]', True), ('localhost', False), ('127.0.0.1.example', False),
+    ('192.0.2.1', False), ('127.1', False)])
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_guarded_numeric_loopback_has_no_ambient_proxy(monkeypatch, host, direct, cancelled):
+    import urllib.request
+    from types import SimpleNamespace
+
+    from poolhouse import http
+
+    seen, guarded = [], []
+    control = object() if cancelled else None
+    monkeypatch.setattr(http.http_cancel, 'active', lambda: control)
+    monkeypatch.setattr(http.http_cancel, 'handlers', lambda *_: [])
+    monkeypatch.setattr(urllib.request, 'build_opener', lambda *handlers:
+                        SimpleNamespace(open=lambda *_args, **_kwargs: seen.extend(handlers)))
+    url = f'https://{host}:16443/status'
+    http._open(http.build_request(url), 1, lambda value: guarded.append(value) or value)
+    proxy = [handler for handler in seen if isinstance(handler, urllib.request.ProxyHandler)]
+    assert bool(proxy) is direct
+    assert not proxy or proxy[0].proxies == {}
+    assert guarded == ([url] if direct else [])
+
+
+def test_unguarded_loopback_keeps_the_default_opener(monkeypatch):
+    import urllib.request
+
+    from poolhouse import http
+
+    seen = []
+    monkeypatch.setattr(urllib.request, 'urlopen', lambda request, **kwargs: seen.append(request.full_url))
+    http._open(urllib.request.Request('http://127.0.0.1/status'), 1, None)
+    assert seen == ['http://127.0.0.1/status']
+
+
+def test_loopback_initial_guard_refusal_precedes_networking(monkeypatch):
+    import urllib.request
+
+    from poolhouse import http
+
+    def network(*_args, **_kwargs):
+        pytest.fail('a rejected destination reached the opener')
+    def refuse(_url):
+        raise Refused('destination changed')
+    monkeypatch.setattr(urllib.request, 'build_opener', network)
+    with pytest.raises(Refused, match='destination changed'):
+        http._open(urllib.request.Request('http://127.0.0.1/status'), 1, refuse)
+
+
+def test_guarded_loopback_reaches_local_server_without_ambient_proxy(monkeypatch):
+    import threading
+    from http.server import BaseHTTPRequestHandler
+
+    from poolhouse import http
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'local')
+        def log_message(self, *_args):
+            pass
+    server = Server(('127.0.0.1', 0), Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    monkeypatch.setenv('http_proxy', 'http://127.0.0.1:9')
+    monkeypatch.setenv('HTTP_PROXY', 'http://127.0.0.1:9')
+    monkeypatch.setenv('no_proxy', '')
+    monkeypatch.setenv('NO_PROXY', '')
+    url = f'http://127.0.0.1:{server.server_port}/status'
+    try:
+        assert http.request_bytes(url, options=http.Options(timeout=1, guard=lambda value: value)).body == b'local'
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(2)
+
+
+def test_loopback_direct_opener_still_refuses_a_remote_redirect():
+    from poolhouse import http
+
+    url = 'http://127.0.0.1/status'
+    def exact(value):
+        if value != url:
+            raise Refused('destination changed')
+        return value
+    with pytest.raises(Refused, match='destination changed'):
+        http._Guarded(exact).redirect_request(http.build_request(url), None, 302,
+                                             'Found', {}, 'http://192.0.2.1/status')
+
+
+def test_request_options_snapshot_headers_and_hide_secrets():
+    from dataclasses import FrozenInstanceError
+    from typing import Any, cast
+
+    from poolhouse.http import Options
+
+    headers = {'Authorization': 'Bearer private-header'}
+    options = Options(headers=headers, token='private-token')
+    headers['Authorization'] = 'replacement'
+    assert options.headers['Authorization'] == 'Bearer private-header'
+    with pytest.raises(TypeError):
+        cast(Any, options.headers)['Authorization'] = 'replacement'
+    with pytest.raises(FrozenInstanceError):
+        cast(Any, options).timeout = 1
+    assert 'private-header' not in repr(options) and 'private-token' not in repr(options)
+
+
+@pytest.mark.parametrize('entry', ['open_stream', 'request_bytes', 'request_json'])
+def test_request_entry_default_delivery_options(entry):
+    import inspect
+
+    from poolhouse import http
+
+    default = inspect.signature(getattr(http, entry)).parameters['options'].default
+    assert default.timeout == 180.0 and default.token == '' and dict(default.headers) == {}
+    assert default.guard is None
+    assert default.retry == http.Retry(tries=1, backoff=0.5, when_unreachable=True)
+
+
+def test_json_options_preserve_authenticated_headers_payload_and_retry(monkeypatch):
+    from poolhouse import http
+
+    seen = []
+    def reply(url, *, data, method, options):
+        seen.append((url, data, method, options))
+        return http.Reply(200, b'{"accepted":true}', {})
+    monkeypatch.setattr(http, 'request_bytes', reply)
+    def guard(value):
+        return value
+    options = http.Options(headers={'Authorization': 'Bearer explicit', 'X-Check': 'yes'},
+                           token='token-value', timeout=None,
+                           retry=http.Retry(tries=3, backoff=0.25), guard=guard)
+    assert http.request_json('http://127.0.0.1/request', payload={'value': 1},
+                             method='PUT', options=options) == {'accepted': True}
+    url, body, method, forwarded = seen[0]
+    assert url == 'http://127.0.0.1/request' and body == b'{"value": 1}' and method == 'PUT'
+    assert forwarded.token == options.token and forwarded.timeout is None
+    assert forwarded.retry == options.retry and forwarded.guard is guard
+    assert dict(forwarded.headers) == {'Content-Type': 'application/json', **options.headers}
+    assert 'Content-Type' not in options.headers

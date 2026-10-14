@@ -5,6 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from poolhouse.fleet import join as joining
+from poolhouse.fleet.join_request import JoinHooks, JoinRequest
+from poolhouse.fleet.onboard.joining import JoinOptions
 
 
 @pytest.fixture
@@ -26,9 +28,7 @@ def test_no_passphrase_uses_automatic_pool_without_enrollment(
     monkeypatch.setattr(automatic_pools, "ensure",
                         lambda path, **kw: asked.append((path, kw)) or member)
     key = tmp_path / "pool.key"
-    joined = joining.join_machine(root=tmp_path, pool_key_path=key, port=9123,
-                                  mode=mode, say=lambda text: None,
-                                  enrol=lambda *a: pytest.fail("automatic enrollment used a passphrase"))
+    joined = joining.join_machine(request=JoinRequest(root=tmp_path, pool_key_path=key, port=9123, admission=JoinOptions(mode=mode, timeout_s=2.0)), hooks=JoinHooks(say=lambda text: None, enrol=lambda *a: pytest.fail("automatic enrollment used a passphrase")))
     assert joined.group == "orchard" and joined.mode == actual
     assert asked == [(key, {"mode": mode, "port": 9124})]
     assert not joined.started
@@ -40,7 +40,7 @@ def test_automatic_pool_uses_explicit_discovery_port(isolated_join, monkeypatch,
     asked = []
     monkeypatch.setattr(automatic_pools, "ensure", lambda path, **kw:
                         asked.append(kw) or SimpleNamespace(group="orchard", mode="dev"))
-    joining.join_machine(root=tmp_path, discovery_port=9456, say=lambda text: None)
+    joining.join_machine(request=JoinRequest(root=tmp_path, admission=JoinOptions(port=9456, timeout_s=2.0)), hooks=JoinHooks(say=lambda text: None))
     assert asked[0]["port"] == 9456
 
 
@@ -52,9 +52,7 @@ def test_passphrase_enrollment_preserves_selected_mode(isolated_join, monkeypatc
     asked = []
     monkeypatch.setattr(joining, "join_by_passphrase", lambda *a, **kw: asked.append((a, kw)))
     monkeypatch.setattr(joining, "memberships", lambda path: [])
-    joined = joining.join_machine(root=tmp_path, passphrase="quince larch marlow",
-                                  group="orchard", mode=mode, timeout_s=.25, discovery_port=1234, start=lambda *a: 42,
-                                  say=lambda text: None)
+    joined = joining.join_machine(request=JoinRequest(root=tmp_path, passphrase="quince larch marlow", group="orchard", admission=JoinOptions(mode=mode, timeout_s=.25, port=1234)), hooks=JoinHooks(start=lambda *a: 42, say=lambda text: None))
     assert asked[0][1]["options"].mode == mode
     assert asked[0][1]["options"].timeout_s == .25
     assert asked[0][1]["options"].port == 1234
@@ -78,8 +76,8 @@ def test_no_argument_terminal_does_not_prompt_or_read_stdin(monkeypatch, tmp_pat
     asked = []
     monkeypatch.setattr(joining, "join_machine", lambda **kw: asked.append(kw) or joining.Joined(name="larch", port=1, root=tmp_path, group=""))
     assert joining.main(["--root", str(tmp_path), "join"]) == 0
-    assert asked[0]["passphrase"] == "" and asked[0]["group"] == ""
-    assert asked[0]["mode"] is None
+    assert asked[0]["request"].passphrase == "" and asked[0]["request"].group == ""
+    assert asked[0]["request"].admission.mode is None
 
 
 def test_automatic_admission_finishes_before_first_daemon_start(isolated_join, monkeypatch,
@@ -91,8 +89,7 @@ def test_automatic_admission_finishes_before_first_daemon_start(isolated_join, m
     monkeypatch.setattr(joining, "wait_for_health", lambda *a, **kw: {})
     monkeypatch.setattr(automatic_pools, "ensure", lambda *a, **kw:
                         events.append("admitted") or SimpleNamespace(group="orchard", mode="dev"))
-    joined = joining.join_machine(root=tmp_path, say=lambda text: None,
-                                  start=lambda *a: events.append("started") or 42)
+    joined = joining.join_machine(request=JoinRequest(root=tmp_path), hooks=JoinHooks(say=lambda text: None, start=lambda *a: events.append("started") or 42))
     assert events == ["admitted", "started"]
     assert joined.started and joined.daemon_pid == 42
 
@@ -106,5 +103,4 @@ def test_automatic_admission_failure_does_not_start_daemon(isolated_join, monkey
 
     monkeypatch.setattr(automatic_pools, "ensure", refuse)
     with pytest.raises(DiscoveryError, match="explicitly admitted"):
-        joining.join_machine(root=tmp_path, mode="prod", say=lambda text: None,
-                             start=lambda *a: pytest.fail("started before admission"))
+        joining.join_machine(request=JoinRequest(root=tmp_path, admission=JoinOptions(mode="prod", timeout_s=2.0)), hooks=JoinHooks(say=lambda text: None, start=lambda *a: pytest.fail("started before admission")))

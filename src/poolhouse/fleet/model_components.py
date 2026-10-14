@@ -160,9 +160,9 @@ def catalogue(models, name: str, source: str = "", key: bytes | None = None) -> 
     repo, _ = _reference(source)
     policy = models.sources()
     if key is not None and policy in {"lan", "both"}:
-        from .remote import Member, MemberError
+        from .remote import Discovery, Member, MemberError
 
-        for member in Member.discover(key=key, timeout_s=1):
+        for member in Member.discover(discovery=Discovery(key=key, timeout_s=1)):
             try:
                 for held in member.models():
                     same = _reference(held.get("source", "")) == _reference(source) if source else held.get("name") == name

@@ -12,7 +12,7 @@
 
 [ratchet]
 uncovered = 52
-partial = 194
+partial = 193
 
 [[group]]
 match = ["spawn:workspace/codex_hooks.py:run"]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from poolhouse.http import ServerError, request_json
+from poolhouse.http import Options, ServerError, request_json
 
 from . import launch_secret
 from .launch_secret import HEADER, LaunchError
@@ -23,9 +23,7 @@ def ticket_url(root: Path | None = None) -> str:
     if not 0 < port < 65536:
         raise LaunchError("the recorded daemon has no port")
     try:
-        got = request_json(f"http://127.0.0.1:{port}/ui/launch/ticket", payload={}, method="POST",
-                           headers={"X-Poolhouse-UI": "1", HEADER: str(record["secret"])},
-                           timeout=TIMEOUT_S)
+        got = request_json(f"http://127.0.0.1:{port}/ui/launch/ticket", payload={}, method="POST", options=Options(headers={"X-Poolhouse-UI": "1", HEADER: str(record["secret"])}, timeout=TIMEOUT_S))
     except ServerError as error:
         raise LaunchError(f"the daemon on port {port} refused a launch ticket: {error}") from error
     if not isinstance(got, dict) or not isinstance(got.get("ticket"), str):

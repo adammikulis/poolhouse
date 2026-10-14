@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from time import monotonic
 
-from poolhouse.http import ServerError, request_bytes
+from poolhouse.http import Options, ServerError, request_bytes
 
 __all__ = ["Block", "Ledger", "Speculative", "counting", "read_speculative", "sampling_named"]
 
@@ -118,7 +118,7 @@ def read_speculative(base_url: str, *, timeout: float = 5.0,
     older than the counters, and a server with no draft head.
     """
     try:
-        reply = request_bytes(f"{base_url.rstrip('/')}{METRICS_PATH}", timeout=timeout, guard=guard)
+        reply = request_bytes(f"{base_url.rstrip('/')}{METRICS_PATH}", options=Options(timeout=timeout, guard=guard))
     except (ServerError, OSError):
         return None
     return _parse(reply.body.decode("utf-8", "replace"))

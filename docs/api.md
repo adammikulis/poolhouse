@@ -261,6 +261,24 @@ Two `up`s of one shape share one server; the server stops when its last lease go
 | `ph.hub.located(name)` | The local file a model name stands for, or `None`. |
 | `ph.hub.hub_cache()` | The Hub cache folder. |
 
+## Internal HTTP requests
+
+`poolhouse.http` is an internal module. Its `open_stream`, `request_bytes` and `request_json`
+functions take an immutable `Options` value for headers, token, timeout, retry and destination guard.
+The default timeout is 180 seconds with one attempt. Headers are copied when options are created;
+headers, tokens and guards are omitted from their representation.
+
+```python
+from poolhouse.http import Options, Retry, request_json
+
+answer = request_json(url, options=Options(timeout=10, retry=Retry(tries=2)))
+```
+
+A guarded request to a numeric loopback address bypasses ambient proxies and checks its initial
+address and redirects with the supplied guard. Other requests retain their normal proxy behavior.
+Member requests use the member's own token. Embedding requests use the same options type, with a
+60-second timeout and three attempts by default.
+
 ## Planned
 
 These are designed, not built; they do not exist and importing them fails. Each is listed with the shape it will

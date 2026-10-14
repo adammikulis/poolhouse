@@ -282,8 +282,8 @@ def test_watching_reclaims_in_the_background_until_the_block_ends():
     stopped = []
     with reclaimer.watching(older_than=1, every=0.05,
                             idleness=watcher_over({8100: 900.0}),
-                            servers=lambda: dict(held),
-                            stop=lambda p, e: stopped.append(p) or True) as done:
+                            hooks=reclaimer.WatchHooks(servers=lambda: dict(held),
+                            stop=lambda p, e: stopped.append(p) or True)) as done:
         for _ in range(100):
             if stopped:
                 break

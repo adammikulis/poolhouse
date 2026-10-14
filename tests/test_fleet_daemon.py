@@ -30,7 +30,7 @@ from poolhouse.fleet.files import DIGEST_HEADER, safe_relpath
 from poolhouse.fleet.jobs import DaemonError, JobRunner
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.settings import Settings
-from poolhouse.http import Server, ServerError, request_bytes
+from poolhouse.http import Options, Server, ServerError, request_bytes
 from tests.pool_support import any_command, join_pool_by_passphrase
 
 
@@ -271,13 +271,12 @@ def test_upload_cannot_escape_the_file_root(daemon, tmp_path):
 # -- file transfer: memory must not track file size ----------------------
 def _peak_rss_mb(fn):
     """Run fn while sampling this process's RSS. Returns (result, delta_MB)."""
-    import subprocess
     import threading
 
+    import psutil
+
     def rss_mb() -> float:
-        out = subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
-                             capture_output=True, text=True).stdout.strip()
-        return int(out) / 1024
+        return psutil.Process(os.getpid()).memory_info().rss / 2**20
 
     base = rss_mb()
     peak = [base]
@@ -371,7 +370,7 @@ def test_an_explicit_range_end_is_honoured(daemon, tmp_path):
     client, _root, files, _ = daemon
     (files / "r.bin").write_bytes(bytes(range(256)))
     status, body, _ = client._request("GET", "/files/r.bin",
-                                      headers={"Range": "bytes=10-19"})
+                                      options=Options(headers={"Range": "bytes=10-19"}))
     assert status == 206
     assert body == bytes(range(10, 20)), f"got {len(body)} bytes"
 
@@ -380,7 +379,7 @@ def test_a_suffix_range_is_refused_rather_than_mis_served(daemon):
     client, _root, files, _ = daemon
     (files / "s.bin").write_bytes(b"abcdefghij")
     with pytest.raises(MemberError, match="suffix ranges"):
-        client._request("GET", "/files/s.bin", headers={"Range": "bytes=-5"})
+        client._request("GET", "/files/s.bin", options=Options(headers={"Range": "bytes=-5"}))
 
 
 # -- integrity -----------------------------------------------------------
@@ -399,11 +398,11 @@ def test_an_upload_that_does_not_match_its_digest_is_discarded(daemon, tmp_path)
     client, _root, files, _ = daemon
     payload = b"the real payload" * 64
     with pytest.raises(MemberError, match="checksum mismatch"):
-        client._request("PUT", "/files/bad.bin", data=payload, headers={
+        client._request("PUT", "/files/bad.bin", data=payload, options=Options(headers={
             "Content-Range": f"bytes 0-{len(payload)-1}/{len(payload)}",
             "X-Poolhouse-Complete": "1",
             "X-Poolhouse-SHA256": "00" * 32,
-        })
+        }))
     assert not (files / "bad.bin").exists(), "a rejected upload must leave nothing"
     assert not (files / "bad.bin.part").exists(), \
         "the partial must go too: resuming from corrupt bytes keeps them forever"
@@ -412,11 +411,11 @@ def test_an_upload_that_does_not_match_its_digest_is_discarded(daemon, tmp_path)
 def test_a_correct_digest_on_upload_is_accepted(daemon, tmp_path):
     client, _root, files, _ = daemon
     payload = b"the real payload" * 64
-    status, body, _ = client._request("PUT", "/files/good.bin", data=payload, headers={
+    status, body, _ = client._request("PUT", "/files/good.bin", data=payload, options=Options(headers={
         "Content-Range": f"bytes 0-{len(payload)-1}/{len(payload)}",
         "X-Poolhouse-Complete": "1",
         "X-Poolhouse-SHA256": hashlib.sha256(payload).hexdigest().upper(),
-    })
+    }))
     assert status == 200, body
     assert (files / "good.bin").read_bytes() == payload
 
@@ -588,8 +587,8 @@ def test_resuming_an_upload_whose_part_vanished_is_refused(daemon, tmp_path):
     client, _root, files, _token = daemon
     with pytest.raises(MemberError) as exc:
         client._request("PUT", "/files/gap.bin", data=b"tail",
-                        headers={"Content-Range": "bytes 4096-4099/4100",
-                                 "X-Poolhouse-Complete": "1"})
+                        options=Options(headers={"Content-Range": "bytes 4096-4099/4100",
+                                 "X-Poolhouse-Complete": "1"}))
     assert "416" in str(exc.value)
     assert "resume" in str(exc.value)
     assert not (files / "gap.bin.part").exists()
@@ -1098,9 +1097,9 @@ def test_job_reads_refuse_unknown_or_traversing_identifiers(daemon, path):
     secret = b"private-job-boundary-fixture"
     (root.parent / "private.txt").write_bytes(secret)
     with pytest.raises(ServerError) as refused:
-        request_bytes(client.base_url + path, token=token, timeout=2)
+        request_bytes(client.base_url + path, options=Options(token=token, timeout=2))
     assert refused.value.status in (400, 403, 404)
     assert secret.decode() not in refused.value.body
     with pytest.raises(ServerError) as unsigned:
-        request_bytes(client.base_url + path, timeout=2)
+        request_bytes(client.base_url + path, options=Options(timeout=2))
     assert unsigned.value.status == 401
