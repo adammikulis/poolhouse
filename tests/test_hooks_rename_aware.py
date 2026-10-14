@@ -34,6 +34,8 @@ class Repo:
         self.env.pop("CLAUDECODE", None)
         root.mkdir()
         self.git("init", "-q", "-b", "0.3dev")
+        for name in ("glossary-rules.toml", "glossary-allowlist.toml"):
+            self.write(f"contracts/{name}", (REPO / "contracts" / name).read_text())
 
     def git(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(["git", *args], cwd=self.root, env=self.env, text=True,

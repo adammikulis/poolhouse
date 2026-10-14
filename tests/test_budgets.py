@@ -104,8 +104,15 @@ def test_a_checker_that_cannot_run_here_names_a_metric_with_a_budget() -> None:
         assert reason, f"{name} skipped with no reason"
 
 
+def _policy_fixture(root: Path) -> None:
+    (root / "contracts").mkdir(exist_ok=True)
+    for name in ("glossary-rules.toml", "glossary-allowlist.toml"):
+        (root / "contracts" / name).write_text((REPO / "contracts" / name).read_text())
+
+
 def test_findings_are_named_relative_to_the_tree_they_were_found_in(tmp_path) -> None:
     """The hook plants staged files under a temporary root and matches paths by name."""
+    _policy_fixture(tmp_path)
     where = tmp_path / "src" / "poolhouse"
     where.mkdir(parents=True)
     (where / "sample.py").write_text(
@@ -130,6 +137,7 @@ def test_the_hook_counts_what_a_commit_deletes(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     run("config", "user.email", "nobody@example.invalid")
     run("config", "user.name", "A Tester")
+    _policy_fixture(tmp_path)
     src = tmp_path / "src" / "poolhouse"
     src.mkdir(parents=True)
     (src / "leaving.py").write_text('def a():\n    print("one")\n    print("two")\n')
@@ -161,13 +169,14 @@ def test_the_hook_leaves_a_merge_to_the_landing_gate_and_counts_an_ordinary_comm
     run("init", "-q", "-b", "main")
     run("config", "user.email", "nobody@example.invalid")
     run("config", "user.name", "A Tester")
+    _policy_fixture(tmp_path)
     src = tmp_path / "src" / "poolhouse"
     src.mkdir(parents=True)
     (src / "base.py").write_text("def b():\n    return 1\n")
     (tmp_path / "budgets.json").write_text('{"print-calls": 0}\n')
     (tmp_path / "pyproject.toml").write_text(
         (REPO / "pyproject.toml").read_text(encoding="utf-8"), encoding="utf-8")
-    run("add", "src/poolhouse/base.py", "budgets.json", "pyproject.toml")
+    run("add", "src/poolhouse/base.py", "budgets.json", "pyproject.toml", "contracts/glossary-rules.toml", "contracts/glossary-allowlist.toml")
     run("commit", "-qm", "base", "--no-verify")
     run("checkout", "-q", "-b", "side")
     (src / "noisy.py").write_text('def n():\n    print("x")\n')
