@@ -23,7 +23,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import harnessing, serverkeys
+from poolhouse import agent_hooks, harnessing, serverkeys
 from poolhouse.chatpolicy import READ_ONLY
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.log import say
@@ -40,10 +40,10 @@ def _q(text: str) -> str:
     return json.dumps(text, ensure_ascii=True)
 
 
-def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, float]) -> str:
+def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, float], *, assigned: str = "") -> str:
     """The ``config.toml`` for one run: provider, window, and the (pre, post, wait) hooks. Same
     input, same bytes."""
-    pre, post, wait = hooks
+    pre, _post, wait = hooks
     lines = [
         f"model = {_q(alias)}",
         f"model_provider = {_q(PROVIDER)}",
@@ -62,10 +62,8 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
         "", "[[hooks.PreToolUse]]", 'matcher = ".*"',
         "", "[[hooks.PreToolUse.hooks]]", 'type = "command"', f"command = {_q(pre)}",
         f"timeout = {int(wait) + 30}", 'statusMessage = "poolhouse: checking the call"',
-        "", "[[hooks.PostToolUse]]", 'matcher = ".*"',
-        "", "[[hooks.PostToolUse.hooks]]", 'type = "command"', f"command = {_q(post)}", "timeout = 10",
     ]
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n" + agent_hooks.codex_hooks(True, False, assigned)
 
 
 def policy_flags(role: str) -> list[str]:
@@ -152,8 +150,9 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     binary, *extra = command
     try:
         with harnessing.opened(args, "codex", served, say) as run:
-            path = run.files.write("config.toml", config_toml(base_url, alias, window,
-                                    (run.pre, run.post, harnessing.WAIT_S)) + workspace_config(run.session))
+            config = config_toml(base_url, alias, window, (run.pre, run.post, harnessing.WAIT_S),
+                                 assigned=run.session.name)
+            path = run.files.write("config.toml", config + workspace_config(run.session))
             extra_brief = "" if run.session.managed_inbox else (
                 "\nUse the workspace MCP tools for inbox/send/thread/claim. They already carry your "
                 "assigned identity; never use shell workspace commands inside the coding sandbox.\n")

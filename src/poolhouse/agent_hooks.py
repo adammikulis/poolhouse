@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import tomllib
 from pathlib import Path
@@ -12,14 +13,16 @@ from pathlib import Path
 from poolhouse import agent_hooks_stale, home
 from poolhouse.checks import Finding
 
-__all__ = ["AGENTS", "findings", "install", "install_report", "paths", "remove_stale", "removed_lines"]
+__all__ = ["AGENTS", "codex_hooks", "findings", "install", "install_report", "paths", "remove_stale", "removed_lines"]
 
 AGENTS = ("claude-code", "codex")
 IDS = {"claude-code": "claude", "codex": "codex"}
 BINARY = "poolhouse-workspace"
-OWN = (f"{BINARY} nudge", "claude-nudge.sh")
+OWN = (f"{BINARY} nudge", "claude-nudge.sh", "poolhouse.codex_lifecycle", "poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop")
 CLAUDE_EVENTS = (("PostToolUse", "post", "*"), ("Stop", "stop", ""), ("UserPromptSubmit", "prompt", ""))
-CODEX_EVENTS = (("PostToolUse", "post", ".*"), ("Stop", "stop", ""), ("UserPromptSubmit", "prompt", ""))
+CODEX_EVENTS = tuple((event, event, ".*" if event not in ("Stop", "UserPromptSubmit") else "")
+                     for event in ("SessionStart", "SubagentStart", "SubagentStop", "SessionEnd",
+                                   "PostToolUse", "Stop", "UserPromptSubmit"))
 FIX = f"{BINARY} install-hooks"
 BEGIN = "# >>> poolhouse nudge hooks (managed) >>>"
 END = "# <<< poolhouse nudge hooks <<<"
@@ -32,6 +35,8 @@ _TABLE = re.compile(r"(?m)^\[")
 
 def command(agent: str, hook: str) -> str:
     """The command an ``agent``'s ``hook`` event runs."""
+    if agent == "codex":
+        return "poolhouse-workspace codex-hook"
     return f"{BINARY} nudge --agent {agent} --hook {hook}"
 
 
@@ -86,34 +91,50 @@ def _enable_hooks(text: str) -> tuple[str, bool]:
     return text[:head.end()] + section + text[stop:], False
 
 
-def _codex_block(agent: str, with_post: bool, with_features: bool) -> str:
+def codex_hooks(with_post: bool = True, with_features: bool = False, assigned: str = "") -> str:
     out = [BEGIN]
     if with_features:
         out += ["[features]", "hooks = true", ""]
     for event, hook, matcher in CODEX_EVENTS:
-        if hook == "post" and not with_post:
+        if event == "PostToolUse" and not with_post:
             continue
         out += [f"[[hooks.{event}]]", *([f'matcher = "{matcher}"'] if matcher else []), "",
-                f"[[hooks.{event}.hooks]]", 'type = "command"', f'command = "{command(IDS[agent], hook)}"',
-                "timeout = 30", *(["additionalContextLimit = 4000"] if hook == "post" else []), ""]
+                f"[[hooks.{event}.hooks]]", 'type = "command"', f'command = "{command("codex", hook)}{" --assigned " + assigned if assigned else ""}"',
+                "timeout = 5", "additionalContextLimit = 4000", ""]
+        if event == "Stop":
+            out += [f"[[hooks.{event}.hooks]]", 'type = "command"',
+                    f'command = "poolhouse-workspace codex-stop{" --assigned " + assigned if assigned else ""}"',
+                    "timeout = 5", ""]
     return "\n".join([*out[:-1], END]) + "\n"
 
 
+
+def _owned_codex_post(line: str) -> bool:
+    if any(char in line for char in ';|&<>$`'):
+        return False
+    try:
+        words = shlex.split(line)
+    except ValueError:
+        return False
+    if len(words) < 4 or not re.fullmatch(r'python(?:3(?:\.\d+)?)?', Path(words[0]).name):
+        return False
+    if words[1:4] != ['-m', *CODEX_OTHER_POST.split()]:
+        return False
+    tail = words[4:]
+    return len(tail) % 2 == 0 and all(key in ('--role', '--agent', '--root', '--protect', '--wait') for key in tail[::2])
+
 def install_codex(config: Path) -> list[str]:
-    """Write the UserPromptSubmit and Stop nudge hooks, and PostToolUse unless the launcher's hook
-    already nudges, into Codex's ``config``, replacing earlier nudge hooks and keeping every other
-    setting; returns the events written."""
+    """Write native lifecycle hooks, replacing Poolhouse notifications and preserving other settings."""
     text = config.read_text() if config.exists() else ""
     base = _NOTIFY.sub("", _MANAGED.sub("\n", text)).rstrip("\n")
     base, with_features = _enable_hooks(base)
-    others = tomllib.loads(base).get("hooks", {}).get("PostToolUse", []) if base.strip() else []
-    with_post = not any(CODEX_OTHER_POST in h.get("command", "") for g in others for h in g.get("hooks", []))
-    new = (base + "\n\n" if base else "") + _codex_block("codex", with_post, with_features)
+    base, _ = agent_hooks_stale._codex(base, _owned_codex_post, "PostToolUse")
+    new = (base + "\n\n" if base else "") + codex_hooks(True, with_features)
     tomllib.loads(new)
     if new != text:
         config.parent.mkdir(parents=True, exist_ok=True)
         config.write_text(new)
-    return [event for event, hook, _ in CODEX_EVENTS if with_post or hook != "post"]
+    return [event for event, _, _ in CODEX_EVENTS]
 
 
 def install(only: tuple[str, ...] = AGENTS, where: dict[str, Path] | None = None) -> dict[str, list[str]]:
@@ -162,11 +183,10 @@ def _problems(agent: str, data: dict, events: tuple[tuple[str, str, str], ...]) 
     out = []
     for event, hook, _ in events:
         have = [c for c in _commands(hooks.get(event)) if _own(c)]
-        if agent == "codex" and hook == "post" and any(CODEX_OTHER_POST in c for c in _commands(hooks.get(event))):
-            continue
         if not have:
             out.append(f"{event} missing")
-        elif have != [command(IDS[agent], hook)]:
+        elif have != ([command(IDS[agent], hook), "poolhouse-workspace codex-stop"]
+                      if agent == "codex" and event == "Stop" else [command(IDS[agent], hook)]):
             out.append(f"{event} stale")
     if agent == "codex" and (data.get("features") or {}).get("hooks") is not True:
         out.append("the hooks feature is off")

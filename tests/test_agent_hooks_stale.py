@@ -94,8 +94,8 @@ def test_install_hooks_removes_the_stale_codex_entries_and_keeps_the_rest(machin
     args = argparse.Namespace(settings="", codex_config=str(path), only=["codex"], agent="")
     assert hooks_cli.install(args) == 0
     data = tomllib.loads(path.read_text())
-    assert commands(data, "Stop") == ["keep-me", "poolhouse-workspace nudge --agent codex --hook stop"]
-    assert commands(data, "PostToolUse") == ["poolhouse-workspace nudge --agent codex --hook post"]
+    assert commands(data, "Stop") == ["keep-me", "poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop"]
+    assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
     assert data["agents"] == {"max_threads": 4} and "ml_stack" not in path.read_text()
     assert len(list(machine.glob("c.toml.bak-*"))) == 1
 

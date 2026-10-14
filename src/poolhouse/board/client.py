@@ -49,10 +49,13 @@ def _error(reply: dict[str, Any]) -> NodeError:
 class Client:
     """One node, reached on its socket; the node is started first when the socket is dead."""
 
-    def __init__(self, state: Path | None = None, *, person: Callable[[str, dict[str, Any]], str] | None = None) -> None:
+    def __init__(self, state: Path | None = None, *, person: Callable[[str, dict[str, Any]], str] | None = None,
+                 autostart: bool = True, timeout: float = 660.0) -> None:
         self.state = state or node_launch.default_state()
         self.requests = 0
         self.person = person
+        self.autostart = autostart
+        self.timeout = timeout
         """For a client a person is running: asked with the token and what a refusal named, it returns the token to send the request again
         with once the person's key allowed it (an empty string when it did not)."""
 
@@ -80,11 +83,12 @@ class Client:
         return reply["result"]
 
     def _exchange(self, request: dict[str, Any]) -> dict[str, Any]:
-        node_launch.ensure_node(self.state)
+        if self.autostart:
+            node_launch.ensure_node(self.state)
         body = json.dumps(request).encode()
         if len(body) > MAX_FRAME:
             raise Quota("quota", "the request is larger than a frame may be")
-        got = json.loads(exchange(self.state, body, 660.0))
+        got = json.loads(exchange(self.state, body, self.timeout))
         if not isinstance(got, dict):
             raise ValueError("the node answered with something that is not a JSON object")
         return got

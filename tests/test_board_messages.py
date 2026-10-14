@@ -360,5 +360,7 @@ def test_hook_snippet_prints_the_setting_and_writes_nothing(team):
     out = team.cli("hook-snippet", "claude-code", "--agent", "bob").stdout
     assert '"PostToolUse"' in out and "nudge --agent bob --hook post" in out
     assert '"Stop"' in out and '"UserPromptSubmit"' in out
-    assert "nudge --agent bob --hook stop" in team.cli("hook-snippet", "codex", "--agent", "bob").stdout
+    out = team.cli("hook-snippet", "codex", "--agent", "bob").stdout
+    assert "poolhouse-workspace codex-hook" in out and "[[hooks.SubagentStart]]" in out
+    assert "--agent bob" not in out
     assert files() == before

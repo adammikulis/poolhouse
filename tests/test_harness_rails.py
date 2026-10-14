@@ -253,7 +253,8 @@ class TestCodex:
         assert got["features"]["hooks"] is True
         assert got["features"]["code_mode"]["direct_only_tool_namespaces"] == ["mcp__workspace"]
         assert got["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "PRE"
-        assert got["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "POST"
+        assert got["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "poolhouse-workspace codex-hook"
+        assert "SessionStart" in got["hooks"] and "SubagentStart" in got["hooks"]
         assert text == codex.config_toml("http://127.0.0.1:8080/", "qwen", 262144, ("PRE", "POST", 300.0))
 
     def test_the_role_sets_codexs_own_sandbox_and_approval(self):

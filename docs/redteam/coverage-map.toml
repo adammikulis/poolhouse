@@ -15,6 +15,23 @@ uncovered = 52
 partial = 194
 
 [[group]]
+match = ["spawn:workspace/codex_hooks.py:run"]
+status = "covered"
+count = 1
+tests = ["tests/test_codex_lifecycle.py::test_hostile_worker_arguments_are_single_argv_values_with_deadline",
+         "tests/test_codex_lifecycle.py::test_stopped_daemon_warns_quickly_and_does_not_block_or_restart"]
+note = "Native event JSON travels on stdin; launcher-bound names remain individual argv values, no shell runs, worker time is bounded, notices remain advisory and completion failures block."
+
+[[group]]
+match = ["parser:workspace/codex_hooks.py", "parser:workspace/codex_native.py"]
+status = "covered"
+count = 2
+tests = ["tests/test_codex_lifecycle.py::test_warning_redacts_credentials_and_malformed_event_is_advisory",
+         "tests/test_codex_lifecycle.py::test_spoofed_parent_field_and_native_header_id_are_refused",
+         "tests/test_codex_lifecycle.py::test_native_header_symlink_or_other_writable_file_is_refused"]
+note = "Malformed hook objects stay advisory; native header identity, parent provenance and file ownership must match before registration."
+
+[[group]]
 match = ["spawn:fleet/shard_run.py:checkout", "spawn:platform.py:start_grouped"]
 status = "covered"
 count = 2

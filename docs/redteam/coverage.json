@@ -1,7 +1,7 @@
 {
- "surfaces": 806,
+ "surfaces": 809,
  "by_status": {
-  "covered": 483,
+  "covered": 486,
   "partial": 194,
   "uncovered": 52,
   "n/a": 77,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 74,
+   "covered": 76,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 89,
+   "covered": 90,
    "partial": 58,
    "uncovered": 0,
    "n/a": 3,
@@ -6479,6 +6479,34 @@
    "note": "Fleet and exact registered local projects delegate to the maintained person-only Board parser; HTTP and HTTPS exact browser origins, membership, visible acknowledgements, malformed and oversized bodies, missing UI authority, foreign projects and agent owner credentials are exercised without identity creation"
   },
   {
+   "id": "parser:workspace/codex_hooks.py",
+   "kind": "parser",
+   "source": "workspace/codex_hooks.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_codex_lifecycle.py::test_warning_redacts_credentials_and_malformed_event_is_advisory",
+    "tests/test_codex_lifecycle.py::test_spoofed_parent_field_and_native_header_id_are_refused",
+    "tests/test_codex_lifecycle.py::test_native_header_symlink_or_other_writable_file_is_refused"
+   ],
+   "note": "Malformed hook objects stay advisory; native header identity, parent provenance and file ownership must match before registration."
+  },
+  {
+   "id": "parser:workspace/codex_native.py",
+   "kind": "parser",
+   "source": "workspace/codex_native.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_codex_lifecycle.py::test_warning_redacts_credentials_and_malformed_event_is_advisory",
+    "tests/test_codex_lifecycle.py::test_spoofed_parent_field_and_native_header_id_are_refused",
+    "tests/test_codex_lifecycle.py::test_native_header_symlink_or_other_writable_file_is_refused"
+   ],
+   "note": "Malformed hook objects stay advisory; native header identity, parent provenance and file ownership must match before registration."
+  },
+  {
    "id": "parser:workspace/coding_routes.py",
    "kind": "parser",
    "source": "workspace/coding_routes.py",
@@ -11069,6 +11097,19 @@
     "tests/test_workspace_backlog.py::test_repository_rejects_traversal_owner_in_origin"
    ],
    "note": "Origin URLs are read with a fixed argv, timeout and checkout directory; hostile URL syntax does not become a repository"
+  },
+  {
+   "id": "spawn:workspace/codex_hooks.py:run",
+   "kind": "spawn",
+   "source": "workspace/codex_hooks.py:run",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_codex_lifecycle.py::test_hostile_worker_arguments_are_single_argv_values_with_deadline",
+    "tests/test_codex_lifecycle.py::test_stopped_daemon_warns_quickly_and_does_not_block_or_restart"
+   ],
+   "note": "Native event JSON travels on stdin; launcher-bound names remain individual argv values, no shell runs, worker time is bounded, notices remain advisory and completion failures block."
   },
   {
    "id": "spawn:workspace/integration_git.py:ancestor",
