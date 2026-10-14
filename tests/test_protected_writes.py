@@ -84,6 +84,20 @@ WRITES_A_GUARD = [
     "git -C . checkout -- .claude/settings.json",
     "find scripts/hooks -name pre-push -delete",
     "find .claude -type f -exec rm {} \\;",
+    "find . -name '*.json' -delete",
+    "find . -delete",
+    "chmod -R 000 .",
+    "chmod -x scripts/hooks/pre-push",
+    "chmod 000 .claude/settings.json",
+    "rm -rf .",
+    "rm -r scripts",
+    "cp /tmp/pre-push scripts/hooks/",
+    "cp -t scripts/hooks /tmp/pre-push",
+    "git checkout origin/dev -- .",
+    "git restore --source=HEAD~3 .",
+    "git restore -s origin/dev scripts",
+    "git rm -r scripts/hooks",
+    "mv scripts /tmp/scripts",
 ]
 
 TOUCHES_GIT_OR_GITHUB = [
@@ -201,6 +215,18 @@ ALLOWED = [
     "ls ~/.poolhouse",
     "rm -rf /tmp/scratch",
     "mv a b",
+    "find . -name '*.pyc' -delete",
+    "find . -type f -name '*.orig' -exec rm {} +",
+    "git checkout -- .",
+    "git restore .",
+    "git restore --staged .",
+    "cp /tmp/new-hook scripts/hooks/",
+    "cp /tmp/x scripts/hooks/claude-session-end",
+    "chmod +x scripts/hooks/claude-session-end",
+    "chmod -R u+w build",
+    "chmod 755 .",
+    "rm -rf build dist",
+    "rm -rf .claude/worktrees/old",
     "cd src && ls",
     "find . -name '*.py'",
     "HOME_COPY=$HOME; echo $HOME_COPY",
@@ -244,3 +270,15 @@ def test_the_files_a_person_reviews_before_they_land_are_named_in_one_place():
              ".github/CODEOWNERS", "scripts/github-protection", "scripts/land_board.py", "scripts/land",
              "src/poolhouse/worktreerules.py", "src/poolhouse/protectedwrites.py"]
     assert protectedwrites.touches_guards(["src/poolhouse/x.py", *named]) == named
+
+
+def test_reading_a_command_line_costs_milliseconds(tree):
+    import time
+    commands = ["git status --short", "scripts/test all tests/test_authority.py --no-reuse",
+                "git commit -q -F - <<'EOF'\nfix: x\nEOF", "python3 - <<'EOF'\nprint(1)\nEOF",
+                "find . -name '*.pyc' -delete", "grep -rn authority src docs | head -50", "cp a b && rm -rf build dist"]
+    began = time.perf_counter()
+    for _ in range(20):
+        for command in commands:
+            why(command, tree)
+    assert (time.perf_counter() - began) / (20 * len(commands)) < 0.02

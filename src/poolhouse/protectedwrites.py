@@ -48,6 +48,8 @@ MODIFIERS = frozenset({"rm", "unlink", "rmdir", "truncate", "touch", "chmod", "c
                        "mv"})
 IN_PLACE = frozenset({"sed", "awk", "gawk", "perl"})
 COPIERS = frozenset({"cp", "install", "ln", "rsync", "cpio", "dd"})
+DEEP = frozenset({"mv"})
+DEEP_WITH_R = frozenset({"rm", "chmod", "chown", "chattr", "setfacl", "xattr", "shred"})
 FETCHERS = {"curl": ("-o", "--output"), "wget": ("-O", "--output-document")}
 GIT_CONFIG = re.compile(r"^(core\.(hookspath|fsmonitor|sshcommand|askpass)|credential\..*helper|include(if\..*)?\.path)$", re.I)
 GIT_ENV = re.compile(r"^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|GLOBAL|SYSTEM|PARAMETERS)$")
@@ -101,11 +103,16 @@ def _holds_a_guard(path: str) -> bool:
     return False
 
 
-def guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether a write to ``path`` (a file, or a folder holding one) is a person's: the guards, settings, git's hooks."""
-    if GUARDS.search(path) or _holds_a_guard(path):
+def file_guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
+    """Whether ``path`` is itself a person's: a guard, a hook setting, git's hooks or config, the authority registry."""
+    if GUARDS.search(path):
         return True
     return any(path in (f"{root}/authority.json", f"{root}/authority-audit.jsonl") for root in _roots(environ or os.environ))
+
+
+def guarded(path: str, environ: Mapping[str, str] | None = None) -> bool:
+    """Whether a write to ``path`` (a file, or a folder holding one) is a person's: the guards, settings, git's hooks."""
+    return file_guarded(path, environ) or _holds_a_guard(path)
 
 
 def touches_guards(paths: list[str]) -> list[str]:
@@ -263,23 +270,46 @@ class Shell:
         """The first of ``words`` that names a path for which ``test`` holds, else an empty string."""
         return next((w for w in words if any(test(path) for path in self.paths(w))), "")
 
-    def guarded(self, words: list[str]) -> str:
-        """The first of ``words`` that names a guard or a folder holding one."""
-        return self.hits(words, lambda p: guarded(p, self.environ))
+    def guarded(self, words: list[str], deep: bool = False) -> str:
+        """The first of ``words`` that names a guard (with ``deep``, also a folder holding one)."""
+        test = guarded if deep else file_guarded
+        return self.hits(words, lambda p: test(p, self.environ))
+
+    def landing(self, sources: list[str], dest: str) -> list[str]:
+        """The files a copy of ``sources`` to ``dest`` writes: ``dest`` itself, or a file of each name inside a folder."""
+        out: list[str] = []
+        for place in self.paths(dest):
+            out += [f"{place}/{Path(s).name}" for s in sources] if Path(place).is_dir() else [place]
+        return out
 
 
-def _targeted(args: list[str]) -> list[str]:
-    plain = [a for a in args if not a.startswith("-")]
-    named = [a.split("=", 1)[1] for a in args if a.startswith("--target-directory=")]
-    named += [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-t"]
-    return [f"{d}/{Path(src).name}" for d in named for src in plain if src != d] + named
-
-
-def _destinations(verb: str, args: list[str]) -> list[str]:
+def _copy_hit(verb: str, args: list[str], shell: Shell) -> str:
+    """The first file a cp, install, ln or dd writes that is a guard, else an empty string."""
     if verb == "dd":
-        return [a[3:] for a in args if a.startswith("of=")]
-    plain = [a for a in args if not a.startswith("-")]
-    return _targeted(args) or plain[-1:]
+        written = [p for a in args if a.startswith("of=") for p in shell.paths(a[3:])]
+    else:
+        plain = [a for a in args if not a.startswith("-")]
+        into = [a.split("=", 1)[1] for a in args if a.startswith("--target-directory=")]
+        into += [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-t"]
+        sources = [a for a in plain if a not in into]
+        dests = into or plain[-1:]
+        written = [p for dest in dests for p in shell.landing(sources if into else plain[:-1], dest)]
+    return next((p for p in written if file_guarded(p, shell.environ)), "")
+
+
+def _recursive(args: list[str]) -> bool:
+    return any(re.fullmatch(r"-[a-zA-Z]*[rR][a-zA-Z]*", a) or a == "--recursive" for a in args)
+
+
+def _find_hit(plain: list[str], args: list[str], shell: Shell) -> str:
+    """The folder a `find` that deletes or runs a command may reach a guard in, when its name patterns could match one."""
+    if not any(a in ("-delete", "-exec", "-execdir") for a in args):
+        return ""
+    patterns = [args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-name", "-iname", "-path", "-ipath", "-wholename")]
+    names = [Path("/".join(held)) for held in HELD]
+    could = not patterns or any(fnmatch.fnmatch(n.name, p) or fnmatch.fnmatch(str(n), p) or fnmatch.fnmatch("./" + str(n), p)
+                                for p in patterns for n in names)
+    return shell.guarded(plain[:1], deep=True) if could else ""
 
 
 def _in_place(args: list[str]) -> bool:
@@ -295,16 +325,15 @@ def _fetched(verb: str, args: list[str]) -> list[str]:
 def _writes(verb: str, args: list[str], shell: Shell) -> str:
     plain = [a for a in args if not a.startswith("-")]
     if verb in COPIERS:
-        targets = _destinations(verb, args)
-    elif verb in MODIFIERS or verb in EDITORS:
-        targets = plain
-    elif verb in IN_PLACE:
-        targets = plain if _in_place(args) else []
+        found = _copy_hit(verb, args, shell)
     elif verb == "find":
-        targets = plain[:1] if any(a in ("-delete", "-exec", "-execdir") for a in args) else []
+        found = _find_hit(plain, args, shell)
+    elif verb in MODIFIERS or verb in EDITORS:
+        found = shell.guarded(plain, deep=verb in DEEP or (verb in DEEP_WITH_R and _recursive(args)))
+    elif verb in IN_PLACE:
+        found = shell.guarded(plain) if _in_place(args) else ""
     else:
-        targets = _fetched(verb, args)
-    found = shell.guarded(targets)
+        found = shell.guarded(_fetched(verb, args))
     return f"`{verb}` would change {found}: {PERSON}." if found else ""
 
 
@@ -414,12 +443,15 @@ def _git_paths(args: list[str], shell: Shell) -> str:
     if sub not in GIT_PATHS:
         return ""
     plain = [a for a in rest if not a.startswith("-")]
+    before = rest[:rest.index("--")] if "--" in rest else plain
     named = rest[rest.index("--") + 1:] if "--" in rest else (plain if sub in ("rm", "mv", "restore") else [])
+    from_a_commit = (sub == "checkout" and any(not a.startswith("-") for a in before)) or any(
+        a in ("-s", "--source") or a.startswith("--source=") for a in rest)
     here = shell.here
     if moved:
         shell.move(moved)
     try:
-        found = shell.guarded(named)
+        found = shell.guarded(named, deep=sub in ("rm", "mv") or from_a_commit)
     finally:
         shell.here = here
     return f"`git {sub}` would change {found}: {PERSON}." if found else ""
