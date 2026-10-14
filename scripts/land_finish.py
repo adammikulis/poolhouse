@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import land_entries
 import land_git as lg
 import land_run
+import testjobs
 
 from poolhouse import protectedwrites
+from poolhouse.activity import reuse
 from poolhouse.activity.gate import tree_hash
+from poolhouse.workspace import testruns
 
 
 def load(root: Path) -> dict:
@@ -26,17 +28,26 @@ def inside(path: Path) -> bool:
     return here == path.resolve() or path.resolve() in here.parents
 
 
-def full_running(state: dict) -> bool:
-    """Whether the background full run started for this batch is still alive."""
-    full = state.get("full")
-    pid = full.get("pid") if isinstance(full, dict) else None
-    if not pid:
+def full_running(root: Path, state: dict) -> bool:
+    """Whether a batch's actual background test job remains live or unverified."""
+    full = state.get("full", {})
+    if not isinstance(full, dict):
+        return True
+    if full.get("status") == "refused" or not full:
         return False
+    if full.get("status") != "started" or not full.get("job"):
+        return True
     try:
-        os.kill(int(pid), 0)
-    except (OSError, ValueError):
-        return False
-    return True
+        worktree = Path(state["worktree"]).resolve()
+        if full.get("worktree") != str(worktree):
+            return True
+        jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(root))
+        spec = jobs.read(full["job"], "spec.json")
+        if spec.get("id") != full["job"] or spec.get("root") != str(worktree) or spec.get("argv", [])[:1] != ["full"]:
+            return True
+        return jobs.state(full["job"]).get("state") not in testjobs.TERMINAL
+    except (OSError, ValueError, KeyError, RuntimeError, TypeError, AttributeError):
+        return True
 
 
 def approvals_stand(root: Path, state: dict) -> None:
@@ -132,7 +143,7 @@ def cleanup(root: Path, state: dict, apply: bool) -> tuple[list[str], list[dict]
         problem = removable(root, state["integration"], name)
         problem = problem or (remove(root, name) if apply else "")
         (kept.append({"branch": name, "reason": problem}) if problem else gone.append(name))
-    if full_running(state):
+    if full_running(root, state):
         kept.append({"branch": state["integration"], "reason": "background full run in progress"})
     else:
         problem = remove(root, state["integration"]) if apply else ""

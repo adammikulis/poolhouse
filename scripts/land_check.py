@@ -15,11 +15,15 @@ from pathlib import Path
 
 import affected
 import land_git as lg
+import testjobs
 import testslots
 
+from poolhouse import worktreerules
+from poolhouse.activity import reuse
 from poolhouse.activity.gate import Run, evidence, record_run, tree_hash
 from poolhouse.keystore import KeystoreError
 from poolhouse.real_machine import Refused
+from poolhouse.workspace import testruns
 
 FULL_FILES = 120
 FULL_LINES = 4000
@@ -197,11 +201,21 @@ def start_full(wt: Path, common: Path) -> dict:
         return {"status": "refused", "reason": held}
     folder = common / "land"
     folder.mkdir(exist_ok=True)
-    log = folder / f"full-{int(time.time())}.log"
-    child = subprocess.Popen([sys.executable, "scripts/test", "full", "--background"], cwd=wt, stdin=subprocess.DEVNULL,
-                             stdout=log.open("ab"), stderr=subprocess.STDOUT, start_new_session=True)
-    (folder / "full.lock").write_text(f"{child.pid}\n", encoding="utf-8")
-    return {"status": "started", "pid": child.pid, "log": str(log), "tree": tree_hash(wt)}
+    try:
+        done = subprocess.run([sys.executable, "scripts/test", "submit", "full", "--background"], cwd=wt,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30,
+                              env=worktreerules._git_environment())
+        if done.returncode or not done.stdout.strip():
+            return {"status": "unknown", "reason": "background submission outcome is unknown"}
+        job = done.stdout.strip().splitlines()[-1]
+        jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(wt))
+        spec, status = jobs.read(job, "spec.json"), jobs.state(job)
+        if spec.get("id") != job or spec.get("root") != str(wt.resolve()) or not status:
+            return {"status": "unknown", "reason": "submitted job binding is unknown", "job": job}
+        return {"status": "started", "job": job, "worktree": str(wt.resolve()),
+                "log": str(jobs.path(job) / "log"), "tree": tree_hash(wt)}
+    except (OSError, ValueError, RuntimeError, TypeError, AttributeError, subprocess.SubprocessError):
+        return {"status": "unknown", "reason": "background submission outcome is unknown"}
 
 
 def summary_json(data: dict) -> str:

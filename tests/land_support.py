@@ -19,6 +19,19 @@ if log:
     with open(log, "a") as f:
         f.write(" ".join(sys.argv[1:]) + "\\n")
 here = pathlib.Path(".")
+if sys.argv[1:2] == ["submit"]:
+    import testjobs
+    from poolhouse.activity import reuse
+    from poolhouse.workspace import testruns
+    jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(here.resolve()))
+    job = "fixture-full"
+    jobs.write(job, "spec.json", {"id": job, "root": str(here.resolve()), "argv": ["full", "--background"]})
+    jobs.write(job, "status.json", {"state": "done", "exit": 0})
+    if log:
+        with open(log, "a") as f:
+            f.write("full --background\\n")
+    print(job)
+    sys.exit(0)
 if list(here.glob("HANG_GATE*")):
     import time
     time.sleep(120)
@@ -63,7 +76,7 @@ class Project:
                     "LAND_FAKE_LOG": str(self.log), "POOLHOUSE_DEV_BRANCH": DEV, 
                     "PYTHON_KEYRING_BACKEND": "onboard_support.FileKeyring",
                     "POOLHOUSE_TEST_KEYRING": str(base / "keyring.json"),
-                    "PYTHONPATH": os.pathsep.join((str(ROOT / "tests"), os.environ.get("PYTHONPATH", "")))}
+                    "PYTHONPATH": os.pathsep.join((str(ROOT / "tests"), str(ROOT / "scripts"), os.environ.get("PYTHONPATH", "")))}
 
         # The runner records its passes in the activity log, which a background process may write
         # only once a person has provisioned the keystore; a headless runner has no person to ask.
