@@ -8,11 +8,13 @@ runs the suite in a container, one matrix entry runs it in a single process, and
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import stat
 import sys
 from pathlib import Path
+from types import CodeType, FunctionType
 
 import yaml
 
@@ -118,6 +120,36 @@ def test_ci_runs_the_release_verifier():
 
 def test_offline_skips_the_checks_that_reach_the_internet():
     text = VERIFIER.read_text(encoding="utf-8")
-    assert text.count(", network=True)") == 3, (
+    tree = ast.parse(text)
+    network_checks = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "check"
+                and any(kw.arg == "network" and isinstance(kw.value, ast.Constant) and kw.value.value is True
+                        for kw in node.keywords)):
+            network_checks.append(tuple(ast.literal_eval(arg) for arg in node.args[:2]))
+    helper = ast.parse(VERIFIER.with_name("verify_services.py").read_text(encoding="utf-8"))
+    registry = next(node.value for node in helper.body if isinstance(node, ast.Assign)
+                    and any(isinstance(target, ast.Name) and target.id == "CHECKS" for target in node.targets))
+    assert isinstance(registry, ast.Tuple)
+    for row in registry.elts:
+        assert isinstance(row, ast.Tuple) and len(row.elts) == 4
+        network = ast.literal_eval(row.elts[2])
+        assert isinstance(network, bool)
+        if network:
+            network_checks.append(tuple(ast.literal_eval(arg) for arg in row.elts[:2]))
+    assert len(network_checks) == 3, (
         "a check that reaches a host outside this machine has to say so, or CI runs it")
     assert 'OFFLINE = "--offline" in sys.argv' in text
+
+    callback = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "check")
+    scope = {"OFFLINE": True, "RESULTS": []}
+    module = compile(ast.Module(body=[callback], type_ignores=[]), str(VERIFIER), "exec")
+    code = next(value for value in module.co_consts if isinstance(value, CodeType))
+    offline_check = FunctionType(code, scope)
+
+    def external_check():
+        raise AssertionError("an offline run executed a network check")
+
+    for area, claim in network_checks:
+        offline_check(area, claim, network=True)(external_check)
+    assert scope["RESULTS"] == [(area, claim, None, "needs the internet") for area, claim in network_checks]
