@@ -101,11 +101,12 @@ def test_unregistered_child_does_not_use_assigned_or_inherited_parent(node, monk
 
 
 def test_stopped_daemon_warns_quickly_and_does_not_block_or_restart(node):
+    lifecycle.handle(event("SessionStart"), node=node.client)
     node.stop()
     before = time.monotonic()
     done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", "codex-hook"],
                           input=json.dumps(event("PostToolUse")), text=True, capture_output=True,
-                          env=node.env(), timeout=5, check=False)
+                          env=node.env(extra={"CODEX_THREAD_ID": IDS["native-root"]}), timeout=5, check=False)
     assert done.returncode == 0 and time.monotonic() - before < 5
     assert "workspace lifecycle:" in done.stderr
     assert not done.stdout
