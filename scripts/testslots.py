@@ -301,11 +301,15 @@ def _decide(me: dict, path: Path, slots: list[Slot], cap: int) -> tuple[int, int
     now = time.time()
     legacy = policy.has_legacy(slots)
     queue = [s for s in slots if s.granted == 0]
+    capped = testhours.capped_now(os.environ, datetime.datetime.fromtimestamp(now)) and not legacy
+    if not legacy:
+        queue = [slot for slot in queue if (room := policy.background_room(slot, slots, cap, now, capped))
+                 is None or room >= slot.data["minimum"]]
     waiting = sorted(queue, key=lambda s: s.path) if legacy else policy.order(queue, now)
     used = sum(s.granted for s in slots)
     granted = _grant(Slot(path, me), waiting, (cap, used, sum(slot.granted > 0 for slot in slots)),
                      policy.background_room(Slot(path, me), slots, cap, now,
-                                            testhours.capped_now(os.environ, datetime.datetime.fromtimestamp(now)) and not legacy))
+                                            capped))
     place = next((i for i, s in enumerate(waiting) if s.path == path), 0)
     return granted, used, [s.data.get("label") for s in waiting[:place]]
 

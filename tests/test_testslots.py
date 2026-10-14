@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "testslots.py"
 
@@ -725,3 +727,52 @@ def test_a_long_node_id_is_admitted_with_a_bounded_label(monkeypatch):
     with contextlib.suppress(StopIteration):
         next(protocol)
     assert len(labels[0]) <= 256 and labels[0].endswith("]")
+
+
+def _cap_queue(module, tmp_path, now, *, capacity=(8, 1), background_since=None):
+    held, minimum = capacity
+    def slot(name, klass, granted, estimate, since):
+        data = {"class": klass, "granted": granted, "want": 1, "minimum": 1,
+                "estimate": estimate, "since": since, "version": 2}
+        path = tmp_path / name
+        path.write_text(json.dumps(data))
+        return module.Slot(path, data)
+    running = slot("running", "background", held, 180, now)
+    other = slot("other", "interactive", 2, 0, now)
+    background = slot("background", "background", 0, 180,
+                      now if background_since is None else background_since)
+    background.data.update(want=minimum, minimum=minimum)
+    background.path.write_text(json.dumps(background.data))
+    interactive = slot("interactive", "interactive", 0, 765.6, now - 500)
+    return [running, other, background, interactive], background, interactive
+
+
+@pytest.mark.parametrize("held,minimum", [(8, 1), (7, 2)])
+def test_cap_blocked_background_cannot_strand_free_interactive_capacity(tmp_path, monkeypatch, held, minimum):
+    module = _load()
+    now = 1000.0
+    monkeypatch.setattr(module.time, "time", lambda: now)
+    monkeypatch.setattr(module.testhours, "capped_now", lambda *_: True)
+    slots, background, interactive = _cap_queue(module, tmp_path, now, capacity=(held, minimum))
+    before = background.path.read_bytes()
+    grant, used, ahead = module._decide(interactive.data, interactive.path, slots, 15)
+    assert grant == 1 and used + grant <= 15 and ahead == []
+    assert module._decide(background.data, background.path, slots, 15)[0] == 0
+    assert background.data["granted"] == 0 and background.path.read_bytes() == before
+
+
+@pytest.mark.parametrize("condition", ["aged", "uncapped", "legacy", "no-interactive"])
+def test_background_cap_bypass_keeps_existing_queue_order(tmp_path, monkeypatch, condition):
+    module = _load()
+    now = 1000.0
+    monkeypatch.setattr(module.time, "time", lambda: now)
+    monkeypatch.setattr(module.testhours, "capped_now", lambda *_: condition != "uncapped")
+    slots, background, interactive = _cap_queue(module, tmp_path, now,
+                                               background_since=0 if condition == "aged" else None)
+    if condition == "legacy":
+        slots[0].data["version"] = 1
+    if condition == "no-interactive":
+        slots = [slots[0], background]
+    assert module._decide(background.data, background.path, slots, 15)[0] == 1
+    if condition != "no-interactive":
+        assert module._decide(interactive.data, interactive.path, slots, 15)[0] == 0
