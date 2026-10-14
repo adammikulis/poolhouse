@@ -10,7 +10,7 @@ import shutil
 import tomllib
 from pathlib import Path
 
-from poolhouse import agent_hooks_stale, codex_lifecycle, home
+from poolhouse import agent_hooks_stale, home
 from poolhouse.checks import Finding
 
 __all__ = ["AGENTS", "codex_hooks", "findings", "install", "install_report", "paths", "remove_stale", "removed_lines"]
@@ -21,7 +21,8 @@ BINARY = "poolhouse-workspace"
 OWN = (f"{BINARY} nudge", "claude-nudge.sh", "poolhouse.codex_lifecycle", "poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop")
 CLAUDE_EVENTS = (("PostToolUse", "post", "*"), ("Stop", "stop", ""), ("UserPromptSubmit", "prompt", ""))
 CODEX_EVENTS = tuple((event, event, ".*" if event not in ("Stop", "UserPromptSubmit") else "")
-                     for event in codex_lifecycle.EVENTS)
+                     for event in ("SessionStart", "SubagentStart", "SubagentStop", "SessionEnd",
+                                   "PostToolUse", "Stop", "UserPromptSubmit"))
 FIX = f"{BINARY} install-hooks"
 BEGIN = "# >>> poolhouse nudge hooks (managed) >>>"
 END = "# <<< poolhouse nudge hooks <<<"

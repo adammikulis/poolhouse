@@ -77,7 +77,7 @@ def test_claude_hooks_are_idempotent_keep_other_hooks_and_replace_earlier_nudges
 def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(machine):
     path = machine / "config.toml"
     path.write_text(CODEX_BEFORE)
-    assert agent_hooks.install_codex(path) == list(agent_hooks.codex_lifecycle.EVENTS)
+    assert agent_hooks.install_codex(path) == [event for event, _, _ in agent_hooks.CODEX_EVENTS]
     text = path.read_text()
     assert "poolhouse.harnesshook post" not in text
     data = tomllib.loads(text)
@@ -91,7 +91,7 @@ def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(m
 
 def test_codex_hooks_write_the_post_hook_when_no_launcher_hook_nudges(machine):
     path = machine / "config.toml"
-    assert agent_hooks.install_codex(path) == list(agent_hooks.codex_lifecycle.EVENTS)
+    assert agent_hooks.install_codex(path) == [event for event, _, _ in agent_hooks.CODEX_EVENTS]
     data = tomllib.loads(path.read_text())
     assert data["features"] == {"hooks": True}
     assert data["hooks"]["PostToolUse"][0]["matcher"] == ".*"

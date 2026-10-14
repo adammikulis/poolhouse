@@ -8,13 +8,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import codex_native
+from poolhouse import agent_hooks
 from poolhouse.board import client, place, session
 from poolhouse.guard.secrets import env_secrets, redact
 from poolhouse.log import say, warn
-from poolhouse.workspace import device_metadata, limits, worktree_lifecycle
+from poolhouse.workspace import codex_native, device_metadata, limits, worktree_lifecycle
 
-EVENTS = ("SessionStart", "SubagentStart", "SubagentStop", "SessionEnd", "PostToolUse", "Stop", "UserPromptSubmit")
+EVENTS = tuple(event for event, _, _ in agent_hooks.CODEX_EVENTS)
 WAIT = 3.0
 LIMIT = 65536
 

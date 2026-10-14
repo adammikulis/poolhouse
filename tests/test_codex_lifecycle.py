@@ -11,8 +11,9 @@ from pathlib import Path
 import pytest
 from node_kit import node_binary, workspace_node  # noqa: F401
 
-from poolhouse import codex_lifecycle as lifecycle, codex_native, node_health
+from poolhouse import node_health
 from poolhouse.board import session
+from poolhouse.workspace import codex_hooks as lifecycle, codex_native
 
 IDS = {name: str(uuid.uuid4()) for name in ("native-root", "native-child", "native-nested", "child", "new-child", "unregistered-child")}
 
