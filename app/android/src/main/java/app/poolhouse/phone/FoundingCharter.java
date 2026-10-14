@@ -48,6 +48,8 @@ final class FoundingCharter {
 
     byte[] bytes() { return signing.clone(); }
 
+    JSONObject terms() throws Exception { return new JSONObject(charter.toString()); }
+
     private static void validate(JSONObject c) throws Exception {
         fields(c, "v", "epoch", "name", "policy", "mode", "project", "first", "admins", "thresholds", "holds", "recover_delay_days", "succession", "from", "at_ms");
         number(c, "v", 3, 3);
@@ -62,15 +64,7 @@ final class FoundingCharter {
         JSONObject first = c.getJSONObject("first");
         fields(first, "name", "cert");
         plain(first, "name", 40, false);
-        String cert = text(first, "cert");
-        if (!cert.matches("(?:[0-9a-f]{2})+") || cert.length() > 32768) throw bad();
-        byte[] der = Hex.parse(cert);
-        ByteArrayInputStream input = new ByteArrayInputStream(der);
-        X509Certificate certificate = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(input);
-        if (input.available() != 0 || !Arrays.equals(der, certificate.getEncoded())) throw bad();
-        byte[] spki = certificate.getPublicKey().getEncoded();
-        byte[] prefix = Hex.parse("302a300506032b6570032100");
-        if (spki.length != 44 || !Arrays.equals(prefix, Arrays.copyOf(spki, prefix.length))) throw bad();
+        certificateWords(text(first, "cert"));
         JSONArray admins = c.getJSONArray("admins");
         if (admins.length() < 1 || admins.length() > 16) throw bad();
         String previous = "";
@@ -114,6 +108,18 @@ final class FoundingCharter {
         number(c, "recover_delay_days", 1, 30);
     }
 
+    static String certificateWords(String cert) throws Exception {
+        if (!cert.matches("(?:[0-9a-f]{2})+") || cert.length() > 32768) throw bad();
+        byte[] der = Hex.parse(cert);
+        ByteArrayInputStream input = new ByteArrayInputStream(der);
+        X509Certificate certificate = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(input);
+        if (input.available() != 0 || !Arrays.equals(der, certificate.getEncoded())) throw bad();
+        byte[] spki = certificate.getPublicKey().getEncoded();
+        byte[] prefix = Hex.parse("302a300506032b6570032100");
+        if (spki.length != 44 || !Arrays.equals(prefix, Arrays.copyOf(spki, prefix.length))) throw bad();
+        return Hex.words(Hex.sha256(der));
+    }
+
     private static void publicKey(String key, String alg) {
         if (alg.equals("ed25519")) {
             if (!key.matches("[0-9a-f]{64}")) throw bad();
@@ -137,29 +143,29 @@ final class FoundingCharter {
         }
     }
 
-    private static void fields(JSONObject o, String... names) {
+    static void fields(JSONObject o, String... names) {
         Set<String> expected = new HashSet<>(Arrays.asList(names));
         o.keys().forEachRemaining(key -> { if (!expected.remove(key)) throw bad(); });
         if (!expected.isEmpty()) throw bad();
     }
 
-    private static String text(JSONObject o, String key) throws org.json.JSONException {
+    static String text(JSONObject o, String key) throws org.json.JSONException {
         Object value = o.get(key);
         if (!(value instanceof String)) throw bad();
         return (String) value;
     }
 
-    private static String plain(JSONObject o, String key, int most, boolean empty) throws org.json.JSONException {
+    static String plain(JSONObject o, String key, int most, boolean empty) throws org.json.JSONException {
         String value = text(o, key);
         if ((!empty && value.isEmpty()) || value.length() > most || value.chars().anyMatch(ch -> ch < 32 || ch == 127)) throw bad();
         return value;
     }
 
-    private static void choice(JSONObject o, String key, String... values) throws org.json.JSONException {
+    static void choice(JSONObject o, String key, String... values) throws org.json.JSONException {
         if (!Arrays.asList(values).contains(text(o, key))) throw bad();
     }
 
-    private static long number(JSONObject o, String key, long min, long max) throws org.json.JSONException {
+    static long number(JSONObject o, String key, long min, long max) throws org.json.JSONException {
         Object value = o.get(key);
         if (!(value instanceof Integer) && !(value instanceof Long)) throw bad();
         long n = ((Number) value).longValue();
