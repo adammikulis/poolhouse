@@ -254,16 +254,18 @@ def executable_source(text: str) -> str:
     return "".join(chars)
 
 
-def plain_oracle(script: str) -> set[str]:
+def plain_oracle(script: str, sources: dict[str, str] | None = None) -> set[str]:
     """Test files that import the script or put its path in quotes, found with plain regexes."""
     stem = Path(script).stem if script.endswith(".py") else Path(script).name
     imports = re.compile(rf"^\s*(?:import|from)\s+{re.escape(stem)}\b", re.M)
     quoted = re.compile(rf"""["']{re.escape(script)}(?![\w.-])""")
+    if sources is None:
+        sources = {f"tests/{path.name}": executable_source(path.read_text(encoding="utf-8", errors="replace"))
+                   for path in sorted((REPO / "tests").glob("test_*.py"))}
     out = set()
-    for path in sorted((REPO / "tests").glob("test_*.py")):
-        text = executable_source(path.read_text(encoding="utf-8", errors="replace"))
+    for name, text in sources.items():
         if (script.endswith(".py") and imports.search(text)) or quoted.search(text):
-            out.add(f"tests/{path.name}")
+            out.add(name)
     return out
 
 
@@ -272,10 +274,11 @@ def test_every_test_a_plain_search_finds_for_a_recently_changed_script_is_select
     scripts = recent_scripts(30)
     assert len(scripts) >= 5
     files = rules.corpus(REPO)
+    sources = {name: executable_source(source.text) for name, source in files.items() if rules.is_test(name)}
     missed = {}
     for script in scripts:
         why, _, shared = rules.script_tests(files, script)
-        if not shared and (gap := plain_oracle(script) - set(why)):
+        if not shared and (gap := plain_oracle(script, sources) - set(why)):
             missed[script] = sorted(gap)
     assert not missed
 
@@ -286,6 +289,7 @@ def test_every_test_a_plain_search_finds_for_a_recently_changed_script_is_select
     'def scope():\n    \"\"\"scripts/runner\"\"\"',
     'async def scope():\n    \"\"\"scripts/runner\"\"\"',
     '# "scripts/runner"',
+    'def é(): "scripts/runner"',
 ])
 def test_oracle_excludes_actual_docstrings_and_comments(source):
     assert "scripts/runner" not in executable_source(source)
@@ -313,3 +317,15 @@ def test_oracle_keeps_imports_and_nested_executable_references():
 def test_oracle_keeps_unparseable_source_conservatively():
     source = 'broken = (\n"scripts/runner"'
     assert executable_source(source) == source
+
+
+def test_oracle_masks_unicode_docstring_without_hiding_following_literal():
+    source = 'def é(): "docs"; return "scripts/runner"'
+    result = executable_source(source)
+    assert '"docs"' not in result and '"scripts/runner"' in result
+
+
+def test_oracle_matches_every_executable_literal_style():
+    sources = {"tests/test_literals.py": executable_source(
+        'a = "scripts/runner"; b = \"\"\"scripts/runner\"\"\"; c = f"scripts/runner"')}
+    assert plain_oracle("scripts/runner", sources) == {"tests/test_literals.py"}
