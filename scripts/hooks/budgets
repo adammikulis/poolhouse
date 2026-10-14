@@ -22,6 +22,7 @@ sys.path.insert(0, str(HERE))
 
 import gates  # noqa: E402
 import renames  # noqa: E402
+from gates import glossary_words  # noqa: E402
 
 ROOT = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
 BUDGETS = ROOT / "budgets.json"
@@ -46,11 +47,17 @@ def staged() -> dict[str, str]:
 
 
 CONFIG = "pyproject.toml"
+POLICY = ("contracts/glossary-rules.toml", "contracts/glossary-allowlist.toml")
 
 
 def plant(base: Path, names: list[str], revision: str, origin: dict[str, str] | None = None) -> None:
     """Write each file's content at the given revision under base, read from its old path if it has one."""
     for name in names:
+        if name in POLICY:
+            entry = (_git("ls-tree", revision, "--", name) if revision
+                     else _git("ls-files", "--stage", "--", name))
+            if not entry.startswith("100644 ") and not entry.startswith("100755 "):
+                raise ValueError("Vocabulary policy must be a tracked regular file")
         text = _git("show", f"{revision}:{(origin or {}).get(name, name)}")
         if not text:
             continue
@@ -80,7 +87,8 @@ def main() -> int:
         return 0
     origin = staged()
     names = list(origin)
-    if not names:
+    policy_changed = set(_git("diff", "--cached", "--name-only", "-z").split("\0")) & set(POLICY)
+    if not names and not policy_changed:
         return 0
 
     has_head = bool(_git("rev-parse", "--verify", "HEAD"))
@@ -89,15 +97,21 @@ def main() -> int:
         old_root = Path(tmp) / "head"
         new_root.mkdir()
         old_root.mkdir()
-        plant(new_root, [*names, CONFIG], "")
+        plant(new_root, [*names, CONFIG, *POLICY], "")
         if has_head:
-            plant(old_root, [*names, CONFIG], "HEAD", origin)
+            plant(old_root, [*names, CONFIG, *POLICY], "HEAD", origin)
         for base in (new_root, old_root):
             if not (base / CONFIG).exists():
                 (base / CONFIG).write_text((ROOT / CONFIG).read_text(encoding="utf-8"),
                                            encoding="utf-8")
+        lib = glossary_words._nomenclature()
+        lib.Vocabulary(root=new_root)
+        if has_head:
+            lib.Vocabulary(root=old_root)
+        if not names:
+            return 0
         after = counts(new_root, names)
-        before = counts(old_root, names)
+        before = counts(old_root, names) if has_head else {}
         sites = gates.run(new_root)
 
     owner = {c.NAME: c.OWNER for c in gates.checkers()}
@@ -127,4 +141,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except ValueError as exc:
+        print(f"budgets: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc

@@ -36,7 +36,7 @@ def _nomenclature() -> ModuleType:
 def find(root: Path) -> list[Finding]:
     """Every banned word left in a tracked text file of ``root`` that no allowlist entry covers."""
     lib = _nomenclature()
-    vocab = lib.Vocabulary()
+    vocab = lib.Vocabulary(root=root)
     out = []
     for where in lib.tracked(root):
         text = None if vocab.excluded(where) else lib.text_of(where, root)

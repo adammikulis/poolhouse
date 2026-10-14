@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,11 +61,92 @@ def area_of(path: str) -> str:
     return {"src": "src", "app": "app", "docs": "docs", "scripts": "scripts"}.get(head, "top" if "/" not in path else head)
 
 
+def _strings(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value)
+
+
+def _table(value: object) -> bool:
+    return isinstance(value, dict) and all(isinstance(v, str) and v.strip() for v in value.values())
+
+
+def _text(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _paths(value: object) -> bool:
+    return _text(value) or (_strings(value) and bool(value))
+
+
+def _boolean(value: object) -> bool:
+    return type(value) is bool
+
+
+def _entries(data: dict, name: str, fields: dict[str, Callable[[object], bool]], required: set[str]) -> None:
+    rows = data.get(name, [])
+    if not isinstance(rows, list):
+        raise ValueError("Invalid vocabulary policy entries")
+    for row in rows:
+        if not isinstance(row, dict) or not required <= row.keys() or row.keys() - fields.keys():
+            raise ValueError("Invalid vocabulary policy entry")
+        for key, value in row.items():
+            check = fields[key]
+            if not check(value):
+                raise ValueError("Invalid vocabulary policy value")
+
+
+def policy(root: Path) -> tuple[dict, dict]:
+    """Validated vocabulary data from the tree being checked."""
+    data = []
+    for name in ("glossary-rules.toml", "glossary-allowlist.toml"):
+        path = root / "contracts" / name
+        if path.is_symlink() or path.parent.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+            raise ValueError("Vocabulary policy must be a file inside the checked tree")
+        try:
+            data.append(tomllib.loads(path.read_text(encoding="utf-8")))
+        except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+            raise ValueError("Missing or malformed vocabulary policy") from exc
+    rules, allow = data
+    names = {"stems", "kind_stems", "overrides", "literal", "phrase", "family", "revoke_near", "renames", "gate"}
+    if rules.keys() - names or not {"family", "stems", "gate"} <= rules.keys():
+        raise ValueError("Unknown or incomplete vocabulary rules")
+    if allow.keys() - {"exclude", "allow", "token"}:
+        raise ValueError("Unknown vocabulary allowances")
+    for key in ("stems", "overrides", "renames"):
+        if not _table(rules.get(key, {})):
+            raise ValueError("Invalid vocabulary replacement table")
+    families = rules["family"]
+    kinds = rules.get("kind_stems", {})
+    if not isinstance(families, dict) or not families or not all(_strings(v) and v for v in families.values()):
+        raise ValueError("Invalid vocabulary families")
+    if not rules["stems"] or not isinstance(kinds, dict) or not all(_table(v) for v in kinds.values()):
+        raise ValueError("Invalid vocabulary stems")
+    if not _strings(rules.get("revoke_near", [])):
+        raise ValueError("Invalid vocabulary neighboring words")
+    _entries(rules, "literal", {"old": _text, "new": _text, "paths": _strings}, {"old", "new"})
+    _entries(rules, "phrase", {"pattern": _text, "new": _text, "kinds": _strings,
+                              "family": _text, "ignore_case": _boolean}, {"pattern", "new", "family"})
+    _entries(rules, "gate", {"pattern": _text, "family": _text, "say": _text}, {"pattern", "family", "say"})
+    if not rules["gate"]:
+        raise ValueError("Missing vocabulary gates")
+    _entries(allow, "exclude", {"path": _text, "reason": _text}, {"path", "reason"})
+    _entries(allow, "allow", {"path": _paths, "words": _strings, "reason": _text}, {"path", "words", "reason"})
+    _entries(allow, "token", {"token": _text, "reason": _text}, {"token", "reason"})
+    known = set(families) | {row["family"] for row in rules["gate"]}
+    if any(set(row["words"]) - known for row in allow.get("allow", [])):
+        raise ValueError("Unknown vocabulary allowance family")
+    try:
+        for row in rules.get("phrase", []) + rules["gate"]:
+            re.compile(row["pattern"])
+    except re.error as exc:
+        raise ValueError("Invalid vocabulary pattern") from exc
+    return rules, allow
+
+
 class Vocabulary:
     """The rules and the allowlist, loaded once, and the rewrite they describe."""
 
-    def __init__(self, only: set[str] | None = None) -> None:
-        rules, allow = load(RULES), load(ALLOWLIST)
+    def __init__(self, only: set[str] | None = None, *, root: Path = ROOT) -> None:
+        rules, allow = policy(root)
         self.only = only
         self.stems: dict[str, str] = rules.get("stems", {})
         self.kind_stems: dict[str, dict[str, str]] = rules.get("kind_stems", {})
