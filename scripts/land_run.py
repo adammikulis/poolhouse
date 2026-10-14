@@ -238,7 +238,7 @@ def create(root: Path, target: str, order: list[str]) -> Batch:
     branch = f"land/{stamp}"
     lg.git(root, "worktree", "add", "-b", branch, str(wt), base)
     with contextlib.suppress(RuntimeError, OSError, NodeError):
-        owner = connect(cwd=root).name
+        owner = connect(cwd=root).whoami().name
         trees.claim(root, wt, owner, time.time(), {"purpose": "integration batch"})
     return Batch(root, target, base, wt, branch, order)
 
