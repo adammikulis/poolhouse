@@ -74,14 +74,39 @@ def test_missing_ambiguous_or_self_parentage_never_falls_back(node, fields):
     assert session.find("codex", IDS["new-child"], client=node.client) == ""
 
 
-def test_child_stop_retires_only_child_and_does_not_restore_ended_id(node):
+def test_child_turn_stop_keeps_authenticated_session_for_followup(node):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
-    lifecycle.handle(event("SubagentStop", agent_id="child"), node=node.client)
+    child_name = session.find("codex", IDS["child"], client=node.client)
+    child = session.connect(client=node.client, board=node.board, agent=child_name)
+    before = child.whoami()
+    for _ in range(2):
+        lifecycle.handle(event("SubagentStop", agent_id="child", turn_id="turn-one"), node=node.client)
+    assert child.whoami() == before
+    assert lifecycle.handle(event("PostToolUse", agent_id="child"), node=node.client) == {}
+    child.post("#general", "note", "followup uses the same authenticated session")
+
+
+def test_explicit_retirement_still_refuses_ended_child_identity(node):
+    lifecycle.handle(event("SessionStart"), node=node.client)
+    lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
+    child_name = session.find("codex", IDS["child"], client=node.client)
+    session.connect(client=node.client, board=node.board, agent=child_name).retire()
     with pytest.raises(Exception, match=r"ended|retired|session"):
         lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     name = session.find("codex", IDS["native-root"], client=node.client)
     assert not session.connect(client=node.client, board=node.board, agent=name).whoami().retired
+
+
+def test_root_session_end_retires_root_and_stopped_children(node):
+    lifecycle.handle(event("SessionStart"), node=node.client)
+    lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
+    names = [session.find("codex", IDS[key], client=node.client) for key in ("native-root", "child")]
+    lifecycle.handle(event("SubagentStop", agent_id="child"), node=node.client)
+    lifecycle.handle(event("SessionEnd"), node=node.client)
+    for name in names:
+        with pytest.raises(Exception, match=r"token|ended|retired|session"):
+            session.connect(client=node.client, board=node.board, agent=name).whoami()
 
 
 def test_assigned_launcher_identity_is_not_replaced_and_child_not_parent(node):

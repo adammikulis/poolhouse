@@ -109,9 +109,9 @@ def context(event: dict, assigned: str, node: client.Client | None = None) -> tu
 def handle(event: dict, assigned: str = '', *, node: client.Client | None = None) -> dict:
     stage, actor, _cwd = context(event, assigned, node)
     child = event.get('agent_id')
-    if stage in ('SubagentStop', 'SessionEnd'):
-        if stage == 'SubagentStop' and not child:
-            raise ValueError('subagent stop has no native child identifier')
+    if stage == 'SubagentStop' and not child:
+        raise ValueError('subagent stop has no native child identifier')
+    if stage == 'SessionEnd':
         actor.retire()
         return {}
     if stage in ('SessionStart', 'SubagentStart'):
