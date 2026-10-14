@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import signal
 import subprocess
 import sys
@@ -25,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import land_entries
+import land_finish
 import land_git as lg
 import land_recover as recover
 import land_review
@@ -151,7 +153,12 @@ class Runner:
             if now - marked > 10:
                 marked = now
                 landing.beat(self.s, lines[-1] if lines else "starting")
-                self.s.renew_claims(landing.RUNNER_TTL_S)
+                try:
+                    self.heartbeat(batch)
+                except STEP_ERRORS:
+                    self.halt(proc)
+                    reader.join(5)
+                    raise
                 if any(r["status"] == "cancelled" for r in landing.fold(self.s).requests.values() if r["id"] in ids):
                     stop = "cancelled"
             if now - mark[0] > self.stall_s:
@@ -162,6 +169,35 @@ class Runner:
                 self.halt(proc)
         reader.join(5)
         return proc.returncode, lines, stop
+
+    def heartbeat(self, batch: list[dict]) -> None:
+        """Renew existing claims used by the current authenticated landing."""
+        who = self.s.whoami().name
+        active = {("branch", self.target), ("worktree", str(self.root.resolve()))}
+        try:
+            state = land_finish.load(self.root)
+            rows = state.get("source_shas") if isinstance(state, dict) else None
+            marker = getattr(self, "active_run_id", "")
+            valid = (isinstance(state, dict) and marker and state.get("run_id") == marker and state.get("target") == self.target
+                     and isinstance(rows, list) and bool(rows)
+                     and all(isinstance(row, dict) and isinstance(row.get("branch"), str)
+                             and isinstance(row.get("sha"), str) for row in rows))
+            if valid:
+                pins = {(row["branch"], row["sha"]) for row in rows}
+                expected = {(row["branch"], row["sha"]) for row in batch}
+                branch = state.get("integration")
+                tree = lg.tree_of(self.root, branch) if isinstance(branch, str) and branch.startswith("land/") else None
+                if (len(pins) == len(rows) and pins <= expected and tree
+                        and str(tree.path.resolve()) == state.get("worktree")):
+                    active.update({("branch", branch), ("worktree", str(tree.path.resolve()))})
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+            pass
+        held = [claim for claim in self.s.claims() if claim.owner == who
+                and (claim.kind, claim.key) in active]
+        if not any(claim.kind == "branch" and claim.key == self.target for claim in held):
+            raise Denied("denied", "the active landing branch claim expired")
+        for claim in held:
+            self.s.call("lease_renew", id=claim.lease, ttl_s=landing.RUNNER_TTL_S)
 
     def halt(self, proc: subprocess.Popen) -> None:
         """Ask the gate's process group to stop; kill it only when it ignores that for a minute."""
@@ -226,7 +262,7 @@ class Runner:
             return self.drive(batch, who) if batch else {"status": "idle"}
         finally:
             recover.sweep(self.root)
-            self.s.renew_claims(landing.RUNNER_TTL_S)
+            self.heartbeat(batch)
 
     def resume(self) -> None:
         """Settle what a crashed pass left: remove its trees, then settle each request by its SHA.
@@ -318,6 +354,17 @@ class Runner:
         self.s.post("#announcements", "blocked", f"landing could not land {req['branch']} ({status})", subject="blocked")
 
     def run_batch(self, batch: list[dict], who: str) -> dict:
+        """Bind one landing attempt to its subprocess state."""
+        previous = self.env
+        self.active_run_id = secrets.token_hex(16)
+        self.env = {**previous, "POOLHOUSE_LAND_RUN_ID": self.active_run_id}
+        try:
+            return self._run_batch(batch, who)
+        finally:
+            self.active_run_id = ""
+            self.env = previous
+
+    def _run_batch(self, batch: list[dict], who: str) -> dict:
         """Merge, gate, land and push one batch, then report to every requester."""
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             json.dump([{"branch": r["branch"], "tip": r["sha"]} for r in batch], handle)
@@ -336,7 +383,7 @@ class Runner:
             bad = ", ".join(summary.get("blocked", [])) or summary.get("error", "") or summary.get("status", "")
             return {"status": "unverified", "batch": [r["id"] for r in batch], "detail": bad,
                     "baseline": summary.get("baseline", [])}
-        _, fin, _ = self.land("finish", "--apply")
+        _, fin, _ = self.land("finish", "--apply", batch=batch)
         if fin.get("status") != "landed":
             return self.not_landed(batch, summary, fin)
         return self.landed(batch, summary, who)
