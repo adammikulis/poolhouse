@@ -47,6 +47,14 @@ from .discovery import (
     named_apart,
     require_name,
 )
+from .join_request import (
+    DEFAULT_HOOKS,
+    DEFAULT_JOIN,
+    DEFAULT_LEAVE,
+    JoinHooks,
+    JoinRequest,
+    LeaveRequest,
+)
 from .launch import HTTP_PORT, already_running, wait_for_health
 from .onboard.cli import COMMANDS as ONBOARD_COMMANDS, add_commands, run as run_onboarding
 from .onboard.joining import JoinOptions, join_by_passphrase
@@ -433,79 +441,67 @@ def table(rows: Sequence[dict[str, Any]]) -> str:
 
 
 # -- the join ---------------------------------------------------------------------------
-def join_machine(*, name: str = "", passphrase: str = "", group: str = "",
-                 mode: str | None = None,
-                 persist: bool = False, track: str = "", port: int = HTTP_PORT,
-                 root: Path | str | None = None,
-                 pool_key_path: Path | str | None = None,
-                 timeout_s: float = 2.0, wait_s: float = 20.0,
-                 say: Callable[[str], None] = say,
-                 start: Callable[[int, Path, str], int] | None = None,
-                 enrol: Callable[[str, str], None] | None = None,
-                 ensure: Callable[[Path], Path] | None = None,
-                 persist_with: Callable[..., Any] | None = None,
-                 finder: Callable[..., list[Beacon]] = discover,
-                 discovery_port: int | None = None) -> Joined:
-    """Join a pool, start the daemon and return the visible fleet."""
-    if mode is not None:
-        pool_modes.validate(mode)
-    root = home.expand(root) if root else default_root()
+def join_machine(request: JoinRequest = DEFAULT_JOIN, *, hooks: JoinHooks = DEFAULT_HOOKS) -> Joined:
+    """Join a pool, start the daemon and return the visible devices."""
+    if request.admission.mode is not None:
+        pool_modes.validate(request.admission.mode)
+    root = home.expand(request.root) if request.root else default_root()
     root.mkdir(parents=True, exist_ok=True)
-    group = require_name(group) if passphrase else group.strip()
-    joined = Joined(name=name, port=port, root=root, group=group)
-    if track:
-        joined.tracking = remember_track(root, track)
-        say(f"following '{joined.tracking}'" if joined.tracking
+    group = require_name(request.group) if request.passphrase else request.group.strip()
+    joined = Joined(name=request.name, port=request.port, root=root, group=group)
+    if request.track:
+        joined.tracking = remember_track(root, request.track)
+        hooks.say(f"following '{joined.tracking}'" if joined.tracking
             else "following releases")
 
-    joined.checks = _machine_checks(root, ensure, say)
+    joined.checks = _machine_checks(root, hooks.ensure, hooks.say)
 
-    running = already_running(port)
-    if passphrase:
+    running = already_running(request.port)
+    if request.passphrase:
         if running is not None:
-            (enrol or (lambda words, g: _enrol_via_daemon(
-                port, words, g, mode)))(passphrase, group)
+            (hooks.enrol or (lambda words, g: _enrol_via_daemon(
+                request.port, words, g, request.admission.mode)))(request.passphrase, group)
         else:
-            join_by_passphrase(passphrase, group, pool_key_path,
-                               options=JoinOptions(mode=mode, timeout_s=timeout_s, port=discovery_port))
-        enrolled = next((m for m in memberships(pool_key_path) if m.group == group), None)
-        joined.mode = enrolled.mode if enrolled else mode or pool_modes.PRODUCTION
-        say(f"joined pool '{group}'")
-        recovery.remember(passphrase, group, pool_key_path, say=say)
+            join_by_passphrase(request.passphrase, group, request.pool_key_path,
+                               options=JoinOptions(mode=request.admission.mode, timeout_s=request.admission.timeout_s, port=request.admission.port))
+        enrolled = next((m for m in memberships(request.pool_key_path) if m.group == group), None)
+        joined.mode = enrolled.mode if enrolled else request.admission.mode or pool_modes.PRODUCTION
+        hooks.say(f"joined pool '{group}'")
+        recovery.remember(request.passphrase, group, request.pool_key_path, say=hooks.say)
     else:
-        member = automatic_pools.ensure(pool_key_path, mode=mode,
-                                           port=discovery_port or port + 1)
+        member = automatic_pools.ensure(request.pool_key_path, mode=request.admission.mode,
+                                           port=request.admission.port or request.port + 1)
         joined.group = member.group
         joined.mode = member.mode
-        say(f"joined pool '{member.group}'")
-    say(pool_modes.notice(joined.mode))
+        hooks.say(f"joined pool '{member.group}'")
+    hooks.say(pool_modes.notice(joined.mode))
 
     if running is not None:
-        _running_notice(joined, running, say)
+        _running_notice(joined, running, hooks.say)
     else:
-        if persist:
-            joined.persisted, joined.persist_note = _persist(persist_with, say)
+        if request.persist:
+            joined.persisted, joined.persist_note = _persist(hooks.persist_with, hooks.say)
             if joined.persisted:
-                say("waiting for the logon service to bring it up")
-                if wait_for_health(port, seconds=wait_s) is not None:
-                    running = already_running(port)
+                hooks.say("waiting for the logon service to bring it up")
+                if wait_for_health(request.port, seconds=request.wait_s) is not None:
+                    running = already_running(request.port)
         if running is None:
-            joined.daemon_pid = _start_selected(start, joined, pool_key_path)
+            joined.daemon_pid = _start_selected(hooks.start, joined, request.pool_key_path)
             joined.started = True
-            say(f"started the daemon (pid {joined.daemon_pid}); waiting for it to answer")
-            if wait_for_health(port, seconds=wait_s) is None:
-                raise JoinError(f"the daemon did not answer on port {port} within "
-                                f"{wait_s:.0f}s; its log is {root / 'traind.log'}")
-            running = already_running(port) or {}
-        joined.name = str((running or {}).get("name") or name)
+            hooks.say(f"started the daemon (pid {joined.daemon_pid}); waiting for it to answer")
+            if wait_for_health(request.port, seconds=request.wait_s) is None:
+                raise JoinError(f"the daemon did not answer on port {request.port} within "
+                                f"{request.wait_s:.0f}s; its log is {root / 'traind.log'}")
+            running = already_running(request.port) or {}
+        joined.name = str((running or {}).get("name") or request.name)
         joined.machine = str((running or {}).get("machine") or "")
-    if persist and not joined.persisted and not joined.persist_note:
-        joined.persisted, joined.persist_note = _persist(persist_with, say)
+    if request.persist and not joined.persisted and not joined.persist_note:
+        joined.persisted, joined.persist_note = _persist(hooks.persist_with, hooks.say)
 
-    say(f"asking the network (discovery port {discovery_port or default_port()})")
-    joined.members = members(pool_key_path=pool_key_path, timeout_s=timeout_s,
-                         port=discovery_port, self_machine=joined.machine, finder=finder)
-    say(table(joined.members))
+    hooks.say(f"asking the network (discovery port {request.admission.port or default_port()})")
+    joined.members = members(pool_key_path=request.pool_key_path, timeout_s=request.admission.timeout_s,
+                         port=request.admission.port, self_machine=joined.machine, finder=hooks.finder)
+    hooks.say(table(joined.members))
     return joined
 
 
@@ -557,11 +553,10 @@ def _persist(persist_with: Callable[..., Any] | None, say: Callable[[str], None]
     return False, note
 
 
-def leave_machine(*, group: str = "", root: Path | str | None = None,
-                  pool_key_path: Path | str | None = None, stop: bool = True,
-                  say: Callable[[str], None] = say,
+def leave_machine(request: LeaveRequest = DEFAULT_LEAVE, *, say: Callable[[str], None] = say,
                   unpersist: Callable[[], list[Path]] | None = None) -> dict[str, Any]:
-    """Undo ``join``: drop the pool(s), the logon service, and the daemon it started."""
+    """Leave selected pools and stop this device's managed daemon."""
+    group, root, pool_key_path, stop = request.group, request.root, request.pool_key_path, request.stop
     before = memberships(pool_key_path)
     left = [m.group for m in before if not group or m.group == group]
     for one in left:
@@ -649,10 +644,7 @@ def cmd_join(args: argparse.Namespace) -> int:
     group, words = _pool_and_words(args, args.pool_key)
     # An install script sets these rather than answering prompts it has no terminal for.
     name = args.name or os.environ.get("POOLHOUSE_NAME", "").strip()
-    joined = join_machine(name=name, passphrase=words, group=group,
-                          mode=args.mode, persist=args.persist, track=args.track, port=args.port,
-                          root=args.root,
-                          pool_key_path=args.pool_key, timeout_s=args.timeout)
+    joined = join_machine(request=JoinRequest(name=name, passphrase=words, group=group, persist=args.persist, track=args.track, port=args.port, root=args.root, pool_key_path=args.pool_key, admission=JoinOptions(mode=args.mode, timeout_s=args.timeout)))
     if args.json:
         say(json.dumps(joined.public(), indent=1))
         return 0
@@ -757,8 +749,7 @@ def cmd_pause(args: argparse.Namespace) -> int:
 
 
 def cmd_leave(args: argparse.Namespace) -> int:
-    leave_machine(group=args.group, root=args.root, pool_key_path=args.pool_key,
-                  stop=not args.keep_running)
+    leave_machine(request=LeaveRequest(group=args.group, root=args.root, pool_key_path=args.pool_key, stop=not args.keep_running))
     return 0
 
 

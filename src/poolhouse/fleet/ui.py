@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import jsonl
+from poolhouse.fleet.join_request import JoinHooks, JoinRequest
 from poolhouse.home import machine_id
 from poolhouse.http import Options, Server, ServerError, open_stream
 
@@ -403,12 +404,7 @@ class UI:
             self.rejoined()
 
         said: list[str] = []
-        joined = join_machine(name=name or self.name, passphrase=passphrase, group=group,
-                              persist=persist, port=self.member_port,
-                              root=self.root or default_root(),
-                              pool_key_path=self.pool_key_path, enrol=enrol,
-                              persist_with=self.persist_with, say=said.append,
-                              discovery_port=self.discovery_port)
+        joined = join_machine(request=JoinRequest(name=name or self.name, passphrase=passphrase, group=group, persist=persist, port=self.member_port, root=self.root or default_root(), pool_key_path=self.pool_key_path, admission=JoinOptions(port=self.discovery_port, timeout_s=2.0)), hooks=JoinHooks(enrol=enrol, persist_with=self.persist_with, say=said.append))
         self._members = (0.0, [])
         return {**joined.public(), "said": said}
 

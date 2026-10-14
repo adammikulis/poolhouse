@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from poolhouse import sealing
+from poolhouse.fleet.remote import Discovery
 from poolhouse.http import Options, Sealed, ServerError, ServerUnreachable, open_stream
 
 from .discovery import derive_token, memberships
@@ -116,8 +117,7 @@ def validate_project(project: dict) -> None:
 def members(ui) -> list[Member]:
     found = {}
     for member in memberships(ui.pool_key_path):
-        for daemon in Member.discover(pool_key_path=ui.pool_key_path, key=member.key,
-                                  group=member.group, timeout_s=1, port=ui.discovery_port):
+        for daemon in Member.discover(discovery=Discovery(pool_key_path=ui.pool_key_path, key=member.key, group=member.group, timeout_s=1, port=ui.discovery_port)):
             found.setdefault(daemon.base_url, daemon)
     return list(found.values())
 

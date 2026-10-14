@@ -9,6 +9,7 @@ import pytest
 
 from poolhouse.fleet import daemon, join
 from poolhouse.fleet.discovery import derive_token
+from poolhouse.fleet.join_request import JoinHooks, JoinRequest
 
 PRODUCTION = base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=")
 DEVELOPMENT = base64.urlsafe_b64encode(bytes(reversed(range(32)))).rstrip(b"=")
@@ -97,8 +98,7 @@ def test_default_join_launcher_receives_effective_selected_profile(tmp_path, mon
                         SimpleNamespace(group="development", mode="dev"))
     monkeypatch.setattr(join, "start_daemon", lambda *args, **kwargs: launched.append((args, kwargs)) or 42)
     profile = tmp_path / "development.key"
-    joined = join.join_machine(root=tmp_path / "daemon", port=9123, name="device",
-                               pool_key_path=profile, say=lambda _text: None)
+    joined = join.join_machine(request=JoinRequest(root=tmp_path / "daemon", port=9123, name="device", pool_key_path=profile), hooks=JoinHooks(say=lambda _text: None))
     assert joined.started and joined.mode == "dev"
     assert launched == [((9123, tmp_path / "daemon", "device"),
                          {"pool_key_path": profile, "mode": "dev"})]

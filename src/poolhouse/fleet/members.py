@@ -11,6 +11,7 @@ import webbrowser
 from typing import Any
 
 from poolhouse import node_pool
+from poolhouse.fleet.remote import Discovery
 from poolhouse.log import say, warn
 from poolhouse.person import HumanRequired, require_person
 
@@ -182,7 +183,7 @@ def _member(args: argparse.Namespace) -> Any:
     from .remote import Member
     key = _require_key(args.pool_key)
     if args.name:
-        return Member.find_one(name=args.name, key=key)
+        return Member.find_one(name=args.name, discovery=Discovery(key=key))
     return Member(f"http://127.0.0.1:{args.port}", derive_token(key))
 
 

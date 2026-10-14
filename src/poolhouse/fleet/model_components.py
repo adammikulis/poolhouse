@@ -7,6 +7,7 @@ import urllib.parse
 from pathlib import Path, PurePosixPath
 
 from poolhouse import hub, net
+from poolhouse.fleet.remote import Discovery
 from poolhouse.http import ServerError
 from poolhouse.safenames import safe_filename
 from poolhouse.serve import mtp
@@ -162,7 +163,7 @@ def catalogue(models, name: str, source: str = "", key: bytes | None = None) -> 
     if key is not None and policy in {"lan", "both"}:
         from .remote import Member, MemberError
 
-        for member in Member.discover(key=key, timeout_s=1):
+        for member in Member.discover(discovery=Discovery(key=key, timeout_s=1)):
             try:
                 for held in member.models():
                     same = _reference(held.get("source", "")) == _reference(source) if source else held.get("name") == name
