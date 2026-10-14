@@ -7,3 +7,12 @@ This previews new unsigned acts at epoch 1. It does not authenticate founding ac
 Attack-first: phone_attack_review covered all ten repository threat cases before source changes. Root owns integration and activation; this protocol has no production signing caller to activate.
 
 Verification: Rust-generated shared bytes, JVM hostile-input checks, existing founding protocol regression checks and explicit affected Python selectors. Tests use temporary state and no real phone keys or public services. Exact final counts and mutation evidence are recorded with the landing handoff.
+
+Verified in the claimed `poolhouse-phone-act-protocol` tree on macOS, parent commit `703888636`:
+
+- `scripts/test all tests/test_phone_friction.py tests/test_wiring.py tests/test_glossary.py`: 195 passed, all three files ran. Evidence `tmp460skavx.result.json` in the broker's temporary evidence directory. Fixed runner overhead was 17.3 seconds versus 1.1 seconds of tests; root received this as separate contributor-friction work.
+- Brokered `cargo test --manifest-path app/Cargo.toml -p poolhouse-node --test phone_act_vectors --test phone_founding_vectors --test gov_acts`: 46 passed, two fixture generators ignored. The new Rust generator was explicitly run to produce the shared JSON.
+- Brokered Gradle 9.2.0, Android plugin 8.9.1/API 36 `protocolChecks`: 59 new act assertions and 116 founding assertions passed, existing approval/chat checks passed.
+- After commit `370501583`, removing the supplied-byte comparison made `actChecks` fail with `Accepted hostile act`. The committed source returned all 59 assertions to green and left the diff clean.
+
+Android hardware and installed approval journeys were not exercised. This leaf supplies a protocol preview with no production caller; GOV-3/F7 remains unfinished.
