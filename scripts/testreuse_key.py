@@ -142,26 +142,57 @@ def marks_in(source: str) -> set[str]:
             and isinstance(node.value, ast.Attribute) and node.value.attr == "mark"}
 
 
+class ImportNames(ast.NodeVisitor):
+    """Import names and computed import calls in one parsed module."""
+
+    def __init__(self, module: str, is_package: bool) -> None:
+        self.module, self.is_package = module, is_package
+        self.names: set[str] = set()
+        self.dynamic = False
+        self.pending: list[ast.AST] = []
+
+    def visit(self, node: ast.AST) -> None:
+        self.pending = [node]
+        while self.pending:
+            super().visit(self.pending.pop())
+
+    def generic_visit(self, node: ast.AST) -> None:
+        self.pending.extend(ast.iter_child_nodes(node))
+
+    def visit_Import(self, node: ast.Import) -> None:
+        self.names.update(alias.name for alias in node.names)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        base = affected.absolute(node, self.module, self.is_package)
+        self.names.add(base)
+        self.names.update(f"{base}.{alias.name}" for alias in node.names)
+
+    def visit_Name(self, _node: ast.Name) -> None:
+        pass
+
+    def visit_Constant(self, _node: ast.Constant) -> None:
+        pass
+
+    def visit_Call(self, node: ast.Call) -> None:
+        target = (node.func.id if isinstance(node.func, ast.Name) else node.func.attr
+                  if isinstance(node.func, ast.Attribute) else ast.unparse(node.func))
+        if target.endswith(("import_module", "__import__")):
+            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                self.names.add(node.args[0].value)
+            else:
+                self.dynamic = True
+        self.generic_visit(node)
+
+
 def import_names(source: str, module: str, is_package: bool) -> tuple[set[str], bool]:
     """The dotted names ``source`` imports, and whether it imports a module chosen at run time."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return set(), True
-    names, dynamic = set(), False
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            base = affected.absolute(node, module, is_package)
-            names.add(base)
-            names.update(f"{base}.{alias.name}" for alias in node.names)
-        elif isinstance(node, ast.Call) and ast.unparse(node.func).endswith(("import_module", "__import__")):
-            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-                names.add(node.args[0].value)
-            else:
-                dynamic = True
-    return names, dynamic
+    visitor = ImportNames(module, is_package)
+    visitor.visit(tree)
+    return visitor.names, visitor.dynamic
 
 
 class Closures:
