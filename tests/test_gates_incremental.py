@@ -41,6 +41,9 @@ def copy_of_the_tree(where: Path) -> Path:
     for name in ("src", "tests"):
         shutil.copytree(REPO / name, where / name, ignore=ignore)
     shutil.copy(REPO / "pyproject.toml", where / "pyproject.toml")
+    (where / "contracts").mkdir()
+    for name in ("glossary-rules.toml", "glossary-allowlist.toml"):
+        shutil.copy(REPO / "contracts" / name, where / "contracts" / name)
     (where / "scripts" / "gates").mkdir(parents=True)
     shutil.copy(REPO / "scripts" / "gates" / "survivors.txt", where / "scripts" / "gates")
     return where
