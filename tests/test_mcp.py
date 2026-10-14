@@ -323,9 +323,7 @@ class TestTheCommand:
 
 
 def test_workspace_subset_rejects_server_admin_tools(monkeypatch):
-    names = {"workspace_inbox", "workspace_send", "workspace_thread", "workspace_claim",
-             "workspace_who_owns", "workspace_announce", "workspace_ack", "workspace_status",
-             "workspace_reputation"}
+    names = set(workspace_tools.NAMES)
     monkeypatch.setattr(server, "TOOLS", list(server.TOOLS))
     monkeypatch.setattr(server, "_BY_NAME", dict(server._BY_NAME))
     listing = rpc(1, "tools/list")
@@ -337,3 +335,22 @@ def test_workspace_subset_rejects_server_admin_tools(monkeypatch):
     replies = [json.loads(line) for line in output.getvalue().splitlines()]
     assert {t["name"] for t in replies[0]["result"]["tools"]} == names
     assert replies[1]["result"]["isError"] is True
+
+
+@pytest.mark.skipif(not server.sdk_available(), reason="the mcp SDK is not installed")
+def test_workspace_subset_sdk_preserves_guarded_tools(monkeypatch):
+    from conftest import on_a_fresh_loop
+    from mcp.server.mcpserver import MCPServer
+
+    captured = []
+    monkeypatch.setattr(server, "TOOLS", list(server.TOOLS))
+    monkeypatch.setattr(server, "_BY_NAME", dict(server._BY_NAME))
+    monkeypatch.setattr(MCPServer, "run", lambda app, transport: captured.append(app))
+    assert server.main(["--workspace-only"]) == 0
+    listed = on_a_fresh_loop(captured[0].list_tools())
+    assert {tool.name for tool in listed} == set(workspace_tools.NAMES)
+    for tool in server.TOOLS:
+        assert tool.fn is getattr(workspace_tools, tool.name)
+        assert tool.annotations() == next(t for t in listed if t.name == tool.name).annotations.model_dump(by_alias=True, exclude_none=True)
+    for name in ("serve_up", "serve_down", "workspace_grant", "unknown"):
+        assert server.call(name)["isError"] is True
