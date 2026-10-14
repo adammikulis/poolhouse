@@ -222,7 +222,7 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S) -> dict:
         with only_one(boundary, wait=False, note="node rollback"):
             if current := _answers_as(state, new_sha, int(run.get("pid", -1))):
                 return {"action": "swapped", "detail": f"node {current['pid']} runs {new_sha[:12]}"}
-            rollback = _rollback_pointer(state, pin)
+            rollback = _rollback_pointer(state, pin, new_sha)
     except Busy:
         return {"action": "deferred", "detail": "node replacement waits for landing"}
     if rollback is None:
@@ -230,9 +230,9 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S) -> dict:
     return _rollback_answer(state, rollback, new_sha, wait_s)
 
 
-def _rollback_pointer(state: Path, pin: dict) -> tuple[Path, str] | None:
+def _rollback_pointer(state: Path, pin: dict, new_sha: str) -> tuple[Path, str] | None:
     now = node_supervise.running(state)
-    before = pin or now.get("previous") or now
+    before = pin or (now.get("previous") if now.get("sha256") == new_sha else now) or {}
     old, sha = Path(str(before.get("binary") or "")), str(before.get("sha256") or "")
     source = runtime_store.read_state().get("checkout")
     try:
@@ -251,7 +251,7 @@ def _rollback_answer(state: Path, rollback: tuple[Path, str], new_sha: str, wait
 
 
 def _rolled_back(state: Path, pin: dict, new_sha: str, wait_s: float, *, direct: bool = False) -> dict:
-    rollback = _rollback_pointer(state, pin)
+    rollback = _rollback_pointer(state, pin, new_sha)
     if rollback is None:
         return {"action": "failed", "detail": "the previous node runtime is refused"}
     if direct:

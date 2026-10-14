@@ -444,3 +444,16 @@ def test_spawn_metadata_failure_stops_new_child_before_prior_recovery(source, tm
     assert result is not None
     assert events == ["start", "terminate", "start"]
     assert len(writes) == 2
+
+
+def test_observer_recovery_uses_current_restored_node_instead_of_failed_previous(tmp_path, monkeypatch):
+    state = tmp_path / "node"
+    old = tmp_path / "old" / "node" / "poolhouse-node"
+    points = []
+    monkeypatch.setattr(node_supervise, "running", lambda _: {"binary": str(old), "sha256": "old",
+                                                           "previous": {"binary": "broken", "sha256": "new"}})
+    monkeypatch.setattr(runtime_store, "read_state", lambda: {"checkout": str(tmp_path / "source")})
+    monkeypatch.setattr(node_supervise, "_admitted", lambda *args: None)
+    monkeypatch.setattr(node_supervise, "point", lambda *args: points.append(args))
+    assert node_launch._rollback_pointer(state, {}, "new") == (old, "old")
+    assert points == [(state, old, "old")]
