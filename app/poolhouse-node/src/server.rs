@@ -45,7 +45,9 @@ impl Server {
         let node = Node::open_with(state, supplied)?;
         let listener = Listener::bind(state)?;
         crate::sys::watch_stop(state, node.stop.clone());
-        Ok(Server { node: Arc::new(Mutex::new(node)), listener, allowed: Principal::me()?, net: None, _instance: instance })
+        let node = Arc::new(Mutex::new(node));
+        node.lock().map_err(|_| Error::Damaged("node poisoned".into()))?.local_server = Arc::downgrade(&node);
+        Ok(Server { node, listener, allowed: Principal::me()?, net: None, _instance: instance })
     }
 
     /// Only this user may connect (tests use another to see the refusal).

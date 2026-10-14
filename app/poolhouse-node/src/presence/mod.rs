@@ -324,8 +324,7 @@ impl Firsts {
         Ok(())
     }
 
-    /// What became of the prompt ``by`` opened, as a reply: the secret comes once, in the reply that first says yes.
-    pub fn status(&mut self, by: &str, now: u64) -> Value {
+    fn poll(&mut self, now: u64) {
         if let Some(p) = &mut self.asking {
             let late = now.saturating_sub(p.started_ms) > ASK_FOR_MS;
             let answer = if late { None } else { p.prompt.poll() };
@@ -341,6 +340,18 @@ impl Firsts {
                 }
             }
         }
+    }
+
+    /// A live phone yes belonging to this requester, before its one-time secret is read.
+    pub(crate) fn phone_ready(&mut self, by: &str, now: u64) -> bool {
+        self.poll(now);
+        self.offered(Purpose::Phone, now)
+            && matches!(&self.outcome, Some((who, Outcome::Yes(Some(_), expires, Purpose::Phone))) if who == by && now <= *expires)
+    }
+
+    /// What became of the prompt ``by`` opened, as a reply: the secret comes once, in the reply that first says yes.
+    pub fn status(&mut self, by: &str, now: u64) -> Value {
+        self.poll(now);
         if let Some(p) = self.asking.as_ref().filter(|p| p.by == by) {
             return json!({"state": "asking", "purpose": p.purpose.words(), "left_ms": ASK_FOR_MS.saturating_sub(now.saturating_sub(p.started_ms))});
         }
@@ -406,7 +417,17 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
         }
         node.firsts.ask(purpose, &by, text(p, "public")?, text(p, "terminal")?, now)?;
     }
-    let mut out = node.firsts.status(&by, now);
+    phone_status(node, &by, now, "0.0.0.0:7449".parse().expect("fixed phone address"))
+}
+
+fn phone_status(node: &mut Node, by: &str, now: u64, listen: std::net::SocketAddr) -> Result<Value> {
+    if node.firsts.phone_ready(by, now) && node.phone_port == 0 {
+        if let Some(shared) = node.local_server.upgrade() {
+            crate::phone::http::start_locked(node, shared, listen)?;
+            node.pusher = Box::new(crate::phone::push::Web::start(&node.dir));
+        }
+    }
+    let mut out = node.firsts.status(by, now);
     if out["state"] == "confirmed" && out["purpose"] == "phone" && out["secret"].is_string() {
         let secret = out["secret"].as_str().unwrap_or_default().to_string();
         out["link"] = json!(crate::phone::calls::link(node, &secret, out["expires_ms"].as_u64().unwrap_or(0)));
@@ -448,6 +469,73 @@ mod tests {
     fn person() -> (Firsts, std::sync::Arc<std::sync::Mutex<Option<bool>>>) {
         let answer = std::sync::Arc::new(std::sync::Mutex::new(None));
         (Firsts::new(Box::new(Scripted(answer.clone()))), answer)
+    }
+
+    #[test]
+    fn activation_failure_keeps_the_same_person_yes_for_its_own_requesters_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(Node::open(dir.path()).unwrap()));
+        let occupied = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = occupied.local_addr().unwrap();
+        let (firsts, answer) = person();
+        {
+            let mut node = shared.lock().unwrap();
+            node.firsts = firsts;
+            node.local_server = std::sync::Arc::downgrade(&shared);
+            node.firsts.ask(Purpose::Phone, "demo/a", "", "", 10).unwrap();
+            assert_eq!(phone_status(&mut node, "demo/a", 11, address).unwrap()["state"], "asking");
+            assert_eq!(node.phone_port, 0);
+            *answer.lock().unwrap() = Some(true);
+            assert_eq!(phone_status(&mut node, "demo/b", 12, address).unwrap()["state"], "none");
+            assert_eq!(node.phone_port, 0, "another session cannot open it");
+            assert!(phone_status(&mut node, "demo/a", 13, address).is_err());
+            assert_eq!(node.phone_port, 0, "no false listener after failed bind");
+            assert!(node.firsts.phone_ready("demo/a", 14), "secret was not consumed or exposed");
+        }
+        drop(occupied);
+        {
+            let mut node = shared.lock().unwrap();
+            let result = phone_status(&mut node, "demo/a", 15, address).unwrap();
+            assert_eq!(result["state"], "confirmed");
+            assert_eq!(result["expires_ms"], 12 + SECRET_FOR_MS, "retry never renews person authorization");
+            assert!(result["link"].is_string() && result["secret"].is_string());
+            assert_eq!(node.phone_port, address.port());
+            let replay = phone_status(&mut node, "demo/a", 16, address).unwrap();
+            assert!(replay["link"].is_null() && replay["secret"].is_null(), "one read only");
+            node.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while shared.lock().unwrap().phone_port != 0 && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(shared.lock().unwrap().phone_port, 0);
+    }
+
+    #[test]
+    fn listener_readiness_requires_the_original_requester_and_a_live_unread_phone_yes() {
+        let (mut firsts, answer) = person();
+        firsts.ask(Purpose::Phone, "demo/a", "", "", 100).unwrap();
+        assert!(!firsts.phone_ready("demo/a", 101), "waiting is not permission");
+        *answer.lock().unwrap() = Some(true);
+        assert!(!firsts.phone_ready("demo/b", 102), "another requester cannot activate");
+        assert!(firsts.phone_ready("demo/a", 103));
+        assert!(firsts.phone_ready("demo/a", 104), "retry does not make another secret");
+        let confirmed = firsts.status("demo/a", 105);
+        assert_eq!(confirmed["expires_ms"], 102 + SECRET_FOR_MS);
+        assert!(!firsts.phone_ready("demo/a", 106), "a read yes cannot activate again");
+        let (mut late, answer) = person();
+        *answer.lock().unwrap() = Some(true);
+        late.ask(Purpose::Phone, "demo/a", "", "", 0).unwrap();
+        assert!(late.phone_ready("demo/a", 1));
+        assert!(!late.phone_ready("demo/a", SECRET_FOR_MS + 2), "expired yes is not renewed");
+        let (mut key, answer) = person();
+        *answer.lock().unwrap() = Some(true);
+        key.ask(Purpose::Key, "demo/a", KEY, "", 0).unwrap();
+        assert!(!key.phone_ready("demo/a", 1), "a key yes cannot open the phone endpoint");
+        let (mut refused, answer) = person();
+        *answer.lock().unwrap() = Some(false);
+        refused.ask(Purpose::Phone, "demo/a", "", "", 0).unwrap();
+        assert!(!refused.phone_ready("demo/a", 1), "a refusal leaves the endpoint closed");
     }
 
     #[test]
