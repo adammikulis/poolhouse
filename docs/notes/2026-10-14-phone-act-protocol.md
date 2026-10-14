@@ -16,3 +16,5 @@ Verified in the claimed `poolhouse-phone-act-protocol` tree on macOS, parent com
 - After commit `370501583`, removing the supplied-byte comparison made `actChecks` fail with `Accepted hostile act`. The committed source returned all 59 assertions to green and left the diff clean.
 
 Android hardware and installed approval journeys were not exercised. This leaf supplies a protocol preview with no production caller; GOV-3/F7 remains unfinished.
+
+Independent implementation review found that removal board names also need the node's reserved-name refusals. The correction adds every reserved name and fresh recomputed invalid-body checks in Java and Rust. Incremental `protocolChecks` passed 66 act assertions, 116 founding assertions and existing approval/chat checks; `phone_act_vectors` passed its shared-byte/body test with all seven reserved-name cases. The earlier 195 affected Python tests and 44 governance-act tests cover unchanged surfaces. Coordinator SDK compilation remains part of integration verification.

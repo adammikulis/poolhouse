@@ -43,5 +43,12 @@ fn shared_bytes_match_node_act_and_strict_bodies() {
         act.body["summary"] = json!("untrusted");
         assert!(body::parse(&act).is_err());
         assert_ne!(hex(&act.sign_bytes()), row["bytes"]);
+        if row["act"]["kind"] == "remove" {
+            for reserved in ["*", "all", "everyone", "workspace", "system", "human", "owner-token"] {
+                let mut removal: Act = serde_json::from_value(row["act"].clone()).unwrap();
+                removal.body["cut"][0]["board"] = json!(reserved);
+                assert!(body::parse(&removal).is_err());
+            }
+        }
     }
 }

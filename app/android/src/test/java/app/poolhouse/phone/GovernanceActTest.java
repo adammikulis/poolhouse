@@ -61,6 +61,7 @@ final class GovernanceActTest {
         changed(1, a -> a.getJSONObject("body").getJSONArray("cut").getJSONObject(0).put("hash", ""));
         changed(1, a -> a.getJSONObject("body").getJSONArray("cut").getJSONObject(0).put("board", "a..b"));
         changed(1, a -> a.getJSONObject("body").getJSONArray("cut").getJSONObject(0).put("origin", "bad"));
+        for (String board : new String[]{"*", "all", "everyone", "workspace", "system", "human", "owner-token"}) changed(1, a -> a.getJSONObject("body").getJSONArray("cut").getJSONObject(0).put("board", board));
         changed(1, a -> a.getJSONObject("body").getJSONArray("cut").getJSONObject(0).put("summary", "keep everything"));
         refused(() -> read(admit, bytes(admit), "00", now()));
         JSONArray admins = foundingVector.getJSONObject("charter").getJSONArray("admins");

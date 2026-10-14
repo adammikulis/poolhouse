@@ -74,7 +74,7 @@ final class GovernanceAct {
             FoundingCharter.fields(entry, "board", "origin", "seq", "hash");
             String board = FoundingCharter.text(entry, "board"), origin = FoundingCharter.text(entry, "origin"), hash = FoundingCharter.text(entry, "hash");
             long seq = FoundingCharter.number(entry, "seq", 0, Long.MAX_VALUE);
-            if (!board.matches("[a-z0-9][a-z0-9._-]{0,47}") || board.contains("..") || !origin.matches("[0-9a-f]{32}") || !(hash.matches("[0-9a-f]{64}") || seq == 0 && hash.isEmpty())) throw bad();
+            if (!board.matches("[a-z0-9][a-z0-9._-]{0,47}") || board.contains("..") || Arrays.asList("all", "everyone", "workspace", "system", "human", "owner-token").contains(board) || !origin.matches("[0-9a-f]{32}") || !(hash.matches("[0-9a-f]{64}") || seq == 0 && hash.isEmpty())) throw bad();
             logs.append("\nKeep log ").append(board).append(" from ").append(origin).append(" through entry ").append(seq).append(" at hash ").append(JSONObject.quote(hash));
         }
         return "Remove device: " + Hex.words(fingerprint) + "\nFingerprint: " + fingerprint
