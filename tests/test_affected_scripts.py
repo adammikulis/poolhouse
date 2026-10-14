@@ -336,9 +336,10 @@ def test_oracle_matches_every_executable_literal_style():
     assert plain_oracle("scripts/runner", sources) == {"tests/test_literals.py"}
 
 
-def test_oracle_detects_a_test_omitted_from_production_corpus(toy):
+def test_oracle_detects_a_test_omitted_from_production_corpus(toy, monkeypatch):
     files = rules.corpus(toy)
     del files["tests/test_string.py"]
+    monkeypatch.setattr(rules, "corpus", lambda root: files)
     selected, _, _ = rules.script_tests(files, "scripts/runner")
     expected = plain_oracle("scripts/runner", oracle_sources(toy))
     assert "tests/test_string.py" in expected - set(selected)
