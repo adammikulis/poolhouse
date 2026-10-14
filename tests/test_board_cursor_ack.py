@@ -45,7 +45,7 @@ def test_invalid_cursor_never_replaces_saved_progress(tmp_path, cursor):
 
 def test_cursor_lock_refuses_symlink_and_preserves_external_file(tmp_path):
     folder = credentials.prepare(tmp_path) / 'board'
-    folder.mkdir()
+    folder.mkdir(mode=0o700)
     external = tmp_path / 'external'
     external.write_text('keep')
     (folder / 'reader.cursors.lock').symlink_to(external)
@@ -124,7 +124,7 @@ def test_a_filtered_output_cannot_acknowledge_a_skipped_earlier_message():
 @pytest.mark.parametrize('text', ['broken', '{"inbox": {"device": "7"}}', '{"inbox": []}'])
 def test_malformed_saved_cursor_is_not_silently_reset(tmp_path, text):
     folder = credentials.prepare(tmp_path) / 'board'
-    folder.mkdir()
+    folder.mkdir(mode=0o700)
     path = folder / 'reader.cursors.json'
     path.write_text(text)
     path.chmod(0o600)
@@ -167,3 +167,32 @@ def test_cursor_replaced_during_open_is_refused(tmp_path, monkeypatch):
     assert external.read_text() == 'keep'
     with pytest.raises(OSError):
         credentials.os.fstat(opened[0])
+
+
+@pytest.mark.parametrize('component', ['state', 'client', 'board'])
+def test_private_cursor_parents_refuse_redirects_without_touching_target(tmp_path, component):
+    state = tmp_path / 'state'
+    external = tmp_path / 'external'
+    external.mkdir(mode=0o700)
+    if component == 'state':
+        state.symlink_to(external, target_is_directory=True)
+    else:
+        state.mkdir(mode=0o700)
+        path = state / 'client'
+        if component == 'board':
+            path.mkdir(mode=0o700)
+            path /= 'board'
+        path.symlink_to(external, target_is_directory=True)
+    with pytest.raises(ValueError, match=r'symlink|plain directory'):
+        credentials.remember(state, 'board', 'reader', 'inbox', {'device': 1})
+    assert list(external.iterdir()) == []
+    assert stat.S_IMODE(external.stat().st_mode) == 0o700
+
+
+def test_shared_private_parent_is_refused_without_changing_its_mode(tmp_path):
+    state = tmp_path / 'state'
+    state.mkdir(mode=0o755)
+    with pytest.raises(ValueError, match='lets others read'):
+        credentials.remember(state, 'board', 'reader', 'inbox', {'device': 1})
+    assert stat.S_IMODE(state.stat().st_mode) == 0o755
+    assert list(state.iterdir()) == []

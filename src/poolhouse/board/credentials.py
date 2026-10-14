@@ -24,6 +24,27 @@ from poolhouse.windows_private import restrict, validate
 __all__ = ["cursors", "forget", "load", "prepare", "private", "remember", "store"]
 
 
+def _directory(path: Path) -> Path:
+    made = False
+    try:
+        path.mkdir(parents=True, mode=0o700)
+        made = True
+    except FileExistsError:
+        pass
+    info = path.lstat()
+    if redirected(info) or not stat.S_ISDIR(info.st_mode):
+        raise ValueError("private session directory must be a plain directory")
+    if os.name == "nt" and made:
+        restrict(path)
+    why = problem(path)
+    if why:
+        raise ValueError(f"private session directory {why}")
+    current = path.lstat()
+    if redirected(current) or (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+        raise ValueError("private session directory changed while opening")
+    return path
+
+
 def prepare(state: Path) -> Path:
     """The client folder under the node's ``state``, made owner-only and registered with sentinel so no tool call names it;
     ValueError when it is a symlink or reparse point, sits inside a git work tree or on a Windows-mounted filesystem."""
@@ -49,34 +70,20 @@ def prepare(state: Path) -> Path:
         why = problem(state)
         if why not in {"", "missing"} and not why.startswith("mode "):
             raise ValueError(f"{state}: {why}")
-    state.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if os.name == "nt":
-        if redirected(state.lstat()):
-            raise ValueError(f"{state} is a symlink or Windows reparse point")
-        restrict(state)
-        restrict(path)
-    else:
-        path.chmod(0o700)
+    _directory(state)
+    _directory(path)
     return path
 
 
 def _folder(state: Path, board: str) -> Path:
     path = prepare(state) / board
-    path.mkdir(exist_ok=True, mode=0o700)
-    if os.name == "nt":
-        restrict(path)
-    else:
-        path.chmod(0o700)
-    return path
+    return _directory(path)
 
 
 def private(state: Path, board: str, name: str) -> Path:
     """A folder ``name`` for what a client keeps for ``board`` that only its owner may enter, made if needed."""
     path = _folder(state, board) / name
-    path.mkdir(exist_ok=True, mode=0o700)
-    path.chmod(0o700)
-    return path
+    return _directory(path)
 
 
 def store(state: Path, board: str, name: str, token: str, parent: str = "") -> Path:
