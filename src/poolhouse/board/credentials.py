@@ -114,8 +114,7 @@ def remember(state: Path, board: str, name: str, question: str, cursor: dict[str
     if not isinstance(question, str) or not question or not _valid_cursor(cursor):
         raise ValueError("read cursor must map origins to nonnegative integers")
     with _cursor_lock(target):
-        _check_cursors(target)
-        saved = cursors(state, board, name)
+        saved = _read_cursors(target)
         previous = saved.get(question, {})
         saved[question] = {origin: max(previous.get(origin, 0), number)
                            for origin, number in {**previous, **cursor}.items()}
@@ -131,13 +130,23 @@ def _valid_cursor(value: object) -> bool:
                                           for origin, number in value.items())
 
 
-def _check_cursors(target: Path) -> None:
+def _read_cursors(target: Path) -> dict[str, dict[str, int]]:
     why = problem(target)
     if why == "missing":
-        return
+        return {}
     if why:
         raise ValueError(f"read cursor {why}")
-    with target.open("rb") as stream:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    handle = os.open(target, flags)
+    with os.fdopen(handle, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or redirected(info):
+            raise ValueError("read cursor must be a regular file")
+        if os.name != "nt" and (info.st_uid != os.getuid() or info.st_mode & 0o077):
+            raise ValueError("read cursor must be private and owned")
+        current = target.lstat()
+        if redirected(current) or (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+            raise ValueError("read cursor changed while opening")
         text = stream.read((1 << 20) + 1)
     if len(text) > 1 << 20:
         raise ValueError("read cursor exceeds 1 MiB")
@@ -145,6 +154,7 @@ def _check_cursors(target: Path) -> None:
     if not isinstance(saved, dict) or any(not isinstance(key, str) or not _valid_cursor(value)
                                           for key, value in saved.items()):
         raise ValueError("saved read cursor is malformed")
+    return saved
 
 
 @contextmanager

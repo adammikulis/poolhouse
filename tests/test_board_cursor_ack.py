@@ -16,19 +16,20 @@ from poolhouse.workspace import board_cli, inbound, mail_cli
 
 
 def test_concurrent_cursor_updates_keep_every_origin_and_question(tmp_path, monkeypatch):
-    original = credentials.cursors
+    original = credentials._read_cursors
 
     def snapshot(*args):
         value = original(*args)
         time.sleep(0.01)
         return value
 
-    monkeypatch.setattr(credentials, 'cursors', snapshot)
+    monkeypatch.setattr(credentials, '_read_cursors', snapshot)
     updates = [('inbox', {'first': 9}), ('inbox', {'second': 4}), ('digest', {'third': 7})]
     with ThreadPoolExecutor(max_workers=3) as workers:
         list(workers.map(lambda item: credentials.remember(tmp_path, 'board', 'reader', *item), updates))
     credentials.remember(tmp_path, 'board', 'reader', 'inbox', {'first': 1})
-    assert original(tmp_path, 'board', 'reader') == {'inbox': {'first': 9, 'second': 4}, 'digest': {'third': 7}}
+    assert credentials.cursors(tmp_path, 'board', 'reader') == {
+        'inbox': {'first': 9, 'second': 4}, 'digest': {'third': 7}}
     folder = tmp_path / 'client' / 'board'
     assert stat.S_IMODE((folder / 'reader.cursors.json').stat().st_mode) == 0o600
     assert stat.S_IMODE((folder / 'reader.cursors.lock').stat().st_mode) == 0o600
@@ -130,3 +131,39 @@ def test_malformed_saved_cursor_is_not_silently_reset(tmp_path, text):
     with pytest.raises(ValueError):
         credentials.remember(tmp_path, 'board', 'reader', 'inbox', {'device': 2})
     assert path.read_text() == text
+
+
+def test_remember_merges_the_single_validated_snapshot(tmp_path, monkeypatch):
+    credentials.remember(tmp_path, 'board', 'reader', 'inbox', {'device': 7})
+
+    def reread(*_args):
+        raise AssertionError('validated cursor must not be read again')
+
+    monkeypatch.setattr(credentials, 'cursors', reread)
+    credentials.remember(tmp_path, 'board', 'reader', 'inbox', {'remote': 3})
+    target = tmp_path / 'client' / 'board' / 'reader.cursors.json'
+    assert credentials._read_cursors(target) == {'inbox': {'device': 7, 'remote': 3}}
+
+
+def test_cursor_replaced_during_open_is_refused(tmp_path, monkeypatch):
+    credentials.remember(tmp_path, 'board', 'reader', 'inbox', {'device': 7})
+    target = tmp_path / 'client' / 'board' / 'reader.cursors.json'
+    external = tmp_path / 'external'
+    external.write_text('keep')
+    original = credentials.os.open
+    opened = []
+
+    def replace(path, flags, *args, **kwargs):
+        handle = original(path, flags, *args, **kwargs)
+        if path == target:
+            opened.append(handle)
+            target.unlink()
+            target.symlink_to(external)
+        return handle
+
+    monkeypatch.setattr(credentials.os, 'open', replace)
+    with pytest.raises(ValueError, match='changed while opening'):
+        credentials.remember(tmp_path, 'board', 'reader', 'inbox', {'device': 8})
+    assert external.read_text() == 'keep'
+    with pytest.raises(OSError):
+        credentials.os.fstat(opened[0])
