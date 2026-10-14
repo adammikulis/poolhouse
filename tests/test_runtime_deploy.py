@@ -41,7 +41,9 @@ def commit(repo, name, text="x"):
     (repo / name).write_text(text)
     git(repo, "add", name)
     git(repo, "commit", "-q", "-m", f"chore: {name}")
-    return git(repo, "rev-parse", "HEAD")
+    head = git(repo, "rev-parse", "HEAD")
+    git(repo, "update-ref", "refs/remotes/origin/dev", head)
+    return head
 
 
 @pytest.fixture
@@ -585,13 +587,19 @@ def test_the_session_start_refresh_is_bounded_and_the_smoke_environment_disables
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     seen = []
+    monkeypatch.setenv("GIT_DIR", "/foreign/repository")
+    monkeypatch.setenv("GIT_WORK_TREE", "/foreign/checkout")
+    monkeypatch.setenv("GIT_INDEX_FILE", "/foreign/index")
+    monkeypatch.setenv("GIT_SSH_COMMAND", "trusted-ssh")
     monkeypatch.delenv("POOLHOUSE_RUNTIME_ENSURE", raising=False)
-    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: seen.append(k.get("timeout")) or subprocess.CompletedProcess(a, 0, "", ""))
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: seen.append(k) or subprocess.CompletedProcess(a, 0, "", ""))
     module.refresh_runtime("SessionStart")
     assert seen == [], "no variable set, and under a test the refresh never starts a build"
     monkeypatch.setattr(module.lan, "on_the_persons_machine", lambda: True)
     module.refresh_runtime("SessionStart")
-    assert seen and all(t is not None and t <= 6 for t in seen) and len(seen) == 1
+    assert len(seen) == 1 and seen[0]["timeout"] <= 6
+    assert not {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} & seen[0]["env"].keys()
+    assert seen[0]["env"]["GIT_SSH_COMMAND"] == "trusted-ssh"
     env = runtime_deploy._clean_environment(Path("/tmp/x"), Path("/tmp/y"))
     assert env["POOLHOUSE_RUNTIME_ENSURE"] == "off"
 

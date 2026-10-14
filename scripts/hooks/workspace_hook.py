@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
-from poolhouse import lan
+from poolhouse import lan, worktreerules
 from poolhouse.guard.secrets import env_secrets, redact
 
 
@@ -66,7 +66,7 @@ def refresh_runtime(stage: str, checkout: Path | None = None, agent: str = '') -
     if os.environ.get('POOLHOUSE_RUNTIME_ENSURE') == 'off' or not lan.on_the_persons_machine():
         return
     source = Path(__file__).resolve().parents[2]
-    environment = dict(os.environ, PYTHONPATH=str(source / 'src'))
+    environment = dict(worktreerules._git_environment(), PYTHONPATH=str(source / 'src'))
     try:
         done = subprocess.run([sys.executable, '-m', 'poolhouse.runtime_cli', 'ensure', '--background',
                                '--checkout', str(checkout or primary_checkout(source)),

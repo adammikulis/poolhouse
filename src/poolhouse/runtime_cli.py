@@ -23,6 +23,7 @@ from poolhouse import (
     runtime_stale,
     runtime_store,
     runtime_trust,
+    worktreerules,
 )
 from poolhouse.command import Group, flag
 from poolhouse.fleet import runtime_wheel
@@ -66,9 +67,10 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
     if deploying:
-        runtime_trust.admit(primary, commit, allow_unmerged=getattr(args, "allow_unmerged", False))
+        runtime_deploy.admit(primary, commit, allow_unmerged=getattr(args, "allow_unmerged", False))
     return runtime_deploy.Plan(primary, commit, _launchers(args.launchers),
-                               runtime_trust.floor(primary), args.timeout, args.wait, args.agent)
+                               runtime_trust.floor(primary), args.timeout, args.wait, args.agent,
+                               allow_unmerged=getattr(args, "allow_unmerged", False))
 
 
 def _start_background(argv: list[str]) -> None:
@@ -159,16 +161,17 @@ def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.
     previous = str(runtime_store.selection().get("commit", ""))
     outcome = runtime_deploy.ensure(plan, force=args.force, force_build=args.force_build)
     if outcome.action in ("switched", "recovered"):
-        outcome = _with_node(outcome)
+        allowed = plan.commit if plan.allow_unmerged and outcome.commit == plan.commit else ""
+        outcome = _with_node(outcome, allowed)
     _audited(args, "ensure", plan, outcome.action, outcome.detail)
     runtime_board.announce(outcome, previous, runtime_deploy.acting(plan), verb="ensure")
     say(f"{outcome.action} {outcome.commit[:7]} {outcome.detail}".strip())
     return outcome
 
 
-def _with_node(outcome: runtime_deploy.Outcome) -> runtime_deploy.Outcome:
+def _with_node(outcome: runtime_deploy.Outcome, allow_unmerged_commit: str = "") -> runtime_deploy.Outcome:
     """Move the running node onto the new runtime's binary and say what happened; the board is on disk, so nothing is lost."""
-    moved = node_launch.swap()
+    moved = node_launch.swap(allow_unmerged_commit=allow_unmerged_commit)
     detail = "; ".join(part for part in (outcome.detail, f"node {moved['action']}: {moved['detail']}") if part)
     return runtime_deploy.Outcome("failed" if moved["action"] == "failed" else outcome.action, outcome.commit, detail)
 
@@ -211,6 +214,8 @@ def _status(args: argparse.Namespace) -> int:
 
 def _reported(run: Callable[[argparse.Namespace], int]) -> Callable[[argparse.Namespace], int]:
     def wrapped(args: argparse.Namespace) -> int:
+        for name in os.environ.keys() - worktreerules._git_environment().keys():
+            os.environ.pop(name, None)
         for name in runtime_trust.ignore_redirects():
             warn(f"poolhouse runtime: ignoring {name}: this process was started by an agent")
         try:

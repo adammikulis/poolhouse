@@ -1021,7 +1021,7 @@ note = "git runs with an argument list; hostile paths, refs and settings stay on
 [[group]]
 match = ["spawn:fleet/runtime_wheel.py:_run", "spawn:runtime.py:forward", "spawn:runtime.py:rerun",
          "spawn:runtime.py:verify",
-         "spawn:runtime_deploy.py:git", "spawn:runtime_deploy.py:smoke", "spawn:runtime_launchers.py:install",
+         "spawn:runtime_source.py:git", "spawn:runtime_deploy.py:smoke", "spawn:runtime_launchers.py:install",
          "spawn:fleet/updates.py:pip_install"]
 status = "covered"
 count = 8

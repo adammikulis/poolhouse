@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import stat
 import subprocess
 import tempfile
@@ -15,28 +14,30 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import node_build, runtime, runtime_launchers, runtime_store
+from poolhouse import node_build, runtime, runtime_launchers, runtime_store, worktreerules
 from poolhouse.board import session
 from poolhouse.board.client import Conflict, NodeError
 from poolhouse.files import writing
 from poolhouse.fleet import runtime_wheel
 from poolhouse.fleet.environment import Environment
 from poolhouse.lock import Busy, only_one
+from poolhouse.runtime_source import (
+    FLOOR,
+    DeployError as DeployError,
+    admit,
+    floor_of,
+    parse_epoch,
+    resolve_commit,
+)
 
 BUILD_TIMEOUT = 1800.0
 CLAIM_WAIT_S = 60.0
 CLAIM_TTL_S = 3600.0
 CLAIM_POLL_S = 1.0
 SMOKE_TIMEOUT = 60.0
-FLOOR = "packaging/runtime-floor"
 HOOKS = ("claude-session-start", "claude-session-end", "claude-subagent-start", "claude-subagent-stop")
 FAULTS = ("Traceback", "ModuleNotFoundError", "No module named", "ImportError")
-COMMIT = re.compile(r"[0-9a-f]{40}")
 FAILURES = (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError)
-
-
-class DeployError(RuntimeError):
-    """A build, smoke, claim or switch step failed."""
 
 
 RECOVERABLE = (*FAILURES, DeployError)
@@ -54,6 +55,7 @@ class Plan:
     timeout: float = BUILD_TIMEOUT
     wait_s: float = CLAIM_WAIT_S
     agent: str = ""
+    allow_unmerged: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,37 +72,6 @@ class Outcome:
 
 
 Builder = Callable[[Plan, Path, Path], runtime.Runtime]
-
-
-def git(checkout: Path, *words: str, check: bool = True) -> str:
-    """Run git in a checkout and return stdout."""
-    done = subprocess.run(["git", "-C", str(checkout), *words], capture_output=True, text=True, timeout=60)
-    if check and done.returncode:
-        raise DeployError(f"git {words[0]} failed: {(done.stderr or done.stdout).strip()[:300]}")
-    return done.stdout.strip() if done.returncode == 0 else ""
-
-
-def resolve_commit(checkout: Path, ref: str = "HEAD") -> str:
-    """The full commit a ref names in a checkout."""
-    if ref.startswith("-"):
-        raise DeployError(f"{ref!r} is not a ref")
-    commit = git(checkout, "rev-parse", "--verify", f"{ref}^{{commit}}")
-    if not COMMIT.fullmatch(commit):
-        raise DeployError(f"{ref} does not name a commit")
-    return commit
-
-
-def parse_epoch(text: str) -> int:
-    """The integer in a runtime-floor file; 0 for an empty file, DeployError for anything else."""
-    text = text.strip()
-    if text and not text.isdigit():
-        raise DeployError(f"{FLOOR} must hold one integer, not {text[:40]!r}")
-    return int(text or 0)
-
-
-def floor_of(checkout: Path, commit: str) -> int:
-    """The lowest runtime epoch the source at `commit` accepts."""
-    return parse_epoch(git(checkout, "show", f"{commit}:{FLOOR}", check=False))
 
 
 def source_epoch(source: Path) -> int:
@@ -215,10 +186,15 @@ def _record(plan: Plan) -> None:
 
 def switch(chosen: runtime.Runtime, plan: Plan) -> None:
     """Rewrite every launcher atomically, publish the selection, then record the layout."""
-    if plan.launchers is not None:
-        runtime_launchers.install(plan.launchers, chosen)
-    runtime.publish(chosen)
-    _record(plan)
+    with only_one(worktreerules.landing_lock(plan.checkout), wait=False, note="runtime cutover"):
+        admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged and chosen.commit == plan.commit)
+        floor = max(plan.floor, floor_of(plan.checkout, resolve_commit(plan.checkout)))
+        if runtime_store.epoch_of(chosen.prefix) < floor:
+            raise DeployError(f"runtime epoch is below the source floor {floor}")
+        if plan.launchers is not None:
+            runtime_launchers.install(plan.launchers, chosen)
+        runtime.publish(chosen)
+        _record(plan)
 
 
 def _switch_paths(plan: Plan) -> list[Path]:
@@ -254,7 +230,7 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
     with owning([prefix, *_switch_paths(plan)], wait_s=plan.wait_s, who=who), \
             tempfile.TemporaryDirectory(prefix="poolhouse-runtime-") as temporary:
         stage, original = Path(temporary).resolve(), _snapshot(plan.launchers)
-        built, published = builder(plan, stage, prefix), False
+        built, published, deferred = builder(plan, stage, prefix), False, False
         try:
             runtime_store.mark_created(built.prefix, who.name if who else plan.agent or os.environ.get(session.AGENT_ENV, ""), "ensure")
             if built.commit != plan.commit:
@@ -264,15 +240,16 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
             if epoch < plan.floor:
                 raise DeployError(f"built epoch {epoch} is below the floor {plan.floor}")
             runtime_store.mark_verified(built, epoch, node_build.mark(built.prefix))
-            if plan.launchers is not None:
-                runtime_launchers.install(plan.launchers, built)
-            runtime.publish(built)
+            try:
+                switch(built, plan)
+            except Busy:
+                deferred = True
+                raise
             published = True
         finally:
-            if not published:
+            if not published and not deferred:
                 _restore(plan.launchers, original)
                 runtime_store.discard(built.prefix)
-        _record(plan)
         return built
 
 

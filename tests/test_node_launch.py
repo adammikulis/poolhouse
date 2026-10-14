@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pwd
+import re
 import runpy
 import shutil
 import signal
@@ -15,10 +17,12 @@ import time
 import uuid
 from pathlib import Path
 
+import psutil
 import pytest
 from node_kit import runner_binary
 
-from poolhouse import node_binary, node_launch, node_supervise, runtime
+from poolhouse import node_binary, node_launch, node_supervise, runtime, runtime_store
+from poolhouse.lock import held_by, pid_alive
 from poolhouse.node_health import call, node_health
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,8 +39,17 @@ def built() -> Path:
 def home(monkeypatch):
     """A short state root (a unix socket path is limited to about 100 bytes), with every node in it stopped afterwards."""
     root = Path(tempfile.mkdtemp(prefix="mln"))
+    (root / "starts.log").touch(mode=0o600)
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))
     monkeypatch.setenv("PYTHONPATH", str(ROOT / "src"))
+    source = root / "source"
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(source)], check=True)
+    from test_runtime_trust import commit, git
+
+    head = commit(source, "source")
+    git(source, "update-ref", "refs/remotes/origin/dev", head)
+    monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", "dev")
+    runtime_store.write_state({"checkout": str(source)})
     yield root
     node_launch.stop_node(root / "node", wait_s=5)
     shutil.rmtree(root, ignore_errors=True)
@@ -46,7 +59,32 @@ def install_runtime(binary: Path, name: str, *, select: bool = True) -> Path:
     """A runtime tree holding ``binary`` as its node, selected the way `runtime.publish` writes it."""
     prefix = runtime.directory() / (name * 40)[:40] / uuid.uuid4().hex
     prefix.mkdir(parents=True)
-    node_binary.install(prefix, binary, commit=name)
+    source = Path(runtime_store.read_state()["checkout"])
+    from test_runtime_trust import git
+
+    actual = prefix / "actual-node"
+    shutil.copyfile(binary, actual)
+    actual.chmod(0o700)
+    wrapper = prefix / "launch.py"
+    ledger = source.parent / "starts.log"
+    digest = node_binary.sha256(actual)
+    wrapper.write_text(
+        f"#!{sys.executable} -I\n"
+        "import hashlib,os,sys\n"
+        f"log={str(ledger)!r};binary={str(actual)!r};digest={digest!r}\n"
+        "assert os.stat(log).st_size <= 4096\n"
+        "assert sys.argv.count('--state')==1\n"
+        "state=sys.argv[sys.argv.index('--state')+1]\n"
+        "scope=hashlib.sha256(os.path.realpath(state).encode()).hexdigest()\n"
+        "with open(log,'ab') as out:out.write(f'{os.getpid()} {os.getppid()} {scope}\\n'.encode('ascii'))\n"
+        "h=hashlib.sha256()\n"
+        "with open(binary,'rb') as stream:\n"
+        " while block:=stream.read(1<<20):h.update(block)\n"
+        "assert h.hexdigest()==digest\n"
+        "os.execv(binary,[binary,*sys.argv[1:]])\n",
+        encoding="utf-8")
+    wrapper.chmod(0o700)
+    node_binary.install(prefix, wrapper, commit=git(source, "rev-parse", "HEAD"))
     if select:
         (runtime.directory() / "selected.json").write_text(json.dumps({"prefix": str(prefix)}), encoding="utf-8")
     return prefix
@@ -59,10 +97,41 @@ def clients(state: Path, count: int) -> list[subprocess.Popen]:
 
 
 def processes(state: Path) -> list[str]:
-    """The command lines of every process running a node or supervisor for this state directory."""
-    out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
-    return [line for line in out.splitlines() if str(state) in line and ("poolhouse-node" in line or "node_launch" in line)
-            and "ps -axo" not in line]
+    nodes, supervisors = set(), set()
+    scope = hashlib.sha256(str(state.resolve()).encode()).hexdigest()
+    with (state.parent / "starts.log").open("rb") as stream:
+        data = stream.read(4097)
+    assert len(data) <= 4096, "owned node launch ledger exceeds its bound"
+    for line in data.decode("ascii").splitlines():
+        match = re.fullmatch(r"([1-9][0-9]{0,9}) ([1-9][0-9]{0,9}) ([0-9a-f]{64})", line)
+        assert match is not None, "owned node launch ledger is malformed"
+        if match.group(3) != scope:
+            continue
+        node, supervisor = map(int, match.groups()[:2])
+        nodes.add(node)
+        supervisors.add(supervisor)
+    run = node_supervise.running(state)
+    for field, found in (("pid", nodes), ("supervisor", supervisors)):
+        if field in run:
+            pid = run[field]
+            assert type(pid) is int and pid > 0, "owned node run PID is malformed"
+            found.add(pid)
+    lock = state / node_supervise.LOCK
+    if lock.exists() and (holder := held_by(lock)):
+        match = re.fullmatch(r"pid ([1-9][0-9]{0,9})(?: .*)?", holder)
+        assert match is not None, "owned supervisor lock PID is malformed"
+        supervisors.add(int(match.group(1)))
+    return [*(f"{pid} poolhouse-node run" for pid in sorted(nodes) if _alive(pid)),
+            *(f"{pid} node_launch supervise" for pid in sorted(supervisors) if _alive(pid))]
+
+
+def _alive(pid: int) -> bool:
+    if not pid_alive(pid):
+        return False
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
 
 
 def board(state: Path) -> tuple[str, str]:
@@ -237,3 +306,44 @@ def test_a_runtime_whose_verification_mark_names_another_node_is_refused(home, b
     mark.write_text(json.dumps({"node_sha256": node_binary.record_of(prefix)["sha256"]}), encoding="utf-8")
     assert node_binary.verified(prefix).is_file()
     assert node_launch.smoke(prefix)["version"]
+
+
+def test_owned_launch_ledger_keeps_duplicate_nodes_visible(home, monkeypatch):
+    scope = hashlib.sha256(str((home / "node").resolve()).encode()).hexdigest()
+    (home / "starts.log").write_text(f"101 201 {scope}\n102 201 {scope}\n101 201 {scope}\n")
+    monkeypatch.setattr(sys.modules[__name__], "_alive", lambda _: True)
+    assert processes(home / "node") == ["101 poolhouse-node run", "102 poolhouse-node run", "201 node_launch supervise"]
+
+
+def test_owned_supervisor_is_visible_before_first_node_exec(home, monkeypatch):
+    state = home / "node"
+    state.mkdir()
+    (state / node_supervise.LOCK).touch()
+    monkeypatch.setattr(sys.modules[__name__], "held_by", lambda _: "pid 201 node supervisor")
+    monkeypatch.setattr(sys.modules[__name__], "_alive", lambda _: True)
+    assert processes(state) == ["201 node_launch supervise"]
+
+
+@pytest.mark.parametrize("receipt", [b"bad", b"1 2 extra", b"0 2", b"1 -2", b"1 2\n" * 1025], ids=["text", "extra", "zero", "negative", "overflow"])
+def test_owned_launch_ledger_rejects_malformed_or_unbounded_data(home, receipt):
+    (home / "starts.log").write_bytes(receipt)
+    with pytest.raises(AssertionError):
+        processes(home / "node")
+
+
+def test_owned_launch_receipt_is_scoped_to_its_actual_state(home, monkeypatch):
+    scope = hashlib.sha256(str((home / "other").resolve()).encode()).hexdigest()
+    (home / "starts.log").write_text(f"101 201 {scope}\n")
+    queried = []
+    monkeypatch.setattr(sys.modules[__name__], "_alive", lambda pid: queried.append(pid) or True)
+    assert processes(home / "node") == []
+    assert queried == []
+
+
+def test_actual_binary_checksum_is_bound_by_its_owned_exec_wrapper(home, built):
+    prefix = install_runtime(built, "a")
+    with (prefix / "actual-node").open("ab") as stream:
+        stream.write(b"tampered")
+    with pytest.raises(node_launch.NodeUnavailable):
+        node_launch.smoke(prefix, wait_s=2)
+    assert node_health(home / "node") is None and processes(home / "node") == []
