@@ -1,10 +1,10 @@
 {
- "surfaces": 798,
+ "surfaces": 803,
  "by_status": {
-  "covered": 477,
+  "covered": 481,
   "partial": 194,
   "uncovered": 52,
-  "n/a": 75,
+  "n/a": 76,
   "unmapped": 0
  },
  "by_kind": {
@@ -33,11 +33,11 @@
    "covered": 10,
    "partial": 0,
    "uncovered": 0,
-   "n/a": 10,
+   "n/a": 11,
    "unmapped": 0
   },
   "egress": {
-   "covered": 46,
+   "covered": 44,
    "partial": 47,
    "uncovered": 0,
    "n/a": 0,
@@ -51,14 +51,14 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 68,
+   "covered": 69,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
    "unmapped": 0
   },
   "keystore": {
-   "covered": 3,
+   "covered": 4,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 71,
+   "covered": 74,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 87,
+   "covered": 88,
    "partial": 58,
    "uncovered": 0,
    "n/a": 3,
@@ -1462,6 +1462,16 @@
    "note": "fixed scripts that read the battery, focus or login item; no text from outside"
   },
   {
+   "id": "desktop:guard/execchain.py:<module>",
+   "kind": "desktop",
+   "source": "guard/execchain.py:<module>",
+   "trust": "names of members, sessions, files",
+   "attacker": "attacker text reaches a dialog, notification or shell command",
+   "status": "n/a",
+   "tests": [],
+   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
+  },
+  {
    "id": "desktop:guard/shellcmds.py:<module>",
    "kind": "desktop",
    "source": "guard/shellcmds.py:<module>",
@@ -1935,36 +1945,6 @@
     "tests/test_launch_secret.py::test_a_redirected_or_shared_secret_is_never_read_or_written"
    ],
    "note": "The loopback ticket request reads the recorded port and secret only from an owner-only, non-symlink record; a daemon that answers with errors, non-JSON or no ticket yields the bare page"
-  },
-  {
-   "id": "egress:fleet/models.py:<module>",
-   "kind": "egress",
-   "source": "fleet/models.py:<module>",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_net_no_bypass.py",
-    "tests/test_httpguard.py",
-    "tests/test_net_download.py",
-    "tests/test_net_untrusted.py"
-   ],
-   "note": ""
-  },
-  {
-   "id": "egress:fleet/models.py:Models._from_internet",
-   "kind": "egress",
-   "source": "fleet/models.py:Models._from_internet",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_net_no_bypass.py",
-    "tests/test_httpguard.py",
-    "tests/test_net_download.py",
-    "tests/test_net_untrusted.py"
-   ],
-   "note": ""
   },
   {
    "id": "egress:fleet/onboard/join_code.py:JoinCodeClient._call",
@@ -3604,6 +3584,23 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
+   "id": "human:sentinel/cli.py:baseline",
+   "kind": "human",
+   "source": "sentinel/cli.py:baseline",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
    "id": "human:sentinel/cli.py:mode",
    "kind": "human",
    "source": "sentinel/cli.py:mode",
@@ -4099,6 +4096,18 @@
     "tests/test_no_real_keychain.py"
    ],
    "note": "the wrapped key unwraps only for its purpose and directory; a refusing keystore leaves the old item and the record unchanged"
+  },
+  {
+   "id": "keystore:installed.py:<module>",
+   "kind": "keystore",
+   "source": "installed.py:<module>",
+   "trust": "the process environment and the files on disk",
+   "attacker": "a failure path leaks, downgrades or overwrites a secret",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_installed_keystore.py"
+   ],
+   "note": "the module only names keyring and the other extras; listing them finds a module with find_spec and never imports or runs it, so a shadow copy on the path or in the working directory runs nothing and a hostile module name is absent without raising"
   },
   {
    "id": "keystore:keystore.py:<module>",
@@ -5602,6 +5611,54 @@
    "status": "uncovered",
    "tests": [],
    "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
+  },
+  {
+   "id": "parser:guard/autoexec.py",
+   "kind": "parser",
+   "source": "guard/autoexec.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_untrusted.py",
+    "tests/test_pdf_engine.py",
+    "tests/test_hub_modelfile.py::test_every_hostile_header_is_refused_quickly",
+    "tests/test_redteam_judge.py",
+    "tests/test_model_capabilities.py::test_hostile_model_metadata_is_refused_without_a_crash"
+   ],
+   "note": ""
+  },
+  {
+   "id": "parser:guard/fetchlog.py",
+   "kind": "parser",
+   "source": "guard/fetchlog.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_untrusted.py",
+    "tests/test_pdf_engine.py",
+    "tests/test_hub_modelfile.py::test_every_hostile_header_is_refused_quickly",
+    "tests/test_redteam_judge.py",
+    "tests/test_model_capabilities.py::test_hostile_model_metadata_is_refused_without_a_crash"
+   ],
+   "note": ""
+  },
+  {
+   "id": "parser:guard/gitcmds.py",
+   "kind": "parser",
+   "source": "guard/gitcmds.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_untrusted.py",
+    "tests/test_pdf_engine.py",
+    "tests/test_hub_modelfile.py::test_every_hostile_header_is_refused_quickly",
+    "tests/test_redteam_judge.py",
+    "tests/test_model_capabilities.py::test_hostile_model_metadata_is_refused_without_a_crash"
+   ],
+   "note": ""
   },
   {
    "id": "parser:guard/judge.py",
@@ -9776,6 +9833,8 @@
     "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
     "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
     "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
     "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
@@ -9901,6 +9960,8 @@
     "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
     "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
     "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
     "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
@@ -10504,6 +10565,28 @@
     "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
     "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
+    "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
+    "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
+    "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
+    "tests/test_redteam_runtime_deploy.py::test_the_tracker_hands_a_hostile_checkout_path_to_the_runtime_command_as_one_argument"
+   ],
+   "note": "Checkout paths, refs, state roots, launcher directories and forwarded arguments are single argv items with no shell; a ref starting with a dash names no commit; module and function names in launchers are matched against a pattern"
+  },
+  {
+   "id": "spawn:runtime.py:rerun",
+   "kind": "spawn",
+   "source": "runtime.py:rerun",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
+    "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
+    "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
     "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
     "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
@@ -10522,6 +10605,8 @@
     "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
     "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
     "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
     "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
@@ -10540,6 +10625,8 @@
     "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
     "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
     "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
     "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
@@ -10558,6 +10645,8 @@
     "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
     "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
     "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
     "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
@@ -10576,6 +10665,8 @@
     "tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
     "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+    "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
     "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
     "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
     "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",

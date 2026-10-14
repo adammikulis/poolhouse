@@ -1002,14 +1002,17 @@ tests = ["tests/test_runtime_trust.py::test_a_checkout_path_with_shell_punctuati
 note = "git runs with an argument list; hostile paths, refs and settings stay one argument or inert data, and no repair or fix goes through a shell"
 
 [[group]]
-match = ["spawn:fleet/runtime_wheel.py:_run", "spawn:runtime.py:forward", "spawn:runtime.py:verify",
+match = ["spawn:fleet/runtime_wheel.py:_run", "spawn:runtime.py:forward", "spawn:runtime.py:rerun",
+         "spawn:runtime.py:verify",
          "spawn:runtime_deploy.py:git", "spawn:runtime_deploy.py:smoke", "spawn:runtime_launchers.py:install",
          "spawn:fleet/updates.py:pip_install"]
 status = "covered"
-count = 7
+count = 8
 tests = ["tests/test_redteam_runtime_deploy.py::test_a_checkout_path_with_shell_punctuation_reaches_git_as_one_argument",
          "tests/test_redteam_runtime_deploy.py::test_a_ref_that_looks_like_an_option_or_a_command_names_no_commit",
          "tests/test_redteam_runtime_deploy.py::test_forward_hands_hostile_arguments_to_the_selected_interpreter_unchanged",
+         "tests/test_redteam_runtime_deploy.py::test_rerun_hands_a_hostile_script_path_and_arguments_to_the_isolated_selected_interpreter",
+         "tests/test_redteam_runtime_deploy.py::test_rerun_executes_nothing_when_already_isolated_or_nothing_is_selected",
          "tests/test_redteam_runtime_deploy.py::test_a_state_root_with_shell_punctuation_still_builds_verifies_and_installs_launchers",
          "tests/test_redteam_runtime_deploy.py::test_the_smoke_runs_hooks_from_a_source_path_with_punctuation_as_one_argument",
          "tests/test_redteam_runtime_deploy.py::test_the_launcher_directory_with_shell_punctuation_is_one_path",
@@ -1214,6 +1217,13 @@ tests = ["tests/test_keystore.py",
          "tests/test_credentials.py",
          "tests/test_no_real_keychain.py"]
 note = "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
+
+[[group]]
+match = ["keystore:installed.py:<module>"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_installed_keystore.py"]
+note = "the module only names keyring and the other extras; listing them finds a module with find_spec and never imports or runs it, so a shadow copy on the path or in the working directory runs nothing and a hostile module name is absent without raising"
 
 [[group]]
 match = ["keystore:fleet/onboard/signing.py:*"]
