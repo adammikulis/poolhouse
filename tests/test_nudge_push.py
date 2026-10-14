@@ -14,9 +14,7 @@ OPEN = re.compile(r"<untrusted-([0-9a-f]{8}) ")
 
 
 @pytest.fixture
-def kit(workspace_node, monkeypatch, tmp_path):
-    monkeypatch.setattr(nudge.tempfile, "gettempdir", lambda: str(tmp_path / "stamps"))
-    (tmp_path / "stamps").mkdir()
+def kit(workspace_node):
     workspace_node.alice, workspace_node.bob = workspace_node.member("alice"), workspace_node.member("bob")
     workspace_node.to_bob = workspace_node.session(workspace_node.alice)
     workspace_node.reading = workspace_node.session(workspace_node.bob)
@@ -30,7 +28,7 @@ def tell(kit, kind, text):
 
 def pushed(kit, event="prompt", stdin="{}"):
     waiting = nudge.Waiting.of(json.loads(json.dumps(board_cli.waiting(kit.reading))))
-    out = nudge.output(event, waiting, stdin)
+    out = nudge.deliver(kit.reading, waiting, event, stdin, lambda _text: None)
     return json.loads(out) if out else None
 
 
@@ -80,7 +78,7 @@ def test_a_message_is_cut_to_500_characters_and_a_delivery_shows_five_and_counts
     inside, _ = fenced_part(text)
     assert inside.count("note number") == 5 and len(inside) <= nudge_fence.DELIVERY_CHARS + 200
     assert re.search(r"2 more not shown \(seq \d+, \d+\); run poolhouse-workspace inbox", text)
-    assert pushed(kit) is None
+    assert "note number" in context(pushed(kit))
 
 
 def test_a_forged_fence_tag_holds_the_message_so_only_a_count_is_pushed(kit):
@@ -134,7 +132,7 @@ def test_the_stop_hook_pushes_the_urgent_text_inside_the_same_fence(kit):
     tell(kit, "question", "can you answer the stop hook?")
     waiting = nudge.Waiting.of(json.loads(json.dumps(board_cli.waiting(kit.reading))))
     old = nudge.Waiting(waiting.me, waiting.rows, waiting.now + 3600, waiting.messages)
-    verdict = json.loads(nudge.output("stop", old, "{}"))
+    verdict = json.loads(nudge.deliver(kit.reading, old, "stop", "{}", lambda _text: None))
     inside, after = fenced_part(verdict["reason"])
     assert verdict["decision"] == "block" and "can you answer the stop hook?" in inside
     assert verdict["systemMessage"] == verdict["reason"] and nudge_fence.NOTICE in after

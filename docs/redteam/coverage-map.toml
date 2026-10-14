@@ -1285,6 +1285,19 @@ note = "planted files cannot escape the import root; invalid native JSON, XML en
 
 # -- parsers and readers of files, pages and messages --------------------------------------
 [[group]]
+match = ["parser:private_counters.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_board_cursor_ack.py::test_malformed_saved_cursor_is_not_silently_reset",
+         "tests/test_board_cursor_ack.py::test_cursor_replaced_during_open_is_refused",
+         "tests/test_board_cursor_ack.py::test_concurrent_cursor_updates_keep_every_origin_and_question",
+         "tests/test_notification_attempts.py::test_generic_private_map_refuses_fifo_without_blocking",
+         "tests/test_notification_attempts.py::test_cache_symlink_is_refused_without_touching_target",
+         "tests/test_notification_attempts.py::test_concurrent_attempts_are_serialized_for_one_authenticated_actor",
+         "tests/test_notification_attempts.py::test_invalid_token_and_mismatched_label_never_select_cache"]
+note = "The extracted private integer-map reader validates one bounded regular owned file descriptor and its path before parsing; malformed maps, replacement, symlinks, FIFO files and concurrent cursor/attempt updates are exercised without reading another identity's cache"
+
+[[group]]
 match = ["parser:net/*", "parser:web.py", "parser:sources/html.py", "parser:taint/*",
          "parser:guard/*", "parser:hub/modelfile.py", "parser:hub/capabilities.py"]
 status = "covered"

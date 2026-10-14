@@ -35,9 +35,9 @@ def clean(text: object) -> str:
 
 def block(message: dict[str, Any]) -> str:
     """One message as a header line and its cleaned text cut to `MESSAGE_CHARS`."""
-    sender = _NAME.sub("", str(message.get("from_name") or message.get("from", ""))) or "unknown"
-    kind = _NAME.sub("", str(message.get("type", "message"))) or "message"
-    seq = int(message["seq"])
+    sender = _NAME.sub("", str(message.get("from_name") or message.get("from", "")))[:48] or "unknown"
+    kind = _NAME.sub("", str(message.get("type", "message")))[:48] or "message"
+    seq = re.sub(r"[^A-Za-z0-9._/:-]", "", str(message["seq"]))[:160]
     body = clean(message.get("text", ""))
     body = body[:MESSAGE_CHARS - 1] + "…" if len(body) > MESSAGE_CHARS else body
     return f"[{seq}] {kind} from {sender}\n{body}"

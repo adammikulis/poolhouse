@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
-import getpass
 import json
+import os
 import re
-import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
+from poolhouse import private_counters
+from poolhouse.board import credentials
+from poolhouse.board.session import Session
+from poolhouse.guard.secrets import env_secrets, redact
+from poolhouse.log import warn
 from poolhouse.workspace import nudge_fence
+
+
+def warning(reason: object) -> None:
+    """An advisory boundary warning without credentials or terminal controls."""
+    text, _ = redact(str(reason), env_secrets(os.environ))
+    warn(f'workspace lifecycle: {" ".join(nudge_fence.clean(text).split())[:1000]}')
+
 
 URGENT = ("question", "task", "handoff", "blocked")
 UNCHANGING = frozenset({"status", "blocked", "done"})
@@ -33,7 +44,7 @@ class Waiting:
 
     def summary(self) -> dict[str, Any]:
         """The reader, the time and each unread row's sequence, sender, kind and time, and the pushable messages."""
-        keys = ("seq", "to", "from", "type", "ts")
+        keys = ("id", "seq", "to", "from", "type", "ts")
         return {"me": self.me, "now": self.now, "rows": [{k: r.get(k) for k in keys} for r in self.rows],
                 "messages": self.messages}
 
@@ -50,15 +61,15 @@ class Waiting:
     def _kinds(self) -> str:
         counts: dict[str, int] = {}
         for r in self.rows:
-            kind = str(r.get("type") or "message")
+            kind = SAFE.sub("", str(r.get("type") or "message"))[:48] or "message"
             counts[kind] = counts.get(kind, 0) + 1
         ordered = sorted(counts.items(), key=lambda kv: (kv[0] not in URGENT, -kv[1], kv[0]))
-        return ", ".join(f"{n} {k}{'s' if n > 1 and k not in UNCHANGING else ''}" for k, n in ordered)
+        return ", ".join(f"{n} {k}{'s' if n > 1 and k not in UNCHANGING else ''}" for k, n in ordered[:4]) + (f", {len(ordered) - 4} other kinds" if len(ordered) > 4 else "")
 
     def _senders(self) -> str:
         seen: list[str] = []
         for r in self.rows:
-            who = SAFE.sub("", str(r["from"]))
+            who = SAFE.sub("", str(r["from"]))[:48]
             if who and who not in seen:
                 seen.append(who)
         more = f" +{len(seen) - SENDERS_SHOWN} more" if len(seen) > SENDERS_SHOWN else ""
@@ -88,88 +99,103 @@ def age_text(seconds: float) -> str:
     return f"{s // 3600}h{s % 3600 // 60:02d}m"
 
 
-def _stamp(name: str) -> Path:
-    return Path(tempfile.gettempdir()) / f"{name}.{getpass.getuser()}"
+RETRY_AFTER_S = 120.0
+PAGE = 200
+STOP_BUDGET = 3
 
 
-def _read_int(path: Path) -> int:
-    try:
-        return int(float(path.read_text().strip() or 0))
-    except (OSError, ValueError):
-        return 0
+class Attempt(str):
+    """Rendered notification and the attempt-only state to keep after local emission."""
+
+    saved: dict[str, dict[str, int]]
+
+    def __new__(cls, text: str, saved: dict[str, dict[str, int]]):
+        made = super().__new__(cls, text)
+        made.saved = saved
+        return made
 
 
-def _write(path: Path, value: float) -> None:
-    try:
-        path.write_text(str(value))
-    except OSError:
-        return
-
-
-def _seen_file(me: str) -> Path:
-    return _stamp(f"poolhouse-nudge-seen.{me}")
-
-
-def _delivery(waiting: Waiting, rows: list[dict[str, Any]], seen: int) -> tuple[str, int]:
-    """The text pushed for ``rows``: the summary line, the pushable messages inside one nonce fence
-    within the caps, a count with the sequence numbers of the rest, and the standing notice; with
-    the highest sequence number covered. Rows at or below ``seen`` were delivered before."""
-    pushable = {int(m["seq"]): m for m in waiting.messages}
-    fresh = [r for r in rows if int(r["seq"]) > seen]
-    blocks, shown, used = [], set(), 0
-    for row in fresh:
-        message = pushable.get(int(row["seq"]))
+def _delivery(waiting: Waiting, rows: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    pushable = {m["id"]: m for m in waiting.messages}
+    blocks, shown, used = [], [], 0
+    for row in rows:
+        message = pushable.get(row["id"])
         if message is None or len(blocks) == nudge_fence.MESSAGES:
             continue
         text = nudge_fence.block(message)
-        if blocks and used + len(text) > nudge_fence.DELIVERY_CHARS:
-            break
+        if used + len(text) > nudge_fence.DELIVERY_CHARS:
+            continue
         blocks.append(text)
-        shown.add(int(row["seq"]))
+        shown.append(row["id"])
         used += len(text)
-    rest = [int(r["seq"]) for r in fresh if int(r["seq"]) not in shown]
+    rest_rows = [r for r in rows if r["id"] not in shown]
+    rest = [SAFE.sub("", str(r["seq"]))[:48] for r in rest_rows]
     parts = [waiting.line(), *([nudge_fence.fenced(blocks)] if blocks else [])]
     if rest:
-        listed = ", ".join(str(n) for n in rest[:nudge_fence.SEQS_LISTED])
+        listed = ", ".join(rest[:nudge_fence.SEQS_LISTED])
         more = ", ..." if len(rest) > nudge_fence.SEQS_LISTED else ""
         parts.append(f"{len(rest)} more not shown (seq {listed}{more}); run poolhouse-workspace inbox")
     parts.append(nudge_fence.NOTICE)
-    return "\n".join(parts), max(int(r["seq"]) for r in rows)
+    # Metadata-only notices also have bounded retries, never a read acknowledgment.
+    listed_metadata = [r["id"] for r in rest_rows[:nudge_fence.SEQS_LISTED] if r["id"] not in pushable]
+    return "\n".join(parts), shown + listed_metadata
 
 
-def output(event: str, waiting: Waiting, stdin: str) -> str:
-    """The JSON a Claude Code ``event`` hook prints ("post", "stop" or "prompt"), or "". Messages not
-    delivered before go to the model as `additionalContext` and to the person as `systemMessage`;
-    a delivered message is not delivered again."""
-    if event == "post":
-        stamp = _stamp("poolhouse-nudge")
-        if waiting.now - _read_int(stamp) < POST_EVERY_S:
-            return ""
-        _write(stamp, int(waiting.now))
-    seen = _read_int(_seen_file(waiting.me))
+def output(event: str, waiting: Waiting, stdin: str,
+           saved: dict[str, dict[str, int]]) -> Attempt:
+    """Prepare one bounded local notification attempt; this does not mark anything read."""
+    if set(saved) - {"attempts", "budget"}:
+        raise ValueError("notification attempt ledger has unsupported fields")
+    if set(saved.get("budget", {})) - {"post", "stop", "stops"} or len(saved.get("attempts", {})) > PAGE:
+        raise ValueError("notification attempt ledger exceeds its bounded schema")
+    if len(waiting.rows) > PAGE:
+        raise ValueError("notification candidate page exceeds 200 messages")
+    now = max(0, int(waiting.now * 1000))
+    budget = dict(saved.get("budget", {}))
+    candidates = {str(r["id"]) for r in waiting.rows}
+    if any(not item or len(item) > 160 for item in candidates):
+        raise ValueError("notification message identifier is malformed")
+    attempts = {key: stamp for key, stamp in saved.get("attempts", {}).items() if key in candidates}
+    state = {"attempts": attempts, "budget": budget}
+    rows = [r for r in waiting.rows if r["id"] not in attempts or now < attempts[r["id"]]
+            or now - attempts[r["id"]] >= RETRY_AFTER_S * 1000]
+    if event == "post" and 0 <= now - budget.get("post", -int(POST_EVERY_S * 1000)) < POST_EVERY_S * 1000:
+        return Attempt("", state)
     if event == "stop":
-        return _stop(waiting, stdin, seen)
-    rows = [r for r in waiting.rows if int(r["seq"]) > seen]
+        active = json.loads(stdin or "{}").get("stop_hook_active", False)
+        if active or budget.get("stops", 0) >= STOP_BUDGET or now - budget.get("stop", -120000) < 120000:
+            return Attempt("", state)
+        rows = [r for r in rows if r["to"] == waiting.me and r.get("type") in URGENT
+                and waiting.now - float(r["ts"]) >= STOP_AFTER_S]
     if not rows:
-        return ""
-    text, top = _delivery(waiting, rows, seen)
-    _write(_seen_file(waiting.me), top)
-    return json.dumps({"hookSpecificOutput": {"hookEventName": NAMES[event], "additionalContext": text},
-                       "systemMessage": text})
+        return Attempt("", state)
+    text, shown = _delivery(waiting, rows)
+    attempts.update(dict.fromkeys(shown, now))
+    if event == "post":
+        budget["post"] = now
+    if event == "stop":
+        budget["stop"] = max(now, budget.get("stop", 0))
+        budget["stops"] = budget.get("stops", 0) + 1
+        shape = {"decision": "block", "reason": text, "systemMessage": text}
+    else:
+        shape = {"hookSpecificOutput": {"hookEventName": NAMES.get(event, event), "additionalContext": text},
+                 "systemMessage": text}
+    return Attempt(json.dumps(shape), state)
 
 
-def _stop(waiting: Waiting, stdin: str, seen: int) -> str:
-    try:
-        active = bool(json.loads(stdin or "{}").get("stop_hook_active"))
-    except (ValueError, AttributeError):
-        active = False
-    urgent = waiting.urgent()
-    old = [r for r in urgent if waiting.now - float(r["ts"]) >= STOP_AFTER_S]
-    state = _stamp(f"poolhouse-nudge-stop.{waiting.me}")
-    top = max((int(r["seq"]) for r in urgent), default=0)
-    if active or not old or top <= _read_int(state):
-        return ""
-    _write(state, top)
-    text, last = _delivery(waiting, urgent, seen)
-    _write(_seen_file(waiting.me), max(seen, last))
-    return json.dumps({"decision": "block", "reason": text, "systemMessage": text})
+def deliver(actor: Session, waiting: Waiting, event: str, stdin: str,
+            emit: Callable[[str], None] | None) -> str:
+    """Bind private state to the authenticated actor; commit only after successful local output."""
+    actual = str(actor.call("whoami")["name"])
+    if actual != waiting.me:
+        raise ValueError("notification actor does not match authenticated reader")
+    target = credentials.private(actor.client.state, actor.board, actual) / "notification-attempts.json"
+    with private_counters.locked(target, timeout=0.2):
+        previous = private_counters.read(target)
+        plan = output(event, waiting, stdin, previous)
+        if plan and emit is not None:
+            if event == "stop":
+                private_counters.write(target, {"attempts": previous.get("attempts", {}), "budget": plan.saved["budget"]})
+            emit(plan)
+            private_counters.write(target, plan.saved)
+        return plan

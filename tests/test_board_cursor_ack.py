@@ -10,20 +10,21 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from poolhouse import private_counters
 from poolhouse.board import credentials
 from poolhouse.board.session import Entry, Page
 from poolhouse.workspace import board_cli, inbound, mail_cli
 
 
 def test_concurrent_cursor_updates_keep_every_origin_and_question(tmp_path, monkeypatch):
-    original = credentials._read_cursors
+    original = private_counters.read
 
     def snapshot(*args):
         value = original(*args)
         time.sleep(0.01)
         return value
 
-    monkeypatch.setattr(credentials, '_read_cursors', snapshot)
+    monkeypatch.setattr(private_counters, 'read', snapshot)
     updates = [('inbox', {'first': 9}), ('inbox', {'second': 4}), ('digest', {'third': 7})]
     with ThreadPoolExecutor(max_workers=3) as workers:
         list(workers.map(lambda item: credentials.remember(tmp_path, 'board', 'reader', *item), updates))
@@ -142,7 +143,7 @@ def test_remember_merges_the_single_validated_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(credentials, 'cursors', reread)
     credentials.remember(tmp_path, 'board', 'reader', 'inbox', {'remote': 3})
     target = tmp_path / 'client' / 'board' / 'reader.cursors.json'
-    assert credentials._read_cursors(target) == {'inbox': {'device': 7, 'remote': 3}}
+    assert private_counters.read(target) == {'inbox': {'device': 7, 'remote': 3}}
 
 
 def test_cursor_replaced_during_open_is_refused(tmp_path, monkeypatch):
