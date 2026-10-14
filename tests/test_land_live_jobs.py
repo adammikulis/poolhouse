@@ -120,3 +120,23 @@ def test_child_cwd_protects_after_unrecorded_launcher_exit(tmp_path):
     finally:
         child.terminate()
         child.wait(timeout=5)
+
+
+def test_child_script_path_protects_with_cwd_elsewhere(tmp_path):
+    tree = tmp_path / "integration"
+    tree.mkdir()
+    script = tree / "worker.py"
+    script.write_text("import time; time.sleep(30)")
+    child = subprocess.Popen([sys.executable, str(script)], cwd=tmp_path)
+    try:
+        assert land_live_jobs.processes_use({tree.resolve()})
+    finally:
+        child.terminate()
+        child.wait(timeout=5)
+
+
+def test_oversized_record_retains_tree(protected):
+    jobs, tree, root = protected
+    (jobs.path("fixture-job") / "spec.json").write_bytes(b" " * 65537)
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert not allowed

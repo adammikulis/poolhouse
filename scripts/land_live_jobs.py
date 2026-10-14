@@ -6,6 +6,7 @@ import os
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
+from itertools import islice
 from pathlib import Path
 
 import psutil
@@ -18,10 +19,15 @@ from poolhouse.workspace import testruns
 
 def record(path: Path) -> dict:
     """Read a bounded regular job record."""
-    info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
-        raise ValueError("invalid job record")
-    value = json.loads(path.read_text(encoding="utf-8"))
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
+            raise ValueError("invalid job record")
+        payload = handle.read(65537)
+        if len(payload) > 65536:
+            raise ValueError("invalid job record")
+        value = json.loads(payload)
     if not isinstance(value, dict):
         raise ValueError("invalid job record")
     return value
@@ -37,9 +43,16 @@ def processes_use(paths: set[Path]) -> bool:
                 continue
             if process.status() == psutil.STATUS_ZOMBIE:
                 continue
-            cwd = Path(process.cwd()).resolve()
-            if any(cwd == path or path in cwd.parents for path in paths):
+            raw = [process.cwd(), *process.cmdline()]
+            if len(raw) > 4096 or any(len(arg) > 65536 for arg in raw):
                 return True
+            for arg in raw:
+                value = arg.partition("=")[2] if arg.startswith("-") and "=" in arg else arg
+                if not Path(value).is_absolute():
+                    continue
+                candidate = Path(value).resolve()
+                if any(candidate == path or path in candidate.parents for path in paths):
+                    return True
         except psutil.NoSuchProcess:
             continue
         except (psutil.Error, OSError, ValueError):
@@ -49,10 +62,15 @@ def processes_use(paths: set[Path]) -> bool:
 
 def jobs_use(jobs: testjobs.Jobs, paths: set[Path]) -> bool:
     """Whether active or uncertain maintained jobs protect cleanup candidates."""
-    ids = jobs.ids()
-    if len(ids) > 4096:
+    entries = list(islice(jobs.folder.iterdir(), 4098)) if jobs.folder.exists() else []
+    if len(entries) > 4097:
         return True
-    for job in ids:
+    for entry in entries:
+        if entry.name == "lock":
+            continue
+        if not stat.S_ISDIR(entry.lstat().st_mode):
+            return True
+        job = entry.name
         spec = record(jobs.path(job) / "spec.json")
         raw = spec.get("root")
         if spec.get("id") != job or not isinstance(raw, str) or not Path(raw).is_absolute():
