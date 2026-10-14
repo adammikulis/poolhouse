@@ -201,6 +201,10 @@ def test_the_fast_forward_takes_new_commits_of_the_development_branch_from_the_o
     _git(other, "push", "-q", "origin", "dev")
     code, _ = build_update.fast_forward(clone)
     assert code == 0 and _git(clone, "rev-parse", "HEAD") == _git(other, "rev-parse", "HEAD")
+    assert _git(clone, "rev-parse", "origin/dev") == _git(clone, "rev-parse", "HEAD")
+    from poolhouse import runtime_deploy
+
+    runtime_deploy.admit(clone, _git(clone, "rev-parse", "HEAD"))
 
 
 def test_the_fast_forward_never_merges_a_diverged_checkout_or_leaves_the_development_branch(tmp_path, monkeypatch):

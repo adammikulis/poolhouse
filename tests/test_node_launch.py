@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from node_kit import runner_binary
 
-from poolhouse import node_binary, node_launch, node_supervise, runtime
+from poolhouse import node_binary, node_launch, node_supervise, runtime, runtime_store
 from poolhouse.node_health import call, node_health
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,6 +37,9 @@ def home(monkeypatch):
     root = Path(tempfile.mkdtemp(prefix="mln"))
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))
     monkeypatch.setenv("PYTHONPATH", str(ROOT / "src"))
+    source = root / "source"
+    subprocess.run(["git", "init", "-q", "-b", "dev", str(source)], check=True)
+    runtime_store.write_state({"checkout": str(source)})
     yield root
     node_launch.stop_node(root / "node", wait_s=5)
     shutil.rmtree(root, ignore_errors=True)

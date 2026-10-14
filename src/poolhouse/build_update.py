@@ -107,15 +107,16 @@ def fast_forward(checkout: Path) -> tuple[int, str]:
         return 1, f"{checkout} has no origin to follow"
     if not updates.BRANCH.fullmatch(branch) or ".." in branch or branch.endswith((".lock", "/")):
         return 1, f"{branch!r} is not a branch name"
+    refspec = f"{branch}:refs/remotes/origin/{branch}"
     if Path(url).is_dir():  # an origin on this machine (a bare repository): no network, so no network guard
-        done = subprocess.run(["git", "-C", str(checkout), "fetch", "--", url, branch], capture_output=True, text=True, timeout=updates.GIT_TIMEOUT, check=False)
+        done = subprocess.run(["git", "-C", str(checkout), "fetch", "--", url, refspec], capture_output=True, text=True, timeout=updates.GIT_TIMEOUT, check=False)
         rc, text = done.returncode, f"{done.stdout}{done.stderr}".strip()
     else:
         try:
             updates.check_remote(url, branch)
         except updates.UpdateError as exc:
             return 1, str(exc)
-        rc, text = run(["fetch", "--", url, branch])
+        rc, text = run(["fetch", "--", url, refspec])
     if rc:
         return rc, f"could not fetch {branch}: {text}"
     return run(["merge", "--ff-only", "FETCH_HEAD"])

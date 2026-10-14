@@ -175,3 +175,20 @@ def test_busy_landing_keeps_the_prepared_runtime_and_current_selection(source, m
     assert len(prepared) == 1 and prepared[0].prefix.is_dir()
     assert runtime_store.verified_at(prepared[0].prefix) > 0
     assert selected.read_bytes() == b"existing-selection"
+
+
+def test_missing_source_context_defers_automatic_stop(tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "home"))
+    state = tmp_path / "node"
+    state.mkdir()
+    seen = node_supervise.signature(state)
+    node_supervise.point(state, tmp_path / "replacement", "checksum")
+    turns, ended = [], []
+    monkeypatch.setattr(node_supervise, "end", lambda *args: ended.append(args))
+
+    def stopping():
+        turns.append(True)
+        return len(turns) == 2
+
+    assert node_supervise._wait(WaitingChild(), state, seen, stopping) is None
+    assert turns == [True, True] and ended == []
