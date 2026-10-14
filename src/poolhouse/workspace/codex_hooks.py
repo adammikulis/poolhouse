@@ -167,7 +167,8 @@ def run(args: argparse.Namespace) -> int:
                        'codex-stop' if args.completion else 'codex-hook', '--worker']
             if args.assigned:
                 command += ['--assigned', args.assigned]
-            done = subprocess.run(command, input=payload, capture_output=True, text=True, timeout=WAIT, check=False)
+            deadline = 2.0 if event.get('hook_event_name') == 'SessionEnd' else WAIT
+            done = subprocess.run(command, input=payload, capture_output=True, text=True, timeout=deadline, check=False)
             if done.stderr:
                 warning(done.stderr)
             if done.returncode:

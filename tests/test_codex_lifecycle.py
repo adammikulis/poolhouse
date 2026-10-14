@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import json
+import os
 import subprocess
 import sys
 import time
@@ -233,10 +234,10 @@ def test_completion_guard_failures_block_separately_from_advisory_notices(monkey
     assert result["decision"] == "block"
 
 
-@pytest.mark.parametrize("completion", [False, True])
-def test_hostile_worker_arguments_are_single_argv_values_with_deadline(monkeypatch, capsys, completion):
+@pytest.mark.parametrize("completion,stage", [(False, 'PostToolUse'), (True, 'Stop'), (False, 'SessionEnd')])
+def test_hostile_worker_arguments_are_single_argv_values_with_deadline(monkeypatch, capsys, completion, stage):
     hostile = 'own;$(touch attacker-marker) --worker'
-    payload = json.dumps(event("Stop" if completion else "PostToolUse", cwd='/tmp/hostile;$(touch other-marker)'))
+    payload = json.dumps(event(stage, cwd='/tmp/hostile;$(touch other-marker)'))
     captured = {}
 
     def timed_out(command, **kwargs):
@@ -249,10 +250,32 @@ def test_hostile_worker_arguments_are_single_argv_values_with_deadline(monkeypat
     assert captured['command'] == [sys.executable, '-m', 'poolhouse.workspace.cli',
                                    'codex-stop' if completion else 'codex-hook', '--worker', '--assigned', hostile]
     assert captured['input'] == payload
-    assert captured['timeout'] == lifecycle.WAIT
+    assert captured['timeout'] == (2.0 if stage == 'SessionEnd' else lifecycle.WAIT)
     assert not captured.get('shell', False)
     output = capsys.readouterr()
     if completion:
         assert json.loads(output.out)['decision'] == 'block'
     else:
         assert not output.out and 'workspace lifecycle:' in output.err
+
+
+def test_session_end_timeout_reaps_its_owned_worker(monkeypatch, capsys):
+    actual_run = subprocess.run
+    stopped = []
+
+    def sleeping_worker(command, **kwargs):
+        try:
+            return actual_run([sys.executable, '-c',
+                               'import os,time;print(os.getpid(),flush=True);time.sleep(60)'], **kwargs)
+        except subprocess.TimeoutExpired as error:
+            stopped.append(int(error.stdout.strip()))
+            raise
+
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('SessionEnd'))))
+    monkeypatch.setattr(lifecycle.subprocess, 'run', sleeping_worker)
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=False, worker=False)) == 0
+    assert len(stopped) == 1
+    with pytest.raises(ProcessLookupError):
+        os.kill(stopped[0], 0)
+    output = capsys.readouterr()
+    assert not output.out and 'workspace lifecycle:' in output.err

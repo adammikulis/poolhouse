@@ -85,6 +85,8 @@ def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(m
     assert commands(data, "Stop") == ["poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop"]
     assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace codex-hook"]
     assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
+    for event, _, _ in agent_hooks.CODEX_EVENTS:
+        assert data['hooks'][event][0]['hooks'][0]['timeout'] == (3 if event == 'SessionEnd' else 5)
     agent_hooks.install_codex(path)
     assert path.read_text() == text
 
