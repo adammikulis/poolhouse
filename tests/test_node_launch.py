@@ -329,3 +329,21 @@ def test_owned_launch_ledger_rejects_malformed_or_unbounded_data(home, receipt):
     (home / "starts.log").write_bytes(receipt)
     with pytest.raises(AssertionError):
         processes(home / "node")
+
+
+def test_owned_launch_receipt_is_scoped_to_its_actual_state(home, monkeypatch):
+    scope = hashlib.sha256(str((home / "other").resolve()).encode()).hexdigest()
+    (home / "starts.log").write_text(f"101 201 {scope}\n")
+    queried = []
+    monkeypatch.setattr(sys.modules[__name__], "_alive", lambda pid: queried.append(pid) or True)
+    assert processes(home / "node") == []
+    assert queried == []
+
+
+def test_actual_binary_checksum_is_bound_by_its_owned_exec_wrapper(home, built):
+    prefix = install_runtime(built, "a")
+    with (prefix / "actual-node").open("ab") as stream:
+        stream.write(b"tampered")
+    with pytest.raises(node_launch.NodeUnavailable):
+        node_launch.smoke(prefix, wait_s=2)
+    assert node_health(home / "node") is None and processes(home / "node") == []
