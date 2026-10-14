@@ -66,7 +66,7 @@ def _claude(text: str) -> tuple[str, list[str]]:
     return (json.dumps(data, indent=2) + "\n") if removed else text, removed
 
 
-def _codex(text: str, predicate: Callable[[str], bool] = is_stale) -> tuple[str, list[str]]:
+def _codex(text: str, predicate: Callable[[str], bool] = is_stale, event: str = "") -> tuple[str, list[str]]:
     """Drop each ``[[hooks.EVENT.hooks]]`` table with a stale command, then each ``[[hooks.EVENT]]``
     table left with none, and a ``notify`` line that names a stale command."""
     marks = list(_HEADER.finditer(text))
@@ -75,9 +75,10 @@ def _codex(text: str, predicate: Callable[[str], bool] = is_stale) -> tuple[str,
     drop: set[int] = set()
     removed: list[str] = []
     for i, (name, start, end) in enumerate(spans):
-        if name.startswith("hooks.") and name.endswith(".hooks"):
+        if name.startswith("hooks.") and name.endswith(".hooks") and (not event or name == f"hooks.{event}.hooks"):
             command = _COMMAND.search(text[start:end])
-            if command and predicate(command.group(1)):
+            value = tomllib.loads('command = "' + command.group(1) + '"')["command"] if command else ""
+            if command and predicate(value):
                 drop.add(i)
                 removed.append(command.group(1))
     for i, (name, _start, _end) in enumerate(spans):
@@ -91,7 +92,7 @@ def _codex(text: str, predicate: Callable[[str], bool] = is_stale) -> tuple[str,
                 drop.add(i)
     out = (text[:spans[0][1]] if spans else text) + "".join(
         text[s:e] for k, (_n, s, e) in enumerate(spans) if k not in drop)
-    for match in _NOTIFY.finditer(out):
+    for match in _NOTIFY.finditer(out) if not event else ():
         argv = re.findall(r'"([^"]*)"', match.group(0))
         if argv and predicate(" ".join(shlex.quote(a) for a in argv)):
             removed.append(match.group(0).strip())

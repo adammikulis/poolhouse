@@ -204,3 +204,30 @@ def test_codex_preserves_pretool_security_and_unknown_post_hooks(machine):
     data = tomllib.loads(path.read_text())
     assert commands(data, "PreToolUse") == ["security-check"]
     assert commands(data, "PostToolUse") == ["other-notice", "poolhouse-workspace codex-hook"]
+
+
+def test_codex_preserves_pre_and_custom_post_containing_owned_marker(machine):
+    path = machine / "config.toml"
+    pre = 'guard-tool --note "poolhouse.harnesshook post"'
+    exact_pre = 'python -m poolhouse.harnesshook post --agent codex'
+    post = 'other-notice --note "poolhouse.harnesshook post"'
+    path.write_text(CODEX_BEFORE + '\n[[hooks.PreToolUse]]\n[[hooks.PreToolUse.hooks]]\n' +
+                    'type = "command"\ncommand = ' + json.dumps(pre) + '\n' +
+                    '\n[[hooks.PreToolUse.hooks]]\ntype = "command"\ncommand = ' + json.dumps(exact_pre) + '\n' +
+                    '\n[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\n' +
+                    'type = "command"\ncommand = ' + json.dumps(post) + '\n')
+    agent_hooks.install_codex(path)
+    text = path.read_text()
+    data = tomllib.loads(text)
+    assert commands(data, "PreToolUse") == [pre, exact_pre]
+    assert commands(data, "PostToolUse") == [post, "poolhouse-workspace codex-hook"]
+    agent_hooks.install_codex(path)
+    assert path.read_text() == text
+
+
+def test_codex_replaces_owned_post_with_quoted_interpreter_path(machine):
+    path = machine / "config.toml"
+    command = '"/private/tmp/runtime with spaces/bin/python" -m poolhouse.harnesshook post --agent codex'
+    path.write_text('[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\ntype = "command"\ncommand = ' + json.dumps(command) + '\n')
+    agent_hooks.install_codex(path)
+    assert commands(tomllib.loads(path.read_text()), "PostToolUse") == ["poolhouse-workspace codex-hook"]

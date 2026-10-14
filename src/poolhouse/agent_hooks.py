@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import tomllib
 from pathlib import Path
@@ -106,12 +107,27 @@ def codex_hooks(with_post: bool = True, with_features: bool = False, assigned: s
     return "\n".join([*out[:-1], END]) + "\n"
 
 
+
+def _owned_codex_post(line: str) -> bool:
+    if any(char in line for char in ';|&<>$`'):
+        return False
+    try:
+        words = shlex.split(line)
+    except ValueError:
+        return False
+    if len(words) < 4 or not re.fullmatch(r'python(?:3(?:\.\d+)?)?', Path(words[0]).name):
+        return False
+    if words[1:4] != ['-m', *CODEX_OTHER_POST.split()]:
+        return False
+    tail = words[4:]
+    return len(tail) % 2 == 0 and all(key in ('--role', '--agent', '--root', '--protect', '--wait') for key in tail[::2])
+
 def install_codex(config: Path) -> list[str]:
     """Write native lifecycle hooks, replacing Poolhouse notifications and preserving other settings."""
     text = config.read_text() if config.exists() else ""
     base = _NOTIFY.sub("", _MANAGED.sub("\n", text)).rstrip("\n")
     base, with_features = _enable_hooks(base)
-    base, _ = agent_hooks_stale._codex(base, lambda line: CODEX_OTHER_POST in line)
+    base, _ = agent_hooks_stale._codex(base, _owned_codex_post, "PostToolUse")
     new = (base + "\n\n" if base else "") + codex_hooks(True, with_features)
     tomllib.loads(new)
     if new != text:
