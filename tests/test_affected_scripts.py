@@ -254,14 +254,19 @@ def executable_source(text: str) -> str:
     return "".join(chars)
 
 
+def oracle_sources(root: Path) -> dict[str, str]:
+    """Executable test sources enumerated independently from the production corpus."""
+    return {f"tests/{path.name}": executable_source(path.read_text(encoding="utf-8", errors="replace"))
+            for path in sorted((root / "tests").glob("test_*.py"))}
+
+
 def plain_oracle(script: str, sources: dict[str, str] | None = None) -> set[str]:
     """Test files that import the script or put its path in quotes, found with plain regexes."""
     stem = Path(script).stem if script.endswith(".py") else Path(script).name
     imports = re.compile(rf"^\s*(?:import|from)\s+{re.escape(stem)}\b", re.M)
     quoted = re.compile(rf"""["']{re.escape(script)}(?![\w.-])""")
     if sources is None:
-        sources = {f"tests/{path.name}": executable_source(path.read_text(encoding="utf-8", errors="replace"))
-                   for path in sorted((REPO / "tests").glob("test_*.py"))}
+        sources = oracle_sources(REPO)
     out = set()
     for name, text in sources.items():
         if (script.endswith(".py") and imports.search(text)) or quoted.search(text):
@@ -274,7 +279,7 @@ def test_every_test_a_plain_search_finds_for_a_recently_changed_script_is_select
     scripts = recent_scripts(30)
     assert len(scripts) >= 5
     files = rules.corpus(REPO)
-    sources = {name: executable_source(source.text) for name, source in files.items() if rules.is_test(name)}
+    sources = oracle_sources(REPO)
     missed = {}
     for script in scripts:
         why, _, shared = rules.script_tests(files, script)
@@ -329,3 +334,11 @@ def test_oracle_matches_every_executable_literal_style():
     sources = {"tests/test_literals.py": executable_source(
         'a = "scripts/runner"; b = \"\"\"scripts/runner\"\"\"; c = f"scripts/runner"')}
     assert plain_oracle("scripts/runner", sources) == {"tests/test_literals.py"}
+
+
+def test_oracle_detects_a_test_omitted_from_production_corpus(toy):
+    files = rules.corpus(toy)
+    del files["tests/test_string.py"]
+    selected, _, _ = rules.script_tests(files, "scripts/runner")
+    expected = plain_oracle("scripts/runner", oracle_sources(toy))
+    assert "tests/test_string.py" in expected - set(selected)
