@@ -115,7 +115,8 @@ same daemon, serving the interface to a browser on your network.
 On macOS the graph store needs **macOS 15 or newer**: its engine publishes wheels from that
 release on, so an older Mac has none to install and tries to compile it instead.
 `python -m poolhouse.installed` names it, and so does the installer's own `what came with it`
-step. Everything else runs on macOS 13 and 14.
+step. The graph engine is a base dependency, so a standard installation needs macOS 15
+or newer.
 
 ![Setting up a machine](images/setup.jpg)
 
@@ -164,9 +165,10 @@ pip install "poolhouse[train] @ git+https://github.com/adammikulis/poolhouse"
 pip install "poolhouse[all] @ git+https://github.com/adammikulis/poolhouse"
 ```
 
-The first is all of it and nothing else -- pure Python, over `packaging` and the standard
-library. `[train]` adds numpy and safetensors; `[all]` adds everything the rest of it can
-use. Every
+The base install includes cryptography, Ladybug (the native graph engine), packaging,
+psutil and qrcode, plus pywin32 on Windows. `[train]` adds numpy and safetensors.
+`[all]` installs a curated set of features; it does not include every optional extra.
+See [the dependency list](../pyproject.toml) for the extras each feature needs. Every
 [release](https://github.com/adammikulis/poolhouse/releases/latest) carries the same wheel,
 for a machine with no git: `pip install ./poolhouse-<version>-py3-none-any.whl`.
 
