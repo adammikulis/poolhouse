@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from pathlib import Path
 
-from wheel_support import STAMP, fresh_wheel
+import pytest
+from wheel_support import INPUTS, STAMP, fresh_wheel
 
 
 class Builds:
@@ -61,3 +63,27 @@ def test_a_wheel_with_no_stamp_is_not_trusted(tmp_path: Path) -> None:
     (repo / "dist").mkdir()
     (repo / "dist" / "poolhouse-0.0.1-py3-none-any.whl").write_bytes(b"left over from some other tree")
     assert fresh_wheel(repo, build).read_bytes() == b"wheel 1"
+
+
+@pytest.mark.parametrize("payload", ["contracts", "patches"])
+def test_force_included_payload_change_rebuilds_with_old_timestamp(tmp_path, payload):
+    repo, build = tree(tmp_path), Builds()
+    source = repo / payload / "payload.txt"
+    source.parent.mkdir()
+    source.write_text("first payload")
+    first = fresh_wheel(repo, build)
+    assert fresh_wheel(repo, build) == first and build.count == 1
+    source.write_text("changed payload")
+    os.utime(source, (1, 1))
+    assert fresh_wheel(repo, build) == first and build.count == 2
+    assert first.read_bytes() == b"wheel 2"
+    source.unlink()
+    fresh_wheel(repo, build)
+    assert build.count == 3
+
+
+def test_wheel_cache_binds_every_force_included_payload():
+    root = Path(__file__).resolve().parents[1]
+    with (root / "pyproject.toml").open("rb") as source:
+        declared = tomllib.load(source)["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    assert set(declared).issubset(INPUTS)

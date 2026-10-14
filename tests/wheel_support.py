@@ -14,7 +14,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-INPUTS = ("src", "packaging", "pyproject.toml", "version.txt", "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "README.md")
+INPUTS = ("src", "packaging", "contracts", "patches", "pyproject.toml", "version.txt", "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "README.md")
 SKIP = frozenset({"__pycache__", ".DS_Store"})
 STAMP = ".built-from"
 
