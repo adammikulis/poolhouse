@@ -7,6 +7,7 @@ by a placeholder until a person releases it, as the node's quarantine records.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from poolhouse.board.session import Agent, Entry, Session
@@ -26,6 +27,20 @@ class Held(list):  # type: ignore[type-arg]
     """A list of results that also says how many more were held back by the default caps."""
 
     held: int = 0
+    after_output: Callable[[list[dict[str, Any]]], None] | None = None
+
+
+def acknowledge_after_output(s: Session, entries: list[Entry], out: Held) -> None:
+    """Acknowledge the displayed prefix after its output succeeds."""
+    def acknowledge(shown: list[dict[str, Any]]) -> None:
+        prefix = []
+        for entry, row in zip(entries, shown, strict=False):
+            if row.get("seq") != entry.ref:
+                break
+            prefix.append(entry)
+        if prefix:
+            s.keep("inbox", advanced(prefix, s.cursor("inbox")))
+    out.after_output = acknowledge
 
 
 class Seen(dict[str, dict[str, Any]]):

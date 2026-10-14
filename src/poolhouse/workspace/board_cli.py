@@ -101,9 +101,13 @@ def runner(handler: Handler) -> Callable[[argparse.Namespace], int]:
         s = connect(args)
         result = handler(args, s)
         if result is not None:
+            after_output = getattr(result, "after_output", None)
             result = narrowed(s, result, getattr(args, "for_agent", ""))
             render.show(args, result)
+            sys.stdout.flush()
             render.held_note(result)
+            if after_output is not None:
+                after_output(result)
         return 0
     return guarded(run)
 
@@ -246,7 +250,7 @@ def inbox(args: argparse.Namespace, s: Session) -> Any:
             if text:
                 say(text)
     if args.ack and out:
-        s.keep("inbox", inbound.advanced(entries[:len(out)], s.cursor("inbox")))
+        inbound.acknowledge_after_output(s, entries, out)
     return out
 
 
