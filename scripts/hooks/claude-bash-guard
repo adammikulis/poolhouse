@@ -182,6 +182,18 @@ def subagent_without_its_name(event: dict, command: str) -> str:
     return workspace_hook.agent_name(agent)
 
 
+def subagent_naming_another(event: dict, command: str, rules) -> str:
+    """Why a subagent's command acts as another session (`--agent`, a token file, a token or the agent variable), else an empty string.
+
+    A subagent's shell inherits the environment of the session that started it, so what it names is what it acts as."""
+    agent = str(event.get("agent_id") or "")
+    if not agent:
+        return ""
+    import workspace_hook
+    own = workspace_hook.agent_name(agent)
+    return rules.protected().other_agent(command, own) if own else ""
+
+
 def release_approved(cwd: str) -> bool:
     """Whether this session holds a live release-main approval for the repository at ``cwd``."""
     try:
@@ -200,9 +212,13 @@ def main() -> int:
         return 0
     if event.get("tool_name") != "Bash":
         return 0
-    command = without_heredocs((event.get("tool_input") or {}).get("command") or "")
-    rules = None if switched else rules_loader.load()
-    why = rules.bash_refusal(command, event.get("cwd") or "") if rules else ""
+    raw = (event.get("tool_input") or {}).get("command") or ""
+    command = without_heredocs(raw)
+    rules = rules_loader.load()
+    why = ""
+    if rules:
+        check = rules.hard_bash_refusal if switched else rules.bash_refusal
+        why = check(raw, event.get("cwd") or "") or subagent_naming_another(event, raw, rules)
     if why:
         print(f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-bash-guard. Set "
               f"POOLHOUSE_GUARD=off for a person's own session.)", file=sys.stderr)

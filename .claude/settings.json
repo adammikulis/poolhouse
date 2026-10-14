@@ -21,6 +21,15 @@
             "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-edit-guard"
           }
         ]
+      },
+      {
+        "matcher": "Read|Glob|Grep|Agent|Task|TaskStop|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-tool-guard"
+          }
+        ]
       }
     ],
     "SubagentStart": [

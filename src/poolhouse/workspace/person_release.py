@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from poolhouse import protectedwrites
 from poolhouse.sentinel.events import EventLog
 from poolhouse.workspace import person_ancestry, person_auth, person_store, person_targets
 
@@ -16,6 +17,7 @@ ECHO = re.compile(
     r"authorize release-main (?P<target>\S+) (?P<minutes>\d+)m x(?P<uses>\d+) #(?P<tag>[0-9a-f]{12})")
 TARGET = re.compile(r"(?P<project>\S+)@(?P<remote>[^:\s]+):(?P<sha>[0-9a-f]{40}):(?P<tree>[0-9a-f]{40})")
 ZERO = "0" * 40
+GUARDS_SHOWN = 8
 
 
 class Refused(RuntimeError):
@@ -33,6 +35,14 @@ class Facts:
     subject: str
     ahead: int
     stat: str
+    guards: str = "none"
+
+
+def _guards_changed(where: str, base: str, full: str) -> str:
+    """The guards, hook settings, rules and landing code the release changes against ``base``, as one line."""
+    names = person_targets.run_git(where, "diff", "--name-only", "--no-renames", base, full).splitlines()
+    held = protectedwrites.touches_guards(names)
+    return ", ".join(held[:GUARDS_SHOWN]) + (f" and {len(held) - GUARDS_SHOWN} more" if len(held) > GUARDS_SHOWN else "") if held else "none"
 
 
 def facts(checkout: person_targets.Checkout, sha: str = "", remote: str = "") -> Facts | None:
@@ -49,7 +59,7 @@ def facts(checkout: person_targets.Checkout, sha: str = "", remote: str = "") ->
     stat = person_targets.run_git(where, "diff", "--shortstat", base, full) or "no file changes"
     if not FULL_SHA.fullmatch(tree) or not ahead.isdigit():
         return None
-    return Facts(where, remote, full, tree, " ".join(subject.split())[:200], int(ahead), stat)
+    return Facts(where, remote, full, tree, " ".join(subject.split())[:200], int(ahead), stat, _guards_changed(where, base, full))
 
 
 def target(found: Facts) -> str:
@@ -58,9 +68,10 @@ def target(found: Facts) -> str:
 
 
 def question(found: Facts) -> str:
-    """The approval question's text, made only of what git reported."""
+    """The approval question's text, made only of what git reported; the subject is the one line an agent wrote."""
     return (f"Release main to {found.sha}?\nSubject: {found.subject}\n"
-            f"Commits ahead of {found.remote}/main: {found.ahead}\nChanges: {found.stat}\nRemote: {found.remote}")
+            f"Commits ahead of {found.remote}/main: {found.ahead}\nChanges: {found.stat}\n"
+            f"Guards changed: {found.guards}\nRemote: {found.remote}")
 
 
 def options(found: Facts) -> tuple[str, str]:

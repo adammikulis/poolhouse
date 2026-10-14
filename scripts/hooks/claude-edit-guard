@@ -330,9 +330,11 @@ def main() -> int:
     if target and any(PROTECTED.search(p) for p in (target, str(Path(target).resolve()))):
         return refuse("the person-record code, the guards and the hook settings are changed by a person at a "
                       "terminal", hard=True)
+    rules = rules_loader.load()
+    if rules is not None and (why := rules.hard_edit_refusal([target], event.get("cwd") or "")):
+        return refuse(why, hard=True)
     if switched:
         return ALLOWED
-    rules = rules_loader.load()
     if rules is not None:
         why = rules.edit_refusal([given.get("file_path") or given.get("notebook_path") or ""],
                                  event.get("cwd") or "")
