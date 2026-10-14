@@ -39,6 +39,11 @@ def home(monkeypatch):
     monkeypatch.setenv("PYTHONPATH", str(ROOT / "src"))
     source = root / "source"
     subprocess.run(["git", "init", "-q", "-b", "dev", str(source)], check=True)
+    from test_runtime_trust import commit, git
+
+    head = commit(source, "source")
+    git(source, "update-ref", "refs/remotes/origin/dev", head)
+    monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", "dev")
     runtime_store.write_state({"checkout": str(source)})
     yield root
     node_launch.stop_node(root / "node", wait_s=5)
@@ -49,7 +54,10 @@ def install_runtime(binary: Path, name: str, *, select: bool = True) -> Path:
     """A runtime tree holding ``binary`` as its node, selected the way `runtime.publish` writes it."""
     prefix = runtime.directory() / (name * 40)[:40] / uuid.uuid4().hex
     prefix.mkdir(parents=True)
-    node_binary.install(prefix, binary, commit=name)
+    source = Path(runtime_store.read_state()["checkout"])
+    from test_runtime_trust import git
+
+    node_binary.install(prefix, binary, commit=git(source, "rev-parse", "HEAD"))
     if select:
         (runtime.directory() / "selected.json").write_text(json.dumps({"prefix": str(prefix)}), encoding="utf-8")
     return prefix

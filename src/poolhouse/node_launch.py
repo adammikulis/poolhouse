@@ -26,7 +26,9 @@ from poolhouse import (
     node_supervise,
     real_machine,
     runtime,
+    runtime_store,
     win32,
+    worktreerules,
 )
 from poolhouse.command import Group, flag
 from poolhouse.home import state as state_root
@@ -185,31 +187,77 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S) -> dict:
     except OSError as exc:
         return {"action": "failed", "detail": f"the selected runtime's node binary is refused: {exc}"}
     before, run, pin = node_health(state), node_supervise.running(state), node_supervise.pointer(state)
-    node_supervise.point(state, None)
     if before is None and not supervised(state):
         return {"action": "idle", "detail": "no node was running; the next start runs the selected runtime's"}
     if before is not None and run.get("sha256") == new_sha and before.get("pid") == run.get("pid"):
         return {"action": "current", "detail": f"node {before['pid']} already runs it"}
-    if not supervised(state):
-        stop_node(state)
-        _start_supervisor(state, [])
+    source = runtime_store.read_state().get("checkout")
+    if not isinstance(source, str) or not source:
+        return {"action": "deferred", "detail": "node replacement needs its recorded source checkout"}
+    try:
+        boundary = worktreerules.landing_lock(Path(source))
+        with only_one(boundary, wait=False, note="node runtime swap"):
+            if runtime.selection_prefix() != prefix:
+                return {"action": "deferred", "detail": "node runtime selection changed"}
+            node_supervise._admitted(node_binary.location(prefix), new_sha, Path(source))
+            node_supervise.point(state, None)
+            if not supervised(state):
+                try:
+                    stop_node(state)
+                    _start_supervisor(state, [])
+                    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha, int(run.get("pid", -1))))
+                except (OSError, subprocess.SubprocessError):
+                    came = None
+                if came is not None:
+                    return {"action": "swapped", "detail": f"node {came['pid']} runs {new_sha[:12]}"}
+                return _rolled_back(state, pin, new_sha, wait_s, direct=True)
+    except Busy:
+        return {"action": "deferred", "detail": "node replacement waits for landing"}
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {"action": "failed", "detail": f"node replacement is refused: {exc}"}
     came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha, int(run.get("pid", -1))))
     if came is not None:
         return {"action": "swapped", "detail": f"node {came['pid']} runs {new_sha[:12]}"}
-    return _rolled_back(state, pin, new_sha, wait_s)
+    try:
+        with only_one(boundary, wait=False, note="node rollback"):
+            if current := _answers_as(state, new_sha, int(run.get("pid", -1))):
+                return {"action": "swapped", "detail": f"node {current['pid']} runs {new_sha[:12]}"}
+            rollback = _rollback_pointer(state, pin)
+    except Busy:
+        return {"action": "deferred", "detail": "node replacement waits for landing"}
+    if rollback is None:
+        return {"action": "failed", "detail": "the previous node runtime is refused"}
+    return _rollback_answer(state, rollback, new_sha, wait_s)
 
 
-def _rolled_back(state: Path, pin: dict, new_sha: str, wait_s: float) -> dict:
-    """The new node did not answer: pin the binary that ran before and wait for it to answer again."""
+def _rollback_pointer(state: Path, pin: dict) -> tuple[Path, str] | None:
     now = node_supervise.running(state)
-    before = pin or (now.get("previous") if now.get("sha256") == new_sha else now) or {}
+    before = pin or now.get("previous") or now
     old, sha = Path(str(before.get("binary") or "")), str(before.get("sha256") or "")
-    if not old.is_file() or node_binary.sha256(old) != sha:
-        return {"action": "failed", "detail": f"the new node ({new_sha[:12]}) did not answer and the old binary is gone"}
+    source = runtime_store.read_state().get("checkout")
+    try:
+        node_supervise._admitted(old, sha, Path(str(source or "")))
+    except (OSError, ValueError, RuntimeError):
+        return None
     node_supervise.point(state, old, sha)
+    return old, sha
+
+
+def _rollback_answer(state: Path, rollback: tuple[Path, str], new_sha: str, wait_s: float) -> dict:
+    _, sha = rollback
     back = _until(time.monotonic() + wait_s, lambda: _answers_as(state, sha, -1))
     return {"action": "failed", "detail": f"the new node ({new_sha[:12]}) did not answer; "
             + (f"node {back['pid']} runs the previous binary again" if back else "the previous binary did not answer either")}
+
+
+def _rolled_back(state: Path, pin: dict, new_sha: str, wait_s: float, *, direct: bool = False) -> dict:
+    rollback = _rollback_pointer(state, pin)
+    if rollback is None:
+        return {"action": "failed", "detail": "the previous node runtime is refused"}
+    if direct:
+        stop_node(state)
+        _start_supervisor(state, [])
+    return _rollback_answer(state, rollback, new_sha, wait_s)
 
 
 def smoke(prefix: Path, *, wait_s: float = START_WAIT_S) -> dict:

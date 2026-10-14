@@ -21,6 +21,7 @@ from poolhouse import (
     node_binary,
     node_key,
     runtime,
+    runtime_source,
     runtime_store,
     win32,
     worktreerules,
@@ -28,7 +29,7 @@ from poolhouse import (
 from poolhouse.files import read_json, write_json
 from poolhouse.home import state as state_root
 from poolhouse.lock import Busy, only_one
-from poolhouse.node_health import node_stop_event, state_key
+from poolhouse.node_health import node_health, node_stop_event, state_key
 from poolhouse.platform import is_windows, start_process
 
 if os.name == "posix":
@@ -113,16 +114,22 @@ def _spawn(state: Path, binary: Path, sha: str, extra: list[str], key: node_key.
     kept = {name: value for name, value in os.environ.items() if name != node_key.PASSPHRASE_ENV}
     with (state / LOG).open("ab") as out:
         child = start_process(argv, stdin=subprocess.PIPE if key else subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, env=kept)
-    if key and child.stdin is not None:
-        try:
-            child.stdin.write(key.line())
-            child.stdin.close()
-        except OSError:
-            _note(state, f"node {child.pid} did not read its key")
-    before = running(state)
-    previous = before.get("previous") if before.get("sha256") == sha else {"binary": before.get("binary"), "sha256": before.get("sha256")}
-    write_json(state / RUN, {"pid": child.pid, "binary": str(binary), "sha256": sha, "started_at": time.time(),
-                             "supervisor": os.getpid(), "previous": previous or {}})
+    recorded = False
+    try:
+        if key and child.stdin is not None:
+            try:
+                child.stdin.write(key.line())
+                child.stdin.close()
+            except OSError:
+                _note(state, f"node {child.pid} did not read its key")
+        before = running(state)
+        previous = before.get("previous") if before.get("sha256") == sha else {"binary": before.get("binary"), "sha256": before.get("sha256")}
+        write_json(state / RUN, {"pid": child.pid, "binary": str(binary), "sha256": sha, "started_at": time.time(),
+                                 "supervisor": os.getpid(), "previous": previous or {}})
+        recorded = True
+    finally:
+        if not recorded:
+            end(child, state)
     return child
 
 
@@ -138,13 +145,7 @@ def _wait(child: subprocess.Popen, state: Path, wanted: tuple[bytes, bytes], sto
                 source = runtime_store.read_state().get("checkout")
                 if not isinstance(source, str) or not source:
                     continue
-                try:
-                    with only_one(worktreerules.landing_lock(Path(source)), wait=False, note="node runtime cutover"):
-                        if signature(state) != wanted:
-                            end(child, state)
-                            return None
-                except (Busy, OSError, ValueError):
-                    continue
+                return None
 
 
 def _pause(state: Path, seconds: float, seen: tuple[bytes, bytes], stopping: Callable[[], bool]) -> None:
@@ -241,14 +242,139 @@ def _loop(state: Path, extra: list[str], stopping: Callable[[], bool]) -> int:
             continue
         refused, denials, told, began = 0, 0, ("", 0.0), time.monotonic()
         child = _spawn(state, binary, sha, extra, key)
+        identity = _initial_identity(child, state, sha, stopping)
+        if identity is None:
+            key = None
+            return 0 if stopping() else 1
+        while True:
+            code = _wait(child, state, seen, stopping)
+            if code is not None or stopping():
+                break
+            try:
+                changed = _cutover(child, state, extra, (key, identity), stopping)
+            except OSError as exc:
+                _note(state, f"node replacement unavailable: {exc}")
+                key = None
+                return 1
+            if changed is not None:
+                child, seen = changed
+            else:
+                time.sleep(POLL_S)
         key = None
-        code = _wait(child, state, seen, stopping)
         if code is None and child.returncode is None:
             end(child, state)
         _note(state, f"node {child.pid} exited {child.returncode}")
         delay = MIN_DELAY_S if code is None or code == -signal.SIGTERM or time.monotonic() - began >= STABLE_S else min(delay * 2, MAX_DELAY_S)
         _pause(state, delay, seen, stopping)
     return 0
+
+
+
+
+def _initial_identity(child: subprocess.Popen, state: Path, sha: str, stopping: Callable[[], bool]) -> tuple[bytes, ...] | None:
+    try:
+        if _ready(child, state, sha, stopping):
+            return _identity(state)
+    except OSError:
+        pass
+    if child.poll() is None:
+        end(child, state)
+    return None
+
+
+def _identity(state: Path) -> tuple[bytes, ...]:
+    result = []
+    for name in (node_key.RECORD, *node_key.IDENTITY):
+        try:
+            with (state / name).open("rb") as stream:
+                data = stream.read(65537)
+            if len(data) > 65536:
+                raise node_key.KeyUnavailable("device identity metadata exceeds its bound")
+            result.append(data)
+        except FileNotFoundError:
+            result.append(b"")
+    return tuple(result)
+
+
+
+def _same_identity(state: Path, identity: tuple[bytes, ...]) -> bool:
+    try:
+        return _identity(state) == identity
+    except OSError:
+        return False
+
+
+def _ready(child: subprocess.Popen, state: Path, sha: str, stopping: Callable[[], bool]) -> bool:
+    until = time.monotonic() + 20.0
+    while time.monotonic() < until and not stopping() and child.poll() is None:
+        healthy = node_health(state)
+        if healthy and healthy.get("pid") == child.pid and running(state).get("sha256") == sha:
+            return True
+        time.sleep(POLL_S)
+    return False
+
+
+def _admitted(binary: Path, sha: str, source: Path) -> None:
+    prefix = binary.parent.parent
+    record = node_binary.record_of(prefix)
+    node_binary.verified(prefix, expect=sha)
+    runtime_source.admit(source, str(record.get("commit", "")))
+    floor = runtime_source.floor_of(source, runtime_source.resolve_commit(source))
+    if runtime_store.rejected(prefix) or runtime_store.epoch_of(prefix) < floor:
+        raise node_binary.NodeBinaryError("node runtime is rejected or below the source floor")
+
+
+def _cutover(child: subprocess.Popen, state: Path, extra: list[str], custody: tuple[node_key.Released | None, tuple[bytes, ...]],
+             stopping: Callable[[], bool]) -> tuple[subprocess.Popen, tuple[bytes, bytes]] | None:
+    key, identity = custody
+    source = runtime_store.read_state().get("checkout")
+    if not isinstance(source, str) or not source or not _same_identity(state, identity):
+        return None
+    prepared = signature(state)
+    try:
+        binary, sha = resolve(state)
+        _program(binary, sha, extra)
+    except OSError:
+        return None
+    try:
+        with only_one(worktreerules.landing_lock(Path(source)), wait=False, note="node runtime cutover"):
+            if signature(state) != prepared or not _same_identity(state, identity) or stopping():
+                return None
+            try:
+                _admitted(binary, sha, Path(source))
+            except (runtime_source.DeployError, OSError):
+                return None
+            if running(state).get("sha256") == sha and _ready(child, state, sha, stopping):
+                return child, prepared
+            before = running(state)
+            old, old_sha = Path(str(before.get("binary", ""))), str(before.get("sha256", ""))
+            end(child, state)
+            replacement = None
+            try:
+                replacement = _spawn(state, binary, sha, extra, key)
+                if _ready(replacement, state, sha, stopping):
+                    return replacement, signature(state)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            if replacement is not None:
+                end(replacement, state)
+            try:
+                _admitted(old, old_sha, Path(source))
+            except (runtime_source.DeployError, OSError) as exc:
+                raise node_binary.NodeBinaryError(f"previous node runtime is refused: {exc}") from exc
+            point(state, old, old_sha)
+            restored = None
+            try:
+                restored = _spawn(state, old, old_sha, extra, key)
+                if _ready(restored, state, old_sha, stopping):
+                    return restored, signature(state)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            if restored is not None:
+                end(restored, state)
+            raise node_binary.NodeBinaryError("replacement and previous node did not answer")
+    except Busy:
+        return None
 
 
 def end(child: subprocess.Popen, state: Path) -> None:

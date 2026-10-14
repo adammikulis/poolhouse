@@ -11,7 +11,14 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import keystore, runtime, runtime_deploy, runtime_store, runtime_trust
+from poolhouse import (
+    keystore,
+    runtime,
+    runtime_deploy,
+    runtime_source,
+    runtime_store,
+    runtime_trust,
+)
 from poolhouse.activity import writer
 from poolhouse.activity.schema import Entry
 
@@ -285,11 +292,11 @@ def test_integration_checkout_cannot_supply_runtime_admission(world):
 
 
 def test_unmerged_exception_requires_the_existing_actual_person_terminal(world, monkeypatch):
-    monkeypatch.setattr(runtime_deploy.person, "is_terminal", lambda _stream: True)
-    monkeypatch.setattr(runtime_deploy.person, "marked", lambda: True)
+    monkeypatch.setattr(runtime_source.person, "is_terminal", lambda _stream: True)
+    monkeypatch.setattr(runtime_source.person, "marked", lambda: True)
     with pytest.raises(runtime_deploy.DeployError, match="person at a terminal"):
         runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
-    monkeypatch.setattr(runtime_deploy.person, "marked", lambda: False)
+    monkeypatch.setattr(runtime_source.person, "marked", lambda: False)
     runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
 
 
