@@ -1,281 +1,108 @@
 # Poolhouse
 
-**Pool every device's compute.** One pool, one board per project, agents and people on every device.
+Poolhouse is a Python library and a set of tools for pooling the compute of your devices. It brings model serving,
+agents, tests and training together with a shared board for each project. A laptop can use a model running on a
+larger machine, and agents can exchange work without keeping separate copies of a project's conversation.
 
-Install it on each device. Each one starts as a pool of one; add a second and the two share a board per
-project, the work that fits each, and every model the pool can run. A person adds a device and the device joins:
-automatically on the same network, or with a short code. Chat with a model from any device, whichever one runs it.
-Tests, training and agents land where compute is free, and any device can be taken back the moment you want it.
+The library also works on one machine. You can use its graph tools, document processing and model clients without
+setting up a pool. The idea is to keep the machinery in one place: finding models, starting them, tracking work,
+and keeping the evidence behind what a model says.
 
-## Quickstart
+Poolhouse is pre-1.0, and the phone-to-node founding journey is still being built;
+[release readiness](docs/release-readiness.md) records the current state.
+
+## What you can use it for
+
+- **Serve and use local models.** Find model files, manage their processes and talk to them from Python or the
+  command line. The broker controls compute use so two pieces of work do not compete for the same device's GPU.
+  [Model serving](docs/serving.md) covers hardware, memory and model settings.
+- **Give agents a project workspace.** Messages, threads, notes, claims and tasks live on the project's board.
+  Authenticated sessions have their own identities, and claims coordinate changes to shared files and resources.
+  [The workspace](docs/workspace.md) explains the library and command-line interfaces.
+- **Build and search knowledge graphs.** Keep concepts and their relationships, search them, follow connections
+  and render a page you can explore. Document ingestion keeps source references alongside extracted claims.
+  See [graphs](docs/graph.md) and [document ingestion](docs/ingest.md).
+- **Train and measure models.** Run training recipes, evaluate answers and compare settings. Decision models return
+  probabilities for options you supply; chat models generate text. See [training](docs/training.md),
+  [decision models](docs/decision-models.md) and [benchmarks](docs/bench.md).
+
+These tools can use local hardware, and some integrations fetch models or call external services. Where work runs
+and which services it contacts depend on the configuration and the API you choose. A provider running your work can
+see its inputs and outputs. Pooling compute does not make that work private from the provider.
+
+## Install
+
+The library requires Python 3.12 or later. Its base dependencies include native graph and security packages;
+model and training integrations have additional dependencies. Check the [installation guide](docs/install.md)
+for the supported runtime requirements and extras before installing.
+
+For development from a source checkout:
 
 ```sh
-pip install poolhouse
-poolhouse                     # first run: this device is a pool of one
+python -m pip install .
 ```
+
+The desktop application and device runtime have their own installation paths. Windows uses an Ubuntu WSL runtime;
+macOS and Linux have separate packaging requirements. [Installing Poolhouse](docs/install.md) and
+[Windows setup](docs/windows-runtime.md) cover those paths, including updates, uninstalling and optional dependencies.
+
+## Two small examples
+
+First, find a concept in a small graph. This needs no model or running node:
+
+```python
+from poolhouse.graph import look_up
+
+graph = {
+    "nodes": [{"id": "topic:gardening", "label": "Gardening", "kind": "topic",
+               "attrs": {}, "messages": []}],
+    "edges": [],
+}
+
+print(look_up(graph, "gardening"))
+```
+
+You can also talk to an already-running local model. Use the address shown by `poolhouse-serve status`;
+this example assumes the server is at `http://127.0.0.1:8080`:
 
 ```python
 import poolhouse as ph
 
-ph.pool.listen(agreed=True)                  # let other devices join; you said yes to the network
-print(ph.pool.add_device())                  # a short code; type it on the second device
-ph.pool.join("192.168.2.27", "THE-CODE")     # ...there (or: same network, policy open, no code)
-print([m.name for m in ph.pool.members()])   # both devices
-
-board = ph.board.register("me")              # this project's board, shared by both
-board.send("#general", "second device is in", kind="status")
+model = ph.client.Client("http://127.0.0.1:8080")
+reply = model.chat([{"role": "user", "content": "Suggest three herbs for a small garden."}])
+print(reply.content)
 ```
 
-The same from the shell: `poolhouse-members ls`, `poolhouse-workspace send '#general' status "second device is in"`,
-`poolhouse-workspace inbox`. The whole Python surface is in [docs/api.md](docs/api.md); migrating from the old package name, see
-[docs/api-migration.md](docs/api-migration.md).
+The client sends the conversation to that server and returns its reply. Starting a model, choosing one that fits
+and accessing it from another device are covered in the serving guide. Graph storage, HTML views and questions
+that combine graph search with a model are covered in the graph guide.
 
-## For library users
-
-`import poolhouse as ph` gives a small, stable API: `ph.pool` (devices, join, capacity), `ph.board` (messages,
-notes, claims), `ph.leases` (take and give back compute), `ph.test` (run tests on other devices), `ph.models`,
-`ph.serve` and `ph.client` (serve and talk to a model), `ph.hub` (find models). Importing it loads nothing else,
-every public callable is typed and documented, and `py.typed` is shipped. Everything not listed in the API page is
-internal and may change in any release.
-
-```
-$ poolhouse-members ls
-NAME             URL                          FREE    STATE      DEVICE
-gpubox           http://192.168.2.27:8770     0/1     busy       NVIDIA GeForce RTX 4090  6.2/24.0 GB free
-radeon           http://192.168.2.31:8770     1/1     idle       AMD Radeon RX 7900 XTX  22.1/24.0 GB free
-mac-studio       http://192.168.2.44:8770     1/2     idle       Apple M2 Ultra  96.0/128.0 GB free
-pi-rack          http://192.168.2.51:8770     5/6     busy +2    16 cpu
-```
-
-Everything runs on your own hardware. Nothing leaves the network.
-
-![The pool view](docs/images/pool.jpg)
-
-- **Chat from any machine.** The one with the card runs the model; the laptop talks to
-  it. A machine that installs nothing extra still gets to use it, and conversations are
-  kept.
-- **Documents into a knowledge graph.** A model reads a shelf of PDFs section by section
-  into concepts and the relations between them, and every claim keeps the page and the
-  model behind it.
-- **Nothing to configure.** A passphrase is the whole setup. Two households on one
-  network stay separate without either of them being told to.
-- **Work lands where it fits.** Placement is by what a machine reports and how fast it
-  has actually been measured, per kind of work. A machine nobody has measured is tried,
-  not skipped.
-- **Your machine stays yours.** Block out working hours, or hit pause when you start a
-  game — the run stops, requeues, and picks up from its last checkpoint. Pause the whole
-  pool and a machine that was switched off takes the pause when it comes back.
-- **Train without writing code.** Pick what you want it to learn, point it at your
-  files, and it runs. Or drive it from Python if you would rather.
-- **Not only text.** A model with a projector is handed the pictures themselves, and a
-  recording is transcribed on whichever machine is free. It checks a model can see
-  before it believes what it says about a page.
-- **Mixed hardware is the normal case.** NVIDIA, AMD ROCm, Apple silicon and plain CPUs
-  in one pool, each reporting its own temperature, clocks and throttle state.
-- **An agent that asks first.** `poolhouse-chat` operates Poolhouse for you under a role
-  (`read-only`, `approve-first` or `plan-and-go`): reads run, anything that starts, stops, downloads or
-  measures asks, and each question offers Allow this time, Always allow or Never allow.
-  Releasing quarantine, approving a host and changing the roles or rules are yours alone
-  ([roles and rules](docs/agent-roles.md)).
-- **Memory that is encrypted and scoped.** What the agent remembers is a graph of facts,
-  kept per user and per project, sealed under one key held in the operating system's keystore
-  ([memory](docs/memory.md), [keystore](docs/keystore.md)).
-- **Decision models.** Ask a small local model to pick one of the options you name and
-  get a probability for each, with no text generated; train one from labelled cases
-  ([decision models](docs/decision-models.md)).
-
-[Full list of what it does](docs/FEATURES.md).
+The main library entry point is `import poolhouse as ph`. Its namespaces include `ph.pool`, `ph.board`, `ph.leases`,
+`ph.test`, `ph.models`, `ph.serve`, `ph.client` and `ph.hub`. The [API reference](docs/api.md) gives their signatures
+and error behavior. Pool actions need a running node and the relevant authorization; they are not prerequisites
+for the graph example above.
 
 ## Security
 
-Treat every network, page, model file and model reply as untrusted. Fetches go through one
-pipeline with a host allow-list, size caps, hash pins and checks, and a quarantine for what
-fails; model servers start only through the machine's broker; the daemon is on loopback until
-a machine joins a pool and is TLS with signed requests beyond it; one operating-system
-keystore item protects memory, the pool signing key and stored credentials; and a watcher
-(sentinel) holds what changed or was forged until a person releases it at a terminal or from
-one dialog. An agent's process cannot do the things reserved to a person. These defences
-reduce what a fooled model can do; they do not make it impossible. Read
-[the threat model](docs/security.md), [the design contract for an assistant that acts for
-you](docs/assistant-security.md) (what is built and what is not) and [the red-team
-record](docs/redteam.md), and report a problem as [SECURITY.md](SECURITY.md) says.
+Poolhouse separates a device's membership from an agent's permissions and a person's approval. Received messages,
+files, model replies and tool results are data, not authority. Network listeners, admission policies, signing and
+phone approval have different trust boundaries; their defaults and current limits are described in
+[the security policy](SECURITY.md) and [the threat model](docs/security.md).
 
-## Install
+Governance signs the terms and actions a pool follows. Scoped grants limit what an agent session can do, and
+sensitive requests go through approval checks. Model processes start through the compute broker. Where implemented,
+operating-system keystore storage protects secrets at rest; it is separate from the permissions to use them.
 
-One script per platform, and re-running it upgrades in place. The default is the app: a
-window, and the daemon behind it.
+These protections have limits, including compromised accounts, file-backed keys and hardware behavior that has
+not been verified. [Security policy](SECURITY.md) covers those limits, privacy, private vulnerability reporting
+and release verification. [The assistant security contract](docs/assistant-security.md) separates the implemented
+protections from the remaining design work.
 
-**macOS and Linux:**
+## More information
 
-```
-curl -fsSL https://raw.githubusercontent.com/adammikulis/poolhouse/main/packaging/install.sh | sh
-```
+[Features](docs/FEATURES.md) lists the larger set of tools. [Commands](docs/commands.md) covers the shell interfaces,
+and [development](docs/development.md) covers contributing and tests. Detailed guides belong there so this page
+can stay a starting point.
 
-**Windows**, in PowerShell:
-
-The application runs in Ubuntu on WSL and opens in your Windows browser.
-[Windows runtime setup](docs/windows-runtime.md) lists the Linux packages and GPU requirements.
-
-```
-irm https://raw.githubusercontent.com/adammikulis/poolhouse/main/packaging/install.ps1 | iex
-```
-
-Do the same on every machine you want to work with, typing the same passphrase. They find
-each other on their own.
-
-**If you write Python**, it runs on 3.12 and later (developed and tested on 3.13) and pulls in nothing heavy, so the machine you
-drive from needs no CUDA, no MLX and no training stack:
-
-```
-pip install git+https://github.com/adammikulis/poolhouse
-```
-
-Every [release](https://github.com/adammikulis/poolhouse/releases/latest) carries the same
-thing as a wheel, for a machine with no git.
-
-There are three other modes -- a machine with no screen, a machine that starts at boot
-before anyone logs in, and a git checkout that follows `main` -- and one model cache per
-machine whichever you pick. [Installing](docs/install.md) has all of it, and how a script
-answers every prompt without a terminal to type at.
-
-## Starting it
-
-Make this machine a device, and see who else answers:
-
-```
-poolhouse-pool join --persist
-poolhouse-pool status
-```
-
-Put a model up and talk to it:
-
-```
-poolhouse-serve up hf:unsloth/gemma-4-E4B-it-qat-GGUF/gemma-4-E4B-it-qat-Q4_K_M.gguf
-poolhouse-serve status
-```
-
-`poolhouse` on its own starts the daemon and opens the interface in your browser;
-`poolhouse --list` prints every command with the first line of its help.
-
-## Documents into a knowledge graph
-
-Point it at a shelf of PDFs and get back a graph you can ask questions of.
-
-```
-poolhouse-ingest ~/texts/*.pdf --out ./sources.ladybug --images --resume --detach
-poolhouse-ingest status  --out ./sources.ladybug
-poolhouse-ingest ask     --out ./sources.ladybug "how is heart rate controlled"
-```
-
-Each book is cut where it cuts itself -- chapters, sections, figures -- because a section is
-the unit that still means something read on its own. A model reads each section into
-concepts with a kind and a one-line definition in the book's own words, the relations
-between them, what each figure shows, and the terms the book sets in bold. The extractions
-fold into one graph per source, so `has_part` and `haspart` are one relation and a plural
-folds into the spelling the source uses.
-
-**Every claim keeps the page and the model behind it.** A concept points at the passages it
-was read from; a passage knows its source, chapter, section and pages, and points in turn at
-the run that read it -- which model, which build, which settings, and when. Asking where
-something came from walks back to a page, not to a string copied onto every node.
-
-**The vocabulary grows as it reads.** A core set of relations and kinds is what every source
-shares. Where none of them says what the page says, the model names one itself and it is
-marked as that source's own, so a source's own vocabulary can be read back afterwards. The
-words earlier sections used are offered to the next one, so the reading takes a word already
-in use rather than coining a third spelling of it.
-
-**A model is handed tools, not the graph.** It finds entries by name or by the words
-attached to them, reads what one holds, reads a whole neighbourhood in a single call, traces
-how two entries connect, and lists everything of one kind -- so a question is answered by
-looking things up, and the answer names the entries it rests on. `poolhouse-ingest ask` does
-that over a store, `converse` and `hybrid` do it from Python over any graph, and
-`poolhouse-graph serve` puts the graph on a page with the same asking behind it, on loopback:
-whoever has the file has the graph, so a private one is served rather than sent.
-
-An extraction somebody else produced comes in as a source of its own, and a graph that has
-been read into can be drawn, searched, walked and given a point on a map for every entry
-that names a place.
-
-## Work that runs while you do something else
-
-A job here is a command you start and walk away from, not a chat window you sit in front of.
-Reading a shelf of books is hours, so `--detach` gives the shell straight back and puts the
-run in its own session with a log; `status` says how far it has got, how fast the model is
-reading and how long is left; `--resume` starts where a killed run stopped.
-`poolhouse-jobs wait ingest` blocks until it has ended, so the next step is `wait && next`
-rather than a loop you wrote by hand.
-
-`poolhouse-chat "..."` takes the task in words instead: a model on your own hardware, holding
-the serving, download and benchmark commands here as tools, asks what the task leaves open,
-prints a plan, waits for the go, runs the calls that plan names and says where the results
-are; bare `poolhouse-chat` is the same agent as a conversation, and `--role` sets what it may do
-(`docs/agent-roles.md`). `poolhouse-mcp` hands the same functions to an
-agent over MCP, and anything long returns a log and a pid rather than blocking the call.
-
-## Pictures and speech
-
-A model with a projector is given the picture, not a description of one. `--mmproj auto`
-finds the projector shipped beside the weights, `poolhouse-ingest --images` hands the model
-each section's figures rather than only their captions, `graph.tree.read(client, ORG,
-images=[chart])` reads an org chart or a family tree out of a photograph, and `web_look`
-brings back a full-page screenshot with the page's largest pictures. A tool of your own
-that returns pictures puts them in front of the model the same way. A second model can
-transcribe first and the first one structure what it said, which is the slot a document
-model -- DeepSeek-OCR, GLM-OCR, surya -- is good in.
-
-**Then it checks the model can see.** `poolhouse.vision.VisionGate` draws a PNG of coloured
-bands, asks the model to name them left to right, and raises rather than let a run believe
-a model that is answering from the words alone. A server started without a projector says
-so instead of quietly reading captions.
-
-Speech is three protocols and one resolver, so the engine is a detail:
-
-```
-poolhouse-speech providers
-poolhouse-speech transcribe recording.m4a
-poolhouse-speech say "the run has finished" --out done.wav
-```
-
-faster-whisper, whisper.cpp, Whisper through transformers, piper, kokoro, the operating
-system's own voice, Silero and an energy detector that needs nothing installed --
-`providers` says which could run here and which is picked when none is named, and
-`regions FILE` gives the seconds somebody is speaking. Audio is anything ffmpeg reads,
-a video file's track included. A device transcribes what it is sent, so the hearing happens
-on whichever machine is free rather than the one you are typing at.
-
-## The rest of it
-
-| | |
-| --- | --- |
-| [What it does](docs/FEATURES.md) | every feature; `docs/verify_release.py` checks claims from each section but Entities |
-| [Installing](docs/install.md) | the four modes, the one model cache per machine, Windows, and an install a script drives |
-| [The agent workspace](docs/workspace.md) | one bus for the agents of a project, run by the node on each device: messages, rooms and threads, subscriptions, notes, claims, files, tasks, and the Board page for you |
-| [The commands](docs/commands.md) | every `poolhouse-<command>`, what it takes and what it prints |
-| [Pools](docs/fleet.md) | joining, placing people across machines, following a branch, and running work on devices from Python |
-| [Finding and serving a model](docs/serving.md) | one manager per machine, the settings each model scored best with, how many people fit in a card, llama.cpp builds and draft heads |
-| [Working with a graph](docs/graph.md) | the six things a model is given instead of the graph, how a question is asked, and a conversation of any length |
-| [Documents into a graph](docs/ingest.md) | a book read section by section, with the page and the model behind every claim |
-| [Training](docs/training.md) | the loop, the recipes, and a fine-tune that ends in a model calling your own tools |
-| [Studio and live Gym](docs/studio-gym.md) | organized workspaces, live sensor/decision views, specialist simulators, PPO, and reviewed training trajectories |
-| [Measuring](docs/bench.md) | timing and scoring a model's answers, what that settled here, and an evening of runs as a file |
-| [An invented world](docs/world.md) | a community with people who talk, the days they talk over, and the exports their corpus arrives as; nobody real in any of it |
-| [Chatting and roles](docs/chat.md) | `poolhouse-chat`: conversation or task, the three roles, saved Always/Never rules ([roles](docs/agent-roles.md)) |
-| [Agent memory](docs/memory.md) | the encrypted fact graph, user and project scopes, `poolhouse-memory` |
-| [The keystore](docs/keystore.md) | the one OS keystore item, what prompts, `poolhouse-security unlock` and `keystore-reset` |
-| [Sentinel](docs/sentinel.md) | what is watched and held, the one click-to-release dialog, `POOLHOUSE_NOTIFY` |
-| [Reputation](docs/reputation.md) | how each source has behaved, `poolhouse-reputation` |
-| [The activity log](docs/activity-log.md) | one encrypted, tamper-evident record of what agents, people and the stack did, and `poolhouse-log` to read it |
-| [Security](docs/security.md) | the threat model, findings and what is fixed ([assistant contract](docs/assistant-security.md), [red-teaming](docs/redteam.md)) |
-| [Requests](docs/requests.md) | one place for everything that waits for a person: raised by any component, answered at the terminal, in the browser page or in the desktop dialog, first answer wins, `poolhouse-requests` |
-| [Destructive actions](docs/destructive-actions.md) | the classifier that makes destructive or unsure tool calls ask first: what asks and why, how it meets roles and rules, measured recall |
-| [Decision models](docs/decision-models.md) | typed answers with probabilities, training and evaluating one, JevBench ([integration plan](docs/decision-model-integration-plan.md)) |
-| [Packages](docs/packages.md) | what each module is, and the extras it carries |
-| [Model ranking](docs/model-ranking.md) | one line per model: its best run, and what that run cost |
-| [Architectures](docs/architectures/README.md) | the models that behave unlike a dense transformer when served |
-| [Working on Poolhouse](docs/development.md) | `contracts/`, the git hooks, and how the tests are written |
-| [Release readiness](docs/release-readiness.md) | what the release must do and what is tested before it ships: the journeys and their step counts, a checklist by area, the security gates, the owner-only steps and the final drive |
-
-## Licence
-
-Apache License 2.0. See [LICENSE](LICENSE).
+Poolhouse is licensed under [Apache License 2.0](LICENSE). Dependency notices are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
