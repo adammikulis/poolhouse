@@ -13,8 +13,8 @@ all use that one resolved name.
 
 1. Fetch; rebase your own linear commits onto `origin/<dev>` (merge `origin/<dev>` instead when the
    branch holds merges or is shared); run the affected tests.
-2. `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ...` with the full SHA of the tip, then
-   an independent reviewer's `land-review ... accept` at that SHA.
+2. `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ...` with the full SHA of the tip, then, for security, encryption, access, trust or compute changes,
+   another agent's `land-review ... accept` at that SHA. Ordinary changes proceed without review.
 3. The runner batches, merges, gates, fast-forwards, pushes only the development branch and removes the
    landed worktree and branch. A worker never pushes, and reports landed only on the runner's `landed`
    message for its exact SHA (a gate result for that SHA exists before any push).
@@ -127,25 +127,15 @@ foreign landing entry, so a device that joined the pool cannot stop landing here
   `openai` and `qwen` families, where the `qwen` family lists every quantisation of Qwen3.8-27B and
   Qwen3.8-Flash-Next above its lowest tier (the Qwen3.5 0.8B, 2B and 4B ids), the owner's decision of
   2026-10-12 (docs/model-benchmarks.md, 1.3). `main` and `master` are never a branch or target. A subagent may request
-  its own work; it is not independent of its parent.
-- A request needs an independent accept recorded at its exact SHA by another landing-level identity
-  that is neither the requester nor a delegate or parent of it. Without it the request is
-  `needs-review` and the runner will not land it.
-- Standing is stamped when it is earned, not looked up when it is needed. The node writes, on each request and
-  review entry, the sender's name, parent, ancestors and model (not what the caller says). A worker
-  normally asks for landing and ends (its session is retired as `done`), so the runner never asks whether the
-  requester is still registered. At landing time it asks three things only: was the requester at the landing level
-  when it asked (the stamp), was it ended for cause since (`revoked` or `forged`: the request is `refused` with
-  "the requester NAME was revoked after it asked"), and does each accepting reviewer's stamp hold (landing level,
-  independent of the requester's stamped lineage, not ended for cause since). A reviewer that ended normally still
-  counts; one ended for cause does not; any standing reject from a reviewer that counts blocks.
-- The reviewer path. The requester's ancestors and descendants never accept it: the lead that spawned a worker
-  does not review the worker's request. The lead launches a reviewer subagent, a session it spawned that is not in
-  the requester's lineage (a sibling of the worker, or any unrelated session), which reviews the exact SHA with
-  `poolhouse-workspace land-review REQUEST SHA --verdict accept` and may end afterwards. A sibling is independent
-  of the requester because neither is the other or an ancestor of the other; the parent they share is no part of
-  the check. A session of the requester's own lineage, the requester itself, and a model below the landing level
-  are refused.
+  its own work under its authenticated branch claim. Creators submit their own branches; no proxy-author field is accepted.
+- The runner derives review requirements from the pinned diff against the target merge base. Ordinary explanatory
+  documentation and Python changes with an unchanged syntax tree proceed without review;
+  policy/instruction files and unknown executable behavior require review. Symlinks and file mode changes need review.
+  Request summaries and caller labels cannot waive review. Renames and deletions include their old paths.
+- A required review is an exact-SHA acceptance by any different eligible authenticated agent, including a parent,
+  child or sibling. The creator cannot review itself. Any standing rejection blocks even an ordinary change.
+- The node stamps identity/model at request and review time. Normal retirement preserves standing; revocation or
+  forgery ends it. Requests and reviews remain bound to the same full SHA, with device trust and runner claims intact.
 - Pause and resume: the runner or a session with no parent (a subagent may not). Cancel: the requester or those. A cancel of a
   running request stops the gate and queues the others again. A new request for the same branch
   supersedes the older one (a new SHA means a new review).

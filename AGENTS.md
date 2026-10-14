@@ -63,9 +63,17 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
   through. An agent is a process under the marker variable `CLAUDECODE` (CLAUDE.md, "Hooks and settings") or a harness
   process; a terminal is neither.
 
+### Review scope
+
+Landing review is required for changes affecting security, encryption, access, identity, trust, sharing,
+serving or compute. Any different authenticated agent or subagent may review, including a parent or child;
+the creator cannot review itself. Creators submit their own branches under authenticated branch claims.
+Ordinary changes require affected checks and integration gates, without review. Person-only keystore,
+system approval, release and protected-code authorization checks remain separate.
+
 ### Attack first
 
-Every design and every security-adjacent change (identity, membership, grants, approvals, serving, sharing, anything
+Every security-adjacent design and change (identity, membership, grants, approvals, serving, sharing, anything
 that moves trust or compute) gets an attack-first pass before it is built or landed: an agent other than the author is
 told to break it and answers in writing for each of a copied or cloned pool or device, replay, a forged or
 below-threshold signature, a compromised or malicious member, a stolen phone or key, a malicious agent, an agent that is compromised without knowing it (an injected instruction in a board message, tool
@@ -280,7 +288,7 @@ current setup, with the original workflow verified on available hardware. Commit
 are checkpoints. Name any missing activation or live proof and keep the work unfinished. A receiving activation owner
 must acknowledge the handoff; until then the current owner retains responsibility.
 
-- Commit bounded verified work promptly, get independent review, then integrate and push it yourself under a short-lived
+- Commit bounded verified work promptly, get another agent's review for security-adjacent work, then integrate and push it yourself under a short-lived
   development-branch claim, with no wait for a designated publisher (section 4); carry activation through a safe
   boundary that preserves active jobs and models. Do not hold delivery behind unrelated development, cleanup or
   background broad suites, or impose broad development holds; keep authorization, independent review and required checks
@@ -394,7 +402,7 @@ network, a firewall prompt) is said, not implied.
 Edit, stage and commit only named files in a claimed checkout (never `git add -A`, `.` or `-u`). Concurrent writers,
 experiments and conflict resolution use separate sibling worktrees and branches; the primary development checkout is
 allowed when it is the best way to finish the task, under file-area and checkout/branch claims, preserving unrelated
-work and keeping independent review and affected tests. Branch from the repaired development history, never `main`.
+work and keeping required security review and affected tests. Branch from the repaired development history, never `main`.
 Create worktrees beside the primary checkout, never inside it (including `.worktrees/`):
 `git worktree add -b <branch> ../poolhouse-<branch> "$(git -C ../poolhouse branch --show-current)"`.
 
@@ -416,8 +424,9 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
 - **A worker lands its own branch through the queue.** The development branch is whichever branch the primary checkout
   is on (`POOLHOUSE_DEV_BRANCH` overrides it); nothing names it. When ready: fetch, rebase its own linear commits onto
   `origin/<dev>` (merge `origin/<dev>` instead when the branch holds merges or is shared), run the affected tests, then
-  `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ...` with the full SHA of the tip. After an independent
-  `land-review` accept at that SHA the runner batches, merges, gates, fast-forwards, pushes only the development branch
+  `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ...` with the full SHA of the tip. Security, encryption, access, trust and compute changes require a different agent's
+  `land-review` accept at that SHA; parent and child reviewers count, the creator never does. Ordinary changes
+  need no review. The runner derives the requirement from the exact diff, then batches, merges, gates, fast-forwards, pushes only the development branch
   and cleans up the worktree and branch. A worker never pushes, and never reports a branch landed without the runner's
   `landed` (the gate result) for its exact SHA. One request never fails another: a stale, conflicting, red, hanging or
   runner-breaking request is ejected alone with its reason and failing test names, sent to the requester by name, and
@@ -428,7 +437,7 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
   as "unpushed, the owner's to push", or answer a question about who publishes with "the owner"; the owner never has to
   check a device for unpushed work. Agents push everything with the agent identity, workflow files included
   (docs/github-protection.md). Only `main` waits on the owner (section 1).
-- **Integrate continuously.** Commit completed, bounded pieces by named files; get independent review and affected
+- **Integrate continuously.** Commit completed, bounded pieces by named files; get another agent's review for security-adjacent work and affected
   checks promptly. Fetch before preparing each batch and again immediately before pushing; reconcile upstream
   advancement in an isolated integration worktree and run the incremental affected gates before landing the exact tree;
   if the remote moved, fetch, reconcile, gate the new changes and retry. Every agent starting a task, finishing one or
@@ -557,7 +566,7 @@ limitations. Invalid selectors fail before admission; never replace a missing se
 Documentation-only changes need consistency review and clean diffs. Workers do not run shared gates or full suites, and
 nobody runs a full suite after every intermediate commit.
 
-- The main coordinator independently reviews each branch and assembles the reviewed batch in a claimed checkout (an
+- The main coordinator obtains another agent's review for each security-adjacent branch and assembles the batch in a claimed checkout (an
   isolated worktree for concurrent work or conflicts). It runs the shared structural/security checks once on the
   combined tree before the primary fast-forward and publication: `scripts/test gate`, `scripts/budgets`,
   `scripts/redteam_coverage.py --check`, clean generated references, layer and wiring checks, serving-bypass checks and

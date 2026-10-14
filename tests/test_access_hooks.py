@@ -75,6 +75,7 @@ def test_the_edit_guard_keeps_the_hard_paths_when_the_guard_is_off():
 def load_bash_guard():
     loader = importlib.machinery.SourceFileLoader("claude_bash_guard_under_test", str(BASH))
     spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
@@ -88,7 +89,7 @@ AS_ITSELF = ("poolhouse-workspace inbox --agent claude-aaaaaa", "poolhouse runti
 def test_a_subagent_acts_only_as_itself(monkeypatch, capsys):
     guard = load_bash_guard()
     import workspace_hook
-    monkeypatch.setattr(workspace_hook, "agent_name", lambda *args, **kwargs: "claude-aaaaaa")
+    monkeypatch.setattr(workspace_hook, "agent_name", lambda *_args, **_kwargs: "claude-aaaaaa")
     for command in (*AS_ANOTHER, *AS_ITSELF):
         event = {"tool_name": "Bash", "cwd": str(ROOT), "agent_id": "a1", "tool_input": {"command": command}}
         monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event)))

@@ -332,6 +332,10 @@ combine-as-imports = true
 # counts differently on every machine.
 [tool.pyright]
 include = ["src/poolhouse"]
+executionEnvironments = [
+    { root = "tests", extraPaths = ["src", "tests", "scripts", "scripts/hooks"] },
+    { root = "." },
+]
 typeCheckingMode = "off"
 reportAssertAlwaysTrue = "error"
 reportInvalidStringEscapeSequence = "error"

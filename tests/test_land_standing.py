@@ -70,20 +70,21 @@ def test_a_reviewer_ended_for_cause_no_longer_counts_but_one_that_ended_normally
     assert world.runner.once()["status"] == "landed"
 
 
-def test_a_sibling_reviews_but_the_lead_and_the_requesters_own_descendants_cannot(world):
+def test_any_other_agent_can_review_including_parent_child_and_sibling(world):
     worker, sibling = spawn(world, "worker"), spawn(world, "sibling", "claude-opus-5-5")
     helper = world.node.session(world.node.member("helper", model="claude-opus-5-5", parent=world.node.members["worker"]))
     rid, sha = requested(world, worker, "kin", 24)
-    for kin in (world.who["bob"], worker, helper):
-        with pytest.raises(Denied, match="independent reviewer"):
-            landing.review(kin, rid, sha, "accept")
+    with pytest.raises(Denied, match="different agent"):
+        landing.review(worker, rid, sha, "accept")
     assert world.status(rid) == "needs-review"
-    landing.review(sibling, rid, sha, "accept")
+    for reviewer in (world.who["bob"], helper, sibling):
+        landing.review(reviewer, rid, sha, "accept")
+        assert world.status(rid) == "queued"
     assert world.status(rid) == "queued"
     assert world.runner.once()["status"] == "landed"
 
 
-def test_the_land_review_command_accepts_a_sibling_and_refuses_the_lead(world):
+def test_the_land_review_command_accepts_both_parent_and_sibling(world):
     env = {"POOLHOUSE_DEV_BRANCH": DEV}
     worker = world.node.member("cliworker", parent=world.members["bob"])
     sibling = world.node.member("clisibling", model="claude-opus-5-5", parent=world.members["bob"])
@@ -93,7 +94,7 @@ def test_the_land_review_command_accepts_a_sibling_and_refuses_the_lead(world):
     assert asked.returncode == 0, asked.stderr
     rid = json.loads(asked.stdout)["id"]
     lead = world.node.cli("land-review", rid, sha, "--json", who=world.members["bob"], env=env, cwd=world.proj.root)
-    assert lead.returncode != 0 and "independent reviewer" in lead.stdout + lead.stderr
+    assert lead.returncode == 0, lead.stdout + lead.stderr
     done = world.node.cli("land-review", rid, sha, "--json", who=sibling, env=env, cwd=world.proj.root)
     assert done.returncode == 0, done.stderr
     assert world.status(rid) == "queued"

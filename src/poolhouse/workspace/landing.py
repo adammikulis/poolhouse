@@ -92,13 +92,15 @@ def _caller(s: Session) -> Agent:
 def request(s: Session, fields: dict[str, Any]) -> dict[str, Any]:
     """Queue a branch at an exact commit; the requester is whoever the token names."""
     _caller(s)
+    if fields["branch"] not in ("main", "master"):
+        s.claim("branch", fields["branch"])
     return dict(s.call("land_request", branch=fields["branch"], sha=fields["sha"],
                        target=fields.get("target") or development_branch(),
                        selectors=[str(t) for t in fields.get("selectors", [])], replaces=fields.get("replaces", "")))
 
 
 def review(s: Session, rid: str, sha: str, verdict: str) -> dict[str, Any]:
-    """Record an independent review of exactly ``sha``; the author and its delegates cannot review."""
+    """Record an independent review of exactly ``sha``; only the creator cannot review."""
     _caller(s)
     return dict(s.call("land_review", req=rid, sha=sha, verdict=verdict))
 
@@ -133,11 +135,6 @@ def beat(s: Session, what: str) -> None:
     s.call("land_beat", what=what[:300])
 
 
-def _related(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    """Whether two stamped standings are one session or one is an ancestor of the other."""
-    return a["name"] == b["name"] or a["name"] in b["ancestors"] or b["name"] in a["ancestors"]
-
-
 def _stamped(entry: dict[str, Any], who: str) -> dict[str, Any]:
     """The standing the node stamped on a request or review by ``who``, or an empty dict when it carries none."""
     found = entry.get("standing")
@@ -156,14 +153,13 @@ def refusal(s: Session, req: dict[str, Any]) -> str:
     return f"the requester {req['by']} was {why} after it asked" if why else ""
 
 
-def standing(s: Session, req: dict[str, Any]) -> str:
+def standing(s: Session, req: dict[str, Any], *, review_required: bool = True) -> str:
     """Why the runner must not land ``req`` now, or an empty string.
 
     The node stamped the requester's and each reviewer's name, ancestors and model on the entry when it was
     written, so a worker that asked and then ended (its session retired) stays landable. What can still change is
     an end for cause: a session retired as ``revoked`` or ``forged`` after it asked or reviewed no longer counts.
-    A reviewer counts when its stamped model was at the landing level and its stamped lineage was independent of
-    the requester's; any standing reject blocks.
+    A different creator identity at the landing level may review; any standing reject blocks.
     """
     cause = _ended_for_cause(s)
     asked = _stamped(req, req["by"])
@@ -174,11 +170,11 @@ def standing(s: Session, req: dict[str, Any]) -> str:
     live = {}
     for name, found in req["reviews"].items():
         seen = _stamped(found, name)
-        if seen and not tier_reason(seen["model"]) and name not in cause and not _related(seen, asked):
+        if seen and not tier_reason(seen["model"]) and name not in cause and seen["name"] != asked["name"]:
             live[name] = found["verdict"]
     if "reject" in live.values():
         return "an independent reviewer rejected it"
-    return "" if "accept" in live.values() else "needs review: no independent accept that still stands"
+    return "" if not review_required or "accept" in live.values() else "needs review: no independent accept that still stands"
 
 
 def supervisor_state(base: Path) -> dict[str, Any]:

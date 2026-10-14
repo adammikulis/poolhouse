@@ -22,7 +22,7 @@ def queue_view(args: argparse.Namespace, s: Session) -> Any:
 TABLE = [
     ("land-request",
      "hand a ready branch to the landing queue: BRANCH, its exact full SHA, the affected test selectors "
-     "you ran and what it replaces; needs an independent land-review before the runner lands it",
+     "you ran and what it replaces; security changes need another agent's exact-SHA review before landing",
      [flag("branch"), flag("sha", help="the full 40-character commit the branch tip is at now"),
       flag("--test", dest="selectors", action="append", default=[], metavar="SELECTOR",
            help="an affected test file or selector you ran (repeat for each)"),
@@ -32,7 +32,7 @@ TABLE = [
                                       "replaces": a.replaces,
                                       "target": a.target})),
     ("land-review",
-     "independently review a land-request at its exact SHA (you cannot review your own or your subagent's)",
+     "independently review a land-request at its exact SHA (only the creator cannot review)",
      [flag("id", metavar="REQUEST"), flag("sha", help="the full SHA you reviewed; must equal the request's"),
       flag("--verdict", choices=("accept", "reject"), default="accept")],
      lambda a, s: landing.review(s, a.id, a.sha, a.verdict)),

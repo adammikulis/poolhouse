@@ -196,6 +196,7 @@ impl Queue {
         }
         match ev.as_str() {
             "review" => {
+                if e.sender == req.by || field(e, "sha") != req.sha { return; }
                 req.reviews.retain(|r| r.by != e.sender);
                 req.reviews.push(Review {
                     by: e.sender.clone(), verdict: field(e, "verdict"), at: e.hlc.0, standing: e.fields.get("standing").cloned().unwrap_or(Value::Null),
@@ -247,12 +248,6 @@ fn show(r: &Req) -> Value {
 
 fn text<'a>(p: &'a Map<String, Value>, key: &str) -> &'a str {
     p.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-/// Whether ``a`` and ``b`` are one session or one is an ancestor of the other.
-fn related(node: &mut Node, board: &str, a: &str, b: &str) -> Result<bool> {
-    let names = &node.host(board)?.names;
-    Ok(a == b || names.descendants(a).iter().any(|n| n == b) || names.descendants(b).iter().any(|n| n == a))
 }
 
 /// What the node knows of ``name`` now, stamped on the entry it writes: the name, the parent, every ancestor, and
@@ -324,6 +319,10 @@ fn request(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
     body.insert("target".into(), json!(target));
     body.insert("selectors".into(), p.get("selectors").cloned().unwrap_or(Value::Null));
     body.insert("standing".into(), stamp(node, board, &actor)?);
+    check(&body)?;
+    if crate::claims::owner(node, board, "branch", text(p, "branch"))?.as_deref() != Some(actor.as_str()) {
+        return Err(Error::Denied("the creator submits its own branch under its authenticated claim".into()));
+    }
     let done = write(node, board, &actor, Value::Object(body))?;
     audit(node, board, &actor, "land.request", &format!("land-{}", done["seq"]), &format!("{}@{}", text(p, "branch"), text(p, "sha")))?;
     Ok(json!({"id": format!("land-{}", done["seq"]), "branch": text(p, "branch"), "sha": text(p, "sha"), "status": "needs-review"}))
@@ -333,8 +332,8 @@ fn review(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     let actor = member(node, token, board)?;
     let (queue, own, _) = fold(node, board)?;
     let req = open_request(&queue, &own, board, text(p, "req"), false)?;
-    if related(node, board, &actor, &req.by)? {
-        return Err(Error::Denied("an independent reviewer is not the requester or one of its delegates".into()));
+    if actor == req.by {
+        return Err(Error::Denied("a reviewer must be a different agent from the creator".into()));
     }
     if text(p, "sha") != req.sha {
         return Err(Error::Invalid(format!("{} is for {}, not {}; review the exact commit", req.shown, req.sha, text(p, "sha"))));

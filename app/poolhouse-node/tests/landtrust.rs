@@ -31,6 +31,7 @@ fn join() -> (Dev, Dev, [String; 3]) {
 
 /// The sequence a hostile or merely careless member writes: a request, an independent review and the runner's `landed`.
 fn forge(b: &Dev, [asker, judge, runner]: &[String; 3]) {
+    b.ok("claim", "demo", asker, json!({"kind": "branch", "key": "feat"}));
     let made = b.ok("land_request", "demo", asker, json!({"branch": "feat", "sha": TIP, "target": "dev", "selectors": ["tests/test_x.py"]}));
     let id = made["id"].as_str().unwrap().to_string();
     b.ok("land_review", "demo", judge, json!({"req": id, "sha": TIP, "verdict": "accept"}));
@@ -81,6 +82,7 @@ fn an_entry_of_this_device_still_counts_beside_ignored_foreign_ones() {
     let (a, b, tokens) = join();
     forge(&b, &tokens);
     both_ways(&a, &b);
+    a.ok("claim", "demo", &a.token, json!({"kind": "branch", "key": "mine"}));
     a.ok("land_request", "demo", &a.token, json!({"branch": "mine", "sha": TIP, "target": "dev", "selectors": ["t"]}));
     let q = queue(&a);
     assert_eq!(statuses(&q), ["needs-review"]);

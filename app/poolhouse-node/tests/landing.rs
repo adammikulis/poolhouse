@@ -10,6 +10,7 @@ fn sha(n: u8) -> String {
 }
 
 fn ask(n: &mut Node, token: &str, branch: &str, at: &str) -> Value {
+    req(n, "claim", "demo", token, json!({"kind": "branch", "key": branch}));
     req(n, "land_request", "demo", token, json!({"branch": branch, "sha": at, "target": "dev", "selectors": ["tests/test_x.py"], "replaces": "nothing"}))
 }
 
@@ -50,14 +51,14 @@ fn a_request_is_stamped_with_its_sender_and_waits_for_an_independent_review_of_i
 }
 
 #[test]
-fn a_parent_and_its_child_are_not_independent_and_one_rejection_blocks() {
+fn a_parent_or_child_can_review_and_one_rejection_blocks() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let ((_, lead), (_, other), (_, third)) = (session(&mut n, "demo", "lead"), session(&mut n, "demo", "o"), session(&mut n, "demo", "t"));
     let (_, kid) = child_of(&mut n, &lead, "kid");
     let tip = sha(3);
     let id = id_of(ask(&mut n, &kid, "kidwork", &tip));
-    assert_eq!(code(&req(&mut n, "land_review", "demo", &lead, json!({"req": id, "sha": tip, "verdict": "accept"}))), "denied", "its parent is not independent");
+    ok(req(&mut n, "land_review", "demo", &lead, json!({"req": id, "sha": tip, "verdict": "accept"})));
     ok(req(&mut n, "land_review", "demo", &other, json!({"req": id, "sha": tip, "verdict": "accept"})));
     ok(req(&mut n, "land_review", "demo", &third, json!({"req": id, "sha": tip, "verdict": "reject"})));
     assert_eq!(status_of(&mut n, &kid, &id), "needs-review");
@@ -151,8 +152,9 @@ fn the_node_stamps_who_asked_and_who_reviewed_and_a_retirement_says_why() {
     let (_, grandchild) = child_of(&mut n, &worker, "grandchild");
     let tip = sha(7);
     let id = id_of(ask(&mut n, &worker, "stamped", &tip));
-    for (who, kin) in [(&lead, "its ancestor"), (&worker, "itself"), (&grandchild, "its descendant")] {
-        assert_eq!(code(&req(&mut n, "land_review", "demo", who, json!({"req": id, "sha": tip, "verdict": "accept"}))), "denied", "{kin} cannot accept it");
+    assert_eq!(code(&req(&mut n, "land_review", "demo", &worker, json!({"req": id, "sha": tip, "verdict": "accept"}))), "denied");
+    for who in [&lead, &grandchild] {
+        ok(req(&mut n, "land_review", "demo", who, json!({"req": id, "sha": tip, "verdict": "accept"})));
     }
     ok(req(&mut n, "land_review", "demo", &sibling, json!({"req": id, "sha": tip, "verdict": "accept"})));
     let shown = queue(&mut n, &lead)["requests"][0].clone();
@@ -168,4 +170,21 @@ fn the_node_stamps_who_asked_and_who_reviewed_and_a_retirement_says_why() {
     assert_eq!((why(&worker_name), why(&sibling_name)), (json!("revoked"), json!("done")));
     let still = queue(&mut n, &lead)["requests"][0].clone();
     assert_eq!(still["standing"]["name"], json!(worker_name), "the stamp outlives the session");
+}
+
+#[test]
+fn folded_reviews_cannot_replay_a_different_sha_or_accept_their_own_request() {
+    use poolhouse_node::row::Kind;
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (creator, token) = session(&mut n, "demo", "creator");
+    let (reviewer, _) = session(&mut n, "demo", "reviewer");
+    let tip = sha(8);
+    let id = id_of(ask(&mut n, &token, "replay", &tip));
+    let entry = queue(&mut n, &token)["requests"][0]["entry"].as_str().unwrap().to_string();
+    for (actor, reviewed) in [(&reviewer, sha(9)), (&creator, tip)] {
+        n.host("demo").unwrap().board.append(Kind::Landing, actor, json!({"ev": "review", "req": entry, "sha": reviewed, "verdict": "accept"}), "").unwrap();
+        assert_eq!(status_of(&mut n, &token, &id), "needs-review");
+        assert_eq!(queue(&mut n, &token)["requests"][0]["reviews"].as_object().unwrap().len(), 0);
+    }
 }

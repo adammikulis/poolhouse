@@ -50,8 +50,8 @@ def test_moved_tip_and_wrong_sha_are_refused_alone(world):
     world.runner.once()
     assert world.status(stale) == "refused" and "request it again" in world.detail(stale)
     assert world.status(good) == "landed" and on_origin(world, "src/poolhouse/m22.py")
-    assert world.status(wrong) == "needs-review"
-    assert not any("refused" in t for t in world.texts("bob"))
+    assert world.status(wrong) == "refused" and "does not exist" in world.detail(wrong)
+    assert any("refused" in t for t in world.texts("bob"))
 
 
 def test_conflict_ejects_only_the_conflicting_request_and_names_the_requester(world):

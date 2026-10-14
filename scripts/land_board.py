@@ -27,6 +27,7 @@ from pathlib import Path
 import land_entries
 import land_git as lg
 import land_recover as recover
+import land_review
 import psutil
 
 from poolhouse.board import credentials, place, session
@@ -101,19 +102,20 @@ class Runner:
         if ended:
             self.settle(req, "refused", ended)
             return False
-        reason = landing.standing(self.s, req)
-        if reason:
-            if not req.get("evidence", {}).get("seen"):
-                landing.transition(self.s, req["id"], "needs-review", reason, seen=True)
-                self.tell(req, f"waiting: {reason}")
-            return False
-        if recover.present(self.root, req["sha"], self.target):
-            self.settle(req, "landed", f"{self.target} already holds {req['sha'][:12]}")
-            return False
         try:
             land_entries.check(self.root, req["target"], req["branch"], req["sha"])
         except ValueError as error:
             self.settle(req, "refused", str(error))
+            return False
+        required, base, sensitive = land_review.required(self.root, self.target, req["sha"])
+        reason = landing.standing(self.s, req, review_required=required)
+        if reason:
+            if not req.get("evidence", {}).get("seen"):
+                landing.transition(self.s, req["id"], "needs-review", reason, seen=True, review_required=required, review_base=base, review_sha=req["sha"], review_path=sensitive[:300])
+                self.tell(req, f"waiting: {reason}")
+            return False
+        if recover.present(self.root, req["sha"], self.target):
+            self.settle(req, "landed", f"{self.target} already holds {req['sha'][:12]}")
             return False
         held = land_entries.guards(self.root, req["target"], req["sha"])
         if held:
