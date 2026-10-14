@@ -135,16 +135,14 @@ class RigPerson:
         return act
 
     def found(self, device: Device, policy: str, title: str = "pool check") -> dict:
-        """``device`` founds a pool of ``policy`` governed by the admin key and is its first member: the charter is accepted by the key outside the node."""
+        """``device`` founds a pool of ``policy`` governed by the admin key and is its first member: the charter names the device and is accepted by the key outside the node."""
         keys = [{"key": self.admin.public.hex(), "person": "pool-check", "label": "the pool check's admin"}]
         draft = device.admin("pool_draft_found", title=title, policy=policy, project="", keys=keys)
         charter = draft["charter"]
         for wanted in draft["accept"]:
             accepting = next(k for k in charter["admins"] if k["key"] == wanted["key"])
             accepting["acceptance"] = self.admin.sign_bytes(bytes.fromhex(wanted["sign_bytes"])).hex()
-        founded = device.admin("pool_found", charter=charter)
-        self.admit(device, device, "found")
-        return founded
+        return device.admin("pool_found", charter=charter)
 
     def admit(self, host: Device, joiner: Device, how: str) -> dict:
         """The admin key admits ``joiner`` (by the certificate in its state directory) to the pool ``host`` is in; the act is submitted to ``host``."""

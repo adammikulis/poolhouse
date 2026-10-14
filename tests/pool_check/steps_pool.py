@@ -61,7 +61,7 @@ def a_wrong_code_is_refused(world: World) -> None:
 
 
 def found_by_api(world: World) -> str:
-    """An agent founds the pool through the library's own founding code, as the shipped API runs it: the admin key the node holds as a phone's signs the charter, the node takes it, this device is the first member, a second try says it is there and a charter no key accepted founds nothing."""
+    """An agent founds the pool through the library's own founding code, as the shipped API runs it: the admin key the node holds as a phone's signs the charter that names this device first, the node takes it, this device is the first member, a second try says it is there and a charter no key accepted founds nothing."""
     world.fresh()
     first = world.first
     session, admin = RigSession(first), founding.Admin(world.person.admin)
@@ -69,11 +69,11 @@ def found_by_api(world: World) -> str:
     unsigned = first.admin("pool_draft_found", title="no key", policy="secure", project="", keys=[{"key": admin.key.public.hex(), "person": "rig", "label": "x"}])
     refused = first.try_call("pool_found", token=session.token, charter=unsigned["charter"])
     assert not refused["ok"] and first.pool()["governance"]["mode"] == "unfounded", f"a charter nobody's key accepted founded a pool: {refused}"
-    made = founding.found(session, admin, "api pool", "secure", founding.Terms(cert_hex=first.certificate()))
+    made = founding.found(session, admin, "api pool", "secure")
     gov = first.pool()["governance"]
     assert (made.name, made.already, gov["mode"], gov["name"]) == ("api pool", False, "governed", "api pool"), (made, gov)
     assert [m["status"] for m in first.members() if m.get("self")] == ["active"], "this device is the pool's first member"
-    again = founding.found(session, admin, "api pool", "secure", founding.Terms(cert_hex=first.certificate()))
+    again = founding.found(session, admin, "api pool", "secure")
     assert again.already and again.pool == made.pool and "already in the pool api pool" in again.say()
     return f"{first.name} founded {made.name} ({made.pool[:8]}) by the library's founding path; the second call said it was there"
 

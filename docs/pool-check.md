@@ -62,8 +62,8 @@ The same person is the admin of every pool the rig founds. A second key, also in
 node never holds it and carries no signer for it. Each governed step is the path a person's own key takes outside the node:
 
 * **Founding.** `pool_draft_found` gives the charter with blank acceptances and the bytes the key signs to accept it; the rig signs them and
-  hands the accepted charter back through `pool_found` (the grant `pool_create`). The device is a member once an admit signed for it is
-  submitted, so the rig admits the founder (`pool_draft`, sign, `pool_submit`; no grant, the signature is the authority).
+  hands the accepted charter back through `pool_found` (the grant `pool_create`). The charter names the device as the pool's first member,
+  so no admit follows.
 * **Joining.** Under `open` the joiner dials with the host's fingerprint and the host admits it with its own key. Under `secure` the rig reads
   the joiner's certificate from its state directory (`wire.py cert`), has the admin key sign its admit, submits that to the host, opens the
   window with `add_device` and `presigned` (the host holds no signer, so it cannot sign inside the exchange, and the window still admits
@@ -80,7 +80,7 @@ asks the account's Keychain for a key (the updater step's activity log did, and 
 
 | step | what it proves |
 |---|---|
-| `found-by-api` | an agent founds the pool through the library's own founding code, `poolhouse.board.founding`, against the node as shipped: the key the rig's person typed yes for signs the charter and the first admit, a charter no key accepted founds nothing, this device is the pool's first member and a second call says "already in the pool" |
+| `found-by-api` | an agent founds the pool through the library's own founding code, `poolhouse.board.founding`, against the node as shipped: the key the rig's person typed yes for signs the charter, which names this device first, a charter no key accepted founds nothing, this device is the pool's first member and a second call says "already in the pool" |
 | `join-open` | a pool founded `open`: a device on the same network joins with no code, admitted by the host's own key and recorded as joined by `open`; a device only reachable through NAT or loopback is refused with the reason |
 | `join-secure` | the first device founds a secure pool; every device joins with a join code once the person's key has signed its admit, one after another |
 | `join-wrong-code` | a device the person admitted that gives a wrong code is refused, and the right one is refused after three wrong tries (the window is closed) |
