@@ -310,7 +310,7 @@ class Member:
         start = partial.stat().st_size if partial.exists() else 0
 
         try:
-            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET", options=Options(headers={"Range": f"bytes={start}-"} if start else None, token=self.token, timeout=timeout))
+            resp = open_stream(f"{self.base_url}{route}{remote}", method="GET", options=Options(headers={"Range": f"bytes={start}-"} if start else {}, token=self.token, timeout=timeout))
         except ServerError as exc:
             if exc.status == 416:
                 size = range_total(exc.headers.get("Content-Range", ""))

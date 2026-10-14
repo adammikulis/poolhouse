@@ -327,4 +327,3 @@ class TestWhoAPauseIsSentTo:
             pool_key_path=key)
 
         assert list(clients) == ["workshop"]
-

@@ -618,5 +618,3 @@ class TestHealth:
         """The server does not report quantisation, and it is the single most important
         thing to record when comparing two benchmark runs."""
         assert quant_from_model_path(path) == expected
-
-
