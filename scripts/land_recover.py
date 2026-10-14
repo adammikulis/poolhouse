@@ -15,6 +15,7 @@ from pathlib import Path
 import land_check as lc
 import land_finish
 import land_git as lg
+import land_live_jobs
 import land_run
 
 from poolhouse import lock as filelock
@@ -65,6 +66,19 @@ def sweep(root: Path) -> list[str]:
 
     A tree whose background full run is still alive is left for it.
     """
+    try:
+        paths = {tree.path.resolve() for tree in lg.trees(root)[1:]
+                 if tree.branch.startswith(INTEGRATION) or tree.path.name.endswith("-probe")}
+    except (OSError, RuntimeError):
+        return []
+    if not paths:
+        return []
+    with land_live_jobs.cleanup_allowed(root, paths) as allowed:
+        return _sweep(root) if allowed else []
+
+
+def _sweep(root: Path) -> list[str]:
+    """Perform existing recovery cleanup after job protection permits it."""
     state = land_finish.load(root)
     retained = []
     folder = lg.common_dir(root) / "land" / "batches"
