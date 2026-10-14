@@ -356,6 +356,7 @@ impl Firsts {
             return json!({"state": "asking", "purpose": p.purpose.words(), "left_ms": ASK_FOR_MS.saturating_sub(now.saturating_sub(p.started_ms))});
         }
         match &mut self.outcome {
+            Some((who, Outcome::Yes(_, expires, _))) if who == by && now > *expires => json!({"state": "expired"}),
             Some((who, Outcome::Yes(secret, expires, purpose))) if who == by => json!({"state": "confirmed", "purpose": purpose.name(), "secret": secret.take(), "expires_ms": *expires}),
             Some((who, Outcome::No)) if who == by => json!({"state": "refused"}),
             Some((who, Outcome::Late)) if who == by => json!({"state": "expired"}),
@@ -469,6 +470,28 @@ mod tests {
     fn person() -> (Firsts, std::sync::Arc<std::sync::Mutex<Option<bool>>>) {
         let answer = std::sync::Arc::new(std::sync::Mutex::new(None));
         (Firsts::new(Box::new(Scripted(answer.clone()))), answer)
+    }
+
+    #[test]
+    fn expired_phone_yes_exposes_no_secret_link_or_listener() {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(Node::open(dir.path()).unwrap()));
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = reserved.local_addr().unwrap();
+        let (firsts, answer) = person();
+        let mut node = shared.lock().unwrap();
+        node.firsts = firsts;
+        node.local_server = std::sync::Arc::downgrade(&shared);
+        *answer.lock().unwrap() = Some(true);
+        node.firsts.ask(Purpose::Phone, "demo/a", "", "", 0).unwrap();
+        assert!(node.firsts.phone_ready("demo/a", 1));
+        let expired = phone_status(&mut node, "demo/a", SECRET_FOR_MS + 2, address).unwrap();
+        assert_eq!(expired["state"], "expired");
+        assert!(expired["secret"].is_null() && expired["link"].is_null());
+        assert_eq!(node.phone_port, 0, "an expired yes opens no listener");
+        let again = phone_status(&mut node, "demo/a", SECRET_FOR_MS + 3, address).unwrap();
+        assert_eq!(again["state"], "expired");
+        assert!(again["secret"].is_null() && again["link"].is_null(), "polling cannot renew or expose it");
     }
 
     #[test]
