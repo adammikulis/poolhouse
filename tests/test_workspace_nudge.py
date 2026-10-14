@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 
 import pytest
@@ -16,10 +15,7 @@ LONG_AGO = 3 * 3600 + 12 * 60 + 20
 
 
 @pytest.fixture
-def kit(workspace_node, monkeypatch, tmp_path):
-    state = tmp_path / "state"
-    state.mkdir()
-    monkeypatch.setattr(nudge.tempfile, "gettempdir", lambda: str(state))
+def kit(workspace_node):
     workspace_node.alice, workspace_node.bob, workspace_node.carol = (workspace_node.member(n) for n in ("alice", "bob", "carol"))
     return workspace_node
 
@@ -35,7 +31,7 @@ def waiting(kit, aged=True):
 
 
 def hook(kit, event, stdin=""):
-    return nudge.output(event, waiting(kit), stdin)
+    return nudge.deliver(kit.session(kit.bob), waiting(kit), event, stdin, lambda _text: None)
 
 
 def test_the_plain_line_counts_kinds_names_senders_and_gives_the_age_without_a_body(kit):
@@ -90,9 +86,7 @@ def test_stop_hook_blocks_once_per_set_of_unread_urgent_messages(kit):
     assert "SECRET-BODY ready?" in verdict["reason"] and verdict["systemMessage"] == verdict["reason"]
     assert hook(kit, "stop", "{}") == ""
     say(kit, kit.carol, kit.bob, "handoff", "SECRET-BODY yours")
-    again = json.loads(hook(kit, "stop", "{}"))
-    assert again["decision"] == "block" and "2 urgent" not in again["reason"]
-    assert "SECRET-BODY yours" in again["reason"] and "SECRET-BODY ready?" not in again["reason"]
+    assert hook(kit, "stop", "{}") == ""  # New IDs do not renew the continuation budget.
 
 
 def test_stop_hook_allows_when_continuing_or_when_only_routine_kinds_wait(kit):
@@ -106,7 +100,7 @@ def test_stop_hook_allows_when_continuing_or_when_only_routine_kinds_wait(kit):
 
 def test_stop_hook_allows_a_question_younger_than_two_minutes(kit):
     say(kit, kit.alice, kit.bob, "question", "x")
-    assert nudge.output("stop", waiting(kit, aged=False), "{}") == ""
+    assert nudge.output("stop", waiting(kit, aged=False), "{}", {}) == ""
 
 
 def test_hooks_print_nothing_and_exit_zero_when_the_node_cannot_be_reached(kit):
@@ -114,7 +108,7 @@ def test_hooks_print_nothing_and_exit_zero_when_the_node_cannot_be_reached(kit):
     node_supervise.point(kit.state, None)
     gone = {}
     out = kit.cli("nudge", "--hook", "stop", stdin="{}", env=gone, who=kit.bob)
-    assert out.returncode == 0 and out.stdout == "" and out.stderr == ""
+    assert out.returncode == 0 and out.stdout == "" and "workspace lifecycle" in out.stderr
     plain = kit.cli("nudge", env=gone, who=kit.bob)
     assert plain.returncode == 3
 
@@ -140,7 +134,3 @@ def test_the_installer_is_for_a_person(kit, tmp_path):
     out = kit.cli("install-hooks", "--settings", str(tmp_path / "s.json"), env={"CLAUDECODE": "1"})
     assert out.returncode == 3 and not (tmp_path / "s.json").exists()
 
-
-def test_the_stamp_file_name_needs_no_posix_uid(monkeypatch):
-    monkeypatch.delattr(os, "getuid", raising=False)
-    assert nudge._stamp("poolhouse-nudge").name.startswith("poolhouse-nudge.")

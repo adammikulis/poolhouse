@@ -48,7 +48,7 @@ def read(target: Path) -> dict[str, dict[str, int]]:
 
 
 @contextmanager
-def locked(target: Path):
+def locked(target: Path, *, timeout: float = 3.0):
     path = target.with_suffix(".lock")
     why = problem(path)
     if why not in {"", "missing"}:
@@ -63,7 +63,7 @@ def locked(target: Path):
             validate(path)
         elif info.st_uid != os.getuid() or info.st_mode & 0o077:
             raise ValueError("private counter lock must be private and owned")
-        deadline = time.monotonic() + 3.0
+        deadline = time.monotonic() + timeout
         while not lock.take(handle):
             if time.monotonic() >= deadline:
                 raise OSError("private counter is busy; retry the update")

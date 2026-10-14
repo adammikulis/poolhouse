@@ -83,11 +83,13 @@ def guarded(run: Callable[[argparse.Namespace], int | None]) -> Callable[[argpar
     return wrapped
 
 
-def connect(args: argparse.Namespace) -> Session:
+def connect(args: argparse.Namespace, *, notification: bool = False) -> Session:
     """The caller's session on the board its directory belongs to. A person at a terminal who keeps a key allows what the
     node refuses for want of a grant."""
     state = node_launch.default_state()
-    return session.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=Client(state, person=person_key.provider(state, acting=person.acting(state))))
+    node = Client(state, autostart=False, timeout=2.0) if notification else Client(
+        state, person=person_key.provider(state, acting=person.acting(state)))
+    return session.connect(token_file=args.token_file, agent=args.agent, board=args.board, client=node)
 
 
 def narrowed(s: Session, result: Any, named: str) -> Any:
@@ -336,12 +338,12 @@ def digest(args: argparse.Namespace, s: Session) -> Any:
 
 def waiting(s: Session) -> dict[str, Any]:
     """What waits unread, as `nudge.Waiting` takes it; nothing is marked read."""
-    entries = s.read(s.cursor("inbox"), inbox=True).entries
-    rows = [{"seq": int(e.ref) if e.ref.isdigit() else 0, "to": e.fields.get("to"), "from": e.sender,
+    entries = s.read(s.cursor("inbox"), inbox=True, limit=nudge.PAGE).entries
+    rows = [{"id": e.id, "seq": e.ref, "to": e.fields.get("to"), "from": e.sender,
              "type": e.fields.get("type"), "ts": e.at_ms / 1000} for e in entries]
-    messages = [{"seq": r["seq"], "type": r["type"], "from": r["from"], "from_name": r["from"],
+    messages = [{"id": r["id"], "seq": r["seq"], "type": r["type"], "from": r["from"], "from_name": r["from"],
                  "text": f"{e.fields.get('subject')}: {e.text[:600]}" if e.fields.get("subject") else e.text[:600]}
-                for r, e in zip(rows, entries, strict=True) if not inbound.judge(e)[0]][:50]
+                for r, e in zip(rows, entries, strict=True) if not inbound.judge(e)[0]]
     return {"me": s.name, "now": s.clock(), "rows": rows, "messages": messages}
 
 
@@ -361,19 +363,23 @@ def brief(args: argparse.Namespace, s: Session) -> Any:
 
 def nudging(args: argparse.Namespace) -> int:
     """One line summarising what waits (nothing when nothing does); with --hook, the JSON a harness hook expects."""
-    stdin = sys.stdin.read() if args.hook == "stop" and not sys.stdin.isatty() else ""
     try:
-        summary = waiting(connect(args))
-    except FAILURES:
+        stdin = sys.stdin.read(65537) if args.hook == "stop" and not sys.stdin.isatty() else ""
+        if len(stdin) > 65536:
+            raise ValueError("native hook event exceeds 64 KiB")
+        actor = connect(args, notification=bool(args.hook))
+        summary = waiting(actor)
         if args.hook:
-            return 0
-        raise
-    if args.hook:
-        out = nudge.output(args.hook, nudge.Waiting.of(summary), stdin)
-    else:
-        out = nudge.Waiting.of(summary).line()
-    if out:
-        say(out)
+            nudge.deliver(actor, nudge.Waiting.of(summary), args.hook, stdin,
+                          lambda text: say(text, flush=True))
+        else:
+            out = nudge.Waiting.of(summary).line()
+            if out:
+                say(out)
+    except FAILURES as error:
+        if not args.hook:
+            raise
+        nudge.warning(error)
     return 0
 
 
