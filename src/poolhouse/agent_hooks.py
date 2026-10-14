@@ -100,7 +100,7 @@ def codex_hooks(with_post: bool = True, with_features: bool = False, assigned: s
             continue
         out += [f"[[hooks.{event}]]", *([f'matcher = "{matcher}"'] if matcher else []), "",
                 f"[[hooks.{event}.hooks]]", 'type = "command"', f'command = "{command("codex", hook)}{" --assigned " + assigned if assigned else ""}"',
-                "timeout = 5", "additionalContextLimit = 4000", ""]
+                f"timeout = {3 if event == 'SessionEnd' else 5}", "additionalContextLimit = 4000", ""]
         if event == "Stop":
             out += [f"[[hooks.{event}.hooks]]", 'type = "command"',
                     f'command = "poolhouse-workspace codex-stop{" --assigned " + assigned if assigned else ""}"',
