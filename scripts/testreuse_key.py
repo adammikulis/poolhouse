@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from importlib import metadata
 from pathlib import Path
 
 import affected
+import testnode
 import testreuse_facts as facts
 
 NEVER_MARKS = frozenset({"live_api", "live_net", "redteam", "gpu", "model"})
@@ -109,6 +111,22 @@ def tree_digest(root: Path) -> str:
             if path.is_file() and not IGNORED_NAMES.intersection(path.parts) and not (
                     top == "tests" and path.name.startswith("test_")):
                 rows.append(f"{path.relative_to(root).as_posix()} {file_sha(path)}")
+    app = root / "app"
+    if app.exists():
+        for name in testnode.sources(app, existing_only=False):
+            source = app / name
+            try:
+                mode = source.lstat().st_mode
+            except FileNotFoundError:
+                rows.append(f"app/{name} missing")
+                continue
+            link = source.readlink().as_posix() if stat.S_ISLNK(mode) else ""
+            resolved = source.resolve(strict=True)
+            if not resolved.is_relative_to(root.resolve()):
+                raise ValueError("reuse: Rust source escapes checkout")
+            if not resolved.is_file():
+                raise ValueError("reuse: Rust source is not a regular file")
+            rows.append(f"app/{name} {mode} {link} {file_sha(resolved)}")
     rows += [f"{name} {file_sha(root / name)}" for name in TREE_FILES if (root / name).is_file()]
     head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=False)
     return sha("\n".join([*rows, f"HEAD {head.stdout.strip() if head.returncode == 0 else ''}"]))

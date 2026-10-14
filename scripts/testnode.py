@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from poolhouse import home, node_binary
+from poolhouse import home, node_binary, worktreerules
 from poolhouse.lock import only_one
 from poolhouse.redact.secrets import env_secrets, redact
 
@@ -70,17 +70,16 @@ def version(name: str, executable: str, arguments: list[str]) -> str:
     return done.stdout
 
 
-def sources(app: Path) -> list[str]:
-    """The files of the cargo workspace under ``app`` that git does not ignore (tracked, or new and not yet added), as paths
-    relative to it, sorted."""
+def sources(app: Path, *, existing_only: bool = True) -> list[str]:
+    """Sorted nonignored Cargo workspace paths, optionally retaining missing and symlink entries."""
     try:
         done = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *MEMBERS], cwd=app,
-                              capture_output=True, text=True, check=False)
+                              capture_output=True, text=True, check=False, env=worktreerules._git_environment())
     except OSError as error:
         raise BuildError(f"git did not run: {error}") from error
     if done.returncode:
         raise BuildError(f"the sources of {app} are listed by git, and it said: {done.stderr.strip()[-300:]}")
-    return sorted({name for name in done.stdout.split("\0") if name and (app / name).is_file()})
+    return sorted({name for name in done.stdout.split("\0") if name and (not existing_only or (app / name).is_file())})
 
 
 def digest(path: Path) -> str:
