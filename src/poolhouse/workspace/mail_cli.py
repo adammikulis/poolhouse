@@ -69,7 +69,7 @@ def wait(args: argparse.Namespace, s: Session) -> Any:
         time.sleep(min(POLL_S, left))
     out = inbound.present(s, page.entries, args.limit, args.all, args.raw)
     if args.ack and out:
-        s.keep("inbox", inbound.advanced(page.entries[:len(out)], s.cursor("inbox")))
+        inbound.acknowledge_after_output(s, page.entries, out)
     return out
 
 
