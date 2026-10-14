@@ -38,7 +38,7 @@ class Site:
         return testnode.ensure(self.root, cache=cache, cargo=str(self.shim))
 
     def builds(self) -> int:
-        return len(self.log.read_text().splitlines()) if self.log.exists() else 0
+        return sum(line.startswith("build ") for line in self.log.read_text().splitlines()) if self.log.exists() else 0
 
     def files(self) -> dict[str, tuple[int, int]]:
         return {p.relative_to(self.root).as_posix(): (p.stat().st_mtime_ns, p.stat().st_size) for p in self.root.rglob("*") if p.is_file()}
@@ -263,3 +263,43 @@ def test_the_ci_step_that_builds_the_node_fails_when_the_build_fails_and_names_i
         assert code != 0 and exported == "" and "cargo build -p poolhouse-node failed" in said
         code, exported, _ = run_ci_step(script, tmp_path, "#!/bin/sh\necho /cache/test-node/key/poolhouse-node\n")
         assert code == 0 and exported == "DEV_TEST_NODE_BINARY=/cache/test-node/key/poolhouse-node\n"
+
+
+@pytest.mark.parametrize(("tool_name", "result"), [
+    ("rustc", subprocess.CompletedProcess([], 1, "", "no default toolchain")),
+    ("rustc", subprocess.CompletedProcess([], 0, "", "")),
+    ("rustc", subprocess.CompletedProcess([], 0, "not a Rust version", "")),
+    ("cargo", subprocess.CompletedProcess([], 1, "", "token=fictional-secret")),
+    ("cargo", subprocess.CompletedProcess([], 1, "", "raw-fixture-secret")),
+    ("cargo", subprocess.CompletedProcess([], 0, "cargo nonsense", "")),
+])
+def test_unusable_tools_fail_before_cache_writes_or_build_admission(tmp_path, monkeypatch, tool_name, result):
+    def probe(command, **kwargs):
+        assert kwargs["timeout"] == testnode.PROBE_TIMEOUT_S
+        assert command[0] in {"rustc", "chosen-cargo"}
+        if command[0] == ("rustc" if tool_name == "rustc" else "chosen-cargo"):
+            return result
+        return subprocess.CompletedProcess(command, 0, "rustc 1.95.0\nhost: test-host\n", "")
+
+    monkeypatch.setenv("EXAMPLE_TOKEN", "raw-fixture-secret")
+    monkeypatch.setattr(testnode, "tool", lambda name: name)
+    monkeypatch.setattr(subprocess, "run", probe)
+    cache = tmp_path / "cache"
+    with pytest.raises(testnode.BuildError, match=f"{tool_name} could not report its version") as error:
+        testnode.ensure(tmp_path / "absent-checkout", cache=cache, cargo="chosen-cargo",
+                        admit=lambda: pytest.fail("admitted an unusable toolchain"))
+    assert not cache.exists()
+    assert "fictional-secret" not in str(error.value)
+    assert "raw-fixture-secret" not in str(error.value)
+    assert "rustup.rs" in str(error.value)
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError("missing tool"), subprocess.TimeoutExpired("rustc", 15)])
+def test_missing_or_stalled_tools_report_a_fix_before_admission(tmp_path, monkeypatch, error):
+    def broken(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(subprocess, "run", broken)
+    with pytest.raises(testnode.BuildError, match="install or select a Rust toolchain"):
+        testnode.ensure(tmp_path, cache=tmp_path / "cache", admit=lambda: pytest.fail("admitted a failed probe"))
+    assert not (tmp_path / "cache").exists()

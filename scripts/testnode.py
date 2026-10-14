@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from poolhouse import home, node_binary
 from poolhouse.lock import only_one
+from poolhouse.redact.secrets import env_secrets, redact
 
 ENV = "DEV_TEST_NODE_BINARY"
 """Output of the runner, input of the node fixture: the binary this run's tests start."""
@@ -32,6 +34,7 @@ MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "src-tauri")
 KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
 BUILD_TIMEOUT_S = 1800.0
+PROBE_TIMEOUT_S = 15.0
 
 
 class BuildError(RuntimeError):
@@ -51,6 +54,20 @@ def tool(name: str) -> str:
 def account_environment() -> dict[str, str]:
     """This environment with HOME the account's, where rustup keeps its toolchains (a test run moves HOME)."""
     return {**os.environ, "HOME": str(account())}
+
+
+def version(name: str, executable: str, arguments: list[str]) -> str:
+    """The version output of a usable Rust tool, before build admission or cache writes."""
+    try:
+        done = subprocess.run([executable, *arguments], capture_output=True, text=True, check=False,
+                              timeout=PROBE_TIMEOUT_S, env=account_environment())
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise BuildError(f"{name} could not report its version; install or select a Rust toolchain (rustup.rs): "
+                         f"{redact(str(error), env_secrets(os.environ))[0][:300]}") from error
+    if done.returncode or not re.match(rf"{name} \d+\.\d+\.\d+(?:[-+][\w.-]+)?(?:\s|$)", done.stdout):
+        detail = redact(done.stderr or done.stdout, env_secrets(os.environ))[0].strip()[:300]
+        raise BuildError(f"{name} could not report its version; install or select a Rust toolchain (rustup.rs): {detail}")
+    return done.stdout
 
 
 def sources(app: Path) -> list[str]:
@@ -118,15 +135,13 @@ def ensure(root: Path, *, cache: Path | None = None, cargo: str = "",
            admit: Callable[[], contextlib.AbstractContextManager] = contextlib.nullcontext,
            say: Callable[[str], None] = lambda _text: None) -> Path:
     """The node binary of the sources under ``root/app``: the one the key already names, else built now under ``admit``."""
+    toolchain = version("rustc", tool("rustc"), ["--version", "--verbose"])
+    compiler = cargo or tool("cargo")
+    version("cargo", compiler, ["--version"])
     base = (cache or home.cache()) / FOLDER
     base.mkdir(parents=True, exist_ok=True)
     app = root / "app"
     files = sources(app)
-    try:
-        toolchain = subprocess.run([tool("rustc"), "--version", "--verbose"], capture_output=True, text=True, check=False,
-                                   env=account_environment()).stdout
-    except OSError as error:
-        raise BuildError(f"rustc is not installed (rustup.rs): {error}") from error
     key = key_of(app, files, toolchain)
     found = base / key / node_binary.name()
     if not found.is_file():
@@ -135,7 +150,7 @@ def ensure(root: Path, *, cache: Path | None = None, cargo: str = "",
                 say(f"test: building the node binary for sources {key}")
                 with admit():
                     stage(app, files, base / "workspace" / "app")
-                    made = compile_node(base / "workspace" / "app", base / "target", cargo or tool("cargo"))
+                    made = compile_node(base / "workspace" / "app", base / "target", compiler)
                     staging = base / f".{key}.{os.getpid()}"
                     shutil.rmtree(staging, ignore_errors=True)
                     staging.mkdir()
