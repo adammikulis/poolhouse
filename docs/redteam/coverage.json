@@ -1,10 +1,10 @@
 {
- "surfaces": 803,
+ "surfaces": 806,
  "by_status": {
-  "covered": 481,
+  "covered": 483,
   "partial": 194,
   "uncovered": 52,
-  "n/a": 76,
+  "n/a": 77,
   "unmapped": 0
  },
  "by_kind": {
@@ -33,7 +33,7 @@
    "covered": 10,
    "partial": 0,
    "uncovered": 0,
-   "n/a": 11,
+   "n/a": 12,
    "unmapped": 0
   },
   "egress": {
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 69,
+   "covered": 70,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 88,
+   "covered": 89,
    "partial": 58,
    "uncovered": 0,
    "n/a": 3,
@@ -1482,6 +1482,16 @@
    "note": "fixed scripts that read the battery, focus or login item; no text from outside"
   },
   {
+   "id": "desktop:protectedwrites.py:<module>",
+   "kind": "desktop",
+   "source": "protectedwrites.py:<module>",
+   "trust": "names of members, sessions, files",
+   "attacker": "attacker text reaches a dialog, notification or shell command",
+   "status": "n/a",
+   "tests": [],
+   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
+  },
+  {
    "id": "desktop:scrape/browser.py:_frontmost",
    "kind": "desktop",
    "source": "scrape/browser.py:_frontmost",
@@ -2856,6 +2866,23 @@
    "id": "human:activity/writer.py:log",
    "kind": "human",
    "source": "activity/writer.py:log",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:authority.py:_ask_to_loosen",
+   "kind": "human",
+   "source": "authority.py:_ask_to_loosen",
    "trust": "an agent process or a member",
    "attacker": "an agent or a forged grant takes an action only a person may take",
    "status": "covered",
@@ -11128,6 +11155,18 @@
    "id": "spawn:worktreerules.py:checkouts",
    "kind": "spawn",
    "source": "worktreerules.py:checkouts",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_worktree_rules.py::test_a_hostile_path_is_one_argv_item_and_never_reaches_a_shell"
+   ],
+   "note": "git is run with argv only; the paths come from a tool call and are one argument each"
+  },
+  {
+   "id": "spawn:worktreerules.py:released",
+   "kind": "spawn",
+   "source": "worktreerules.py:released",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
