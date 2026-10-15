@@ -37,6 +37,7 @@ GATES: dict[str, str] = {
     "serve.wired-limit": "serve",
     "chat.policy": "chat",
     "runtime.deploy": "runtime",
+    "github.release": "github",
 }
 """Each delegable gate and its group."""
 
@@ -54,6 +55,7 @@ MEANS: dict[str, str] = {
     "serve.wired-limit": "raise the memory limit models may use",
     "chat.policy": "change what the chat refuses",
     "runtime.deploy": "deploy a new runtime build on this device",
+    "github.release": "publish a reviewed development tip or prerelease through the repository App",
 }
 """What a lead agent may do without asking the person while a gate is delegated."""
 

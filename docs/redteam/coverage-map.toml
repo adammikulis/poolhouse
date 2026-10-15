@@ -504,8 +504,22 @@ note = "actual model child keeps hostile checkpoint and interpreter text literal
 match = ["spawn:platform.py:start_process"]
 status = "covered"
 count = 1
-tests = ["tests/test_redteam_gym_worker.py::test_worker_spawn_keeps_hostile_configuration_inside_json"]
-note = "actual worker launch through the process wrapper receives hostile configuration as one JSON argument without a shell"
+tests = ["tests/test_redteam_gym_worker.py::test_worker_spawn_keeps_hostile_configuration_inside_json",
+         "tests/test_github_release_transport.py::test_actual_git_smart_https_uses_child_token_and_verified_ca",
+         "tests/test_github_release_transport.py::test_term_resistant_helper_is_killed_before_owned_leader_is_reaped",
+         "tests/test_darwin_group.py"]
+note = "worker configuration remains one JSON argument; actual HTTPS transport uses only child credentials and a verified CA; transport cleanup retains the owned leader until complete group verification and kills TERM-resistant helpers"
+
+[[group]]
+match = ["spawn:workspace/github_release.py:_read", "spawn:workspace/github_release.py:push_development"]
+status = "covered"
+count = 2
+tests = ["tests/test_agent_prerelease_publication.py::test_clean_git_view_ignores_hostile_source_configuration",
+         "tests/test_agent_prerelease_publication.py::test_source_reads_ignore_forged_replacement_commit",
+         "tests/test_agent_prerelease_publication.py::test_hook_refusal_prevents_mint_and_push",
+         "tests/test_agent_prerelease_publication.py::test_remote_race_prevents_mint_and_push",
+         "tests/test_agent_prerelease_publication.py::test_matching_checked_push_has_one_private_mint"]
+note = "source Git reads discard configuration and replacement refs; actual maintained hook execution precedes private mint and fixed-target push, and hook refusal or a remote race prevents both"
 
 [[group]]
 match = ["spawn:gym/catalog.py:probe", "spawn:gym/traffic_world.py:generate"]

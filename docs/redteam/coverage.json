@@ -1,7 +1,7 @@
 {
- "surfaces": 814,
+ "surfaces": 823,
  "by_status": {
-  "covered": 492,
+  "covered": 501,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 46,
+   "covered": 47,
    "partial": 46,
    "uncovered": 0,
    "n/a": 0,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 70,
+   "covered": 73,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 77,
+   "covered": 80,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 92,
+   "covered": 94,
    "partial": 58,
    "uncovered": 0,
    "n/a": 3,
@@ -2342,6 +2342,21 @@
    "note": ""
   },
   {
+   "id": "egress:net/github_release.py:_fetch",
+   "kind": "egress",
+   "source": "net/github_release.py:_fetch",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_no_bypass.py",
+    "tests/test_httpguard.py",
+    "tests/test_net_download.py",
+    "tests/test_net_untrusted.py"
+   ],
+   "note": ""
+  },
+  {
    "id": "egress:net/loopback.py:fetch",
    "kind": "egress",
    "source": "net/loopback.py:fetch",
@@ -3938,6 +3953,57 @@
    "id": "human:workspace/filecli.py:file",
    "kind": "human",
    "source": "workspace/filecli.py:file",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/github_release.py:authorize",
+   "kind": "human",
+   "source": "workspace/github_release.py:authorize",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/github_release.py:publish_release",
+   "kind": "human",
+   "source": "workspace/github_release.py:publish_release",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_with_no_terminal",
+    "tests/test_sentinel_redteam.py::test_a_grant_cannot_be_built_without_a_person",
+    "tests/test_requests_floor.py::test_the_request_commands_refuse_a_process_an_agent_started",
+    "tests/test_redteam_requests.py::test_a_model_cannot_answer_its_own_request_by_any_tool_name_or_command_text",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/github_release.py:push_development",
+   "kind": "human",
+   "source": "workspace/github_release.py:push_development",
    "trust": "an agent process or a member",
    "attacker": "an agent or a forged grant takes an action only a person may take",
    "status": "covered",
@@ -6073,6 +6139,22 @@
    "note": ""
   },
   {
+   "id": "parser:net/github_release.py",
+   "kind": "parser",
+   "source": "net/github_release.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_untrusted.py",
+    "tests/test_pdf_engine.py",
+    "tests/test_hub_modelfile.py::test_every_hostile_header_is_refused_quickly",
+    "tests/test_redteam_judge.py",
+    "tests/test_model_capabilities.py::test_hostile_model_metadata_is_refused_without_a_crash"
+   ],
+   "note": ""
+  },
+  {
    "id": "parser:net/pdfchild.py",
    "kind": "parser",
    "source": "net/pdfchild.py",
@@ -6618,6 +6700,30 @@
     "tests/test_board_ui.py::test_person_post_rejects_different_browser_origin"
    ],
    "note": "person joins reject hostile length and JSON bodies without registering a session on the node; browser session and origin remain checked"
+  },
+  {
+   "id": "parser:workspace/github_app.py",
+   "kind": "parser",
+   "source": "workspace/github_app.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_workspace_rules.py"
+   ],
+   "note": ""
+  },
+  {
+   "id": "parser:workspace/github_release.py",
+   "kind": "parser",
+   "source": "workspace/github_release.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_workspace_rules.py"
+   ],
+   "note": ""
   },
   {
    "id": "parser:workspace/inbound.py",
@@ -10633,9 +10739,12 @@
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_gym_worker.py::test_worker_spawn_keeps_hostile_configuration_inside_json"
+    "tests/test_redteam_gym_worker.py::test_worker_spawn_keeps_hostile_configuration_inside_json",
+    "tests/test_github_release_transport.py::test_actual_git_smart_https_uses_child_token_and_verified_ca",
+    "tests/test_github_release_transport.py::test_term_resistant_helper_is_killed_before_owned_leader_is_reaped",
+    "tests/test_darwin_group.py"
    ],
-   "note": "actual worker launch through the process wrapper receives hostile configuration as one JSON argument without a shell"
+   "note": "worker configuration remains one JSON argument; actual HTTPS transport uses only child credentials and a verified CA; transport cleanup retains the owned leader until complete group verification and kills TERM-resistant helpers"
   },
   {
    "id": "spawn:redact/added.py:_renamed_from",
@@ -11187,6 +11296,38 @@
     "tests/test_codex_lifecycle.py::test_stopped_daemon_warns_quickly_and_does_not_block_or_restart"
    ],
    "note": "Native event JSON travels on stdin; launcher-bound names remain individual argv values, no shell runs, worker time is bounded, notices remain advisory and completion failures block."
+  },
+  {
+   "id": "spawn:workspace/github_release.py:_read",
+   "kind": "spawn",
+   "source": "workspace/github_release.py:_read",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_agent_prerelease_publication.py::test_clean_git_view_ignores_hostile_source_configuration",
+    "tests/test_agent_prerelease_publication.py::test_source_reads_ignore_forged_replacement_commit",
+    "tests/test_agent_prerelease_publication.py::test_hook_refusal_prevents_mint_and_push",
+    "tests/test_agent_prerelease_publication.py::test_remote_race_prevents_mint_and_push",
+    "tests/test_agent_prerelease_publication.py::test_matching_checked_push_has_one_private_mint"
+   ],
+   "note": "source Git reads discard configuration and replacement refs; actual maintained hook execution precedes private mint and fixed-target push, and hook refusal or a remote race prevents both"
+  },
+  {
+   "id": "spawn:workspace/github_release.py:push_development",
+   "kind": "spawn",
+   "source": "workspace/github_release.py:push_development",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_agent_prerelease_publication.py::test_clean_git_view_ignores_hostile_source_configuration",
+    "tests/test_agent_prerelease_publication.py::test_source_reads_ignore_forged_replacement_commit",
+    "tests/test_agent_prerelease_publication.py::test_hook_refusal_prevents_mint_and_push",
+    "tests/test_agent_prerelease_publication.py::test_remote_race_prevents_mint_and_push",
+    "tests/test_agent_prerelease_publication.py::test_matching_checked_push_has_one_private_mint"
+   ],
+   "note": "source Git reads discard configuration and replacement refs; actual maintained hook execution precedes private mint and fixed-target push, and hook refusal or a remote race prevents both"
   },
   {
    "id": "spawn:workspace/integration_git.py:ancestor",
