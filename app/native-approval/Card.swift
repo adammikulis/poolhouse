@@ -103,7 +103,8 @@ struct ApprovalCard: Equatable {
     var display: String {
         let name = poolName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         var out = "\(action.title)\n\nPool: \u{2068}\"\(name)\"\u{2069}\nPool ID: \(pool)\nFounding anchor: \(anchor)"
-        out += "\nAuthorizing signer: \(signer); p256; admin; trusted-native"
+        let role = action == .foundPool ? "Proposed founding signer" : "Authorizing signer"
+        out += "\n\(role): \(signer); p256; admin; trusted-native"
         if let targetKey, let targetDevice { out += "\nTarget key: \(targetKey)\nTarget device: \(targetDevice)" }
         return out + "\nExpires: \(expires)\n\n\(text)"
     }

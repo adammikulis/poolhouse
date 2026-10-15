@@ -36,7 +36,8 @@ struct SessionTests {
             let changed = fields.mutableCopy() as! NSMutableDictionary; changed["action"] = action
             refused { _ = try ApprovalCard.decode(changed, requestedID: id, now: 100) }
             changed.removeObject(forKey: "target")
-            _ = try ApprovalCard.decode(changed, requestedID: id, now: 100)
+            let typed = try ApprovalCard.decode(changed, requestedID: id, now: 100)
+            if action == "found_pool" { precondition(typed.display.contains("Proposed founding signer:")) }
         }
         for (name, bad) in [("pool", ["id": "bad", "anchor": card.anchor, "name": "Test pool"]),
                             ("signer", ["fingerprint": card.signer, "algorithm": "p256", "role": "admin", "assurance": "declared"]),

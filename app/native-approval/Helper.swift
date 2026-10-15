@@ -40,7 +40,7 @@ final class FreshAuthorization {
 
     private func wipe() {
         withUnsafeMutableBytes(of: &external) { bytes in
-            if let base = bytes.baseAddress { explicit_bzero(base, bytes.count) }
+            if let base = bytes.baseAddress { _ = memset_s(base, bytes.count, 0, bytes.count) }
         }
     }
 
