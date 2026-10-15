@@ -21,6 +21,8 @@ from poolhouse import (
     runtime_deploy,
     runtime_store,
 )
+from poolhouse.board import session as board_session
+from poolhouse.board.client import Denied, Quota
 from poolhouse.board.session import AGENT_ENV
 from poolhouse.fleet import runtime_wheel
 from poolhouse.lock import only_one
@@ -858,3 +860,40 @@ def test_a_tree_this_tool_created_is_marked_before_anything_else_and_stale_unver
     runtime_store.mark_created(ours, "runtime-agent", "ensure")
     os.utime(ours, (1000.0, 1000.0))
     assert ours in runtime_store.collect({prefix})
+
+
+def test_install_reservation_holds_many_exact_paths_and_preserves_preheld_claim(workspace_node, tmp_path):
+    parent = workspace_node.member("reservation-parent")
+    who = workspace_node.session(workspace_node.member("reservation-child", parent=parent))
+    paths = [tmp_path / f"command-{n}" for n in range(43)]
+    who.claim("install", str(paths[0]), ttl_s=600, pid=os.getpid())
+    with pytest.raises(RuntimeError, match="body failed"), runtime_deploy.owning(paths, wait_s=0, who=who) as held:
+        assert held == frozenset(paths)
+        assert all(owner_of(who, path) == who.name for path in paths)
+        raise RuntimeError("body failed")
+    assert owner_of(who, paths[0]) == who.name
+    assert all(owner_of(who, path) is None for path in paths[1:])
+
+
+def test_install_reservation_foreign_board_conflict_takes_no_partial_claims(workspace_node, tmp_path):
+    who = workspace_node.session(workspace_node.member("reservation-local"))
+    made = board_session.register(workspace_node.client, "other-board",
+                                  board_session.Native("claude-sonnet-5-5", "claude-code", "reservation-foreign"))
+    foreign = board_session.Session(workspace_node.client, "other-board", made.token, made.name)
+    blocked, free = tmp_path / "blocked", tmp_path / "free"
+    foreign.claim("install", str(blocked), ttl_s=600, pid=os.getpid())
+    with pytest.raises(runtime_deploy.DeployError, match="other-board"), \
+            runtime_deploy.owning([free, blocked], wait_s=0, who=who):
+        pytest.fail("conflicted reservation entered")
+    assert owner_of(who, free) is None
+    assert owner_of(foreign, blocked) == foreign.name
+
+
+@pytest.mark.parametrize("error", [Denied("denied", "not authorized"), Quota("quota", "not admitted")])
+def test_install_reservation_never_enters_after_admission_refusal(workspace_node, tmp_path, monkeypatch, error):
+    who = workspace_node.session(workspace_node.member("reservation-refused"))
+    monkeypatch.setattr(board_session.Session, "reserve", lambda *args, **kwargs: (_ for _ in ()).throw(error))
+    with pytest.raises(type(error), match="not "), \
+            runtime_deploy.owning([tmp_path / "command"], wait_s=0, who=who):
+        pytest.fail("refused reservation entered")
+    assert not who.claims("install")

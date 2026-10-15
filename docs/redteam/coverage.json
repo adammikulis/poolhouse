@@ -1,7 +1,7 @@
 {
- "surfaces": 824,
+ "surfaces": 825,
  "by_status": {
-  "covered": 502,
+  "covered": 503,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 80,
+   "covered": 81,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -6335,6 +6335,19 @@
    "status": "uncovered",
    "tests": [],
    "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
+  },
+  {
+   "id": "parser:runtime_bridges.py",
+   "kind": "parser",
+   "source": "runtime_bridges.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_runtime_bridges.py::test_foreign_reviewed_console_metadata_is_refused_before_commands_change",
+    "tests/test_runtime_bridges.py::test_declared_metadata_mismatch_leaves_every_entrypoint_untouched"
+   ],
+   "note": "console script names and import targets come from the literal reviewed source commit and must match the verified installed distribution"
   },
   {
    "id": "parser:sandbox/policies.py",
