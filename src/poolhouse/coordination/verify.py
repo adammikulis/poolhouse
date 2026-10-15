@@ -171,7 +171,7 @@ def host_tls(docker: Docker, identifier: str, port: int) -> None:
     http.pin(netloc, context)
     try:
         try:
-            http.request_json(url, timeout=5, headers={'Authorization': ''}, guard=exact_url(url))
+            http.request_json(url, options=http.Options(timeout=5, headers={'Authorization': ''}, guard=exact_url(url)))
         except http.ServerError as error:
             if error.status in (401, 403):
                 return

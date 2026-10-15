@@ -131,3 +131,51 @@ def test_cleanup_removes_only_verified_exact_resources(monkeypatch, tmp_path, pl
     assert calls == [['stop', '--time', '10', 'container-id'],
                      ['rm', '--volumes', 'container-id'], ['network', 'rm', 'network-id']]
     assert identifiers == {}
+
+
+@pytest.mark.parametrize("status", [401, 403, 500, None])
+def test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin(monkeypatch, tmp_path, status):
+    import ssl
+    from pathlib import Path
+
+    from test_http_trust import _self_signed
+
+    from poolhouse import http
+    from poolhouse.coordination import verify
+
+    certificate, _ = _self_signed(tmp_path)
+    authority = Path(certificate).read_text()
+    expected = "https://127.0.0.1:16443/api/v1/namespaces/poolhouse-coordination/configmaps/status"
+    old = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    monkeypatch.setitem(http._PINNED, "127.0.0.1:16443", old)
+
+    class OwnedDocker:
+        def call(self, argv):
+            assert argv == ["exec", "container-id", "/bin/cat", "/state/k3s/server/tls/server-ca.crt"]
+            return subprocess.CompletedProcess(argv, 0, stdout=authority)
+
+    def credential(_url):
+        pytest.fail("the anonymous metadata probe looked up a server credential")
+    monkeypatch.setattr(http.serverkeys, "for_url", credential)
+
+    def request(url, *, options):
+        assert url == expected and options.timeout == 5 and options.token == ""
+        assert dict(options.headers) == {"Authorization": ""}
+        assert options.guard(url) == expected
+        with pytest.raises(Refused):
+            options.guard(url + "/other")
+        context = http._PINNED["127.0.0.1:16443"]
+        assert context is not old and context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
+        assert context.cert_store_stats()["x509"] == 1
+        wire = http.build_request(url, headers=dict(options.headers))
+        assert wire.get_header("Authorization") == ""
+        if status is None:
+            return {}
+        raise http.ServerError("fixture refusal", status=status)
+    monkeypatch.setattr(http, "request_json", request)
+    if status in (401, 403):
+        verify.host_tls(OwnedDocker(), "container-id", 16443)
+    else:
+        with pytest.raises(Refused):
+            verify.host_tls(OwnedDocker(), "container-id", 16443)
+    assert http._PINNED["127.0.0.1:16443"] is old
