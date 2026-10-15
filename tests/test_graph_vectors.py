@@ -11,9 +11,10 @@ import json
 import pytest
 from conftest import json_reply
 
-from poolhouse.client.embed import DOCUMENT, QUERY
+from poolhouse.client.embed import DEFAULT_EMBED_OPTIONS, DOCUMENT, QUERY, embed
 from poolhouse.graph.store import GraphStore
 from poolhouse.graph.vectors import RememberOptions, embedded, remember
+from poolhouse.http import Options
 from poolhouse.testing import needs_a_backend
 
 pytest.importorskip("ladybug", reason="the store needs poolhouse[store]")
@@ -48,6 +49,38 @@ def graph():
     return {"nodes": [{"id": i, "label": i.split(":")[1], "kind": i.split(":")[0]}
                       for i in SAID],
             "edges": [], "messages": {}}
+
+
+def test_remember_uses_the_client_options_and_retries_a_transient_refusal(server, tmp_path):
+    attempts, options_seen = [], []
+    def transient(method, path, body):
+        attempts.append(path)
+        return json_reply({"error": "temporarily busy"}, 503) if len(attempts) == 1 else embeddings()(method, path, body)
+    instance = server(transient)
+    def watched(texts, *, base_url, model, options: Options):
+        options_seen.append(options)
+        return embed(texts, base_url=base_url, model=model, options=options)
+    path = tmp_path / "options.ladybug"
+    with GraphStore(path) as store:
+        store.write(graph())
+        assert remember(store, SAID, base_url=instance.base_url, model="gemma",
+                        options=RememberOptions(embedder=watched)) == 3
+    assert len(attempts) == 2 and len(options_seen) == 1
+    assert options_seen[0].timeout == 300
+    assert options_seen[0].retry == DEFAULT_EMBED_OPTIONS.retry
+    assert options_seen[0].headers == DEFAULT_EMBED_OPTIONS.headers
+    assert options_seen[0].token == DEFAULT_EMBED_OPTIONS.token
+    assert options_seen[0].guard is DEFAULT_EMBED_OPTIONS.guard
+    with GraphStore(path, read_only=True) as store:
+        assert set(store.embeddings(model="gemma")) == set(SAID)
+
+
+def test_a_programmer_error_in_an_embedder_is_not_a_refused_batch():
+    def broken(texts, *, base_url, model, options):
+        raise TypeError("embedder programming fault")
+    with pytest.raises(TypeError, match="embedder programming fault"):
+        remember(object(), SAID, base_url="http://127.0.0.1:1", model="gemma",
+                 options=RememberOptions(embedder=broken))
 
 
 class TestRemembering:
