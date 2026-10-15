@@ -156,11 +156,9 @@ def test_an_agent_marker_in_the_daemons_environment_refuses_even_a_good_request(
 
 
 def test_another_machine_on_the_network_cannot_make_the_request_even_signed_in(room):
-    from poolhouse.fleet.discovery import primary_ip
+    from tests.remote_client_support import REMOTE_ADDRESS
 
-    lan = primary_ip()
-    if lan.startswith("127."):
-        pytest.skip("this machine has no address but loopback")
+    lan = REMOTE_ADDRESS
     room.call("/ui/setup/join", method="POST", body={"passphrase": WORDS, "group": "home"})
     _, _, headers = room.call("/ui/session", method="POST", body={"passphrase": WORDS}, host=lan)
     cookie = headers["Set-Cookie"].split(";")[0]

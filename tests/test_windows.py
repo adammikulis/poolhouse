@@ -136,7 +136,7 @@ class TestTheLockOnWindows:
         only_one, _, _ = win_lock
         said = []
         other = subprocess.Popen(
-            [sys.executable, "-c", "import poolhouse\n" + FAKE_MSVCRT + textwrap.dedent(f"""
+            [sys.executable, "-c", "import poolhouse.lock\n" + FAKE_MSVCRT + textwrap.dedent(f"""
                 import time
                 from poolhouse.lock import only_one
                 with only_one({str(tmp_path / 'l')!r}):
@@ -533,9 +533,10 @@ class TestTraindPersist:
 
 # -- what the firewall has to let through -------------------------------------------
 class TestDiscoveryAndTheFirewall:
-    def test_beacons_are_udp_multicast_and_broadcast_on_a_fixed_port(self):
+    def test_beacons_are_udp_multicast_and_broadcast_on_a_fixed_port(self, monkeypatch):
         from poolhouse.fleet import discovery
 
+        monkeypatch.setattr(discovery.lan_policy, "allowed", lambda: True)
         assert discovery.DEFAULT_GROUP == "239.255.77.70"
         assert discovery.DEFAULT_PORT == 8771 and discovery.DEFAULT_HTTP_PORT == 8770
         assert discovery._destinations(discovery.DEFAULT_GROUP, 8771) == [
