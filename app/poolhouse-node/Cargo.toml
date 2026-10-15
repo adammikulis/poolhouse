@@ -1,6 +1,6 @@
 [package]
 name = "poolhouse-node"
-version = "0.2.2"  # x-release-please-version
+version = "0.3.0-dev.1"  # x-release-please-version
 description = "The node: the board's signed entries, identity, and the local API of one device."
 edition.workspace = true
 rust-version.workspace = true
