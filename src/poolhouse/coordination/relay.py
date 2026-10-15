@@ -186,7 +186,8 @@ class Forwarder:
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         self.reaped = False
         try:
-            pump(client, process, self.stop)
+            with contextlib.suppress(ConnectionResetError, BrokenPipeError):
+                pump(client, process, self.stop)
         finally:
             reap(process)
             self.reaped = True

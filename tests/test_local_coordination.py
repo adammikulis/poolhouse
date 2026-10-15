@@ -540,3 +540,41 @@ def test_relay_connection_deadline_closes_without_waiting_for_client_data(relay_
           socket.create_connection(worker.listener.getsockname(), timeout=2) as client):
         assert client.recv(1) == b''
     assert worker.reaped
+
+
+def test_relay_reset_client_does_not_stop_the_next_connection(relay_fixture):
+    import socket
+    import struct
+
+    relay, docker, plan, session, _ = relay_fixture
+    with relay.forward(docker, 'container-id', plan, session) as worker:
+        client = socket.create_connection(worker.listener.getsockname(), timeout=2)
+        client.sendall(b'fixture reset' * 1024)
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+        client.close()
+        with socket.create_connection(worker.listener.getsockname(), timeout=2) as following:
+            following.sendall(b'next connection')
+            assert following.recv(64) == b'next connection'
+        assert not worker.failed
+
+
+def test_relay_broken_pipe_still_reaps_before_the_next_connection(relay_fixture, monkeypatch):
+    import socket
+
+    relay, docker, plan, session, _ = relay_fixture
+    original = relay.pump
+    calls = []
+    def broken_once(client, process, stop):
+        calls.append(process)
+        if len(calls) == 1:
+            raise BrokenPipeError('fixture closed stream')
+        assert calls[0].poll() is not None
+        return original(client, process, stop)
+    monkeypatch.setattr(relay, 'pump', broken_once)
+    with relay.forward(docker, 'container-id', plan, session) as worker:
+        with socket.create_connection(worker.listener.getsockname(), timeout=2) as client:
+            assert client.recv(1) == b''
+        with socket.create_connection(worker.listener.getsockname(), timeout=2) as following:
+            following.sendall(b'after broken pipe')
+            assert following.recv(64) == b'after broken pipe'
+        assert not worker.failed and len(calls) == 2
