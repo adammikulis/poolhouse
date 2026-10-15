@@ -33,6 +33,9 @@ fn bootstrap(engine: &mut Engine, charter: &Charter) {
     let request = Request { id: "a".repeat(32), nonce: "b".repeat(32), created_ms: NOW, expires_ms: NOW + 60_000, act };
     let verified = engine.review(Proof { found: charter.found_act(), acts: vec![] }, request, NOW).unwrap();
     assert!(verified.card().contains("Current pool terms"));
+    let binding = &engine.checkpoint.binding;
+    assert!(verified.card().contains(&format!("Signing with: {}; Ed25519; strong admin", crate::gov::keys::fingerprint_of(&binding.public))));
+    assert!(verified.card().contains(&binding.anchor) && verified.card().contains(&charter.hash()));
 }
 
 fn sign(mut act: Act) -> Act {
@@ -197,7 +200,7 @@ fn semantic_cards_show_every_changed_field_without_transport_prose_or_json() {
     for (kind, body, expected) in changes {
         let act = engine.pool.as_ref().unwrap().new_act(kind, body, NOW).unwrap();
         let bytes = act.sign_bytes();
-        let card = card::render(&act, engine.pool.as_ref().unwrap()).unwrap();
+        let card = card::render(&act, engine.pool.as_ref().unwrap(), &binding).unwrap();
         assert!(!card.contains('{') && !card.contains("\"body\""));
         assert!(card.contains("Recovery delay: 7 days") && card.contains("Count approvals by: person"));
         for text in expected { assert!(card.contains(text), "missing {text} in {card}"); }
@@ -211,7 +214,7 @@ fn semantic_cards_show_every_changed_field_without_transport_prose_or_json() {
     added.acceptance = RigSigner::sign_as(2, &added.acceptance_message(&charter.pool_id(), &charter.hash()));
     let pool = engine.pool.as_ref().unwrap();
     let add = pool.new_act("admin_add", json!({"entry":added}), NOW).unwrap();
-    let text = card::render(&add, pool).unwrap();
+    let text = card::render(&add, pool, &binding).unwrap();
     assert!(text.contains("second admin") && text.contains("person-b") && text.contains("listed since epoch 2"));
     assert!(text.contains(&crate::gov::keys::fingerprint_of(&RigSigner::public(2))));
     assert!(!text.contains('\u{202e}') && !text.contains('\u{2066}'));
@@ -227,10 +230,10 @@ fn cancellation_cards_require_and_show_the_verified_target() {
     assert_eq!(pool.ingest(target.clone(), NOW), Ingest::Accepted);
     for kind in ["cancel", "veto"] {
         let act = pool.new_act(kind, json!({"act":target.id()}), NOW).unwrap();
-        let card = card::render(&act, pool).unwrap();
+        let card = card::render(&act, pool, &binding).unwrap();
         assert!(card.contains(&target.id()) && card.contains("Remove") && card.contains("dddddddd"));
         let missing = pool.new_act(kind, json!({"act":"e".repeat(64)}), NOW).unwrap();
-        assert!(card::render(&missing, pool).is_err());
+        assert!(card::render(&missing, pool, &binding).is_err());
     }
 }
 
@@ -307,4 +310,26 @@ fn only_the_exact_removed_key_can_veto_its_pending_removal() {
         if seed == 1 { assert!(result.err().unwrap().to_string().contains("Only the strong key named")); }
         else { assert!(result.is_ok()); }
     }
+}
+
+#[test]
+fn same_name_pools_have_distinct_visible_pinned_identities() {
+    let (root, first, binding) = setup();
+    let mut one = Engine::open(root.path(), &binding).unwrap();
+    bootstrap(&mut one, &first);
+    let first_card = request::verify(one.pool.as_ref().unwrap(), &binding, request(&one), NOW).unwrap();
+    let mut second = first.clone();
+    second.project = "a".repeat(16);
+    let anchor = second.anchor();
+    second.admins[0].acceptance = RigSigner::sign_as(1, &second.admins[0].acceptance_message(&anchor, ""));
+    let other_root = tempfile::tempdir().unwrap();
+    let other_binding = Binding { anchor, ..binding.clone() };
+    Engine::pin(other_root.path(), other_binding.clone()).unwrap();
+    let mut two = Engine::open(other_root.path(), &other_binding).unwrap();
+    bootstrap(&mut two, &second);
+    let second_card = request::verify(two.pool.as_ref().unwrap(), &other_binding, request(&two), NOW).unwrap();
+    assert_eq!(first.name, second.name);
+    assert_ne!(first_card.card(), second_card.card());
+    assert!(first_card.card().contains(&format!("Pool ID: {}", first.pool_id())));
+    assert!(second_card.card().contains(&format!("Pool ID: {}", second.pool_id())));
 }

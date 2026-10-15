@@ -23,7 +23,7 @@ def test_shared_native_governance_rejects_bad_checkpoints_and_retains_late_evide
                              "--lib", "gov::phone_verify", "--", "--nocapture"],
                             cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "13 passed" in result.stdout and "0 failed" in result.stdout
+    assert "14 passed" in result.stdout and "0 failed" in result.stdout
     boundary = subprocess.run([testnode.tool("cargo"), "test", "--offline", "--locked", "-p", "poolhouse-phone-governance", "--lib"],
                               cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
     assert boundary.returncode == 0, boundary.stdout + boundary.stderr

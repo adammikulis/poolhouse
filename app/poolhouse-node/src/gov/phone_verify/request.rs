@@ -77,6 +77,6 @@ pub(super) fn verify(pool: &GovPool, binding: &Binding, request: Request, now: u
     if act.is_chain() {
         if let Err(why) = super::super::chain::proposal_fits(&pool.state().chain, &pool.id, act) { return bad(&why) }
     }
-    let card = super::card::render(act, pool)?;
+    let card = super::card::render(act, pool, binding)?;
     Ok(Verified { bytes: act.sign_bytes(), card, request })
 }

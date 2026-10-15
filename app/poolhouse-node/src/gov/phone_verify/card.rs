@@ -1,5 +1,5 @@
 use crate::error::Result;
-use super::{bad, Act, GovPool};
+use super::{bad, Act, Binding, GovPool};
 use super::super::body::{self, Body};
 use super::super::charter::{Charter, Class, Mode, Unit};
 use super::super::keys::{fingerprint_of, AdminKey, Alg, Role, Strength};
@@ -108,8 +108,16 @@ fn change(act: &Act, pool: &GovPool, depth: usize) -> Result<String> {
     })
 }
 
-pub(super) fn render(act: &Act, pool: &GovPool) -> Result<String> {
-    let card = format!("Change to approve:\n{}\n\n{}", change(act, pool, 0)?, terms(&pool.state().chain.latest().charter)?);
+pub(super) fn render(act: &Act, pool: &GovPool, binding: &Binding) -> Result<String> {
+    let charter = &pool.state().chain.latest().charter;
+    let Some(selected) = charter.admin(&binding.public).filter(|key| key.role == Role::Admin && key.strength == Strength::Strong) else {
+        return bad("This phone key is not a strong admin under these pool terms.");
+    };
+    if pool.genesis.anchor() != binding.anchor { return bad("The pool does not match this phone's founding pin.") }
+    let (epoch, head) = pool.context();
+    let context = format!("Pool ID: {}\nPinned founding terms: {}\nCurrent terms: epoch {epoch}; fingerprint {head}\nSigning with: {}; {}; strong admin",
+        pool.id, binding.anchor, fingerprint_of(&selected.key), match selected.alg { Alg::Ed25519 => "Ed25519", Alg::P256 => "P-256" });
+    let card = format!("{context}\n\nChange to approve:\n{}\n\n{}", change(act, pool, 0)?, terms(charter)?);
     if card.len() > 64 * 1024 { return bad("This change is too large for the phone to display safely.") }
     Ok(card)
 }
