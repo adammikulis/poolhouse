@@ -8,10 +8,11 @@ built here while there is write access, because a reader has none.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
-from poolhouse.client.embed import BATCH, DOCUMENT
+from poolhouse.client.embed import BATCH, DEFAULT_EMBED_OPTIONS, DOCUMENT
+from poolhouse.http import ServerError
 
 MOST_CHARS = 1400
 
@@ -74,8 +75,8 @@ def remember(store: Any, texts: Mapping[str, str], *, base_url: str, model: str,
         chunk = ids[at:at + max(1, opts.batch)]
         try:
             vectors = embedder([DOCUMENT + texts[i] for i in chunk],
-                               base_url=base_url, model=model, timeout=300)
-        except Exception as exc:  # noqa: BLE001 - one bad batch is not the whole graph
+                               base_url=base_url, model=model, options=replace(DEFAULT_EMBED_OPTIONS, timeout=300))
+        except (ServerError, OSError, ValueError) as exc:
             if opts.log:
                 opts.log(f"vectors: {len(chunk)} could not be embedded: {exc}")
             continue

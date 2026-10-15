@@ -34,6 +34,11 @@ Every row of sections 3 and 4 has one state word.
 
 A background full run on `6b7cca262` recorded 17,021 passes, 39 failures and 10 errors (290 skipped); its additional seatbelt set passed 152 tests with 91 skipped. These failures remain open release work; passing affected checks does not establish a repository-wide green result.
 
+Scoped source checks for `tests/test_graph_vectors.py` and `tests/test_ingest_embed.py` passed 31 cases after correcting
+the embedding caller's HTTP options. A loopback server's transient refusal was retried, vectors were written and reopened,
+and programmer errors were no longer reported as refused batches. The caller retains its 300-second request timeout and
+three-attempt retry policy. This does not replace the full-suite result above.
+
 **Selectors run for this document** (2026-10-13, tree `d365522ea` plus this change, this Mac, through `scripts/test all`):
 
 - Passed: `tests/test_glossary.py`, `tests/test_documents_name_current_files.py`, `tests/test_documented_env_vars.py`; and, in one run,
