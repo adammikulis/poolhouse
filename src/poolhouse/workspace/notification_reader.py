@@ -14,12 +14,13 @@ from poolhouse.workspace import (
     nudge,
     worktree_lifecycle,
 )
-from poolhouse.workspace.harness_session import session_of
+from poolhouse.workspace.harness_session import inbox_of
 
 
 def read(agent: str, cwd: Path) -> str:
     """Return unread metadata of the board of ``cwd`` under the agent's own token."""
-    return nudge.Waiting.of(board_cli.waiting(session_of(agent, cwd))).line()
+    name, now, entries = inbox_of(agent, cwd, nudge.PAGE)
+    return nudge.Waiting.of(board_cli.waiting_entries(entries, name, now)).line()
 
 
 def compact(line: str) -> str:

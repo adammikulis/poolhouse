@@ -117,3 +117,50 @@ def test_explicit_parent_hook_preserves_launcher_root(monkeypatch):
     assert harnesshook.run(['post', '--agent', 'project-parent', '--root', '/launcher-root'],
                            io.StringIO('{"cwd":"/unrelated"}'), io.StringIO()) == 0
     assert captured == [('project-parent', ['/launcher-root'])]
+
+
+def test_each_notification_read_reauthenticates_and_does_not_advance_cursor(kit, monkeypatch):
+    kit.s.post(kit.reader.name, 'question', 'which branch?')
+    calls, real = [], Client.call
+    monkeypatch.setattr(Client, 'call', lambda self, method, *args, **options: calls.append(method) or real(self, method, *args, **options))
+    first = reader.read(kit.reader.name, kit.root)
+    assert reader.read(kit.reader.name, kit.root) == first
+    assert calls == ['whoami', 'read', 'whoami', 'read']
+
+
+def test_notification_never_uses_a_mutable_display_name(kit, monkeypatch):
+    from poolhouse.board.session import Session
+    monkeypatch.setattr(Session, 'name', property(lambda self: pytest.fail('cached name used for authorization')))
+    assert reader.read(kit.reader.name, kit.root) == ''
+
+
+@pytest.mark.parametrize('bad_actor', ['wrong-token', 'retired'])
+def test_rejected_identity_cannot_read_private_cursor(kit, monkeypatch, bad_actor):
+    if bad_actor == 'wrong-token':
+        (kit.node.state / 'client' / kit.node.board / f'{kit.reader.name}.token').write_text(kit.sender.token + '\n')
+    else:
+        kit.r.retire()
+    monkeypatch.setattr(harness_session.credentials, 'cursors', lambda *args: pytest.fail('unauthorized private cursor read'))
+    with pytest.raises(Denied):
+        reader.read(kit.reader.name, kit.root)
+
+
+def test_revocation_after_identity_proof_is_enforced_by_the_inbox_read(kit, monkeypatch):
+    real = Client.call
+    def revoke(self, method, *args, **options):
+        result = real(self, method, *args, **options)
+        if method == 'whoami':
+            kit.r.retire()
+        return result
+    monkeypatch.setattr(Client, 'call', revoke)
+    with pytest.raises(Denied):
+        reader.read(kit.reader.name, kit.root)
+
+
+@pytest.mark.parametrize('reply', [{'name': None}, {}, [], {'name': ''}])
+def test_a_malformed_identity_reply_cannot_select_a_private_cursor(kit, monkeypatch, reply):
+    real = Client.call
+    monkeypatch.setattr(Client, 'call', lambda self, method, *args, **options: reply if method == 'whoami' else real(self, method, *args, **options))
+    monkeypatch.setattr(harness_session.credentials, 'cursors', lambda *args: pytest.fail('unproven private cursor read'))
+    with pytest.raises(Denied, match='launcher-bound identity'):
+        reader.read(kit.reader.name, kit.root)

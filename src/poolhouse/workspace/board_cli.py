@@ -339,12 +339,17 @@ def digest(args: argparse.Namespace, s: Session) -> Any:
 def waiting(s: Session) -> dict[str, Any]:
     """What waits unread, as `nudge.Waiting` takes it; nothing is marked read."""
     entries = s.read(s.cursor("inbox"), inbox=True, limit=nudge.PAGE).entries
+    return waiting_entries(entries, s.name, s.clock())
+
+
+def waiting_entries(entries: list[Entry], me: str, now: float) -> dict[str, Any]:
+    """Format unread entries without changing their cursors or authority."""
     rows = [{"id": e.id, "seq": e.ref, "to": e.fields.get("to"), "from": e.sender,
              "type": e.fields.get("type"), "ts": e.at_ms / 1000} for e in entries]
     messages = [{"id": r["id"], "seq": r["seq"], "type": r["type"], "from": r["from"], "from_name": r["from"],
                  "text": f"{e.fields.get('subject')}: {e.text[:600]}" if e.fields.get("subject") else e.text[:600]}
                 for r, e in zip(rows, entries, strict=True) if not inbound.judge(e)[0]]
-    return {"me": s.name, "now": s.clock(), "rows": rows, "messages": messages}
+    return {"me": me, "now": now, "rows": rows, "messages": messages}
 
 
 def brief(args: argparse.Namespace, s: Session) -> Any:
