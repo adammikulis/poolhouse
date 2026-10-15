@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import worktreerules
+from poolhouse import trees, worktreerules
 from poolhouse.errors import Denied
 from poolhouse.sentinel.redaction import redact
 
@@ -125,21 +125,23 @@ def remove_merged(primary: Path, path: Path, branch: str, landed: str, *, lock_r
     listed = any(line.startswith('worktree ') and Path(line[9:]).resolve() == path.resolve()
                  for line in entries)
     if listed:
-        clean(path)
-        head = git(path, 'rev-parse', 'HEAD')
+        try:
+            head = trees.removal_content(path)
+        except trees.Refused as error:
+            raise Denied(str(error)) from error
         if not ancestor(primary, head, landed):
             raise Denied(f'{path} still has commits outside the landed development tree')
-        ignored = git(path, 'ls-files', '--others', '--ignored', '--exclude-standard', '-z').split('\0')
-        unknown = [name for name in ignored if name and not any(
-            part in {'__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache'}
-            for part in Path(name).parts) and not Path(name).name.startswith(('.testmondata', '.coverage'))]
-        if unknown:
-            raise Denied(f'{path} contains ignored files requiring preservation: {unknown[:5]}')
         locked = path / git(path, 'rev-parse', '--git-path', 'locked')
         if locked.exists():
             if not lock_reason or locked.read_text().strip() != lock_reason:
                 raise Denied(f'{path} has a worktree lock owned by another operation')
             git(primary, 'worktree', 'unlock', str(path))
+        try:
+            current = trees.removal_content(path)
+        except trees.Refused as error:
+            raise Denied(str(error)) from error
+        if current != head:
+            raise Denied(f'{path} changed HEAD before cleanup')
         git(primary, 'worktree', 'remove', str(path))
     elif path.exists():
         raise Denied(f'{path} exists without its registered task worktree; preserve it before completion')
