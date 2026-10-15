@@ -145,16 +145,22 @@ def test_a_condition_reported_and_unchanged_is_not_reported_again(main):
     assert told == [["a"], ["lead"]]                       # the owner once, the lead once when the owner stayed silent
 
 
-def test_a_tree_landed_by_patch_after_a_rebase_closes_as_landed(main):
+def test_patch_equivalence_preserves_original_history_in_a_bundle(main):
     path = tree(main, "rebased", owner="a")
     commit(path, "feature")
     sha = git(path, "rev-parse", "HEAD")
     commit(main, "other")                                              # dev moved on
     git(main, "cherry-pick", sha)                                     # landed as a different commit
     trees.finish(main, "a", 1)
-    assert status(main, 5) == {"rebased": "landed"}
-    done = trees.close(main, path, ("landed", ""), 5)
-    assert done["mode"] == "landed" and not path.exists()
+    assert status(main, 5) == {"rebased": "waiting"}
+    with pytest.raises(trees.Refused, match="not landed"):
+        trees.close(main, path, ("landed", ""), 5)
+    assert path.exists() and git(main, "rev-parse", "rebased") == sha
+    done = trees.close(main, path, ("bundle", ""), 5)
+    assert done["mode"] == "bundle" and not path.exists()
+    git(main, "bundle", "verify", done["bundle"])
+    assert sha in git(main, "bundle", "list-heads", done["bundle"])
+    assert git(main, "rev-parse", "rebased") == sha
 
 
 def test_the_gate_failure_names_the_exact_close_command_and_waits_out_the_grace(main):
@@ -218,3 +224,20 @@ def test_a_linked_tree_under_the_threshold_prints_nothing_and_over_it_prints_one
     assert loud.returncode == 0 and loud.stdout == "" and "3 commits ahead" in loud.stderr
     assert len(loud.stderr.strip().splitlines()) == 1
     assert run_hook(path, POOLHOUSE_TREES_MAX_AHEAD="2").stderr == ""     # and not again for the same condition
+
+
+def test_stale_patch_equivalence_facts_are_recomputed(main):
+    path = tree(main, "cached-rebase", owner="a")
+    commit(path, "feature")
+    sha = git(path, "rev-parse", "HEAD")
+    commit(main, "other")
+    git(main, "cherry-pick", sha)
+    trees.finish(main, "a", 1)
+    data = trees.recorded(main)
+    snap = data["trees"][str(path.resolve())]["snap"]
+    assert snap["ahead"] == 1
+    snap["unique"] = 0  # the former patch-equivalence snapshot, with unchanged head/dev
+    registry(main).write_text(json.dumps(data))
+    row, = trees.rows(main, 5)
+    assert row["status"] == "waiting" and row["unlanded"] == 1
+    assert row["snap"]["unique"] == row["snap"]["ahead"] == 1

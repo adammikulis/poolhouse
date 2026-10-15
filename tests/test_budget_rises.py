@@ -116,6 +116,7 @@ WALLS = '''"""A checker that allows nothing, so the hook has a hard gate to read
 NAME = "walls"
 OWNER = ""
 HARD = True
+INPUTS = ("scripts/gates/walls.py",)
 
 
 def describe() -> str:
@@ -155,6 +156,13 @@ def commit_with(root: Path, numbers: dict[str, int], **env) -> subprocess.Comple
     kept = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
     return subprocess.run([sys.executable, str(root / "scripts" / "hooks" / HOOK.name)],
                           cwd=root, capture_output=True, text=True, env={**kept, **env})
+
+
+def test_the_fixture_checker_is_a_registered_hard_gate(checkout):
+    done = subprocess.run(
+        [sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts'); import gates; assert 'walls' in gates.hard()"],
+        cwd=checkout, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
 
 
 def test_a_hand_edited_rise_is_refused_at_the_commit(checkout):

@@ -166,10 +166,11 @@ def owner_alive(entry: dict, now: float, pol: dict) -> bool:
 def facts(path: Path, head: str, tip: tuple[str, str], entry: dict) -> dict:
     """Counts of ``head`` against the development tip; recomputed only when either moved."""
     snap = entry.get("snap") or {}
-    if snap.get("head") == head and snap.get("dev") == tip[1]:
+    if (snap.get("head") == head and snap.get("dev") == tip[1]
+            and snap.get("unique") == snap.get("ahead")):
         return snap
     behind, ahead = (int(x) for x in git(path, "rev-list", "--left-right", "--count", f"{tip[1]}...{head}").split())
-    unique = len([x for x in git(path, "cherry", tip[1], head).splitlines() if x.startswith("+")]) if ahead else 0
+    unique = ahead
     stamps = git(path, "log", "--format=%ct", f"{tip[1]}..{head}").split() if unique else []
     return {"head": head, "dev": tip[1], "ahead": ahead, "behind": behind, "unique": unique,
             "oldest": min((int(s) for s in stamps), default=0),
@@ -334,11 +335,36 @@ def _bundle(primary: Path, row: dict, dev: str) -> Path:
     return target
 
 
-def _preserve_dirty(primary: Path, row: dict) -> str:
-    """Save the tree's uncommitted diff beside the bundles before an abandon deletes it."""
-    patch = _folder(primary) / (re.sub(r"[^A-Za-z0-9._-]", "_", row["branch"]) + "-" + row["head"][:8] + ".dirty.patch")
-    patch.write_text(git(Path(row["path"]), "diff", "--binary", "HEAD"))
-    return str(patch)
+def removal_content(path: Path) -> str:
+    """Require clean tracked/untracked contents and only the established disposable caches."""
+    for marker in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
+        if (path / git(path, "rev-parse", "--git-path", marker)).exists():
+            raise Refused(f"{path} has an unfinished {marker} operation")
+    if git(path, "status", "--porcelain"):
+        raise Refused(f"{path} has dirty tracked or untracked files; preserve them before cleanup")
+    ignored = git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").split("\0")
+    unknown = [name for name in ignored if name and not any(
+        part in {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+        for part in Path(name).parts) and not Path(name).name.startswith((".testmondata", ".coverage"))]
+    if unknown:
+        raise Refused(f"{path} contains ignored files requiring preservation: {unknown[:5]}")
+    return git(path, "rev-parse", "HEAD")
+
+
+def _remove(primary: Path, target: Path, row: dict, dev: str, mode: str) -> None:
+    """Recheck the exact contents, remove normally, then verify absence before recording success."""
+    if removal_content(target) != row["head"]:
+        raise Refused(f"{target} changed HEAD before cleanup")
+    if mode == "landed" and git(primary, "rev-list", "--count", row["head"], "--not", dev) != "0":
+        raise Refused(f"{target} has commits outside development")
+    git(primary, "worktree", "remove", str(target))
+    if target.exists() or any(path == target for path, _, _ in listing(primary)):
+        raise Refused(f"{target} remains after cleanup")
+    if mode == "landed" and row["branch"] not in ("(detached)", "", *PROTECTED, dev):
+        tip = git(primary, "rev-parse", row["branch"])
+        if git(primary, "rev-list", "--count", tip, "--not", dev) != "0":
+            raise Refused(f"{row['branch']} still has unique commits")
+        git(primary, "branch", "-d", row["branch"])
 
 
 def _check(row: dict, mode: str, reason: str, caller: str) -> None:
@@ -351,7 +377,7 @@ def _check(row: dict, mode: str, reason: str, caller: str) -> None:
         raise Refused(f"{row['path']} is not landed: {row['unlanded']} unlanded commits, {row['dirty']} dirty files; "
                       "land it, or --bundle / --abandon 'reason'")
     if mode == "bundle" and row["dirty"]:
-        raise Refused(f"{row['path']} has {row['dirty']} dirty files a bundle cannot hold; commit them or --abandon")
+        raise Refused(f"{row['path']} has {row['dirty']} dirty files a bundle cannot hold; preserve them before cleanup")
     if mode == "bundle" and not row["unlanded"]:
         raise Refused(f"{row['path']} has no unlanded commits to bundle; use --landed")
 
@@ -374,14 +400,12 @@ def close(root: Path | str, path: Path | str, decision: tuple[str, str], now: fl
         raise Refused(f"{target} is not a registered worktree (already removed? scripts/worktrees scan reconciles)")
     _check(row, mode, reason, caller)
     dev = development(primary)
+    if removal_content(target) != row["head"]:
+        raise Refused(f"{target} changed HEAD before cleanup")
     saved = _bundle(primary, row, dev) if mode == "bundle" else ""
-    patch = _preserve_dirty(primary, row) if mode == "abandon" and row["dirty"] else ""
-    git(primary, "worktree", "remove", "--force", str(target))
-    if row["branch"] != "(detached)" and row["branch"] not in (*PROTECTED, dev):
-        git(primary, "branch", "-D", row["branch"])
-    git(primary, "worktree", "prune")
+    _remove(primary, target, row, dev, mode)
     done = {"path": str(target), "branch": row["branch"], "head": row["head"], "owner": row["owner"],
-            "mode": mode, "reason": reason, "at": now, "bundle": str(saved), "dirty_patch": patch}
+            "mode": mode, "reason": reason, "at": now, "bundle": str(saved)}
     update(root, lambda data: _forget(data, str(target), done))
     return done
 
