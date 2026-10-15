@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import jobs, runtime
+from poolhouse import jobs, runtime, runtime_store
 from poolhouse.fleet import runtime_wheel
 
 A = "a" * 40
@@ -194,3 +195,82 @@ def test_installer_ignores_inherited_destinations_and_pip_config(isolated, monke
     assert sentinel.read_text() == 'retained'
     assert runtime.installer_environment()['PIP_NO_INDEX'] == '1'
     assert runtime.installer_environment()['PIP_CONFIG_FILE'] == os.devnull
+
+
+@pytest.mark.slow
+def test_canonical_launcher_follows_new_selection_while_anchor_stays_usable(isolated):
+    old = runtime_wheel.prepare(_wheel(isolated, A, "old"), A, timeout=60)
+    runtime_store.mark_created(old.prefix, "launcher-test", "ensure")
+    runtime_store.mark_verified(old)
+    runtime.publish(old)
+    launcher = isolated / "poolhouse-probe"
+    runtime.write_launcher(launcher, "poolhouse.runtime_probe", "", old, follow_selection=True)
+    newer = runtime_wheel.prepare(_wheel(isolated, B, "new"), B, timeout=60)
+    runtime_store.mark_created(newer.prefix, "launcher-test", "ensure")
+    runtime_store.mark_verified(newer)
+    runtime.publish(newer)
+    done = subprocess.run([sys.executable, str(launcher)], capture_output=True, text=True, timeout=30,
+                          env={**runtime.environment(), "PYTHONPATH": "hostile-source"})
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "new"
+    assert old.python.exists() and runtime.verify(old) == old
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("refusal", ["missing-mark", "rejected", "broken-rejected"])
+def test_canonical_launcher_refuses_unverified_selector_before_execution(isolated, refusal):
+    old = runtime_wheel.prepare(_wheel(isolated, A, "old"), A, timeout=60)
+    runtime_store.mark_created(old.prefix, "launcher-test", "ensure")
+    runtime_store.mark_verified(old)
+    runtime.publish(old)
+    launcher = isolated / "poolhouse-probe"
+    runtime.write_launcher(launcher, "poolhouse.runtime_probe", "", old, follow_selection=True)
+    marker = old.prefix / runtime_store.MARK
+    if refusal == "missing-mark":
+        marker.unlink()
+    elif refusal == "rejected":
+        (old.prefix / "rejected").write_text("refused")
+    else:
+        (old.prefix / "rejected").symlink_to(isolated / "missing-rejection")
+    done = subprocess.run([sys.executable, str(launcher)], capture_output=True, text=True, timeout=30,
+                          env=runtime.environment())
+    assert done.returncode != 0 and "not verified" in done.stderr
+    assert not done.stdout.strip()
+
+
+@pytest.mark.slow
+def test_canonical_launcher_refuses_outside_copied_selection_without_running_it(isolated):
+    old = runtime_wheel.prepare(_wheel(isolated, A, "old"), A, timeout=60)
+    runtime_store.mark_created(old.prefix, "launcher-test", "ensure")
+    runtime_store.mark_verified(old)
+    runtime.publish(old)
+    launcher = isolated / "poolhouse-probe"
+    runtime.write_launcher(launcher, "poolhouse.runtime_probe", "", old, follow_selection=True)
+    selector = runtime.directory() / "selected.json"
+    row = json.loads(selector.read_text())
+    row["prefix"] = str(isolated / "copied-runtime")
+    selector.write_text(json.dumps(row))
+    done = subprocess.run([sys.executable, str(launcher)], capture_output=True, text=True, timeout=30,
+                          env=runtime.environment())
+    assert done.returncode != 0 and "not verified" in done.stderr
+    assert not done.stdout.strip()
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("metadata", ["selector", "created", "verified"])
+def test_canonical_launcher_refuses_fifo_metadata_without_waiting(isolated, metadata):
+    old = runtime_wheel.prepare(_wheel(isolated, A, "old"), A, timeout=60)
+    runtime_store.mark_created(old.prefix, "launcher-test", "ensure")
+    runtime_store.mark_verified(old)
+    runtime.publish(old)
+    launcher = isolated / "poolhouse-probe"
+    runtime.write_launcher(launcher, "poolhouse.runtime_probe", "", old, follow_selection=True)
+    target = (runtime.directory() / "selected.json" if metadata == "selector" else
+              old.prefix / (runtime_store.CREATED if metadata == "created" else runtime_store.MARK))
+    target.unlink()
+    os.mkfifo(target, mode=0o600)
+    done = subprocess.run([sys.executable, str(launcher)], capture_output=True, text=True, timeout=5,
+                          env=runtime.environment())
+    assert done.returncode != 0
+    assert "unavailable" in done.stderr or "not verified" in done.stderr
+    assert not done.stdout.strip()

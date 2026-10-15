@@ -16,7 +16,9 @@ from pathlib import Path
 
 from poolhouse import (
     node_build,
+    person,
     runtime,
+    runtime_bridges,
     runtime_git,
     runtime_launchers,
     runtime_store,
@@ -101,13 +103,15 @@ def acting(plan: Plan) -> session.Session | None:
 
 
 @contextmanager
-def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> Iterator[None]:
+def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> Iterator[frozenset[Path]]:
     """Hold an `install` claim as ``who`` on each path of this device, waiting for a live other owner up to ``wait_s`` for each.
 
     With no session there is no claim; the deploy lock alone serialises builds.
     """
     if who is None:
-        yield
+        if person.marked():
+            raise DeployError("runtime deployment needs an authenticated workspace agent for its install claims")
+        yield frozenset()
         return
     taken: list[Path] = []
     try:
@@ -122,7 +126,7 @@ def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> 
                         raise DeployError(f"{path} is claimed by {str(held).rpartition(' is held by ')[2]}") from held
                     time.sleep(CLAIM_POLL_S)
             taken.append(path)
-        yield
+        yield frozenset(taken)
     finally:
         for path in taken:
             with suppress(NodeError, OSError):
@@ -164,7 +168,7 @@ def smoke(chosen: runtime.Runtime, source: Path, stage: Path) -> None:
     home, bin_dir = stage / "smoke-home", stage / "smoke-bin"
     home.mkdir(parents=True, exist_ok=True)
     bin_dir.mkdir(parents=True, exist_ok=True)
-    runtime_launchers.install(bin_dir, chosen)
+    runtime_launchers.install(bin_dir, chosen, follow_selection=False)
     env = _clean_environment(home, bin_dir)
     done = subprocess.run([str(bin_dir / "poolhouse-workspace"), "--help"], capture_output=True, text=True,
                           timeout=SMOKE_TIMEOUT, env=env, cwd=home)
@@ -191,21 +195,44 @@ def _record(plan: Plan) -> None:
     _note({"checkout": str(plan.checkout), "launchers": str(plan.launchers) if plan.launchers else None})
 
 
-def switch(chosen: runtime.Runtime, plan: Plan) -> None:
-    """Rewrite every launcher atomically, publish the selection, then record the layout."""
+def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset()) -> None:
+    """Prepare owned commands and atomically publish the selected runtime."""
     with only_one(runtime_git.boundary(plan.checkout), wait=False, note="runtime cutover"):
         admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged if chosen.commit == plan.commit else False)
         floor = max(plan.floor, floor_of(plan.checkout, resolve_commit(plan.checkout)))
         if runtime_store.epoch_of(chosen.prefix) < floor:
             raise DeployError(f"runtime epoch is below the source floor {floor}")
-        if plan.launchers is not None:
-            runtime_launchers.install(plan.launchers, chosen)
-        runtime.publish(chosen)
-        _record(plan)
+        expected = runtime_bridges.planned(plan.checkout, chosen.commit, plan.launchers)
+        if expected:
+            runtime.verify(chosen)
+            if runtime_launchers.entrypoints(chosen) != runtime_bridges.declared(plan.checkout, chosen.commit):
+                raise DeployError("runtime command metadata does not match the reviewed source")
+        original = _snapshot(plan.launchers)
+        bridges = runtime_bridges.snapshot(expected, claimed)
+        published = False
+        try:
+            if plan.launchers is not None:
+                if plan.launchers == runtime_launchers.directory():
+                    runtime.plain(plan.launchers)
+                    plan.launchers.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    runtime._owned(plan.launchers)
+                runtime_launchers.install(plan.launchers, chosen, follow_selection=plan.launchers == runtime_launchers.directory())
+            runtime_bridges.install(expected, bridges)
+            runtime.publish(chosen)
+            published = True
+            _record(plan)
+        finally:
+            if not published:
+                try:
+                    _restore(plan.launchers, original)
+                finally:
+                    runtime_bridges.restore(bridges, expected)
 
 
-def _switch_paths(plan: Plan) -> list[Path]:
-    return [*([plan.launchers] if plan.launchers is not None else []), runtime.directory() / "selected.json"]
+def _switch_paths(plan: Plan, commit: str = "") -> list[Path]:
+    bridges = runtime_bridges.planned(plan.checkout, commit or plan.commit, plan.launchers)
+    return [*([plan.launchers] if plan.launchers is not None else []), runtime.directory() / "selected.json",
+            *runtime_bridges.changes(bridges)]
 
 
 def _snapshot(directory: Path | None) -> dict[Path, tuple[bytes, int]]:
@@ -234,9 +261,9 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
     """Build, smoke and select the plan's commit under install claims; a failure before the selection keeps the previous runtime."""
     who = who or acting(plan)
     prefix = runtime.directory() / plan.commit / uuid.uuid4().hex
-    with owning([prefix, *_switch_paths(plan)], wait_s=plan.wait_s, who=who), \
+    with owning([prefix, *_switch_paths(plan)], wait_s=plan.wait_s, who=who) as claimed, \
             tempfile.TemporaryDirectory(prefix="poolhouse-runtime-") as temporary:
-        stage, original = Path(temporary).resolve(), _snapshot(plan.launchers)
+        stage = Path(temporary).resolve()
         built, published, deferred = builder(plan, stage, prefix), False, False
         try:
             runtime_store.mark_created(built.prefix, who.name if who else plan.agent or os.environ.get(session.AGENT_ENV, ""), "ensure")
@@ -248,14 +275,13 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
                 raise DeployError(f"built epoch {epoch} is below the floor {plan.floor}")
             runtime_store.mark_verified(built, epoch, node_build.mark(built.prefix))
             try:
-                switch(built, plan)
+                switch(built, plan, claimed=claimed)
             except Busy:
                 deferred = True
                 raise
             published = True
         finally:
             if not published and not deferred:
-                _restore(plan.launchers, original)
                 runtime_store.discard(built.prefix)
         return built
 
@@ -340,8 +366,8 @@ def _recovered(plan: Plan, who: session.Session | None) -> tuple[runtime.Runtime
     if chosen is None:
         return None, []
     try:
-        with owning(_switch_paths(plan), wait_s=plan.wait_s, who=who):
-            switch(chosen, plan)
+        with owning(_switch_paths(plan, chosen.commit), wait_s=plan.wait_s, who=who) as claimed:
+            switch(chosen, plan, claimed=claimed)
     except RECOVERABLE as exc:
         return chosen, [f"could not select {chosen.commit[:7]}: {exc}"]
     return chosen, [f"selected {chosen.commit[:7]} in place of a broken selection"]
@@ -394,8 +420,8 @@ def rollback(plan: Plan, to: str = "") -> Outcome:
                 return Outcome("failed", detail="no earlier verified runtime to select")
             try:
                 runtime.verify(target)
-                with owning(_switch_paths(plan), wait_s=plan.wait_s, who=who):
-                    switch(target, plan)
+                with owning(_switch_paths(plan, target.commit), wait_s=plan.wait_s, who=who) as claimed:
+                    switch(target, plan, claimed=claimed)
             except RECOVERABLE as exc:
                 return Outcome("failed", target.commit, str(exc)[-500:])
             if now.get("commit"):
