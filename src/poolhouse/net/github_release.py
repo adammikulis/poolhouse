@@ -6,8 +6,12 @@ import base64
 import contextlib
 import http.client
 import json
+import os
 import re
+import selectors
 import subprocess
+import sys
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -99,37 +103,57 @@ def push(plan: GitPush, directory: Path, env: dict[str, str]) -> None:
     for index, (key, value) in enumerate(options.items()):
         child[f"GIT_CONFIG_KEY_{index}"] = key
         child[f"GIT_CONFIG_VALUE_{index}"] = value
+    if any(not hasattr(os, name) for name in ("waitid", "WNOWAIT", "P_PID", "WEXITED", "WNOHANG")):
+        raise Failed("this runtime cannot safely supervise the Git transport")
     process = None
     try:
         process = platform.start_process(["git", "push", "--no-follow-tags", f"https://github.com/{plan.repo}.git",
                                           f"{plan.commit}:refs/heads/{plan.branch}"], cwd=directory,
                                          env=child, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        process.communicate(timeout=180)
-        if process.returncode:
+        if _exchange(process):
             raise Failed("the repository App development push failed")
     except (OSError, subprocess.TimeoutExpired):
         raise Failed("the repository App development transport failed") from None
     finally:
+        pending = sys.exception()
         if process is not None:
             try:
                 _reap(process)
             except (OSError, subprocess.TimeoutExpired):
-                raise Failed("the owned Git transport cleanup is unconfirmed") from None
+                if pending is None:
+                    raise Failed("the owned Git transport cleanup is unconfirmed") from None
+                pending.add_note("the owned Git transport cleanup is unconfirmed")
+
+
+def _exchange(process, timeout: float = 180) -> int:
+    deadline, count = time.monotonic() + timeout, 0
+    with selectors.DefaultSelector() as ready:
+        for stream in (process.stdout, process.stderr):
+            ready.register(stream, selectors.EVENT_READ)
+        while True:
+            ended = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if ended is not None and not ready.get_map():
+                return ended.si_status if ended.si_code == os.CLD_EXITED else -ended.si_status
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired("fixed Git publication", timeout)
+            for event, _ in ready.select(min(0.1, max(0, deadline - time.monotonic()))):
+                body = os.read(event.fileobj.fileno(), 64 << 10)
+                count += len(body)
+                if count > 1 << 20:
+                    raise Failed("the Git transport output exceeded its bound")
+                if not body:
+                    ready.unregister(event.fileobj)
 
 
 def _reap(process) -> None:
     try:
-        if process.poll() is None:
-            with contextlib.suppress(ProcessLookupError):
-                platform.terminate_process_group(process)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                with contextlib.suppress(ProcessLookupError):
-                    platform.terminate_process_group(process, force=True)
-                process.wait(timeout=5)
-        else:
-            process.wait(timeout=5)
+        os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        with contextlib.suppress(ProcessLookupError):
+            platform.terminate_process_group(process)
+        time.sleep(0.1)
+        with contextlib.suppress(ProcessLookupError):
+            platform.terminate_process_group(process, force=True)
+        process.wait(timeout=5)
     finally:
         for stream in (process.stdout, process.stderr):
             if stream is not None:

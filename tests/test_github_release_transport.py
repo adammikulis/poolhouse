@@ -7,6 +7,7 @@ import subprocess
 import pytest
 
 from poolhouse import httpguard
+from poolhouse.http import Server
 from poolhouse.net import github_release as net
 from poolhouse.workspace import github_release as holder
 
@@ -64,7 +65,10 @@ def test_child_credentials_are_absent_from_arguments_parent_and_errors(tmp_path,
         captured.append((argv, kwargs))
         return Process(1)
 
+    monkeypatch.setattr(net.os, 'waitid', lambda *a: None)
     monkeypatch.setattr(net.platform, 'start_process', start)
+    monkeypatch.setattr(net, '_exchange', lambda process: process.returncode)
+    monkeypatch.setattr(net.platform, 'terminate_process_group', lambda *a, **k: None)
     plan = net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret')
     assert 'fixture-secret' not in repr(plan)
     with pytest.raises(net.Failed, match='development push failed') as error:
@@ -120,6 +124,7 @@ def test_network_errors_never_echo_bearer(monkeypatch):
 class Process:
     def __init__(self, code=0):
         self.returncode = code
+        self.pid = 12345
         self.stdout = io.BytesIO()
         self.stderr = io.BytesIO()
         self.waits = []
@@ -140,25 +145,27 @@ class Process:
 @pytest.mark.parametrize('failure', [subprocess.TimeoutExpired('git', 180), KeyboardInterrupt()])
 def test_timeout_and_cancel_reap_exact_child_and_close_pipes(tmp_path, monkeypatch, failure):
     process = Process(None)
+    monkeypatch.setattr(net.os, 'waitid', lambda *a: None)
     calls = []
 
     def communicate(timeout):
         raise failure
 
-    process.communicate = communicate
+    monkeypatch.setattr(net, '_exchange', lambda child: communicate(180))
     monkeypatch.setattr(net.platform, 'start_process', lambda *a, **k: process)
     monkeypatch.setattr(net.platform, 'terminate_process_group', lambda child, **k: calls.append(child))
     with pytest.raises((net.Failed, KeyboardInterrupt)):
         net.push(net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret'), tmp_path,
                  holder.environment(tmp_path))
-    assert calls == [process] and process.waits == [5]
+    assert calls == [process, process] and process.waits == [5]
     assert process.stdout.closed and process.stderr.closed
 
 
 def test_vanished_child_group_still_waits_and_closes(monkeypatch):
     process = Process(None)
+    monkeypatch.setattr(net.os, 'waitid', lambda *a: None)
 
-    def vanished(child):
+    def vanished(child, **kwargs):
         assert child is process
         raise ProcessLookupError
 
@@ -180,16 +187,173 @@ def test_start_failure_has_constant_error(tmp_path, monkeypatch):
 
 def test_failed_reap_is_explicit_and_closes_pipes(tmp_path, monkeypatch):
     process = Process(None)
+    monkeypatch.setattr(net.os, 'waitid', lambda *a: None)
     calls = []
 
     def wait(timeout):
         raise subprocess.TimeoutExpired('git', timeout)
 
     process.wait = wait
-    process.communicate = lambda timeout: (_ for _ in ()).throw(KeyboardInterrupt())
+    monkeypatch.setattr(net, '_exchange', lambda child: (_ for _ in ()).throw(KeyboardInterrupt()))
     monkeypatch.setattr(net.platform, 'start_process', lambda *a, **k: process)
     monkeypatch.setattr(net.platform, 'terminate_process_group', lambda child, **k: calls.append((child, k)))
-    with pytest.raises(net.Failed, match='cleanup is unconfirmed'):
+    with pytest.raises(KeyboardInterrupt) as error:
         net.push(net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret'), tmp_path, {})
     assert calls == [(process, {}), (process, {'force': True})]
+    assert 'the owned Git transport cleanup is unconfirmed' in error.value.__notes__
     assert process.stdout.closed and process.stderr.closed
+
+
+def _git_fixture(tmp_path):
+    source = tmp_path / 'source'
+    source.mkdir()
+    clean = holder.environment(source)
+
+    def git(*args, cwd=source):
+        return subprocess.run(['git', *args], cwd=cwd, env=clean, capture_output=True, check=True).stdout.strip()
+
+    git('init', '--quiet', '--initial-branch=0.3dev')
+    (source / 'value.txt').write_text('fixed artifact\n')
+    git('add', 'value.txt')
+    git('-c', 'user.name=Codex', '-c', 'user.email=codex@agents.invalid', 'commit', '-qm', 'chore: fixture')
+    commit = git('rev-parse', 'HEAD').decode()
+    remote_root = tmp_path / 'remote'
+    remote_root.mkdir()
+    git('init', '--quiet', '--bare', str(remote_root / 'repository.git'))
+    git('--git-dir=' + str(remote_root / 'repository.git'), 'config', 'http.receivepack', 'true')
+    return source, clean, commit, remote_root, git
+
+
+def test_actual_git_smart_https_uses_child_token_and_verified_ca(tmp_path, monkeypatch):
+    import http.server
+    import ssl
+    import threading
+    import urllib.parse
+
+    from tests.test_http_trust import _self_signed
+
+    source, clean, commit, remote_root, git = _git_fixture(tmp_path)
+    expected = 'Basic ' + base64.b64encode(b'x-access-token:fixture-secret').decode()
+    seen = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def answer(self):
+            address = urllib.parse.urlsplit(self.path)
+            seen.append(self.headers.get('Authorization'))
+            if self.headers.get('Authorization') != expected or not address.path.startswith('/repository.git/'):
+                self.send_error(403)
+                return
+            size = int(self.headers.get('Content-Length', '0'))
+            assert 0 <= size <= 1 << 20
+            env = holder.environment(remote_root)
+            env.update(GIT_PROJECT_ROOT=str(remote_root), GIT_HTTP_EXPORT_ALL='1',
+                       PATH_INFO=address.path, QUERY_STRING=address.query, REQUEST_METHOD=self.command,
+                       CONTENT_TYPE=self.headers.get('Content-Type', ''), CONTENT_LENGTH=str(size),
+                       REMOTE_USER='fixture')
+            response = subprocess.run(['git', 'http-backend'], env=env, input=self.rfile.read(size),
+                                      capture_output=True, check=True).stdout
+            headers, body = response.split(b'\r\n\r\n', 1)
+            self.send_response(200)
+            for line in headers.decode().splitlines():
+                name, value = line.split(':', 1)
+                if name.lower() != 'status':
+                    self.send_header(name, value.strip())
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        do_GET = answer
+        do_POST = answer
+
+    cert, key = _self_signed(tmp_path)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    server = Server(('127.0.0.1', 0), Handler)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    original = net.platform.start_process
+
+    def fixed_fixture_transport(argv, **kwargs):
+        assert argv[-2] == 'https://github.com/demo/project.git'
+        assert argv[-1] == commit + ':refs/heads/0.3dev'
+        env = dict(kwargs['env'])
+        count = int(env['GIT_CONFIG_COUNT'])
+        for index in range(count):
+            if env[f'GIT_CONFIG_KEY_{index}'] == 'http.https://github.com/.extraHeader':
+                env[f'GIT_CONFIG_KEY_{index}'] = f'http.https://127.0.0.1:{server.server_port}/.extraHeader'
+        env['GIT_CONFIG_KEY_' + str(count)] = 'http.sslCAInfo'
+        env['GIT_CONFIG_VALUE_' + str(count)] = cert
+        env['GIT_CONFIG_COUNT'] = str(count + 1)
+        kwargs['env'] = env
+        address = f'https://127.0.0.1:{server.server_port}/repository.git'
+        return original([*argv[:-2], address, argv[-1]], **kwargs)
+
+    monkeypatch.setattr(net.platform, 'start_process', fixed_fixture_transport)
+    try:
+        net.push(net.GitPush('demo/project', '0.3dev', commit, 'fixture-secret'), source, clean)
+        assert seen and all(value == expected for value in seen)
+        actual = git('--git-dir=' + str(remote_root / 'repository.git'), 'rev-parse', 'refs/heads/0.3dev')
+        assert actual.decode() == commit
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+    assert not thread.is_alive()
+
+
+def test_exited_leader_retains_group_custody_until_lingering_helper_is_killed(tmp_path, monkeypatch):
+    import os
+    import sys
+
+    import psutil
+
+    record = tmp_path / 'helper.pid'
+    program = ('import subprocess,sys; from pathlib import Path; '
+               'child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"]); '
+               'Path(sys.argv[1]).write_text(str(child.pid))')
+    process = net.platform.start_process([sys.executable, '-c', program, str(record)],
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    original = net.platform.terminate_process_group
+    signals = []
+
+    def terminate(child, **kwargs):
+        assert child is process
+        ended = os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        assert ended is not None and ended.si_status == 0
+        signals.append(kwargs)
+        return original(child, **kwargs)
+
+    monkeypatch.setattr(net.platform, 'terminate_process_group', terminate)
+    cleaned = False
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            net._exchange(process, timeout=0.5)
+        helper = psutil.Process(int(record.read_text()))
+        assert helper.is_running()
+        net._reap(process)
+        cleaned = True
+        assert process.returncode == 0
+        assert signals == [{}, {'force': True}]
+        assert not helper.is_running() or helper.status() == psutil.STATUS_ZOMBIE
+        with pytest.raises(ChildProcessError):
+            os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    finally:
+        if not cleaned:
+            net._reap(process)
+
+
+def test_output_cap_terminates_owned_child_without_reaping_early():
+    import sys
+
+    process = net.platform.start_process([sys.executable, '-c', 'import os,time; os.write(1,b"x"*(2<<20)); time.sleep(60)'],
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        with pytest.raises(net.Failed, match='output exceeded'):
+            net._exchange(process, timeout=5)
+    finally:
+        net._reap(process)
+    assert process.returncode is not None

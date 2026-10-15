@@ -491,9 +491,16 @@ def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = Non
         return args.run(args)
     except (Failed, person.HumanRequired, credentials.CredentialError) as exc:
         print(f"agent-identity: {exc}", file=sys.stderr)
+        if "the owned Git transport cleanup is unconfirmed" in getattr(exc, "__notes__", []):
+            print("agent-identity: the owned Git transport cleanup is unconfirmed", file=sys.stderr)
         return 1
-    except KeyboardInterrupt:
-        print("agent-identity: stopped; run scripts/agent-identity setup again to continue", file=sys.stderr)
+    except KeyboardInterrupt as exc:
+        if args.command in {"push-development", "publish-release"}:
+            print("agent-identity: publication stopped", file=sys.stderr)
+        else:
+            print("agent-identity: stopped; run scripts/agent-identity setup again to continue", file=sys.stderr)
+        if "the owned Git transport cleanup is unconfirmed" in getattr(exc, "__notes__", []):
+            print("agent-identity: the owned Git transport cleanup is unconfirmed", file=sys.stderr)
         return 130
 
 
