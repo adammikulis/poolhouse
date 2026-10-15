@@ -32,6 +32,8 @@ WHY: dict[str, str] = {
                             "fleet pinned.",
     "server.unmanaged": "A model server is running here that poolhouse did not start.",
     "server.exe_changed": "The program behind a running model server changed after it started.",
+    "model.hub_digest_changed": "The model host lists different contents for a file at the same version "
+                                "Poolhouse downloaded before.",
     "integrity.manifest_mismatch": "A model file does not match the manifest it was published with.",
     "integrity.content_changed": "A pinned file's contents changed since it was pinned.",
     "integrity.missing": "A pinned file is gone.",
