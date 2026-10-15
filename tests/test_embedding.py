@@ -14,6 +14,8 @@ import poolhouse.serve
 from poolhouse.testing.fakes import fake_llama_binary
 from tests.model_approval import approved
 
+pytest_plugins = ["serve_node"]
+
 SRC = Path(__file__).resolve().parents[1] / "src"
 DOC = Path(__file__).resolve().parents[1] / "docs" / "embedding.md"
 
@@ -51,7 +53,7 @@ def test_importing_them_loads_only_the_standard_library_and_the_core_dependencie
     assert done.stdout.strip() == "[]"
 
 
-def test_the_documented_example_runs_against_a_served_model(tmp_path, monkeypatch):
+def test_the_documented_example_runs_against_a_served_model(tmp_path, monkeypatch, serve_leases):
     block = re.search(r"```python\n(.*?)```", DOC.read_text(encoding="utf-8"), re.S)
     assert block, "docs/embedding.md has no python example"
     model = tmp_path / "model.gguf"
