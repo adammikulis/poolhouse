@@ -747,3 +747,27 @@ def test_delegated_setup_refuses_expired_preparation_and_locked_app(ai, installe
     monkeypatch.setattr(credentials, '_wrapped', lambda: {ai.ITEM: 'wrapped-ciphertext'})
     assert ai.command(['setup'], (False, False)) == 1
     assert ai.gh.log == [] and ai.browser.opened == []
+
+
+@pytest.mark.parametrize('bearer', ['', ' fixture-token '])
+@pytest.mark.parametrize('status', [200, 401])
+def test_api_authorization_headers_do_not_send_empty_bearers(ai, monkeypatch, bearer, status):
+    calls = []
+
+    def fetch(url, **options):
+        headers = options['headers']
+        assert headers.get('Authorization') != 'Bearer '
+        if bearer == '':
+            assert 'Authorization' not in headers
+        else:
+            assert headers['Authorization'] == f'Bearer {bearer}'
+        calls.append(url)
+        return httpguard.Fetched(url, status, {}, b'{"id":7}', ())
+
+    monkeypatch.setattr(httpguard, 'fetch', fetch)
+    if status == 401:
+        with pytest.raises(ai.Failed, match='401'):
+            ai.api("GET", "/users/fixture", hint="setup", bearer=bearer)
+    else:
+        assert ai.api("GET", "/users/fixture", hint="setup", bearer=bearer) == {'id': 7}
+    assert len(calls) == 1

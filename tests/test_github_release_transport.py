@@ -438,3 +438,27 @@ def test_darwin_permission_failure_survives_final_positive_proof(monkeypatch):
         net._darwin_reap(process)
     assert signals == [(process, {}), (process, {'force': True})]
     assert process.waits == [5]
+
+
+@pytest.mark.parametrize('bearer', ['', ' fixture-token '])
+@pytest.mark.parametrize('status', [200, 401])
+def test_api_authorization_headers_do_not_send_empty_bearers(monkeypatch, bearer, status):
+    calls = []
+
+    def fetch(url, **options):
+        headers = options['headers']
+        assert headers.get('Authorization') != 'Bearer '
+        if bearer == '':
+            assert 'Authorization' not in headers
+        else:
+            assert headers['Authorization'] == f'Bearer {bearer}'
+        calls.append(url)
+        return httpguard.Fetched(url, status, {}, b'{"id":7}', ())
+
+    monkeypatch.setattr(httpguard, 'fetch', fetch)
+    if status == 401:
+        with pytest.raises(net.Failed, match='401'):
+            net.request("GET", "/repos/demo/project/releases", bearer=bearer)
+    else:
+        assert net.request("GET", "/repos/demo/project/releases", bearer=bearer) == {'id': 7}
+    assert len(calls) == 1

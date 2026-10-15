@@ -141,9 +141,11 @@ def api(method: str, path: str, *, hint: str, bearer: str = "", payload: dict | 
     post = re.fullmatch(r"(?:/app-manifests/[A-Za-z0-9_-]{8,128}/conversions|/app/installations/[1-9][0-9]*/access_tokens)", path)
     if '..' in path or not ((method == "GET" and get) or (method == "POST" and post)):
         raise Failed("unsupported GitHub App setup operation")
+    headers = {**HEADERS, "Content-Type": "application/json"}
+    if bearer != "":
+        headers["Authorization"] = f"Bearer {bearer}"
     try:
-        return remote._fetch(API + path, method, json.dumps(payload).encode() if payload is not None else None,
-                             {**HEADERS, "Authorization": f"Bearer {bearer}", "Content-Type": "application/json"})
+        return remote._fetch(API + path, method, json.dumps(payload).encode() if payload is not None else None, headers)
     except remote.Gone:
         raise Gone(f"GitHub answered 404; {hint}") from None
     except Failed as exc:
