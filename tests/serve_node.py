@@ -22,7 +22,7 @@ pytest_plugins = ["node_kit"]
 @pytest.fixture(scope="session")
 def lease_node(node_binary):
     """The state directory of a node that lives as long as the session."""
-    root = Path(tempfile.mkdtemp(prefix="ml"))
+    root = Path(tempfile.mkdtemp(prefix="ml")).resolve()
     state = root / "node"
     state.mkdir(mode=0o700)
     node_supervise.point(state, node_binary, node_binary_module.sha256(node_binary))
@@ -37,7 +37,7 @@ def serve_leases(monkeypatch, lease_node):
     """The lease table of the session's node, with no lease held and no memory budget, under a state root of this test's own.
     A model file the test places is served as a person approved it (`tests/test_publisher_trust.py` has the ask)."""
     monkeypatch.setattr("poolhouse.serve.guarded._first_use", lambda *_found: "approved")
-    home = Path(tempfile.mkdtemp(prefix="ml"))
+    home = Path(tempfile.mkdtemp(prefix="ml")).resolve()
     (home / "node").symlink_to(lease_node)
     monkeypatch.setenv("POOLHOUSE_HOME", str(home))
     table = leasetable.default()
