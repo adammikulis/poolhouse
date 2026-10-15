@@ -158,6 +158,12 @@ def waited(what: str, ready, seconds: float = 15.0):
     raise AssertionError(f"timed out waiting for {what}")
 
 
+def selected_node(state: Path, prefix: Path):
+    """Observe the selected binary answering, rather than an intermediate swap report."""
+    found = node_launch.status(state)
+    return found if found.get("healthy") and found.get("sha256") == node_binary.record_of(prefix)["sha256"] else None
+
+
 def test_eight_clients_start_exactly_one_node(home, built):
     install_runtime(built, "a")
     state = home / "node"
@@ -216,10 +222,11 @@ def test_swap_to_a_new_binary_keeps_the_board_and_the_socket(home, built):
     with newer.open("ab") as stream:
         stream.write(b"\0" * 16)  # trailing bytes: a different checksum, the same program
     newer.chmod(0o700)
-    install_runtime(newer, "b")
+    second = install_runtime(newer, "b")
     done = node_launch.swap(state)
-    assert done["action"] == "swapped", done
-    now = node_launch.status(state)
+    assert done["action"] in {"swapped", "current"} or done == {
+        "action": "deferred", "detail": "node replacement waits for landing"}, done
+    now = waited("the selected binary to answer", lambda: selected_node(state, second))
     assert now["pid"] != old["pid"] and now["sha256"] != old["sha256"] and now["socket"] == old["socket"]
     assert "row before" in posts(state, board(state)[1])
     assert first.is_dir()
@@ -275,8 +282,11 @@ def test_runtime_status_line_and_ensure_move_the_node(home, built):
     assert "healthy" in line and "supervised" in line and str(state / "node.sock") in line and "pid" in line
     second = install_runtime(variant(home, built, "node-v3", b"\1"), "d")
     moved = runtime_cli._with_node(runtime_deploy.Outcome("switched", "d" * 40, "selected"))
-    assert moved.action == "switched" and "node swapped" in moved.detail
-    assert node_launch.status(state)["sha256"] == node_binary.record_of(second)["sha256"] != node_binary.record_of(first)["sha256"]
+    assert moved.action == "switched"
+    assert moved.detail.startswith(("selected; node swapped:", "selected; node current:")) or moved.detail == (
+        "selected; node deferred: node replacement waits for landing"), moved
+    now = waited("the selected binary to answer", lambda: selected_node(state, second))
+    assert now["sha256"] != node_binary.record_of(first)["sha256"]
     broken = home / "broken"
     broken.write_text("#!/bin/sh\nexit 3\n", encoding="utf-8")
     broken.chmod(0o700)
