@@ -113,20 +113,25 @@ def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> 
             raise DeployError("runtime deployment needs an authenticated workspace agent for its install claims")
         yield frozenset()
         return
+    wanted = list(dict.fromkeys(paths))
     taken: list[Path] = []
     try:
-        for path in paths:
-            deadline = time.monotonic() + wait_s
-            while True:
-                try:
-                    who.claim("install", str(path), ttl_s=int(CLAIM_TTL_S), pid=os.getpid())
-                    break
-                except Conflict as held:
-                    if time.monotonic() >= deadline:
-                        raise DeployError(f"{path} is claimed by {str(held).rpartition(' is held by ')[2]}") from held
-                    time.sleep(CLAIM_POLL_S)
-            taken.append(path)
-        yield frozenset(taken)
+        deadline = time.monotonic() + wait_s
+        while wanted:
+            try:
+                rows = who.reserve([("install", str(path)) for path in wanted],
+                                   ttl_s=int(CLAIM_TTL_S), pid=os.getpid())
+                taken = [Path(row.key) for row in rows if row.changed and row.kind == "install"
+                         and row.owner == who.name and row.key in {str(path) for path in wanted}]
+                if (len(rows) != len(wanted) or {row.key for row in rows} != {str(path) for path in wanted}
+                        or any(row.kind != "install" or row.owner != who.name for row in rows)):
+                    raise DeployError("runtime deployment received an invalid install reservation")
+                break
+            except Conflict as held:
+                if time.monotonic() >= deadline:
+                    raise DeployError(f"runtime install reservation is claimed by {str(held).rpartition(' is held by ')[2]}") from held
+                time.sleep(CLAIM_POLL_S)
+        yield frozenset(wanted)
     finally:
         for path in taken:
             with suppress(NodeError, OSError):
