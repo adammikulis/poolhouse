@@ -29,6 +29,7 @@ from poolhouse.decide.eval import FLOOR, Report, evaluate, score
 from poolhouse.decide.fetch import locate
 from poolhouse.decide.guards import guard_cases
 from poolhouse.decide.pins import STRANDS_V19
+from poolhouse.decide.systemone import MAX_BYTES, SystemOne, loads
 from poolhouse.decide.types import BackendUnavailable, DecideError, Decision, Option, options_of
 from poolhouse.files import write_json
 from poolhouse.log import say, warn
@@ -412,6 +413,28 @@ def check_cmd(args: Namespace) -> int:
 def fetch_cmd(args: Namespace) -> int:
     """Download the pinned pointer checkpoint."""
     return _guarded(_fetch, args)
+
+
+@COMMANDS.command("batch", help="ask an externally owned local System One server in one call",
+                  options=[flag("--url", required=True), flag("--model", required=True),
+                           flag("--request", default="-", help="JSON file, or - for stdin"),
+                           option("timeout", default=10.0)])
+def batch_cmd(args: Namespace) -> int:
+    """Read one shared state and typed question map, then print validated answers."""
+    def run(_args: Namespace) -> int:
+        if args.request == "-":
+            raw = sys.stdin.read(MAX_BYTES + 1)
+        else:
+            with Path(args.request).open("rb") as stream:
+                raw = stream.read(MAX_BYTES + 1)
+        body = loads(raw)
+        if set(body) != {"state", "questions"}:
+            raise DecideError("batch request needs only state and questions")
+        got = SystemOne(args.url, args.model, args.timeout).ask(body["state"], body["questions"])
+        say(json.dumps(got, allow_nan=False))
+        return 0
+
+    return _guarded(run, args)
 
 
 def _guarded(run: Any, args: Namespace) -> int:

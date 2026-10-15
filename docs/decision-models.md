@@ -12,7 +12,7 @@ needs a sentence or a plan.
                         abstain_below=0.7)
     got.choice, got.confidence, got.scores, got.abstained, got.latency_ms
 
-`poolhouse-decide ask|train|eval|calibrate|bench|jevbench|list|make-cases|export-cases|check-cases|fetch`
+`poolhouse-decide batch|ask|train|eval|calibrate|bench|jevbench|list|make-cases|export-cases|check-cases|fetch`
 is the command; `POST /decide` on the daemon (same bearer token as every route, 256 KB body
 limit) and the `decide` MCP tool call the same router.
 
@@ -55,6 +55,40 @@ The same from a shell, with `--json` printing `{name: answer}`:
 - Each question is a separate model call: questions about one state share no computation yet, so
   ten questions cost ten calls.
 - This returns categories, probabilities and an expected value. It does not write text.
+
+
+## Shared-state System One server batches
+
+`SystemOne` sends one shared state and a named map of `choice`, `noul` or `score`
+questions to an explicitly supplied, externally owned literal-loopback server:
+
+    from poolhouse.decide.systemone import SystemOne
+    client = SystemOne("http://127.0.0.1:8099", "exact-served-model-id")
+    result = client.ask({"items": [{"id": "item-1"}]}, {
+        "item-1": {"type": "choice", "instructions": "Which action for item-1?",
+                   "criteria": {"keep": "Keep it", "drop": "Drop it"}}})
+    result["answers"]["item-1"]["choice"]
+
+The CLI accepts the same `{state, questions}` object from a file or standard input:
+
+    poolhouse-decide batch --url http://127.0.0.1:8099 --model exact-served-model-id \
+        --request request.json --timeout 10
+
+One HTTP call carries every question. The client validates the entire returned batch,
+including model identity, question IDs, answer types, distributions, choices, normalized
+choice confidence and expected score. Score confidence is checked for finite bounds; its
+model-specific ordinal calibration is not independently reconstructed. Unsupported response
+fields are refused. It never
+retries questions individually or selects a replacement backend. Invalid input, transport
+failure or malformed answers produce one error and exit status 2. Requests and responses
+and HTTP error bodies are limited to 1 MiB; redirects, proxies, DNS hosts and remote hosts are refused. Question
+instructions must identify their target explicitly; question-map keys are correlation IDs.
+
+The caller owns and coordinates the external server's compute. This client does not start,
+discover or register a server, acquire a managed model lease, or read a person's credentials.
+Returned model identity is a comparison with a supplied string, not authentication of the
+local service. Model answers remain untrusted advice and grant no permission. The timeout bounds individual socket waits, not total wall time against a server that drips data. Server-side
+parallelism depends on that server's implementation; one HTTP batch alone does not prove it.
 
 ## Backends
 
