@@ -379,8 +379,13 @@ class Session:
         if not outcome.passed:
             self.events.finished(file, look.key, "fail", self.store_entry(file, ran, "fail"))
             return
+        why = self.refusal(ran.seen, count)
+        if why:
+            outcome.detail = f"{outcome.detail} (result not stored: {why})".strip()
+            self.events.finished(file, look.key, "pass-unstored", "")
+            return
         manifest = keys.build_manifest(self.root, file, ran.seen or {}, self.closures, tuple(self.command))
-        why = self.refusal(ran.seen, count) or (
+        why = (
             f"its closure uses {manifest['unobserved']}, which the runner cannot observe" if manifest["unobserved"]
             else "")
         if why:
