@@ -9,7 +9,6 @@ one-time manifest codes and installation tokens, and has a knob for each way the
 from __future__ import annotations
 
 import html
-import http.client
 import itertools
 import json
 import re
@@ -24,6 +23,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from poolhouse.http import Server
+from poolhouse.net import loopback
 from poolhouse.testing.fakes import http_handler
 
 OWNER, NAME = "ownerlogin", "poolhouse-test"
@@ -176,15 +176,9 @@ class FakeGitHub:
 def loopback_get(url: str, host: str | None = None, method: str = "GET") -> tuple[int, bytes]:
     """One request to a loopback address, with the Host header a test chooses."""
     parts = urllib.parse.urlsplit(url)
-    link = http.client.HTTPConnection(parts.hostname, parts.port, timeout=10)
-    try:
-        link.putrequest(method, f"{parts.path}?{parts.query}" if parts.query else parts.path, skip_host=True)
-        link.putheader("Host", host or f"{parts.hostname}:{parts.port}")
-        link.endheaders()
-        answer = link.getresponse()
-        return answer.status, answer.read()
-    finally:
-        link.close()
+    answer = loopback.fetch(url, method=method, headers={"Host": host or parts.netloc})
+    return answer.status, answer.body
+
 
 
 class FakeBrowser:

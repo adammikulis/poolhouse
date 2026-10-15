@@ -29,11 +29,12 @@ tests = ["tests/test_local_coordination.py::test_relay_delivers_opaque_bytes_wit
 note = "The canonical platform launcher receives only fixed literal exec arguments and destination, without a shell; exact owned groups are reaped and pipes closed, and unconfirmed reaping retains resources. AST inventory follows the actual delegated physical call."
 
 [[group]]
-match = ["egress:coordination/verify.py:host_tls"]
+match = ["egress:net/loopback.py:fetch", "egress:net/loopback.py:fetch.exact"]
 status = "covered"
-count = 1
-tests = ["tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"]
-note = "Only the exact loopback metadata URL is accepted; fresh owned CA verification, explicit anonymous Authorization without credential lookup, hostile response/TLS refusal and pin restoration are checked."
+count = 2
+tests = ["tests/test_net_loopback.py", "tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"]
+note = "The shared bounded transport refuses nonliteral or nonloopback destinations before networking, never follows redirects or ambient proxies, and verifies fresh CA/server-name TLS. Explicit anonymous metadata refusal and custom Host behavior are tested. The nested exact-URL guard is conservatively discovered through its refusal constructor; it opens no second connection."
+
 
 [[group]]
 match = ["spawn:coordination/docker.py:Docker.call"]

@@ -1,7 +1,7 @@
 {
- "surfaces": 813,
+ "surfaces": 814,
  "by_status": {
-  "covered": 491,
+  "covered": 492,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 45,
+   "covered": 46,
    "partial": 46,
    "uncovered": 0,
    "n/a": 0,
@@ -1792,18 +1792,6 @@
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
   },
   {
-   "id": "egress:coordination/verify.py:host_tls",
-   "kind": "egress",
-   "source": "coordination/verify.py:host_tls",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"
-   ],
-   "note": "Only the exact loopback metadata URL is accepted; fresh owned CA verification, explicit anonymous Authorization without credential lookup, hostile response/TLS refusal and pin restoration are checked."
-  },
-  {
    "id": "egress:decide/logprob.py:LogprobDecider.probabilities",
    "kind": "egress",
    "source": "decide/logprob.py:LogprobDecider.probabilities",
@@ -2352,6 +2340,32 @@
     "tests/test_net_untrusted.py"
    ],
    "note": ""
+  },
+  {
+   "id": "egress:net/loopback.py:fetch",
+   "kind": "egress",
+   "source": "net/loopback.py:fetch",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_loopback.py",
+    "tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"
+   ],
+   "note": "The shared bounded transport refuses nonliteral or nonloopback destinations before networking, never follows redirects or ambient proxies, and verifies fresh CA/server-name TLS. Explicit anonymous metadata refusal and custom Host behavior are tested. The nested exact-URL guard is conservatively discovered through its refusal constructor; it opens no second connection."
+  },
+  {
+   "id": "egress:net/loopback.py:fetch.exact",
+   "kind": "egress",
+   "source": "net/loopback.py:fetch.exact",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_loopback.py",
+    "tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"
+   ],
+   "note": "The shared bounded transport refuses nonliteral or nonloopback destinations before networking, never follows redirects or ambient proxies, and verifies fresh CA/server-name TLS. Explicit anonymous metadata refusal and custom Host behavior are tested. The nested exact-URL guard is conservatively discovered through its refusal constructor; it opens no second connection."
   },
   {
    "id": "egress:net/packages.py:_admit",

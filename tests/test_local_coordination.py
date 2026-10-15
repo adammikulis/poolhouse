@@ -159,27 +159,20 @@ def test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin(monkeypatch, t
         pytest.fail("the anonymous metadata probe looked up a server credential")
     monkeypatch.setattr(http.serverkeys, "for_url", credential)
 
-    def request(url, *, options):
-        assert url == expected and options.timeout == 5 and options.token == ""
-        assert dict(options.headers) == {"Authorization": ""}
-        assert options.guard(url) == expected
-        with pytest.raises(Refused):
-            options.guard(url + "/other")
-        context = http._PINNED["127.0.0.1:16443"]
+    def request(url, *, context, timeout, headers):
+        from poolhouse import httpguard
+        assert url == expected and timeout == 5 and headers == {"Authorization": ""}
+        assert http._PINNED["127.0.0.1:16443"] is old
         assert context is not old and context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
         assert context.cert_store_stats()["x509"] == 1
-        wire = http.build_request(url, headers=dict(options.headers))
-        assert wire.get_header("Authorization") == ""
         if status == "tls":
-            raise ssl.SSLCertVerificationError("fixture invalid certificate")
-        if status is None:
-            return {}
-        raise http.ServerError("fixture refusal", status=status)
-    monkeypatch.setattr(http, "request_json", request)
+            raise httpguard.Refused("fixture invalid certificate")
+        return httpguard.Fetched(url, status or 200, {}, b"{}")
+    monkeypatch.setattr(verify.loopback, "fetch", request)
     if status in (401, 403):
         verify.host_tls(OwnedDocker(), "container-id", 16443)
     else:
-        with pytest.raises(ssl.SSLCertVerificationError if status == "tls" else Refused):
+        with pytest.raises(Refused):
             verify.host_tls(OwnedDocker(), "container-id", 16443)
     assert http._PINNED["127.0.0.1:16443"] is old
 

@@ -68,7 +68,8 @@ class Limits:
     ``deadline_s`` for the whole). ``allow_hosts`` names hosts, by name or address, that may
     be private because the caller means to reach them (a member on the LAN); a redirect to any
     other host is checked as usual. ``resolver`` answers for DNS. ``vet`` is called with every
-    URL before it is connected to, the first and each redirect target, and raises to refuse."""
+    URL before it is connected to, the first and each redirect target, and raises to refuse.
+    ``follow_redirects=False`` returns the first answer without visiting its Location."""
 
     max_bytes: int = MOST_BYTES
     max_redirects: int = MOST_REDIRECTS
@@ -78,6 +79,7 @@ class Limits:
     resolver: Resolver | None = None
     context: ssl.SSLContext | None = None
     vet: Callable[[str], None] | None = None
+    follow_redirects: bool = True
 
 
 DEFAULT = Limits()
@@ -269,7 +271,7 @@ def _open(url: str, method: str, data: bytes | None, sent: dict[str, str], trip:
     for _ in range(trip.limits.max_redirects + 1):
         response, conn, parts = _hop(url, method, data, sent, trip)
         location = response.getheader("Location")
-        if response.status not in REDIRECTS or not location:
+        if not trip.limits.follow_redirects or response.status not in REDIRECTS or not location:
             return response, conn, url, tuple(seen)
         conn.close()
         seen.append(url)

@@ -4,8 +4,9 @@ import json
 import ssl
 import time
 
-from poolhouse import http
+from poolhouse import httpguard
 from poolhouse.coordination.docker import Docker, Refused
+from poolhouse.net import loopback
 from poolhouse.redact.secrets import redact
 
 BOOTSTRAP = '''set -eu
@@ -165,25 +166,11 @@ def host_tls(docker: Docker, identifier: str, port: int) -> None:
                              '/state/k3s/server/tls/server-ca.crt']).stdout
     netloc = f'127.0.0.1:{port}'
     url = f'https://{netloc}/api/v1/namespaces/poolhouse-coordination/configmaps/status'
-    previous = http._PINNED.get(netloc)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.load_verify_locations(cadata=authority)
-    http.pin(netloc, context)
     try:
-        try:
-            http.request_json(url, options=http.Options(timeout=5, headers={'Authorization': ''}, guard=exact_url(url)))
-        except http.ServerError as error:
-            if error.status in (401, 403):
-                return
-            raise Refused('The loopback TLS endpoint did not return an authenticated refusal.') from error
-        raise Refused('The loopback endpoint accepted anonymous private metadata access.')
-    finally:
-        http.pin(netloc, previous)
-
-
-def exact_url(expected: str):
-    def check(url: str) -> str:
-        if url != expected:
-            raise Refused('The local metadata request tried to change its destination.')
-        return url
-    return check
+        answer = loopback.fetch(url, context=context, timeout=5, headers={'Authorization': ''})
+    except httpguard.Refused as error:
+        raise Refused('The loopback TLS endpoint could not be verified.') from error
+    if answer.status not in (401, 403):
+        raise Refused('The loopback TLS endpoint did not return an authenticated refusal.')

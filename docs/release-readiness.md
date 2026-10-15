@@ -32,6 +32,8 @@ Every row of sections 3 and 4 has one state word.
   F1 to F9 of `docs/redteam/findings.md` are a different list and are not meant by that name.
 - A row that cannot be driven because its feature does not exist says so in its state; it is not skipped.
 
+A background full run on `6b7cca262` recorded 17,021 passes, 39 failures and 10 errors (290 skipped); its additional seatbelt set passed 152 tests with 91 skipped. These failures remain open release work; passing affected checks does not establish a repository-wide green result.
+
 **Selectors run for this document** (2026-10-13, tree `d365522ea` plus this change, this Mac, through `scripts/test all`):
 
 - Passed: `tests/test_glossary.py`, `tests/test_documents_name_current_files.py`, `tests/test_documented_env_vars.py`; and, in one run,
