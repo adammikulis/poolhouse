@@ -158,6 +158,9 @@ def execute(wt: Path, check: Check, tree: str) -> Result:
         status, text = run_command(wt, check.argv)
         after = tree_hash(wt)
         receipt = failure_evidence.Receipt(before=before, after=after, valid=bool(before and before == after), complete=bool(before and before == after))
+    if receipt.before != tree or receipt.after != tree:
+        receipt.valid = receipt.complete = False
+        receipt.detail = "execution differs from the selected tree"
     seconds = time.monotonic() - began
     if status == 0 and receipt.complete and receipt.after == tree:
         _remember(Run(wt, check.tier, check.argv, wt / ".land-no-junit", 0, seconds, tree))
