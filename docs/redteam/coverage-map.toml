@@ -15,6 +15,17 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["human:workspace/github_identity.py:guard", "human:workspace/github_identity.py:only_this_repository", "human:workspace/github_identity.py:token"]
+status = "covered"
+count = 3
+tests = ["tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
+         "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
+         "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+         "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
+         "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"]
+note = "App setup requires the selected installed holder, eligible root session and delegated gate, rechecks actor/source, and never exports its key; raw token and online check stay person-only and installation/token scopes cannot widen"
+
+[[group]]
 match = ["listener:coordination/relay.py:forward"]
 status = "covered"
 count = 1

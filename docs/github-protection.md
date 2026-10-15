@@ -68,8 +68,10 @@ identity is a GitHub App installed on this repository only, with Contents, Pull 
 and Metadata read. No Administration, no Secrets, no Environments. An installation token lasts an hour; whatever
 launches the harness mints a fresh one.
 
-`scripts/agent-identity` makes and uses it, at the owner's terminal. The repository defaults to the one `gh` or the
-origin remote names; every error names the next step.
+`scripts/agent-identity setup` lets an authorized lead agent prepare the App through the selected installed holder.
+The agent uses the installed repository policy and recorded primary checkout. The owner confirms GitHub's create and
+installation screens and any genuine OS keystore prompt; no terminal or key handling is needed. A person running
+the command at a terminal can also use the repository named by `gh` or origin.
 
 - `scripts/agent-identity setup` uses GitHub's App manifest flow. It opens the browser twice: on GitHub's create page
   with the permissions above filled in (press Create GitHub App), then on the App's install page (choose only this
@@ -89,7 +91,9 @@ What `setup` refuses, and what a person's gate means here:
   another method or path and a second request are refused and use nothing up.
 - The App must belong to the repository's owner with exactly the permissions asked; the installation must be on
   selected repositories, be this App's, and reach this repository and no other. Anything else is not stored as ready.
-- `setup`, `token` and `check --online` refuse an agent marker and a missing terminal. `token` needs a terminal on stdin
+- Agent setup requires a live eligible parentless session, the `github.release` gate and the selected installed holder.
+  It rechecks the actor, runtime and primary source before exchange and storage, and preserves any different App identity.
+  `token` and `check --online` remain person-only. `token` needs a terminal on stdin
   and on stdout or stderr, so `GH_TOKEN="$(scripts/agent-identity token)"` works at a prompt.
 - The script runs again, isolated, under the selected runtime (`runtime.rerun`; `scripts/release-key` does the same),
   the one copy of Poolhouse the machine's keystore admits (`poolhouse.real_machine`). `poolhouse runtime ensure`
