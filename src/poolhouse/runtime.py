@@ -227,7 +227,7 @@ _LAUNCHER_READER = """def read(path):
 """
 
 
-LAUNCHER = """#!/usr/bin/env python3
+LAUNCHER = """#!/usr/bin/env -S python3 -I -S
 import glob,json,os,re,stat,subprocess,sys,time
 from pathlib import Path
 root = {root!r}
@@ -299,6 +299,7 @@ if {follow_selection!r}:
     if not python:
         sys.exit({name!r} + ': the runtime bootstrap is unavailable')
     env['POOLHOUSE_HOME'] = str(Path(root).parent.parent)
+    env['PATH'] = str(Path(root).parent.parent / 'bin') + os.pathsep + env.get('PATH', '')
     bootstrap = ("import json,os,stat,sys,subprocess;from pathlib import Path;from poolhouse import runtime\\n" + reader + "\\n"
                  "row=" + repr(selected) + "\\n"
                  "try: chosen=runtime.verify(runtime.Runtime(Path(row['prefix']),row['commit'],row['version'],row['identity']))\\n"
