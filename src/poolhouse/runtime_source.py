@@ -23,7 +23,7 @@ def resolve_commit(checkout: Path, ref: str = "HEAD") -> str:
 
 
 def admit(checkout: Path, commit: str, *, allow_unmerged: bool | runtime_unmerged.Approval = False) -> None:
-    """Require a commit published on the primary development branch, or the terminal person's explicit exception."""
+    """Require published source or exact reviewed deployment authority."""
     runtime_git.primary(checkout)
     branch = git(checkout, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
     expected = os.environ.get("POOLHOUSE_DEV_BRANCH", "").strip()

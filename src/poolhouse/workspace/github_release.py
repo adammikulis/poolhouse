@@ -12,7 +12,9 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from poolhouse import authority, credentials, real_machine, runtime, worktreerules
+from packaging.version import InvalidVersion, Version
+
+from poolhouse import authority, credentials, real_machine, runtime, runtime_git, worktreerules
 from poolhouse.board.session import connect
 from poolhouse.net import github_release as remote
 from poolhouse.workspace import github_app
@@ -132,9 +134,7 @@ def _hooks(selected: Source, directory: Path) -> Path:
 
 
 def _view(selected: Source, directory: Path) -> None:
-    local(directory, "init", "--quiet", f"--initial-branch={selected.branch}")
-    objects = Path(local(selected.checkout, "rev-parse", "--path-format=absolute", "--git-path", "objects"))
-    (directory / ".git/objects/info/alternates").write_text(str(objects) + '\n')
+    runtime_git.object_view(selected.checkout, directory, branch=selected.branch)
     local(directory, "update-ref", f"refs/heads/{selected.branch}", selected.commit)
 
 
@@ -226,7 +226,11 @@ def _contents(assets: dict[str, Asset], manifest: dict) -> None:
         names = (metadata, "poolhouse/fleet/built-from")
         if any(archive.getinfo(name).file_size > 64 << 10 for name in names):
             raise remote.Failed("wheel provenance metadata is too large")
-        if (message_from_bytes(archive.read(metadata))["Version"] != python_version
+        try:
+            matches = Version(message_from_bytes(archive.read(metadata))["Version"] or "") == Version(python_version)
+        except InvalidVersion:
+            matches = False
+        if (not matches
                 or archive.read(names[1]).decode().strip() != manifest["source_commit"]):
             raise remote.Failed("wheel version or source provenance does not match the release")
     with zipfile.ZipFile(io.BytesIO(app.body)) as archive:
@@ -239,8 +243,6 @@ def _contents(assets: dict[str, Asset], manifest: dict) -> None:
 
 def artifacts(selected: Source) -> tuple[dict, dict[str, Asset]]:
     """Pin the four build outputs and verify their version, source and checksum contract."""
-    from packaging.version import Version
-
     version = local(selected.checkout, "show", f"{selected.commit}:version.txt")
     parsed = Version(version)
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+", version) or parsed.dev is None:

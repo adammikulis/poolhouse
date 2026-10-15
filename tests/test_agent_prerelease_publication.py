@@ -98,6 +98,25 @@ def test_pinned_build_verifies_wheel_app_source_and_checksums(built):
     assert 'body=' not in repr(next(iter(assets.values())))
 
 
+@pytest.mark.parametrize("version, accepted", [("0.3.0-dev.1", True), ("0.3.0.dev2", False), ("invalid", False), ("", False)])
+def test_wheel_version_uses_semantic_equality_and_refuses_malformed_metadata(built, version, accepted):
+    import io
+
+    selected, _ = built
+    manifest, assets = holder.artifacts(selected)
+    name = "poolhouse-0.3.0.dev1-py3-none-any.whl"
+    body = io.BytesIO()
+    with zipfile.ZipFile(body, "w") as archive:
+        archive.writestr("poolhouse-0.3.0.dev1.dist-info/METADATA", "Name: poolhouse\nVersion: " + version + "\n")
+        archive.writestr("poolhouse/fleet/built-from", selected.commit)
+    assets[name] = holder.Asset(name, body.getvalue(), hashlib.sha256(body.getvalue()).hexdigest())
+    if accepted:
+        holder._contents(assets, manifest)
+    else:
+        with pytest.raises(net.Failed, match="version or source provenance"):
+            holder._contents(assets, manifest)
+
+
 def test_publication_is_exact_and_idempotent(publication):
     selected, _, state, scopes = publication
     first = holder.publish_release(selected.checkout)

@@ -249,13 +249,14 @@ def test_a_bad_command_is_refused_with_a_message(board):
             authority_cli.run(call, board.parent)
 
 
-def test_new_gate_honors_an_existing_prod_preset(monkeypatch):
+@pytest.mark.parametrize("gate", ["runtime.deploy-unmerged", "github.release"])
+def test_new_gate_honors_an_existing_prod_preset(monkeypatch, gate):
     write_json(authority._file(), {"preset": "prod", "gates": {"runtime.deploy": "person"}})
-    assert authority.state_of("runtime.deploy-unmerged") == authority.PERSON
+    assert authority.state_of(gate) == authority.PERSON
     assert authority.state_of("workspace.setup") == authority.DELEGATED
-    write_json(authority._file(), {"preset": "prod", "gates": {"runtime.deploy-unmerged": "delegated"},
-                                   "projects": {"alpha": {"runtime.deploy-unmerged": "person"}}})
-    assert authority.state_of("runtime.deploy-unmerged") == authority.DELEGATED
-    assert authority.state_of("runtime.deploy-unmerged", "alpha") == authority.PERSON
+    write_json(authority._file(), {"preset": "prod", "gates": {gate: "delegated"},
+                                   "projects": {"alpha": {gate: "person"}}})
+    assert authority.state_of(gate) == authority.DELEGATED
+    assert authority.state_of(gate, "alpha") == authority.PERSON
     monkeypatch.setenv(authority.FLOOR_ENV, authority.PERSON)
-    assert authority.state_of("runtime.deploy-unmerged") == authority.PERSON
+    assert authority.state_of(gate) == authority.PERSON
