@@ -56,4 +56,37 @@ final class PoolKeyEnrollment {
     }
 
     private static SecurityException bad() { return new SecurityException("This pool key enrollment no longer matches this phone."); }
+
+    /** Durable allocation phases; an abandoning reservation can never become usable again. */
+    static final class Allocation {
+        final String handle, binding, request;
+        private final String phase;
+        private Allocation(String phase, String handle, String binding, String request) {
+            this.phase = phase; this.handle = handle; this.binding = binding; this.request = request;
+        }
+        static Allocation reserve(String handle, PoolKeyEnrollment enrollment) {
+            return parse("reserved:" + handle + ":" + enrollment.binding() + ":" + enrollment.request);
+        }
+        static Allocation parse(String encoded) {
+            if (encoded == null || encoded.length() > 200) throw bad();
+            String[] fields = encoded.split(":", -1);
+            if (fields.length != 4 || !(fields[0].equals("reserved") || fields[0].equals("disclosed") || fields[0].equals("abandoning"))
+                    || !fields[1].matches("[0-9a-f]{32}") || !fields[2].matches("[0-9a-f]{64}")
+                    || !fields[3].matches("[0-9a-f]{64}")) throw bad();
+            return new Allocation(fields[0], fields[1], fields[2], fields[3]);
+        }
+        String encoded() { return phase + ":" + handle + ":" + binding + ":" + request; }
+        boolean abandoning() { return phase.equals("abandoning"); }
+        void require(PoolKeyEnrollment enrollment) {
+            if (abandoning() || !binding.equals(enrollment.binding()) || !request.equals(enrollment.request)) throw bad();
+        }
+        Allocation disclose() {
+            if (abandoning()) throw bad();
+            return new Allocation("disclosed", handle, binding, request);
+        }
+        Allocation abandon() {
+            if (!phase.equals("reserved")) throw bad();
+            return new Allocation("abandoning", handle, binding, request);
+        }
+    }
 }
