@@ -21,6 +21,8 @@ from tests.test_net_download import SHA, pipe, pull, site
 from tests.test_serve_broker import broker, holders, llama_binary, models
 
 __all__ = ["broker", "holders", "llama_binary", "models", "person", "pipe", "ring", "site"]
+pytest_plugins = ["node_kit"]
+
 BODY = "BODY-" + CANARY
 
 
@@ -173,7 +175,7 @@ def test_a_reputation_change_is_recorded(person, tmp_path):
     assert e.subject == "host:bad.example" and e.meta["event"] == "hash_change" and e.outcome
 
 
-def test_a_lease_records_the_model_who_asked_and_the_flags(person, broker, holders, models):
+def test_a_lease_records_the_model_who_asked_and_the_flags(person, workspace_node, broker, holders, models):
     one, two = holders(), holders()
     spec = {"context": 512, "parallel": 1, "mtp": False}
     grant = broker.lease(Ask(purpose="chat", models=(models[0],), pid=one.pid, label="pid one",
