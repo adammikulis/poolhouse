@@ -173,3 +173,28 @@ def test_launch_adapter_forwards_exact_context_and_mtp_head(monkeypatch):
                                      draft="/models/mtp-qwen.gguf") == 0
     assert calls[0][calls[0].index("--ctx") + 1] == "262144"
     assert calls[0][calls[0].index("--draft") + 1] == "/models/mtp-qwen.gguf"
+
+
+def test_cancel_and_status_stay_responsive_while_conversation_graph_is_locked(coding_api):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from poolhouse.lock import only_one
+
+    server, conversation, _node = coding_api
+    assert post(server, conversation.id, "start", {"message": "wait until cancelled"})[0] == 202
+    deadline = time.monotonic() + 10
+    while server.ui.coding_turns.status(conversation.id)["session"] != SESSION:
+        assert time.monotonic() < deadline
+        time.sleep(.02)
+    with (ThreadPoolExecutor(max_workers=1) as requests,
+          only_one(server.ui.conversations.root / "conversations.lock")):
+        began = time.monotonic()
+        assert post(server, conversation.id, "cancel", {})[0] == 200
+        status = requests.submit(server.call, f"/ui/coding/{conversation.id}/status")
+        assert status.result(timeout=1)[0] == 200
+        assert finished(server, conversation.id)["state"] == "cancelled"
+        assert not server.ui.coding_turns.turns[conversation.id].process.is_alive()
+        assert time.monotonic() - began < 5
+    assert server.call("/ui/coding/ffffffffffff/status")[0] == 400
+    assert post(server, conversation.id, "start", {"message": "continue inspection"})[0] == 202
+    assert finished(server, conversation.id)["state"] == "completed"

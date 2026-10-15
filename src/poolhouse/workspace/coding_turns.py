@@ -21,7 +21,7 @@ from poolhouse.board import person
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_types import safe
 from poolhouse.fleet.conversations import Conversations
-from poolhouse.serve.process import kill_process_tree
+from poolhouse.serve.process import kill_process_tree, started_at
 from poolhouse.workspace import coding_events, localeffort
 
 MAX_EVENT = 1048576
@@ -61,12 +61,16 @@ class Turn:
         if process is None:
             return
         if isinstance(process, multiprocessing.process.BaseProcess):
+            birth = started_at(process.pid)
             self.cancellation.set()
             process.join(timeout=3)
             if process.is_alive():
-                kill_process_tree(process.pid, grace_s=1)
-                process.kill()
-                process.join(timeout=1)
+                deadline = time.monotonic() + 1
+                kill_process_tree(process.pid, grace_s=1, reap_parent=False, expect_start=birth)
+                process.join(timeout=max(0, deadline - time.monotonic()))
+                if process.is_alive():
+                    process.kill()
+                    process.join(timeout=1)
         else:
             kill_process_tree(process.pid, grace_s=2)
 
