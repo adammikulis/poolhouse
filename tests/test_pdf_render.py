@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 import zlib
 from io import BytesIO
@@ -172,12 +173,53 @@ def test_memory_past_the_bound_ends_the_render_even_where_the_os_would_not(pdfiu
         render(tmp_path, one_page_with_image(64), memory_bytes=1 << 20)
 
 
-def test_a_picture_that_takes_too_long_to_draw_is_killed(pdfium, tmp_path):
-    big = one_page_with_image(100_000)
+def test_a_picture_that_takes_too_long_to_draw_is_killed(pdfium, tmp_path, monkeypatch):
+    child = tmp_path / "blocked_render.py"
+    marker = tmp_path / "ready"
+    child.write_text(
+        "import json, os, sys, time\nfrom pathlib import Path\n"
+        "json.load(sys.stdin)\n"
+        f"Path({str(marker)!r}).write_text(str(os.getpid()))\n"
+        "time.sleep(30)\n", encoding="utf-8")
+    monkeypatch.setattr(pdfrender, "CHILD", child)
+    actual_popen = subprocess.Popen
+    children = []
+    lock = threading.Lock()
+    watchdog_fired = threading.Event()
+
+    def capture(argv, **options):
+        assert argv == [sys.executable, "-P", str(child)]
+        with lock:
+            process = actual_popen(argv, **options)
+            children.append(process)
+        return process
+
+    def stop_overdue_child():
+        watchdog_fired.set()
+        with lock:
+            for process in children:
+                if process.poll() is None:
+                    process.kill()
+
+    monkeypatch.setattr(subprocess, "Popen", capture)
+    watchdog = threading.Timer(10, stop_overdue_child)
     started = time.monotonic()
-    with pytest.raises(PdfRefused, match="took more than 2 s"):
-        render(tmp_path, big, timeout_s=2.0, max_image_pixels=10 ** 12)
-    assert time.monotonic() - started < 30
+    watchdog.start()
+    try:
+        with pytest.raises(PdfRefused, match="took more than 2 s"):
+            render_pages(a_drawn_page(tmp_path / "drawn.pdf"), [1], limits=RenderLimits(timeout_s=2))
+        assert not watchdog_fired.is_set()
+        assert len(children) == 1 and children[0].returncode is not None
+        assert int(marker.read_text()) == children[0].pid
+        assert time.monotonic() - started < 30
+    finally:
+        watchdog.cancel()
+        watchdog.join()
+        with lock:
+            for process in children:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=5)
 
 
 def test_a_file_with_more_pages_than_the_bound_or_a_billion_claimed_is_refused(pdfium, tmp_path):
