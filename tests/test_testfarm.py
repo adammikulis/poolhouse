@@ -311,4 +311,4 @@ def test_test_devices_help_names_its_arguments(capsys):
     with pytest.raises(SystemExit) as left:
         devices.command(["--help"])
     out = capsys.readouterr().out
-    assert left.value.code == 0 and "poolhouse-test-devices" in out and "device" in out and "--json" in out
+    assert left.value.code == 0 and "usage: poolhouse test devices" in out and "device" in out and "--json" in out
