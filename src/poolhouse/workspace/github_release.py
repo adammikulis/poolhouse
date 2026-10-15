@@ -119,6 +119,8 @@ def _hooks(selected: Source, directory: Path) -> Path:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
         target.chmod(0o700 if mode == "100755" else 0o600)
+    if any(not (hooks / name).is_file() for name in ("pre-push", "pushed", "no-data-files")):
+        raise remote.Failed("the installed pre-push hook inventory is incomplete")
     return hooks
 
 
@@ -129,6 +131,15 @@ def _view(selected: Source, directory: Path) -> None:
     local(directory, "update-ref", f"refs/heads/{selected.branch}", selected.commit)
 
 
+def _commit_ref(reply: object) -> str:
+    if not isinstance(reply, dict) or not isinstance(reply.get("object"), dict):
+        raise remote.Failed("GitHub returned an invalid commit reference")
+    target = reply["object"]
+    if target.get("type") != "commit" or not isinstance(target.get("sha"), str) or not SHA.fullmatch(target["sha"]):
+        raise remote.Failed("GitHub returned an invalid commit reference")
+    return target["sha"]
+
+
 def push_development(checkout: Path) -> dict[str, str]:
     """Push one exact development tip through the installed repository App."""
     authorize("push the exact reviewed development tip")
@@ -137,7 +148,7 @@ def push_development(checkout: Path) -> dict[str, str]:
     authority.require("github.release", json.dumps({"operation": "push-development", "repo": who.repo,
                                                    "branch": selected.branch, "sha": selected.commit}, sort_keys=True))
     path = f"/repos/{who.repo}/git/ref/heads/{selected.branch}"
-    before = remote.request("GET", path)["object"]["sha"]
+    before = _commit_ref(remote.request("GET", path))
     if not SHA.fullmatch(before) or local(checkout, "merge-base", before, selected.commit) != before:
         raise remote.Failed("the development push must fast-forward the current remote tip")
     if before == selected.commit:
@@ -155,12 +166,12 @@ def push_development(checkout: Path) -> dict[str, str]:
             raise remote.Failed("the maintained pre-push checks refused this development tip")
         if source(checkout, who.repo) != selected:
             raise remote.Failed("the selected development tip changed before publication")
-        latest = remote.request("GET", path)["object"]["sha"]
+        latest = _commit_ref(remote.request("GET", path))
         if latest != before:
             raise remote.Failed("the remote development tip changed before publication")
         token = github_app.mint(who, PERMISSIONS, who.repo)["token"]
         remote.push(remote.GitPush(who.repo, selected.branch, selected.commit, token), directory, env)
-    after = remote.request("GET", path, bearer=token)["object"]["sha"]
+    after = _commit_ref(remote.request("GET", path, bearer=token))
     if after != selected.commit:
         raise remote.Failed("GitHub did not report the requested development tip")
     return {"sha": selected.commit}
@@ -292,7 +303,7 @@ def publish_release(checkout: Path) -> dict[str, object]:
         raise remote.Failed("the selected source changed before publication")
     token = github_app.mint(who, PERMISSIONS, who.repo)["token"]
     root = f"/repos/{who.repo}"
-    published = remote.request("GET", f"{root}/git/ref/heads/{selected.branch}", bearer=token)["object"]["sha"]
+    published = _commit_ref(remote.request("GET", f"{root}/git/ref/heads/{selected.branch}", bearer=token))
     if not SHA.fullmatch(published) or local(checkout, "merge-base", commit, published) != commit:
         raise remote.Failed("release source is not on the published development branch")
     existing_tag = _found(f"{root}/git/ref/tags/{tag}", token)

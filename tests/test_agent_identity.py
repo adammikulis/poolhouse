@@ -559,3 +559,21 @@ def test_api_preserves_authorization_timeout_and_headers_in_http_options(ai, mon
     assert options.timeout == 30.0
     assert options.headers == ai.HEADERS
     assert "scratch-bearer" not in repr(options)
+
+
+@pytest.mark.parametrize('command', ['push-development', 'publish-release'])
+def test_publication_sigterm_restores_previous_handler(ai, monkeypatch, capsys, command):
+    import signal
+
+    from poolhouse.workspace import github_release
+
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def canceled(source):
+        signal.raise_signal(signal.SIGTERM)
+
+    operation = 'push_development' if command == 'push-development' else 'publish_release'
+    monkeypatch.setattr(github_release, operation, canceled)
+    assert ai.main([command], (False, False)) == 130
+    assert signal.getsignal(signal.SIGTERM) == previous
+    assert 'stopped' in capsys.readouterr().err

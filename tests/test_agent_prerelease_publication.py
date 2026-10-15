@@ -226,7 +226,9 @@ def test_installed_hooks_are_exact_regular_blob_bytes(built, tmp_path, monkeypat
     hooks.mkdir(parents=True)
     body = b'#!/bin/sh\n# trailing whitespace  \nexit 0\n\n'
     (hooks / 'pre-push').write_bytes(body)
-    git(selected.checkout, 'add', 'scripts/hooks/pre-push')
+    (hooks / 'pushed').write_bytes(b'#!/usr/bin/env python3\n')
+    (hooks / 'no-data-files').write_bytes(b'#!/usr/bin/env python3\n')
+    git(selected.checkout, 'add', 'scripts/hooks/pre-push', 'scripts/hooks/pushed', 'scripts/hooks/no-data-files')
     git(selected.checkout, '-c', 'user.name=Codex', '-c', 'user.email=codex@agents.invalid', 'commit', '-qm', 'chore: hook fixture')
     built_commit = git(selected.checkout, 'rev-parse', 'HEAD')
     package = tmp_path / 'installed/poolhouse'
@@ -235,3 +237,78 @@ def test_installed_hooks_are_exact_regular_blob_bytes(built, tmp_path, monkeypat
     monkeypatch.setattr(holder, '__file__', str(package / 'workspace/github_release.py'))
     destination = holder._hooks(selected, tmp_path / 'view')
     assert (destination / 'pre-push').read_bytes() == body
+
+
+@pytest.mark.parametrize('reply', [None, [], {}, {'object': None}, {'object': []},
+                                    {'object': {}}, {'object': {'type': 'tag', 'sha': 'a' * 40}},
+                                    {'object': {'type': 'commit', 'sha': 'invalid'}}])
+def test_malformed_commit_references_refuse_with_constant_error(reply):
+    with pytest.raises(net.Failed, match='invalid commit reference'):
+        holder._commit_ref(reply)
+
+
+@pytest.fixture
+def push_case(built, monkeypatch):
+    old, _ = built
+    (old.checkout / 'new.py').write_text('VALUE = 1\n')
+    git(old.checkout, 'add', 'new.py')
+    git(old.checkout, '-c', 'user.name=Codex', '-c', 'user.email=codex@agents.invalid', 'commit', '-qm', 'fix: fixture')
+    selected = holder.source(old.checkout, REPO)
+    monkeypatch.setattr(holder, 'authorize', lambda action: None)
+    monkeypatch.setattr(holder, 'identity', lambda: github_app.Identity(REPO, 7, 'client', 'app', 'not-a-key', 9))
+    monkeypatch.setattr(holder.authority, 'require', lambda *a, **k: None)
+    state = {'mint': 0, 'push': 0, 'gets': 0, 'hook_status': 0, 'race': False}
+
+    def hooks(selected, directory):
+        path = directory / 'trusted-hooks'
+        path.mkdir()
+        (path / 'pre-push').write_text('#!/bin/sh\n[ -z "$GIT_CONFIG_COUNT" ] || exit 99\nexit '
+                                       + str(state['hook_status']) + '\n')
+        return path
+
+    def request(method, path, **kwargs):
+        state['gets'] += 1
+        commit = old.commit
+        if state['gets'] == 2 and state['race']:
+            commit = selected.commit
+        if state['push']:
+            commit = selected.commit
+        return {'object': {'type': 'commit', 'sha': commit}}
+
+    def mint(*args):
+        state['mint'] += 1
+        return {'token': 'fixture-token'}
+
+    def push(plan, directory, env):
+        assert holder.local(directory, 'rev-parse', 'HEAD') == selected.commit
+        assert plan.commit == selected.commit and plan.repo == REPO and plan.branch == '0.3dev'
+        assert 'fixture-token' not in repr(env)
+        state['push'] += 1
+
+    monkeypatch.setattr(holder, '_hooks', hooks)
+    monkeypatch.setattr(net, 'request', request)
+    monkeypatch.setattr(net, 'push', push)
+    monkeypatch.setattr(github_app, 'mint', mint)
+    return selected, state
+
+
+def test_hook_refusal_prevents_mint_and_push(push_case):
+    selected, state = push_case
+    state['hook_status'] = 1
+    with pytest.raises(net.Failed, match='pre-push checks refused'):
+        holder.push_development(selected.checkout)
+    assert state['mint'] == state['push'] == 0
+
+
+def test_remote_race_prevents_mint_and_push(push_case):
+    selected, state = push_case
+    state['race'] = True
+    with pytest.raises(net.Failed, match='remote development tip changed'):
+        holder.push_development(selected.checkout)
+    assert state['mint'] == state['push'] == 0
+
+
+def test_matching_checked_push_has_one_private_mint(push_case):
+    selected, state = push_case
+    assert holder.push_development(selected.checkout) == {'sha': selected.commit}
+    assert state['mint'] == state['push'] == 1
