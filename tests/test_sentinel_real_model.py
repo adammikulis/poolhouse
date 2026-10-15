@@ -18,6 +18,8 @@ from poolhouse.sentinel import Mode, Sentinel, State, canary
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
 from poolhouse.serve.process import every_server
 
+pytest_plugins = ["serve_node"]
+
 pytestmark = pytest.mark.slow
 
 
@@ -71,6 +73,7 @@ def _asker(binary: Path, model: Path):
     return held, info, ask
 
 
+@pytest.mark.usefixtures("serve_leases")
 def test_a_real_model_passes_its_own_baseline_and_a_different_model_drifts(
         machine, tmp_path, monkeypatch):
     binary, models = machine
