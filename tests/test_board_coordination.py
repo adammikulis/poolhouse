@@ -16,7 +16,7 @@ from node_kit import SRC
 
 from poolhouse import node_supervise
 from poolhouse.board import session as board_session
-from poolhouse.workspace import agent_display, board_cli, limits, mail_cli
+from poolhouse.workspace import agent_display, attention, board_cli, limits, mail_cli
 
 pytest_plugins = ["node_kit"]
 HOOKS = Path(__file__).resolve().parents[1] / 'scripts/hooks'
@@ -203,10 +203,121 @@ def test_status_lists_a_leads_active_subagents_claims_and_owed_answers(board, tm
     assert taken.returncode == 0, taken.stderr
     seq = ask(board)
     text = board_cli.digest(argparse.Namespace(status=True, ack=False, thread=''), later(board, board.lead, HOUR))['text']
-    assert 'Active subagents (1)' in text and f'{first.name}: milestone 1h ago, claims branch:{first.name}/x' in text
-    assert second.name not in text and f'[{seq}] question from {board.alice.name}' in text
+    assert 'Live registered subagents (2)' in text and f'{first.name}: milestone 1h ago, claims branch:{first.name}/x' in text
+    assert f'{second.name}: done 1h ago' in text and f'[{seq}] question from {board.alice.name}' in text
     shown = run(board.lead.name, 'digest', '--status')
-    assert shown.returncode == 0 and 'Active subagents (1)' in shown.stdout
+    assert shown.returncode == 0 and 'Live registered subagents (2)' in shown.stdout
+
+
+def test_presence_uses_registered_nested_sessions_without_announcements(board):
+    first = board.member('presence-child', parent=board.lead)
+    second = board.member('presence-grandchild', parent=first)
+    board.member('foreign-child', parent=board.alice)
+    s = board.session(board.lead)
+    assert s.read(channel='#announcements').entries == []
+    assert set(attention.workers(s)) == {first.name, second.name}
+    text = '\n'.join(attention.status_lines(s, []))
+    assert 'Live registered subagents (2)' in text and f'{first.name}: registered' in text
+    s.retire(first.name, reason='done')
+    assert set(attention.workers(s)) == {second.name}
+    s.retire(second.name, reason='done')
+    assert attention.workers(s) == {}
+
+
+@pytest.mark.parametrize('idle', [False, True])
+def test_presence_ignores_cached_name_and_announcement_absence_or_idle(board, monkeypatch, idle):
+    child = board.member('presence-idle', parent=board.lead)
+    s = board.session(board.lead)
+    actual_agents = s.agents
+    monkeypatch.setattr(board_session.Session, 'agents', lambda self, retired=False: [
+        replace(a, idle=idle, seen_ms=0) if a.name == child.name else a for a in actual_agents()])
+    s.named = board.alice.name
+    assert set(attention.workers(s)) == {child.name}
+    assert s.name == board.lead.name
+    text = '\n'.join(attention.status_lines(s, []))
+    assert f'{child.name}: registered' in text
+    assert ('workspace idle' in text) is idle
+
+
+def test_presence_excludes_retired_foreign_and_disconnected_cycles(board, monkeypatch):
+    first = board.member('presence-graph', parent=board.lead)
+    s = board.session(board.lead)
+    agents = s.agents()
+    original = next(a for a in agents if a.name == first.name)
+    graph = [replace(a, parent=first.name) if a.name == board.lead.name else a for a in agents]
+    graph += [replace(original, name='cycle-one', parent='cycle-two'),
+              replace(original, name='cycle-two', parent='cycle-one'),
+              replace(original, name='retired-child', retired=True),
+              replace(original, name='foreign-descendant', parent=board.alice.name)]
+    monkeypatch.setattr(board_session.Session, 'agents', lambda self, retired=False: graph)
+    assert set(attention.workers(s)) == {first.name}
+
+
+def test_presence_old_or_truncated_announcement_page_does_not_hide_sessions(board, monkeypatch):
+    child = board.member('presence-old-detail', parent=board.lead)
+    board.session(child).post('#announcements', 'done', 'finished turn', subject='done')
+    s = later(board, board.lead, attention.ACTIVE_S + HOUR)
+    assert child.name in attention.workers(s)
+    assert f'{child.name}: registered' in '\n'.join(attention.status_lines(s, []))
+    read = s.read
+    def first_page(self, **filters):
+        assert filters == {'channel': '#announcements', 'limit': 200}
+        return replace(read(channel='#announcements'), entries=[])
+    monkeypatch.setattr(board_session.Session, 'read', first_page)
+    assert f'{child.name}: registered' in '\n'.join(attention.status_lines(s, []))
+
+
+@pytest.mark.parametrize('name', ['', None, False])
+def test_presence_requires_an_actual_token_name(board, monkeypatch, name):
+    s = board.session(board.lead)
+    call = s.call
+    def minimal(self, method, **params):
+        return {'name': name} if method == 'whoami' else call(method, **params)
+    monkeypatch.setattr(board_session.Session, 'call', minimal)
+    with pytest.raises(ValueError, match='identify this session'):
+        attention.workers(s)
+
+
+def test_presence_accepts_minimal_identity_and_sanitizes_display_data(board, monkeypatch):
+    child = board.member('presence-display', parent=board.lead)
+    source = board.session(child)
+    source.post('#announcements', 'done', 'finished turn', subject='done')
+    source.claim('branch', 'display-branch')
+    s = board.session(board.lead)
+    call, read, claims = s.call, s.read, s.claims
+    def minimal(self, method, **params):
+        return {'name': board.lead.name} if method == 'whoami' else call(method, **params)
+    def hostile_page(self, **params):
+        page = read(**params)
+        page.entries[0].fields['type'] = 'done\x1b[31m\nINJECTED'
+        return page
+    monkeypatch.setattr(board_session.Session, 'call', minimal)
+    monkeypatch.setattr(board_session.Session, 'read', hostile_page)
+    monkeypatch.setattr(board_session.Session, 'claims', lambda self: [
+        replace(c, key='display\x1b[31m\nbranch') for c in claims()])
+    text = '\n'.join(attention.status_lines(s, []))
+    assert f'{child.name}: done' in text and 'claims branch:display' in text
+    assert '\x1b' not in text and '\nINJECTED' not in text and '\nbranch' not in text
+
+
+def test_presence_reports_total_when_worker_display_is_bounded(board, monkeypatch):
+    first = board.member('presence-bound', parent=board.lead)
+    s = board.session(board.lead)
+    source = next(a for a in s.agents() if a.name == first.name)
+    graph = [replace(source, name=f'bounded-{i}') for i in range(attention.SHOWN + 3)]
+    monkeypatch.setattr(board_session.Session, 'agents', lambda self, retired=False: graph)
+    text = '\n'.join(attention.status_lines(s, []))
+    assert 'Live registered subagents (11)' in text and '(+3 more live registered subagents)' in text
+    assert sum(': registered' in line for line in text.splitlines()) == attention.SHOWN
+
+
+def test_presence_registry_failure_is_not_an_empty_roster(board, monkeypatch):
+    s = board.session(board.lead)
+    def unavailable(self, retired=False):
+        raise ConnectionError('registry unavailable')
+    monkeypatch.setattr(board_session.Session, 'agents', unavailable)
+    with pytest.raises(ConnectionError, match='registry unavailable'):
+        attention.status_lines(s, [])
 
 
 def spawn_events(tmp_path, nested):
