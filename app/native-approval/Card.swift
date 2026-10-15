@@ -30,12 +30,14 @@ struct ApprovalCard: Equatable {
     let text: String
     let nonce: String
     let digest: String
+    let head: String
+    let generation: UInt64
 
     // This codec accepts only the authenticated helper's bounded CF dictionary.
     static func decode(_ value: Any, requestedID: String, now: UInt64) throws -> ApprovalCard {
-        guard let fields = value as? NSDictionary, (fields.count == 9 || fields.count == 10),
+        guard let fields = value as? NSDictionary, (fields.count == 11 || fields.count == 12),
               Set(fields.allKeys.compactMap { $0 as? String }).subtracting(["target"]) == Set([
-                "version", "request_id", "action", "pool", "signer", "expires_at", "text", "nonce", "digest"
+                "version", "request_id", "action", "pool", "signer", "expires_at", "text", "nonce", "digest", "head", "generation"
               ]) else { throw ApprovalFailure.invalid }
         func string(_ name: String, limit: Int) throws -> String {
             guard let value = fields[name], CFGetTypeID(value as CFTypeRef) == CFStringGetTypeID(),
@@ -71,6 +73,8 @@ struct ApprovalCard: Equatable {
         let nonce = try string("nonce", limit: 64), digest = try string("digest", limit: 64)
         guard [id, nonce, digest].allSatisfy({ hex($0) }), id == requestedID,
               let action = ApprovalAction(rawValue: try string("action", limit: 32)) else { throw ApprovalFailure.invalid }
+        let head = try string("head", limit: 64), generation = try integer("generation")
+        guard hex(head), (action == .foundPool || head != String(repeating: "0", count: 64)) else { throw ApprovalFailure.invalid }
         var targetKey: String?, targetDevice: String?
         if action == .enrollPhone || action == .revokePhone || action == .enrollComputer {
             let target = try object("target", keys: ["key", "device"])
@@ -84,7 +88,7 @@ struct ApprovalCard: Equatable {
         guard safeText(text, multiline: true) else { throw ApprovalFailure.invalid }
         return ApprovalCard(requestID: id, action: action, pool: pool, anchor: anchor, poolName: poolName,
                             signer: signer, targetKey: targetKey, targetDevice: targetDevice,
-                            expires: expires, text: text, nonce: nonce, digest: digest)
+                            expires: expires, text: text, nonce: nonce, digest: digest, head: head, generation: generation)
     }
 
     private static func safeText(_ text: String, multiline: Bool) -> Bool {

@@ -1,14 +1,25 @@
 import Foundation
 import XPC
 
+struct OwnerSession: Equatable {
+    let owner: UInt32
+    let asid: UInt32
+}
+
+struct CallerBinding: Equatable {
+    let authority: String
+    let guiCDHash: String
+    let session: OwnerSession
+}
+
 final class AdmittedChallenge {
     let card: ApprovalCard
     fileprivate let message: xpc_object_t
     fileprivate let admissionID: UUID
     fileprivate let generation: UInt64
-    fileprivate let asid: UInt32
-    fileprivate init(card: ApprovalCard, message: xpc_object_t, generation: UInt64, asid: UInt32, admissionID: UUID) {
-        self.card = card; self.message = message; self.generation = generation; self.asid = asid; self.admissionID = admissionID
+    let caller: CallerBinding
+    fileprivate init(card: ApprovalCard, message: xpc_object_t, generation: UInt64, admissionID: UUID, caller: CallerBinding) {
+        self.card = card; self.message = message; self.generation = generation; self.caller = caller; self.admissionID = admissionID
     }
 }
 
@@ -46,6 +57,11 @@ final class CallerAdmission {
         self.manifest = manifest; self.requestID = requestID; initialASID = asid
     }
 
+    private var callerBinding: CallerBinding {
+        CallerBinding(authority: manifest.authority, guiCDHash: manifest.gui.cdhash,
+                      session: OwnerSession(owner: manifest.owner, asid: initialASID))
+    }
+
     func cancel() { lock.lock(); defer { lock.unlock() }; cancelled = true; generation = 0 }
 
     func receive(_ message: xpc_object_t, now: UInt64) throws -> AdmittedChallenge {
@@ -56,17 +72,17 @@ final class CallerAdmission {
         do {
             let card = try ChallengeFields.decode(message, authorityID: manifest.authority, requestID: requestID, now: now)
             admitted = true
-            return AdmittedChallenge(card: card, message: message, generation: generation, asid: asid, admissionID: admissionID)
+            return AdmittedChallenge(card: card, message: message, generation: generation, admissionID: admissionID, caller: callerBinding)
         } catch { cancel(); throw error }
     }
 
     func validate(_ challenge: AdmittedChallenge, now: UInt64) throws {
         lock.lock(); defer { lock.unlock() }
         var asid: UInt32 = 0
-        guard !cancelled, admitted, challenge.admissionID == admissionID, challenge.generation == generation, challenge.asid == initialASID,
+        guard !cancelled, admitted, challenge.admissionID == admissionID, challenge.generation == generation, challenge.caller == callerBinding,
               challenge.card.requestID == requestID, now < challenge.card.expires,
               ph_local_session(manifest.owner, &asid), asid == initialASID,
-              ph_message_caller(challenge.message, manifest.helper.cdhash) else {
+              ph_message_caller(challenge.message, manifest.helper.cdhash), ph_self_code(manifest.gui.cdhash) else {
             cancel(); throw ApprovalFailure.cancelled
         }
     }

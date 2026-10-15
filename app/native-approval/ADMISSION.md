@@ -22,12 +22,39 @@ session. The root daemon's ASID is not compared to the GUI's. Root-side sender A
 still needs a separate reviewed implementation; session-owner lookup is not claimed equivalent.
 
 The transport plan specifies only the privileged system endpoint and a caller code requirement.
-It allocates no connection: the SDK requires activation before an XPC connection can be released. `AuthenticatedHelper.connect` remains unavailable. No admitted
-challenge reaches authorization, and no ExternalForm is sent. Caller requirements validate received
-messages; they are not an outgoing-secret gate. The authenticated helper is the sole card producer;
-strict duplicate-field card decoding remains required before active transport replaces JSONSerialization. A future bearer path must use a reply to the same
-admitted challenge with exact protected authority identity, request, nonce, digest and snapshot, and fail on disconnect or login
-change. It requires real message/reply-routing and spoof/exec/disconnect proof before enablement.
+It allocates no connection: the SDK requires activation before an XPC connection can be released.
+`AuthenticatedHelper.connect`, challenge validation and commit remain unavailable. No result is
+serialized or sent. Received-message code requirements do not guard outgoing secrets or assertions.
+The authenticated helper is the sole card producer; strict duplicate-field card decoding remains
+required before active transport replaces JSONSerialization.
+
+The GUI uses a fresh `LAContext` per attempt with `deviceOwnerAuthentication` and biometric unlock
+reuse duration zero. No context, credential or boolean result is imported from a caller. Contexts
+are invalidated before completion and on cancellation, disconnect, expiry or session loss. A transient
+focus loss during OS authentication is not itself success or cancellation; the first callback on the
+main actor must find the same visible window, immutable snapshot, active GUI and validated caller.
+It never waits for focus to return or retries. The local opaque result is consumed once against the
+same challenge, snapshot, authority, pinned GUI and owner session. It is not cryptographic OS proof.
+The future helper trusts that pinned, hardened GUI under the approved administrative trust model;
+presence does not replace operation policy, governance signatures or quorum.
+
+Card `head` and `generation` name the protected native authority state, not a pool's governance chain.
+They are immutable internal snapshot/CAS bindings. Head is lowercase 32-byte hex; zero is permitted
+only for `found_pool`, which can also have a nonzero existing authority head. Generation is a strict
+CF integer from zero through Int64.max; booleans, floats, negative and overflowing values refuse.
+Every future helper commit must revalidate the exact actual authority head/generation and request
+nonce/digest. Full verified human text and pool/anchor/signer/target context remain visible.
+
+Active result transport requires a one-shot reply on the same admitted helper challenge and connection,
+with exact request, authority, nonce, digest, head/generation and current owner session. No arbitrary
+client boolean is an approval. Actual message/reply routing, spoof/exec/disconnect behavior and current
+login binding must be demonstrated before transport is enabled. Root-owned helper pending-request
+limits must prevent fatigue; the GUI never automatically retries.
+
+Actual consecutive password and biometric authentication, no-biometric fallback, focus, cancellation
+and session tests remain activation prerequisites. Reuse duration zero controls reuse of a recent
+biometric device unlock; it does not prove global password-cache behavior. See
+[Apple's reuse-duration API](https://developer.apple.com/documentation/localauthentication/lacontext/touchidauthenticationallowablereuseduration).
 
 Installer/server work must also establish hardened runtime and entitlement policy against runtime
 injection, immutable helper-side card semantics, and final serialized authorization/state checks.

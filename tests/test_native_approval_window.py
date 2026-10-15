@@ -34,6 +34,10 @@ def test_native_approval_window_protocol_and_literal_build(tmp_path):
     assert "xpc_connection_create" not in imports.stdout
     assert "xpc_connection_activate" not in imports.stdout
     assert "xpc_connection_resume" not in imports.stdout
+    for symbol in ["_AuthorizationCreate", "_AuthorizationMakeExternalForm", "_AuthorizationCopyRights"]:
+        assert symbol not in imports.stdout
+    assert "LAContext" in imports.stdout
+    assert "Fresh mock local presence" in result.stdout
     forged = tmp_path / "ForgedManifest.swift"
     forged.write_text("func forge(_ fields: ManifestFields) -> PublicManifest { PublicManifest(fields: fields) }", encoding="utf-8")
     rejection = subprocess.run(["/usr/bin/swiftc", "-j", "1", "-parse-as-library", "-typecheck",
@@ -41,5 +45,11 @@ def test_native_approval_window_protocol_and_literal_build(tmp_path):
                                 *map(str, sorted(SOURCE.glob("*.swift"))), str(forged)],
                                capture_output=True, text=True, env=env, timeout=60)
     assert rejection.returncode != 0 and "private" in rejection.stderr
+    forged.write_text("@MainActor func forgeResult(_ binding: PresenceBinding) -> LocalPresenceResult { LocalPresenceResult(binding: binding) }", encoding="utf-8")
+    rejection = subprocess.run(["/usr/bin/swiftc", "-j", "1", "-parse-as-library", "-typecheck",
+                                "-import-objc-header", str(SOURCE / "NativeSender.h"),
+                                *map(str, sorted(SOURCE.glob("*.swift"))), str(forged)],
+                               capture_output=True, text=True, env=env, timeout=60)
+    assert rejection.returncode != 0 and "fileprivate" in rejection.stderr
     # The shipped binary is compiled but never launched by a test.
     assert literal.stat().st_size > 0
