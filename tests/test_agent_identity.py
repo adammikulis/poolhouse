@@ -3,6 +3,7 @@ and what refuses along the way. GitHub and the browser are fakes (poolhouse.test
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.machinery
 import importlib.util
 import logging
@@ -18,7 +19,8 @@ from pathlib import Path
 import jwt
 import pytest
 
-from poolhouse import credentials
+from poolhouse import credentials, httpguard
+from poolhouse.fleet import updates
 from poolhouse.testing.fakegithub import (
     ASKED,
     KEYS,
@@ -29,12 +31,15 @@ from poolhouse.testing.fakegithub import (
     loopback_get,
     pem,
 )
+from poolhouse.workspace import github_release
 from tests import github_support, memory_keys
 
 ring = memory_keys.ring
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "agent-identity"
+pytest_plugins = ["node_kit"]
+
 TTY = (True, True)
 MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")
 
@@ -45,12 +50,19 @@ def ai(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "home"))
     gh = FakeGitHub()
-    loader = importlib.machinery.SourceFileLoader("agent_identity", str(SCRIPT))
+    loader = importlib.machinery.SourceFileLoader("agent_identity", str(ROOT / "src/poolhouse/workspace/github_identity.py"))
     module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
     monkeypatch.setitem(sys.modules, loader.name, module)
     loader.exec_module(module)
     from poolhouse.workspace import github_app
     monkeypatch.setattr(github_app, "api", module.api)
+    fetch = httpguard.fetch
+
+    def scratch_api(url, **options):
+        if url.startswith(gh.url + '/'):
+            options['limits'] = dataclasses.replace(options['limits'], allow_hosts=frozenset({'127.0.0.1'}))
+        return fetch(url, **options)
+    monkeypatch.setattr(httpguard, 'fetch', scratch_api)
     browser = FakeBrowser(gh)
     for name, value in (("API", gh.url), ("POLL_S", 0.01), ("CREATE_WAIT_S", 10.0),
                         ("INSTALL_WAIT_S", 10.0), ("OPEN", browser)):
@@ -61,7 +73,7 @@ def ai(tmp_path, monkeypatch):
 
 
 def setup(ai, *extra):
-    code = ai.main(["setup", "--repo", REPO, *extra], TTY)
+    code = ai.command(["setup", "--repo", REPO, *extra], TTY)
     ai.browser.join()
     return code
 
@@ -135,8 +147,8 @@ def test_the_listener_is_closed_after_the_one_redirect(ai):
 def test_the_key_is_in_no_output_log_or_file(ai, tmp_path, capsys, caplog):
     caplog.set_level(logging.DEBUG)
     assert setup(ai) == 0
-    assert ai.main(["token"], TTY) == 0
-    assert ai.main(["check", "--online"], TTY) == 0
+    assert ai.command(["token"], TTY) == 0
+    assert ai.command(["check", "--online"], TTY) == 0
     out = capsys.readouterr()
     assert leaks(ai, tmp_path, out.out, out.err, caplog.text) == []
     assert "PRIVATE KEY" not in repr(ai.load())
@@ -287,21 +299,21 @@ def test_a_second_setup_changes_nothing(ai, capsys):
 
 def test_an_identity_for_another_repository_is_not_replaced(ai, capsys):
     setup(ai)
-    assert ai.main(["setup", "--repo", "ownerlogin/elsewhere"], TTY) == 1
+    assert ai.command(["setup", "--repo", "ownerlogin/elsewhere"], TTY) == 1
     assert "unset" in capsys.readouterr().err
     assert ai.load().repo == REPO
 
 
 def test_the_repository_defaults_from_gh(ai, tmp_path, monkeypatch):
     github_support.serve(tmp_path, monkeypatch, {})
-    assert ai.main(["setup"], TTY) == 0
+    assert ai.command(["setup"], TTY) == 0
     ai.browser.join()
     assert ai.load().repo == REPO
 
 
 @pytest.mark.parametrize("bad", ["../x", "a b/c", "owner", "o/..", "o/r/extra", "o/r;ls"])
 def test_a_malformed_repository_is_refused_before_anything_happens(ai, bad):
-    assert ai.main(["setup", "--repo", bad], TTY) == 1
+    assert ai.command(["setup", "--repo", bad], TTY) == 1
     assert ai.gh.log == [] and ai.browser.opened == []
 
 
@@ -313,7 +325,7 @@ def test_an_agent_marker_refuses_every_use_of_the_key_before_any_request(ai, mon
     before, held = list(ai.gh.log), ai.load()
     monkeypatch.setenv(marker, "1")
     for argv in (["setup", "--repo", REPO], ["token"], ["check", "--online"]):
-        assert ai.main(argv, TTY) == 1
+        assert ai.command(argv, TTY) == 1
     assert ai.gh.log == before and len(ai.browser.opened) == 2
     monkeypatch.delenv(marker)
     assert ai.load() == held
@@ -321,14 +333,14 @@ def test_an_agent_marker_refuses_every_use_of_the_key_before_any_request(ai, mon
 
 def test_an_agent_marker_stops_a_first_setup_before_anything_is_opened_or_stored(ai, monkeypatch):
     monkeypatch.setenv("CLAUDECODE", "1")
-    assert ai.main(["setup", "--repo", REPO], TTY) == 1
+    assert ai.command(["setup", "--repo", REPO], TTY) == 1
     assert ai.gh.log == [] and ai.browser.opened == [] and not stored_state(ai)
 
 
 @pytest.mark.parametrize("terminal", [(False, False), (False, True), (True, False)])
 def test_a_missing_terminal_refuses_setup_and_the_online_check(ai, terminal, capsys):
     for argv in (["setup", "--repo", REPO], ["check", "--online"]):
-        assert ai.main(argv, terminal) == 1
+        assert ai.command(argv, terminal) == 1
     assert ai.gh.log == [] and ai.browser.opened == [] and not stored_state(ai)
     assert "terminal" in capsys.readouterr().err
 
@@ -338,10 +350,10 @@ def test_token_needs_a_terminal_on_stdin_and_on_stdout_or_stderr(ai, monkeypatch
     monkeypatch.setattr(ai.person, "is_terminal", lambda _stream: False)
     capsys.readouterr()
     before = len(ai.gh.log)
-    assert ai.main(["token"], (False, True)) == 1
-    assert ai.main(["token"], (True, False)) == 1
+    assert ai.command(["token"], (False, True)) == 1
+    assert ai.command(["token"], (True, False)) == 1
     assert len(ai.gh.log) == before and capsys.readouterr().out == ""
-    assert ai.main(["token"], (True, True)) == 0
+    assert ai.command(["token"], (True, True)) == 0
 
 
 def run_child(tmp_path, args, *, agent, terminal):
@@ -391,7 +403,7 @@ def test_the_script_as_a_process_says_one_line_when_nothing_is_set_up(tmp_path):
 def test_token_prints_one_installation_token_and_nothing_else(ai, capsys):
     setup(ai)
     capsys.readouterr()
-    assert ai.main(["token"], TTY) == 0
+    assert ai.command(["token"], TTY) == 0
     out = capsys.readouterr()
     token = out.out.strip()
     assert out.out == token + "\n" and token in ai.gh.tokens and out.err == ""
@@ -417,7 +429,7 @@ def test_the_app_jwt_is_rs256_for_ten_minutes_at_most_and_names_the_app(ai):
 
 
 def test_token_before_setup_says_what_to_run_and_prints_nothing(ai, capsys):
-    assert ai.main(["token"], TTY) == 1
+    assert ai.command(["token"], TTY) == 1
     out = capsys.readouterr()
     assert out.out == "" and "scripts/agent-identity setup" in out.err and ai.gh.log == []
 
@@ -437,7 +449,7 @@ def test_a_token_for_the_wrong_installation_is_not_given_out(ai, capsys, repos):
     setup(ai)
     wrong_installation(ai, repos)
     capsys.readouterr()
-    assert ai.main(["token"], TTY) == 1
+    assert ai.command(["token"], TTY) == 1
     out = capsys.readouterr()
     assert out.out == "" and "no token was given out" in out.err
     assert not [t for t in ai.gh.tokens if t in out.err]
@@ -449,7 +461,7 @@ def test_a_stored_installation_that_does_not_exist_is_refused(ai, capsys):
     who.installation_id = 999
     ai.save(who, "")
     capsys.readouterr()
-    assert ai.main(["token"], TTY) == 1
+    assert ai.command(["token"], TTY) == 1
     out = capsys.readouterr()
     assert out.out == "" and "404" in out.err and "check --online" in out.err
 
@@ -464,7 +476,7 @@ def test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out(ai, capsys,
     setup(ai)
     setattr(ai.gh, knob, value)
     capsys.readouterr()
-    assert ai.main(["token"], TTY) == 1
+    assert ai.command(["token"], TTY) == 1
     out = capsys.readouterr()
     assert out.out == "" and why in out.err
 
@@ -478,7 +490,7 @@ def one_line(capsys):
 
 
 def test_check_says_not_set_up_when_nothing_is_stored(ai, capsys):
-    assert ai.main(["check"], TTY) == 1
+    assert ai.command(["check"], TTY) == 1
     assert one_line(capsys) == "agent identity: not set up; run scripts/agent-identity setup"
     assert ai.gh.log == []
 
@@ -486,7 +498,7 @@ def test_check_says_not_set_up_when_nothing_is_stored(ai, capsys):
 def test_check_says_ready_with_the_ids_and_the_repository(ai, capsys):
     setup(ai)
     capsys.readouterr()
-    assert ai.main(["check", "--repo", REPO.upper()], (False, False)) == 0
+    assert ai.command(["check", "--repo", REPO.upper()], (False, False)) == 0
     who = ai.load()
     assert one_line(capsys) == (f"agent identity: ready: App {who.slug} (id {who.app_id}), "
                                 f"installation {who.installation_id} on {REPO}")
@@ -496,36 +508,36 @@ def test_check_says_when_the_app_is_made_but_not_installed(ai, capsys):
     ai.gh.selection = "all"
     setup(ai)
     capsys.readouterr()
-    assert ai.main(["check"], TTY) == 1
+    assert ai.command(["check"], TTY) == 1
     assert "made but not installed" in one_line(capsys)
 
 
 def test_check_says_when_the_identity_is_for_another_repository(ai, capsys):
     setup(ai)
     capsys.readouterr()
-    assert ai.main(["check", "--repo", "ownerlogin/elsewhere"], TTY) == 1
+    assert ai.command(["check", "--repo", "ownerlogin/elsewhere"], TTY) == 1
     assert "stored for " + REPO in one_line(capsys)
 
 
 def test_check_online_asks_github_and_fails_when_the_installation_is_gone(ai, capsys):
     setup(ai)
     capsys.readouterr()
-    assert ai.main(["check", "--online"], TTY) == 0
+    assert ai.command(["check", "--online"], TTY) == 0
     assert one_line(capsys).startswith("agent identity: ready")
     ai.gh.installations.clear()
-    assert ai.main(["check", "--online"], TTY) == 1
+    assert ai.command(["check", "--online"], TTY) == 1
     assert "404" in one_line(capsys)
 
 
 def test_the_environment_cannot_stand_in_for_the_keychain(ai, monkeypatch, capsys):
     monkeypatch.setenv(ai.ITEM, "not-a-record")
-    assert ai.main(["check"], TTY) == 1
+    assert ai.command(["check"], TTY) == 1
     assert "environment" in one_line(capsys)
 
 
 def test_a_damaged_record_names_the_command_that_removes_it(ai, capsys):
     credentials.set(ai.ITEM, "not-base64!", keychain=True)
-    assert ai.main(["check"], TTY) == 1
+    assert ai.command(["check"], TTY) == 1
     line = one_line(capsys)
     assert "damaged" in line and f"credentials unset {ai.ITEM} --keychain" in line
 
@@ -542,23 +554,37 @@ def test_the_document_names_the_permissions_the_script_asks_for_and_the_order(ai
     assert "--identity-ready" not in text
 
 
-def test_api_preserves_authorization_timeout_and_headers_in_http_options(ai, monkeypatch):
+def test_setup_api_uses_fixed_origin_bounded_nonredirect_transport(ai, monkeypatch):
     asked = []
-    payload = {"operation": "scratch"}
+    path = '/app-manifests/scratch-code/conversions'
 
-    def request(url, *, payload=None, method=None, options):
-        asked.append((url, payload, method, options))
-        return {"accepted": True}
+    def fetch(url, **options):
+        asked.append((url, options))
+        limits = options['limits']
+        assert limits.follow_redirects is False and limits.max_bytes == 8 << 20 and limits.timeout == 30
+        with pytest.raises(ai.Failed):
+            limits.vet('https://host.invalid/escape')
+        return httpguard.Fetched(url, 302, {'location': 'https://host.invalid/escape'}, b'', ())
 
-    monkeypatch.setattr(ai.client, "request_json", request)
-    assert ai.api("POST", "/scratch", hint="retry", bearer="scratch-bearer", payload=payload) == {"accepted": True}
-    assert len(asked) == 1
-    url, sent, method, options = asked[0]
-    assert (url, sent, method) == (ai.API + "/scratch", payload, "POST")
-    assert options.token == "scratch-bearer"
-    assert options.timeout == 30.0
-    assert options.headers == ai.HEADERS
-    assert "scratch-bearer" not in repr(options)
+    monkeypatch.setattr(httpguard, 'fetch', fetch)
+    with pytest.raises(ai.Failed, match='302') as refused:
+        ai.api('POST', path, hint='retry', bearer='scratch-bearer', payload={})
+    assert len(asked) == 1 and asked[0][0] == ai.API + path
+    assert asked[0][1]['headers']['Authorization'] == 'Bearer scratch-bearer'
+    assert 'scratch-bearer' not in str(refused.value)
+
+
+@pytest.mark.parametrize('problem', ['oversized', 'malformed'])
+def test_setup_api_response_refusals_never_expose_secret_bytes(ai, monkeypatch, problem):
+    def fetch(url, **options):
+        if problem == 'oversized':
+            raise httpguard.Refused('scratch-bearer')
+        return httpguard.Fetched(url, 200, {}, b'scratch-bearer', ())
+    monkeypatch.setattr(httpguard, 'fetch', fetch)
+    with pytest.raises(ai.Failed) as refused:
+        ai.api('POST', '/app-manifests/scratch-code/conversions', hint='retry', bearer='scratch-bearer', payload={})
+    assert 'scratch-bearer' not in str(refused.value)
+
 
 
 @pytest.mark.parametrize('command', ['push-development', 'publish-release'])
@@ -574,6 +600,174 @@ def test_publication_sigterm_restores_previous_handler(ai, monkeypatch, capsys, 
 
     operation = 'push_development' if command == 'push-development' else 'publish_release'
     monkeypatch.setattr(github_release, operation, canceled)
-    assert ai.main([command], (False, False)) == 130
+    assert ai.command([command], (False, False)) == 130
     assert signal.getsignal(signal.SIGTERM) == previous
     assert 'stopped' in capsys.readouterr().err
+
+
+@pytest.fixture
+def installed_setup(ai, tmp_path, monkeypatch, workspace_node):
+    prefix = tmp_path / 'installed'
+    package = prefix / 'poolhouse'
+    (package / 'fleet').mkdir(parents=True)
+    commit = 'a' * 40
+    (package / 'fleet/built-from').write_text(commit)
+    selected = ai.runtime.Runtime(prefix, commit, '0.3.0-dev.1', 'fixture')
+    monkeypatch.setattr(ai.runtime, 'selected', lambda: selected)
+    monkeypatch.setattr(github_release.sys, 'prefix', str(prefix))
+    monkeypatch.setattr(github_release, '__file__', str(package / 'workspace/github_release.py'))
+    monkeypatch.setattr(ai, '__file__', str(package / 'workspace/github_identity.py'))
+    monkeypatch.setattr(github_release.real_machine, 'require', lambda action: None)
+    actor = workspace_node.member('bootstrap-lead')
+    monkeypatch.setattr(github_release, 'connect', lambda: workspace_node.session(actor))
+    monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', actor.name)
+    monkeypatch.setenv('POOLHOUSE_AGENT', 'codex')
+    gates = []
+    monkeypatch.setattr(github_release.authority, 'require', lambda gate, action: gates.append(gate))
+    checkout = github_support.git_checkout(tmp_path / 'source', f'https://github.com/{REPO}.git',
+        ('-c', 'user.name=Codex', '-c', 'user.email=codex@agents.invalid', 'commit', '--allow-empty', '-qm', 'chore: fixture'))
+    monkeypatch.setattr(ai.runtime_wheel, 'source_checkout', lambda: checkout)
+    monkeypatch.setattr(updates, 'REPO', REPO)
+    monkeypatch.setattr(ai, 'default_repo', lambda: pytest.fail('personal gh/source helper must not run'))
+    return selected, actor, gates
+
+
+def test_installed_lead_setup_uses_only_own_app_holder_and_no_terminal(ai, installed_setup, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(credentials, 'status', lambda *a: pytest.fail('public credential status'))
+    monkeypatch.setattr(credentials, 'get', lambda *a: pytest.fail('public credential resolver'))
+    assert ai.command(['setup'], (False, False)) == 0
+    ai.browser.join()
+    held = ai.decode(credentials._open(ai.ITEM))
+    assert held.repo == REPO and held.installation_id
+    assert installed_setup[2] and set(installed_setup[2]) == {'github.release'}
+    before = len(ai.browser.opened)
+    assert ai.command(['setup'], (False, False)) == 0
+    assert len(ai.browser.opened) == before
+    output = capsys.readouterr()
+    assert not leaks(ai, tmp_path, output.out, output.err)
+    assert all(token not in output.out + output.err for token in ai.gh.tokens)
+
+
+@pytest.mark.parametrize('refusal', ['child', 'actor', 'selection', 'module', 'repo', 'gate'])
+def test_delegated_setup_refuses_before_app_load_api_or_browser(ai, installed_setup, monkeypatch, workspace_node, refusal):
+    selected, actor, _ = installed_setup
+    monkeypatch.setattr(credentials, '_open', lambda *a: pytest.fail('credential access before admission'))
+    if refusal == 'child':
+        child = workspace_node.member('bootstrap-child', parent=actor)
+        monkeypatch.setattr(github_release, 'connect', lambda: workspace_node.session(child))
+        monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', child.name)
+    elif refusal == 'actor':
+        monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', 'other-agent')
+    elif refusal == 'selection':
+        monkeypatch.setattr(ai.runtime, 'selected', lambda: None)
+    elif refusal == 'module':
+        monkeypatch.setattr(ai, '__file__', str(selected.prefix.parent / 'source.py'))
+    elif refusal == 'gate':
+        monkeypatch.setattr(github_release.authority, 'require', lambda *a: ai.person.require_person('fixture gate', (False, False)))
+    args = ['setup', '--repo', 'other/project'] if refusal == 'repo' else ['setup']
+    assert ai.command(args, (False, False)) == 1
+    assert ai.gh.log == [] and ai.browser.opened == []
+
+
+@pytest.mark.parametrize('change', ['actor', 'selection', 'source'])
+def test_delegated_setup_revalidates_after_browser_before_exchange(ai, installed_setup, monkeypatch, change):
+    exchange = ai.exchange
+
+    def changed(code, repo, kind, check=None):
+        if change == 'actor':
+            monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', 'other-agent')
+        elif change == 'selection':
+            monkeypatch.setattr(ai.runtime, 'selected', lambda: None)
+        else:
+            subprocess.run(['git', '-C', str(ai.runtime_wheel.source_checkout()), '-c', 'user.name=Codex',
+                            '-c', 'user.email=codex@agents.invalid', 'commit', '--allow-empty', '-qm',
+                            'chore: changed fixture'], check=True, capture_output=True)
+        return exchange(code, repo, kind, check)
+    monkeypatch.setattr(ai, 'exchange', changed)
+    assert ai.command(['setup'], (False, False)) == 1
+    ai.browser.join()
+    assert not any('conversions' in row['path'] for row in ai.gh.log)
+    assert credentials._open(ai.ITEM) is None
+
+
+def test_delegated_setup_preserves_an_existing_other_repo_identity(ai, installed_setup):
+    held = ai.Identity('other/project', 7, 'client', 'app', pem(KEYS[0]), 9)
+    credentials.set(ai.ITEM, ai.encode(held), keychain=True)
+    assert ai.command(['setup'], (False, False)) == 1
+    assert ai.decode(credentials._open(ai.ITEM)) == held
+    assert ai.gh.log == [] and ai.browser.opened == []
+
+
+@pytest.mark.parametrize('change', ['actor', 'record'])
+def test_delegated_setup_revalidates_before_saving_and_preserves_other_records(ai, installed_setup, monkeypatch, change):
+    save = ai.save
+    other = ai.Identity('other/project', 7, 'client', 'app', pem(KEYS[0]), 9)
+
+    def changed(who, undo, check=None, expected=None):
+        if change == 'actor':
+            monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', 'other-agent')
+        else:
+            credentials.set(ai.ITEM, ai.encode(other), keychain=True)
+        return save(who, undo, check, expected)
+    monkeypatch.setattr(ai, 'save', changed)
+    assert ai.command(['setup'], (False, False)) == 1
+    ai.browser.join()
+    held = credentials._open(ai.ITEM)
+    assert (ai.decode(held) == other) if change == 'record' else held is None
+
+
+def test_delegated_pending_installation_resumes_without_creating_another_app(ai, installed_setup):
+    ai.gh.selection = 'all'
+    assert ai.command(['setup'], (False, False)) == 1
+    ai.browser.join()
+    assert len(ai.gh.apps) == 1 and ai.decode(credentials._open(ai.ITEM)).installation_id is None
+    ai.gh.selection = 'selected'
+    ai.gh.installations.clear()
+    assert ai.command(['setup'], (False, False)) == 0
+    ai.browser.join()
+    assert len(ai.gh.apps) == 1 and ai.decode(credentials._open(ai.ITEM)).installation_id
+
+
+def test_isolated_script_dispatches_package_without_source_path_injection(tmp_path):
+    source = str(ROOT / 'src')
+    code = ("import runpy,sys,types;from poolhouse import runtime;"
+            "module=types.ModuleType('poolhouse.workspace.github_identity');"
+            "module.command=lambda: print('installed isolated dispatch',sys.flags.isolated," + repr(source) + " not in sys.path) or 0;"
+            "sys.modules[module.__name__]=module;runpy.run_path(" + repr(str(SCRIPT)) + ",run_name='__main__')")
+    done = subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True,
+                          env={**os.environ, 'PYTHONPATH': str(tmp_path / 'hostile-source')}, timeout=30)
+    assert done.returncode == 0 and done.stdout.strip() == 'installed isolated dispatch 1 True'
+
+
+def test_delegated_setup_refuses_expired_preparation_and_locked_app(ai, installed_setup, monkeypatch):
+    prepared = ai.Preparation.capture(None)
+    with pytest.raises(ai.Failed, match='expired'):
+        dataclasses.replace(prepared, deadline=0).check()
+    monkeypatch.setattr(credentials, '_open', lambda *a: None)
+    monkeypatch.setattr(credentials, '_wrapped', lambda: {ai.ITEM: 'wrapped-ciphertext'})
+    assert ai.command(['setup'], (False, False)) == 1
+    assert ai.gh.log == [] and ai.browser.opened == []
+
+
+@pytest.mark.parametrize('bearer', ['', ' fixture-token '])
+@pytest.mark.parametrize('status', [200, 401])
+def test_api_authorization_headers_do_not_send_empty_bearers(ai, monkeypatch, bearer, status):
+    calls = []
+
+    def fetch(url, **options):
+        headers = options['headers']
+        assert headers.get('Authorization') != 'Bearer '
+        if bearer == '':
+            assert 'Authorization' not in headers
+        else:
+            assert headers['Authorization'] == f'Bearer {bearer}'
+        calls.append(url)
+        return httpguard.Fetched(url, status, {}, b'{"id":7}', ())
+
+    monkeypatch.setattr(httpguard, 'fetch', fetch)
+    if status == 401:
+        with pytest.raises(ai.Failed, match='401'):
+            ai.api("GET", "/users/fixture", hint="setup", bearer=bearer)
+    else:
+        assert ai.api("GET", "/users/fixture", hint="setup", bearer=bearer) == {'id': 7}
+    assert len(calls) == 1
