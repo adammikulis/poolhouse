@@ -49,6 +49,8 @@ def ai(tmp_path, monkeypatch):
     module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
     monkeypatch.setitem(sys.modules, loader.name, module)
     loader.exec_module(module)
+    from poolhouse.workspace import github_app
+    monkeypatch.setattr(github_app, "api", module.api)
     browser = FakeBrowser(gh)
     for name, value in (("API", gh.url), ("POLL_S", 0.01), ("CREATE_WAIT_S", 10.0),
                         ("INSTALL_WAIT_S", 10.0), ("OPEN", browser)):
