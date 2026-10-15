@@ -104,7 +104,7 @@ def test_a_job_whose_runner_died_is_reported_failed(table):
     while jobs.state(job)["state"] != "failed" and time.monotonic() < deadline:
         time.sleep(0.2)
     assert jobs.state(job)["state"] == "failed"
-    assert jobs.live_full(table[2]) == []
+    assert jobs.live_full() == []
 
 
 def test_failing_node_ids_come_from_the_kept_junit(table):
@@ -137,3 +137,42 @@ def test_job_ids_cannot_escape_the_job_table(table):
     with pytest.raises(testjobs.Refused):
         jobs.path("../../etc")
     assert storage.alive(os.getpid(), storage.process_start(os.getpid()))
+
+
+def test_live_scoped_job_uses_its_own_checkout(table, tmp_path):
+    jobs, _, _ = table
+    other = tmp_path / "other-checkout"
+    other.mkdir()
+    (other / "new_test.py").write_text("# scoped fixture\n")
+    jobs.write("fixture-job", "spec.json", {"root": str(other), "argv": ["all", "new_test.py"]})
+    jobs.write("fixture-job", "status.json", {"state": "queued", "at": time.time()})
+    assert jobs.live_full() == []
+    jobs.write("fixture-job", "spec.json", {"root": str(other), "argv": ["full"]})
+    assert jobs.live_full() == ["fixture-job"]
+
+
+@pytest.mark.parametrize("changes", [{"root": None}, {"root": "relative"},
+    {"root": "/nonexistent-fixture-root"}, {"argv": None}, {"argv": "all"}, {"argv": ["all", 3]}, {"argv": [""]}, {"argv": []}])
+def test_invalid_live_job_classification_fails_closed(table, changes):
+    jobs, _, root = table
+    jobs.write("fixture-job", "spec.json", {"root": str(root), "argv": ["all", "tests"], **changes})
+    jobs.write("fixture-job", "status.json", {"state": "queued", "at": time.time()})
+    assert jobs.live_full() == ["fixture-job"]
+
+
+def test_non_object_live_job_spec_fails_closed(table):
+    jobs, _, _ = table
+    jobs.write("fixture-job", "spec.json", [])
+    jobs.write("fixture-job", "status.json", {"state": "queued", "at": time.time()})
+    assert jobs.live_full() == ["fixture-job"]
+
+
+@pytest.mark.parametrize("spec", [[], {"owner": []}, {"owner": {"id": []}}])
+def test_submit_with_malformed_live_spec_refuses_before_creation(table, spec):
+    jobs, script, root = table
+    jobs.write("fixture-job", "spec.json", spec)
+    jobs.write("fixture-job", "status.json", {"state": "queued", "at": time.time()})
+    before = jobs.ids()
+    with pytest.raises(testjobs.Busy, match=r"fixture-job \(unknown\) already runs a whole tier"):
+        jobs.submit(["full"], BOB, root, script, {})
+    assert jobs.ids() == before

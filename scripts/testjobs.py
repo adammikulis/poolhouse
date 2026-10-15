@@ -94,10 +94,23 @@ class Jobs:
             self.write(job, "status.json", status)
         return status
 
-    def live_full(self, root: Path) -> list[str]:
+    def live_full(self) -> list[str]:
         """Ids of unfinished jobs that run a whole tier."""
-        return [j for j in self.ids() if self.state(j).get("state") in ("queued", "running")
-                and is_full(self.read(j, "spec.json").get("argv", []), root)]
+        held = []
+        for job in self.ids():
+            if self.state(job).get("state") not in ("queued", "running"):
+                continue
+            spec = self.read(job, "spec.json")
+            if not isinstance(spec, dict):
+                held.append(job)
+                continue
+            directory, argv = spec.get("root"), spec.get("argv")
+            valid = (isinstance(directory, str) and Path(directory).is_absolute()
+                     and Path(directory).is_dir() and isinstance(argv, list) and bool(argv)
+                     and all(isinstance(argument, str) and argument for argument in argv))
+            if not valid or is_full(argv, Path(directory)):
+                held.append(job)
+        return held
 
     def prune(self) -> None:
         """Remove finished jobs older than three days."""
@@ -117,9 +130,12 @@ class Jobs:
         self.prune()
         job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         with self.locked():
-            held = self.live_full(root) if extra.get("exclusive", True) and is_full(argv, root) else []
+            held = self.live_full() if extra.get("exclusive", True) and is_full(argv, root) else []
             if held:
-                who = self.read(held[0], "spec.json").get("owner", {}).get("id") or "unknown"
+                spec = self.read(held[0], "spec.json")
+                owner = spec.get("owner") if isinstance(spec, dict) else None
+                identity = owner.get("id") if isinstance(owner, dict) else None
+                who = identity if isinstance(identity, str) and identity else "unknown"
                 raise Busy(f"job {held[0]} ({who}) already runs a whole tier; wait for it or cancel it")
             self.write(job, "spec.json", {"id": job, "argv": argv, "owner": owner, "created": time.time(),
                                           "secret": secrets.token_hex(16), **extra, "root": str(root.resolve())})

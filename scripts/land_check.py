@@ -22,6 +22,7 @@ import testslots
 from poolhouse import worktreerules
 from poolhouse.activity import reuse
 from poolhouse.activity.gate import Run, evidence, record_run, tree_hash
+from poolhouse.guard.secrets import env_secrets, redact
 from poolhouse.keystore import KeystoreError
 from poolhouse.real_machine import Refused
 from poolhouse.workspace import testruns
@@ -227,7 +228,12 @@ def start_full(wt: Path, common: Path) -> dict:
         done = subprocess.run([sys.executable, "scripts/test", "submit", "full", "--background"], cwd=wt,
                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30,
                               env=worktreerules._git_environment())
-        if done.returncode or not done.stdout.strip():
+        if done.returncode:
+            detail, _ = redact(getattr(done, "stderr", "") or "", env_secrets(os.environ))
+            detail = " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", detail).split())[:500]
+            return {"status": "refused" if done.returncode == 6 else "unknown",
+                    "reason": detail or "background submission failed"}
+        if not done.stdout.strip():
             return {"status": "unknown", "reason": "background submission outcome is unknown"}
         job = done.stdout.strip().splitlines()[-1]
         jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(wt))
