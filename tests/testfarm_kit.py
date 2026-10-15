@@ -22,12 +22,12 @@ import pytest
 import test_on
 from node_kit import STRIPPED, allow, node_binary  # noqa: F401  (a fixture the ones below use)
 from pool_check import wire
+from pool_check.person import RigPerson
 from testfarm_tree import make_tree
 
 from poolhouse import features, node_binary as node_binary_module, node_launch, node_supervise
 from poolhouse.board import session as board_session
 from poolhouse.board.client import Client
-from poolhouse.fleet.onboard.manifest import Signer
 from poolhouse.testfarm.client import Shards, pool_devices
 
 BOARD = "demo"
@@ -41,24 +41,31 @@ class Device:
     client: Client
     token: str
     name: str = ""
-    person: Signer | None = None
+    person: RigPerson | None = None
     """The test person who granted this device's session what it may do."""
 
     def call(self, method: str, board: str = "", token: str = "", **params):
         return self.client.call(method, board, token, **params)
 
 
-def start(binary: Path, name: str) -> Device:
+    def admin(self, method: str, **params):
+        return self.call(method, token=self.token, **params)
+
+    def certificate(self) -> str:
+        return (self.state / "device.cert").read_bytes().hex()
+
+
+def start(binary: Path, name: str, person: RigPerson) -> Device:
     """A node process on a short temporary root, listening on loopback, with one session registered on the board."""
     root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
     state = root / "node"
     state.mkdir(mode=0o700)
+    wire.plant_phone_key(state, person.key.public.hex())
     node_supervise.point(state, binary, node_binary_module.sha256(binary))
     node_launch.ensure_node(state, extra=["--listen", "127.0.0.1:0", *wire.PRESENCE])
     client = Client(state)
     got = client.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session=name)
-    person = Signer.generate()
-    allow(board_session.Session(client, BOARD, got["token"], got["name"]), person)
+    allow(board_session.Session(client, BOARD, got["token"], got["name"]), person.key)
     return Device(root, state, client, got["token"], got["name"], person)
 
 
@@ -69,7 +76,11 @@ def skip_unless_possible() -> None:
 
 def join(a: Device, b: Device) -> None:
     """Enrol ``b`` in ``a``'s pool with a join code."""
-    code = a.call("add_device", token=a.token)
+    if a.person is None:
+        raise RuntimeError("the test pool has no admin key")
+    a.person.found(a, "secure")
+    a.person.admit(a, b, "join-code")
+    code = a.call("add_device", token=a.token, presigned=True)
     b.call("join_pool", token=b.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
 
 
@@ -77,9 +88,10 @@ def join(a: Device, b: Device) -> None:
 def devices(binary: Path, *names: str) -> Iterator[list[Device]]:
     """Nodes started one after another, each stopped and its root removed when the block ends, whichever step of the setup failed."""
     made: list[Device] = []
+    person = RigPerson()
     try:
         for name in names:
-            made.append(start(binary, name))
+            made.append(start(binary, name, person))
         yield made
     finally:
         for one in made:
@@ -109,6 +121,8 @@ def third(node_binary):  # noqa: F811
     """A node C alone in a pool of its own, started on demand; its device and the way to stop it."""
     skip_unless_possible()
     with devices(node_binary, "c") as (c,):
+        assert c.person is not None
+        c.person.found(c, "secure")
         yield c
 
 

@@ -16,6 +16,7 @@ drafts an act (`pool_draft`, `pool_draft_found`), the rig signs the bytes it is 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from pool_check.device import BOARD, Device
 
@@ -43,6 +44,14 @@ class Holder:
     board: str
     token: str
     name: str
+
+
+class FoundingDevice(Protocol):
+    name: str
+
+    def admin(self, method: str, **params): ...
+
+    def certificate(self) -> str: ...
 
 
 class RigPerson:
@@ -134,7 +143,7 @@ class RigPerson:
         act["signatures"] = sorted([*act["signatures"], {"kind": "admin", "key": self.admin.public.hex(), "sig": sig}], key=lambda s: (s["kind"], s["key"]))
         return act
 
-    def found(self, device: Device, policy: str, title: str = "pool check") -> dict:
+    def found(self, device: FoundingDevice, policy: str, title: str = "pool check") -> dict:
         """``device`` founds a pool of ``policy`` governed by the admin key and is its first member: the charter names the device and is accepted by the key outside the node."""
         keys = [{"key": self.admin.public.hex(), "person": "pool-check", "label": "the pool check's admin"}]
         draft = device.admin("pool_draft_found", title=title, policy=policy, project="", keys=keys)
@@ -144,7 +153,7 @@ class RigPerson:
             accepting["acceptance"] = self.admin.sign_bytes(bytes.fromhex(wanted["sign_bytes"])).hex()
         return device.admin("pool_found", charter=charter)
 
-    def admit(self, host: Device, joiner: Device, how: str) -> dict:
+    def admit(self, host: FoundingDevice, joiner: FoundingDevice, how: str) -> dict:
         """The admin key admits ``joiner`` (by the certificate in its state directory) to the pool ``host`` is in; the act is submitted to ``host``."""
         der = joiner.certificate()
         draft = host.admin("pool_draft", kind="admit", body={"cert": der, "name": joiner.name, "how": how, "via": ""})

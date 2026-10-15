@@ -38,6 +38,20 @@ pytest_plugins = ("testfarm_kit",)  # the `pool` fixture: two joined node proces
 pytestmark = pytest.mark.slow
 
 
+def test_fixture_uses_a_founded_strong_admin_pool_and_a_separate_stranger(pool, third):
+    a, b, _, _ = pool
+    status = a.call("pool_status")
+    other = b.call("pool_status")
+    stranger = third.call("pool_status")
+    assert status["pool"] and status["pool"] == other["pool"] != stranger["pool"]
+    assert status["policy"] == other["policy"] == stranger["policy"] == "secure"
+    for current in (status, other, stranger):
+        assert current["governance"]["mode"] == "governed"
+        assert current["governance"]["admins"][0]["strength"] == "strong"
+        assert not current["governance"]["weak_keys_only"]
+        assert [member["status"] for member in current["members"] if member["self"]] == ["active"]
+
+
 def test_a_setup_that_fails_stops_the_nodes_it_started(node_binary):
     skip_unless_possible()
     pids = []
