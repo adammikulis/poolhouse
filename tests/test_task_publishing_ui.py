@@ -3,8 +3,29 @@
 import pytest
 from browser_expect import expect
 from test_fleet_ui import Serving
+from test_tasks_ui import overview
 
 pytestmark = pytest.mark.slow
+
+
+def publishing_routes(page, respond):
+    project_id = 'b' * 32
+    page.route('**/ui/projects', lambda route: route.fulfill(json={'workspaces': [
+        {'id': project_id, 'name': 'Demo workspace', 'is_self': True}]}))
+    page.route(f'**/ui/projects/{project_id}/tasks', respond)
+
+
+def refresh_publishing(viewer, proof, publishing, project_view, attempt):
+    gate = publishing.locator('.publishing-gate').first
+    duplicate = attempt.locator('.publishing-gate').first
+    assert gate.get_attribute('data-publishing-key') != duplicate.get_attribute('data-publishing-key')
+    expect(duplicate.get_by_text('e' * 64, exact=True)).not_to_be_visible()
+    proof['reason'] = 'Owner is resolving the publication block'
+    viewer.get_by_role('button', name='Refresh', exact=True).click()
+    expect(publishing.locator('.publishing-reason').first).to_have_text(proof['reason'])
+    expect(project_view.locator('code')).to_be_visible()
+    expect(gate.get_by_text('e' * 64, exact=True)).to_be_visible()
+    expect(duplicate.get_by_text('e' * 64, exact=True)).not_to_be_visible()
 
 
 def test_mobile_publishing_details_escape_evidence_and_survive_refresh(tmp_path, playwright):
@@ -31,11 +52,11 @@ def test_mobile_publishing_details_escape_evidence_and_survive_refresh(tmp_path,
     def respond(route):
         if route.request.method == 'POST':
             posts.append(route.request.post_data_json)
-        route.fulfill(json={'tasks': [task], 'metrics': {}})
+        route.fulfill(json={'tasks': [task], 'overview': overview([task], 1791129615), 'metrics': {}})
     try:
         with playwright.chromium.launch(headless=True) as browser:
             page = browser.new_page(viewport={'width': 390, 'height': 844})
-            page.route('**/ui/tasks', respond)
+            publishing_routes(page, respond)
             page.goto(f'http://127.0.0.1:{server.port}/ui/#tasks')
             viewer = page.locator('tasks-view')
             viewer.get_by_role('button', name='Reviewed replay').click()
@@ -60,11 +81,7 @@ def test_mobile_publishing_details_escape_evidence_and_survive_refresh(tmp_path,
             expect(attempt.get_by_text('Finished', exact=True)).to_be_visible()
             project_view.locator('summary').click()
             expect(project_view.locator('code')).to_have_text(project)
-            proof['reason'] = 'Owner is resolving the publication block'
-            viewer.get_by_role('button', name='Refresh', exact=True).click()
-            expect(publishing.locator('.publishing-reason').first).to_have_text(proof['reason'])
-            expect(project_view.locator('code')).to_be_visible()
-            expect(publishing.locator('.publishing-gate').first.get_by_text('e' * 64, exact=True)).to_be_visible()
+            refresh_publishing(viewer, proof, publishing, project_view, attempt)
             assert viewer.locator('img').count() == 0 and publishing.get_by_role('button').count() == 0
             assert posts == []
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
