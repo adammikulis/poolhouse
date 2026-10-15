@@ -202,3 +202,9 @@ def test_nonexistent_junit_case_cannot_supply_failure_evidence(tmp_path):
     (tmp_path / "junit-fixture.xml").write_text("<testsuite tests='1' failures='1' errors='0'><testcase classname='tests.missing' name='case'><failure>bad</failure></testcase></testsuite>")
     with pytest.raises(ValueError, match="existing checkout"):
         evidence.failures(tmp_path, tmp_path)
+
+
+def test_composite_gate_failure_cannot_be_baseline_from_junit(captured_job):
+    root, _, _ = captured_job
+    code, _, receipt = evidence.run(root, [sys.executable, "scripts/test", "gate"])
+    assert code == 1 and not receipt.valid and not receipt.complete

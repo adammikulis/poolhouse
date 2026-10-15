@@ -166,7 +166,7 @@ def run(root: Path, argv: list[str]) -> tuple[int, str, Receipt]:
              and finite_number(status.get("started")) and finite_number(status.get("finished"))
              and began - 1 <= status["started"] <= status["finished"] <= time.time()
              and status.get("pid") == initial.get("pid") and status.get("started") == initial.get("started"))
-    if valid:
+    if valid and (code == 0 or argv[2] != "gate"):
         try:
             selectors = tuple(value for value in argv[3:] if value.startswith("tests/") and (root / value.split("::")[0]).exists())
             receipt.failures = failures(jobs.path(receipt.job), root, selectors) if code else []

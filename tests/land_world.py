@@ -12,6 +12,7 @@ from onboard_support import FileKeyring
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import land_board
+import land_failure_evidence
 
 from poolhouse.board import session
 from poolhouse.board.session import Native, Session
@@ -41,6 +42,7 @@ class World:
         self.members = {name: node.member(name, model=model) for name, model in MODELS}
         self.who = {name: node.session(m) for name, m in self.members.items()}
         self.lead = self.runner_session("lander")
+        monkeypatch.setattr(land_failure_evidence, "actor", lambda root: ({"id": self.lead.name}, True))
         self.runner = self.make_runner()
 
     def runner_session(self, native_id: str) -> Session:
