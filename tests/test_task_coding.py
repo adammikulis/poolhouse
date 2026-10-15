@@ -10,6 +10,10 @@ import pytest
 from poolhouse.workspace import localagent, task_coding
 
 
+def owning_session(identity="bound-worker"):
+    return SimpleNamespace(board="demo", call=lambda method: {"name": identity})
+
+
 @pytest.fixture
 def native(tmp_path):
     settings = tmp_path / 'settings.json'
@@ -20,14 +24,14 @@ def native(tmp_path):
 
 @pytest.mark.redteam
 def test_native_turn_and_output_limits_preserve_authority(monkeypatch, native):
-    agent = localagent.Agent('worker', 'qwen', profile='coding', harness='claude',
+    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', profile='coding', harness='claude',
                              effort='high', max_effort='low')
     seen = {}
     def process(self, turn, command, environment, context):
         seen.update(command=command, environment=environment)
         return 0
     monkeypatch.setattr(task_coding.Manager, '_process', process)
-    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, agent)
+    manager = task_coding.TaskManager(None, owning_session(), None, agent)
     command, context = native
     manager._process(None, [*command, '--print'], {'AUTHORITY': 'unchanged'}, context)
     assert '--max-turns' not in seen['command']
@@ -49,11 +53,11 @@ def test_native_turn_and_output_limits_preserve_authority(monkeypatch, native):
 
 @pytest.mark.parametrize('effort, thinking', [('off', False), ('medium', True)])
 def test_native_template_thinking_is_separate_from_output_and_stream(monkeypatch, native, effort, thinking):
-    agent = localagent.Agent('worker', 'Qwen3.8-27B.gguf', harness='claude', effort=effort)
+    agent = localagent.Agent('worker', 'Qwen3.8-27B.gguf', identity='bound-worker', harness='claude', effort=effort)
     seen = {}
     monkeypatch.setattr(task_coding.Manager, '_process',
                         lambda self, turn, command, environment, context: seen.update(environment) or 0)
-    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, agent)
+    manager = task_coding.TaskManager(None, owning_session(), None, agent)
     command, context = native
     manager._process(None, command, {'CLAUDE_CODE_MAX_OUTPUT_TOKENS': '12000',
         'CLAUDE_CODE_EXTRA_BODY': json.dumps({'stream': True, 'max_tokens': 12000,
@@ -67,11 +71,11 @@ def test_native_template_thinking_is_separate_from_output_and_stream(monkeypatch
 
 
 def test_native_effort_switch_has_no_generated_output_or_thinking_cap(monkeypatch, native):
-    agent = localagent.Agent('worker', '/cache/Qwen3.8-27B-UD-Q4_K_XL.gguf', harness='claude', effort='off')
+    agent = localagent.Agent('worker', '/cache/Qwen3.8-27B-UD-Q4_K_XL.gguf', identity='bound-worker', harness='claude', effort='off')
     seen = {}
     monkeypatch.setattr(task_coding.Manager, '_process',
                         lambda self, turn, command, environment, context: seen.update(environment) or 0)
-    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, agent)
+    manager = task_coding.TaskManager(None, owning_session(), None, agent)
     command, context = native
     manager._process(None, command, {}, context)
     assert json.loads(seen['CLAUDE_CODE_EXTRA_BODY'])['chat_template_kwargs']['enable_thinking'] is False
@@ -87,7 +91,7 @@ def test_native_effort_switch_has_no_generated_output_or_thinking_cap(monkeypatc
 @pytest.mark.parametrize('body', ['broken', '[]', '{"chat_template_kwargs":[]}'])
 def test_invalid_native_extra_body_does_not_launch(monkeypatch, native, body):
     monkeypatch.setattr(task_coding.Manager, '_process', lambda *_: pytest.fail('native launched'))
-    manager = task_coding.TaskManager(None, SimpleNamespace(board='demo'), None, localagent.Agent('worker', 'qwen'))
+    manager = task_coding.TaskManager(None, owning_session(), None, localagent.Agent('worker', 'qwen', identity='bound-worker'))
     command, context = native
     with pytest.raises(ValueError):
         manager._process(None, command, {'CLAUDE_CODE_EXTRA_BODY': body}, context)
@@ -111,7 +115,7 @@ def test_stop_cancels_native_turn(tmp_path, monkeypatch):
     monkeypatch.setattr(task_coding.TaskManager, '_run', run)
     task = {'id': 'task:' + 'a' * 32, 'title': 'Fix queue', 'description': 'Fix the queue', 'acceptance': ['Fails correctly']}
     with pytest.raises(RuntimeError, match='cancelled'):
-        task_coding.perform(SimpleNamespace(board='demo'), tmp_path, localagent.Agent('worker', 'qwen'),
+        task_coding.perform(owning_session(), tmp_path, localagent.Agent('worker', 'qwen', identity='bound-worker'),
                             task, task_coding.Run(tmp_path, stop.is_set, lambda _: None))
     assert cancelled == [True]
 
@@ -155,12 +159,20 @@ def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, mo
         'effort': 'high', 'max_effort': 'low', 'max_output_tokens': 32000})
     seen = {}
     def launch(model, role, project, **options):
-        seen.update(options)
+        seen.update(options, model=model, role=role, project=project)
         return 0
     monkeypatch.setattr(coding, 'launch_coding_agent', launch)
-    agent = localagent.Agent('worker', 'qwen', profile='coding', harness='pi', max_output_tokens=32000)
-    manager = task_coding.TaskManager(store, SimpleNamespace(board='demo'), None, agent)
-    manager._run(task_coding.Turn(conversation.id), conversation, 'Implement a queue')
+    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', profile='coding', harness='pi', max_output_tokens=32000)
+    manager = task_coding.TaskManager(store, owning_session(), None, agent)
+    from poolhouse.workspace import coding_turns
+    monkeypatch.setattr(coding_turns.person, 'session', lambda *_: pytest.fail('agent cannot borrow a person session'))
+    turn = task_coding.Turn(conversation.id)
+    manager._run(turn, conversation, 'Implement a queue')
+    assert turn.state == 'completed' and not turn.error
+    assert seen['parent'] == agent.identity == 'bound-worker'
+    assert seen['model'] == 'qwen' and seen['project'] == str(project)
+    assert seen['name'] != agent.identity
+    assert 'session_factory' not in seen
     assert seen['max_output_tokens'] == 32000
     assert seen['effort'] == 'low'
     assert seen['max_turns'] is None
@@ -178,3 +190,20 @@ def test_unlimited_native_tool_counter_preserves_parser_bounds(tmp_path):
     path.write_text(json.dumps({'version': 1, 'calls': True, 'limit': None}))
     with pytest.raises(ValueError):
         task_caps.admit(path)
+
+
+@pytest.mark.parametrize('authenticated', ['', None, 'other-worker'])
+def test_task_parent_rejects_empty_or_mismatched_authenticated_identity(authenticated):
+    agent = localagent.Agent('worker', 'qwen', identity='bound-worker')
+    with pytest.raises(ValueError, match='authenticated agent session'):
+        task_coding.TaskManager(None, owning_session(authenticated), None, agent)
+
+
+def test_task_parent_does_not_fall_back_after_authentication_refusal():
+    def refused(method):
+        raise PermissionError('scratch session refused')
+
+    session = SimpleNamespace(board='demo', name='bound-worker', call=refused)
+    agent = localagent.Agent('worker', 'qwen', identity='bound-worker')
+    with pytest.raises(PermissionError, match='scratch session refused'):
+        task_coding.TaskManager(None, session, None, agent)

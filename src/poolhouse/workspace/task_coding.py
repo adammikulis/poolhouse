@@ -24,7 +24,6 @@ from poolhouse.workspace import (
     work_reputation,
 )
 from poolhouse.workspace.coding_turns import Manager, Turn
-from poolhouse.workspace.harness_session import HarnessSession
 
 BOOTSTRAP = (
     'You are an implementation worker in the assigned task worktree. '
@@ -44,13 +43,16 @@ BOOTSTRAP = (
 class TaskManager(Manager):
     def __init__(self, store, s: Session, base: Path, agent):
         super().__init__(store)
-        self.board, self.base, self.identity = s.board, base, agent.identity
+        identity = s.call("whoami").get("name")
+        if not isinstance(identity, str) or not identity or identity != agent.identity:
+            raise ValueError("the coding task must use its authenticated agent session")
+        self.board, self.base, self.identity = s.board, base, identity
         self.agent = agent
         self.checkpoint = lambda _: None
         self.steps = self.calls = 0
 
-    def _session(self, name, folder, parent, say):
-        return HarnessSession(self.identity, board=self.board, base=self.base, managed_inbox=True)
+    def _parent(self, project):
+        return self.identity
 
     def _event(self, turn, row, harness):
         if harness == 'claude' and row.get('type') == 'assistant':

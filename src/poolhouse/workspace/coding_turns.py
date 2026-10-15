@@ -189,7 +189,7 @@ class Manager:
                     if settings["effort"] == "auto" else localeffort.clamp(settings["effort"], settings["max_effort"]))
             result = coding.launch_coding_agent(conversation.model, settings["role"] or roles.DEFAULT,
                 settings["project"], harness=harness, context=settings["context"], draft=settings.get("draft", "auto"), name=f"chat-{conversation.id}",
-                parent=person.session(settings["project"]).name,
+                parent=self._parent(settings["project"]),
                 harness_args=args, say=lambda text: turn.emit({"status": text}),
                 **{f"run_{harness}": lambda command, env: self._process(turn, command, env, (home, harness, prompt, settings["project"]))},
                 **launch_options)
@@ -207,6 +207,9 @@ class Manager:
                 store.put_doc(f"coding:{conversation.id}", {"version": 1, "session": turn.session,
                     "fingerprint": fingerprint, "state": turn.state, "updated": time.time()})
             turn.emit({"state": turn.state, "done": True})
+
+    def _parent(self, project):
+        return person.session(project).name
 
     def _max_turns(self):
         return 60

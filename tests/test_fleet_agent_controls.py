@@ -76,8 +76,8 @@ def test_person_board_controls_reuse_saved_settings_and_start_through_the_mainta
     server, kit, children, worker = served
     page = browser.new_page()
     try:
-        page.goto(f'http://127.0.0.1:{server.port}/ui/#board')
-        page.locator('#board-agents > summary').click()
+        page.goto(f'http://127.0.0.1:{server.port}/ui/#chat')
+        page.locator('chat-view #conversation-local-agents > summary').click()
         controls = page.locator('ml-agents')
         controls.locator('input#name').wait_for()
         page.wait_for_function("() => document.querySelector('ml-agents')?.shadowRoot?.querySelector('#name')?.value === 'local-worker'")
@@ -121,8 +121,8 @@ def test_auto_context_stays_automatic_when_work_profile_changes(served, browser)
     localagent.save(kit.base, replace(localagent.load(kit.base, "local-worker"), ctx=0))
     page = browser.new_page()
     try:
-        page.goto(f"http://127.0.0.1:{server.port}/ui/#board")
-        page.locator("#board-agents > summary").click()
+        page.goto(f"http://127.0.0.1:{server.port}/ui/#chat")
+        page.locator("chat-view #conversation-local-agents > summary").click()
         controls = page.locator("ml-agents")
         controls.locator("input#context").wait_for(state="attached")
         page.wait_for_function("() => document.querySelector('ml-agents')?.shadowRoot?.querySelector('#name')?.value === 'local-worker'")
