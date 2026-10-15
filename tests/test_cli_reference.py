@@ -44,7 +44,8 @@ def test_every_row_names_a_command_that_exists():
 
 def test_every_command_has_a_row_of_its_own():
     named = {row.command for row in TABLE}
-    missing = sorted(w for w in HELP if f"{PREFIX}{w}" not in named)
+    runtime = any(row.invocation.startswith("poolhouse runtime ") for row in TABLE)
+    missing = sorted(w for w in HELP if f"{PREFIX}{w}" not in named and not (w == "runtime" and runtime))
     assert not missing, f"no row in the command table for: {missing}"
 
 

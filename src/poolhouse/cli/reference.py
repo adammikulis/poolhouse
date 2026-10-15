@@ -54,6 +54,7 @@ HELP: dict[str, str] = {
     "members": "Set up a pool and see who is in it.",
     "requests": "Every request that waits for a person: list, show, answer, watch (a person at a terminal only).",
     "security": "What sentinel has seen and holds: events, quarantine, pins, decoys and the log's chain.",
+    "runtime": "Build, verify and select the installed runtime; inspect or roll it back.",
     "serve": "See which model is being served on this machine, put one up, take it down.",
     "setup": "The machine facts serving depends on, and what to do about each.",
     "speech": "Speech recognition, synthesis and voice activity on this machine.",
