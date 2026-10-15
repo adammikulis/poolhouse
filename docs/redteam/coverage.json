@@ -1,7 +1,7 @@
 {
- "surfaces": 811,
+ "surfaces": 813,
  "by_status": {
-  "covered": 489,
+  "covered": 491,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -65,7 +65,7 @@
    "unmapped": 0
   },
   "listener": {
-   "covered": 3,
+   "covered": 4,
    "partial": 5,
    "uncovered": 0,
    "n/a": 14,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 91,
+   "covered": 92,
    "partial": 58,
    "uncovered": 0,
    "n/a": 3,
@@ -4153,6 +4153,22 @@
     "tests/test_no_real_keychain.py"
    ],
    "note": "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
+  },
+  {
+   "id": "listener:coordination/relay.py:forward",
+   "kind": "listener",
+   "source": "coordination/relay.py:forward",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "covered",
+   "tests": [
+    "tests/test_local_coordination.py::test_relay_delivers_opaque_bytes_with_fixed_destination_and_cleans_up",
+    "tests/test_local_coordination.py::test_relay_refuses_lost_claim_before_starting_executor",
+    "tests/test_local_coordination.py::test_relay_rejects_replaced_or_writable_executable",
+    "tests/test_local_coordination.py::test_relay_enforces_byte_limit_and_cancels_live_stream",
+    "tests/test_local_coordination.py::test_relay_connection_deadline_closes_without_waiting_for_client_data"
+   ],
+   "note": "Only the claimed IPv4 loopback port accepts opaque TLS, with current own resource claims, verified immutable executable custody, one active connection, bounded bytes and cancellation cleanup; no HTTP parsing or alternate destination."
   },
   {
    "id": "listener:fleet/chat.py:stream",
@@ -9464,6 +9480,21 @@
     "tests/test_local_coordination.py::test_inspection_rejects_weakened_isolation"
    ],
    "note": "A private executable receives hostile arguments as literal argv without a shell or ambient credentials; failures redact child diagnostics and timeouts terminate the child. Exact resource ownership and isolation are checked before destructive operations."
+  },
+  {
+   "id": "spawn:coordination/relay.py:Forwarder.deliver",
+   "kind": "spawn",
+   "source": "coordination/relay.py:Forwarder.deliver",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_local_coordination.py::test_relay_delivers_opaque_bytes_with_fixed_destination_and_cleans_up",
+    "tests/test_local_coordination.py::test_relay_vanished_child_still_reaps_and_closes_streams",
+    "tests/test_local_coordination.py::test_relay_incomplete_reaping_retains_container_cleanup_boundary",
+    "tests/test_redteam_coverage.py::test_delegated_relay_spawn_inventory_tracks_actual_canonical_calls"
+   ],
+   "note": "The canonical platform launcher receives only fixed literal exec arguments and destination, without a shell; exact owned groups are reaped and pipes closed, and unconfirmed reaping retains resources. AST inventory follows the actual delegated physical call."
   },
   {
    "id": "spawn:credentials/writing.py:_owner_only_windows",

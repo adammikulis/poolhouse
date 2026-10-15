@@ -527,3 +527,16 @@ def test_creation_initial_evidence_failure_closes_its_descriptor(monkeypatch, tm
         with pytest.raises(OSError, match='storage unavailable'):
             Creation(tmp_path, Plan('codex-test', 'storage-fixture', 16443))
     assert len(closed) == 1
+
+
+def test_relay_connection_deadline_closes_without_waiting_for_client_data(relay_fixture, monkeypatch):
+    import socket
+    from types import SimpleNamespace
+
+    relay, docker, plan, session, _ = relay_fixture
+    clock = iter((0, 31))
+    monkeypatch.setattr(relay, 'time', SimpleNamespace(monotonic=lambda: next(clock, 31)))
+    with (relay.forward(docker, 'container-id', plan, session) as worker,
+          socket.create_connection(worker.listener.getsockname(), timeout=2) as client):
+        assert client.recv(1) == b''
+    assert worker.reaped

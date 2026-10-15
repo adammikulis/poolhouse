@@ -232,3 +232,19 @@ def test_rebound_or_shadowed_constructor_names_remain_conservative(source):
     found = {}
     coverage().find_calls(found, "src/poolhouse/fixture.py", ast.parse(source))
     assert found and all(row["kind"] == "egress" for row in found.values())
+
+
+def test_delegated_relay_spawn_inventory_tracks_actual_canonical_calls():
+    cov = coverage()
+    source = REPO / 'src/poolhouse/coordination/relay.py'
+    found = {}
+    cov.find_relay_spawns(found, 'src/poolhouse/coordination/relay.py', ast.parse(source.read_text()))
+    assert set(found) == {'spawn:coordination/relay.py:Forwarder.deliver'}
+    moved = ast.parse('from poolhouse import platform as owned\ndef moved(argv):\n return owned.start_process(argv)\n')
+    found = {}
+    cov.find_relay_spawns(found, 'src/poolhouse/coordination/relay.py', moved)
+    assert set(found) == {'spawn:coordination/relay.py:moved'}
+    missing = ast.parse('def moved(argv):\n return argv\n')
+    found = {}
+    cov.find_relay_spawns(found, 'src/poolhouse/coordination/relay.py', missing)
+    assert not found
