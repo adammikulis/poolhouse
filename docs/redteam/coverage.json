@@ -1,7 +1,7 @@
 {
- "surfaces": 814,
+ "surfaces": 815,
  "by_status": {
-  "covered": 492,
+  "covered": 493,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 70,
+   "covered": 71,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -3555,6 +3555,22 @@
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:runtime_unmerged.py:validate",
+   "kind": "human",
+   "source": "runtime_unmerged.py:validate",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_runtime_unmerged.py::test_person_floor_blocks_each_gate",
+    "tests/test_runtime_unmerged.py::test_forged_or_replayed_binding_fails",
+    "tests/test_runtime_unmerged.py::test_bool_only_agent_exception_never_authorizes_source",
+    "tests/test_runtime_unmerged.py::test_switch_rechecks_review_before_publishing_selection",
+    "tests/test_runtime_unmerged.py::test_node_admission_preserves_and_rechecks_the_exact_approval"
+   ],
+   "note": "both authority gates, authenticated main-session identity, exact queue review and source commit are rechecked at runtime selection and node admission"
   },
   {
    "id": "human:sentinel/adapters.py:agent_gate.gate",
@@ -10767,9 +10783,9 @@
    "note": "Checkout paths, refs, state roots, launcher directories and forwarded arguments are single argv items with no shell; a ref starting with a dash names no commit; module and function names in launchers are matched against a pattern"
   },
   {
-   "id": "spawn:runtime_launchers.py:install",
+   "id": "spawn:runtime_git.py:git",
    "kind": "spawn",
-   "source": "runtime_launchers.py:install",
+   "source": "runtime_git.py:git",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
@@ -10787,9 +10803,9 @@
    "note": "Checkout paths, refs, state roots, launcher directories and forwarded arguments are single argv items with no shell; a ref starting with a dash names no commit; module and function names in launchers are matched against a pattern"
   },
   {
-   "id": "spawn:runtime_source.py:git",
+   "id": "spawn:runtime_launchers.py:install",
    "kind": "spawn",
-   "source": "runtime_source.py:git",
+   "source": "runtime_launchers.py:install",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
