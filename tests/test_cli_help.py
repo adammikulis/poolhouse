@@ -43,8 +43,9 @@ def _main_of(command: str):
 class _Captured(Exception):
     """Raised inside ``main`` to hand its parser out before it parses anything."""
 
-    def __init__(self, parser: argparse.ArgumentParser) -> None:
+    def __init__(self, parser: argparse.ArgumentParser, arguments: list[str]) -> None:
         self.parser = parser
+        self.arguments = arguments
 
 
 def parser_of(command: str) -> argparse.ArgumentParser:
@@ -54,17 +55,21 @@ def parser_of(command: str) -> argparse.ArgumentParser:
     caught on its way into ``parse_known_args`` (which ``parse_args`` also goes through)
     and handed back before any argument is read.
     """
-    def grab(self: argparse.ArgumentParser, *_: object, **__: object) -> None:
-        raise _Captured(self)
+    return _capture_parser(command, []).parser
+
+
+def _capture_parser(command: str, arguments: list[str]) -> _Captured:
+    def grab(self: argparse.ArgumentParser, args=None, *_: object, **__: object) -> None:
+        raise _Captured(self, list(arguments if args is None else args))
 
     # A launcher forwards to the machine's selected runtime by exec, which on a machine that
     # has one would replace the test process; reading a parser must never do that.
     with (mock.patch.object(argparse.ArgumentParser, "parse_known_args", grab),
           mock.patch("poolhouse.runtime.forward", return_value=False)):
         try:
-            _main_of(command)([])
+            _main_of(command)(arguments)
         except _Captured as caught:
-            return caught.parser
+            return caught
     raise AssertionError(f"{command}'s main never parsed its arguments")
 
 
@@ -191,8 +196,21 @@ def _command_lines(text: str) -> list[tuple[int, str]]:
     return found
 
 
-def _documented() -> list[tuple[str, str, tuple[str, ...], set[str]]]:
-    """``(where, command, subcommand paths, flags)`` for every place the docs name a flag.
+def _documented_line(line: str):
+    words = shlex.split(line, comments=True, posix=True)
+    command, rest = words[0], words[1:]
+    if command not in SCRIPTS:
+        return None
+    captured = _capture_parser(command, rest)
+    paths = parsers_of(captured.parser)
+    prefixes = [' '.join(captured.arguments[:length]) for length in range(1, len(captured.arguments) + 1)]
+    subs = tuple([path for path in prefixes if path in paths][-1:])
+    flags = {word.strip('[]') for word in rest if FLAG.fullmatch(word.strip('[]'))}
+    return command, subs, flags, captured.parser
+
+
+def _documented() -> list[tuple[str, str, tuple[str, ...], set[str], argparse.ArgumentParser]]:
+    """``(where, command, subcommand paths, flags, parser)`` for every documented flag.
 
     Two places: a line of a fenced code block, which names its subcommand and so is held to
     that subcommand's parser; and a table row opening with a command, held to the whole
@@ -205,14 +223,12 @@ def _documented() -> list[tuple[str, str, tuple[str, ...], set[str]]]:
         text = page.read_text()
 
         for number, line in _command_lines(text):
-            words = shlex.split(line, comments=True, posix=True)
-            command, rest = words[0], words[1:]
-            if command not in SCRIPTS:
+            documented = _documented_line(line)
+            if documented is None:
                 continue
-            subs = [rest[0]] if rest and rest[0] in parsers_of(PARSERS[command]) else []
-            flags = {w for w in rest if FLAG.fullmatch(w)}
+            command, subs, flags, parser = documented
             if flags:
-                found.append((f"{where}:{number}", command, tuple(subs), flags))
+                found.append((f"{where}:{number}", command, subs, flags, parser))
 
         for number, line in enumerate(text.splitlines(), start=1):
             if not line.startswith("| `poolhouse"):
@@ -222,7 +238,7 @@ def _documented() -> list[tuple[str, str, tuple[str, ...], set[str]]]:
                 continue
             flags = {f for span in CODE_SPAN.findall(line) for f in FLAG.findall(span)}
             if flags:
-                found.append((f"{where}:{number}", command, (), flags))
+                found.append((f"{where}:{number}", command, (), flags, PARSERS[command]))
     return found
 
 
@@ -233,17 +249,41 @@ def test_the_docs_were_read():
     """A regex that matches nothing would make the test below pass by saying nothing."""
     pages = {page.name for page in _pages()}
     assert {"install.md", "commands.md", "serving.md", "bench.md"} <= pages
-    assert any(cmd == "poolhouse-serve" and subs == ("up",) for _, cmd, subs, _ in DOCUMENTED)
-    assert any(cmd == "poolhouse-bench" and "--rates" in flags for _, cmd, _, flags in DOCUMENTED)
+    assert any(cmd == "poolhouse-serve" and subs == ("up",) for _, cmd, subs, _, _ in DOCUMENTED)
+    assert any(cmd == "poolhouse-bench" and "--rates" in flags for _, cmd, _, flags, _ in DOCUMENTED)
 
 
-@pytest.mark.parametrize(("where", "command", "subs", "flags"), DOCUMENTED,
-                         ids=[f"{w} {c}" for w, c, _, _ in DOCUMENTED])
-def test_every_flag_the_docs_name_is_one_the_command_accepts(where, command, subs, flags):
-    accepted = flags_of(PARSERS[command], *subs)
+@pytest.mark.parametrize(("where", "command", "subs", "flags", "parser"), DOCUMENTED,
+                         ids=[f"{w} {c}" for w, c, _, _, _ in DOCUMENTED])
+def test_every_flag_the_docs_name_is_one_the_command_accepts(where, command, subs, flags, parser):
+    accepted = flags_of(parser, *subs)
     missing = flags - accepted
     assert not missing, (f"{where} documents {sorted(missing)} for {command} "
                          f"{' '.join(subs)}, which accepts none of them")
+
+
+def test_documented_runtime_ensure_uses_real_delegated_nested_parser():
+    command, subs, flags, parser = _documented_line(
+        'poolhouse runtime ensure [--allow-unmerged --review-request ID]')
+    assert command == 'poolhouse' and subs == ('ensure',)
+    assert flags == {'--allow-unmerged', '--review-request'}
+    assert flags <= flags_of(parser, *subs)
+    assert parser.parse_args(['ensure', '--review-request', 'land-1']).review_request == 'land-1'
+
+
+def test_documented_runtime_ensure_refuses_unknown_bracketed_flag():
+    command, subs, flags, parser = _documented_line('poolhouse runtime ensure [--unknown-runtime-option]')
+    with pytest.raises(AssertionError, match='unknown-runtime-option'):
+        test_every_flag_the_docs_name_is_one_the_command_accepts('fixture', command, subs, flags, parser)
+    with pytest.raises(SystemExit) as left:
+        parser.parse_args(['ensure', '--unknown-runtime-option'])
+    assert left.value.code == 2
+
+
+def test_documented_runtime_status_does_not_accept_ensure_options():
+    command, subs, flags, parser = _documented_line('poolhouse runtime status --review-request ID')
+    with pytest.raises(AssertionError, match='review-request'):
+        test_every_flag_the_docs_name_is_one_the_command_accepts('fixture', command, subs, flags, parser)
 
 
 # -- the bench, where the last three bugs were -----------------------------------------
