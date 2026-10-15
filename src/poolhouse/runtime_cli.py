@@ -26,6 +26,7 @@ from poolhouse import (
     worktreerules,
 )
 from poolhouse.command import Group, flag
+from poolhouse.coordination import cli as coordination_cli
 from poolhouse.fleet import runtime_wheel
 from poolhouse.fleet.launch import HTTP_PORT
 from poolhouse.fleet.runtime_paths import default_root
@@ -333,6 +334,9 @@ GROUP.add("restart-host", _reported(_restart_host), help="restart the running ho
                    flag("--force", action="store_true", help="restart even when the host already runs the selected commit"),
                    flag("--agent", default="", help="workspace agent the restart is attributed to (default: the environment's)"),
                    flag("--label", default="", help="helper label shown beside the agent")])
+
+GROUP.add("coordination", coordination_cli.handle, help="prepare or verify an optional local metadata API",
+          options=coordination_cli.options)
 
 main = GROUP.run
 

@@ -251,6 +251,17 @@ definitions and separate completion check are installed; native trust review and
 Automatic idle wake-up and durable sender-visible read receipts remain unbuilt. Windows/WSL and another physical device
 remain unverified for this batch.
 
+### Optional local coordination evidence (2026-10-14)
+
+The bounded metadata API at source `e157d4c59` passed an agent-driven lifecycle on the available
+macOS ARM64 Docker hardware. Fresh CA/SAN verification, source and installed-client anonymous
+401 refusal, named metadata writes, restricted RBAC, wrong audience and actual token expiry
+were checked. Normal cleanup removed the exact owned container and network and preserved all
+existing volume IDs. [Evidence and limits](notes/2026-10-14-local-coordination.md) distinguish
+the installed HTTP client from the full coordination CLI, whose publication and activation
+remain pending with the coordinator. This does not establish multi-device pool coordination,
+WSL onboarding, execution dispatch or any POOL/GOV completion claim.
+
 ### 3.9 Agent identity, release signing key and GitHub protection
 
 | ID | The release must | Verified by | State | Depends on |

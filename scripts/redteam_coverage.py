@@ -309,6 +309,18 @@ def find_calls(found: dict[str, Surface], where: str, tree: ast.Module) -> None:
             add(found, "human", f"{sub}:{sym}", f"{sub}:{sym}")
 
 
+def find_relay_spawns(found: dict[str, Surface], where: str, tree: ast.Module) -> None:
+    """The relay delegates its physical child to the canonical platform launcher."""
+    sub = short(where)
+    if sub != "coordination/relay.py":
+        return
+    table = spans(tree)
+    for node, name in calls(tree):
+        if name == "poolhouse.platform.start_process":
+            sym = symbol(table, node.lineno)
+            add(found, "spawn", f"{sub}:{sym}", f"{sub}:{sym}")
+
+
 def find_words(found: dict[str, Surface], where: str, tree: ast.Module) -> None:
     sub = short(where)
     table = spans(tree)
@@ -391,7 +403,7 @@ def discover() -> dict[str, Surface]:
     """Every surface in the tree, keyed by id."""
     found: dict[str, Surface] = {}
     for where, tree in tree_files():
-        for finder in (find_routes, find_handlers, find_calls, find_words, find_context,
+        for finder in (find_routes, find_handlers, find_calls, find_relay_spawns, find_words, find_context,
                        find_parsers, find_slash):
             finder(found, where, tree)
     find_scripts(found)
