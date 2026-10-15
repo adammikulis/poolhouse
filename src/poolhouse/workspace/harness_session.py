@@ -8,21 +8,20 @@ from pathlib import Path
 from poolhouse import node_launch
 from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, NodeError
-from poolhouse.board.session import Session
+from poolhouse.board.session import Entry, Session
 from poolhouse.client.health import reported_models
 from poolhouse.errors import Denied
 from poolhouse.workspace import worktree_lifecycle
 
-__all__ = ["BoardUnavailable", "HarnessSession", "session_of"]
+__all__ = ["BoardUnavailable", "HarnessSession", "inbox_of", "session_of"]
 
 
 class BoardUnavailable(Denied):
     """The board could not be reached or authenticated: local work carries on with a warning."""
 
 
-def session_of(actor, cwd):
-    """The session ``actor`` holds on the board of ``cwd``'s project. BoardUnavailable when the node or the board is not there;
-    Denied when ``actor`` has no usable token file, the node refuses the token or it belongs to another session."""
+def _authenticated(actor, cwd) -> tuple[Session, str]:
+    """Construct and authenticate this launcher actor on the project's board."""
     try:
         node = Client(node_launch.default_state())
         board = place.resolve(node, Path(cwd))
@@ -34,14 +33,29 @@ def session_of(actor, cwd):
         raise Denied(f'{actor} has no session of its own on the board of {Path(cwd).name}: {error}') from error
     s = Session(node, board, token)
     try:
-        named = s.name
+        reply = s.call("whoami")
+        named = reply.get("name") if isinstance(reply, dict) else None
     except NodeError as error:
         raise Denied(f'the board refused the token of {actor}: {error}') from error
     except OSError as error:
         raise BoardUnavailable(f'the board of {Path(cwd).name} is not reachable as {actor}: {error}') from error
-    if named != actor:
+    if not isinstance(named, str) or not named or named != actor:
         raise Denied(f'the token kept for {actor} belongs to {named}; ownership requires the launcher-bound identity')
-    return s
+    s.named = named
+    return s, named
+
+
+def session_of(actor, cwd) -> Session:
+    """The authenticated session this launcher actor holds on the project's board."""
+    return _authenticated(actor, cwd)[0]
+
+
+def inbox_of(actor: str, cwd: Path, limit: int) -> tuple[str, float, list[Entry]]:
+    """Read unread metadata within one private authenticated session transaction."""
+    session, name = _authenticated(actor, cwd)
+    cursor = credentials.cursors(session.client.state, session.board, name).get("inbox", {})
+    entries = session.read(cursor, inbox=True, limit=limit).entries
+    return name, session.clock(), entries
 
 
 @dataclass(slots=True)
