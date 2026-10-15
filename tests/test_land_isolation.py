@@ -108,7 +108,12 @@ def test_a_hanging_request_is_stopped_alone_and_the_rest_lands(world):
     assert world.status(one) == world.status(two) == "landed"
     assert world.status(hang) == "needs-human" and "no progress" in world.detail(hang)
     assert on_origin(world, "src/poolhouse/m33.py") and not on_origin(world, "HANG_GATE")
-    assert not list(world.proj.base.glob("*-land-*"))
+    retained = list(world.proj.base.glob("*-land-*"))
+    assert retained and all((path / "HANG_GATE").is_file() for path in retained)
+    for path in retained:
+        branch = git(path, "branch", "--show-current")
+        assert branch.startswith("land/")
+        assert git(world.proj.root, "rev-parse", branch) == git(path, "rev-parse", "HEAD")
 
 
 def test_a_gate_past_its_limit_is_timed_out_and_a_request_has_a_shorter_limit(world):

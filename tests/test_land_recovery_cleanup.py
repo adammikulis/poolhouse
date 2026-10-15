@@ -29,11 +29,11 @@ def recovery(tmp_path, monkeypatch):
     git(root, "commit", "-qm", "chore: seed")
     git(root, "worktree", "add", "-q", "-b", "land/fixture", str(tree))
     trees.claim(root, tree, "agent-fixture", time.time(), {"purpose": "integration batch"})
-    claims = [SimpleNamespace(kind="worktree", key=str(tree), owner="agent-fixture", expires_in_s=900),
-              SimpleNamespace(kind="branch", key="land/fixture", owner="agent-fixture", expires_in_s=900)]
+    claims = [SimpleNamespace(kind="worktree", key=str(tree), owner="agent-fixture", expires_in_s=900, lease="lease-fixture"),
+              SimpleNamespace(kind="branch", key="land/fixture", owner="agent-fixture", expires_in_s=900, lease="lease-fixture")]
     released = []
     session = SimpleNamespace(whoami=lambda: SimpleNamespace(name="agent-fixture"),
-                              claims=lambda: claims, release=lambda *args: released.append(args))
+                              claims=lambda: claims, call=lambda *args, **kwargs: None, release=lambda *args: released.append(args))
     monkeypatch.setattr(recover, "connect", lambda **kwargs: session)
     return root, tree, claims, released
 
@@ -45,7 +45,7 @@ def test_owned_merged_clean_tree_removed_without_force(recovery):
     assert released == [("branch", "land/fixture"), ("worktree", str(tree))]
 
 
-@pytest.mark.parametrize("obstacle", ["foreign", "missing-claim", "expired", "provenance", "locked", "dirty", "untracked", "ignored", "unique"])
+@pytest.mark.parametrize("obstacle", ["foreign", "missing-claim", "expired", "provenance", "locked", "dirty", "untracked", "ignored", "coverage-secret", "nested-cache", "unique"])
 def test_unproven_or_unique_tree_is_retained(recovery, obstacle):
     root, tree, claims, released = recovery
     if obstacle == "foreign":
@@ -62,6 +62,15 @@ def test_unproven_or_unique_tree_is_retained(recovery, obstacle):
         (tree / "tracked").write_text("changed")
     elif obstacle == "untracked":
         (tree / "unique").write_text("preserve")
+    elif obstacle == "coverage-secret":
+        (tree / ".gitignore").write_text(".coverage*\n")
+        git(tree, "add", ".gitignore")
+        git(tree, "commit", "-qm", "chore: ignore fixture")
+        git(root, "merge", "--ff-only", "land/fixture")
+        (tree / ".coverage-secret").write_text("preserve")
+    elif obstacle == "nested-cache":
+        (tree / "__pycache__").mkdir()
+        (tree / "__pycache__/unique").write_text("preserve")
     elif obstacle == "ignored":
         (tree / "unique.secret").write_text("preserve")
     else:

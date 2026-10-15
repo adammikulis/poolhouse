@@ -89,7 +89,8 @@ def owned_candidate(root: Path, tree: lg.Tree, session, owner: str) -> bool:
     entries = registry.get("trees")
     row = entries.get(str(tree.path.resolve())) if isinstance(entries, dict) else None
     if (not isinstance(row, dict) or row.get("owner") != owner
-            or row.get("purpose") != "integration batch" or not isinstance(row.get("base"), str)):
+            or row.get("purpose") != "integration batch" or not isinstance(row.get("base"), str)
+            or len(row["base"]) != 40 or any(c not in "0123456789abcdef" for c in row["base"])):
         return False
     expected = {("worktree", str(tree.path.resolve())), ("branch", tree.branch)}
     held = {(c.kind, c.key) for c in session.claims() if c.owner == owner and c.expires_in_s > 0}
@@ -104,9 +105,16 @@ def owned_candidate(root: Path, tree: lg.Tree, session, owner: str) -> bool:
     if locked.exists() or lg.out(tree.path, "status", "--porcelain", "--untracked-files=all"):
         return False
     ignored = lg.out(tree.path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").split("\0")
-    return not any(name and not any(part in {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
-                                   for part in Path(name).parts)
-                   and not Path(name).name.startswith((".testmondata", ".coverage")) for name in ignored)
+    if any(ignored):
+        return False
+    held = [c for c in session.claims() if c.owner == owner and c.expires_in_s > 0
+            and (c.kind, c.key) in expected]
+    if {(c.kind, c.key) for c in held} != expected:
+        return False
+    for claim in held:
+        session.call("lease_renew", id=claim.lease, ttl_s=900)
+    return lg.tree_of(root, tree.branch) == tree
+
 
 
 def _sweep(root: Path) -> list[str]:
@@ -133,7 +141,11 @@ def _sweep(root: Path) -> list[str]:
             if removed.returncode or any(t.path == tree.path for t in lg.trees(root)) or tree.path.exists():
                 continue
             gone.append(str(tree.path))
-            if (lg.out(root, "rev-parse", tree.branch) == tree.head and not lg.tree_of(root, tree.branch)
+            branch_claim = next((c for c in session.claims() if c.owner == owner and c.kind == "branch"
+                                 and c.key == tree.branch and c.expires_in_s > 0), None)
+            if branch_claim is not None:
+                session.call("lease_renew", id=branch_claim.lease, ttl_s=900)
+            if (branch_claim is not None and lg.out(root, "rev-parse", tree.branch) == tree.head and not lg.tree_of(root, tree.branch)
                     and on_target(root, tree.head, lg.primary(root).head)):
                 deleted = lg.git(top, "branch", "-d", tree.branch, check=False)
                 if not deleted.returncode:
