@@ -12,38 +12,55 @@ ROOT = Path(__file__).resolve().parents[1]
 LAND = ROOT / "scripts" / "land"
 DEV = "devline"
 
-FAKE_TEST = '''\
-import os, pathlib, sys
-log = os.environ.get("LAND_FAKE_LOG")
+FAKE_TEST = r'''
+import os, pathlib, sys, time, xml.etree.ElementTree as ET
+import testjobs
+from poolhouse.activity import reuse
+from poolhouse.workspace import testruns
+here = pathlib.Path('.').resolve()
+jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(here))
+job = ''
+if sys.argv[1:2] == ['_job']:
+    job = sys.argv[2]
+    spec = jobs.read(job, 'spec.json')
+    sys.argv = [sys.argv[0], *spec['argv']]
+log = os.environ.get('LAND_FAKE_LOG')
 if log:
-    with open(log, "a") as f:
-        f.write(" ".join(sys.argv[1:]) + "\\n")
-here = pathlib.Path(".")
-if sys.argv[1:2] == ["submit"]:
-    import testjobs
-    from poolhouse.activity import reuse
-    from poolhouse.workspace import testruns
-    jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(here.resolve()))
-    job = "fixture-full"
-    jobs.write(job, "spec.json", {"id": job, "root": str(here.resolve()), "argv": ["full", "--background"]})
-    jobs.write(job, "status.json", {"state": "done", "exit": 0})
+    with open(log, 'a') as f:
+        f.write(' '.join(sys.argv[1:]) + '\n')
+if sys.argv[1:2] == ['submit']:
+    jid = 'fixture-full'
+    jobs.write(jid, 'spec.json', {'id': jid, 'root': str(here), 'argv': ['full', '--background']})
+    jobs.write(jid, 'status.json', {'state': 'done', 'exit': 0})
     if log:
-        with open(log, "a") as f:
-            f.write("full --background\\n")
-    print(job)
+        with open(log, 'a') as f:
+            f.write('full --background\n')
+    print(jid)
     sys.exit(0)
-if list(here.glob("HANG_GATE*")):
-    import time
+if list(here.glob('HANG_GATE*')):
     time.sleep(120)
-if sys.argv[1] == "gate":
-    both = (here / "COMBO_A").exists() and (here / "COMBO_B").exists()
-    sys.exit(1 if list(here.glob("BAD_GATE*")) or both else 0)
 bad = 0
-for a in sys.argv[2:]:
-    p = pathlib.Path(a)
-    if a.startswith("tests/") and p.exists() and "FAILME" in p.read_text():
-        print(f"FAILED {a}::test_x - boom")
-        bad = 1
+cases = []
+if sys.argv[1] == 'gate':
+    both = (here / 'COMBO_A').exists() and (here / 'COMBO_B').exists()
+    bad = int(bool(list(here.glob('BAD_GATE*')) or both))
+else:
+    for arg in sys.argv[2:]:
+        path = pathlib.Path(arg)
+        if arg.startswith('tests/') and path.exists():
+            case = ET.Element('testcase', classname=arg[:-3].replace('/', '.'), name='test_x')
+            if 'FAILME' in path.read_text():
+                print(f'FAILED {arg}::test_x - boom')
+                ET.SubElement(case, 'failure', message='boom').text = 'boom'
+                bad = 1
+            cases.append(case)
+if job:
+    if cases:
+        suite = ET.Element('testsuite', tests=str(len(cases)), failures=str(sum(bool(c.findall('failure')) for c in cases)), errors='0')
+        suite.extend(cases)
+        ET.ElementTree(suite).write(jobs.path(job) / 'junit-fixture.xml', encoding='utf-8')
+    import testreuse_store
+    jobs.write(job, 'status.json', {'state': 'done', 'exit': bad, 'pid': os.getpid(), 'started': testreuse_store.process_start(os.getpid()), 'finished': time.time()})
 sys.exit(bad)
 '''
 

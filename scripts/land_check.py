@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import affected
+import land_failure_evidence as failure_evidence
 import land_git as lg
 import testjobs
 import testslots
@@ -53,11 +54,12 @@ class Result:
     tail: str = ""
     failed_files: list[str] = field(default_factory=list)
     detail: str = ""
+    receipt: failure_evidence.Receipt | None = None
 
     def view(self) -> dict:
         """A JSON-ready summary."""
         return {"check": self.name, "status": self.status, "seconds": round(self.seconds, 1),
-                "detail": self.detail}
+                "detail": self.detail, "failure_evidence": vars(self.receipt) if self.receipt else None}
 
 
 def classify(paths: list[str]) -> str:
@@ -144,17 +146,25 @@ def _remember(run: Run) -> None:
 
 def execute(wt: Path, check: Check, tree: str) -> Result:
     """Run one check unless this tree already passed it; record a pass as evidence."""
-    prior = _prior(tree, check)
-    if prior is not None:
-        return Result(check.name, "reused", detail=f"reused from {prior.id}")
+    before = tree_hash(wt)
+    prior = _prior(tree, check) if before and before == tree else None
+    if prior is not None and tree_hash(wt) == before:
+        return Result(check.name, "reused", detail=f"reused from {prior.id}",
+                      receipt=failure_evidence.Receipt(before=before, after=before, valid=True, complete=True))
     began = time.monotonic()
-    status, text = run_command(wt, check.argv)
+    if failure_evidence.maintained(wt, check.argv):
+        status, text, receipt = failure_evidence.run(wt, check.argv)
+    else:
+        status, text = run_command(wt, check.argv)
+        after = tree_hash(wt)
+        receipt = failure_evidence.Receipt(before=before, after=after, valid=bool(before and before == after), complete=bool(before and before == after))
     seconds = time.monotonic() - began
-    if status == 0:
+    if status == 0 and receipt.complete and receipt.after == tree:
         _remember(Run(wt, check.tier, check.argv, wt / ".land-no-junit", 0, seconds, tree))
-        return Result(check.name, "pass", seconds)
+        return Result(check.name, "pass", seconds, receipt=receipt)
     tail = "\n".join(text.strip().splitlines()[-TAIL:])
-    return Result(check.name, "fail", seconds, tail, sorted(set(FAILED.findall(text))))
+    return Result(check.name, "fail", seconds, tail, sorted(set(FAILED.findall(text))),
+                  detail=receipt.detail, receipt=receipt)
 
 
 def restrict(check: Check, failed: list[str]) -> Check:
@@ -165,14 +175,23 @@ def restrict(check: Check, failed: list[str]) -> Check:
     return Check(check.name, check.tier, [*head, *failed], failed)
 
 
-def probe(wt: Path, check: Check) -> bool:
-    """Whether ``check`` passes in ``wt``; test files missing there count as nothing to run."""
+def probe_result(wt: Path, check: Check, missing_allowed: frozenset[str] = frozenset()) -> Result:
+    """Execute a probe with exact-tree evidence and existing file selectors."""
     if check.files:
-        here = [f for f in check.files if (wt / f).exists()]
+        missing = {f for f in check.files if not (wt / f).exists()}
+        if missing - missing_allowed:
+            return Result(check.name, "fail", detail="an existing selector is missing")
+        here = [f for f in check.files if f not in missing]
         if not here:
-            return True
+            tree = tree_hash(wt)
+            return Result(check.name, "pass", receipt=failure_evidence.Receipt(before=tree, after=tree, valid=bool(tree)))
         check = Check(check.name, check.tier, [*check.argv[: len(check.argv) - len(check.files)], *here], here)
-    return run_command(wt, check.argv)[0] == 0
+    return execute(wt, check, tree_hash(wt))
+
+
+def probe(wt: Path, check: Check) -> bool:
+    """Whether the exact-tree probe passes."""
+    return probe_result(wt, check).status in ("pass", "reused")
 
 
 def other_full_run(common: Path) -> str:

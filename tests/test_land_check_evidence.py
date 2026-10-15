@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from poolhouse.real_machine import Refused
 
 
 def _check(tmp_path, code: int) -> land_check.Check:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     return land_check.Check("probe", "land:probe", [sys.executable, "-c", f"raise SystemExit({code})"])
 
 
@@ -29,14 +31,14 @@ def test_a_check_still_runs_and_passes_when_the_activity_log_cannot_be_read(tmp_
 
     monkeypatch.setattr(land_check, "evidence", locked)
     monkeypatch.setattr(land_check, "record_run", locked)
-    got = land_check.execute(tmp_path, _check(tmp_path, 0), "treehash")
+    got = land_check.execute(tmp_path, _check(tmp_path, 0), land_check.tree_hash(tmp_path))
     assert got.status == "pass"
 
 
 def test_a_failing_check_still_fails_when_the_activity_log_cannot_be_read(tmp_path, monkeypatch):
     monkeypatch.setattr(land_check, "evidence", _locked)
     monkeypatch.setattr(land_check, "record_run", _locked)
-    got = land_check.execute(tmp_path, _check(tmp_path, 3), "treehash")
+    got = land_check.execute(tmp_path, _check(tmp_path, 3), land_check.tree_hash(tmp_path))
     assert got.status == "fail"
 
 
@@ -45,5 +47,5 @@ def test_an_earlier_pass_is_still_reused_when_the_log_can_be_read(tmp_path, monk
         id = "e-1"
 
     monkeypatch.setattr(land_check, "evidence", lambda tree, tier: Seen())
-    got = land_check.execute(tmp_path, _check(tmp_path, 3), "treehash")
+    got = land_check.execute(tmp_path, _check(tmp_path, 3), land_check.tree_hash(tmp_path))
     assert got.status == "reused" and "e-1" in got.detail
