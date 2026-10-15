@@ -1,6 +1,8 @@
 //! Typed requests and serialized state transitions for the native authority.
 #![deny(unsafe_code)]
 
+pub mod certificate;
+
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 mod auth;
