@@ -5,7 +5,6 @@ is made and nothing touches the keychain."""
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -148,31 +147,48 @@ def test_an_empty_passphrase_from_the_keychain_stops_before_hdiutil(fakes):
     assert done.returncode == 1 and "no passphrase found" in done.stderr and "hdiutil" not in log(fakes)
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="the `security` CLI and keychains are macOS")
-def test_a_real_throwaway_keychain_gets_the_passphrase_on_stdin_not_argv(tmp_path):
-    """The real `security` against a keychain file made here (never the login keychain), with a
-    shim that records argv and then runs the real tool; hdiutil is faked so no image is made."""
-    real = shutil.which("security")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    shim = bin_dir / "security"
-    shim.write_text(f'#!/bin/sh\necho "security $*" >> "{tmp_path}/argv"\nexec {real} "$@"\n')
-    shim.chmod(0o755)
-    for name in ("hdiutil", "mount"):
-        (bin_dir / name).write_text(FAKES[name])
-        (bin_dir / name).chmod(0o755)
-    keychain = tmp_path / "throwaway.keychain-db"
-    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "FAKE_LOG": str(tmp_path / "log"),
-           "FAKE_HOME": str(tmp_path), "USER": "poolhousetest", "POOLHOUSE_VOLUME_KEYCHAIN": str(keychain)}
-    subprocess.run([real, "create-keychain", "-p", "throwaway", str(keychain)], check=True, capture_output=True)
-    try:
-        done = subprocess.run(["sh", str(SCRIPT), "tmpvol", str(tmp_path / "m"), "setup"], env=env,
-                              capture_output=True, text=True, timeout=60)
-        assert done.returncode == 0, done.stderr
-        got = subprocess.run([real, "find-generic-password", "-a", "poolhousetest", "-s", "tmpvol-data", "-w",
-                              str(keychain)], capture_output=True, text=True).stdout.strip()
-        assert len(got) == 40 and got.isalnum()
-        argv = (tmp_path / "argv").read_text()
-        assert "add-generic-password" not in argv and got not in argv
-    finally:
-        subprocess.run([real, "delete-keychain", str(keychain)], capture_output=True)
+def test_security_interactive_protocol_keeps_the_passphrase_off_argv(fakes):
+    import json
+    import textwrap
+
+    keychain = fakes / "scratch.keychain-db"
+    security = fakes / "bin" / "security"
+    security.write_text(f"#!{sys.executable} -I\n" + textwrap.dedent(r"""
+        import json
+        import os
+        import shlex
+        import sys
+        from pathlib import Path
+
+        root = Path(os.environ["FAKE_HOME"])
+        keychain = root / "scratch.keychain-db"
+        args = sys.argv[1:]
+        with (root / "argv.jsonl").open("a") as log:
+            log.write(json.dumps(args) + "\n")
+        if args == ["-i"]:
+            line = sys.stdin.read()
+            assert line.count("\n") == 1 and line.endswith("\n")
+            command = shlex.split(line)
+            assert command[:6] == ["add-generic-password", "-a", "nobody", "-s", "tmpvol-data", "-w"]
+            assert len(command) == 8 and command[-1] == str(keychain)
+            secret = command[-2]
+            assert len(secret) == 40 and secret.isalnum()
+            keychain.write_text(secret)
+        else:
+            assert args == ["find-generic-password", "-a", "nobody", "-s", "tmpvol-data", "-w", str(keychain)]
+            if not keychain.exists():
+                sys.exit(44)
+            print(keychain.read_text())
+    """))
+    done = subprocess.run(
+        ["sh", str(SCRIPT), "tmpvol", str(fakes / "m"), "setup"],
+        env={**os.environ, "PATH": f"{fakes / 'bin'}:{os.environ['PATH']}",
+             "FAKE_LOG": str(fakes / "log"), "FAKE_HOME": str(fakes),
+             "USER": "nobody", "POOLHOUSE_VOLUME_KEYCHAIN": str(keychain)},
+        capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    password = keychain.read_text()
+    calls = [json.loads(line) for line in (fakes / "argv.jsonl").read_text().splitlines()]
+    assert ["-i"] in calls
+    assert not any("add-generic-password" in args or password in args for args in calls)
+    assert f"stdin:[{password}]" in log(fakes)

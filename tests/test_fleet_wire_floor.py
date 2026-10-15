@@ -13,11 +13,12 @@ from poolhouse import http
 from poolhouse.fleet import discovery, projects, tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import ALL_INTERFACES, load_or_create_token
-from poolhouse.fleet.discovery import Beacon, primary_ip
+from poolhouse.fleet.discovery import Beacon
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.projects import lan_host
 from poolhouse.fleet.remote import Member
+from tests.remote_client_support import RemoteClientServer
 
 MARKER = b"PLANTED-MARKER-7f3a91c2e8b44d05"
 
@@ -28,23 +29,16 @@ def forget_pins():
     http._PINNED.clear()
 
 
-def lan_address():
-    address = primary_ip()
-    if not address or address.startswith("127."):
-        pytest.skip("this machine has no address other than loopback")
-    return address
-
-
 @pytest.fixture
 def listener(tmp_path):
-    """A real daemon handler on every interface, as the daemon's LAN listener builds it."""
+    """A real TLS daemon handler with a simulated remote client over loopback."""
     ident = tls.identity(tmp_path / "tls", "wire")
     root = tmp_path / "d"
     (root / "files").mkdir(parents=True)
     runner = JobRunner(root)
     token = load_or_create_token(root)
     handler = make_handler(Daemon(runner, root / "files", token, name="wire"))
-    httpd = LimitedServer((ALL_INTERFACES, 0), handler, tls=tls.server_context(ident))
+    httpd = RemoteClientServer(handler, tls=tls.server_context(ident))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield ident, httpd.server_port
     runner.shutdown()
@@ -87,9 +81,9 @@ class Relay:
 
 def test_a_request_with_a_planted_marker_crosses_the_wire_only_as_tls_13(listener):
     ident, port = listener
-    relay = Relay((lan_address(), port))
+    relay = Relay(("127.0.0.1", port))
     try:
-        conn = httpclient.HTTPSConnection(lan_address(), relay.port, context=tls.pinned_context(ident.beacon),
+        conn = httpclient.HTTPSConnection("127.0.0.1", relay.port, context=tls.pinned_context(ident.beacon),
                                            timeout=10)
         conn.request("POST", f"/jobs?q={MARKER.decode()}", body=MARKER, headers={
             "X-Marker": MARKER.decode(), "Content-Type": "application/octet-stream"})
@@ -106,7 +100,7 @@ def test_a_request_with_a_planted_marker_crosses_the_wire_only_as_tls_13(listene
 
 def test_plain_http_from_another_address_gets_no_answer(listener):
     _, port = listener
-    with socket.create_connection((lan_address(), port), timeout=5) as raw:
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
         raw.sendall(b"GET /health HTTP/1.0\r\nHost: x\r\n\r\n")
         raw.settimeout(5)
         try:
@@ -121,8 +115,8 @@ def test_a_client_that_will_not_go_above_tls_12_is_refused(listener):
     context = tls.pinned_context(ident.beacon)
     context.minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
     context.maximum_version = ssl.TLSVersion.TLSv1_2
-    with pytest.raises(ssl.SSLError), socket.create_connection((lan_address(), port), timeout=5) as raw:
-        context.wrap_socket(raw, server_hostname=lan_address()).close()
+    with pytest.raises(ssl.SSLError), socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
+        context.wrap_socket(raw, server_hostname="127.0.0.1").close()
 
 
 def test_a_client_context_offers_nothing_below_tls_13(tmp_path):
