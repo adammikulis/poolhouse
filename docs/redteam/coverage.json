@@ -1,7 +1,7 @@
 {
- "surfaces": 825,
+ "surfaces": 828,
  "by_status": {
-  "covered": 503,
+  "covered": 506,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 74,
+   "covered": 77,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -3981,6 +3981,54 @@
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:workspace/github_identity.py:guard",
+   "kind": "human",
+   "source": "workspace/github_identity.py:guard",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
+    "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
+    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+    "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
+    "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"
+   ],
+   "note": "App setup requires the selected installed holder, eligible root session and delegated gate, rechecks actor/source, and never exports its key; raw token and online check stay person-only and installation/token scopes cannot widen"
+  },
+  {
+   "id": "human:workspace/github_identity.py:only_this_repository",
+   "kind": "human",
+   "source": "workspace/github_identity.py:only_this_repository",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
+    "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
+    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+    "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
+    "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"
+   ],
+   "note": "App setup requires the selected installed holder, eligible root session and delegated gate, rechecks actor/source, and never exports its key; raw token and online check stay person-only and installation/token scopes cannot widen"
+  },
+  {
+   "id": "human:workspace/github_identity.py:token",
+   "kind": "human",
+   "source": "workspace/github_identity.py:token",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
+    "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
+    "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+    "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
+    "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"
+   ],
+   "note": "App setup requires the selected installed holder, eligible root session and delegated gate, rechecks actor/source, and never exports its key; raw token and online check stay person-only and installation/token scopes cannot widen"
   },
   {
    "id": "human:workspace/github_release.py:authorize",

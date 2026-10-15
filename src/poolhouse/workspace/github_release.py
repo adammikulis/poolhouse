@@ -97,7 +97,7 @@ def identity() -> github_app.Identity:
     """Open only the configured repository App item inside the credential holder."""
     held = credentials._open(github_app.ITEM)
     if held is None:
-        raise remote.Failed("the repository App is not configured; its initial setup needs the owner")
+        raise remote.Failed("the repository App is not configured; an authorized agent can prepare its initial setup")
     who = github_app.decode(held)
     if not who.installation_id:
         raise remote.Failed("the repository App installation is unfinished")
