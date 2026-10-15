@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
+import subprocess
 import urllib.parse
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from poolhouse import httpguard
@@ -60,3 +64,35 @@ def upload(repo: str, release_id: int, asset: tuple[str, bytes], bearer: str) ->
     url = f"{UPLOAD}/repos/{repo}/releases/{release_id}/assets?name={urllib.parse.quote(name)}"
     return _fetch(url, "POST", body, {"Authorization": f"Bearer {bearer}",
                                      "Content-Type": "application/octet-stream"})
+
+
+@dataclass(frozen=True)
+class GitPush:
+    repo: str
+    branch: str
+    commit: str
+    token: str = field(repr=False)
+
+
+def push(plan: GitPush, directory: Path, env: dict[str, str]) -> None:
+    """Publish one exact development ref through a fixed authenticated HTTPS transport."""
+    if (not re.fullmatch(REPOSITORY, plan.repo) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", plan.branch)
+            or plan.branch in {"main", "master"} or not re.fullmatch(r"[0-9a-f]{40}", plan.commit)):
+        raise Failed("invalid development push destination")
+    hooks = directory / "no-transport-hooks"
+    hooks.mkdir()
+    credential = base64.b64encode(f"x-access-token:{plan.token}".encode()).decode()
+    options = {"credential.helper": "", "credential.interactive": "never", "core.askPass": "",
+               "core.hooksPath": str(hooks), "http.followRedirects": "false", "http.proxy": "",
+               "http.https://github.com/.extraHeader": f"Authorization: Basic {credential}",
+               "push.followTags": "false", "submodule.recurse": "false"}
+    child = dict(env)
+    child["GIT_CONFIG_COUNT"] = str(len(options))
+    for index, (key, value) in enumerate(options.items()):
+        child[f"GIT_CONFIG_KEY_{index}"] = key
+        child[f"GIT_CONFIG_VALUE_{index}"] = value
+    done = subprocess.run(["git", "push", "--no-follow-tags", f"https://github.com/{plan.repo}.git",
+                           f"{plan.commit}:refs/heads/{plan.branch}"], cwd=directory,
+                          env=child, capture_output=True, timeout=180, check=False)
+    if done.returncode:
+        raise Failed("the repository App development push failed")
