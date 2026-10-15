@@ -46,7 +46,7 @@ def parse(data: bytes) -> tuple[Artifact, ...]:
         if expected is None:
             prefix = "GUI/PoolhouseApproval.app/Contents/Resources/"
             name = path.removeprefix(prefix)
-            if not path.startswith(prefix) or not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*", name):
+            if not path.startswith(prefix) or name in (".", "..") or not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
                 raise ValueError("Invalid native inventory.")
             expected = ("gui", "0644")
         if (role, mode) != expected or path in paths or not re.fullmatch(r"0|[1-9][0-9]{0,7}", size):

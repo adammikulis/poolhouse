@@ -179,6 +179,21 @@ def test_inventory_aliases_and_unknowns_refuse(change):
         inventory.parse(change(make_plan().inventory))
 
 
+@pytest.mark.parametrize("name,valid", [(".hidden", True), ("a-b_9.txt", True), ("...", True),
+                                      (".", False), ("..", False), ("", False), ("sub/file", False),
+                                      ("space name", False), ("bad\\name", False)])
+def test_resource_names_match_native_capture(name, valid):
+    data = make_plan().inventory
+    row = f"gui\tGUI/PoolhouseApproval.app/Contents/Resources/{name}\t0\t0644\t{'a' * 64}\n".encode()
+    data = inventory.HEADER + b"".join(sorted([*data[len(inventory.HEADER):].splitlines(keepends=True), row],
+                                          key=lambda item: item.split(b"\t")[1]))
+    if valid:
+        assert len(inventory.parse(data)) == 6
+    else:
+        with pytest.raises(ValueError):
+            inventory.parse(data)
+
+
 def test_missing_corrupt_foreign_and_skipped_prefix_refuse():
     plan = make_plan()
     with pytest.raises(ValueError):
