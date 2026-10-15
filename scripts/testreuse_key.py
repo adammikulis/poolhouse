@@ -202,22 +202,36 @@ class Closures:
         self.root = root
         self.known = affected.index(root)
         self.by_path = {path: name for name, path in self.known.items()}
-        self.edges: dict[str, tuple[set[str], bool]] = {}
+        self.edges: dict[tuple[bytes, str, bool], tuple[frozenset[str], bool]] = {}
+        self._imports: dict[tuple[bytes, str, bool], tuple[frozenset[str], bool]] = {}
         self._tree = ""
 
-    def deps(self, name: str) -> tuple[set[str], bool]:
+    def _analysis(self, source: bytes, module: str, is_package: bool) -> tuple[frozenset[str], bool]:
+        """Immutable import facts for exact bytes and relative-import context, within this execution."""
+        key = (source, module, is_package)
+        if key not in self._imports:
+            names, dynamic = import_names(source.decode("utf-8", errors="replace"), module, is_package)
+            self._imports[key] = (frozenset(names), dynamic)
+        return self._imports[key]
+
+    def imports(self, rel: str, module: str = "", is_package: bool = False) -> tuple[frozenset[str], bool]:
+        """Read current bytes before reusing pure analysis; filesystem metadata never selects a hit."""
+        return self._analysis((self.root / rel).read_bytes(), module, is_package)
+
+    def deps(self, name: str) -> tuple[frozenset[str], bool]:
         """The first-party modules ``name`` imports, and whether it imports one by a computed name."""
-        if name not in self.edges:
-            rel = self.known[name]
-            names, dynamic = import_names(text_of(self.root / rel), name, rel.endswith("__init__.py"))
+        rel = self.known[name]
+        key = ((self.root / rel).read_bytes(), name, rel.endswith("__init__.py"))
+        if key not in self.edges:
+            names, dynamic = self._analysis(*key)
             found: set[str] = set()
             for wanted in names:
                 hit = affected.resolve(wanted, self.known)
                 if hit:
                     found |= affected.parents(hit, self.known)
             found.discard(name)
-            self.edges[name] = (found, dynamic)
-        return self.edges[name]
+            self.edges[key] = (frozenset(found), dynamic)
+        return self.edges[key]
 
     def closure(self, rels: list[str], modules: tuple[str, ...] = ()) -> tuple[list[str], bool]:
         """The files in ``rels`` and the first-party files they and ``modules`` import at any depth, and
@@ -384,7 +398,7 @@ def build_manifest(root: Path, rel: str, seen: dict, closures: Closures, argumen
     envs: set[str] = set()
     for path in files:
         if path.endswith(".py"):
-            names, _ = import_names(text_of(root / path), "", False)
+            names, _ = closures.imports(path)
             externals |= {n.split(".")[0] for n in names}
             envs |= set(ENV_NAME.findall(text_of(root / path)))
     first_party = {k.split(".")[0] for k in closures.known}
