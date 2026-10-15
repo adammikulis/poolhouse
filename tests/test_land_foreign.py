@@ -13,12 +13,9 @@ from node_kit import (  # noqa: F401  (a fixture the one below uses)
     WorkspaceNode,
     node_binary,
 )
-from pool_check import wire
 
-from poolhouse import node_launch
-from poolhouse.board import founding, session as board_session
+from poolhouse.board import session as board_session
 from poolhouse.board.client import Denied
-from poolhouse.board.founding import Admin
 from poolhouse.workspace import landing
 
 
@@ -28,24 +25,12 @@ def pool(node_binary, monkeypatch, tmp_path):  # noqa: F811
     kit.skip_unless_possible()
     with kit.devices(node_binary, "a", "b") as (a, b):
         assert a.person is not None
-        node_launch.stop_node(a.state)
-        wire.plant_phone_key(a.state, a.person.public.hex())
-        node_launch.ensure_node(a.state, extra=["--listen", "127.0.0.1:0", *wire.PRESENCE])
-        founding.found(board_session.Session(a.client, kit.BOARD, a.token, a.name), Admin(a.person), "landing tests", "open")
-        kit.allow(board_session.Session(a.client, kit.BOARD, a.token, a.name), a.person)
-        draft = a.call("pool_draft", token=a.token, kind="admit", body={
-            "cert": (b.state / "device.cert").read_bytes().hex(), "name": "second device", "how": "join-code", "via": ""})
-        act = draft["act"]
-        act["signatures"] = [{"kind": "admin", "key": a.person.public.hex(),
-                              "sig": a.person.sign_bytes(bytes.fromhex(draft["sign_bytes"])).hex()}]
-        a.call("pool_submit", token=a.token, act=act)
-        code = a.call("add_device", token=a.token, presigned=True)
-        b.call("join_pool", token=b.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
+        kit.join(a, b)
         for name in STRIPPED:
             monkeypatch.delenv(name, raising=False)
         monkeypatch.setenv("POOLHOUSE_HOME", str(a.root))
         monkeypatch.setenv("POOLHOUSE_BOARD", kit.BOARD)
-        yield World(monkeypatch, tmp_path, WorkspaceNode(a.state, a.client, node_binary, person=a.person)), a, b
+        yield World(monkeypatch, tmp_path, WorkspaceNode(a.state, a.client, node_binary, person=a.person.key)), a, b
 
 
 def other(b, name: str, model: str) -> board_session.Session:
