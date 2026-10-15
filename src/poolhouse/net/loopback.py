@@ -16,7 +16,8 @@ def fetch(url: str, *, headers: dict[str, str] | None = None, method: str = "GET
         address = ipaddress.ip_address(parts.hostname or "")
     except ValueError:
         raise httpguard.Refused("a loopback request needs a numeric loopback address") from None
-    if (not address.is_loopback or '%' in host or not host.isascii() or '@' in parts.netloc
+    if (not address.is_loopback or (isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None)
+            or '%' in host or not host.isascii() or '@' in parts.netloc
             or parts.fragment):
         raise httpguard.Refused("a loopback request needs a numeric loopback address without credentials or a fragment")
     if context is not None and (not context.check_hostname or context.verify_mode != ssl.CERT_REQUIRED):
