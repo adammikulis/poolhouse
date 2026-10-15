@@ -25,7 +25,7 @@ from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_
 from poolhouse.serve.process import every_server, pid_exists
 from tests.test_serve_real_llama import LIMIT, llama_server
 
-pytest_plugins = ["tests.sandbox_kit"]
+pytest_plugins = ["tests.sandbox_kit", "serve_node"]
 
 pytestmark = pytest.mark.slow
 
@@ -55,6 +55,7 @@ def real(_real_home, seatbelt):
     return binary, model
 
 
+@pytest.mark.usefixtures("serve_leases")
 def test_a_confined_server_answers_with_the_model_on_the_gpu(real, monkeypatch):
     binary, model = real
     monkeypatch.setenv("LLAMA_CPP_SERVER", str(binary))

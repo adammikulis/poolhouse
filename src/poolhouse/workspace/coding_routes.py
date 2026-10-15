@@ -54,7 +54,7 @@ def route(request) -> bool:
         elif len(path) == 2 and path[1] == "events" and request.method == "GET":
             _events(request, manager, path[0])
         elif len(path) == 2 and path[1] == "status" and request.method == "GET":
-            if manager.store.get(path[0]) is None:
+            if path[0] not in manager.turns and manager.store.get(path[0]) is None:
                 raise ValueError("no such conversation")
             request.send(200, manager.status(path[0]))
         elif len(path) == 2 and path[1] in ("start", "cancel") and request.method == "POST":

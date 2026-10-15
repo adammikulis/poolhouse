@@ -27,6 +27,8 @@ from poolhouse.testing.tool_server import ToolCallingServer, Turn
 from tests.model_approval import approved
 from tests.sandbox_kit import policy, seatbelt  # noqa: F401
 
+pytest_plugins = ["serve_node"]
+
 FETCH = {"name": "web_fetch", "description": "Read a page.", "inputSchema": {
     "type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
     "annotations": {"readOnlyHint": True, "openWorldHint": True}}
@@ -103,7 +105,7 @@ def test_a_person_releases_a_frozen_session_and_the_count_starts_again() -> None
 
 
 @pytest.fixture
-def broker(tmp_path):
+def broker(tmp_path, serve_leases):
     manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     made = Broker(manager, idle_s=3600.0, room=lambda: None, scan=lambda: [])

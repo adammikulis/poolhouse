@@ -35,6 +35,8 @@ from poolhouse.testing import (
 )
 from tests.model_approval import approved
 
+pytest_plugins = ["serve_node"]
+
 # ---------------------------------------------------------------- the diff
 
 @pytest.mark.parametrize("label, fake, real", MIRRORED, ids=[m[0] for m in MIRRORED])
@@ -387,6 +389,7 @@ def test_the_answer_can_be_worked_out_from_the_request():
 
 
 @pytest.mark.slow
+@pytest.mark.usefixtures("serve_leases")
 def test_the_binary_really_launches_and_answers_on_the_port_it_was_given(tmp_path):
     """Started by `LlamaServerBackend`, past the flag check and the health poll."""
     import json as encoding

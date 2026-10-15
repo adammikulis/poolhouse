@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import math
 import os
 import sys
 from pathlib import Path
@@ -188,12 +189,16 @@ def kill_pid(pid: int, *, grace_s: float = 1.0) -> None:
         proc.kill()
 
 
-def kill_process_tree(pid: int, *, grace_s: float = 5.0) -> list[int]:
-    """Terminate ``pid`` and every descendant, returning the pids acted on."""
+def kill_process_tree(pid: int, *, grace_s: float = 5.0, reap_parent: bool = True,
+                      expect_start: float | None = None) -> list[int]:
+    """Terminate a tree; an owning process object can retain responsibility for reaping its root."""
     if not pid_exists(pid):
         return []
     try:
         parent = psutil.Process(pid)
+        if not reap_parent and (expect_start is None or not math.isfinite(expect_start)
+                                or expect_start <= 0 or parent.create_time() != expect_start):
+            raise ProcessLookupError("the owned process creation identity does not match")
         victims = [*parent.children(recursive=True), parent]
     except psutil.NoSuchProcess:
         return []
@@ -203,7 +208,8 @@ def kill_process_tree(pid: int, *, grace_s: float = 5.0) -> list[int]:
             proc.terminate()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-    _gone, alive = psutil.wait_procs(victims, timeout=grace_s)
+    waiting = victims if reap_parent else victims[:-1]
+    _gone, alive = psutil.wait_procs(waiting, timeout=grace_s)
     for proc in alive:
         try:
             proc.kill()
