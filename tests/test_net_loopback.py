@@ -147,3 +147,10 @@ def wrong_server_name(certificate, key):
                    .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.2"))]), critical=False)
                    .sign(private, hashes.SHA256()))
     Path(certificate).write_bytes(replacement.public_bytes(serialization.Encoding.PEM))
+
+
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), 0, -1, 11, True, "5", None])
+def test_unbounded_or_invalid_timeout_is_refused_before_network(monkeypatch, timeout):
+    monkeypatch.setattr(httpguard._Pinned, "connect", lambda *_: pytest.fail("invalid timeout connected"))
+    with pytest.raises(httpguard.Refused, match="timeout"):
+        loopback.fetch("http://127.0.0.1/", timeout=timeout)

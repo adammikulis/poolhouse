@@ -1,6 +1,7 @@
 """Bounded requests to numeric loopback endpoints, without redirects or ambient credentials."""
 
 import ipaddress
+import math
 import ssl
 
 from poolhouse import httpguard
@@ -9,6 +10,8 @@ from poolhouse import httpguard
 def fetch(url: str, *, headers: dict[str, str] | None = None, method: str = "GET",
           context: ssl.SSLContext | None = None, timeout: float = 10) -> httpguard.Fetched:
     """Return the first answer from a literal loopback address; never follow its Location."""
+    if (type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 10):
+        raise httpguard.Refused("a loopback request timeout must be finite and between zero and ten seconds")
     if not isinstance(url, str) or any(ord(c) <= 32 or ord(c) == 127 for c in url):
         raise httpguard.Refused("a loopback URL has no whitespace or control characters")
     try:
