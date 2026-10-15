@@ -3,7 +3,7 @@
 The dangerous route here is first-run setup: a daemon that has not joined a pool has
 no credential to check, and the setup route can create one -- so whoever reaches it first
 owns the machine. Those guards are the bulk of what is tested, and they are tested by
-making real requests from real addresses rather than by asserting on a function's return.
+making real TLS requests on loopback with a simulated kernel-supplied remote client.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from launch_support import arm, disarm
 from poolhouse.fleet import tls
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
-from poolhouse.fleet.discovery import in_pool, primary_ip
+from poolhouse.fleet.discovery import in_pool
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.onboard.join_code import unverified_context
@@ -31,6 +31,7 @@ from poolhouse.fleet.session import Sessions, Throttle, parse_cookie
 from poolhouse.fleet.ui import UI, asset_bytes
 from poolhouse.http import Server
 from tests.keystore_support import counting  # noqa: F401
+from tests.remote_client_support import REMOTE_ADDRESS, RemoteClientServer
 from tests.pool_support import a_keystore  # noqa: F401
 
 
@@ -76,7 +77,7 @@ def _free_port() -> int:
 
 
 class Serving:
-    """A daemon with a loopback UI and an optional explicit LAN listener."""
+    """A daemon with local and simulated-remote loopback listeners."""
 
     def __init__(self, tmp_path, name="studio", setup_token="", schedule=None, secure=True):
         self.schedule = schedule
@@ -130,8 +131,9 @@ class Serving:
         if options:
             raise TypeError(f"Unknown request options: {', '.join(options)}")
         if host != "127.0.0.1" and self.lan_httpd is None:
-            self.lan_httpd = LimitedServer((host, self.port), self.httpd.RequestHandlerClass,
-                                          tls=self.httpd.tls)
+            if self.httpd.tls is None:
+                LimitedServer((REMOTE_ADDRESS, 0), self.httpd.RequestHandlerClass)
+            self.lan_httpd = RemoteClientServer(self.httpd.RequestHandlerClass, tls=self.httpd.tls)
             threading.Thread(target=self.lan_httpd.serve_forever, daemon=True).start()
         data = json.dumps(body).encode() if body is not None else None
         sent = {"Content-Type": "application/json"}
@@ -140,9 +142,11 @@ class Serving:
         if cookie:
             sent["Cookie"] = cookie
         sent.update(headers or {})
-        conn = (http.client.HTTPConnection(host, self.port, timeout=10)
+        port = self.port if host == "127.0.0.1" else self.lan_httpd.server_port
+        sent.setdefault("Host", f"{host}:{port}")
+        conn = (http.client.HTTPConnection("127.0.0.1", port, timeout=10)
                 if host == "127.0.0.1" or not self.secure
-                else http.client.HTTPSConnection(host, self.port, timeout=10, context=unverified_context()))
+                else http.client.HTTPSConnection("127.0.0.1", port, timeout=10, context=unverified_context()))
         try:
             conn.request(method, path, body=data, headers=sent)
             r = conn.getresponse()
@@ -260,13 +264,12 @@ class TestFirstRunIsNotUpForGrabs:
         assert body["in_pool"] is True and body["group"] == "home"
         assert in_pool(serving.keyfile)
 
-    @pytest.mark.lan_network
     def test_setup_is_refused_from_another_machine(self, serving):
         """Whoever reaches an unjoined daemon first would own it. Being on the LAN is
         not enough; you have to be on the box, or use ssh and the CLI."""
         status, body, _ = serving.call("/ui/setup/join", method="POST",
                                        body={"mode": "create", "group": "home", "passphrase": WORDS},
-                                       host=primary_ip())
+                                       host=REMOTE_ADDRESS)
         assert status == 403
         assert "ssh" in body["error"]
         assert not in_pool(serving.keyfile)
@@ -295,15 +298,14 @@ class TestFirstRunIsNotUpForGrabs:
         assert status == 401
         assert "sign in" in body["error"]
 
-    @pytest.mark.lan_network
     def test_a_setup_code_lets_a_headless_box_be_set_up_remotely(self, tmp_path):
         s = Serving(tmp_path, setup_token="abc123xyz")
         try:
             refused, _, _ = s.call("/ui/setup/join", method="POST",
-                                   body={"mode": "create", "group": "home", "passphrase": WORDS}, host=primary_ip())
+                                   body={"mode": "create", "group": "home", "passphrase": WORDS}, host=REMOTE_ADDRESS)
             assert refused == 403
             ok, body, _ = s.call("/ui/setup/join", method="POST",
-                                 body={"mode": "create", "group": "home", "passphrase": WORDS}, host=primary_ip(),
+                                 body={"mode": "create", "group": "home", "passphrase": WORDS}, host=REMOTE_ADDRESS,
                                  headers={"X-Poolhouse-Setup": "abc123xyz"})
             assert ok == 200, body
         finally:
@@ -311,7 +313,6 @@ class TestFirstRunIsNotUpForGrabs:
 
 
 class TestThePassphraseNeverCrossesPlainHttp:
-    @pytest.mark.lan_network
     def test_another_machine_is_refused_the_interface_when_it_would_be_plain_http(self, tmp_path):
         """A listener beyond this machine cannot be built without TLS, so no passphrase can reach it."""
         plain = Serving(tmp_path, secure=False)
@@ -319,17 +320,16 @@ class TestThePassphraseNeverCrossesPlainHttp:
             for path, method in (("/ui/setup", "GET"), ("/ui/session", "POST")):
                 with pytest.raises(ValueError, match="TLS or not at all"):
                     plain.call(path, method=method, body={"passphrase": WORDS}
-                               if method == "POST" else None, host=primary_ip())
+                               if method == "POST" else None, host=REMOTE_ADDRESS)
                 assert plain.lan_httpd is None
             assert plain.call("/ui/setup")[0] == 200
         finally:
             plain.close()
 
-    @pytest.mark.lan_network
     def test_over_tls_the_same_request_reaches_the_sign_in(self, serving):
         serving.call("/ui/setup/join", method="POST", body={"mode": "create", "passphrase": WORDS, "group": "home"})
         status, _, headers = serving.call("/ui/session", method="POST",
-                                          body={"passphrase": WORDS}, host=primary_ip())
+                                          body={"passphrase": WORDS}, host=REMOTE_ADDRESS)
         assert status == 200 and "Set-Cookie" in headers
 
 
@@ -406,10 +406,9 @@ class TestOnItsOwn:
         status, body, _ = serving.call("/ui/settings")
         assert status == 200, body
 
-    @pytest.mark.lan_network
     def test_nobody_else_does(self, serving):
         self.finished(serving)
-        status, body, _ = serving.call("/ui/settings", host=primary_ip())
+        status, body, _ = serving.call("/ui/settings", host=REMOTE_ADDRESS)
         assert status == 403
         assert "ssh" in body["error"]
 
@@ -420,10 +419,9 @@ class TestOnItsOwn:
         assert status == 403
         assert "hostname" in body["error"]
 
-    @pytest.mark.lan_network
     def test_finishing_is_refused_from_another_machine(self, serving):
         status, _body, _ = serving.call("/ui/setup/done", method="POST",
-                                        host=primary_ip())
+                                        host=REMOTE_ADDRESS)
         assert status == 403
         assert serving.call("/ui/setup")[1]["needs_setup"] is True
 

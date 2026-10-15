@@ -7,7 +7,8 @@ import socket
 import pytest
 
 from poolhouse.fleet.discovery import Advertiser, Beacon, mint_pool
-from tests.test_fleet_ui import Serving, primary_ip
+from tests.remote_client_support import REMOTE_ADDRESS
+from tests.test_fleet_ui import Serving
 
 
 @pytest.fixture
@@ -37,5 +38,5 @@ def test_a_machine_in_a_pool_asks_for_the_list_behind_its_sign_in(serving):
 
 
 def test_first_run_refuses_the_list_from_another_machine(serving):
-    status, body, _ = serving.call("/ui/setup/pools", host=primary_ip())
+    status, body, _ = serving.call("/ui/setup/pools", host=REMOTE_ADDRESS)
     assert status == 403 and "ssh" in body["error"]
