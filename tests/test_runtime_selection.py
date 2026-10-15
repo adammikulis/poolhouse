@@ -207,8 +207,16 @@ def test_canonical_launcher_follows_new_selection_while_anchor_stays_usable(isol
     runtime.publish(old)
     launcher = isolated / "poolhouse-probe"
     runtime.write_launcher(launcher, "poolhouse.runtime_probe", "", old, follow_selection=True)
-    newer = runtime_wheel.prepare(_wheel(isolated, B, "new"), B, timeout=60)
-    runtime_store.mark_created(newer.prefix, "launcher-test", "ensure")
+    creator = runtime_store.creator_record("launcher-test", "ensure")
+    previous_mask = os.umask(0o022)
+    try:
+        newer = runtime_wheel.prepare(_wheel(isolated, B, "new"), B, timeout=60,
+                                      target=runtime_wheel.Target(creator=creator))
+    finally:
+        os.umask(previous_mask)
+    created = newer.prefix / runtime_store.CREATED
+    assert created.stat().st_mode & 0o777 == 0o600
+    assert json.loads(created.read_text()) == creator
     runtime_store.mark_verified(newer)
     runtime.publish(newer)
     done = subprocess.run([sys.executable, str(launcher)], capture_output=True, text=True, timeout=30,

@@ -71,9 +71,13 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
         exception = runtime_unmerged.approve(primary, commit, args.review_request)
     if deploying:
         runtime_deploy.admit(primary, commit, allow_unmerged=exception)
+    baseline = json.loads(args.automatic_from) if getattr(args, "automatic_from", "") else None
+    if baseline is not None and (not isinstance(baseline, list) or len(baseline) not in (0, 5)
+                                 or any(not isinstance(value, str) for value in baseline)):
+        raise runtime_deploy.DeployError("invalid automatic runtime selection snapshot")
     return runtime_deploy.Plan(primary, commit, _launchers(args.launchers),
                                runtime_trust.floor(primary), args.timeout, args.wait, args.agent,
-                               allow_unmerged=exception)
+                               allow_unmerged=exception, automatic_from=tuple(baseline) if baseline is not None else None)
 
 
 def _start_background(argv: list[str]) -> None:
@@ -97,7 +101,8 @@ SETTLE = "settle.lock"
 
 def _again(args: argparse.Namespace) -> list[str]:
     """The ensure command line that repeats this one without --background."""
-    words = ["ensure", "--ref", args.ref, "--timeout", str(args.timeout), "--wait", str(args.wait)]
+    words = ["ensure", "--ref", args.ref, "--timeout", str(args.timeout), "--wait", str(args.wait),
+             "--automatic-from", json.dumps(runtime_deploy.automatic_selection())]
     for name in ("checkout", "launchers", "agent"):
         if getattr(args, name):
             words += [f"--{name}", getattr(args, name)]
@@ -111,6 +116,8 @@ def _audited(args: argparse.Namespace, command: str, plan: runtime_deploy.Plan, 
 
 
 def _ensure(args: argparse.Namespace) -> int:
+    if args.settle and not args.now and not getattr(args, "automatic_from", ""):
+        args.automatic_from = json.dumps(runtime_deploy.automatic_selection())
     if not args.background:
         args.via = runtime_trust.authorize("ensure")
     if args.allow_unmerged:
@@ -118,7 +125,7 @@ def _ensure(args: argparse.Namespace) -> int:
             raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground")
         if not person.marked():
             human.mint("deploy an unmerged commit", args.ref)
-    if not args.background and not args.no_update and not args.allow_unmerged:
+    if not args.background and not args.no_update and not args.allow_unmerged and not getattr(args, "automatic_from", ""):
         _caught_up(args)
     plan = plan_from(args)
     if args.background:
@@ -315,6 +322,7 @@ COMMON = [
 GROUP = Group("poolhouse runtime", "Build, verify and select the installed runtime from the source checkout; status; rollback.")
 GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the selected runtime", options=[
     *COMMON, flag("--ref", default="HEAD"),
+    flag("--automatic-from", default="", help=argparse.SUPPRESS),
     flag("--force", action="store_true", help="rebuild even when held or current"),
     flag("--allow-unmerged", action="store_true", help="deploy an exact independently reviewed source commit while delegated, or confirm at a terminal"),
     flag("--review-request", default="", help="exact independent landing review request for a delegated source deployment"),

@@ -65,6 +65,27 @@ class Plan:
     wait_s: float = CLAIM_WAIT_S
     agent: str = ""
     allow_unmerged: bool | runtime_unmerged.Approval = False
+    automatic_from: tuple[str, ...] | None = None
+
+
+class Superseded(DeployError):
+    """An automatic refresh no longer owns the selection it observed."""
+
+
+def automatic_selection() -> tuple[str, ...]:
+    """Snapshot the fully verified runtime an automatic refresh may advance."""
+    chosen = runtime.available()
+    return (str(chosen.prefix), chosen.commit, chosen.version, chosen.identity, str(runtime_store.epoch_of(chosen.prefix))) if chosen else ()
+
+
+def _automatic(plan: Plan) -> None:
+    if plan.automatic_from is None:
+        return
+    current = automatic_selection()
+    if (not current or current != plan.automatic_from
+            or resolve_commit(plan.checkout) != plan.commit
+            or runtime_git.git(plan.checkout, "merge-base", current[1], plan.commit, check=False) != current[1]):
+        raise Superseded("automatic refresh was superseded; the selected runtime was preserved")
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,20 +134,25 @@ def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> 
             raise DeployError("runtime deployment needs an authenticated workspace agent for its install claims")
         yield frozenset()
         return
+    wanted = list(dict.fromkeys(paths))
     taken: list[Path] = []
     try:
-        for path in paths:
-            deadline = time.monotonic() + wait_s
-            while True:
-                try:
-                    who.claim("install", str(path), ttl_s=int(CLAIM_TTL_S), pid=os.getpid())
-                    break
-                except Conflict as held:
-                    if time.monotonic() >= deadline:
-                        raise DeployError(f"{path} is claimed by {str(held).rpartition(' is held by ')[2]}") from held
-                    time.sleep(CLAIM_POLL_S)
-            taken.append(path)
-        yield frozenset(taken)
+        deadline = time.monotonic() + wait_s
+        while wanted:
+            try:
+                rows = who.reserve([("install", str(path)) for path in wanted],
+                                   ttl_s=int(CLAIM_TTL_S), pid=os.getpid())
+                taken = [Path(row.key) for row in rows if row.changed and row.kind == "install"
+                         and row.owner == who.name and row.key in {str(path) for path in wanted}]
+                if (len(rows) != len(wanted) or {row.key for row in rows} != {str(path) for path in wanted}
+                        or any(row.kind != "install" or row.owner != who.name for row in rows)):
+                    raise DeployError("runtime deployment received an invalid install reservation")
+                break
+            except Conflict as held:
+                if time.monotonic() >= deadline:
+                    raise DeployError(f"runtime install reservation is claimed by {str(held).rpartition(' is held by ')[2]}") from held
+                time.sleep(CLAIM_POLL_S)
+        yield frozenset(wanted)
     finally:
         for path in taken:
             with suppress(NodeError, OSError):
@@ -198,6 +224,7 @@ def _record(plan: Plan) -> None:
 def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset()) -> None:
     """Prepare owned commands and atomically publish the selected runtime."""
     with only_one(runtime_git.boundary(plan.checkout), wait=False, note="runtime cutover"):
+        _automatic(plan)
         admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged if chosen.commit == plan.commit else False)
         floor = max(plan.floor, floor_of(plan.checkout, resolve_commit(plan.checkout)))
         if runtime_store.epoch_of(chosen.prefix) < floor:
@@ -218,6 +245,7 @@ def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = fr
                     runtime._owned(plan.launchers)
                 runtime_launchers.install(plan.launchers, chosen, follow_selection=plan.launchers == runtime_launchers.directory())
             runtime_bridges.install(expected, bridges)
+            _automatic(plan)
             runtime.publish(chosen)
             published = True
             _record(plan)
@@ -353,7 +381,10 @@ def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builde
     root = prepare_root()
     try:
         with only_one(root / "deploy.lock", wait=False, note="ensure"):
+            _automatic(plan)
             return _ensured(plan, force, force_build, builder)
+    except Superseded as exc:
+        return Outcome("superseded", plan.commit, str(exc))
     except Busy as exc:
         return Outcome("busy", plan.commit, str(exc))
 
@@ -383,7 +414,7 @@ def _ensured(plan: Plan, force: bool, force_build: bool, builder: Builder) -> Ou
     who = acting(plan)
     if force_build and who is None:
         raise DeployError("--force-build needs an authenticated agent: pass --agent or set POOLHOUSE_WORKSPACE_AGENT")
-    chosen, steps = _recovered(plan, who)
+    chosen, steps = (healthy(plan), []) if plan.automatic_from is not None else _recovered(plan, who)
     held = runtime_store.read_state().get("held")
     if not force and chosen is not None and chosen.commit == plan.commit:
         runtime_store.collect({chosen.prefix})
@@ -395,6 +426,8 @@ def _ensured(plan: Plan, force: bool, force_build: bool, builder: Builder) -> Ou
                        "; ".join([*steps, f"the last build of {plan.commit[:7]} failed; retrying after {BACKOFF_S:.0f}s or with --force-build"]))
     try:
         built = build_and_switch(plan, builder, who)
+    except Superseded as exc:
+        return Outcome("superseded", plan.commit, str(exc))
     except RECOVERABLE as exc:
         _note({"last_failure": {"commit": plan.commit, "at": time.time(), "detail": str(exc)[-1000:]}})
         return Outcome("recovered" if steps else "failed", plan.commit, "; ".join([*steps, f"build failed: {exc}"])[-1500:])

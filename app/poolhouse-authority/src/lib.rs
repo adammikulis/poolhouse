@@ -1,6 +1,8 @@
 //! Typed requests and serialized state transitions for the native authority.
 #![deny(unsafe_code)]
 
+pub mod certificate;
+
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
 mod auth;
@@ -288,7 +290,7 @@ impl State {
                 let index = self
                     .phones
                     .iter()
-                    .position(|pair| *pair == (approval_key_id, device))
+                    .position(|record| *record == (approval_key_id, device))
                     .ok_or(Error::Unauthorized)?;
                 if self.revoked.len() >= 1024 {
                     return Err(Error::Unavailable);

@@ -19,6 +19,9 @@ final class FoundingCharter {
     final String anchor;
     final String poolId;
     final String certificateWords;
+    final String signerFingerprint;
+    final String signerAlgorithm;
+    final String signerRole;
     final String card;
 
     FoundingCharter(JSONObject source, String publicKey, String suppliedAnchor, String suppliedPool, byte[] suppliedBytes) throws Exception {
@@ -43,7 +46,10 @@ final class FoundingCharter {
         signing = ("poolhouse/pool-accept/v2\n" + Canonical.of(acceptance)).getBytes(StandardCharsets.UTF_8);
         if (!Arrays.equals(signing, suppliedBytes)) throw bad();
         certificateWords = Hex.words(Hex.sha256(Hex.parse(text(charter.getJSONObject("first"), "cert"))));
-        card = FoundingCard.of(charter, certificateWords);
+        signerFingerprint = Hex.sha256(Hex.parse(text(selected, "key")));
+        signerAlgorithm = text(selected, "alg");
+        signerRole = text(selected, "role") + "; " + text(selected, "strength");
+        card = FoundingCard.of(this);
     }
 
     byte[] bytes() { return signing.clone(); }

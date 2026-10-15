@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import subprocess
@@ -14,7 +13,7 @@ from email.parser import BytesParser
 from pathlib import Path
 
 from poolhouse import runtime, runtime_git, worktreerules
-from poolhouse.files import writing
+from poolhouse.files import write_json, writing
 from poolhouse.fleet.wheel_provenance import ORIGIN, stamp, wheel_commit
 from poolhouse.installed import extras
 from poolhouse.lock import only_one
@@ -126,7 +125,7 @@ def prepare(wheel: Path, commit: str, *, timeout: float, target: Target | None =
         chosen.prefix.mkdir(mode=0o700)
         runtime.protect(chosen.prefix)
         if target.creator is not None:
-            (chosen.prefix / "created.json").write_text(json.dumps(target.creator), encoding="utf-8")
+            write_json(chosen.prefix / "created.json", target.creator)
         done = False
         try:
             _run([str(target.host or sys.executable), "-m", "venv", str(chosen.prefix)], timeout)
