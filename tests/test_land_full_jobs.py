@@ -107,3 +107,25 @@ def test_submission_starts_only_after_pending_record(tmp_path, monkeypatch):
     monkeypatch.setattr(land_check, 'start_full', crash)
     with pytest.raises(RuntimeError, match='submission interrupted'):
         land_run.run(project.root, DEV, ['leaf'], {'dry_run': False, 'conflicts': 'eject', 'workers': 1})
+
+
+def test_explicit_submission_refusal_is_useful_and_redacted(tmp_path, monkeypatch):
+    monkeypatch.setattr(land_check, "other_full_run", lambda root: "")
+    monkeypatch.setenv("FIXTURE_API_TOKEN", "fixture-sensitive-canary-value")
+    monkeypatch.setattr(land_check.subprocess, "run", lambda *args, **kwargs:
+        SimpleNamespace(returncode=6, stdout="", stderr="test: job fixture already runs a whole tier; fixture-sensitive-canary-value\n"))
+    full = land_check.start_full(tmp_path, tmp_path)
+    assert full["status"] == "refused"
+    assert "already runs a whole tier" in full["reason"]
+    assert "fixture-sensitive-canary-value" not in full["reason"]
+    assert len(full["reason"]) <= 500
+
+
+def test_submission_error_after_possible_creation_stays_uncertain(tmp_path, monkeypatch):
+    monkeypatch.setattr(land_check, "other_full_run", lambda root: "")
+    monkeypatch.setattr(land_check.subprocess, "run", lambda *args, **kwargs:
+        SimpleNamespace(returncode=1, stdout="", stderr="runner failed after possible submission"))
+    full = land_check.start_full(tmp_path, tmp_path)
+    assert full["status"] == "unknown"
+    assert "runner failed" in full["reason"]
+    assert land_finish.full_running(tmp_path, {"full": full})
