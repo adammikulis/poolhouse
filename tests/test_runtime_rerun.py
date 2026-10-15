@@ -68,21 +68,55 @@ def test_a_checkout_copy_never_gets_the_real_keystore_only_the_installed_runtime
 def needs_the_runtime(node: ast.AST) -> bool:
     """Whether the node imports what only the selected runtime is sure to hold."""
     if isinstance(node, ast.Import):
-        return any(a.name.split(".")[0] in ("jwt", "cryptography") for a in node.names)
+        return any(a.name.split(".")[0] in ("jwt", "cryptography")
+                   or a.name == "poolhouse.workspace.github_identity" for a in node.names)
     if isinstance(node, ast.ImportFrom):
         return (node.module or "").split(".")[0] == "cryptography" or (
+            node.module == "poolhouse.workspace.github_identity") or (
+            node.module == "poolhouse.workspace" and any(a.name == "github_identity" for a in node.names)) or (
             node.module == "poolhouse" and any(a.name in ("credentials", "person") for a in node.names))
     return False
 
 
-@pytest.mark.parametrize("name", SCRIPTS)
-def test_a_script_that_keeps_a_key_reruns_before_it_imports_what_it_needs(name):
-    text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+def assert_runtime_import_order(text: str) -> None:
+    """Apply the same rerun and isolation guard to a script and its hostile mutations."""
     tree = ast.parse(text)
     main = next(n for n in tree.body if isinstance(n, ast.If) and "__main__" in ast.unparse(n.test))
     assert "runtime.rerun(Path(__file__).resolve(), sys.argv[1:])" in ast.unparse(main)
     later = [n.lineno for n in ast.walk(tree) if needs_the_runtime(n)]
-    assert later and min(later) > main.lineno
+    assert later and min(later) > main.lineno, "sensitive imports must follow runtime rerun"
     assert "if not sys.flags.isolated:\n    sys.path.insert(0" in text
     assert text.index("sys.flags.isolated") < text.index("runtime.rerun")
     assert "os.execve" not in text
+
+
+@pytest.mark.parametrize("name", SCRIPTS)
+def test_a_script_that_keeps_a_key_reruns_before_it_imports_what_it_needs(name):
+    assert_runtime_import_order((ROOT / "scripts" / name).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("statement", [
+    "import poolhouse.workspace.github_identity",
+    "import poolhouse.workspace.github_identity as holder",
+    "from poolhouse.workspace import github_identity as holder",
+    "from poolhouse.workspace.github_identity import command as run",
+])
+def test_packaged_holder_imports_require_the_selected_runtime(statement):
+    assert needs_the_runtime(ast.parse(statement).body[0])
+
+
+def test_moving_the_committed_holder_import_before_rerun_fails_the_same_guard():
+    text = (ROOT / "scripts" / "agent-identity").read_text(encoding="utf-8")
+    assert_runtime_import_order(text)
+    tree = ast.parse(text)
+    holder = next(node for node in tree.body if isinstance(node, ast.ImportFrom)
+                  and node.module == "poolhouse.workspace.github_identity")
+    main = next(node for node in tree.body if isinstance(node, ast.If)
+                and "__main__" in ast.unparse(node.test))
+    lines = text.splitlines(keepends=True)
+    moved = lines.pop(holder.lineno - 1)
+    lines.insert(main.lineno - 1, moved)
+    mutated = "".join(lines)
+    assert mutated != text
+    with pytest.raises(AssertionError, match="sensitive imports must follow runtime rerun"):
+        assert_runtime_import_order(mutated)

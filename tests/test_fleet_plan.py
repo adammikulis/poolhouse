@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from test_fleet_join import WORDS, FakeDaemon, _free_tcp, _free_udp
+from test_fleet_join import WORDS, FakeDaemon, _free_tcp, _free_udp, loopback_advertisers
 
 from poolhouse.fleet import join as joining
 from poolhouse.fleet.api import Daemon, make_handler
@@ -24,11 +24,15 @@ from poolhouse.fleet.models import Models
 from poolhouse.fleet.plan import Room, fit_for, place, ranked, room_of, table
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.fleet.serving import Hosting, NoRoom, ServeSettings, Serving
-from poolhouse.http import Server
+from poolhouse.http import Options, Server
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.profile import Profile
 from poolhouse.testing.fakes import fake_llama_binary
+from tests.model_approval import approved
 from tests.pool_support import join as join_pool_by_passphrase
+
+__all__ = ["loopback_advertisers"]
+pytest_plugins = ["node_kit"]
 
 G = 1 << 30
 M = 1 << 20
@@ -214,7 +218,7 @@ def key(tmp_path) -> Path:
 
 
 @pytest.fixture
-def daemons():
+def daemons(loopback_advertisers):
     started: list = []
     yield started
     for d in started:
@@ -293,7 +297,7 @@ class TestCommand:
 
 # -- POST /serve, and --apply -------------------------------------------------------------
 @pytest.fixture
-def llama_binary(tmp_path, monkeypatch):
+def llama_binary(tmp_path, monkeypatch, workspace_node):
     from poolhouse.serve import backend as backend_module
 
     monkeypatch.setattr(backend_module, "log_dir", lambda: tmp_path / "logs")
@@ -313,6 +317,7 @@ class ServingDaemon:
         (root / "models").mkdir()
         self.model = root / "models" / MID
         self.model.write_bytes(b"GGUF" + b"\x00" * (1 << 20))
+        approved(self.model)
         self.token = load_or_create_token(root, key)
         self.runner = JobRunner(root)
         self.serving = Serving(root / "serving.json")
@@ -368,9 +373,17 @@ class TestServeRoute:
                                                   "parallel": 2})
         status, body, _ = d.client._request(
             "POST", "/serve", data=json.dumps({"model": MID, "parallel": 1}).encode(),
-            headers={"Content-Type": "application/json"})
+            options=Options(headers={"Content-Type": "application/json"}))
         assert status == 200 and json.loads(body)["port"] == first["port"]
         assert len(d.hosting.leases) == 1
+
+    def test_a_model_changed_after_approval_is_refused(self, tmp_path, llama_binary, daemons):
+        d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)
+        daemons.append(d)
+        d.model.write_bytes(d.model.read_bytes()[:-1] + b"\x01")
+        with pytest.raises(MemberError, match="does not match its pin"):
+            d.client._json("POST", "/serve", {"model": MID, "parallel": 1})
+        assert d.hosting.leases == {}
 
     def test_a_model_it_does_not_hold_is_404(self, tmp_path, llama_binary, daemons):
         d = ServingDaemon(tmp_path, llama_binary, name="small", room=24 * G)

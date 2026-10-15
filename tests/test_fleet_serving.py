@@ -305,15 +305,9 @@ class TestProxy:
         finally:
             daemon.close()
 
-    def test_the_model_server_is_never_reachable_from_the_network(self, wired):
-        """Only the daemon's port is exposed. llama.cpp has no authentication, so a
-        model server on the LAN is an open inference endpoint."""
+    def test_the_model_server_listens_only_on_loopback(self, wired):
         _, _, model = wired
-        from poolhouse.fleet.discovery import primary_ip
-
-        with socket.socket() as s:
-            s.settimeout(2)
-            assert s.connect_ex((primary_ip(), model.port)) != 0
+        assert model._httpd.socket.getsockname() == ("127.0.0.1", model.port)
 
     def test_it_forwards_whatever_path_it_was_given(self, wired):
         daemon, _, _ = wired

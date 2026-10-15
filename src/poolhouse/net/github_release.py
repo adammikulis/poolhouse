@@ -61,7 +61,9 @@ def request(method: str, path: str, *, bearer: str = "", payload: dict | None = 
     if method not in {"GET", "POST"} or not PATH.fullmatch(path) or '..' in path or '//' in path or '%' in path:
         raise Failed("unsupported GitHub publication operation")
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
-               "Authorization": f"Bearer {bearer}", "Content-Type": "application/json"}
+               "Content-Type": "application/json"}
+    if bearer != "":
+        headers["Authorization"] = f"Bearer {bearer}"
     reply = _fetch(API + path, method, json.dumps(payload).encode() if payload is not None else None, headers)
     if not isinstance(reply, dict):
         raise Failed("GitHub returned an invalid object")

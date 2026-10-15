@@ -1,10 +1,12 @@
 """Exact maintained test job receipts and failure identities."""
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import math
 import os
+import re
 import signal
 import sys
 import threading
@@ -50,11 +52,70 @@ def read_xml(path: Path, limit: int) -> tuple[ET.Element, int]:
     return ET.fromstring(text), len(raw)  # noqa: S314 - UTF-8, bounded, declarations refused
 
 
+def collection_skip(case: ET.Element, root: Path) -> tuple[str, tuple[str, int, str]]:
+    """Return the module identity and canonical proof of a pytest collection skip."""
+    name = case.get("name", "")
+    if (case.get("classname") != "" or not re.fullmatch(r"tests(?:\.[A-Za-z_]\w*)+", name, re.ASCII)
+            or len(case) != 1 or case[0].tag != "skipped" or len(case[0])
+            or case[0].attrib != {"message": "collection skipped"}):
+        raise ValueError("invalid JUnit collection skip")
+    text = case[0].text or ""
+    if len(text) > 8192:
+        raise ValueError("oversized JUnit collection skip")
+    try:
+        proof = ast.literal_eval(text)
+    except (SyntaxError, ValueError, TypeError, RecursionError) as exc:
+        raise ValueError("invalid JUnit collection skip proof") from exc
+    identity = name.replace(".", "/") + ".py"
+    expected = (root / identity).resolve()
+    if (not isinstance(proof, tuple) or len(proof) != 3
+            or type(proof[0]) is not str or proof[0] != str(expected)
+            or type(proof[1]) is not int or proof[1] <= 0
+            or type(proof[2]) is not str or not proof[2].startswith("Skipped: ")):
+        raise ValueError("invalid JUnit collection skip proof")
+    return identity, proof
+
+
+def case_identity(case: ET.Element, root: Path, selectors: tuple[str, ...]) -> tuple[str, tuple[str, int, str] | None]:
+    """Return an existing, in-scope JUnit identity and any collection-skip proof."""
+    classname, name = case.get("classname"), case.get("name")
+    if classname == "":
+        identity, proof = collection_skip(case, root)
+    else:
+        if not classname or not name:
+            raise ValueError("missing test identity")
+        identity, proof = testjobs.node_id(classname, name, root), None
+    if not identity.startswith("tests/") or ".." in identity.split("::")[0].split("/"):
+        raise ValueError("invalid test identity")
+    case_path = (root / identity.split("::")[0]).resolve()
+    if not case_path.is_file() or not case_path.is_relative_to(root.resolve()):
+        raise ValueError("test identity is outside the existing checkout")
+    if selectors and not any(identity == selector or identity.startswith(selector + "::")
+                             or identity.startswith(selector.rstrip("/") + "/") for selector in selectors):
+        raise ValueError("test identity differs from the requested selectors")
+    return identity, proof
+
+
+def junit_phase(case: ET.Element) -> str:
+    """Return the single call-failure or quoted teardown-error phase of a JUnit case."""
+    outcomes = [child for child in case if child.tag in ("failure", "error", "skipped")]
+    if len(outcomes) != 1 or len(outcomes[0]):
+        return ""
+    outcome = outcomes[0]
+    if outcome.tag == "failure":
+        return "call"
+    message = outcome.get("message", "")
+    if outcome.tag == "error" and message.startswith('failed on teardown with "') and message.endswith('"'):
+        return "teardown"
+    return ""
+
+
 def failures(folder: Path, root: Path, selectors: tuple[str, ...] = ()) -> list[tuple[str, str, str]]:
     paths = list(islice(folder.glob("junit-*.xml"), 65))
     if not paths or len(paths) > 64:
         raise ValueError("missing or oversized JUnit evidence")
     found, seen, total = [], set(), 0
+    collection_proofs = {}
     for path in paths:
         document, size = read_xml(path, 8 * 1024 * 1024 - total)
         total += size
@@ -68,21 +129,24 @@ def failures(folder: Path, root: Path, selectors: tuple[str, ...] = ()) -> list[
             if any(child.tag not in ("testcase", "properties", "system-out", "system-err") for child in suite):
                 raise ValueError("unknown JUnit suite content")
             counts = Counter()
+            call_failures = set()
             for case in cases:
-                classname, name = case.get("classname"), case.get("name")
-                if not classname or not name:
-                    raise ValueError("missing test identity")
-                identity = testjobs.node_id(classname, name, root)
-                if not identity.startswith("tests/") or ".." in identity.split("::")[0].split("/"):
-                    raise ValueError("invalid test identity")
-                case_path = (root / identity.split("::")[0]).resolve()
-                if not case_path.is_file() or not case_path.is_relative_to(root.resolve()):
-                    raise ValueError("test identity is outside the existing checkout")
-                if selectors and not any(identity == selector or identity.startswith(selector + "::")
-                                         or identity.startswith(selector.rstrip("/") + "/") for selector in selectors):
-                    raise ValueError("test identity differs from the requested selectors")
-                if identity in seen:
-                    raise ValueError("duplicate JUnit case identity")
+                identity, proof = case_identity(case, root, selectors)
+                phase = junit_phase(case) if proof is None else ""
+                if proof is not None:
+                    if any(prior.startswith(identity + "::") for prior in seen):
+                        raise ValueError("JUnit collection skip mixed with executed cases")
+                    if identity in seen and collection_proofs.get(identity) != proof:
+                        raise ValueError("divergent JUnit collection skip proofs")
+                    collection_proofs[identity] = proof
+                elif identity in seen:
+                    if identity not in call_failures or phase != "teardown":
+                        raise ValueError("duplicate JUnit case identity")
+                    call_failures.remove(identity)
+                elif identity.split("::")[0] in collection_proofs:
+                    raise ValueError("JUnit collection skip mixed with executed cases")
+                elif phase == "call":
+                    call_failures.add(identity)
                 seen.add(identity)
                 if any(child.tag not in ("failure", "error", "skipped", "properties", "system-out", "system-err") for child in case):
                     raise ValueError("unknown JUnit case content")

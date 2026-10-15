@@ -14,6 +14,38 @@
 uncovered = 52
 partial = 193
 
+
+[[group]]
+match = ["parser:client/systemone.py"]
+status = "covered"
+tests = ["tests/test_decide_systemone.py::test_strict_json_rejects_ambiguity_nonfinite_and_oversize",
+         "tests/test_decide_systemone.py::test_shared_json_object_hook_preserves_nested_objects",
+         "tests/test_decide_systemone.py::test_invalid_input_never_reaches_server",
+         "tests/test_decide_systemone.py::test_invalid_answer_batches_fail_once_without_serial_retry",
+         "tests/test_decide_systemone.py::test_malformed_typed_answers_are_rejected"]
+note = "bounded JSON rejects duplicate keys at every nesting level, nonfinite numbers, unsupported fields, malformed typed answers and incomplete batches before any action is accepted"
+
+[[group]]
+match = ["egress:client/systemone.py:SystemOne.ask"]
+status = "covered"
+tests = ["tests/test_decide_systemone.py::test_two_questions_use_one_post_and_one_shared_state",
+         "tests/test_decide_systemone.py::test_nonliteral_or_ambiguous_endpoints_are_refused",
+         "tests/test_decide_systemone.py::test_redirect_guard_refuses_self_and_remote_without_a_second_post",
+         "tests/test_decide_systemone.py::test_oversized_response_is_refused",
+         "tests/test_http.py::test_oversized_http_error_stops_before_decryption_or_retry"]
+note = "the explicit model endpoint is literal loopback only; proxy settings, redirects, oversized success and error replies, retries and serial fallback cannot redirect or multiply the request"
+
+[[group]]
+match = ["human:workspace/github_identity.py:guard", "human:workspace/github_identity.py:only_this_repository", "human:workspace/github_identity.py:token"]
+status = "covered"
+count = 3
+tests = ["tests/test_agent_identity.py::test_delegated_setup_refuses_before_app_load_api_or_browser",
+         "tests/test_agent_identity.py::test_delegated_setup_revalidates_after_browser_before_exchange",
+         "tests/test_agent_identity.py::test_an_agent_marker_refuses_every_use_of_the_key_before_any_request",
+         "tests/test_agent_identity.py::test_a_token_that_is_wider_or_longer_than_asked_is_not_given_out",
+         "tests/test_agent_identity.py::test_an_installation_that_reaches_another_repository_is_refused"]
+note = "App setup requires the selected installed holder, eligible root session and delegated gate, rechecks actor/source, and never exports its key; raw token and online check stay person-only and installation/token scopes cannot widen"
+
 [[group]]
 match = ["listener:coordination/relay.py:forward"]
 status = "covered"

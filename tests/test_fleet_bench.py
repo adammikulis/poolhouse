@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from test_fleet_join import loopback_advertisers
 
 from poolhouse.bench.member_runs import gather, import_runs
 from poolhouse.fleet.api import Daemon, make_handler
@@ -47,7 +48,11 @@ from poolhouse.fleet.sweeps import (
     wait,
 )
 from poolhouse.http import Server
+from tests.model_approval import approved
 from tests.pool_support import any_command
+
+__all__ = ["loopback_advertisers"]
+pytest_plugins = ["node_kit"]
 
 G = 2**30
 COMMIT = "ab12cd3"
@@ -1017,9 +1022,8 @@ def _free_port(kind: int = socket.SOCK_STREAM) -> int:
 
 
 def _boot_daemon(tmp_path: Path, name: str, *, keyfile: Path, disco_port: int):
-    """A real ``poolhouse-pool`` daemon in a subprocess, once it answers /health: (proc,
-    log, open log handle)."""
-    from poolhouse.fleet.discovery import derive_token, load_pool_key
+    """A real loopback daemon and signed test advertiser: process, log, log handle and advertiser."""
+    from poolhouse.fleet.discovery import Advertiser, Beacon, derive_token, load_pool_key
 
     root = tmp_path / name
     root.mkdir(parents=True, exist_ok=True)
@@ -1038,8 +1042,15 @@ def _boot_daemon(tmp_path: Path, name: str, *, keyfile: Path, disco_port: int):
     deadline = time.time() + 20
     while time.time() < deadline:
         try:
-            if driver.health().get("ok"):
-                return proc, log, fh
+            health = driver.health()
+            if health.get("ok"):
+                beacon = Beacon(name=health["name"], port=http_port, machine=health["machine"],
+                                device=health, busy=health.get("busy", False),
+                                queued=health.get("queued", 0), slots=health.get("slots", 1),
+                                free=health.get("free", 1))
+                advertiser = Advertiser(beacon, load_pool_key(keyfile), port=disco_port,
+                                        interval_s=0.2).start()
+                return proc, log, fh, advertiser
         except MemberError:
             if proc.poll() is not None:
                 pytest.fail(f"{name} traind died:\n{log.read_text(errors='replace')}")
@@ -1059,7 +1070,8 @@ def _own_graph(where: Path) -> list[str]:
 
 
 @pytest.mark.slow
-def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(tmp_path, monkeypatch):
+def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(
+        tmp_path, monkeypatch, workspace_node, loopback_advertisers):
     """Nothing here is mocked: a real ``poolhouse-pool`` daemon booted as a subprocess, found
     by real UDP discovery, given a real HTTP job that runs the real ``poolhouse-bench`` over a
     graph that is not the shipped community, on a llama-server-shaped process instead of a
@@ -1079,6 +1091,7 @@ def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(tmp_pat
     keyfile = tmp_path / "pool.key"
     create_pool_key(keyfile, group="poolhouse")
     disco_port = _free_port(socket.SOCK_DGRAM)
+    gguf = approved(write_gguf(tmp_path / "tiny.gguf", _FLEET_LLAMA_META))
     booted = [_boot_daemon(tmp_path, name, keyfile=keyfile, disco_port=disco_port)
               for name in ("quill", "lantern")]
     try:
@@ -1086,7 +1099,6 @@ def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(tmp_pat
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(disco_port))
         monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "dispatcher-home"))
 
-        gguf = write_gguf(tmp_path / "tiny.gguf", _FLEET_LLAMA_META)
         binary = fake_llama_binary(tmp_path)
         kept = tmp_path / "runs.ladybug"
         dispatcher = tmp_path / "dispatcher"
@@ -1114,7 +1126,8 @@ def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(tmp_pat
             assert not given.exists() or not any(given.iterdir()), \
                 f"{name} removes what a job shipped once the job ends"
     finally:
-        for proc, _log, fh in booted:
+        for proc, _log, fh, advertiser in booted:
+            advertiser.stop()
             proc.terminate()
             try:
                 proc.wait(timeout=10)

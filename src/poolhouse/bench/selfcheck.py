@@ -275,7 +275,7 @@ def _faked(args: argparse.Namespace, home: Path, built: list[Any]):
         spec_kwargs.pop("reason", None)
         spec = ServerSpec(model=model, port=port or 1, context=context, **spec_kwargs)
         backend = getattr(manager, "backend", None) or LlamaServerBackend(binary=stand_in)
-        argv = backend.command(backend.resolved_draft(spec))
+        argv = backend.command(backend.resolved_draft(backend.resolved_model(spec)))
         lacking = unknown_flags(argv, _mainline_flags(stand_in) | _raw_flags(spec))
         if lacking:
             raise UnknownFlag("\n".join(f"selfcheck: command() emits {flag}, which no build "

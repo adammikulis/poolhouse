@@ -6,6 +6,7 @@ rule: `poolhouse.real_machine`, with no variable or argument that switches it on
 """
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -162,9 +163,101 @@ CALL = re.compile(r"""osascript|\[\s*["']security["']\s*,|(?<![-\w])security\s+(
                   r"""|authtrampoline|administrator privileges|AuthorizationExecute|AuthorizationCreate|SecKeychain|SecItem""")
 
 
+def _classification_key(tree: ast.Module) -> ast.Constant | None:
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    assignments = [node for node in tree.body if isinstance(node, ast.Assign)
+                   and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                   and node.targets[0].id == "INLINE" and isinstance(node.value, ast.Dict)]
+    if len(assignments) != 1:
+        return None
+    assignment = assignments[0]
+    if not all(isinstance(node, ast.Constant) and isinstance(node.value, str)
+               for node in [*assignment.value.keys, *assignment.value.values]):
+        return None
+    keys = [key for key, value in zip(assignment.value.keys, assignment.value.values, strict=True)
+            if isinstance(key, ast.Constant) and key.value == "osascript"
+            and isinstance(value, ast.Constant) and value.value == "-e"]
+    if len(keys) != 1:
+        return None
+    dynamic = {"subprocess", "ctypes", "objc", "importlib", "eval", "exec", "compile", "__import__", "getattr",
+               "setattr", "delattr", "globals", "locals", "vars", "__builtins__", "system", "popen"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in dynamic:
+            return None
+        if isinstance(node, ast.alias) and (node.name.split(".")[0] in dynamic
+                or node.name.startswith(("spawn", "exec", "posix_spawn", "create_subprocess"))):
+            return None
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in dynamic:
+            return None
+        if isinstance(node, ast.Attribute) and (node.attr in {"system", "popen"}
+                or node.attr.startswith(("spawn", "exec", "posix_spawn", "create_subprocess"))):
+            return None
+        if isinstance(node, ast.arg) and node.arg == "INLINE":
+            return None
+        if isinstance(node, (ast.Global, ast.Nonlocal)) and "INLINE" in node.names:
+            return None
+        if not isinstance(node, ast.Name) or node.id != "INLINE" or node is assignment.targets[0]:
+            continue
+        parent = parents[node]
+        expression = parents.get(parent) if isinstance(parent, ast.Attribute) else parent
+        expected = ("verb not in INLINE" if isinstance(parent, ast.Compare) else "INLINE.get(verb, '')")
+        if ast.dump(expression) != ast.dump(ast.parse(expected, mode="eval").body):
+            return None
+        scope = parent
+        while scope in parents and not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = parents[scope]
+        if not isinstance(scope, ast.FunctionDef) or scope.name != "_code" or parents.get(scope) is not tree:
+            return None
+    return keys[0]
+
+
+def calls_machine(source: str) -> bool:
+    try:
+        key = _classification_key(ast.parse(source))
+    except SyntaxError:
+        return bool(CALL.search(source))
+    if key is not None:
+        lines = source.encode("utf-8").splitlines(keepends=True)
+        start = sum(map(len, lines[:key.lineno - 1])) + key.col_offset
+        end = sum(map(len, lines[:key.end_lineno - 1])) + key.end_col_offset
+        data = source.encode("utf-8")
+        source = (data[:start] + b" " * (end - start) + data[end:]).decode("utf-8")
+    return bool(CALL.search(source))
+
+
 def sources_that_call() -> set[str]:
     return {path.relative_to(SRC).as_posix() for path in SRC.rglob("*.py")
-            if path.name != "real_machine.py" and CALL.search(path.read_text(encoding="utf-8"))}
+            if path.name != "real_machine.py" and calls_machine(path.read_text(encoding="utf-8"))}
+
+
+CLASSIFICATION = "INLINE = {'osascript': '-e'}\ndef _code(verb):\n    if verb not in INLINE: return ''\n    return INLINE.get(verb, '')\n"
+
+
+def test_the_command_classification_dictionary_does_not_start_a_process():
+    assert not calls_machine(CLASSIFICATION)
+
+
+@pytest.mark.parametrize("extra", [
+    "import subprocess; subprocess.run(['osascript', '-e', 'display dialog'])",
+    "import subprocess; subprocess.run(['security', 'find-generic-password'])",
+    "from subprocess import run as launch; command = ['osascript']; launch(command)",
+    "import subprocess as child; command = list(INLINE); child.run(command)",
+    "command = INLINE['osascript']",
+    "command = list(INLINE)",
+    "command = INLINE.keys()",
+    "command = getattr(INLINE, 'keys')()",
+    "INLINE.update({'other': '-e'})",
+    "alias = INLINE",
+    "INLINE = {}",
+    "def other(INLINE): return INLINE",
+    "INLINE = {'osascript': '-e', 'osascript': '-e'}",
+])
+def test_real_calls_and_escaping_classification_data_remain_visible(extra):
+    assert calls_machine(CLASSIFICATION + "\n" + extra)
+
+
+def test_a_parse_failure_keeps_the_machine_call_visible():
+    assert calls_machine(CLASSIFICATION + "\ninvalid !!!")
 
 
 def test_no_new_osascript_security_or_authorization_call_outside_the_reviewed_list():
