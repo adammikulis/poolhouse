@@ -99,7 +99,7 @@ def dir_sha(path: Path) -> str:
     try:
         return sha("\n".join(sorted(p.name for p in path.iterdir()
                                    if p.name not in IGNORED_NAMES and p.suffix != ".pyc")))
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return "missing"
 
 
@@ -443,7 +443,11 @@ def manifest_holds(root: Path, manifest: dict, closures: Closures) -> str:
         except OSError:
             return f"link changed: {path}"
     for path, digest in manifest["dirs"].items():
-        if dir_sha(root / path) != digest:
+        try:
+            current = dir_sha(root / path)
+        except OSError as error:
+            return f"listing unavailable (errno {error.errno})"
+        if current != digest:
             return f"listing changed: {path}"
     for name, digest in manifest["env"].items():
         if env_digest(root, name) != digest:
