@@ -231,6 +231,46 @@ def test_extract_without_trafilatura_strips_tags_itself(monkeypatch):
     assert "About the Quenlow works\n" in text, "block tags break lines"
 
 
+@pytest.mark.parametrize("hidden", [
+    '<div style="display:none">SECRET</div>',
+    '<img style="display:none" alt="SECRET">',
+    '<div style=" DISPLAY : NONE !important "><b>SECRET</b><br><img src="x"></div>',
+    '<div style="display:/**/none"><span>SECRET</span></div>',
+    '<div style="display:none">SECRET</unmatched><span>SECRET</span></div>',
+    '<div style="display:none"><title>SECRET</title><p>SECRET</p></div>',
+    '<div style="display:none"/><p style="display:none">SECRET</p>',
+])
+def test_fallback_reader_omits_hidden_subtrees_and_keeps_visible_siblings(monkeypatch, hidden):
+    monkeypatch.setitem(__import__("sys").modules, "trafilatura", None)
+    title, text = extract(f"<title>Visible title</title><p>Before.</p>{hidden}<p>After.</p>")
+    assert title == "Visible title"
+    assert text == "Before.\nAfter."
+
+
+@pytest.mark.parametrize("style", ["--display:none", "display:none-other", "font-size:0", "color:#fff"])
+def test_fallback_reader_keeps_text_outside_the_display_none_rule(monkeypatch, style):
+    monkeypatch.setitem(__import__("sys").modules, "trafilatura", None)
+    _, text = extract(f'<p style="{style}">Visible text.</p>')
+    assert text == "Visible text."
+
+
+@pytest.mark.parametrize("attributes, hidden", [
+    ('style="display:none" style="display:block"', True),
+    ('style="display:block" style="display:none"', False),
+])
+def test_fallback_reader_uses_the_first_style_attribute(monkeypatch, attributes, hidden):
+    monkeypatch.setitem(__import__("sys").modules, "trafilatura", None)
+    _, text = extract(f'<p>Before.</p><div {attributes}>SECRET</div><p>After.</p>')
+    assert ("SECRET" not in text) is hidden
+    assert "Before." in text and "After." in text
+
+
+def test_fallback_reader_keeps_an_unclosed_hidden_subtree_hidden(monkeypatch):
+    monkeypatch.setitem(__import__("sys").modules, "trafilatura", None)
+    title, text = extract('<p>Before.</p><div style="display:none"><title>SECRET</title>SECRET</unmatched>SECRET')
+    assert title == "" and text == "Before."
+
+
 @pytest.mark.parametrize("url", [
     "file:///etc/hosts",
     "ftp://quenlow.example/",
