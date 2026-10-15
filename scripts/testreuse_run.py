@@ -384,10 +384,13 @@ class Session:
             outcome.detail = f"{outcome.detail} (result not stored: {why})".strip()
             self.events.finished(file, look.key, "pass-unstored", "")
             return
-        manifest = keys.build_manifest(self.root, file, ran.seen or {}, self.closures, tuple(self.command))
-        why = (
-            f"its closure uses {manifest['unobserved']}, which the runner cannot observe" if manifest["unobserved"]
-            else "")
+        try:
+            manifest = keys.build_manifest(self.root, file, ran.seen or {}, self.closures, tuple(self.command))
+        except OSError as error:
+            why = f"an input could not be inspected ({type(error).__name__}, errno {error.errno})"
+        else:
+            why = (f"its closure uses {manifest['unobserved']}, which the runner cannot observe"
+                   if manifest["unobserved"] else "")
         if why:
             outcome.detail = f"{outcome.detail} (result not stored: {why})".strip()
             self.events.finished(file, look.key, "pass-unstored", "")
@@ -412,15 +415,15 @@ class Session:
 
     def store_entry(self, file: str, ran: Ran, kind: str, manifest: dict | None = None) -> str:
         """Write the entry for an executed file; empty when an input changed or the store could not be written."""
-        manifest = manifest or keys.build_manifest(self.root, file, ran.seen or {}, self.closures, tuple(self.command))
-        self.unstored = keys.manifest_holds(self.root, manifest, self.closures) if kind == "pass" else ""
-        if self.unstored:
-            return ""
         try:
+            manifest = manifest or keys.build_manifest(self.root, file, ran.seen or {}, self.closures, tuple(self.command))
+            self.unstored = keys.manifest_holds(self.root, manifest, self.closures) if kind == "pass" else ""
+            if self.unstored:
+                return ""
             return self.put_entry(file, ran, kind, manifest)
         except OSError as error:
-            self.unstored = f"the store could not be written: {error}"
-            warn(f"test: {file}: result not stored ({error})")
+            self.unstored = f"an input or the store was unavailable ({type(error).__name__}, errno {error.errno})"
+            warn(f"test: {file}: result not stored ({self.unstored})")
             return ""
 
     def put_entry(self, file: str, ran: Ran, kind: str, manifest: dict) -> str:
