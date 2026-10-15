@@ -578,3 +578,41 @@ def test_relay_broken_pipe_still_reaps_before_the_next_connection(relay_fixture,
             following.sendall(b'after broken pipe')
             assert following.recv(64) == b'after broken pipe'
         assert not worker.failed and len(calls) == 2
+
+
+@pytest.mark.parametrize('permitted', [None, 'exec', 'token'])
+def test_verifier_queries_exact_execution_and_token_subresources(monkeypatch, permitted):
+    from poolhouse.coordination import verify
+
+    observed = []
+
+    def kubectl(_docker, _identifier, args, **kwargs):
+        if args[:2] == ['auth', 'can-i']:
+            observed.append(args)
+            allowed = permitted is not None and f'--subresource={permitted}' in args
+            return subprocess.CompletedProcess(args, 0 if allowed else 1, 'yes' if allowed else 'no', '')
+        if kwargs.get('identity') in ('invalid', 'wrong-audience'):
+            return subprocess.CompletedProcess(args, 1, '', 'Unauthorized')
+        if args[0].startswith('--tls-server-name'):
+            return subprocess.CompletedProcess(args, 1, '', 'certificate')
+        value = {'data': {'authority': 'none'}}
+        if args[:2] == ['get', 'lease']:
+            value = {'spec': {'holderIdentity': 'verification-only'}}
+        if args[:2] == ['get', 'nodes']:
+            value = {'items': []}
+        return subprocess.CompletedProcess(args, 0, json.dumps(value), '')
+
+    monkeypatch.setattr(verify, 'kubectl', kubectl)
+    monkeypatch.setattr(verify, 'token_claims', lambda *_: {'aud': ['poolhouse-local'], 'iat': 0, 'exp': 600})
+    class Bootstrap:
+        def call(self, *_args, **_kwargs):
+            return None
+
+    if permitted:
+        with pytest.raises(Refused, match='unexpected operation'):
+            verify.verify(Bootstrap(), 'owned')
+    else:
+        assert verify.verify(Bootstrap(), 'owned')['restricted_service_account']
+        assert ['auth', 'can-i', 'create', 'pods', '--subresource=exec'] in observed
+        assert ['auth', 'can-i', 'create', 'serviceaccounts', '--subresource=token'] in observed
+        assert ['auth', 'can-i', 'update', 'configmaps/other'] in observed

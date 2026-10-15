@@ -20,7 +20,7 @@ The run verified:
   Authorization, without ambient credentials or a client certificate.
 - Reads and writes to the named `status` ConfigMap and `coordinator` Lease. Their data had
   no Poolhouse authority.
-- Denial of secrets, nodes, Pod creation/execution, role bindings, token minting, listing
+- Denial of secrets, nodes, Pod creation, role bindings, listing
   ConfigMaps and updates to a different ConfigMap; invalid and wrong-audience tokens were
   refused. The administrative check found zero execution nodes.
 - A requested and issued 600-second token lifetime. Kubernetes v1.36.5
@@ -33,6 +33,17 @@ The run verified:
 - Normal return from the 750-second hold, removal of the exact owned container and network,
   completed creation receipts, unchanged existing volume IDs and release of the CPU lease.
   No unproven volume was pruned.
+
+A subsequent audit corrected two authorization queries: resource/name syntax does not
+select a subresource. Source `bdc91bf6c902e0ca1ccb4e66446790b210773e4c` then completed
+a fresh zero-hold CLI lifecycle with explicit `pods --subresource=exec` and
+`serviceaccounts --subresource=token` authorization checks. Both returned `no` with status
+1, as did all eight negative checks. These were authorization queries, not attempts to
+execute a command or mint a token. The Role, tokens and TLS transport were unchanged from
+the expiry run. Exact owned cleanup completed and the volume inventory was unchanged;
+the receipt is `/private/tmp/poolhouse-coordination-subresources-_17i0rf0/receipt.json`.
+All 49 coordination checks passed; restoring the imprecise query syntax made all three new
+subresource regressions fail, before restoring the correct source.
 
 The local raw receipt is `/private/tmp/poolhouse-coordination-live-e13wpig_/receipt.json`.
 It records only nonsecret identifiers, hashes, public timing and outcomes. Generated service

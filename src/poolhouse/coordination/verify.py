@@ -132,13 +132,13 @@ def verify(docker: Docker, identifier: str) -> dict:
     nodes = json.loads(kubectl(docker, identifier, ['get', 'nodes', '-o', 'json'], identity='admin').stdout)
     if nodes.get('items') != []:
         raise Refused('This metadata control plane unexpectedly has execution nodes.')
-    for verb, resource in [('get', 'secrets'), ('get', 'nodes'), ('create', 'pods'),
-                           ('create', 'pods/exec'), ('create', 'rolebindings'),
-                           ('create', 'serviceaccounts/token'), ('list', 'configmaps'),
-                           ('update', 'configmaps/other')]:
-        result = kubectl(docker, identifier, ['auth', 'can-i', verb, resource], required=False)
+    for args in [('get', 'secrets'), ('get', 'nodes'), ('create', 'pods'),
+                 ('create', 'pods', '--subresource=exec'), ('create', 'rolebindings'),
+                 ('create', 'serviceaccounts', '--subresource=token'), ('list', 'configmaps'),
+                 ('update', 'configmaps/other')]:
+        result = kubectl(docker, identifier, ['auth', 'can-i', *args], required=False)
         if result.returncode != 1 or result.stdout.strip() != 'no':
-            raise Refused(f'The service account can perform an unexpected operation: {verb} {resource}.')
+            raise Refused(f'The service account can perform an unexpected operation: {' '.join(args)}.')
     for identity, args, expected in [('invalid', ['get', 'configmap', 'status'], 'Unauthorized'),
                                      ('wrong-audience', ['get', 'configmap', 'status'], 'Unauthorized'),
                                      ('service', ['--tls-server-name=invalid.example', 'get', 'configmap', 'status'], 'certificate')]:
