@@ -1,5 +1,9 @@
 //! Typed requests and serialized state transitions for the native authority.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
+mod store;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
