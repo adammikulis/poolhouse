@@ -7,6 +7,7 @@ import hashlib
 import os
 import tempfile
 import time
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -171,13 +172,14 @@ def probe_tree(batch: Batch) -> Iterator[Path]:
         lg.git(batch.root, "worktree", "remove", str(path), check=False)
 
 
-def first_bad(batch: Batch, check: lc.Check, probe: Path) -> int:
-    """The 1-based index of the first merge after which ``check`` fails."""
+def first_bad(batch: Batch, check: lc.Check, probe: Path, baseline: Counter, missing_allowed: frozenset[str] = frozenset()) -> int:
+    """The first merge whose failures exceed the exact clean-target identities."""
     low, high = 0, len(batch.merged)
     while high - low > 1:
         mid = (low + high) // 2
         lg.git(probe, "checkout", "-q", "--detach", batch.merged[mid - 1][1])
-        if lc.probe(probe, check):
+        result = lc.probe_result(probe, check, missing_allowed)
+        if result.status in ("pass", "reused") or (result.receipt and result.receipt.valid and Counter(result.receipt.failures) <= baseline):
             low = mid
         else:
             high = mid
@@ -185,12 +187,20 @@ def first_bad(batch: Batch, check: lc.Check, probe: Path) -> int:
 
 
 def blame(batch: Batch, check: lc.Check, result: lc.Result) -> str:
-    """Judge one failure: ``baseline`` or the ejected branch's name."""
+    """Classify exact failure identities or eject the first failing merge."""
     narrow = lc.restrict(check, result.failed_files)
     with probe_tree(batch) as probe:
-        if not lc.probe(probe, narrow):
-            return "baseline"
-        index = first_bad(batch, narrow, probe) if len(batch.merged) > 1 else 1
+        missing_allowed = frozenset(f for f in narrow.files if not (probe / f).exists())
+        clean = lc.probe_result(probe, narrow, missing_allowed)
+        baseline = Counter()
+        if clean.status not in ("pass", "reused"):
+            if not (result.receipt and clean.receipt and result.receipt.valid and clean.receipt.valid
+                    and result.receipt.failures and clean.receipt.failures):
+                raise ValueError("failure evidence cannot establish a baseline")
+            baseline = Counter(clean.receipt.failures)
+            if Counter(result.receipt.failures) <= baseline:
+                return "baseline"
+        index = first_bad(batch, narrow, probe, baseline, missing_allowed) if len(batch.merged) > 1 else 1
     branch, sha = batch.merged[index - 1]
     what = ", ".join(result.failed_files[:4]) or (result.tail.splitlines() or [check.name])[-1]
     eject(batch, branch, check.name, what, sha)
@@ -231,6 +241,7 @@ def verify(batch: Batch, workers: int) -> tuple[list[lc.Result], str, str]:
             removed = removed or who != "baseline"
         if not removed:
             break
+        passed_files.clear()
         lg.git(batch.wt, "reset", "--hard", "-q", batch.base)
         if not merge_all(batch, "eject"):
             break

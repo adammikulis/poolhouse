@@ -157,9 +157,9 @@ def test_failure_that_also_fails_on_the_target_is_baseline(proj):
     Project.write(proj.root, "BAD_GATE", "1\n")
     proj.commit(proj.root, "chore: known failure")
     proj.branch("a", mod(1))
-    code, _, summary = proj.land("run", "a")
-    assert summary["baseline"] == ["gate"] and summary["ejected"] == []
-    assert code == 0 and summary["checks"][0]["status"] == "baseline"
+    code, output, _summary = proj.land("run", "a")
+    assert code != 0
+    assert "failure evidence cannot establish a baseline" in output
 
 
 def test_finish_refuses_a_dirty_primary_and_prints_the_lead_command(proj):
