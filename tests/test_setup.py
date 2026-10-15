@@ -577,7 +577,7 @@ def _booted_daemon(tmp_path):
         else:
             proc.kill()
             pytest.fail(f"traind never answered /health:\n{log.read_text(errors='replace')}")
-        yield keyfile, http_port, disco_port
+        yield keyfile, http_port, disco_port, log
     finally:
         proc.terminate()
         try:
@@ -587,17 +587,25 @@ def _booted_daemon(tmp_path):
         fh.close()
 
 
+def daemon_discovery_failure(log: Path, port: int, said: str) -> str:
+    from poolhouse.sentinel.redaction import redact
+
+    with log.open("rb") as stream:
+        recorded = stream.read(65536).decode("utf-8", errors="replace")
+    return f"{said}\nloopback UDP port {port}\ndaemon log:\n{redact(recorded)}"
+
+
 @pytest.mark.slow
 def test_fleet_findings_see_a_real_booted_daemon(tmp_path):
     from poolhouse.setup import _fleet_findings
 
-    with _booted_daemon(tmp_path) as (keyfile, http_port, disco_port):
+    with _booted_daemon(tmp_path) as (keyfile, http_port, disco_port, log):
         found = {f.name: f for f in _fleet_findings(
             port=http_port, discovery_port=disco_port, pool_key_path=keyfile)}
     assert found["fleet: joined"].good
     assert found["fleet: daemon"].good
     assert "setuptestbox" in found["fleet: daemon"].said
-    assert found["fleet: seen"].good, found["fleet: seen"].said
+    assert found["fleet: seen"].good, daemon_discovery_failure(log, disco_port, found["fleet: seen"].said)
     assert found["fleet: seen"].said == "sees itself among 1 member(s)"
     assert found["ports"].good
     assert "this machine's own daemon" in found["ports"].said
