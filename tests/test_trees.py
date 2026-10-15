@@ -99,9 +99,9 @@ def test_a_dirty_tree_refuses_close_landed_and_abandon_needs_a_reason(main):
         trees.close(main, path, ("landed", ""), 101)
     with pytest.raises(trees.Refused, match="reason"):
         trees.close(main, path, ("abandon", " "), 101)
-    done = trees.close(main, path, ("abandon", "scratch only"), 101)
-    assert not path.exists()
-    assert done["reason"] == "scratch only"
+    with pytest.raises(trees.Refused, match="dirty"):
+        trees.close(main, path, ("abandon", "scratch only"), 101)
+    assert (path / "scratch.txt").read_text() == "unsaved"
 
 
 def test_bundle_is_created_and_verified_before_the_tree_goes(main):
@@ -114,6 +114,7 @@ def test_bundle_is_created_and_verified_before_the_tree_goes(main):
     bundle = Path(done["bundle"])
     git(main, "bundle", "verify", str(bundle))
     assert head in git(main, "bundle", "list-heads", str(bundle))
+    assert git(main, "rev-parse", "keep") == head
 
 
 def test_bundle_refuses_dirty_work_and_a_tree_with_nothing_to_bundle(main):
@@ -286,3 +287,75 @@ def test_a_tree_named_like_an_option_or_a_command_is_only_a_path_to_git(tmp_path
     with pytest.raises(RuntimeError):
         trees.git(tmp_path / ("missing " + name), "status")
     assert not (tmp_path / "x").exists()
+
+
+@pytest.mark.parametrize("kind", ["ignored", "untracked", "locked"])
+def test_close_preserves_unaccounted_contents_and_locks(main, kind):
+    path = tree(main, "preserve", owner="worker-a")
+    trees.finish(main, "worker-a", 100)
+    if kind == "ignored":
+        git(main, "config", "core.excludesFile", str(main.parent / "ignore"))
+        (main.parent / "ignore").write_text("private-artifact\n")
+        (path / "private-artifact").write_text("unique")
+    elif kind == "untracked":
+        (path / "untracked").write_text("unique")
+    else:
+        git(main, "worktree", "lock", "--reason", "foreign operation", str(path))
+    with pytest.raises((trees.Refused, RuntimeError)):
+        trees.close(main, path, ("abandon", "obsolete"), 101)
+    assert path.exists()
+    assert not trees.recorded(main).get("history")
+    assert git(main, "rev-parse", "preserve")
+
+
+def test_close_uses_nonforce_remove_and_records_only_actual_absence(main, monkeypatch):
+    path = tree(main, "remove", owner="worker-a")
+    trees.finish(main, "worker-a", 100)
+    original = trees.git
+    calls = []
+    def refuse(root, *args):
+        calls.append(args)
+        if args[:2] == ("worktree", "remove"):
+            assert "--force" not in args
+            return ""  # removal that did not actually remove anything
+        return original(root, *args)
+    monkeypatch.setattr(trees, "git", refuse)
+    with pytest.raises(trees.Refused, match="remains"):
+        trees.close(main, path, ("landed", ""), 101)
+    assert path.exists() and not trees.recorded(main).get("history")
+    assert not any("-D" in call for call in calls)
+
+
+def test_bundle_head_race_preserves_checkout_and_branch(main, monkeypatch):
+    path = tree(main, "race", owner="worker-a")
+    commit(path, "first")
+    trees.finish(main, "worker-a", 100)
+    original = trees._bundle
+    def moved(primary, row, dev):
+        saved = original(primary, row, dev)
+        commit(path, "second")
+        return saved
+    monkeypatch.setattr(trees, "_bundle", moved)
+    with pytest.raises(trees.Refused, match="changed HEAD"):
+        trees.close(main, path, ("bundle", ""), 101)
+    assert path.exists() and not trees.recorded(main).get("history")
+    assert git(main, "rev-parse", "race") == git(path, "rev-parse", "HEAD")
+
+
+def test_known_ignored_caches_allow_normal_landed_cleanup(main, monkeypatch):
+    path = tree(main, "cached", owner="worker-a")
+    git(main, "config", "core.excludesFile", str(main.parent / "ignore"))
+    (main.parent / "ignore").write_text("__pycache__/\n")
+    (path / "__pycache__").mkdir()
+    (path / "__pycache__" / "cache.pyc").write_bytes(b"cache")
+    trees.finish(main, "worker-a", 100)
+    original = trees.git
+    calls = []
+    def checked(root, *args):
+        calls.append(args)
+        assert "--force" not in args and "-D" not in args
+        return original(root, *args)
+    monkeypatch.setattr(trees, "git", checked)
+    assert trees.close(main, path, ("landed", ""), 101)["mode"] == "landed"
+    assert ("branch", "-d", "cached") in calls
+    assert not path.exists()
