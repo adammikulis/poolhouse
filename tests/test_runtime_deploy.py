@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,9 @@ from poolhouse import (
     runtime,
     runtime_board,
     runtime_cli,
+    runtime_coalesce,
     runtime_deploy,
+    runtime_launchers,
     runtime_store,
 )
 from poolhouse.board import session as board_session
@@ -897,3 +900,101 @@ def test_install_reservation_never_enters_after_admission_refusal(workspace_node
             runtime_deploy.owning([tmp_path / "command"], wait_s=0, who=who):
         pytest.fail("refused reservation entered")
     assert not who.claims("install")
+
+
+@pytest.mark.parametrize("phase", ["settle", "build", "publish"])
+def test_automatic_refresh_preserves_a_new_foreground_selection(world, monkeypatch, phase):
+    repo, launchers, tmp = world
+    first = commit(repo, "automatic-first")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    baseline = runtime_deploy.automatic_selection()
+    original = {p.name: p.read_bytes() for p in launchers.iterdir()}
+    desired = commit(repo, "automatic-next")
+    plan = replace(plan_for(repo, launchers), automatic_from=baseline)
+    manual_wheel = wheel(tmp / "manual", first)
+    runtime_wheel.stamp(manual_wheel, first, repo)
+    manual = runtime_wheel.prepare(manual_wheel, first, timeout=60)
+    runtime_store.mark_created(manual.prefix, "manual-test", "ensure")
+    runtime_store.mark_verified(manual)
+    built = builder()
+    if phase == "build":
+        def build(plan, stage, prefix):
+            chosen = built(plan, stage, prefix)
+            runtime.publish(manual)
+            return chosen
+    else:
+        build = built
+    if phase == "publish":
+        install = runtime_launchers.install
+
+        def install_then_change(*args, **kwargs):
+            result = install(*args, **kwargs)
+            if args[0] == launchers:
+                runtime.publish(manual)
+            return result
+        monkeypatch.setattr(runtime_launchers, "install", install_then_change)
+    monkeypatch.setattr(runtime_deploy, "_recovered", lambda *a: pytest.fail("automatic refresh must not recover"))
+    if phase == "settle":
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+            runtime.publish(manual)
+        outcome = runtime_coalesce.coalesced(lambda: plan,
+                    lambda planned: runtime_deploy.ensure(planned, builder=build),
+                    runtime_coalesce.Pace(1, 1, lambda: now[0], sleep))
+    else:
+        outcome = runtime_deploy.ensure(plan, builder=build)
+    assert outcome.action == "superseded" and outcome.commit == desired
+    assert runtime.selected() == manual
+    assert {p.name: p.read_bytes() for p in launchers.iterdir()} == original
+    assert not runtime_store.read_state().get("last_failure")
+    assert not runtime_store.rejected(manual.prefix)
+
+
+def test_automatic_refresh_allows_a_normal_primary_fast_forward(world):
+    repo, launchers, _ = world
+    commit(repo, "automatic-first")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    baseline = runtime_deploy.automatic_selection()
+    desired = commit(repo, "automatic-next")
+    outcome = runtime_deploy.ensure(replace(plan_for(repo, launchers), automatic_from=baseline), builder=builder())
+    assert outcome.action == "switched" and runtime.selected().commit == desired
+
+
+@pytest.mark.parametrize("relation", ["divergent", "unrelated"])
+def test_automatic_refresh_refuses_a_divergent_selection_without_build_or_recovery(world, monkeypatch, relation):
+    repo, launchers, tmp = world
+    base = commit(repo, "automatic-base")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    git(repo, "switch", "-q", "-c", "manual")
+    manual = commit(repo, "automatic-manual")
+    manual_wheel = wheel(tmp / "manual", manual)
+    runtime_wheel.stamp(manual_wheel, manual, repo)
+    chosen = runtime_wheel.prepare(manual_wheel, manual, timeout=60)
+    runtime_store.mark_created(chosen.prefix, "manual-test", "ensure")
+    runtime_store.mark_verified(chosen)
+    runtime.publish(chosen)
+    baseline = runtime_deploy.automatic_selection()
+    git(repo, "switch", "-q", "dev")
+    if relation == "unrelated":
+        git(repo, "switch", "-q", "--orphan", "unrelated")
+    desired = commit(repo, "automatic-primary")
+    assert base != manual != desired
+    monkeypatch.setattr(runtime_deploy, "_recovered", lambda *a: pytest.fail("must not recover"))
+    outcome = runtime_deploy.ensure(replace(plan_for(repo, launchers), automatic_from=baseline),
+                                   builder=lambda *a: pytest.fail("must not build"))
+    assert outcome.action == "superseded" and runtime.selected().commit == manual
+
+
+def test_automatic_refresh_refuses_a_changed_epoch_without_building(world):
+    repo, launchers, _ = world
+    commit(repo, "automatic-first")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    baseline = runtime_deploy.automatic_selection()
+    chosen = runtime.selected()
+    commit(repo, "automatic-next")
+    runtime_store.mark_verified(chosen, epoch=1)
+    outcome = runtime_deploy.ensure(replace(plan_for(repo, launchers), automatic_from=baseline),
+                                   builder=lambda *a: pytest.fail("must not build"))
+    assert outcome.action == "superseded" and runtime.selected() == chosen

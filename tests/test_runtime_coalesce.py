@@ -84,10 +84,13 @@ def test_a_failed_build_ends_the_rounds_instead_of_looping():
     assert len(built) == 1
 
 
-def test_background_requests_settle_unless_now_is_given():
+def test_background_requests_settle_unless_now_is_given(monkeypatch):
+    monkeypatch.setattr(runtime_deploy, "automatic_selection", lambda: ("prefix", commit(1), "version", "identity", "0"))
     args = argparse.Namespace(ref="HEAD", timeout=1.0, wait=1.0, checkout="", launchers="", agent="", label="",
                               force=False, force_build=False, now=False)
-    assert "--settle" in runtime_cli._again(args)
+    scheduled = runtime_cli._again(args)
+    assert "--settle" in scheduled and "--automatic-from" in scheduled
+    assert commit(1) in scheduled[scheduled.index("--automatic-from") + 1]
     args.now = True
     assert "--settle" not in runtime_cli._again(args)
 
