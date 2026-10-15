@@ -16,7 +16,7 @@ import jwt
 from poolhouse.net.github_release import Failed, request as api
 
 ITEM = "POOLHOUSE_AGENT_APP"
-RESET = "run scripts/agent-identity setup again at a terminal"
+RESET = f"remove it with `poolhouse credentials unset {ITEM} --keychain` and run scripts/agent-identity setup again"
 REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}")
 RANK = {"read": 1, "write": 2, "admin": 3}
