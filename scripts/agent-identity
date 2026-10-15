@@ -438,13 +438,14 @@ def check(args: argparse.Namespace) -> int:
     return code
 
 
-def push_development(args: argparse.Namespace) -> int:
+def publication(args: argparse.Namespace) -> int:
     """Push the exact reviewed development tip through the installed repository App."""
     from poolhouse import real_machine
     from poolhouse.workspace import github_release
 
     try:
-        result = github_release.push_development(Path(args.source).resolve())
+        operation = github_release.push_development if args.command == "push-development" else github_release.publish_release
+        result = operation(Path(args.source).resolve())
     except real_machine.Refused as exc:
         raise Failed(str(exc)) from None
     print(json.dumps(result, sort_keys=True))
@@ -465,10 +466,10 @@ def guard(args: argparse.Namespace, terminal: tuple[bool, bool] | None) -> None:
 def main(argv: list[str] | None = None, terminal: tuple[bool, bool] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="agent-identity", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name, fn in (("setup", setup), ("token", token), ("check", check), ("push-development", push_development)):
+    for name, fn in (("setup", setup), ("token", token), ("check", check), ("push-development", publication), ("publish-release", publication)):
         one = sub.add_parser(name, help=fn.__doc__)
         one.set_defaults(run=fn)
-        if name == "push-development":
+        if name in {"push-development", "publish-release"}:
             one.add_argument("--source", default=str(ROOT), help="primary development checkout")
         elif name != "token":
             one.add_argument("--repo", help="OWNER/NAME" + ("; defaults to the repository gh or origin names"

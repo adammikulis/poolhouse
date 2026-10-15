@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from poolhouse import authority, credentials, home, real_machine, worktreerules
@@ -158,3 +159,154 @@ def push_development(checkout: Path) -> dict[str, str]:
     if after != selected.commit:
         raise remote.Failed("GitHub did not report the requested development tip")
     return {"sha": selected.commit}
+
+
+@dataclass(frozen=True)
+class Asset:
+    name: str
+    body: bytes = field(repr=False)
+    sha256: str
+
+
+def _asset(directory: Path, name: str, limit: int = 64 << 20) -> Asset:
+    import hashlib
+
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+        raise remote.Failed("release assets have fixed plain filenames")
+    descriptor = os.open(directory / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or not 0 < before.st_size <= limit:
+            raise remote.Failed("release assets must be bounded owned regular files")
+        body = stream.read(limit + 1)
+        after = os.fstat(stream.fileno())
+        named = (directory / name).lstat()
+        identity_fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if (len(body) != before.st_size
+                or any(getattr(after, key) != getattr(before, key) for key in identity_fields)
+                or (named.st_dev, named.st_ino) != (before.st_dev, before.st_ino)):
+            raise remote.Failed("a release asset changed while being pinned")
+    return Asset(name, body, hashlib.sha256(body).hexdigest())
+
+
+def _contents(assets: dict[str, Asset], manifest: dict) -> None:
+    import io
+    import plistlib
+    import zipfile
+    from email import message_from_bytes
+
+    version, python_version = manifest["version"], manifest["python_version"]
+    wheel = assets[f"poolhouse-{python_version}-py3-none-any.whl"]
+    app = assets[next(name for name in assets if name.endswith('.zip'))]
+    with zipfile.ZipFile(io.BytesIO(wheel.body)) as archive:
+        metadata = f"poolhouse-{python_version}.dist-info/METADATA"
+        names = (metadata, "poolhouse/fleet/built-from")
+        if any(archive.getinfo(name).file_size > 64 << 10 for name in names):
+            raise remote.Failed("wheel provenance metadata is too large")
+        if (message_from_bytes(archive.read(metadata))["Version"] != python_version
+                or archive.read(names[1]).decode().strip() != manifest["source_commit"]):
+            raise remote.Failed("wheel version or source provenance does not match the release")
+    with zipfile.ZipFile(io.BytesIO(app.body)) as archive:
+        name = "Poolhouse.app/Contents/Info.plist"
+        if archive.getinfo(name).file_size > 64 << 10:
+            raise remote.Failed("application version metadata is too large")
+        if plistlib.loads(archive.read(name)).get("CFBundleShortVersionString") != version:
+            raise remote.Failed("application version does not match the release")
+
+
+def artifacts(selected: Source) -> tuple[dict, dict[str, Asset]]:
+    """Pin the four build outputs and verify their version, source and checksum contract."""
+    from packaging.version import Version
+
+    version = local(selected.checkout, "show", f"{selected.commit}:version.txt")
+    parsed = Version(version)
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+", version) or parsed.dev is None:
+        raise remote.Failed("this command publishes development prereleases only")
+    directory = selected.checkout / "dist" / f"{parsed.major}.{parsed.minor}dev{parsed.dev}"
+    if directory.is_symlink() or directory.resolve() != directory:
+        raise remote.Failed("release output must use its fixed local build directory")
+    info = _asset(directory, "build-info.json", 64 << 10)
+    manifest = json.loads(info.body)
+    names = {f"poolhouse-{parsed}-py3-none-any.whl", f"Poolhouse-{parsed.major}.{parsed.minor}dev{parsed.dev}-macos-arm64.zip"}
+    if (manifest.get("schema") != 1 or manifest.get("version") != version
+            or manifest.get("python_version") != str(parsed) or manifest.get("tag") != f"v{version}"
+            or not SHA.fullmatch(str(manifest.get("source_commit", "")))
+            or set(manifest.get("assets", {})) != names):
+        raise remote.Failed("release build provenance does not match the selected version")
+    commit = manifest["source_commit"]
+    if (local(selected.checkout, "merge-base", commit, selected.commit) != commit
+            or local(selected.checkout, "show", f"{commit}:version.txt") != version):
+        raise remote.Failed("release source is not the versioned development ancestor")
+    pinned = {name: _asset(directory, name) for name in sorted(names)}
+    for name, asset in pinned.items():
+        if manifest["assets"][name] != {"sha256": asset.sha256, "bytes": len(asset.body)}:
+            raise remote.Failed("release artifact bytes do not match build provenance")
+    pinned[info.name] = info
+    sums = _asset(directory, "SHA256SUMS", 64 << 10)
+    expected = {f"{asset.sha256}  {name}" for name, asset in pinned.items()}
+    if set(sums.body.decode().splitlines()) != expected:
+        raise remote.Failed("release checksums do not match pinned artifact bytes")
+    pinned[sums.name] = sums
+    _contents(pinned, manifest)
+    return manifest, pinned
+
+
+def _found(path: str, token: str):
+    try:
+        return remote.request("GET", path, bearer=token)
+    except remote.Gone:
+        return None
+
+
+def publish_release(checkout: Path) -> dict[str, object]:
+    """Publish the fixed versioned development prerelease with matching immutable assets."""
+    authorize("publish the reviewed development prerelease")
+    who = identity()
+    selected = source(checkout, who.repo)
+    manifest, pinned = artifacts(selected)
+    commit, tag = manifest["source_commit"], manifest["tag"]
+    authority.require("github.release", json.dumps({"operation": "publish-release", "repo": who.repo,
+        "tag": tag, "sha": commit, "assets": {name: asset.sha256 for name, asset in pinned.items()}}, sort_keys=True))
+    token = github_app.mint(who, PERMISSIONS, who.repo)["token"]
+    root = f"/repos/{who.repo}"
+    published = remote.request("GET", f"{root}/git/ref/heads/{selected.branch}", bearer=token)["object"]["sha"]
+    if not SHA.fullmatch(published) or local(checkout, "merge-base", commit, published) != commit:
+        raise remote.Failed("release source is not on the published development branch")
+    existing_tag = _found(f"{root}/git/ref/tags/{tag}", token)
+    if existing_tag is not None and existing_tag.get("object") != {"type": "commit", "sha": commit}:
+        obj = existing_tag.get("object", {})
+        if obj.get("type") != "commit" or obj.get("sha") != commit:
+            raise remote.Failed("the existing release tag points somewhere else")
+    release = _found(f"{root}/releases/tags/{tag}", token)
+    if release is None:
+        release = remote.request("POST", f"{root}/releases", bearer=token, payload={"tag_name": tag,
+            "target_commitish": commit, "name": manifest["version"], "draft": False, "prerelease": True,
+            "make_latest": "false", "body": "Development prerelease. Full release verification remains unfinished."})
+    if (release.get("tag_name") != tag or release.get("name") != manifest["version"]
+            or release.get("target_commitish") != commit or release.get("prerelease") is not True or release.get("draft") is not False
+            or type(release.get("id")) is not int or release["id"] <= 0):
+        raise remote.Failed("the existing GitHub release does not match this prerelease")
+    actual_tag = remote.request("GET", f"{root}/git/ref/tags/{tag}", bearer=token).get("object", {})
+    if actual_tag.get("type") != "commit" or actual_tag.get("sha") != commit:
+        raise remote.Failed("GitHub release tag does not match the pinned source")
+    existing = release.get("assets", [])
+    if not isinstance(existing, list) or len(existing) > 100:
+        raise remote.Failed("the existing release asset inventory is invalid")
+    indexed = {row.get("name"): row for row in existing}
+    if len(indexed) != len(existing) or set(indexed) - set(pinned):
+        raise remote.Failed("the release contains unexpected or duplicate assets")
+    urls = []
+    for name, asset in pinned.items():
+        row = indexed.get(name)
+        if row is None:
+            row = remote.upload(who.repo, release["id"], (name, asset.body), token)
+        if row.get("digest") != f"sha256:{asset.sha256}" or row.get("size") != len(asset.body):
+            raise remote.Failed("an existing release asset does not match its pinned digest")
+        expected = f"https://github.com/{who.repo}/releases/download/{tag}/{name}"
+        if row.get("browser_download_url") != expected:
+            raise remote.Failed("GitHub returned an unexpected public asset URL")
+        urls.append(expected)
+    url = f"https://github.com/{who.repo}/releases/tag/{tag}"
+    if release.get("html_url") != url:
+        raise remote.Failed("GitHub returned an unexpected public release URL")
+    return {"release_url": url, "assets": urls}
