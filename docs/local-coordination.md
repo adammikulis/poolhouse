@@ -30,6 +30,6 @@ There is no work dispatch or execution adapter. Native workers continue to use t
 node and compute broker. An agent does not obtain leadership or permissions from a
 Kubernetes label or lease.
 
-K3s calls agentless servers experimental. The server deliberately has no kubelet,
+K3s calls agentless servers experimental. The server has no kubelet,
 container runtime or CNI. See [agentless servers](https://docs.k3s.io/advanced#running-agentless-servers-experimental)
 and [server configuration](https://docs.k3s.io/cli/server).

@@ -133,7 +133,7 @@ def test_cleanup_removes_only_verified_exact_resources(monkeypatch, tmp_path, pl
     assert identifiers == {}
 
 
-@pytest.mark.parametrize("status", [401, 403, 500, None])
+@pytest.mark.parametrize("status", [401, 403, 500, None, "tls"])
 def test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin(monkeypatch, tmp_path, status):
     import ssl
     from pathlib import Path
@@ -169,6 +169,8 @@ def test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin(monkeypatch, t
         assert context.cert_store_stats()["x509"] == 1
         wire = http.build_request(url, headers=dict(options.headers))
         assert wire.get_header("Authorization") == ""
+        if status == "tls":
+            raise ssl.SSLCertVerificationError("fixture invalid certificate")
         if status is None:
             return {}
         raise http.ServerError("fixture refusal", status=status)
@@ -176,6 +178,72 @@ def test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin(monkeypatch, t
     if status in (401, 403):
         verify.host_tls(OwnedDocker(), "container-id", 16443)
     else:
-        with pytest.raises(Refused):
+        with pytest.raises(ssl.SSLCertVerificationError if status == "tls" else Refused):
             verify.host_tls(OwnedDocker(), "container-id", 16443)
     assert http._PINNED["127.0.0.1:16443"] is old
+
+
+def test_docker_delivery_keeps_hostile_argv_literal_and_drops_ambient_credentials(monkeypatch, tmp_path):
+    import os
+    import sys
+
+    program = tmp_path / 'fixture-docker'
+    program.write_text(f'#!{sys.executable}\nimport json, os, sys\nprint(json.dumps({{"argv": sys.argv[1:], "env": dict(os.environ)}}))\n')
+    program.chmod(0o700)
+    monkeypatch.setattr('poolhouse.coordination.docker.shutil.which', lambda _: str(program))
+    monkeypatch.setenv('FIXTURE_TOKEN', 'fixture-private-value')
+    docker = Docker(tmp_path, 'unix:///own/docker.sock')
+    hostile = '$(touch forbidden); --privileged'
+    result = json.loads(docker.call(['inspect', hostile]).stdout)
+    assert result['argv'] == ['inspect', hostile]
+    assert 'FIXTURE_TOKEN' not in result['env']
+    assert result['env']['HOME'] == str(tmp_path)
+    assert result['env']['DOCKER_CONFIG'] == str(tmp_path)
+    assert result['env']['DOCKER_HOST'] == 'unix:///own/docker.sock'
+    assert result['env']['PATH'] == os.defpath
+    program.write_text(f'#!{sys.executable}\nimport sys\nprint("fixture-private-value", file=sys.stderr)\nsys.exit(7)\n')
+    with pytest.raises(Refused, match=r'^Docker inspect failed \(exit 7\)\.$'):
+        docker.call(['inspect', hostile])
+    program.write_text(f'#!{sys.executable}\nimport time\ntime.sleep(10)\n')
+    with pytest.raises(subprocess.TimeoutExpired):
+        docker.call(['inspect', hostile], timeout=0.1)
+
+
+@pytest.mark.parametrize('phase', ['startup', 'keepalive'])
+def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tmp_path, phase):
+    import os
+    import signal
+    from types import SimpleNamespace
+
+    calls = []
+    releases = []
+    actor = SimpleNamespace(name='codex-test')
+    session = SimpleNamespace(whoami=lambda: actor, reserve=lambda _: None,
+                              release=lambda kind, key: releases.append((kind, key)))
+    class OwnedDocker:
+        def __init__(self, *_args):
+            pass
+        def call(self, argv, **_kwargs):
+            calls.append(argv)
+            value = 'network-id' if argv[0] == 'network' else 'container-id'
+            return subprocess.CompletedProcess(argv, 0, stdout=value)
+        def verify(self, *_args):
+            pass
+        def inspect(self, *_args):
+            pass
+    def terminate(*_args, **_kwargs):
+        os.kill(os.getpid(), signal.SIGTERM)
+    monkeypatch.setattr(runtime, 'Docker', OwnedDocker)
+    monkeypatch.setattr(runtime, 'image_ready', lambda _: None)
+    monkeypatch.setattr(runtime, 'network_plan', lambda _d, _n, plan: plan)
+    monkeypatch.setattr(runtime.verify, 'readiness', terminate if phase == 'startup' else lambda *_: None)
+    monkeypatch.setattr(runtime.verify, 'verify', lambda *_: {})
+    monkeypatch.setattr(runtime.verify, 'host_tls', lambda *_: None)
+    monkeypatch.setattr(runtime.time, 'sleep', terminate)
+    previous = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(KeyboardInterrupt):
+        runtime.run(session, tmp_path / 'private-state', 'unix:///own/docker.sock', 16443, 650)
+    assert signal.getsignal(signal.SIGTERM) == previous
+    assert calls[-3:] == [['stop', '--time', '10', 'container-id'],
+                          ['rm', '--volumes', 'container-id'], ['network', 'rm', 'network-id']]
+    assert len(releases) == 3 and {kind for kind, _ in releases} == {'install', 'server', 'port'}

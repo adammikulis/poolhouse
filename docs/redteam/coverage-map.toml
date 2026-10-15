@@ -15,6 +15,20 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["egress:coordination/verify.py:host_tls"]
+status = "covered"
+count = 1
+tests = ["tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"]
+note = "Only the exact loopback metadata URL is accepted; fresh owned CA verification, explicit anonymous Authorization without credential lookup, hostile response/TLS refusal and pin restoration are checked."
+
+[[group]]
+match = ["spawn:coordination/docker.py:Docker.call"]
+status = "covered"
+count = 1
+tests = ["tests/test_local_coordination.py::test_docker_delivery_keeps_hostile_argv_literal_and_drops_ambient_credentials", "tests/test_local_coordination.py::test_foreign_resource_never_removed", "tests/test_local_coordination.py::test_inspection_rejects_weakened_isolation"]
+note = "A private executable receives hostile arguments as literal argv without a shell or ambient credentials; failures redact child diagnostics and timeouts terminate the child. Exact resource ownership and isolation are checked before destructive operations."
+
+[[group]]
 match = ["spawn:workspace/codex_hooks.py:run"]
 status = "covered"
 count = 1

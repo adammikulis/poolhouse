@@ -1,9 +1,11 @@
 """Owned, bounded lifetime of an optional local metadata control plane."""
 
+import contextlib
 import ipaddress
 import json
 import os
 import secrets
+import signal
 import tempfile
 import time
 from dataclasses import replace
@@ -38,42 +40,42 @@ def run(session: Session, root: Path, endpoint: str, port: int, seconds: int = 0
     claims = [('install', str(root.resolve())), ('server', plan.name), ('port', str(port))]
     session.reserve(claims)
     identifiers: dict[str, str] = {}
-    try:
-        root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if root.is_symlink() or root.stat().st_uid != os.getuid():
-            raise Refused('The control-plane state directory must belong to this account.')
-        with tempfile.TemporaryDirectory(prefix='local-', dir=root) as temporary:
-            directory = Path(temporary)
-            docker = Docker(directory, endpoint)
-            try:
-                image_ready(docker)
-                identifiers['network'] = docker.call(plan.network()).stdout.strip()
-                plan = network_plan(docker, identifiers['network'], plan)
-                identifiers['container'] = docker.call(plan.container(identifiers['network'])).stdout.strip()
-                docker.verify(identifiers['container'], identifiers['network'], plan)
-                docker.call(['start', identifiers['container']])
-                docker.verify(identifiers['container'], identifiers['network'], plan)
-                verify.readiness(docker, identifiers['container'])
-                evidence = verify.verify(docker, identifiers['container'])
-                verify.host_tls(docker, identifiers['container'], port)
-                evidence.update(host_loopback_tls_verified=True, anonymous_refused=True)
-                evidence.update(owner=actor.name, version=VERSION, image=IMAGE,
-                                endpoint=f'https://127.0.0.1:{port}', control_plane_only=True)
-                say(json.dumps(evidence), flush=True)
-                deadline = time.monotonic() + seconds
-                while time.monotonic() < deadline:
-                    session.reserve(claims)
-                    time.sleep(min(30, max(0, deadline - time.monotonic())))
-                return evidence
-            finally:
-                cleanup(docker, plan, identifiers)
-    finally:
-        if identifiers:
-            say(json.dumps({'cleanup_required': identifiers, 'owner': actor.name}), flush=True)
-        else:
-            for kind, key in claims:
-                session.release(kind, key)
-
+    with termination_cleanup():
+        try:
+            root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if root.is_symlink() or root.stat().st_uid != os.getuid():
+                raise Refused('The control-plane state directory must belong to this account.')
+            with tempfile.TemporaryDirectory(prefix='local-', dir=root) as temporary:
+                directory = Path(temporary)
+                docker = Docker(directory, endpoint)
+                try:
+                    image_ready(docker)
+                    identifiers['network'] = docker.call(plan.network()).stdout.strip()
+                    plan = network_plan(docker, identifiers['network'], plan)
+                    identifiers['container'] = docker.call(plan.container(identifiers['network'])).stdout.strip()
+                    docker.verify(identifiers['container'], identifiers['network'], plan)
+                    docker.call(['start', identifiers['container']])
+                    docker.verify(identifiers['container'], identifiers['network'], plan)
+                    verify.readiness(docker, identifiers['container'])
+                    evidence = verify.verify(docker, identifiers['container'])
+                    verify.host_tls(docker, identifiers['container'], port)
+                    evidence.update(host_loopback_tls_verified=True, anonymous_refused=True)
+                    evidence.update(owner=actor.name, version=VERSION, image=IMAGE,
+                                    endpoint=f'https://127.0.0.1:{port}', control_plane_only=True)
+                    say(json.dumps(evidence), flush=True)
+                    deadline = time.monotonic() + seconds
+                    while time.monotonic() < deadline:
+                        session.reserve(claims)
+                        time.sleep(min(30, max(0, deadline - time.monotonic())))
+                    return evidence
+                finally:
+                    cleanup(docker, plan, identifiers)
+        finally:
+            if identifiers:
+                say(json.dumps({'cleanup_required': identifiers, 'owner': actor.name}), flush=True)
+            else:
+                for kind, key in claims:
+                    session.release(kind, key)
 
 def image_ready(docker: Docker) -> None:
     found = docker.call(['image', 'inspect', IMAGE], required=False)
@@ -97,3 +99,15 @@ def network_plan(docker: Docker, identifier: str, plan: Plan) -> Plan:
     if address == network['IPAM']['Config'][0].get('Gateway'):
         raise Refused('The private API address would collide with the network gateway.')
     return replace(plan, address=address)
+
+
+@contextlib.contextmanager
+def termination_cleanup():
+    """Deliver termination through the owned-resource cleanup path."""
+    def stop(_number, _frame):
+        raise KeyboardInterrupt
+    previous = signal.signal(signal.SIGTERM, stop)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)

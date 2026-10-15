@@ -1,7 +1,7 @@
 {
- "surfaces": 809,
+ "surfaces": 811,
  "by_status": {
-  "covered": 487,
+  "covered": 489,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 44,
+   "covered": 45,
    "partial": 46,
    "uncovered": 0,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 90,
+   "covered": 91,
    "partial": 58,
    "uncovered": 0,
    "n/a": 3,
@@ -1790,6 +1790,18 @@
     "tests/test_net_no_bypass.py"
    ],
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:coordination/verify.py:host_tls",
+   "kind": "egress",
+   "source": "coordination/verify.py:host_tls",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_local_coordination.py::test_host_tls_checks_owned_ca_anonymous_auth_and_restores_pin"
+   ],
+   "note": "Only the exact loopback metadata URL is accepted; fresh owned CA verification, explicit anonymous Authorization without credential lookup, hostile response/TLS refusal and pin restoration are checked."
   },
   {
    "id": "egress:decide/logprob.py:LogprobDecider.probabilities",
@@ -9438,6 +9450,20 @@
     "tests/test_harness_rails.py::TestPolicy::test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role"
    ],
    "note": "the harness is spawned with argv only; its hook sits in a settings file the model cannot write, decides from the classifier and a role fixed on the command line, denies when the request store or the hook fails, and a hostile label is one argument"
+  },
+  {
+   "id": "spawn:coordination/docker.py:Docker.call",
+   "kind": "spawn",
+   "source": "coordination/docker.py:Docker.call",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_local_coordination.py::test_docker_delivery_keeps_hostile_argv_literal_and_drops_ambient_credentials",
+    "tests/test_local_coordination.py::test_foreign_resource_never_removed",
+    "tests/test_local_coordination.py::test_inspection_rejects_weakened_isolation"
+   ],
+   "note": "A private executable receives hostile arguments as literal argv without a shell or ambient credentials; failures redact child diagnostics and timeouts terminate the child. Exact resource ownership and isolation are checked before destructive operations."
   },
   {
    "id": "spawn:credentials/writing.py:_owner_only_windows",
