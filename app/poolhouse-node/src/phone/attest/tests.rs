@@ -288,29 +288,7 @@ fn bounds_and_noncanonical_der_are_refused() {
 }
 
 #[test]
-fn compiled_signer_policy_requires_exact_lowercase_digest() {
-    for text in [
-        None,
-        Some(""),
-        Some("ab"),
-        Some("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
-        Some("gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"),
-    ] {
-        assert!(parse_signer(text).is_err());
-    }
-    assert_eq!(parse_signer(Some(&"07".repeat(32))).unwrap(), SIGNER);
-    for text in [
-        None,
-        Some(""),
-        Some("0"),
-        Some("01"),
-        Some("-1"),
-        Some("2147483648"),
-        Some("1 "),
-    ] {
-        assert!(minimum_version(text).is_err());
-    }
-    assert_eq!(minimum_version(Some("3000")).unwrap(), 3000);
+fn older_publisher_app_version_is_refused() {
     let f = fixture(&valid());
     let freshness = empty();
     assert!(verify_with(

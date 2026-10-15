@@ -3,6 +3,7 @@
 mod chain;
 mod der;
 mod policy;
+mod publisher;
 mod revocations;
 
 pub use revocations::FreshRevocations;
@@ -82,34 +83,6 @@ impl VerifiedAttestation {
     }
 }
 
-fn signer() -> Result<[u8; 32]> {
-    parse_signer(option_env!("POOLHOUSE_PHONE_SIGNER_SHA256"))
-}
-
-fn parse_signer(text: Option<&str>) -> Result<[u8; 32]> {
-    let text = text.ok_or(AttestationError::Application)?;
-    if text.len() != 64
-        || !text
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        return Err(AttestationError::Application);
-    }
-    let bytes = crate::fsutil::unhex(text).ok_or(AttestationError::Application)?;
-    bytes.try_into().map_err(|_| AttestationError::Application)
-}
-
-fn minimum_version(text: Option<&str>) -> Result<u64> {
-    let text = text.ok_or(AttestationError::Application)?;
-    if text.is_empty() || text.starts_with('0') || !text.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(AttestationError::Application);
-    }
-    text.parse::<u64>()
-        .ok()
-        .filter(|v| *v <= i32::MAX as u64)
-        .ok_or(AttestationError::Application)
-}
-
 /// Verify the key, challenge, hardware policy, certificate path and fresh revocation status.
 pub fn verify(
     chain: &[Vec<u8>],
@@ -117,13 +90,14 @@ pub fn verify(
     now: SystemTime,
     revocations: &FreshRevocations,
 ) -> Result<VerifiedAttestation> {
+    let publisher = publisher::approved()?;
     verify_with(
         chain,
         expected,
         now,
         revocations,
-        &signer()?,
-        minimum_version(option_env!("POOLHOUSE_PHONE_MIN_VERSION_CODE"))?,
+        &publisher.signer,
+        u64::from(publisher.minimum_version),
         chain::GOOGLE_ROOTS,
     )
 }
