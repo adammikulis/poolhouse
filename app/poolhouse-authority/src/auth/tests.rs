@@ -69,8 +69,8 @@ fn context() -> Context {
         gui_hash: [8; 32],
     }
 }
-fn peer() -> VerifiedPeer {
-    VerifiedPeer {
+fn caller() -> VerifiedCaller {
+    VerifiedCaller {
         owner_uid: 501,
         audit_session: 7,
         gui_hash: [8; 32],
@@ -226,21 +226,21 @@ fn wrong_card_binding_and_cancellation_never_export_and_destroy_rights() {
     assert_eq!(&*api.events.borrow(), &["create-fresh", "destroy-rights"]);
 }
 #[test]
-fn wrong_peer_or_expired_request_cannot_import_or_prompt() {
+fn wrong_caller_or_expired_request_cannot_import_or_prompt() {
     for kind in 0..4 {
         let api = Mock::new();
-        let mut peer = peer();
+        let mut caller = caller();
         match kind {
-            0 => peer.owner_uid = 502,
-            1 => peer.audit_session = 8,
-            2 => peer.gui_hash = [9; 32],
+            0 => caller.owner_uid = 502,
+            1 => caller.audit_session = 8,
+            2 => caller.gui_hash = [9; 32],
             _ => {}
         };
         assert!(authorize(
             &api,
             form(),
             &context(),
-            &peer,
+            &caller,
             if kind == 3 { 200 } else { 100 },
             || Ok((context(), 101))
         )
@@ -252,7 +252,7 @@ fn wrong_peer_or_expired_request_cannot_import_or_prompt() {
 fn missing_or_changed_policy_refuses_before_reference_import() {
     let mut api = Mock::new();
     api.policy["shared"] = json!(true);
-    assert!(authorize(&api, form(), &context(), &peer(), 100, || Ok((
+    assert!(authorize(&api, form(), &context(), &caller(), 100, || Ok((
         context(),
         101
     )))
@@ -262,7 +262,7 @@ fn missing_or_changed_policy_refuses_before_reference_import() {
 #[test]
 fn helper_requests_right_itself_then_destroys_before_issuing_bound_proof() {
     let api = Mock::new();
-    let proof = authorize(&api, form(), &context(), &peer(), 100, || {
+    let proof = authorize(&api, form(), &context(), &caller(), 100, || {
         Ok((context(), 101))
     })
     .unwrap();
@@ -277,7 +277,7 @@ fn denial_or_destroy_failure_never_returns_approval() {
     for name in ["request-fixed-right", "destroy-rights"] {
         let mut api = Mock::new();
         api.fail = Some(name);
-        assert!(authorize(&api, form(), &context(), &peer(), 100, || Ok((
+        assert!(authorize(&api, form(), &context(), &caller(), 100, || Ok((
             context(),
             101
         )))
@@ -293,7 +293,7 @@ fn changed_state_cancel_or_clock_expiry_after_auth_refuses() {
         if kind == 0 {
             changed.head = [9; 32];
         }
-        let result = authorize(&api, form(), &context(), &peer(), 100, || {
+        let result = authorize(&api, form(), &context(), &caller(), 100, || {
             if kind == 1 {
                 return Err(Error::Unauthorized);
             }
@@ -317,7 +317,7 @@ fn changed_state_cancel_or_clock_expiry_after_auth_refuses() {
 }
 
 #[test]
-fn rule_creator_pair_must_match_exact_protected_identity() {
+fn rule_creator_identity_must_match_exact_protected_identity() {
     for kind in 0..5 {
         let mut value = policy::prepared(&policy::RuleIdentity::fixture());
         match kind {

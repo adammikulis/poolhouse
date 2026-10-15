@@ -207,8 +207,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn socket_pair_reports_the_kernel_owner() {
-        let (one, _two) = UnixStream::pair().unwrap();
+    fn connected_socket_reports_the_kernel_owner() {
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory.path().join("node.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        let one = UnixStream::connect(&socket).unwrap();
+        let (_two, _) = listener.accept().unwrap();
         assert_eq!(peer(&one).unwrap(), Principal::me().unwrap());
         #[cfg(any(target_os = "linux", target_os = "android"))]
         assert_eq!(peer_pid(&one), Some(std::process::id()));

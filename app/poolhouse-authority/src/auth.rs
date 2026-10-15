@@ -17,7 +17,7 @@ struct Context {
 }
 
 struct VerifiedCard(Context);
-struct VerifiedPeer {
+struct VerifiedCaller {
     owner_uid: u32,
     audit_session: u32,
     gui_hash: Hash,
@@ -81,14 +81,14 @@ fn authorize<A: Api>(
     api: &A,
     form: ExternalForm,
     pending: &Context,
-    peer: &VerifiedPeer,
+    caller: &VerifiedCaller,
     now: u64,
     current: impl FnOnce() -> Result<(Context, u64), Error>,
 ) -> Result<PersonApproval, Error> {
     if now >= pending.expires_at
-        || peer.owner_uid != pending.owner_uid
-        || peer.audit_session != pending.audit_session
-        || peer.gui_hash != pending.gui_hash
+        || caller.owner_uid != pending.owner_uid
+        || caller.audit_session != pending.audit_session
+        || caller.gui_hash != pending.gui_hash
     {
         return Err(Error::Unauthorized);
     }

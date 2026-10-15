@@ -96,8 +96,8 @@ fn check_path(
     {
         return Err(AttestationError::Chain);
     }
-    for pair in certificates.windows(2) {
-        if pair[0].issuer() != pair[1].subject() {
+    for adjacent in certificates.windows(2) {
+        if adjacent[0].issuer() != adjacent[1].subject() {
             return Err(AttestationError::Chain);
         }
     }
