@@ -2,7 +2,7 @@ import Foundation
 import Security
 import Darwin
 
-// No peer-admission constructor exists until the root helper's message authentication is implemented.
+// No caller-admission constructor exists until the root helper's message authentication is implemented.
 final class AuthenticatedHelper {
     private init() {}
     static func connect() throws -> AuthenticatedHelper { throw ApprovalFailure.unavailable }

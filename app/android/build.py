@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+import build_native
 import testslots
 
 TASKS = {"release": ["protocolChecks", "lintRelease", "assembleRelease"], "debug": ["protocolChecks", "assembleDebug"]}
@@ -16,6 +17,7 @@ TASKS = {"release": ["protocolChecks", "lintRelease", "assembleRelease"], "debug
 def main() -> int:
     gradle, plugin, api, *kind = sys.argv[1:]
     with testslots.lease(0, label="Android build") as admitted:
+        build_native.build(Path(__file__).parent.resolve(), admitted.workers)
         return subprocess.run([gradle, "--no-daemon", f"--max-workers={admitted.workers}",
                                f"-PandroidPlugin={plugin}", f"-PandroidApi={api}",
                                f"-Pandroid.suppressUnsupportedCompileSdk={api}", *TASKS[kind[0] if kind else "release"]],
