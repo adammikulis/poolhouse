@@ -111,11 +111,13 @@ request answer) changes only through a named gate in one registry, `poolhouse.au
   process without a terminal; `status` and `verify` are read-only and an agent reports a drift, never repairs it. There
   is no landing unit: landing needs an agent identity (claims, board posts, push rules) and stays session-driven.
 
-Repository App publication is the scoped exception for software-owned credentials: on the owner's explicit release
-request, the installed `agent-identity publish-release` and `push-development` holder may internally use the configured
-repository GitHub App under `github.release`. Only an authenticated live eligible main session may invoke it. The key
-and short-lived token stay inside the holder and its fixed Git transport; setup, unlocking and token export remain
-person-only. This permits no personal credential, arbitrary command, main promotion or permission expansion.
+Repository App setup and publication are the scoped exception for software-owned credentials: on the owner's explicit
+instruction for that operation, the installed `agent-identity setup`, `publish-release` and `push-development` holder may
+prepare and use repository GitHub App credentials under `github.release`. Agent use requires an authenticated live
+eligible main session; agent setup is bound to the installed repository policy and recorded primary source. The key and
+short-lived token stay inside the holder and its fixed Git transport. GitHub account consent, OS keystore unlocking and
+token export remain person-only; release authorization, main promotion and permission checks remain separate. This permits
+no personal credential, arbitrary command or permission expansion.
 
 ### Never a real person
 
