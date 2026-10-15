@@ -7,12 +7,18 @@ import org.json.JSONObject;
 final class FoundingCard {
     private FoundingCard() { }
 
-    static String of(JSONObject c, String certificateWords) throws org.json.JSONException {
+    static String of(FoundingCharter verified) throws Exception {
+        JSONObject c = verified.terms();
         JSONObject first = c.getJSONObject("first"), t = c.getJSONObject("thresholds"), h = c.getJSONObject("holds");
         StringBuilder out = new StringBuilder("Make pool ").append(quote(c.getString("name")))
+            .append("\nPool ID: ").append(verified.poolId)
+            .append("\nFounding anchor: ").append(verified.anchor)
+            .append("\nProject: ").append(c.getString("project").isEmpty() ? "none" : c.getString("project"))
+            .append("\nSelected signer: ").append(verified.signerFingerprint)
+            .append("; ").append(verified.signerAlgorithm).append("; ").append(verified.signerRole)
             .append("\nJoin policy: ").append(c.getString("policy"))
             .append("\nFirst device: ").append(quote(first.getString("name")))
-            .append("\nCertificate check words: ").append(certificateWords);
+            .append("\nCertificate check words: ").append(verified.certificateWords);
         JSONArray admins = c.getJSONArray("admins");
         for (int i = 0; i < admins.length(); i++) {
             JSONObject k = admins.getJSONObject(i);

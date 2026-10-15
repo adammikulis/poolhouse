@@ -30,6 +30,28 @@ final class PhoneFoundingTest {
         for (String shown : new String[]{"secure", "first device", "p256", "ed25519", "strong", "weak", "recovery", "48 hours", "72 hours", "30 minutes", "9 days", "14 days", "Count by: person"}) {
             if (!card.contains(shown)) throw new AssertionError("Missing card field: " + shown);
         }
+        for (String context : new String[]{"Pool ID: " + parsed.poolId, "Founding anchor: " + parsed.anchor,
+                "Selected signer: " + Hex.sha256(Hex.parse(selected())), "; " + parsed.signerAlgorithm + "; " + parsed.signerRole}) {
+            if (!card.contains(context)) throw new AssertionError("Missing verified identity: " + context);
+            checks++;
+        }
+        JSONObject bound = charter(); bound.put("project", "0123456789abcdef");
+        FoundingCharter projectOne = recomputed(bound, selected());
+        bound.put("project", "fedcba9876543210");
+        FoundingCharter projectTwo = recomputed(bound, selected());
+        if (!projectOne.card.contains("Project: 0123456789abcdef") || !projectTwo.card.contains("Project: fedcba9876543210")
+                || projectOne.card.equals(projectTwo.card)) throw new AssertionError("Project bindings indistinguishable");
+        checks++;
+        bound.put("project", "");
+        if (!recomputed(bound, selected()).card.contains("Project: none")) throw new AssertionError("Missing unbound project");
+        checks++;
+        for (int i = 0; i < acceptances.length(); i++) {
+            JSONObject a = acceptances.getJSONObject(i);
+            FoundingCharter each = recomputed(charter(), a.getString("key"));
+            if (!each.card.contains("Selected signer: " + Hex.sha256(Hex.parse(a.getString("key"))))) throw new AssertionError("Wrong selected signer");
+            if (!a.getString("key").equals(selected()) && each.card.equals(card)) throw new AssertionError("Selected signers indistinguishable");
+            equal(a.getString("bytes"), Hex.of(each.bytes()));
+        }
         equal(Hex.words(Hex.sha256(Hex.parse(source.getJSONObject("first").getString("cert")))), parsed.certificateWords);
         source.put("name", "changed");
         byte[] returned = parsed.bytes(); returned[0] = 0;
