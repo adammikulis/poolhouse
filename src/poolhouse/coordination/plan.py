@@ -34,16 +34,17 @@ class Plan:
                 '--security-opt', 'no-new-privileges', '--read-only',
                 '--cpus', '2', '--memory', '2g', '--memory-swap', '2g',
                 '--pids-limit', '512', '--restart', 'no',
-                '--publish', f'127.0.0.1:{self.port}:6443', '--env', 'HOME=/state',
+                '--env', 'HOME=/state',
                 '--env', 'K3S_DATA_DIR=/state/k3s']
         for key, value in self.labels.items():
             argv += ['--label', f'{key}={value}']
         for path, size, executable in (('/state', '1g', True), ('/tmp', '64m', False),  # noqa: S108 - container tmpfs
-                                      ('/run', '16m', False), ('/var/lib/cni', '1m', False),
+                                      ('/run', '16m', False), ('/relay', '2m', True), ('/var/lib/cni', '1m', False),
                                       ('/var/lib/kubelet', '1m', False),
                                       ('/var/lib/rancher/k3s', '1m', False),
                                       ('/var/log', '1m', False), ('/etc/rancher', '1m', False)):
-            options = f'rw,nosuid,nodev,uid=65532,gid=65532,mode=0700,size={size}'
+            owner, mode = ('65533', '0755') if path == '/relay' else ('65532', '0700')
+            options = f'rw,nosuid,nodev,uid={owner},gid={owner},mode={mode},size={size}'
             argv += ['--tmpfs', f'{path}:{options},{"exec" if executable else "noexec"}']
         return [*argv, IMAGE, 'server', '--disable-agent', '--data-dir', '/state/k3s',
                 '--write-kubeconfig', '/state/kubeconfig', '--write-kubeconfig-mode', '600',

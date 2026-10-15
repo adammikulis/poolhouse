@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from poolhouse.board.session import Session
-from poolhouse.coordination import verify
+from poolhouse.coordination import relay, verify
 from poolhouse.coordination.docker import Docker, Refused
 from poolhouse.coordination.plan import IMAGE, VERSION, Plan
 from poolhouse.log import say
@@ -49,7 +49,7 @@ def run(session: Session, root: Path, endpoint: str, port: int, seconds: int = 0
                 directory = Path(temporary)
                 docker = Docker(directory, endpoint)
                 try:
-                    image_ready(docker)
+                    docker.image_ready()
                     identifiers['network'] = docker.call(plan.network()).stdout.strip()
                     plan = network_plan(docker, identifiers['network'], plan)
                     identifiers['container'] = docker.call(plan.container(identifiers['network'])).stdout.strip()
@@ -58,16 +58,19 @@ def run(session: Session, root: Path, endpoint: str, port: int, seconds: int = 0
                     docker.verify(identifiers['container'], identifiers['network'], plan)
                     verify.readiness(docker, identifiers['container'])
                     evidence = verify.verify(docker, identifiers['container'])
-                    verify.host_tls(docker, identifiers['container'], port)
-                    evidence.update(host_loopback_tls_verified=True, anonymous_refused=True)
-                    evidence.update(owner=actor.name, version=VERSION, image=IMAGE,
-                                    endpoint=f'https://127.0.0.1:{port}', control_plane_only=True)
-                    say(json.dumps(evidence), flush=True)
-                    deadline = time.monotonic() + seconds
-                    while time.monotonic() < deadline:
-                        session.reserve(claims)
-                        time.sleep(min(30, max(0, deadline - time.monotonic())))
-                    return evidence
+                    relay.install(docker, identifiers['container'], plan, directory, session)
+                    with relay.forward(docker, identifiers['container'], plan, session) as forwarder:
+                        verify.host_tls(docker, identifiers['container'], port)
+                        evidence.update(host_loopback_tls_verified=True, anonymous_refused=True)
+                        evidence.update(owner=actor.name, version=VERSION, image=IMAGE,
+                                        endpoint=f'https://127.0.0.1:{port}', control_plane_only=True)
+                        say(json.dumps(evidence), flush=True)
+                        deadline = time.monotonic() + seconds
+                        while time.monotonic() < deadline:
+                            forwarder.check()
+                            session.reserve(claims)
+                            time.sleep(min(30, max(0, deadline - time.monotonic())))
+                        return evidence
                 finally:
                     cleanup(docker, plan, identifiers)
         finally:
@@ -76,16 +79,6 @@ def run(session: Session, root: Path, endpoint: str, port: int, seconds: int = 0
             else:
                 for kind, key in claims:
                     session.release(kind, key)
-
-def image_ready(docker: Docker) -> None:
-    found = docker.call(['image', 'inspect', IMAGE], required=False)
-    if found.returncode:
-        docker.call(['pull', '--quiet', IMAGE], timeout=180)
-        found = docker.call(['image', 'inspect', IMAGE])
-    image = json.loads(found.stdout)[0]
-    if IMAGE not in image.get('RepoDigests', []) or image['Os'] != 'linux':
-        raise Refused('The pulled image digest or operating system did not verify.')
-
 
 def network_plan(docker: Docker, identifier: str, plan: Plan) -> Plan:
     network = docker.inspect('network', identifier, plan)

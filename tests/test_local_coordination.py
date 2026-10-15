@@ -32,15 +32,14 @@ def configuration(plan, network='network-id'):
                            'Binds': None, 'NetworkMode': network, 'CapAdd': None,
                            'CapDrop': ['ALL'], 'SecurityOpt': ['no-new-privileges'],
                            'RestartPolicy': {'Name': 'no'}, 'Tmpfs': tmpfs,
-                           'PortBindings': {'6443/tcp': [{'HostIp': '127.0.0.1',
-                                                       'HostPort': str(plan.port)}]}}}
+                           'PortBindings': None}}
 
 
 def docker_with(monkeypatch, tmp_path, plan, config):
     monkeypatch.setattr('poolhouse.coordination.docker.shutil.which', lambda _: '/bin/docker')
     docker = Docker(tmp_path, 'unix:///own/docker.sock')
     network = {'Id': 'network-id', 'Labels': plan.labels, 'Internal': True}
-    monkeypatch.setattr(docker, 'call', lambda argv: subprocess.CompletedProcess(
+    monkeypatch.setattr(docker, 'call', lambda argv, **_kwargs: subprocess.CompletedProcess(
         argv, 0, stdout=json.dumps([network if argv[0] == 'network' else config])))
     return docker
 
@@ -49,6 +48,8 @@ def test_plan_has_no_execution_or_host_mounts(plan):
     argv = plan.container('network-id')
     assert '--disable-agent' in argv
     assert '--privileged' not in argv and '--volume' not in argv and '--mount' not in argv
+    assert '--publish' not in argv
+    assert '/relay:rw,nosuid,nodev,uid=65533,gid=65533,mode=0755,size=2m,exec' in argv
     assert argv[argv.index('--user') + 1] == '65532:65532'
     assert '--internal' in plan.network()
     for path in ('/var/lib/cni', '/var/lib/kubelet', '/var/lib/rancher/k3s', '/var/log'):
@@ -223,6 +224,8 @@ def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tm
     class OwnedDocker:
         def __init__(self, *_args):
             pass
+        def image_ready(self):
+            pass
         def call(self, argv, **_kwargs):
             calls.append(argv)
             value = 'network-id' if argv[0] == 'network' else 'container-id'
@@ -234,11 +237,16 @@ def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tm
     def terminate(*_args, **_kwargs):
         os.kill(os.getpid(), signal.SIGTERM)
     monkeypatch.setattr(runtime, 'Docker', OwnedDocker)
-    monkeypatch.setattr(runtime, 'image_ready', lambda _: None)
     monkeypatch.setattr(runtime, 'network_plan', lambda _d, _n, plan: plan)
     monkeypatch.setattr(runtime.verify, 'readiness', terminate if phase == 'startup' else lambda *_: None)
     monkeypatch.setattr(runtime.verify, 'verify', lambda *_: {})
     monkeypatch.setattr(runtime.verify, 'host_tls', lambda *_: None)
+    monkeypatch.setattr(runtime.relay, 'install', lambda *_: None)
+    import contextlib
+    @contextlib.contextmanager
+    def forward(*_args):
+        yield SimpleNamespace(check=lambda: None)
+    monkeypatch.setattr(runtime.relay, 'forward', forward)
     monkeypatch.setattr(runtime.time, 'sleep', terminate)
     previous = signal.getsignal(signal.SIGTERM)
     with pytest.raises(KeyboardInterrupt):
@@ -247,3 +255,114 @@ def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tm
     assert calls[-3:] == [['stop', '--time', '10', 'container-id'],
                           ['rm', '--volumes', 'container-id'], ['network', 'rm', 'network-id']]
     assert len(releases) == 3 and {kind for kind, _ in releases} == {'install', 'server', 'port'}
+
+
+@pytest.fixture
+def relay_fixture(tmp_path):
+    import sys
+    from types import SimpleNamespace
+
+    from poolhouse.board.session import Session
+    from poolhouse.coordination import relay
+
+    class OwnSession(Session):
+        def whoami(self):
+            return SimpleNamespace(name='codex-test')
+        def claims(self):
+            return [SimpleNamespace(owner='codex-test', kind=kind, key=key, expires_in_s=30)
+                    for kind, key in [('server', 'poolhouse-coordination-fixture'), ('port', '0')]]
+
+    program = tmp_path / 'fixture-docker'
+    program.write_text(f'#!{sys.executable}\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["FIXTURE_LOG"]).write_text(json.dumps(sys.argv[1:]))\nwhile data:=os.read(0,65536): os.write(1,data)\n')
+    program.chmod(0o700)
+    log = tmp_path / 'argv.json'
+    class OwnedDocker:
+        def __init__(self):
+            self.env = {'FIXTURE_LOG': str(log)}
+            self.program = str(program)
+            self.stat = '65533:65533:755:12:directory\n65533:65533:555:13:regular file\n'
+            self.hash = relay.SHA256
+            self.verifies = []
+        def call(self, argv, **kwargs):
+            assert kwargs['timeout'] == 2 and argv[:2] == ['exec', 'container-id']
+            output = self.stat if '/bin/stat' in argv else f'{self.hash}  /relay/busybox\n'
+            return subprocess.CompletedProcess(argv, 0, stdout=output)
+        def inspect(self, kind, identifier, plan, **kwargs):
+            assert (kind, identifier, plan.owner, kwargs['timeout']) == ('container', 'container-id', 'codex-test', 2)
+            return {'HostConfig': {'NetworkMode': 'network-id'}}
+        def verify(self, identifier, network, plan, **kwargs):
+            assert (identifier, network, kwargs['timeout']) == ('container-id', 'network-id', 2)
+            self.verifies.append(plan.owner)
+    session = OwnSession(SimpleNamespace(state=tmp_path), 'fixture-board', 'fixture-token')
+    return relay, OwnedDocker(), Plan('codex-test', 'fixture', 0), session, log
+
+
+def test_relay_delivers_opaque_bytes_with_fixed_destination_and_cleans_up(relay_fixture):
+    import socket
+
+    relay, docker, plan, session, log = relay_fixture
+    body = b'\x16\x03\x03\x00\x10fixture-opaque\xff\x00'
+    with relay.forward(docker, 'container-id', plan, session) as worker:
+        assert worker.session.client.timeout == 2 and not worker.session.client.autostart
+        with socket.create_connection(worker.listener.getsockname(), timeout=2) as client:
+            client.sendall(body)
+            assert client.recv(1024) == body
+        assert docker.verifies == ['codex-test']
+    assert worker.active is None and worker.listener.fileno() == -1
+    assert json.loads(log.read_text()) == ['exec', '-i', '--user', '65532:65532', 'container-id',
+                                           '/relay/busybox', 'nc', '-w', '30', '127.0.0.1', '6443']
+
+
+@pytest.mark.parametrize(('field', 'value'), [('stat', '65532:65532:777:13:regular file\n'),
+    ('stat', '65533:65533:755:12:directory\n65533:65533:555:13:symbolic link\n'), ('hash', '0' * 64)])
+def test_relay_rejects_replaced_or_writable_executable(relay_fixture, field, value):
+    relay, docker, plan, session, _ = relay_fixture
+    setattr(docker, field, value)
+    with pytest.raises(Refused, match=r'custody|digest'), relay.forward(docker, 'container-id', plan, session):
+        pytest.fail('unsafe executable was accepted')
+
+
+def test_relay_refuses_lost_claim_before_starting_executor(relay_fixture, monkeypatch):
+    import socket
+    import time
+
+    relay, docker, plan, session, log = relay_fixture
+    monkeypatch.setattr(type(session), 'claims', lambda _: [])
+    with pytest.raises(Refused, match='relay stopped'), relay.forward(docker, 'container-id', plan, session) as worker:
+        with socket.create_connection(worker.listener.getsockname(), timeout=2) as client:
+            assert client.recv(1) == b''
+        deadline = time.monotonic() + 2
+        while not worker.failed and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert not log.exists() and not docker.verifies
+
+
+def test_relay_enforces_byte_limit_and_cancels_live_stream(relay_fixture, monkeypatch):
+    import socket
+
+    relay, docker, plan, session, _ = relay_fixture
+    monkeypatch.setattr(relay, 'LIMIT', 32)
+    with (relay.forward(docker, 'container-id', plan, session) as worker,
+          socket.create_connection(worker.listener.getsockname(), timeout=2) as client):
+        client.sendall(b'x' * 64)
+        assert client.recv(1) == b''
+    assert worker.active is None
+    with relay.forward(docker, 'container-id', plan, session) as worker:
+        client = socket.create_connection(worker.listener.getsockname(), timeout=2)
+        client.sendall(b'active')
+        assert client.recv(32) == b'active'
+    client.close()
+    assert worker.active is None
+
+
+def test_relay_rejects_untrusted_binary_files(tmp_path):
+    from poolhouse.coordination import relay
+
+    body = tmp_path / 'binary'
+    body.write_bytes(b'fixture executable from an untrusted source')
+    with pytest.raises(Refused, match='digest'):
+        relay.verified_binary(body)
+    link = tmp_path / 'link'
+    link.symlink_to(body)
+    with pytest.raises(Refused, match='regular file'):
+        relay.verified_binary(link)
