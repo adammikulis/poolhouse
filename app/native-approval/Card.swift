@@ -10,7 +10,7 @@ enum ApprovalAction: String {
         switch self {
         case .foundPool: return "Create a pool"
         case .governanceAct: return "Change pool governance"
-        case .enrollComputer: return "Trust this computer"
+        case .enrollComputer: return "Trust a computer’s approval service"
         case .enrollPhone: return "Add a phone approval key"
         case .revokePhone: return "Remove a phone approval key"
         }

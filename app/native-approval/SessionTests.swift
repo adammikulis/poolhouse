@@ -28,6 +28,10 @@ struct SessionTests {
             let changed = fields.mutableCopy() as! NSMutableDictionary; changed["action"] = action
             let typed = try ApprovalCard.decode(changed, requestedID: id, now: 100)
             precondition(typed.display.contains("Authorizing signer: " + card.signer))
+            if action == "enroll_trusted_computer" {
+                precondition(typed.action.title == "Trust a computer’s approval service")
+                precondition(!typed.display.contains("Trust this computer"))
+            }
             precondition(typed.display.contains("Target key: " + card.targetKey!))
             changed.removeObject(forKey: "target")
             refused { _ = try ApprovalCard.decode(changed, requestedID: id, now: 100) }
