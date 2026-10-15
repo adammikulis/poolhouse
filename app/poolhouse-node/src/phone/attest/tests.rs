@@ -140,11 +140,12 @@ fn empty() -> FreshRevocations {
     revocations(br#"{"entries":{}}"#)
 }
 fn check(f: &Fixture) -> Result<VerifiedAttestation> {
+    let freshness = empty();
     verify_with(
         &f.chain,
         &f.expected,
         SystemTime::now(),
-        &empty(),
+        &freshness,
         &SIGNER,
         1,
         &[&f.root],
@@ -200,11 +201,12 @@ fn challenge_app_identity_and_public_key_are_bound() {
 #[test]
 fn roots_signatures_and_all_chain_serials_are_checked() {
     let f = fixture(&valid());
+    let freshness = empty();
     assert!(verify_with(
         &f.chain,
         &f.expected,
         SystemTime::now(),
-        &empty(),
+        &freshness,
         &SIGNER,
         1,
         chain::GOOGLE_ROOTS
@@ -212,12 +214,13 @@ fn roots_signatures_and_all_chain_serials_are_checked() {
     .is_err());
     for serial in ["64", "65"] {
         let body = format!("{{\"entries\":{{\"{serial}\":{{\"status\":\"REVOKED\"}}}}}}");
+        let statuses = revocations(body.as_bytes());
         assert!(matches!(
             verify_with(
                 &f.chain,
                 &f.expected,
                 SystemTime::now(),
-                &revocations(body.as_bytes()),
+                &statuses,
                 &SIGNER,
                 1,
                 &[&f.root]
@@ -309,11 +312,12 @@ fn compiled_signer_policy_requires_exact_lowercase_digest() {
     }
     assert_eq!(minimum_version(Some("3000")).unwrap(), 3000);
     let f = fixture(&valid());
+    let freshness = empty();
     assert!(verify_with(
         &f.chain,
         &f.expected,
         SystemTime::now(),
-        &empty(),
+        &freshness,
         &SIGNER,
         2,
         &[&f.root]
