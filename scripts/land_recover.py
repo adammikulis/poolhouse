@@ -8,8 +8,8 @@ with the new tip and re-gated before it is tried again.
 
 from __future__ import annotations
 
-import json
 import os
+from itertools import islice
 from pathlib import Path
 
 import land_check as lc
@@ -18,8 +18,10 @@ import land_git as lg
 import land_live_jobs
 import land_run
 
-from poolhouse import lock as filelock
+from poolhouse import lock as filelock, trees
 from poolhouse.activity.gate import tree_hash
+from poolhouse.board.client import NodeError
+from poolhouse.board.session import connect
 
 PUSH_TRIES = 3
 INTEGRATION = "land/"
@@ -77,39 +79,70 @@ def sweep(root: Path) -> list[str]:
         return _sweep(root) if allowed else []
 
 
+def owned_candidate(root: Path, tree: lg.Tree, session, owner: str) -> bool:
+    """Check exact claimed integration provenance and preservable contents."""
+    top = lg.primary(root)
+    if (tree.path.is_symlink() or tree.path.resolve() == top.path.resolve()
+            or not tree.branch.startswith(INTEGRATION) or not tree.path.is_dir()):
+        return False
+    registry = land_live_jobs.record(trees.registry_path(root))
+    entries = registry.get("trees")
+    row = entries.get(str(tree.path.resolve())) if isinstance(entries, dict) else None
+    if (not isinstance(row, dict) or row.get("owner") != owner
+            or row.get("purpose") != "integration batch" or not isinstance(row.get("base"), str)):
+        return False
+    expected = {("worktree", str(tree.path.resolve())), ("branch", tree.branch)}
+    held = {(c.kind, c.key) for c in session.claims() if c.owner == owner and c.expires_in_s > 0}
+    if not expected <= held:
+        return False
+    actual = lg.tree_of(root, tree.branch)
+    if actual != tree or lg.common_dir(tree.path) != lg.common_dir(top.path):
+        return False
+    if not on_target(root, row["base"], tree.head) or not on_target(root, tree.head, top.head):
+        return False
+    locked = Path(lg.out(tree.path, "rev-parse", "--path-format=absolute", "--git-path", "locked"))
+    if locked.exists() or lg.out(tree.path, "status", "--porcelain", "--untracked-files=all"):
+        return False
+    ignored = lg.out(tree.path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").split("\0")
+    return not any(name and not any(part in {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+                                   for part in Path(name).parts)
+                   and not Path(name).name.startswith((".testmondata", ".coverage")) for name in ignored)
+
+
 def _sweep(root: Path) -> list[str]:
-    """Perform existing recovery cleanup after job protection permits it."""
-    state = land_finish.load(root)
-    retained = []
-    folder = lg.common_dir(root) / "land" / "batches"
-    for record in folder.glob("*.json"):
-        try:
-            if record.is_symlink() or record.stat().st_size > 65536:
-                return []
-            value = json.loads(record.read_text())
-            if not isinstance(value, dict):
-                return []
-            retained.append(value)
-        except (OSError, ValueError):
+    """Remove claimed merged integration checkouts with normal Git operations."""
+    try:
+        session = connect(cwd=root)
+        owner = session.whoami().name
+        state_path = land_run.state_file(root)
+        state = land_live_jobs.record(state_path) if state_path.exists() else {}
+        folder = lg.common_dir(root) / "land" / "batches"
+        records = list(islice(folder.glob("*.json"), 65))
+        if len(records) > 64:
             return []
-    if any(land_finish.full_running(root, batch) for batch in [state, *retained]):
+        retained = [land_live_jobs.record(record) for record in records]
+        if any(land_finish.full_running(root, batch) for batch in [state, *retained]):
+            return []
+        candidates = lg.trees(root)[1:]
+        top = lg.primary(root).path
+        gone = []
+        for tree in candidates:
+            if not owned_candidate(root, tree, session, owner):
+                continue
+            removed = lg.git(top, "worktree", "remove", str(tree.path), check=False)
+            if removed.returncode or any(t.path == tree.path for t in lg.trees(root)) or tree.path.exists():
+                continue
+            gone.append(str(tree.path))
+            if (lg.out(root, "rev-parse", tree.branch) == tree.head and not lg.tree_of(root, tree.branch)
+                    and on_target(root, tree.head, lg.primary(root).head)):
+                deleted = lg.git(top, "branch", "-d", tree.branch, check=False)
+                if not deleted.returncode:
+                    gone.append(tree.branch)
+                    session.release("branch", tree.branch)
+            session.release("worktree", str(tree.path.resolve()))
+        return gone
+    except (OSError, RuntimeError, ValueError, NodeError):
         return []
-    top = lg.primary(root).path
-    gone = []
-    for tree in lg.trees(root)[1:]:
-        if tree.branch.startswith(INTEGRATION) or tree.path.name.endswith("-probe"):
-            lg.git(top, "worktree", "remove", "--force", str(tree.path), check=False)
-            gone.append(tree.branch or tree.path.name)
-    lg.git(top, "worktree", "prune", check=False)
-    for name in lg.lines(root, "for-each-ref", "--format=%(refname:short)", f"refs/heads/{INTEGRATION}"):
-        lg.git(top, "branch", "-D", name, check=False)
-        gone.append(name)
-    live_paths = {str(tree.path) for tree in lg.trees(root)}
-    for record in folder.glob("*.json"):
-        if json.loads(record.read_text()).get("worktree") not in live_paths:
-            record.unlink()
-    land_run.state_file(root).unlink(missing_ok=True)
-    return gone
 
 
 def on_target(root: Path, sha: str, target: str) -> bool:

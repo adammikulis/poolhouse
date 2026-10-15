@@ -220,12 +220,16 @@ def test_a_crash_before_the_fast_forward_cleans_up_and_lands_once(world, monkeyp
         runner.once()
     runner.lock.release()
     monkeypatch.setattr(recover, "sweep", real_sweep)
-    assert git(world.proj.root, "branch", "--list", "land/*")
+    retained = git(world.proj.root, "branch", "--list", "land/*")
+    assert retained
+    retained_trees = list(world.proj.base.glob("*-land-*"))
+    retained_heads = {path: git(path, "rev-parse", "HEAD") for path in retained_trees}
     repair()
     assert world.make_runner().once()["status"] == "landed"
     assert world.status(first) == world.status(second) == "landed"
-    assert not git(world.proj.root, "branch", "--list", "land/*")
-    assert not list(world.proj.base.glob("*-land-*"))
+    assert git(world.proj.root, "branch", "--list", "land/*") == retained
+    assert {path: git(path, "rev-parse", "HEAD") for path in retained_trees} == retained_heads
+    assert list(world.proj.base.glob("*-land-*")) == retained_trees
     assert merges(world, before) == 2 and world.origin_head() == world.local_head()
 
 
