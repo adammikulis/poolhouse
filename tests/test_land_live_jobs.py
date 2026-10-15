@@ -17,6 +17,8 @@ import testjobs
 
 from poolhouse import lock
 
+PROCESS_GUARD = land_live_jobs.processes_use
+
 
 @pytest.fixture
 def protected(tmp_path, monkeypatch):
@@ -95,9 +97,12 @@ def test_bound_active_job_skips_existing_destructive_sweep(protected, monkeypatc
     assert tree.exists()
 
 
-def test_foreign_valid_root_does_not_protect_candidates(protected):
+@pytest.mark.parametrize("status", [None, {"state": []}, {"state": "done", "pid": 1, "started": float("nan")}])
+def test_foreign_valid_root_does_not_protect_candidates(protected, status):
     jobs, tree, root = protected
     jobs.write("fixture-job", "spec.json", {"id": "fixture-job", "root": str(root / "other")})
+    if status is not None:
+        jobs.write("fixture-job", "status.json", status)
     with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
         assert allowed
 
@@ -174,3 +179,78 @@ def test_symlink_lock_refuses_without_touching_target(protected):
     with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
         assert not allowed
     assert target.read_text() == "unchanged"
+
+
+@pytest.mark.parametrize("raw", [None, "relative", 3])
+def test_terminal_gone_launcher_does_not_require_root(protected, raw):
+    jobs, tree, root = protected
+    jobs.write("fixture-job", "spec.json", {"id": "fixture-job", "root": raw})
+    jobs.write("fixture-job", "status.json", {"state": "done", "pid": os.getpid(), "started": 1})
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert allowed
+
+
+@pytest.mark.parametrize("started", [float("nan"), float("inf"), -1, True,
+    pytest.param(10 ** 1000, id="overflowing-integer")])
+def test_invalid_birth_never_proves_launcher_gone(protected, started):
+    jobs, tree, root = protected
+    jobs.write("fixture-job", "status.json", {"state": "done", "pid": os.getpid(), "started": started})
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert not allowed
+
+
+def test_live_same_birth_launcher_with_missing_root_protects(protected):
+    import psutil
+    jobs, tree, root = protected
+    jobs.write("fixture-job", "spec.json", {"id": "fixture-job"})
+    jobs.write("fixture-job", "status.json", {"state": "done", "pid": os.getpid(),
+               "started": psutil.Process().create_time()})
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert not allowed
+
+
+def test_uninspectable_launcher_with_missing_root_protects(protected, monkeypatch):
+    import psutil
+    jobs, tree, root = protected
+    jobs.write("fixture-job", "spec.json", {"id": "fixture-job"})
+    jobs.write("fixture-job", "status.json", {"state": "done", "pid": os.getpid(), "started": 1})
+    def denied(pid):
+        raise psutil.AccessDenied(pid)
+    monkeypatch.setattr(land_live_jobs.psutil, "Process", denied)
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert not allowed
+
+
+@pytest.mark.parametrize("kind", ["identity", "symlink", "fifo", "oversized"])
+def test_unsafe_spec_still_protects_after_launcher_gone(protected, kind):
+    jobs, tree, root = protected
+    jobs.write("fixture-job", "status.json", {"state": "done", "pid": os.getpid(), "started": 1})
+    path = jobs.path("fixture-job") / "spec.json"
+    if kind == "identity":
+        jobs.write("fixture-job", "spec.json", {"id": "other-job"})
+    elif kind == "oversized":
+        path.write_bytes(b" " * 65537)
+    else:
+        path.unlink()
+        if kind == "fifo":
+            os.mkfifo(path)
+        else:
+            target = root / "foreign.json"
+            target.write_text('{"id":"fixture-job"}')
+            path.symlink_to(target)
+    with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+        assert not allowed
+
+
+def test_surviving_candidate_child_protects_terminal_unscoped_job(protected, monkeypatch):
+    jobs, tree, root = protected
+    jobs.write("fixture-job", "spec.json", {"id": "fixture-job"})
+    jobs.write("fixture-job", "status.json", {"state": "done", "pid": os.getpid(), "started": 1})
+    monkeypatch.setattr(land_live_jobs, "processes_use", PROCESS_GUARD)
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], cwd=tree)
+    try:
+        with land_live_jobs.cleanup_allowed(root, {tree}) as allowed:
+            assert not allowed
+    finally:
+        child.terminate()
+        child.wait(timeout=5)
