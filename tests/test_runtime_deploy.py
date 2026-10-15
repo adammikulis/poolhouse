@@ -962,7 +962,8 @@ def test_automatic_refresh_allows_a_normal_primary_fast_forward(world):
     assert outcome.action == "switched" and runtime.selected().commit == desired
 
 
-def test_automatic_refresh_refuses_a_divergent_selection_without_build_or_recovery(world, monkeypatch):
+@pytest.mark.parametrize("relation", ["divergent", "unrelated"])
+def test_automatic_refresh_refuses_a_divergent_selection_without_build_or_recovery(world, monkeypatch, relation):
     repo, launchers, tmp = world
     base = commit(repo, "automatic-base")
     runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
@@ -976,6 +977,8 @@ def test_automatic_refresh_refuses_a_divergent_selection_without_build_or_recove
     runtime.publish(chosen)
     baseline = runtime_deploy.automatic_selection()
     git(repo, "switch", "-q", "dev")
+    if relation == "unrelated":
+        git(repo, "switch", "-q", "--orphan", "unrelated")
     desired = commit(repo, "automatic-primary")
     assert base != manual != desired
     monkeypatch.setattr(runtime_deploy, "_recovered", lambda *a: pytest.fail("must not recover"))

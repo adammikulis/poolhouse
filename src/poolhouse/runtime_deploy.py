@@ -84,7 +84,7 @@ def _automatic(plan: Plan) -> None:
     current = automatic_selection()
     if (not current or current != plan.automatic_from
             or resolve_commit(plan.checkout) != plan.commit
-            or runtime_git.git(plan.checkout, "merge-base", current[1], plan.commit) != current[1]):
+            or runtime_git.git(plan.checkout, "merge-base", current[1], plan.commit, check=False) != current[1]):
         raise Superseded("automatic refresh was superseded; the selected runtime was preserved")
 
 
