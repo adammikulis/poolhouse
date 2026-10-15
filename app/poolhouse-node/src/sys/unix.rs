@@ -15,6 +15,20 @@ use crate::error::Result;
 
 pub type Stream = UnixStream;
 
+#[cfg(target_os = "linux")]
+type PeerCred = libc::ucred;
+
+#[cfg(target_os = "android")]
+#[repr(C)]
+struct PeerCred {
+    pid: libc::pid_t,
+    uid: libc::uid_t,
+    gid: libc::gid_t,
+}
+
+#[cfg(target_os = "android")]
+const _: () = assert!(std::mem::size_of::<PeerCred>() == 12 && std::mem::align_of::<PeerCred>() == 4);
+
 const SOCKET: &str = "node.sock";
 
 pub(super) fn endpoint_of(state: &Path) -> PathBuf {
@@ -75,18 +89,21 @@ pub(super) fn current_principal() -> Result<Principal> {
 
 /// The user of the process on the other end of ``stream``.
 pub fn peer(stream: &Stream) -> Result<Principal> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
-        let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
-        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let mut cred = PeerCred { pid: 0, uid: 0, gid: 0 };
+        let mut len = std::mem::size_of::<PeerCred>() as libc::socklen_t;
         // SAFETY: `cred` and `len` are valid for the call and sized as getsockopt expects.
-        let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len) };
+        let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut PeerCred).cast(), &mut len) };
         if rc != 0 {
             return Err(std::io::Error::last_os_error().into());
         }
+        if len as usize != std::mem::size_of::<PeerCred>() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "the socket returned incomplete peer credentials").into());
+        }
         Ok(Principal::new(cred.uid.to_string()))
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
         let (mut uid, mut gid) = (0, 0);
         // SAFETY: the out-pointers are valid for the call.
@@ -99,13 +116,13 @@ pub fn peer(stream: &Stream) -> Result<Principal> {
 
 /// The id of the process on the other end of ``stream``, when the system says (`SO_PEERCRED`, `LOCAL_PEERPID`).
 pub fn peer_pid(stream: &Stream) -> Option<u32> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     {
-        let mut cred = libc::ucred { pid: 0, uid: 0, gid: 0 };
-        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let mut cred = PeerCred { pid: 0, uid: 0, gid: 0 };
+        let mut len = std::mem::size_of::<PeerCred>() as libc::socklen_t;
         // SAFETY: `cred` and `len` are valid for the call and sized as getsockopt expects.
-        let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut libc::ucred).cast(), &mut len) };
-        (rc == 0 && cred.pid > 0).then_some(cred.pid as u32)
+        let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, (&mut cred as *mut PeerCred).cast(), &mut len) };
+        (rc == 0 && len as usize == std::mem::size_of::<PeerCred>() && cred.pid > 0).then_some(cred.pid as u32)
     }
     #[cfg(target_os = "macos")]
     {
@@ -115,7 +132,7 @@ pub fn peer_pid(stream: &Stream) -> Option<u32> {
         let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_LOCAL, libc::LOCAL_PEERPID, (&mut pid as *mut libc::pid_t).cast(), &mut len) };
         (rc == 0 && pid > 0).then_some(pid as u32)
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos")))]
     {
         let _ = stream;
         None
@@ -184,3 +201,16 @@ pub fn spawn_detached(command: &mut Command) -> std::io::Result<std::process::Ch
 
 /// Nothing on Unix: a stop is the `shutdown` request or a signal.
 pub fn watch_stop(_state: &Path, _stop: Arc<AtomicBool>) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn socket_pair_reports_the_kernel_owner() {
+        let (one, _two) = UnixStream::pair().unwrap();
+        assert_eq!(peer(&one).unwrap(), Principal::me().unwrap());
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        assert_eq!(peer_pid(&one), Some(std::process::id()));
+    }
+}
