@@ -1,7 +1,7 @@
 {
- "surfaces": 825,
+ "surfaces": 827,
  "by_status": {
-  "covered": 503,
+  "covered": 505,
   "partial": 193,
   "uncovered": 52,
   "n/a": 77,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 47,
+   "covered": 48,
    "partial": 46,
    "uncovered": 0,
    "n/a": 0,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 81,
+   "covered": 82,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -1790,6 +1790,22 @@
     "tests/test_net_no_bypass.py"
    ],
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:client/systemone.py:SystemOne.ask",
+   "kind": "egress",
+   "source": "client/systemone.py:SystemOne.ask",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_decide_systemone.py::test_two_questions_use_one_post_and_one_shared_state",
+    "tests/test_decide_systemone.py::test_nonliteral_or_ambiguous_endpoints_are_refused",
+    "tests/test_decide_systemone.py::test_redirect_guard_refuses_self_and_remote_without_a_second_post",
+    "tests/test_decide_systemone.py::test_oversized_response_is_refused",
+    "tests/test_http.py::test_oversized_http_error_stops_before_decryption_or_retry"
+   ],
+   "note": "the explicit model endpoint is literal loopback only; proxy settings, redirects, oversized success and error replies, retries and serial fallback cannot redirect or multiply the request"
   },
   {
    "id": "egress:decide/logprob.py:LogprobDecider.probabilities",
@@ -5335,6 +5351,22 @@
    "status": "uncovered",
    "tests": [],
    "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
+  },
+  {
+   "id": "parser:client/systemone.py",
+   "kind": "parser",
+   "source": "client/systemone.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_decide_systemone.py::test_strict_json_rejects_ambiguity_nonfinite_and_oversize",
+    "tests/test_decide_systemone.py::test_shared_json_object_hook_preserves_nested_objects",
+    "tests/test_decide_systemone.py::test_invalid_input_never_reaches_server",
+    "tests/test_decide_systemone.py::test_invalid_answer_batches_fail_once_without_serial_retry",
+    "tests/test_decide_systemone.py::test_malformed_typed_answers_are_rejected"
+   ],
+   "note": "bounded JSON rejects duplicate keys at every nesting level, nonfinite numbers, unsupported fields, malformed typed answers and incomplete batches before any action is accepted"
   },
   {
    "id": "parser:decide/embed.py",

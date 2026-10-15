@@ -96,7 +96,7 @@ KEYSTORE_WORDS = ("add-generic-password", "find-generic-password", "keyring", "s
 READ_DIRS = ("ingest", "hub", "scrape", "sources", "datasheet", "gguf", "media", "net", "vision",
              "speech", "memory", "workspace", "sentinel", "decide", "taint", "guard", "sandbox",
              "fleet/onboard", "agent", "graph")
-READ_FILES = ("web.py", "markup.py", "chat.py", "do.py", "files.py", "messages.py", "roles.py",
+READ_FILES = ("client/systemone.py", "web.py", "markup.py", "chat.py", "do.py", "files.py", "messages.py", "roles.py",
               "rules.py", "extraction.py", "records.py", "private_counters.py", "jsonl/__init__.py",
               "gym/world_files.py", "gym/car_definition.py", "gym/drone_definition.py", "gym/traffic_world.py",
               "fleet/request_fields.py", "fleet/gym_recording_routes.py", "fleet/workspace_routes.py",

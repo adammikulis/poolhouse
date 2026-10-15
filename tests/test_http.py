@@ -250,3 +250,60 @@ def test_json_options_preserve_authenticated_headers_payload_and_retry(monkeypat
     assert forwarded.retry == options.retry and forwarded.guard is guard
     assert dict(forwarded.headers) == {'Content-Type': 'application/json', **options.headers}
     assert 'Content-Type' not in options.headers
+
+
+@pytest.mark.parametrize("limit", [-1, True, 1.5, float("inf"), "4"])
+def test_invalid_http_error_body_limits_are_refused(limit):
+    from poolhouse.http import Options
+
+    with pytest.raises(ValueError, match="nonnegative integer"):
+        Options(error_body_limit=limit)
+
+
+def test_oversized_http_error_stops_before_decryption_or_retry(monkeypatch):
+    import io
+    import urllib.error
+
+    from poolhouse import http
+
+    calls, reads = [], []
+
+    class Body(io.BytesIO):
+        def read(self, size=-1):
+            reads.append(size)
+            return super().read(size)
+
+    def opened(*args):
+        calls.append(args)
+        raise urllib.error.HTTPError("http://127.0.0.1:9/x", 500, "error", {}, Body(b"secret-body"))
+
+    def decrypt(*args):
+        raise AssertionError("oversized error reached decryption")
+
+    monkeypatch.setattr(http, "_open", opened)
+    monkeypatch.setattr(http.Sealed, "open", decrypt)
+    with pytest.raises(http.ServerError, match="exceeds the byte limit") as caught:
+        http.open_stream("http://127.0.0.1:9/x", options=http.Options(
+            error_body_limit=4, retry=http.Retry(tries=3)))
+    assert len(calls) == 1 and reads == [5]
+    assert "secret" not in str(caught.value)
+
+
+@pytest.mark.parametrize("limit", [None, 20])
+def test_bounded_and_default_http_errors_preserve_status_and_detail(server, limit):
+    from poolhouse import http
+
+    url = server(lambda *_: (422, b"small detail")).base_url
+    with pytest.raises(http.ServerError) as caught:
+        http.open_stream(url, options=http.Options(error_body_limit=limit))
+    assert caught.value.status == 422 and caught.value.body == "small detail"
+
+
+def test_http_error_limit_preserves_positional_guard():
+    from poolhouse.http import ONCE, Options
+
+    def guard(url):
+        return url
+
+    options = Options({}, "", 1, ONCE, guard)
+    assert options.guard is guard and options.error_body_limit is None

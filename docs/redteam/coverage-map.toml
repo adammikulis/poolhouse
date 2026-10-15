@@ -14,6 +14,27 @@
 uncovered = 52
 partial = 193
 
+
+[[group]]
+match = ["parser:client/systemone.py"]
+status = "covered"
+tests = ["tests/test_decide_systemone.py::test_strict_json_rejects_ambiguity_nonfinite_and_oversize",
+         "tests/test_decide_systemone.py::test_shared_json_object_hook_preserves_nested_objects",
+         "tests/test_decide_systemone.py::test_invalid_input_never_reaches_server",
+         "tests/test_decide_systemone.py::test_invalid_answer_batches_fail_once_without_serial_retry",
+         "tests/test_decide_systemone.py::test_malformed_typed_answers_are_rejected"]
+note = "bounded JSON rejects duplicate keys at every nesting level, nonfinite numbers, unsupported fields, malformed typed answers and incomplete batches before any action is accepted"
+
+[[group]]
+match = ["egress:client/systemone.py:SystemOne.ask"]
+status = "covered"
+tests = ["tests/test_decide_systemone.py::test_two_questions_use_one_post_and_one_shared_state",
+         "tests/test_decide_systemone.py::test_nonliteral_or_ambiguous_endpoints_are_refused",
+         "tests/test_decide_systemone.py::test_redirect_guard_refuses_self_and_remote_without_a_second_post",
+         "tests/test_decide_systemone.py::test_oversized_response_is_refused",
+         "tests/test_http.py::test_oversized_http_error_stops_before_decryption_or_retry"]
+note = "the explicit model endpoint is literal loopback only; proxy settings, redirects, oversized success and error replies, retries and serial fallback cannot redirect or multiply the request"
+
 [[group]]
 match = ["listener:coordination/relay.py:forward"]
 status = "covered"
