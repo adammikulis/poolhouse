@@ -14,6 +14,8 @@ import time
 from typing import Any
 from urllib.parse import urlsplit
 
+from poolhouse.json_objects import unique_object
+
 from .discovery import Membership
 from .invites import decode, encode, proof
 from .onboard.lan import require_local
@@ -23,17 +25,8 @@ from .tls import local
 LIMIT = 16384
 
 
-def _object(joins: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in joins:
-        if key in result:
-            raise ValueError("duplicate invitation field")
-        result[key] = value
-    return result
-
-
 def _json(raw: bytes) -> dict[str, Any]:
-    value = json.loads(raw.decode("utf-8"), object_pairs_hook=_object)
+    value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
     if not isinstance(value, dict):
         raise ValueError("the invitation response is not an object")
     return value

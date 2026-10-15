@@ -79,9 +79,13 @@ class Options:
     timeout: float | None = 180.0
     retry: Retry = ONCE
     guard: Callable[[str], str] | None = field(default=None, repr=False)
+    error_body_limit: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'headers', MappingProxyType(dict(self.headers)))
+        limit = self.error_body_limit
+        if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 0):
+            raise ValueError('HTTP error body limit must be a nonnegative integer')
 
 
 DEFAULT_OPTIONS = Options()
@@ -273,7 +277,11 @@ def open_stream(url: str, *, data: bytes | None = None, method: str | None = Non
             return response
 
         except urllib.error.HTTPError as exc:
-            raw = request.sealed.open(exc.code, exc.headers, exc.read())
+            with exc:
+                content = exc.read() if options.error_body_limit is None else exc.read(options.error_body_limit + 1)
+            if options.error_body_limit is not None and len(content) > options.error_body_limit:
+                raise ServerError("HTTP error body exceeds the byte limit", status=exc.code) from exc
+            raw = request.sealed.open(exc.code, exc.headers, content)
             detail = raw.decode("utf-8", "replace")[:500]
             last = ServerError(f"{shown(url)} -> HTTP {exc.code}: {detail}", status=exc.code,
                                body=detail, headers=exc.headers)
