@@ -226,3 +226,8 @@ reason = "names the old files and commands so a person can find and remove them"
 path = "docs/person-delegation.md"
 words = ["peer"]
 reason = "quotes Claude Code's own messaging field value `turnOrigin = peer`"
+
+[[allow]]
+path = ["src/poolhouse/coordination/verify.py"]
+words = ["cluster"]
+reason = "literal Kubernetes kubeconfig wire-schema keys; Poolhouse objects remain pools"
