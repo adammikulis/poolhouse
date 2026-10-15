@@ -23,5 +23,5 @@ def test_native_authority_rejects_replay_substitution_and_unauthorized_transitio
     result = subprocess.run([testnode.tool("cargo"), "test", "--offline", "--locked", "-p", "poolhouse-authority", "--lib"],
                             cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stdout + result.stderr
-    expected = 20 if sys.platform == "darwin" else 10
+    expected = 37 if sys.platform == "darwin" else 10
     assert f"{expected} passed" in result.stdout and "0 failed" in result.stdout

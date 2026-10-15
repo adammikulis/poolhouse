@@ -3,6 +3,9 @@
 
 #[cfg(target_os = "macos")]
 #[allow(dead_code)]
+mod auth;
+#[cfg(target_os = "macos")]
+#[allow(dead_code)]
 mod store;
 
 use serde::{Deserialize, Serialize};
