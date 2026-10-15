@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "poolhouse"
-version = "0.2.2"  # x-release-please-version
+version = "0.3.0-dev.1"  # x-release-please-version
 description = "Pool every device's compute. One pool, one board per project, agents and people on every device."
 keywords = ["pool", "devices", "compute", "board", "agents", "llama.cpp", "local-llm", "distributed", "lan"]
 readme = "README.md"

@@ -1,6 +1,6 @@
 [package]
 name = "poolhouse-app"
-version = "0.2.2"  # x-release-please-version
+version = "0.3.0-dev.1"  # x-release-please-version
 description = "A native window on the poolhouse interface."
 edition.workspace = true
 rust-version.workspace = true
