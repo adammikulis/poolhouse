@@ -19,6 +19,7 @@ import importlib.util
 import json
 import re
 import secrets
+import signal
 import sys
 import threading
 import time
@@ -443,11 +444,19 @@ def publication(args: argparse.Namespace) -> int:
     from poolhouse import real_machine
     from poolhouse.workspace import github_release
 
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def cancel(_signum, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, cancel)
     try:
         operation = github_release.push_development if args.command == "push-development" else github_release.publish_release
         result = operation(Path(args.source).resolve())
     except real_machine.Refused as exc:
         raise Failed(str(exc)) from None
+    finally:
+        signal.signal(signal.SIGTERM, previous)
     print(json.dumps(result, sort_keys=True))
     return 0
 

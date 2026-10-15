@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import http.client
 import json
 import re
@@ -12,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import httpguard
+from poolhouse import httpguard, platform
 
 API = "https://api.github.com"
 UPLOAD = "https://uploads.github.com"
@@ -98,8 +99,38 @@ def push(plan: GitPush, directory: Path, env: dict[str, str]) -> None:
     for index, (key, value) in enumerate(options.items()):
         child[f"GIT_CONFIG_KEY_{index}"] = key
         child[f"GIT_CONFIG_VALUE_{index}"] = value
-    done = subprocess.run(["git", "push", "--no-follow-tags", f"https://github.com/{plan.repo}.git",
-                           f"{plan.commit}:refs/heads/{plan.branch}"], cwd=directory,
-                          env=child, capture_output=True, timeout=180, check=False)
-    if done.returncode:
-        raise Failed("the repository App development push failed")
+    process = None
+    try:
+        process = platform.start_process(["git", "push", "--no-follow-tags", f"https://github.com/{plan.repo}.git",
+                                          f"{plan.commit}:refs/heads/{plan.branch}"], cwd=directory,
+                                         env=child, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process.communicate(timeout=180)
+        if process.returncode:
+            raise Failed("the repository App development push failed")
+    except (OSError, subprocess.TimeoutExpired):
+        raise Failed("the repository App development transport failed") from None
+    finally:
+        if process is not None:
+            try:
+                _reap(process)
+            except (OSError, subprocess.TimeoutExpired):
+                raise Failed("the owned Git transport cleanup is unconfirmed") from None
+
+
+def _reap(process) -> None:
+    try:
+        if process.poll() is None:
+            with contextlib.suppress(ProcessLookupError):
+                platform.terminate_process_group(process)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                with contextlib.suppress(ProcessLookupError):
+                    platform.terminate_process_group(process, force=True)
+                process.wait(timeout=5)
+        else:
+            process.wait(timeout=5)
+    finally:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()

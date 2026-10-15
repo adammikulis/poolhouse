@@ -1,6 +1,7 @@
 """Fixed publication origins and private Git credential transport."""
 
 import base64
+import io
 import subprocess
 
 import pytest
@@ -59,11 +60,11 @@ def test_child_credentials_are_absent_from_arguments_parent_and_errors(tmp_path,
     original = holder.environment(tmp_path)
     captured = []
 
-    def run(argv, **kwargs):
+    def start(argv, **kwargs):
         captured.append((argv, kwargs))
-        return subprocess.CompletedProcess(argv, 1, b'', b'fixture-secret echoed by transport')
+        return Process(1)
 
-    monkeypatch.setattr(net.subprocess, 'run', run)
+    monkeypatch.setattr(net.platform, 'start_process', start)
     plan = net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret')
     assert 'fixture-secret' not in repr(plan)
     with pytest.raises(net.Failed, match='development push failed') as error:
@@ -89,7 +90,7 @@ def test_child_credentials_are_absent_from_arguments_parent_and_errors(tmp_path,
 @pytest.mark.parametrize('repo,branch', [('demo/project', 'main'), ('demo/project', 'master'),
                                         ('demo/project', 'x:refs/tags/unsafe'), ('https://host.invalid/a', '0.3dev')])
 def test_push_rejects_alternate_targets_before_spawn(tmp_path, monkeypatch, repo, branch):
-    monkeypatch.setattr(net.subprocess, 'run', lambda *a, **k: pytest.fail('unexpected spawn'))
+    monkeypatch.setattr(net.platform, 'start_process', lambda *a, **k: pytest.fail('unexpected spawn'))
     with pytest.raises(net.Failed):
         net.push(net.GitPush(repo, branch, 'a' * 40, 'fixture-secret'), tmp_path, {})
 
@@ -114,3 +115,81 @@ def test_network_errors_never_echo_bearer(monkeypatch):
     with pytest.raises(net.Failed, match='transport failed') as error:
         net.request('GET', '/repos/demo/project/releases', bearer='fixture-secret')
     assert 'fixture-secret' not in str(error.value)
+
+
+class Process:
+    def __init__(self, code=0):
+        self.returncode = code
+        self.stdout = io.BytesIO()
+        self.stderr = io.BytesIO()
+        self.waits = []
+
+    def communicate(self, timeout):
+        assert timeout == 180
+        return b"", b""
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout):
+        self.waits.append(timeout)
+        self.returncode = 0
+        return 0
+
+
+@pytest.mark.parametrize('failure', [subprocess.TimeoutExpired('git', 180), KeyboardInterrupt()])
+def test_timeout_and_cancel_reap_exact_child_and_close_pipes(tmp_path, monkeypatch, failure):
+    process = Process(None)
+    calls = []
+
+    def communicate(timeout):
+        raise failure
+
+    process.communicate = communicate
+    monkeypatch.setattr(net.platform, 'start_process', lambda *a, **k: process)
+    monkeypatch.setattr(net.platform, 'terminate_process_group', lambda child, **k: calls.append(child))
+    with pytest.raises((net.Failed, KeyboardInterrupt)):
+        net.push(net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret'), tmp_path,
+                 holder.environment(tmp_path))
+    assert calls == [process] and process.waits == [5]
+    assert process.stdout.closed and process.stderr.closed
+
+
+def test_vanished_child_group_still_waits_and_closes(monkeypatch):
+    process = Process(None)
+
+    def vanished(child):
+        assert child is process
+        raise ProcessLookupError
+
+    monkeypatch.setattr(net.platform, 'terminate_process_group', vanished)
+    net._reap(process)
+    assert process.waits == [5]
+    assert process.stdout.closed and process.stderr.closed
+
+
+def test_start_failure_has_constant_error(tmp_path, monkeypatch):
+    def fail(*a, **k):
+        raise OSError('fixture-secret')
+
+    monkeypatch.setattr(net.platform, 'start_process', fail)
+    with pytest.raises(net.Failed, match='transport failed') as error:
+        net.push(net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret'), tmp_path, {})
+    assert 'fixture-secret' not in str(error.value)
+
+
+def test_failed_reap_is_explicit_and_closes_pipes(tmp_path, monkeypatch):
+    process = Process(None)
+    calls = []
+
+    def wait(timeout):
+        raise subprocess.TimeoutExpired('git', timeout)
+
+    process.wait = wait
+    process.communicate = lambda timeout: (_ for _ in ()).throw(KeyboardInterrupt())
+    monkeypatch.setattr(net.platform, 'start_process', lambda *a, **k: process)
+    monkeypatch.setattr(net.platform, 'terminate_process_group', lambda child, **k: calls.append((child, k)))
+    with pytest.raises(net.Failed, match='cleanup is unconfirmed'):
+        net.push(net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret'), tmp_path, {})
+    assert calls == [(process, {}), (process, {'force': True})]
+    assert process.stdout.closed and process.stderr.closed
