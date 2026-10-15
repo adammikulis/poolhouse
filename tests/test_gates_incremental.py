@@ -7,7 +7,9 @@ writes the caches in a machine-local directory made for the test.
 
 from __future__ import annotations
 
+import json
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -20,7 +22,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
 import gates  # noqa: E402
-from gates import _floors, _mutation, _perfile, _util, pyright_errors  # noqa: E402
+from gates import _floors, _mutation, _perfile, _ruff, _util, pyright_errors  # noqa: E402
 
 pytestmark = pytest.mark.slow
 
@@ -63,6 +65,12 @@ def answers(root: Path, names: set[str]) -> dict[str, list[tuple]]:
             if c.NAME in names and not gates.skipped(c)}
 
 
+def fresh_process_memos() -> None:
+    """Expire run-local memos as a fresh gate process would, retaining the disk caches."""
+    for cached in (_util.read, _util.parse, _util.calls, _util.python_files, _ruff.report):
+        cached.cache_clear()
+
+
 class Recomputed:
     """Counts which files each cached checker had to read, by wrapping ``_perfile.each``."""
 
@@ -100,6 +108,7 @@ class Session:
         self.cheap = self.everything - {pyright_errors.NAME}
 
     def full(self, names: set[str]) -> dict[str, list[tuple]]:
+        fresh_process_memos()
         with self.monkeypatch.context() as whole:
             whole.setattr(_perfile, "REPO", self.nowhere)
             whole.setattr(pyright_errors, "_pyright_incremental",
@@ -109,8 +118,7 @@ class Session:
     def agree(self, label: str, names: set[str] | None = None):
         """The incremental answers and the files they read, after checking them against a full run."""
         names = self.cheap if names is None else names
-        for cached in (_util.read, _util.parse, _util.calls, _util.python_files):
-            cached.cache_clear()
+        fresh_process_memos()
         started = time.monotonic()
         incremental = answers(self.root, names)
         print(f"{label}: incremental {time.monotonic() - started:.1f}s")
@@ -166,6 +174,34 @@ def test_every_checker_agrees_with_a_whole_run_through_edits(tmp_path, monkeypat
 
     final, _ = tree.agree("everything, pyright included", tree.everything)
     assert any(f[0] == leaf.relative_to(tree.root).as_posix() for f in final["pyright-errors"])
+
+
+def test_edited_ruff_findings_agree_with_a_fresh_tool_process(tmp_path, monkeypatch):
+    if _ruff.skip():
+        pytest.skip(_ruff.skip())
+    tree = Session(tmp_path, monkeypatch)
+    names = {"ruff-bugbear"}
+    first, _ = tree.agree("ruff before the edit", names)
+    probe = tree.root / "src" / "poolhouse" / "zz_ruff_probe.py"
+    probe.write_text("def probe_edit(value=[]):\n    return value\n", encoding="utf-8")
+
+    command = _ruff.command()
+    assert command is not None
+    targets = [name for name in _ruff.ROOTS if (tree.root / name).exists()]
+    done = subprocess.run([*command, "check", "--no-cache", "--output-format", "json", *targets],
+                          cwd=tree.root, capture_output=True, text=True, check=False)
+    assert done.returncode == 1, done.stderr
+    expected = sorted(
+        (Path(item["filename"]).relative_to(tree.root).as_posix(), item["location"]["row"],
+         f"{item['code']} {item['message']}")
+        for item in json.loads(done.stdout) if item["code"].startswith("B")
+        and item["code"][1:].isdigit()
+    )
+    assert any(path == "src/poolhouse/zz_ruff_probe.py" and detail.startswith("B006 ")
+               for path, _, detail in expected)
+    incremental, _ = tree.agree("ruff after the edit", names)
+    assert incremental["ruff-bugbear"] == expected
+    assert incremental["ruff-bugbear"] != first["ruff-bugbear"]
 
 
 def test_the_repository_itself_agrees_with_a_whole_run(tmp_path, monkeypatch):
