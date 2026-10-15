@@ -9,6 +9,7 @@ with the new tip and re-gated before it is tried again.
 from __future__ import annotations
 
 import os
+import sys
 from itertools import islice
 from pathlib import Path
 
@@ -150,7 +151,10 @@ def _sweep(root: Path) -> list[str]:
                 deleted = lg.git(top, "branch", "-d", tree.branch, check=False)
                 if not deleted.returncode:
                     gone.append(tree.branch)
-                    session.release("branch", tree.branch)
+            if branch_claim is not None:
+                session.release("branch", branch_claim.key)
+            if lg.exists(root, tree.branch):
+                print(f"land: retained integration branch {tree.branch}", file=sys.stderr)
             session.release("worktree", str(tree.path.resolve()))
         return gone
     except (OSError, RuntimeError, ValueError, NodeError):

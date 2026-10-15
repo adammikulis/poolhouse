@@ -91,3 +91,16 @@ def test_removal_failure_preserves_branch_and_receipts(recovery, monkeypatch):
         return actual(root, *args, **kwargs)
     monkeypatch.setattr(recover.lg, "git", fail)
     assert recover._sweep(root) == [] and tree.exists() and not released
+
+
+def test_branch_delete_refusal_releases_only_completed_cleanup_claims(recovery, monkeypatch):
+    root, tree, _, released = recovery
+    actual = recover.lg.git
+    def fail(root, *args, **kwargs):
+        if args[:2] == ("branch", "-d"):
+            return SimpleNamespace(returncode=1)
+        return actual(root, *args, **kwargs)
+    monkeypatch.setattr(recover.lg, "git", fail)
+    assert recover._sweep(root) == [str(tree)]
+    assert not tree.exists() and git(root, "branch", "--list", "land/fixture")
+    assert released == [("branch", "land/fixture"), ("worktree", str(tree))]
