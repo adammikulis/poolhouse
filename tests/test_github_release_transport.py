@@ -3,6 +3,8 @@
 import base64
 import io
 import subprocess
+import sys
+import types
 
 import pytest
 
@@ -142,8 +144,13 @@ class Process:
         return 0
 
 
+@pytest.fixture
+def portable_cleanup(monkeypatch):
+    monkeypatch.setattr(net, 'sys', types.SimpleNamespace(platform='linux', exception=sys.exception))
+
+
 @pytest.mark.parametrize('failure', [subprocess.TimeoutExpired('git', 180), KeyboardInterrupt()])
-def test_timeout_and_cancel_reap_exact_child_and_close_pipes(tmp_path, monkeypatch, failure):
+def test_timeout_and_cancel_reap_exact_child_and_close_pipes(tmp_path, monkeypatch, failure, portable_cleanup):
     process = Process(None)
     monkeypatch.setattr(net.os, 'waitid', lambda *a: None)
     calls = []
@@ -161,7 +168,7 @@ def test_timeout_and_cancel_reap_exact_child_and_close_pipes(tmp_path, monkeypat
     assert process.stdout.closed and process.stderr.closed
 
 
-def test_vanished_child_group_still_waits_and_closes(monkeypatch):
+def test_vanished_child_group_still_waits_and_closes(monkeypatch, portable_cleanup):
     process = Process(None)
     monkeypatch.setattr(net.os, 'waitid', lambda *a: None)
 
@@ -185,7 +192,7 @@ def test_start_failure_has_constant_error(tmp_path, monkeypatch):
     assert 'fixture-secret' not in str(error.value)
 
 
-def test_failed_reap_is_explicit_and_closes_pipes(tmp_path, monkeypatch):
+def test_failed_reap_is_explicit_and_closes_pipes(tmp_path, monkeypatch, portable_cleanup):
     process = Process(None)
     monkeypatch.setattr(net.os, 'waitid', lambda *a: None)
     calls = []
@@ -337,7 +344,7 @@ def test_exited_leader_retains_group_custody_until_lingering_helper_is_killed(tm
         net._reap(process)
         cleaned = True
         assert process.returncode == 0
-        assert signals == [{}, {'force': True}]
+        assert signals == ([{}] if sys.platform == 'darwin' else [{}, {'force': True}])
         assert not helper.is_running() or helper.status() == psutil.STATUS_ZOMBIE
         with pytest.raises(ChildProcessError):
             os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
@@ -357,3 +364,77 @@ def test_output_cap_terminates_owned_child_without_reaping_early():
     finally:
         net._reap(process)
     assert process.returncode is not None
+
+
+def test_term_resistant_helper_is_killed_before_owned_leader_is_reaped(monkeypatch):
+    import os
+
+    helper = 'import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); os.write(1,b"ready"); time.sleep(60)'
+    program = 'import subprocess,sys; subprocess.Popen([sys.executable,"-c",sys.argv[1]])'
+    process = net.platform.start_process([sys.executable, '-c', program, helper],
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    original = net.platform.terminate_process_group
+    signals = []
+
+    def terminate(child, **kwargs):
+        assert child is process
+        assert os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+        signals.append(kwargs)
+        return original(child, **kwargs)
+
+    monkeypatch.setattr(net.platform, 'terminate_process_group', terminate)
+    try:
+        assert process.stdout.read(5) == b'ready'
+        with pytest.raises(subprocess.TimeoutExpired):
+            net._exchange(process, timeout=0.5)
+    finally:
+        net._reap(process)
+    assert signals == [{}, {'force': True}]
+    assert process.returncode == 0
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='Darwin inventory failure path')
+def test_unavailable_inventory_preserves_original_failure_and_cleanup_note(tmp_path, monkeypatch):
+    from poolhouse.net import darwin_group
+
+    process = Process(None)
+    monkeypatch.setattr(net.os, 'waitid', lambda *args: types.SimpleNamespace(si_pid=process.pid))
+    monkeypatch.setattr(darwin_group, '_library', lambda: (_ for _ in ()).throw(OSError('unavailable')))
+    monkeypatch.setattr(net, '_exchange', lambda child: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(net.platform, 'start_process', lambda *a, **k: process)
+    signals = []
+    monkeypatch.setattr(net.platform, 'terminate_process_group', lambda child, **k: signals.append((child, k)))
+    with pytest.raises(KeyboardInterrupt) as error:
+        net.push(net.GitPush('demo/project', '0.3dev', 'a' * 40, 'fixture-secret'), tmp_path, {})
+    assert 'the owned Git transport cleanup is unconfirmed' in error.value.__notes__
+    assert not process.waits
+    assert signals == [(process, {}), (process, {'force': True})]
+    assert process.stdout.closed and process.stderr.closed
+
+
+def test_darwin_lost_custody_never_signals_or_reaps(monkeypatch):
+    process = Process(None)
+    monkeypatch.setattr(net, 'quiescent', lambda child: (_ for _ in ()).throw(ChildProcessError()))
+    monkeypatch.setattr(net.os, 'waitid', lambda *args: (_ for _ in ()).throw(ChildProcessError()))
+    monkeypatch.setattr(net.platform, 'terminate_process_group', lambda *a, **k: pytest.fail('lost custody signal'))
+    with pytest.raises(ChildProcessError):
+        net._darwin_reap(process)
+    assert not process.waits
+
+
+def test_darwin_permission_failure_survives_final_positive_proof(monkeypatch):
+    process = Process(None)
+    states = iter([False, False, True])
+    monkeypatch.setattr(net, 'quiescent', lambda child: next(states))
+    monkeypatch.setattr(net.os, 'waitid', lambda *args: None)
+    signals = []
+
+    def denied(child, **kwargs):
+        signals.append((child, kwargs))
+        raise PermissionError('denied')
+
+    monkeypatch.setattr(net.platform, 'terminate_process_group', denied)
+    with pytest.raises(PermissionError):
+        net._darwin_reap(process)
+    assert signals == [(process, {}), (process, {'force': True})]
+    assert process.waits == [5]

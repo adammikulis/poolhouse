@@ -164,14 +164,63 @@ def test_clean_git_view_ignores_hostile_source_configuration(built, tmp_path):
 def test_holder_refuses_helper_ended_unknown_and_mismatched_session(tmp_path, monkeypatch, identity_case):
     parent, retired, model, name = identity_case
     monkeypatch.setattr(holder.real_machine, 'require', lambda action: None)
-    monkeypatch.setattr(holder.home, 'home', lambda: tmp_path)
-    monkeypatch.setattr(holder, '__file__', str(tmp_path / 'runtimes/build/poolhouse/workspace/github_release.py'))
+    _selected_holder(tmp_path, monkeypatch)
     who = types.SimpleNamespace(parent=parent, retired=retired, model=model, name=name)
     monkeypatch.setattr(holder, 'connect', lambda: types.SimpleNamespace(whoami=lambda: who))
     monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', 'chatgpt-lead')
     monkeypatch.setattr(holder.authority, 'require', lambda *a, **k: pytest.fail('unexpected gate use'))
     with pytest.raises(net.Failed, match='authenticated live lead'):
         holder.authorize('fixed publication')
+
+
+def _selected_holder(tmp_path, monkeypatch):
+    from poolhouse import home, runtime
+
+    prefix = tmp_path / 'runtimes/build'
+    package = prefix / 'poolhouse'
+    (package / 'fleet').mkdir(parents=True)
+    (package / 'fleet/built-from').write_text('a' * 40)
+    selected = types.SimpleNamespace(prefix=prefix, commit='a' * 40)
+    monkeypatch.setattr(runtime, 'selected', lambda: selected)
+    monkeypatch.setattr(home, 'home', lambda: tmp_path)
+    monkeypatch.setattr(holder.sys, 'prefix', str(prefix))
+    monkeypatch.setattr(holder, '__file__', str(package / 'workspace/github_release.py'))
+    return selected, package
+
+
+@pytest.mark.parametrize('case', ['unselected', 'prefix', 'module', 'stamp', 'corrupt'])
+def test_holder_refuses_unselected_or_mismatched_runtime_before_credentials(tmp_path, monkeypatch, case):
+    from poolhouse import runtime
+
+    _, package = _selected_holder(tmp_path, monkeypatch)
+    monkeypatch.setattr(holder.real_machine, 'require', lambda action: None)
+    monkeypatch.setattr(holder, 'connect', lambda: pytest.fail('unexpected session access'))
+    monkeypatch.setattr(holder.credentials, '_open', lambda *a: pytest.fail('unexpected credential access'))
+    monkeypatch.setattr(holder.github_app, 'mint', lambda *a, **k: pytest.fail('unexpected mint'))
+    if case == 'unselected':
+        monkeypatch.setattr(runtime, 'selected', lambda: None)
+    elif case == 'prefix':
+        monkeypatch.setattr(holder.sys, 'prefix', str(tmp_path / 'prepared'))
+    elif case == 'module':
+        monkeypatch.setattr(holder, '__file__', str(tmp_path / 'prepared/poolhouse/workspace/github_release.py'))
+    elif case == 'stamp':
+        (package / 'fleet/built-from').write_text('b' * 40)
+    else:
+        monkeypatch.setattr(runtime, 'selected', lambda: (_ for _ in ()).throw(ValueError('invalid selection')))
+    with pytest.raises(net.Failed, match='selected installed credential holder'):
+        holder.authorize('fixed publication')
+
+
+def test_selected_holder_reaches_authenticated_lead_gate(tmp_path, monkeypatch):
+    _selected_holder(tmp_path, monkeypatch)
+    monkeypatch.setattr(holder.real_machine, 'require', lambda action: None)
+    who = types.SimpleNamespace(parent='', retired=False, model='gpt-6.1-sol', name='chatgpt-lead')
+    monkeypatch.setattr(holder, 'connect', lambda: types.SimpleNamespace(whoami=lambda: who))
+    monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', who.name)
+    seen = []
+    monkeypatch.setattr(holder.authority, 'require', lambda *args: seen.append(args))
+    assert holder.authorize('fixed publication') is who
+    assert seen == [('github.release', 'fixed publication')]
 
 
 def test_credential_open_is_exact_item_without_generic_lookup(monkeypatch):

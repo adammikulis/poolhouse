@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import httpguard, platform
+from poolhouse.net.darwin_group import quiescent
 
 API = "https://api.github.com"
 UPLOAD = "https://uploads.github.com"
@@ -147,6 +148,9 @@ def _exchange(process, timeout: float = 180) -> int:
 
 def _reap(process) -> None:
     try:
+        if sys.platform == 'darwin':
+            _darwin_reap(process)
+            return
         os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
         with contextlib.suppress(ProcessLookupError):
             platform.terminate_process_group(process)
@@ -158,3 +162,42 @@ def _reap(process) -> None:
         for stream in (process.stdout, process.stderr):
             if stream is not None:
                 stream.close()
+
+
+def _owned_signal(process, *, force=False) -> None:
+    held = os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    if held is not None and held.si_pid != process.pid:
+        raise OSError('the owned transport leader could not be verified')
+    with contextlib.suppress(ProcessLookupError):
+        if force:
+            platform.terminate_process_group(process, force=True)
+        else:
+            platform.terminate_process_group(process)
+
+
+def _darwin_reap(process) -> None:
+    failures = []
+    for force in (False, True):
+        stopped = False
+        try:
+            stopped = quiescent(process)
+        except OSError as error:
+            failures.append(error)
+        if not stopped:
+            try:
+                _owned_signal(process, force=force)
+            except OSError as error:
+                failures.append(error)
+        if not force:
+            time.sleep(0.1)
+    deadline = time.monotonic() + 5
+    try:
+        while not quiescent(process):
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired('owned Git transport cleanup', 5)
+            time.sleep(0.01)
+        process.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        failures.append(error)
+    if failures:
+        raise failures[0]

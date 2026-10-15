@@ -12,7 +12,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from poolhouse import authority, credentials, home, real_machine, worktreerules
+from poolhouse import authority, credentials, real_machine, runtime, worktreerules
 from poolhouse.board.session import connect
 from poolhouse.net import github_release as remote
 from poolhouse.workspace import github_app
@@ -74,8 +74,15 @@ def source(checkout: Path, repo: str) -> Source:
 def authorize(action: str):
     """Authenticate a live eligible main session and audit its fixed publication action."""
     real_machine.require("GitHub App publication")
-    if not Path(__file__).resolve().is_relative_to(home.home().resolve() / "runtimes"):
-        raise remote.Failed("GitHub publication uses the installed credential holder")
+    try:
+        selected = runtime.selected()
+        module = Path(__file__).resolve()
+        if (selected is None or Path(sys.prefix).resolve() != selected.prefix.resolve()
+                or not module.is_relative_to(selected.prefix.resolve())
+                or (module.parents[1] / "fleet/built-from").read_text().strip() != selected.commit):
+            raise ValueError("holder does not match runtime selection")
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
+        raise remote.Failed("GitHub publication uses the selected installed credential holder") from None
     session = connect()
     who = session.whoami()
     if who.retired or who.parent or eligible(who) or who.name != os.environ.get("POOLHOUSE_WORKSPACE_AGENT"):
