@@ -231,25 +231,41 @@ item numbers are used below.
 | WS-4 | A worker lands its own branch through the queue (`land-request`, independent `land-review`, runner gate and push) | `scripts/test all tests/test_land.py tests/test_land_board.py tests/test_land_check_evidence.py tests/test_land_standing.py` | built untested | the session-start hook records no model after a clear, so the next `land-request` is refused until `poolhouse-workspace whoami --model` runs (`scripts/hooks/claude-session-start`) |
 | WS-5 | Board delivery meets the existing latency budgets | HANDOFF names the observer file | not met: a single-recipient message and a Board message exceed their budgets | HANDOFF Priority 2 "Pools across devices" |
 
-### Workspace delivery evidence (2026-10-14)
+### Workspace delivery evidence (2026-10-15)
 
-Development commits `fc34ff63c`, `a33939d`, `657b5b056` and `425deb61a` contain output-before-ACK,
-Codex turn checkpoints, bounded notification retry and lifecycle deadlines. These changes do not establish the
-cross-device or latency claims in WS-3 and WS-5.
+Published development through `ebacb7225` includes safe recovery of owned checkouts (`6e186cc67`), truthful
+subagent presence (`c4fa3aee7`), generated-file snapshot checks (`dc32ce68e`), signed founding for test pools
+(`9ba733403`), corrected runtime fixtures (`515369cc1`) and single-authentication notification reads
+(`92fce11fd`). Their affected checks and structural gates passed. These results do not establish WS-3's
+cross-device claims or WS-5's latency budgets.
 
-On the available macOS device, the installed `425deb61a` runtime is selected and its supervised node answers health.
-Installed CLI checks showed that a broken output pipe leaves messages unread; successful `inbox --ack` renders them
-before advancing the cursor. An unread notification was suppressed immediately and retried after an actual two-minute
-wait. Two authenticated agents exchanged a question and its linked answer and acknowledged their own inboxes.
-A supported native follow-up resumed an existing child; the direct app-server thread call refused the managed child.
-No refusal was bypassed.
+The installed `ebacb7225` runtime was used for the latest checks on the available macOS device; the supervised
+Rust node kept its unchanged binary. An installed notification read under the caller's own identity made one
+identity request and one inbox read, versus two identity requests before the change, without advancing the cursor.
+An actual digest listed nine registered subagents. Checkouts from the delivered code batches were removed;
+three locked foreign checkouts were preserved.
 
-During a controlled stop of the owned daemon, installed UserPromptSubmit, PostToolUse and Stop notifications each
-returned zero with no notification output and a warning. The daemon was restored with its LAN and presence settings
-preserved. This is manual installed-command verification, not normal host-trigger verification. The seven Codex event
-definitions and separate completion check are installed; native trust review and normal callbacks remain unverified.
-Automatic idle wake-up and durable sender-visible read receipts remain unbuilt. Windows/WSL and another physical device
-remain unverified for this batch.
+The installed optional coordination CLI completed preparation and a short lifecycle. TLS certificate names,
+restricted service-account permissions, named metadata writes, wrong-audience and anonymous refusals, and
+600-second credentials were checked. The control plane had no worker nodes or pool authority. A separate
+750-second source-run check observed refusal after actual token expiry; that long wait was not repeated with the
+installed CLI. Docker volume inventories and inventories of owned containers and networks were unchanged after cleanup.
+
+An agent drove the installed coding page in Chromium: start, Stop, cancelled, then a completed next turn with exit
+zero and verified cleanup. Recorded Poolhouse imports, including spawned workers, came from the installed prefix.
+The test used a scratch test-phone key, short grants, and a local fake native CLI and model catalogue, with no real
+provider or owner credentials. Its workers, server, node, browser and scratch state were removed.
+
+Earlier installed checks on `425deb61a` showed that broken output leaves messages unread and successful
+`inbox --ack` renders them before advancing the cursor. Notification suppression and retry were checked after an
+actual two-minute wait. Two authenticated agents exchanged a question and linked answer and acknowledged their own
+inboxes. A supported native follow-up resumed a child; the direct app-server thread call refused it. During a
+controlled daemon stop, manual UserPromptSubmit, PostToolUse and Stop notifications returned zero with a warning;
+the daemon was restored with LAN and presence settings preserved. No refusal was bypassed.
+
+These are agent-driven installed-command and browser checks. Seven Codex event definitions and a separate
+completion check are installed; normal native callbacks and their trust review remain unverified. Automatic idle wake-up and durable sender-visible read receipts remain unbuilt. Windows/WSL,
+another physical device and the real-phone founding journey remain unverified.
 
 ### Optional local coordination evidence (2026-10-14)
 
@@ -258,8 +274,8 @@ macOS ARM64 Docker hardware. Fresh CA/SAN verification, source and installed-cli
 401 refusal, named metadata writes, restricted RBAC, wrong audience and actual token expiry
 were checked. Normal cleanup removed the exact owned container and network and preserved all
 existing volume IDs. [Evidence and limits](notes/2026-10-14-local-coordination.md) distinguish
-the installed HTTP client from the full coordination CLI, whose publication and activation
-remain pending with the coordinator. This does not establish multi-device pool coordination,
+the earlier installed HTTP-client check from the full CLI lifecycle checked after publication in `ebacb7225`.
+Kubernetes supplies an optional metadata control plane only, with no task dispatch or pool authority. This does not establish multi-device pool coordination,
 WSL onboarding, execution dispatch or any POOL/GOV completion claim.
 
 ### 3.9 Agent identity, release signing key and GitHub protection
