@@ -231,6 +231,26 @@ item numbers are used below.
 | WS-4 | A worker lands its own branch through the queue (`land-request`, independent `land-review`, runner gate and push) | `scripts/test all tests/test_land.py tests/test_land_board.py tests/test_land_check_evidence.py tests/test_land_standing.py` | built untested | the session-start hook records no model after a clear, so the next `land-request` is refused until `poolhouse-workspace whoami --model` runs (`scripts/hooks/claude-session-start`) |
 | WS-5 | Board delivery meets the existing latency budgets | HANDOFF names the observer file | not met: a single-recipient message and a Board message exceed their budgets | HANDOFF Priority 2 "Pools across devices" |
 
+### Workspace delivery evidence (2026-10-14)
+
+Development commits `fc34ff63c`, `a33939d`, `657b5b056` and `425deb61a` contain output-before-ACK,
+Codex turn checkpoints, bounded notification retry and lifecycle deadlines. These changes do not establish the
+cross-device or latency claims in WS-3 and WS-5.
+
+On the available macOS device, the installed `425deb61a` runtime is selected and its supervised node answers health.
+Installed CLI checks showed that a broken output pipe leaves messages unread; successful `inbox --ack` renders them
+before advancing the cursor. An unread notification was suppressed immediately and retried after an actual two-minute
+wait. Two authenticated agents exchanged a question and its linked answer and acknowledged their own inboxes.
+A supported native follow-up resumed an existing child; the direct app-server thread call refused the managed child.
+No refusal was bypassed.
+
+During a controlled stop of the owned daemon, installed UserPromptSubmit, PostToolUse and Stop notifications each
+returned zero with no notification output and a warning. The daemon was restored with its LAN and presence settings
+preserved. This is manual installed-command verification, not normal host-trigger verification. The seven Codex event
+definitions and separate completion check are installed; native trust review and normal callbacks remain unverified.
+Automatic idle wake-up and durable sender-visible read receipts remain unbuilt. Windows/WSL and another physical device
+remain unverified for this batch.
+
 ### 3.9 Agent identity, release signing key and GitHub protection
 
 | ID | The release must | Verified by | State | Depends on |
