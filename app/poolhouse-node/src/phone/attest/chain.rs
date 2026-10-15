@@ -19,6 +19,38 @@ pub(super) fn check(
     revocations: &FreshRevocations,
     roots: &[&[u8]],
 ) -> Result<Vec<u8>> {
+    check_path(chain, public, now, revocations, roots, GOOGLE_ROOTS[0])
+}
+
+fn factory_profile(certificates: &[X509Certificate<'_>]) -> bool {
+    if certificates.len() != 4
+        || certificates.iter().any(|cert| {
+            cert.extensions()
+                .iter()
+                .any(|e| e.oid.to_id_string() == PROVISIONING)
+        })
+    {
+        return false;
+    }
+    let serials: Vec<_> = certificates[certificates.len() - 2]
+        .subject()
+        .iter_attributes()
+        .filter(|attribute| attribute.attr_type().to_id_string() == "2.5.4.5")
+        .collect();
+    serials.len() == 1
+        && serials[0].as_str().is_ok_and(|s| {
+            !s.is_empty() && s.len() <= 128 && s.bytes().all(|b| b.is_ascii_graphic())
+        })
+}
+
+fn check_path(
+    chain: &[Vec<u8>],
+    public: &[u8; 65],
+    now: SystemTime,
+    revocations: &FreshRevocations,
+    roots: &[&[u8]],
+    factory_root: &[u8],
+) -> Result<Vec<u8>> {
     if !(2..=8).contains(&chain.len())
         || chain.iter().map(Vec::len).sum::<usize>() > 65_536
         || chain.iter().any(|c| c.len() > 16_384)
@@ -115,14 +147,15 @@ pub(super) fn check(
         .duration_since(UNIX_EPOCH)
         .map_err(|_| AttestationError::Chain)?
         .as_secs();
-    let factory = X509Certificate::from_der(GOOGLE_ROOTS[0])
+    let factory = X509Certificate::from_der(factory_root)
         .map_err(|_| AttestationError::Chain)?
         .1;
     let trusted_cert = X509Certificate::from_der(trusted)
         .map_err(|_| AttestationError::Chain)?
         .1;
     revocations.check(trusted_cert.raw_serial())?;
-    let legacy = root.public_key().raw == factory.public_key().raw;
+    let legacy =
+        root.public_key().raw == factory.public_key().raw && factory_profile(&certificates);
     let validation_time = if legacy {
         let from = certificates[..certificates.len() - 1]
             .iter()
@@ -188,4 +221,16 @@ pub(super) fn check(
         .find(|e| e.oid.to_id_string() == ATTESTATION)
         .ok_or(AttestationError::Hardware)?;
     Ok(extension.value.to_vec())
+}
+
+#[cfg(test)]
+pub(super) fn check_fixture(
+    chain: &[Vec<u8>],
+    public: &[u8; 65],
+    now: SystemTime,
+    revocations: &FreshRevocations,
+    root: &[u8],
+    factory_root: &[u8],
+) -> Result<Vec<u8>> {
+    check_path(chain, public, now, revocations, &[root], factory_root)
 }

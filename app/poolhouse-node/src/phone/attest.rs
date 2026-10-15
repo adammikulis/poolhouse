@@ -167,4 +167,6 @@ fn verify_with(
 }
 
 #[cfg(test)]
+mod provisioning_tests;
+#[cfg(test)]
 mod tests;
