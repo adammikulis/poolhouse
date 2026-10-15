@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::row::canonical;
 use super::{bad, Act, Binding, GovPool};
 use super::super::body::{self, Body};
 
@@ -23,6 +22,25 @@ pub struct Verified {
     pub(super) card: String,
 }
 
+fn target_fits(parsed: &Body, pool: &GovPool, binding: &Binding) -> Result<bool> {
+    let (target, veto) = match parsed {
+        Body::Cancel(target) => (target, false),
+        Body::Veto(target) => (target, true),
+        _ => return Ok(false),
+    };
+    let Some(held) = pool.acts().get(&target.act) else { return bad("The phone needs the signed change this request cancels.") };
+    let (epoch, head) = pool.context();
+    let contested = pool.state().chain.dispute.as_ref().is_some_and(|d| d.contested.contains(&target.act));
+    let waiting = matches!(pool.status(&target.act), super::super::pool::ActStatus::Pending | super::super::pool::ActStatus::Short(_, _));
+    if !held.is_chain() || held.epoch != epoch || held.prev != head || (!waiting && !contested) {
+        return bad("That signed change is no longer waiting for approval or cancellation.");
+    }
+    if veto && !matches!(body::parse(held)?, Body::AdminRemove(remove) if remove.key == binding.public) {
+        return bad("Only the strong key named by this removal can veto it.");
+    }
+    Ok(contested)
+}
+
 impl Verified {
     pub fn bytes(&self) -> &[u8] { &self.bytes }
     pub fn card(&self) -> &str { &self.card }
@@ -42,14 +60,23 @@ pub(super) fn verify(pool: &GovPool, binding: &Binding, request: Request, now: u
         return bad("This signing request does not name the pool this phone currently verifies.");
     }
     let charter = &pool.state().chain.latest().charter;
-    if !charter.is_strong(&binding.public) || pool.state().chain.dispute.is_some() {
+    if !charter.is_strong(&binding.public) {
         return bad("This phone key cannot sign under the pool's current governance.");
     }
-    if matches!(body::parse(act)?, Body::Found(_) | Body::Leave(_)) {
+    let parsed = body::parse(act)?;
+    let resolving = target_fits(&parsed, pool, binding)?;
+    if pool.state().chain.dispute.is_some() && !resolving {
+        return bad("Only a cancellation or veto of the contested changes can be signed during this dispute.");
+    }
+    if matches!(parsed, Body::Found(_) | Body::Leave(_)) {
         return bad("This request requires a different kind of signature.");
     }
-    let statement = super::super::describe::describe(act, pool);
-    let card = format!("{statement}\n\nPhone-verified pool terms (epoch {epoch}):\n{}\n\nExact change:\n{}\n\nRequest {}\nExpires {}\nGovernance evidence is what this phone has observed; the computer checks current authority again before applying this signature.",
-        canonical(&serde_json::to_value(charter)?), canonical(&act.unsigned()), request.id, request.expires_ms);
+    if matches!(&parsed, Body::AdminAdd(add) if add.entry.strength == super::super::keys::Strength::Strong) {
+        return bad("The phone needs verified proof that this new admin key requires its owner's approval for every signature.");
+    }
+    if act.is_chain() {
+        if let Err(why) = super::super::chain::proposal_fits(&pool.state().chain, &pool.id, act) { return bad(&why) }
+    }
+    let card = super::card::render(act, pool)?;
     Ok(Verified { bytes: act.sign_bytes(), card, request })
 }

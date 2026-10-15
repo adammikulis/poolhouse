@@ -21,6 +21,7 @@ pub(super) struct Checkpoint {
     epoch: u64,
     head: String,
     files: BTreeMap<String, String>,
+    clock: Option<super::clock::Stamp>,
 }
 
 fn bytes(path: &Path) -> Result<Vec<u8>> {
@@ -40,13 +41,13 @@ impl Checkpoint {
         if std::fs::read_dir(root)?.next().is_some() {
             return bad("The phone's pool checkpoint is missing. This key cannot be rebound.");
         }
-        let marker = Self { version: 1, binding, generation: 0, epoch: 0, head: String::new(), files: BTreeMap::new() };
+        let marker = Self { version: 2, binding, generation: 0, epoch: 0, head: String::new(), files: BTreeMap::new(), clock: None };
         write_atomic(&root.join(MARKER), &serde_json::to_vec(&marker)?)
     }
 
     pub fn read(root: &Path, binding: &Binding) -> Result<Self> {
         let marker: Self = serde_json::from_slice(&bytes(&root.join(MARKER))?)?;
-        if marker.version != 1 || &marker.binding != binding || (marker.epoch == 0 && (!marker.files.is_empty() || marker.generation != 0 || !marker.head.is_empty())) {
+        if marker.version != 2 || &marker.binding != binding || (marker.epoch == 0 && (!marker.files.is_empty() || marker.generation != 0 || !marker.head.is_empty() || marker.clock.is_some())) {
             return bad("The phone's pool checkpoint does not match this key and computer.");
         }
         if marker.epoch > 0 && (marker.generation == 0 || !super::super::act::valid_id(&marker.head) || marker.files.len() != FILES.len()) {
@@ -99,7 +100,7 @@ impl Checkpoint {
         Ok(())
     }
 
-    pub fn load(&self, root: &Path) -> Result<Option<GovPool>> {
+    pub fn load(&self, root: &Path, clock: Option<&super::clock::LocalClock>) -> Result<Option<GovPool>> {
         self.verify_files(root)?;
         if self.epoch == 0 {
             if root.join("pools").exists() {
@@ -107,7 +108,18 @@ impl Checkpoint {
             }
             return Ok(None);
         }
-        let pool = GovPool::load(&self.pool_dir(root))?;
+        let dir = self.pool_dir(root);
+        let base = match (clock, &self.clock) {
+            (None, None) => None,
+            (Some(clock), Some(previous)) => {
+                let earned: Value = serde_json::from_slice(&bytes(&dir.join("seen.json"))?)?;
+                let elapsed = clock.sample()?.earned_since(previous)?;
+                let base = earned["awake_ms"].as_i64().and_then(|n| n.checked_add(elapsed));
+                Some(base.ok_or_else(|| Error::Damaged("The phone's awake checkpoint cannot be restored.".into()))?)
+            }
+            _ => return bad("The phone's awake checkpoint does not match this installation."),
+        };
+        let pool = GovPool::load_with_awake_base(&dir, base)?;
         let (epoch, head) = pool.context();
         let retained = pool.state().chain.epochs.iter().any(|state| state.n == self.epoch && state.hash == self.head);
         if epoch < self.epoch || (epoch == self.epoch && head != self.head) || !retained || pool.genesis.anchor() != self.binding.anchor {
@@ -116,16 +128,18 @@ impl Checkpoint {
         Ok(Some(pool))
     }
 
-    pub fn commit(&mut self, root: &Path, pool: &mut GovPool) -> Result<()> {
+    pub fn commit(&mut self, root: &Path, pool: &mut GovPool, clock: Option<&super::clock::LocalClock>) -> Result<()> {
         let (epoch, head) = pool.context();
         if epoch < self.epoch || (epoch == self.epoch && !self.head.is_empty() && head != self.head) {
             return bad("The pool evidence conflicts with a head this phone has already verified.");
         }
-        pool.save()?;
+        pool.save_observation_checkpoint()?;
         let mut next = self.clone();
         next.generation = next.generation.checked_add(1).ok_or_else(|| Error::Damaged("The phone checkpoint is exhausted.".into()))?;
         next.epoch = epoch;
         next.head = head;
+        next.clock = clock.map(super::clock::LocalClock::sample).transpose()?;
+        if let (Some(now), Some(previous)) = (&next.clock, &self.clock) { now.earned_since(previous)?; }
         next.files = FILES.into_iter().map(|name| Ok((name.to_string(), sha256_hex(&bytes(&pool.dir().join(name))?)))).collect::<Result<_>>()?;
         write_atomic(&root.join(MARKER), &serde_json::to_vec(&next)?)?;
         *self = next;

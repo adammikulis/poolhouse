@@ -20,10 +20,10 @@ def test_shared_native_governance_rejects_bad_checkpoints_and_retains_late_evide
     testnode.stage(ROOT / "app", testnode.sources(ROOT / "app"), staged)
     environment = {**os.environ, "RUSTUP_HOME": RUSTUP_HOME, "CARGO_HOME": CARGO_HOME, "CARGO_TARGET_DIR": str(tmp_path / "target")}
     result = subprocess.run([testnode.tool("cargo"), "test", "--offline", "--locked", "-p", "poolhouse-node",
-                             "--lib", "gov::phone_verify::tests", "--", "--nocapture"],
+                             "--lib", "gov::phone_verify", "--", "--nocapture"],
                             cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "5 passed" in result.stdout and "0 failed" in result.stdout
+    assert "13 passed" in result.stdout and "0 failed" in result.stdout
     boundary = subprocess.run([testnode.tool("cargo"), "test", "--offline", "--locked", "-p", "poolhouse-phone-governance", "--lib"],
                               cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
     assert boundary.returncode == 0, boundary.stdout + boundary.stderr

@@ -9,10 +9,12 @@ final class NativeGovernance {
     static { System.loadLibrary("poolhouse_phone_governance"); }
     private NativeGovernance() { }
 
-    private static native String call(String root, String operation, String payload);
+    private static native String call(String root, String operation, String payload, long bootCount);
 
-    private static JSONObject invoke(String root, String operation, JSONObject payload) throws Exception {
-        JSONObject result = new JSONObject(call(root, operation, payload.toString()));
+    private static JSONObject invoke(Context context, String root, String operation, JSONObject payload) throws Exception {
+        long bootCount = android.provider.Settings.Global.getInt(context.getContentResolver(), android.provider.Settings.Global.BOOT_COUNT);
+        if (bootCount < 0) throw new SecurityException("The phone's boot counter is unavailable.");
+        JSONObject result = new JSONObject(call(root, operation, payload.toString(), bootCount));
         if (result.has("error")) throw new SecurityException(result.getString("error"));
         return result;
     }
@@ -24,33 +26,35 @@ final class NativeGovernance {
 
     static void pinFounding(Context context, String handle, String tls, PoolKeyBinding.Request locallyVerified) throws Exception {
         String root = GovernanceCheckpoint.directory(context, handle).getPath();
-        invoke(root, "pin", binding(locallyVerified.anchor, locallyVerified.deviceFingerprint, tls, locallyVerified.publicKey));
+        invoke(context, root, "pin", binding(locallyVerified.anchor, locallyVerified.deviceFingerprint, tls, locallyVerified.publicKey));
     }
 
     static void requireFoundingPin(Context context, String handle, String tls, PoolKeyBinding.Request locallyVerified) throws Exception {
         String root = GovernanceCheckpoint.directory(context, handle).getPath();
-        invoke(root, "require-pin", binding(locallyVerified.anchor, locallyVerified.deviceFingerprint, tls, locallyVerified.publicKey));
+        invoke(context, root, "require-pin", binding(locallyVerified.anchor, locallyVerified.deviceFingerprint, tls, locallyVerified.publicKey));
     }
 
     static VerifiedRequest review(Context context, String handle, String anchor, String node, String tls, String publicKey,
                                   JSONObject proof, JSONObject request) throws Exception {
         String root = GovernanceCheckpoint.directory(context, handle).getPath();
         JSONObject bound = binding(anchor, node, tls, publicKey);
-        JSONObject result = invoke(root, "review", new JSONObject().put("binding", bound).put("proof", proof).put("request", request));
-        return new VerifiedRequest(root, handle, bound.toString(), result);
+        JSONObject result = invoke(context, root, "review", new JSONObject().put("binding", bound).put("proof", proof).put("request", request));
+        return new VerifiedRequest(context.getApplicationContext(), root, handle, bound.toString(), result);
     }
 
     static final class VerifiedRequest implements AutoCloseable {
+        private final Context context;
         private final String root, handle, binding, token, card, requestId;
         private final byte[] bytes;
         private final AtomicBoolean begun = new AtomicBoolean(), closed = new AtomicBoolean();
 
-        private VerifiedRequest(String root, String handle, String binding, JSONObject verified) throws Exception {
+        private VerifiedRequest(Context context, String root, String handle, String binding, JSONObject verified) throws Exception {
+            this.context = context;
             this.root = root;
             this.handle = handle;
             this.binding = binding;
             this.token = verified.getString("token");
-            this.card = verified.getString("card");
+            this.card = verified.getString("card") + "\n\nExpires: " + java.text.DateFormat.getDateTimeInstance().format(new java.util.Date(verified.getLong("expires_ms")));
             this.requestId = verified.getString("id");
             this.bytes = Hex.parse(verified.getString("bytes"));
         }
@@ -72,12 +76,12 @@ final class NativeGovernance {
         }
 
         private void recheck() throws Exception {
-            invoke(root, "recheck", new JSONObject().put("token", token));
+            invoke(context, root, "recheck", new JSONObject().put("token", token));
         }
 
         @Override public void close() {
             if (closed.compareAndSet(false, true)) {
-                try { invoke(root, "cancel", new JSONObject().put("token", token)); }
+                try { invoke(context, root, "cancel", new JSONObject().put("token", token)); }
                 catch (Exception ignored) { }
             }
         }

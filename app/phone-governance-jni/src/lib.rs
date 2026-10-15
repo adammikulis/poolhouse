@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
 use jni::objects::{JClass, JString};
-use jni::sys::jstring;
+use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 use poolhouse_node::error::{Error, Result};
 use poolhouse_node::fsutil::{hex, random_hex};
@@ -20,6 +20,7 @@ struct Held {
     binding: Binding,
     engine: Engine,
     active: Option<(String, Verified)>,
+    boot_count: Option<u64>,
 }
 
 static ENGINES: OnceLock<Mutex<BTreeMap<String, Held>>> = OnceLock::new();
@@ -41,7 +42,19 @@ fn wall_ms() -> Result<u64> {
         .ok_or_else(|| Error::Invalid("The phone's clock is unavailable.".into()))
 }
 
-fn dispatch(root: &str, operation: &str, payload: &str) -> Result<Value> {
+fn open_engine(root: &Path, binding: &Binding, boot_count: Option<u64>) -> Result<Engine> {
+    #[cfg(target_os = "android")]
+    {
+        Engine::open_on_boot(root, binding, boot_count.ok_or_else(|| Error::Invalid("The phone's boot counter is unavailable.".into()))?)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = boot_count;
+        Engine::open(root, binding)
+    }
+}
+
+fn dispatch_on_boot(root: &str, operation: &str, payload: &str, boot_count: Option<u64>) -> Result<Value> {
     if payload.len() > MAX_INPUT || root.len() > 4096 || !Path::new(root).is_absolute() {
         return Err(Error::Invalid("The phone cannot verify this governance request.".into()));
     }
@@ -54,7 +67,7 @@ fn dispatch(root: &str, operation: &str, payload: &str) -> Result<Value> {
         }
         "require-pin" => {
             let binding: Binding = serde_json::from_str(payload)?;
-            Engine::open(Path::new(root), &binding)?;
+            open_engine(Path::new(root), &binding, boot_count)?;
             Ok(json!({}))
         }
         "review" => {
@@ -63,22 +76,24 @@ fn dispatch(root: &str, operation: &str, payload: &str) -> Result<Value> {
                 if engines.len() >= MAX_ENGINES {
                     return Err(Error::Invalid("This phone already has four active pool keys.".into()));
                 }
-                let engine = Engine::open(Path::new(root), &review.binding)?;
-                engines.insert(root.into(), Held { binding: review.binding.clone(), engine, active: None });
+                let engine = open_engine(Path::new(root), &review.binding, boot_count)?;
+                engines.insert(root.into(), Held { binding: review.binding.clone(), engine, active: None, boot_count });
             }
             let held = engines.get_mut(root).expect("the engine was opened");
-            if held.binding != review.binding || held.active.is_some() {
+            if held.binding != review.binding || held.active.is_some() || held.boot_count != boot_count {
                 return Err(Error::Invalid("Finish the phone's active pool request first.".into()));
             }
             let verified = held.engine.review(review.proof, review.request, wall_ms()?)?;
             let token = random_hex(16)?;
-            let result = json!({"token": token, "bytes": hex(verified.bytes()), "card": verified.card(), "id": verified.request().id});
+            let result = json!({"token": token, "bytes": hex(verified.bytes()), "card": verified.card(), "id": verified.request().id,
+                "expires_ms": verified.request().expires_ms.min(verified.request().act.not_after)});
             held.active = Some((token, verified));
             Ok(result)
         }
         "recheck" | "cancel" => {
             let token: Token = serde_json::from_str(payload)?;
             let held = engines.get_mut(root).ok_or_else(|| Error::Invalid("This phone request is no longer active.".into()))?;
+            if held.boot_count != boot_count { return Err(Error::Invalid("The phone's boot counter changed while signing.".into())) }
             let (_, verified) = held.active.as_ref().filter(|(t, _)| t == &token.token).ok_or_else(|| Error::Invalid("This phone request is no longer active.".into()))?;
             if operation == "recheck" {
                 held.engine.recheck(verified, wall_ms()?)?;
@@ -92,12 +107,13 @@ fn dispatch(root: &str, operation: &str, payload: &str) -> Result<Value> {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_poolhouse_phone_NativeGovernance_call(mut env: JNIEnv, _: JClass, root: JString, operation: JString, payload: JString) -> jstring {
+pub extern "system" fn Java_app_poolhouse_phone_NativeGovernance_call(mut env: JNIEnv, _: JClass, root: JString, operation: JString, payload: JString, boot_count: jlong) -> jstring {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let root: String = env.get_string(&root).map_err(|e| e.to_string())?.into();
         let operation: String = env.get_string(&operation).map_err(|e| e.to_string())?.into();
         let payload: String = env.get_string(&payload).map_err(|e| e.to_string())?.into();
-        dispatch(&root, &operation, &payload).map_err(|e| e.to_string())
+        let boot_count = u64::try_from(boot_count).map_err(|_| "The phone's boot counter is unavailable.".to_string())?;
+        dispatch_on_boot(&root, &operation, &payload, Some(boot_count)).map_err(|e| e.to_string())
     }));
     let response = match result {
         Ok(Ok(value)) => value,
@@ -110,6 +126,10 @@ pub extern "system" fn Java_app_poolhouse_phone_NativeGovernance_call(mut env: J
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dispatch(root: &str, operation: &str, payload: &str) -> Result<Value> {
+        dispatch_on_boot(root, operation, payload, None)
+    }
 
     #[test]
     fn native_boundary_rejects_arbitrary_operations_and_oversized_evidence() {

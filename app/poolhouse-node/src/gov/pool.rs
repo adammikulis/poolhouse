@@ -198,9 +198,13 @@ impl GovPool {
 
     /// Open the pool kept in ``dir``.
     pub fn load(dir: &Path) -> Result<GovPool> {
+        Self::load_with_awake_base(dir, None)
+    }
+
+    pub(super) fn load_with_awake_base(dir: &Path, earned_base: Option<i64>) -> Result<GovPool> {
         let found: Act = read_json(&dir.join(CHARTER))?.ok_or_else(|| Error::Damaged("a pool without its charter".into()))?;
         let saved: Option<Value> = read_json(&dir.join(SEEN))?;
-        let awake = saved.as_ref().and_then(|v| v["awake_ms"].as_i64()).unwrap_or(0);
+        let awake = earned_base.unwrap_or_else(|| saved.as_ref().and_then(|v| v["awake_ms"].as_i64()).unwrap_or(0));
         let mut pool = GovPool::assemble(dir.into(), found, Arc::new(Awake::new(awake)))?;
         let acts: Vec<Act> = read_json::<Value>(&dir.join(ACTS))?.and_then(|v| serde_json::from_value(v["acts"].clone()).ok()).unwrap_or_default();
         pool.acts = acts.into_iter().filter(|a| a.check_shape().is_ok() && a.pool == pool.id).map(|a| (a.id(), a)).collect();
@@ -228,6 +232,11 @@ impl GovPool {
         }
         self.dirty = Dirty::default();
         Ok(())
+    }
+
+    pub(super) fn save_observation_checkpoint(&mut self) -> Result<()> {
+        self.dirty.seen = true;
+        self.save()
     }
 
     pub fn dir(&self) -> &Path {

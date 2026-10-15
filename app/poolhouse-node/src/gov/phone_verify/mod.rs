@@ -1,6 +1,8 @@
 //! Phone-owned governance evidence and signing requests.
 
 mod checkpoint;
+mod card;
+mod clock;
 mod request;
 #[cfg(test)]
 mod tests;
@@ -39,6 +41,7 @@ pub struct Engine {
     checkpoint: Checkpoint,
     pool: Option<GovPool>,
     poisoned: bool,
+    clock: Option<clock::LocalClock>,
 }
 
 pub(super) fn bad<T>(why: &str) -> Result<T> {
@@ -64,10 +67,19 @@ impl Engine {
 
     /// Open an existing phone-owned governance checkpoint.
     pub fn open(root: &Path, binding: &Binding) -> Result<Engine> {
+        Self::open_clock(root, binding, None)
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn open_on_boot(root: &Path, binding: &Binding, boot_count: u64) -> Result<Engine> {
+        Self::open_clock(root, binding, Some(clock::LocalClock::android(boot_count)))
+    }
+
+    fn open_clock(root: &Path, binding: &Binding, clock: Option<clock::LocalClock>) -> Result<Engine> {
         binding.check()?;
         let checkpoint = Checkpoint::read(root, binding)?;
-        let pool = checkpoint.load(root)?;
-        Ok(Engine { root: root.into(), checkpoint, pool, poisoned: false })
+        let pool = checkpoint.load(root, clock.as_ref())?;
+        Ok(Engine { root: root.into(), checkpoint, pool, poisoned: false, clock })
     }
 
     /// Verify evidence and persist the phone's observations before returning signing bytes.
@@ -104,7 +116,7 @@ impl Engine {
         }
         pool.tick();
         let verified = request::verify(pool, &self.checkpoint.binding, request, wall_ms);
-        if let Err(error) = self.checkpoint.commit(&self.root, pool) {
+        if let Err(error) = self.checkpoint.commit(&self.root, pool, self.clock.as_ref()) {
             self.poisoned = true;
             return Err(error);
         }
@@ -126,6 +138,6 @@ impl Engine {
         if current.bytes != verified.bytes || current.card != verified.card {
             return bad("The pool changed while this request was open. Read it again.");
         }
-        self.checkpoint.commit(&self.root, pool)
+        self.checkpoint.commit(&self.root, pool, self.clock.as_ref())
     }
 }
