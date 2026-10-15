@@ -7,7 +7,7 @@ struct ManifestTests {
     static func run() throws {
         let cd = String(repeating: "1", count: 40), hash = String(repeating: "2", count: 64)
         let json = "{\"version\":1,\"owner_uid\":501,\"authority_id\":\"\(hash)\",\"helper\":{\"service\":\"app.poolhouse.authority\",\"cdhash\":\"\(cd)\",\"sha256\":\"\(hash)\"},\"gui\":{\"cdhash\":\"\(cd)\",\"sha256\":\"\(hash)\"}}"
-        let manifest = try PublicManifest.decode(Data(json.utf8))
+        let manifest = try ManifestFields.decode(Data(json.utf8))
         precondition(manifest.owner == 501 && manifest.helper.cdhash == cd && manifest.authority == hash)
         func refused(_ body: () throws -> Void) { do { try body(); preconditionFailure("Accepted bad manifest") } catch {} }
         for changed in [json.replacingOccurrences(of: "\"version\":1", with: "\"version\":1,\"version\":1"),
@@ -19,7 +19,7 @@ struct ManifestTests {
                         json.replacingOccurrences(of: "\"version\":1", with: "\"version\":1,\"namespace\":\"user\""),
                         json.replacingOccurrences(of: cd, with: String(repeating: "A", count: 40)),
                         json + "{}", String(repeating: " ", count: 16385)] {
-            refused { _ = try PublicManifest.decode(Data(changed.utf8)) }
+            refused { _ = try ManifestFields.decode(Data(changed.utf8)) }
         }
         let folder = URL(fileURLWithPath: ProcessInfo.processInfo.environment["TMPDIR"]!).appendingPathComponent("manifest-fixture")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
@@ -58,7 +58,7 @@ struct ManifestTests {
         precondition(ph_manifest_fixture_acl(fileFD, false)); precondition(reads())
         precondition(ph_manifest_fixture_acl(fileFD, true)); precondition(!reads())
         let message = xpc_dictionary_create(nil, nil, 0)
-        precondition(!ph_message_peer(message, cd))
+        precondition(!ph_message_caller(message, cd))
         var asid: UInt32 = 0
         precondition(!ph_local_session(0, &asid))
         print("Manifest schema, descriptor boundaries, and unattested message refusal passed")

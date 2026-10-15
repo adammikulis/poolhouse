@@ -1,5 +1,6 @@
 #if TESTING
 import Foundation
+import XPC
 
 @main
 struct SessionTests {
@@ -15,6 +16,16 @@ struct SessionTests {
         let card = try ApprovalCard.decode(fields, requestedID: id, now: 100)
         precondition(card.display.contains(card.pool) && card.display.contains(card.signer) && card.display.contains(card.targetKey!) && card.display.contains(card.targetDevice!) && card.display.contains(card.text))
         func refused(_ work: () throws -> Void) { do { try work(); preconditionFailure("Accepted invalid input") } catch {} }
+        let challenge = xpc_dictionary_create(nil, nil, 0)
+        xpc_dictionary_set_string(challenge, "kind", "challenge")
+        xpc_dictionary_set_string(challenge, "authority_id", id)
+        let cardBytes = try JSONSerialization.data(withJSONObject: fields)
+        cardBytes.withUnsafeBytes { xpc_dictionary_set_data(challenge, "card", $0.baseAddress, $0.count) }
+        let decodedChallenge = try ChallengeFields.decode(challenge, authorityID: id, requestID: id, now: 100)
+        precondition(decodedChallenge == card)
+        refused { _ = try ChallengeFields.decode(challenge, authorityID: String(repeating: "8", count: 64), requestID: id, now: 100) }
+        precondition(!ph_message_caller(challenge, String(repeating: "1", count: 40)))
+
         for (key, value) in [("version", true as Any), ("expires_at", true), ("expires_at", 200.0),
                              ("expires_at", -1), ("action", "Unknown"), ("nonce", "A".padding(toLength: 64, withPad: "a", startingAt: 0)),
                              ("text", "safe\u{202e}spoof"), ("text", "x\0y"), ("text", String(repeating: "x", count: 65537))] {

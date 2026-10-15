@@ -15,16 +15,27 @@ struct PublicManifest: Equatable {
     static func loadFixed() throws -> PublicManifest {
         var bytes = [UInt8](repeating: 0, count: 16384), count = 0
         guard ph_manifest_read(&bytes, bytes.count, &count) else { throw ApprovalFailure.unavailable }
-        return try decode(Data(bytes.prefix(count)))
+        return PublicManifest(fields: try ManifestFields.decode(Data(bytes.prefix(count))))
     }
 
-    static func decode(_ bytes: Data) throws -> PublicManifest {
+    private init(fields: ManifestFields) {
+        owner = fields.owner; authority = fields.authority; helper = fields.helper; gui = fields.gui
+    }
+}
+
+struct ManifestFields: Equatable {
+    let owner: UInt32
+    let authority: String
+    let helper: CodePin
+    let gui: CodePin
+
+    static func decode(_ bytes: Data) throws -> ManifestFields {
         var parser = ManifestJSON(bytes: Array(bytes))
         guard case let .object(root) = try parser.document(), Set(root.keys) == ["version", "owner_uid", "authority_id", "helper", "gui"],
               root["version"] == .integer(1), case let .integer(owner)? = root["owner_uid"], owner > 0, owner <= UInt32.max,
               case let .string(authority)? = root["authority_id"], ApprovalCard.hex(authority), authority.contains(where: { $0 != "0" }),
               case let .object(helper)? = root["helper"], Set(helper.keys) == ["service", "cdhash", "sha256"],
-              helper["service"] == .string(service), case let .object(gui)? = root["gui"], Set(gui.keys) == ["cdhash", "sha256"] else {
+              helper["service"] == .string(PublicManifest.service), case let .object(gui)? = root["gui"], Set(gui.keys) == ["cdhash", "sha256"] else {
             throw ApprovalFailure.invalid
         }
         func pin(_ fields: [String: ManifestValue]) throws -> CodePin {
@@ -33,7 +44,7 @@ struct PublicManifest: Equatable {
                   cdhash.contains(where: { $0 != "0" }), sha256.contains(where: { $0 != "0" }) else { throw ApprovalFailure.invalid }
             return CodePin(cdhash: cdhash, sha256: sha256)
         }
-        return try PublicManifest(owner: UInt32(owner), authority: authority, helper: pin(helper), gui: pin(gui))
+        return try ManifestFields(owner: UInt32(owner), authority: authority, helper: pin(helper), gui: pin(gui))
     }
 }
 

@@ -1,7 +1,8 @@
-# Inactive native peer admission
+# Inactive native caller admission
 
 The public manifest is fixed at `/Library/Application Support/Poolhouse/Approval/manifest.json`.
-Its descriptor ancestry is root-owned and cannot grant write access through modes or ACLs. The
+`ManifestFields.decode` returns untrusted parsed data. Only `PublicManifest.loadFixed` creates
+the opaque manifest after descriptor validation. Its descriptor ancestry is root-owned and cannot grant write access through modes or ACLs. The
 Poolhouse and Approval directories are 0755; the regular manifest is 0644 with one hard link.
 The reader takes a bounded snapshot and checks file identity and metadata before and after reading.
 The installer owns publication and replacement of this public file. No immutable filesystem flag
@@ -20,11 +21,12 @@ is used. The GUI's own kernel AUID/EUID/ASID must belong to the target owner and
 session. The root daemon's ASID is not compared to the GUI's. Root-side sender AUID admission
 still needs a separate reviewed implementation; session-owner lookup is not claimed equivalent.
 
-The transport configures only the privileged system endpoint and a peer code requirement. It does
-not activate the connection. `AuthenticatedHelper.connect` remains unavailable. No admitted
-challenge reaches authorization, and no ExternalForm is sent. Peer requirements validate received
-messages; they are not an outgoing-secret gate. A future bearer path must use a reply to the same
-admitted challenge with exact request, nonce, digest and snapshot, and fail on disconnect or login
+The transport plan specifies only the privileged system endpoint and a caller code requirement.
+It allocates no connection: the SDK requires activation before an XPC connection can be released. `AuthenticatedHelper.connect` remains unavailable. No admitted
+challenge reaches authorization, and no ExternalForm is sent. Caller requirements validate received
+messages; they are not an outgoing-secret gate. The authenticated helper is the sole card producer;
+strict duplicate-field card decoding remains required before active transport replaces JSONSerialization. A future bearer path must use a reply to the same
+admitted challenge with exact protected authority identity, request, nonce, digest and snapshot, and fail on disconnect or login
 change. It requires real message/reply-routing and spoof/exec/disconnect proof before enablement.
 
 Installer/server work must also establish hardened runtime and entitlement policy against runtime
@@ -34,6 +36,6 @@ those checks or prove human intent, authorization freshness, or a usable approva
 
 SDK evidence: macosx27.0 `Security/SecCode.h` (SecCodeCreateWithXPCMessage,
 SecCodeCheckValidity, kSecCodeInfoUnique), `xpc/connection.h` (privileged service flag,
-peer code requirements, EUID/ASID), `bsm/audit.h` (local session APIs), and `sys/acl.h`.
+caller code requirements, EUID/ASID), `bsm/audit.h` (local session APIs), and `sys/acl.h`.
 See [Apple's API](https://developer.apple.com/documentation/security/seccodecreatewithxpcmessage(_:_:_:))
 and [Apple's XPC identity guidance](https://developer.apple.com/forums/thread/681053).

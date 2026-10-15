@@ -30,5 +30,16 @@ def test_native_approval_window_protocol_and_literal_build(tmp_path):
     assert "pure protocol and lifecycle checks passed" in result.stdout
     symbols = subprocess.run(["/usr/bin/nm", "-g", str(literal)], check=True, capture_output=True, text=True, env=env)
     assert "ph_manifest_fixture" not in symbols.stdout
+    imports = subprocess.run(["/usr/bin/nm", "-u", str(literal)], check=True, capture_output=True, text=True, env=env)
+    assert "xpc_connection_create" not in imports.stdout
+    assert "xpc_connection_activate" not in imports.stdout
+    assert "xpc_connection_resume" not in imports.stdout
+    forged = tmp_path / "ForgedManifest.swift"
+    forged.write_text("func forge(_ fields: ManifestFields) -> PublicManifest { PublicManifest(fields: fields) }", encoding="utf-8")
+    rejection = subprocess.run(["/usr/bin/swiftc", "-j", "1", "-parse-as-library", "-typecheck",
+                                "-import-objc-header", str(SOURCE / "NativeSender.h"),
+                                *map(str, sorted(SOURCE.glob("*.swift"))), str(forged)],
+                               capture_output=True, text=True, env=env, timeout=60)
+    assert rejection.returncode != 0 and "private" in rejection.stderr
     # The shipped binary is compiled but never launched by a test.
     assert literal.stat().st_size > 0

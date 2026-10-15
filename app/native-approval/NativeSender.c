@@ -38,13 +38,13 @@ static bool code_matches(SecCodeRef code, const char *pin) {
     return okay;
 }
 
-bool ph_message_peer(xpc_object_t message, const char *cdhash) {
+bool ph_message_caller(xpc_object_t message, const char *cdhash) {
     if (xpc_get_type(message) != XPC_TYPE_DICTIONARY) return false;
-    xpc_connection_t peer = xpc_dictionary_get_remote_connection(message);
-    if (!peer || xpc_connection_get_euid(peer) != 0) return false;
+    xpc_connection_t caller = xpc_dictionary_get_remote_connection(message);
+    if (!caller || xpc_connection_get_euid(caller) != 0) return false;
     SecCodeRef code = NULL;
     if (SecCodeCreateWithXPCMessage(message, kSecCSDefaultFlags, &code) || !code) return false;
-    bool okay = code_matches(code, cdhash) && xpc_connection_get_euid(peer) == 0;
+    bool okay = code_matches(code, cdhash) && xpc_connection_get_euid(caller) == 0;
     CFRelease(code);
     return okay;
 }
