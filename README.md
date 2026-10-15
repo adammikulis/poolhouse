@@ -1,5 +1,7 @@
 # Poolhouse
 
+![Poolhouse by a neon-lit pool at night](docs/assets/poolhouse-banner.jpg)
+
 Poolhouse is a Python library and a set of tools for pooling the compute of your devices. It brings model serving,
 agents, tests and training together with a shared board for each project. A laptop can use a model running on a
 larger machine, and agents can exchange work without keeping separate copies of a project's conversation.
