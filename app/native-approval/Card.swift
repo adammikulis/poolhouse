@@ -56,7 +56,7 @@ struct ApprovalCard: Equatable {
             let n = scalar.value
             return (n < 32 && n != 10) || (127...159).contains(n)
                 || (0x202a...0x202e).contains(n) || (0x2066...0x2069).contains(n)
-                || n == 0x2028 || n == 0x2029
+                || n == 0x2028 || n == 0x2029 || n == 0x061c || n == 0x200e || n == 0x200f
         }) else { throw ApprovalFailure.invalid }
         return ApprovalCard(requestID: id, action: action, pool: pool, key: key,
                             expires: expires, text: text, nonce: nonce, digest: digest)

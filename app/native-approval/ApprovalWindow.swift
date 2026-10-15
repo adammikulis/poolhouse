@@ -8,6 +8,7 @@ final class ApprovalWindow: NSObject, NSWindowDelegate, NSApplicationDelegate {
     private var authorization: FreshAuthorization?
     private var observer: NSObjectProtocol?
     private var expiryTimer: Timer?
+    private let approveButton = NSButton()
 
     init(helper: AuthenticatedHelper, card: ApprovalCard) {
         self.helper = helper
@@ -22,15 +23,23 @@ final class ApprovalWindow: NSObject, NSWindowDelegate, NSApplicationDelegate {
         scroll.autoresizingMask = [.width, .height]
         scroll.hasVerticalScroller = true
         let text = NSTextView(frame: scroll.bounds)
+        text.isVerticallyResizable = true
+        text.isHorizontallyResizable = false
+        text.minSize = NSSize(width: 0, height: scroll.contentSize.height)
+        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        text.textContainer?.containerSize = NSSize(width: scroll.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+        text.textContainer?.widthTracksTextView = true
         text.isEditable = false
         text.isSelectable = true
         text.isRichText = false
         text.font = NSFont.systemFont(ofSize: 15)
         text.string = card.display
         text.autoresizingMask = [.width]
+        text.sizeToFit()
         scroll.documentView = text
         window.contentView?.addSubview(scroll)
-        let approve = NSButton(title: "Approve", target: self, action: #selector(approve))
+        let approve = approveButton
+        approve.title = "Approve"; approve.target = self; approve.action = #selector(ApprovalWindow.approve)
         approve.frame = NSRect(x: 570, y: 20, width: 130, height: 32)
         approve.autoresizingMask = [.minXMargin, .maxYMargin]
         window.contentView?.addSubview(approve)
@@ -54,6 +63,8 @@ final class ApprovalWindow: NSObject, NSWindowDelegate, NSApplicationDelegate {
     private var now: UInt64 { UInt64(max(0, Date().timeIntervalSince1970)) }
 
     @objc private func approve() {
+        guard session.phase == .displaying else { return }
+        approveButton.isEnabled = false
         do {
             try session.begin(visible: visible, active: NSApp.isActive && window.isKeyWindow, now: now)
             authorization = try FreshAuthorization(helper: helper)

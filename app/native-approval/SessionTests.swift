@@ -18,6 +18,13 @@ struct SessionTests {
             let changed = fields.mutableCopy() as! NSMutableDictionary; changed[key] = value
             refused { _ = try ApprovalCard.decode(changed, requestedID: id, now: 100) }
         }
+        for mark in ["\u{061c}", "\u{200e}", "\u{200f}"] {
+            let changed = fields.mutableCopy() as! NSMutableDictionary; changed["text"] = "safe" + mark + "spoof"
+            refused { _ = try ApprovalCard.decode(changed, requestedID: id, now: 100) }
+        }
+        var export = SingleExport()
+        try export.claim()
+        refused { try export.claim() }
         let extra = fields.mutableCopy() as! NSMutableDictionary; extra["summary"] = "Approve anything"
         refused { _ = try ApprovalCard.decode(extra, requestedID: id, now: 100) }
         refused { _ = try ApprovalCard.decode(fields, requestedID: String(repeating: "6", count: 64), now: 100) }

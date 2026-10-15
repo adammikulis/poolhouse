@@ -37,3 +37,11 @@ struct ApprovalSession {
 
     mutating func cancel() { if phase != .finished { phase = .cancelled } }
 }
+
+struct SingleExport {
+    private var consumed = false
+    mutating func claim() throws {
+        guard !consumed else { throw ApprovalFailure.cancelled }
+        consumed = true
+    }
+}

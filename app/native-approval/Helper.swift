@@ -16,6 +16,7 @@ final class AuthenticatedHelper {
 
 final class FreshAuthorization {
     private var reference: AuthorizationRef?
+    private var export = SingleExport()
     private var external = AuthorizationExternalForm()
 
     init(helper: AuthenticatedHelper) throws {
@@ -31,6 +32,7 @@ final class FreshAuthorization {
     func authenticate(helper: AuthenticatedHelper, snapshot: WindowSnapshot,
                       completion: @escaping @MainActor (Result<Void, Error>) -> Void) throws {
         guard reference != nil else { throw ApprovalFailure.cancelled }
+        try export.claim()
         try withUnsafePointer(to: &external) { try helper.authenticate($0, snapshot: snapshot, completion: completion) }
         wipe()
     }
