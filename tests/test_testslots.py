@@ -291,8 +291,12 @@ def record(request):
         stream.write(json.dumps({"name": request.node.name, "start": start, "end": time.time()}) + "\\n")
 
 def test_tail():
-    Path(os.environ["TAIL_READY"]).touch()
-    time.sleep(6)
+    ready = Path(os.environ["TAIL_READY"])
+    ready.touch()
+    deadline = time.monotonic() + 20
+    while not ready.with_name("tail-release").exists():
+        assert time.monotonic() < deadline
+        time.sleep(.01)
 
 def test_fast_a():
     time.sleep(.1)
@@ -315,22 +319,36 @@ def test_idle_tail_workers_release_capacity_for_another_suite(tmp_path):
     first_file.write_text(ELASTIC_TEST)
     second_file = tmp_path / "test_second.py"
     second_file.write_text(ELASTIC_TEST.replace("def test_tail():", "def unused_tail():"))
-    first = _elastic(tmp_path, first_file, 2)
-    deadline = time.monotonic() + 20
-    while not (tmp_path / "tail-ready").exists():
-        assert first.poll() is None, first.communicate()
-        assert time.monotonic() < deadline
-        time.sleep(.05)
-    second = _elastic(tmp_path, second_file, 1)
-    second_output = second.communicate(timeout=20)
-    assert second.returncode == 0, second_output
-    assert first.poll() is None, "The second suite must finish while the long tail remains active"
-    first_output = first.communicate(timeout=20)
-    assert first.returncode == 0, first_output
-    records = [json.loads(line) for line in (tmp_path / "elastic.jsonl").read_text().splitlines()]
-    assert len(records) == 5
-    for record in records:
-        assert sum(other["start"] <= record["start"] < other["end"] for other in records) <= 2, records
+    release = tmp_path / "tail-release"
+    processes = []
+    try:
+        first = _elastic(tmp_path, first_file, 2)
+        processes.append(first)
+        deadline = time.monotonic() + 20
+        while not (tmp_path / "tail-ready").exists():
+            assert first.poll() is None, first.communicate()
+            assert time.monotonic() < deadline
+            time.sleep(.05)
+        second = _elastic(tmp_path, second_file, 1)
+        processes.append(second)
+        second_output = second.communicate(timeout=20)
+        assert second.returncode == 0, second_output
+        assert first.poll() is None, "The second suite must finish while the long tail remains active"
+        release.touch()
+        first_output = first.communicate(timeout=20)
+        assert first.returncode == 0, first_output
+        records = [json.loads(line) for line in (tmp_path / "elastic.jsonl").read_text().splitlines()]
+        assert len(records) == 5
+        for record in records:
+            assert sum(other["start"] <= record["start"] < other["end"] for other in records) <= 2, records
+    finally:
+        release.touch()
+        for process in processes:
+            try:
+                process.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=5)
 
 
 def test_remote_nested_command_is_refused_without_deadlocking(tmp_path):
@@ -438,22 +456,39 @@ def test_short(case):
 
 
 def test_backfill_uses_idle_capacity_and_is_bounded(tmp_path):
-    holder = _spawn(tmp_path, 3, 2, 2, "holder")
-    time.sleep(.2)
-    older = _spawn(tmp_path, 3, 2, .1, "older")
-    time.sleep(.1)
-    first = _spawn(tmp_path, 3, 1, .1, "first")
-    assert first.wait(timeout=10) == 0
-    second = _spawn(tmp_path, 3, 1, .1, "second")
-    assert second.wait(timeout=10) == 0
-    third = _spawn(tmp_path, 3, 1, .1, "third")
-    time.sleep(.2)
-    assert third.poll() is None
-    assert all(process.wait(timeout=10) == 0 for process in (holder, older, third))
-    records = {record["label"]: record for record in _records(tmp_path)}
-    assert records["first"]["start"] < records["holder"]["end"]
-    assert records["second"]["start"] < records["holder"]["end"]
-    assert records["third"]["start"] >= records["older"]["start"]
+    release = tmp_path / "release"
+    processes = []
+    try:
+        holder = _spawn(tmp_path, 3, 2, release, "holder")
+        processes.append(holder)
+        _wait_for_slot(tmp_path, holder, "holder", 2)
+        older = _spawn(tmp_path, 3, 2, .1, "older")
+        processes.append(older)
+        _wait_for_slot(tmp_path, older, "older", 0)
+        for label in ("first", "second"):
+            process = _spawn(tmp_path, 3, 1, .1, label)
+            processes.append(process)
+            assert process.wait(timeout=10) == 0
+        third = _spawn(tmp_path, 3, 1, .1, "third")
+        processes.append(third)
+        _wait_for_slot(tmp_path, third, "third", 0)
+        module = _load()
+        with module._mutex(tmp_path / "slots"):
+            queued = {slot.data["label"]: slot for slot in module._read(tmp_path / "slots")}
+            assert queued["older"].data["backfills"] == 2
+            assert queued["third"].granted == 0
+        assert third.poll() is None
+        release.touch()
+        assert all(process.wait(timeout=10) == 0 for process in (holder, older, third))
+        records = {record["label"]: record for record in _records(tmp_path)}
+        assert records["first"]["start"] < records["holder"]["end"]
+        assert records["second"]["start"] < records["holder"]["end"]
+        assert records["third"]["start"] >= records["older"]["start"]
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
 
 
 def test_reserved_capacity_is_configurable_and_owner_budget_overrides_it(monkeypatch):

@@ -49,7 +49,7 @@ def coalesced(retarget: Retarget, run: Callable[[runtime_deploy.Plan], runtime_d
     for _ in range(MAX_ROUNDS):
         plan = settle(retarget, pace)
         outcome = run(plan)
-        if retarget().commit == plan.commit or not outcome.ok:
+        if outcome.action == "superseded" or retarget().commit == plan.commit or not outcome.ok:
             break
     return outcome
 

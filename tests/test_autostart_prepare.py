@@ -151,7 +151,7 @@ def test_the_launcher_the_runtime_tooling_writes_is_accepted(tmp_path, user):
     path = home.state("bin") / "poolhouse"
     path.parent.mkdir(parents=True)
     path.write_text(runtime.LAUNCHER.format(root=str(runtime.directory()), python="/x/bin/python",
-                                            arguments=repr(["-m", "poolhouse.cli"]), name="poolhouse"))
+                                            arguments=repr(["-m", "poolhouse.cli"]), name="poolhouse", follow_selection=False))
     path.chmod(0o700)
     assert launcher_problem(path) == ""
 

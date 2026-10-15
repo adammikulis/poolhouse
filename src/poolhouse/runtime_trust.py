@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import authority, home, person, runtime_store, worktreerules
+from poolhouse import authority, home, person, runtime_git, runtime_store
 from poolhouse.activity import writer
 from poolhouse.board.session import AGENT_ENV
 from poolhouse.runtime_deploy import DeployError, floor_of
@@ -79,7 +79,7 @@ def primary_for(supplied: Path, *, deploying: bool = True, delegated: bool = Fal
 
 
 def _git(primary: Path, *words: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(primary), *words], capture_output=True, text=True, timeout=60, env=worktreerules._git_environment())
+    return subprocess.run(["git", "-c", "core.fsmonitor=false", "-C", str(primary), *words], capture_output=True, text=True, timeout=60, env=runtime_git.environment())
 
 
 def tip(primary: Path) -> str:

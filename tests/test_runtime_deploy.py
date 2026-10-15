@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,9 +19,13 @@ from poolhouse import (
     runtime,
     runtime_board,
     runtime_cli,
+    runtime_coalesce,
     runtime_deploy,
+    runtime_launchers,
     runtime_store,
 )
+from poolhouse.board import session as board_session
+from poolhouse.board.client import Denied, Quota
 from poolhouse.board.session import AGENT_ENV
 from poolhouse.fleet import runtime_wheel
 from poolhouse.lock import only_one
@@ -415,7 +420,7 @@ def tree_at(root, commit_id, verified_at, name, **options):
 
 def render_launcher(tmp_path, root, python="/nonexistent/bin/python"):
     path = tmp_path / "poolhouse-probe"
-    path.write_text(runtime.LAUNCHER.format(root=str(root), python=python, arguments="['-c', 'pass']", name=path.name))
+    path.write_text(runtime.LAUNCHER.format(root=str(root), python=python, arguments="['-c', 'pass']", name=path.name, follow_selection=False))
     path.chmod(0o700)
     return path
 
@@ -470,11 +475,10 @@ def test_launcher_recovery_spawn_is_validated_logged_rate_limited_and_ignores_th
     assert "recovery output" in (root / "ensure.log").read_text()
 
 
-def test_launcher_directories_are_absolute_and_a_relative_recorded_one_is_refused(world, monkeypatch, tmp_path):
+def test_explicit_launcher_directories_are_absolute_and_old_record_is_ignored(world, monkeypatch, tmp_path):
     runtime_deploy.prepare_root()
     runtime_store.write_state({"launchers": "relative/bin"})
-    with pytest.raises(runtime_deploy.DeployError, match="absolute"):
-        runtime_cli._launchers("")
+    assert runtime_cli._launchers("") == runtime.directory().parent.parent / "bin"
     monkeypatch.chdir(tmp_path)
     assert runtime_cli._launchers("bin") == tmp_path.resolve() / "bin"
 
@@ -859,3 +863,138 @@ def test_a_tree_this_tool_created_is_marked_before_anything_else_and_stale_unver
     runtime_store.mark_created(ours, "runtime-agent", "ensure")
     os.utime(ours, (1000.0, 1000.0))
     assert ours in runtime_store.collect({prefix})
+
+
+def test_install_reservation_holds_many_exact_paths_and_preserves_preheld_claim(workspace_node, tmp_path):
+    parent = workspace_node.member("reservation-parent")
+    who = workspace_node.session(workspace_node.member("reservation-child", parent=parent))
+    paths = [tmp_path / f"command-{n}" for n in range(43)]
+    who.claim("install", str(paths[0]), ttl_s=600, pid=os.getpid())
+    with pytest.raises(RuntimeError, match="body failed"), runtime_deploy.owning(paths, wait_s=0, who=who) as held:
+        assert held == frozenset(paths)
+        assert all(owner_of(who, path) == who.name for path in paths)
+        raise RuntimeError("body failed")
+    assert owner_of(who, paths[0]) == who.name
+    assert all(owner_of(who, path) is None for path in paths[1:])
+
+
+def test_install_reservation_foreign_board_conflict_takes_no_partial_claims(workspace_node, tmp_path):
+    who = workspace_node.session(workspace_node.member("reservation-local"))
+    made = board_session.register(workspace_node.client, "other-board",
+                                  board_session.Native("claude-sonnet-5-5", "claude-code", "reservation-foreign"))
+    foreign = board_session.Session(workspace_node.client, "other-board", made.token, made.name)
+    blocked, free = tmp_path / "blocked", tmp_path / "free"
+    foreign.claim("install", str(blocked), ttl_s=600, pid=os.getpid())
+    with pytest.raises(runtime_deploy.DeployError, match="other-board"), \
+            runtime_deploy.owning([free, blocked], wait_s=0, who=who):
+        pytest.fail("conflicted reservation entered")
+    assert owner_of(who, free) is None
+    assert owner_of(foreign, blocked) == foreign.name
+
+
+@pytest.mark.parametrize("error", [Denied("denied", "not authorized"), Quota("quota", "not admitted")])
+def test_install_reservation_never_enters_after_admission_refusal(workspace_node, tmp_path, monkeypatch, error):
+    who = workspace_node.session(workspace_node.member("reservation-refused"))
+    monkeypatch.setattr(board_session.Session, "reserve", lambda *args, **kwargs: (_ for _ in ()).throw(error))
+    with pytest.raises(type(error), match="not "), \
+            runtime_deploy.owning([tmp_path / "command"], wait_s=0, who=who):
+        pytest.fail("refused reservation entered")
+    assert not who.claims("install")
+
+
+@pytest.mark.parametrize("phase", ["settle", "build", "publish"])
+def test_automatic_refresh_preserves_a_new_foreground_selection(world, monkeypatch, phase):
+    repo, launchers, tmp = world
+    first = commit(repo, "automatic-first")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    baseline = runtime_deploy.automatic_selection()
+    original = {p.name: p.read_bytes() for p in launchers.iterdir()}
+    desired = commit(repo, "automatic-next")
+    plan = replace(plan_for(repo, launchers), automatic_from=baseline)
+    manual_wheel = wheel(tmp / "manual", first)
+    runtime_wheel.stamp(manual_wheel, first, repo)
+    manual = runtime_wheel.prepare(manual_wheel, first, timeout=60)
+    runtime_store.mark_created(manual.prefix, "manual-test", "ensure")
+    runtime_store.mark_verified(manual)
+    built = builder()
+    if phase == "build":
+        def build(plan, stage, prefix):
+            chosen = built(plan, stage, prefix)
+            runtime.publish(manual)
+            return chosen
+    else:
+        build = built
+    if phase == "publish":
+        install = runtime_launchers.install
+
+        def install_then_change(*args, **kwargs):
+            result = install(*args, **kwargs)
+            if args[0] == launchers:
+                runtime.publish(manual)
+            return result
+        monkeypatch.setattr(runtime_launchers, "install", install_then_change)
+    monkeypatch.setattr(runtime_deploy, "_recovered", lambda *a: pytest.fail("automatic refresh must not recover"))
+    if phase == "settle":
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+            runtime.publish(manual)
+        outcome = runtime_coalesce.coalesced(lambda: plan,
+                    lambda planned: runtime_deploy.ensure(planned, builder=build),
+                    runtime_coalesce.Pace(1, 1, lambda: now[0], sleep))
+    else:
+        outcome = runtime_deploy.ensure(plan, builder=build)
+    assert outcome.action == "superseded" and outcome.commit == desired
+    assert runtime.selected() == manual
+    assert {p.name: p.read_bytes() for p in launchers.iterdir()} == original
+    assert not runtime_store.read_state().get("last_failure")
+    assert not runtime_store.rejected(manual.prefix)
+
+
+def test_automatic_refresh_allows_a_normal_primary_fast_forward(world):
+    repo, launchers, _ = world
+    commit(repo, "automatic-first")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    baseline = runtime_deploy.automatic_selection()
+    desired = commit(repo, "automatic-next")
+    outcome = runtime_deploy.ensure(replace(plan_for(repo, launchers), automatic_from=baseline), builder=builder())
+    assert outcome.action == "switched" and runtime.selected().commit == desired
+
+
+@pytest.mark.parametrize("relation", ["divergent", "unrelated"])
+def test_automatic_refresh_refuses_a_divergent_selection_without_build_or_recovery(world, monkeypatch, relation):
+    repo, launchers, tmp = world
+    base = commit(repo, "automatic-base")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    git(repo, "switch", "-q", "-c", "manual")
+    manual = commit(repo, "automatic-manual")
+    manual_wheel = wheel(tmp / "manual", manual)
+    runtime_wheel.stamp(manual_wheel, manual, repo)
+    chosen = runtime_wheel.prepare(manual_wheel, manual, timeout=60)
+    runtime_store.mark_created(chosen.prefix, "manual-test", "ensure")
+    runtime_store.mark_verified(chosen)
+    runtime.publish(chosen)
+    baseline = runtime_deploy.automatic_selection()
+    git(repo, "switch", "-q", "dev")
+    if relation == "unrelated":
+        git(repo, "switch", "-q", "--orphan", "unrelated")
+    desired = commit(repo, "automatic-primary")
+    assert base != manual != desired
+    monkeypatch.setattr(runtime_deploy, "_recovered", lambda *a: pytest.fail("must not recover"))
+    outcome = runtime_deploy.ensure(replace(plan_for(repo, launchers), automatic_from=baseline),
+                                   builder=lambda *a: pytest.fail("must not build"))
+    assert outcome.action == "superseded" and runtime.selected().commit == manual
+
+
+def test_automatic_refresh_refuses_a_changed_epoch_without_building(world):
+    repo, launchers, _ = world
+    commit(repo, "automatic-first")
+    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    baseline = runtime_deploy.automatic_selection()
+    chosen = runtime.selected()
+    commit(repo, "automatic-next")
+    runtime_store.mark_verified(chosen, epoch=1)
+    outcome = runtime_deploy.ensure(replace(plan_for(repo, launchers), automatic_from=baseline),
+                                   builder=lambda *a: pytest.fail("must not build"))
+    assert outcome.action == "superseded" and runtime.selected() == chosen

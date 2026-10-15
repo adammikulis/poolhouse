@@ -504,8 +504,22 @@ note = "actual model child keeps hostile checkpoint and interpreter text literal
 match = ["spawn:platform.py:start_process"]
 status = "covered"
 count = 1
-tests = ["tests/test_redteam_gym_worker.py::test_worker_spawn_keeps_hostile_configuration_inside_json"]
-note = "actual worker launch through the process wrapper receives hostile configuration as one JSON argument without a shell"
+tests = ["tests/test_redteam_gym_worker.py::test_worker_spawn_keeps_hostile_configuration_inside_json",
+         "tests/test_github_release_transport.py::test_actual_git_smart_https_uses_child_token_and_verified_ca",
+         "tests/test_github_release_transport.py::test_term_resistant_helper_is_killed_before_owned_leader_is_reaped",
+         "tests/test_darwin_group.py"]
+note = "worker configuration remains one JSON argument; actual HTTPS transport uses only child credentials and a verified CA; transport cleanup retains the owned leader until complete group verification and kills TERM-resistant helpers"
+
+[[group]]
+match = ["spawn:workspace/github_release.py:_read", "spawn:workspace/github_release.py:push_development"]
+status = "covered"
+count = 2
+tests = ["tests/test_agent_prerelease_publication.py::test_clean_git_view_ignores_hostile_source_configuration",
+         "tests/test_agent_prerelease_publication.py::test_source_reads_ignore_forged_replacement_commit",
+         "tests/test_agent_prerelease_publication.py::test_hook_refusal_prevents_mint_and_push",
+         "tests/test_agent_prerelease_publication.py::test_remote_race_prevents_mint_and_push",
+         "tests/test_agent_prerelease_publication.py::test_matching_checked_push_has_one_private_mint"]
+note = "source Git reads discard configuration and replacement refs; actual maintained hook execution precedes private mint and fixed-target push, and hook refusal or a remote race prevents both"
 
 [[group]]
 match = ["spawn:gym/catalog.py:probe", "spawn:gym/traffic_world.py:generate"]
@@ -604,6 +618,25 @@ tests = ["tests/test_board_grants.py::test_a_person_sets_up_the_lead_grants_once
          "tests/test_node_lineage.py::test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_grant",
          "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"]
 note = "grant, revoke-grant, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign for this node, once, from the terminal it was signed in, a removed key enrolled again, a token used from another terminal than the one that registered it, and a name with no lineage taken by a process that holds none of its tokens (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
+
+[[group]]
+match = ["parser:runtime_bridges.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_runtime_bridges.py::test_foreign_reviewed_console_metadata_is_refused_before_commands_change",
+         "tests/test_runtime_bridges.py::test_declared_metadata_mismatch_leaves_every_entrypoint_untouched"]
+note = "console script names and import targets come from the literal reviewed source commit and must match the verified installed distribution"
+
+[[group]]
+match = ["human:runtime_unmerged.py:validate"]
+status = "covered"
+count = 1
+tests = ["tests/test_runtime_unmerged.py::test_person_floor_blocks_each_gate",
+         "tests/test_runtime_unmerged.py::test_forged_or_replayed_binding_fails",
+         "tests/test_runtime_unmerged.py::test_bool_only_agent_exception_never_authorizes_source",
+         "tests/test_runtime_unmerged.py::test_switch_rechecks_review_before_publishing_selection",
+         "tests/test_runtime_unmerged.py::test_node_admission_preserves_and_rechecks_the_exact_approval"]
+note = "both authority gates, authenticated main-session identity, exact queue review and source commit are rechecked at runtime selection and node admission"
 
 [[group]]
 match = ["human:*"]
@@ -1050,7 +1083,7 @@ note = "git runs with an argument list; hostile paths, refs and settings stay on
 [[group]]
 match = ["spawn:fleet/runtime_wheel.py:_run", "spawn:runtime.py:forward", "spawn:runtime.py:rerun",
          "spawn:runtime.py:verify",
-         "spawn:runtime_source.py:git", "spawn:runtime_deploy.py:smoke", "spawn:runtime_launchers.py:install",
+         "spawn:runtime_git.py:git", "spawn:runtime_deploy.py:smoke", "spawn:runtime_launchers.py:entrypoints",
          "spawn:fleet/updates.py:pip_install"]
 status = "covered"
 count = 8

@@ -22,10 +22,11 @@ from poolhouse import (
     node_binary,
     node_key,
     runtime,
+    runtime_git,
     runtime_source,
     runtime_store,
+    runtime_unmerged,
     win32,
-    worktreerules,
 )
 from poolhouse.files import read_json, write_json
 from poolhouse.home import state as state_root
@@ -348,12 +349,16 @@ def _ready(child: subprocess.Popen, state: Path, sha: str, stopping: Callable[[]
     return False
 
 
-def _admitted(binary: Path, sha: str, source: Path, *, allow_unmerged_commit: str = "") -> None:
+def _admitted(binary: Path, sha: str, source: Path, *, allow_unmerged_commit: str | runtime_unmerged.Approval = "") -> None:
     prefix = binary.parent.parent
     record = node_binary.record_of(prefix)
     node_binary.verified(prefix, expect=sha)
     commit = str(record.get("commit", ""))
-    runtime_source.admit(source, commit, allow_unmerged=bool(allow_unmerged_commit and commit == allow_unmerged_commit))
+    approved = allow_unmerged_commit.commit if isinstance(allow_unmerged_commit, runtime_unmerged.Approval) else allow_unmerged_commit
+    if isinstance(allow_unmerged_commit, runtime_unmerged.Approval) and approved != commit:
+        raise runtime_source.DeployError("the node runtime does not match the reviewed commit")
+    exception = allow_unmerged_commit if isinstance(allow_unmerged_commit, runtime_unmerged.Approval) else True
+    runtime_source.admit(source, commit, allow_unmerged=exception if approved and commit == approved else False)
     floor = runtime_source.floor_of(source, runtime_source.resolve_commit(source))
     if runtime_store.rejected(prefix) or runtime_store.epoch_of(prefix) < floor:
         raise node_binary.NodeBinaryError("node runtime is rejected or below the source floor")
@@ -366,7 +371,7 @@ def _prepare(child: subprocess.Popen, state: Path, extra: list[str], binding: _C
         return None
     seen = signature(state)
     try:
-        boundary = worktreerules.landing_lock(Path(source))
+        boundary = runtime_git.boundary(Path(source))
         binary, sha = resolve(state)
         _program(binary, sha, extra)
         with only_one(boundary, wait=False, note="node runtime preparation"):

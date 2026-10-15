@@ -210,20 +210,33 @@ def rerun(script: Path, argv: list[str]) -> None:
     os.execve(str(chosen.python), [str(chosen.python), "-I", str(script), *argv], environment())  # noqa: S606
 
 
-LAUNCHER = """#!/usr/bin/env python3
-import glob,json,os,subprocess,sys,time
+_LAUNCHER_READER = """def read(path):
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+        with os.fdopen(descriptor, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
+                return dict()
+            payload = stream.read(65537)
+        if len(payload) > 65536:
+            return dict()
+        row = json.loads(payload)
+        return row if isinstance(row, dict) else dict()
+    except (OSError, ValueError, TypeError):
+        return dict()
+"""
+
+
+LAUNCHER = """#!/usr/bin/env -S python3 -I -S
+import glob,json,os,re,stat,subprocess,sys,time
+from pathlib import Path
 root = {root!r}
 python = {python!r}
 env = {{k:v for k,v in os.environ.items() if k not in
        {{'PYTHONPATH','PYTHONHOME','VIRTUAL_ENV','_MEIPASS2','LD_LIBRARY_PATH','DYLD_LIBRARY_PATH'}}
        and not k.startswith('_PYI_')}}
-def read(path):
-    try:
-        with open(path) as stream:
-            row = json.load(stream)
-        return row if isinstance(row, dict) else {{}}
-    except (OSError, ValueError):
-        return {{}}
+reader = __POOLHOUSE_READER_LITERAL__
+exec(reader)
 def interpreter(prefix):
     return os.path.join(prefix, 'Scripts/python.exe' if os.name == 'nt' else 'bin/python')
 def usable(py):
@@ -238,6 +251,62 @@ def stamp(prefix):
         return float(read(os.path.join(prefix, 'verified.json')).get('verified_at'))
     except (TypeError, ValueError):
         return 0.0
+def private(path, regular=False):
+    path = Path(path)
+    if any(p.is_symlink() for p in (path, *path.parents)):
+        return False
+    try:
+        info = path.stat()
+        kind = stat.S_ISREG(info.st_mode) if regular else stat.S_ISDIR(info.st_mode)
+        return kind and info.st_uid == os.getuid() and not stat.S_IMODE(info.st_mode) & 0o077
+    except OSError:
+        return False
+
+def proven(prefix):
+    try:
+        path = Path(prefix)
+        family = path.parent
+        if (family.parent != Path(root) or not re.fullmatch('[0-9a-f]{{40}}', family.name)
+                or not re.fullmatch('[0-9a-f]{{32}}', path.name)
+                or not all(private(p) for p in (Path(root), family, path))):
+            return False
+        marks = [path / name for name in ('created.json', 'verified.json')]
+        if any(not private(p, True) or p.stat().st_size > 4096 for p in marks):
+            return False
+        created, verified = (read(p) for p in marks)
+        return (created.get('tool') == 'poolhouse-runtime' and verified.get('commit') == family.name
+                and verified.get('identity') == Path(root).name and isinstance(verified.get('version'), str)
+                and isinstance(verified.get('verified_at'), (int, float)) and verified['verified_at'] > 0
+                and not os.path.lexists(path / 'rejected') and usable(interpreter(prefix)))
+    except (OSError, ValueError, TypeError):
+        return False
+
+if {follow_selection!r}:
+    selector = Path(root) / 'selected.json'
+    if not private(selector, True) or selector.stat().st_size > 4096:
+        sys.exit({name!r} + ': the runtime selection is unavailable')
+    selected = read(selector)
+    prefix = selected.get('prefix')
+    if (set(selected) != {{'format', 'prefix', 'commit', 'version', 'identity'}}
+            or type(selected.get('format')) is not int or selected['format'] != 1
+            or not isinstance(prefix, str) or not proven(prefix)
+            or selected.get('commit') != Path(prefix).parent.name
+            or selected.get('identity') != Path(root).name
+            or selected.get('version') != read(Path(prefix) / 'verified.json').get('version')):
+        sys.exit({name!r} + ': the selected runtime is not verified')
+    if not proven(os.path.dirname(os.path.dirname(python))):
+        python = next((interpreter(p) for p in [prefix] if proven(p)), '')
+    if not python:
+        sys.exit({name!r} + ': the runtime bootstrap is unavailable')
+    env['POOLHOUSE_HOME'] = str(Path(root).parent.parent)
+    env['PATH'] = str(Path(root).parent.parent / 'bin') + os.pathsep + env.get('PATH', '')
+    bootstrap = ("import json,os,stat,sys,subprocess;from pathlib import Path;from poolhouse import runtime\\n" + reader + "\\n"
+                 "row=" + repr(selected) + "\\n"
+                 "try: chosen=runtime.verify(runtime.Runtime(Path(row['prefix']),row['commit'],row['version'],row['identity']))\\n"
+                 "except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError): sys.exit('The runtime selection is unavailable.')\\n"
+                 "if read(runtime.directory()/'selected.json') != row: sys.exit('The runtime selection changed; retry the command.')\\n"
+                 "os.execve(str(chosen.python),[str(chosen.python),'-I',*" + repr({arguments}) + ",*sys.argv[1:]],runtime.environment())")
+    os.execve(python, [python, '-I', '-c', bootstrap, *sys.argv[1:]], env)
 if not usable(python):
     held = read(os.path.join(root, 'deploy.json')).get('held')
     held = held.get('commit') if isinstance(held, dict) else None
@@ -262,7 +331,7 @@ if not usable(python):
                 pass
         sys.exit({name!r} + ': no usable poolhouse runtime; recovery started if a source checkout is recorded')
 os.execve(python, [python, '-I', *{arguments}, *sys.argv[1:]], env)
-"""
+""".replace("__POOLHOUSE_READER_LITERAL__", repr(_LAUNCHER_READER))
 
 
 def gateway(target: Path, module: str = "poolhouse.fleet.launch", function: str = "",
@@ -285,7 +354,7 @@ def confine_tests(path: Path) -> None:
         raise OSError("a test may not write launchers outside the state root or the temporary directory")
 
 
-def write_launcher(target: Path, module: str, function: str, chosen: Runtime) -> None:
+def write_launcher(target: Path, module: str, function: str, chosen: Runtime, *, follow_selection: bool = False) -> None:
     """Atomically write a launcher for an already verified runtime."""
     confine_tests(target)
     if not re.fullmatch(r"poolhouse(?:\.[a-z_][a-z0-9_]*)+", module):
@@ -302,7 +371,7 @@ def write_launcher(target: Path, module: str, function: str, chosen: Runtime) ->
     arguments = (["-c", f"import sys;sys.argv[0]={target.name!r};from {module} import {function};sys.exit({function}())"]
                  if function else ["-m", module])
     text = LAUNCHER.format(root=str(directory()), python=str(chosen.python),
-                           arguments=repr(arguments), name=target.name)
+                           arguments=repr(arguments), name=target.name, follow_selection=follow_selection)
     with writing(target) as temporary:
         temporary.write_text(text, encoding="utf-8")
         protect(temporary)

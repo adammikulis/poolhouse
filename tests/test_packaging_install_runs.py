@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.utils import parse_wheel_filename
+from packaging.version import Version
 from wheel_support import fresh_wheel
 
 from poolhouse.fleet.launch import already_running
@@ -128,7 +130,7 @@ def test_the_installed_machine_says_which_version_it_runs(tmp_path):
          "from poolhouse.fleet import updates; print(updates.state()['version'])"],
         capture_output=True, text=True, timeout=120)
     assert said.stdout.strip(), "an installed machine reports no version at all"
-    assert said.stdout.strip() in wheel().name.replace("_", "-")
+    assert Version(said.stdout.strip()) == parse_wheel_filename(wheel().name)[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="install.ps1 is the Windows installer")
@@ -282,9 +284,9 @@ def wheelhouse(into: Path) -> Path:
     """A directory holding a wheel for every extra a full install has, and for the
     packaging the library itself asks for."""
     versions = {"ladybug": "0.20.4", "huggingface_hub": "1.32.0", "ddgs": "9.0.0",
-                "matplotlib": "3.11.2", "numpy": "1.26.0", "trafilatura": "2.0.0", "openai_agents": "0.23.1", "py_machineid": "0.8.0"}
+                "matplotlib": "3.11.2", "numpy": "1.26.0", "trafilatura": "2.0.0", "openai_agents": "0.23.1", "py_machineid": "0.8.0", "keyring": "24.0.0", "pyjwt": "2.10.0"}
     for module, version in versions.items():
-        stand_in_wheel(into, module.replace("_", "-"), version, {"openai_agents": "agents", "py_machineid": "machineid"}.get(module, module))
+        stand_in_wheel(into, module.replace("_", "-"), version, {"openai_agents": "agents", "py_machineid": "machineid", "pyjwt": "jwt"}.get(module, module))
     wheel_of_installed(into, "packaging")
     # Whatever else the library asks for unconditionally must be on the disk too, or `--no-index`
     # cannot resolve poolhouse itself (psutil became a core requirement after this was written, and
