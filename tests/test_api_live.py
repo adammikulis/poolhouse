@@ -18,7 +18,7 @@ from poolhouse import node_launch
 from poolhouse.api import _node
 from poolhouse.testing.fakehub import fake_hub
 
-pytest_plugins = ["node_kit"]
+pytest_plugins = ["node_kit", "serve_node"]
 
 BIG = b"GGUF" + struct.pack("<IQQ", 3, 0, 0) + bytes(range(251)) * 64
 REPO = "maker/thing-GGUF"
@@ -124,6 +124,7 @@ def test_models_pull_into_the_hub_cache_and_path_finds_them_without_downloading(
         ph.models.pull("not a repo", "x.gguf")
 
 
+@pytest.mark.usefixtures("serve_leases")
 def test_serve_up_status_and_down_under_the_broker_lease(tmp_path, machine):  # noqa: F811
     model = gguf(tmp_path, Q4_K_XL)
     served = ph.serve.up(model, context=4096, reason="the api test")

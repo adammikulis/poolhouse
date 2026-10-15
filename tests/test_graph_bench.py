@@ -4476,6 +4476,10 @@ class _FakeProcess:
     def memory_info(self):
         return _FakeMemory(self._next())
 
+    def children(self, recursive=False):
+        assert recursive is True
+        return []
+
 
 class _FakeVirtualMemory:
     def __init__(self, wired, free, inactive):
