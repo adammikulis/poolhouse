@@ -166,10 +166,11 @@ def owner_alive(entry: dict, now: float, pol: dict) -> bool:
 def facts(path: Path, head: str, tip: tuple[str, str], entry: dict) -> dict:
     """Counts of ``head`` against the development tip; recomputed only when either moved."""
     snap = entry.get("snap") or {}
-    if snap.get("head") == head and snap.get("dev") == tip[1]:
+    if (snap.get("head") == head and snap.get("dev") == tip[1]
+            and snap.get("unique") == snap.get("ahead")):
         return snap
     behind, ahead = (int(x) for x in git(path, "rev-list", "--left-right", "--count", f"{tip[1]}...{head}").split())
-    unique = len([x for x in git(path, "cherry", tip[1], head).splitlines() if x.startswith("+")]) if ahead else 0
+    unique = ahead
     stamps = git(path, "log", "--format=%ct", f"{tip[1]}..{head}").split() if unique else []
     return {"head": head, "dev": tip[1], "ahead": ahead, "behind": behind, "unique": unique,
             "oldest": min((int(s) for s in stamps), default=0),
