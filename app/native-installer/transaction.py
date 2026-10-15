@@ -32,7 +32,7 @@ def decode(data: bytes):
     if type(data) is not bytes or len(data) > 32768:
         raise ValueError("Invalid transaction data.")
     try:
-        value = json.loads(data, object_entries_hook=_object)
+        value = json.loads(data, object_pairs_hook=_object)
         if canonical(value) != data:
             raise ValueError
         return value
