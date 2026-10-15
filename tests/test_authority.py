@@ -11,6 +11,7 @@ from taskboard_kit import board as _board_fixture
 from poolhouse import authority, chatpolicy, person
 from poolhouse.board.tasks import Tasks
 from poolhouse.errors import Denied
+from poolhouse.files import write_json
 from poolhouse.net import cli as net_cli
 from poolhouse.person import HumanRequired
 from poolhouse.sentinel import human
@@ -246,3 +247,15 @@ def test_a_bad_command_is_refused_with_a_message(board):
                  args("preset")):
         with pytest.raises(ValueError):
             authority_cli.run(call, board.parent)
+
+
+def test_new_gate_honors_an_existing_prod_preset(monkeypatch):
+    write_json(authority._file(), {"preset": "prod", "gates": {"runtime.deploy": "person"}})
+    assert authority.state_of("runtime.deploy-unmerged") == authority.PERSON
+    assert authority.state_of("workspace.setup") == authority.DELEGATED
+    write_json(authority._file(), {"preset": "prod", "gates": {"runtime.deploy-unmerged": "delegated"},
+                                   "projects": {"alpha": {"runtime.deploy-unmerged": "person"}}})
+    assert authority.state_of("runtime.deploy-unmerged") == authority.DELEGATED
+    assert authority.state_of("runtime.deploy-unmerged", "alpha") == authority.PERSON
+    monkeypatch.setenv(authority.FLOOR_ENV, authority.PERSON)
+    assert authority.state_of("runtime.deploy-unmerged") == authority.PERSON

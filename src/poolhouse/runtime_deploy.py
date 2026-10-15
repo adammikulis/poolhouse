@@ -14,7 +14,14 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import node_build, runtime, runtime_launchers, runtime_store, worktreerules
+from poolhouse import (
+    node_build,
+    runtime,
+    runtime_git,
+    runtime_launchers,
+    runtime_store,
+    runtime_unmerged,
+)
 from poolhouse.board import session
 from poolhouse.board.client import Conflict, NodeError
 from poolhouse.files import writing
@@ -55,7 +62,7 @@ class Plan:
     timeout: float = BUILD_TIMEOUT
     wait_s: float = CLAIM_WAIT_S
     agent: str = ""
-    allow_unmerged: bool = False
+    allow_unmerged: bool | runtime_unmerged.Approval = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,8 +193,8 @@ def _record(plan: Plan) -> None:
 
 def switch(chosen: runtime.Runtime, plan: Plan) -> None:
     """Rewrite every launcher atomically, publish the selection, then record the layout."""
-    with only_one(worktreerules.landing_lock(plan.checkout), wait=False, note="runtime cutover"):
-        admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged and chosen.commit == plan.commit)
+    with only_one(runtime_git.boundary(plan.checkout), wait=False, note="runtime cutover"):
+        admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged if chosen.commit == plan.commit else False)
         floor = max(plan.floor, floor_of(plan.checkout, resolve_commit(plan.checkout)))
         if runtime_store.epoch_of(chosen.prefix) < floor:
             raise DeployError(f"runtime epoch is below the source floor {floor}")

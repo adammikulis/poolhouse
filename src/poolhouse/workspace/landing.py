@@ -13,10 +13,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from poolhouse.board.client import Denied
-from poolhouse.board.session import Agent, Session
+from poolhouse.board import client
+
+if TYPE_CHECKING:
+    from poolhouse.board.session import Agent, Session
 from poolhouse.devbranch import development_branch
 from poolhouse.lock import pid_alive
 from poolhouse.workspace.model_tiers import tier_of
@@ -85,7 +87,7 @@ def _caller(s: Session) -> Agent:
     me = s.whoami()
     why = eligible(me)
     if why:
-        raise Denied("denied", why)
+        raise client.Denied("denied", why)
     return me
 
 

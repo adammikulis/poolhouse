@@ -1,0 +1,69 @@
+"""Exact reviewed source admission for delegated runtime deployment."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from poolhouse import authority, board
+from poolhouse.runtime_git import COMMIT, DeployError, git
+from poolhouse.workspace import landing
+
+GATE = "runtime.deploy-unmerged"
+
+
+@dataclass(frozen=True, slots=True)
+class Approval:
+    """The actor, source and queue decision bound to one runtime commit."""
+
+    primary: Path
+    commit: str
+    board: str
+    request: str
+    actor: str
+
+
+def validate(approval: Approval, primary: Path, commit: str) -> None:
+    """Revalidate an exact source decision against its authenticated node."""
+    if approval.primary != primary.resolve() or approval.commit != commit or not COMMIT.fullmatch(commit):
+        raise DeployError("the runtime approval does not match this exact source commit")
+    actor = os.environ.get(authority.AGENT_ENV, "")
+    if not actor or approval.actor != actor:
+        raise DeployError("the runtime approval belongs to another agent")
+    try:
+        client = board.client.Client(autostart=False)
+        board_id = str(client.call("project_resolve", path=str(primary.resolve()))["board"])
+        if approval.board != board_id:
+            raise DeployError("the runtime approval belongs to another project")
+        own = board.session.connect(agent=actor, board=board_id, client=client)
+        me = own.whoami()
+        if me.name != actor or me.parent or me.retired or landing.eligible(me):
+            raise DeployError("reviewed runtime deployment needs a live eligible lead agent")
+        authority.require("runtime.deploy", f"runtime deploy {commit} from {primary}")
+        authority.require(GATE, f"runtime deploy {commit} from {primary} review {approval.request}")
+        queue = landing.fold(own)
+        req = queue.requests.get(approval.request)
+        if not req or req["sha"] != commit or req["status"] not in ("queued", "needs-review", "running", "landed"):
+            raise DeployError("the runtime needs an active exact-commit review request")
+        if queue.paused or landing.refusal(own, req) or landing.standing(own, req):
+            raise DeployError("the runtime commit has no standing independent approval")
+        target = git(primary, "symbolic-ref", "--quiet", "--short", "HEAD")
+        if req["target"] != target:
+            raise DeployError("the runtime approval names another development branch")
+        branch = req["branch"]
+        if not isinstance(branch, str) or git(primary, "rev-parse", "--verify", f"refs/heads/{branch}") != commit:
+            raise DeployError("the reviewed runtime branch changed")
+    except (board.client.NodeError, OSError, KeyError, TypeError, ValueError) as exc:
+        raise DeployError(f"reviewed runtime admission is unavailable: {exc}") from exc
+
+
+def approve(primary: Path, commit: str, request: str) -> Approval:
+    """Return the checked source decision for the caller's exact queue request."""
+    try:
+        board_id = str(board.client.Client(autostart=False).call("project_resolve", path=str(primary.resolve()))["board"])
+    except (board.client.NodeError, OSError, KeyError, TypeError, ValueError) as exc:
+        raise DeployError(f"reviewed runtime admission is unavailable: {exc}") from exc
+    approval = Approval(primary.resolve(), commit, board_id, request, os.environ.get(authority.AGENT_ENV, ""))
+    validate(approval, primary, commit)
+    return approval

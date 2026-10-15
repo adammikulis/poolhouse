@@ -38,6 +38,7 @@ GATES: dict[str, str] = {
     "chat.policy": "chat",
     "runtime.deploy": "runtime",
     "github.release": "github",
+    "runtime.deploy-unmerged": "runtime",
 }
 """Each delegable gate and its group."""
 
@@ -56,6 +57,7 @@ MEANS: dict[str, str] = {
     "chat.policy": "change what the chat refuses",
     "runtime.deploy": "deploy a new runtime build on this device",
     "github.release": "publish a reviewed development tip or prerelease through the repository App",
+    "runtime.deploy-unmerged": "deploy an independently reviewed exact source commit on this device",
 }
 """What a lead agent may do without asking the person while a gate is delegated."""
 
@@ -80,7 +82,8 @@ def state_of(gate: str, project: str = "") -> str:
         return PERSON
     data = _read()
     scoped = (data.get("projects") or {}).get(project, {}) if project else {}
-    return scoped.get(gate) or (data.get("gates") or {}).get(gate) or DELEGATED
+    default = PERSON if data.get("preset") == "prod" and gate not in PROD_DELEGATED else DELEGATED
+    return scoped.get(gate) or (data.get("gates") or {}).get(gate) or default
 
 
 def resolve(names: Iterable[str]) -> list[str]:

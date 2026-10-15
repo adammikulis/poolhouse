@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from packaging.requirements import Requirement
 from packaging.tags import parse_tag, sys_tags
+from packaging.version import Version
 from wheel_support import fresh_wheel
 
 from poolhouse import runtime
@@ -67,6 +68,7 @@ def test_build_uses_the_committed_snapshot_of_the_named_commit(tmp_path, monkeyp
         return "ok"
 
     monkeypatch.setattr(runtime_wheel, "_run", run)
+    monkeypatch.setattr(runtime_wheel.runtime_git, "object_view", lambda checkout, view: None)
     chosen = runtime.Runtime(tmp_path / "new-prefix", COMMIT, "0.1.0", runtime.identity())
     monkeypatch.setattr(runtime_wheel, "prepare", lambda wheel, commit, timeout, **kw: chosen)
     stage = tmp_path / "stage"
@@ -166,7 +168,7 @@ def test_built_wheel_imports_from_an_immutable_install(tmp_path):
     installed, source, commit, version, wheels, managed_runtime, updated_commit = json.loads(done.stdout)
     assert Path(installed).is_relative_to(target)
     assert Path(source) == root and commit == COMMIT
-    assert version == wheel.name.split("-")[1]
+    assert Version(version) == Version(wheel.name.split("-")[1])
     assert Path(wheels) == cached.parent
     assert Path(managed_runtime[0]).is_relative_to(tmp_path / "managed" / "env")
     assert managed_runtime[1] == COMMIT

@@ -22,7 +22,6 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | onboard `signing export/rotate/revoke/confirm/accept` | `fleet/onboard/signing_cli.py` | the signing key | `signing show` is open |
 | `poolhouse-security review` | `sentinel/review.py:209` | the review screen | none |
 | `poolhouse-members open` | `fleet/members.py:212` | a signed-in ticket to the owner's page | none |
-| `poolhouse-runtime ensure --allow-unmerged` | `runtime_cli.py:114` | releasing code not on the development branch | none |
 | `poolhouse-workspace file delete`, `quarantine-release` | `workspace/filecli.py:292`, `mail_cli.py:123` | irreversible deletion; held messages | none through these |
 | chat tool names matching release, approv, grant, mint, sentinel, polic, guard, role, rule, request, answer | `chatpolicy.py:90-155` | the same actions as chat tools | none |
 | `git push` naming `main`; `--all`, `--tags`, `--mirror`, `--delete`, `--force` | `claude-bash-guard:102-113` | the owner's release; history | `main`: `person-consume propose`, a person selects the approval |
@@ -39,6 +38,7 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | `poolhouse-reputation ...` | `reputation.admin` |
 | `poolhouse-log export` | `activity.export` |
 | `poolhouse-runtime ensure`, `rollback`, `restart-host`, `pin` | `runtime.deploy` |
+| `poolhouse-runtime ensure --allow-unmerged --ref SHA --review-request ID` (live eligible lead, independent exact-SHA approval) | `runtime.deploy` and `runtime.deploy-unmerged` |
 | recovery `export` (writes a file that runs commands on every pool machine) | `fleet.recovery` |
 | `poolhouse-serve memory --apply` (wired limit, through the macOS administrator dialog; the sudo path needs a terminal) | `serve.wired-limit` |
 | `poolhouse-workspace install-hooks` | `workspace.setup` |

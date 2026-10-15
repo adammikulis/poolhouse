@@ -15,6 +15,7 @@ from poolhouse import (
     jobs,
     node_launch,
     node_pool,
+    person,
     runtime,
     runtime_board,
     runtime_coalesce,
@@ -23,6 +24,7 @@ from poolhouse import (
     runtime_stale,
     runtime_store,
     runtime_trust,
+    runtime_unmerged,
     worktreerules,
 )
 from poolhouse.command import Group, flag
@@ -66,12 +68,18 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
     """The deploy plan an ensure, status or rollback command names, built from the recorded primary checkout."""
     primary = runtime_trust.primary_for(_checkout(args.checkout), deploying=deploying,
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
+    exception = getattr(args, "allow_unmerged", False)
+    if exception and person.marked() and (not runtime_unmerged.COMMIT.fullmatch(args.ref)
+                                         or (args.agent and args.agent != os.environ.get(authority.AGENT_ENV))):
+        raise runtime_deploy.DeployError("reviewed runtime deployment needs the full commit SHA and the caller's own identity")
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
+    if exception and person.marked():
+        exception = runtime_unmerged.approve(primary, commit, args.review_request)
     if deploying:
-        runtime_deploy.admit(primary, commit, allow_unmerged=getattr(args, "allow_unmerged", False))
+        runtime_deploy.admit(primary, commit, allow_unmerged=exception)
     return runtime_deploy.Plan(primary, commit, _launchers(args.launchers),
                                runtime_trust.floor(primary), args.timeout, args.wait, args.agent,
-                               allow_unmerged=getattr(args, "allow_unmerged", False))
+                               allow_unmerged=exception)
 
 
 def _start_background(argv: list[str]) -> None:
@@ -113,8 +121,9 @@ def _ensure(args: argparse.Namespace) -> int:
         args.via = runtime_trust.authorize("ensure")
     if args.allow_unmerged:
         if args.background:
-            raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground, at a terminal")
-        human.mint("deploy an unmerged commit", args.ref)
+            raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground")
+        if not person.marked():
+            human.mint("deploy an unmerged commit", args.ref)
     if not args.background and not args.no_update and not args.allow_unmerged:
         _caught_up(args)
     plan = plan_from(args)
@@ -162,7 +171,8 @@ def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.
     previous = str(runtime_store.selection().get("commit", ""))
     outcome = runtime_deploy.ensure(plan, force=args.force, force_build=args.force_build)
     if outcome.action in ("switched", "recovered"):
-        allowed = plan.commit if plan.allow_unmerged and outcome.commit == plan.commit else ""
+        allowed = (plan.allow_unmerged if isinstance(plan.allow_unmerged, runtime_unmerged.Approval) else plan.commit) \
+            if plan.allow_unmerged and outcome.commit == plan.commit else ""
         outcome = _with_node(outcome, allowed)
     _audited(args, "ensure", plan, outcome.action, outcome.detail)
     runtime_board.announce(outcome, previous, runtime_deploy.acting(plan), verb="ensure")
@@ -170,7 +180,7 @@ def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.
     return outcome
 
 
-def _with_node(outcome: runtime_deploy.Outcome, allow_unmerged_commit: str = "") -> runtime_deploy.Outcome:
+def _with_node(outcome: runtime_deploy.Outcome, allow_unmerged_commit: str | runtime_unmerged.Approval = "") -> runtime_deploy.Outcome:
     """Move the running node onto the new runtime's binary and say what happened; the board is on disk, so nothing is lost."""
     moved = node_launch.swap(allow_unmerged_commit=allow_unmerged_commit)
     detail = "; ".join(part for part in (outcome.detail, f"node {moved['action']}: {moved['detail']}") if part)
@@ -312,7 +322,8 @@ GROUP = Group("poolhouse runtime", "Build, verify and select the installed runti
 GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the selected runtime", options=[
     *COMMON, flag("--ref", default="HEAD"),
     flag("--force", action="store_true", help="rebuild even when held or current"),
-    flag("--allow-unmerged", action="store_true", help="deploy a commit that is not on the development branch (a person at a terminal only)"),
+    flag("--allow-unmerged", action="store_true", help="deploy an exact independently reviewed source commit while delegated, or confirm at a terminal"),
+    flag("--review-request", default="", help="exact independent landing review request for a delegated source deployment"),
     flag("--force-build", action="store_true", help="build again at once after a failed build (needs an agent)"),
     flag("--now", action="store_true", help="skip the stability delay before a background build"),
     flag("--settle", action="store_true", help="wait until the tip has been unchanged for a few minutes, then build only the newest tip"),
