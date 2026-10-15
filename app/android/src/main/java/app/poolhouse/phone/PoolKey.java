@@ -45,15 +45,79 @@ final class PoolKey {
         return keys;
     }
 
+    /** Loading a bound key never creates or replaces it, even when enrollment has expired. */
+    static PoolKey open(Context context, PhoneStore linked) throws Exception {
+        final String node, device;
+        synchronized (linked) {
+            if (!linked.added()) throw unavailable();
+            node = linked.text("pin");
+            device = linked.device();
+        }
+        SharedPreferences saved = context.getSharedPreferences("poolhouse-pool-keys", Context.MODE_PRIVATE);
+        synchronized (LOCK) {
+            String handle = saved.getString("node_" + node, "");
+            if (!node.matches("[0-9a-f]{64}") || !device.matches("[0-9a-f]{64}")
+                    || !device.equals(saved.getString("device_" + handle, ""))
+                    || !saved.getString("enrollment_" + handle, "").matches("[0-9a-f]{64}")) throw unavailable();
+            PoolKey key = new PoolKey(saved, handle, device);
+            key.checkedKey();
+            return key;
+        }
+    }
+
+    static final class EnrollmentProof {
+        private final byte[][] chain;
+        private final byte[] consent;
+        private EnrollmentProof(byte[][] chain, byte[] consent) {
+            this.chain = chain;
+            this.consent = consent;
+        }
+        byte[][] chain() {
+            byte[][] copy = new byte[chain.length][];
+            for (int i = 0; i < chain.length; i++) copy[i] = chain[i].clone();
+            return copy;
+        }
+        byte[] consent() { return consent.clone(); }
+    }
+
+    /** Evidence is reconstructed from this alias, never from a node-supplied replacement key. */
+    EnrollmentProof enrollmentProof(PoolKeyEnrollment enrollment, long now) throws Exception {
+        synchronized (LOCK) {
+            enrollment.requireCurrent(now);
+            if (!device.equals(enrollment.device) || !enrollment.binding().equals(bindings.getString("enrollment_" + handle, ""))
+                    || !Hex.sha256(ApprovalKey.publicPoint()).equals(enrollment.approvalKey)) throw unavailable();
+            checkedKey();
+            java.security.cert.Certificate[] certificates = store().getCertificateChain(PoolKeyBinding.alias(handle));
+            if (certificates == null || certificates.length < 2 || certificates.length > 8) throw unavailable();
+            byte[][] chain = new byte[certificates.length][];
+            java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
+            java.io.DataOutputStream lengths = new java.io.DataOutputStream(encoded);
+            int total = 0;
+            for (int i = 0; i < certificates.length; i++) {
+                chain[i] = certificates[i].getEncoded();
+                total += chain[i].length;
+                if (chain[i].length == 0 || chain[i].length > 16384 || total > 65536) throw unavailable();
+                lengths.writeInt(chain[i].length);
+                lengths.write(chain[i]);
+            }
+            byte[] point = publicPoint();
+            if (!java.util.Arrays.equals(point, WebPushCipher.point(certificates[0].getPublicKey()))) throw unavailable();
+            return new EnrollmentProof(chain, enrollment.consent(point, Hex.sha256(encoded.toByteArray())));
+        }
+    }
+
     /** A linked node's own TLS pin and device certificate fingerprint are distinct persisted values. */
-    static PoolKey provision(Context context, PhoneStore linked) throws Exception {
+    static PoolKey provision(Context context, PhoneStore linked, PoolKeyEnrollment enrollment) throws Exception {
+        enrollment.requireCurrent(System.currentTimeMillis() / 1000);
         final String endpoint, device;
         synchronized (linked) {
             if (!linked.added()) throw unavailable();
             endpoint = linked.text("pin");
             device = linked.device();
         }
-        if (!endpoint.matches("[0-9a-f]{64}") || !device.matches("[0-9a-f]{64}")) throw unavailable();
+        if (!endpoint.matches("[0-9a-f]{64}") || !device.matches("[0-9a-f]{64}")
+                || !endpoint.equals(enrollment.node) || !device.equals(enrollment.device)
+                || !Hex.sha256(ApprovalKey.publicPoint()).equals(enrollment.approvalKey)) throw unavailable();
         SharedPreferences bindings = context.getSharedPreferences("poolhouse-pool-keys", Context.MODE_PRIVATE);
         synchronized (LOCK) {
             KeyStore keys = store();
@@ -74,7 +138,8 @@ final class PoolKey {
             String slot = "node_" + endpoint;
             String handle = bindings.getString(slot, "");
             if (!handle.isEmpty()) {
-                if (!device.equals(bindings.getString("device_" + handle, ""))) throw unavailable();
+                if (!device.equals(bindings.getString("device_" + handle, ""))
+                        || !enrollment.binding().equals(bindings.getString("enrollment_" + handle, ""))) throw unavailable();
                 PoolKey existing = new PoolKey(bindings, handle, device);
                 existing.checkedKey();
                 return existing;
@@ -91,7 +156,7 @@ final class PoolKey {
             boolean generated = false;
             if (context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)) {
                 try {
-                    generator.initialize(spec(alias).setIsStrongBoxBacked(true).build());
+                    generator.initialize(spec(alias, enrollment).setIsStrongBoxBacked(true).build());
                     generator.generateKeyPair();
                     generated = true;
                 } catch (StrongBoxUnavailableException unavailable) {
@@ -99,19 +164,20 @@ final class PoolKey {
                 }
             }
             if (!generated) {
-                generator.initialize(spec(alias).build());
+                generator.initialize(spec(alias, enrollment).build());
                 generator.generateKeyPair();
             }
             PoolKey made = new PoolKey(bindings, handle, device);
             made.checkedKey();
-            if (!bindings.edit().putString(slot, handle).putString("device_" + handle, device).commit()) throw unavailable();
+            if (!bindings.edit().putString(slot, handle).putString("device_" + handle, device).putString("enrollment_" + handle, enrollment.binding()).commit()) throw unavailable();
             return made;
         }
     }
 
-    private static KeyGenParameterSpec.Builder spec(String alias) {
+    private static KeyGenParameterSpec.Builder spec(String alias, PoolKeyEnrollment enrollment) {
         return new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
                 .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1"))
+                .setAttestationChallenge(enrollment.challenge())
                 .setDigests(KeyProperties.DIGEST_SHA256).setUserAuthenticationRequired(true)
                 .setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
                 .setInvalidatedByBiometricEnrollment(true);
