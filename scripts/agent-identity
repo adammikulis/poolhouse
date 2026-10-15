@@ -148,8 +148,8 @@ def save(who: Identity, undo: str) -> None:
 def api(method: str, path: str, *, hint: str, bearer: str = "", payload: dict | None = None) -> Any:
     """One request to the GitHub API through the project's client."""
     try:
-        return client.request_json(f"{API}{path}", payload=payload, method=method, token=bearer,
-                                   timeout=30.0, headers=HEADERS)
+        return client.request_json(f"{API}{path}", payload=payload, method=method,
+                                   options=client.Options(token=bearer, timeout=30.0, headers=HEADERS))
     except client.ServerError as exc:
         what = f"GitHub answered {exc.status}" if exc.status else "GitHub could not be reached"
         raise (Gone if exc.status == 404 else Failed)(f"{what}; {hint}") from None
