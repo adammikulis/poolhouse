@@ -6,6 +6,7 @@ import hashlib
 import os
 import selectors
 import socket
+import stat
 import struct
 import subprocess
 import threading
@@ -16,6 +17,7 @@ from pathlib import Path
 from poolhouse import platform
 from poolhouse.board.client import Client, NodeError
 from poolhouse.board.session import Session
+from poolhouse.coordination.creation import Creation, Unfinished
 from poolhouse.coordination.docker import Docker, Refused
 from poolhouse.coordination.plan import Plan
 
@@ -35,9 +37,26 @@ umask 077
 
 
 def verified_binary(path: Path) -> bytes:
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024**2:
-        raise Refused('The relay executable is not a bounded regular file.')
-    body = path.read_bytes()
+    maximum = 2 * 1024**2
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        original = os.fstat(descriptor)
+        if (not stat.S_ISREG(original.st_mode) or original.st_size > maximum or
+                original.st_uid != os.getuid()):
+            raise Refused('The relay executable is not a bounded regular file.')
+        chunks = bytearray()
+        while len(chunks) <= maximum:
+            body = os.read(descriptor, min(CHUNK, maximum + 1 - len(chunks)))
+            if not body:
+                break
+            chunks.extend(body)
+        current = path.lstat()
+        if (len(chunks) > maximum or not stat.S_ISREG(current.st_mode) or
+                (current.st_dev, current.st_ino) != (original.st_dev, original.st_ino)):
+            raise Refused('The relay executable changed while being read.')
+        body = bytes(chunks)
+    finally:
+        os.close(descriptor)
     if hashlib.sha256(body).hexdigest() != SHA256:
         raise Refused('The relay executable digest changed.')
     if body[:6] != b'\x7fELF\x02\x01' or struct.unpack_from('<H', body, 18)[0] != 183:
@@ -58,8 +77,9 @@ def install(docker: Docker, identifier: str, plan: Plan, root: Path, session: Se
     for key, value in helper.labels.items():
         argv += ['--label', f'{key}={value}']
     session.reserve([('server', helper.name)])
-    helper_id = docker.call([*argv, IMAGE, '/bin/busybox', 'nc', '--help']).stdout.strip()
+    receipt = Creation(root.parent, helper)
     try:
+        helper_id = receipt.create(docker, 'container', [*argv, IMAGE, '/bin/busybox', 'nc', '--help'])
         value = docker.inspect('container', helper_id, helper)
         host = value['HostConfig']
         if (value['Config']['Image'] != IMAGE or value['Config']['User'] != '65532:65532' or
@@ -75,9 +95,21 @@ def install(docker: Docker, identifier: str, plan: Plan, root: Path, session: Se
                     body=base64.b64encode(body).decode('ascii'))
         return custody(docker, identifier)
     finally:
-        docker.inspect('container', helper_id, helper)
-        docker.call(['rm', '--volumes', helper_id])
-        session.release('server', helper.name)
+        try:
+            if helper_id := receipt.identifiers.get('container'):
+                session.reserve([('server', helper.name)])
+                docker.inspect('container', helper_id, helper)
+                docker.call(['rm', '--volumes', helper_id])
+                receipt.removed('container')
+            if not receipt.pending:
+                session.release('server', helper.name)
+        finally:
+            unfinished = bool(receipt.identifiers or receipt.pending)
+            try:
+                receipt.close()
+            finally:
+                if unfinished:
+                    raise Unfinished(f'The relay dependency cleanup is unconfirmed; evidence: {receipt.path}')
 
 
 def custody(docker: Docker, identifier: str) -> str:
@@ -105,6 +137,7 @@ class Forwarder:
     failed: bool = field(default=False, init=False)
     fingerprint: str = field(default='', init=False, repr=False)
     network: str = field(default='', init=False)
+    reaped: bool = field(default=True, init=False)
 
     def authorized(self) -> None:
         if self.session.whoami().name != self.plan.owner:
@@ -142,26 +175,39 @@ class Forwarder:
                     self.active = None
         except (OSError, Refused, NodeError, subprocess.SubprocessError):
             self.failed = not self.stop.is_set()
+        finally:
+            if not self.stop.is_set():
+                self.failed = True
 
     def deliver(self, client: socket.socket) -> None:
         argv = [self.docker.program, 'exec', '-i', '--user', '65532:65532', self.identifier,
                 BINARY, 'nc', '-w', '30', '127.0.0.1', '6443']
         process = platform.start_process(argv, env=self.docker.env, shell=False, close_fds=True,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        self.reaped = False
         try:
             pump(client, process, self.stop)
         finally:
-            if process.poll() is None:
+            reap(process)
+            self.reaped = True
+
+
+def reap(process: subprocess.Popen) -> None:
+    try:
+        if process.poll() is None:
+            with contextlib.suppress(ProcessLookupError):
                 platform.terminate_process_group(process)
-            try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
                 platform.terminate_process_group(process, force=True)
-                process.wait(timeout=1)
-            if process.stdin:
-                process.stdin.close()
-            if process.stdout:
-                process.stdout.close()
+            process.wait(timeout=1)
+    finally:
+        if process.stdin:
+            process.stdin.close()
+        if process.stdout:
+            process.stdout.close()
 
 
 def pump(client: socket.socket, process: subprocess.Popen, stop: threading.Event) -> None:
@@ -234,5 +280,5 @@ def forward(docker: Docker, identifier: str, plan: Plan, session: Session):
             if worker.active is not None:
                 worker.active.close()
             thread.join(timeout=12)
-            if thread.is_alive():
-                raise Refused('The owned relay has not completed its cleanup.')
+            if thread.is_alive() or not worker.reaped:
+                raise Unfinished('The owned relay has not completed its cleanup.')

@@ -223,12 +223,12 @@ def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tm
                               release=lambda kind, key: releases.append((kind, key)))
     class OwnedDocker:
         def __init__(self, *_args):
-            pass
+            self.env = {'HOME': str(tmp_path)}
         def image_ready(self):
             pass
         def call(self, argv, **_kwargs):
             calls.append(argv)
-            value = 'network-id' if argv[0] == 'network' else 'container-id'
+            value = 'b' * 64 if argv[0] == 'network' else 'a' * 64
             return subprocess.CompletedProcess(argv, 0, stdout=value)
         def verify(self, *_args):
             pass
@@ -252,8 +252,8 @@ def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tm
     with pytest.raises(KeyboardInterrupt):
         runtime.run(session, tmp_path / 'private-state', 'unix:///own/docker.sock', 16443, 650)
     assert signal.getsignal(signal.SIGTERM) == previous
-    assert calls[-3:] == [['stop', '--time', '10', 'container-id'],
-                          ['rm', '--volumes', 'container-id'], ['network', 'rm', 'network-id']]
+    assert calls[-3:] == [['stop', '--time', '10', 'a' * 64],
+                          ['rm', '--volumes', 'a' * 64], ['network', 'rm', 'b' * 64]]
     assert len(releases) == 3 and {kind for kind, _ in releases} == {'install', 'server', 'port'}
 
 
@@ -364,5 +364,166 @@ def test_relay_rejects_untrusted_binary_files(tmp_path):
         relay.verified_binary(body)
     link = tmp_path / 'link'
     link.symlink_to(body)
-    with pytest.raises(Refused, match='regular file'):
+    import errno
+    with pytest.raises(OSError) as refused:
         relay.verified_binary(link)
+    assert refused.value.errno == errno.ELOOP
+
+
+@pytest.mark.parametrize('phase', ['create', 'start', 'copy', 'install', 'cleanup'])
+def test_relay_dependency_cancellation_keeps_ambiguous_evidence_and_cleans_known_ids(monkeypatch, tmp_path, phase):
+    import os
+    import signal
+    from types import SimpleNamespace
+
+    from poolhouse.coordination import relay
+    from poolhouse.coordination.creation import Unfinished
+
+    calls = []
+    releases = []
+    root = tmp_path / 'private-config'
+    root.mkdir()
+    plan = Plan('codex-test', 'cancel-fixture', 16443)
+    session = SimpleNamespace(reserve=lambda _: None,
+                              release=lambda kind, key: releases.append((kind, key)))
+    stages = {'create': 'create', 'start': 'start', 'cp': 'copy', 'exec': 'install', 'rm': 'cleanup'}
+    class OwnedDocker:
+        def image_ready(self, **_kwargs):
+            pass
+        def inspect(self, kind, identifier, owner):
+            assert identifier in ('a' * 64, 'main-container') and owner.owner == plan.owner
+            return {'Config': {'Image': relay.IMAGE, 'User': '65532:65532'}, 'Mounts': [],
+                    'HostConfig': {'NetworkMode': 'none', 'ReadonlyRootfs': True,
+                                   'Privileged': False, 'CapAdd': None, 'CapDrop': ['ALL']}}
+        def call(self, argv, **_kwargs):
+            calls.append(argv)
+            if stages.get(argv[0]) == phase:
+                os.kill(os.getpid(), signal.SIGTERM)
+            return subprocess.CompletedProcess(argv, 0, stdout='a' * 64)
+    monkeypatch.setattr(relay, 'verified_binary', lambda _: b'fixture executable')
+    expected = Unfinished if phase in ('create', 'cleanup') else KeyboardInterrupt
+    with pytest.raises(expected), runtime.termination_cleanup():
+        relay.install(OwnedDocker(), 'main-container', plan, root, session)
+    records = [json.loads(line) for line in next(tmp_path.glob('creation-*.jsonl')).read_text().splitlines()]
+    assert records[0]['phase'] == 'prepared' and records[1]['phase'] == 'creating'
+    assert records[-1]['owner'] == 'codex-test'
+    if phase == 'create':
+        assert records[-1]['phase'] == 'cleanup_required'
+        assert records[-1]['unconfirmed_kind'] == 'container' and not records[-1]['known_ids']
+        assert not releases and not any(argv[0] == 'rm' for argv in calls)
+    elif phase == 'cleanup':
+        assert records[-1]['known_ids'] == {'container': 'a' * 64} and not releases
+    else:
+        assert calls[-1] == ['rm', '--volumes', 'a' * 64]
+        assert records[-1]['phase'] == 'cleaned' and releases
+
+
+def test_creation_timeout_retains_durable_pending_record_and_no_fabricated_id(tmp_path):
+    from types import SimpleNamespace
+
+    from poolhouse.coordination.creation import Creation
+
+    def timeout(argv):
+        raise subprocess.TimeoutExpired(argv, 1)
+    receipt = Creation(tmp_path, Plan('codex-test', 'timeout-fixture', 16443))
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            receipt.create(SimpleNamespace(call=timeout), 'container', ['create', 'fixture'])
+        assert receipt.pending == 'container' and receipt.identifiers == {}
+    finally:
+        receipt.close()
+    records = [json.loads(line) for line in receipt.path.read_text().splitlines()]
+    assert records[-1]['phase'] == 'cleanup_required' and records[-1]['unconfirmed_kind'] == 'container'
+    assert receipt.path.stat().st_mode & 0o777 == 0o600
+
+
+def test_relay_unexpected_thread_failure_is_observable_and_fails_closed(relay_fixture, monkeypatch):
+    import socket
+    import time
+
+    relay, docker, plan, session, _ = relay_fixture
+    def malformed():
+        raise ValueError('fixture malformed custody')
+    failures = []
+    monkeypatch.setattr('threading.excepthook', lambda args: failures.append(args.exc_value))
+    with pytest.raises(Refused, match='relay stopped'), relay.forward(docker, 'container-id', plan, session) as worker:
+        monkeypatch.setattr(worker, 'authorized', malformed)
+        with socket.create_connection(worker.listener.getsockname(), timeout=2) as client:
+            assert client.recv(1) == b''
+        deadline = time.monotonic() + 2
+        while not worker.failed and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert len(failures) == 1 and isinstance(failures[0], ValueError)
+
+
+def test_relay_vanished_child_still_reaps_and_closes_streams(monkeypatch):
+    import io
+    from types import SimpleNamespace
+
+    from poolhouse.coordination import relay
+
+    calls = []
+    process = SimpleNamespace(poll=lambda: None, wait=lambda **kwargs: calls.append(kwargs),
+                              stdin=io.BytesIO(), stdout=io.BytesIO())
+    def vanished(*_args, **_kwargs):
+        raise ProcessLookupError
+    monkeypatch.setattr(relay.platform, 'terminate_process_group', vanished)
+    relay.reap(process)
+    assert calls == [{'timeout': 1}]
+    assert process.stdin.closed and process.stdout.closed
+
+
+def test_relay_incomplete_reaping_retains_container_cleanup_boundary(relay_fixture, monkeypatch):
+    import socket
+
+    relay, docker, plan, session, _ = relay_fixture
+    from poolhouse.coordination.creation import Unfinished
+
+    with pytest.raises(Unfinished), relay.forward(docker, 'container-id', plan, session) as worker:
+        with socket.create_connection(worker.listener.getsockname(), timeout=2) as client:
+            client.sendall(b'fixture')
+            assert client.recv(32) == b'fixture'
+        import time
+        deadline = time.monotonic() + 2
+        while worker.active is not None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert worker.active is None
+        # All actual fixture children are reaped; emulate the unresolved custody signal.
+        monkeypatch.setattr(worker, 'reaped', False)
+
+
+def test_relay_foreign_owned_binary_is_refused_before_read(monkeypatch, tmp_path):
+    import os
+    import stat
+    from types import SimpleNamespace
+
+    from poolhouse.coordination import relay
+
+    path = tmp_path / 'fixture-binary'
+    path.write_bytes(b'fixture')
+    with monkeypatch.context() as scoped:
+        scoped.setattr(relay.os, 'fstat', lambda _: SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o600, st_size=7, st_uid=os.getuid() + 1))
+        scoped.setattr(relay.os, 'read', lambda *_: pytest.fail('foreign bytes were read'))
+        with pytest.raises(Refused, match='regular file'):
+            relay.verified_binary(path)
+
+
+def test_creation_initial_evidence_failure_closes_its_descriptor(monkeypatch, tmp_path):
+    import os
+
+    from poolhouse.coordination.creation import Creation
+
+    closed = []
+    original = os.close
+    def close(descriptor):
+        closed.append(descriptor)
+        original(descriptor)
+    def unavailable(_self, _phase):
+        raise OSError('fixture storage unavailable')
+    with monkeypatch.context() as scoped:
+        scoped.setattr(Creation, 'record', unavailable)
+        scoped.setattr(os, 'close', close)
+        with pytest.raises(OSError, match='storage unavailable'):
+            Creation(tmp_path, Plan('codex-test', 'storage-fixture', 16443))
+    assert len(closed) == 1
