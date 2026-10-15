@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import re
 import subprocess
@@ -34,7 +35,10 @@ def _fetch(url: str, method: str, body: bytes | None, headers: dict[str, str]) -
 
     limits = httpguard.Limits(max_bytes=8 << 20, timeout=30, deadline_s=120,
                               vet=exact, follow_redirects=False)
-    reply = httpguard.fetch(url, method=method, data=body, headers=headers, limits=limits)
+    try:
+        reply = httpguard.fetch(url, method=method, data=body, headers=headers, limits=limits)
+    except (OSError, ValueError, http.client.HTTPException):
+        raise Failed("GitHub transport failed") from None
     if reply.status == 404:
         raise Gone("GitHub object not found")
     if not 200 <= reply.status < 300:
@@ -48,11 +52,14 @@ def _fetch(url: str, method: str, body: bytes | None, headers: dict[str, str]) -
 def request(method: str, path: str, *, bearer: str = "", payload: dict | None = None,
             hint: str = "") -> Any:
     """Perform one supported operation at the fixed GitHub API origin."""
-    if method not in {"GET", "POST"} or not PATH.fullmatch(path) or '..' in path or '//' in path:
+    if method not in {"GET", "POST"} or not PATH.fullmatch(path) or '..' in path or '//' in path or '%' in path:
         raise Failed("unsupported GitHub publication operation")
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
                "Authorization": f"Bearer {bearer}", "Content-Type": "application/json"}
-    return _fetch(API + path, method, json.dumps(payload).encode() if payload is not None else None, headers)
+    reply = _fetch(API + path, method, json.dumps(payload).encode() if payload is not None else None, headers)
+    if not isinstance(reply, dict):
+        raise Failed("GitHub returned an invalid object")
+    return reply
 
 
 def upload(repo: str, release_id: int, asset: tuple[str, bytes], bearer: str) -> Any:

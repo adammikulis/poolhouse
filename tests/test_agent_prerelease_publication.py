@@ -181,3 +181,57 @@ def test_credential_open_is_exact_item_without_generic_lookup(monkeypatch):
     with pytest.raises(net.Failed, match='initial setup'):
         holder.identity()
     assert seen == ['POOLHOUSE_AGENT_APP']
+
+
+def test_all_existing_asset_conflicts_refuse_before_missing_upload(publication):
+    selected, _, state, _ = publication
+    holder.publish_release(selected.checkout)
+    state['uploads'].clear()
+    state['release']['assets'] = state['release']['assets'][-1:]
+    state['release']['assets'][0]['digest'] = 'sha256:' + '0' * 64
+    with pytest.raises(net.Failed, match='pinned digest'):
+        holder.publish_release(selected.checkout)
+    assert state['uploads'] == []
+
+
+def test_wrong_release_url_and_malformed_assets_refuse_before_upload(publication):
+    selected, _, state, _ = publication
+    holder.publish_release(selected.checkout)
+    state['uploads'].clear()
+    state['release']['assets'] = ['malformed']
+    with pytest.raises(net.Failed, match='inventory'):
+        holder.publish_release(selected.checkout)
+    state['release']['assets'] = []
+    state['release']['html_url'] = 'https://host.invalid/release'
+    with pytest.raises(net.Failed, match='public release URL'):
+        holder.publish_release(selected.checkout)
+    assert state['uploads'] == []
+
+
+def test_source_reads_ignore_forged_replacement_commit(built):
+    selected, _ = built
+    (selected.checkout / 'version.txt').write_text('forged')
+    git(selected.checkout, 'add', 'version.txt')
+    git(selected.checkout, '-c', 'user.name=Codex', '-c', 'user.email=codex@agents.invalid',
+        'commit', '-qm', 'chore: forged fixture')
+    forged = git(selected.checkout, 'rev-parse', 'HEAD')
+    git(selected.checkout, 'replace', selected.commit, forged)
+    assert holder.local(selected.checkout, 'show', f'{selected.commit}:version.txt') == VERSION
+    assert holder.environment(selected.checkout)['GIT_NO_REPLACE_OBJECTS'] == '1'
+
+
+def test_installed_hooks_are_exact_regular_blob_bytes(built, tmp_path, monkeypatch):
+    selected, _ = built
+    hooks = selected.checkout / 'scripts/hooks'
+    hooks.mkdir(parents=True)
+    body = b'#!/bin/sh\n# trailing whitespace  \nexit 0\n\n'
+    (hooks / 'pre-push').write_bytes(body)
+    git(selected.checkout, 'add', 'scripts/hooks/pre-push')
+    git(selected.checkout, '-c', 'user.name=Codex', '-c', 'user.email=codex@agents.invalid', 'commit', '-qm', 'chore: hook fixture')
+    built_commit = git(selected.checkout, 'rev-parse', 'HEAD')
+    package = tmp_path / 'installed/poolhouse'
+    (package / 'fleet').mkdir(parents=True)
+    (package / 'fleet/built-from').write_text(built_commit)
+    monkeypatch.setattr(holder, '__file__', str(package / 'workspace/github_release.py'))
+    destination = holder._hooks(selected, tmp_path / 'view')
+    assert (destination / 'pre-push').read_bytes() == body

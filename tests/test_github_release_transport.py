@@ -104,3 +104,13 @@ def test_environment_discards_ambient_credential_and_execution_settings(tmp_path
     assert env['GIT_CONFIG_NOSYSTEM'] == '1'
     assert env['GIT_ALLOW_PROTOCOL'] == 'https'
     assert env['GIT_TERMINAL_PROMPT'] == '0'
+
+
+def test_network_errors_never_echo_bearer(monkeypatch):
+    def fail(*args, **kwargs):
+        raise ValueError('invalid header Bearer fixture-secret')
+
+    monkeypatch.setattr(httpguard, 'fetch', fail)
+    with pytest.raises(net.Failed, match='transport failed') as error:
+        net.request('GET', '/repos/demo/project/releases', bearer='fixture-secret')
+    assert 'fixture-secret' not in str(error.value)

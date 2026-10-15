@@ -35,7 +35,7 @@ def environment(directory: Path) -> dict[str, str]:
     """Return a private Git environment without ambient configuration or credentials."""
     env = {"PATH": os.defpath, "HOME": str(directory), "XDG_CONFIG_HOME": str(directory),
            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
-           "GIT_TERMINAL_PROMPT": "0", "GIT_ALLOW_PROTOCOL": "https", "PYTHON": sys.executable}
+           "GIT_TERMINAL_PROMPT": "0", "GIT_NO_REPLACE_OBJECTS": "1", "GIT_ALLOW_PROTOCOL": "https", "PYTHON": sys.executable}
     for name in ("POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_HOME", "CLAUDECODE", "POOLHOUSE_AGENT"):
         if os.environ.get(name):
             env[name] = os.environ[name]
@@ -43,13 +43,17 @@ def environment(directory: Path) -> dict[str, str]:
     return env
 
 
-def local(checkout: Path, *args: str) -> str:
-    """Read source Git objects without user configuration, filters or prompts."""
+def _read(checkout: Path, args: tuple[str, ...]) -> bytes:
     done = subprocess.run(["git", "-c", "core.fsmonitor=false", "-C", str(checkout), *args],
-                          env=environment(checkout), capture_output=True, text=True, timeout=30, check=False)
+                          env=environment(checkout), capture_output=True, timeout=30, check=False)
     if done.returncode:
         raise remote.Failed("the source repository could not be verified")
-    return done.stdout.strip()
+    return done.stdout
+
+
+def local(checkout: Path, *args: str) -> str:
+    """Read source Git text without user configuration, filters, replacements or prompts."""
+    return _read(checkout, args).decode().strip()
 
 
 def source(checkout: Path, repo: str) -> Source:
@@ -98,21 +102,22 @@ def _hooks(selected: Source, directory: Path) -> Path:
         raise remote.Failed("the installed hook source cannot be verified")
     hooks = directory / "scripts" / "hooks"
     hooks.mkdir(parents=True)
-    rows = local(selected.checkout, "ls-tree", "-r", built, "scripts/hooks").splitlines()
+    rows = _read(selected.checkout, ("ls-tree", "-rz", built, "scripts/hooks")).split(b"\0")[:-1]
     if len(rows) > 500:
         raise remote.Failed("the installed hook inventory is too large")
     for row in rows:
-        metadata, name = row.split('\t', 1)
-        mode, kind, digest = metadata.split()
+        metadata, raw_name = row.split(b'\t', 1)
+        name = raw_name.decode('ascii')
+        mode, kind, digest = metadata.decode().split()
         relative = Path(name).relative_to("scripts/hooks")
-        if kind != "blob" or mode not in {"100644", "100755"} or '..' in relative.parts:
+        if kind != "blob" or mode not in {"100644", "100755"} or '..' in relative.parts or not re.fullmatch(r'scripts/hooks/[A-Za-z0-9_./-]+', name):
             raise remote.Failed("installed hook files must be regular verified source blobs")
         if int(local(selected.checkout, "cat-file", "-s", digest)) > 2 << 20:
             raise remote.Failed("an installed hook is too large")
-        body = local(selected.checkout, "show", f"{built}:{name}")
+        body = _read(selected.checkout, ("cat-file", "blob", digest))
         target = hooks / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(body + '\n')
+        target.write_bytes(body)
         target.chmod(0o700 if mode == "100755" else 0o600)
     return hooks
 
@@ -148,7 +153,7 @@ def push_development(checkout: Path) -> dict[str, str]:
                                  input=line, capture_output=True, text=True, timeout=120, check=False)
         if checked.returncode:
             raise remote.Failed("the maintained pre-push checks refused this development tip")
-        if local(checkout, "rev-parse", "HEAD") != selected.commit:
+        if source(checkout, who.repo) != selected:
             raise remote.Failed("the selected development tip changed before publication")
         latest = remote.request("GET", path)["object"]["sha"]
         if latest != before:
@@ -227,6 +232,8 @@ def artifacts(selected: Source) -> tuple[dict, dict[str, Asset]]:
         raise remote.Failed("release output must use its fixed local build directory")
     info = _asset(directory, "build-info.json", 64 << 10)
     manifest = json.loads(info.body)
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("assets"), dict):
+        raise remote.Failed("release build provenance must be a valid object")
     names = {f"poolhouse-{parsed}-py3-none-any.whl", f"Poolhouse-{parsed.major}.{parsed.minor}dev{parsed.dev}-macos-arm64.zip"}
     if (manifest.get("schema") != 1 or manifest.get("version") != version
             or manifest.get("python_version") != str(parsed) or manifest.get("tag") != f"v{version}"
@@ -258,6 +265,20 @@ def _found(path: str, token: str):
         return None
 
 
+def _release_metadata(release: object, manifest: dict, repo: str) -> str:
+    tag, commit = manifest["tag"], manifest["source_commit"]
+    if not isinstance(release, dict):
+        raise remote.Failed("GitHub returned an invalid release object")
+    if (release.get("tag_name") != tag or release.get("name") != manifest["version"]
+            or release.get("target_commitish") != commit or release.get("prerelease") is not True or release.get("draft") is not False
+            or type(release.get("id")) is not int or release["id"] <= 0):
+        raise remote.Failed("the existing GitHub release does not match this prerelease")
+    url = f"https://github.com/{repo}/releases/tag/{tag}"
+    if release.get("html_url") != url:
+        raise remote.Failed("GitHub returned an unexpected public release URL")
+    return url
+
+
 def publish_release(checkout: Path) -> dict[str, object]:
     """Publish the fixed versioned development prerelease with matching immutable assets."""
     authorize("publish the reviewed development prerelease")
@@ -267,6 +288,8 @@ def publish_release(checkout: Path) -> dict[str, object]:
     commit, tag = manifest["source_commit"], manifest["tag"]
     authority.require("github.release", json.dumps({"operation": "publish-release", "repo": who.repo,
         "tag": tag, "sha": commit, "assets": {name: asset.sha256 for name, asset in pinned.items()}}, sort_keys=True))
+    if source(checkout, who.repo) != selected:
+        raise remote.Failed("the selected source changed before publication")
     token = github_app.mint(who, PERMISSIONS, who.repo)["token"]
     root = f"/repos/{who.repo}"
     published = remote.request("GET", f"{root}/git/ref/heads/{selected.branch}", bearer=token)["object"]["sha"]
@@ -282,19 +305,23 @@ def publish_release(checkout: Path) -> dict[str, object]:
         release = remote.request("POST", f"{root}/releases", bearer=token, payload={"tag_name": tag,
             "target_commitish": commit, "name": manifest["version"], "draft": False, "prerelease": True,
             "make_latest": "false", "body": "Development prerelease. Full release verification remains unfinished."})
-    if (release.get("tag_name") != tag or release.get("name") != manifest["version"]
-            or release.get("target_commitish") != commit or release.get("prerelease") is not True or release.get("draft") is not False
-            or type(release.get("id")) is not int or release["id"] <= 0):
-        raise remote.Failed("the existing GitHub release does not match this prerelease")
+    url = _release_metadata(release, manifest, who.repo)
     actual_tag = remote.request("GET", f"{root}/git/ref/tags/{tag}", bearer=token).get("object", {})
     if actual_tag.get("type") != "commit" or actual_tag.get("sha") != commit:
         raise remote.Failed("GitHub release tag does not match the pinned source")
     existing = release.get("assets", [])
     if not isinstance(existing, list) or len(existing) > 100:
         raise remote.Failed("the existing release asset inventory is invalid")
-    indexed = {row.get("name"): row for row in existing}
+    if any(not isinstance(row, dict) or not isinstance(row.get("name"), str) for row in existing):
+        raise remote.Failed("the existing release asset inventory is invalid")
+    indexed = {row["name"]: row for row in existing}
     if len(indexed) != len(existing) or set(indexed) - set(pinned):
         raise remote.Failed("the release contains unexpected or duplicate assets")
+    for name, row in indexed.items():
+        asset = pinned[name]
+        if (row.get("digest") != f"sha256:{asset.sha256}" or row.get("size") != len(asset.body)
+                or row.get("browser_download_url") != f"https://github.com/{who.repo}/releases/download/{tag}/{name}"):
+            raise remote.Failed("an existing release asset does not match its pinned digest")
     urls = []
     for name, asset in pinned.items():
         row = indexed.get(name)
@@ -306,7 +333,4 @@ def publish_release(checkout: Path) -> dict[str, object]:
         if row.get("browser_download_url") != expected:
             raise remote.Failed("GitHub returned an unexpected public asset URL")
         urls.append(expected)
-    url = f"https://github.com/{who.repo}/releases/tag/{tag}"
-    if release.get("html_url") != url:
-        raise remote.Failed("GitHub returned an unexpected public release URL")
     return {"release_url": url, "assets": urls}
