@@ -7,8 +7,7 @@ import json
 
 import pytest
 
-from poolhouse.decide.systemone import MAX_BYTES, SystemOne, loads
-from poolhouse.decide.types import DecideError
+from poolhouse.client.systemone import MAX_BYTES, SystemOne, SystemOneError, loads
 from poolhouse.decide_cli import main
 
 MODEL = "test-decider@pinned"
@@ -51,13 +50,13 @@ def test_two_questions_use_one_post_and_one_shared_state(server, monkeypatch):
     "http://127.0.0.1", "http://127.0.0.1:12/path", "http://u:p@127.0.0.1:12",
     "http://127.0.0.1:12?token=secret", "http://127.0.0.1:12#x", "file:///tmp/model"])
 def test_nonliteral_or_ambiguous_endpoints_are_refused(url):
-    with pytest.raises(DecideError):
+    with pytest.raises(SystemOneError):
         SystemOne(url, MODEL)
 
 
 @pytest.mark.parametrize("timeout", [0, -1, 61, float("nan"), True])
 def test_invalid_timeouts_are_refused(timeout):
-    with pytest.raises(DecideError):
+    with pytest.raises(SystemOneError):
         SystemOne("http://127.0.0.1:12", MODEL, timeout)
 
 
@@ -81,7 +80,7 @@ def test_invalid_answer_batches_fail_once_without_serial_retry(server, mutate):
     value = reply()
     mutate(value)
     url, seen = service(server, value)
-    with pytest.raises(DecideError):
+    with pytest.raises(SystemOneError):
         SystemOne(url, MODEL).ask({}, QUESTIONS)
     assert len(seen) == 1
 
@@ -89,13 +88,13 @@ def test_invalid_answer_batches_fail_once_without_serial_retry(server, mutate):
 @pytest.mark.parametrize("raw", [b'{"x":1,"x":2}', b'{"nested":{"x":1,"x":2}}', b'{"x":NaN}', b'{"x":1e999}',
                                      b'[]', b'x' * (MAX_BYTES + 1)])
 def test_strict_json_rejects_ambiguity_nonfinite_and_oversize(raw):
-    with pytest.raises(DecideError):
+    with pytest.raises(SystemOneError):
         loads(raw)
 
 
 def test_oversized_response_is_refused(server):
     url, seen = service(server, b' ' * (MAX_BYTES + 1))
-    with pytest.raises(DecideError):
+    with pytest.raises(SystemOneError):
         SystemOne(url, MODEL).ask({}, QUESTIONS)
     assert len(seen) == 1
 
@@ -108,7 +107,7 @@ def test_oversized_response_is_refused(server):
 ])
 def test_invalid_input_never_reaches_server(server, state, questions):
     url, seen = service(server)
-    with pytest.raises(DecideError):
+    with pytest.raises(SystemOneError):
         SystemOne(url, MODEL).ask(state, questions)
     assert seen == []
 
@@ -126,17 +125,17 @@ def test_noul_and_score_are_validated(server):
 
 
 def test_redirect_guard_refuses_self_and_remote_without_a_second_post(monkeypatch):
-    from poolhouse.decide import systemone
+    from poolhouse.client import systemone
 
     def redirected(url, **kwargs):
         guard = kwargs["options"].guard
         assert guard(url) == url
-        with pytest.raises(DecideError):
+        with pytest.raises(SystemOneError):
             guard(url)
         guard("https://example.invalid/steal")
 
     monkeypatch.setattr(systemone, "open_stream", redirected)
-    with pytest.raises(DecideError, match="redirects"):
+    with pytest.raises(SystemOneError, match="redirects"):
         SystemOne("http://127.0.0.1:12", MODEL).ask({}, QUESTIONS)
 
 
@@ -176,7 +175,7 @@ def test_malformed_typed_answers_are_rejected(server, answer):
     question = ({"type": "noul", "instructions": "q"} if answer["type"] == "noul" else
                 {"type": "score", "instructions": "q", "criteria": ["not ready", "ready"]})
     url, seen = service(server, {"model": MODEL, "answers": {"q": answer}})
-    with pytest.raises(DecideError):
+    with pytest.raises(SystemOneError):
         SystemOne(url, MODEL).ask({}, {"q": question})
     assert len(seen) == 1
 

@@ -21,6 +21,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from poolhouse.client.systemone import MAX_BYTES, SystemOne, loads
 from poolhouse.command import Group, flag, option
 from poolhouse.decide import jevbench, questions, registry, router
 from poolhouse.decide.calibrate import Calibration, fit
@@ -29,7 +30,6 @@ from poolhouse.decide.eval import FLOOR, Report, evaluate, score
 from poolhouse.decide.fetch import locate
 from poolhouse.decide.guards import guard_cases
 from poolhouse.decide.pins import STRANDS_V19
-from poolhouse.decide.systemone import MAX_BYTES, SystemOne, loads
 from poolhouse.decide.types import BackendUnavailable, DecideError, Decision, Option, options_of
 from poolhouse.files import write_json
 from poolhouse.log import say, warn

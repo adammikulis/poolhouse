@@ -62,7 +62,7 @@ The same from a shell, with `--json` printing `{name: answer}`:
 `SystemOne` sends one shared state and a named map of `choice`, `noul` or `score`
 questions to an explicitly supplied, externally owned literal-loopback server:
 
-    from poolhouse.decide.systemone import SystemOne
+    from poolhouse.client.systemone import SystemOne
     client = SystemOne("http://127.0.0.1:8099", "exact-served-model-id")
     result = client.ask({"items": [{"id": "item-1"}]}, {
         "item-1": {"type": "choice", "instructions": "Which action for item-1?",

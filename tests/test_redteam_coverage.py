@@ -248,3 +248,7 @@ def test_delegated_relay_spawn_inventory_tracks_actual_canonical_calls():
     found = {}
     cov.find_relay_spawns(found, 'src/poolhouse/coordination/relay.py', missing)
     assert not found
+
+
+def test_configured_system_one_transport_keeps_its_parser_and_egress_inventory():
+    assert {"parser:client/systemone.py", "egress:client/systemone.py:SystemOne.ask"} <= set(state()[0])
