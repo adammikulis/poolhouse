@@ -514,19 +514,31 @@ def test_slots_let_several_jobs_run_at_once(multi_daemon):
 
 
 @pytest.mark.slow
-def test_stopping_one_job_does_not_kill_its_neighbour(multi_daemon):
-    """The specific failure: with a single `_current` handle, "the running process" is
-    not a thing, and stopping job B reaches for whatever ran last -- killing job A."""
+def test_stopping_one_job_does_not_kill_its_neighbour(multi_daemon, tmp_path):
+    """Stopping one ready child leaves its neighbour running until released."""
     client, runner = multi_daemon
-    keep = client.submit([sys.executable, "-c", "import time; time.sleep(4)"], name="keep")
-    doomed = client.submit([sys.executable, "-c", "import time; time.sleep(4)"], name="doomed")
+    script = (
+        "import sys, time\nfrom pathlib import Path\n"
+        "ready, release = map(Path, sys.argv[1:])\n"
+        "ready.touch()\n"
+        "while not release.exists(): time.sleep(0.01)\n"
+    )
+    keep_ready, keep_release = tmp_path / "keep.ready", tmp_path / "keep.release"
+    doomed_ready, doomed_release = tmp_path / "doomed.ready", tmp_path / "doomed.release"
+    keep = client.submit([sys.executable, "-c", script, str(keep_ready), str(keep_release)], name="keep")
+    doomed = client.submit([sys.executable, "-c", script, str(doomed_ready), str(doomed_release)], name="doomed")
+    try:
+        assert _await(lambda: keep_ready.exists() and doomed_ready.exists()), runner.status()
+        assert len(runner.status()["running"]) == 2
+        client.stop(doomed["id"])
 
-    assert _await(lambda: len(runner.status()["running"]) == 2)
-    client.stop(doomed["id"])
-
-    assert _await(lambda: client.job(doomed["id"])["state"] == "stopped")
-    assert client.job(keep["id"])["state"] == "running"
-    assert _await(lambda: client.job(keep["id"])["state"] == "done", timeout=15)
+        assert _await(lambda: client.job(doomed["id"])["state"] == "stopped"), client.jobs()
+        assert client.job(keep["id"])["state"] == "running"
+        keep_release.touch()
+        assert _await(lambda: client.job(keep["id"])["state"] == "done", timeout=15)
+    finally:
+        keep_release.touch()
+        doomed_release.touch()
 
 
 def test_the_default_is_still_one_job_at_a_time(daemon):
