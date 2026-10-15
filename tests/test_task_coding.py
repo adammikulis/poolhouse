@@ -121,30 +121,35 @@ def test_stop_cancels_native_turn(tmp_path, monkeypatch):
 
 
 def test_proposal_binds_committed_files_and_deletions(tmp_path):
+    project = tmp_path / 'project'
+    project.mkdir()
     git = task_coding.git
-    git.run(['init', str(tmp_path)])
-    git.run(['config', 'user.name', 'Test'], cwd=tmp_path)
-    git.run(['config', 'user.email', 'test@example.invalid'], cwd=tmp_path)
-    git.run(['config', 'core.autocrlf', 'true'], cwd=tmp_path)
-    (tmp_path / 'deleted.py').write_text('OLD = True\n')
-    git.run(['add', 'deleted.py'], cwd=tmp_path)
-    git.run(['commit', '-m', 'baseline'], cwd=tmp_path)
-    baseline = git.head(tmp_path)
-    (tmp_path / 'deleted.py').unlink()
-    (tmp_path / 'new.py').write_text('NEW = True\n')
-    git.run(['add', '--', 'deleted.py', 'new.py'], cwd=tmp_path)
-    git.run(['commit', '-m', 'task changes'], cwd=tmp_path)
+    git.run(['init', str(project)])
+    git.run(['config', 'user.name', 'Test'], cwd=project)
+    git.run(['config', 'user.email', 'test@example.invalid'], cwd=project)
+    git.run(['config', 'core.autocrlf', 'true'], cwd=project)
+    (project / 'deleted.py').write_text('OLD = True\n')
+    git.run(['add', 'deleted.py'], cwd=project)
+    git.run(['commit', '-m', 'baseline'], cwd=project)
+    baseline = git.head(project)
+    (project / 'deleted.py').unlink()
+    (project / 'new.py').write_text('NEW = True\n')
+    git.run(['add', '--', 'deleted.py', 'new.py'], cwd=project)
+    git.run(['commit', '-m', 'task changes'], cwd=project)
+    state = tmp_path / 'machine-state'
+    state.mkdir(exist_ok=True)
+    (state / 'late-write').write_text('test machine state')
     task = {'scope': {'baseline_commit': baseline}}
     turn = SimpleNamespace(text='Changed code and verified checks.', session='session')
-    proposal = task_coding._proposal(localagent.Agent('worker', 'qwen'), task, tmp_path, turn, 'python')
+    proposal = task_coding._proposal(localagent.Agent('worker', 'qwen'), task, project, turn, 'python')
     assert set(proposal['artifacts']) == {'.task.patch', '.task-report.md', 'new.py'}
-    assert 'deleted file mode' in (tmp_path / '.task.patch').read_text()
-    assert proposal['provenance']['commit'] == git.head(tmp_path)
-    task_coding.repo.reviewed_files(tmp_path, git.head(tmp_path), proposal['artifacts'])
-    assert not git.run(['status', '--porcelain'], cwd=tmp_path).stdout.strip()
-    (tmp_path / 'new.py').write_text('DIRTY = True\n')
+    assert 'deleted file mode' in (project / '.task.patch').read_text()
+    assert proposal['provenance']['commit'] == git.head(project)
+    task_coding.repo.reviewed_files(project, git.head(project), proposal['artifacts'])
+    assert not git.run(['status', '--porcelain'], cwd=project).stdout.strip()
+    (project / 'new.py').write_text('DIRTY = True\n')
     with pytest.raises(RuntimeError, match='uncommitted changes'):
-        task_coding._proposal(localagent.Agent('worker', 'qwen'), task, tmp_path, turn, 'python')
+        task_coding._proposal(localagent.Agent('worker', 'qwen'), task, project, turn, 'python')
 
 
 def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, monkeypatch):
