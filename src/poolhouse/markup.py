@@ -16,6 +16,9 @@ class _Stripper(HTMLParser):
     """The words of a page, without its scripts, styles or tags. The fallback reader."""
 
     SKIP = {"script", "style", "noscript", "template", "svg"}
+    VOID = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
+                      "source", "track", "wbr"})
+    DISPLAY_NONE = re.compile(r"(?:^|;)\s*display\s*:\s*none\s*(?:!\s*important\s*)?(?:;|$)", re.I)
     BREAK = {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "section",
              "article", "header", "footer", "nav", "blockquote", "pre"}
 
@@ -24,28 +27,42 @@ class _Stripper(HTMLParser):
         self.title: list[str] = []
         self.parts: list[str] = []
         self._skip = 0
+        self._stack: list[tuple[str, bool]] = []
         self._in_title = False
 
     def handle_starttag(self, tag: str, attrs: Any) -> None:
-        if tag in self.SKIP:
-            self._skip += 1
-        elif tag == "title":
+        style = dict(attrs).get("style") or ""
+        style = re.sub(r"/\*.*?\*/", "", style, flags=re.S)
+        hidden = tag in self.SKIP or bool(self.DISPLAY_NONE.search(style))
+        if tag not in self.VOID:
+            self._stack.append((tag, hidden))
+            self._skip += int(hidden)
+        if self._skip or hidden:
+            return
+        if tag == "title":
             self._in_title = True
         elif tag in self.BREAK:
             self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in self.SKIP and self._skip:
-            self._skip -= 1
-        elif tag == "title":
-            self._in_title = False
-        elif tag in self.BREAK:
+        matching = next((i for i in range(len(self._stack) - 1, -1, -1)
+                         if self._stack[i][0] == tag), None)
+        if matching is None:
+            return
+        for closed, hidden in self._stack[matching:]:
+            self._skip -= int(hidden)
+            if closed == "title":
+                self._in_title = False
+        del self._stack[matching:]
+        if tag in self.BREAK and not self._skip:
             self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
+        if self._skip:
+            return
         if self._in_title:
             self.title.append(data)
-        elif not self._skip:
+        else:
             self.parts.append(data)
 
 
