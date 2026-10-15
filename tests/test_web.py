@@ -254,6 +254,17 @@ def test_fallback_reader_keeps_text_outside_the_display_none_rule(monkeypatch, s
     assert text == "Visible text."
 
 
+@pytest.mark.parametrize("attributes, hidden", [
+    ('style="display:none" style="display:block"', True),
+    ('style="display:block" style="display:none"', False),
+])
+def test_fallback_reader_uses_the_first_style_attribute(monkeypatch, attributes, hidden):
+    monkeypatch.setitem(__import__("sys").modules, "trafilatura", None)
+    _, text = extract(f'<p>Before.</p><div {attributes}>SECRET</div><p>After.</p>')
+    assert ("SECRET" not in text) is hidden
+    assert "Before." in text and "After." in text
+
+
 def test_fallback_reader_keeps_an_unclosed_hidden_subtree_hidden(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "trafilatura", None)
     title, text = extract('<p>Before.</p><div style="display:none"><title>SECRET</title>SECRET</unmatched>SECRET')

@@ -31,7 +31,7 @@ class _Stripper(HTMLParser):
         self._in_title = False
 
     def handle_starttag(self, tag: str, attrs: Any) -> None:
-        style = dict(attrs).get("style") or ""
+        style = next((value or "" for name, value in attrs if name == "style"), "")
         style = re.sub(r"/\*.*?\*/", "", style, flags=re.S)
         hidden = tag in self.SKIP or bool(self.DISPLAY_NONE.search(style))
         if tag not in self.VOID:
