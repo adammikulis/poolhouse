@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Darwin
 
 // No peer-admission constructor exists until the root helper's message authentication is implemented.
 final class AuthenticatedHelper {
@@ -39,7 +40,7 @@ final class FreshAuthorization {
 
     private func wipe() {
         withUnsafeMutableBytes(of: &external) { bytes in
-            for index in bytes.indices { bytes[index] = 0 }
+            if let base = bytes.baseAddress { explicit_bzero(base, bytes.count) }
         }
     }
 
