@@ -31,6 +31,7 @@ pub mod describe;
 pub mod keys;
 pub mod logs;
 pub mod ops;
+pub mod phone_verify;
 pub mod pool;
 pub mod roster;
 pub mod room;

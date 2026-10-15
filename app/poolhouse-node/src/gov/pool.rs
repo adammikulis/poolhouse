@@ -431,6 +431,30 @@ impl GovPool {
         out
     }
 
+    /// Retain a verified late chain act in a phone's cumulative governance evidence.
+    pub(super) fn observe_verified_chain(&mut self, act: Act, wall_ms: u64) -> bool {
+        if !act.is_chain() || act.pool != self.id || act.epoch >= self.context().0 || act.at_ms > wall_ms.saturating_add(SKEW_MS)
+            || act.check_shape().is_err() || self.verify_signatures(&act).is_err() || !chain::validates_candidate(&self.state.chain, &self.id, &act) {
+            return false;
+        }
+        let id = act.id();
+        if self.acts.contains_key(&id) {
+            self.merge(&id, &act);
+            self.refold();
+            return true;
+        }
+        if self.room_for(&act).is_err() { return false }
+        let now = self.clock.now_ms();
+        self.seen.insert(id.clone(), now);
+        self.ready.insert(id.clone(), now);
+        self.note_held(&id, &act);
+        self.acts.insert(id, act);
+        self.dirty.acts = true;
+        self.dirty.seen = true;
+        self.refold();
+        true
+    }
+
     /// ``local``: a person's signer handed the act in, so its signatures must still be inside their window; a member's relay is not held to it.
     fn take(&mut self, mut act: Act, wall_ms: u64, settled: bool, local: bool) -> Ingest {
         act.signatures.sort();
