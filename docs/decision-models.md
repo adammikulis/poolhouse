@@ -6,8 +6,8 @@ about an unsure one. It does not write text. Use one where a program needs a cat
 this message, is this tool call destructive, which of these files matters) and an LLM where it
 needs a sentence or a plan.
 
-    from poolhouse.decide import router
-    got = router.decide("Which team?", "payouts have failed for 3 days",
+    from poolhouse.decide import decide
+    got = decide("Which team?", "payouts have failed for 3 days",
                         {"billing": "payments, invoices", "sales": "pricing", "tech": "outages"},
                         abstain_below=0.7)
     got.choice, got.confidence, got.scores, got.abstained, got.latency_ms

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from poolhouse.decide.base import BaseDecider, Decider, Request
 from poolhouse.decide.calibrate import Calibration
+from poolhouse.decide.router import Config, decide
 from poolhouse.decide.rules import Layered, Rule, RulesDecider
 from poolhouse.decide.types import (
     BackendUnavailable,
@@ -14,6 +15,6 @@ from poolhouse.decide.types import (
 )
 
 __all__ = [
-    "BackendUnavailable", "BaseDecider", "Calibration", "DecideError", "Decider", "Decision",
-    "Layered", "Option", "Request", "Rule", "RulesDecider", "options_of",
+    "BackendUnavailable", "BaseDecider", "Calibration", "Config", "DecideError", "Decider", "Decision",
+    "Layered", "Option", "Request", "Rule", "RulesDecider", "decide", "options_of",
 ]

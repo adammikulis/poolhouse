@@ -17,6 +17,7 @@ NAMESPACES: dict[str, str] = {
     "serve": "poolhouse.serve",
     "client": "poolhouse.client",
     "hub": "poolhouse.hub",
+    "decide": "poolhouse.decide",
 }
 """Each name of ``ph`` that is a namespace, and the module that answers for it (imported on first use)."""
 
@@ -31,8 +32,10 @@ SURFACE: dict[str, tuple[str, ...]] = {
     "test": ("devices", "run", "Device", "Result"),
     "models": ("pull", "path", "cache_dir"),
     "serve": ("up", "down", "status", "Served"),
-    "client": ("Client", "Request", "is_healthy", "ServerError", "ServerUnreachable"),
+    "client": ("Client", "Request", "Transport", "Family", "Reply", "is_healthy", "ServerError", "ServerUnreachable"),
     "hub": ("discover", "ModelInfo", "fetch", "located", "hub_cache"),
+    "decide": ("Config", "decide", "Decision", "Option", "Calibration", "Rule", "RulesDecider",
+               "DecideError", "BackendUnavailable"),
 }
 """The public names of each namespace. Only these are promised; everything else reachable is private."""
 

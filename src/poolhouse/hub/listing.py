@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import hub
+from poolhouse import errors, hub
 from poolhouse.hub import publishers, remote
 from poolhouse.hub.naming import _SHARD, _precision
 from poolhouse.hub.transfer import pull
@@ -151,6 +151,14 @@ def build_files(repo: str, build: str, ending: str = ".gguf") -> list[tuple[str,
                                         or name.rsplit("/", 1)[-1] == build)]
 
 
+class FetchNotFound(ValueError, errors.Error):
+    """A requested Hub model is missing; keeps the fetch interface's ValueError contract."""
+
+
+class FetchError(OSError, errors.Error):
+    """A Hub model could not be fetched; its cause retains the endpoint's refusal."""
+
+
 def fetch(reference: str, *, members: bool | None = None) -> Path:
     """Download an `hf:` reference into the Hugging Face hub cache, without serving it.
 
@@ -167,7 +175,7 @@ def fetch(reference: str, *, members: bool | None = None) -> Path:
     try:
         got = pull(f"hf:{repo}/{name}", members=members)
     except remote.NotFound as exc:
-        raise ValueError(str(exc)) from exc
+        raise FetchNotFound(str(exc)) from exc
     except remote.RemoteError as exc:
-        raise OSError(str(exc)) from exc
+        raise FetchError(str(exc)) from exc
     return got.parent / name.rsplit("/", 1)[-1]

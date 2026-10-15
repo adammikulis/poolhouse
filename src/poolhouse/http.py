@@ -21,7 +21,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from poolhouse import gate, http_cancel, macauth, sealing, serverkeys
+from poolhouse import errors, gate, http_cancel, macauth, sealing, serverkeys
 from poolhouse.httpguard import Limits, Refused, resolve, split
 
 USER_AGENT = "poolhouse"
@@ -30,7 +30,7 @@ USER_AGENT = "poolhouse"
 RETRY_STATUS = frozenset({500, 502, 503, 504})
 
 
-class ServerError(RuntimeError):
+class ServerError(RuntimeError, errors.Error):
     """The server answered, but with an error."""
 
     def __init__(self, message: str, *, status: int | None = None, body: str = "",
