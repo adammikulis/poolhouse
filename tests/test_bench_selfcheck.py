@@ -9,6 +9,7 @@ and `bench.home_dir()` is pointed at `tmp_path` so `prepared()` cannot find a re
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -253,7 +254,7 @@ def test_the_real_preflight_runs_over_the_spec_the_run_builds_and_the_argv_is_bu
     from poolhouse.serve import preflight
     from poolhouse.serve.backend import LlamaServerBackend
 
-    checked, built = [], []
+    checked, built, models = [], [], []
     real_flags = preflight._flags_check
     real_command = LlamaServerBackend.command
 
@@ -264,21 +265,26 @@ def test_the_real_preflight_runs_over_the_spec_the_run_builds_and_the_argv_is_bu
     def watching_command(self, spec):
         argv = real_command(self, spec)
         built.append(" ".join(argv))
+        models.append(Path(argv[argv.index("-m") + 1]))
         return argv
 
     monkeypatch.setattr(preflight, "_flags_check", watching_flags)
     monkeypatch.setattr(LlamaServerBackend, "command", watching_command)
-    said = selfcheck(["drafts", "tiny.gguf", "--draft", HEAD, "--n-max", "2",
+    said = selfcheck(["drafts", "hf:someone/tiny-GGUF/tiny.gguf", "--draft", HEAD, "--n-max", "2",
                       "--serve-kv", "q8_0"])
     assert "draft:mtp-tiny-Q8_0@n2" in said
     spec = checked[-1]
     assert spec.draft == HEAD and spec.spec_draft_max == 2 and spec.spec_type == "draft-mtp"
     assert spec.cache_type_k == spec.cache_type_v == "q8_0"
     argvs = [a for a in built if "--spec-draft-n-max 2" in a]
-    assert any("-md draft-head.gguf" in a for a in argvs), "the flags check's stand-in"
+    assert any("-md draft.gguf" in a for a in argvs), "the flags check's stand-in"
     assert any("mtp-tiny-Q8_0.gguf" in a and "--cache-type-k q8_0" in a
                and "--spec-type draft-mtp" in a and "-md " in a for a in argvs), \
         "the lease's argv, on the head as fetched"
+    assert Path("model.gguf") in models, "the flags check's model stand-in"
+    assert any(p.name == "tiny.gguf" and p.parent.name == "cache"
+               and p.parent.parent.name == "home" and p.parent.parent.parent.name.startswith("poolhouse-selfcheck-")
+               for p in models), "the lease's argv uses the exact scratch-fetched model"
     assert not any(a.split()[0] == "llama-server" for a in argvs), "a binary that is a file"
 
 
