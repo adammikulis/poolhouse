@@ -8,7 +8,9 @@ writes the caches in a machine-local directory made for the test.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -39,9 +41,27 @@ def probe_edit():
 
 
 def copy_of_the_tree(where: Path) -> Path:
-    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", "*.egg-info")
-    for name in ("src", "tests"):
-        shutil.copytree(REPO / name, where / name, ignore=ignore)
+    candidates = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "src", "tests"],
+        cwd=REPO, capture_output=True, check=True,
+    )
+    for raw in candidates.stdout.split(b"\0"):
+        if not raw:
+            continue
+        relative = Path(os.fsdecode(raw))
+        if relative.is_absolute() or ".." in relative.parts or relative.parts[0] not in {"src", "tests"}:
+            raise ValueError(f"invalid snapshot candidate: {relative}")
+        source = REPO / relative
+        before = source.lstat()
+        if not stat.S_ISREG(before.st_mode) or source.resolve() != REPO.resolve() / relative:
+            raise ValueError(f"snapshot candidate is not a regular contained file: {relative}")
+        destination = where / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination, follow_symlinks=False)
+        after = source.lstat()
+        identity = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if any(getattr(before, field) != getattr(after, field) for field in identity):
+            raise RuntimeError(f"snapshot candidate changed while copying: {relative}")
     shutil.copy(REPO / "pyproject.toml", where / "pyproject.toml")
     (where / "contracts").mkdir()
     for name in ("glossary-rules.toml", "glossary-allowlist.toml"):
@@ -49,6 +69,57 @@ def copy_of_the_tree(where: Path) -> Path:
     (where / "scripts" / "gates").mkdir(parents=True)
     shutil.copy(REPO / "scripts" / "gates" / "survivors.txt", where / "scripts" / "gates")
     return where
+
+
+@pytest.fixture
+def snapshot_repository(tmp_path, monkeypatch):
+    root = tmp_path / "repository"
+    files = {".gitignore": "tests/_generated_*/\n", "src/kept.py": "tracked = True\n",
+             "tests/test_kept.py": "tracked = True\n",
+             "tests/_generated_tracked/test_kept.py": "tracked = True\n",
+             "pyproject.toml": "", "contracts/glossary-rules.toml": "",
+             "contracts/glossary-allowlist.toml": "", "scripts/gates/survivors.txt": ""}
+    for name, content in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+    subprocess.run(["git", "add", "--force", "--", *files], cwd=root, check=True, capture_output=True)
+    monkeypatch.setattr(sys.modules[__name__], "REPO", root)
+    return root
+
+
+def test_snapshot_retains_git_candidates_when_an_ignored_artifact_vanishes(
+    tmp_path, monkeypatch, snapshot_repository,
+):
+    root = snapshot_repository
+    for name in ("src/untracked.py", "tests/test_untracked.py", "tests/_generated_transient/test_gone.py"):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("candidate = True\n", encoding="utf-8")
+    actual_run = subprocess.run
+
+    def enumerate_then_remove(*args, **kwargs):
+        result = actual_run(*args, **kwargs)
+        if args[0][:2] == ["git", "ls-files"]:
+            shutil.rmtree(root / "tests" / "_generated_transient")
+        return result
+
+    monkeypatch.setattr(subprocess, "run", enumerate_then_remove)
+    copied = copy_of_the_tree(tmp_path / "snapshot")
+    selected = {
+        "src/kept.py", "src/untracked.py", "tests/test_kept.py", "tests/test_untracked.py",
+        "tests/_generated_tracked/test_kept.py",
+    }
+    assert {path.relative_to(copied).as_posix() for path in copied.rglob("*.py")} == selected
+    for name in selected:
+        assert (copied / name).read_bytes() == (root / name).read_bytes()
+
+
+def test_snapshot_refuses_a_missing_listed_candidate(tmp_path, snapshot_repository):
+    (snapshot_repository / "src" / "kept.py").unlink()
+    with pytest.raises(FileNotFoundError):
+        copy_of_the_tree(tmp_path / "snapshot")
 
 
 def source_files(root: Path) -> list[Path]:
