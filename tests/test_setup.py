@@ -577,7 +577,7 @@ def _booted_daemon(tmp_path):
         else:
             proc.kill()
             pytest.fail(f"traind never answered /health:\n{log.read_text(errors='replace')}")
-        yield keyfile, http_port, disco_port
+        yield keyfile, http_port, disco_port, log
     finally:
         proc.terminate()
         try:
@@ -587,20 +587,61 @@ def _booted_daemon(tmp_path):
         fh.close()
 
 
+def daemon_discovery_failure(log: Path, port: int, said: str) -> str:
+    from poolhouse.sentinel.redaction import redact
+
+    with log.open("rb") as stream:
+        recorded = stream.read(65536).decode("utf-8", errors="replace")
+    return f"{said}\nloopback UDP port {port}\ndaemon log:\n{redact(recorded)}"
+
+
 @pytest.mark.slow
 def test_fleet_findings_see_a_real_booted_daemon(tmp_path):
     from poolhouse.setup import _fleet_findings
 
-    with _booted_daemon(tmp_path) as (keyfile, http_port, disco_port):
+    with _booted_daemon(tmp_path) as (keyfile, http_port, disco_port, log):
         found = {f.name: f for f in _fleet_findings(
             port=http_port, discovery_port=disco_port, pool_key_path=keyfile)}
     assert found["fleet: joined"].good
     assert found["fleet: daemon"].good
     assert "setuptestbox" in found["fleet: daemon"].said
-    assert found["fleet: seen"].good, found["fleet: seen"].said
-    assert found["fleet: seen"].said == "sees itself among 1 member(s)"
+    assert not found["fleet: seen"].good, daemon_discovery_failure(log, disco_port, found["fleet: seen"].said)
+    assert found["fleet: seen"].said == "discovery hears 0 member(s), none itself"
+    assert "members announcing on" not in daemon_discovery_failure(log, disco_port, "")
     assert found["ports"].good
     assert "this machine's own daemon" in found["ports"].said
+
+
+@pytest.mark.slow
+def test_owned_loopback_advertiser_is_found_only_with_its_pool_key(tmp_path):
+    from poolhouse.fleet.discovery import (
+        Advertiser,
+        Beacon,
+        create_pool_key,
+        discover,
+        load_pool_key,
+    )
+    from poolhouse.fleet.join import members
+
+    class OwnedLoopbackAdvertiser(Advertiser):
+        def announce(self):
+            assert isinstance(self._sock, socket.socket)
+            address, self.port = self._sock.getsockname()
+            assert address == "127.0.0.1" and self.port > 0
+            super().announce()
+
+    keyfile = tmp_path / "pool.key"
+    create_pool_key(keyfile, group="setup-evidence")
+    key = load_pool_key(keyfile)
+    assert isinstance(key, bytes)
+    beacon = Beacon(name="setup-local-advertiser", machine="setup-fixture-machine")
+    with OwnedLoopbackAdvertiser(beacon, key, port=0) as advertised:
+        rows = members(pool_key_path=keyfile, port=advertised.port, self_machine=beacon.machine, timeout_s=0.2)
+        assert len(rows) == 1 and rows[0]["is_self"]
+        assert rows[0]["name"] == beacon.name and rows[0]["host"] == "127.0.0.1"
+        assert discover(b"\xff" * 32, port=advertised.port, timeout_s=0.2) == []
+        different = members(pool_key_path=keyfile, port=advertised.port, self_machine="another-fixture", timeout_s=0.2)
+        assert len(different) == 1 and not different[0]["is_self"]
 
 
 def test_a_named_build_that_is_not_here_is_a_finding(monkeypatch, tmp_path):
