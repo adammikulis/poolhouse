@@ -96,6 +96,20 @@ def case_identity(case: ET.Element, root: Path, selectors: tuple[str, ...]) -> t
     return identity, proof
 
 
+def junit_phase(case: ET.Element) -> str:
+    """Return the single call-failure or quoted teardown-error phase of a JUnit case."""
+    outcomes = [child for child in case if child.tag in ("failure", "error", "skipped")]
+    if len(outcomes) != 1 or len(outcomes[0]):
+        return ""
+    outcome = outcomes[0]
+    if outcome.tag == "failure":
+        return "call"
+    message = outcome.get("message", "")
+    if outcome.tag == "error" and message.startswith('failed on teardown with "') and message.endswith('"'):
+        return "teardown"
+    return ""
+
+
 def failures(folder: Path, root: Path, selectors: tuple[str, ...] = ()) -> list[tuple[str, str, str]]:
     paths = list(islice(folder.glob("junit-*.xml"), 65))
     if not paths or len(paths) > 64:
@@ -115,8 +129,10 @@ def failures(folder: Path, root: Path, selectors: tuple[str, ...] = ()) -> list[
             if any(child.tag not in ("testcase", "properties", "system-out", "system-err") for child in suite):
                 raise ValueError("unknown JUnit suite content")
             counts = Counter()
+            call_failures = set()
             for case in cases:
                 identity, proof = case_identity(case, root, selectors)
+                phase = junit_phase(case) if proof is None else ""
                 if proof is not None:
                     if any(prior.startswith(identity + "::") for prior in seen):
                         raise ValueError("JUnit collection skip mixed with executed cases")
@@ -124,9 +140,13 @@ def failures(folder: Path, root: Path, selectors: tuple[str, ...] = ()) -> list[
                         raise ValueError("divergent JUnit collection skip proofs")
                     collection_proofs[identity] = proof
                 elif identity in seen:
-                    raise ValueError("duplicate JUnit case identity")
+                    if identity not in call_failures or phase != "teardown":
+                        raise ValueError("duplicate JUnit case identity")
+                    call_failures.remove(identity)
                 elif identity.split("::")[0] in collection_proofs:
                     raise ValueError("JUnit collection skip mixed with executed cases")
+                elif phase == "call":
+                    call_failures.add(identity)
                 seen.add(identity)
                 if any(child.tag not in ("failure", "error", "skipped", "properties", "system-out", "system-err") for child in case):
                     raise ValueError("unknown JUnit case content")

@@ -369,3 +369,90 @@ def test_a_failure_free_skip_report_cannot_complete_an_exit_one_receipt(captured
     code, _, receipt = evidence.run(root, [sys.executable, "scripts/test", "all", "tests/test_skipped.py"])
     assert code == 1 and receipt.failures == []
     assert not receipt.valid and not receipt.complete
+
+
+
+def phase_case(outcome="failure", message="fixture call failure"):
+    case = ET.Element("testcase", classname="tests.test_case", name="test_old", time="0.000")
+    if outcome:
+        ET.SubElement(case, outcome, message=message).text = message
+    return case
+
+
+def test_genuine_pytest_call_and_teardown_failures_both_survive(collection_report):
+    root, folder = collection_report
+    (root / "tests/test_case.py").write_text("""import pytest
+@pytest.fixture
+def broken_after():
+    yield
+    raise RuntimeError('fixture teardown')
+def test_old(broken_after):
+    assert False, 'fixture call'
+""")
+    done = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", f"--junitxml={folder / 'junit-generated.xml'}", "tests/test_case.py"],
+        cwd=root, capture_output=True, text=True,
+        env={**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTEST_ADDOPTS": ""})
+    assert done.returncode == 1, done.stdout + done.stderr
+    document, _ = evidence.read_xml(folder / "junit-generated.xml", 8 * 1024 * 1024)
+    cases = list(document.iter("testcase"))
+    assert [[child.tag for child in case] for case in cases] == [["failure"], ["error"]]
+    found = evidence.failures(folder, root, ("tests/test_case.py",))
+    assert len(found) == 2
+    assert {identity for identity, _, _ in found} == {"tests/test_case.py::test_old"}
+    assert {kind for _, kind, _ in found} == {"failure", "error"}
+    assert len({digest for _, _, digest in found}) == 2
+
+
+@pytest.mark.parametrize("change", ["same-failure", "same-error", "pass-first", "pass-second", "setup-error", "bad-envelope",
+                                   "reverse", "third", "mixed-skip", "multiple-error", "nested", "cross-suite", "cross-file"])
+def test_only_the_same_suite_ordered_call_teardown_sequence_is_allowed(collection_report, change):
+    root, folder = collection_report
+    call = phase_case()
+    teardown = phase_case("error", 'failed on teardown with "fixture teardown"')
+    cases = [call, teardown]
+    if change == "same-failure":
+        cases = [call, phase_case()]
+    elif change == "same-error":
+        cases = [teardown, phase_case("error", 'failed on teardown with "other teardown"')]
+    elif change == "pass-first":
+        cases[0] = phase_case("")
+    elif change == "pass-second":
+        cases[1] = phase_case("")
+    elif change == "setup-error":
+        teardown[0].set("message", 'failed on setup with "fixture setup"')
+    elif change == "bad-envelope":
+        teardown[0].set("message", "failed on teardown with fixture teardown")
+    elif change == "reverse":
+        cases.reverse()
+    elif change == "third":
+        cases.append(phase_case("error", 'failed on teardown with "third teardown"'))
+    elif change == "mixed-skip":
+        ET.SubElement(call, "skipped", message="runtime skip")
+    elif change == "multiple-error":
+        ET.SubElement(teardown, "error", message='failed on teardown with "other teardown"')
+    elif change == "nested":
+        ET.SubElement(teardown[0], "error").text = "nested"
+    if change in {"cross-suite", "cross-file"}:
+        collection_xml(folder, call)
+        first = (folder / "junit-fixture.xml").read_text()
+        collection_xml(folder, teardown)
+        second = (folder / "junit-fixture.xml").read_text()
+        if change == "cross-suite":
+            (folder / "junit-fixture.xml").write_text("<testsuites>" + first + second + "</testsuites>")
+        else:
+            (folder / "junit-other.xml").write_text(first)
+    else:
+        collection_xml(folder, *cases)
+    with pytest.raises(ValueError, match="duplicate"):
+        evidence.failures(folder, root, ("tests/test_case.py",))
+
+
+def test_multiple_error_children_in_one_testcase_remain_failures(collection_report):
+    root, folder = collection_report
+    case = phase_case("error", 'failed on setup with "fixture setup"')
+    ET.SubElement(case, "error", message='failed on teardown with "fixture teardown"').text = "fixture teardown"
+    collection_xml(folder, case)
+    found = evidence.failures(folder, root, ("tests/test_case.py",))
+    assert len(found) == 2 and all(kind == "error" for _, kind, _ in found)
+    assert len({digest for _, _, digest in found}) == 2
