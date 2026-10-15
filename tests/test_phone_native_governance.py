@@ -28,3 +28,8 @@ def test_shared_native_governance_rejects_bad_checkpoints_and_retains_late_evide
                               cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
     assert boundary.returncode == 0, boundary.stdout + boundary.stderr
     assert "2 passed" in boundary.stdout and "0 failed" in boundary.stdout
+    if sys.platform != "win32":
+        kernel = subprocess.run([testnode.tool("cargo"), "test", "--offline", "--locked", "-p", "poolhouse-node", "--lib", "sys::unix::tests"],
+                              cwd=staged, env=environment, capture_output=True, text=True, timeout=600)
+        assert kernel.returncode == 0, kernel.stdout + kernel.stderr
+        assert "1 passed" in kernel.stdout and "0 failed" in kernel.stdout
