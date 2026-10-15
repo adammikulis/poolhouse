@@ -32,7 +32,7 @@ fn singleton(fields: &BTreeMap<u32, &[u8]>, tag: u32, expected: u64) -> Result<(
     Ok(())
 }
 
-fn application(bytes: &[u8], signer: &[u8; 32]) -> Result<()> {
+fn application(bytes: &[u8], signer: &[u8; 32], minimum_version: u64) -> Result<()> {
     let mut rest = der::one(bytes, 16)?.bytes;
     let packages = der::take(&mut rest)?;
     let signatures = der::take(&mut rest)?;
@@ -54,7 +54,8 @@ fn application(bytes: &[u8], signer: &[u8; 32]) -> Result<()> {
         || name.tag != 4
         || name.constructed
         || name.bytes != b"app.poolhouse.phone"
-        || der::number(version, 2)? == 0
+        || minimum_version == 0
+        || der::number(version, 2)? < minimum_version
     {
         return Err(AttestationError::Application);
     }
@@ -103,6 +104,7 @@ pub(super) fn check(
     extension: &[u8],
     challenge: &[u8; 32],
     signer: &[u8; 32],
+    minimum_version: u64,
 ) -> Result<HardwareLevel> {
     der::bounded(extension, 0)?;
     let mut rest = der::one(extension, 16)?.bytes;
@@ -159,6 +161,6 @@ pub(super) fn check(
     boot(hardware.get(&704).ok_or(AttestationError::Boot)?)?;
     let app = der::one(software.get(&709).ok_or(AttestationError::Application)?, 4)?;
     der::bounded(app.bytes, 0)?;
-    application(app.bytes, signer)?;
+    application(app.bytes, signer, minimum_version)?;
     Ok(key_level)
 }

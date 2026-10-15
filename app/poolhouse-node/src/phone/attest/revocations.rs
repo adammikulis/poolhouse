@@ -3,6 +3,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
+use sha2::{Digest, Sha256};
 
 use super::{AttestationError, Result};
 
@@ -79,6 +80,7 @@ pub struct FreshRevocations {
     received: Instant,
     wall: SystemTime,
     lifetime: Duration,
+    digest: [u8; 32],
 }
 
 impl FreshRevocations {
@@ -121,7 +123,12 @@ impl FreshRevocations {
             received: Instant::now(),
             wall: fetched_at,
             lifetime,
+            digest: Sha256::digest(body).into(),
         })
+    }
+
+    pub(super) fn evidence(&self) -> ([u8; 32], SystemTime, SystemTime) {
+        (self.digest, self.wall, self.wall + self.lifetime)
     }
 
     pub(super) fn current(&self, now: SystemTime) -> Result<()> {

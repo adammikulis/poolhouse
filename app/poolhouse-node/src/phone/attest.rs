@@ -49,6 +49,10 @@ pub struct VerifiedAttestation {
     level: HardwareLevel,
     chain_digest: [u8; 32],
     policy_digest: [u8; 32],
+    revocations_digest: [u8; 32],
+    revocations_fetched_at: SystemTime,
+    revocations_valid_until: SystemTime,
+    checked_at: SystemTime,
 }
 
 impl VerifiedAttestation {
@@ -63,6 +67,18 @@ impl VerifiedAttestation {
     }
     pub fn policy_digest(&self) -> &[u8; 32] {
         &self.policy_digest
+    }
+    pub fn revocations_digest(&self) -> &[u8; 32] {
+        &self.revocations_digest
+    }
+    pub fn revocations_fetched_at(&self) -> SystemTime {
+        self.revocations_fetched_at
+    }
+    pub fn revocations_valid_until(&self) -> SystemTime {
+        self.revocations_valid_until
+    }
+    pub fn checked_at(&self) -> SystemTime {
+        self.checked_at
     }
 }
 
@@ -83,6 +99,17 @@ fn parse_signer(text: Option<&str>) -> Result<[u8; 32]> {
     bytes.try_into().map_err(|_| AttestationError::Application)
 }
 
+fn minimum_version(text: Option<&str>) -> Result<u64> {
+    let text = text.ok_or(AttestationError::Application)?;
+    if text.is_empty() || text.starts_with('0') || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(AttestationError::Application);
+    }
+    text.parse::<u64>()
+        .ok()
+        .filter(|v| *v <= i32::MAX as u64)
+        .ok_or(AttestationError::Application)
+}
+
 /// Verify the key, challenge, hardware policy, certificate path and fresh revocation status.
 pub fn verify(
     chain: &[Vec<u8>],
@@ -96,6 +123,7 @@ pub fn verify(
         now,
         revocations,
         &signer()?,
+        minimum_version(option_env!("POOLHOUSE_PHONE_MIN_VERSION_CODE"))?,
         chain::GOOGLE_ROOTS,
     )
 }
@@ -106,11 +134,12 @@ fn verify_with(
     now: SystemTime,
     revocations: &FreshRevocations,
     signer: &[u8; 32],
+    minimum_version: u64,
     roots: &[&[u8]],
 ) -> Result<VerifiedAttestation> {
     revocations.current(now)?;
     let extension = chain::check(chain, &expected.public, now, revocations, roots)?;
-    let level = policy::check(&extension, &expected.challenge, signer)?;
+    let level = policy::check(&extension, &expected.challenge, signer, minimum_version)?;
     let mut digest = Sha256::new();
     for certificate in chain {
         digest.update((certificate.len() as u64).to_be_bytes());
@@ -119,14 +148,21 @@ fn verify_with(
     let mut policy = Sha256::new();
     policy.update(b"poolhouse/android-pool-key-policy/v1\napp.poolhouse.phone\n");
     policy.update(signer);
+    policy.update(minimum_version.to_be_bytes());
     for root in roots {
         policy.update(Sha256::digest(root));
     }
+    let (revocations_digest, revocations_fetched_at, revocations_valid_until) =
+        revocations.evidence();
     Ok(VerifiedAttestation {
         public: expected.public,
         level,
         chain_digest: digest.finalize().into(),
         policy_digest: policy.finalize().into(),
+        revocations_digest,
+        revocations_fetched_at,
+        revocations_valid_until,
+        checked_at: now,
     })
 }
 

@@ -146,6 +146,7 @@ fn check(f: &Fixture) -> Result<VerifiedAttestation> {
         SystemTime::now(),
         &empty(),
         &SIGNER,
+        1,
         &[&f.root],
     )
 }
@@ -165,6 +166,12 @@ fn valid_hardware_policy_and_full_path() {
             }
         );
         assert_ne!(proof.chain_digest(), &[0; 32]);
+        assert_eq!(
+            proof.revocations_digest(),
+            &<[u8; 32]>::from(Sha256::digest(br#"{"entries":{}}"#))
+        );
+        assert!(proof.revocations_fetched_at() <= proof.checked_at());
+        assert!(proof.checked_at() < proof.revocations_valid_until());
     }
 }
 
@@ -199,6 +206,7 @@ fn roots_signatures_and_all_chain_serials_are_checked() {
         SystemTime::now(),
         &empty(),
         &SIGNER,
+        1,
         chain::GOOGLE_ROOTS
     )
     .is_err());
@@ -211,6 +219,7 @@ fn roots_signatures_and_all_chain_serials_are_checked() {
                 SystemTime::now(),
                 &revocations(body.as_bytes()),
                 &SIGNER,
+                1,
                 &[&f.root]
             ),
             Err(AttestationError::Revoked)
@@ -287,6 +296,29 @@ fn compiled_signer_policy_requires_exact_lowercase_digest() {
         assert!(parse_signer(text).is_err());
     }
     assert_eq!(parse_signer(Some(&"07".repeat(32))).unwrap(), SIGNER);
+    for text in [
+        None,
+        Some(""),
+        Some("0"),
+        Some("01"),
+        Some("-1"),
+        Some("2147483648"),
+        Some("1 "),
+    ] {
+        assert!(minimum_version(text).is_err());
+    }
+    assert_eq!(minimum_version(Some("3000")).unwrap(), 3000);
+    let f = fixture(&valid());
+    assert!(verify_with(
+        &f.chain,
+        &f.expected,
+        SystemTime::now(),
+        &empty(),
+        &SIGNER,
+        2,
+        &[&f.root]
+    )
+    .is_err());
 }
 
 fn extended(attested_intermediate: bool, ca: bool, expired: bool) -> Fixture {
