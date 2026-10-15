@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.utils import parse_wheel_filename
+from packaging.version import Version
 from wheel_support import fresh_wheel
 
 from poolhouse.fleet.launch import already_running
@@ -128,7 +130,7 @@ def test_the_installed_machine_says_which_version_it_runs(tmp_path):
          "from poolhouse.fleet import updates; print(updates.state()['version'])"],
         capture_output=True, text=True, timeout=120)
     assert said.stdout.strip(), "an installed machine reports no version at all"
-    assert said.stdout.strip() in wheel().name.replace("_", "-")
+    assert Version(said.stdout.strip()) == parse_wheel_filename(wheel().name)[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="install.ps1 is the Windows installer")
