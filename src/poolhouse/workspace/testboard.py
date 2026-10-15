@@ -7,6 +7,7 @@ import pickle
 import sqlite3
 import struct
 import subprocess
+import time
 from collections.abc import Callable
 from http.client import HTTPException
 from pathlib import Path
@@ -14,11 +15,14 @@ from typing import Any
 
 from poolhouse import errors
 from poolhouse.board import session as sessions
+from poolhouse.board.client import Quota
 from poolhouse.log import warn
 
 __all__ = ["BoardEvents", "acting", "follow_thread", "identity", "thread_for_key"]
 
 CHANNEL = "#general"
+CLAIM_NOTICE_COOLDOWN_S = 60.0
+"""Optional notice retry delay, matching the node's default write-rate window."""
 BOARD_ERRORS = (errors.Error, ArithmeticError, AssertionError, AttributeError, EOFError,
                 ImportError, LookupError, NotImplementedError, OSError, RuntimeError, StopIteration, TypeError,
                 ValueError, sqlite3.Error, subprocess.SubprocessError, HTTPException, struct.error,
@@ -72,6 +76,7 @@ class BoardEvents:
     def __init__(self, s: sessions.Session, watchers: Callable[[], list[str]] | None = None) -> None:
         self.session, self.watchers = s, watchers
         self.threads: dict[str, int] = {}
+        self._claim_after = 0.0
 
     @property
     def agent(self) -> dict[str, str]:
@@ -88,10 +93,21 @@ class BoardEvents:
 
     def claimed(self, file: str, key: str) -> int:
         """Open the key's thread on the board."""
-        seq = self._try("claim", lambda: self._post(
-            f"test {Path(file).name} {key[:8]}",
-            f"test-run key={key[:12]} file={file} state=running agent={self.session.name}")) or 0
+        seq = self._try("claim", lambda: self._claim_notice(file, key)) or 0
         self.threads[key] = seq
+        return seq
+
+    def _claim_notice(self, file: str, key: str) -> int:
+        if time.monotonic() < self._claim_after:
+            return 0
+        try:
+            seq = self._post(f"test {Path(file).name} {key[:8]}",
+                             f"test-run key={key[:12]} file={file} state=running agent={self.session.name}")
+        except Quota:
+            self._claim_after = time.monotonic() + CLAIM_NOTICE_COOLDOWN_S
+            warn(f"test: board notice (claim) rate limited; optional claim notices paused for {CLAIM_NOTICE_COOLDOWN_S:g} s; local test evidence is unchanged")
+            return 0
+        self._claim_after = 0.0
         return seq
 
     def finished(self, file: str, key: str, outcome: str, entry: str) -> None:
