@@ -21,6 +21,7 @@ from poolhouse import (
     runtime_coalesce,
     runtime_deploy,
     runtime_host,
+    runtime_launchers,
     runtime_stale,
     runtime_store,
     runtime_trust,
@@ -53,15 +54,8 @@ def _checkout(named: str) -> Path:
     raise runtime_deploy.DeployError("no source checkout recorded: pass --checkout")
 
 
-def _launchers(named: str) -> Path | None:
-    recorded = runtime_store.read_state().get("launchers")
-    chosen = named or (str(recorded) if recorded else "")
-    if not chosen:
-        return None
-    path = expand(chosen)
-    if not path.is_absolute() and not named:
-        raise runtime_deploy.DeployError(f"the recorded launcher directory {chosen!r} must be absolute")
-    return path.resolve()
+def _launchers(named: str) -> Path:
+    return expand(named).absolute() if named else runtime_launchers.directory()
 
 
 def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_deploy.Plan:
@@ -312,7 +306,7 @@ def status_record(plan: runtime_deploy.Plan) -> dict:
 
 COMMON = [
     flag("--checkout", default="", help="source checkout (default: the one recorded)"),
-    flag("--launchers", default="", help="absolute directory holding the console launchers (default: the one recorded)"),
+    flag("--launchers", default="", help="console launcher directory (default: Poolhouse state bin)"),
     flag("--timeout", type=float, default=runtime_deploy.BUILD_TIMEOUT),
     flag("--wait", type=float, default=runtime_deploy.CLAIM_WAIT_S, help="seconds to wait for another owner's install claim"),
     flag("--agent", default="", help="workspace agent that holds the claims and posts the outcome (default: the environment's)"),

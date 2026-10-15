@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["poolhouse-node", "phone-governance-jni", "src-tauri"]
+members = ["poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority"]
 
 [workspace.package]
 edition = "2021"

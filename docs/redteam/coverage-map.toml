@@ -620,6 +620,14 @@ tests = ["tests/test_board_grants.py::test_a_person_sets_up_the_lead_grants_once
 note = "grant, revoke-grant, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign for this node, once, from the terminal it was signed in, a removed key enrolled again, a token used from another terminal than the one that registered it, and a name with no lineage taken by a process that holds none of its tokens (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
 
 [[group]]
+match = ["parser:runtime_bridges.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_runtime_bridges.py::test_foreign_reviewed_console_metadata_is_refused_before_commands_change",
+         "tests/test_runtime_bridges.py::test_declared_metadata_mismatch_leaves_every_entrypoint_untouched"]
+note = "console script names and import targets come from the literal reviewed source commit and must match the verified installed distribution"
+
+[[group]]
 match = ["human:runtime_unmerged.py:validate"]
 status = "covered"
 count = 1
@@ -1075,7 +1083,7 @@ note = "git runs with an argument list; hostile paths, refs and settings stay on
 [[group]]
 match = ["spawn:fleet/runtime_wheel.py:_run", "spawn:runtime.py:forward", "spawn:runtime.py:rerun",
          "spawn:runtime.py:verify",
-         "spawn:runtime_git.py:git", "spawn:runtime_deploy.py:smoke", "spawn:runtime_launchers.py:install",
+         "spawn:runtime_git.py:git", "spawn:runtime_deploy.py:smoke", "spawn:runtime_launchers.py:entrypoints",
          "spawn:fleet/updates.py:pip_install"]
 status = "covered"
 count = 8

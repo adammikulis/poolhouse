@@ -415,7 +415,7 @@ def tree_at(root, commit_id, verified_at, name, **options):
 
 def render_launcher(tmp_path, root, python="/nonexistent/bin/python"):
     path = tmp_path / "poolhouse-probe"
-    path.write_text(runtime.LAUNCHER.format(root=str(root), python=python, arguments="['-c', 'pass']", name=path.name))
+    path.write_text(runtime.LAUNCHER.format(root=str(root), python=python, arguments="['-c', 'pass']", name=path.name, follow_selection=False))
     path.chmod(0o700)
     return path
 
@@ -470,11 +470,10 @@ def test_launcher_recovery_spawn_is_validated_logged_rate_limited_and_ignores_th
     assert "recovery output" in (root / "ensure.log").read_text()
 
 
-def test_launcher_directories_are_absolute_and_a_relative_recorded_one_is_refused(world, monkeypatch, tmp_path):
+def test_explicit_launcher_directories_are_absolute_and_old_record_is_ignored(world, monkeypatch, tmp_path):
     runtime_deploy.prepare_root()
     runtime_store.write_state({"launchers": "relative/bin"})
-    with pytest.raises(runtime_deploy.DeployError, match="absolute"):
-        runtime_cli._launchers("")
+    assert runtime_cli._launchers("") == runtime.directory().parent.parent / "bin"
     monkeypatch.chdir(tmp_path)
     assert runtime_cli._launchers("bin") == tmp_path.resolve() / "bin"
 

@@ -97,7 +97,8 @@ def test_rollback_follows_the_same_gate(lead):
 
 
 def test_a_failed_smoke_under_a_delegated_deploy_leaves_the_selection_alone(lead):
-    repo, launchers, fake = lead
+    repo, _, fake = lead
+    launchers = runtime_cli._launchers("")
     first = commit(repo, "a")
     runtime_cli.main(["ensure"])
     before = (launchers / "poolhouse-workspace").read_bytes()
