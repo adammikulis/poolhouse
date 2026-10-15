@@ -128,7 +128,10 @@ class Project:
 
     def land(self, *args: str) -> tuple[int, str, dict]:
         """Run ``scripts/land`` and return its status, output and JSON summary."""
-        done = subprocess.run([sys.executable, str(LAND), *args], cwd=self.root, env=self.env,
+        launcher = ("import runpy, sys, land_failure_evidence; "
+                    "land_failure_evidence.actor = lambda root: ({'id': 'agent-fixture'}, True); "
+                    "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')")
+        done = subprocess.run([sys.executable, "-c", launcher, str(LAND), *args], cwd=self.root, env=self.env,
                               capture_output=True, text=True, check=False)
         last = done.stdout.strip().splitlines()[-1] if done.stdout.strip() else "{}"
         return done.returncode, done.stdout + done.stderr, json.loads(last)

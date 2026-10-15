@@ -162,11 +162,11 @@ def execute(wt: Path, check: Check, tree: str) -> Result:
         receipt.valid = receipt.complete = False
         receipt.detail = "execution differs from the selected tree"
     seconds = time.monotonic() - began
-    if status == 0 and receipt.complete and receipt.after == tree:
+    if status == 0 and receipt.valid and receipt.complete and receipt.after == tree:
         _remember(Run(wt, check.tier, check.argv, wt / ".land-no-junit", 0, seconds, tree))
         return Result(check.name, "pass", seconds, receipt=receipt)
     tail = "\n".join(text.strip().splitlines()[-TAIL:])
-    return Result(check.name, "fail", seconds, tail, sorted(set(FAILED.findall(text))),
+    return Result(check.name, "fail", seconds, tail, sorted({identity.split("::")[0] for identity, _, _ in receipt.failures} or set(FAILED.findall(text))),
                   detail=receipt.detail, receipt=receipt)
 
 

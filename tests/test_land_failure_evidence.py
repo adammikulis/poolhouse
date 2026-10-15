@@ -87,6 +87,8 @@ def captured_job(tmp_path, monkeypatch):
     import testjobs
     root = tmp_path / "checkout"
     root.mkdir()
+    (root / "tests").mkdir()
+    (root / "tests/test_case.py").write_text("def test_old(): pass\n")
     store = tmp_path / "store"
     jobs = testjobs.Jobs(store / "fixture")
     options = {"code": 1, "owner": "agent-fixture", "wait_error": False}
@@ -158,3 +160,45 @@ def test_anonymous_failure_does_not_authorize_baseline(captured_job, monkeypatch
 def test_removed_existing_selector_is_not_a_passing_probe(tmp_path):
     got = land_check.probe_result(tmp_path, land_check.Check("affected", "tier", [], ["tests/removed.py"]))
     assert got.status == "fail" and "missing" in got.detail
+
+
+def test_invalid_authenticated_receipt_never_records_pass(tmp_path, monkeypatch):
+    monkeypatch.setattr(land_check, "tree_hash", lambda root: "same")
+    monkeypatch.setattr(land_check, "_prior", lambda *args: None)
+    monkeypatch.setattr(evidence, "maintained", lambda *args: True)
+    monkeypatch.setattr(evidence, "run", lambda *args: (0, "", evidence.Receipt(before="same", after="same", complete=True)))
+    monkeypatch.setattr(land_check, "_remember", lambda *args: pytest.fail("invalid pass recorded"))
+    assert land_check.execute(tmp_path, land_check.Check("affected", "tier", []), "same").status == "fail"
+
+
+def test_failure_file_selection_uses_complete_receipt(tmp_path, monkeypatch):
+    monkeypatch.setattr(land_check, "tree_hash", lambda root: "same")
+    monkeypatch.setattr(land_check, "_prior", lambda *args: None)
+    monkeypatch.setattr(evidence, "maintained", lambda *args: True)
+    receipt = evidence.Receipt(before="same", after="same", valid=True, complete=True, failures=[("tests/earlier.py::case", "failure", "hash")])
+    monkeypatch.setattr(evidence, "run", lambda *args: (1, "truncated log", receipt))
+    assert land_check.execute(tmp_path, land_check.Check("affected", "tier", []), "same").failed_files == ["tests/earlier.py"]
+
+
+@pytest.mark.parametrize("field,value", [("pid", True), ("started", float("nan")), ("finished", float("inf"))])
+def test_nonfinite_or_boolean_job_identity_is_rejected(captured_job, monkeypatch, field, value):
+    root, _, _ = captured_job
+    original = evidence.land_live_jobs.record
+    def read(path):
+        data = original(path)
+        if path.name == "status.json":
+            data[field] = value
+        return data
+    monkeypatch.setattr(evidence.land_live_jobs, "record", read)
+    if field in ("pid", "started"):
+        with pytest.raises(ValueError):
+            evidence.run(root, [sys.executable, "scripts/test", "all", "tests/test_case.py"])
+    else:
+        with pytest.raises(ValueError, match="terminal job receipt changed"):
+            evidence.run(root, [sys.executable, "scripts/test", "all", "tests/test_case.py"])
+
+
+def test_nonexistent_junit_case_cannot_supply_failure_evidence(tmp_path):
+    (tmp_path / "junit-fixture.xml").write_text("<testsuite tests='1' failures='1' errors='0'><testcase classname='tests.missing' name='case'><failure>bad</failure></testcase></testsuite>")
+    with pytest.raises(ValueError, match="existing checkout"):
+        evidence.failures(tmp_path, tmp_path)
