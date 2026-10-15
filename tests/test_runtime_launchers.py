@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import runtime, runtime_launchers
+from poolhouse import home, runtime, runtime_cli, runtime_launchers, runtime_store
 
 
 @pytest.fixture
@@ -119,3 +119,10 @@ def test_concurrent_settings_edit_is_preserved_and_cutover_refused(tmp_path, cho
     with pytest.raises(OSError, match="changed during"):
         cutover(settings)
     assert settings.read_text() == "concurrent user edit"
+
+
+def test_default_launcher_layout_ignores_an_old_shared_interpreter_directory(tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
+    foreign = tmp_path / "shared-python" / "bin"
+    runtime_store.write_state({"launchers": str(foreign)})
+    assert runtime_cli._launchers("") == home.state("bin")

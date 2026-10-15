@@ -10912,9 +10912,9 @@
    "note": "Checkout paths, refs, state roots, launcher directories and forwarded arguments are single argv items with no shell; a ref starting with a dash names no commit; module and function names in launchers are matched against a pattern"
   },
   {
-   "id": "spawn:runtime_launchers.py:install",
+   "id": "spawn:runtime_launchers.py:entrypoints",
    "kind": "spawn",
-   "source": "runtime_launchers.py:install",
+   "source": "runtime_launchers.py:entrypoints",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
