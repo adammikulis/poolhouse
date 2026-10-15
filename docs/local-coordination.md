@@ -16,15 +16,18 @@ allocation throughout that interval; a test broker lease must request and requir
 
 Docker configuration is private and empty. The command never reads a person's Docker
 credentials or Kubernetes configuration, changes the current context, installs a login
-service, mounts host paths or grants container privileges. Generated credentials and the temporary relay executable
-exist in private container memory and disappear when the container is removed. Stopping
+service, mounts host paths or grants container privileges. Generated credentials stay in private container memory and disappear when the container
+is removed. The verified public relay executable also has a private host temporary copy,
+removed during normal cleanup. Stopping
 this service does not join, restore or found a pool.
 
 The generated bootstrap administrator and restricted service account are fresh software
 service principals inside this isolated API. They are never alternative Poolhouse agent
 identities, person credentials or sources of pool authority. Their tokens are not exported
-to MCP or another agent. The restricted token has a verified ten-minute lifetime and an
-API-specific audience.
+to MCP or another agent. The restricted token is issued with a verified 600-second lifetime and an API-specific
+audience. The upstream validator allows another 60 seconds for clock skew; this is not an
+exact ten-minute wall-clock cutoff. [Hardware evidence](notes/2026-10-14-local-coordination.md)
+records actual rejection after that allowance.
 
 The service account can read and update only the pre-created `status` ConfigMap and
 `coordinator` Lease in `poolhouse-coordination`. These objects have no Poolhouse authority.
