@@ -282,9 +282,9 @@ def wheelhouse(into: Path) -> Path:
     """A directory holding a wheel for every extra a full install has, and for the
     packaging the library itself asks for."""
     versions = {"ladybug": "0.20.4", "huggingface_hub": "1.32.0", "ddgs": "9.0.0",
-                "matplotlib": "3.11.2", "numpy": "1.26.0", "trafilatura": "2.0.0", "openai_agents": "0.23.1", "py_machineid": "0.8.0"}
+                "matplotlib": "3.11.2", "numpy": "1.26.0", "trafilatura": "2.0.0", "openai_agents": "0.23.1", "py_machineid": "0.8.0", "keyring": "24.0.0", "pyjwt": "2.10.0"}
     for module, version in versions.items():
-        stand_in_wheel(into, module.replace("_", "-"), version, {"openai_agents": "agents", "py_machineid": "machineid"}.get(module, module))
+        stand_in_wheel(into, module.replace("_", "-"), version, {"openai_agents": "agents", "py_machineid": "machineid", "pyjwt": "jwt"}.get(module, module))
     wheel_of_installed(into, "packaging")
     # Whatever else the library asks for unconditionally must be on the disk too, or `--no-index`
     # cannot resolve poolhouse itself (psutil became a core requirement after this was written, and
