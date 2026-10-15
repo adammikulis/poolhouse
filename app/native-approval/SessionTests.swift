@@ -4,6 +4,7 @@ import Foundation
 @main
 struct SessionTests {
     static func main() throws {
+        try ManifestTests.run()
         let id = String(repeating: "1", count: 64)
         let fields: NSDictionary = ["version": 1, "request_id": id, "action": "enroll_phone",
             "pool": ["id": String(repeating: "2", count: 32), "anchor": String(repeating: "2", count: 64), "name": "Test pool"],
