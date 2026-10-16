@@ -5,17 +5,21 @@ final class ApprovalWindow: NSObject, NSWindowDelegate, NSApplicationDelegate {
     private let helper: AuthenticatedHelper
     private var session: ApprovalSession
     private let window: NSWindow
-    private var authorization: FreshAuthorization?
+    private var presence: NativeLocalPresence?
+    private let challenge: AdmittedChallenge
     private var observer: NSObjectProtocol?
     private var expiryTimer: Timer?
     private let approveButton = NSButton()
 
-    init(helper: AuthenticatedHelper, card: ApprovalCard) {
+    init(helper: AuthenticatedHelper, challenge: AdmittedChallenge) {
+        let card = challenge.card
+        self.challenge = challenge
         self.helper = helper
         session = ApprovalSession(card: card, windowID: UUID())
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 620),
                           styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init()
+        helper.onDisconnection { [weak self] in self?.cancel() }
         window.title = "Poolhouse approval"
         window.delegate = self
         window.isReleasedWhenClosed = false
@@ -56,7 +60,14 @@ final class ApprovalWindow: NSObject, NSWindowDelegate, NSApplicationDelegate {
     func show() {
         window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
         expiryTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { if let self, self.now >= self.session.snapshot.card.expires { self.cancel() } }
+            MainActor.assumeIsolated { self?.checkLifetime() }
+        }
+    }
+    private func checkLifetime() {
+        var asid: UInt32 = 0
+        let owner = challenge.caller.session
+        guard ph_local_session(owner.owner, &asid), asid == owner.asid, now < session.snapshot.card.expires else {
+            cancel(); return
         }
     }
     private var visible: Bool { window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible) }
@@ -67,19 +78,19 @@ final class ApprovalWindow: NSObject, NSWindowDelegate, NSApplicationDelegate {
         approveButton.isEnabled = false
         do {
             try session.begin(visible: visible, active: NSApp.isActive && window.isKeyWindow, now: now)
-            authorization = try FreshAuthorization(helper: helper)
-            try authorization?.authenticate(helper: helper, snapshot: session.snapshot) { [weak self] result in
-                self?.authenticated(result)
-            }
+            presence = try NativeLocalPresence.begin(helper: helper, challenge: challenge, snapshot: session.snapshot,
+                validateWindow: { [weak self] in
+                    guard let self else { throw ApprovalFailure.cancelled }
+                    try self.session.authenticated(snapshot: self.session.snapshot, visible: self.visible,
+                                                   active: NSApp.isActive && self.window.isKeyWindow, now: self.now)
+                }, completion: { [weak self] result in self?.authenticated(result) })
         } catch { cancel() }
     }
 
-    private func authenticated(_ result: Result<Void, Error>) {
+    private func authenticated(_ result: Result<LocalPresenceResult, Error>) {
         do {
-            try result.get()
-            try session.authenticated(snapshot: session.snapshot, visible: visible,
-                                      active: NSApp.isActive && window.isKeyWindow, now: now)
-            try helper.commit(snapshot: session.snapshot)
+            let proof = try result.get()
+            try helper.commit(result: proof, challenge: challenge, snapshot: session.snapshot)
             try session.completed()
             finish()
         } catch { cancel() }
@@ -89,8 +100,8 @@ final class ApprovalWindow: NSObject, NSWindowDelegate, NSApplicationDelegate {
         session.background()
         if session.phase == .cancelled { finish() }
     }
-    @objc private func cancel() { session.cancel(); helper.cancel(); finish() }
-    private func finish() { expiryTimer?.invalidate(); expiryTimer = nil; authorization?.destroy(); authorization = nil; window.orderOut(nil); NSApp.stop(nil) }
+    @objc private func cancel() { session.cancel(); finish() }
+    private func finish() { expiryTimer?.invalidate(); expiryTimer = nil; presence?.cancel(); presence = nil; helper.cancel(); window.orderOut(nil); NSApp.stop(nil) }
     func windowWillClose(_ notification: Notification) { cancel() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply { cancel(); return .terminateNow }
     deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
