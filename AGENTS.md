@@ -263,7 +263,8 @@ which, in one line, at once, and do every part that is not blocked.
   registration per session. A test calls it twice.
 - **A worker reports at its checkpoints.** A worker commits what is green and reports its SHA at each natural
   checkpoint; one that has run about an hour without reporting is asked to report, and the lead finds out why it is
-  stuck instead of leaving it running.
+  stuck instead of leaving it running. A worker ends every background task it started (monitors, polling loops,
+  test jobs) before it reports, so that it exits; the lead stops a finished worker that still lists background work.
 - **When the owner must run something, give the whole command**: one line that runs as pasted, with the `cd`, absolute
   paths and every argument, never a snippet to adapt.
 
