@@ -43,10 +43,10 @@ def test_an_announcement_over_what_a_session_announces_is_written_and_the_board_
     assert [e.fields["subject"] for e in audit if e.fields["event"] == "announce_over_quota"] == [team.lead.name] * 2
 
 
-def test_a_session_has_eight_live_subagents_and_the_ninth_registers_as_a_quota(team):
-    for n in range(8):
+def test_a_session_has_sixteen_live_subagents_and_the_seventeenth_registers_as_a_quota(team):
+    for n in range(16):
         team.member(f"child-{n}", parent=team.lead)
-    with pytest.raises(Quota, match="8 live subagents"):
-        team.member("child-8", parent=team.lead)
+    with pytest.raises(Quota, match="16 live subagents"):
+        team.member("child-16", parent=team.lead)
     team.session(team.members["child-0"]).retire()
-    team.member("child-8", parent=team.lead)
+    team.member("child-16", parent=team.lead)
