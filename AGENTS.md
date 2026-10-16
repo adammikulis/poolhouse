@@ -174,7 +174,7 @@ its own item after the landing. A blocker is reported in one line at once, and e
 cut or landing target the owner names (for example "cut the release, then work on the next development branch") is used
 from then on. Briefs to workers state exactly what to land and forbid additions.
 
-**Limits on the work belong to the owner** (owner, 2026-10-16). A cost or speed goal is met by removing waste (retries, rework,
+**Limits on the work belong to the owner.** A cost or speed goal is met by removing waste (retries, rework,
 duplicate runs, idle workers, work nobody asked for), never by shrinking what was asked. No agent sets a cap on coverage, depth,
 rows, findings, tool calls or rounds beyond the ones written in these rules or named by the owner. If a brief imposes any other
 limit it says so, says what is lost and why, and the lead reports it; a limit is never presented as a rule it is not.
@@ -211,7 +211,7 @@ boundary: if so it is not the recommendation and is named the weaker one. A guar
 an excused path, a skipped check) to turn a gate green: fix the cause; a change that narrows a guard goes to the owner
 as a decision with the correct option first.
 
-**Never hand the owner a command an agent can run** (owner, 2026-10-12). "Please run this" is the exception, not a way to
+**Never hand the owner a command an agent can run.** "Please run this" is the exception, not a way to
 finish a task. An agent runs every command it can, restarts what it stops, and fixes a service that needs a person's
 step after a normal stop (that is a defect in the service). It asks the owner to type a command only when the tooling
 itself refuses an agent for that command (a person-only gate: the keystore, a passphrase, the administrator prompt, a
@@ -219,7 +219,7 @@ grant, `main`), and then only after running it and quoting the refusal, with the
 its error, so it never fails on a missing argument or leaves the owner to read the docs. A list of commands
 for the owner is a sign the work is not done.
 
-**Nothing blocks on a person** (owner, 2026-10-16). The owner may not notice or answer for hours or days, so no queue,
+**Nothing blocks on a person.** The owner may not notice or answer for hours or days, so no queue,
 batch, landing request, gate, design or agent stops to wait for a human yes. A person-only step (a floor in section 1) is
 asked once, through the question tool, and everything that does not depend on the answer goes on at once; whatever does
 depend on it parks as its own pending item with the safe default in force (the old state, the stricter setting, nothing
@@ -247,7 +247,7 @@ which, in one line.
   install it with the package manager and retry. When behavior is broken, trace the failing path and fix the underlying
   cause; no narrow workaround that leaves the root behavior broken, and add regression coverage for the corrected
   behavior.
-- **Investigate a failure before anything is retried** (owner, 2026-10-16). Something that fails is diagnosed from its
+- **Investigate a failure before anything is retried.** Something that fails is diagnosed from its
   evidence first: the error text, the logs, the code path. It is not rerun, re-spawned, resubmitted or routed around
   hoping it passes. A failure seen a second time, or one that blocks other work (a refused call, an identity or token
   that does not resolve, a gate that aborts), starts the root-cause fix at once, in the same turn, by the agent that hit
@@ -258,7 +258,7 @@ which, in one line.
 A work in progress: no prompt, schema, serving default, pin, name, signature or file layout is frozen, and none is worth
 keeping in a shape that is wrong.
 
-**Never hold up code for legacy pools or old data** (owner, standing order, 2026-10-11): there are no production users and the
+**Never hold up code for legacy pools or old data**: there are no production users and the
 repo moves too fast. A change that makes an old pool, old state file, old wire format or old build unsupported is landed as
 written: no legacy mode, no migration path, no mixed-build shim, no compatibility step in a gate or rig. The old thing is
 refused with one plain message and the device makes a new pool or fresh state. A review finding that is only about an old
@@ -522,7 +522,7 @@ reads only what it flags.
   scenario; an unflagged report is recorded and nothing more. Attack-first (section 1) is unchanged: a design or
   security-adjacent change still needs the written break-it pass by a non-author before it is built.
 - **Three rounds at most.** A branch gets one review pass and at most two fix-and-recheck rounds; a finding that
-  survives them is reported to the owner as a decision, not looped on (owner, 2026-10-12).
+  survives them is reported to the owner as a decision, not looped on.
 
 ### Branch hygiene and landing
 
@@ -634,7 +634,7 @@ Mechanics: tests/README.md, docs/test-execution.md, docs/test-reuse.md, docs/age
   seconds, or a quarter of the wall time, is a defect to fix in the runner or a fixture. Anything whose cost scales with
   the machine's state (files under the home, installed runtimes, queue depth) and not with the change is a bug. Measure
   with `--durations` before blaming the tests; never leave a state walk unbounded.
-- **A slow gate is a defect, and a timeout is never the fix** (owner, 2026-10-16). A gate, test run or command far over its
+- **A slow gate is a defect, and a timeout is never the fix.** A gate, test run or command far over its
   usual time, or one that hits a limit, is investigated the same turn from the batch record, runner log, per-test
   durations and broker queue waits, and the cause is fixed. No agent raises a timeout or idle limit, loosens a guard, skips
   a gate or resubmits unchanged to get past one. A gate that aborts on a limit requeues once, then is ejected to its
@@ -712,7 +712,7 @@ Chromium through playwright, or run headless and read screenshots.
 
 ### Which models to test with, and the defaults the owner wants
 
-Owner's standing choices (2026-10-03); do not ask again.
+Owner's standing choices; do not ask again.
 
 - **Live tests and demos use the newest Qwen family** (Qwen3.8 at the time of writing; look at what
   `poolhouse-models list` and the Hugging Face cache hold and name the exact id in the report). Large-model tests use
@@ -785,7 +785,7 @@ were written with.
 
 ### HANDOFF.md
 
-It lists what is still pending. Nothing else. **Standing rule (owner, 2026-10-12): prune an item as you complete it, in the same commit that lands the work**, never later and never left for a sweep. When something is done, **delete its entry**: no strike-through, no `[x]`,
+It lists what is still pending. Nothing else. **Standing rule: prune an item as you complete it, in the same commit that lands the work**, never later and never left for a sweep. When something is done, **delete its entry**: no strike-through, no `[x]`,
 no "completed" section, no line saying it was finished. Anything that turned out to be wrong is deleted too, rather than
 annotated as mistaken. If a finished piece leaves something behind (a limit, a gap, a follow-up), write that as its own
 pending entry in its own words, not as a postscript to the item going away. An empty HANDOFF.md is a good state: delete

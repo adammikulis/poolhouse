@@ -85,9 +85,9 @@ rules in AGENTS.md, "The main session and its agents".
 Set the effort of every subagent from the task, with the Agent tool's `effort` argument (this section is the
 instruction that allows it). Effort is a cost lever before the model is: on the owner's Terminal-Bench chart
 (docs/model-benchmarks.md, 2.6) Sonnet 5.5 goes 20, 29, 43, 61, 70 percent from low to max at about $0.7, $0.8,
-$1.9, $5.3 and $13 per attempt, so each step up is real accuracy and real cost. **Avoid max** (owner,
-2026-10-10): it is about 2.5 times the cost of xhigh for about nine points, and a failure at xhigh is
-resolved first by a sharper brief, then by a second look, and only then by max.
+$1.9, $5.3 and $13 per attempt, so each step up is real accuracy and real cost. **Avoid max**: it is about 2.5 times the
+cost of xhigh for about nine points, and a failure at xhigh is resolved first by a sharper brief, then by a second look,
+and only then by max.
 
 | Task | Model and effort |
 | --- | --- |
@@ -126,7 +126,7 @@ Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to
 - A design is built only when the owner asked for the feature; a design nobody asked for stops at its first attack review and is
   parked, not revised through further rounds. A mechanical doc edit (a count, a name, a pointer) goes to Haiku.
 - A reviewer is started once per batch of related changes, not once per commit, and a failure to register or to record an accept
-  is root-caused before any reviewer is started again (owner, 2026-10-16).
+  is root-caused before any reviewer is started again.
 
 ## The heartbeat
 
