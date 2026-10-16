@@ -11,9 +11,9 @@ from poolhouse import worktreerules
 from poolhouse.errors import Denied
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import held
-from poolhouse.workspace import integration_git as repo
+from poolhouse.workspace import integration_git as repo, worktree_archive
 
-__all__ = ["assigned", "assigned_file", "checkpoint", "cleanup", "pending", "record_cleanup", "remember", "require_clean", "scopes"]
+__all__ = ["archive_obsolete", "assigned", "assigned_file", "checkpoint", "cleanup", "pending", "record_cleanup", "remember", "require_clean", "scopes"]
 
 FILE = "worktree-lifecycle.json"
 
@@ -139,6 +139,29 @@ def cleanup(base: Path, owner: str, path: str, claim_owner: Callable[[str], str]
     return {'path': str(target), 'commit': commit, 'landed': landed, 'cleanup_verified': True}
 
 
+def archive_obsolete(base: Path, owner: str, path: str, bundle: str,
+                     claim_owner: Callable[[str], str]) -> dict[str, Any]:
+    """Record an owned, removed obsolete trial after complete independent preservation checks."""
+    target = str(Path(path).resolve())
+    if claim_owner(target) != owner:
+        raise Denied('obsolete trial disposition requires the live exact checkout claim')
+    result = {}
+
+    def change(rows: dict[str, dict[str, Any]]) -> None:
+        nonlocal result
+        matches = [(key, row) for key, row in rows.items() if row['owner'] == owner and row['path'] == target]
+        if len(matches) != 1:
+            raise Denied('obsolete trial disposition requires the authenticated worker scope')
+        key, scope = matches[0]
+        result = worktree_archive.proof(scope, bundle)
+        if claim_owner(target) != owner:
+            raise Denied('obsolete trial checkout claim changed')
+        rows[key] = {**scope, 'archive': result}
+
+    _edit(base, change)
+    return result
+
+
 def pending(base: Path, owner: str) -> list[dict[str, Any]]:
     """Inspect the worker's durable scopes without removing files or Git references."""
     result = []
@@ -162,17 +185,19 @@ def pending(base: Path, owner: str) -> list[dict[str, Any]]:
         refs = repo.git(primary, 'for-each-ref', '--format=%(refname)', 'refs/heads/').splitlines()
         reasons = []
         tip = repo.git(primary, 'rev-parse', f"refs/heads/{scope['development']}")
-        unlanded = [commit for commit in scope['commits'] if not repo.ancestor(primary, commit, tip)]
+        archived = worktree_archive.verified(scope)
+        unlanded = [commit for commit in scope['commits']
+                    if commit not in archived.get('commits', []) and not repo.ancestor(primary, commit, tip)]
         if unlanded:
             reasons.append('recorded commits are not landed: ' + ', '.join(unlanded))
         if path.exists():
             reasons.append('checkout remains')
-        elif not scope.get('cleanup'):
+        elif not scope.get('cleanup') and not archived:
             reasons.append('verified cleanup proof is missing')
         if any(line.startswith('worktree ') and Path(line[9:]).resolve() == path
                for line in registered):
             reasons.append('worktree registration remains')
-        remaining = [branch for branch in scope['branches'] if f'refs/heads/{branch}' in refs]
+        remaining = [branch for branch in scope['branches'] if f'refs/heads/{branch}' in refs and f'refs/heads/{branch}' not in archived.get('refs', {})]
         if remaining:
             reasons.append('branches remain: ' + ', '.join(remaining))
         if reasons:
