@@ -98,10 +98,13 @@ class Jobs:
         return self.folder / job
 
     def read(self, job: str, name: str = "status.json") -> dict:
-        """A job's status or spec; ``{}`` when absent."""
+        """A job's status or spec; ``{}`` when absent, and ``{}`` with a line on stderr when the file is there and unreadable."""
         try:
             return json.loads((self.path(job) / name).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as error:
+            print(f"test: job {job}: {name} is unreadable ({type(error).__name__}); it is treated as missing", file=sys.stderr)
             return {}
 
     def write(self, job: str, name: str, data: dict) -> None:

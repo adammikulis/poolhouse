@@ -245,6 +245,7 @@ def execute_run(command, environment, tier, record: OutputRecord):
     phases = testphases.read(phases_file)
     phases_file.unlink(missing_ok=True)
     if phases is not None:
+        REUSE["phases"] = phases
         print(testphases.line(phases), flush=True)
     if testextras.on() and tier in ("full", "all") and not [a for a in command if a.startswith("tests/") or a == "-k"]:
         measured(command, junit, wall, load)
@@ -581,6 +582,7 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         report = REUSE.get("report")
         status = {"state": state, "exit": code, "finished": time.time(), "thread": thread, **me,
                   "queued_s": round(testslots_runner.QUEUED["seconds"], 1),
+                  **(testphases.record(REUSE["phases"]) if REUSE.get("phases") else {}),
                   "summary": report.summary() if report else {}, **({"notes": REUSE["notes"]} if REUSE.get("notes") else {})}
         jobs.write(job, "status.json", status)
         REUSE["events"].job_done(job, spec, status, thread)

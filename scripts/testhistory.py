@@ -7,6 +7,7 @@ import math
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -43,12 +44,15 @@ def threshold() -> float:
 
 
 def load(path: Path) -> dict[str, dict]:
-    """The recorded tests; empty when the store is missing or unreadable."""
+    """The recorded tests; empty when the store is missing, and empty with a line on stderr when it is there and unreadable."""
     try:
         data = json.loads(path.read_text())
         tests = data["tests"]
         return tests if isinstance(tests, dict) else {}
-    except (OSError, ValueError, KeyError, TypeError):
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"test: the duration history {path} is unreadable ({type(error).__name__}); estimates start from nothing", file=sys.stderr)
         return {}
 
 
