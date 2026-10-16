@@ -244,6 +244,21 @@ fn check(act: &Act, signed: &[String], body: &Body, s: &EpochState, pool: &str) 
     Check::Ok(counted)
 }
 
+/// Whether a chain act meets its known ancestor's policy and quorum.
+pub(super) fn validates_candidate(chain: &Chain, pool: &str, act: &Act) -> bool {
+    let (Some(state), Ok(body)) = (chain.state_for(act), body::parse(act)) else { return false };
+    matches!(check(act, &chain.signers(&act.id(), act), &body, state, pool), Check::Ok(_))
+}
+
+/// Whether a proposed chain change can satisfy the current charter's policy.
+pub(super) fn proposal_fits(chain: &Chain, pool: &str, act: &Act) -> std::result::Result<(), String> {
+    let (Some(state), Ok(body)) = (chain.state_for(act), body::parse(act)) else { return Err("the change does not name known pool terms".into()) };
+    match check(act, &[], &body, state, pool) {
+        Check::Void(why) => Err(why),
+        Check::Ok(_) | Check::Short(_, _, _) => Ok(()),
+    }
+}
+
 /// The earliest first-sight of a valid `cancel` or `veto` for each act it names, against the charter of ``s``.
 fn stops(cx: &Ctx, s: &EpochState) -> (BTreeMap<String, i64>, BTreeMap<String, i64>) {
     let (mut cancels, mut vetoes) = (BTreeMap::new(), BTreeMap::new());

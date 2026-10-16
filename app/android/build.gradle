@@ -38,6 +38,7 @@ android {
         }
     }
     buildTypes {
+        debug { signingConfig null }
         release {
             minifyEnabled false
             debuggable false
@@ -48,7 +49,17 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    sourceSets.main.jniLibs.srcDirs = [layout.buildDirectory.dir('native-jni')]
 }
+
+tasks.register('verifyNativeGovernance') {
+    doLast {
+        if (!layout.buildDirectory.file('native-jni/arm64-v8a/libpoolhouse_phone_governance.so').get().asFile.isFile()) {
+            throw new GradleException('Build the Android app through build.py to include its pool verifier.')
+        }
+    }
+}
+tasks.named('preBuild') { dependsOn 'verifyNativeGovernance' }
 
 dependencies {
     implementation 'com.google.zxing:core:3.5.3'

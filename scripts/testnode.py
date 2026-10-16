@@ -30,7 +30,7 @@ from poolhouse.redact.secrets import env_secrets, redact
 ENV = "DEV_TEST_NODE_BINARY"
 """Output of the runner, input of the node fixture: the binary this run's tests start."""
 FOLDER = "test-node"
-MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "src-tauri")
+MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority")
 KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
 BUILD_TIMEOUT_S = 1800.0
