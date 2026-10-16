@@ -43,6 +43,15 @@ fixtures make their short socket folder under the literal `/tmp`, which the plug
 a `mkdir` of the slot directory by `tests/conftest.py` (made only when `DEV_TEST_SLOTS_DIR` is unset now), a skip, and a
 closure that uses a call the runner cannot observe (`ladybug`, `sqlite3`, `utime`, `fstat`).
 
+## Test nodes do not outlive their run
+
+`tests/environ_guard.py` sets `POOLHOUSE_NODE_PARENT_PID` to the pytest process in every test process and its children. A node
+supervisor started with it (`--parent-pid`, from `node_launch._start_supervisor`) stops the node and itself once that process
+has exited, whether the run was killed or ended. `scripts/test` also stops, at the start of each followed run
+(`scripts/testreap.py`), the supervisors and nodes whose state folder is a test's `/tmp/ml...` folder and that have run for
+more than an hour; it prints how many. The Rust node itself has no parent watch: a supervisor killed with `SIGKILL` leaves its
+node until the next reap.
+
 ## Fixed overhead
 
 A run's fixed overhead is its collection, session setup and teardown, the three phases `testphases` prints; the calls
