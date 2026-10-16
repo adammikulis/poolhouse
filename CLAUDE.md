@@ -5,16 +5,11 @@
 [AGENTS.md](AGENTS.md) (imported above) is the complete repository policy; everything here applies in addition to it and only covers
 Claude Code. [docs/glossary.md](docs/glossary.md) is the vocabulary and is binding: use its words, never the ones it bans.
 
-## Browsers
+## Session start and names
 
-Never drive the owner's own browser through the `claude-in-chrome` tools to test this project's pages: that window is on their primary
-display and every click takes their screen. Drive your own Chromium through playwright, or run headless and read screenshots (AGENTS.md,
-"Driving a browser").
-
-## poolhouse-claude
-
-`poolhouse-claude` runs Claude Code against a local model under a broker lease. Drive it in a scratch directory, never in a checkout
-being edited (AGENTS.md, "Driving a model on this machine").
+The `SessionStart` hook registers the lead, announces it and puts the inbox in its context; when the hook output is absent, the lead
+runs `poolhouse-workspace inbox` before any other work (AGENTS.md, "The workspace", "Contact comes first"). A lead joining passes its
+own model id (`--model <id>`; `claude-sonnet-5-5` unless it knows otherwise).
 
 ## Hooks and settings
 
@@ -24,11 +19,11 @@ both guards off.
 
 - The Bash guard refuses the command-line forms of the rules in AGENTS.md: `git add -A`, `.` and `-u`, `git commit -a`, `llama-server`
   by hand, `poolhouse-serve up` flags that skip the lease, a push to `main` until the person has selected the approval for that
-  one commit (the main session runs `scripts/hooks/person-consume propose`, asks its question with AskUserQuestion word for word, and
-  the guard and `pre-push` then let that one fast-forward through, once; `POOLHOUSE_PUSH_MAIN=yes` opens nothing; where the origin's
-  ruleset on `main` requires a pull request, the same approval covers a pull request from a `promote/<date>` snapshot that the main
-  session merges under the live `release-main` authorization), and a force
-  push, a remote ref deletion, `--all` or `--tags` pushes, past any `NAME=value` written in front of the command.
+  one commit (AGENTS.md, "The owner's `main`"; the main session runs `scripts/hooks/person-consume propose`, asks its question with
+  AskUserQuestion word for word, and the guard and `pre-push` then let that one fast-forward through, once;
+  `POOLHOUSE_PUSH_MAIN=yes` opens nothing; where the origin's ruleset on `main` requires a pull request, the same approval covers a
+  pull request from a `promote/<date>` snapshot that the main session merges under the live `release-main` authorization), and a
+  force push, a remote ref deletion, `--all` or `--tags` pushes, past any `NAME=value` written in front of the command.
 - The edit guard refuses, at the moment it is written, the writes AGENTS.md, "The gates" lists (a duplicate function body, a raw HTTP
   call, a docstring over twelve lines, a signature over eight parameters, a file over its line limit or made longer). It reads the two
   limits from the checkers.
@@ -118,6 +113,8 @@ Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to
   summary of state (a continuation is cheaper than a longer life).
 - Split by deliverable, not by phase: design, code, review and fixes are separate workers; a reviewer reads, runs a few
   targeted checks and reports, with its tool calls capped near 40.
+- A reviewer is started once per batch of related changes, not once per commit, and a failure to register or to record an accept
+  is root-caused before any reviewer is started again.
 - Briefs point at files and sections; they do not paste documents. Workers read ranges, not whole files, and run the
   affected tests, not the suite, until the one gate run.
 - The lead keeps its own context short: results are summarised once, large outputs are read from a file range, and a session
@@ -125,8 +122,6 @@ Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to
 - Effort follows the table above; avoid xhigh for work a clear brief makes mechanical.
 - A design is built only when the owner asked for the feature; a design nobody asked for stops at its first attack review and is
   parked, not revised through further rounds. A mechanical doc edit (a count, a name, a pointer) goes to Haiku.
-- A reviewer is started once per batch of related changes, not once per commit, and a failure to register or to record an accept
-  is root-caused before any reviewer is started again.
 
 ## The heartbeat
 
@@ -135,8 +130,12 @@ cold at 60), as a chain of one-shot cron jobs where each firing schedules the ne
 session start. It is a standard part of driving this project and is never deleted when the queue empties: each
 firing does real work or ends in one line. The prompt and the rules are in docs/heartbeat.md.
 
-## Session start and names
+## Browsers
 
-The `SessionStart` hook registers the lead, announces it and puts the inbox in its context; when the hook output is absent, the lead
-runs `poolhouse-workspace inbox` before any other work (AGENTS.md, "The workspace", "Contact comes first"). A lead joining passes its
-own model id (`--model <id>`; `claude-sonnet-5-5` unless it knows otherwise).
+Never drive the owner's own browser through the `claude-in-chrome` tools to test this project's pages. AGENTS.md, "Driving a
+browser", gives the reason and the alternatives: your own Chromium through playwright, or headless with screenshots read.
+
+## poolhouse-claude
+
+`poolhouse-claude` runs Claude Code against a local model under a broker lease. Drive it in a scratch directory, never in a checkout
+being edited (AGENTS.md, "Driving a model on this machine").
