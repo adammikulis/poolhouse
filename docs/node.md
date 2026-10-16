@@ -1001,6 +1001,11 @@ verify; the binary is `poolhouse-node.exe` on Windows), `node_build` (into a run
   terminate a node still running after the wait. Ctrl+C, Ctrl+Break and a console close stop a node run by hand the
   same way (`SetConsoleCtrlHandler`); the supervisor takes `SIGBREAK` and `SIGINT`. `lock.pid_alive` asks the process
   by handle on Windows, because `os.kill(pid, 0)` there is `CTRL_C_EVENT`.
+- **Which processes a stop signals.** `stop_node` reads the pids from `node-run.json` and signals one only when
+  `node_supervise.owned` accepts it: an ordinary pid that is not the caller, one of its parents or init; a command line
+  that is `<program> run --state DIR` (node) or `-m poolhouse.node_launch supervise --state DIR` (supervisor) for that
+  state directory (links resolved); a start time that fits `started_at`. A process psutil cannot read is not accepted.
+  The signal goes to that one process through its psutil handle, never to a group.
 - **Crash-only.** The node is killed with SIGTERM or SIGKILL (`TerminateProcess` on Windows) at any moment (`stop_node`); the next start reads the logs
   on disk, cuts a torn tail, and every acknowledged entry and token is back. A real-process test posts, `kill -9`s, and
   reads everything again after the supervisor's restart.
