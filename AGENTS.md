@@ -174,6 +174,11 @@ its own item after the landing. A blocker is reported in one line at once, and e
 cut or landing target the owner names (for example "cut the release, then work on the next development branch") is used
 from then on. Briefs to workers state exactly what to land and forbid additions.
 
+**Limits on the work belong to the owner** (owner, 2026-10-16). A cost or speed goal is met by removing waste (retries, rework,
+duplicate runs, idle workers, work nobody asked for), never by shrinking what was asked. No agent sets a cap on coverage, depth,
+rows, findings, tool calls or rounds beyond the ones written in these rules or named by the owner. If a brief imposes any other
+limit it says so, says what is lost and why, and the lead reports it; a limit is never presented as a rule it is not.
+
 ### Onboarding is the product
 
 Pooling is the headline: agents do the work and people only approve. Ease of onboarding with Poolhouse is crucial. A
