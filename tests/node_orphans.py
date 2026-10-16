@@ -11,7 +11,7 @@ import os
 import shutil
 from pathlib import Path
 
-from poolhouse import node_launch
+from poolhouse import node_launch, node_supervise
 from poolhouse.lock import pid_alive
 
 OWNER = "owner.pid"
@@ -31,6 +31,12 @@ def owner_of(root: Path) -> int | None:
         return None
 
 
+def answers_as_recorded(state: Path) -> bool:
+    """Whether a node answers on ``state`` under the pid its run record names; a recorded pid that nothing answers for is not signalled."""
+    said = node_launch.node_health(state)
+    return said is not None and isinstance(pid := node_supervise.running(state).get("pid"), int) and said.get("pid") == pid
+
+
 def reap(base: Path = Path("/tmp")) -> list[Path]:
     """Stop the node under, and remove, every root in ``base`` whose recorded owner is no longer running; the roots reaped."""
     reaped = []
@@ -39,7 +45,7 @@ def reap(base: Path = Path("/tmp")) -> list[Path]:
         if pid is None or pid == os.getpid() or pid_alive(pid):
             continue
         state = root / "node"
-        if state.is_dir() and not state.is_symlink():
+        if state.is_dir() and not state.is_symlink() and answers_as_recorded(state):
             node_launch.stop_node(state)
         shutil.rmtree(root, ignore_errors=True)
         reaped.append(root)

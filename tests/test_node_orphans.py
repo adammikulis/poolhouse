@@ -45,6 +45,22 @@ def test_a_node_whose_pytest_was_killed_is_stopped_and_its_root_removed(running)
     assert not root.exists()
 
 
+def test_a_recorded_pid_that_is_another_live_process_is_not_signalled(tmp_path):
+    bystander = subprocess.Popen(["sleep", "60"])
+    root = Path(tempfile.mkdtemp(prefix=node_orphans.PREFIX, dir="/tmp"))
+    try:
+        (root / node_orphans.OWNER).write_text(str(dead_pid()))
+        (root / "node").mkdir(mode=0o700)
+        node_supervise.write_json(root / "node" / node_supervise.RUN, {"pid": bystander.pid, "supervisor": bystander.pid})
+        assert root in node_orphans.reap(root.parent)
+        assert not root.exists()
+        assert bystander.poll() is None
+    finally:
+        bystander.kill()
+        bystander.wait()
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_a_node_whose_pytest_is_running_is_left_alone(running):
     root, state = running
     (root / node_orphans.OWNER).write_text(str(os.getppid()))
