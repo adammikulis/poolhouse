@@ -161,14 +161,14 @@ fn a_session_has_so_many_live_subagents_and_a_retired_one_makes_room() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let ((_, parent), (_, other)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
-    let children: Vec<(String, String)> = (0..8).map(|i| child_of(&mut n, &parent, &format!("c{i}"))).collect();
-    let refused = req(&mut n, "register", "demo", &parent, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "c8"}));
+    let children: Vec<(String, String)> = (0..16).map(|i| child_of(&mut n, &parent, &format!("c{i}"))).collect();
+    let refused = req(&mut n, "register", "demo", &parent, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "c16"}));
     assert_eq!(code(&refused), "quota");
-    assert!(refused["error"]["message"].as_str().unwrap().contains("8 live subagents"), "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("16 live subagents"), "{refused}");
     assert_eq!(child_of(&mut n, &parent, "c3").0, children[3].0, "a subagent registered again is the one it was");
     child_of(&mut n, &other, "d0");
     ok(req(&mut n, "retire", "demo", &children[0].1, json!({})));
-    child_of(&mut n, &parent, "c8");
+    child_of(&mut n, &parent, "c16");
 }
 
 fn sleeper() -> std::process::Child {
@@ -197,7 +197,7 @@ fn subagents_nobody_has_heard_from_and_that_hold_nothing_do_not_count_as_live_an
         let mut n = node(dir.path());
         let (name, token) = session(&mut n, "demo", "a");
         (parent_name, parent) = (name, token);
-        children = (0..8).map(|i| child_of(&mut n, &parent, &format!("c{i}"))).collect::<Vec<_>>();
+        children = (0..16).map(|i| child_of(&mut n, &parent, &format!("c{i}"))).collect::<Vec<_>>();
         for (i, (_, token)) in children.iter().enumerate() {
             ok(port(&mut n, token, 9400 + i as u32));
         }
@@ -205,16 +205,16 @@ fn subagents_nobody_has_heard_from_and_that_hold_nothing_do_not_count_as_live_an
     age_children(dir.path(), &parent_name, 2 * 3600 * 1000);
     let mut n = node(dir.path());
     let register = |n: &mut Node, id: &str| req(n, "register", "demo", &parent, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": id}));
-    let refused = register(&mut n, "c8");
-    assert_eq!(code(&refused), "quota", "eight subagents each holding a claim are live, however long ago they spoke: {refused}");
+    let refused = register(&mut n, "c16");
+    assert_eq!(code(&refused), "quota", "sixteen subagents each holding a claim are live, however long ago they spoke: {refused}");
     ok(req(&mut n, "release", "demo", &parent, json!({"kind": "port", "key": "9400", "held_by": children[0].0})));
-    ok(register(&mut n, "c8"));
-    let refused = register(&mut n, "c9");
+    ok(register(&mut n, "c16"));
+    let refused = register(&mut n, "c17");
     assert_eq!(code(&refused), "quota", "the new one is heard from now, so it counts");
     for (i, (name, _)) in children.iter().enumerate().skip(1) {
         ok(req(&mut n, "release", "demo", &parent, json!({"kind": "port", "key": (9400 + i).to_string(), "held_by": name})));
     }
-    ok(register(&mut n, "c9"));
+    ok(register(&mut n, "c17"));
 }
 
 #[test]
@@ -222,10 +222,10 @@ fn a_retired_subagent_is_not_live_whatever_it_holds() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, parent) = session(&mut n, "demo", "a");
-    let children: Vec<(String, String)> = (0..8).map(|i| child_of(&mut n, &parent, &format!("c{i}"))).collect();
+    let children: Vec<(String, String)> = (0..16).map(|i| child_of(&mut n, &parent, &format!("c{i}"))).collect();
     ok(port(&mut n, &children[0].1, 9500));
     ok(req(&mut n, "retire", "demo", &children[0].1, json!({})));
-    ok(req(&mut n, "register", "demo", &parent, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "c8"})));
+    ok(req(&mut n, "register", "demo", &parent, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "c16"})));
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn a_subagent_whose_only_claim_is_held_by_a_process_that_has_ended_is_not_live()
         let mut n = node(dir.path());
         let (name, token) = session(&mut n, "demo", "a");
         (parent_name, parent) = (name, token);
-        for i in 0..8 {
+        for i in 0..16 {
             let (_, token) = child_of(&mut n, &parent, &format!("c{i}"));
             let sleeper = sleeper();
             ok(req(&mut n, "claim", "demo", &token, json!({"kind": "port", "key": (9600 + i).to_string(), "pid": sleeper.id()})));
@@ -247,10 +247,10 @@ fn a_subagent_whose_only_claim_is_held_by_a_process_that_has_ended_is_not_live()
     age_children(dir.path(), &parent_name, 2 * 3600 * 1000);
     let mut n = node(dir.path());
     let register = |n: &mut Node, id: &str| req(n, "register", "demo", &parent, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": id}));
-    assert_eq!(code(&register(&mut n, "c8")), "quota", "eight subagents whose claims are held by running processes are live");
+    assert_eq!(code(&register(&mut n, "c16")), "quota", "sixteen subagents whose claims are held by running processes are live");
     sleepers[0].kill().unwrap();
     sleepers[0].wait().unwrap();
-    ok(register(&mut n, "c8"));
+    ok(register(&mut n, "c16"));
     for mut sleeper in sleepers {
         let _ = sleeper.kill();
         let _ = sleeper.wait();

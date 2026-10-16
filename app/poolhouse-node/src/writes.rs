@@ -52,7 +52,7 @@ impl Default for WriteLimits {
     fn default() -> WriteLimits {
         WriteLimits {
             sends: 30, child_sends: 10, subagent_sends: 120, window_s: 60.0, announces: 6, announce_window_s: 600.0,
-            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, children: 8, child_beat_s: 1800,
+            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, children: 16, child_beat_s: 1800,
             sessions_per_harness: 24, sessions_per_lineage: 8, idle_retire_s: 86_400,
         }
     }
