@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import psutil
+import pytest
 import testreap
 from testreap import Proc
 
@@ -237,3 +238,38 @@ def test_the_devices_own_node_never_watches_a_process_named_by_the_environment(m
 
 def test_the_suite_marks_its_own_process_as_the_owner_of_every_node_it_starts():
     assert os.environ[node_supervise.PARENT_ENV] == str(os.getpid())
+
+
+class Unreadable:
+    """A process whose command line cannot be read, as `psutil` reports one on macOS (a permission error, a system error)."""
+
+    def __init__(self, pid, error):
+        self.pid, self.error = pid, error
+
+    def cmdline(self):
+        raise self.error
+
+
+def iterate(readable, unreadable):
+    """A stand-in for `psutil.process_iter` that fails the way macOS does when it is asked for attributes up front."""
+    def process_iter(attrs=None, ad_value=None):
+        if attrs:
+            raise PermissionError("sysctl KERN_PROCARGS2")
+        yield from unreadable
+        yield from readable
+    return process_iter
+
+
+def test_a_process_whose_command_line_cannot_be_read_is_left_out_of_the_listing(monkeypatch):
+    errors = [PermissionError("sysctl"), SystemError("error return without exception set"), psutil.AccessDenied(7), psutil.ZombieProcess(8)]
+    monkeypatch.setattr(testreap.psutil, "process_iter", iterate([psutil.Process()], [Unreadable(7 + i, e) for i, e in enumerate(errors)]))
+    pids = [found.pid for found in testreap.processes()]
+    assert pids == [os.getpid()]
+
+
+@pytest.mark.parametrize("error", [PermissionError("sysctl"), SystemError("error return without exception set"), psutil.AccessDenied(7)])
+def test_a_listing_that_fails_with_a_system_error_reaps_nothing(error):
+    def refused():
+        raise error
+
+    assert testreap.reap(listing=refused) == 0

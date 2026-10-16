@@ -36,9 +36,15 @@ class Proc(NamedTuple):
 
 
 def processes() -> list[Proc]:
-    """The processes of this account whose command line can be read."""
-    return [Proc(info["pid"], info["ppid"], info["create_time"], " ".join(info["cmdline"]))
-            for info in (process.info for process in psutil.process_iter(["pid", "ppid", "create_time", "cmdline"])) if info["cmdline"]]
+    """The processes of this account whose command line can be read; one that cannot be read is left out."""
+    rows = []
+    for process in psutil.process_iter():
+        try:
+            if command := process.cmdline():
+                rows.append(Proc(process.pid, process.ppid(), process.create_time(), " ".join(command)))
+        except (psutil.Error, OSError, SystemError):  # SystemError: macOS, a process exiting mid-read
+            continue
+    return rows
 
 
 def kind(command: str) -> int:
@@ -98,7 +104,7 @@ def reap(prefixes: tuple[str, ...] = TEMP_STATES, min_age: float = MIN_AGE_S, sa
     """Stop the stale test nodes with SIGTERM and say how many; a process that is gone or has become another is left alone."""
     try:
         rows = listing()
-    except OSError:
+    except (psutil.Error, OSError, SystemError):
         return 0
     listed = {row.pid: row for row in rows}
     stopped = 0
