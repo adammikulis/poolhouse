@@ -8,7 +8,7 @@ import unicodedata
 
 __all__ = ["HOSTS", "MARKERS", "ORDER", "TRUSTED", "marker", "namespace", "official", "trusted", "valid_name"]
 
-ORDER = ("Qwen", "unsloth", "ggml-org", "google", "bartowski", "lmstudio-community", "mlx-community")
+ORDER = ("Qwen", "unsloth", "ggml-org", "google", "bartowski", "lmstudio-community", "mlx-community", "litert-community")
 """The known publishers, best first. A name is matched to one exactly, character for character."""
 
 TRUSTED = frozenset(ORDER)
