@@ -17,11 +17,14 @@ RECORD = Path(os.environ.get("DEV_TEST_REUSE_RECORD", ""))
 REAL_STATE = tuple(Path.home() / part for part in (".poolhouse", "Library/Keychains", ".ssh", ".gnupg",
                                                      ".cache/huggingface", ".config"))
 IGNORED = (".git", ".pytest_cache", ".testmondata", "__pycache__", ".ruff_cache", ".mypy_cache")
-SHARED_TEMP = (Path("/tmp"), Path("/var/tmp"))  # noqa: S108 - where tests put short socket roots; writable like the system temp
+SHARED = (Path("/tmp"), Path("/var/tmp"))  # noqa: S108 - where tests put short socket roots; writable like the system temp
 CARGO_CACHE = Path(os.environ.get("DEV_TEST_CARGO_DIR") or Path.home() / ".cache" / "test-cargo")
 """The shared Rust build folder (`scripts/testnode.py`): a build cache rewritten only to what the sources say."""
+SHARED_TEMP = tuple({*SHARED, *(p.resolve() for p in SHARED)})
 WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev"), CARGO_CACHE, CARGO_CACHE.resolve(),
-                  *SHARED_TEMP, *(p.resolve() for p in SHARED_TEMP)})
+                  *SHARED_TEMP})
+MADE: set[Path] = set()
+"""Places under the shared ``/tmp`` that this process has created; a read of anything else under it is a violation."""
 ALLOWED_ROOT_WRITES = (".pytest_cache", "__pycache__", ".testmondata", ".coverage")
 MUTATING = {"os.mkdir": (0,), "os.rmdir": (0,), "os.remove": (0,), "os.rename": (0, 1), "os.symlink": (1,),
             "os.link": (1,), "os.truncate": (0,), "os.chmod": (0,), "shutil.rmtree": (0,),
@@ -105,6 +108,30 @@ def _write_ok(absolute: str) -> bool:
     return any(_under(target, base) for base in WRITABLE)
 
 
+def _shared(absolute: str) -> Path | None:
+    """The resolved path of ``absolute`` when it is the shared ``/tmp`` or inside it."""
+    if not absolute.startswith(tuple(map(str, SHARED_TEMP))):
+        return None
+    try:
+        target = Path(absolute).resolve()
+    except OSError:
+        return None
+    return target if any(_under(target, base) for base in SHARED_TEMP) else None
+
+
+def _made(absolute: str) -> None:
+    """Remember a place under the shared ``/tmp`` that this process creates."""
+    target = _shared(absolute)
+    if target is not None:
+        MADE.add(target)
+
+
+def _foreign(absolute: str) -> bool:
+    """Whether ``absolute`` is under the shared ``/tmp`` and neither made by this process nor inside a place it made."""
+    target = _shared(absolute)
+    return target is not None and not any(_under(target, made) for made in MADE)
+
+
 def _from_conftest() -> bool:
     """Whether the open comes from the suite's own isolation guard in ``tests/conftest.py``."""
     guard = str(ROOT / "tests" / "conftest.py")
@@ -139,27 +166,38 @@ def _note_path(bucket: dict, absolute: str, kind: str) -> None:
 
 
 def _audit(event: str, args: tuple) -> None:
-    if not CURRENT or BUSY:
+    if BUSY or not (CURRENT or event == "os.mkdir"):
         return
     BUSY.append(True)
     try:
+        if event == "os.mkdir" and args and isinstance(args[0], PATHS):
+            _made(_resolve(args[0], args[2] if len(args) > 2 else None))
+        if not CURRENT:
+            return
         bucket = _entry(CURRENT[-1])
         if event == "open" and isinstance(args[0], PATHS):
             absolute = _resolve(args[0])
             writing = _writing(args[1], args[2])
             if writing and not _write_ok(absolute):
                 bucket["violations"].add(f"wrote {absolute}")
-            elif not writing:
+            elif writing:
+                _made(absolute)
+            else:
                 _note_path(bucket, absolute, "reads")
+                if _foreign(absolute):
+                    bucket["violations"].add(f"read {absolute}, in the shared /tmp and not made by this run")
             if any(_under(Path(absolute), base) for base in REAL_STATE) and (writing or not _from_conftest()):
                 bucket["violations"].add(f"touched {absolute}")
         elif event == "sqlite3.connect" and args and isinstance(args[0], PATHS) and not _text(args[0]).startswith(
                 (":memory:", "file:")):
             _note_path(bucket, _resolve(args[0]), "reads")
         elif event in ("os.listdir", "os.scandir") and args and isinstance(args[0], (str, bytes, os.PathLike)):
-            rel = _source_of(str(Path(_text(args[0])).absolute()) + "/x")
+            listed = str(Path(_text(args[0])).absolute())
+            rel = _source_of(listed + "/x")
             if rel:
                 bucket["dirs"].add(Path(rel).parent.as_posix())
+            if _foreign(listed):
+                bucket["violations"].add(f"listed {listed}, in the shared /tmp and not made by this run")
         elif event in MUTATING:
             fds = DIR_FDS.get(event, ())
             for place, index in enumerate(MUTATING[event]):

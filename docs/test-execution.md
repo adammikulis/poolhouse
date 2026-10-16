@@ -48,9 +48,13 @@ closure that uses a call the runner cannot observe (`ladybug`, `sqlite3`, `utime
 `tests/environ_guard.py` sets `POOLHOUSE_NODE_PARENT_PID` to the pytest process in every test process and its children. A node
 supervisor started with it (`--parent-pid`, from `node_launch._start_supervisor`) stops the node and itself once that process
 has exited, whether the run was killed or ended. `scripts/test` also stops, at the start of each followed run
-(`scripts/testreap.py`), the supervisors and nodes whose state folder is a test's `/tmp/ml...` folder and that have run for
-more than an hour; it prints how many. The Rust node itself has no parent watch: a supervisor killed with `SIGKILL` leaves its
-node until the next reap.
+(`scripts/testreap.py`), the supervisors and nodes whose state folder is a test's `/tmp/ml...` folder and whose run is gone: a
+supervisor whose `--parent-pid` process has exited (a zombie counts as exited, and so does a process that started after the
+supervisor and took the number), a supervisor with no `--parent-pid` that has run for more than an hour, a node whose
+supervisor is stopped, and a node that has run for more than an hour with no parent. A gate that runs longer than an hour keeps
+its nodes while its pytest process runs. Each process is read again (start time and command line) just before the signal and is
+left alone when it is no longer the one listed. It prints how many it stopped. The Rust node itself has no parent watch: a
+supervisor killed with `SIGKILL` leaves its node until the next reap.
 
 ## Jobs: following and cancelling
 

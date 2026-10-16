@@ -86,7 +86,9 @@ A file is executed and no passing entry is written for it when any of the follow
   a hit, because a hit needs a `pass` entry;
 - its tests wrote under the checkout other than to cache directories (Python's `__pycache__` bytecode is
   regenerable: it is ignored wherever it is written, site-packages included, and is not in the key; `dist/` is build output and
-  may be written), wrote outside the temporary roots (`$TMPDIR`, `/tmp`, `/var/tmp`), or opened anything under the real `~/.poolhouse`, `~/.ssh`, `~/.gnupg`, `~/.config`,
+  may be written), wrote outside the temporary roots (`$TMPDIR`, `/tmp`, `/var/tmp`), read or listed something under the shared `/tmp`
+  that the run did not make (what a run creates there with `mkdir` or a write, and anything inside it, is its own), or opened anything
+  under the real `~/.poolhouse`, `~/.ssh`, `~/.gnupg`, `~/.config`,
   `~/.cache/huggingface` or `Library/Keychains` (the suite's own isolation guard in
   `tests/conftest.py` reads real state to check it is untouched; those reads are ignored);
 - the run emitted a warning that mentions an isolation violation;
@@ -125,7 +127,10 @@ operating system user as the agent. That user can rewrite an entry and the whole
 consistently, delete the chain, edit the runner or the plugin, or set `DEV_TEST_REUSE_DIR` to a store
 it made. The chain detects corruption, a partial write and an edited entry; it does not stop a
 deliberate forger. A forged hit is caught only by the canary on its sample and by the tier and gate
-runs, which execute. Entries also hold the commit they ran on and whether the checkout was clean; the tree hash, commit and cleanliness are read together just before each launch. The store sits under a per-project directory (a hash of the project key), and
+runs, which execute. A sandboxed agent (docs/agent-sandbox.md) cannot write `~/.cache/test-reuse`: its `scripts/test` stores in
+`~/.cache/test-reuse-sandbox`, named by `DEV_TEST_REUSE_DIR` in the sandbox's environment, so the task evidence
+(`poolhouse.workspace.testruns`) reads only the owner's store and a pass forged in the sandbox store is read only by other
+sandboxed runs. Entries also hold the commit they ran on and whether the checkout was clean; the tree hash, commit and cleanliness are read together just before each launch. The store sits under a per-project directory (a hash of the project key), and
 board verification reads only the asking agent's project directory.
 
 ## Single flight
