@@ -249,3 +249,54 @@ def test_the_branch_is_compared_against_a_revision_without_a_commit_hook(checkou
         cwd=checkout, capture_output=True, text=True, env=kept)
     assert done.returncode == 1
     assert "broad-excepts: 2 -> 40, up 38" in done.stderr
+
+
+def against(root: Path, revision: str, **env) -> subprocess.CompletedProcess:
+    kept = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    return subprocess.run([sys.executable, str(root / "scripts" / "hooks" / HOOK.name), "--against", revision],
+                          cwd=root, capture_output=True, text=True, env={**kept, **env})
+
+
+def commit_budgets(root: Path, text: str | None) -> None:
+    """Commit budgets.json holding ``text``, or without the file when None."""
+    if text is None:
+        git(root, "rm", "-q", "budgets.json")
+    else:
+        (root / "budgets.json").write_text(text, encoding="utf-8")
+        git(root, "add", "budgets.json")
+    git(root, "commit", "-qm", "budgets")
+
+
+def test_a_base_revision_that_cannot_be_read_fails_the_check_instead_of_skipping_it(checkout):
+    missing = against(checkout, "0" * 40)
+    assert missing.returncode == 1
+    assert "ratchet not checked" in missing.stderr and "0" * 40 in missing.stderr
+
+
+def test_a_base_whose_budgets_json_is_not_json_fails_the_check(checkout):
+    commit_budgets(checkout, "{ torn")
+    done = against(checkout, "HEAD")
+    assert done.returncode == 1
+    assert "ratchet not checked" in done.stderr and "not valid JSON" in done.stderr
+
+
+def test_a_base_without_budgets_json_fails_the_check(checkout):
+    commit_budgets(checkout, None)
+    done = against(checkout, "HEAD")
+    assert done.returncode == 1 and "ratchet not checked" in done.stderr and "no budgets.json" in done.stderr
+
+
+def test_a_head_whose_budgets_json_is_not_json_is_said_aloud_and_the_fix_can_be_committed(checkout):
+    commit_budgets(checkout, "{ torn")
+    done = commit_with(checkout, {"broad-excepts": 2, "print-calls": 0, "walls": 4}, CLAUDECODE="1")
+    assert done.returncode == 0
+    assert "ratchet not checked" in done.stderr and "not valid JSON" in done.stderr
+
+
+def test_a_staged_budgets_json_that_is_not_json_is_refused_by_name(checkout):
+    (checkout / "budgets.json").write_text("{ torn", encoding="utf-8")
+    git(checkout, "add", "budgets.json")
+    kept = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    done = subprocess.run([sys.executable, str(checkout / "scripts" / "hooks" / HOOK.name)], cwd=checkout,
+                          capture_output=True, text=True, env=kept)
+    assert done.returncode == 1 and "staged budgets.json is not valid JSON" in done.stderr
