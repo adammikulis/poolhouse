@@ -616,6 +616,11 @@ Mechanics: tests/README.md, docs/test-execution.md, docs/test-reuse.md, docs/age
   seconds, or a quarter of the wall time, is a defect to fix in the runner or a fixture. Anything whose cost scales with
   the machine's state (files under the home, installed runtimes, queue depth) and not with the change is a bug. Measure
   with `--durations` before blaming the tests; never leave a state walk unbounded.
+- **A slow gate is a defect, and a timeout is never the fix** (owner, 2026-10-16). A gate, test run or command far over its
+  usual time, or one that hits a limit, is investigated the same turn from the batch record, runner log, per-test
+  durations and broker queue waits, and the cause is fixed. No agent raises a timeout or idle limit, loosens a guard, skips
+  a gate or resubmits unchanged to get past one. A gate that aborts on a limit requeues once, then is ejected to its
+  requester with the slow phase named; no landing request waits for a person.
 - **Reuse.** The report says `ran` or `reused from <run id>` per file, and `--no-reuse` forces execution; say "reused"
   only for files the runner printed as reused. Tier runs, `gate`, `quick` and the coordinator's combined-tree checks
   always execute. Running tests creates no identity, token or credential. The tiers are `fast`, `full`, `slow` and
