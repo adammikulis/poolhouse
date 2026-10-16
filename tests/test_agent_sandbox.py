@@ -250,3 +250,30 @@ def test_the_install_command_installs_the_staged_files_when_run_without_sudo(lay
     done = subprocess.run(argv, capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
     assert all(state == "match" for _, state in stage.installed(layout.state))
+
+
+def covered(path, roots):
+    path = Path(os.path.normpath(path))
+    return any(path == Path(root) or Path(root) in path.parents for root in roots)
+
+
+def test_the_runner_writes_its_stores_and_the_passed_gate_steps_are_out_of_reach(layout):
+    import gaterun
+
+    roots = profile.write_roots(layout)
+    cache = layout.home / ".cache"
+    for needed in ("test-reuse/ab12/entries/x.json", "test-reuse/ab12/jobs/j/log", "test-cargo/targets/k/debug/x",
+                   "dev-test-slots/mutex.lock", "poolhouse/test-node/k/poolhouse-node"):
+        assert covered(cache / needed, roots), needed
+    gate = gaterun.steps_folder(cache / "test-reuse", "ab12")
+    for hostile in (gate / "step.json", cache / "test-gate" / "x", cache / "x", cache / "test-reuse-evil" / "x",
+                    cache / "test-cargo" / ".." / "test-gate" / "x", cache / "test-reuse" / ".." / ".ssh" / "id_ed25519",
+                    layout.home / ".cache", layout.home / ".config" / "gh" / "hosts.yml"):
+        assert not covered(hostile, roots), hostile
+    assert not covered(gate, [str(cache / "test-reuse")])
+
+
+def test_no_write_root_reaches_above_the_cache_folders_it_names(layout):
+    cache = layout.home / ".cache"
+    above = [root for root in profile.write_roots(layout) if Path(root) in (cache, layout.home, layout.home.parent)]
+    assert above == []

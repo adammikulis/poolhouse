@@ -43,6 +43,17 @@ fixtures make their short socket folder under the literal `/tmp`, which the plug
 a `mkdir` of the slot directory by `tests/conftest.py` (made only when `DEV_TEST_SLOTS_DIR` is unset now), a skip, and a
 closure that uses a call the runner cannot observe (`ladybug`, `sqlite3`, `utime`, `fstat`).
 
+## Fixed overhead
+
+A run's fixed overhead is its collection, session setup and teardown, the three phases `testphases` prints; the calls
+between workers are not part of it, so an uneven share of slow tests does not read as overhead. The limit is 5 s (AGENTS.md).
+`tests/test_runner_overhead.py` bounds the CPU seconds the runner takes to start and one pytest process takes to start and
+collect, because CPU time holds on a busy machine where wall time does not. Measured 2026-10-16 on a 16-core machine at load
+about 35: a one-file run took 17 s wall, 6.3 s of it inside pytest. Contributors found and removed: the `langsmith` pytest
+plugin imported by every pytest process (`testcommand.UNUSED_PLUGINS`), the hook installer that `tests/conftest.py` ran in
+every xdist worker (now `tests/git_hooks.py`, once, by the controller, and a machine-local wrapper counts as installed), and a
+second selector validation in the job process.
+
 CPU capacity defaults to the logical CPU count minus one, with a minimum of
 one. `DEV_TEST_RESERVED_CORES` changes that reservation. This reserves capacity;
 it does not pin execution to a particular efficiency core. `DEV_TEST_BUDGET`

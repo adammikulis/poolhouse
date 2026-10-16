@@ -28,6 +28,12 @@ KEEP = 400
 TOOLS = ("ruff", "pyright")
 
 
+def steps_folder(reuse_base: Path, scope: str) -> Path:
+    """Where a project's passed gate steps are kept: beside the reuse store and never inside it, because the sandbox lets an
+    agent's command write the store and a stored gate pass skips a check."""
+    return reuse_base.parent / "test-gate" / scope
+
+
 @dataclass(frozen=True)
 class Step:
     """One gate step: its name, what it runs, and the words that identify it for the key."""

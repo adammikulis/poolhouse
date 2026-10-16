@@ -57,6 +57,7 @@ import affected
 import gaterun
 import gatescope
 import queue_doctor
+import testcommand
 import testextras
 import testhistory
 import testjobs
@@ -98,7 +99,7 @@ REUSE: dict = {"on": True, "session": None, "agent": {"id": "", "source": "none"
 
 def pytest_command(workers: int, *rest: str) -> list[str]:
     """The pytest invocation every tier shares."""
-    return [sys.executable, "-m", "pytest", "-q", "-rfE", "-n", str(workers), *rest]
+    return [sys.executable, "-m", "pytest", "-q", "-rfE", *testcommand.UNUSED_PLUGINS, "-n", str(workers), *rest]
 
 
 def run(command: list[str], env: dict[str, str] | None = None, tier: str = "", *, artifact_output: bool = False) -> int:
@@ -455,7 +456,8 @@ def gate(args: argparse.Namespace, rest: list[str]) -> int:
         return 0
     if failed := build_node():
         return failed
-    held = gaterun.Gate(ROOT, gatescope.base_ref(ROOT, args.base), reuse_store().folder / "gate-steps", REUSE["on"])
+    held = gaterun.Gate(ROOT, gatescope.base_ref(ROOT, args.base), gaterun.steps_folder(reuse.reuse_base(), testruns.scope(ROOT)),
+                        REUSE["on"])
     named = gate_steps(args.workers, rest)
     outcomes = held.run(gate_lanes(args, named))
     order = [name for name, _ in named]
@@ -685,7 +687,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.tier == "record":
         testprelude.begin(args, rest, ROOT)
         return build_node() or record(args)          # takes its own lease: a nested one would wait on itself
-    if args.tier != "gate":
+    if args.tier != "gate" and not os.environ.get("DEV_TEST_JOB"):
         try:
             testselectors.validate(rest, ROOT)
         except (ValueError, OSError) as error:

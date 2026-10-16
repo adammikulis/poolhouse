@@ -52,8 +52,10 @@ DARWIN_DENY_READ = ("Library/Application Support/Google/Chrome", "Library/Applic
 DARWIN_DENY_WRITE = ("Library/LaunchAgents",)
 LINUX_DENY_READ = (".config/google-chrome", ".config/chromium", ".mozilla")
 LINUX_DENY_WRITE = (".config/systemd", ".config/autostart", ".local/share/systemd")
-CACHE_ALLOW_WRITE = (".cache/dev-test-slots", ".cache/poolhouse", ".cache/huggingface", ".cache/pip",
-                     ".cache/ms-playwright", "Library/Caches/ms-playwright", "Library/Caches/pip")
+CACHE_ALLOW_WRITE = (".cache/dev-test-slots", ".cache/test-reuse", ".cache/test-cargo", ".cache/poolhouse", ".cache/huggingface",
+                     ".cache/pip", ".cache/ms-playwright", "Library/Caches/ms-playwright", "Library/Caches/pip")
+"""`test-reuse` (stored passes of test files) and `test-cargo` (the shared Rust build folder) are what `scripts/test` writes;
+the passed gate steps live in `test-gate`, beside them and not on this list."""
 SHARED_GIT_DENY = ("config", "hooks", "info", "worktrees/*/config.worktree", "worktrees/*/hooks")
 DEPLOY_COMMANDS = ("poolhouse runtime ensure", "poolhouse runtime rollback", "poolhouse runtime restart-host")
 """Run outside the sandbox because they write the runtimes root; the `runtime.deploy` authority gate is their guard."""
