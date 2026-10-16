@@ -54,11 +54,11 @@ Use Haiku 5.5 (`claude-haiku-5-5`) for read-only search, summarising, narrow mec
 and lowering a budget ratchet when the brief names the metric and the test selector that checks it.
 Haiku also writes a small standalone tool or script with its own tests and wires it in with additive
 integration edits to existing files (an index or docs row, an import, a registry line, a regenerated
-file): edits that only add references to its new code and change no existing behaviour. A trial on
-2026-10-08 (a commit-history chart script) passed review: it worked, its tests failed when the code
+file): edits that only add references to its new code and change no existing behaviour. A trial
+(a commit-history chart script) passed review: it worked, its tests failed when the code
 was broken, it broke no repo rule and it took a correction cleanly. The lead reviews every such diff
 to existing files before it lands.
-Haiku now has a thinking effort setting, and on the owner's OSWorld 2.1 cost chart (docs/model-benchmarks.md)
+Haiku has a thinking effort setting, and on the owner's OSWorld 2.1 cost chart (docs/model-benchmarks.md)
 Haiku at `xhigh` (about 68%) beats Sonnet at low and medium for under half the cost, and at `max` (about 72%) it
 matches Sonnet at high (about 73%) for about 45% of it. Only Sonnet at xhigh or max (about 81% and 84%) goes
 higher. So run Haiku for well-specified code (a clear brief, tests it writes for its own code, additive
@@ -101,7 +101,7 @@ in docs/model-benchmarks.md, not only here.
 
 Price per token does not rise past 200k on the models we use: Claude 4.6 and later models except Haiku 5.5 bill the whole
 1M window at the standard rate (Sonnet 5.5 $2 in / $10 out per MTok; Opus 5.5 $4 / $20; cache reads $0.10 and $0.20; platform
-pricing page, checked 2026-10-11). **Haiku 5.5 is the exception: above 100k tokens of prompt it costs five times as much**
+pricing page). **Haiku 5.5 is the exception: above 100k tokens of prompt it costs five times as much**
 ($0.50 in / $2.50 out against $0.10 / $0.50), so a Haiku task stays under 100k tokens of context or moves to Sonnet.
 The cost that grows with length is the re-reading: every tool call of an agent re-reads its whole context (a cache read at
 5 percent of the input price when the cache is warm, a full write at 1.25 times when it is not, and the cache lasts 5 minutes

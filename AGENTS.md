@@ -88,7 +88,7 @@ a smoke test during a long run. A second request waits for the first.
   to test them against each other or serve different tiers); the broker admits residency against memory and leases
   compute to one piece of work per device. Any model may be placed on the CPU, where it runs beside GPU work.
 - Two at once is more than twice as slow and voids every number either produces (a row measured under load cannot be
-  compared with one measured alone): measured 2026-09-09, one machine, Qwen3.8-Flash-Next, a one-line reply on a second
+  compared with one measured alone): measured on one machine with Qwen3.8-Flash-Next, a one-line reply on a second
   slot during an extraction took 81s against a second or two alone and slowed the extraction too. So `--parallel 1`
   unless something genuinely needs concurrent conversations; a program that reads and answers over the same model does
   both through the same server, one after the other. `poolhouse-serve status` shows a server's slots and the resident
@@ -120,8 +120,8 @@ signature, a compromised or malicious member, a stolen phone or key, a malicious
 without knowing it (an injected instruction in a board message, tool result, page or file that it takes for an ordinary
 order), a downgrade (secure to open), approval fatigue (repeated requests until the person accepts from exhaustion), and
 a takeover by whoever is merely present. Findings are fixed or named as accepted risks with the owner; the author's own
-review does not count. (The owner found by hand an auto-migration to a pool copy, a guard widened to turn a gate green,
-and any member able to remove the founder; this rule exists so the owner does not have to.)
+review does not count. The pass exists so the owner does not have to find by hand cases such as an auto-migration to a
+pool copy, a guard widened to turn a gate green, or any member able to remove the founder.
 
 ### Review scope
 
@@ -216,7 +216,7 @@ missing argument or leaves the owner to read the docs. A list of commands for th
 **Nothing blocks on a person.** The owner may not notice or answer for hours or days, so no queue, batch, landing
 request, gate, design or agent stops to wait for a human yes. A person-only step (a floor in section 1) is asked once,
 through the question tool, and everything that does not depend on the answer goes on at once; whatever does depend on it
-parks as its own pending item with the safe default in force (the old state, the stricter setting, nothing installed)
+parks as its own pending item with the safe default in force (the existing state, the stricter setting, nothing installed)
 and never holds another item. A step that is not a floor (a reap, a retry, a rebase, a stale request, a timeout, a
 conflict a rule can resolve) is an agent's and never reaches a person. A design that makes an agent wait for a human on a
 non-floor step is changed before it is built.
@@ -249,8 +249,8 @@ Drive it the way a person does before you say it works: open the interface, clic
 press the button, read what comes back.
 
 - **A request is not a person.** `curl` proves the route answers, not that a button reaches it, that it is on a screen
-  anyone can find, that the reply renders or that the next screen follows. Every bug that has shipped here was on the
-  side of the line `curl` does not cross.
+  anyone can find, that the reply renders or that the next screen follows. The bugs that reach a person are on the side
+  of the line `curl` does not cross.
 - **A green suite is not a person either.** Tests were written against the same understanding as the code, so they catch
   a change that breaks something, not something never right. If you have not driven it, say what you did instead, in the
   same breath as the claim ("the route answers, I have not opened the screen"). Never let "it works" stand for "the
@@ -297,7 +297,7 @@ deleting the old code.
   straddle. This is a **stop, not a judgement call**: about to write something worse to serve someone who is not there,
   ask first rather than decide and report after. A red you can explain is a change; a red you cannot is a bug
   (docs/agent-rules.md, "Nothing is cemented").
-- **No users until a release phase says otherwise.** Phase 0 (the owner's own pools) is current: no migration,
+- **No users until a release phase says otherwise.** Phase 0 (the owner's own pools) applies: no migration,
   compatibility or fallback for state or callers nobody holds. From the first release an external person runs (phase 1,
   named by the owner and recorded here) three things start, only those: a persisted format or wire message leaving the
   owner's machines changes only with a version and a migration; an interface an outside party calls is not renamed
@@ -437,7 +437,7 @@ Edit, stage and commit only named files in a claimed checkout (never `git add -A
 else may be writing to the tree: another agent, a running ingest, a model you just drove). Concurrent writers,
 experiments and conflict resolution use separate sibling worktrees and branches; the primary development checkout is
 allowed when it is the best way to finish the task, under file-area and checkout/branch claims, preserving unrelated
-work and keeping required security review and affected tests. Branch from the repaired development history, never `main`.
+work and keeping required security review and affected tests. Branch from the development branch, never `main`.
 Create worktrees beside the primary checkout, never inside it (including `.worktrees/`):
 `git worktree add -b <branch> ../poolhouse-<branch> "$(git -C ../poolhouse branch --show-current)"`.
 
@@ -568,8 +568,8 @@ owner's tokens stop paying for routine review: a local or cheap model reads firs
 reads only what it flags.
 
 - **A report is advice, never an accept.** Qwen3.8-27B and Qwen3.8-Flash-Next, in any quantisation, are listed above the
-  lowest tier and may request and review like any listed id, on the same claimed-id trust (the node verifies no model
-  yet); the smaller Qwens are the lowest tier, and an unlisted model cannot run `land-review`. A report from
+  lowest tier and may request and review like any listed id, on the same claimed-id trust (the node verifies no model);
+  the smaller Qwens are the lowest tier, and an unlisted model cannot run `land-review`. A report from
   `scripts/review-backlog` never counts as the independent accept, and nothing it says changes a gate, a budget or an
   authorization. Who must review, and when, is section 1, "Review scope". **The owner never reviews code:** the lead
   starts the required reviewer under its own identity, told to break the change, verify affected checks and then
@@ -611,9 +611,9 @@ nobody runs a full suite after every intermediate commit or a second full suite 
   (`scripts/land run`). A tree that already passed a check is not checked again (`reused from <id>`); a failure that
   also fails on the clean target is `baseline`.
 - Known failures remain named tasks with evidence and ownership; a scoped pass is not a full-suite pass; fix a known
-  relevant regression before the affected change lands. **Linux testing is active, not paused** (the owner has said so
-  repeatedly): use the available WSL device and report its exact device, operating system, runtime and tested commit (a
-  Mac result or historical Linux receipt is not verification of it). Report platform gaps and known failures honestly.
+  relevant regression before the affected change lands. **Linux testing is active, not paused**: use the available WSL
+  device and report its exact device, operating system, runtime and tested commit (a Mac result or historical Linux
+  receipt is not verification of it). Report platform gaps and known failures honestly.
 
 ### Running the tests
 
@@ -685,9 +685,9 @@ One piece of work on a device's compute at a time is section 1.
 
 - Never point `poolhouse-claude`, `poolhouse-agent` or `poolhouse-chat` at a checkout you are editing: an agent with
   file access edits the files it finds, and a small model will happily rewrite `CLAUDE.md` because it was asked to say
-  hello. Drive them in a scratch directory; stage the files you changed by name (section 4, "Worktrees"). (2026-09-04: a
-  0.8B model driven in the primary checkout deleted two paragraphs of this file and changed a heading; `git add -A`
-  swept it into an unrelated commit.)
+  hello (a 0.8B model driven in the primary checkout deletes paragraphs of this file and changes a heading, and
+  `git add -A` sweeps the edit into an unrelated commit). Drive them in a scratch directory; stage the files you changed
+  by name (section 4, "Worktrees").
 - **Never start a model server by hand.** `poolhouse-serve up MODEL` is a lease from the broker (it admits against
   memory, queues, picks the port, applies the measured profile, and is held until `poolhouse-serve down MODEL`);
   `poolhouse-claude`, `poolhouse-agent` and `agent start` take a lease too. This is the explanation, not the
@@ -699,7 +699,7 @@ One piece of work on a device's compute at a time is section 1.
 
 Owner's standing choices; do not ask again.
 
-- **Live tests and demos use the newest Qwen family** (Qwen3.8 at the time of writing; look at what
+- **Live tests and demos use the newest Qwen family** (Qwen3.8; look at what
   `poolhouse-models list` and the Hugging Face cache hold and name the exact id in the report). Large-model tests use
   the dense Qwen3.8-27B (the owner's default quant is `Qwen3.8-27B-UD-Q4_K_XL.gguf`, 16.7 GB, not Q4_K_M): Flash-Next
   holds too much memory on this machine. Small and day-to-day tests prefer a smaller Qwen3.8 model. Do not use gpt-oss:
