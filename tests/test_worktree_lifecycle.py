@@ -346,6 +346,6 @@ def test_authenticated_worktree_cleanup_cli_records_the_exact_landed_commit(setu
 
     kit = setup
     claim(kit)
-    result = task_cli._worktrees(argparse.Namespace(cleanup=str(kit.checkout)), kit.s)
+    result = task_cli._worktrees(argparse.Namespace(cleanup=str(kit.checkout), archive_obsolete='', bundle=''), kit.s)
     assert result['cleanup_verified']
     assert lifecycle.pending(kit.base, kit.name) == []

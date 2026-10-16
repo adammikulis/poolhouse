@@ -31,6 +31,13 @@ def _payload(args: argparse.Namespace) -> Any:
 
 def _worktrees(args: argparse.Namespace, s: Session) -> Any:
     base = limits.root()
+    if args.archive_obsolete:
+        if args.cleanup or not args.bundle:
+            raise ValueError('obsolete trial disposition requires only --archive-obsolete and --bundle')
+        return worktree_lifecycle.archive_obsolete(base, s.name, args.archive_obsolete, args.bundle,
+            lambda path: next((c.owner for c in s.claims("worktree") if c.key == path), ""))
+    if args.bundle:
+        raise ValueError('--bundle requires --archive-obsolete')
     if args.cleanup:
         return worktree_lifecycle.cleanup(base, s.name, args.cleanup,
                                           lambda path: next((c.owner for c in s.claims("worktree") if c.key == path), ""))
@@ -70,5 +77,7 @@ TABLE = (
      lambda a, s: task_integration.integrate(s, limits.root(), a.id)),
     *task_source_recovery.TABLE,
     ("worktrees", "inspect or clean your landed coding checkout scopes",
-     [flag("--cleanup", default="", help="remove an owned landed checkout and record its cleanup proof")], _worktrees),
+     [flag("--cleanup", default="", help="remove an owned landed checkout and record its cleanup proof"),
+      flag("--archive-obsolete", default="", help="record a removed obsolete automatic trial"),
+      flag("--bundle", default="", help="complete preserved Git bundle for the obsolete trial")], _worktrees),
 )
