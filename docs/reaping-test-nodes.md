@@ -65,7 +65,10 @@ number is never a condition and never selects a target.
 | R7 | The run is over: the parent of the supervisor (or of a node that has none) is process 1 or the operating system's service manager (`launchd`, `systemd`); no live lease of the test broker (`workspace.slots.testslots`) names the owner; and if `DEV_TEST_AGENT.job` is not empty, that job is not live in the broker's job table. | the process, the broker |
 | R8 | The owner has ended: `Session.agents(retired=True)` on the lead's board has a row for the `id` with `retired` true. A missing row, a row that is not retired, an `id` equal to the lead's own, or a board that cannot be read refuses. | the board |
 
-A process whose environment the operating system will not show is not reapable. `R5` is where "the maintained test broker
+A process whose command line, environment or open files the operating system will not show is not reapable, whatever way the
+read fails: psutil 7.2.2 on macOS raised a bare `SystemError` from `proc_cmdline` for a process that exited during a scan
+(2026-10-16, a fixture of `tests/test_glossary_snapshot.py`), so the scan catches `SystemError` with `psutil.Error` and skips the
+process. Test: `test_an_unreadable_process_is_skipped_not_passed`. `R5` is where "the maintained test broker
 launched it" is decided: a test started by hand with `pytest`, or a node started by anything else, has no such environment and
 stays with a person. `R2` to `R4` bind the process to the directory by what the kernel says it holds, so a record naming the
 process proves nothing. `R3` and `R6` are what keep the shared production node out even if a test environment reached it.
