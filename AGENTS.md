@@ -214,6 +214,14 @@ grant, `main`), and then only after running it and quoting the refusal, with the
 its error, so it never fails on a missing argument or leaves the owner to read the docs. A list of commands
 for the owner is a sign the work is not done.
 
+**Nothing blocks on a person** (owner, 2026-10-16). The owner may not notice or answer for hours or days, so no queue,
+batch, landing request, gate, design or agent stops to wait for a human yes. A person-only step (a floor in section 1) is
+asked once, through the question tool, and everything that does not depend on the answer goes on at once; whatever does
+depend on it parks as its own pending item with the safe default in force (the old state, the stricter setting, nothing
+installed) and never holds another item. A step that is not a floor (a reap, a retry, a rebase, a stale request, a
+timeout, a conflict a rule can resolve) is an agent's and never reaches a person. A design that makes an agent wait for a
+human on a non-floor step is changed before it is built.
+
 ### Reporting a problem
 
 Fix it, then say what you fixed. Raise a problem you did not fix only if you are **actually blocked**: you need a
