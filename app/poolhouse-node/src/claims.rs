@@ -48,7 +48,7 @@ fn held_as(kind: &str, board: &str, key: &str) -> String {
     if kind == "branch" { format!("{board}/{key}") } else { key.to_string() }
 }
 
-fn shown_as<'a>(kind: &str, board: &str, name: &'a str) -> &'a str {
+pub(crate) fn shown_as<'a>(kind: &str, board: &str, name: &'a str) -> &'a str {
     if kind == "branch" { name.strip_prefix(board).and_then(|n| n.strip_prefix('/')).unwrap_or(name) } else { name }
 }
 
@@ -230,6 +230,14 @@ fn claims(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         }
     }
     Ok(json!({"claims": out}))
+}
+
+/// The claims a lease holds as (kind, key), as the holder named them.
+pub fn held_by(l: &Lease) -> Vec<(String, String)> {
+    l.resources.iter().filter_map(|r| match r {
+        Resource::Claim { kind, name } if kind != "task" => Some((kind.clone(), shown_as(kind, &l.board, name).to_string())),
+        _ => None,
+    }).collect()
 }
 
 /// The session of ``board`` holding the claim ``kind`` ``key``, if any does.

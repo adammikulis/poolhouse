@@ -616,6 +616,10 @@ on an inbox read (`inbox_read` in `names.json`), and a recipient on another devi
 counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
 the log when the node starts), so a post is checked without folding the board.
 
+The node writes a few direct messages of its own, as `node` (a name no session can hold): to the holder of a claim whose time ran
+out, naming the `claim` command that takes it again, and to the parent of a subagent it retired for idleness. A request with a token
+the node does not hold is told the session was retired or never registered.
+
 ## Leases
 
 One table, `<state>/leases.json` (0600, written atomically on every change), admits everything that

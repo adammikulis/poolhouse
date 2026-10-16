@@ -168,10 +168,16 @@ fn retire(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
 pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -> Result<(usize, usize)> {
     let freed = release_leases(node, board, target)?;
     let revoked = node.tokens.revoke_name(board, target)?;
+    let parent = node.host(board)?.names.get(target).map(|i| i.parent.clone()).unwrap_or_default();
     node.host(board)?.names.retire(target, reason)?;
     node.write_identity(board, target)?;
     let detail = format!("retired by {by} ({reason}): {revoked} tokens revoked, {freed} leases released");
     node.host(board)?.board.append(Kind::Audit, by, json!({"event": "retire", "subject": target, "detail": detail}), "")?;
+    if reason == "idle" && !parent.is_empty() {
+        let said = format!("{target} was retired for idleness: it held no lease and the node heard nothing from it for {} hours. \
+                            Its token no longer works; if its work is not finished, start it again.", node.writes.idle_retire_s / 3600);
+        crate::notice::tell(node, board, &parent, "subagent retired", &said)?;
+    }
     Ok((revoked, freed))
 }
 
