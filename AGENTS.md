@@ -234,6 +234,11 @@ which, in one line.
   install it with the package manager and retry. When behavior is broken, trace the failing path and fix the underlying
   cause; no narrow workaround that leaves the root behavior broken, and add regression coverage for the corrected
   behavior.
+- **Investigate a failure before anything is retried** (owner, 2026-10-16). Something that fails is diagnosed from its
+  evidence first: the error text, the logs, the code path. It is not rerun, re-spawned, resubmitted or routed around
+  hoping it passes. A failure seen a second time, or one that blocks other work (a refused call, an identity or token
+  that does not resolve, a gate that aborts), starts the root-cause fix at once, in the same turn, by the agent that hit
+  it or a worker it briefs; retrying the same thing wastes the owner's time and tokens.
 
 ### Nothing is cemented until 1.0
 
