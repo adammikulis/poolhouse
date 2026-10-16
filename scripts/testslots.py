@@ -41,6 +41,12 @@ def slots_dir() -> Path:
     return d
 
 
+def pin_slots_dir() -> None:
+    """Set ``DEV_TEST_SLOTS_DIR`` to the machine-wide directory when it is unset; a set one is left alone and not made."""
+    if "DEV_TEST_SLOTS_DIR" not in os.environ:
+        os.environ["DEV_TEST_SLOTS_DIR"] = str(slots_dir())
+
+
 def _cores() -> int:
     return os.cpu_count() or 4
 

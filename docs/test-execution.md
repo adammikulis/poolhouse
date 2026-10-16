@@ -32,6 +32,17 @@ cancels its job. Jobs use the admission below and are owned by the submitting wo
 which `scripts/testslots.py status` shows beside each lease. A run that names test files reuses
 earlier passes of unchanged files and says so per file ([test-reuse.md](test-reuse.md)).
 
+## Reuse is the default
+
+A run that names test files reuses every unchanged file's stored pass; nothing asks for it and a brief never says
+"use --no-reuse". `--no-reuse` executes each named file again at the full cost of its run and prints one line saying so. It
+is for watching a mutated test fail, and for nothing else: an affected-test report, a landing request and a rerun after an
+unrelated edit all use the store. The runner states why a file's result was not stored (`result not stored: ...`); the
+causes measured on 2026-10-16 across 724 stored job logs were a write outside the temporary root by a fixture (the node
+fixtures make their short socket folder under the literal `/tmp`, which the plugin now counts as temporary like `TMPDIR`),
+a `mkdir` of the slot directory by `tests/conftest.py` (made only when `DEV_TEST_SLOTS_DIR` is unset now), a skip, and a
+closure that uses a call the runner cannot observe (`ladybug`, `sqlite3`, `utime`, `fstat`).
+
 CPU capacity defaults to the logical CPU count minus one, with a minimum of
 one. `DEV_TEST_RESERVED_CORES` changes that reservation. This reserves capacity;
 it does not pin execution to a particular efficiency core. `DEV_TEST_BUDGET`

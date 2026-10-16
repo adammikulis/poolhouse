@@ -91,6 +91,8 @@ RECORD_WORKERS = 3
 FOREGROUND = ("quick", "fast", "full", "slow", "all", "gate")
 BUSY_EXIT = 6
 JOB_COMMANDS = ("submit", "status", "wait", "result", "cancel", "subscribe", "_job")
+NO_REUSE_COST = ("test: --no-reuse runs every named file again, including the ones with a stored pass, at the full cost of "
+                 "their run and its fixed overhead; leave it off except to watch a mutated test fail (docs/test-execution.md)")
 REUSE: dict = {"on": True, "session": None, "agent": {"id": "", "source": "none"}, "events": testreuse_run.Events()}
 
 
@@ -634,7 +636,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="xdist worker ceiling (default: 0 = automatic pool up to what the broker grants); -n 1 runs sequentially")
     parser.add_argument("--background", action="store_true",
                         help="admit this run as background: interactive runs go first and it runs at lower CPU priority")
-    parser.add_argument("--no-reuse", action="store_true", help="execute every named test file")
+    parser.add_argument("--no-reuse", action="store_true",
+                        help="execute every named test file again, stored pass or not; only for watching a mutated test fail")
     parser.add_argument("--timeout", type=float, default=3600.0, help="wait: seconds to wait")
     parser.add_argument("--task", default="", help="submit/tier runs: the task whose watchers hear how the job ends")
     parser.add_argument("--key", default="", help="subscribe: follow the run of this reuse key prefix")
@@ -648,6 +651,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confine", action="store_true", help="macOS: run pytest under the Seatbelt confinement kernel")
     args, rest = parser.parse_known_args(argv)
     REUSE["on"] = not args.no_reuse
+    if args.no_reuse and not os.environ.get("DEV_TEST_JOB"):
+        print(NO_REUSE_COST, file=sys.stderr, flush=True)
     session = testboard.acting()
     REUSE["session"] = session
     if session is not None:
