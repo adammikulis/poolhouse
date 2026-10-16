@@ -68,7 +68,8 @@ unlanded keeps its identity and token for a resume. Codex SubagentStop records a
 the child live for follow-up work; explicit retirement or the root SessionEnd ends it. The launchers retire the
 session they registered when they exit. A parent (any ancestor) can end a descendant through
 the node. A parent frees a claim its subagent can no longer release with
-`release KIND KEY --held-by NAME`.
+`release KIND KEY --held-by NAME`. `release` of a claim that is not held (it expired, or was never taken) exits 5 and
+names the `claim` command that takes it again.
 
 A subagent makes no room, joins and subscribes to nothing, has no scratch folder, spends only the grants that name it
 (a grant that names a session reaches its subagents only when it was signed with `--with-subagents`), and is never
