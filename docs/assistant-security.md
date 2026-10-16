@@ -53,20 +53,15 @@ filter to catch every attempt.
    registered them, a loopback-only graph page that refuses another Host or Origin. *To do:* the same standard for any
    new channel.
 
-6. **No marketplace.** An extension is data plus declared capabilities, with a manifest signed
-   and pinned by hash. An update shows its diff and needs the person's approval; installing
-   one is never triggered by text the assistant read, and fetched content never becomes
-   code. *Built:* pinned artifacts and signed manifest lists for models.
-
-7. **Small by construction, and checked.** Every dangerous call is inventoried and a gate
+6. **Small by construction, and checked.** Every dangerous call is inventoried and a gate
    fails when a new one is unlisted: the budgets ratchet (`scripts/budgets`) only lets the
    surface shrink, and the red-team coverage map fails when a surface has no attack test.
 
-8. **Small blast radius per task.** A task gets a scoped folder or worktree, never the home
+7. **Small blast radius per task.** A task gets a scoped folder or worktree, never the home
    directory by default. User memory and project memory are separate stores for the same
    reason. *Built:* per-user, per-project encrypted memory (`docs/memory.md`).
 
-9. **Visible, stoppable, and honest in the UI.** One command lists everything the assistant
+8. **Visible, stoppable, and honest in the UI.** One command lists everything the assistant
    can do right now, in plain words. Every grant, action and refusal is in a tamper-evident
    log, and one switch revokes everything. A notice the person can only dismiss is a bug:
    each prompt carries a button that does the thing. The person must never be shown a
@@ -74,7 +69,7 @@ filter to catch every attempt.
    hash-chained event log (`docs/sentinel.md`). *Not built:* the one command that lists
    everything the assistant can do now, and the one revoke-everything switch.
 
-10. **Assume failure and detect it.** Canaries, decoys and honeytokens extend to each
+9. **Assume failure and detect it.** Canaries, decoys and honeytokens extend to each
     connector; rate limits and tool-mix anomaly checks watch for a steered agent.
     *Built:* sentinel, decoy endpoint, honeytokens, scan loop.
 
