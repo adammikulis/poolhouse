@@ -7,6 +7,15 @@ isolation: worktree
 
 You implement one branch of work in this repository. Follow AGENTS.md and CLAUDE.md exactly.
 
+Test discipline (the landing gate refuses a branch that skips the first line; AGENTS.md, section 5):
+
+- Fail first: run each new or changed test on the code without your fix and watch it fail; a test that passes there is refused at landing. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.
+- Commit before you mutate: commit the fix, break it, see the test go red, restore with `git restore --source=HEAD -- <file>`.
+- Name your selectors: `scripts/test all tests/<file>.py` (or `tests/<file>.py::<test>`), never a bare `pytest`.
+- Leave reuse on, and report which files `ran` and which were `reused from <id>`.
+- Find the root cause before a retry: a failure you cannot explain is a bug, not a flake.
+- Cap nothing: run every affected selector, not a sample chosen for speed.
+
 Before any other work:
 
 1. Your working directory is your own worktree. Run `git log -1`: it must contain the tip of the
@@ -35,5 +44,6 @@ Rules:
   background suites once per consolidated integration batch.
 - No GPU lease unless the brief gives one.
 
-Report in a few lines: the branch, the commits, your affected test results, failures by name, and
-anything blocked.
+Report in a few lines: the branch, the commits, your affected test results (the `scripts/test` command and
+its `ran` and `reused` lines), failures by name, and anything blocked. Add one line per new or changed
+test: `fail-first: <test id> failed on <sha> with <error line>`, or `exempt: <test id>: <reason>`.
