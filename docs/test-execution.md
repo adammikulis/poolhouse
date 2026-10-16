@@ -116,8 +116,9 @@ status command to inspect their queue.
 `python scripts/testslots.py status` reports active permits and waiting work, and names the
 request that is first in line and why it is not running.
 A queued minimum cannot exceed the configured capacity. Small requests can fill
-a temporarily unusable gap until the older larger request has waited the bounded wait
-(`DEV_TEST_BACKGROUND_WAIT_S`, ten minutes), then it reserves the gap. Wait limits raise an error;
+a temporarily unusable gap until two of them have passed an older larger request or it has
+waited 30 s (`DEV_TEST_BACKFILL_WAIT_S`), then it reserves the gap, so a wide head request waits for the
+running work and not for the queue behind it. Wait limits raise an error;
 they never disable admission. A command started
 inside a live test permit fails promptly instead of queuing behind its parent.
 Run an independent suite after the parent releases its permit.

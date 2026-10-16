@@ -471,8 +471,7 @@ def test_short(case):
         assert sum(other["start"] <= record["start"] < other["end"] for other in records) <= 2
 
 
-def test_backfill_uses_idle_capacity_while_the_head_is_young_and_stops_once_it_has_aged(tmp_path, monkeypatch):
-    monkeypatch.setenv("DEV_TEST_BACKGROUND_WAIT_S", "2")
+def test_backfill_uses_idle_capacity_while_the_head_is_young_and_stops_after_two_requests_have_passed_it(tmp_path):
     release = tmp_path / "release"
     processes = []
     try:
@@ -482,20 +481,19 @@ def test_backfill_uses_idle_capacity_while_the_head_is_young_and_stops_once_it_h
         older = _spawn(tmp_path, 3, 2, .1, "older")
         processes.append(older)
         _wait_for_slot(tmp_path, older, "older", 0)
-        for label in ("first", "second", "third"):
+        for label in ("first", "second"):
             process = _spawn(tmp_path, 3, 1, .1, label)
             processes.append(process)
             assert process.wait(timeout=10) == 0
-        time.sleep(2.2)
-        fourth = _spawn(tmp_path, 3, 1, .1, "fourth")
-        processes.append(fourth)
-        _wait_for_slot(tmp_path, fourth, "fourth", 0)
-        assert fourth.poll() is None
+        third = _spawn(tmp_path, 3, 1, .1, "third")
+        processes.append(third)
+        _wait_for_slot(tmp_path, third, "third", 0)
+        assert third.poll() is None
         release.touch()
-        assert all(process.wait(timeout=10) == 0 for process in (holder, older, fourth))
+        assert all(process.wait(timeout=10) == 0 for process in (holder, older, third))
         records = {record["label"]: record for record in _records(tmp_path)}
-        assert all(records[label]["start"] < records["holder"]["end"] for label in ("first", "second", "third"))
-        assert records["fourth"]["start"] >= records["holder"]["end"] and records["older"]["start"] >= records["holder"]["end"]
+        assert all(records[label]["start"] < records["holder"]["end"] for label in ("first", "second"))
+        assert records["third"]["start"] >= records["holder"]["end"] and records["older"]["start"] >= records["holder"]["end"]
     finally:
         for process in processes:
             if process.poll() is None:

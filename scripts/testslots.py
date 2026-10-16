@@ -305,19 +305,29 @@ def _grant(me: Slot, waiting: list[Slot], capacity: tuple[int, int]) -> int:
         return 0
     first = waiting[0]
     if first.path != path:
-        if free >= first.data["minimum"] or (first.data.get("backfills", 0) >= 2 and policy.aged(first.data, time.time())):
+        if free >= first.data["minimum"] or policy.reserved(first.data, time.time()):
             return 0
         first.data["backfills"] = first.data.get("backfills", 0) + 1
         first.path.write_text(json.dumps(first.data))
     return free if not want else min(want, free)
 
 
-def _restore_inode(path: Path, record: dict, fd: int) -> int:
-    if _owns_inode(fd, path):
-        return fd
-    replacement = _publish(path, record)
-    os.close(fd)
-    return replacement
+@dataclass
+class Held:
+    """The descriptor that holds a request's lock; it is replaced, and the old one closed, whenever the record is published again."""
+
+    fd: int
+
+    def replace(self, path: Path, record: dict) -> None:
+        """Publish ``record`` at ``path`` again and hold its lock instead."""
+        replacement = _publish(path, record)
+        old, self.fd = self.fd, replacement
+        os.close(old)
+
+
+def _restore_inode(path: Path, record: dict, held: Held) -> None:
+    if not _owns_inode(held.fd, path):
+        held.replace(path, record)
 
 
 def _own_records(directory: Path, path: Path, record: dict) -> list[Slot] | None:
@@ -481,7 +491,6 @@ def _view(d: Path, name: str) -> tuple[int, list]:
 class Outcome:
     """What one admission pass found for a waiting request."""
 
-    fd: int
     granted: int = 0
     used: int = 0
     ahead: list = field(default_factory=list)
@@ -489,23 +498,22 @@ class Outcome:
     skipped: bool = False
 
 
-def _attempt(path: Path, me: dict, fd: int, cap: int, skip: bool) -> Outcome:
+def _attempt(path: Path, me: dict, held: Held, cap: int, skip: bool) -> Outcome:
     """Run an admission pass for the record at ``path``; with ``skip`` a pass that another waiter has just run stands."""
     d = path.parent
     with _mutex(d):
-        fd = _restore_inode(path, me, fd)
+        _restore_inode(path, me, held)
         if skip and not _stale(d, 0.0):
-            return Outcome(fd, skipped=True)
+            return Outcome(skipped=True)
         slots = _own_records(d, path, me)
         if slots is None:
-            replacement = _publish(path, me)
-            os.close(fd)
-            return Outcome(replacement, republished=True)
+            held.replace(path, me)
+            return Outcome(republished=True)
         plan = _allocate(slots, cap, time.time())
         _write_allocation(d, plan)
         mine = next(slot for slot in slots if slot.path == path)
         place = next((i for i, slot in enumerate(plan.waiting) if slot.path == path), 0)
-        return Outcome(fd, mine.granted, plan.used, [slot.data.get("label") for slot in plan.waiting[:place]])
+        return Outcome(mine.granted, plan.used, [slot.data.get("label") for slot in plan.waiting[:place]])
 
 
 def _release(d: Path, path: Path, fd: int) -> None:
@@ -551,7 +559,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
     t0 = time.monotonic()
     deadline = t0 + wait_limit()
     with _mutex(d):
-        fd = _publish(path, me)
+        held = Held(_publish(path, me))
     notes = Notes(t0)
     slack = int(me["token"][:4], 16) / 0xFFFF * REFRESH_S
     arriving, used, ahead, granted, cap = True, 0, [], 0, budget()
@@ -570,8 +578,8 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
             arriving = False
             if run:
                 cap = budget()
-                found = _attempt(path, me, fd, cap, skip=not first and owned is not None)
-                fd, arriving = found.fd, found.republished
+                found = _attempt(path, me, held, cap, skip=not first and owned is not None)
+                arriving = found.republished
                 if found.granted:
                     granted = me["granted"] = found.granted
                     break
@@ -593,7 +601,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
         with _lease_environment(path, me["token"]):
             yield Lease(granted, time.monotonic() - t0)
     finally:
-        _release(d, path, fd)
+        _release(d, path, held.fd)
 
 
 def _lane_count() -> int:
