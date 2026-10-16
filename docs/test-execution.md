@@ -52,6 +52,20 @@ has exited, whether the run was killed or ended. `scripts/test` also stops, at t
 more than an hour; it prints how many. The Rust node itself has no parent watch: a supervisor killed with `SIGKILL` leaves its
 node until the next reap.
 
+## Jobs: following and cancelling
+
+A run that `scripts/test` starts in the foreground is a job: a detached supervisor records its status and the caller shows its log.
+A queued or running job with the same arguments and the same tree hash (the git tree of everything not ignored, hashed only when a
+live job has the same arguments) is followed instead of started again: the caller prints `following job X, same tree and selectors`,
+`scripts/test status` shows `followers N`, and a follower's Ctrl-C leaves the job running for the others; the last follower's cancel
+stops it, and a job whose followers have all gone stops itself. A cancelled, failed or finished job is never followed, and a job whose
+tree is not recorded is never followed. A run that joined a job and finds its checkout changed when the job passed is told so and
+exits 4.
+
+`scripts/test cancel JOB` stops the job for every follower. The job is recorded `cancelling` first, so no run joins it, and its runner
+gets SIGTERM and then SIGKILL for its process group; the job is recorded `cancelled` once the runner has ended, and goes back to its
+earlier state when it has not. A job left `cancelling` for ten seconds is cancelled again by the next cancel.
+
 ## Fixed overhead
 
 A run's fixed overhead is its collection, session setup and teardown, the three phases `testphases` prints; the calls

@@ -495,7 +495,7 @@ def test_backfill_uses_idle_capacity_while_the_head_is_young_and_stops_once_it_h
         assert all(process.wait(timeout=10) == 0 for process in (holder, older, fourth))
         records = {record["label"]: record for record in _records(tmp_path)}
         assert all(records[label]["start"] < records["holder"]["end"] for label in ("first", "second", "third"))
-        assert records["fourth"]["start"] >= records["older"]["start"]
+        assert records["fourth"]["start"] >= records["holder"]["end"] and records["older"]["start"] >= records["holder"]["end"]
     finally:
         for process in processes:
             if process.poll() is None:

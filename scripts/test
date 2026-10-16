@@ -517,7 +517,7 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
         if args.tier == "status" and not rest:
             print(testqueue.longest(testslots.status()["runs"], time.time()))
             for job in jobs.ids():
-                print(show(job, jobs.state(job), jobs.read(job, "spec.json")))
+                print(show(job, jobs.state(job), jobs.read(job, "spec.json")) + followers_note(jobs, job))
             return 0
         job = rest[0] if rest else ""
         if args.tier == "cancel":
@@ -566,7 +566,8 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         jobs.write(job, "status.json", {"state": "failed", "exit": 4, "finished": time.time(), "detail": refusal, **me})
         return 4
     thread = REUSE["events"].job_started(job, spec)
-    jobs.write(job, "status.json", {"state": "running", "at": time.time(), "thread": thread, **me})
+    jobs.mark_running(job, {"thread": thread, **me})
+    jobs.record_tree(job, tree_hash(ROOT))
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     jobs.watch_follower(job)
     state, code = "failed", 1
@@ -581,6 +582,7 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     finally:
         report = REUSE.get("report")
         status = {"state": state, "exit": code, "finished": time.time(), "thread": thread, **me,
+                  **({"tree": tree_hash(ROOT)} if state == "done" and code == 0 else {}),
                   "queued_s": round(testslots_runner.QUEUED["seconds"], 1),
                   **(testphases.record(REUSE["phases"]) if REUSE.get("phases") else {}),
                   "summary": report.summary() if report else {}, **({"notes": REUSE["notes"]} if REUSE.get("notes") else {})}
@@ -609,11 +611,24 @@ def run_owner() -> dict:
 
 def follow(argv: list[str], args: argparse.Namespace) -> int:
     """Run a tier as a job and show its output until it ends; Ctrl-C, SIGTERM and SIGHUP cancel it and wait for it to end."""
+    jobs = jobs_store()
     try:
-        return jobs_store().follow(argv, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task})
+        return jobs.follow(argv, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task, "key": join_key(jobs, argv)})
     except (testjobs.Refused, OSError) as error:
         print(f"test: {error}", file=sys.stderr)
         return 4
+
+
+def join_key(jobs: testjobs.Jobs, argv: list[str]) -> dict:
+    """What makes two runs one job: the same arguments and tree. The tree is hashed only when a live job has the same arguments."""
+    tree = tree_hash(ROOT) if jobs.candidates(argv) else ""
+    return {"argv": argv, "tree": tree or None}
+
+
+def followers_note(jobs: testjobs.Jobs, job: str) -> str:
+    """`  followers N` for a live job that more than one process is following, else an empty string."""
+    count = len(jobs.followers(job)) if jobs.state(job).get("state") in ("queued", "running") else 0
+    return f"  followers {count}" if count > 1 else ""
 
 
 def build_node(files: list[str] | None = None) -> int:
