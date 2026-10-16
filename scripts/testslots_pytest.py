@@ -12,7 +12,7 @@ import testslots
 import testslots_rpc
 from test_kernel_endpoint import AdmissionUnreachable
 
-_warned = []
+UNADMITTED_STATUS = 4
 _waited = [0.0]
 WAIT_PROPERTY = "admission_wait"
 """The user property that carries the seconds a test waited for CPU permits to the controller."""
@@ -26,19 +26,15 @@ def take_waited() -> float:
 
 @contextlib.contextmanager
 def slot(**fields):
-    """Admission for one stretch of work. Admission only schedules, so a server that cannot be
-    reached means the work runs unscheduled, with one warning; it never aborts the run."""
+    """Admission for one stretch of work. A server that cannot be reached stops the run with status 4: work that did not wait
+    for its turn shares the machine with other runs, and its timings and its stored passes are not a valid run's."""
     manager = testslots_rpc.request("acquire", **fields)
     began = time.monotonic()
     try:
         manager.__enter__()
         _waited[0] += time.monotonic() - began
     except AdmissionUnreachable as exc:
-        if not _warned:
-            _warned.append(exc)
-            print(f"testslots: {exc}; running without admission", file=sys.stderr)
-        yield
-        return
+        pytest.exit(f"testslots: {exc}; the run was not admitted and stops", returncode=UNADMITTED_STATUS)
     try:
         yield
     except BaseException:

@@ -119,7 +119,7 @@ def test_the_server_queues_more_connections_than_socketserver_defaults_to():
     assert admission.UnixAdmission.request_queue_size >= 128
 
 
-def test_a_run_whose_admission_server_cannot_be_reached_runs_unscheduled(monkeypatch, capsys):
+def test_a_run_whose_admission_server_cannot_be_reached_stops_with_status_four(monkeypatch):
     pytest_plugin = load("testslots_pytest")
 
     class Unreachable:
@@ -131,13 +131,9 @@ def test_a_run_whose_admission_server_cannot_be_reached_runs_unscheduled(monkeyp
 
     monkeypatch.setattr(pytest_plugin.testslots_rpc, "request", lambda *args, **fields: Unreachable())
     ran = []
-    for _ in range(2):
-        with pytest_plugin.slot(label="a test"):
-            ran.append(True)
-    assert ran == [True, True]
-    assert capsys.readouterr().err.count("running without admission") == 1
-    with pytest.raises(ValueError, match="from the test body"), pytest_plugin.slot(label="a test"):
-        raise ValueError("from the test body")
+    with pytest.raises(pytest.exit.Exception, match="not admitted") as stopped, pytest_plugin.slot(label="a test"):
+        ran.append(True)
+    assert ran == [] and stopped.value.returncode == 4
 
 
 def test_a_slot_that_was_granted_is_released_and_the_test_body_error_still_surfaces(monkeypatch):

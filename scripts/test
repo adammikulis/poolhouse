@@ -128,7 +128,10 @@ def reused_files(command: list[str]) -> set[str]:
         looks = {file: session.lookup(file) for file in files}
         return {file for file, look in looks.items()
                 if not look.barred and session.store.hit(look.key, ROOT, session.closures)[0]}
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        note = f"the estimate could not read the reuse store ({type(error).__name__}: {str(error)[:120]})"
+        print(f"test: reuse degraded: {note}", file=sys.stderr, flush=True)
+        REUSE.setdefault("notes", []).append(note)
         return set()
 
 
@@ -485,7 +488,7 @@ def heavy(over: float) -> int:
 def show(job: str, status: dict, spec: dict) -> str:
     """One line describing a job."""
     ran = status.get("summary", {})
-    counts = f" ran {ran['ran']} reused {ran['reused']}" if ran else ""
+    counts = (f" ran {ran['ran']} reused {ran['reused']}" + (f" unstored {ran['unstored']}" if ran.get("unstored") else "")) if ran else ""
     return (f"{job}  {status.get('state', '?'):9}  {' '.join(spec.get('argv', []))[:60]}  "
             f"owner {spec.get('owner', {}).get('id') or '-'}{counts}"
             + (f"  exit {status['exit']}" if "exit" in status else ""))
@@ -573,9 +576,8 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         state, code = "done", stop.code if isinstance(stop.code, int) else 1
     finally:
         report = REUSE.get("report")
-        ran, reused = report.counts() if report else (0, 0)
         status = {"state": state, "exit": code, "finished": time.time(), "thread": thread, **me,
-                  "summary": {"ran": ran, "reused": reused} if report else {}}
+                  "summary": report.summary() if report else {}, **({"notes": REUSE["notes"]} if REUSE.get("notes") else {})}
         jobs.write(job, "status.json", status)
         REUSE["events"].job_done(job, spec, status, thread)
     return code
