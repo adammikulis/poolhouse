@@ -540,6 +540,15 @@ scopes of the session NAME without removing files; `worktrees --cleanup PATH` re
 records the cleanup proof. Completion requires the checkout, Git registration and recorded branches to be absent, and
 recorded source commits to be landed on development. Unique, dirty and ignored files remain intact.
 
+`worktrees --archive-obsolete PATH --bundle FILE` records a different disposition for an obsolete automatic integration
+trial whose checkout was closed with a bundle: it never marks the trial landed and never removes a reference. The
+worker must hold the live claim on PATH. FILE is opened through a held no-follow descriptor (every path component, no
+link, an owned regular file of at most 512 MiB) and checked again after it is read. Git then verifies that the bundle is a
+complete version 2 bundle with branch references only, that it holds the recorded history and the closed head, that the
+primary still has the recovery reference at that head, and that every unpublished commit is a binary merge whose tree an
+automatic merge of its parents reproduces. Each completion check repeats the proof against the recorded digest; any
+change leaves the scope pending.
+
 The maintained Claude launcher installs authenticated Stop and SubagentStop checks. Both maintained Claude and Codex
 launchers display pending checkout scopes at startup and refuse successful exit with unfinished scopes. Inbox workers
 return proposals to their parent; task integration verifies their landing and cleanup. A harness started outside these
