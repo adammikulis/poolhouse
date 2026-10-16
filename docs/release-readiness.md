@@ -215,7 +215,7 @@ item numbers are used below.
 | MOD-1 | A pull resolves to the 40-character commit and pins digests; an unknown publisher, a marked name, or a digest that differs from the one pinned under another commit asks a person through a human-only `model_publisher` request | `tests/test_publisher_trust.py`; `tests/test_publisher_trust_review.py` | built on branch `feat/publisher-trust`, in the landing queue (land-3133, land-2367); not on the development branch | independent accept for land-2367 |
 | MOD-2 | A model file Poolhouse did not fetch is not pinned on first use; a signed list, an equal pinned digest or a person's approval pins it | same tests | same branch | same |
 | MOD-3 | Pins at pull time and signed manifests at load; a held or changed model is refused | `tests/test_supply_chain_pins.py`; `tests/test_sentinel_wiring_serve.py` | built untested | none |
-| MOD-4 | `poolhouse-models distrust OWNER` is person-only, only removes trust, and unpins and quarantines what that publisher supplied | none | not built | next branch after `feat/publisher-trust` (HANDOFF) |
+| MOD-4 | `poolhouse-models distrust OWNER` is person-only, only removes trust, and unpins and quarantines what that publisher supplied; `trust OWNER` and a tap on the request add one | none yet; tests named in `docs/publisher-trust-commands.md` section 9 | designed, not built | building slice 1 (two attack-first rounds are done and their findings are fixed in that document; Q1 to Q5 are decided there) |
 | MOD-5 | Nothing scans model weights for a backdoor | `docs/sentinel.md`, "Considered and left out" | known limit | section 4.2 |
 
 ### 3.7 Harness policy and the exec chain
