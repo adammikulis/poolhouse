@@ -3,8 +3,11 @@ the event bus. Nothing here replaces a network or a file system."""
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from keyring.backend import KeyringBackend
@@ -88,14 +91,24 @@ class FileKeyring(KeyringBackend):
     def get_password(self, service, username):
         return self._all().get(f"{service}/{username}")
 
+    @contextlib.contextmanager
+    def _edit(self):
+        """Hold the file's lock while one process reads, changes and replaces the rows."""
+        with Path(f"{self._file()}.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            rows = self._all()
+            yield rows
+            fd, temp = tempfile.mkstemp(dir=self._file().parent)
+            with os.fdopen(fd, "w") as out:
+                out.write(json.dumps(rows))
+            Path(temp).replace(self._file())
+
     def set_password(self, service, username, password):
-        rows = self._all()
-        rows[f"{service}/{username}"] = password
-        self._file().write_text(json.dumps(rows))
+        with self._edit() as rows:
+            rows[f"{service}/{username}"] = password
 
     def delete_password(self, service, username):
-        rows = self._all()
-        if f"{service}/{username}" not in rows:
-            raise PasswordDeleteError(username)
-        del rows[f"{service}/{username}"]
-        self._file().write_text(json.dumps(rows))
+        with self._edit() as rows:
+            if f"{service}/{username}" not in rows:
+                raise PasswordDeleteError(username)
+            del rows[f"{service}/{username}"]
