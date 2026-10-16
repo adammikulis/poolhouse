@@ -95,7 +95,7 @@ const tables = section("ml-table",
   cell("loading", el("ml-table", { columns, rows: [], loading: true })),
   cell("error", el("ml-table", { columns, rows: [], error: "The hub did not answer." })));
 
-const steps = [{ id: "name", title: "Name" }, { id: "cluster", title: "Cluster" }, { id: "job", title: "Job" }, { id: "done", title: "Done" }];
+const steps = [{ id: "name", title: "Name" }, { id: "pool", title: "Pool" }, { id: "job", title: "Job" }, { id: "done", title: "Done" }];
 const stepper = (id, current, validate) => {
   const s = el("ml-stepper", { id, steps, current, validate });
   steps.forEach((st) => s.append(el("div", { slot: `step-${st.id}`, text: `Content of step ${st.title}. ${HOSTILE}` })));
