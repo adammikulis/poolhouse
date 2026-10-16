@@ -490,6 +490,13 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
   fails another: a stale, conflicting, red, hanging or runner-breaking request is ejected alone with its reason and
   failing test names, sent to the requester by name, and the rest lands. A subagent whose leaf passed its affected
   selectors requests landing itself; the runner holds the branch claim, so nobody lands by hand while it runs.
+- **A rule-file edit the owner orders lands at once.** When the owner asks for a change to `AGENTS.md` or `CLAUDE.md`,
+  the lead makes it, commits it, fast-forwards the development branch and pushes it in the same turn, with no queue,
+  gate wait or reviewer, then posts a milestone naming the commit so every agent re-reads both files. The owner's
+  instruction is the authority; only the edit itself is made (no other change rides along).
+- **Agents rebase.** A worker rebases its branch onto `origin/<development>` before every `land-request`, and again
+  whenever a milestone announces a landing that touches files it edits; a branch more than a few commits behind is
+  rebased before anything else is done on it.
 - **The agents push; the owner does not.** Pushing the development branch is part of landing, done by whoever landed it,
   immediately and without asking, with no wait for a designated publisher: whoever integrates pushes it themselves under
   a short-lived development-branch claim. Never leave a landed commit for the owner to push, ask whether to push it,
