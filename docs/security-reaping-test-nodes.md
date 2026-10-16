@@ -172,13 +172,9 @@ is logged with its rule so a later plan can say "refused before, unchanged". The
   controller there uses events, not signals).
 - Loosening the gate. `authority set delegated tests.reap` from a person's state is typed `yes` at a terminal, as for every gate.
   A lead or a person tightens it.
-- Every reap under `authority preset prod`. The gate is a person's there (it is not in `PROD_DELEGATED`), so a lead's `--apply`
-  is refused by `authority.require`. This collides with "never hand the owner a command an agent can run" (AGENTS.md, "Only real
-  decisions go to the owner"): the only way to reap under `prod` is the owner typing `poolhouse-workspace reap-test-nodes
-  --apply` at a terminal. The rule allows that for a person-only gate, after the agent has run the command and quoted the
-  refusal, and the lead then hands over the plan and that one command. The alternative, adding `tests.reap` to `PROD_DELEGATED`,
-  removes the handed command and lets a lead stop processes under `prod`; it is the owner's choice of the registry (section 8,
-  step 0) and this design does not make it.
+- Nothing waits for a person under any preset. `tests.reap` is in `PROD_DELEGATED`, so a lead's `--apply` passes under `prod` as under
+  `dev`; the predicate R1 to R8, the frozen identity and the per-owner cap are what bound it, and a person's yes would add no check
+  to them.
 - Anything the keystore, the administrator prompt, grants and `main` already reserve. This verb uses no credential.
 
 ## 6. The smallest change
@@ -223,7 +219,7 @@ running, and the build reads each one and adds a test that it says so. Tests: `t
 (a decoy with the production argv and a held lock: R2 and R4 pass, so `stop` signals it), `test_stop_stops_an_app_bundle_shaped_node`.
 
 **Authority registry** (`src/poolhouse/authority.py`): one gate, `"tests.reap": "tests"` in `GATES`, and
-`"tests.reap": "stop the test nodes that ended sessions left running"` in `MEANS`. `PROD_DELEGATED` is unchanged. A function that
+`"tests.reap": "stop the test nodes that ended sessions left running"` in `MEANS`. `tests.reap` is added to `PROD_DELEGATED`. A function that
 lists the boards a name holds a token on (the glob `_parents` already runs, so there is one glob) serves R8. The gate is checked
 inside `node_reap.apply`, so the verb, a library call and any later caller pass the same check.
 
@@ -358,11 +354,10 @@ the account's state root and asserts the table is unchanged). Status: *fixed*.
 **Approval fatigue.** Repeated requests until the person accepts.
 Defence: the verb never prompts; it passes or refuses with a sentence. Refusals go to the owner as one batched question per
 batch, and a refusal that is logged and unchanged is not listed as new. A lead cannot loosen the gate, so a long series of
-refusals cannot be turned into a standing allowance by the lead. At most 20 targets per owner are stopped per run. Under `prod`
-the person is asked for one command with the plan printed (section 5), not for a series. Test:
+refusals cannot be turned into a standing allowance by the lead. At most 20 targets per owner are stopped per run.  Test:
 `test_apply_never_prompts` (no terminal, input closed: completes with refusals, `person.typed` never called);
 `test_a_logged_refusal_is_not_listed_as_new`; `test_more_than_twenty_targets_of_one_owner_are_reported_not_stopped`; and
-`tests/test_authority.py` `test_new_gate_honors_an_existing_prod_preset` gains `tests.reap`, so the gate is a person's under
+`tests/test_authority.py` `test_new_gate_honors_an_existing_prod_preset` gains `tests.reap`, so the gate is delegated under
 `prod`. Status: *fixed*.
 
 **Takeover by whoever is merely present.** A helper agent, an unnamed process, a script in the same terminal, another harness's
@@ -410,10 +405,7 @@ same user (A2), and the other rules keep it away from the production node, a liv
 
 ## 8. Order of work and proof
 
-0. One owner decision before the build, asked by the lead through the question tool: under `authority preset prod`, is
-   `tests.reap` a person's (this design: the stronger gate; costs one command typed by the owner per reap, section 5) or
-   delegated (adds it to `PROD_DELEGATED`; costs the person's check on a verb that stops processes). Under the default `dev`
-   preset the gate is delegated and nothing is asked.
+0. `tests.reap` is delegated under every preset (owner, 2026-10-16: a reap never waits for a person); no decision is open.
 1. A different agent (a security reviewer, told to break section 7) answers in writing. Round 1 is done and this revision
    answers it; one recheck of this revision remains, and nothing below starts before it. Its findings are fixed or named in
    section 7.
