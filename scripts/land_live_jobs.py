@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import stat
 from collections.abc import Iterator
@@ -75,6 +76,25 @@ def processes_use(paths: set[Path]) -> bool:
     return False
 
 
+def terminal_gone(status: dict) -> bool:
+    """Prove a terminal record's exact launcher has gone; uncertainty never counts as proof."""
+    state = status.get("state")
+    if not isinstance(state, str) or state not in testjobs.TERMINAL:
+        return False
+    pid, started = status.get("pid"), status.get("started")
+    if (type(pid) is not int or pid <= 0 or type(started) not in (int, float) or started <= 0):
+        return False
+    try:
+        if not math.isfinite(started):
+            return False
+        process = psutil.Process(pid)
+        return abs(process.create_time() - started) >= 1 or process.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
+    except (psutil.Error, OSError, ValueError, OverflowError):
+        return False
+
+
 def jobs_use(jobs: testjobs.Jobs, paths: set[Path]) -> bool:
     """Whether active or uncertain maintained jobs protect cleanup candidates."""
     entries = list(islice(jobs.folder.iterdir(), 4098)) if jobs.folder.exists() else []
@@ -87,24 +107,19 @@ def jobs_use(jobs: testjobs.Jobs, paths: set[Path]) -> bool:
             return True
         job = entry.name
         spec = record(jobs.path(job) / "spec.json")
-        raw = spec.get("root")
-        if spec.get("id") != job or not isinstance(raw, str) or not Path(raw).is_absolute():
-            return True
-        path = Path(raw).resolve()
-        if path not in paths:
-            continue
-        status = record(jobs.path(job) / "status.json")
-        if status.get("state") not in testjobs.TERMINAL:
-            return True
-        pid, started = status.get("pid"), status.get("started")
-        if type(pid) is not int or pid <= 0 or type(started) not in (int, float) or started <= 0:
+        if spec.get("id") != job:
             return True
         try:
-            process = psutil.Process(pid)
-            if abs(process.create_time() - started) < 1 and process.status() != psutil.STATUS_ZOMBIE:
-                return True
-        except psutil.NoSuchProcess:
-            pass
+            status = record(jobs.path(job) / "status.json")
+        except (OSError, ValueError):
+            status = {}
+        if terminal_gone(status):
+            continue
+        raw = spec.get("root")
+        if not isinstance(raw, str) or not Path(raw).is_absolute():
+            return True
+        if Path(raw).resolve() in paths:
+            return True
     return processes_use(paths)
 
 

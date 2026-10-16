@@ -205,10 +205,12 @@ def test_docker_delivery_keeps_hostile_argv_literal_and_drops_ambient_credential
 
 @pytest.mark.parametrize('phase', ['startup', 'keepalive'])
 def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tmp_path, phase):
-    import os
     import signal
+    import threading
+    import time
     from types import SimpleNamespace
 
+    original_sleep = time.sleep
     calls = []
     releases = []
     actor = SimpleNamespace(name='codex-test')
@@ -228,7 +230,9 @@ def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tm
         def inspect(self, *_args):
             pass
     def terminate(*_args, **_kwargs):
-        os.kill(os.getpid(), signal.SIGTERM)
+        assert threading.current_thread() is threading.main_thread()
+        signal.raise_signal(signal.SIGTERM)
+        pytest.fail('The installed termination handler must interrupt the triggering call.')
     monkeypatch.setattr(runtime, 'Docker', OwnedDocker)
     monkeypatch.setattr(runtime, 'network_plan', lambda _d, _n, plan: plan)
     monkeypatch.setattr(runtime.verify, 'readiness', terminate if phase == 'startup' else lambda *_: None)
@@ -240,7 +244,9 @@ def test_termination_cleans_owned_resources_and_restores_handler(monkeypatch, tm
     def forward(*_args):
         yield SimpleNamespace(check=lambda: None)
     monkeypatch.setattr(runtime.relay, 'forward', forward)
-    monkeypatch.setattr(runtime.time, 'sleep', terminate)
+    # Background threads must keep the real shared time.sleep throughout handler restoration.
+    monkeypatch.setattr(runtime, 'time', SimpleNamespace(monotonic=time.monotonic, sleep=terminate))
+    assert time.sleep is original_sleep
     previous = signal.getsignal(signal.SIGTERM)
     with pytest.raises(KeyboardInterrupt):
         runtime.run(session, tmp_path / 'private-state', 'unix:///own/docker.sock', 16443, 650)
