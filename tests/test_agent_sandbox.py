@@ -257,20 +257,58 @@ def covered(path, roots):
     return any(path == Path(root) or Path(root) in path.parents for root in roots)
 
 
-def test_the_runner_writes_its_stores_and_the_passed_gate_steps_are_out_of_reach(layout):
+def test_the_sandbox_writes_its_own_stores_and_nothing_of_the_owners(layout):
     import gaterun
 
     roots = profile.write_roots(layout)
     cache = layout.home / ".cache"
-    for needed in ("test-reuse/ab12/entries/x.json", "test-reuse/ab12/jobs/j/log", "test-cargo/targets/k/debug/x",
-                   "dev-test-slots/mutex.lock", "poolhouse/test-node/k/poolhouse-node"):
+    for needed in ("test-reuse-sandbox/ab12/entries/x.json", "test-reuse-sandbox/ab12/jobs/j/log", "test-cargo-sandbox/targets/k/debug/x",
+                   "test-cargo-sandbox/workspaces/k/app/poolhouse-node/src/main.rs", "test-cargo-sandbox/test-node/k/poolhouse-node",
+                   "dev-test-slots/mutex.lock"):
         assert covered(cache / needed, roots), needed
-    gate = gaterun.steps_folder(cache / "test-reuse", "ab12")
-    for hostile in (gate / "step.json", cache / "test-gate" / "x", cache / "x", cache / "test-reuse-evil" / "x",
-                    cache / "test-cargo" / ".." / "test-gate" / "x", cache / "test-reuse" / ".." / ".ssh" / "id_ed25519",
-                    layout.home / ".cache", layout.home / ".config" / "gh" / "hosts.yml"):
-        assert not covered(hostile, roots), hostile
-    assert not covered(gate, [str(cache / "test-reuse")])
+    gate = gaterun.steps_folder(cache / "test-reuse-sandbox", "ab12")
+    for hostile in ("test-reuse/ab12/entries/forged.json", "test-reuse/ab12/chain.jsonl", "test-reuse/ab12/latest/" + "0" * 64,
+                    "test-reuse", "test-cargo/workspaces/k/app/poolhouse-node/src/main.rs", "test-cargo/targets/k/debug/poolhouse-node",
+                    "test-cargo/test-node/k/poolhouse-node", "test-gate/ab12/step.json", "x", "test-reuse-evil/x",
+                    "test-reuse-sandbox/../test-reuse/ab12/chain.jsonl", "test-cargo-sandbox/../test-cargo/targets/k/x",
+                    "test-reuse-sandbox/../.ssh/id_ed25519"):
+        assert not covered(cache / hostile, roots), hostile
+    assert not covered(gate / "step.json", roots) and not covered(layout.home / ".cache", roots)
+    assert not covered(layout.home / ".config" / "gh" / "hosts.yml", roots)
+
+
+def test_a_sandboxed_scripts_test_is_pointed_at_folders_the_sandbox_may_write(layout, monkeypatch):
+    import testnode
+
+    from poolhouse.activity import reuse
+
+    account = testnode.account()
+    monkeypatch.setenv("HOME", str(account))
+    for name in (testnode.CARGO_ENV, "DEV_TEST_REUSE_DIR", "DEV_TEST_SLOTS_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    real = profile.Layout(home=account, state=account / ".poolhouse", primary=layout.primary, platform="darwin")
+    roots = profile.write_roots(real)
+    owner = {"store": reuse.reuse_base(), "cargo": testnode.cargo_root(), "node": testnode.node_folder()}
+    assert owner["store"] == account / ".cache" / "test-reuse" and owner["cargo"] == account / ".cache" / "test-cargo"
+    owners = [str(account / ".cache" / "test-reuse"), str(account / ".cache" / "test-cargo"), str(account / ".cache" / "test-gate")]
+    for kind, folder in owner.items():
+        assert not covered(folder, roots) and not covered(folder / "k" / "x", roots), (kind, folder)
+    for variables in (profile.claude_settings(real)["env"], tomllib.loads(profile.codex_toml(real))["shell_environment_policy"]["set"]):
+        assert set(profile.store_environment(real)) <= set(variables)
+        for name, value in variables.items():
+            monkeypatch.setenv(name, value)
+        for kind, folder in {"store": reuse.reuse_base(), "cargo": testnode.cargo_root(), "node": testnode.node_folder()}.items():
+            assert covered(folder, roots) and folder != owner[kind], (kind, folder)
+            assert not covered(folder, owners), (kind, folder)
+
+
+def test_the_node_binary_is_built_in_the_folder_the_cargo_variable_names(monkeypatch, tmp_path):
+    import testnode
+
+    monkeypatch.setenv(testnode.CARGO_ENV, str(tmp_path / "named"))
+    assert testnode.node_folder() == tmp_path / "named" / testnode.FOLDER
+    assert testnode.node_folder(tmp_path / "given") == tmp_path / "given" / testnode.FOLDER
+
 
 
 def test_no_write_root_reaches_above_the_cache_folders_it_names(layout):

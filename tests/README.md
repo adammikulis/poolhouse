@@ -239,8 +239,8 @@ Import them like the tests already do: `from conftest import write_gguf`.
 
 Tests that start a node use the binary `scripts/test` builds once before the run, before the
 checkout is stamped (`scripts/testnode.py`), when a named test file or a module it imports names `node_kit`; a selection of
-plain Python files builds nothing and never asks cargo for a version. It is kept under the poolhouse cache in
-`test-node/<key>/`, where the key hashes the cargo workspace under `app/` and the compiler, so
+plain Python files builds nothing and never asks cargo for a version. It is kept in `test-node/<key>/` under the Rust build
+folder (`~/.cache/test-cargo`, or `DEV_TEST_CARGO_DIR`), where the key hashes the cargo workspace under `app/` and the compiler, so
 every checkout reuses a binary another built and a changed source gets a new one; a binary
 nothing has asked for in three days is removed. The build is staged at a fixed path under that
 folder with a cargo target folder of its own, so no run writes under a checkout's `app/target`.
