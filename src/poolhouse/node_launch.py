@@ -9,13 +9,14 @@ is single-flight (`start.lock`), so any number of clients at once start exactly 
 
 from __future__ import annotations
 
+import contextlib
 import json
-import os
-import signal
 import subprocess
 import tempfile
 import time
 from pathlib import Path
+
+import psutil
 
 from poolhouse import (
     errors,
@@ -33,7 +34,7 @@ from poolhouse import (
 )
 from poolhouse.command import Group, flag
 from poolhouse.home import state as state_root
-from poolhouse.lock import Busy, held_by, only_one, pid_alive
+from poolhouse.lock import Busy, held_by, only_one
 from poolhouse.log import say, warn
 from poolhouse.node_health import node_health, node_stop_event, socket_path
 from poolhouse.platform import is_windows, private_dir, start_process
@@ -134,20 +135,22 @@ def stop_node(state: Path, *, wait_s: float = STOP_WAIT_S) -> bool:
     _ask_to_stop(state, run)
     if _until(time.monotonic() + wait_s, lambda: {} if node_health(state) is None and not supervised(state) else None) is not None:
         return True
-    if isinstance(pid := run.get("pid"), int) and pid_alive(pid):
-        os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))  # on Windows a SIGTERM is TerminateProcess
+    if (node := node_supervise.owned(state, run, "pid")) is not None:
+        with contextlib.suppress(psutil.Error, OSError):
+            node.kill()
     return node_health(state) is None
 
 
 def _ask_to_stop(state: Path, run: dict) -> None:
-    """SIGTERM to the supervisor and the node; on Windows, where a detached process has no signal, their two stop events."""
+    """SIGTERM to the supervisor and the node that ``run`` records for ``state``; on Windows, where a detached process has no signal, their two stop events."""
     if is_windows():
         win32.signal_event(node_supervise.supervisor_stop_event(state))
         win32.signal_event(node_stop_event(state))
         return
-    for pid in (run.get("supervisor"), run.get("pid")):
-        if isinstance(pid, int) and pid_alive(pid):
-            os.kill(pid, signal.SIGTERM)
+    for role in ("supervisor", "pid"):
+        if (proc := node_supervise.owned(state, run, role)) is not None:
+            with contextlib.suppress(psutil.Error, OSError):
+                proc.terminate()
 
 
 def status(state: Path | None = None) -> dict:

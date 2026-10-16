@@ -7,6 +7,7 @@ again with a growing delay if it exits. It leaves when no verified binary can be
 
 from __future__ import annotations
 
+import math
 import os
 import signal
 import subprocess
@@ -14,6 +15,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+import psutil
 
 from poolhouse import (
     build_update,
@@ -52,8 +55,11 @@ DENIED_WAIT_S = keystore.COOLDOWN_S + 5.0
 DENIED_GIVE_UP = 3
 """A keystore the person or the system refused is asked again only when its own cooldown is over, and three times at most."""
 POLL_S = 0.1
-
-
+CLOCK_SLACK_S = 2.0
+RECORD_WITHIN_S = 60.0
+"""A node's record is written within this many seconds of its process starting; a process of any other age is not that node."""
+NODE_WORDS = ("run",)
+SUPERVISOR_WORDS = ("-m", "poolhouse.node_launch", "supervise")
 
 @dataclass
 class _Cutover:
@@ -123,6 +129,42 @@ def running(state: Path) -> dict:
     """The record of the node this state directory last started: pid, binary, checksum, start time, supervisor pid."""
     row = read_json(state / RUN, {})
     return row if isinstance(row, dict) else {}
+
+
+def owned(state: Path, run: dict, role: str) -> psutil.Process | None:
+    """The live process ``run`` records under ``role`` ("pid" the node, "supervisor" its supervisor) when it is that process of ``state``.
+
+    The pid is an ordinary process id that is not this process, one of its parents or init; the process runs the command line the
+    launcher gave it for this state directory (the node as ``<program> run --state DIR``, the supervisor as ``-m
+    poolhouse.node_launch supervise --state DIR``) and started when the record says. A process that cannot be read is not that process.
+    """
+    pid, recorded = run.get(role), run.get("started_at")
+    if type(pid) is not int or pid <= 1 or type(recorded) not in (int, float) or not math.isfinite(recorded):
+        return None
+    try:
+        me = psutil.Process()
+        if pid == me.pid or pid in (parent.pid for parent in me.parents()):
+            return None
+        proc = psutil.Process(pid)
+        argv, began = proc.cmdline(), proc.create_time()
+        if role == "pid":
+            fits = -CLOCK_SLACK_S <= recorded - began <= RECORD_WITHIN_S and _runs(proc, argv, NODE_WORDS, state, at=1)
+        else:
+            fits = began <= recorded + CLOCK_SLACK_S and _runs(proc, argv, SUPERVISOR_WORDS, state)
+    except (psutil.Error, OSError, SystemError):
+        return None
+    return proc if fits else None
+
+
+def _runs(proc: psutil.Process, argv: list[str], words: tuple[str, ...], state: Path, *, at: int | None = None) -> bool:
+    """Whether ``argv`` holds ``words``, ``--state`` and a path to ``state``, at index ``at`` or anywhere."""
+    n = len(words)
+    for i in [at] if at is not None else range(len(argv)):
+        if tuple(argv[i : i + n]) == words and argv[i + n : i + n + 1] == ["--state"] and i + n + 1 < len(argv):
+            where = Path(argv[i + n + 1])
+            where = where if where.is_absolute() else Path(proc.cwd()) / where
+            return os.path.normcase(os.path.realpath(where)) == os.path.normcase(os.path.realpath(state))
+    return False
 
 
 def _program(binary: Path, sha: str, extra: list[str]) -> Path:
