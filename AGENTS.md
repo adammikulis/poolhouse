@@ -24,6 +24,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 10. **Nothing blocks on a person**: a person-only step is asked once and everything else goes on, with the safe default
     in force (2).
 11. **Investigate a failure before anything is retried**; a slow gate is a defect and a timeout is never the fix (2, 5).
+    **Chase every finding to a fixed root cause before reporting it**; never hand the owner a symptom (2).
 12. **Say it short**: result first; announce only news others act on, never progress (2, 3).
 13. **Onboarding is the product**: a change that adds a human step (terminal, config, key, port) for a non-technical
     person is a regression (2).
@@ -242,6 +243,13 @@ which, in one line, at once, and do every part that is not blocked.
   failure seen a second time, or one that blocks other work (a refused call, an identity or token that does not resolve,
   a gate that aborts), starts the root-cause fix at once, in the same turn, by the agent that hit it or a worker it
   briefs; retrying the same thing wastes the owner's time and tokens.
+- **Chase every finding to a fix; never report one you have not chased.** Before a message says that something is
+  failing, stuck, unreviewed, parked, full or unknown, ask why it happens, then why that happens, and keep asking until
+  the cause is one the agent can fix, and fix it (or brief a worker to, in the same turn). "I can't do this with the tool
+  in my hand" is a prompt to find who or what can (another tool, a script, a change to the tool, a worker), never an
+  ending. "I don't know" means the investigation has not been done yet. A branch waiting for review is a cause too:
+  start its reviewer. A report to the owner says what was fixed and what mechanism now prevents it; a symptom handed to
+  the owner is work handed back, the same fault as a command handed to the owner.
 
 ### Saying that something works
 
