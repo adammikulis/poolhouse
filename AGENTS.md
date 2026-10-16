@@ -250,6 +250,22 @@ which, in one line, at once, and do every part that is not blocked.
   ending. "I don't know" means the investigation has not been done yet. A branch waiting for review is a cause too:
   start its reviewer. A report to the owner says what was fixed and what mechanism now prevents it; a symptom handed to
   the owner is work handed back, the same fault as a command handed to the owner.
+- **Clear a jam before adding to it.** When the test queue, the landing gate, a broker or an agent quota is stalled, the
+  next action is to clear it (end the hung jobs, fix the cause), never to submit, spawn or file more work into it. The
+  queue doctor ends a background test job that has gone quiet or run past its limit; an agent that finds a stalled
+  queue clears it the same turn.
+- **Ask what a fix needs in order to land.** Before dispatching a fix, name what must run to verify, review and land it
+  (the test queue, reviewer slots, the landing gate, a quota). When that is the thing that is broken, unblock it first
+  (a private broker directory for the fix's own tests, a separate landing lane, the quota change landed before more
+  reviewers) and then dispatch the rest.
+- **Every command, hook, request and job is idempotent.** Repeating it with the same inputs attaches to or returns the
+  first result and creates nothing new: one land request per branch and SHA, one test job per argv and tree, one
+  registration per session. A test calls it twice.
+- **A worker reports at its checkpoints.** A worker commits what is green and reports its SHA at each natural
+  checkpoint; one that has run about an hour without reporting is asked to report, and the lead finds out why it is
+  stuck instead of leaving it running.
+- **When the owner must run something, give the whole command**: one line that runs as pasted, with the `cd`, absolute
+  paths and every argument, never a snippet to adapt.
 
 ### Saying that something works
 
