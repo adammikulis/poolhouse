@@ -516,8 +516,8 @@ reads only what it flags.
 - **A flagged report goes to a person or a landing-level agent**, with the finding, `file:line` and the failing
   scenario; an unflagged report is recorded and nothing more. Attack-first (section 1) is unchanged: a design or
   security-adjacent change still needs the written break-it pass by a non-author before it is built.
-- **Three rounds at most.** A branch gets one review pass and at most two fix-and-recheck rounds; a finding that
-  survives them is reported to the owner as a decision, not looped on (owner, 2026-10-12).
+- **Two rounds at most.** A branch gets one review pass and at most one fix-and-recheck round; a finding that
+  survives them is reported to the owner as a decision, not looped on (owner, 2026-10-12; one fix round, 2026-10-16, to cut cost).
 
 ### Branch hygiene and landing
 
