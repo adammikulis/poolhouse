@@ -95,12 +95,22 @@ or repeat unchanged status after twenty seconds. Short waits stay quiet.
 Per-test RPC waits do not print into pytest's progress output; use the shared
 status command to inspect their queue.
 
-`python scripts/testslots.py status` reports active permits and waiting work.
+`python scripts/testslots.py status` reports active permits and waiting work, and names the
+request that is first in line and why it is not running.
 A queued minimum cannot exceed the configured capacity. Small requests can fill
-a temporarily unusable gap twice before an older larger request reserves the
-gap. Wait limits raise an error; they never disable admission. A command started
+a temporarily unusable gap until the older larger request has waited the bounded wait
+(`DEV_TEST_BACKGROUND_WAIT_S`, ten minutes), then it reserves the gap. Wait limits raise an error;
+they never disable admission. A command started
 inside a live test permit fails promptly instead of queuing behind its parent.
 Run an independent suite after the parent releases its permit.
+
+Admission is one pass over the directory under its mutex, and a pass grants every request that fits, in
+grant order. A request runs a pass when it arrives (unless the last pass left every worker busy), when it
+releases its permit, and when it waits and no pass has run for 0.3 to 0.6 s (holders that died, aged
+requests). A waiter reads only its own record: every 5 ms when the last pass put it among the first
+`cap + 12` requests, every 100 ms otherwise, so three hundred waiters cost a few mutex acquisitions per
+second. A dead holder's record is removed when it is first seen, at least every 0.25 s after, and before it
+is given a grant. A wait for the mutex stops with a cancelled caller, and a release never does.
 
 `python scripts/testslots.py pytest --want auto --min 1 --label NAME -- COMMAND`
 supervises a pytest command that loads `-p testslots_pytest` (`scripts/test` also loads `-p testagentenv_pytest`, which clears the agent markers for every test) and uses

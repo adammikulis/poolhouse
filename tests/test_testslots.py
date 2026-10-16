@@ -471,7 +471,8 @@ def test_short(case):
         assert sum(other["start"] <= record["start"] < other["end"] for other in records) <= 2
 
 
-def test_backfill_uses_idle_capacity_and_is_bounded(tmp_path):
+def test_backfill_uses_idle_capacity_while_the_head_is_young_and_stops_once_it_has_aged(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEV_TEST_BACKGROUND_WAIT_S", "2")
     release = tmp_path / "release"
     processes = []
     try:
@@ -481,25 +482,20 @@ def test_backfill_uses_idle_capacity_and_is_bounded(tmp_path):
         older = _spawn(tmp_path, 3, 2, .1, "older")
         processes.append(older)
         _wait_for_slot(tmp_path, older, "older", 0)
-        for label in ("first", "second"):
+        for label in ("first", "second", "third"):
             process = _spawn(tmp_path, 3, 1, .1, label)
             processes.append(process)
             assert process.wait(timeout=10) == 0
-        third = _spawn(tmp_path, 3, 1, .1, "third")
-        processes.append(third)
-        _wait_for_slot(tmp_path, third, "third", 0)
-        module = _load()
-        with module._mutex(tmp_path / "slots"):
-            queued = {slot.data["label"]: slot for slot in module._read(tmp_path / "slots")}
-            assert queued["older"].data["backfills"] == 2
-            assert queued["third"].granted == 0
-        assert third.poll() is None
+        time.sleep(2.2)
+        fourth = _spawn(tmp_path, 3, 1, .1, "fourth")
+        processes.append(fourth)
+        _wait_for_slot(tmp_path, fourth, "fourth", 0)
+        assert fourth.poll() is None
         release.touch()
-        assert all(process.wait(timeout=10) == 0 for process in (holder, older, third))
+        assert all(process.wait(timeout=10) == 0 for process in (holder, older, fourth))
         records = {record["label"]: record for record in _records(tmp_path)}
-        assert records["first"]["start"] < records["holder"]["end"]
-        assert records["second"]["start"] < records["holder"]["end"]
-        assert records["third"]["start"] >= records["older"]["start"]
+        assert all(records[label]["start"] < records["holder"]["end"] for label in ("first", "second", "third"))
+        assert records["fourth"]["start"] >= records["older"]["start"]
     finally:
         for process in processes:
             if process.poll() is None:
