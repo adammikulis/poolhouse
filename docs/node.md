@@ -603,7 +603,7 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
 | messages, notes and claims one session writes | 30 a minute; a subagent as many (`child_sends`, never below `sends`), and what its subagents write together is held to 120 a minute of their own (`subagent_sends`, never below `sends`), which is none of the parent's 30 | `quota` |
-| announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written and the board gets an `announce_over_quota` audit entry | none |
+| announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written, the board gets an `announce_over_quota` audit entry and the reply carries `over_quota` (the `announce` command prints it as a `warning`) | none |
 | direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
 | notes an author keeps on a board | 500 | `quota` |
 | idle time before the node retires a session | 24 hours (no lease held, not heard from) | none |

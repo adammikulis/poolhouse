@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from poolhouse.board.client import Quota
@@ -36,9 +38,13 @@ def test_messages_notes_and_claims_share_thirty_sends_a_minute_and_the_commands_
 
 
 def test_an_announcement_over_what_a_session_announces_is_written_and_the_board_is_told(team):
+    told = []
     for n in range(8):
         done = team.cli("announce", "milestone", f"announcement {n}", "--json", who=team.lead)
         assert done.returncode == 0, (n, done.stderr, done.stdout)
+        told.append(json.loads(done.stdout).get("warning", ""))
+    assert told[:6] == [""] * 6
+    assert all("announce quota" in text and "6 in 10 minutes" in text for text in told[6:])
     audit = team.session(team.lead).read_all(kind="audit")
     assert [e.fields["subject"] for e in audit if e.fields["event"] == "announce_over_quota"] == [team.lead.name] * 2
 

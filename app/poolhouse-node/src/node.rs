@@ -342,8 +342,10 @@ impl Node {
         let admitted = crate::writes::check_post(self, board, &access.holder, &access.actor, kind, fields)?;
         let hosted = self.hosted(board)?;
         let row = hosted.board.append(kind, &access.actor, body, idem)?;
-        let reply = json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])});
-        crate::writes::wrote(self, board, &access.holder, &access.actor, admitted)?;
+        let mut reply = json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])});
+        if crate::writes::wrote(self, board, &access.holder, &access.actor, admitted)? {
+            reply["over_quota"] = json!(true);
+        }
         Ok(reply)
     }
 

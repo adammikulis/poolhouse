@@ -158,13 +158,13 @@ pub fn check_post(node: &mut Node, board: &str, who: &Holder, actor: &str, kind:
     Ok(Admitted { announce, within })
 }
 
-/// Count a post that was written, and tell the board when an announcement went over what a session announces.
-pub fn wrote(node: &mut Node, board: &str, who: &Holder, actor: &str, post: Admitted) -> Result<()> {
+/// Count a post that was written, and tell the board when an announcement went over what a session announces; whether it did.
+pub fn wrote(node: &mut Node, board: &str, who: &Holder, actor: &str, post: Admitted) -> Result<bool> {
     if post.within {
         count_send(node, who);
     }
     if !post.announce {
-        return Ok(());
+        return Ok(false);
     }
     let (limits, announces) = (node.writes.clone(), key("announce", who));
     let over = !post.within || !node.rates.permits(&announces, limits.announces, limits.announce_window());
@@ -173,7 +173,7 @@ pub fn wrote(node: &mut Node, board: &str, who: &Holder, actor: &str, post: Admi
         let detail = format!("{actor} announced past {} in {:.0} s or faster than it may send", limits.announces, limits.announce_window_s);
         node.host(board)?.board.append(Kind::Audit, actor, json!({"event": "announce_over_quota", "subject": actor, "detail": detail}), "")?;
     }
-    Ok(())
+    Ok(over)
 }
 
 /// Whether ``name`` of ``board`` holds a lease that is held and whose holder process is still the one that took it.
