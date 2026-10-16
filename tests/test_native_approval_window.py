@@ -1,6 +1,7 @@
 """Compile the inactive native window and exercise its pure request lifecycle."""
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -16,14 +17,29 @@ SOURCE = ROOT / "app" / "native-approval"
 def test_native_approval_window_protocol_and_literal_build(tmp_path):
     env = os.environ.copy()
     env.update(HOME=str(tmp_path), TMPDIR=str(tmp_path))
-    sources = sorted(SOURCE.glob("*.swift"))
-    common = ["/usr/bin/swiftc", "-j", "1", "-parse-as-library", "-module-name", "PoolhouseApproval"]
+    spec = importlib.util.spec_from_file_location("native_approval_build", SOURCE / "build.py")
+    assert spec and spec.loader
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
     literal = tmp_path / "approval"
-    subprocess.run([*common, *map(str, sources), "-o", str(literal)], check=True, env=env, timeout=120)
+    build.compile_sources(literal, tmp_path, env=env)
     pure = tmp_path / "protocol"
-    subprocess.run([*common, "-D", "TESTING", *map(str, sources), "-o", str(pure)],
-                   check=True, env=env, timeout=120)
-    result = subprocess.run([str(pure)], check=True, capture_output=True, text=True, env=env, timeout=10)
+    build.compile_sources(pure, tmp_path, testing=True, env=env)
+    result = subprocess.run([str(pure)], check=False, capture_output=True, text=True, env=env, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
     assert "pure protocol and lifecycle checks passed" in result.stdout
+    symbols = subprocess.run(["/usr/bin/nm", "-g", str(literal)], check=True, capture_output=True, text=True, env=env)
+    assert "ph_manifest_fixture" not in symbols.stdout
+    imports = subprocess.run(["/usr/bin/nm", "-u", str(literal)], check=True, capture_output=True, text=True, env=env)
+    assert "xpc_connection_create" not in imports.stdout
+    assert "xpc_connection_activate" not in imports.stdout
+    assert "xpc_connection_resume" not in imports.stdout
+    forged = tmp_path / "ForgedManifest.swift"
+    forged.write_text("func forge(_ fields: ManifestFields) -> PublicManifest { PublicManifest(fields: fields) }", encoding="utf-8")
+    rejection = subprocess.run(["/usr/bin/swiftc", "-j", "1", "-parse-as-library", "-typecheck",
+                                "-import-objc-header", str(SOURCE / "NativeSender.h"),
+                                *map(str, sorted(SOURCE.glob("*.swift"))), str(forged)],
+                               capture_output=True, text=True, env=env, timeout=60)
+    assert rejection.returncode != 0 and "private" in rejection.stderr
     # The shipped binary is compiled but never launched by a test.
     assert literal.stat().st_size > 0
