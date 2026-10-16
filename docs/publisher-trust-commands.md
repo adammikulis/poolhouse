@@ -23,10 +23,12 @@ Tags: **[V path]** read in that code on `0.3dev` at `34e5e3aef`; **[proposal]** 
   servers using it. A pull that was running when `distrust` ran holds the files it wrote as each one lands. A keystore
   that refuses stops the record, never the holding. [proposal]
 - The list is sealed under the keystore and carries a generation. The floor that generation must equal is one small
-  item in the keystore, raised before the file is written and read whenever the device has a keyring backend. Nothing
-  about the list reads sentinel's mode. A keystore that cannot be read refuses the pull on the app and agent surfaces in
-  a sentence for its cause; a list that is missing, altered, behind or ahead of the floor makes every publisher ask
-  until a person starts it again. [proposal]
+  item in the keystore, raised before the file is written. A device whose keystore holds no master item has never been
+  provisioned, so no list and no distrust can exist on it: it is `fresh`, reads the built-in list and touches no
+  secret, prompt or unlock (decided by an attributes-only lookup, section 4.5). On a device whose master item is
+  present, the floor item is read; nothing about the list reads sentinel's mode. A provisioned keystore that cannot be
+  read refuses the pull on the app and agent surfaces in a sentence for its cause; a list that is missing, altered,
+  behind or ahead of the floor makes every publisher ask until a person starts it again. [proposal]
 - Only the app and agent surfaces read the list. A library caller passes its own trust policy and never reads the list,
   touches the keystore or is asked (section 4.7, D14). [proposal]
 - The questions the first draft left for the owner and the three the second review raised are decided in section 8 (Q1
@@ -130,7 +132,7 @@ Tags: **[V path]** read in that code on `0.3dev` at `34e5e3aef`; **[proposal]** 
 | D13 | A record that is invalid, duplicated or of an unknown schema makes the list `degraded`. Nothing is dropped on read. | Dropping a `distrust` record would return the publisher it removed. |
 | D14 | Only the app and agent surfaces read the list or the floor. A library caller passes its trust policy as an argument; the library default allows and records the pin, reads no list, touches no keystore and raises no request. | Library users get no new prompts or refusals (owner's standing rule). |
 | D15 | A persistent "trust from now on" is written only by the process that showed the desktop dialog, from the button it got back; a phone-signed approval may carry it later. A row in the inbox never persists trust. Where there is no such path the offer is the one-time approval only. | The inbox is written by anything that runs the installed code, and `ui` and `dialog` answers meet the agent-marker check alone (section 2). |
-| D16 | The item is probed whenever a keyring backend exists. `fresh` needs the item absent and no file. | `provisioned.json` and `publishers/` are files a process of the same user deletes; a rollback by files alone must not look like a device that never had a list. |
+| D16 | `fresh` is decided by the keystore's own state: the master item is absent, found by an existence lookup that reads no secret and needs no unlock (section 4.5). Absent: `fresh`, the built-in list applies, no keystore read, no prompt, no refusal. Present: the floor item is read. `provisioned.json` and `publishers/` decide nothing. | Those two are files a process of the same user deletes, so they cannot say whether a list ever existed. A write needs the master, so a distrust cannot exist while the master is absent, and a never-provisioned device must not need a person's unlock to pull a built-in publisher (onboarding, invisible security). |
 
 ## 4. The trust list
 
@@ -196,9 +198,9 @@ counters of 0 (section 2). Nothing here reads sentinel.
 A write raises the floor first and writes the file second (section 4.6). A floor raise is a keystore write and counts
 against `WRITE_CEILING` (5 an hour): a sixth change in an hour is refused before the file is written, with the
 keystore's own sentence, except for `distrust` (section 5.2, item 4). A read is one read of the item (600 an hour)
-whenever the device has a keyring backend, whether or not a list was ever written (D16): on a device with no list the
-item is absent and that read is all a pull costs. A background call forbids OS prompts (`keystore_guard.forbid_prompts`),
-so the probe never shows a dialog. `admit` reads the state once, for `settle()` and `known()` together; a pull then
+once the master item is present, whether or not a list was ever written (D16). While the master item is absent the
+pull makes the existence lookup of section 4.5 and no read at all. A background call forbids OS prompts
+(`keystore_guard.forbid_prompts`), so neither the lookup nor the read shows a dialog. `admit` reads the state once, for `settle()` and `known()` together; a pull then
 reads once more when its last file lands, and once for each time the list file's stat moved while it ran (section 5.2,
 item 7).
 
@@ -222,16 +224,39 @@ publisher-to-files relation; (c) graph nodes with `hub` importing `graph`, which
 
 ### 4.5 Reading: four states [proposal]
 
-A read on an app or agent surface probes the item first (one keystore read; the master key is cached by the keystore,
-the item is not) and then opens the file. The probe happens whenever a keyring backend exists; it does not depend on
-`provisioned.json` or on the `publishers/` directory, which a process of the same user can delete (D16).
+A read on an app or agent surface first asks whether the master item exists, then (only if it does) reads the floor
+item (one keystore read; the master key is cached by the keystore, the item is not) and opens the file. Neither step
+depends on `provisioned.json` or on the `publishers/` directory, which a process of the same user can delete (D16).
+
+**The existence lookup (a build item).** `keystore.py` has none: `_master` reads the secret with `get_password`, which on
+macOS can raise the unlock or access dialog and in a background process raises `KeystoreLocked`, so using it would put
+the human step back. The build adds `Keystore.master_present() -> bool | None` (true: present, false: absent, none: the
+backend cannot say), made without reading the secret, without unlocking and without a prompt:
+
+- macOS: `SecItemCopyMatching` for the service and account with `kSecReturnAttributes` and no `kSecReturnData`, and
+  `kSecUseAuthenticationUI` set to fail, so no dialog. `errSecItemNotFound` is absent; success, or
+  `errSecInteractionNotAllowed` (the item exists and its keychain is locked), is present.
+- Linux Secret Service: `SearchItems` with the service and account attributes. It lists locked items without
+  unlocking the collection and never calls `GetSecret`; an empty answer is absent.
+- Windows Credential Manager: `CredReadW` for the target, reading the record's attributes and never the credential
+  blob; `ERROR_NOT_FOUND` is absent. The store opens at logon, so there is no separate unlock.
+- A backend that cannot answer without the secret (the `keyring` library has no attributes-only call; the code uses
+  the platform API directly) returns none, and none reads as present: the floor item is then read, which fails closed.
+  No usable backend (none, or one the keystore refuses as unsafe) is `fresh` when no file exists, because nothing could
+  have written a list.
+
+The lookup goes through `_flight` and `_call` so it is audited and counted, and it does not spend the read ceiling.
+Tests (the suite never touches the real keystore, so the platform calls themselves are driven by hand on each
+platform and reported, not run by the suite): `test_master_present_reads_no_secret_and_raises_no_prompt` (a fake
+backend whose `get_password` fails the test), `test_master_present_is_true_for_a_locked_keystore`,
+`test_master_present_is_none_when_the_backend_cannot_answer`.
 
 | State | When | Effective set |
 | --- | --- | --- |
-| `fresh` | the item reads as absent and no file exists; or there is no usable keyring backend (none, or one the keystore refuses as unsafe) and no file exists | built-in list |
-| `ok` | the item reads, the file opens, authenticates, passes the schema, and its generation equals the item's | built-in with the records applied |
-| `unreadable` | the item cannot be read now, or a file exists that nothing can open: the causes below | none: the pull is refused, no request is raised |
-| `degraded` | the item reads and the file is missing; the item is absent and a file exists; the file fails its tag or the master is gone; the schema, an owner or a record is invalid (section 4.3); the generation differs from the item's | empty: every publisher asks |
+| `fresh` | the master item is absent (the lookup above), whatever files are on disk; or there is no usable keyring backend (none, or one the keystore refuses as unsafe) and no file exists | built-in list |
+| `ok` | the master item is present, the floor item reads, the file opens, authenticates, passes the schema, and its generation equals the item's | built-in with the records applied |
+| `unreadable` | the master item is present and the floor item cannot be read now, or a file exists that nothing can open: the causes below | none: the pull is refused, no request is raised |
+| `degraded` | the master item is present and the floor item is absent; the floor item reads and the file is missing; the floor item is absent and a file exists; the file fails its tag or the master is gone; the schema, an owner or a record is invalid (section 4.3); the generation differs from the item's | empty: every publisher asks |
 
 The file is the authority when the state is `ok`; the item's `masked` list is read only by a reset. The floor is raised
 before the file is written, so the only generation that opens is the one the item names. An older copy, a file from
@@ -250,6 +275,11 @@ tolerance, and a read never writes.
 | not the installed copy | `KeystoreUnavailable` from `real_machine.refusal` | "This copy of Poolhouse is not the installed one, so it does not use this computer's keystore and cannot check which publishers you trust. Use the installed Poolhouse." |
 | no keystore | no usable backend while a file exists | "This computer has no keystore Poolhouse can use, and a list of the publishers you trust is on disk that it cannot open." |
 
+Only a device that has been provisioned (the master item is present) and is now locked, denied or busy sees these
+refusals. A device never provisioned is `fresh` and sees none. Distrust writes only after provisioning (every write
+needs the master), so no distrust can exist on a fresh device and the built-in list there hides nothing a person
+removed.
+
 `Keystore._ring` raises `KeystoreUnavailable` with a `cause` (`absent`, `unsafe`, `not_installed`) so `trust_file` can
 pick the sentence; any other keystore error is `unreadable` with the keystore's own message. The pull is refused with the
 sentence and nothing is queued: the request inbox is under the same keystore, so a request could not be raised or
@@ -266,6 +296,13 @@ publisher already asks), adds the owner to the item's `masked` list when it is a
 keystore refuses it, the holding below still happens), and still holds and unpins the files. A person starts again with
 `poolhouse-models publishers --reset` (section 5.4), never as a side effect of `trust`: it would bring a distrusted
 built-in owner back without the person seeing it.
+
+**Journey audit.** A person who installs Poolhouse and never opens the keystore pulls a built-in publisher's model
+through an agent with no unlock, prompt or refusal: the master is absent, the state is `fresh`, nothing is read. The
+first thing that provisions the keystore (any sealed write, which a person's interactive session or `unlock` makes)
+changes the state to `ok` or `degraded` from then on, and no visible step is added at that moment. A provisioned,
+locked keystore refuses an agent's pull with one sentence naming the one step, as every other keystore use already
+does. The change adds no step to the first-run journey, no flag and no wait.
 
 `reset` is a terminal command because it throws away a person's additions (the one-line reason AGENTS.md section 2
 asks for where friction is kept); everything else a normal journey does is a tap or nothing.
@@ -312,7 +349,8 @@ id. A static test lists the callers of all of them.
   it back) or not numbers (`float` raises out of `_spend`, a `ValueError` and not a `KeystoreError`): reads or writes
   raise `KeystoreBusy`, or that `ValueError`. `unlock` does not remove `rate.json`, and its own read passes through
   `_spend`.
-- `provisioned.json` deleted: a background process reads `KeystoreLocked` until a person unlocks.
+- `provisioned.json` deleted: no effect on this list; `fresh` is decided by the master item (D16). On a provisioned
+  device the keystore rewrites the file when it next reads the master.
 
 What the app and agent surfaces do then: the pull is refused with the sentence of its cause (denied, busy, locked), in
 one line, with no request, no queue and no wait; the next pull asks the keystore again; other items proceed. A library
@@ -562,7 +600,7 @@ written.
 
 **A1. A copied or cloned state directory.** Defence: the file opens only under the keystore master of this OS user on
 this device; elsewhere it fails its tag. A file present whose tag fails is `degraded`, not `fresh`, and so is a file
-with no item to match it; the floor is in this device's keystore, read whenever a backend exists, and travels with no
+with no item to match it; the floor is in this device's keystore, read once the master item is present, and travels with no
 file. Tests: `test_a_list_copied_under_another_keystore_is_degraded_and_trusts_nothing`,
 `test_a_missing_file_with_the_item_present_is_degraded_not_fresh`, `test_a_file_with_no_item_is_degraded`. Status:
 defended in the design. A restored image of the same device and user is A2.
@@ -705,7 +743,7 @@ pulled while sentinel was off are R6.
 **A18. Induced degradation or refusal.** A process of the same user that can write the state directory deletes or
 corrupts the list file, or forges the keystore's state files (section 4.8), and the person is then asked about every
 model, is refused, or is pushed to `--reset`. Defence: deleting the file or `publishers/` with the item in place reads
-`degraded` (D16), not `fresh`; deleting `provisioned.json` makes a background process `locked`, a refusal, not `fresh`;
+`degraded` (D16), not `fresh`; deleting `provisioned.json` changes nothing, because `fresh` is decided by the master item;
 a forged `denied.json` or `rate.json` is `unreadable` with its own sentence, once per pull, with no request and no
 queue, and the keystore build ages it out (section 4.8); `degraded` carries the one plain sentence, makes no trust
 offer, and asks with ordinary per-commit approvals under the ten-wait cap; the reset keeps built-in owners distrusted
@@ -733,11 +771,13 @@ applied once. Test: `test_a_list_with_two_records_for_one_owner_or_two_alike_own
 design.
 
 **A22. Rolling back by files alone.** A process that can write the state root deletes `publishers/` and
-`provisioned.json` to make the device look as if it never had a list. Defence: the item is probed whenever a backend
-exists (D16), and `fresh` needs it absent. With the item present a missing file is `degraded`; with `provisioned.json`
-gone a background process is refused `locked` and an interactive one still reads the item. Tests:
-`test_deleting_the_list_and_provisioned_json_does_not_return_a_distrusted_publisher`, `test_the_item_is_probed_on_a_device_that_never_wrote_a_list`.
-Status: defended in the design. A process that removes the item itself needs the keystore (R1). The cost is R13.
+`provisioned.json` to make the device look as if it never had a list. Defence: `fresh` is decided by the master item
+alone (D16), which these files do not touch. With the master present a missing file is `degraded`, whether or not
+`provisioned.json` is there. Tests:
+`test_deleting_the_list_and_provisioned_json_does_not_return_a_distrusted_publisher`, `test_a_device_with_no_master_item_reads_fresh_and_touches_no_secret`.
+Status: defended in the design for files. A same-user process that deletes the master item itself returns the device to
+`fresh` and the built-in list (R1); it also destroys every secret sealed under that master, which is why it is a
+residue and not a defence. R13 is now a narrow cost.
 
 **A23. A forged keystore state file.** `denied.json`, `rate.json` and `provisioned.json` are unsealed (section 4.8).
 Defence: every effect is a refusal on the app and agent surfaces, with the cause's sentence, no request and no queue; a
@@ -791,7 +831,8 @@ code:
   and a read never writes.
 - `fresh` depended on `provisioned.json` and the `publishers/` directory, both deletable by a process of the same user.
   Holds (`Keystore.status` reads `provisioned.json` without a backend call, `keystore.py:243-253`, and `_gate` reads it
-  too, 331-342). The item is probed whenever a backend exists (D16, decided by the lead).
+  too, 331-342). The lead then replaced the file-independent probe with the master-item rule (D16): `fresh` is the
+  master item absent, found without a secret read.
 - A forged `rate.json` or `denied.json` could block a person's `distrust` and stop pulls. Holds, and is worse than
   stated: a future-dated entry is never aged out and a non-numeric one raises `ValueError` out of `_spend`, which
   `unlock` passes through (section 4.8). The keystore build ignores such entries; `distrust` holds files and reports
@@ -821,7 +862,7 @@ Accepted risks, named for the owner:
 
 | # | Risk | What bounds it |
 | --- | --- | --- |
-| R1 | The list is sealed under a subkey of the keystore master and its floor is a keystore item. `real_machine` checks where the code is (the module file under `~/.poolhouse/runtimes` on the real home, not a test run), not which interpreter or command started the process: any process that runs the installed copy passes it, an agent's included, and `_gate` lets a process with no terminal read once a person has unlocked. Such a process can derive the master, forge the file, write the item and lower the floor by calling the keystore directly, and a process that talks to the OS keystore itself needs neither. A pseudo-terminal under a cleared marker passes `require_person` and can type the confirmation. | The commands, the grants and the guard refuse everything short of that. The list is no stronger than the master key under everything else Poolhouse seals (memory, signing, the request inbox) and no weaker; the OS keystore's access rule decides how far that reaches. A deleted file, `provisioned.json` or `publishers/` returns nothing (A22). |
+| R1 | The list is sealed under a subkey of the keystore master and its floor is a keystore item. `real_machine` checks where the code is (the module file under `~/.poolhouse/runtimes` on the real home, not a test run), not which interpreter or command started the process: any process that runs the installed copy passes it, an agent's included, and `_gate` lets a process with no terminal read once a person has unlocked. Such a process can derive the master, forge the file, write the item and lower the floor by calling the keystore directly, and a process that talks to the OS keystore itself needs neither. A pseudo-terminal under a cleared marker passes `require_person` and can type the confirmation. | The commands, the grants and the guard refuse everything short of that. The list is no stronger than the master key under everything else Poolhouse seals (memory, signing, the request inbox) and no weaker; the OS keystore's access rule decides how far that reaches. A deleted file, `provisioned.json` or `publishers/` returns nothing (A22). A same-user installed interpreter can delete the master item, which returns the device to `fresh` and the built-in list; it also destroys everything else sealed under that master. |
 | R2 | Any process of the account that clears the agent marker can answer a request through `ui` or `dialog`, where the marker is the only check (`requests/inbox.py:150`), so it can give the one-time approve and answer a stop-trusting proposal. None of those answers persists a trust (D15): the only way to one is to call the writer directly with a grant it mints itself (`mint_clicked` takes its evidence from its caller), which is R1. | Answers are audited and listed; one command undoes a trust; a stop-trusting costs files held, which a person releases. A phone-signed approval that carries these choices (`docs/phone-approval.md`) is the fix. |
 | R3 | A trusted name the Hub frees and another account registers. | The built-in list has the same exposure. To look into: pinning the Hub's account id if its API exposes one (not verified). |
 | R4 | A near-miss owner name trusted on purpose. | The typed name, the Hub's account type, member and model counts, and `publishers`. |
@@ -833,7 +874,7 @@ Accepted risks, named for the owner:
 | R10 | An agent can raise one `stop-trusting` proposal per owner per day (at most one waits per owner, a no blocks it for 24 hours, at most ten requests of a kind wait). Each is destructive if a person accepts it: the owner's files are held and its servers stopped. | A proposal changes nothing until a person answers; a no is remembered; the cost of a wrong yes is files held, which only a person releases, and a trust restored at once with `trust`. Accepted by the lead. |
 | R11 | A library caller pulls under the library default (allow, record the pin), so a distrusted publisher's model is not refused at that pull, and a library `ph.serve.up` serves it under the pin check until `reconcile` holds it. | The pin carries the publisher; `reconcile` holds it at the next `settle()`, scan or app-surface serve start; a library caller can pass `app_policy()`. Owner's standing rule: library users get no new prompts or refusals. |
 | R12 | When the keystore refuses the floor raise of a `distrust`, the file is at `n+1` and the item at `n`: the list reads `degraded`, but a copy of the previous file put back reads `ok` and trusts the owner until a raise succeeds. | The attacker needs the old file and to have caused the refusal. Where the owner supplied a pinned file, a `person_only` hold names it, and the `settle()` that runs before `known()` answers completes the record and raises the floor as soon as the keystore answers; where it supplied none there is no hold to complete from and the window lasts until a raise succeeds. `distrust` prints that this happened. |
-| R13 | On a device whose keystore was never unlocked, an agent's pull on an app or agent surface is refused `locked` until a person has run `poolhouse-security unlock` or opened an interactive Poolhouse session once, and a checkout or worktree run of an app surface on the real machine is refused with the not-installed sentence; a pull of a built-in publisher's model used to need no keystore. | Every device that raises a request already needs the same unlock (the request inbox is under the same keystore); each refusal is one sentence naming what to do and parks that pull. It is the cost of D16 and the cause-specific sentences, decided by the lead. |
+| R13 | Only a device that has been provisioned (the master item is present) and is locked, denied or busy refuses an agent's pull on an app or agent surface, with the sentence of its cause; a checkout or worktree run of an app surface on the real machine is refused with the not-installed sentence. A never-provisioned device is `fresh` and refuses nothing. No distrust can exist on a fresh device, because every write needs the master. | The refusal reaches only a keystore a person already set up and that is now closed; each refusal is one sentence naming what to do and parks that pull. Nothing blocks a first run on a person. |
 
 Decided here (the first draft left Q1 and Q2 to the owner; Q3 to Q5 are the lead's, on the owner's standing rules):
 
@@ -841,13 +882,14 @@ Decided here (the first draft left Q1 and Q2 to the owner; Q3 to Q5 are the lead
   graph. The reason that decides it is that this is authorization state needing a monotonic floor under the keystore:
   the graph is a rebuildable index with neither. The layer rule and the second copy of the publisher-to-files relation
   (section 4.4) agree.
-- **Q2. A process that cannot reach the keystore refuses; it does not ask, and it does not read the built-in list.** Once
-  a backend exists, a locked, denied, busy or not-installed keystore is `unreadable`: the pull stops with one plain
+- **Q2. A process that cannot reach a provisioned keystore refuses; it does not ask, and it does not read the built-in
+  list.** Once the master item is present, a locked, denied, busy or not-installed keystore is `unreadable`: the pull stops with one plain
   sentence for its cause, because the request store is the same keystore and could not hold an ask. Letting such a
   process read the built-in list and ignore masks would let a `distrust` be undone by making the keystore unreadable.
   Only a missing, foreign, behind, ahead or altered list is `degraded` (every publisher asks).
-- **Q3. The item is probed whenever a backend exists (D16).** Not only when `provisioned.json` or `publishers/` say a
-  list was made, which closes a rollback by files alone. The cost is R13.
+- **Q3. `fresh` is the master item absent, found without a secret read (D16).** Not `provisioned.json` or `publishers/`,
+  which a same-user process deletes, and not a probe that reads the secret, which would put an unlock in front of a
+  first pull. The residue is a process that deletes the master item (R1).
 - **Q4. The surfaces refuse with a cause-specific sentence and read the list; the library passes its policy and reads
   nothing (D14).** A library caller is never asked, refused for a keystore cause or made to touch the keystore.
 - **Q5. A persistent trust is written only by a path stronger than the agent-marker check (D15).** Today that is the
@@ -864,7 +906,7 @@ Files:
   `app_policy`; `src/poolhouse/hub/trust_file.py` (new): the sealed file, the item, the four states, the causes and
   their sentences. Each stays well under the file limit.
 - `src/poolhouse/hub/trust_cli.py` (new, about 180 lines): `trust`, `distrust`, `publishers`; `hub/cli.py` composes it.
-- `src/poolhouse/keystore.py`: `Keystore.item` and `Keystore.set_item` (through `_flight` and `_call`),
+- `src/poolhouse/keystore.py`: `Keystore.master_present` (section 4.5), `Keystore.item` and `Keystore.set_item` (through `_flight` and `_call`),
   `KeystoreUnavailable.cause`, and `_window` and `_denial` ignoring an entry that is not a finite number or lies in the
   future and capping `until`.
 - `src/poolhouse/hub/admission.py`: the policy argument; `known` replaces the `TRUSTED` test on the app policy; the
@@ -894,7 +936,7 @@ does not know"), `test_reset_is_a_persons_and_the_only_way_out_of_a_degraded_lis
 `test_a_hub_name_with_control_or_bidi_characters_is_escaped_before_it_is_printed`.
 
 Mutation checks, per AGENTS.md section 5: drop the floor check (A2 fails), raise the floor after the write instead of
-before (A2's order test fails), drop the item probe when `provisioned.json` is absent (A22 fails), drop the person check
+before (A2's order test fails), decide `fresh` by `provisioned.json` or the files instead of the master item (A22 fails), read the secret in the lookup (the `master_present` test fails), drop the person check
 in the writer (A4 fails), let `known` ignore the `distrust` record (A7 fails), skip the fold test (A6 fails), recheck
 once at the end instead of after each file (A15's per-file test fails), hold by pins instead of target paths (A15's
 nothing-pinned test fails), unpin before the hold (A7's order test fails), drop the `person_only` check in `purge` or
