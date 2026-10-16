@@ -300,3 +300,13 @@ def test_a_staged_budgets_json_that_is_not_json_is_refused_by_name(checkout):
     done = subprocess.run([sys.executable, str(checkout / "scripts" / "hooks" / HOOK.name)], cwd=checkout,
                           capture_output=True, text=True, env=kept)
     assert done.returncode == 1 and "staged budgets.json is not valid JSON" in done.stderr
+
+
+def test_a_staged_budgets_json_that_is_not_json_is_refused_when_head_is_not_json_either(checkout):
+    commit_budgets(checkout, "{ torn")
+    (checkout / "budgets.json").write_text("{ also torn", encoding="utf-8")
+    git(checkout, "add", "budgets.json")
+    kept = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+    done = subprocess.run([sys.executable, str(checkout / "scripts" / "hooks" / HOOK.name)], cwd=checkout,
+                          capture_output=True, text=True, env=kept)
+    assert done.returncode == 1 and "staged budgets.json is not valid JSON" in done.stderr

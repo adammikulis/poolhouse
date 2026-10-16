@@ -112,7 +112,8 @@ def compared(against: str | None) -> tuple[dict[str, int] | None, dict[str, int]
         return numbers(against), on_disk()
     if NAME not in staged_names() or _git("rev-parse", "--verify", "HEAD")[0] != 0:
         return None, {}
-    before, after = numbers("HEAD"), numbers("")
+    after = numbers("")
+    before = numbers("HEAD")
     if _git("rev-parse", "-q", "--verify", "MERGE_HEAD")[1].strip():
         # a merge may carry the other parent's numbers: its commits were judged against their own base
         try:
