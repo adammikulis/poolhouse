@@ -113,11 +113,11 @@ The cost that grows with length is the re-reading: every tool call of an agent r
 unless a one-hour write was made), so a worker's bill grows with tool calls times context, roughly the square of its length.
 Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to 0.9 million tokens each. So:
 
-- One slice per worker: a brief that names one deliverable with a stop condition. A worker that has made about 120 tool calls
+- One slice per worker: a brief that names one deliverable with a stop condition. A worker that has made about 150 tool calls
   without reporting is stopped by the lead, its commits kept, and the rest is a new worker with a fresh context and a one-line
   summary of state (a continuation is cheaper than a longer life).
 - Split by deliverable, not by phase: design, code, review and fixes are separate workers; a reviewer reads, runs a few
-  targeted checks and reports, with its tool calls capped near 25, at medium effort (low for a one-bullet doc change).
+  targeted checks and reports, with its tool calls capped near 40.
 - Briefs point at files and sections; they do not paste documents. Workers read ranges, not whole files, and run the
   affected tests, not the suite, until the one gate run.
 - The lead keeps its own context short: results are summarised once, large outputs are read from a file range, and a session
