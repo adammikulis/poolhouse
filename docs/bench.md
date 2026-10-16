@@ -66,6 +66,10 @@ has no generated figures and shows `-`, never 0.
 `poolhouse-bench standard` (lm-eval) records the metric, the scored count and the seconds, not
 generated tokens, so its sets have no figure here yet.
 
+The default sets are GSM8K, MMLU-Pro and IFEval. HumanEval runs only when `--tasks` names it
+(`--tasks humaneval`, or in a list): it executes the model's generated code unsandboxed on this
+machine, through `evaluate`'s `code_eval` in a subprocess with `HF_ALLOW_CODE_EVAL=1`.
+
 ## System snapshot
 
 Every run measured on this machine keeps a `system` record in its `server` record
