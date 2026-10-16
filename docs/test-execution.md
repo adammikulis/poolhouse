@@ -67,7 +67,13 @@ CPU capacity defaults to the logical CPU count minus one, with a minimum of
 one. `DEV_TEST_RESERVED_CORES` changes that reservation. This reserves capacity;
 it does not pin execution to a particular efficiency core. `DEV_TEST_BUDGET`
 sets an explicit owner override. The capacity does not change with the machine's load.
-Existing active permits finish before new work enters.
+Existing active permits finish before new work enters. A run that waits for its first permit is told
+how many permits are in use and `N run(s) ahead` with their labels; the seconds it waited are in its run record
+and in the job status as `queued_s`, so a time limit on the run counts from the grant. The gate's
+check scripts (`scripts/budgets` with ruff and pyright, the reference and coverage checks) run beside
+the structure tests without a permit; they start at lower priority (`nice` +10) so they yield to
+admitted tests. Load that is not ours (an editor's pyright server, a virtual machine, the window
+server) is not admitted by this broker.
 
 The supervisor admits pytest startup, then each worker's configuration and collection, and each
 test's complete setup, call and teardown. Idle workers hold no CPU permits. A

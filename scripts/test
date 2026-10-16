@@ -72,6 +72,7 @@ import testreuse_store
 import testscope
 import testselectors
 import testslots
+import testslots_policy
 import testslots_runner
 import testtime
 
@@ -431,7 +432,8 @@ STALE_HINTS = {"command reference": "docs/commands.md is stale: run `scripts/ref
 def script_status(name: str, command: list[str]) -> int:
     """Run a check script and show its whole output as one block, so a lane running beside pytest does not interleave."""
     clean_env = {k: v for k, v in os.environ.items() if k not in ("DEV_TEST_REUSE_RECORD", "DEV_TEST_REUSE_ROOT")}
-    done = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True, env=clean_env)
+    done = subprocess.run(testslots_policy.lower_priority(command, testslots_policy.BACKGROUND), cwd=ROOT, check=False,
+                          capture_output=True, text=True, env=clean_env)
     text = (done.stdout + done.stderr).rstrip()
     if text:
         print(f"gate: {name} output\n{text}", flush=True)
@@ -578,6 +580,7 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     finally:
         report = REUSE.get("report")
         status = {"state": state, "exit": code, "finished": time.time(), "thread": thread, **me,
+                  "queued_s": round(testslots_runner.QUEUED["seconds"], 1),
                   "summary": report.summary() if report else {}, **({"notes": REUSE["notes"]} if REUSE.get("notes") else {})}
         jobs.write(job, "status.json", status)
         REUSE["events"].job_done(job, spec, status, thread)
