@@ -129,3 +129,18 @@ def test_the_landing_runner_runs_the_doctor_every_pass(monkeypatch, tmp_path):
     monkeypatch.setattr(queue_doctor, "mend", lambda root, say=print: calls.append(root))
     flags = {"remote": "origin", "stall_minutes": 1, "request_minutes": 1, "batch_minutes": 1, "once": True, "interval": 0}
     assert land_board.serve(tmp_path, "dev", flags) == 0 and calls == [tmp_path]
+
+
+def test_a_test_node_older_than_its_limit_is_ended_and_a_young_one_is_not(tmp_path):
+    program = tmp_path / "pytest-of-someone" / "run" / "poolhouse-node"
+    program.parent.mkdir(parents=True)
+    program.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(600)\n")
+    program.chmod(0o755)
+    process = subprocess.Popen([str(program), "run", "--state", str(tmp_path / "state")], start_new_session=True)
+    try:
+        time.sleep(0.5)
+        assert queue_doctor.reap_nodes(say=lambda text: None) == []
+        assert queue_doctor.reap_nodes(now=time.time() + queue_doctor.NODE_MAX_AGE_S + 60, say=lambda text: None) == [process.pid]
+        assert process.wait(timeout=10) is not None
+    finally:
+        process.kill()

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+import re
 import signal
 import time
 from collections.abc import Callable
 from pathlib import Path
 
+import psutil
 import testjobs
 import testreuse_store as storage
 
@@ -15,6 +17,8 @@ QUIET_S = 900.0
 MAX_AGE_S = 5400.0
 GRACE_S = 5.0
 OLD_QUIET_S = 300.0
+NODE_MAX_AGE_S = 3600.0
+TEST_NODE = re.compile(r"/pytest-of-[^/]+/.*/poolhouse-node run --state ")
 
 
 def _log_age(jobs: testjobs.Jobs, job: str, now: float) -> float:
@@ -84,9 +88,32 @@ def jobs_of(root: Path) -> testjobs.Jobs:
     return testjobs.Jobs(reuse.reuse_base() / testruns.scope(root))
 
 
+def reap_nodes(now: float | None = None, say: Callable[[str], None] = print) -> list[int]:
+    """End test nodes (and their supervisors) that outlived the pytest run that started them; returns the pids ended."""
+    now = time.time() if now is None else now
+    ended = []
+    for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
+        try:
+            line = " ".join(proc.info["cmdline"] or [])
+            if not TEST_NODE.search(line) or now - proc.info["create_time"] < NODE_MAX_AGE_S:
+                continue
+            doomed = [proc, *([parent] if (parent := proc.parent()) and "node_launch" in " ".join(parent.cmdline()) else [])]
+            for victim in doomed:
+                victim.terminate()
+            _, alive = psutil.wait_procs(doomed, timeout=GRACE_S)
+            for victim in alive:
+                victim.kill()
+            ended.append(proc.pid)
+            say(f"queue doctor: ended leaked test node {proc.pid}")
+        except (psutil.Error, OSError):
+            continue
+    return ended
+
+
 def mend(root: Path, say: Callable[[str], None] = print) -> list[str]:
     """One pass of the doctor over the project's jobs; a failure of the pass never stops the caller."""
     try:
+        reap_nodes(say=say)
         return sweep(jobs_of(root), say=say)
     except (OSError, ValueError, TypeError, ImportError) as error:
         say(f"queue doctor: pass failed: {type(error).__name__}: {error}"[:200])
