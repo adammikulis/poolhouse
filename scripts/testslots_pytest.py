@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,15 @@ import testslots_rpc
 from test_kernel_endpoint import AdmissionUnreachable
 
 _warned = []
+_waited = [0.0]
+WAIT_PROPERTY = "admission_wait"
+"""The user property that carries the seconds a test waited for CPU permits to the controller."""
+
+
+def take_waited() -> float:
+    """The seconds spent waiting for admission since the last call."""
+    seconds, _waited[0] = _waited[0], 0.0
+    return seconds
 
 
 @contextlib.contextmanager
@@ -19,8 +29,10 @@ def slot(**fields):
     """Admission for one stretch of work. Admission only schedules, so a server that cannot be
     reached means the work runs unscheduled, with one warning; it never aborts the run."""
     manager = testslots_rpc.request("acquire", **fields)
+    began = time.monotonic()
     try:
         manager.__enter__()
+        _waited[0] += time.monotonic() - began
     except AdmissionUnreachable as exc:
         if not _warned:
             _warned.append(exc)
@@ -98,4 +110,5 @@ def pytest_collection_finish(session):
 def pytest_runtest_protocol(item, nextitem):
     heavy = Path(str(item.path)).stem in testslots.HEAVY_MODULES
     with slot(label=item.nodeid[-256:], heavy=heavy):
+        item.user_properties.append((WAIT_PROPERTY, take_waited()))
         yield
