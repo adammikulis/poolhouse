@@ -35,6 +35,7 @@ def test_download_component_choices_and_installed_component_action(joined, open_
     downloads.start.return_value = Getting("fixture", pick.file)
     joined.ui.downloads = downloads
     page, errors = open_page(joined, cookie=joined.cookie, path="/ui/#models")
+    page.get_by_text("Add from your Pool or Hugging Face").click()
     page.get_by_role("button", name="Hugging Face", exact=True).click()
     page.get_by_role("button", name="Download", exact=True).click()
     mtp = page.get_by_label("Multi-token prediction", exact=False)
@@ -54,7 +55,7 @@ def test_download_component_choices_and_installed_component_action(joined, open_
         "size_bytes": 7, "mtime": 0}])
     downloads.start.reset_mock()
     page.reload()
-    page.locator("models-library details summary").click()
+    page.locator("models-library").get_by_text("Files and model details", exact=True).click()
     page.get_by_role("button", name="Optional MTP and vision components", exact=True).click()
     page.get_by_role("button", name="Install Vision", exact=True).click()
     expect(page.locator("models-library")).to_contain_text("Download started")
