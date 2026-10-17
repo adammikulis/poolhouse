@@ -58,11 +58,11 @@ def test_a_job_that_is_producing_output_is_left_alone(tmp_path):
         process.kill()
 
 
-def test_a_job_older_than_the_limit_is_ended_even_with_fresh_output(tmp_path):
+def test_a_job_older_than_the_limit_is_ended_once_it_has_gone_a_little_quiet(tmp_path):
     jobs = testjobs.Jobs(tmp_path)
     process = sleeper()
     try:
-        job(tmp_path, "j3", created=time.time() - queue_doctor.MAX_AGE_S - 60, log_age=1, process=process)
+        job(tmp_path, "j3", created=time.time() - queue_doctor.MAX_AGE_S - 60, log_age=queue_doctor.OLD_QUIET_S + 60, process=process)
         assert queue_doctor.sweep(jobs, sleep=lambda s: process.wait(timeout=10)) == ["j3"]
     finally:
         process.kill()
@@ -86,3 +86,46 @@ def test_a_finished_job_is_not_touched(tmp_path):
     name = job(tmp_path, "j5", created=time.time() - 99999, log_age=99999, process=None)
     jobs.write(name, "status.json", {"state": "done", "exit": 0})
     assert queue_doctor.sweep(jobs, sleep=lambda s: None) == []
+
+
+def test_a_stray_entry_in_the_jobs_folder_does_not_stop_the_pass(tmp_path):
+    jobs = testjobs.Jobs(tmp_path)
+    (tmp_path / "jobs" / "stray.dir").mkdir(parents=True)
+    process = sleeper()
+    try:
+        name = job(tmp_path, "j6", created=time.time() - 3000, log_age=queue_doctor.QUIET_S + 60, process=process)
+        said = []
+        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: process.wait(timeout=10)) == [name]
+        assert any("stray.dir" in line for line in said)
+    finally:
+        process.kill()
+
+
+def test_an_old_job_that_is_still_printing_is_left_alone(tmp_path):
+    jobs = testjobs.Jobs(tmp_path)
+    process = sleeper()
+    try:
+        job(tmp_path, "j7", created=time.time() - queue_doctor.MAX_AGE_S - 600, log_age=5, process=process)
+        assert queue_doctor.sweep(jobs, sleep=lambda s: None) == []
+        assert process.poll() is None
+    finally:
+        process.kill()
+
+
+def test_the_pass_survives_a_broken_jobs_folder(monkeypatch, tmp_path):
+    monkeypatch.setattr(queue_doctor, "jobs_of", lambda root: (_ for _ in ()).throw(OSError("no store")))
+    said = []
+    assert queue_doctor.mend(tmp_path, said.append) == [] and said
+
+
+def test_the_landing_runner_runs_the_doctor_every_pass(monkeypatch, tmp_path):
+    import land_board
+
+    calls = []
+    runner = type("R", (), {"root": tmp_path, "once": lambda self: {"status": "idle"}, "close": lambda self: None, "s": None})()
+    monkeypatch.setattr(land_board, "runner_session", lambda root, target: object())
+    monkeypatch.setattr(land_board, "Runner", lambda *a, **k: runner)
+    monkeypatch.setattr(land_board, "end_session", lambda s: None)
+    monkeypatch.setattr(queue_doctor, "mend", lambda root, say=print: calls.append(root))
+    flags = {"remote": "origin", "stall_minutes": 1, "request_minutes": 1, "batch_minutes": 1, "once": True, "interval": 0}
+    assert land_board.serve(tmp_path, "dev", flags) == 0 and calls == [tmp_path]

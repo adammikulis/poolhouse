@@ -14,6 +14,7 @@ import testreuse_store as storage
 QUIET_S = 900.0
 MAX_AGE_S = 5400.0
 GRACE_S = 5.0
+OLD_QUIET_S = 300.0
 
 
 def _log_age(jobs: testjobs.Jobs, job: str, now: float) -> float:
@@ -31,9 +32,9 @@ def hung(jobs: testjobs.Jobs, job: str, now: float) -> str:
         return ""
     spec = jobs.read(job, "spec.json")
     created = spec.get("created", status.get("at", now)) if isinstance(spec, dict) else now
-    if now - float(created) > MAX_AGE_S:
-        return f"older than {MAX_AGE_S / 60:.0f} minutes"
     quiet = _log_age(jobs, job, now)
+    if now - float(created) > MAX_AGE_S and quiet > OLD_QUIET_S:
+        return f"older than {MAX_AGE_S / 60:.0f} minutes and quiet for {quiet / 60:.0f}"
     return f"no output for {quiet / 60:.0f} minutes" if quiet > QUIET_S else ""
 
 
@@ -59,11 +60,15 @@ def sweep(jobs: testjobs.Jobs, now: float | None = None, say: Callable[[str], No
     now = time.time() if now is None else now
     ended = []
     for job in jobs.ids():
-        why = hung(jobs, job, now)
-        if not why:
+        try:
+            why = hung(jobs, job, now)
+            if not why:
+                continue
+            status = jobs.read(job)
+            gone = end(int(status.get("pid", 0)), float(status.get("started", 0)), sleep)
+        except (testjobs.Refused, OSError, ValueError, TypeError) as error:
+            say(f"queue doctor: skipped job {job}: {type(error).__name__}: {error}"[:200])
             continue
-        status = jobs.read(job)
-        gone = end(int(status.get("pid", 0)), float(status.get("started", 0)), sleep)
         if gone:
             jobs.write(job, "status.json", {**status, "state": "failed", "exit": 3, "finished": now,
                                             "detail": f"ended by the queue doctor: {why}"})
@@ -77,3 +82,12 @@ def jobs_of(root: Path) -> testjobs.Jobs:
     from poolhouse.activity import reuse
     from poolhouse.workspace import testruns
     return testjobs.Jobs(reuse.reuse_base() / testruns.scope(root))
+
+
+def mend(root: Path, say: Callable[[str], None] = print) -> list[str]:
+    """One pass of the doctor over the project's jobs; a failure of the pass never stops the caller."""
+    try:
+        return sweep(jobs_of(root), say=say)
+    except (OSError, ValueError, TypeError, ImportError) as error:
+        say(f"queue doctor: pass failed: {type(error).__name__}: {error}"[:200])
+        return []
