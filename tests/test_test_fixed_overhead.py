@@ -119,9 +119,9 @@ def test_parsing_arguments_imports_no_conftest_and_keeps_the_tier_options():
             "                              'tests/test_test_fixed_overhead.py::test_x', 'tests/test_testphases.py'])\n"
             "testselectors.validate(['--slow', 'tests/test_testphases.py'], Path.cwd())\n"
             "print(chosen)\n"
-            "print('conftest' in sys.modules)\n")
+            "print([name for name in sys.modules if name.endswith('conftest')])\n")
     done = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=60,
                           env={**os.environ, "PYTHONPATH": f"{ROOT / 'scripts'}:{ROOT / 'src'}"})
     assert done.returncode == 0, done.stderr
     assert done.stdout.splitlines()[-2:] == [
-        "['tests/test_test_fixed_overhead.py::test_x', 'tests/test_testphases.py']", "False"]
+        "['tests/test_test_fixed_overhead.py::test_x', 'tests/test_testphases.py']", "[]"]
