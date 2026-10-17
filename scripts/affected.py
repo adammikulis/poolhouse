@@ -121,6 +121,8 @@ def references(source: str, module: str, is_package: bool, known: dict[str, str]
             wanted.update(f"{base}.{alias.name}" for alias in node.names)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             wanted.update(m.group(1) for m in DOTTED.finditer(node.value))
+        elif isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytest_plugins" for t in node.targets):
+            wanted.update(c.value for c in ast.walk(node.value) if isinstance(c, ast.Constant) and isinstance(c.value, str))
     found: set[str] = set()
     for name in wanted:
         hit = resolve(name, known)
@@ -151,11 +153,23 @@ def dependants(edges: dict[str, set[str]]) -> dict[str, set[str]]:
     return out
 
 
+def helper_dependants(step: set[str], reverse: dict[str, set[str]], seen: set[str]) -> None:
+    """Add to ``step`` what depends on the test helper modules in it, and on those, without using up a step."""
+    queue = [y for y in step if y.startswith("tests.") and not y.startswith("tests.test_")]
+    while queue:
+        for y in reverse.get(queue.pop(), ()):
+            if y not in seen and y not in step:
+                step.add(y)
+                if not y.startswith("tests.test_"):
+                    queue.append(y)
+
+
 def reach(start: set[str], reverse: dict[str, set[str]], depth: int) -> set[str]:
-    """``start`` and what depends on it within ``depth`` steps; a test module ends a path."""
+    """``start`` and what depends on it within ``depth`` steps; a test file ends a path and a test helper module is no step."""
     seen, frontier = set(start), set(start)
     for _ in range(depth):
         step = {y for x in frontier for y in reverse.get(x, ()) if y not in seen}
+        helper_dependants(step, reverse, seen)
         seen |= step
         frontier = {y for y in step if not y.startswith("tests.")}
     return seen

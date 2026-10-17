@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import srcpath  # noqa: F401
 import testslots_policy as policy
 
 from poolhouse.lock import release, take

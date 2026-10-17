@@ -10,6 +10,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import srcpath  # noqa: F401
+
 from poolhouse.lock import release, take
 
 ALPHA = 0.3

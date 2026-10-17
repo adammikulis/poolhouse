@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from land_support import DEV, Project, git
@@ -256,9 +257,10 @@ def test_a_runner_launched_by_init_or_a_reused_parent_pid_gets_a_session_of_its_
     monkeypatch.setattr(land_board.os, "getpid", lambda: 222)
     assert by_init != land_board.runner_native_id(world.proj.root, DEV) != first
     monkeypatch.setattr(land_board.os, "getppid", lambda: 4242)
-    monkeypatch.setattr(land_board.psutil, "Process", lambda pid: type("P", (), {"create_time": lambda self: 100.0})())
+    error = land_board.psutil.Error
+    monkeypatch.setattr(land_board, "psutil", SimpleNamespace(Error=error, Process=lambda pid: SimpleNamespace(create_time=lambda: 100.0)))
     one = land_board.runner_native_id(world.proj.root, DEV)
-    monkeypatch.setattr(land_board.psutil, "Process", lambda pid: type("P", (), {"create_time": lambda self: 200.0})())
+    monkeypatch.setattr(land_board, "psutil", SimpleNamespace(Error=error, Process=lambda pid: SimpleNamespace(create_time=lambda: 200.0)))
     assert one != land_board.runner_native_id(world.proj.root, DEV)
 
 
