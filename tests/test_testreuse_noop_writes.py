@@ -40,3 +40,14 @@ def test_changing_a_path_under_the_short_temporary_directory_is_allowed(event):
 
 def test_changing_a_path_beside_the_temporary_directory_is_a_violation():
     assert violations("os.chmod", "/tmpfoo/node", 0o755) == {"chmod /tmpfoo/node"}
+
+
+def test_a_dotdot_path_that_leaves_the_temporary_directory_is_a_violation():
+    escaping = "/tmp/../usr/node"
+    assert violations("os.chmod", escaping, 0o755) == {f"chmod {escaping}"}
+
+
+def test_a_symlink_under_the_temporary_directory_to_somewhere_else_is_a_violation(tmp_path):
+    (tmp_path / "home").symlink_to(ELSEWHERE)
+    through = str(tmp_path / "home" / "node")
+    assert violations("os.chmod", through, 0o755) == {f"chmod {through}"}
