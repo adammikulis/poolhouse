@@ -730,7 +730,10 @@ def test_delegated_pending_installation_resumes_without_creating_another_app(ai,
 
 def test_isolated_script_dispatches_package_without_source_path_injection(tmp_path):
     source = str(ROOT / 'src')
-    code = ("import runpy,sys,types;from poolhouse import runtime;"
+    installed = tmp_path / 'installed'
+    installed.mkdir()
+    (installed / 'poolhouse').symlink_to(ROOT / 'src' / 'poolhouse', target_is_directory=True)
+    code = ("import runpy,sys,types;sys.path.insert(0," + repr(str(installed)) + ");from poolhouse import runtime;"
             "module=types.ModuleType('poolhouse.workspace.github_identity');"
             "module.command=lambda: print('installed isolated dispatch',sys.flags.isolated," + repr(source) + " not in sys.path) or 0;"
             "sys.modules[module.__name__]=module;runpy.run_path(" + repr(str(SCRIPT)) + ",run_name='__main__')")
