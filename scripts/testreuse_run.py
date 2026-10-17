@@ -212,7 +212,7 @@ class Session:
                  events: Events | None = None) -> None:
         self.root, self.command, self.files, self.store = root, command, files, store
         self.events = events or Events()
-        self.closures = keys.Closures(root)
+        self.closures = keys.Closures(root, keys.import_facts(store.folder))
         self.rate = canary_rate()
         self.commit = ""
         self.tree_of: Callable[[], str] = lambda: ""
@@ -260,6 +260,7 @@ class Session:
         again = self.wait_for(plan.deferred)
         if again:
             self.execute(Plan(run=again, claimed=again), launch)
+        self.closures.save()
         self.report.outcomes = [self.outcome(f) for f in (self.files or sorted(self.outcomes))]
         failed = any(not o.passed and not o.not_run for o in self.report.outcomes)
         self.report.status = self.report.status or (1 if failed else 0)
