@@ -24,6 +24,8 @@ def describe() -> str:
 
 
 def find(root: Path) -> list[Finding]:
+    if not (root / ".git").exists():
+        return []
     now = time.time()
     try:
         found = trees.rows(root, now)
