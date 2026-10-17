@@ -31,6 +31,7 @@ HEAVY_MODULES = frozenset({
     "test_graph_store_scale",
 })
 
+MIN_RETRY_S, MAX_RETRY_S, RETRY_PER_AHEAD_S = 0.01, 0.5, 0.005
 EXPORT_LEASE = contextvars.ContextVar("export_test_lease", default=True)
 CHECK_CANCELLED = contextvars.ContextVar("check_test_cancelled", default=lambda: None)
 
@@ -328,6 +329,12 @@ def _decide(me: dict, path: Path, slots: list[Slot], cap: int) -> tuple[int, int
     return granted, used, [s.data.get("label") for s in waiting[:place]]
 
 
+def retry_after(ahead: int) -> float:
+    """Seconds a waiting lease sleeps before it decides again: a request with others ahead of it cannot be
+    granted before they are, and every decision reads every slot record."""
+    return min(MAX_RETRY_S, max(MIN_RETRY_S, RETRY_PER_AHEAD_S * ahead))
+
+
 @contextlib.contextmanager
 def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambda m: print(m, file=sys.stderr, flush=True),
           run_class: str = policy.INTERACTIVE) -> Iterator[Lease]:
@@ -368,7 +375,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
                 last_note, last_state = now, state
                 say(f"testslots: waiting for {minimum}-{want or 'auto'} workers ({used}/{cap} in use, "
                     f"{len(ahead)} run(s) ahead: {', '.join(map(str, ahead)) or 'none'})")
-            time.sleep(0.01)
+            time.sleep(retry_after(len(ahead)))
         with _lease_environment(path, me["token"]):
             yield Lease(granted, time.monotonic() - t0)
     finally:
