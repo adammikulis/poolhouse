@@ -4,8 +4,8 @@ Every worktree of a repository has an owner and a state in one registry file kep
 git directory (``poolhouse-trees.json``). A tree is *active* while its owner is alive and *landed*
 when its owner is gone and every commit is in the development branch with nothing dirty. A tree
 whose owner stopped and which still holds work is *waiting* (finished, waiting to land) for the
-grace, then an *orphan*. Both are shown at once; only the notices' escalation and the landing gate
-use the grace. ``close`` is the one removal path.
+grace, then an *orphan*. Both are shown at once; only the notices' escalation, the refusal of more
+work from the owner and the doctor's ``mend`` use the grace. ``close`` is the one removal path.
 
 Cost: one ``git worktree list`` and, per tree whose head or the development tip moved, three git
 calls cached in the registry; ``git status`` runs only for trees whose owner is not active. A
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import fnmatch
 import json
 import os
 import re
@@ -31,6 +32,10 @@ UNKNOWN = "unknown"
 DECIDED = ("bundled", "abandoned")
 PROTECTED = ("main", "master")
 LOCK_TIMEOUT = 2.0
+CACHES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules"}
+BUILT = ("dist", "build", "packaging/build", "tests/support/vendor", "tests/_generated_*", ".build-venv", ".build-work",
+         ".venv", "app/target")
+"""The ignored files a removal may discard: cache folders at any depth, and the build outputs at these paths."""
 DEFAULTS = {"grace_h": 2.0, "claim_h": 1.0, "ttl_h": 12.0, "max_ahead": 10, "max_behind": 20,
             "max_age_h": 4.0, "repeat_min": 30.0, "cap_per_hour": 6}
 ENVIRONMENT = {"grace_h": "POOLHOUSE_TREES_GRACE_H", "claim_h": "POOLHOUSE_TREES_CLAIM_H",
@@ -287,8 +292,26 @@ def waiting(found: list[dict]) -> list[dict]:
 
 
 def past_grace(found: list[dict], pol: dict, now: float) -> list[dict]:
-    """The orphans the landing gate counts: stopped longer than the grace ago."""
+    """The orphans whose owner stopped longer than the grace ago."""
     return [r for r in orphans(found) if now - r["since"] > pol["grace_h"] * 3600]
+
+
+def owing(root: Path | str, owner: str, now: float, keep: str = "") -> list[dict]:
+    """The orphans past the grace that ``owner`` owns, leaving out the tree on branch ``keep``."""
+    data = recorded(root)
+    mine = [Path(p) for p, entry in data["trees"].items() if owner and entry.get("owner") == owner]
+    found = [r for path in mine if path.exists() for r in rows(root, now, only=path)]
+    return [r for r in past_grace(found, policy(data), now) if r["branch"] != keep]
+
+
+def refusal(owner: str, late: list[dict], limit: int = 8) -> str:
+    """The sentence that stops ``owner`` starting more work while ``late`` trees wait for a decision, with each close command; empty when none."""
+    if not late:
+        return ""
+    shown = "; ".join(f"{r['branch']}: {suggested(r)}" for r in late[:limit])
+    more = f"; and {len(late) - limit} more" if len(late) > limit else ""
+    return (f"{owner} owns {len(late)} worktree{'s' if len(late) > 1 else ''} with work nobody landed, bundled or "
+            f"abandoned, past the grace after the owner stopped. Decide {'each' if len(late) > 1 else 'it'} first: {shown}{more}")
 
 
 def line(row: dict, now: float) -> str:
@@ -335,6 +358,13 @@ def _bundle(primary: Path, row: dict, dev: str) -> Path:
     return target
 
 
+def rebuildable(name: str) -> bool:
+    """Whether the ignored file ``name`` is a cache or a build output that its project command makes again."""
+    parts = Path(name).parts
+    return (bool(CACHES & set(parts)) or parts[-1].startswith((".testmondata", ".coverage"))
+            or any(fnmatch.fnmatchcase("/".join(parts[:len(built.split("/"))]), built) for built in BUILT))
+
+
 def removal_content(path: Path) -> str:
     """Require clean tracked/untracked contents and only the established disposable caches."""
     for marker in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
@@ -343,9 +373,7 @@ def removal_content(path: Path) -> str:
     if git(path, "status", "--porcelain"):
         raise Refused(f"{path} has dirty tracked or untracked files; preserve them before cleanup")
     ignored = git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").split("\0")
-    unknown = [name for name in ignored if name and not any(
-        part in {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
-        for part in Path(name).parts) and not Path(name).name.startswith((".testmondata", ".coverage"))]
+    unknown = [name for name in ignored if name and not rebuildable(name)]
     if unknown:
         raise Refused(f"{path} contains ignored files requiring preservation: {unknown[:5]}")
     return git(path, "rev-parse", "HEAD")
@@ -422,3 +450,20 @@ def sweep(root: Path | str, now: float) -> list[dict]:
     done = [close(root, r["path"], ("landed", ""), now, "sweep") for r in found if r["status"] == "landed"]
     return done + [close(root, r["path"], ("abandon", "scratch tree"), now, "sweep")
                    for r in found if r["status"] == "scratch" and not r["dirty"]]
+
+
+def mend(root: Path | str, now: float, say: Callable[[str], None] = print) -> list[dict]:
+    """Close the trees past the grace that need no decision: landed ones, and clean ones whose commits a bundle keeps.
+
+    A dirty tree is left alone and nothing is abandoned.
+    """
+    grace, done = current_policy(root)["grace_h"] * 3600, []
+    for row in rows(root, now):
+        if row["alive"] or row["dirty"] or row["status"] not in ("landed", "orphan") or now - row["since"] <= grace:
+            continue
+        try:
+            done.append(close(root, row["path"], ("bundle" if row["unlanded"] else "landed", ""), now, "doctor"))
+            say(f"queue doctor: closed {row['branch']} ({done[-1]['mode']}): {row['path']}")
+        except (Refused, RuntimeError) as error:
+            say(f"queue doctor: left {row['branch']}: {error}"[:300])
+    return done

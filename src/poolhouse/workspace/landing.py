@@ -11,10 +11,12 @@ is about to land.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from poolhouse import trees
 from poolhouse.board import client
 
 if TYPE_CHECKING:
@@ -25,7 +27,7 @@ from poolhouse.workspace.model_tiers import tier_of
 from poolhouse.workspace.modelid import VERIFIED
 
 __all__ = ["Queue", "beat", "brake", "cancel", "eligible", "fold", "refusal", "request", "review", "runner_claim",
-           "standing", "status_lines", "supervisor_state", "transition", "trust"]
+           "standing", "status_lines", "supervisor_state", "transition", "trust", "undecided_trees"]
 
 OPEN = ("queued", "needs-review", "running")
 CAUSES = ("revoked", "forged")
@@ -91,9 +93,19 @@ def _caller(s: Session) -> Agent:
     return me
 
 
+def undecided_trees(name: str, branch: str) -> str:
+    """The refusal for ``name`` while it owns worktrees of this repository past the grace with work nobody decided about, else an empty string."""
+    try:
+        return trees.refusal(name, trees.owing(Path.cwd(), name, time.time(), branch))
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError):
+        return ""
+
+
 def request(s: Session, fields: dict[str, Any]) -> dict[str, Any]:
     """Queue a branch at an exact commit; the requester is whoever the token names."""
-    _caller(s)
+    why = undecided_trees(_caller(s).name, fields["branch"])
+    if why:
+        raise client.Denied("denied", why)
     if fields["branch"] not in ("main", "master"):
         s.claim("branch", fields["branch"])
     return dict(s.call("land_request", branch=fields["branch"], sha=fields["sha"],

@@ -12,8 +12,8 @@ import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-__all__ = ["AGENT_MARKERS", "bash_refusal", "checkouts", "commit_refusal", "edit_refusal", "hard_bash_refusal",
-           "hard_edit_refusal", "patch_paths", "protected", "switched_off"]
+__all__ = ["AGENT_MARKERS", "adds_a_worktree", "bash_refusal", "checkouts", "commit_refusal", "edit_refusal",
+           "hard_bash_refusal", "hard_edit_refusal", "patch_paths", "protected", "switched_off"]
 
 AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")
 CHANGES_THE_TREE = frozenset({"add", "commit", "checkout", "switch", "reset", "restore", "stash",
@@ -251,6 +251,16 @@ def _worktree_target(segment: str) -> str | None:
         else:
             return word
     return None
+
+
+def adds_a_worktree(command: str) -> bool:
+    """Whether ``command`` runs ``git worktree add``."""
+    for segment in _segments(protected().without_heredocs(command)):
+        found = re.match(GIT, segment)
+        if found and found["verb"] == "worktree" and _worktree_target(segment):
+            return True
+    return False
+
 
 def hard_bash_refusal(command: str, cwd: str) -> str:
     """Why `command` may not run whatever POOLHOUSE_GUARD says: it writes a guard or the authority registry, touches the
