@@ -7,9 +7,12 @@ import subprocess
 import sys
 import warnings
 
+import psutil
 import pytest
 from conftest import changed_files, file_mtimes
 from state_attribution import Watch, _is_poolhouse, live_poolhouse_processes
+
+from poolhouse.serve import process
 
 OTHER = [(4242, "poolhouse-bench prepare")]
 WRITE = "import pathlib, sys; pathlib.Path(sys.argv[1]).write_text('escaped')"
@@ -85,3 +88,30 @@ def test_poolhouse_processes_are_recognised_by_how_they_were_started(argv, expec
 
 def test_this_session_is_not_its_own_other_writer():
     assert os.getpid() not in {pid for pid, _ in live_poolhouse_processes()}
+
+
+class _Exiting:
+    """A process that exits while psutil reads it: the C call raises SystemError."""
+
+    def as_dict(self, attrs=None):
+        raise SystemError("<built-in function proc_cmdline> returned a result with an exception set")
+
+
+class _Live:
+    pid = 4343
+
+    def as_dict(self, attrs=None):
+        return {"pid": self.pid, "cmdline": ["poolhouse-bench", "prepare"], "create_time": 1.0}
+
+
+def test_a_process_that_exits_while_it_is_read_is_skipped_and_the_scan_goes_on(monkeypatch):
+    def process_iter(attrs=None):
+        for proc in (_Exiting(), _Live()):
+            if attrs:
+                proc.info = proc.as_dict(attrs)
+            yield proc
+
+    monkeypatch.delenv("POOLHOUSE_TEST_OTHER_WRITERS", raising=False)
+    monkeypatch.setattr(psutil, "process_iter", process_iter)
+    assert (4343, "poolhouse-bench prepare") in live_poolhouse_processes()
+    assert [(pid, argv) for pid, _t, argv in process.command_lines()] == [(4343, ("poolhouse-bench", "prepare"))]
