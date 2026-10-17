@@ -127,8 +127,10 @@ def test_a_requirement_naming_another_extra_is_not_looked_up():
     assert installed.unmet({"one": ["poolhouse[two]"], "two": ["nope>=9"]}) == []
 
 
-def test_the_pins_are_read_from_the_installed_distributions_own_metadata():
+def test_the_pins_are_read_from_the_installed_distributions_own_metadata(monkeypatch):
     """A wheel carries no pyproject.toml, so a real machine reads them from here."""
+    metadata = [f'{pin}; extra == "{extra}"' for extra, pins in offered().items() for pin in pins]
+    monkeypatch.setattr(installed, "requires", lambda _name: metadata)
     assert set(installed.declared()) >= {c.extra for c in installed.STANDARD}
 
 

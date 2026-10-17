@@ -80,6 +80,14 @@ def test_a_module_named_only_in_a_string_selects_the_test_that_names_it(toy) -> 
     assert "tests/test_delta.py" in chosen(toy, "src/poolhouse/delta.py")
 
 
+def test_a_test_helper_carries_a_change_to_the_tests_that_load_or_import_it(toy) -> None:
+    (toy / "tests/kit_node.py").write_text("from poolhouse import alpha\n\n\ndef start():\n    return alpha.one()\n", encoding="utf-8")
+    (toy / "tests/test_plugged.py").write_text('pytest_plugins = ["kit_node"]\n\n\ndef test_it(): ...\n', encoding="utf-8")
+    (toy / "tests/test_importing.py").write_text("import kit_node\n\n\ndef test_it():\n    assert kit_node.start()\n", encoding="utf-8")
+    assert {"tests/test_plugged.py", "tests/test_importing.py"} <= chosen(toy, "src/poolhouse/alpha.py")
+    assert not {"tests/test_plugged.py", "tests/test_importing.py"} & chosen(toy, "src/poolhouse/delta.py")
+
+
 def test_a_change_selects_nothing_it_cannot_reach(toy) -> None:
     assert "tests/test_leaf.py" not in chosen(toy, "src/poolhouse/alpha.py", depth=3)
 
