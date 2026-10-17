@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import psutil
@@ -88,6 +89,14 @@ def test_the_tree_hash_equals_the_long_way_in_every_state_of_the_checkout(repo):
     assert gate.tree_hash(repo) == first
     (repo / "extra.py").unlink()
     assert gate.tree_hash(repo) == from_an_empty_index(repo) != first
+
+
+def test_a_same_size_rewrite_in_the_second_the_file_was_added_is_seen_after_the_clock_moves_on(repo):
+    (repo / "f").write_text("aaaa")
+    git(repo, "add", "f")
+    (repo / "f").write_text("bbbb")
+    time.sleep(2.2)
+    assert gate.tree_hash(repo) == from_an_empty_index(repo)
 
 
 def test_the_tree_hash_starts_from_the_checkouts_index_so_unchanged_files_are_not_rehashed(repo, monkeypatch):

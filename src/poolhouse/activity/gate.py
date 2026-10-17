@@ -26,12 +26,12 @@ __all__ = ["Run", "evidence", "record_run", "tree_hash"]
 
 
 def _seed_index(root: Path, index: Path) -> None:
-    """Copy the checkout's index to ``index`` so ``git add -A`` rehashes only the files that changed."""
+    """Copy the checkout's index, timestamps kept, to ``index`` so ``git add -A`` rehashes only the files that changed."""
     done = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-path", "index"],
                           capture_output=True, text=True, check=False)
     if done.returncode == 0:
         with contextlib.suppress(OSError):
-            shutil.copyfile(done.stdout.strip(), index)
+            shutil.copy2(done.stdout.strip(), index)
 
 
 def tree_hash(root: Path) -> str:
