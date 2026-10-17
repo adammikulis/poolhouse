@@ -139,8 +139,9 @@ def test_a_test_node_older_than_its_limit_is_ended_and_a_young_one_is_not(tmp_pa
     process = subprocess.Popen([str(program), "run", "--state", str(tmp_path / "state")], start_new_session=True)
     try:
         time.sleep(0.5)
-        assert queue_doctor.reap_nodes(say=lambda text: None) == []
-        assert queue_doctor.reap_nodes(now=time.time() + queue_doctor.NODE_MAX_AGE_S + 60, say=lambda text: None) == [process.pid]
+        mine = frozenset({process.pid})
+        assert queue_doctor.reap_nodes(say=lambda text: None, only=mine) == []
+        assert queue_doctor.reap_nodes(now=time.time() + queue_doctor.NODE_MAX_AGE_S + 60, say=lambda text: None, only=mine) == [process.pid]
         assert process.wait(timeout=10) is not None
     finally:
         process.kill()

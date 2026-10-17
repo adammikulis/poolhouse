@@ -88,16 +88,18 @@ def jobs_of(root: Path) -> testjobs.Jobs:
     return testjobs.Jobs(reuse.reuse_base() / testruns.scope(root))
 
 
-def reap_nodes(now: float | None = None, say: Callable[[str], None] = print) -> list[int]:
-    """End test nodes (and their supervisors) that outlived the pytest run that started them; returns the pids ended."""
+def reap_nodes(now: float | None = None, say: Callable[[str], None] = print, only: frozenset[int] | None = None) -> list[int]:
+    """End test nodes (and their supervisors) that outlived the pytest run that started them, among ``only`` when given; returns the pids ended."""
     now = time.time() if now is None else now
     ended = []
     for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
         try:
+            if only is not None and proc.info["pid"] not in only:
+                continue
             line = " ".join(proc.info["cmdline"] or [])
             if not TEST_NODE.search(line) or now - proc.info["create_time"] < NODE_MAX_AGE_S:
                 continue
-            doomed = [proc, *([parent] if (parent := proc.parent()) and "node_launch" in " ".join(parent.cmdline()) else [])]
+            doomed = [proc, *([parent] if (parent := proc.parent()) and "poolhouse.node_launch" in parent.cmdline() else [])]
             for victim in doomed:
                 victim.terminate()
             _, alive = psutil.wait_procs(doomed, timeout=GRACE_S)
