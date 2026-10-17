@@ -99,6 +99,15 @@ def test_a_same_size_rewrite_in_the_second_the_file_was_added_is_seen_after_the_
     assert gate.tree_hash(repo) == from_an_empty_index(repo)
 
 
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_an_entry_the_index_marks_as_unchanged_is_hashed_from_the_file(repo, flag):
+    (repo / "f").write_text("aaaa")
+    git(repo, "add", "f")
+    git(repo, "update-index", flag, "f")
+    (repo / "f").write_text("bbbbb")
+    assert gate.tree_hash(repo) == from_an_empty_index(repo)
+
+
 def test_the_tree_hash_starts_from_the_checkouts_index_so_unchanged_files_are_not_rehashed(repo, monkeypatch):
     git(repo, "add", "test_a.py")
     seen = []

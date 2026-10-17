@@ -25,11 +25,17 @@ from poolhouse.files import write_json
 __all__ = ["Run", "evidence", "record_run", "tree_hash"]
 
 
+def _plain_index(root: Path) -> bool:
+    """Whether every entry of the checkout's index is a plain one (no assume-unchanged or skip-worktree bit)."""
+    done = subprocess.run(["git", "-C", str(root), "ls-files", "-v"], capture_output=True, text=True, check=False)
+    return done.returncode == 0 and all(line[:1] == "H" for line in done.stdout.splitlines())
+
+
 def _seed_index(root: Path, index: Path) -> None:
     """Copy the checkout's index, timestamps kept, to ``index`` so ``git add -A`` rehashes only the files that changed."""
     done = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-path", "index"],
                           capture_output=True, text=True, check=False)
-    if done.returncode == 0:
+    if done.returncode == 0 and _plain_index(root):
         with contextlib.suppress(OSError):
             shutil.copy2(done.stdout.strip(), index)
 
