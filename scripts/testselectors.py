@@ -19,8 +19,8 @@ def validate(arguments: list[str], root: Path) -> None:
                 if not target.is_file():
                     raise ValueError(f"test path does not exist: {selector}")
         return
-    import pytest
-    config = pytest.Config.fromdictargs({}, arguments)
+    import testoptions
+    config = testoptions.parse_arguments(arguments)
     try:
         for selector in config.args:
             path = Path(selector.split('::', 1)[0])

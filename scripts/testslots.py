@@ -5,6 +5,7 @@ import contextlib
 import contextvars
 import datetime
 import json
+import math
 import os
 import secrets
 import sys
@@ -268,9 +269,22 @@ def _own_records(directory: Path, path: Path, record: dict) -> list[Slot] | None
     return slots
 
 
-def _env_estimate() -> float | None:
-    raw = os.environ.get("DEV_TEST_ESTIMATE_S", "")
+def estimate_of(environment: dict[str, str]) -> float | None:
+    """The run's estimated seconds of work (``DEV_TEST_ESTIMATE_S``), or None when it has none."""
+    raw = environment.get("DEV_TEST_ESTIMATE_S", "")
     return float(raw) if raw.replace(".", "", 1).isdigit() else None
+
+
+def _env_estimate() -> float | None:
+    return estimate_of(os.environ)
+
+
+def pool_for(estimate: float | None, ceiling: int) -> int:
+    """Workers worth starting for ``estimate`` seconds of work: one more worker pays for its
+    start-up while it saves a second of wall time, which holds up to about the square root of the work."""
+    if estimate is None:
+        return ceiling
+    return max(1, min(ceiling, int(math.sqrt(estimate))))
 
 
 def _agent_from_env() -> dict[str, str]:

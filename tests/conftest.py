@@ -17,7 +17,6 @@ import os
 import site
 import socket
 import struct
-import subprocess
 import sys
 import threading
 import time
@@ -90,42 +89,14 @@ def pytest_sessionfinish(session, exitstatus) -> None:
         session.exitstatus = 1
 
 
-def _install_git_hooks() -> None:
-    """Put this repository's hooks in place when they are not, at the start of any run.
-
-    The hooks refuse a real person's name, a budget that rose and a push from an agent, and
-    an installer someone has to remember is an installer that is not run.
-    """
-    if not (REPO / "scripts" / "install-hooks.sh").is_file():
-        return
-    try:
-        common = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=REPO,
-                                capture_output=True, text=True, timeout=10)
-        if common.returncode != 0:
-            return
-        hooks = (REPO / common.stdout.strip()).resolve() / "hooks"
-        want = ("pre-commit", "commit-msg", "pre-push")
-        if all((hooks / h).is_symlink() and "scripts/hooks/" in str((hooks / h).readlink())
-               for h in want):
-            return
-        done = subprocess.run(["sh", str(REPO / "scripts" / "install-hooks.sh")], cwd=REPO,
-                              capture_output=True, text=True, timeout=30)
-        if done.returncode == 0:
-            print("conftest: git hooks installed")
-        else:
-            print(f"conftest: git hooks not installed: {done.stderr.strip()}")
-    except (OSError, subprocess.SubprocessError):
-        pass
-
-
-_install_git_hooks()
-
 # ``src`` goes on the path above, so these cannot be imported with the rest.
-import testslots  # noqa: E402  (``scripts`` is on the path above)
+import githooks_ready  # noqa: E402  (``scripts`` is on the path above)
+import testslots  # noqa: E402
 import walkbound  # noqa: E402
 from environ_guard import environment_is_restored  # noqa: E402,F401  (an autouse fixture)
 from network_guard import nothing_beyond_loopback  # noqa: E402,F401  (an autouse fixture)
 from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
+from testoptions import pytest_addoption  # noqa: E402,F401  (the suite's tier options)
 
 from poolhouse.http import Server  # noqa: E402
 from poolhouse.testing import live  # noqa: E402
@@ -134,6 +105,8 @@ from poolhouse.testing.fakes import (  # noqa: E402
     fake_binary as fake_binary,
 )
 
+if not os.environ.get("PYTEST_XDIST_WORKER"):
+    githooks_ready.ensure(REPO)
 os.environ.setdefault("DEV_TEST_SLOTS_DIR", str(testslots.slots_dir()))
 """The machine-wide slot directory, fixed before the session moves ``HOME`` so every worker and
 every run shares one set of heavy lanes."""
@@ -1219,16 +1192,6 @@ def playwright():
     pw = pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
     with pw.sync_playwright() as play:
         yield play
-
-
-def pytest_addoption(parser) -> None:
-    parser.addoption("--slow", action="store_true", default=False,
-                     help="also run the tests marked slow (a browser, a subprocess, a "
-                          "wheel build, a network timeout)")
-    parser.addoption("--gate", action="store_true", default=False,
-                     help="also run the tests marked gate (whole-tree scans that `scripts/test gate` runs)")
-    parser.addoption("--redteam", action="store_true", default=False,
-                     help="also run the tests marked redteam (they need the redteam extra)")
 
 
 def heavy_modules() -> frozenset[str]:
