@@ -103,8 +103,11 @@ class Bubblewrap:
         program = checked_path(program_of(argv, policy.env.get("PATH", "")), what="command", link=True)
         return Wrapped([found, *arguments(policy, program), "--", *argv])
 
-    def watch(self) -> None:
+    def watch(self, tag: str) -> None:
         return None
 
-    def denials(self, tag: str, since: float) -> list[dict[str, str]]:
+    def finish(self, tag: str) -> None:
+        return None
+
+    def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
         return []

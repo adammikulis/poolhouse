@@ -35,9 +35,12 @@ class Confined:
     cwd: str
 
     def refusals(self) -> str:
-        """The sandbox's refusals since the start, one line each."""
-        seen = dict.fromkeys(f"  {d['operation']} {d['target']}"
-                             for d in self.backend.denials(self.tag, self.began))
+        """The sandbox's refusals since the start, one line each; a line saying so when they cannot be read."""
+        found = self.backend.denials(self.tag, self.began)
+        self.backend.finish(self.tag)
+        if found is None:
+            return "what the sandbox refused could not be read"
+        seen = dict.fromkeys(f"  {d['operation']} {d['target']}" for d in found)
         return "\n".join(["the sandbox refused:", *seen]) if seen else ""
 
 

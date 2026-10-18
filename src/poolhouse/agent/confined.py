@@ -46,8 +46,12 @@ def confine(command: str, args: Sequence[str], env: Mapping[str, str] | None,
     program = shutil.which(command) or command
     scratch = os.path.realpath(tempfile.mkdtemp(prefix="poolhouse-mcp-"))
 
+    ended: list[Callable[[], None]] = []
+
     def cleanup() -> None:
         shutil.rmtree(scratch, ignore_errors=True)
+        for end in ended:
+            end()
 
     options = options or Options()
     unsandboxed = options.unsandboxed
@@ -55,7 +59,7 @@ def confine(command: str, args: Sequence[str], env: Mapping[str, str] | None,
                                                  env=env, reads=options.reads)
     report = sandbox_listener(sentinel.default())
     try:
-        argv, _tag, chosen = sandbox.wrapped([program, *args], held, unsandboxed=unsandboxed)
+        argv, tag, chosen = sandbox.wrapped([program, *args], held, unsandboxed=unsandboxed)
     except sandbox.SandboxUnavailable as exc:
         cleanup()
         report("sandbox.unavailable", {"severity": "warning", "command": command,
@@ -64,6 +68,8 @@ def confine(command: str, args: Sequence[str], env: Mapping[str, str] | None,
     except sandbox.PolicyError:
         cleanup()
         raise
+    if chosen is not None:
+        ended.append(lambda: chosen.finish(tag))
     if chosen is None:
         report("sandbox.unsandboxed", {"severity": "warning", "command": command,
                                        "policy": held.name,

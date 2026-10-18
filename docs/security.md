@@ -477,7 +477,7 @@ outside its allow-list, write outside its scratch directory or open a connection
 - **Fail closed:** with no sandbox the command is not run. `AllowUnsandboxed(reason)` is the only
   way around it and is logged on every use.
 - **Events:** a refusal is `sandbox.denied` on the sentinel bus (warning), with the operation and
-  path; `sandbox.unavailable` and `sandbox.unsandboxed` are warnings too.
+  path; `sandbox.unavailable`, `sandbox.denials-unavailable` and `sandbox.unsandboxed` are warnings too.
 - **macOS uses `sandbox-exec`, which Apple has deprecated.** This is a recorded exception
   (`docs/sandbox.md`), confined to `sandbox/seatbelt.py`; GPU workloads have no replacement yet.
 - **Linux** (bubblewrap) is built and checked by its argument list only.

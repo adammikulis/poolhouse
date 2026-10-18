@@ -230,13 +230,17 @@ class Seatbelt:
             return Wrapped([BINARY, "-f", str(profile_path), "--", *argv], tag=tag)
         return Wrapped([BINARY, "-p", text, "--", *argv], tag=tag)
 
-    def watch(self) -> None:
-        """Start the system log stream that refusals are read from; call it before the command starts."""
-        denial_log.shared().start()
+    def watch(self, tag: str) -> None:
+        """Start the system log stream that refusals are read from and register the run tagged ``tag`` on it; call it before the command starts."""
+        denial_log.shared().watch(tag)
 
-    def denials(self, tag: str, since: float) -> list[dict[str, str]]:
-        """What the sandbox refused the run tagged ``tag``, as the stream started by `watch` carried it."""
+    def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
+        """What the sandbox refused the run tagged ``tag``, as the stream `watch` registered it on carried it; None when that cannot be known."""
         return denial_log.shared().denials(tag)
+
+    def finish(self, tag: str) -> None:
+        """The run tagged ``tag`` has ended."""
+        denial_log.shared().finish(tag)
 
 
 def deprecation_status() -> str:

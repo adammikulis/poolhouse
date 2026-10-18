@@ -31,6 +31,7 @@ WEIGHTS: dict[str, float] = {
     "guard.denied": 1.0,
     "sandbox.denied": 2.0,
     "sandbox.unavailable": 1.0,
+    "sandbox.denials-unavailable": 1.0,
     "sandbox.unsandboxed": 1.0,
     "sandbox.timeout": 0.5,
     "broker.refused": 2.0,

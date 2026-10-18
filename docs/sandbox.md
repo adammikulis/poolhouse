@@ -103,7 +103,12 @@ Known limits:
   process starts and that runs until the process ends; the kernel does not keep its reports for
   `log show`. Reading them waits for a refusal of the reader's own to come back through the stream
   (a few milliseconds) and only happens after a failed run or with `diagnose="always"`. A process
-  that is itself confined cannot run `log`, and reports no refusals.
+  that is itself confined cannot run `log`.
+- When the stream cannot say what a run was refused (it did not start, did not answer, or ended or
+  restarted after the run began), `Result.denials_unavailable` is set, `Result.check()` raises
+  `SandboxViolation`, and a `sandbox.denials-unavailable` event (warning) goes to the sentinel. Only
+  events sent by the kernel's Sandbox extension count as refusals, and only for a run the process
+  watched.
 - Refusals that every confined process provokes at start-up (preference files, a few Mach
   services, `net.routetable`) are filtered out of `Result.denials`.
 
@@ -140,7 +145,7 @@ Not routed: `llama-server` and the Broker daemon by default (opt-in only), `chec
 builds. Each is a candidate for review as it takes input from an agent.
 
 Sandbox events go to the sentinel bus through `sentinel.adapters.sandbox_listener`:
-`sandbox.denied` (warning), `sandbox.unavailable` (warning), `sandbox.unsandboxed` (warning),
+`sandbox.denied` (warning), `sandbox.denials-unavailable` (warning), `sandbox.unavailable` (warning), `sandbox.unsandboxed` (warning),
 `sandbox.timeout` (notice).
 
 ## Replacement path: container backend

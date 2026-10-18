@@ -50,6 +50,8 @@ class SandboxedBash:
             except SandboxViolation as exc:
                 raise SandboxViolation(f"{exc}: {result.stderr.strip()[:300]}") from None
         tail = "" if result.ok else f"\n[exit {result.returncode}{' timed out' if result.timed_out else ''}]"
+        if result.denials_unavailable:
+            tail += "\n[what the sandbox refused could not be read]"
         return (result.stdout + result.stderr).rstrip() + tail
 
     @property

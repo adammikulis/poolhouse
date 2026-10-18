@@ -37,7 +37,8 @@ class Wrapped:
 class Backend(Protocol):
     """One way of confining a process: ``wrap`` turns a command and a policy into the command
     that runs it confined, ``watch`` readies the backend to report refusals before the command
-    starts, ``denials`` reads back what the sandbox refused."""
+    starts, ``denials`` reads back what the sandbox refused (None when it cannot be known) and
+    ``finish`` says the run has ended."""
 
     name: str
 
@@ -45,9 +46,11 @@ class Backend(Protocol):
 
     def wrap(self, argv: Sequence[str], policy: Policy) -> Wrapped: ...
 
-    def watch(self) -> None: ...
+    def watch(self, tag: str) -> None: ...
 
-    def denials(self, tag: str, since: float) -> list[dict[str, str]]: ...
+    def denials(self, tag: str, since: float) -> list[dict[str, str]] | None: ...
+
+    def finish(self, tag: str) -> None: ...
 
 
 def program_of(argv: Sequence[str], env_path: str) -> str:

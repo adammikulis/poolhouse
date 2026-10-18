@@ -12,6 +12,7 @@ import pytest
 
 from poolhouse import sandbox
 from poolhouse.sandbox import denial_log, policies, run
+from poolhouse.sandbox.backend import Availability, Wrapped
 from poolhouse.sandbox.denial_log import DenialLog, parse
 
 pytest_plugins = ["tests.sandbox_kit"]
@@ -19,8 +20,33 @@ pytest_plugins = ["tests.sandbox_kit"]
 REFUSAL = "Sandbox: cat(4242) deny(1) file-read-data /private/tmp/x"
 
 
-def event(message: object) -> str:
-    return json.dumps({"eventMessage": message, "messageType": "Error"})
+KERNEL = {"processImagePath": "/kernel", "senderImagePath": "/System/Library/Extensions/Sandbox.kext/Contents/MacOS/Sandbox"}
+LOGGER = {"processImagePath": "/usr/bin/logger", "senderImagePath": "/usr/bin/logger"}
+
+
+def event(message: object, sender: dict[str, str] = KERNEL) -> str:
+    return json.dumps({"eventMessage": message, "messageType": "Error", **sender})
+
+
+class Unreadable:
+    """A backend that confines nothing and cannot say what was refused."""
+
+    name = "unreadable"
+
+    def available(self):
+        return Availability(True)
+
+    def wrap(self, argv, policy):
+        return Wrapped(list(argv), tag="unreadable")
+
+    def watch(self, *_tag):
+        return None
+
+    def denials(self, tag, since):
+        return None
+
+    def finish(self, *_tag):
+        return None
 
 
 def test_an_event_gives_the_tag_the_process_the_operation_and_the_target():
@@ -39,6 +65,11 @@ def test_a_target_holding_a_newline_cannot_name_the_tag_of_another_run():
     event(REFUSAL),
     event("hello\npoolhouse-sandbox:abc123"),
     event("Sandbox: cat(1) deny(1) file-read-data /x\nnot-a-tag:abc123"),
+    event(f"{REFUSAL}\npoolhouse-sandbox:abc123", LOGGER),
+    event(f"{REFUSAL}\npoolhouse-sandbox:abc123", {**KERNEL, "processImagePath": "/usr/bin/logger"}),
+    event(f"{REFUSAL}\npoolhouse-sandbox:abc123", {**KERNEL, "senderImagePath": "/tmp/Sandbox"}),
+    event(f"{REFUSAL}\npoolhouse-sandbox:abc123", {"processImagePath": "/kernel"}),
+    event(f"Sandbox: true(1) deny(1) process-exec* /usr/bin/true\npoolhouse-sandbox:{denial_log.PROBE}ready-00", LOGGER),
     event("2 duplicate reports for Sandbox: cat(4242) deny(1) file-read-metadata /var\npoolhouse-sandbox:abc123"),
 ])
 def test_a_line_that_is_not_a_refusal_with_a_tag_is_not_read(line):
@@ -67,11 +98,12 @@ def test_the_start_up_probes_of_a_shell_are_not_reported_beside_its_refusal(tmp_
     assert [d["target"] for d in result.denials] == [str(outside)]
 
 
-def test_a_stream_that_cannot_start_reports_nothing_and_says_so(monkeypatch, caplog):
+def test_a_stream_that_cannot_start_says_it_cannot_report(monkeypatch, caplog):
     monkeypatch.setattr(denial_log, "LOG", "/nonexistent/log")
     stream = DenialLog()
+    stream.watch("abc123")
     with caplog.at_level(logging.WARNING, logger="poolhouse.sandbox"):
-        assert stream.denials("abc123") == []
+        assert stream.denials("abc123") is None
     assert "sandbox refusals cannot be reported" in caplog.text
     assert not stream.running() and stream.start() is False
 
@@ -92,21 +124,98 @@ def test_the_probes_that_wait_for_the_stream_leave_no_tag_behind(seatbelt):
     stream = DenialLog()
     try:
         assert stream.settle() and stream.settle()
-        assert not [tag for tag in stream._entries if tag.startswith(denial_log.PROBE)] and not stream._probes
+        assert not [tag for tag in stream._runs if tag.startswith(denial_log.PROBE)] and not stream._probes
     finally:
         stream.close()
 
 
-def test_a_stream_that_stops_answering_says_so_and_reports_nothing(monkeypatch, caplog, seatbelt):
+def test_a_stream_that_stops_answering_says_it_cannot_report(monkeypatch, caplog, seatbelt):
     monkeypatch.setattr(denial_log, "SETTLE_SECONDS", 0.5)
     stream = DenialLog()
     try:
-        assert stream.start()
+        stream.watch("abc123")
         os.kill(stream._proc.pid, signal.SIGSTOP)
         with caplog.at_level(logging.WARNING, logger="poolhouse.sandbox"):
-            assert stream.denials("abc123") == []
+            assert stream.denials("abc123") is None
         assert "did not answer" in caplog.text
     finally:
         if stream._proc is not None:
             os.kill(stream._proc.pid, signal.SIGCONT)
         stream.close()
+
+
+def refused(held, tmp_path, name):
+    """``(argv, tag, backend)`` of a run that reads a file outside its policy, started and finished."""
+    outside = tmp_path / name
+    outside.write_text("the-secret-contents")
+    argv, tag, backend = sandbox.wrapped(["/bin/cat", str(outside)], held())
+    subprocess.run(argv, capture_output=True, check=False)
+    return outside, tag, backend
+
+
+def test_a_stream_restarted_after_a_refusal_is_unavailable_and_not_clean(tmp_path, seatbelt, held):
+    outside, tag, backend = refused(held, tmp_path, "outside.txt")
+    assert [d["target"] for d in backend.denials(tag, 0.0)] == [str(outside)]
+    os.kill(denial_log.shared()._proc.pid, signal.SIGKILL)
+    assert backend.denials(tag, 0.0) is None
+
+
+def test_a_run_started_after_the_stream_restarted_is_read_from_the_new_stream(tmp_path, seatbelt, held):
+    refused(held, tmp_path, "first.txt")
+    os.kill(denial_log.shared()._proc.pid, signal.SIGKILL)
+    outside, tag, backend = refused(held, tmp_path, "second.txt")
+    assert [d["target"] for d in backend.denials(tag, 0.0)] == [str(outside)]
+
+
+def test_a_tag_of_a_running_command_is_kept_whatever_other_runs_are_refused(tmp_path, seatbelt, held, monkeypatch):
+    monkeypatch.setattr(denial_log, "KEEP_TAGS", 2)
+    outside, tag, backend = refused(held, tmp_path, "live.txt")
+    for number in range(4):
+        refused(held, tmp_path, f"other{number}.txt")
+    assert [d["target"] for d in backend.denials(tag, 0.0)] == [str(outside)]
+
+
+def test_refusals_under_tags_nobody_watches_cannot_push_out_a_running_command(tmp_path, seatbelt, held, monkeypatch):
+    monkeypatch.setattr(denial_log, "KEEP_TAGS", 2)
+    outside, tag, backend = refused(held, tmp_path, "live.txt")
+    for number in range(4):
+        profile = f'(version 1)(deny default (with message "{denial_log.PREFIX}foreign{number}"))'
+        subprocess.run([denial_log.SANDBOX_EXEC, "-p", profile, "--", denial_log.PROBE_PROGRAM], capture_output=True, check=False)
+    assert [d["target"] for d in backend.denials(tag, 0.0)] == [str(outside)]
+
+
+def test_runs_that_have_ended_are_the_ones_dropped_over_the_cap(tmp_path, seatbelt, held, monkeypatch):
+    monkeypatch.setattr(denial_log, "KEEP_TAGS", 2)
+    stream = DenialLog()
+    try:
+        tags = []
+        for number in range(5):
+            outside = tmp_path / f"f{number}.txt"
+            outside.write_text("x")
+            argv, tag, _ = sandbox.wrapped(["/bin/cat", str(outside)], held())
+            stream.watch(tag)
+            subprocess.run(argv, capture_output=True, check=False)
+            assert len(stream.denials(tag)) == 1
+            stream.finish(tag)
+            tags.append(tag)
+        assert len(stream._runs) == 2 and list(stream._runs) == tags[-2:]
+    finally:
+        stream.close()
+
+
+def test_a_run_whose_refusals_cannot_be_read_is_reported_and_is_not_clean(tmp_path):
+    events: list[tuple[str, dict]] = []
+    result = run(["/bin/sh", "-c", "exit 3"], policies.bash(str(tmp_path), str(tmp_path)), via=Unreadable(), diagnose="always",
+                 on_event=lambda name, fields: events.append((name, fields)))
+    unavailable = [fields for name, fields in events if name == "sandbox.denials-unavailable"]
+    assert len(unavailable) == 1 and unavailable[0]["severity"] == "warning" and unavailable[0]["backend"] == "unreadable"
+    assert result.denials == [] and result.denials_unavailable
+    with pytest.raises(sandbox.SandboxViolation, match="could not be read"):
+        result.check()
+
+
+def test_a_run_that_was_not_diagnosed_does_not_claim_its_refusals_were_unreadable(tmp_path):
+    events: list[tuple[str, dict]] = []
+    result = run(["/bin/sh", "-c", "exit 0"], policies.bash(str(tmp_path), str(tmp_path)), via=Unreadable(),
+                 on_event=lambda name, fields: events.append((name, fields)))
+    assert not result.denials_unavailable and result.check() is result and not events

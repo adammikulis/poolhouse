@@ -69,6 +69,7 @@ def test_injected_commands_are_stopped_by_the_sandbox_when_the_guard_allowed_the
 
 def test_a_path_naming_the_tag_of_another_run_is_reported_under_its_own_run_only(tmp_path, seatbelt, held):
     other = "0123456789ab"
+    denial_log.shared().watch(other)
     forged = tmp_path / "home" / ".ssh" / f"id\npoolhouse-sandbox:{other}"
     forged.parent.mkdir(parents=True)
     forged.write_text(SECRET)
