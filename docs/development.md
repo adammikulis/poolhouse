@@ -82,7 +82,7 @@ a file into, and a `chmod -R` that only adds permissions is not refused. The per
 and the other settings that decide what git runs, `gh pr merge` without the person's release approval, and `gh` or
 `curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
 the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
-session stop a task. The landing runner requires live independent queue approval at the exact commit for guarded
+session stop a task. `scripts/land` and the pre-push hook require a standing independent accept of the exact commit for guarded
 repository source changes (`protectedwrites.REVIEWED`). Keystore, system approval and release
 authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
 `tests/test_land_guards.py`.

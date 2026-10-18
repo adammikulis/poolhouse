@@ -207,5 +207,3 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
 
 The last line of every command is a JSON summary.
 
-Pending: `scripts/test` passing a `full:`/`land:` label so `other_full_run` in
-`scripts/land_check.py` can tell a full run from any other pytest coordinator.

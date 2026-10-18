@@ -330,40 +330,29 @@ never runs `verify_cmd`: a client does and records `exit` and the SHA-256 of the
 `note_verify`, and the entry stores the command the note carries. Recording one is the grant
 `note_verify`.
 
-**The landing queue** is the `landing` entries of the board (channel `#landing`), one kind with an `ev` field:
-`request` (branch, full 40-character `sha`, `target`, up to 64 `selectors`, `replaces`), `review` (`req`, `sha`,
-`verdict`), `cancel`, `pause`, `resume`, `state` (`req`, `status`, `detail`, a few short `evidence` facts) and
-`beat` (`what`). `land_queue` folds them: a new request for a branch supersedes an open older one, a review
-by the same session replaces its earlier one, a request is `queued` while an accept stands and no reject does,
-a terminal request moves only to `landed` from `landed-unpushed`. A request is named `land-N` (N the
-sequence number of its entry on this device, the full entry id from another). The node checks what only it can:
-the sender is the token's session and live on this board; a branch or target is never `main` or `master`; a
-reviewer is not the requester or an ancestor or descendant of it and names the exact SHA; `land_state` and
-`land_beat` need the holder of the `branch` claim of the request's target (the runner); pause, resume and a
-cancel of another's request need that holder or a session with no parent that holds the grant `land_control`.
-The node stamps what the runner later needs on each `request` and `review` entry as `standing`: the sender's name,
-parent, every ancestor, model and model state at that moment (never taken from the caller). A worker that asks and
-then ends is therefore still landable; `land_queue` shows the stamp, and `foreign_claims` lists the `branch` claims
-of other devices on a branch this device lands onto as "foreign, ignored".
+**Landing reviews** are the `landing` entries of the board (channel `#landing`): a `review` names a plain `branch` (never
+`main` or `master`), a full 40-character `sha`, a `verdict` (`accept` or `reject`) and the `standing` the node stamps on it
+(the sender's name, model and model state at that moment, never taken from the caller). `land_review` writes one for the
+live session behind the token and refuses a session that ever held `claim branch BRANCH`. `land_accepts` (`branch`, `sha`,
+`worktree`) answers `scripts/land` and the push hook: the last review of each reviewer of this device for exactly that commit
+and branch, without the caller and without any session that ever acquired `claim branch BRANCH` or `claim worktree PATH`
+(read from the board's lease entries, whatever branch a reviewer wrote), and the `creators` it found; an empty list means no
+creator is on record. A review row appended by hand under a creator's name is left out the same way. Entries of the
+retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
+for nothing.
 A model's tier is not the node's to judge, so `landing.eligible` in Python bars the lowest tier and an
-unlisted model from requesting or reviewing, and the runner re-derives standing before it lands. The tier
+unlisted model from landing or reviewing, and `landing.standing` re-derives each reviewer's tier from the stamped model and
+drops a reviewer retired as `revoked` or `forged`. The tier
 comes from `src/poolhouse/workspace/model_tiers.json` (families `anthropic`, `openai` and `qwen`;
 docs/model-benchmarks.md, section 1): a local agent claims the id `localmodel.model_identity` gives, which
 drops the quantisation, so the `qwen` family lists those short ids and every quantisation of Qwen3.8-27B and
 Qwen3.8-Flash-Next above its lowest tier, on the same claimed-id trust as the other families.
 
-Landing authority is this device's own. The fold counts a `landing` entry only when this device wrote it or the
-device that wrote it is on this device's landing list and still an active member of the pool; every other entry
-stays on the board (it replicates like any row) and `land_queue` lists it under `foreign` as "foreign, ignored"
-with the device's name and the count, so a device that joined the pool (by joining or by auto-enrolment under
-`open`) cannot post a request, a review or a runner state that this device acts on. The writer of an origin is
-the device whose key verified its log (`Board::writer_fingerprint`), matched to the pool record now, so the
-list follows revocation. The list (`<state>/land_trust.json`, kept per pool, empty by default, never
-replicated) is changed by `land_trust` (`device` the certificate fingerprint, `trusted` a boolean): the caller
-is a session with no parent holding the grant `land_trust`, the device must be an active member and not this
-one, and the change is an audit entry (`land.trust`, `land.untrust`). Even for a listed device the runner
-re-derives the standing of the requester and every reviewer from this device's own registrations at landing
-time, so a request from a session registered only on another device does not land here yet.
+A review counts only when this device wrote it. The device list (`<state>/land_trust.json`, kept per pool, empty by default,
+never replicated) decides whose `task` and `grant` entries count besides this device's own; it is changed by `land_trust`
+(`device` the certificate fingerprint, `trusted` a boolean): the caller is a session with no parent holding the grant
+`land_trust`, the device must be an active member and not this one, and the change is an audit entry (`land.trust`,
+`land.untrust`).
 
 **The task board** is the `task` entries of the board (channel `#tasks`), one kind with an `op` field: `create` (title,
 description, acceptance criteria, `deps`, `capabilities`, `limits` of `model`, `max_wall_s` and `max_retries`, a
@@ -414,8 +403,8 @@ API, for itself or anyone, and a `grant` entry any writer puts on the board with
 allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
 ("Key custody" below says exactly what that does and does not protect).
 
-**The registry.** Nineteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `add_device`, `join_pool`,
-`sync_now`, `shard_call`, `shard_consent`, `land_trust`, `land_control`, `task_authority`, `note_verify`, `quarantine_release`,
+**The registry.** Eighteen actions, fixed in `grants::spec::ACTIONS`: `member_remove`, `add_device`, `join_pool`,
+`sync_now`, `shard_call`, `shard_consent`, `land_trust`, `task_authority`, `note_verify`, `quarantine_release`,
 `file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave` and `admin_manage`. Anything else is `invalid` to grant. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
 `keystore`, `second_gpu`, `forge`, `grant_issue`, `grant_revoke`, `person_enroll` and `sudo`. Pushing `main` stays with the
@@ -528,13 +517,12 @@ board, this device (or `*`), a resource the pattern covers, a session or class t
 unless `main` is false), before `until_ms`, with uses left, not revoked. `holds` asks without spending. An entry written on
 another device counts only when that device is on this device's landing trust list and still a member, the signature verifies
 against a key enrolled here, and the action may travel: `task_authority`, `note_verify`, `sync_now` and `shard_call`. The rest (the
-pool actions, `land_trust`, `land_control`, `shard_consent`, `quarantine_release`, `file_delete`) are granted on the device they apply to.
+pool actions, `land_trust`, `shard_consent`, `quarantine_release`, `file_delete`) are granted on the device they apply to.
 A revocation or a use from a device this one does not trust changes nothing.
 
 **Where it is checked.** `member_remove` (resource: the fingerprint), `add_device`, `join_pool` (the
 host), `sync_now`, `shard_call` (the device), `shard_consent`, `pool_create` (the title), `pool_leave` and `admin_manage` (the kind of act, or
-`cosign`) before they run; a grant lets a session ask, and an admin's signature is what makes a governing act true for everyone; `land_trust` (the fingerprint) and `land_control`
-(the target branch, `*` for pause and resume) in the landing queue, besides having no parent; `task_authority` (the task, or `mode`)
+`cosign`) before they run; a grant lets a session ask, and an admin's signature is what makes a governing act true for everyone; `land_trust` (the fingerprint), besides having no parent; `task_authority` (the task, or `mode`)
 wherever a session with no parent acts for the person (assign, review in strict mode, block, recover, set the mode, record a
 landing), spent only where it is what lets the call through; `note_verify` (the note), `quarantine_release` (the held id) and
 `file_delete` (the handle); `link_read` and `link_write` (`FROM>TO`, for a link of mode `ro` and `rw`), `link_remove` (the link id) and `source_add` (the project id,
@@ -559,7 +547,7 @@ written under its name); a process an agent started, or one with no terminal, is
 **The first-run bundle.** `grants-setup` goes to the lead's own sessions, named at setup: `--session NAME` (repeat for several), or
 picked from the list of the board's main sessions it prints, where the model and harness are what each session says about itself.
 It enrols the person's key if the node holds none and signs one grant per action and session on this device, 30 days each:
-`land_control`, `task_authority`, `shard_call`, and `note_verify` for the session's subagents too. The
+`task_authority`, `shard_call`, and `note_verify` for the session's subagents too. The
 exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `shard_consent`, `sync_now`,
 `land_trust`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
 commands (`poolhouse-workspace grant shard_consent --to NAME --until 30d`, each its own typed `yes`). Each is revoked
@@ -568,7 +556,7 @@ by its id. A class grant stays in the registry but is refused by `grants-setup -
 
 **What the lead's lineage can do with the bundle.** For 30 days, the lead's main session and everything that runs from its terminal
 and process tree (its subagents, its tools, any process the harness starts, and any process in them that reads the token file) can:
-`land_control` (pause, resume and cancel others' requests in the landing queue), `task_authority` (act for the person on tasks: assign,
+`task_authority` (act for the person on tasks: assign,
 review in strict mode, set the enforcement mode, record a landing), `shard_call` (send a test run, its files and its start to another device of
 the pool that allowed this one, and read and cancel it: `shard_put`, `shard_start`, `shard_status`, `shard_cancel`, `shard_caps`) and
 `note_verify` (record that a note's command was run, which sets the note's trust). The subagents of the lead hold `note_verify` only.

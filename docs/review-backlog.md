@@ -15,13 +15,11 @@ landing-level agent reads only what the report flags (AGENTS.md, "Reviewing the 
 Read-only, from this repository and this device's board:
 
 - every local branch with a patch the development branch lacks (`git cherry`);
-- every landing request in `needs-review` (`poolhouse-workspace land-queue`), resolved to its full SHA;
 - every open pull request (`gh pr list`, `gh pr diff`; `gh auth status` first). When `gh` is signed out the pull requests
   are skipped with one line and the rest runs.
 
-Work is keyed by head SHA: a branch that is also a landing request and a pull request is one item. A SHA with a report in
-the reports directory is skipped. `--limit` bounds the reviews per run (default 5), in the order landing requests,
-branches, pull requests.
+Work is keyed by head SHA: a branch that is also a pull request is one item. A SHA with a report in
+the reports directory is skipped. `--limit` bounds the reviews per run (default 5), in the order branches, pull requests.
 
 ## What the reviewer gets
 
@@ -53,7 +51,7 @@ A diff over the cap is not sent to a model: its report says `too large, flag for
 `reviews/<sha>.md` under the state root (`$POOLHOUSE_HOME/reviews/`, by default `~/.poolhouse/reviews/`):
 
     - verdict: flag | clear
-    - source: branch, landing request and pull request that name the SHA
+    - source: branch and pull request that name the SHA
     - model, backend, date and diff size
 
 then the reviewer's findings, each `file:line: the failure scenario`. The reviewer's first line is `VERDICT: flag` or

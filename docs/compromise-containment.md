@@ -766,7 +766,7 @@ that agree on a wrong answer pass redundancy), both named in section 16.
 * **The lander's gate runs branch code in the nested sandbox** with no keystore, no credentials and no network but the package
   hosts, so the code under test cannot reach the token or the signer's key (C6). Without S0 the lander is one device with the
   weaker separation.
-* **Per-device scope.** Standing grants already name a device; the `shard_call` and `land_control` of the bundle are limited by the
+* **Per-device scope.** Standing grants already name a device; the `shard_call` of the bundle are limited by the
   signed spend limits of `docs/compromised-agents.md` 5.1 once they exist, and a device flagged in section 10 loses them at once.
 
 **Friction:** none visible; the sandbox may fail a test that needed the network or the home, which is a defect found by running

@@ -1,7 +1,7 @@
 # Agent workspace
 
 The workspace is how the agent sessions of a project coordinate: direct messages, rooms, shared notes, claims,
-scratch folders, files, the landing queue and tasks. Every part is a command of `poolhouse-workspace` and most are
+scratch folders, files, landing reviews and tasks. Every part is a command of `poolhouse-workspace` and most are
 `poolhouse-mcp` tools, and each runs on the node of the device ([docs/node.md](node.md) is the authority for
 identity, grants, entries, leases and replication). The Python side is a client: the node keeps the board, and the
 client keeps each session's token file and read cursors.
@@ -80,8 +80,7 @@ A main session is one identity from its `SessionStart` to its end. The `SessionE
 `retire` as the session when it ends for good (a closed prompt, a logout, the end of a headless `claude -p` run): its tokens
 end, its claims are released and so are its subagents, and `agents` no longer lists it. It does nothing when the session
 goes on under another id (`reason` `clear` or `resume`) and for any event of a subagent, which has its own stop hook. A
-session resumed later from the same terminal registers again and is the same name. The landing runner retires its own
-session when it is stopped or has run its one pass; a supervisor started again registers a session of its own.
+session resumed later from the same terminal registers again and is the same name.
 
 `agents` marks a session `idle` when it has made no request for 30 minutes and holds no lease whose process still runs. The
 node retires a session that has been idle for 24 hours, so a terminal left overnight keeps its session. An idle session
@@ -111,7 +110,7 @@ places of a project ([docs/node.md](node.md), "Standing grants", has the registr
 | `grants [--status S] [--mine]`, `grant-log [--limit N]` | any session: who holds which grant, its state, what it covers, when it ends and how often it was used; every issue, revocation and use |
 | `grant ACTION --to NAME [--with-subagents] --scope RESOURCE --until 30d [--uses N]` | a person at a terminal: allows an action to one session (`--class FAMILY` and `--account MODEL` need the options their refusal names) |
 | `revoke-grant ID` | a person at a terminal: ends a grant at once |
-| `grants-setup [--session NAME]` | a person at a terminal, once: approves the grants the lead sessions of this board need (`land_control`, `task_authority`, `shard_call`, and `note_verify` for their subagents), 30 days each; enrols the person's key if the node holds none |
+| `grants-setup [--session NAME]` | a person at a terminal, once: approves the grants the lead sessions of this board need (`task_authority`, `shard_call`, and `note_verify` for their subagents), 30 days each; enrols the person's key if the node holds none |
 | `person-proof`, `person-enroll --proof TEXT`, `person-unenroll --key FINGERPRINT` | a person at a terminal: carry a key to another device, put it on a node, take one off |
 | `rebind HARNESS SESSION` | a person at a terminal: moves a main session to the terminal the command runs in |
 
@@ -203,7 +202,7 @@ untrusted-input surface first and a convenience second.
   on Windows). The token never crosses a network: another device receives signed rows, never a session's token.
 * **Token hash, not shared key.** A shared key in a file would let any agent that can read it sign as anyone.
   Hashed per-session secrets mean a session can only be the identity whose secret it was given.
-* **Flat command names.** One command per verb (`notes-add`, `scratch-new`, `land-request`), no nested
+* **Flat command names.** One command per verb (`notes-add`, `scratch-new`, `land-review`), no nested
   sub-commands, so an allow-list or a permission rule can name each exactly.
 * **Notes run commands only from an allow-list.** A note's re-derive command is untrusted text. `notes-verify` runs
   it only when its program and leading arguments match an entry in the owner's `limits.json` `verify_allow`, with no
@@ -235,7 +234,7 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 | files | `attach PATH\|- --to #room\|AGENT\|thread:SEQ`, `file HANDLE\|list\|search WORDS\|delete HANDLE` |
 | scratch | `scratch-new NAME [--ttl-hours H]`, `scratch-ls`, `scratch-path NAME [REL]`, `scratch-rm NAME` |
 | claims | `claim KIND KEY [--ttl S] [--pid N]`, `release KIND KEY [--held-by NAME]`, `heartbeat`, `who KIND KEY`, `claims [--kind K]` |
-| landing | `land-request`, `land-review`, `land-cancel`, `land-pause`, `land-resume`, `land-trust`, `land-queue` (docs/landing-queue.md) |
+| landing | `land-review`, `land-trust` (docs/landing.md) |
 | tasks | `task-create`, `tasks`, `task`, `task-subscribe`, `task-unsubscribe`, `task-assign`, `task-claim`, `task-heartbeat`, `task-checkpoint`, `task-submit`, `task-review`, `task-credit`, `task-integrate`, `task-rebind-source`, `task-dematerialize`, `enforcement`, `issue-subscribe`, `issue-unsubscribe`, `worktrees` (docs/tasks.md) |
 | local agents | `agent start\|stop\|list\|backlog\|schedule\|supersede-issue\|resume-issue` (docs/local-agent.md) |
 | authority | `authority show\|set\|preset` (below) |
@@ -529,7 +528,7 @@ The node's own tests (`app/poolhouse-node/tests`, `tests/node_kit.py`: a real no
 board, identity, grants, leases, sync and the pool. The workspace commands are tested against that real node:
 messages and threads, rooms and subscriptions, notes with trust levels, TTL and supersession, allow-listed
 verification, scratch confinement, claims (conflict, nesting, TTL, heartbeat, release on process death), files, the
-landing queue and tasks, the CLI with `--json`, and the MCP tools and their annotations. What is not built is listed
+landing reviews and tasks, the CLI with `--json`, and the MCP tools and their annotations. What is not built is listed
 in [docs/node.md](node.md), "What is left", and "The person's session (the UI)" lists what the old store gave the
 person that the node does not.
 

@@ -18,7 +18,7 @@ step idempotent and recorded in `.git/cutover.state`: 1 `git pull --ff-only`; 2 
 build and verify `pgrep -fl 'ml-stack|ml_stack|poolside-node'` is empty (it prints what is left and stops);
 4 remove a stray `~/.poolhouse` that holds only `activity` and `sentinel` (anything else is refused); 5 install
 the new package and uninstall `ml-stack`; 6 `poolhouse migrate plan`, `run` and `verify`; 7 `poolhouse runtime ensure`,
-`node build`, `scripts/land up`, `poolhouse-doctor` (on Windows `poolhouse device-setup --yes`, one UAC prompt).
+`node build`, `poolhouse-doctor` (on Windows `poolhouse device-setup --yes`, one UAC prompt).
 It ends with `READY`, or with the step that failed, the fix, `scripts/cutover --resume` and the rollback line.
 Tests drive it with `--dry-run-in DIR` (a fake HOME and stub commands under DIR; tests/test_cutover.py).
 Still by hand afterwards: the login units again and the old `com.ml-stack.*` plists (step 6 below).
@@ -48,7 +48,6 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
 2. **Stop the old build**, newest layer first. Use the old commands (the installed `ml-stack-*` ones):
 
    ```
-   scripts/land down                                    # the land runner and its supervisor (releases claim and lock)
    python -m ml_stack.node_launch stop                  # the LAN node and its supervisor
    launchctl bootout gui/$(id -u)/com.ml-stack.traind   # the pool daemon, if it is installed as a login unit
    launchctl bootout gui/$(id -u)/com.ml-stack.runtime-ensure
@@ -60,7 +59,7 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
    if you can: `migrate` does not touch `~/.ml-stack/models`, but a server whose files lie under `~/.ml-stack`
    counts as running there and blocks the move; stop that one with `ml-stack-serve down MODEL`.
    `pgrep -fl 'ml-stack|ml_stack|poolside-node'` should print nothing.
-3. **Land** the rename (the lead's queue: `poolhouse-workspace land-request` once the new package is
+3. **Land** the rename (the lead runs `scripts/land BRANCH` once the new package is
    installed, or by hand on the primary checkout with the owner's authority).
 4. **Install the new package** into the pyenv 3.13.5 interpreter, then remove the old one:
 
@@ -100,7 +99,6 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
    poolhouse node build                                             # Poolhouse.app (bundle id app.poolhouse.node, unchanged)
    poolhouse node permission                                        # only if macOS asks for Local Network again
    poolhouse-members ls                                               # the node starts on the LAN and the pool is listed
-   scripts/land up                                                  # the land runner under the new name
    poolhouse-doctor
    ```
 
@@ -117,7 +115,7 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
 
 ## The Windows device (its agent runs these; each step needs the person's approval where it says so)
 
-1. Stop the old build: `scripts\land down` is not needed there; run
+1. Stop the old build: run
    `python -m ml_stack.node_launch stop`, then
    `schtasks /End /TN com.ml-stack.traind.login` (and `com.ml-stack.traind.system` if the machine-wide task
    exists), then `schtasks /Delete /TN com.ml-stack.traind.login /F`. Close any `ml-stack-*` console.
@@ -139,7 +137,7 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
 
 `~/.poolhouse/migrate.log` lists every move, one line each (`state: A to B: renamed`, `cache: ...`,
 `moved the master key`, `project: PATH renamed`). To undo, stop the new build (`python -m poolhouse.node_launch stop`,
-`scripts/land down`, the daemon unit) and reverse the lines:
+the daemon unit) and reverse the lines:
 
 ```
 mv ~/.poolhouse ~/.ml-stack

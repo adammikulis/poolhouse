@@ -190,7 +190,7 @@ else becomes a hyphen: a session cannot write a line of the text through its mod
 is not plain shows the odd characters as hyphens, so every notice can be signed and the person can always block.
 
 The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`,
-`link_remove`, `note_verify`, `land_control` are routine; `link_read`, `add_device`, `join_pool`, `shard_call`,
+`link_remove`, `note_verify` are routine; `link_read`, `add_device`, `join_pool`, `shard_call`,
 `shard_consent`, `land_trust`, `task_authority`, `quarantine_release`, `link_write`, `source_add` and adding a phone are
 sensitive; `member_remove` and `file_delete` are irreversible. A request is as risky as its riskiest ask.
 

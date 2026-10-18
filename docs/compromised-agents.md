@@ -85,7 +85,7 @@ registry of `app/poolhouse-node/src/grants/spec.rs` holds seventeen actions toda
 | Reach | What exists or is designed | What it does not know |
 |---|---|---|
 | Ask for a grant or an act (`approval_request`) | The node writes the text, the agent's note is labelled "not checked", flags for first of kind, wildcards and subagents, one tap and a fingerprint (`docs/phone-approval.md`) | Whether the person asked for it, and what the session read before asking |
-| Spend a standing grant (first-run bundle: `land_control`, `task_authority`, `shard_call`, `note_verify`; pool bundle: `add_device`, `join_pool`, `serve_offer`, `inbound_consent`, `serve_call`) | The grant names the session, spends only from its lineage, and every use is on the board | A use is not compared with anything the person said; a session that read a hostile page spends exactly as one that did not; the only limit is the expiry |
+| Spend a standing grant (first-run bundle: `task_authority`, `shard_call`, `note_verify`; pool bundle: `add_device`, `join_pool`, `serve_offer`, `inbound_consent`, `serve_call`) | The grant names the session, spends only from its lineage, and every use is on the board | A use is not compared with anything the person said; a session that read a hostile page spends exactly as one that did not; the only limit is the expiry |
 | Share or link a board, add a place to a project | Grants `link_write` and `source_add`; a shared board needs a signed charter (`docs/pools-and-serving.md`, section 6) | Same |
 | Offer or call a served model | Offers are device-signed; calls to the owner's own devices ride the bundle (`docs/pools-and-serving.md`, section 7) | Same |
 | Run code on a pool device (`shard_call`) | The device's allow list (the owner's own devices); the sender supplies no argv, environment or working directory | The code is the sender's own checkout, which a steered agent may have edited an hour ago |
@@ -758,8 +758,8 @@ A new column in the risk table of `docs/phone-approval.md` (`approvals::content:
 
 | Reach | Meaning | Actions |
 |---|---|---|
-| inside | Coordination within the project, bounded by independent review of any landing | `note_verify`, `land_control` for a landing that touches no protected file, `task_authority` to assign, block or recover a task, `link_read`, `sync_now` |
-| outward | Moves trust, compute or data beyond this project and session, or changes who reviews or what lands | `add_device`, `join_pool`, `serve_offer`, `serve_call` to a device the person's key did not admit, `inbound_consent`, `shard_call`, `shard_consent`, `link_write`, `source_add`, `board_share` and `board_side`, `land_trust`, **`land_control` of a landing that changes a protected file (4.9)**, `task_authority` to review in strict mode, to set the mode or to record a landing (the operation is known at each call site, so the reach is read per operation), `set_join_policy` (it never spends a grant: a reissue), `pool_reissue`, `admin_manage`, adding a phone, `quarantine_release` (a person's gate: unchanged) |
+| inside | Coordination within the project, bounded by independent review of any landing | `note_verify`, `task_authority` to assign, block or recover a task, `link_read`, `sync_now` |
+| outward | Moves trust, compute or data beyond this project and session, or changes who reviews or what lands | `add_device`, `join_pool`, `serve_offer`, `serve_call` to a device the person's key did not admit, `inbound_consent`, `shard_call`, `shard_consent`, `link_write`, `source_add`, `board_share` and `board_side`, `land_trust`, `task_authority` to review in strict mode, to set the mode or to record a landing (the operation is known at each call site, so the reach is read per operation), `set_join_policy` (it never spends a grant: a reissue), `pool_reissue`, `admin_manage`, adding a phone, `quarantine_release` (a person's gate: unchanged) |
 | irreversible | Cannot be taken back; never spends a grant | `member_remove`, `file_delete`, a recovery or succession act |
 
 `shard_call` is outward: the files it sends are the sender's checkout. That is why a session at `T1` or above whose tree differs from
@@ -821,8 +821,8 @@ attest and report lets the session read itself clean, or blind the hook.
 
 Inside actions spend at `T2` (accepted risk 4, 16.2). One class of inside action is not inside: landing a change to the files that
 decide what this document decides. A steered lead that assigns, blocks and recovers tasks does little
-harm; one whose `land_control` accepts an edit to the lexicon does a great deal, and the reviewer of that edit may be the steered
-session. So `land_control`, and the recording and review acts of `task_authority` for a landing, are **outward and ask at every
+harm; one whose `task_authority` records a landing of an edit to the lexicon does a great deal, and the reviewer of that edit may be the steered
+session. So the recording and review acts of `task_authority` for a landing are **outward and ask at every
 taint** when the landing's changed paths touch the **protected set**; the card lists the files ("This change edits the safety
 rules: the lexicon, the sandbox profile ..."). Independent review stays; this adds the person, and only for these paths.
 
@@ -1452,7 +1452,7 @@ store and are **never asked for by an agent**. **`anchor`** ("Trust this window"
 button on a new session's line (3.5). **`use`** is written by the node from a standing use it refused (`{action, resource,
 args_sha, grant}`, 4.6); it renders `ASK` from the refused call itself, gives the agent the id, and consumes it on the retry that
 carries the same `args_sha`. An `approval_request` of either kind from an agent is refused, since the node cannot render a line
-from a hash the agent supplied. A `use` of `land_control` carries `paths` (4.9) and one of `shard_call` carries `tree` (4.8), both written by the node.
+from a hash the agent supplied. A `use` of `shard_call` carries `tree` (4.8), written by the node.
 **No other param is new, and the node refuses** `evidence`, `quote`, `said`, `verdict`, `fit`, `taint`, `lane`, `cause`, `checker`,
 `hold`, `picked`, `anchor`, `run`, `tree`, `paths` and `device` **as a top-level envelope key or a top-level param key** (I2), counting
 a `forged_provenance` flag; the same names deeper in a value are data and raise a `note` only (9.1).
@@ -1481,7 +1481,6 @@ are not in it. New `state` value `held` with `release_in_s` (null until the pers
 | `hold` | **changed:** `{hold_s, until: "activity" or "time", release_at_ms (null until the activity), drop_at_ms, cancelable: true}` for a staged act; absent otherwise |
 | `refreshes` | the id of the request this one replaced (3.4), or null |
 | `tree` | for a `shard_call` use: `{differs: n, landed: sha or null}` (4.8) |
-| `paths` | for a `land_control` use: the protected files the landing changes, at most six, then a count (4.9) |
 
 The text carries the same facts as the labelled lines of 3.3, so a signature covers what the person read. The checker's answer can
 arrive after the push: the node therefore sends the card at once without it, and **re-sends the card with `CHECK` filled**

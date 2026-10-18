@@ -107,9 +107,8 @@ What runs today:
   (`docs/test-reuse.md` [D]). The store is `~/.cache/test-reuse`, per user per device
   (`workspace/testruns.py:STORE_BASE` [V]); the key includes platform and machine, so a Mac pass is not a Linux
   pass.
-- Landing a batch: `scripts/land plan|run|finish` take branch names and a repository path; `scripts/land up` runs the
-  board-fed runner that lands the reviewed `land-request` entries of the board's queue (`docs/landing-queue.md`
-  [D]; `scripts/land --help` [V]).
+- Landing a branch: `scripts/land BRANCH` checks, pushes and cleans up one branch; an independent `land-review` of the
+  exact commit is read from the board when the diff needs one (`docs/landing.md` [D]; `scripts/land --help` [V]).
 
 ### 1.6 Linux and WSL runner
 
@@ -144,17 +143,16 @@ Rank is by how much of the goal a missing item blocks, first item first.
    commit mismatch (`docs/fleet.md` [D]), the same refusal applies. Security: this is remote code execution on
    a device, so it needs a person grant per project and device, never an agent token (section 2.4 rule).
 2. **No shared result store.** Reuse is per device and per platform [V]. Needed: evidence records
-   (`activity/gate.py` evidence ids and tree hash, named in `docs/landing-queue.md` [D]) posted to the board
-   by the runner under its own agent identity, so the queue reads a result from any device. Per-platform
+   (`activity/gate.py` evidence ids and tree hash) posted to the board
+   by the lander under its own agent identity, so a landing reads a result from any device. Per-platform
    keys stay separate; a pass on Linux does not satisfy a macOS requirement.
 3. **No capability or admission advertisement for tests.** The daemon report carries labels, backend, room,
    `measuring` and schedule windows [V] but nothing about test permit capacity, held GPU lease, branch checkouts
    present or WSL/Linux platform for tests. Needed: a `test` block in `Daemon.report()` (capacity from
    `testslots.py status`, platform key, checkout commits) so `Requires` can select on it.
-4. **Board-fed landing queue.** Built on the node: `land-request`, `land-review` and `land-queue` write and read the
-   board's `landing` entries and `scripts/land up` is the runner (`docs/landing-queue.md` [D]; `docs/node.md`, "The
-   landing queue"). A device counts another device's landing entries only when its person put that device on the
-   landing list (`land-trust`), so the queue runs on one device unless the person extends it.
+4. **Board-fed landing reviews.** Built on the node: `land-review` writes the board's `landing` entries and `scripts/land`
+   reads them through `land_accepts` (`docs/landing.md` [D]; `docs/node.md`, "Landing reviews"). Only this device's own
+   reviews count.
 5. **Cross-device broker coordination.** Test admission and the GPU lease are separate per device. A machine
    running a model needs the test broker to see the lease (heavy lane while a model holds the GPU). Today
    `docs/test-execution.md` [D] gates heavy tests by lane, not by lease.
@@ -225,7 +223,7 @@ Mostly present: workspace CLI and MCP exist (section 1.7). Gaps, ranked:
 
 1. **The MCP surface covers the board, not the pool.** Tools for the pool are `look`, `bench` and a few
    serving reads (`mcp.py` [V]); missing tools: list devices with capability, request a lease on a device, submit
-   or read a test job on a device, read the landing queue. Each takes the agent's own token (`_token()`
+   or read a test job on a device. Each takes the agent's own token (`_token()`
    in `workspace/tools.py` [V]); none takes a person credential.
 2. **Board access from another device is the node's replication.** A harness on each device registers on that
    device's node, with no invitation (`docs/node.md`); the claim that Codex and Claude on two devices both reach
@@ -302,13 +300,13 @@ branch landed before the next starts. Dependencies name slice numbers.
 |---|---|---|---|---|
 | 1 | `poolhouse-pool devices` shows the route per device (tailnet IPv4 admission in the companion and invite checks is already fixed) | S | none | `fleet/onboard/lan.py:in_tailnet`, `fleet/invites.py`, `companion_routes.py`; `tests/test_onboard_tailnet.py` |
 | 2 | Device capability block in `Daemon.report()` (test capacity, platform key, checkouts, awake/asleep) and a `Requires` filter on it | S-M | none | `fleet/pool.py`, `fleet/daemon.py:report`, `scripts/testslots.py status` |
-| 3 | Board-fed landing queue (built: `land-request`, `land-review`, `land-queue`, `scripts/land up`) | done | none (single device) | `docs/landing-queue.md`; `docs/node.md`; `workspace/task_integration.py` |
+| 3 | Board-fed landing reviews (built: `land-review`, `scripts/land`) | done | none (single device) | `docs/landing.md`; `docs/node.md`; `workspace/task_integration.py` |
 | 4 | Phone person credential: device-key enrollment from the owner page, named capabilities, expiry, revoke, read-only status and board | M-L | 1 | `fleet/invites.py` `devices` and `_grant`, `companion_routes.py`, `docs/person-delegation.md` |
 | 5 | Remote test runner: a person-granted job kind for `scripts/test` on a named commit, result posted as evidence by the runner's own agent | L | 2, 3 | `fleet/commands.py`, `docs/test-execution.md`, `docs/test-reuse.md`, `workspace/testruns.py`; branches `docs/linux-wsl-current`, `fix/linux-admission-stdio-current`, `fix/linux-immutable-runner` to be reviewed first |
 | 6 | Replica board: logs between devices, outbox, no agent-settable host (built by the node) | done | none, but ahead of any N>2 claim | `docs/node.md`; `docs/board-replication.md` (the design record) |
 | 7 | Lease through a remote broker under the asker's identity; `plan --apply` becomes a lease with reason | M | 2, 4 | `serve/broker_wire.py`, `serve/leases.py`, `fleet/api.py` `/serve` |
 | 8 | Phone capabilities: approve/deny, start/stop lease, submit test, read results | M | 4, 5, 7 | `docs/person-delegation.md` sections 7 and 12 |
-| 9 | Pool MCP tools: devices, lease request, test submit/read, landing queue, each with the agent's own token | M | 3, 5, 7 | `mcp.py`, `workspace/tools.py` |
+| 9 | Pool MCP tools: devices, lease request, test submit/read, each with the agent's own token | M | 3, 5, 7 | `mcp.py`, `workspace/tools.py` |
 | 10 | Tailscale prepare/verify slice in the autostart pattern (commands staged, person installs) | S-M | 1 | `fleet/autostart_cli.py`, `fleet/tailnet.py`, `docs/onboarding.md` |
 | 11 | PWA client for phone: manifest, service worker, phone views, QR scan | M-L | 4, 10 (HTTPS) or the owner picks native only | `fleet/web/components`, `fleet/invite_routes.py` |
 | 12 | Wake and idle unload | M | 2, 7 | none exists; Wake-on-LAN needs the sleeping device's NIC settings, a person setting |

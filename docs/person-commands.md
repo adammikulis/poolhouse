@@ -38,7 +38,7 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | `poolhouse-reputation ...` | `reputation.admin` |
 | `poolhouse-log export` | `activity.export` |
 | `poolhouse-runtime ensure`, `rollback`, `restart-host`, `pin` | `runtime.deploy` |
-| `poolhouse-runtime ensure --allow-unmerged --ref SHA --review-request ID` (live eligible lead, independent exact-SHA approval) | `runtime.deploy` and `runtime.deploy-unmerged` |
+| `poolhouse-runtime ensure --allow-unmerged --ref SHA --review-branch BRANCH` (live eligible lead, independent exact-SHA approval) | `runtime.deploy` and `runtime.deploy-unmerged` |
 | recovery `export` (writes a file that runs commands on every pool machine) | `fleet.recovery` |
 | `poolhouse-serve memory --apply` (wired limit, through the macOS administrator dialog; the sudo path needs a terminal) | `serve.wired-limit` |
 | `poolhouse-workspace install-hooks` | `workspace.setup` |

@@ -145,8 +145,8 @@ Rollback: unset the variables; the harness falls back to the owner's `gh` login.
 
 ## Push credential
 
-One device pushes to the development branch: the lander, the device whose runner fast-forwards and pushes it
-([landing-queue.md](landing-queue.md)). Every other device that runs agents holds no push credential; it fetches with
+One device pushes to the development branch: the lander, the device whose `scripts/land` pushes it
+([landing.md](landing.md)). Every other device that runs agents holds no push credential; it fetches with
 none or with a read-only one.
 
 - The lander's credential is the App's installation token, minted from the App's key for an hour. `scripts/agent-identity

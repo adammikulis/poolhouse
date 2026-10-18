@@ -69,8 +69,7 @@ base `Qwen3.5-2B`. Vendor-reported and aggregator figures for the 27B and Flash-
 
 **The tier table's `qwen` family (owner's decision, 2026-10-12).** `src/poolhouse/workspace/model_tiers.json`
 lists every quantisation of Qwen3.8-27B and Qwen3.8-Flash-Next, with no per-quantisation exclusion, above the
-lowest tier of its family, so a local session on either counts as landing-level (docs/landing-queue.md,
-"Eligibility, review and brakes"). The Qwen3.5 0.8B, 2B and 4B models are the family's lowest tier, which never
+lowest tier of its family, so a local session on either counts as landing-level (docs/landing.md). The Qwen3.5 0.8B, 2B and 4B models are the family's lowest tier, which never
 lands. The owner's view is that the 27B is at Claude Opus 4.6's level and Flash-Next comparable or higher.
 Qwen's own evaluation table, as three pages relay it, prints Flash-Next above the 27B on every row where
 both appear (section 2.7): a vendor claim, not reproduced here. Section 2.7's figures are for full-precision weights, vendor-reported and unreproduced, and no published

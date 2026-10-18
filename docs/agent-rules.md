@@ -146,7 +146,7 @@ gate.
   development branch first, so no one works on history another device has already moved. Keep local and upstream
   development synchronized throughout landing batches and cleanup; report the resulting commit and final upstream
   state.
-- **Keep the landing queue short.** Throughput is limited by unlanded work, not typing speed. Branches are cut from
+- **Keep landing short.** Throughput is limited by unlanded work, not typing speed. Branches are cut from
   current development, stay under ten commits, and land the moment they are ready and verified: rebase, verify,
   fast-forward and push straight away, with no other work in between. A ready branch never waits for a day, an hour
   or another task. Land a stack bottom-up, one layer at a time. Past the branch limits (more than 30 commits ahead or 20
@@ -154,14 +154,10 @@ gate.
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.
-- **`scripts/land`** is the standard whenever more than one leaf is ready: `plan [--cover]` shows unique patches,
-  the minimal cover, merge order and predicted conflicts; `run` merges into a sibling integration worktree, verifies
-  once and ejects what fails; `finish --apply` fast-forwards the clean primary checkout and removes landed trees.
-  `plan`, `run` and `finish` never push; the runner (`serve`) pushes only the development branch. If a combined gate
-  fails, bisect to the branch, eject it to its owner, and land the rest. The runner is `scripts/land up` (a
-  supervised, detached `serve`; `down` and `status` beside it); `digest --status` shows `Runner supervisor: up` or
-  `NOT RUNNING`, and the lead's heartbeat runs `scripts/land up` when it reads `NOT RUNNING` (docs/heartbeat.md,
-  docs/landing-queue.md).
+- **`scripts/land BRANCH`** lands one branch: it fetches, rebases when no review is needed, checks the accept, runs the
+  checks the diff calls for in a clean environment, pushes exactly the tested commit to the development branch (never
+  `main`, never forced), fast-forwards the primary checkout and removes the worktree and branch. One lander runs at a time;
+  a stop names its cause on the last line, and running it again repairs an interrupted run (docs/landing.md).
 - The primary development checkout may receive reviewed changes through a fast-forward merge or authorized direct
   edits and named-file commits; resolve conflicts in an isolated worktree. The retained primary checkout is never
   removed as temporary-worktree cleanup. Coding tasks own their worktree lifecycle: assignment reserves the path and
@@ -187,9 +183,9 @@ not proof that it is disposable.
 - Gate cost is per batch: combine all ready leaves into one run and start it whenever a leaf is ready and no gate is
   in flight. Scale it to the diff: documentation-only or handoff-only batches need a clean diff and `scripts/budgets`.
   A background full-suite failure blocks only landings touching the failing surface and gets one named owner at once.
-  `scripts/land run` applies this: documentation-only diffs get `scripts/budgets` and a clean diff; code diffs get
-  `scripts/test gate` and the affected selectors of the combined diff, plus one background full run only for shared
-  infrastructure or a large diff. A tree that already passed a check is not checked again (`reused from <id>`), and a
+  `scripts/land` applies this: documentation-only diffs get `scripts/budgets` and a clean diff; code diffs get
+  `scripts/test gate` and the affected selectors of the diff, plus one full run only for shared infrastructure, a path no
+  selector maps or a large diff. A tree that already passed a check is not checked again (`reused from <id>`), and a
   failure that also fails on the clean target is `baseline`.
 - Known failures remain named tasks with evidence and ownership. A scoped pass is not a full-suite pass. Fix a known
   relevant regression before the affected change lands. A missing cold selector cache does not require a full suite

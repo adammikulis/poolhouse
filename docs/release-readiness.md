@@ -1,8 +1,8 @@
 # Release readiness (0.3)
 
 What the 0.3 release must do, and what must be tested before it ships. The owner and the agents drive toward the release from this
-page. State as written: 2026-10-13, development branch `0.3dev` at `d365522ea`, plus the branches the landing queue held that day
-(`poolhouse-workspace land-queue` is the live list). Contents: [1 How to use it](#1-how-to-use-it) |
+page. State as written: 2026-10-13, development branch `0.3dev` at `d365522ea`, plus the branches unlanded that day.
+Contents: [1 How to use it](#1-how-to-use-it) |
 [2 The two audiences](#2-the-two-audiences-and-the-bar-for-each) | [3 Feature checklist](#3-feature-checklist-by-area) |
 [4 Security release gates](#4-security-release-gates) | [5 Owner-only steps](#5-owner-only-steps) |
 [6 Not in 0.3, and known limits](#6-not-in-03-and-known-limits-shipped) | [7 The final drive](#7-the-final-drive) |
@@ -179,7 +179,7 @@ item numbers are used below.
 | PH-8 | The first phone is added without a typed command: the computer's own screen shows the code | none | not built (today a command at a terminal) | HANDOFF "Phone approval", fourth item; bar of 2.1 |
 | PH-9 | The first key and first phone work on Windows | none | not built: Windows has neither the system prompt nor terminal reading | HANDOFF "Phone approval", item 4; Question 11 |
 | PH-10 | The person's yes to the node's own question is answered by a person | `tests/test_presence.py` (types it at a pseudo-terminal); drive: first key on the real home with `--presence os` | tested (`tests/test_presence.py` passes); never answered by a person | HANDOFF "Phone approval", item 4 |
-| PH-11 | Standing grants: a person signs the lead's grants once per device; until then no agent session holds `land_control`, `task_authority`, `shard_call` or `note_verify` | `app/poolhouse-node/tests/grants.rs`, `grants_enrol.rs`, `grants_hostile.rs`, `grants_keys.rs`, `grants_foreign.rs`, `grants_sites.rs`; `tests/test_board_person_key.py`; `scripts/pool-check --only grants-gate --only grants-key-removed` | built untested; made at a terminal by `poolhouse-workspace grants-setup`, so a person with no terminal cannot yet | HANDOFF "Standing grants" |
+| PH-11 | Standing grants: a person signs the lead's grants once per device; until then no agent session holds `task_authority`, `shard_call` or `note_verify` | `app/poolhouse-node/tests/grants.rs`, `grants_enrol.rs`, `grants_hostile.rs`, `grants_keys.rs`, `grants_foreign.rs`, `grants_sites.rs`; `tests/test_board_person_key.py`; `scripts/pool-check --only grants-gate --only grants-key-removed` | built untested; made at a terminal by `poolhouse-workspace grants-setup`, so a person with no terminal cannot yet | HANDOFF "Standing grants" |
 | PH-12 | A lost phone is removed from another phone, or at the computer by a person who also holds a typed-yes key | drive: item 8 | built untested | one-time removal beside `persons.json` not built |
 
 ### 3.4 Governance
@@ -235,7 +235,7 @@ item numbers are used below.
 | WS-1 | The node names each session, records its parent and gives it a token; nobody mints, copies or pastes a token | `app/poolhouse-node/tests/sessions.rs`, `lineage.rs`, `lineage_tokens.rs`; `tests/test_workspace_quickstart.py` | built untested | none |
 | WS-2 | No identity sprawl: a main session retires itself at the end, an idle session is retired, a device refuses a main session past its bound (24 live per harness, 8 per terminal) | `app/poolhouse-node/tests/idle.rs` | built on branch `fix/identity-sprawl`, in the landing queue (land-3971, needs a review); not on the development branch | none |
 | WS-3 | Messages, rooms, claims, leases, notes and files work across devices and survive a restart | `scripts/pool-check` steps of POOL-11; `tests/test_workspace_files.py` | built untested | none |
-| WS-4 | A worker lands its own branch through the queue (`land-request`, independent `land-review`, runner gate and push) | `scripts/test all tests/test_land.py tests/test_land_board.py tests/test_land_check_evidence.py tests/test_land_standing.py` | built untested | the session-start hook records no model after a clear, so the next `land-request` is refused until `poolhouse-workspace whoami --model` runs (`scripts/hooks/claude-session-start`) |
+| WS-4 | A worker lands its own branch with `scripts/land` (independent `land-review`, checks, push) | `scripts/test all tests/test_land.py tests/test_land_review_policy.py tests/test_pushed_review.py` | built untested | the session-start hook records no model after a clear, so the next landing is refused until `poolhouse-workspace whoami --model` runs (`scripts/hooks/claude-session-start`) |
 | WS-5 | Board delivery meets the existing latency budgets | HANDOFF names the observer file | not met: a single-recipient message and a Board message exceed their budgets | HANDOFF Priority 2 "Pools across devices" |
 
 ### Workspace delivery evidence (2026-10-15)
