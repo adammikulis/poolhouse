@@ -71,7 +71,8 @@ NAMED_IN_REVIEW = [
     "src/poolhouse/home.py", "src/poolhouse/paths.py", "src/poolhouse/decide/guards/scope.py",
     "src/poolhouse/decide/guard.py", "src/poolhouse/testing/injection_corpus.py", "src/poolhouse/features.py",
     "src/poolhouse/platform.py", "tests/test_redteam_board.py", "tests/test_bash_guard.py", "tests/test_authority.py",
-    "tests/authority_kit.py", "tests/network_guard.py", "tests/test_keystore.py"]
+    "tests/authority_kit.py", "tests/network_guard.py", "tests/test_keystore.py", "tests/test_land.py",
+    "tests/test_land_trust.py", "tests/land_support.py", "tests/test_pushed_review.py"]
 
 
 @pytest.mark.parametrize("path", GUARDED)

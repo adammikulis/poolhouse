@@ -168,6 +168,20 @@ def test_an_accept_withdrawn_while_the_checks_run_stops_the_landing(world):
     assert world.proj.origin_head() != sha
 
 
+@pytest.mark.parametrize(("cause", "lands"), [("revoked", False), ("forged", False), ("done", True)])
+def test_an_accept_from_a_reviewer_ended_for_cause_stops_counting(world, cause, lands):
+    tree, sha = world.start("ended", {SENSITIVE: "VALUE = 1\n"})
+    kid = world.node.member(f"kid-{cause}", parent=world.other)
+    landing.review(world.node.session(kid), "ended", sha, "accept")
+    world.node.session(world.other).retire(kid.name, cause)
+    code, out = world.land(tree)
+    if lands:
+        assert code == 0 and world.proj.origin_head() == sha, out
+    else:
+        assert code == 5 and "no independent accept that still stands" in out, out
+        assert world.proj.origin_head() != sha
+
+
 def test_a_second_lander_is_refused_naming_the_first(world):
     first, _ = world.start("slow", {"tests/test_slow.py": "# SLOW\n"})
     second, _ = world.start("second", {"docs/a.md": "second\n"})

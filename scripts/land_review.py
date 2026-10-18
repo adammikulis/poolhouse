@@ -76,7 +76,8 @@ def sensitive(name: str) -> bool:
     if top == "scripts":
         return len(parts) < 2 or parts[1] not in SCRIPTS_ORDINARY
     if top == "tests":
-        return name in {"tests/conftest.py", "tests/known-fixtures.txt"} or bool(AREA.search(path.name.casefold()))
+        return (name in {"tests/conftest.py", "tests/known-fixtures.txt", "tests/land_support.py", "tests/test_pushed_review.py"}
+                or path.name.startswith("test_land") or bool(AREA.search(path.name.casefold())))
     if top == "contracts":
         return len(parts) < 2 or parts[1] not in CONTRACTS_ORDINARY
     return path.suffix != ".md" or path.name.casefold().startswith(SENSITIVE_DOCS)
