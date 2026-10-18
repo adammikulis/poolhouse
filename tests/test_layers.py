@@ -19,7 +19,7 @@ ROOT = REPO / "src" / "poolhouse"
 
 LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("core", ("activity", "agent_dependency", "agent_hooks", "agent_hooks_stale", "asking", "authority", "backend", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
-              "entities", "errors", "extraction", "files", "files_windows", "gate", "geo",
+              "entities", "errors", "extraction", "files", "files_windows", "gate", "geo", "gitstate",
               "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "http_cancel", "httpguard", "installed", "interventions", "features", "jobs", "json_objects", "jsonl", "keystore", "keystore_guard", "kvtype", "lan", "leasetable", "legacy", "limits",
               "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
               "lock", "log", "macauth", "sealing",
@@ -27,7 +27,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "paths", "platform", "safenames", "redact", "scrape", "sentinel",
               "real_machine", "records", "requests", "person", "private_path", "private_counters", "protectedwrites", "safetext", "secretpaths",
               "serverkeys",
-              "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "trees_notice", "ui", "units", "win32", "windows_private", "worktreerules")),
+              "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "ui", "units", "win32", "windows_private", "worktreerules")),
     ("model", ("client", "decide", "gguf", "hub", "spec", "speech", "vision")),
     ("graph", ("board_names", "graph", "ingest", "sources", "world")),
     ("machine", ("doctor", "fleet", "gym", "serve", "setup")),

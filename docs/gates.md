@@ -24,8 +24,8 @@ commit. The pre-commit chain is opt-in, so `ci.yml` runs the same check with `--
 ## What the gates do not read
 
 A gate result depends on the change under test, never on the machine around it: no checker reads other
-worktrees, the worktree registry or another agent's state. A worktree left behind is enforced on its owner
-(docs/worktrees.md, "What an orphan stops").
+worktrees or another agent's state. A worktree left behind is listed by `scripts/worktrees` and removed by
+`scripts/worktrees sweep` when it is landed (docs/worktrees.md).
 
 ## Entries that are not ceilings
 

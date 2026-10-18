@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,7 +16,7 @@ from poolhouse.workspace import cli, task_cli, worktree_archive, worktree_lifecy
 def build(tmp_path, manual=False):
     """A closed trial whose only unpublished commit is a merge; ``manual`` adds a change the merge did not need."""
     primary = make_repo(tmp_path)
-    checkout = tree(primary, 'trial', 'worker', time.time())
+    checkout = tree(primary, 'trial')
     git(primary, 'checkout', '-qb', 'feature')
     commit(primary, 'feature')
     feature = git(primary, 'rev-parse', 'HEAD')
@@ -39,7 +38,7 @@ def build(tmp_path, manual=False):
     lifecycle.remember(base, 'worker', str(checkout))
     bundle = tmp_path / 'complete.bundle'
     git(primary, 'bundle', 'create', str(bundle), 'refs/heads/trial')
-    trees.close(primary, checkout, ('bundle', ''), time.time(), 'worker')
+    trees.close(primary, checkout, ('bundle', ''))
     return SimpleNamespace(primary=primary, checkout=checkout, base=base, bundle=bundle,
                            head=head, feature=feature, owner='worker', tmp=tmp_path)
 
@@ -99,7 +98,7 @@ def test_incremental_bundle_is_not_complete_preservation(trial, tmp_path):
 
 
 def test_missing_maintained_bundle_close_cannot_be_fabricated_by_archive_request(trial):
-    trees.update(trial.primary, lambda data: data.update(history=[]))
+    git(trial.primary, 'config', '--unset', 'branch.trial.description')
     with pytest.raises(Denied):
         archive(trial)
 

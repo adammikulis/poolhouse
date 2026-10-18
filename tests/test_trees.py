@@ -1,4 +1,4 @@
-"""The worktree registry, the orphan rule, close/sweep and the notices, on real git repositories."""
+"""Worktrees as git states them, on real repositories: landed or work, close and sweep."""
 
 from __future__ import annotations
 
@@ -8,14 +8,16 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
 import pytest
 
-from poolhouse import trees, trees_notice
+from poolhouse import trees
+from poolhouse.serve.process import working_directories
 
 REPO = Path(__file__).resolve().parent.parent
-HOUR = 3600.0
 ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
+IGNORED = "__pycache__/\nbuild/\ndist/\n.pytest_cache/\n.coverage\n*.key\n"
 
 
 def git(where: Path, *args: str) -> str:
@@ -31,10 +33,12 @@ def commit(where: Path, name: str) -> None:
 
 
 def make_repo(tmp_path: Path) -> Path:
-    """A repository on branch dev with one commit."""
+    """A repository on branch dev with one commit and a .gitignore."""
     root = tmp_path / "main"
     root.mkdir()
     git(root, "init", "-q", "-b", "dev")
+    (root / ".gitignore").write_text(IGNORED)
+    git(root, "add", ".gitignore")
     commit(root, "base")
     return root
 
@@ -44,236 +48,339 @@ def main(tmp_path):
     return make_repo(tmp_path)
 
 
-def tree(main: Path, name: str, owner: str = "", now: float = 0.0) -> Path:
-    """A worktree beside the checkout, claimed by ``owner`` when given."""
+def tree(main: Path, name: str) -> Path:
+    """A worktree beside the checkout on a new branch of the same name."""
     path = main.parent / name
     git(main, "worktree", "add", "-q", "-b", name, str(path))
-    if owner:
-        trees.claim(main, path, owner, now, {"purpose": "test"})
     return path
 
 
-def status(main: Path, now: float) -> dict[str, str]:
-    return {Path(r["path"]).name: r["status"] for r in trees.rows(main, now)}
+LATER = 3600.0
+OLD = 2 * 86400.0
 
 
-def test_a_running_owners_clean_fresh_tree_is_never_swept(main):
-    path = tree(main, "fresh", owner="worker-a")
-    assert status(main, 10) == {"fresh": "active"}
-    assert trees.sweep(main, 10) == []
-    assert path.exists()
+def standing(main: Path) -> dict[str, dict]:
+    return {Path(r["path"]).name: r for r in trees.rows(main, time.time())}
 
 
-def test_a_finished_owner_with_commits_is_an_orphan_and_the_line_names_the_actions(main):
-    path = tree(main, "work", owner="worker-a")
+def sweep(main: Path, later: float = LATER) -> list[str]:
+    """The trees a sweep closes ``later`` seconds from now."""
+    closed, stayed = trees.sweep(main, time.time() + later, working_directories)
+    assert not stayed
+    return [Path(done["path"]).name for done in closed]
+
+
+def test_a_clean_tree_with_every_commit_in_development_is_landed(main):
+    tree(main, "fresh")
+    row = standing(main)["fresh"]
+    assert row["landed"] and row["unlanded"] == 0 and row["dirty"] == 0 and row["branch"] == "fresh"
+    assert not (main / ".git" / "poolhouse-trees.json").exists()
+
+
+def test_a_commit_development_lacks_makes_the_tree_work_until_development_holds_it(main):
+    path = tree(main, "work")
     commit(path, "f1")
-    debt = trees.finish(main, "worker-a", 100)
-    assert [Path(r["path"]).name for r in debt] == ["work"]
-    assert status(main, 200) == {"work": "waiting"}                 # just finished: waiting to land, not an orphan
-    assert "waiting to land" in trees.lines(main, 200)[0]
-    row = trees.orphans(trees.rows(main, 100 + 3 * HOUR))[0]
-    text = trees.line(row, 100 + 3 * HOUR)
-    for word in ("ORPHAN", "work", "unlanded=1", "dirty=0", "worker-a", "--landed", "--bundle", "--abandon"):
-        assert word in text
-    assert trees.sweep(main, 200) == []
+    row = standing(main)["work"]
+    assert not row["landed"] and row["unlanded"] == 1 and row["ahead"] == 1
+    assert sweep(main) == [] and path.exists()
+    git(main, "merge", "-q", "--ff-only", "work")
+    assert standing(main)["work"]["landed"]
+    assert sweep(main) == ["work"] and not path.exists()
+
+
+def test_a_commit_development_holds_as_a_patch_is_landed_and_close_says_the_branch_stayed(main):
+    path = tree(main, "picked")
+    commit(path, "f1")
+    commit(main, "advance")
+    git(main, "cherry-pick", "picked")
+    assert git(main, "merge-base", "dev", "picked") != git(main, "rev-parse", "picked")
+    assert standing(main)["picked"]["landed"]
+    done = trees.close(main, path, ("landed", ""))
+    assert not path.exists() and "branch_kept" in done
+    assert git(main, "branch", "--list", "picked")
+
+
+def test_a_merge_development_lacks_is_unlanded_even_when_every_patch_is_in(main):
+    other, merged = tree(main, "other"), tree(main, "merged")
+    commit(other, "f1")
+    git(main, "merge", "-q", "--ff-only", "other")
+    git(merged, "merge", "-q", "--no-ff", "-m", "merge", "other")
+    row = standing(main)["merged"]
+    assert row["unlanded"] == 1 and not row["landed"]
+    assert sweep(main) == ["other"] and merged.exists()
+
+
+@pytest.mark.parametrize("kind", ["modified", "staged", "untracked", "ignored-key", "nested-repo", "nested-repo-in-build"])
+def test_dirty_content_makes_the_tree_work_and_nothing_removes_it(main, kind):
+    path = tree(main, "held")
+    if kind == "modified":
+        (path / "base").write_text("changed")
+    elif kind == "staged":
+        (path / "new").write_text("new")
+        git(path, "add", "new")
+    elif kind == "untracked":
+        (path / "note").write_text("unsaved")
+    elif kind == "ignored-key":
+        (path / "private.key").write_text("secret")
+    elif kind == "nested-repo":
+        (path / "vendor").mkdir()
+        git(path / "vendor", "init", "-q")
+    else:
+        (path / "build" / "inner").mkdir(parents=True)
+        git(path / "build" / "inner", "init", "-q")
+    assert not standing(main)["held"]["landed"] and standing(main)["held"]["dirty"] >= 1
+    assert sweep(main) == []
+    for decision in (("landed", ""), ("bundle", "")):
+        with pytest.raises(trees.Refused):
+            trees.close(main, path, decision)
+    assert path.exists() and git(main, "branch", "--list", "held")
+
+
+def test_files_a_build_or_a_test_run_recreates_do_not_make_a_tree_work(main):
+    path = tree(main, "built")
+    for name in ("__pycache__/m.pyc", "src/__pycache__/n.pyc", "build/out.o", "dist/w.whl", ".pytest_cache/v", ".coverage"):
+        (path / name).parent.mkdir(parents=True, exist_ok=True)
+        (path / name).write_text("x")
+    row = standing(main)["built"]
+    assert row["landed"] and row["dirty"] == 0
+    assert sweep(main) == ["built"] and not path.exists()
+
+
+def test_an_unfinished_merge_keeps_the_tree(main):
+    path = tree(main, "merging")
+    other = tree(main, "rival")
+    commit(path, "same")
+    (other / "same").write_text("different")
+    git(other, "add", "same")
+    git(other, "commit", "-qm", "c", "--no-verify")
+    done = subprocess.run(["git", "-C", str(path), "merge", "rival"], env=ENV, capture_output=True, text=True, check=False)
+    assert done.returncode != 0
+    assert not standing(main)["merging"]["landed"] and sweep(main) == []
     assert path.exists()
 
 
-def test_a_landed_tree_whose_owner_stopped_is_swept(main):
-    path = tree(main, "done", owner="worker-a")
+def test_sweep_removes_a_landed_tree_and_its_branch_once_it_is_old(main):
+    path = tree(main, "done")
     commit(path, "f1")
     git(main, "merge", "-q", "--ff-only", "done")
-    trees.finish(main, "worker-a", 100)
-    assert status(main, 101) == {"done": "landed"}
-    swept = trees.sweep(main, 101)
-    assert [s["branch"] for s in swept] == ["done"]
-    assert not path.exists()
-    assert "done" not in git(main, "branch", "--format=%(refname:short)").split()
+    assert sweep(main, 0.0) == [] and path.exists()
+    assert sweep(main, OLD) == ["done"]
+    assert not path.exists() and not git(main, "branch", "--list", "done")
 
 
-def test_a_dirty_tree_refuses_close_landed_and_abandon_needs_a_reason(main):
-    path = tree(main, "dirty", owner="worker-a")
+def test_sweep_keeps_a_young_landed_tree(main):
+    path = tree(main, "young")
+    assert sweep(main, 0.0) == [] and path.exists()
+    assert sweep(main, trees.MIN_AGE_S - 60) == [] and path.exists()
+    assert sweep(main, trees.MIN_AGE_S + 60) == ["young"]
+
+
+def test_sweep_keeps_locked_trees_integration_trees_and_work(main):
+    locked, work = tree(main, "locked"), tree(main, "work")
+    git(main, "worktree", "add", "-q", "-b", "land/batch", str(main.parent / "batch"))
+    batch = main.parent / "batch"
+    git(main, "worktree", "lock", "--reason", "foreign operation", str(locked))
+    commit(work, "f1")
+    assert sweep(main) == []
+    assert locked.exists() and work.exists() and batch.exists()
+
+
+def test_sweep_removes_a_detached_landed_tree(main):
+    path = main.parent / "loose"
+    git(main, "worktree", "add", "-q", "--detach", str(path))
+    assert standing(main)["loose"]["branch"] == "(detached)"
+    assert sweep(main) == ["loose"] and not path.exists()
+
+
+def test_sweep_reports_a_landed_tree_it_could_not_remove(main, monkeypatch):
+    path = tree(main, "stuck")
+    original = trees.git
+
+    def failing(root, *args):
+        if args[:2] == ("worktree", "remove"):
+            raise RuntimeError("git worktree remove failed (exit 128): busy")
+        return original(root, *args)
+
+    monkeypatch.setattr(trees, "git", failing)
+    closed, stayed = trees.sweep(main, time.time() + LATER, working_directories)
+    assert closed == [] and stayed == [(str(path.resolve()), "git worktree remove failed (exit 128): busy")]
+    assert path.exists()
+
+
+def test_close_landed_refuses_work_and_names_the_other_ways(main):
+    path = tree(main, "work")
+    commit(path, "f1")
     (path / "scratch.txt").write_text("unsaved")
-    trees.finish(main, "worker-a", 100)
-    with pytest.raises(trees.Refused, match="dirty"):
-        trees.close(main, path, ("landed", ""), 101)
-    with pytest.raises(trees.Refused, match="reason"):
-        trees.close(main, path, ("abandon", " "), 101)
-    with pytest.raises(trees.Refused, match="dirty"):
-        trees.close(main, path, ("abandon", "scratch only"), 101)
+    with pytest.raises(trees.Refused, match=r"1 unlanded commits, 1 dirty files.*--bundle / --abandon"):
+        trees.close(main, path, ("landed", ""))
     assert (path / "scratch.txt").read_text() == "unsaved"
 
 
-def test_bundle_is_created_and_verified_before_the_tree_goes(main):
-    path = tree(main, "keep", owner="worker-a")
+def test_abandon_needs_a_reason_and_keeps_the_branch_with_it(main):
+    path = tree(main, "stale")
+    commit(path, "f1")
+    with pytest.raises(trees.Refused, match="reason"):
+        trees.close(main, path, ("abandon", " "))
+    done = trees.close(main, path, ("abandon", "superseded by another branch"))
+    assert not path.exists() and done["mode"] == "abandon"
+    assert git(main, "rev-parse", "stale") == done["head"]
+    assert git(main, "config", "branch.stale.description") == "abandoned: superseded by another branch"
+
+
+def test_abandon_will_not_drop_unlanded_commits_that_belong_to_no_branch(main):
+    path = main.parent / "loose"
+    git(main, "worktree", "add", "-q", "--detach", str(path))
+    commit(path, "f1")
+    with pytest.raises(trees.Refused, match="--bundle"):
+        trees.close(main, path, ("abandon", "why"))
+    assert path.exists()
+
+
+def test_the_bundle_is_created_and_verified_before_the_tree_goes(main):
+    path = tree(main, "keep")
     commit(path, "f1")
     head = git(path, "rev-parse", "HEAD")
-    trees.finish(main, "worker-a", 100)
-    done = trees.close(main, path, ("bundle", ""), 101)
+    done = trees.close(main, path, ("bundle", ""))
     assert not path.exists()
     bundle = Path(done["bundle"])
     git(main, "bundle", "verify", str(bundle))
     assert head in git(main, "bundle", "list-heads", str(bundle))
     assert git(main, "rev-parse", "keep") == head
+    assert git(main, "config", "branch.keep.description") == f"bundled: {bundle}"
+    assert not git(main, "for-each-ref", "refs/poolhouse")
+
+
+def test_a_bundle_that_does_not_hold_the_tip_leaves_the_tree_and_no_reference(main, monkeypatch):
+    path = tree(main, "unproven")
+    commit(path, "f1")
+    original = trees.git
+
+    def empty(root, *args):
+        return "" if args[:2] == ("bundle", "list-heads") else original(root, *args)
+
+    monkeypatch.setattr(trees, "git", empty)
+    with pytest.raises(trees.Refused, match="does not hold"):
+        trees.close(main, path, ("bundle", ""))
+    assert path.exists() and not git(main, "for-each-ref", "refs/poolhouse")
+
+
+def test_a_commit_made_while_the_bundle_was_written_keeps_the_tree(main, monkeypatch):
+    path = tree(main, "race")
+    commit(path, "first")
+    original = trees.bundle
+
+    def moved(primary, row, tip):
+        saved = original(primary, row, tip)
+        commit(path, "second")
+        return saved
+
+    monkeypatch.setattr(trees, "bundle", moved)
+    with pytest.raises(trees.Refused, match="changed HEAD"):
+        trees.close(main, path, ("bundle", ""))
+    assert path.exists() and git(main, "rev-parse", "race") == git(path, "rev-parse", "HEAD")
 
 
 def test_bundle_refuses_dirty_work_and_a_tree_with_nothing_to_bundle(main):
-    dirty = tree(main, "dirty", owner="a")
+    dirty, clean = tree(main, "dirty"), tree(main, "clean")
     commit(dirty, "f1")
     (dirty / "x").write_text("x")
-    clean = tree(main, "clean", owner="b")
-    trees.finish(main, "a", 100)
-    trees.finish(main, "b", 100)
     with pytest.raises(trees.Refused, match="dirty"):
-        trees.close(main, dirty, ("bundle", ""), 101)
+        trees.close(main, dirty, ("bundle", ""))
     with pytest.raises(trees.Refused, match="no unlanded"):
-        trees.close(main, clean, ("bundle", ""), 101)
-    assert dirty.exists()
+        trees.close(main, clean, ("bundle", ""))
+    assert dirty.exists() and clean.exists()
 
 
-def test_close_refuses_an_active_owners_tree_unless_the_owner_asks(main):
-    path = tree(main, "live", owner="worker-a")
-    with pytest.raises(trees.Refused, match="still active"):
-        trees.close(main, path, ("landed", ""), 10, caller="the-lead")
+def test_close_never_removes_the_primary_checkout_or_the_tree_it_runs_in(main, monkeypatch):
+    path = tree(main, "inside")
+    with pytest.raises(trees.Refused, match="outside the tree"):
+        trees.close(main, main, ("abandon", "why"))
+    monkeypatch.chdir(path)
+    with pytest.raises(trees.Refused, match="outside the tree"):
+        trees.close(main, path, ("landed", ""))
     assert path.exists()
-    trees.close(main, path, ("landed", ""), 10, caller="worker-a")
-    assert not path.exists()
 
 
-def test_close_refuses_the_primary_checkout(main):
-    with pytest.raises(trees.Refused):
-        trees.close(main, main, ("abandon", "why"), 1)
+def test_close_refuses_a_path_that_is_not_a_worktree(main, tmp_path):
+    with pytest.raises(trees.Refused, match="not a worktree"):
+        trees.close(main, tmp_path, ("landed", ""))
 
 
-def test_scan_claims_trees_made_by_hand_as_unknown_and_they_age_into_orphans(main):
-    path = main.parent / "byhand"
-    git(main, "worktree", "add", "-q", "-b", "byhand", str(path))
-    commit(path, "f1")
-    assert trees.rows(main, 0)[0]["owner"] == trees.UNKNOWN
-    assert status(main, 10) == {"byhand": "active"}
-    assert status(main, 2 * HOUR) == {"byhand": "waiting"}
-    assert status(main, 4 * HOUR) == {"byhand": "orphan"}
-    claimed = trees.scan(main, 3, ("claimant", path))
-    assert claimed["trees"][str(path.resolve())]["owner"] == "claimant"
+def test_close_preserves_a_locked_tree(main):
+    path = tree(main, "locked")
+    git(main, "worktree", "lock", "--reason", "foreign operation", str(path))
+    with pytest.raises(RuntimeError):
+        trees.close(main, path, ("landed", ""))
+    assert path.exists() and git(main, "branch", "--list", "locked")
 
 
-def test_scan_drops_a_tree_that_is_gone(main):
-    path = tree(main, "gone", owner="a")
-    git(main, "worktree", "remove", "--force", str(path))
-    assert trees.scan(main, 1)["trees"] == {}
+def test_close_uses_nonforce_remove_and_checks_the_tree_is_gone(main, monkeypatch):
+    path = tree(main, "remove")
+    original = trees.git
+    calls = []
+
+    def refuse(root, *args):
+        calls.append(args)
+        if args[:2] == ("worktree", "remove"):
+            assert "--force" not in args
+            return ""
+        return original(root, *args)
+
+    monkeypatch.setattr(trees, "git", refuse)
+    with pytest.raises(trees.Refused, match="remains"):
+        trees.close(main, path, ("landed", ""))
+    assert path.exists() and not any("-D" in call for call in calls)
 
 
-def test_an_owner_whose_process_has_ended_is_stopped_and_one_whose_process_runs_is_not(main):
-    gone = tree(main, "gone", owner="a")
-    commit(gone, "f1")
-    running = tree(main, "running", owner="b")
-    done = subprocess.Popen([sys.executable, "-c", "pass"])
-    done.wait()
-    trees.claim(main, gone, "a", 5, {"pid": done.pid})
-    trees.claim(main, running, "b", 5, {"pid": os.getpid()})
-    assert status(main, 6) == {"gone": "waiting", "running": "active"}
+def test_rebuildable_caches_allow_a_normal_landed_close(main, monkeypatch):
+    path = tree(main, "cached")
+    (path / "__pycache__").mkdir()
+    (path / "__pycache__" / "cache.pyc").write_bytes(b"cache")
+    original = trees.git
+    calls = []
+
+    def checked(root, *args):
+        calls.append(args)
+        assert "--force" not in args and "-D" not in args
+        return original(root, *args)
+
+    monkeypatch.setattr(trees, "git", checked)
+    assert trees.close(main, path, ("landed", ""))["mode"] == "landed"
+    assert ("branch", "-d", "cached") in calls and not path.exists()
 
 
-def test_orphans_are_counted_only_past_the_grace(main):
-    path = tree(main, "late", owner="a")
-    commit(path, "f1")
-    trees.finish(main, "a", 1)
-    pol = trees.current_policy(main)
-    assert pol["grace_h"] == 2.0
-    assert trees.past_grace(trees.rows(main, HOUR), pol, HOUR) == []
-    assert trees.orphans(trees.rows(main, HOUR)) == [] and len(trees.waiting(trees.rows(main, HOUR))) == 1
-    assert len(trees.past_grace(trees.rows(main, 2 * HOUR + 2), pol, 2 * HOUR + 2)) == 1
+def run(main: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(REPO / "scripts" / "worktrees"), *args], cwd=main, env=ENV, text=True,
+                          capture_output=True, check=False)
 
 
-def test_the_owner_owes_a_late_orphan_and_the_grace_comes_from_the_environment(main, monkeypatch):
-    path = tree(main, "late", owner="a")
-    commit(path, "f1")
-    trees.finish(main, "a", 1.0)
-    assert [Path(r["path"]).name for r in trees.owing(main, "a", time.time())] == ["late"]    # stopped long ago by the real clock
-    assert trees.owing(main, "b", time.time()) == []
-    monkeypatch.setenv("POOLHOUSE_TREES_GRACE_H", "1e9")
-    assert trees.owing(main, "a", time.time()) == []
+def test_the_script_lists_work_and_landed_trees(main):
+    work = tree(main, "work")
+    commit(work, "f1")
+    (work / "note").write_text("x")
+    tree(main, "fresh")
+    out = run(main)
+    assert out.returncode == 0, out.stderr
+    assert "work  +1 -0" in out.stdout and "[work unlanded=1 dirty=1]" in out.stdout
+    assert "[landed unlanded=0 dirty=0]" in out.stdout
 
 
-@pytest.mark.parametrize("commits,expect", [(9, False), (10, True)])
-def test_ahead_notice_fires_at_the_threshold(main, commits, expect):
-    path = tree(main, "big", owner="a", now=0)
-    for i in range(commits):
-        commit(path, f"f{i}")
-    assert bool(trees_notice.notify(main, 10)) is expect
+def test_the_script_reports_an_unreadable_tree_and_exits_1(main):
+    broken = tree(main, "broken")
+    tree(main, "fine")
+    (broken / ".git").write_text("not a gitdir pointer")
+    out = run(main)
+    assert out.returncode == 1 and "unreadable:" in out.stdout and "[landed unlanded=0 dirty=0]" in out.stdout
 
 
-def test_a_fresh_tree_under_the_thresholds_never_notifies(main):
-    tree(main, "fresh", owner="a")
-    for now in (1, HOUR, 3 * HOUR):
-        assert trees_notice.notify(main, now) == []
-
-
-def test_behind_and_age_thresholds_and_policy_overrides(main, monkeypatch):
-    start = time.time()          # commit ages are real timestamps, so the clock here is real too
-    path = tree(main, "old", owner="a", now=start)
-    commit(path, "mine")
-    for i in range(21):
-        commit(main, f"m{i}")
-    assert trees_notice.notify(main, start + 60)[0].keys == ["behind"]
-    assert trees_notice.notify(main, start + 5 * HOUR)[0].keys == ["age"]       # behind is unchanged: not told again
-    monkeypatch.setenv("POOLHOUSE_TREES_MAX_BEHIND", "100")
-    monkeypatch.setenv("POOLHOUSE_TREES_MAX_AGE_H", "100")
-    later = trees_notice.notify(main, start + 8 * HOUR)       # still inside the owner's 12 hour sign of life
-    assert later == []
-
-
-def test_notices_are_rate_limited_to_one_per_interval(main):
-    path = tree(main, "big", owner="a", now=0)
-    for i in range(10):
-        commit(path, f"f{i}")
-    assert len(trees_notice.notify(main, 100)) == 1
-    assert trees_notice.notify(main, 100 + 29 * 60) == []
-    commit(path, "more")
-    assert trees_notice.notify(main, 100 + 31 * 60)[0].keys == ["ahead"]       # changed, and the interval passed
-    commit(path, "again")
-    assert trees_notice.notify(main, 100 + 32 * 60) == []                      # changed but inside the interval
-
-
-def test_routing_owner_first_then_the_coordinator_when_silent_or_stopped(main):
-    trees.set_lead(main, "lead")
-    path = tree(main, "big", owner="a", now=0)
-    for i in range(10):
-        commit(path, f"f{i}")
-    assert trees_notice.notify(main, 100)[0].to == ["a"]
-    assert trees_notice.notify(main, 100 + 31 * 60)[0].to == ["lead"]         # unchanged, owner silent: escalate once
-    assert trees_notice.notify(main, 100 + 90 * 60) == []                      # and then nothing, unchanged
-    trees.finish(main, "a", 4000)
-    assert trees_notice.notify(main, 4000 + 31 * 60)[0].to == ["lead"]
-
-
-def test_a_finished_tree_is_told_as_waiting_to_land_at_once_and_as_an_orphan_after_the_grace(main):
-    trees.set_lead(main, "lead")
-    path = tree(main, "stale", owner="a", now=0)
-    commit(path, "f1")
-    trees.finish(main, "a", 10)
-    notes = trees_notice.notify(main, 11)
-    assert notes[0].keys == ["waiting"] and notes[0].to == ["lead"]
-    assert "waiting to land" in notes[0].text and "ORPHAN" not in notes[0].text
-    late = trees_notice.notify(main, 10 + 3 * HOUR)
-    assert late[0].keys == ["orphan"] and "ORPHAN" in late[0].text
-
-
-def test_the_report_exits_one_on_an_orphan_and_close_runs_through_the_script(main):
-    path = tree(main, "stale", owner="a")
-    commit(path, "f1")
-    trees.finish(main, "a", 1)
-    script = str(REPO / "scripts" / "worktrees")
-    env = {**ENV, "PYTHONPATH": str(REPO / "src")}
-
-    def run(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run([sys.executable, script, *args], cwd=main, env=env, text=True,
-                              capture_output=True, check=False)
-
-    report = run()
-    assert report.returncode == 1 and "ORPHAN stale" in report.stdout
-    assert run("close", str(path), "--landed").returncode == 2 and path.exists()
-    assert run("close", str(path), "--abandon", "test").returncode == 0 and not path.exists()
+def test_the_script_closes_and_sweeps(main):
+    work, done = tree(main, "work"), tree(main, "done")
+    commit(work, "f1")
+    assert run(main, "close", str(work), "--landed").returncode == 2 and work.exists()
+    assert run(main, "close", str(work), "--abandon", "test").returncode == 0 and not work.exists()
+    assert run(main, "sweep").stdout == "" and done.exists()
+    out = run(main, "sweep", "--min-age", "0")
+    assert out.returncode == 0 and "swept" in out.stdout and not done.exists()
 
 
 @pytest.mark.parametrize("name", ["-evil", "--git-dir=x", "a b", "line\nfeed", "quote'\"", "$(touch x)"])
@@ -287,73 +394,148 @@ def test_a_tree_named_like_an_option_or_a_command_is_only_a_path_to_git(tmp_path
     assert not (tmp_path / "x").exists()
 
 
-@pytest.mark.parametrize("kind", ["ignored", "untracked", "locked"])
-def test_close_preserves_unaccounted_contents_and_locks(main, kind):
-    path = tree(main, "preserve", owner="worker-a")
-    trees.finish(main, "worker-a", 100)
-    if kind == "ignored":
-        git(main, "config", "core.excludesFile", str(main.parent / "ignore"))
-        (main.parent / "ignore").write_text("private-artifact\n")
-        (path / "private-artifact").write_text("unique")
-    elif kind == "untracked":
-        (path / "untracked").write_text("unique")
+HIDING = ["--assume-unchanged", "--skip-worktree"]
+
+
+@pytest.mark.parametrize("flag", HIDING)
+@pytest.mark.parametrize("edit", ["modified", "deleted"])
+def test_an_edit_the_index_hides_still_makes_the_tree_work_and_nothing_removes_it(main, flag, edit):
+    path = tree(main, "hidden")
+    git(path, "update-index", flag, "base")
+    if edit == "modified":
+        (path / "base").write_text("unsaved edit")
     else:
-        git(main, "worktree", "lock", "--reason", "foreign operation", str(path))
-    with pytest.raises((trees.Refused, RuntimeError)):
-        trees.close(main, path, ("abandon", "obsolete"), 101)
-    assert path.exists()
-    assert not trees.recorded(main).get("history")
-    assert git(main, "rev-parse", "preserve")
+        (path / "base").unlink()
+    assert git(path, "status", "--porcelain") == ""
+    row = standing(main)["hidden"]
+    assert not row["landed"] and row["dirty"] == 1
+    assert sweep(main, OLD) == []
+    for decision in (("landed", ""), ("bundle", "")):
+        with pytest.raises(trees.Refused):
+            trees.close(main, path, decision)
+    assert path.exists() and git(main, "branch", "--list", "hidden")
+    assert (path / "base").exists() == (edit == "modified")
 
 
-def test_close_uses_nonforce_remove_and_records_only_actual_absence(main, monkeypatch):
-    path = tree(main, "remove", owner="worker-a")
-    trees.finish(main, "worker-a", 100)
-    original = trees.git
-    calls = []
-    def refuse(root, *args):
-        calls.append(args)
-        if args[:2] == ("worktree", "remove"):
-            assert "--force" not in args
-            return ""  # removal that did not actually remove anything
-        return original(root, *args)
-    monkeypatch.setattr(trees, "git", refuse)
-    with pytest.raises(trees.Refused, match="remains"):
-        trees.close(main, path, ("landed", ""), 101)
-    assert path.exists() and not trees.recorded(main).get("history")
-    assert not any("-D" in call for call in calls)
+def test_an_intent_to_add_file_makes_the_tree_work(main):
+    # exempt: git status already lists an intent-to-add entry, so this holds on the code before the change too
+    path = tree(main, "intent")
+    (path / "new").write_text("n")
+    git(path, "add", "-N", "new")
+    assert not standing(main)["intent"]["landed"] and sweep(main, OLD) == [] and path.exists()
 
 
-def test_bundle_head_race_preserves_checkout_and_branch(main, monkeypatch):
-    path = tree(main, "race", owner="worker-a")
-    commit(path, "first")
-    trees.finish(main, "worker-a", 100)
-    original = trees._bundle
-    def moved(primary, row, dev):
-        saved = original(primary, row, dev)
-        commit(path, "second")
-        return saved
-    monkeypatch.setattr(trees, "_bundle", moved)
-    with pytest.raises(trees.Refused, match="changed HEAD"):
-        trees.close(main, path, ("bundle", ""), 101)
-    assert path.exists() and not trees.recorded(main).get("history")
-    assert git(main, "rev-parse", "race") == git(path, "rev-parse", "HEAD")
+def test_a_submodule_edit_hidden_by_the_ignore_setting_makes_the_tree_work(main, tmp_path):
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    git(inner, "init", "-q", "-b", "dev")
+    commit(inner, "x")
+    git(main, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(inner), "sub")
+    git(main, "commit", "-qm", "sub", "--no-verify")
+    path = tree(main, "withsub")
+    git(path, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "-q")
+    git(path, "config", "submodule.sub.ignore", "all")
+    (path / "sub" / "x").write_text("unsaved edit")
+    assert git(path, "status", "--porcelain") == ""
+    assert not standing(main)["withsub"]["landed"] and sweep(main, OLD) == []
+    assert (path / "sub" / "x").read_text() == "unsaved edit"
 
 
-def test_known_ignored_caches_allow_normal_landed_cleanup(main, monkeypatch):
-    path = tree(main, "cached", owner="worker-a")
-    git(main, "config", "core.excludesFile", str(main.parent / "ignore"))
-    (main.parent / "ignore").write_text("__pycache__/\n")
-    (path / "__pycache__").mkdir()
-    (path / "__pycache__" / "cache.pyc").write_bytes(b"cache")
-    trees.finish(main, "worker-a", 100)
-    original = trees.git
-    calls = []
-    def checked(root, *args):
-        calls.append(args)
-        assert "--force" not in args and "-D" not in args
-        return original(root, *args)
-    monkeypatch.setattr(trees, "git", checked)
-    assert trees.close(main, path, ("landed", ""), 101)["mode"] == "landed"
-    assert ("branch", "-d", "cached") in calls
-    assert not path.exists()
+def test_sweep_leaves_a_tree_a_live_process_is_working_in(main):
+    busy, idle = tree(main, "busy"), tree(main, "idle")
+    (busy / "deep").mkdir()
+    process = subprocess.Popen(["sleep", "60"], cwd=busy / "deep")
+    try:
+        assert sweep(main, OLD) == ["idle"]
+        assert busy.exists() and not idle.exists() and git(main, "branch", "--list", "busy")
+    finally:
+        process.kill()
+        process.wait()
+    assert sweep(main, OLD) == ["busy"]
+
+
+def test_sweep_leaves_every_tree_while_a_process_of_this_user_hides_its_directory(main, monkeypatch):
+    path = tree(main, "hidden")
+    process = subprocess.Popen(["sleep", "60"], cwd=path)
+    real = psutil.Process.cwd
+
+    def cwd(self):
+        if self.pid == process.pid:
+            raise psutil.AccessDenied(self.pid)
+        return real(self)
+
+    monkeypatch.setattr(psutil.Process, "cwd", cwd)
+    try:
+        assert None in working_directories()
+        closed, stayed = trees.sweep(main, time.time() + OLD, working_directories)
+        assert closed == [] and stayed == [] and path.exists()
+    finally:
+        process.kill()
+        process.wait()
+
+
+def test_sweep_removes_a_young_tree_and_keeps_its_branch(main):
+    path = tree(main, "fresh")
+    closed, stayed = trees.sweep(main, time.time() + LATER, working_directories)
+    assert not stayed and not path.exists()
+    assert "day" in closed[0]["branch_kept"] and git(main, "branch", "--list", "fresh")
+    again = tree(main, "older")
+    closed, _ = trees.sweep(main, time.time() + OLD, working_directories)
+    assert "branch_kept" not in closed[0] and not git(main, "branch", "--list", "older") and not again.exists()
+
+
+def test_one_unreadable_tree_is_reported_and_the_rest_are_listed(main):
+    broken, fine = tree(main, "broken"), tree(main, "fine")
+    (broken / ".git").write_text("not a gitdir pointer")
+    found = standing(main)
+    assert found["fine"]["landed"] and "unreadable" not in found["fine"]
+    row = found["broken"]
+    assert not row["landed"] and row["unreadable"] and row["branch"] == "broken" and row["path"] == str(broken.resolve())
+    assert sweep(main, OLD) == ["fine"] and broken.exists() and fine.parent == broken.parent
+
+
+@pytest.mark.parametrize("kind", ["modified", "staged", "untracked", "ignored-key", "nested-repo", "hidden"])
+def test_abandon_removes_a_dirty_tree_after_writing_what_it_held_next_to_the_bundles(main, kind):
+    path = tree(main, "held")
+    if kind == "modified":
+        (path / "base").write_text("changed text")
+    elif kind == "staged":
+        (path / "new").write_text("new text")
+        git(path, "add", "new")
+    elif kind == "untracked":
+        (path / "note").write_text("unsaved text")
+    elif kind == "ignored-key":
+        (path / "private.key").write_text("secret text")
+    elif kind == "nested-repo":
+        (path / "vendor").mkdir()
+        git(path / "vendor", "init", "-q")
+        (path / "vendor" / "inner").write_text("inner text")
+    else:
+        git(path, "update-index", "--assume-unchanged", "base")
+        (path / "base").write_text("hidden text")
+    done = trees.close(main, path, ("abandon", "not wanted"))
+    assert not path.exists() and git(main, "config", "branch.held.description") == "abandoned: not wanted"
+    saved = [Path(name) for name in done["salvage"]]
+    assert saved and all(p.exists() and p.parent.name == "poolhouse-bundles" for p in saved)
+    blob = b"".join(p.read_bytes() for p in saved)
+    assert {"modified": b"changed text", "staged": b"new text", "untracked": b"unsaved text",
+            "ignored-key": b"secret text", "nested-repo": b"inner text", "hidden": b"hidden text"}[kind] in blob
+
+
+def test_abandon_of_a_clean_tree_writes_nothing(main):
+    path = tree(main, "clean")
+    assert trees.close(main, path, ("abandon", "why"))["salvage"] == []
+    assert not (Path(git(main, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "poolhouse-bundles").exists()
+
+
+def test_abandon_keeps_the_tree_when_what_it_held_cannot_be_written(main, monkeypatch):
+    path = tree(main, "unsaved")
+    (path / "note").write_text("unsaved text")
+
+    def refuse(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(trees.tarfile, "open", refuse)
+    with pytest.raises(trees.Refused, match="disk full"):
+        trees.close(main, path, ("abandon", "why"))
+    assert (path / "note").read_text() == "unsaved text"

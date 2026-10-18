@@ -1,355 +1,134 @@
-"""Who owns each worktree, and which ones were forgotten.
+"""Worktrees as git states them: landed (clean, every commit in development) or work (anything else).
 
-Every worktree of a repository has an owner and a state in one registry file kept in the shared
-git directory (``poolhouse-trees.json``). A tree is *active* while its owner is alive and *landed*
-when its owner is gone and every commit is in the development branch with nothing dirty. A tree
-whose owner stopped and which still holds work is *waiting* (finished, waiting to land) for the
-grace, then an *orphan*. Both are shown at once; only the notices' escalation, the refusal of more
-work from the owner and the doctor's ``mend`` use the grace. ``close`` is the one removal path.
-
-Cost: one ``git worktree list`` and, per tree whose head or the development tip moved, three git
-calls cached in the registry; ``git status`` runs only for trees whose owner is not active. A
-registry that is locked, missing or garbled never stops anything: callers fail open.
+A work tree is never removed automatically. ``close`` removes one tree on a decision and ``sweep``
+removes the landed trees nobody has touched for ``MIN_AGE_S`` and no process is working in.
 """
 
 from __future__ import annotations
 
-import contextlib
-import copy
-import fnmatch
-import json
-import os
 import re
-import subprocess
+import tarfile
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from poolhouse import lock
-from poolhouse.files import read_json, write_json
+from poolhouse import gitstate
+from poolhouse.gitstate import Unsaved, git
 
-UNKNOWN = "unknown"
-DECIDED = ("bundled", "abandoned")
+WORKERS = 8
 PROTECTED = ("main", "master")
-LOCK_TIMEOUT = 2.0
-CACHES = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules"}
-BUILT = ("dist", "build", "packaging/build", "tests/support/vendor", "tests/_generated_*", ".build-venv", ".build-work",
-         ".venv", "app/target")
-"""The ignored files a removal may discard: cache folders at any depth, and the build outputs at these paths."""
-DEFAULTS = {"grace_h": 2.0, "claim_h": 1.0, "ttl_h": 12.0, "max_ahead": 10, "max_behind": 20,
-            "max_age_h": 4.0, "repeat_min": 30.0, "cap_per_hour": 6}
-ENVIRONMENT = {"grace_h": "POOLHOUSE_TREES_GRACE_H", "claim_h": "POOLHOUSE_TREES_CLAIM_H",
-               "ttl_h": "POOLHOUSE_TREES_TTL_H", "max_ahead": "POOLHOUSE_TREES_MAX_AHEAD",
-               "max_behind": "POOLHOUSE_TREES_MAX_BEHIND", "max_age_h": "POOLHOUSE_TREES_MAX_AGE_H",
-               "repeat_min": "POOLHOUSE_TREES_REPEAT_MIN", "cap_per_hour": "POOLHOUSE_TREES_CAP_PER_HOUR"}
-"""The policy: hours of grace before waiting becomes orphan, hours an unclaimed tree is assumed to
-have a live creator, hours without a sign of life before an owner with no process is taken to have
-stopped, the commits ahead, commits behind and hours with unlanded commits that raise a notice,
-the minutes between repeats of one notice and the most messages one recipient gets per hour. The
-environment variable that overrides each key is in ``ENVIRONMENT``; POOLHOUSE_TREES_LEAD names the
-coordinator."""
-
-
-def git(root: Path | str, *args: str) -> str:
-    """Stripped standard output of ``git -C root args``; a failure or a stall is a RuntimeError."""
-    try:
-        done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=False,
-                              timeout=20, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
-    except subprocess.TimeoutExpired as error:
-        raise RuntimeError(f"git {args[0]} did not answer in 20 seconds") from error
-    if done.returncode:
-        raise RuntimeError(f"git {args[0]} failed (exit {done.returncode}): {done.stderr.strip()[-500:]}")
-    return done.stdout.strip()
+MIN_AGE_S = 600.0
+BRANCH_MIN_AGE_S = 86400.0
+INTEGRATION = "land/"
+CLOSED = {"bundle": "bundled", "abandon": "abandoned"}
+MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply")
+ACTIVITY = ("HEAD", "index", "logs/HEAD")
 
 
 class Refused(Exception):
-    """A removal or decision the registry will not make."""
+    """A removal the tree's state does not allow."""
 
 
-def registry_path(root: Path | str) -> Path:
-    """The registry file, shared by every worktree of the repository holding ``root``."""
-    common = git(Path(root), "rev-parse", "--path-format=absolute", "--git-common-dir")
-    return Path(common) / "poolhouse-trees.json"
+@dataclass(frozen=True)
+class Tree:
+    """One entry of ``git worktree list``."""
+
+    path: Path
+    branch: str
+    head: str
+    locked: bool
 
 
-def listing(root: Path | str) -> list[tuple[Path, str, str]]:
-    """Every registered worktree as (path, branch, head); the first is the primary checkout."""
-    found, path, head, branch = [], "", "", ""
-    for line in [*git(Path(root), "worktree", "list", "--porcelain").splitlines(), ""]:
-        if line.startswith("worktree "):
-            path = line[9:]
-        elif line.startswith("HEAD "):
-            head = line[5:]
-        elif line.startswith("branch refs/heads/"):
-            branch = line[18:]
-        elif not line and path:
-            found.append((Path(path).resolve(), branch, head))
-            path, head, branch = "", "", ""
+def listing(root: Path | str) -> list[Tree]:
+    """Every registered worktree; the first is the primary checkout."""
+    found, fields = [], {}
+    for line in [*git(root, "worktree", "list", "--porcelain").splitlines(), ""]:
+        key, _, value = line.partition(" ")
+        if line:
+            fields[key] = value
+        elif fields:
+            found.append(Tree(Path(fields["worktree"]).resolve(), fields.get("branch", "").removeprefix("refs/heads/"),
+                              fields.get("HEAD", ""), "locked" in fields))
+            fields = {}
     return found
 
 
-def development(primary: Path) -> str:
-    """The branch the primary checkout is on, the development branch."""
-    return git(primary, "branch", "--show-current") or "HEAD"
+def dirt(path: Path) -> tuple[list[str], Unsaved]:
+    """The unfinished operations and the paths the tree's commit and index do not represent."""
+    operations = [m for m in MARKERS if (path / git(path, "rev-parse", "--git-path", m)).exists()]
+    return operations, gitstate.unsaved(path)
 
 
-def clean(data: Any) -> dict:
-    """A registry value made usable: a garbled or half-written file loses its owners, not its trees."""
-    data = data if isinstance(data, dict) else {}
-    data["trees"] = {k: v for k, v in data.get("trees", {}).items() if isinstance(v, dict)} \
-        if isinstance(data.get("trees"), dict) else {}
-    data["history"] = data["history"] if isinstance(data.get("history"), list) else []
-    for name in ("policy", "sent"):
-        data[name] = data[name] if isinstance(data.get(name), dict) else {}
-    return data
+def removal_content(path: Path) -> str:
+    """The tree's HEAD, or Refused when anything in it would be lost by removing it."""
+    operations, unsaved = dirt(path)
+    if operations:
+        raise Refused(f"{path} has an unfinished {operations[0]} operation")
+    if unsaved.changed:
+        raise Refused(f"{path} has dirty tracked or untracked files; preserve them before cleanup")
+    if unsaved.hidden:
+        raise Refused(f"{path} has edits its index hides (assume-unchanged or skip-worktree): {unsaved.hidden[:5]}")
+    if unsaved.ignored:
+        raise Refused(f"{path} contains ignored files requiring preservation: {unsaved.ignored[:5]}")
+    return git(path, "rev-parse", "HEAD")
 
 
-def recorded(root: Path | str) -> dict:
-    """The registry as saved, without scanning or writing anything."""
-    return clean(read_json(registry_path(root), {}))
+def unlanded(path: Path, tip: str, ref: str) -> int:
+    """Commits of ``ref`` that development lacks: patches it does not hold, and merges it does not contain."""
+    plus = sum(1 for line in git(path, "cherry", tip, ref).splitlines() if line.startswith("+"))
+    return plus + int(git(path, "rev-list", "--merges", "--count", f"{tip}..{ref}"))
 
 
-def update(root: Path | str, change: Callable[[dict], Any]) -> Any:
-    """Apply ``change`` to the registry under its lock and save it if it changed.
-
-    Waits at most ``LOCK_TIMEOUT`` seconds for the lock (raises `lock.Busy`); the write replaces
-    the file atomically; a garbled file is read as empty and rebuilt by the next scan.
-    """
-    path = registry_path(root)
-    with lock.rewriting(path, timeout=LOCK_TIMEOUT):
-        data = clean(read_json(path, {}))
-        before = json.dumps(data, sort_keys=True)
-        result = change(data)
-        if json.dumps(data, sort_keys=True) != before:
-            write_json(path, data)
-    return result
+def standing(tree: Tree, tip: str, now: float) -> dict:
+    """One tree against the development tip: unlanded commits, dirty paths, ahead and behind, age of its newest commit."""
+    behind, ahead = (int(x) for x in git(tree.path, "rev-list", "--left-right", "--count", f"{tip}...{tree.head}").split())
+    operations, unsaved = dirt(tree.path)
+    held, count = unlanded(tree.path, tip, tree.head), len(operations) + unsaved.total
+    stamp = int(git(tree.path, "show", "-s", "--format=%ct", tree.head))
+    return {"path": str(tree.path), "branch": tree.branch or "(detached)", "head": tree.head, "locked": tree.locked,
+            "landed": not held and not count, "unlanded": held, "dirty": count, "ahead": ahead, "behind": behind,
+            "tip_age_d": max(0.0, (now - stamp) / 86400)}
 
 
-def policy(data: dict) -> dict:
-    """The thresholds: defaults, then the registry's own, then the environment."""
-    merged = {**DEFAULTS, **{k: v for k, v in data.get("policy", {}).items() if k in DEFAULTS}}
-    for key, name in ENVIRONMENT.items():
-        text = os.environ.get(name, "")
-        if text:
-            try:
-                merged[key] = float(text)
-            except ValueError:
-                continue
-    return merged
+def _read(tree: Tree, tip: str, now: float) -> dict:
+    """``standing`` of one tree, or a work row saying why git could not be read there."""
+    try:
+        return standing(tree, tip, now)
+    except (RuntimeError, OSError, ValueError) as error:
+        return {"path": str(tree.path), "branch": tree.branch or "(detached)", "head": tree.head, "locked": tree.locked,
+                "landed": False, "unlanded": 0, "dirty": 0, "ahead": 0, "behind": 0, "tip_age_d": 0.0,
+                "unreadable": str(error)}
 
 
-def current_policy(root: Path | str) -> dict:
-    """The policy in force for the repository holding ``root``."""
-    return policy(recorded(root))
-
-
-def set_lead(root: Path | str, name: str) -> None:
-    """Record the coordinator that escalations go to."""
-    update(root, lambda data: data.__setitem__("lead", name))
-
-
-def new_entry(owner: str, purpose: str, base: str, now: float, pid: int = 0) -> dict:
-    """A freshly created tree owned by ``owner``."""
-    return {"owner": owner, "purpose": purpose, "base": base, "created": now, "seen": now, "pid": pid,
-            "state": "active", "stopped": 0.0, "notified": {}, "kind": "work"}
-
-
-def window(entry: dict, pol: dict) -> float:
-    """Seconds an owner with no process is taken to be alive after its last sign of life."""
-    return (pol["claim_h"] if entry["owner"] == UNKNOWN else pol["ttl_h"]) * 3600
-
-
-def owner_alive(entry: dict, now: float, pol: dict) -> bool:
-    """Whether the tree's owner is still running: its process when one is recorded, else a recent sign of life."""
-    if entry["state"] != "active":
-        return False
-    if entry.get("pid"):
-        return lock.pid_alive(int(entry["pid"]))
-    return now - entry["seen"] < window(entry, pol)
-
-
-def facts(path: Path, head: str, tip: tuple[str, str], entry: dict) -> dict:
-    """Counts of ``head`` against the development tip; recomputed only when either moved."""
-    snap = entry.get("snap") or {}
-    if (snap.get("head") == head and snap.get("dev") == tip[1]
-            and snap.get("unique") == snap.get("ahead")):
-        return snap
-    behind, ahead = (int(x) for x in git(path, "rev-list", "--left-right", "--count", f"{tip[1]}...{head}").split())
-    unique = ahead
-    stamps = git(path, "log", "--format=%ct", f"{tip[1]}..{head}").split() if unique else []
-    return {"head": head, "dev": tip[1], "ahead": ahead, "behind": behind, "unique": unique,
-            "oldest": min((int(s) for s in stamps), default=0),
-            "tip_ts": int(git(path, "show", "-s", "--format=%ct", head))}
-
-
-def standing(tree: tuple[Path, str, str], entry: dict, tip: tuple[str, str], clock: tuple[float, dict]) -> dict:
-    """One tree's standing: counts against the development branch, dirty files (asked only when the
-    owner is not active), owner and status."""
-    (path, branch, head), (now, pol) = tree, clock
-    snap = facts(path, head, tip, entry)
-    alive = owner_alive(entry, now, pol)
-    scratch = entry.get("kind") == "scratch"
-    dirty = 0 if alive else len([x for x in git(path, "status", "--porcelain").splitlines() if x])
-    landed = not snap["unique"] and not dirty
-    since = entry["stopped"] or entry["seen"] + window(entry, pol)
-    within = alive or now - since <= pol["grace_h"] * 3600
-    status = ("scratch" if scratch else "active" if alive else entry["state"] if entry["state"] in DECIDED
-              else "landed" if landed else "waiting" if within else "orphan")
-    return {"path": str(path), "branch": branch or "(detached)", "head": head, "owner": entry["owner"],
-            "purpose": entry["purpose"], "status": status, "alive": alive, "landed": landed,
-            "ahead": snap["ahead"], "behind": snap["behind"], "unlanded": snap["unique"], "dirty": dirty,
-            "since": since, "unlanded_age_h": max(0.0, (now - snap["oldest"]) / 3600) if snap["unique"] else 0.0,
-            "age_h": max(0.0, (now - entry["created"]) / 3600), "tip_age_d": max(0.0, (now - snap["tip_ts"]) / 86400),
-            "snap": snap}
-
-
-def _apply(data: dict, live: dict, now: float, claimed: tuple[str, Path] | None) -> dict:
-    """Register unseen trees (owner unknown), complete half-written entries, drop trees git no longer
-    lists (kept in the history), mark owners whose process ended as stopped and refresh ``claimed``."""
-    owner, here = claimed or ("", None)
-    mine, pol = (str(here.resolve()) if here else ""), policy(data)
-    for path, (_p, _branch, head) in live.items():
-        entry = data["trees"].setdefault(path, new_entry(UNKNOWN, "", head, now))
-        for key, value in new_entry(UNKNOWN, "", head, now).items():
-            entry.setdefault(key, value)
-        if owner and path == mine and entry["state"] == "active" and entry["owner"] in (UNKNOWN, owner):
-            entry.update(owner=owner, seen=now)
-        if entry["state"] == "active" and entry.get("pid") and not owner_alive(entry, now, pol):
-            entry.update(state="finished", stopped=now)
-    for path in [p for p in data["trees"] if p not in live]:
-        gone = data["trees"].pop(path)
-        data["history"] = [*data["history"], {"path": path, "owner": gone.get("owner", UNKNOWN),
-                                              "mode": "removed-outside-the-tool", "at": now}][-100:]
-    return data
-
-
-def scan(root: Path | str, now: float, claimed: tuple[str, Path] | None = None) -> dict:
-    """Reconcile the registry with ``git worktree list`` and give ``claimed`` (owner, tree) its tree."""
-    live = {str(p): (p, b, h) for p, b, h in listing(root)[1:] if p.exists()}
-    return update(root, lambda data: _apply(data, live, now, claimed))
-
-
-def claim(root: Path | str, path: Path | str, owner: str, now: float, details: dict | None = None) -> None:
-    """Register the worktree at ``path`` as created by ``owner`` (harness, land, by hand).
-
-    ``details`` may hold the ``purpose``, the ``pid`` whose life stands for the owner's and a
-    ``kind`` (``scratch`` for a disposable tree that never counts).
-    """
-    extra = details or {}
-    target = str(Path(path).resolve())
-    found = next(((p, h) for p, _b, h in listing(root)[1:] if str(p) == target), None)
-    if found is None:
-        return
-    entry = new_entry(owner, extra.get("purpose", ""), found[1], now, int(extra.get("pid", 0)))
-    entry["kind"] = extra.get("kind", "work")
-    update(root, lambda data: data["trees"].__setitem__(target, entry))
-
-
-def finish(root: Path | str, owner: str, now: float) -> list[dict]:
-    """Mark every tree ``owner`` has as finished; returns the ones that still hold work."""
-    def change(data: dict) -> None:
-        for entry in data["trees"].values():
-            if entry.get("owner") == owner and entry.get("state") == "active":
-                entry.update(state="finished", stopped=now)
-
-    scan(root, now)
-    update(root, change)
-    return [r for r in rows(root, now) if r["owner"] == owner and r["status"] in ("waiting", "orphan")]
-
-
-def rows(root: Path | str, now: float, claimed: tuple[str, Path] | None = None, only: Path | None = None) -> list[dict]:
-    """The standing of every tree other than the primary checkout, oldest first; of just ``only`` when given.
-
-    Git is asked outside the lock; the registry is then reconciled and the cached counts saved
-    best effort, so a locked registry still answers.
-    """
+def rows(root: Path | str, now: float, target: str = "") -> list[dict]:
+    """The standing of every tree other than the primary checkout, against ``target`` or the development branch."""
     found = listing(root)
-    tip = (found[0][1] or "HEAD", found[0][2])
-    live = {str(p): (p, b, h) for p, b, h in found[1:] if p.exists()}
-    data = _apply(copy.deepcopy(recorded(root)), live, now, claimed)
-    pol = policy(data)
-    done = [standing(live[path], data["trees"][path], tip, (now, pol)) for path in live
-            if only is None or live[path][0] == only.resolve()]
-
-    def save(fresh: dict) -> None:
-        _apply(fresh, live, now, claimed)
-        for row in done:
-            fresh["trees"][row["path"]]["snap"] = row["snap"]
-
-    with contextlib.suppress(lock.Busy, OSError):
-        update(root, save)
-    return sorted(done, key=lambda r: data["trees"][r["path"]]["created"])
+    with ThreadPoolExecutor(WORKERS) as pool:
+        return list(pool.map(lambda tree: _read(tree, target or found[0].head, now),
+                             [tree for tree in found[1:] if tree.path.exists()]))
 
 
-def orphans(found: list[dict]) -> list[dict]:
-    """The rows whose owner stopped longer than the grace ago with work nobody decided about."""
-    return [r for r in found if r["status"] == "orphan"]
+def touched(path: Path) -> float:
+    """When the tree's directory, HEAD, index or HEAD log last changed."""
+    gitdir = Path(git(path, "rev-parse", "--absolute-git-dir"))
+    return max(p.stat().st_mtime for p in (path, *(gitdir / name for name in ACTIVITY)) if p.exists())
 
 
-def waiting(found: list[dict]) -> list[dict]:
-    """The rows whose owner stopped within the grace: finished, waiting to land."""
-    return [r for r in found if r["status"] == "waiting" and not r["alive"]]
-
-
-def past_grace(found: list[dict], pol: dict, now: float) -> list[dict]:
-    """The orphans whose owner stopped longer than the grace ago."""
-    return [r for r in orphans(found) if now - r["since"] > pol["grace_h"] * 3600]
-
-
-def owing(root: Path | str, owner: str, now: float, keep: str = "") -> list[dict]:
-    """The orphans past the grace that ``owner`` owns, leaving out the tree on branch ``keep``."""
-    data = recorded(root)
-    mine = [Path(p) for p, entry in data["trees"].items() if owner and entry.get("owner") == owner]
-    found = [r for path in mine if path.exists() for r in rows(root, now, only=path)]
-    return [r for r in past_grace(found, policy(data), now) if r["branch"] != keep]
-
-
-def refusal(owner: str, late: list[dict], limit: int = 8) -> str:
-    """The sentence that stops ``owner`` starting more work while ``late`` trees wait for a decision, with each close command; empty when none."""
-    if not late:
-        return ""
-    shown = "; ".join(f"{r['branch']}: {suggested(r)}" for r in late[:limit])
-    more = f"; and {len(late) - limit} more" if len(late) > limit else ""
-    return (f"{owner} owns {len(late)} worktree{'s' if len(late) > 1 else ''} with work nobody landed, bundled or "
-            f"abandoned, past the grace after the owner stopped. Decide {'each' if len(late) > 1 else 'it'} first: {shown}{more}")
-
-
-def line(row: dict, now: float) -> str:
-    """One tree as a line naming the tree, branch, work at stake, owner, age and the actions."""
-    hours = max(0.0, (now - row["since"]) / 3600)
-    label = "ORPHAN" if row["status"] == "orphan" else "FINISHED, waiting to land"
-    return (f"{label} {row['branch']} {row['path']} +{row['ahead']} unlanded={row['unlanded']} dirty={row['dirty']} "
-            f"owner={row['owner']} stopped {hours:.1f}h ago; scripts/worktrees close {row['path']} "
-            "--landed | --bundle | --abandon 'reason'")
-
-
-def suggested(row: dict) -> str:
-    """The exact close command that fits this tree: land-by-hand first, else bundle, else abandon."""
-    how = "--abandon 'reason'" if row["dirty"] else "--bundle" if row["unlanded"] else "--landed"
-    return f"scripts/worktrees close {row['path']} {how}"
-
-
-def lines(root: Path | str, now: float, limit: int = 8, found: list[dict] | None = None) -> list[str]:
-    """Lines for the trees needing a decision, at most ``limit`` and a count of the rest."""
-    found = rows(root, now) if found is None else found
-    found = [r for r in found if r["status"] in ("waiting", "orphan") and not r["alive"]]
-    out = [line(r, now) for r in found[:limit]]
-    return out + ([f"... and {len(found) - limit} more trees needing a decision"] if len(found) > limit else [])
-
-
-def _folder(primary: Path) -> Path:
-    folder = registry_path(primary).parent / "poolhouse-bundles"
+def _stem(primary: Path, row: dict) -> Path:
+    """The path, in the bundles folder of the repository, that names this tree's saved files; the folder is made."""
+    folder = Path(git(primary, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "poolhouse-bundles"
     folder.mkdir(exist_ok=True)
-    return folder
+    return folder / (re.sub(r"[^A-Za-z0-9._-]", "_", row["branch"]) + "-" + row["head"][:8])
 
 
-def _bundle(primary: Path, row: dict, dev: str) -> Path:
+def bundle(primary: Path, row: dict, tip: str) -> Path:
     """Write the tree's unlanded commits to a bundle and verify that it holds the tip."""
-    name = re.sub(r"[^A-Za-z0-9._-]", "_", row["branch"]) + "-" + row["head"][:8]
-    target, ref = _folder(primary) / (name + ".bundle"), "refs/poolhouse/bundle/" + row["head"][:12]
+    target = _stem(primary, row).with_suffix(".bundle")
+    ref = "refs/poolhouse/bundle/" + row["head"][:12]
     git(primary, "update-ref", ref, row["head"])
     try:
-        git(primary, "bundle", "create", str(target), f"{dev}..{ref}")
+        git(primary, "bundle", "create", str(target), f"{tip}..{ref}")
         git(primary, "bundle", "verify", str(target))
         if row["head"] not in git(primary, "bundle", "list-heads", str(target)):
             raise Refused(f"the bundle {target} does not hold {row['head'][:8]}")
@@ -358,49 +137,33 @@ def _bundle(primary: Path, row: dict, dev: str) -> Path:
     return target
 
 
-def rebuildable(name: str) -> bool:
-    """Whether the ignored file ``name`` is a cache or a build output that its project command makes again."""
-    parts = Path(name).parts
-    return (bool(CACHES & set(parts)) or parts[-1].startswith((".testmondata", ".coverage"))
-            or any(fnmatch.fnmatchcase("/".join(parts[:len(built.split("/"))]), built) for built in BUILT))
+def salvage(primary: Path, tree: Path, row: dict) -> list[Path]:
+    """Write the tree's uncommitted diff and every changed, untracked, hidden or ignored file to the bundles folder."""
+    unsaved = gitstate.unsaved(tree)
+    names = [*unsaved.changed, *unsaved.hidden, *unsaved.ignored]
+    stem, written = _stem(primary, row), []
+    try:
+        diff = gitstate.run(tree, "diff", "HEAD", "--binary")
+        if diff:
+            written.append(stem.with_suffix(".dirty.diff"))
+            written[-1].write_text(diff)
+        present = [name for name in names if (tree / name).is_symlink() or (tree / name).exists()]
+        if present:
+            written.append(stem.with_suffix(".dirty.tar"))
+            with tarfile.open(written[-1], "w") as archive:
+                for name in present:
+                    archive.add(tree / name, arcname=name)
+    except (OSError, tarfile.TarError, RuntimeError) as error:
+        raise Refused(f"{tree} has files that could not be saved before removal: {error}") from error
+    return written
 
 
-def removal_content(path: Path) -> str:
-    """Require clean tracked/untracked contents and only the established disposable caches."""
-    for marker in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
-        if (path / git(path, "rev-parse", "--git-path", marker)).exists():
-            raise Refused(f"{path} has an unfinished {marker} operation")
-    if git(path, "status", "--porcelain"):
-        raise Refused(f"{path} has dirty tracked or untracked files; preserve them before cleanup")
-    ignored = git(path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z").split("\0")
-    unknown = [name for name in ignored if name and not rebuildable(name)]
-    if unknown:
-        raise Refused(f"{path} contains ignored files requiring preservation: {unknown[:5]}")
-    return git(path, "rev-parse", "HEAD")
-
-
-def _remove(primary: Path, target: Path, row: dict, dev: str, mode: str) -> None:
-    """Recheck the exact contents, remove normally, then verify absence before recording success."""
-    if removal_content(target) != row["head"]:
-        raise Refused(f"{target} changed HEAD before cleanup")
-    if mode == "landed" and git(primary, "rev-list", "--count", row["head"], "--not", dev) != "0":
-        raise Refused(f"{target} has commits outside development")
-    git(primary, "worktree", "remove", str(target))
-    if target.exists() or any(path == target for path, _, _ in listing(primary)):
-        raise Refused(f"{target} remains after cleanup")
-    if mode == "landed" and row["branch"] not in ("(detached)", "", *PROTECTED, dev):
-        tip = git(primary, "rev-parse", row["branch"])
-        if git(primary, "rev-list", "--count", tip, "--not", dev) != "0":
-            raise Refused(f"{row['branch']} still has unique commits")
-        git(primary, "branch", "-d", row["branch"])
-
-
-def _check(row: dict, mode: str, reason: str, caller: str) -> None:
-    """Raise Refused unless this decision may be made about this tree."""
-    if row["alive"] and caller != row["owner"]:
-        raise Refused(f"{row['path']} belongs to {row['owner']}, who is still active")
+def _allowed(row: dict, mode: str, reason: str) -> None:
+    """Raise Refused unless ``mode`` may be applied to this tree."""
     if mode == "abandon" and not reason.strip():
         raise Refused("--abandon needs a reason")
+    if mode == "abandon" and row["branch"] == "(detached)" and row["unlanded"]:
+        raise Refused(f"{row['path']} has unlanded commits on no branch; use --bundle")
     if mode == "landed" and not row["landed"]:
         raise Refused(f"{row['path']} is not landed: {row['unlanded']} unlanded commits, {row['dirty']} dirty files; "
                       "land it, or --bundle / --abandon 'reason'")
@@ -410,60 +173,76 @@ def _check(row: dict, mode: str, reason: str, caller: str) -> None:
         raise Refused(f"{row['path']} has no unlanded commits to bundle; use --landed")
 
 
-def close(root: Path | str, path: Path | str, decision: tuple[str, str], now: float, caller: str = "") -> dict:
-    """Remove one tree on a recorded decision, (mode, reason): ``landed``, ``bundle`` or ``abandon``.
+def close(root: Path | str, path: Path | str, decision: tuple[str, str], keep_branch: str = "") -> dict:
+    """Remove one tree on a decision, (mode, reason): ``landed``, ``bundle`` or ``abandon``.
 
-    Refuses a tree whose owner is active (unless the owner itself asks), a landed claim that is
-    not true, a bundle that cannot be verified, an abandon with no reason, the primary checkout
-    and a tree the current directory is inside.
+    ``landed`` also deletes the branch, unless ``keep_branch`` gives a reason to keep it. ``bundle`` removes
+    the tree after a verified bundle holds its commits. ``abandon`` removes the tree after its uncommitted
+    changes are written next to the bundles. Both keep the branch and set its description to
+    ``bundled: PATH`` or ``abandoned: REASON``.
     """
     mode, reason = decision
-    target = Path(path).resolve()
-    primary = listing(root)[0][0]
-    here = Path.cwd().resolve()
-    if target in (primary, here) or target in here.parents:
+    target, here = Path(path).resolve(), Path.cwd().resolve()
+    found = listing(root)
+    primary = found[0]
+    if target == primary.path or target == here or target in here.parents:
         raise Refused("close runs from outside the tree and never on the primary checkout")
-    row = next((r for r in rows(root, now) if r["path"] == str(target)), None)
-    if row is None:
-        raise Refused(f"{target} is not a registered worktree (already removed? scripts/worktrees scan reconciles)")
-    _check(row, mode, reason, caller)
-    dev = development(primary)
-    if removal_content(target) != row["head"]:
+    tree = next((t for t in found[1:] if t.path == target), None)
+    if tree is None:
+        raise Refused(f"{target} is not a worktree of this repository")
+    row = standing(tree, primary.head, 0.0)
+    _allowed(row, mode, reason)
+    saved = bundle(primary.path, row, primary.head) if mode == "bundle" else ""
+    kept = salvage(primary.path, target, row) if mode == "abandon" and row["dirty"] else []
+    head = git(target, "rev-parse", "HEAD") if mode == "abandon" else removal_content(target)
+    if head != row["head"]:
         raise Refused(f"{target} changed HEAD before cleanup")
-    saved = _bundle(primary, row, dev) if mode == "bundle" else ""
-    _remove(primary, target, row, dev, mode)
-    done = {"path": str(target), "branch": row["branch"], "head": row["head"], "owner": row["owner"],
-            "mode": mode, "reason": reason, "at": now, "bundle": str(saved)}
-    update(root, lambda data: _forget(data, str(target), done))
+    git(primary.path, "worktree", "remove", *(["--force"] if kept else []), str(target))
+    if target.exists() or any(t.path == target for t in listing(primary.path)):
+        raise Refused(f"{target} remains after cleanup")
+    done = {"path": str(target), "branch": row["branch"], "head": row["head"], "mode": mode,
+            "reason": reason, "bundle": str(saved), "salvage": [str(p) for p in kept]}
+    if mode != "landed" and tree.branch:
+        git(primary.path, "config", f"branch.{tree.branch}.description", f"{CLOSED[mode]}: {saved or reason.strip()}")
+    elif keep_branch:
+        done["branch_kept"] = keep_branch
+    elif tree.branch and tree.branch not in (*PROTECTED, primary.branch):
+        try:
+            git(primary.path, "branch", "-d", tree.branch)
+        except RuntimeError as error:
+            done["branch_kept"] = str(error)
     return done
 
 
-def _forget(data: dict, path: str, done: dict) -> None:
-    """Drop a removed tree from the registry and keep the decision in the history."""
-    data["trees"].pop(path, None)
-    data["history"] = [*data["history"], done][-100:]
+def created(path: Path, branch: str) -> float:
+    """When the branch was created, from its oldest reflog entry; 0.0 when the reflog holds none."""
+    stamps = git(path, "reflog", "show", "--format=%ct", f"refs/heads/{branch}").split()
+    return float(stamps[-1]) if stamps else 0.0
 
 
-def sweep(root: Path | str, now: float) -> list[dict]:
-    """Remove every landed tree, and every clean scratch tree, whose owner is not active."""
-    found = [r for r in rows(root, now) if not r["alive"]]
-    done = [close(root, r["path"], ("landed", ""), now, "sweep") for r in found if r["status"] == "landed"]
-    return done + [close(root, r["path"], ("abandon", "scratch tree"), now, "sweep")
-                   for r in found if r["status"] == "scratch" and not r["dirty"]]
+def occupied(path: Path, directories: list[str | None]) -> bool:
+    """Whether any of the working ``directories`` is the tree or inside it; an unreadable one (``None``) may be."""
+    return any(d is None or d == str(path) or d.startswith(str(path) + "/") for d in directories)
 
 
-def mend(root: Path | str, now: float, say: Callable[[str], None] = print) -> list[dict]:
-    """Close the trees past the grace that need no decision: landed ones, and clean ones whose commits a bundle keeps.
+def sweep(root: Path | str, now: float, working: Callable[[], list[str | None]],
+          minimum: float = MIN_AGE_S) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Close every landed tree untouched for ``minimum`` seconds; the closed trees and (path, why) for those that stayed.
 
-    A dirty tree is left alone and nothing is abandoned.
+    ``working`` lists the working directory of every running process. Locked trees, the landing runner's
+    integration trees and trees a process is working in are left alone; a tree whose branch is less than
+    ``BRANCH_MIN_AGE_S`` old is removed and its branch kept.
     """
-    grace, done = current_policy(root)["grace_h"] * 3600, []
+    closed, stayed = [], []
     for row in rows(root, now):
-        if row["alive"] or row["dirty"] or row["status"] not in ("landed", "orphan") or now - row["since"] <= grace:
+        path = Path(row["path"])
+        if not row["landed"] or row["locked"] or row["branch"].startswith(INTEGRATION):
             continue
         try:
-            done.append(close(root, row["path"], ("bundle" if row["unlanded"] else "landed", ""), now, "doctor"))
-            say(f"queue doctor: closed {row['branch']} ({done[-1]['mode']}): {row['path']}")
-        except (Refused, RuntimeError) as error:
-            say(f"queue doctor: left {row['branch']}: {error}"[:300])
-    return done
+            if now - touched(path) < minimum or occupied(path, working()):
+                continue
+            young = row["branch"] != "(detached)" and now - created(path, row["branch"]) < BRANCH_MIN_AGE_S
+            closed.append(close(root, path, ("landed", ""), "the branch is less than a day old" if young else ""))
+        except (Refused, RuntimeError, OSError) as error:
+            stayed.append((row["path"], str(error)))
+    return closed, stayed

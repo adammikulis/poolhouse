@@ -13,7 +13,6 @@ from typing import Any
 
 from poolhouse import runtime_git
 from poolhouse.errors import Denied
-from poolhouse.files import read_json
 
 MAXIMUM_BUNDLE = 512 * 1024**2
 HEADER = 65536
@@ -47,15 +46,13 @@ def _published(scope: dict[str, Any], published: str) -> str:
     return published or remote
 
 
-def _history(scope: dict[str, Any]) -> dict[str, Any]:
-    primary = runtime_git.primary(Path(scope['primary']))
-    history = read_json(primary / '.git/poolhouse-trees.json', {}).get('history', [])
-    matches = [row for row in history
-               if row.get('path') == scope['path'] and row.get('mode') == 'bundle'
-               and row.get('head') in scope['commits'] and row.get('branch') in scope['branches']]
-    if not matches:
+def _closed(scope: dict[str, Any]) -> str:
+    """The scope's branch, once its description records a bundle close."""
+    branch = scope['branch']
+    note = runtime_git.git(Path(scope['primary']), 'config', '--get', f'branch.{branch}.description')
+    if branch not in scope['branches'] or not note.startswith('bundled: '):
         raise Denied('obsolete trial requires a maintained bundle-close record')
-    return matches[-1]
+    return branch
 
 
 def _identity(info: os.stat_result) -> tuple[int, ...]:
@@ -144,7 +141,7 @@ def proof(scope: dict[str, Any], bundle: str, published: str = '') -> dict[str, 
     try:
         _absent(scope)
         tip = _published(scope, published)
-        history = _history(scope)
+        branch = _closed(scope)
         primary, path = Path(scope['primary']), Path(bundle)
         version = runtime_git.git(primary, '--version')
         with tempfile.TemporaryDirectory(prefix='poolhouse-archive-') as temporary:
@@ -161,10 +158,11 @@ def proof(scope: dict[str, Any], bundle: str, published: str = '') -> dict[str, 
             reachable = set(runtime_git.git(view, 'rev-list', '--all').splitlines())
             if not set(scope['commits']).issubset(reachable):
                 raise Denied('obsolete trial bundle omits recorded history')
-            ref = 'refs/heads/' + history['branch']
-            if heads.get(ref) != history['head']:
+            ref = 'refs/heads/' + branch
+            head = heads.get(ref)
+            if head not in scope['commits']:
                 raise Denied('obsolete trial bundle does not preserve the closed head')
-            if runtime_git.git(primary, 'rev-parse', ref) != history['head']:
+            if runtime_git.git(primary, 'rev-parse', ref) != head:
                 raise Denied('obsolete trial recovery reference changed')
             objects = runtime_git.git(primary, 'rev-parse', '--path-format=absolute', '--git-path', 'objects')
             (view / '.git/objects/info/alternates').write_text(objects + '\n')
@@ -174,8 +172,8 @@ def proof(scope: dict[str, Any], bundle: str, published: str = '') -> dict[str, 
         _absent(scope)
         return {'disposition': 'archived-obsolete-trial', 'scope': binding(scope),
                 'bundle': str(path), 'sha256': digest,
-                'published': tip, 'git': version, 'close': history,
-                'refs': {ref: history['head']}, 'commits': commits}
+                'published': tip, 'git': version, 'close': {'branch': branch, 'head': head},
+                'refs': {ref: head}, 'commits': commits}
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, runtime_git.DeployError) as error:
         raise Denied('obsolete trial preservation could not be verified') from error
 
