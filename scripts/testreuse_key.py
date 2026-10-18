@@ -20,6 +20,7 @@ from pathlib import Path
 import affected
 import testnode
 import testreuse_facts as facts
+from testreuse_imports import ImportFacts, version
 
 NEVER_MARKS = frozenset({"live_api", "live_net", "redteam", "gpu", "model"})
 NEVER_WORDS = re.compile(r"\b(?:Lease|llama[-_]server|poolhouse-serve)\b")
@@ -28,7 +29,8 @@ SPAWNS = re.compile(r"\b(?:subprocess|Popen|os\.system|os\.exec\w*|os\.spawn\w*|
                     r"concurrent\.futures\.process)\b")
 DYNAMIC = re.compile(r"\b(?:importlib\.util|runpy|pkgutil|entry_points|importorskip|__import__|import_module)\b")
 UNSEEN = re.compile(r"\b(?:DirEntry|scandir|fstat|utime|chown|setxattr|mmap|sqlite3|ladybug)\b")
-SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules"})
+SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules",
+                           *facts.BUILT_DIRS})
 SNAPSHOT_BUDGET_S = 10.0
 RUNNER_OWNED = frozenset({".full-tier-last.json"})
 RUNNER_PLUGINS = frozenset({"testslots_pytest", "testreuse_plugin"})
@@ -39,7 +41,8 @@ VALUE_OPTIONS = frozenset({"-m", "-k", "-c", "-o", "-W", "-p", "-n", "--rootdir"
                            "--cov", "--timeout"})
 DROPPED_OPTIONS = frozenset({"-n", "--numprocesses", "--junitxml"})
 RUNNER_FILES = ("scripts/testreuse_plugin.py", "scripts/testreuse_key.py", "scripts/testreuse_store.py",
-                "scripts/testreuse_run.py", "scripts/testslots_pytest.py", "scripts/testslots_rpc.py")
+                "scripts/testreuse_run.py", "scripts/testreuse_imports.py", "scripts/testslots_pytest.py",
+                "scripts/testslots_rpc.py")
 ENV_NAME = re.compile(r"""["']([A-Z][A-Z0-9_]{3,})["']""")
 ENV_FIXED = ("PATH", "CI", "TZ", "LANG", "LC_ALL", "CLAUDECODE", "POOLHOUSE_NONINTERACTIVE",
              "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "POOLHOUSE_NOTIFY", "DEV_TEST_SLOTS")
@@ -94,13 +97,18 @@ def text_of(path: Path) -> str:
     return _texts[marker]
 
 
-def dir_sha(path: Path) -> str:
-    """A digest of the names in a directory without caches, or ``missing``."""
+def dir_sha(path: Path, skip: frozenset[str] = frozenset()) -> str:
+    """A digest of the names in a directory without caches and the ``skip`` names, or ``missing``."""
     try:
         return sha("\n".join(sorted(p.name for p in path.iterdir()
-                                   if p.name not in IGNORED_NAMES and p.suffix != ".pyc")))
+                                   if p.name not in IGNORED_NAMES and p.name not in skip and p.suffix != ".pyc")))
     except (FileNotFoundError, NotADirectoryError):
         return "missing"
+
+
+def listing(root: Path, rel: str) -> str:
+    """The digest of a directory's names; the checkout root's leaves out build output."""
+    return dir_sha(root / rel, facts.BUILT_DIRS if rel in (".", "") else frozenset())
 
 
 def tree_digest(root: Path) -> str:
@@ -195,11 +203,17 @@ def import_names(source: str, module: str, is_package: bool) -> tuple[set[str], 
     return visitor.names, visitor.dynamic
 
 
+def import_facts(folder: Path) -> ImportFacts:
+    """The import facts file in a reuse store's ``folder``, valid for this analysis code."""
+    return ImportFacts(folder / "import-facts.json", version(Path(__file__), Path(affected.__file__)))
+
+
 class Closures:
     """Static import closures over one checkout, built from import statements only."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, facts: ImportFacts | None = None) -> None:
         self.root = root
+        self.facts = facts
         self.known = affected.index(root)
         self.by_path = {path: name for name, path in self.known.items()}
         self.edges: dict[tuple[bytes, str, bool], tuple[frozenset[str], bool]] = {}
@@ -210,9 +224,20 @@ class Closures:
         """Immutable import facts for exact bytes and relative-import context, within this execution."""
         key = (source, module, is_package)
         if key not in self._imports:
-            names, dynamic = import_names(source.decode("utf-8", errors="replace"), module, is_package)
-            self._imports[key] = (frozenset(names), dynamic)
+            stored = self.facts.key(source, module, is_package) if self.facts else ""
+            found = self.facts.get(stored) if self.facts else None
+            if found is None:
+                names, dynamic = import_names(source.decode("utf-8", errors="replace"), module, is_package)
+                found = (frozenset(names), dynamic)
+                if self.facts:
+                    self.facts.put(stored, *found)
+            self._imports[key] = found
         return self._imports[key]
+
+    def save(self) -> None:
+        """Write the import facts this run used to the shared file."""
+        if self.facts:
+            self.facts.save()
 
     def imports(self, rel: str, module: str = "", is_package: bool = False) -> tuple[frozenset[str], bool]:
         """Read current bytes before reusing pure analysis; filesystem metadata never selects a hit."""
@@ -406,7 +431,7 @@ def build_manifest(root: Path, rel: str, seen: dict, closures: Closures, argumen
     unseen = next((m.group(0) for p in members if p.endswith(".py") and p.startswith("tests/")
                    for m in [UNSEEN.search(text_of(root / p))] if m), "")
     return {"files": {p: file_sha(root / p) for p in files},
-            "dirs": {d: dir_sha(root / d) for d in sorted({*seen.get("dirs", ()), *(p for p in probed if (root / p).is_dir())})},
+            "dirs": {d: listing(root, d) for d in sorted({*seen.get("dirs", ()), *(p for p in probed if (root / p).is_dir())})},
             "absent": sorted(p for p in probed if not (root / p).exists()),
             "links": dict(seen.get("links", {})),
             "unobserved": unseen,
@@ -458,7 +483,7 @@ def manifest_holds(root: Path, manifest: dict, closures: Closures) -> str:
             return f"link changed: {path}"
     for path, digest in manifest["dirs"].items():
         try:
-            current = dir_sha(root / path)
+            current = listing(root, path)
         except OSError as error:
             return f"listing unavailable (errno {error.errno})"
         if current != digest:

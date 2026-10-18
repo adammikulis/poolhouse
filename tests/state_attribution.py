@@ -19,6 +19,8 @@ from pathlib import Path
 import psutil
 from node_attribution import Judgement, NodeWatch
 
+from poolhouse.serve import process as processes
+
 Row = tuple[int, str]  # pid, command line
 FIXED_WRITERS = "POOLHOUSE_TEST_OTHER_WRITERS"
 
@@ -39,7 +41,7 @@ def session_tree() -> set[int]:
     for parent in me.parents():
         try:
             line = " ".join(parent.cmdline())
-        except psutil.Error:
+        except (psutil.Error, SystemError):
             break
         if not any(word in line for word in ("pytest", "scripts/test", "testslots")):
             break
@@ -56,12 +58,8 @@ def live_poolhouse_processes() -> list[Row]:
     if (fixed := os.environ.get(FIXED_WRITERS)) is not None:
         return [(int(pid), str(line)) for pid, line in json.loads(fixed)]
     ours = session_tree()
-    rows = []
-    for process in psutil.process_iter(["pid", "cmdline"]):
-        argv = process.info.get("cmdline") or []
-        if process.info["pid"] not in ours and _is_poolhouse(argv):
-            rows.append((process.info["pid"], " ".join(argv)[:120]))
-    return rows
+    return [(pid, " ".join(argv)[:120]) for pid, _started, argv in processes.command_lines()
+            if pid not in ours and _is_poolhouse(list(argv))]
 
 
 def _empty_lock(root: Path, name: str) -> bool:

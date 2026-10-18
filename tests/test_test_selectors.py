@@ -50,10 +50,12 @@ def test_runner_defaults_to_the_brokers_automatic_pool_and_preserves_explicit_li
     calls = []
     monkeypatch.setenv('DEV_TEST_JOB', 'inline')
     monkeypatch.setattr(sys, 'argv', ['scripts/test', 'all', 'tests/test_test_selectors.py', *options])
-    monkeypatch.setattr(module, 'build_node', lambda: 0)
+    judged = []
+    monkeypatch.setattr(module, 'build_node', lambda files=None: judged.append(files) or 0)
     monkeypatch.setattr(module, 'run', lambda command, **kwargs: calls.append(command) or 0)
     assert module.main() == 0
     assert calls[0][calls[0].index('-n') + 1] == str(workers)
+    assert judged == [['tests/test_test_selectors.py']]
 
 
 def test_no_gate_step_writes_to_the_tree():

@@ -239,7 +239,8 @@ Import them like the tests already do: `from conftest import write_gguf`.
 ## The node binary
 
 Tests that start a node use the binary `scripts/test` builds once before the run, before the
-checkout is stamped (`scripts/testnode.py`). It is kept under the poolhouse cache in
+checkout is stamped (`scripts/testnode.py`), when a named test file or a module it imports names `node_kit`; a selection of
+plain Python files builds nothing and never asks cargo for a version. It is kept under the poolhouse cache in
 `test-node/<key>/`, where the key hashes the cargo workspace under `app/` and the compiler, so
 every checkout reuses a binary another built and a changed source gets a new one; a binary
 nothing has asked for in three days is removed. The build is staged at a fixed path under that
@@ -250,7 +251,7 @@ exports it first: `export DEV_TEST_NODE_BINARY=$(python scripts/testnode.py buil
 
 ## Writes under the real state root
 
-Tests run with `HOME`, `POOLHOUSE_HOME` and `POOLHOUSE_CACHE` moved to a temporary directory, so a
+Tests run with `HOME`, `POOLHOUSE_HOME`, `POOLHOUSE_CACHE` and `DEV_TEST_REUSE_DIR` moved to a temporary directory, so a
 write under the real `~/.poolhouse` can only come from a bug that bypasses home resolution. The
 session fixture `_real_home` snapshots that tree before the run and judges it after
 (`tests/state_attribution.py`). Brokers, the keystore, `poolhouse-bench prepare` and the sentinel of

@@ -174,7 +174,7 @@ def test_an_owner_whose_process_has_ended_is_stopped_and_one_whose_process_runs_
     assert status(main, 6) == {"gone": "waiting", "running": "active"}
 
 
-def test_the_gate_counts_orphans_only_past_the_grace(main):
+def test_orphans_are_counted_only_past_the_grace(main):
     path = tree(main, "late", owner="a")
     commit(path, "f1")
     trees.finish(main, "a", 1)
@@ -185,16 +185,14 @@ def test_the_gate_counts_orphans_only_past_the_grace(main):
     assert len(trees.past_grace(trees.rows(main, 2 * HOUR + 2), pol, 2 * HOUR + 2)) == 1
 
 
-def test_the_gate_checker_reports_a_late_orphan_and_reads_the_grace_from_the_environment(main, monkeypatch):
-    sys.path.insert(0, str(REPO / "scripts"))
-    from gates import orphan_trees
+def test_the_owner_owes_a_late_orphan_and_the_grace_comes_from_the_environment(main, monkeypatch):
     path = tree(main, "late", owner="a")
     commit(path, "f1")
     trees.finish(main, "a", 1.0)
-    assert len(orphan_trees.find(main)) == 1          # stopped long ago by the real clock
+    assert [Path(r["path"]).name for r in trees.owing(main, "a", time.time())] == ["late"]    # stopped long ago by the real clock
+    assert trees.owing(main, "b", time.time()) == []
     monkeypatch.setenv("POOLHOUSE_TREES_GRACE_H", "1e9")
-    assert orphan_trees.find(main) == []
-    assert orphan_trees.HARD and orphan_trees.NAME == "orphan-trees"
+    assert trees.owing(main, "a", time.time()) == []
 
 
 @pytest.mark.parametrize("commits,expect", [(9, False), (10, True)])
@@ -359,11 +357,3 @@ def test_known_ignored_caches_allow_normal_landed_cleanup(main, monkeypatch):
     assert trees.close(main, path, ("landed", ""), 101)["mode"] == "landed"
     assert ("branch", "-d", "cached") in calls
     assert not path.exists()
-
-
-def test_the_orphan_gate_reads_no_worktrees_for_a_root_that_is_not_a_checkout(tmp_path, monkeypatch):
-    from gates import orphan_trees
-
-    monkeypatch.setenv("GIT_DIR", str(Path(__file__).resolve().parents[1] / ".git"))
-    monkeypatch.setattr(orphan_trees.trees, "rows", lambda *a, **k: (_ for _ in ()).throw(AssertionError("read the worktrees")))
-    assert orphan_trees.find(tmp_path) == []

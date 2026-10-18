@@ -190,7 +190,7 @@ def finish(output, admission, terminals, confined):
 def prepare_pytest(command, environment, admission, launch, prepared):
     confined = terminals = None
     maximum = int(environment.get("DEV_TEST_BUDGET", "0")) or testslots.base_budget()
-    workers = min(prepared.want or maximum, maximum)
+    workers = min(prepared.want or testslots.pool_for(testslots.estimate_of(environment), maximum), maximum)
     environment.update(DEV_TEST_SLOTS_DIR=str(testslots.slots_dir().resolve()), DEV_TEST_WORKERS=str(workers),
                        DEV_TEST_PYTEST_ENDPOINT=admission.endpoint, DEV_TEST_PYTEST_TOKEN=admission.token,
                        DEV_TEST_REMOTE_BROKER=str(testslots.slots_dir().resolve()))

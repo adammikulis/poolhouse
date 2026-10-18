@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,11 +25,28 @@ from poolhouse.files import write_json
 __all__ = ["Run", "evidence", "record_run", "tree_hash"]
 
 
+def _plain_index(root: Path) -> bool:
+    """Whether every entry of the checkout's index is a plain one (no assume-unchanged or skip-worktree bit)."""
+    done = subprocess.run(["git", "-C", str(root), "ls-files", "-v"], capture_output=True, text=True, check=False)
+    return done.returncode == 0 and all(line[:1] == "H" for line in done.stdout.splitlines())
+
+
+def _seed_index(root: Path, index: Path) -> None:
+    """Copy the checkout's index, timestamps kept, to ``index`` so ``git add -A`` rehashes only the files that changed."""
+    done = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-path", "index"],
+                          capture_output=True, text=True, check=False)
+    if done.returncode == 0 and _plain_index(root):
+        with contextlib.suppress(OSError):
+            shutil.copy2(done.stdout.strip(), index)
+
+
 def tree_hash(root: Path) -> str:
     """The git tree hash of everything in ``root`` that is not ignored, working tree
-    included, computed in a throwaway index; empty when ``root`` is not a git checkout."""
+    included, computed in a throwaway copy of the index; empty when ``root`` is not a git checkout."""
     with tempfile.TemporaryDirectory() as scratch:
-        env = {**os.environ, "GIT_INDEX_FILE": str(Path(scratch) / "index")}
+        index = Path(scratch) / "index"
+        _seed_index(root, index)
+        env = {**os.environ, "GIT_INDEX_FILE": str(index)}
         for step in (["add", "-A"], ["write-tree"]):
             done = subprocess.run(["git", "-C", str(root), *step], env=env, capture_output=True,
                                   text=True, check=False)

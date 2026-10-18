@@ -4,8 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
 import testhistory
+import testoptions
 from testslots_policy import BACKGROUND, INTERACTIVE
 
 FALLBACK_TIERS = {"full": "the full tier", "slow": "the slow tier", "record": "the testmon map build"}
@@ -29,7 +29,7 @@ class Basis:
 
 def selectors(arguments: list[str]) -> list[str]:
     """The test paths and node ids among the pytest arguments."""
-    config = pytest.Config.fromdictargs({}, arguments)
+    config = testoptions.parse_arguments(arguments)
     try:
         return list(config.args)
     finally:

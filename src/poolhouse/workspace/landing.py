@@ -8,8 +8,11 @@ which stamped standing counts.
 
 from __future__ import annotations
 
+import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from poolhouse import trees
 from poolhouse.board import client
 
 if TYPE_CHECKING:
@@ -17,7 +20,7 @@ if TYPE_CHECKING:
 from poolhouse.workspace.model_tiers import tier_of
 from poolhouse.workspace.modelid import VERIFIED
 
-__all__ = ["accepts", "eligible", "review", "standing", "tier_reason", "trust"]
+__all__ = ["accepts", "eligible", "review", "standing", "tier_reason", "trust", "undecided_trees"]
 
 CAUSES = ("revoked", "forged")
 
@@ -43,6 +46,14 @@ def _caller(s: Session) -> Agent:
     if why:
         raise client.Denied("denied", why)
     return me
+
+
+def undecided_trees(name: str, branch: str) -> str:
+    """The refusal for ``name`` while it owns worktrees of this repository past the grace with work nobody decided about, else an empty string."""
+    try:
+        return trees.refusal(name, trees.owing(Path.cwd(), name, time.time(), branch))
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError):
+        return ""
 
 
 def review(s: Session, branch: str, sha: str, verdict: str) -> dict[str, Any]:

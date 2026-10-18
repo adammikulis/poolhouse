@@ -756,12 +756,14 @@ def test_a_long_node_id_is_admitted_with_a_bounded_label(monkeypatch):
         yield
 
     monkeypatch.setattr(testslots_pytest.testslots_rpc, "request", request)
-    item = types.SimpleNamespace(nodeid="tests/test_x.py::test_y[" + "z" * 600 + "]", path="tests/test_x.py")
+    item = types.SimpleNamespace(nodeid="tests/test_x.py::test_y[" + "z" * 600 + "]", path="tests/test_x.py",
+                                 user_properties=[])
     protocol = testslots_pytest.pytest_runtest_protocol(item, None)
     next(protocol)
     with contextlib.suppress(StopIteration):
         next(protocol)
     assert len(labels[0]) <= 256 and labels[0].endswith("]")
+    assert [key for key, _ in item.user_properties] == [testslots_pytest.WAIT_PROPERTY]
 
 
 def _cap_queue(module, tmp_path, now, *, capacity=(8, 1), background_since=None):

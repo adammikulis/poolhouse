@@ -583,8 +583,13 @@ def follow(argv: list[str], args: argparse.Namespace) -> int:
     return int(status.get("exit", 1))
 
 
-def build_node() -> int:
-    """Build the node binary the tests start, before anything is stamped, and name it for pytest; 4 when it cannot be built."""
+def build_node(files: list[str] | None = None) -> int:
+    """Build the node binary the tests start, before anything is stamped, and name it for pytest; 4 when it cannot be built.
+
+    A selection of named files that cannot start a node builds nothing and asks cargo nothing.
+    """
+    if files and not testnode.needed(ROOT, files):
+        return 0
     try:
         os.environ[testnode.ENV] = str(testnode.ensure(ROOT, admit=lambda: testslots.lease(2, 1, label="node build"),
                                                        say=lambda text: print(text, file=sys.stderr, flush=True)))
@@ -657,8 +662,9 @@ def main(argv: list[str] | None = None) -> int:
             return 4
     if not os.environ.get("DEV_TEST_JOB"):
         return follow(argv, args)
-    testprelude.begin(args, rest, ROOT, reused_files(pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)))
-    if args.tier != "gate" and (failed := build_node()):
+    command = pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)
+    testprelude.begin(args, rest, ROOT, reused_files(command))
+    if args.tier != "gate" and (failed := build_node(testreuse_run.selectors(command, ROOT))):
         return failed
     if args.tier == "quick":
         return quick(args, rest)

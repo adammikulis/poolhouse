@@ -106,6 +106,37 @@ def check(stage: str, cwd: str, environment: dict | None = None, *, here: bool =
             + "\n".join(lines)) if lines else ""
 
 
+def late_refusal(event: dict) -> str:
+    """Why the session behind a hook event may not start more work: it owns worktrees past the grace with undecided work; empty when it owns none or the registry cannot answer."""
+    cwd = str(event.get("cwd") or "")
+    root, name = top(cwd), workspace_hook.agent_name(str(event.get("agent_id") or event.get("session_id") or ""), cwd)
+    if root is None or not name:
+        return ""
+    try:
+        with bounded():
+            return trees.refusal(name, trees.owing(root, name, time.time()))
+    except FAILURES as error:
+        workspace_hook.warning("PreToolUse", error)
+        return ""
+
+
+def makes_a_tree(given: dict, cwd: str) -> bool:
+    """Whether an Agent call asks for its own worktree: ``isolation: worktree`` in the call or in the agent definition it names."""
+    if given.get("isolation") == "worktree":
+        return True
+    kind = str(given.get("subagent_type") or "")
+    if not kind or Path(kind).name != kind:
+        return False
+    for path in (Path(cwd or ".") / ".claude" / "agents" / f"{kind}.md", Path.home() / ".claude" / "agents" / f"{kind}.md"):
+        try:
+            head = path.read_text().split("---")[1]
+        except (OSError, IndexError):
+            continue
+        return any(line.partition(":")[0].strip() == "isolation" and line.partition(":")[2].strip() == "worktree"
+                   for line in head.splitlines())
+    return False
+
+
 def started(stage: str, cwd: str, name: str, purpose: str) -> None:
     """Register the tree a subagent was started in as owned by it; a primary checkout registers nothing."""
     root = top(cwd)

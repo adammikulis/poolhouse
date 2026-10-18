@@ -4,8 +4,8 @@ Every worktree of a repository has an **owner** and a **state**, kept in one reg
 shared git directory (`poolhouse-trees.json`, next to the repository's other git state; it is not
 versioned). Code: `src/poolhouse/trees.py` (registry, states, `close`, `sweep`),
 `src/poolhouse/trees_notice.py` (thresholds, who is told, caps), `scripts/worktrees` (the commands),
-`scripts/hooks/tree_watch.py` and `scripts/hooks/post-commit` (the hooks' side) and the gate
-`scripts/gates/orphan_trees.py`.
+`scripts/hooks/tree_watch.py` and `scripts/hooks/post-commit` (the hooks' side) and the refusal in
+`src/poolhouse/workspace/landing.py`.
 
 ## How a tree gets an owner
 
@@ -13,7 +13,7 @@ versioned). Code: `src/poolhouse/trees.py` (registry, states, `close`, `sweep`),
   subagent's board name.
 - **`scripts/land`**: its integration worktree is registered to `land`.
 - **By hand (`git worktree add`)**: no hook is needed. `worktrees scan` (run by SessionStart, the
-  attention hook, the post-commit hook, `worktrees` and the gate) registers any tree it has not
+  attention hook, the post-commit hook and `worktrees`) registers any tree it has not
   seen as owner `unknown`. A commit made in the tree by an agent claims it for
   `POOLHOUSE_WORKSPACE_AGENT`.
 - `worktrees claim TREE OWNER [PURPOSE] [--pid N] [--scratch]` registers one explicitly. A
@@ -25,7 +25,7 @@ versioned). Code: `src/poolhouse/trees.py` (registry, states, `close`, `sweep`),
 | state | meaning |
 | --- | --- |
 | active | the owner is alive: its process (when a pid is recorded) is running, else it showed a sign of life within `ttl_h`; an `unknown` owner is assumed alive for `claim_h` after the tree appeared |
-| waiting | the owner stopped within the grace and the tree holds work: "finished, waiting to land". Visible, never an orphan, never counted by the gate |
+| waiting | the owner stopped within the grace and the tree holds work: "finished, waiting to land". Visible, never an orphan, never refused or mended |
 | orphan | the owner stopped more than `grace_h` ago and the tree is not landed, bundled or abandoned |
 | landed | the owner is not active, every commit is in the development branch (by ancestry or by patch, so a rebased and cherry-picked tree counts) and nothing is dirty |
 | scratch | a `--scratch` tree |
@@ -70,11 +70,17 @@ show in `scripts/worktrees`. Delivery runs in a detached process so a slow board
 hook. The coordinator is the session that last started as lead (`worktrees lead NAME`, or
 `POOLHOUSE_TREES_LEAD`).
 
-## The gate
+## What an orphan stops
 
-`orphan-trees` (hard, no allowance, no `--allow`) counts orphans: owners stopped more than
-`grace_h` ago. A tree that has just finished is waiting, and cannot fail an unrelated landing. The
-finding names the tree and the exact `close` command that fits it.
+No landing gate counts trees: a gate result depends on the change under test, never on the other
+worktrees of the machine. An orphan stops the session that owns it instead.
+
+- **`scripts/land`** run by the owner of an orphan stops. The refusal names
+  each tree with the exact `scripts/worktrees close` command that fits it. The tree on the branch
+  being landed is not counted, so an owner can land the branch an orphan holds.
+
+`close` discards ignored caches and build outputs (`trees.CACHES`, `trees.BUILT`: `dist/`,
+`tests/support/vendor/`, `__pycache__/` and the like); any other ignored file stops a removal.
 
 ## Friction budget
 
