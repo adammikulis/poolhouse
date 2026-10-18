@@ -96,7 +96,6 @@ def test_submission_starts_only_after_pending_record(tmp_path, monkeypatch):
     from land_support import DEV, Project
     project = Project(tmp_path)
     project.branch('leaf', {'docs/leaf.md': 'fixture\n'})
-    monkeypatch.setattr(land_run, 'connect', lambda **kwargs: SimpleNamespace(whoami=lambda: SimpleNamespace(name='fixture-agent')))
     monkeypatch.setattr(land_run, 'verify', lambda *args: ([], 'docs', 'fixture-full'))
     def crash(worktree, common):
         state = land_finish.load(project.root)

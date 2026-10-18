@@ -17,10 +17,7 @@ import land_entries
 import land_git as lg
 import land_plan
 
-from poolhouse import trees
 from poolhouse.activity.gate import tree_hash
-from poolhouse.board.client import NodeError
-from poolhouse.board.session import connect
 from poolhouse.files import write_json
 
 UNION_FILES = {"HANDOFF.md"}
@@ -255,9 +252,6 @@ def create(root: Path, target: str, order: list[str]) -> Batch:
     wt = root.parent / f"{root.name}-land-{stamp}"
     branch = f"land/{stamp}"
     lg.git(root, "worktree", "add", "-b", branch, str(wt), base)
-    with contextlib.suppress(RuntimeError, OSError, NodeError):
-        owner = connect(cwd=root).whoami().name
-        trees.claim(root, wt, owner, time.time(), {"purpose": "integration batch"})
     return Batch(root, target, base, wt, branch, order, run_id=os.environ.get("POOLHOUSE_LAND_RUN_ID", ""))
 
 

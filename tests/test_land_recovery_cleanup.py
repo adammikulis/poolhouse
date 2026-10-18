@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,8 +10,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import land_recover as recover
 from land_support import git
-
-from poolhouse import trees
 
 
 @pytest.fixture
@@ -28,7 +25,6 @@ def recovery(tmp_path, monkeypatch):
     git(root, "add", "tracked", ".gitignore")
     git(root, "commit", "-qm", "chore: seed")
     git(root, "worktree", "add", "-q", "-b", "land/fixture", str(tree))
-    trees.claim(root, tree, "agent-fixture", time.time(), {"purpose": "integration batch"})
     claims = [SimpleNamespace(kind="worktree", key=str(tree), owner="agent-fixture", expires_in_s=900, lease="lease-fixture"),
               SimpleNamespace(kind="branch", key="land/fixture", owner="agent-fixture", expires_in_s=900, lease="lease-fixture")]
     released = []
@@ -45,7 +41,7 @@ def test_owned_merged_clean_tree_removed_without_force(recovery):
     assert released == [("branch", "land/fixture"), ("worktree", str(tree))]
 
 
-@pytest.mark.parametrize("obstacle", ["foreign", "missing-claim", "expired", "provenance", "locked", "dirty", "untracked", "ignored", "coverage-secret", "nested-cache", "unique"])
+@pytest.mark.parametrize("obstacle", ["foreign", "missing-claim", "expired", "locked", "dirty", "untracked", "ignored", "coverage-secret", "nested-cache", "unique"])
 def test_unproven_or_unique_tree_is_retained(recovery, obstacle):
     root, tree, claims, released = recovery
     if obstacle == "foreign":
@@ -54,8 +50,6 @@ def test_unproven_or_unique_tree_is_retained(recovery, obstacle):
         claims.pop()
     elif obstacle == "expired":
         claims[0].expires_in_s = 0
-    elif obstacle == "provenance":
-        trees.claim(root, tree, "other-agent", time.time(), {"purpose": "integration batch"})
     elif obstacle == "locked":
         git(root, "worktree", "lock", str(tree))
     elif obstacle == "dirty":

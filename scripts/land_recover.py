@@ -19,7 +19,7 @@ import land_git as lg
 import land_live_jobs
 import land_run
 
-from poolhouse import lock as filelock, trees
+from poolhouse import lock as filelock
 from poolhouse.activity.gate import tree_hash
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import connect
@@ -86,13 +86,6 @@ def owned_candidate(root: Path, tree: lg.Tree, session, owner: str) -> bool:
     if (tree.path.is_symlink() or tree.path.resolve() == top.path.resolve()
             or not tree.branch.startswith(INTEGRATION) or not tree.path.is_dir()):
         return False
-    registry = land_live_jobs.record(trees.registry_path(root))
-    entries = registry.get("trees")
-    row = entries.get(str(tree.path.resolve())) if isinstance(entries, dict) else None
-    if (not isinstance(row, dict) or row.get("owner") != owner
-            or row.get("purpose") != "integration batch" or not isinstance(row.get("base"), str)
-            or len(row["base"]) != 40 or any(c not in "0123456789abcdef" for c in row["base"])):
-        return False
     expected = {("worktree", str(tree.path.resolve())), ("branch", tree.branch)}
     held = {(c.kind, c.key) for c in session.claims() if c.owner == owner and c.expires_in_s > 0}
     if not expected <= held:
@@ -100,7 +93,7 @@ def owned_candidate(root: Path, tree: lg.Tree, session, owner: str) -> bool:
     actual = lg.tree_of(root, tree.branch)
     if actual != tree or lg.common_dir(tree.path) != lg.common_dir(top.path):
         return False
-    if not on_target(root, row["base"], tree.head) or not on_target(root, tree.head, top.head):
+    if not on_target(root, tree.head, top.head):
         return False
     locked = Path(lg.out(tree.path, "rev-parse", "--path-format=absolute", "--git-path", "locked"))
     if locked.exists() or lg.out(tree.path, "status", "--porcelain", "--untracked-files=all"):
