@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
 import pytest
 
 from poolhouse import trees
@@ -451,6 +452,26 @@ def test_sweep_leaves_a_tree_a_live_process_is_working_in(main):
         process.kill()
         process.wait()
     assert sweep(main, OLD) == ["busy"]
+
+
+def test_sweep_leaves_every_tree_while_a_process_of_this_user_hides_its_directory(main, monkeypatch):
+    path = tree(main, "hidden")
+    process = subprocess.Popen(["sleep", "60"], cwd=path)
+    real = psutil.Process.cwd
+
+    def cwd(self):
+        if self.pid == process.pid:
+            raise psutil.AccessDenied(self.pid)
+        return real(self)
+
+    monkeypatch.setattr(psutil.Process, "cwd", cwd)
+    try:
+        assert None in working_directories()
+        closed, stayed = trees.sweep(main, time.time() + OLD, working_directories)
+        assert closed == [] and stayed == [] and path.exists()
+    finally:
+        process.kill()
+        process.wait()
 
 
 def test_sweep_removes_a_young_tree_and_keeps_its_branch(main):

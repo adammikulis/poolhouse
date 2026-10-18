@@ -220,12 +220,12 @@ def created(path: Path, branch: str) -> float:
     return float(stamps[-1]) if stamps else 0.0
 
 
-def occupied(path: Path, directories: list[str]) -> bool:
-    """Whether any of the working ``directories`` is the tree or inside it."""
-    return any(d == str(path) or d.startswith(str(path) + "/") for d in directories)
+def occupied(path: Path, directories: list[str | None]) -> bool:
+    """Whether any of the working ``directories`` is the tree or inside it; an unreadable one (``None``) may be."""
+    return any(d is None or d == str(path) or d.startswith(str(path) + "/") for d in directories)
 
 
-def sweep(root: Path | str, now: float, working: Callable[[], list[str]],
+def sweep(root: Path | str, now: float, working: Callable[[], list[str | None]],
           minimum: float = MIN_AGE_S) -> tuple[list[dict], list[tuple[str, str]]]:
     """Close every landed tree untouched for ``minimum`` seconds; the closed trees and (path, why) for those that stayed.
 

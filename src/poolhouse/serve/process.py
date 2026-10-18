@@ -303,9 +303,15 @@ def readable(attrs: list[str]) -> list[tuple[Any, dict]]:
     return found
 
 
-def working_directories() -> list[str]:
-    """The working directory of every process whose directory could be read."""
-    return [str(info["cwd"]) for _proc, info in readable(["cwd"]) if info.get("cwd")]
+def working_directories() -> list[str | None]:
+    """The working directory of every live process of this user; ``None`` for one whose directory could not be read."""
+    found: list[str | None] = []
+    for _proc, info in readable(["cwd", "uids", "status"]):
+        uids = info.get("uids")
+        if info.get("status") == psutil.STATUS_ZOMBIE or (uids is not None and uids.real != os.getuid()):
+            continue
+        found.append(str(info["cwd"]) if info.get("cwd") else None)
+    return found
 
 
 def command_lines() -> list[tuple[int, float, tuple[str, ...]]]:
