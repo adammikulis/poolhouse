@@ -6,6 +6,11 @@ A missing file or directory, or a node selector that collects no tests, returns
 exit status 4, including in `quick`; an empty affected-test selection remains valid.
 `-n N` limits the worker pool; scoped runs default to an automatic pool of what the broker grants (`-n 0`); `-n 1` runs sequentially. `-n 0` requests
 an automatic pool up to broker capacity. Explicit worker ceilings remain effective.
+An automatic pool is sized from the run's estimate (below): the square root of the estimated seconds, at least 1 and at most the
+broker's capacity, because each worker costs about a second of start-up; a run with no estimate takes the whole capacity.
+The phase line `scripts/test` prints splits a run into collection, session setup, tests, teardown and the
+seconds workers waited for CPU permits (`queued for CPU`); the queue wait is the machine's, so only the rest is the fixed overhead
+that the warning measures.
 Every checkout shares the same admission broker.
 
 Agents run affected tests for their own changes. The main agent coordinates shared structural

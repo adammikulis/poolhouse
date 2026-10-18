@@ -15,7 +15,9 @@ RECORD = Path(os.environ.get("DEV_TEST_REUSE_RECORD", ""))
 REAL_STATE = tuple(Path.home() / part for part in (".poolhouse", "Library/Keychains", ".ssh", ".gnupg",
                                                      ".cache/huggingface", ".config"))
 IGNORED = (".git", ".pytest_cache", ".testmondata", "__pycache__", ".ruff_cache", ".mypy_cache")
-WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev")})
+SHORT_TEMP = Path("/tmp")  # noqa: S108 - tests keep socket paths short under it
+WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), SHORT_TEMP, SHORT_TEMP.resolve(),
+                  Path("/dev")})
 ALLOWED_ROOT_WRITES = (".pytest_cache", "__pycache__", ".testmondata", ".coverage")
 MUTATING = {"os.mkdir": (0,), "os.rmdir": (0,), "os.remove": (0,), "os.rename": (0, 1), "os.symlink": (1,),
             "os.link": (1,), "os.truncate": (0,), "os.chmod": (0,), "shutil.rmtree": (0,),
@@ -95,7 +97,7 @@ def _write_ok(absolute: str) -> bool:
         return True  # Python's own bytecode cache, anywhere: regenerable from source, not test output
     if _under(target, ROOT):
         return any(part.startswith(ALLOWED_ROOT_WRITES) for part in target.relative_to(ROOT).parts)
-    return any(_under(target, base) or _under(Path(absolute), base) for base in WRITABLE)
+    return any(_under(target, base) for base in WRITABLE)
 
 
 def _from_conftest() -> bool:
@@ -155,7 +157,7 @@ def _audit(event: str, args: tuple) -> None:
                 if len(args) > index and isinstance(args[index], PATHS):
                     fd = args[fds[place]] if place < len(fds) and len(args) > fds[place] else None
                     absolute = _resolve(args[index], fd)
-                    if absolute and not _write_ok(absolute):
+                    if absolute and not _write_ok(absolute) and not (event == "os.mkdir" and Path(absolute).is_dir()):
                         bucket["violations"].add(f"{event.split('.')[-1]} {absolute}")
     finally:
         BUSY.pop()

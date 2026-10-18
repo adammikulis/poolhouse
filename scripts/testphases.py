@@ -8,6 +8,8 @@ named by ``PHASES_ENV`` and ``scripts/test`` prints them after the run.
 * setup: the longest first-test setup on any worker, which is where session fixtures run.
 * tests: the test calls, averaged over the workers.
 * teardown: the longest last-test teardown on any worker, where session fixtures finish.
+* queued: the seconds a worker waited for CPU permits before its tests (worker start and each test), averaged
+  over the workers; it is the machine's queue, so it is not part of the fixed overhead.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 PHASES_ENV = "POOLHOUSE_PHASES_FILE"
+WAIT_PROPERTY = "admission_wait"
 OVERHEAD_SECONDS = 5.0
 OVERHEAD_SHARE = 0.25
 SHARE_FLOOR_SECONDS = 3.0
@@ -34,18 +37,19 @@ class Phases:
     setup: float
     tests: float
     teardown: float
+    queued: float = 0.0
 
     @property
     def fixed(self) -> float:
-        """Everything except the test calls."""
-        return max(0.0, self.wall - self.tests)
+        """Everything except the test calls and the wait for CPU permits."""
+        return max(0.0, self.wall - self.tests - self.queued)
 
 
 def line(phases: Phases) -> str:
     """The one-line breakdown, with a warning when the fixed overhead is large."""
     text = (f"test: phases collection {phases.collection:.1f} s, session setup {phases.setup:.1f} s, "
-            f"tests {phases.tests:.1f} s, teardown {phases.teardown:.1f} s "
-            f"(fixed {phases.fixed:.1f} s of {phases.wall:.1f} s)")
+            f"tests {phases.tests:.1f} s, teardown {phases.teardown:.1f} s, "
+            f"queued for CPU {phases.queued:.1f} s (fixed {phases.fixed:.1f} s of {phases.wall:.1f} s)")
     if too_slow(phases):
         text += (f"\ntest: WARNING fixed overhead {phases.fixed:.1f} s is over {OVERHEAD_SECONDS:g} s "
                  f"or {OVERHEAD_SHARE:.0%} of wall time: find the fixture or import that is slow")
@@ -74,6 +78,7 @@ class Recorder:
         self.began = time.time()
         self.first_start = 0.0
         self.calls = 0.0
+        self.queued = 0.0
         self.first_setup: dict[str, float] = {}
         self.last_teardown: dict[str, float] = {}
 
@@ -85,6 +90,8 @@ class Recorder:
             self.first_start = getattr(report, "start", time.time())
         if report.when == "setup":
             self.first_setup.setdefault(worker, report.duration)
+            self.queued += sum(float(value) for key, value in getattr(report, "user_properties", ())
+                               if key == WAIT_PROPERTY)
         elif report.when == "call":
             self.calls += report.duration
         elif report.when == "teardown":
@@ -95,7 +102,7 @@ class Recorder:
         workers = max(1, len(self.first_setup))
         collection = max(0.0, (self.first_start or time.time()) - self.began)
         phases = Phases(time.time() - self.began, collection, max(self.first_setup.values(), default=0.0),
-                        self.calls / workers, max(self.last_teardown.values(), default=0.0))
+                        self.calls / workers, max(self.last_teardown.values(), default=0.0), self.queued / workers)
         Path(self.path).write_text(json.dumps(asdict(phases)), encoding="utf-8")
 
 
