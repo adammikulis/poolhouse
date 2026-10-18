@@ -158,7 +158,7 @@ def test_an_agents_push_of_a_data_file_is_refused(checkout):
 def test_a_merged_worktree_is_warned_about_and_never_blocks_the_development_branch(checkout):
     tree = checkout.parent / "done"
     git(checkout, "worktree", "add", "-q", "-b", "done-work", str(tree))
-    commit(tree, "work.py", "z = 3\n")
+    commit(tree, "docs/work.md", "z = 3\n")
     git(checkout, "merge", "-q", "--ff-only", "done-work")
     done = push(checkout, "0.9dev", CLAUDECODE="1")
     assert done.returncode == 0, done.stderr
