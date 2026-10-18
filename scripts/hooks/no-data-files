@@ -13,10 +13,11 @@ import sys
 from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(1, str(Path(__file__).resolve().parents[1]))
 
+import land_git  # noqa: E402
 import renames  # noqa: E402
 
-ZERO = "0" * 40
 MAX_BYTES = 1 << 20
 EXTENSIONS = frozenset({
     ".lbug", ".wal", ".kgx", ".gguf", ".safetensors", ".parquet", ".arrow", ".feather",
@@ -36,6 +37,14 @@ def _git(*args: str) -> str:
     if done.returncode != 0:
         raise SystemExit(f"no-data-files: git {' '.join(args)} failed: {done.stderr.strip()}")
     return done.stdout
+
+
+def _objects(*args: str, stdin: str | None = None) -> str:
+    """Output of a git command that reads commits or trees, run sealed so the checkout's settings do not change it."""
+    try:
+        return land_git.sealed(Path.cwd(), *args, stdin=stdin).stdout
+    except RuntimeError as exc:
+        raise SystemExit(f"no-data-files: {exc}") from None
 
 
 def merging() -> bool:
@@ -83,7 +92,7 @@ def origins(base: str, tip: str) -> dict[str, tuple[str, str] | None]:
     A path that one change adds and another renames is judged as an addition.
     """
     out: dict[str, tuple[str, str] | None] = {}
-    diff = _git("diff", "--name-status", "-z", renames.FLAG, "--diff-filter=ACMR", base, tip)
+    diff = _objects("diff-tree", "-r", "--name-status", "-z", renames.FLAG, "--diff-filter=ACMR", base, tip)
     for status, old, new in renames.pairs(diff):
         origin = (old, f"{base}:{old}") if status == "R" else None
         out[new] = origin if new not in out else out[new] and origin
@@ -93,8 +102,8 @@ def origins(base: str, tip: str) -> dict[str, tuple[str, str] | None]:
 def unpushed_origins(tip: str) -> dict[str, tuple[str, str] | None]:
     """The renames in each commit ``--remotes`` does not hold, each read against its own parent."""
     out: dict[str, tuple[str, str] | None] = {}
-    for commit in _git("rev-list", "--reverse", "--no-merges", tip, "--not", "--remotes").split():
-        if not _git("rev-list", "--parents", "-n1", commit).split()[1:]:
+    for commit in _objects("rev-list", "--reverse", "--no-merges", "--stdin", stdin=land_git.unpushed(Path.cwd(), tip)).split():
+        if not _objects("rev-list", "--parents", "-n1", commit).split()[1:]:
             continue
         for name, origin in origins(f"{commit}^", commit).items():
             out[name] = origin if name not in out else out[name] and origin
@@ -108,16 +117,14 @@ def candidates(argv: list[str]) -> list[tuple[str, str, tuple[str, str] | None]]
         return [(name, f":{name}", None) for name in _git("ls-files", "-z").split("\0") if name]
     if argv[:1] == ["--range"] and len(argv) == 3:
         base, tip = argv[1], argv[2]
-        known = base != ZERO and subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"],
-                                               capture_output=True, check=False).returncode == 0
-        if not known:
-            names = _git("log", "--format=", "--name-only", "--no-renames", tip, "--not", "--remotes")
+        if not land_git.commit_id(Path.cwd(), base):
+            names = _objects("log", "--format=", "--name-only", "--no-renames", "-z", "--stdin", stdin=land_git.unpushed(Path.cwd(), tip))
             moved = unpushed_origins(tip)
         else:
-            names = _git("diff", "--name-only", "--no-renames", base, tip)
+            names = _objects("diff-tree", "-r", "--name-only", "--no-renames", "-z", base, tip)
             moved = origins(base, tip)
-        at_tip = set(_git("ls-tree", "-r", "--name-only", tip).splitlines())
-        return [(n, f"{tip}:{n}", moved.get(n)) for n in sorted(set(names.splitlines()) & at_tip)]
+        at_tip = set(_objects("ls-tree", "-r", "--name-only", "-z", tip).split("\0"))
+        return [(n, f"{tip}:{n}", moved.get(n)) for n in sorted((set(names.split("\0")) & at_tip) - {""})]
     if argv:
         raise SystemExit(__doc__)
     diff = _git("diff", "--cached", "--name-status", "-z", renames.FLAG, "--diff-filter=ACMR")

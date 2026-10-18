@@ -15,10 +15,16 @@ from pathlib import Path
 
 ZERO = "0" * 40
 HERE = Path(__file__).resolve().parent
+sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
+try:
+    import land_git as lg
+except ImportError as exc:
+    raise SystemExit(f"pushed: the git helper could not load ({exc}); the push is refused") from None
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+    """``git args`` in the pushing checkout, with the caller's configuration, for refs and worktrees."""
+    return lg.git(Path.cwd(), *args, check=False)
 
 
 def ever_moved(branch: str) -> bool:
@@ -30,39 +36,47 @@ def ever_moved(branch: str) -> bool:
 def leftover_worktrees(tip: str) -> list[tuple[str, str]]:
     """``(path, branch)`` of unlocked worktrees whose branch has no commit outside ``tip``."""
     out = []
+    root = Path.cwd()
     blocks = _git("worktree", "list", "--porcelain").stdout.strip().split("\n\n")[1:]
     for block in blocks:
         keys = dict([*ln.split(" ", 1), ""][:2] for ln in block.splitlines())
         branch = keys.get("branch", "").removeprefix("refs/heads/")
         if "locked" in keys or not branch or not ever_moved(branch):
             continue
-        merged = _git("merge-base", "--is-ancestor", branch, tip).returncode == 0
-        if merged or not any(ln.startswith("+") for ln in _git("cherry", tip, branch).stdout.splitlines()):
+        head = _git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}").stdout.strip()
+        if head and (lg.is_ancestor(root, head, tip)
+                     or not any(ln.startswith("+") for ln in lg.sealed(root, "cherry", tip, head, check=False).stdout.splitlines())):
             out.append((keys["worktree"], branch))
     return out
 
 
+def unpushed_names(root: Path, tip: str) -> list[str]:
+    """The files changed by the commits of ``tip`` that no remote-tracking ref holds."""
+    done = lg.sealed(root, "log", "--format=", "--name-only", "--no-renames", "-z", "--stdin", stdin=lg.unpushed(root, tip))
+    return [n for n in done.stdout.split("\0") if n]
+
+
 def unparseable(base: str, tip: str) -> list[str]:
     """Python files changed in ``base..tip`` that do not parse at ``tip``."""
-    if base == ZERO or _git("cat-file", "-e", f"{base}^{{commit}}").returncode != 0:
-        names = _git("log", "--format=", "--name-only", tip, "--not", "--remotes").stdout
-    else:
-        names = _git("diff", "--name-only", "--diff-filter=ACMR", base, tip).stdout
+    root = Path.cwd()
+    names = lg.changed(root, base, tip, "--diff-filter=ACMR") if lg.commit_id(root, base) else unpushed_names(root, tip)
     bad = []
-    for name in sorted({n for n in names.splitlines() if n.endswith(".py")}):
-        shown = _git("show", f"{tip}:{name}")
-        if shown.returncode != 0:
+    for name in sorted({n for n in names if n.endswith(".py")}):
+        source = lg.blob(root, tip, name)
+        if source is None:
             continue
         try:
-            ast.parse(shown.stdout, filename=name)
+            ast.parse(source, filename=name)
         except SyntaxError as exc:
             bad.append(f"  {name}:{exc.lineno}: {exc.msg}")
+        except ValueError as exc:
+            bad.append(f"  {name}: {exc}")
     return bad
 
 
 def trees_at(tip: str, dev: str) -> list[tuple[str, str]]:
     """``(branch, worktree path)`` of every local branch other than the development branch that points at ``tip``."""
-    heads = _git("for-each-ref", "--points-at", tip, "--format=%(refname:short)", "refs/heads").stdout.split()
+    heads = [h.removeprefix("refs/heads/") for h in _git("for-each-ref", "--points-at", tip, "--format=%(refname)", "refs/heads").stdout.split()]
     where = {}
     for block in _git("worktree", "list", "--porcelain").stdout.strip().split("\n\n"):
         keys = dict([*ln.split(" ", 1), ""][:2] for ln in block.splitlines())
@@ -78,7 +92,6 @@ def unreviewed(dev: str, tip: str, remote: str) -> str:
     checkout that cannot ask, refuses. A merge commit of ``remote`` and a second parent, whose tree is exactly their conflict-free
     automatic merge, also passes when the second parent has such an accept.
     """
-    sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
     try:
         import land_review
 
@@ -89,7 +102,7 @@ def unreviewed(dev: str, tip: str, remote: str) -> str:
         return f"the review check could not load ({exc})"
     first = ""
     try:
-        root = Path(_git("rev-parse", "--show-toplevel").stdout.strip())
+        root = lg.toplevel(Path.cwd())
         needed, _, first = land_review.required(root, remote, tip)
         if not needed:
             return ""
@@ -125,10 +138,11 @@ def main(dev: str, lines: list[str]) -> int:
                 print(f"pushed: {remote_ref} needs an independent review: {why}", file=sys.stderr)
             for where, branch in leftover_worktrees(tip):
                 print(f"pushed: warning: {branch} has nothing outside {dev}; remove its worktree:",
-                      *(f"  {shlex.join(c)}" for c in (["git", "worktree", "remove", where],
-                                                       ["git", "branch", "-d", branch])),
-                      sep="\n", file=sys.stderr)
-        bad = unparseable(base, tip)
+                      f"  git worktree remove {shlex.quote(where)}", f"  git branch -d {shlex.quote(branch)}", sep="\n", file=sys.stderr)
+        try:
+            bad = unparseable(base, tip)
+        except RuntimeError as exc:
+            bad = [f"  the pushed files could not be read ({exc})"]
         if bad:
             refused = 1
             print(f"pushed: {remote_ref} carries Python that does not parse:\n" + "\n".join(bad),

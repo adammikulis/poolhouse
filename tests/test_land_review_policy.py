@@ -94,24 +94,24 @@ def test_ordinary_paths_need_no_review(path):
 
 def test_ordinary_files_land_without_a_review(proj):
     proj.branch("ordinary", {"docs/notes/example.md": "A local example.\n", "tests/test_other.py": "import os\n"})
-    required, base, path = land_review.required(proj.root, DEV, git(proj.root, "rev-parse", "ordinary"))
+    required, base, path = land_review.required(proj.root, proj.origin_head(), git(proj.root, "rev-parse", "ordinary"))
     assert not required and path == "" and base == proj.origin_head()
 
 
 def test_the_first_sensitive_path_is_named(proj):
     proj.branch("mixed", {"docs/notes/example.md": "x\n", "src/poolhouse/sealing.py": "VALUE = 1\n", "pyproject.toml": "[project]\n"})
-    required, _, path = land_review.required(proj.root, DEV, git(proj.root, "rev-parse", "mixed"))
+    required, _, path = land_review.required(proj.root, proj.origin_head(), git(proj.root, "rev-parse", "mixed"))
     assert required and path == "pyproject.toml"
 
 
 def test_deleting_a_test_needs_review_and_changing_one_does_not(proj):
     proj.advance("tests/test_gone.py", "def test_x():\n    assert 1\n")
     kept = proj.branch("changed", {"tests/test_gone.py": "def test_x():\n    assert 2\n"})
-    assert not land_review.required(proj.root, DEV, git(kept, "rev-parse", "HEAD"))[0]
+    assert not land_review.required(proj.root, proj.origin_head(), git(kept, "rev-parse", "HEAD"))[0]
     tree = proj.branch("deleted", {})
     git(tree, "rm", "-q", "tests/test_gone.py")
     proj.commit(tree, "chore: drop a test")
-    required, _, path = land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))
+    required, _, path = land_review.required(proj.root, proj.origin_head(), git(tree, "rev-parse", "HEAD"))
     assert required and path == "tests/test_gone.py"
 
 
@@ -120,7 +120,7 @@ def test_a_renamed_security_path_cannot_hide_under_documentation(proj):
     tree = proj.branch("renamed", {"docs/start.md": "Example.\n"})
     git(tree, "mv", "src/poolhouse/sealing.py", "docs/explanation.md")
     proj.commit(tree, "chore: move a module")
-    required, base, path = land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))
+    required, base, path = land_review.required(proj.root, proj.origin_head(), git(tree, "rev-parse", "HEAD"))
     assert required and path == "src/poolhouse/sealing.py" and base == proj.origin_head()
 
 
@@ -129,7 +129,7 @@ def test_a_document_symlink_requires_review(proj):
     (tree / "docs/example.md").unlink()
     (tree / "docs/example.md").symlink_to("../AGENTS.md")
     proj.commit(tree, "chore: link a document")
-    assert land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))[0]
+    assert land_review.required(proj.root, proj.origin_head(), git(tree, "rev-parse", "HEAD"))[0]
 
 
 def test_modifying_an_existing_document_symlink_requires_review(proj):
@@ -141,7 +141,7 @@ def test_modifying_an_existing_document_symlink_requires_review(proj):
     (tree / "docs/linked.md").unlink()
     (tree / "docs/linked.md").symlink_to("../AGENTS.md")
     proj.commit(tree, "chore: change a link target")
-    assert land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))[0]
+    assert land_review.required(proj.root, proj.origin_head(), git(tree, "rev-parse", "HEAD"))[0]
 
 
 AREA_STEMS = ("keystore", "keyring", "keychain", "crypt", "vault", "secret", "credential", "grant", "authorit", "lease", "broker",

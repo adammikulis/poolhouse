@@ -70,7 +70,7 @@ def test_a_replace_ref_does_not_change_what_the_lander_reads(world):
     tree, sha = world.start("replaced", {SENSITIVE: "VALUE = 1\n"})
     base = world.proj.origin_head()
     git(tree, "replace", sha, git(tree, "commit-tree", "-p", base, "-m", "docs: nothing", f"{base}^{{tree}}"))
-    assert land_git.out(tree, "diff-tree", "-r", "--name-only", base, sha) == SENSITIVE
+    assert land_git.sealed(tree, "diff-tree", "-r", "--name-only", base, sha).stdout.strip() == SENSITIVE
 
 
 def test_a_grafts_file_does_not_change_the_history_the_lander_reads(world):
@@ -78,7 +78,7 @@ def test_a_grafts_file_does_not_change_the_history_the_lander_reads(world):
     info = Path(git(tree, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "info"
     info.mkdir(exist_ok=True)
     (info / "grafts").write_text(f"{sha}\n", encoding="utf-8")
-    assert land_git.out(tree, "rev-list", "--count", sha) == "2"
+    assert land_git.sealed(tree, "rev-list", "--count", sha).stdout.strip() == "2"
 
 
 def test_a_variable_that_moves_the_repository_does_not_reach_the_lander_git_calls(world, monkeypatch, tmp_path):

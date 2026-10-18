@@ -155,7 +155,7 @@ def lift_primary(L: Landing) -> str:
     if lg.is_ancestor(L.top, local, L.remote):
         done = lg.git(L.top, "merge", "--ff-only", L.remote, check=False)
         return (done.stderr.strip().splitlines() or ["fast-forward refused"])[-1] if done.returncode else ""
-    ahead = lg.lines(L.top, "log", "--oneline", f"{L.remote}..refs/heads/{L.dev}")
+    ahead = lg.sealed(L.top, "log", "--oneline", f"{L.remote}..{local}").stdout.splitlines()
     return f"local {L.dev} holds commits origin lacks ({'; '.join(ahead[:3])}) and is left alone"
 
 
@@ -198,11 +198,11 @@ def bring_up_to_date(L: Landing) -> None:
     if needed:
         merge_reviewed(L, first)
         return
-    merges = lg.out(L.wt, "rev-list", "--merges", "--count", f"{L.remote}..{L.sha}") != "0"
+    merges = lg.sealed(L.wt, "rev-list", "--merges", "--count", f"{L.remote}..{L.sha}").stdout.strip() != "0"
     verb = "merge" if merges else "rebase"
     done = lg.git(L.wt, verb, *(["--no-edit"] if merges else []), L.remote, check=False)
     if done.returncode:
-        files = lg.lines(L.wt, "diff", "--name-only", "--diff-filter=U")
+        files = lg.conflicted(L.wt)
         lg.git(L.wt, verb, "--abort", check=False)
         raise ex.Stop(f"{verb} onto {L.upstream} conflicts in {', '.join(files[:8]) or 'the branch'}; resolve it and run land again")
     L.sha = tip(L)
@@ -313,7 +313,7 @@ def execute(L: Landing) -> tuple[str, str, list[str]]:
     checks = ex.plan(L.wt, L.remote, L.sha)
     if checks.kind == "none":
         raise ex.Stop(f"nothing to land: {L.branch} changes nothing against {L.upstream}")
-    tree = lg.out(L.wt, "rev-parse", f"{L.sha}^{{tree}}")
+    tree = lg.tree_id(L.wt, L.sha)
     ex.verify_tree(L.wt, tree)
     note(L, "running checks")
     tail = ex.run_plan(L.wt, checks.checks, tree)

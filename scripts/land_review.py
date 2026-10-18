@@ -85,30 +85,30 @@ def sensitive(name: str) -> bool:
 
 def fork_point(root: Path, upstream: str, tip: str) -> str:
     """The commit where ``tip`` leaves ``upstream``, or an empty string when they share none."""
-    done = lg.git(root, "merge-base", upstream, tip, check=False)
+    done = lg.sealed(root, "merge-base", upstream, tip, check=False)
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
 def merged_parents(root: Path, tip: str) -> tuple[str, str]:
     """The two parents of ``tip`` when it is a merge commit whose tree is exactly the conflict-free automatic merge of them, else two empty strings."""
-    parents = lg.out(root, "rev-list", "--parents", "-n", "1", tip).split()[1:]
+    parents = lg.sealed(root, "rev-list", "--parents", "-n", "1", tip).stdout.split()[1:]
     if len(parents) != 2:
         return "", ""
     try:
         tree, _ = lg.merge_tree(root, parents[0], parents[1])
     except RuntimeError:
         return "", ""
-    return (parents[0], parents[1]) if tree and tree == lg.out(root, "rev-parse", f"{tip}^{{tree}}") else ("", "")
+    return (parents[0], parents[1]) if tree and tree == lg.tree_id(root, tip) else ("", "")
 
 
 def required(root: Path, base: str, tip: str) -> tuple[bool, str, str]:
     """Whether the diff from ``base`` to ``tip`` needs an independent review, the commit it starts from and the first sensitive path.
 
-    ``base`` is the commit the diff starts from; an empty string, or a commit this checkout lacks, makes every file of ``tip`` part of it.
+    ``base`` is the id of the commit the diff starts from; anything else, or a commit this checkout lacks, makes every file of ``tip`` part of it.
     """
-    start = lg.out(root, "rev-parse", f"{base}^{{commit}}") if base and lg.exists(root, base) else lg.empty_tree(root)
+    start = lg.commit_id(root, base) or lg.empty_tree(root)
     flags = ("-r", "--raw", "--no-abbrev", "--no-renames", "--ignore-submodules=none", "-z")
-    raw = lg.git(root, "diff-tree", *flags, start, tip).stdout.split("\0")
+    raw = lg.sealed(root, "diff-tree", *flags, start, tip).stdout.split("\0")
     for i in range(0, len(raw) - 1, 2):
         fields = raw[i].split()
         name = raw[i + 1]

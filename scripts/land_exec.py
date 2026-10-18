@@ -46,6 +46,7 @@ class Check:
     name: str
     argv: list[str]
     files: list[str] = field(default_factory=list)
+    env: dict[str, str] | None = None
 
 
 @dataclass
@@ -70,7 +71,8 @@ def needs_full(root: Path, base: str, sha: str, changed: list[str], unmapped: li
         return f"shared infrastructure touched: {infra[0]}"
     if unmapped:
         return f"no selector maps {unmapped[0]}"
-    rows = (r.split("\t") for r in lg.lines(root, "diff", "--numstat", base, sha))
+    numstat = lg.sealed(root, "diff-tree", "-r", "--numstat", "--no-renames", "--ignore-submodules=none", "-z", base, sha).stdout
+    rows = (r.split("\t") for r in numstat.split("\0") if r)
     lines = sum(int(a) + int(b) for a, b, *_ in rows if a.isdigit() and b.isdigit())
     if len(changed) > FULL_FILES or lines > FULL_LINES:
         return f"{len(changed)} files, {lines} lines exceed the diff threshold"
@@ -79,7 +81,7 @@ def needs_full(root: Path, base: str, sha: str, changed: list[str], unmapped: li
 
 def plan(wt: Path, base: str, sha: str) -> Plan:
     """The checks for the diff of ``sha`` against ``base``, chosen from the tree of ``wt``."""
-    changed = lg.lines(wt, "diff", "--name-only", "--no-renames", base, sha)
+    changed = lg.changed(wt, base, sha)
     if not changed:
         return Plan("none", [])
     py = sys.executable
@@ -87,8 +89,11 @@ def plan(wt: Path, base: str, sha: str) -> Plan:
     pick = affected.select(wt, changed, gone, base=base)
     files = sorted(pick.files)
     docs = all(DOC.match(p) for p in changed)
-    checks = ([Check("budgets", [py, "scripts/budgets"]), Check("clean-diff", ["git", "diff", "--check", base, sha])]
-              if docs else [Check("gate", [py, "scripts/test", "gate"])])
+    if docs:
+        argv, env = lg.sealed_command(wt, "diff-tree", "-r", "--check", base, sha)
+        checks = [Check("budgets", [py, "scripts/budgets"]), Check("clean-diff", argv, env=env)]
+    else:
+        checks = [Check("gate", [py, "scripts/test", "gate"])]
     if files:
         checks.append(Check("affected", [py, "scripts/test", "all", *files], files))
     full = needs_full(wt, base, sha, changed, pick.unmapped)
@@ -143,7 +148,7 @@ def run_check(wt: Path, check: Check) -> tuple[int, list[str]]:
 
     The output ends when the check exits, even if a process it left behind still holds the pipe; the group is then killed.
     """
-    proc = subprocess.Popen(check.argv, cwd=wt, env=check_env(wt), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+    proc = subprocess.Popen(check.argv, cwd=wt, env=check.env or check_env(wt), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, start_new_session=True)
     seen: list[str] = []
     pending = b""

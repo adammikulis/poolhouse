@@ -29,7 +29,7 @@ the branch's worktree, as their own board session; a lead may land a worker's br
    that ever held `claim branch BRANCH` or `claim worktree PATH`, whatever branch name a reviewer wrote. A branch no session
    ever claimed has no creator of record and stops. Any standing reject blocks. `scripts/land --dry-run` prints the
    command the reviewer runs: `poolhouse-workspace land-review BRANCH SHA --verdict accept`.
-3. **Checks.** From the diff against `origin/<dev>`: documentation only runs `scripts/budgets` and `git diff --check`; code
+3. **Checks.** From the diff against `origin/<dev>`: documentation only runs `scripts/budgets` and `git diff-tree --check`; code
    runs `scripts/test gate`; both add `scripts/test all <affected files>` from `affected.select`, and `scripts/test full` when
    the diff touches shared test infrastructure, a path no selector maps, a deleted module or more than 120 files or 4000
    lines. Every check runs in a process group of its own with a fixed environment (`PATH`, `HOME`, the board and device
@@ -56,9 +56,19 @@ parent when its first parent is the commit git read from the remote and its tree
 computes for the two parents; any other tree is unreviewed content and is refused. The lander's own push passes the same hook, run as the
 landing agent (`--agent NAME` is passed to git as `POOLHOUSE_WORKSPACE_AGENT`).
 
-Every git call of the lander and of the review check reads history as stored: replace refs and the grafts file are off, and
-the variables that move the repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, the object and namespace variables) or
-add configuration (`GIT_CONFIG_COUNT` and its keys and values) are dropped.
+The lander, `scripts/land_review.py` and `scripts/hooks/pushed` run every git command through `scripts/land_git.py`, in one of two contexts. `git` runs in the
+checkout with the caller's configuration, for refs, worktrees, the remote and the commands that change the checkout (fetch,
+merge, rebase, commit-tree, push); the variables that move the repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, the
+object and namespace variables) or add configuration (`GIT_CONFIG_COUNT` and its keys and values) are dropped, and replace refs
+and the grafts file are off. It refuses a command that reads commits or trees (`merge-tree`, `diff-tree`, `diff`, `merge-base`,
+`rev-list`, `log`, `show`, `cat-file`, `cherry`, `ls-tree`, `hash-object`). `sealed` runs those: in an empty bare repository
+of its own, over the object directory of the checkout, with no configuration of the repository, the user or the system, no
+attributes (`info/attributes`, a `.gitattributes` in the worktree, `core.attributesFile`), no merge, diff or text-conversion
+driver, no hook, no ref, replace ref, graft, shallow file or commit graph. Its answer depends only on the commits it is given,
+which it takes by full id; a name is not looked up. It reads the objects without storing any, except the tree of a merge. The
+trees of the review check (`required`, `merged_parents`), the merge of a reviewed tip, the file lists and line counts that pick
+the checks, `git diff-tree --check`, and the file lists and files that the push check parses and that `no-data-files --range`
+reads all come from it; file names are NUL separated, and a path that is not UTF-8 stops the check.
 
 ## Exit status
 
