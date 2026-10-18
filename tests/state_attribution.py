@@ -41,7 +41,7 @@ def session_tree() -> set[int]:
     for parent in me.parents():
         try:
             line = " ".join(parent.cmdline())
-        except psutil.Error:
+        except (psutil.Error, SystemError):
             break
         if not any(word in line for word in ("pytest", "scripts/test", "testslots")):
             break

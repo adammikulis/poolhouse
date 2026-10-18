@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import psutil
@@ -60,6 +61,67 @@ def test_the_tree_hash_follows_the_content_and_ignores_the_real_index(repo):
     assert gate.tree_hash(repo) != first
     assert subprocess.run(["git", "-C", str(repo), "status", "--short"], capture_output=True,
                           text=True).stdout.startswith("??")
+
+
+def from_an_empty_index(root: Path) -> str:
+    """The tree hash computed the long way: every file hashed into an index that starts empty."""
+    env = {**os.environ, "GIT_INDEX_FILE": str(root.parent / "empty-index")}
+    (root.parent / "empty-index").unlink(missing_ok=True)
+    for step in (["add", "-A"], ["write-tree"]):
+        done = subprocess.run(["git", "-C", str(root), *step], env=env, capture_output=True, text=True, check=True)
+    return done.stdout.strip()
+
+
+def test_the_tree_hash_equals_the_long_way_in_every_state_of_the_checkout(repo):
+    git(repo, "add", "test_a.py")
+    git(repo, "commit", "-q", "-m", "first")
+    (repo / ".gitignore").write_text("ignored.txt\n")
+    (repo / "extra.py").write_text("x = 1\n")
+    git(repo, "add", "extra.py")
+    assert gate.tree_hash(repo) == from_an_empty_index(repo)
+    (repo / "extra.py").write_text("x = 2\n")
+    (repo / "test_a.py").write_text("def test_one():\n    assert False\n")
+    (repo / "ignored.txt").write_text("not counted\n")
+    (repo / "new.txt").write_text("untracked\n")
+    first = gate.tree_hash(repo)
+    assert first == from_an_empty_index(repo)
+    (repo / "ignored.txt").write_text("still not counted\n")
+    assert gate.tree_hash(repo) == first
+    (repo / "extra.py").unlink()
+    assert gate.tree_hash(repo) == from_an_empty_index(repo) != first
+
+
+def test_a_same_size_rewrite_in_the_second_the_file_was_added_is_seen_after_the_clock_moves_on(repo):
+    (repo / "f").write_text("aaaa")
+    git(repo, "add", "f")
+    (repo / "f").write_text("bbbb")
+    time.sleep(2.2)
+    assert gate.tree_hash(repo) == from_an_empty_index(repo)
+
+
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_an_entry_the_index_marks_as_unchanged_is_hashed_from_the_file(repo, flag):
+    (repo / "f").write_text("aaaa")
+    git(repo, "add", "f")
+    git(repo, "update-index", flag, "f")
+    (repo / "f").write_text("bbbbb")
+    assert gate.tree_hash(repo) == from_an_empty_index(repo)
+
+
+def test_the_tree_hash_starts_from_the_checkouts_index_so_unchanged_files_are_not_rehashed(repo, monkeypatch):
+    git(repo, "add", "test_a.py")
+    seen = []
+    original = subprocess.run
+
+    def run(command, *args, **kwargs):
+        index = (kwargs.get("env") or {}).get("GIT_INDEX_FILE")
+        if index and "add" in command:
+            seen.append(Path(index).stat().st_size if Path(index).exists() else 0)
+        return original(command, *args, **kwargs)
+
+    monkeypatch.setattr(gate.subprocess, "run", run)
+    gate.tree_hash(repo)
+    assert seen and seen[0] > 0
 
 
 def test_the_tree_hash_is_empty_outside_a_checkout(tmp_path):

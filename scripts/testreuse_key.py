@@ -20,6 +20,7 @@ from pathlib import Path
 import affected
 import testnode
 import testreuse_facts as facts
+from testreuse_imports import ImportFacts, version
 
 NEVER_MARKS = frozenset({"live_api", "live_net", "redteam", "gpu", "model"})
 NEVER_WORDS = re.compile(r"\b(?:Lease|llama[-_]server|poolhouse-serve)\b")
@@ -40,7 +41,8 @@ VALUE_OPTIONS = frozenset({"-m", "-k", "-c", "-o", "-W", "-p", "-n", "--rootdir"
                            "--cov", "--timeout"})
 DROPPED_OPTIONS = frozenset({"-n", "--numprocesses", "--junitxml"})
 RUNNER_FILES = ("scripts/testreuse_plugin.py", "scripts/testreuse_key.py", "scripts/testreuse_store.py",
-                "scripts/testreuse_run.py", "scripts/testslots_pytest.py", "scripts/testslots_rpc.py")
+                "scripts/testreuse_run.py", "scripts/testreuse_imports.py", "scripts/testslots_pytest.py",
+                "scripts/testslots_rpc.py")
 ENV_NAME = re.compile(r"""["']([A-Z][A-Z0-9_]{3,})["']""")
 ENV_FIXED = ("PATH", "CI", "TZ", "LANG", "LC_ALL", "CLAUDECODE", "POOLHOUSE_NONINTERACTIVE",
              "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "POOLHOUSE_NOTIFY", "DEV_TEST_SLOTS")
@@ -201,11 +203,17 @@ def import_names(source: str, module: str, is_package: bool) -> tuple[set[str], 
     return visitor.names, visitor.dynamic
 
 
+def import_facts(folder: Path) -> ImportFacts:
+    """The import facts file in a reuse store's ``folder``, valid for this analysis code."""
+    return ImportFacts(folder / "import-facts.json", version(Path(__file__), Path(affected.__file__)))
+
+
 class Closures:
     """Static import closures over one checkout, built from import statements only."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, facts: ImportFacts | None = None) -> None:
         self.root = root
+        self.facts = facts
         self.known = affected.index(root)
         self.by_path = {path: name for name, path in self.known.items()}
         self.edges: dict[tuple[bytes, str, bool], tuple[frozenset[str], bool]] = {}
@@ -216,9 +224,20 @@ class Closures:
         """Immutable import facts for exact bytes and relative-import context, within this execution."""
         key = (source, module, is_package)
         if key not in self._imports:
-            names, dynamic = import_names(source.decode("utf-8", errors="replace"), module, is_package)
-            self._imports[key] = (frozenset(names), dynamic)
+            stored = self.facts.key(source, module, is_package) if self.facts else ""
+            found = self.facts.get(stored) if self.facts else None
+            if found is None:
+                names, dynamic = import_names(source.decode("utf-8", errors="replace"), module, is_package)
+                found = (frozenset(names), dynamic)
+                if self.facts:
+                    self.facts.put(stored, *found)
+            self._imports[key] = found
         return self._imports[key]
+
+    def save(self) -> None:
+        """Write the import facts this run used to the shared file."""
+        if self.facts:
+            self.facts.save()
 
     def imports(self, rel: str, module: str = "", is_package: bool = False) -> tuple[frozenset[str], bool]:
         """Read current bytes before reusing pure analysis; filesystem metadata never selects a hit."""

@@ -100,7 +100,7 @@ def _write_ok(absolute: str) -> bool:
     if _under(target, ROOT):
         parts = target.relative_to(ROOT).parts
         return parts[:1] in [(name,) for name in BUILT_DIRS] or any(part.startswith(ALLOWED_ROOT_WRITES) for part in parts)
-    return any(_under(target, base) or _under(Path(absolute), base) for base in WRITABLE)
+    return any(_under(target, base) for base in WRITABLE)
 
 
 def _from_conftest() -> bool:
@@ -164,7 +164,7 @@ def _audit(event: str, args: tuple) -> None:
                 if len(args) > index and isinstance(args[index], PATHS):
                     fd = args[fds[place]] if place < len(fds) and len(args) > fds[place] else None
                     absolute = _resolve(args[index], fd)
-                    if absolute and not _write_ok(absolute):
+                    if absolute and not _write_ok(absolute) and not (event == "os.mkdir" and Path(absolute).is_dir()):
                         bucket["violations"].add(f"{event.split('.')[-1]} {absolute}")
     finally:
         BUSY.pop()

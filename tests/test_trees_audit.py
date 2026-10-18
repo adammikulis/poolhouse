@@ -163,19 +163,17 @@ def test_patch_equivalence_preserves_original_history_in_a_bundle(main):
     assert git(main, "rev-parse", "rebased") == sha
 
 
-def test_the_gate_failure_names_the_exact_close_command_and_waits_out_the_grace(main):
-    sys.path.insert(0, str(REPO / "scripts"))
-    from gates import orphan_trees
+def test_the_refusal_names_the_exact_close_command_and_waits_out_the_grace(main):
     path = tree(main, "left", owner="a")
     commit(path, "f")
     trees.finish(main, "a", time.time())                               # just finished
-    assert orphan_trees.find(main) == []                               # waiting to land: the gate does not fail
+    assert trees.owing(main, "a", time.time()) == []                   # waiting to land: nothing is owed yet
     trees.finish(main, "b", 1)
     entry = json.loads(registry(main).read_text())
     entry["trees"][str(path.resolve())]["stopped"] = time.time() - 3 * HOUR
     registry(main).write_text(json.dumps(entry))
-    found = orphan_trees.find(main)
-    assert len(found) == 1 and f"scripts/worktrees close {path.resolve()} --bundle" in found[0].detail
+    said = trees.refusal("a", trees.owing(main, "a", time.time()))
+    assert f"scripts/worktrees close {path.resolve()} --bundle" in said and said.startswith("a owns 1 worktree ")
 
 
 def test_a_tree_removed_outside_the_tool_is_reconciled_not_an_error(main):

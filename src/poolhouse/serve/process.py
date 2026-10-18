@@ -292,16 +292,26 @@ def running_within(path: Path) -> list[int]:
     return found
 
 
+def readable(attrs: list[str]) -> list[tuple[Any, dict]]:
+    """Every process whose ``attrs`` could be read, as (process, values); one that exits mid-read is skipped."""
+    found = []
+    for proc in psutil.process_iter():
+        try:
+            found.append((proc, proc.as_dict(attrs)))
+        except (psutil.Error, OSError, SystemError):
+            continue
+    return found
+
+
 def command_lines() -> list[tuple[int, float, tuple[str, ...]]]:
     """Every readable process as (pid, start time in epoch seconds, command line), this one excluded."""
     found = []
-    for pid in psutil.pids():
+    for _proc, info in readable(["pid", "create_time", "cmdline"]):
         try:
-            proc = psutil.Process(pid)
-            argv = tuple(proc.cmdline() or ())
-            if argv and pid != os.getpid():
-                found.append((pid, float(proc.create_time()), argv))
-        except (psutil.Error, OSError, TypeError):
+            argv = tuple(info.get("cmdline") or ())
+            if argv and info["pid"] != os.getpid():
+                found.append((int(info["pid"]), float(info["create_time"]), argv))
+        except (psutil.Error, OSError, TypeError, ValueError):
             continue
     return found
 

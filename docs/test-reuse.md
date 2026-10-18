@@ -54,6 +54,10 @@ the closure cannot follow (`import_module`, `__import__`, `importlib.util`, `run
 listings with an audit hook and attributes them to the test file whose collection or test was
 running; modules imported at collection are attributed from `sys.modules`.
 
+The import statements of each module are parsed once per exact source bytes: the facts are kept in
+`import-facts.json` in the project's store, shared by every checkout, keyed by a digest of the bytes, the module
+context and the analysis code (never by file metadata), and entries unused for two weeks are dropped.
+
 A hit needs a stored entry for the lookup key whose manifest still matches the checkout byte for
 byte. Nothing in either is a path, so two worktrees with identical content hit the same entry. The store is
 `~/.cache/test-reuse/<project>`, and every worktree of one repository is one project (by origin url,
