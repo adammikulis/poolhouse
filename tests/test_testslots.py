@@ -246,11 +246,14 @@ def test_a_fixed_want_is_still_a_ceiling_not_a_target(tmp_path):
 
 
 def test_queued_auto_runs_share_instead_of_the_first_taking_everything(tmp_path):
-    blocker = _spawn(tmp_path, 10, 10, 1.2, "blocker")
-    time.sleep(0.4)
+    release = tmp_path / "release"
+    blocker = _spawn(tmp_path, 10, 10, release, "blocker")
+    _wait_for_slot(tmp_path, blocker, "blocker", 10)
     a = _spawn(tmp_path, 10, 0, 0.4, "a")
-    time.sleep(0.1)
+    _wait_for_slot(tmp_path, a, "a", 0)
     b = _spawn(tmp_path, 10, 0, 0.4, "b")
+    _wait_for_slot(tmp_path, b, "b", 0)
+    release.touch()
     assert all(p.wait(timeout=60) == 0 for p in (blocker, a, b))
     got = _grants(tmp_path)
     assert got["a"] == 5 and got["b"] == 5, got               # both waiting when the blocker ended: half each
