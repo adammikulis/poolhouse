@@ -223,9 +223,31 @@ def fetch(L: Landing) -> None:
         raise ex.Stop(f"{L.upstream} is {local[:12] or 'missing'} here and {L.remote[:12]} on origin; fetch {L.dev} again")
 
 
+def check_lander(L: Landing) -> None:
+    """Stop unless the lander files of the primary checkout are the ones origin's development branch holds."""
+    name = lg.lander_problem(L.top, L.remote)
+    if name:
+        raise ex.Stop(f"{name} in the primary checkout {L.top} differs from {L.upstream}, whose lander is the one that runs; "
+                      f"bring {L.dev} there level with {L.upstream} first")
+
+
+def record_creator(L: Landing) -> None:
+    """A branch no session ever claimed gets the caller as its creator of record, so that the caller never counts as its reviewer."""
+    if landing.accepts(L.s, L.branch, tip(L), str(L.wt))["creators"]:
+        return
+    try:
+        for kind, key in (("branch", L.branch), ("worktree", str(L.wt))):
+            L.s.claim(kind, key, ttl_s=CLAIM_TTL_S)
+            L.s.release(kind, key)
+    except Conflict as error:
+        raise ex.Stop(str(error)) from None
+    say(f"no session had claimed {L.branch}: {L.me} is recorded as its creator, so its accept of this branch never counts")
+
+
 def sync(L: Landing) -> bool:
     """Fetch, level the local development branch and the branch with origin; True when the branch is already on origin."""
     fetch(L)
+    check_lander(L)
     L.sha = tip(L)
     already = lg.is_ancestor(L.wt, L.sha, L.remote)
     stepped = L.sha if already else unmerged(L, L.sha)
@@ -305,6 +327,7 @@ def finish(L: Landing, outcome: str) -> tuple[str, str]:
 def execute(L: Landing) -> tuple[str, str, list[str]]:
     """Land the branch: the outcome, a warning (empty when none) and the end of the checks' output."""
     note(L, "syncing")
+    record_creator(L)
     if sync(L):
         say(f"{L.branch} ({L.sha[:12]}) is already on {L.upstream}")
         return (*finish(L, "already landed"), [])
@@ -327,6 +350,7 @@ def execute(L: Landing) -> tuple[str, str, list[str]]:
 def show(L: Landing) -> None:
     """A dry run: what landing would check and whether it would be reviewed; nothing changes but the remote-tracking ref."""
     fetch(L)
+    check_lander(L)
     L.sha = tip(L)
     if lg.is_ancestor(L.wt, L.sha, L.remote):
         say(f"{L.branch} ({L.sha[:12]}) is already on {L.upstream}")

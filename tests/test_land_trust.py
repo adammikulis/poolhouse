@@ -6,7 +6,7 @@ from pathlib import Path
 
 import land_git
 import pytest
-from land_support import DEV, World, git
+from land_support import DEV, ROOT, World, git
 
 pytest_plugins = ["node_kit"]
 
@@ -95,3 +95,33 @@ def test_a_variable_that_adds_configuration_does_not_reach_the_lander_git_calls(
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.editor")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "/nowhere")
     assert land_git.git(tree, "config", "--get", "core.editor", check=False).stdout.strip() == ""
+
+
+def altered_lander() -> str:
+    """The lander's land_steps.py as a branch might ship it: it ends the run before anything is checked."""
+    return (ROOT / "scripts" / "land_steps.py").read_text(encoding="utf-8") + "\nraise SystemExit(0)\n"
+
+
+def test_a_branch_that_alters_its_own_lander_is_landed_by_the_development_lander(world):
+    tree, sha = world.start("own-lander", {"scripts/land_steps.py": altered_lander(), "tests/test_bad.py": "# FAILME\n"})
+    code, out = world.land(tree, "--dry-run")
+    assert code == 0 and "review needed (first sensitive path scripts/land_steps.py)" in out, out
+    world.accept("own-lander", sha)
+    code, out = world.land(tree)
+    assert code == 5 and "tests failed: tests/test_bad.py::test_x" in out, out
+    assert world.proj.calls()[0] == "gate"
+    assert world.proj.origin_head() != sha and tree.exists()
+
+
+@pytest.mark.parametrize("damage", ["edit", "extra"])
+def test_a_primary_checkout_whose_lander_differs_from_origins_is_refused(world, damage):
+    tree, sha = world.start("stale-lander", {"docs/a.md": "changed\n"})
+    scripts = world.proj.root / "scripts"
+    name = "land_exec.py" if damage == "edit" else "land_extra.py"
+    if damage == "edit":
+        (scripts / name).write_text((scripts / name).read_text() + "\n# local\n", encoding="utf-8")
+    else:
+        (scripts / name).write_text("print('extra')\n", encoding="utf-8")
+    code, out = world.land(tree)
+    assert code == 5 and f"scripts/{name} in the primary checkout" in out and "differs from origin/" + DEV in out, out
+    assert world.proj.origin_head() != sha and world.proj.calls() == []

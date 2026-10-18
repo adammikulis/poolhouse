@@ -119,12 +119,17 @@ def test_the_creators_accept_under_another_branch_name_does_not_count(world):
     assert world.proj.origin_head() != sha
 
 
-def test_a_branch_nobody_claimed_has_no_creator_of_record(world):
+def test_the_first_run_on_a_branch_nobody_claimed_records_the_caller_as_its_creator(world):
     tree, sha = world.start("unclaimed", {SENSITIVE: "VALUE = 1\n"}, claim=False)
+    code, out = world.land(tree)
+    assert code == 5 and f"{world.lander.name} is recorded as its creator" in out and "no independent accept that still stands" in out, out
+    assert world.node.session(world.lander).call("land_accepts", branch="unclaimed", sha=sha, worktree=str(tree))["creators"] == [world.lander.name]
+    with pytest.raises(Denied):
+        landing.review(world.node.session(world.lander), "unclaimed", sha, "accept")
     world.accept("unclaimed", sha)
     code, out = world.land(tree)
-    assert code == 5 and "its creator is not on record" in out, out
-    assert world.proj.origin_head() != sha
+    assert code == 0 and "recorded as its creator" not in out, out
+    assert world.proj.origin_head() == sha
 
 
 def test_an_independent_accept_of_the_exact_commit_lets_a_sensitive_change_land(world):

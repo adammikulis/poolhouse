@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +13,6 @@ from pathlib import Path
 from poolhouse import lock as filelock
 
 ROOT = Path(__file__).resolve().parents[1]
-LAND = ROOT / "scripts" / "land"
 DEV = "devline"
 AGENT_PUSH = {"CLAUDECODE": "1", "PYTHON": sys.executable, "POOLHOUSE_RUNTIME_ENSURE": "off"}
 
@@ -57,6 +57,11 @@ sys.exit(bad)
 '''
 
 
+def entry(tree: Path) -> Path:
+    """The scripts/land an agent in the worktree ``tree`` runs: the branch's own copy."""
+    return tree / "scripts" / "land"
+
+
 def git(cwd: Path, *args: str) -> str:
     """Run git in ``cwd`` and return its output."""
     done = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True)
@@ -77,6 +82,9 @@ class Project:
         git(self.root, "config", "commit.gpgsign", "false")
         self.write(self.root, "scripts/test", FAKE_TEST.replace("__BASE__", repr(str(base))))
         self.write(self.root, "scripts/budgets", "import sys\nsys.exit(0)\n")
+        for name in sorted([*(ROOT / "scripts").glob("land*"), *(ROOT / "scripts").glob("affected*")]):
+            if name.is_file():
+                shutil.copy2(name, self.root / "scripts" / name.name)
         self.write(self.root, "src/poolhouse/mod.py", "VALUE = 1\n")
         self.write(self.root, "tests/test_mod.py", "import poolhouse.mod\n")
         self.write(self.root, "docs/a.md", "a\n")
@@ -158,13 +166,13 @@ class World:
 
     def land(self, tree: Path, *args: str, who=None, hostile: dict[str, str] | None = None) -> tuple[int, str]:
         """Run ``scripts/land`` from ``tree`` as ``who`` (the lander by default); the exit status and the output."""
-        done = subprocess.run([sys.executable, str(LAND), *args], cwd=tree, env=self.env(who or self.lander, hostile),
+        done = subprocess.run([sys.executable, str(entry(tree)), *args], cwd=tree, env=self.env(who or self.lander, hostile),
                               capture_output=True, text=True, check=False, timeout=300)
         return done.returncode, done.stdout + done.stderr
 
     def start_land(self, tree: Path, *args: str, who=None) -> subprocess.Popen:
         """Start ``scripts/land`` from ``tree`` and return the running process."""
-        return subprocess.Popen([sys.executable, str(LAND), *args], cwd=tree, env=self.env(who or self.lander),
+        return subprocess.Popen([sys.executable, str(entry(tree)), *args], cwd=tree, env=self.env(who or self.lander),
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     def accept(self, branch: str, sha: str, verdict: str = "accept", who=None) -> None:

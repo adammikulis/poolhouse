@@ -2,7 +2,10 @@
 
 `scripts/land [BRANCH] [--dry-run] [--agent NAME]` puts one branch on the development branch. The development branch is the
 one the primary checkout is on (`POOLHOUSE_DEV_BRANCH` overrides it) and never `main`. Whoever made the branch runs it, from
-the branch's worktree, as their own board session; a lead may land a worker's branch the same way.
+the branch's worktree, as their own board session; a lead may land a worker's branch the same way. The lander that runs is the
+primary checkout's `scripts/land`: a copy in a branch's worktree hands over to it before importing anything from the branch,
+and the run stops unless the primary checkout's `scripts/land*` and `scripts/affected*` files are byte for byte those of
+`origin/<dev>` (a branch's own lander never decides whether its own checks run).
 
 ## What it does, in order
 
@@ -27,7 +30,8 @@ the branch's worktree, as their own board session; a lead may land a worker's br
    `pyproject.toml`, `budgets.json`). A path in an area nobody classified needs review too. Then the node must report an
    independent accept for the exact commit under this branch name: `land_accepts` leaves out the caller, and every session
    that ever held `claim branch BRANCH` or `claim worktree PATH`, whatever branch name a reviewer wrote. A branch no session
-   ever claimed has no creator of record and stops. Any standing reject blocks. `scripts/land --dry-run` prints the
+   ever claimed gets the lander's session recorded as its creator at the first run (it claims the branch and its worktree and
+   releases them), so that session's accept never counts. Any standing reject blocks. `scripts/land --dry-run` prints the
    command the reviewer runs: `poolhouse-workspace land-review BRANCH SHA --verdict accept`.
 3. **Checks.** From the diff against `origin/<dev>`: documentation only runs `scripts/budgets` and `git diff-tree --check`; code
    runs `scripts/test gate`; both add `scripts/test all <affected files>` from `affected.select`, and `scripts/test full` when

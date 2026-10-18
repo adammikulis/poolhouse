@@ -18,6 +18,7 @@ REDIRECTS = re.compile(
     r"|SHALLOW_FILE|CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+|CONFIG_PARAMETERS)$")
 STORED = {"GIT_NO_REPLACE_OBJECTS": "1", "GIT_GRAFT_FILE": os.devnull}
 HEX = re.compile(r"[0-9a-f]{40}")
+LANDER = re.compile(r"scripts/(land[^/]*|affected[^/]*)")
 OBJECT_COMMANDS = frozenset({"cat-file", "cherry", "diff", "diff-tree", "hash-object", "log", "ls-tree", "merge-base", "merge-tree",
                              "rev-list", "show"})
 SEALED_KEEP = ("PATH", "SYSTEMROOT")
@@ -232,6 +233,18 @@ def conflicted(root: Path | str) -> list[str]:
     """The paths the index of the worktree at ``root`` holds unmerged."""
     rows = git(root, "ls-files", "-z", "--unmerged").stdout.split("\0")
     return sorted({row.split("\t", 1)[1] for row in rows if "\t" in row})
+
+
+def lander_problem(top: Path | str, commit: str) -> str:
+    """The first lander file (scripts/land*, scripts/affected*) whose bytes in the checkout ``top`` differ from those in ``commit``, or an empty string."""
+    listed = sealed(top, "ls-tree", "--name-only", "-z", commit, "scripts/").stdout.split("\0")
+    stored = {name for name in listed if LANDER.fullmatch(name)}
+    present = {f"scripts/{p.name}" for p in (Path(top) / "scripts").iterdir() if p.is_file() and LANDER.fullmatch(f"scripts/{p.name}")}
+    for name in sorted(stored | present):
+        want = blob(top, commit, name) if name in stored else None
+        if want is None or name not in present or (Path(top) / name).read_bytes() != want:
+            return name
+    return ""
 
 
 def refuse_protected(*names: str) -> None:
