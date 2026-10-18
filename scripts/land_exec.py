@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -131,16 +132,36 @@ def kill_group(proc: subprocess.Popen) -> None:
     proc.wait()
 
 
+def emit(raw: bytes, seen: list[str]) -> None:
+    """Echo one line of a check's output and keep it."""
+    line = printable(raw.decode("utf-8", "replace").rstrip("\r"))
+    seen.append(line)
+    print(f"  {line}", flush=True)
+
+
 def run_check(wt: Path, check: Check) -> tuple[int, list[str]]:
-    """Run ``check`` in its own process group, echo its output and return the status and the lines."""
+    """Run ``check`` in its own process group, echo its output and return the status and the lines.
+
+    The output ends when the check exits, even if a process it left behind still holds the pipe; the group is then killed.
+    """
     proc = subprocess.Popen(check.argv, cwd=wt, env=check_env(wt), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, errors="replace", start_new_session=True)
+                            stderr=subprocess.STDOUT, start_new_session=True)
     seen: list[str] = []
+    pending = b""
     try:
-        for raw in proc.stdout or ():
-            line = printable(raw.rstrip("\n"))
-            seen.append(line)
-            print(f"  {line}", flush=True)
+        fd = proc.stdout.fileno() if proc.stdout else -1
+        while fd >= 0:
+            if select.select([fd], [], [], 0.2)[0]:
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    break
+                *whole, pending = (pending + chunk).split(b"\n")
+                for raw in whole:
+                    emit(raw, seen)
+            elif proc.poll() is not None:
+                break
+        if pending:
+            emit(pending, seen)
         return proc.wait(), seen
     finally:
         kill_group(proc)

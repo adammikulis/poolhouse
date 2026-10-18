@@ -55,6 +55,23 @@ def test_a_code_branch_runs_the_gate_and_its_affected_tests(world):
     assert world.proj.origin_head() == sha
 
 
+def test_a_process_a_check_leaves_behind_is_ended_with_the_check(world):
+    tree, _ = world.start("orphan", {"tests/test_orphan.py": "# ORPHAN\n"})
+    began = time.time()
+    code, out = world.land(tree)
+    assert code == 0, out
+    assert time.time() - began < 100, "the landing did not wait for the process the check left behind"
+    pid = int((world.proj.base / "orphan.pid").read_text())
+    end = time.time() + 5
+    while time.time() < end:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return
+        time.sleep(0.1)
+    pytest.fail(f"process {pid} left behind by a check is still running")
+
+
 def test_a_markdown_file_outside_the_documents_still_gets_the_gate(world):
     tree, _ = world.start("prompt", {"src/poolhouse/graph/prompt.md": "A prompt the code reads.\n"})
     code, out = world.land(tree)

@@ -36,6 +36,10 @@ for arg in sys.argv[2:]:
             if (base / 'proceed').exists():
                 break
             time.sleep(0.1)
+    if 'ORPHAN' in text:
+        import subprocess
+        child = subprocess.Popen(['sleep', '120'])
+        (base / 'orphan.pid').write_text(str(child.pid))
     if 'MUTATE' in text:
         with open(here / 'docs' / 'a.md', 'a') as f:
             f.write('changed while testing\n')
