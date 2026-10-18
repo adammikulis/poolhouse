@@ -24,6 +24,8 @@ def toy(tmp_path):
     (root / "tests/test_direct.py").write_text("import node_kit\n\n\ndef test_a():\n    assert node_kit\n")
     (root / "tests/test_indirect.py").write_text("from helper import VALUE\n\n\ndef test_a():\n    assert VALUE\n")
     (root / "tests/test_named.py").write_text("import importlib\n\n\ndef test_a():\n    importlib.import_module('node_kit')\n")
+    (root / "src/poolhouse/node_binary.py").write_text("NAME = 'node_binary'\n")
+    (root / "tests/test_product.py").write_text("from poolhouse import node_binary\n\n\ndef test_a():\n    assert node_binary.NAME\n")
     (root / "tests/test_env.py").write_text("import os\n\n\ndef test_a():\n    os.environ['DEV_TEST_NODE_BINARY']\n")
     return root
 
@@ -35,6 +37,10 @@ def test_a_selection_of_plain_python_files_needs_no_node(toy):
 @pytest.mark.parametrize("name", ["test_direct", "test_indirect", "test_named", "test_env"])
 def test_a_selection_that_can_reach_the_node_kit_needs_the_node(toy, name):
     assert testnode.needed(toy, ["tests/test_plain.py", f"tests/{name}.py"])
+
+
+def test_a_test_of_the_product_module_named_node_binary_needs_no_node(toy):
+    assert not testnode.needed(toy, ["tests/test_product.py"])
 
 
 def test_a_selection_that_names_no_file_needs_the_node(toy):

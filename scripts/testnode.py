@@ -35,6 +35,7 @@ KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
 BUILD_TIMEOUT_S = 1800.0
 PROBE_TIMEOUT_S = 15.0
+NODE_MARKERS = ("node_kit", "runner_binary")
 
 
 class BuildError(RuntimeError):
@@ -68,6 +69,18 @@ def version(name: str, executable: str, arguments: list[str]) -> str:
         detail = redact(done.stderr or done.stdout, env_secrets(os.environ))[0].strip()[:300]
         raise BuildError(f"{name} could not report its version; install or select a Rust toolchain (rustup.rs): {detail}")
     return done.stdout
+
+
+def needed(root: Path, files: list[str]) -> bool:
+    """Whether a run of ``files`` can start the node binary: one of them, or what they import, names the node kit; true when no file is named."""
+    if not files:
+        return True
+    import testreuse_key as keys
+
+    closures = keys.Closures(root)
+    names = {*closures.closure(files)[0], *(c for f in files for c in keys.conftests(root, f))}
+    markers = (*NODE_MARKERS, ENV)
+    return any(marker in keys.text_of(root / name) for name in names if name.startswith("tests/") for marker in markers)
 
 
 def sources(app: Path, *, existing_only: bool = True) -> list[str]:

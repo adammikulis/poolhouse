@@ -99,6 +99,7 @@ class Report:
     outcomes: list[Outcome] = field(default_factory=list)
     status: int = 0
     canary: float = CANARY_RATE
+    note: str = ""
 
     def counts(self) -> tuple[int, int]:
         """Files that ran and files that were reused."""
@@ -110,7 +111,7 @@ class Report:
         rows = [f"  {o.how}  {o.file}  key {o.key[:12]}" + (f"  {o.detail}" if o.detail else "") for o in self.outcomes]
         ran, reused = self.counts()
         sampling = "canary off" if self.canary <= 0 else f"canary {self.canary:.0%}"
-        return [*rows, f"test: {ran} file(s) ran, {reused} reused ({sampling})"]
+        return [*rows, *([f"test: {self.note}"] if self.note else []), f"test: {ran} file(s) ran, {reused} reused ({sampling})"]
 
 
 def selectors(command: list[str], root: Path) -> list[str] | None:
@@ -270,6 +271,9 @@ class Session:
             self.execute(Plan(run=again, claimed=again), launch)
         self.report.outcomes = [self.outcome(f) for f in (self.files or sorted(self.outcomes))]
         failed = any(not o.passed and not o.not_run for o in self.report.outcomes)
+        if self.files and self.report.outcomes and all(o.not_run for o in self.report.outcomes):
+            self.report.note = f"no test ran: none of the tests in {', '.join(o.file for o in self.report.outcomes)} was selected"
+            self.report.status = self.report.status or 4
         self.report.status = self.report.status or (1 if failed else 0)
         return self.report
 
