@@ -81,7 +81,7 @@ class DenialLog:
         self._proc: subprocess.Popen[str] | None = None
         self._owner = 0
         self._failed_at: float | None = None
-        atexit.register(self.close)
+        self._exit_hook = False
 
     def running(self) -> bool:
         """Whether this process started the stream and it is alive."""
@@ -107,7 +107,12 @@ class DenialLog:
 
     def settle(self) -> bool:
         """Wait until every refusal logged before this call has arrived; False when there is no stream."""
-        return self.start() and self._probe("settle", SETTLE_SECONDS)
+        if not self.start():
+            return False
+        if self._probe("settle", SETTLE_SECONDS):
+            return True
+        logger.warning("sandbox refusals cannot be reported: the system log stream did not answer in %s s", SETTLE_SECONDS)
+        return False
 
     def denials(self, tag: str) -> list[dict[str, str]]:
         """The refusals the kernel logged for the run tagged ``tag``, without the start-up noise."""
@@ -140,6 +145,9 @@ class DenialLog:
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", bufsize=1)
         self._owner = os.getpid()
+        if not self._exit_hook:
+            self._exit_hook = True
+            atexit.register(self.close)
         threading.Thread(target=self._read, args=(self._proc,), daemon=True, name="denial-log").start()
 
     def _fail(self, reason: str) -> bool:

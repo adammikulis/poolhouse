@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import subprocess
 
 import pytest
@@ -93,4 +94,19 @@ def test_the_probes_that_wait_for_the_stream_leave_no_tag_behind(seatbelt):
         assert stream.settle() and stream.settle()
         assert not [tag for tag in stream._entries if tag.startswith(denial_log.PROBE)] and not stream._probes
     finally:
+        stream.close()
+
+
+def test_a_stream_that_stops_answering_says_so_and_reports_nothing(monkeypatch, caplog, seatbelt):
+    monkeypatch.setattr(denial_log, "SETTLE_SECONDS", 0.5)
+    stream = DenialLog()
+    try:
+        assert stream.start()
+        os.kill(stream._proc.pid, signal.SIGSTOP)
+        with caplog.at_level(logging.WARNING, logger="poolhouse.sandbox"):
+            assert stream.denials("abc123") == []
+        assert "did not answer" in caplog.text
+    finally:
+        if stream._proc is not None:
+            os.kill(stream._proc.pid, signal.SIGCONT)
         stream.close()
