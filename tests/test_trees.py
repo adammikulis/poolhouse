@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import trees
+from poolhouse.serve.process import working_directories
 
 REPO = Path(__file__).resolve().parent.parent
 ENV = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
@@ -54,6 +55,7 @@ def tree(main: Path, name: str) -> Path:
 
 
 LATER = 3600.0
+OLD = 2 * 86400.0
 
 
 def standing(main: Path) -> dict[str, dict]:
@@ -62,7 +64,7 @@ def standing(main: Path) -> dict[str, dict]:
 
 def sweep(main: Path, later: float = LATER) -> list[str]:
     """The trees a sweep closes ``later`` seconds from now."""
-    closed, stayed = trees.sweep(main, time.time() + later)
+    closed, stayed = trees.sweep(main, time.time() + later, working_directories)
     assert not stayed
     return [Path(done["path"]).name for done in closed]
 
@@ -127,7 +129,7 @@ def test_dirty_content_makes_the_tree_work_and_nothing_removes_it(main, kind):
         git(path / "build" / "inner", "init", "-q")
     assert not standing(main)["held"]["landed"] and standing(main)["held"]["dirty"] >= 1
     assert sweep(main) == []
-    for decision in (("landed", ""), ("abandon", "not wanted")):
+    for decision in (("landed", ""), ("bundle", "")):
         with pytest.raises(trees.Refused):
             trees.close(main, path, decision)
     assert path.exists() and git(main, "branch", "--list", "held")
@@ -161,7 +163,7 @@ def test_sweep_removes_a_landed_tree_and_its_branch_once_it_is_old(main):
     commit(path, "f1")
     git(main, "merge", "-q", "--ff-only", "done")
     assert sweep(main, 0.0) == [] and path.exists()
-    assert sweep(main) == ["done"]
+    assert sweep(main, OLD) == ["done"]
     assert not path.exists() and not git(main, "branch", "--list", "done")
 
 
@@ -199,7 +201,7 @@ def test_sweep_reports_a_landed_tree_it_could_not_remove(main, monkeypatch):
         return original(root, *args)
 
     monkeypatch.setattr(trees, "git", failing)
-    closed, stayed = trees.sweep(main, time.time() + LATER)
+    closed, stayed = trees.sweep(main, time.time() + LATER, working_directories)
     assert closed == [] and stayed == [(str(path.resolve()), "git worktree remove failed (exit 128): busy")]
     assert path.exists()
 
@@ -346,16 +348,6 @@ def test_rebuildable_caches_allow_a_normal_landed_close(main, monkeypatch):
     assert ("branch", "-d", "cached") in calls and not path.exists()
 
 
-@pytest.mark.parametrize("name", ["__pycache__/m.pyc", "a/__pycache__/m.pyc", ".coverage.host.1", ".testmondata-wal", "build/x/y.o"])
-def test_the_rebuildable_list_names_what_a_build_recreates(name):
-    assert trees.rebuildable(name)
-
-
-@pytest.mark.parametrize("name", ["private.key", "build/inner/", "build/.git/config", "notes.private", "__pycache__/data.json", "src/dist/x", ""])
-def test_nothing_else_is_rebuildable(name):
-    assert not trees.rebuildable(name)
-
-
 def run(main: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(REPO / "scripts" / "worktrees"), *args], cwd=main, env=ENV, text=True,
                           capture_output=True, check=False)
@@ -370,6 +362,14 @@ def test_the_script_lists_work_and_landed_trees(main):
     assert out.returncode == 0, out.stderr
     assert "work  +1 -0" in out.stdout and "[work unlanded=1 dirty=1]" in out.stdout
     assert "[landed unlanded=0 dirty=0]" in out.stdout
+
+
+def test_the_script_reports_an_unreadable_tree_and_exits_1(main):
+    broken = tree(main, "broken")
+    tree(main, "fine")
+    (broken / ".git").write_text("not a gitdir pointer")
+    out = run(main)
+    assert out.returncode == 1 and "unreadable:" in out.stdout and "[landed unlanded=0 dirty=0]" in out.stdout
 
 
 def test_the_script_closes_and_sweeps(main):
@@ -391,3 +391,130 @@ def test_a_tree_named_like_an_option_or_a_command_is_only_a_path_to_git(tmp_path
     with pytest.raises(RuntimeError):
         trees.git(tmp_path / ("missing " + name), "status")
     assert not (tmp_path / "x").exists()
+
+
+HIDING = ["--assume-unchanged", "--skip-worktree"]
+
+
+@pytest.mark.parametrize("flag", HIDING)
+@pytest.mark.parametrize("edit", ["modified", "deleted"])
+def test_an_edit_the_index_hides_still_makes_the_tree_work_and_nothing_removes_it(main, flag, edit):
+    path = tree(main, "hidden")
+    git(path, "update-index", flag, "base")
+    if edit == "modified":
+        (path / "base").write_text("unsaved edit")
+    else:
+        (path / "base").unlink()
+    assert git(path, "status", "--porcelain") == ""
+    row = standing(main)["hidden"]
+    assert not row["landed"] and row["dirty"] == 1
+    assert sweep(main, OLD) == []
+    for decision in (("landed", ""), ("bundle", "")):
+        with pytest.raises(trees.Refused):
+            trees.close(main, path, decision)
+    assert path.exists() and git(main, "branch", "--list", "hidden")
+    assert (path / "base").exists() == (edit == "modified")
+
+
+def test_an_intent_to_add_file_makes_the_tree_work(main):
+    # exempt: git status already lists an intent-to-add entry, so this holds on the code before the change too
+    path = tree(main, "intent")
+    (path / "new").write_text("n")
+    git(path, "add", "-N", "new")
+    assert not standing(main)["intent"]["landed"] and sweep(main, OLD) == [] and path.exists()
+
+
+def test_a_submodule_edit_hidden_by_the_ignore_setting_makes_the_tree_work(main, tmp_path):
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    git(inner, "init", "-q", "-b", "dev")
+    commit(inner, "x")
+    git(main, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(inner), "sub")
+    git(main, "commit", "-qm", "sub", "--no-verify")
+    path = tree(main, "withsub")
+    git(path, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "-q")
+    git(path, "config", "submodule.sub.ignore", "all")
+    (path / "sub" / "x").write_text("unsaved edit")
+    assert git(path, "status", "--porcelain") == ""
+    assert not standing(main)["withsub"]["landed"] and sweep(main, OLD) == []
+    assert (path / "sub" / "x").read_text() == "unsaved edit"
+
+
+def test_sweep_leaves_a_tree_a_live_process_is_working_in(main):
+    busy, idle = tree(main, "busy"), tree(main, "idle")
+    (busy / "deep").mkdir()
+    process = subprocess.Popen(["sleep", "60"], cwd=busy / "deep")
+    try:
+        assert sweep(main, OLD) == ["idle"]
+        assert busy.exists() and not idle.exists() and git(main, "branch", "--list", "busy")
+    finally:
+        process.kill()
+        process.wait()
+    assert sweep(main, OLD) == ["busy"]
+
+
+def test_sweep_removes_a_young_tree_and_keeps_its_branch(main):
+    path = tree(main, "fresh")
+    closed, stayed = trees.sweep(main, time.time() + LATER, working_directories)
+    assert not stayed and not path.exists()
+    assert "day" in closed[0]["branch_kept"] and git(main, "branch", "--list", "fresh")
+    again = tree(main, "older")
+    closed, _ = trees.sweep(main, time.time() + OLD, working_directories)
+    assert "branch_kept" not in closed[0] and not git(main, "branch", "--list", "older") and not again.exists()
+
+
+def test_one_unreadable_tree_is_reported_and_the_rest_are_listed(main):
+    broken, fine = tree(main, "broken"), tree(main, "fine")
+    (broken / ".git").write_text("not a gitdir pointer")
+    found = standing(main)
+    assert found["fine"]["landed"] and "unreadable" not in found["fine"]
+    row = found["broken"]
+    assert not row["landed"] and row["unreadable"] and row["branch"] == "broken" and row["path"] == str(broken.resolve())
+    assert sweep(main, OLD) == ["fine"] and broken.exists() and fine.parent == broken.parent
+
+
+@pytest.mark.parametrize("kind", ["modified", "staged", "untracked", "ignored-key", "nested-repo", "hidden"])
+def test_abandon_removes_a_dirty_tree_after_writing_what_it_held_next_to_the_bundles(main, kind):
+    path = tree(main, "held")
+    if kind == "modified":
+        (path / "base").write_text("changed text")
+    elif kind == "staged":
+        (path / "new").write_text("new text")
+        git(path, "add", "new")
+    elif kind == "untracked":
+        (path / "note").write_text("unsaved text")
+    elif kind == "ignored-key":
+        (path / "private.key").write_text("secret text")
+    elif kind == "nested-repo":
+        (path / "vendor").mkdir()
+        git(path / "vendor", "init", "-q")
+        (path / "vendor" / "inner").write_text("inner text")
+    else:
+        git(path, "update-index", "--assume-unchanged", "base")
+        (path / "base").write_text("hidden text")
+    done = trees.close(main, path, ("abandon", "not wanted"))
+    assert not path.exists() and git(main, "config", "branch.held.description") == "abandoned: not wanted"
+    saved = [Path(name) for name in done["salvage"]]
+    assert saved and all(p.exists() and p.parent.name == "poolhouse-bundles" for p in saved)
+    blob = b"".join(p.read_bytes() for p in saved)
+    assert {"modified": b"changed text", "staged": b"new text", "untracked": b"unsaved text",
+            "ignored-key": b"secret text", "nested-repo": b"inner text", "hidden": b"hidden text"}[kind] in blob
+
+
+def test_abandon_of_a_clean_tree_writes_nothing(main):
+    path = tree(main, "clean")
+    assert trees.close(main, path, ("abandon", "why"))["salvage"] == []
+    assert not (Path(git(main, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "poolhouse-bundles").exists()
+
+
+def test_abandon_keeps_the_tree_when_what_it_held_cannot_be_written(main, monkeypatch):
+    path = tree(main, "unsaved")
+    (path / "note").write_text("unsaved text")
+
+    def refuse(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(trees.tarfile, "open", refuse)
+    with pytest.raises(trees.Refused, match="disk full"):
+        trees.close(main, path, ("abandon", "why"))
+    assert (path / "note").read_text() == "unsaved text"

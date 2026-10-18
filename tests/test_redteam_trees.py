@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from poolhouse import trees
+from poolhouse import gitstate, trees
 
 
 @pytest.mark.parametrize("root", ["$(touch pwned)", "x; touch pwned", "`touch pwned`", "a\nb", "--upload-pack=touch pwned"])
@@ -21,6 +21,6 @@ def test_a_stalled_git_is_an_error_not_a_hang(tmp_path, monkeypatch):
     def stall(*args, **kwargs):
         raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
 
-    monkeypatch.setattr(trees.subprocess, "run", stall)
+    monkeypatch.setattr(gitstate.subprocess, "run", stall)
     with pytest.raises(RuntimeError, match="did not answer"):
         trees.git(tmp_path, "status")

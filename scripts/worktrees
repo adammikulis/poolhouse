@@ -4,8 +4,9 @@
     worktrees [--target REV]              report; exits 1 on a tree over a hygiene limit
     worktrees close TREE --landed         remove a clean tree whose commits are all in the development branch
     worktrees close TREE --bundle         bundle its unlanded commits, verify the bundle, then remove
-    worktrees close TREE --abandon WHY    remove a clean tree, keeping its branch with WHY as the description
+    worktrees close TREE --abandon WHY    save the uncommitted changes, remove the tree, keep its branch with WHY as the description
     worktrees sweep [--min-age SECONDS]   remove every landed tree untouched for ten minutes (600 seconds)
+                                          that no process is working in
 
 A tree is landed when it is clean (ignored files that a build or a test run recreates do not count) and
 every commit is in the development branch, the branch the primary checkout is on; any other tree is work
@@ -28,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import land_git as lg
 
 from poolhouse import trees
+from poolhouse.serve.process import working_directories
 
 MAX_COMMITS = 10
 MAX_AHEAD = 30
@@ -55,8 +57,10 @@ def report(target: str) -> int:
     over = False
     for row in found:
         flags = flags_for(row["ahead"], row["behind"], row["tip_age_d"])
-        over = over or bool(flags)
         state = "landed" if row["landed"] else "work"
+        if "unreadable" in row:
+            flags, state = (*flags, f"unreadable: {row['unreadable']}"), "work unreadable"
+        over = over or bool(flags)
         print(f"{'FLAG' if flags else 'ok  '} {row['branch']}  +{row['ahead']} -{row['behind']}  {row['tip_age_d']:.1f}d  "
               f"{row['path']}  [{state} unlanded={row['unlanded']} dirty={row['dirty']}]")
         for flag in flags:
@@ -82,7 +86,7 @@ def command(argv: list[str]) -> int:
             mode = "landed" if args.landed else "bundle" if args.bundle else "abandon"
             print(json.dumps(trees.close(root, args.tree, (mode, args.abandon or ""))))
             return 0
-        closed, stayed = trees.sweep(root, time.time(), args.min_age)
+        closed, stayed = trees.sweep(root, time.time(), working_directories, args.min_age)
     except (trees.Refused, RuntimeError) as error:
         print(f"worktrees: {error}", file=sys.stderr)
         return 2

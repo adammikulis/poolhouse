@@ -1,10 +1,10 @@
 {
- "surfaces": 830,
+ "surfaces": 831,
  "by_status": {
   "covered": 508,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 77,
+  "n/a": 78,
   "unmapped": 0
  },
  "by_kind": {
@@ -103,7 +103,7 @@
    "covered": 94,
    "partial": 58,
    "uncovered": 0,
-   "n/a": 3,
+   "n/a": 4,
    "unmapped": 0
   }
  },
@@ -9482,6 +9482,16 @@
    "note": ""
   },
   {
+   "id": "spawn:activity/gate.py:_seed_index",
+   "kind": "spawn",
+   "source": "activity/gate.py:_seed_index",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "n/a",
+   "tests": [],
+   "note": "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"
+  },
+  {
    "id": "spawn:activity/gate.py:tree_hash",
    "kind": "spawn",
    "source": "activity/gate.py:tree_hash",
@@ -10379,6 +10389,20 @@
     "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:gitstate.py:run",
+   "kind": "spawn",
+   "source": "gitstate.py:run",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_trees.py::test_a_tree_named_like_an_option_or_a_command_is_only_a_path_to_git",
+    "tests/test_redteam_trees.py::test_a_hostile_root_is_only_a_path_and_runs_nothing",
+    "tests/test_redteam_trees.py::test_a_stalled_git_is_an_error_not_a_hang"
+   ],
+   "note": "a worktree path is the value of git -C, never an option or a shell word; a hostile directory name is one argument, a missing one is a refusal and a stalled git is an error, not a hang"
   },
   {
    "id": "spawn:gym/catalog.py:probe",
@@ -11353,20 +11377,6 @@
     "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
-  },
-  {
-   "id": "spawn:trees.py:git",
-   "kind": "spawn",
-   "source": "trees.py:git",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_trees.py::test_a_tree_named_like_an_option_or_a_command_is_only_a_path_to_git",
-    "tests/test_redteam_trees.py::test_a_hostile_root_is_only_a_path_and_runs_nothing",
-    "tests/test_redteam_trees.py::test_a_stalled_git_is_an_error_not_a_hang"
-   ],
-   "note": "a worktree path is the value of git -C, never an option or a shell word; a hostile directory name is one argument, a missing one is a refusal and a stalled git is an error, not a hang"
   },
   {
    "id": "spawn:workspace/backlog.py:fetch",

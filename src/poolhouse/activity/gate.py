@@ -18,6 +18,7 @@ from pathlib import Path
 
 import psutil
 
+from poolhouse import gitstate
 from poolhouse.activity import writer
 from poolhouse.activity.schema import Entry, Said, build
 from poolhouse.files import write_json
@@ -26,9 +27,11 @@ __all__ = ["Run", "evidence", "record_run", "tree_hash"]
 
 
 def _plain_index(root: Path) -> bool:
-    """Whether every entry of the checkout's index is a plain one (no assume-unchanged or skip-worktree bit)."""
-    done = subprocess.run(["git", "-C", str(root), "ls-files", "-v"], capture_output=True, text=True, check=False)
-    return done.returncode == 0 and all(line[:1] == "H" for line in done.stdout.splitlines())
+    """Whether the checkout's index has no entry that hides an edit from git."""
+    try:
+        return not gitstate.hidden(root)
+    except RuntimeError:
+        return False
 
 
 def _seed_index(root: Path, index: Path) -> None:

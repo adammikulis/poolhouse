@@ -303,6 +303,11 @@ def readable(attrs: list[str]) -> list[tuple[Any, dict]]:
     return found
 
 
+def working_directories() -> list[str]:
+    """The working directory of every process whose directory could be read."""
+    return [str(info["cwd"]) for _proc, info in readable(["cwd"]) if info.get("cwd")]
+
+
 def command_lines() -> list[tuple[int, float, tuple[str, ...]]]:
     """Every readable process as (pid, start time in epoch seconds, command line), this one excluded."""
     found = []

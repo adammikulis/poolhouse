@@ -19,7 +19,7 @@ ROOT = REPO / "src" / "poolhouse"
 
 LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("core", ("activity", "agent_dependency", "agent_hooks", "agent_hooks_stale", "asking", "authority", "backend", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
-              "entities", "errors", "extraction", "files", "files_windows", "gate", "geo",
+              "entities", "errors", "extraction", "files", "files_windows", "gate", "geo", "gitstate",
               "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "http_cancel", "httpguard", "installed", "interventions", "features", "jobs", "json_objects", "jsonl", "keystore", "keystore_guard", "kvtype", "lan", "leasetable", "legacy", "limits",
               "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
               "lock", "log", "macauth", "sealing",

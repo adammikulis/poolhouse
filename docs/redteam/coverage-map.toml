@@ -1061,7 +1061,7 @@ tests = ["tests/test_worktree_rules.py::test_a_hostile_path_is_one_argv_item_and
 note = "git is run with argv only; the paths come from a tool call and are one argument each"
 
 [[group]]
-match = ["spawn:activity/gate.py:tree_hash"]
+match = ["spawn:activity/gate.py:tree_hash", "spawn:activity/gate.py:_seed_index"]
 status = "n/a"
 note = "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"
 
@@ -1167,7 +1167,7 @@ tests = ["tests/test_keystore_hosts.py::test_a_hostile_directory_name_reaches_ic
 note = "icacls and whoami start from fixed argument lists; a directory name with shell punctuation is one argument and output that is not a SID is never passed on"
 
 [[group]]
-match = ["spawn:trees.py:git"]
+match = ["spawn:gitstate.py:run"]
 status = "covered"
 count = 1
 tests = [
