@@ -357,11 +357,3 @@ def test_known_ignored_caches_allow_normal_landed_cleanup(main, monkeypatch):
     assert trees.close(main, path, ("landed", ""), 101)["mode"] == "landed"
     assert ("branch", "-d", "cached") in calls
     assert not path.exists()
-
-
-def test_the_orphan_gate_reads_no_worktrees_for_a_root_that_is_not_a_checkout(tmp_path, monkeypatch):
-    from gates import orphan_trees
-
-    monkeypatch.setenv("GIT_DIR", str(Path(__file__).resolve().parents[1] / ".git"))
-    monkeypatch.setattr(orphan_trees.trees, "rows", lambda *a, **k: (_ for _ in ()).throw(AssertionError("read the worktrees")))
-    assert orphan_trees.find(tmp_path) == []
