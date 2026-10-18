@@ -34,6 +34,11 @@ def test_every_module_and_package_of_the_library_is_classified_once():
     assert listed <= classified, f"classify in scripts/land_review.py: {sorted(listed - classified)}"
 
 
+def test_every_name_the_library_lists_is_a_module_or_package():
+    listed = {p.split("/", 2)[2] for p in tracked("src/poolhouse", 3)}
+    assert not (land_review.SRC_ORDINARY | land_review.SRC_SENSITIVE) - listed, "no longer in src/poolhouse"
+
+
 @pytest.mark.parametrize("path", [
     "newarea/example.py", "src/poolhouse/newarea/example.py", "src/poolhouse/newmodule.py", "scripts/brand-new-tool", "src/other/x.py",
     "docs/diagram.png", "contracts/new_contract.json"])
@@ -63,7 +68,7 @@ NAMED_IN_REVIEW = [
     "src/poolhouse/hub/memberbook.py", "src/poolhouse/hub/transfer.py", "src/poolhouse/hub/remote.py", "src/poolhouse/api/leases.py",
     "src/poolhouse/api/pool.py", "src/poolhouse/api/_node.py", "src/poolhouse/cli/daemon.py", "src/poolhouse/cli/wsl_daemon.py",
     "src/poolhouse/data/redteam/styles.json", "src/poolhouse/data/profiles.json", "src/poolhouse/trees.py",
-    "src/poolhouse/trees_notice.py", "src/poolhouse/home.py", "src/poolhouse/paths.py", "src/poolhouse/decide/guards/scope.py",
+    "src/poolhouse/home.py", "src/poolhouse/paths.py", "src/poolhouse/decide/guards/scope.py",
     "src/poolhouse/decide/guard.py", "src/poolhouse/testing/injection_corpus.py", "src/poolhouse/features.py",
     "src/poolhouse/platform.py", "tests/test_redteam_board.py", "tests/test_bash_guard.py", "tests/test_authority.py",
     "tests/authority_kit.py", "tests/network_guard.py", "tests/test_keystore.py"]
