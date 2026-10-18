@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 import testreuse_plugin as plugin
 import testreuse_store as storage
-from test_testreuse import FILE, project  # noqa: F401  (fixture)
+from test_testreuse import FILE, hows, project  # noqa: F401  (fixture)
 from test_testreuse_review import attempt, kinds
 
 pytestmark = pytest.mark.slow
@@ -94,3 +94,23 @@ def test_a_test_that_makes_and_removes_a_directory_under_tmp_is_stored(project, 
     (project / FILE).write_text(USES_TMP)
     report, _ = attempt(project, store)
     assert report.status == 0 and "pass" in kinds(store)
+
+
+LISTS_THE_ROOT = "import os\nfrom pathlib import Path\n\n\ndef test_a():\n    assert 'src' in os.listdir(Path(__file__).parents[1])\n"
+
+
+def test_a_pass_that_listed_the_root_is_reused_after_a_wheel_appears_in_dist(project, tmp_path):
+    store = storage.Store(tmp_path / "store")
+    (project / FILE).write_text(LISTS_THE_ROOT)
+    assert hows(attempt(project, store)[0]) == ["ran"]
+    (project / "dist").mkdir()
+    (project / "dist/pkg.whl").write_bytes(b"built")
+    assert hows(attempt(project, store)[0]) == ["reused"]
+
+
+def test_a_pass_that_listed_the_root_is_not_reused_after_another_directory_appears(project, tmp_path):
+    store = storage.Store(tmp_path / "store")
+    (project / FILE).write_text(LISTS_THE_ROOT)
+    attempt(project, store)
+    (project / "docs").mkdir()
+    assert hows(attempt(project, store)[0]) == ["ran"]

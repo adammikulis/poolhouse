@@ -81,16 +81,18 @@ A file is executed and no passing entry is written for it when any of the follow
 - the run was red. A failure is written to the chain as a `fail` entry for attribution; it is never
   a hit, because a hit needs a `pass` entry;
 - its tests wrote under the checkout other than to cache directories (Python's `__pycache__` bytecode is
-  regenerable: it is ignored wherever it is written, site-packages included, and is not in the key), wrote outside the temporary
-  root, or opened anything under the real `~/.poolhouse`, `~/.ssh`, `~/.gnupg`, `~/.config`,
+  regenerable: it is ignored wherever it is written, site-packages included, and is not in the key; `dist/` is build output and
+  may be written), wrote outside the temporary roots (`$TMPDIR`, `/tmp`, `/var/tmp`), or opened anything under the real `~/.poolhouse`, `~/.ssh`, `~/.gnupg`, `~/.config`,
   `~/.cache/huggingface` or `Library/Keychains` (the suite's own isolation guard in
   `tests/conftest.py` reads real state to check it is untouched; those reads are ignored);
 - the run emitted a warning that mentions an isolation violation;
 - any test in it was skipped or xfailed, because a skip depends on conditions the key lacks;
 - the source tree changed during the run: the tree hash and a stamp (modification time, change time and size) of every
   file in the checkout, ignored files included but not caches, virtual environments, other agents'
-  worktrees under `.claude/worktrees` or the runner's own `.full-tier-last.json`, are read before and after, so an edit that is put back is
-  caught; the run fails with status 4. An unknown tree hash (git failed) also stores nothing;
+  worktrees under `.claude/worktrees`, `dist/` or the runner's own `.full-tier-last.json`, are read before and after, so an edit that is put back is
+  caught; the run fails with status 4. A file a test reads from `dist/` is stamped when it is read and compared when the result
+  is stored, so a wheel built or rebuilt during the run does not stop other files from being stored but a wheel rewritten after a
+  test read it does. An unknown tree hash (git failed) also stores nothing;
 - the lookup key of a file, recomputed at the start and the end of the launch, differs from the key used
   for its hit check, so a result is stored only under the key of the bytes that ran;
 - pytest exited with a status other than 0 or 1 (interrupted, internal error), the junit file holds

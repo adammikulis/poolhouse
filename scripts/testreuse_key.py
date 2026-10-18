@@ -95,13 +95,18 @@ def text_of(path: Path) -> str:
     return _texts[marker]
 
 
-def dir_sha(path: Path) -> str:
-    """A digest of the names in a directory without caches, or ``missing``."""
+def dir_sha(path: Path, skip: frozenset[str] = frozenset()) -> str:
+    """A digest of the names in a directory without caches and the ``skip`` names, or ``missing``."""
     try:
         return sha("\n".join(sorted(p.name for p in path.iterdir()
-                                   if p.name not in IGNORED_NAMES and p.suffix != ".pyc")))
+                                   if p.name not in IGNORED_NAMES and p.name not in skip and p.suffix != ".pyc")))
     except (FileNotFoundError, NotADirectoryError):
         return "missing"
+
+
+def listing(root: Path, rel: str) -> str:
+    """The digest of a directory's names; the checkout root's leaves out build output."""
+    return dir_sha(root / rel, facts.BUILT_DIRS if rel in (".", "") else frozenset())
 
 
 def tree_digest(root: Path) -> str:
@@ -407,7 +412,7 @@ def build_manifest(root: Path, rel: str, seen: dict, closures: Closures, argumen
     unseen = next((m.group(0) for p in members if p.endswith(".py") and p.startswith("tests/")
                    for m in [UNSEEN.search(text_of(root / p))] if m), "")
     return {"files": {p: file_sha(root / p) for p in files},
-            "dirs": {d: dir_sha(root / d) for d in sorted({*seen.get("dirs", ()), *(p for p in probed if (root / p).is_dir())})},
+            "dirs": {d: listing(root, d) for d in sorted({*seen.get("dirs", ()), *(p for p in probed if (root / p).is_dir())})},
             "absent": sorted(p for p in probed if not (root / p).exists()),
             "links": dict(seen.get("links", {})),
             "unobserved": unseen,
@@ -459,7 +464,7 @@ def manifest_holds(root: Path, manifest: dict, closures: Closures) -> str:
             return f"link changed: {path}"
     for path, digest in manifest["dirs"].items():
         try:
-            current = dir_sha(root / path)
+            current = listing(root, path)
         except OSError as error:
             return f"listing unavailable (errno {error.errno})"
         if current != digest:
