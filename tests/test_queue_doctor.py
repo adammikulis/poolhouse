@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import psutil
 import queue_doctor
 import testjobs
 import testreuse_store as storage
@@ -132,3 +133,52 @@ def test_a_test_node_older_than_its_limit_is_ended_and_a_young_one_is_not(tmp_pa
         assert process.wait(timeout=10) is not None
     finally:
         process.kill()
+
+
+def node_program(tmp_path: Path) -> Path:
+    program = tmp_path / "pytest-of-someone" / "run" / "poolhouse-node"
+    program.parent.mkdir(parents=True)
+    program.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(600)\n")
+    program.chmod(0o755)
+    return program
+
+
+def only_these(monkeypatch, pids: set[int]) -> None:
+    original = psutil.process_iter
+    monkeypatch.setattr(queue_doctor.psutil, "process_iter", lambda attrs=None: (p for p in original(attrs) if p.pid in pids))
+
+
+def test_only_a_node_whose_pytest_run_is_gone_is_ended_by_the_doctor(monkeypatch, tmp_path):
+    program = node_program(tmp_path)
+    argv = [str(program), "run", "--state", str(tmp_path / "state")]
+    live = subprocess.Popen(argv, start_new_session=True)
+    spawner = "import subprocess, sys; D = subprocess.DEVNULL; print(subprocess.Popen(sys.argv[1:], start_new_session=True, stdin=D, stdout=D, stderr=D).pid)"
+    orphan = int(subprocess.run([sys.executable, "-c", spawner, *argv], capture_output=True, text=True, check=True).stdout)
+    try:
+        for _ in range(100):
+            if psutil.Process(orphan).ppid() <= 1 or psutil.Process(orphan).parent().name() in queue_doctor.INIT_NAMES:
+                break
+            time.sleep(0.05)
+        only_these(monkeypatch, {live.pid, orphan})
+        assert queue_doctor.orphaned(psutil.Process(orphan)) and not queue_doctor.orphaned(psutil.Process(live.pid))
+        old = time.time() + queue_doctor.NODE_MAX_AGE_S + 60
+        assert queue_doctor.reap_nodes(now=old, say=lambda text: None) == [orphan]
+        assert live.poll() is None
+    finally:
+        live.kill()
+        if psutil.pid_exists(orphan):
+            psutil.Process(orphan).kill()
+
+
+def test_the_pass_spares_an_old_node_whose_run_is_alive(monkeypatch, tmp_path):
+    program = node_program(tmp_path)
+    live = subprocess.Popen([str(program), "run", "--state", str(tmp_path / "state")], start_new_session=True)
+    try:
+        time.sleep(0.5)
+        only_these(monkeypatch, {live.pid})
+        monkeypatch.setattr(queue_doctor, "jobs_of", lambda root: testjobs.Jobs(tmp_path / "jobs-root"))
+        old = time.time() + queue_doctor.NODE_MAX_AGE_S + 60
+        assert queue_doctor.mend(tmp_path, say=lambda text: None, now=old) == []
+        assert live.poll() is None
+    finally:
+        live.kill()

@@ -19,6 +19,7 @@ GRACE_S = 5.0
 OLD_QUIET_S = 300.0
 NODE_MAX_AGE_S = 3600.0
 TEST_NODE = re.compile(r"/pytest-of-[^/]+/.*/poolhouse-node run --state ")
+INIT_NAMES = frozenset({"launchd", "systemd", "init"})
 
 
 def _log_age(jobs: testjobs.Jobs, job: str, now: float) -> float:
@@ -88,8 +89,20 @@ def jobs_of(root: Path) -> testjobs.Jobs:
     return testjobs.Jobs(reuse.reuse_base() / testruns.scope(root))
 
 
+def supervisors(proc: psutil.Process) -> list[psutil.Process]:
+    """The node supervisor that started ``proc``, when it has one."""
+    parent = proc.parent()
+    return [parent] if parent and parent.pid > 1 and "poolhouse.node_launch" in " ".join(parent.cmdline()) else []
+
+
+def orphaned(proc: psutil.Process) -> bool:
+    """True when nothing but init and node supervisors is left above ``proc``: the run that started it is gone."""
+    live = [a for a in proc.parents() if a.pid > 1 and a.name() not in INIT_NAMES and "poolhouse.node_launch" not in " ".join(a.cmdline())]
+    return not live
+
+
 def reap_nodes(now: float | None = None, say: Callable[[str], None] = print, only: frozenset[int] | None = None) -> list[int]:
-    """End test nodes (and their supervisors) that outlived the pytest run that started them, among ``only`` when given; returns the pids ended."""
+    """End old test nodes (and their supervisors) whose pytest run is gone; the pids in ``only`` are ended without that check. Returns the pids ended."""
     now = time.time() if now is None else now
     ended = []
     for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
@@ -99,7 +112,9 @@ def reap_nodes(now: float | None = None, say: Callable[[str], None] = print, onl
             line = " ".join(proc.info["cmdline"] or [])
             if not TEST_NODE.search(line) or now - proc.info["create_time"] < NODE_MAX_AGE_S:
                 continue
-            doomed = [proc, *([parent] if (parent := proc.parent()) and "poolhouse.node_launch" in parent.cmdline() else [])]
+            if only is None and not orphaned(proc):
+                continue
+            doomed = [proc, *supervisors(proc)]
             for victim in doomed:
                 victim.terminate()
             _, alive = psutil.wait_procs(doomed, timeout=GRACE_S)
@@ -112,11 +127,12 @@ def reap_nodes(now: float | None = None, say: Callable[[str], None] = print, onl
     return ended
 
 
-def mend(root: Path, say: Callable[[str], None] = print) -> list[str]:
+def mend(root: Path, say: Callable[[str], None] = print, now: float | None = None) -> list[str]:
     """One pass of the doctor over the project's jobs; a failure of the pass never stops the caller."""
     try:
-        reap_nodes(say=say)
-        return sweep(jobs_of(root), say=say)
+        ended = sweep(jobs_of(root), now, say)
+        reap_nodes(now, say)
+        return ended
     except (OSError, ValueError, TypeError, ImportError) as error:
         say(f"queue doctor: pass failed: {type(error).__name__}: {error}"[:200])
         return []
