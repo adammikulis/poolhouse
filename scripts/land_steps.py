@@ -14,6 +14,7 @@ from pathlib import Path
 import land_exec as ex
 import land_git as lg
 import land_review
+import queue_doctor
 
 from poolhouse import lock
 from poolhouse.board import session
@@ -316,6 +317,7 @@ def execute(L: Landing) -> tuple[str, str, list[str]]:
     tree = lg.tree_id(L.wt, L.sha)
     ex.verify_tree(L.wt, tree)
     note(L, "running checks")
+    queue_doctor.mend(L.wt, say=say)
     tail = ex.run_plan(L.wt, checks.checks, tree)
     note(L, "pushing")
     recheck(L, tree)

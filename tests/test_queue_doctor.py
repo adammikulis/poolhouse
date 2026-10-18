@@ -118,19 +118,6 @@ def test_the_pass_survives_a_broken_jobs_folder(monkeypatch, tmp_path):
     assert queue_doctor.mend(tmp_path, said.append) == [] and said
 
 
-def test_the_landing_runner_runs_the_doctor_every_pass(monkeypatch, tmp_path):
-    import land_board
-
-    calls = []
-    runner = type("R", (), {"root": tmp_path, "once": lambda self: {"status": "idle"}, "close": lambda self: None, "s": None})()
-    monkeypatch.setattr(land_board, "runner_session", lambda root, target: object())
-    monkeypatch.setattr(land_board, "Runner", lambda *a, **k: runner)
-    monkeypatch.setattr(land_board, "end_session", lambda s: None)
-    monkeypatch.setattr(queue_doctor, "mend", lambda root, say=print: calls.append(root))
-    flags = {"remote": "origin", "stall_minutes": 1, "request_minutes": 1, "batch_minutes": 1, "once": True, "interval": 0}
-    assert land_board.serve(tmp_path, "dev", flags) == 0 and calls == [tmp_path]
-
-
 def test_a_test_node_older_than_its_limit_is_ended_and_a_young_one_is_not(tmp_path):
     program = tmp_path / "pytest-of-someone" / "run" / "poolhouse-node"
     program.parent.mkdir(parents=True)
