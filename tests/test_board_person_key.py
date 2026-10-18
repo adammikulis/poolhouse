@@ -25,7 +25,7 @@ from poolhouse.fleet.onboard.signing import ConfirmedKeys, KeyStoreError, Signin
 pytest_plugins = ["node_kit"]
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 ASK = "import sys\nimport time\nfrom poolhouse import person\ntime.sleep(float(sys.argv[2]))\nprint(person.confirm('Type yes: ', wait_s=float(sys.argv[1])))\n"
-WANT = grants.Want("land_control", {"kind": "session", "name": "claude-abc123"}, "feat/*", "ab" * 32, 7 * 86_400_000, 3)
+WANT = grants.Want("link_remove", {"kind": "session", "name": "claude-abc123"}, "feat/*", "ab" * 32, 7 * 86_400_000, 3)
 T0 = 1_800_000_000_000
 WHERE = grants.Where("ef" * 32, {"pid": 4242, "start": 1_700_000})
 
@@ -107,7 +107,7 @@ def test_a_person_key_asks_what_it_would_sign_in_words_and_signs_only_after_a_ye
     with pytest.raises(KeyStoreError, match="confirmation"):
         grants.sign_issue(key, "demo", WANT, now_ms=T0)
     assert len(asked) == 1
-    for word in ("allow the session claude-abc123 to land_control on feat/*", "board demo", "device " + "ab" * 32, "for 7 days", "ending " + grants.when(T0 + 7 * 86_400_000), "3 uses", "Type yes to sign it: "):
+    for word in ("allow the session claude-abc123 to link_remove on feat/*", "board demo", "device " + "ab" * 32, "for 7 days", "ending " + grants.when(T0 + 7 * 86_400_000), "3 uses", "Type yes to sign it: "):
         assert word in asked[0], (word, asked[0])
     signed = grants.sign_issue(key, "demo", WANT)
     assert len(asked) == 2 and len(signed["sig"]) == 128

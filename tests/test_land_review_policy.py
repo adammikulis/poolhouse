@@ -1,114 +1,108 @@
-"""The trusted runner classifies the pinned diff; different creator identities may review."""
+"""The review requirement is a positive list of security-adjacent paths; a path nobody classified fails closed."""
+
 from __future__ import annotations
 
 import land_review
 import pytest
-from land_support import DEV, Project, git
-from land_world import World, mod
-
-from poolhouse.board.client import Denied, Invalid
-from poolhouse.workspace import landing
-
-pytest_plugins = ["node_kit"]
+from land_support import DEV, ROOT, Project, git
 
 
 @pytest.fixture
-def world(monkeypatch, tmp_path, workspace_node):
-    return World(monkeypatch, tmp_path, workspace_node)
+def proj(tmp_path):
+    return Project(tmp_path)
 
 
-def test_ordinary_documentation_lands_without_a_review(world):
-    sha = world.branch("ordinary", {"docs/notes/example.md": "A local example.\n"})
-    rid = world.ask("alice", "ordinary", sha)
-    assert world.runner.once()["status"] == "landed"
-    assert world.status(rid) == "landed"
-    assert world.origin_head() == world.local_head()
-    assert git(world.proj.root, "merge-base", sha, DEV) == sha
+def tracked(prefix: str, depth: int) -> set[str]:
+    """The names ``depth`` components down in the tracked files under ``prefix`` of this repository."""
+    names = git(ROOT, "ls-files", *([prefix] if prefix else [])).splitlines()
+    return {"/".join(name.split("/")[:depth]) for name in names if name.count("/") >= depth - 1}
 
 
-def test_optional_rejection_still_blocks_ordinary_documentation(world):
-    sha = world.branch("declined", {"docs/notes/example.md": "Example.\n"})
-    rid = world.ask("alice", "declined", sha)
-    landing.review(world.who["carol"], rid, sha, "reject")
-    before = world.origin_head()
-    assert world.runner.once()["status"] == "idle"
-    assert world.status(rid) == "needs-review" and "rejected" in world.detail(rid)
-    assert world.origin_head() == before
+def test_every_top_level_path_of_the_repository_is_classified():
+    known = land_review.SENSITIVE_ROOTS | land_review.ORDINARY_ROOTS | land_review.SPLIT_ROOTS
+    assert not land_review.SENSITIVE_ROOTS & land_review.ORDINARY_ROOTS
+    assert tracked("", 1) <= known, f"classify in scripts/land_review.py: {sorted(tracked('', 1) - known)}"
 
 
-@pytest.mark.parametrize("path", ["src/poolhouse/credentials/example.py", "src/poolhouse/sealing.py", "src/poolhouse/serve/example.py", "scripts/land_review.py", "docs/landing-queue.md", "docs/node.md", "docs/notes/AGENTS.md", "new-executable.py", "pyproject.toml"])
-def test_security_and_unknown_executable_changes_need_review(world, path):
-    sha = world.branch("sensitive", {path: "VALUE = 1\n"})
-    rid = world.ask("alice", "sensitive", sha)
-    before = world.origin_head()
-    assert world.runner.once()["status"] == "idle"
-    assert world.status(rid) == "needs-review"
-    evidence = world.requests()[rid]["evidence"]
-    assert evidence["review_required"] is True and evidence["review_sha"] == sha
-    assert evidence["review_path"] == path
-    assert world.origin_head() == before
+def test_every_module_and_package_of_the_library_is_classified_once():
+    listed = {p.split("/", 2)[2] for p in tracked("src/poolhouse", 3)}
+    classified = land_review.SRC_ORDINARY | land_review.SRC_SENSITIVE
+    assert not land_review.SRC_ORDINARY & land_review.SRC_SENSITIVE
+    assert listed <= classified, f"classify in scripts/land_review.py: {sorted(listed - classified)}"
 
 
-def test_requester_cannot_override_review_classification(world):
-    sha = world.branch("sensitive", mod(31))
-    who = world.who["alice"]
-    who.claim("branch", "sensitive")
-    with pytest.raises(Invalid, match="review_required"):
-        who.call("land_request", branch="sensitive", sha=sha, target=DEV, selectors=["tests/test_mod.py"], review_required=False)
+@pytest.mark.parametrize("path", [
+    "newarea/example.py", "src/poolhouse/newarea/example.py", "src/poolhouse/newmodule.py", "scripts/brand-new-tool", "src/other/x.py",
+    "docs/diagram.png", "contracts/new_contract.json"])
+def test_a_path_nobody_classified_needs_review(path):
+    assert land_review.sensitive(path)
 
 
-def test_a_request_needs_the_creators_authenticated_branch_claim(world):
-    sha = world.branch("owned", mod(32))
-    creator = world.who["alice"]
-    with pytest.raises(Denied, match="authenticated claim"):
-        creator.call("land_request", branch="owned", sha=sha, target=DEV, selectors=["tests/test_mod.py"])
-    creator.claim("branch", "owned")
-    with pytest.raises(Denied, match="authenticated claim"):
-        world.who["bob"].call("land_request", branch="owned", sha=sha, target=DEV, selectors=["tests/test_mod.py"])
+@pytest.mark.parametrize("path", [
+    "pyproject.toml", "budgets.json", "tests/conftest.py", "scripts/affected.py", "scripts/affected_rules.py", "scripts/test",
+    "scripts/testslots.py", "scripts/gates/duplicates.py", "scripts/land", "scripts/land_steps.py", "scripts/hooks/pushed",
+    ".claude/agents/branch-worker.md", ".github/workflows/ci.yml", "AGENTS.md", "docs/node.md", "docs/notes/AGENTS.md",
+    "docs/landing.md", "docs/redteam/coverage.json", "contracts/model_tiers.json", "src/poolhouse/credentials/example.py", "src/poolhouse/sealing.py",
+    "src/poolhouse/serve/example.py", "src/poolhouse/workspace/landing.py", "app/poolhouse-node/src/landing.rs", "packaging/build.py",
+    ".gitattributes", ".gitignore", "version.txt"])
+def test_security_test_infrastructure_and_rule_paths_need_review(path):
+    assert land_review.sensitive(path)
 
 
-def test_a_renamed_security_path_cannot_hide_under_documentation(world):
-    project = world.proj
-    root = project.root
-    Project.write(root, "src/poolhouse/sealing.py", "VALUE = 1\n")
-    Project.commit(root, "feat: add a guarded module")
-    git(root, "push", "-q", "origin", DEV)
-    sha = world.branch("renamed", {"docs/start.md": "Example.\n"})
-    tree = project.base / "renamed"
-    (tree / "docs").mkdir(exist_ok=True)
+@pytest.mark.parametrize("path", [
+    "docs/notes/example.md", "HANDOFF.md", "CHANGELOG.md", "tests/test_example.py", "src/poolhouse/graph/example.py",
+    "src/poolhouse/bench/example.py", "scripts/nomenclature.py", "contracts/glossary-allowlist.toml"])
+def test_ordinary_paths_need_no_review(path):
+    assert not land_review.sensitive(path)
+
+
+def test_ordinary_files_land_without_a_review(proj):
+    proj.branch("ordinary", {"docs/notes/example.md": "A local example.\n", "tests/test_other.py": "import os\n"})
+    required, base, path = land_review.required(proj.root, DEV, git(proj.root, "rev-parse", "ordinary"))
+    assert not required and path == "" and base == proj.origin_head()
+
+
+def test_the_first_sensitive_path_is_named(proj):
+    proj.branch("mixed", {"docs/notes/example.md": "x\n", "src/poolhouse/sealing.py": "VALUE = 1\n", "pyproject.toml": "[project]\n"})
+    required, _, path = land_review.required(proj.root, DEV, git(proj.root, "rev-parse", "mixed"))
+    assert required and path == "pyproject.toml"
+
+
+def test_deleting_a_test_needs_review_and_changing_one_does_not(proj):
+    proj.advance("tests/test_gone.py", "def test_x():\n    assert 1\n")
+    kept = proj.branch("changed", {"tests/test_gone.py": "def test_x():\n    assert 2\n"})
+    assert not land_review.required(proj.root, DEV, git(kept, "rev-parse", "HEAD"))[0]
+    tree = proj.branch("deleted", {})
+    git(tree, "rm", "-q", "tests/test_gone.py")
+    proj.commit(tree, "chore: drop a test")
+    required, _, path = land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))
+    assert required and path == "tests/test_gone.py"
+
+
+def test_a_renamed_security_path_cannot_hide_under_documentation(proj):
+    proj.advance("src/poolhouse/sealing.py", "VALUE = 1\n")
+    tree = proj.branch("renamed", {"docs/start.md": "Example.\n"})
     git(tree, "mv", "src/poolhouse/sealing.py", "docs/explanation.md")
-    Project.commit(tree, "chore: move a module")
-    sha = git(tree, "rev-parse", "HEAD")
-    required, base, path = land_review.required(root, DEV, sha)
-    assert required and path == "src/poolhouse/sealing.py"
-    assert base == world.origin_head()
+    proj.commit(tree, "chore: move a module")
+    required, base, path = land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))
+    assert required and path == "src/poolhouse/sealing.py" and base == proj.origin_head()
 
 
-def test_comment_only_python_change_needs_no_review(world):
-    sha = world.branch("comments", {"src/poolhouse/mod.py": "VALUE = 1\n# Example value.\n"})
-    required, _, _ = land_review.required(world.proj.root, DEV, sha)
-    assert not required
-
-
-def test_a_document_symlink_requires_review(world):
-    sha = world.branch("link", {"docs/example.md": "text\n"})
-    tree = world.proj.base / "link"
+def test_a_document_symlink_requires_review(proj):
+    tree = proj.branch("link", {"docs/example.md": "text\n"})
     (tree / "docs/example.md").unlink()
     (tree / "docs/example.md").symlink_to("../AGENTS.md")
-    Project.commit(tree, "chore: link a document")
-    sha = git(tree, "rev-parse", "HEAD")
-    assert land_review.required(world.proj.root, DEV, sha)[0]
+    proj.commit(tree, "chore: link a document")
+    assert land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))[0]
 
 
-def test_modifying_an_existing_document_symlink_requires_review(world):
-    root = world.proj.root
-    (root / "docs/linked.md").symlink_to("a.md")
-    Project.commit(root, "chore: add a document link")
-    git(root, "push", "-q", "origin", DEV)
-    world.branch("changedlink", {"docs/note.md": "Example.\n"})
-    tree = world.proj.base / "changedlink"
+def test_modifying_an_existing_document_symlink_requires_review(proj):
+    (proj.root / "docs/linked.md").symlink_to("a.md")
+    proj.commit(proj.root, "chore: add a document link")
+    git(proj.root, "push", "-q", "origin", DEV)
+    proj.branch("changedlink", {"docs/note.md": "Example.\n"})
+    tree = proj.base / "changedlink"
     (tree / "docs/linked.md").unlink()
     (tree / "docs/linked.md").symlink_to("../AGENTS.md")
-    Project.commit(tree, "chore: change a link target")
-    sha = git(tree, "rev-parse", "HEAD")
-    assert land_review.required(root, DEV, sha)[0]
+    proj.commit(tree, "chore: change a link target")
+    assert land_review.required(proj.root, DEV, git(tree, "rev-parse", "HEAD"))[0]

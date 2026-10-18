@@ -264,11 +264,11 @@ def test_every_flag_the_docs_name_is_one_the_command_accepts(where, command, sub
 
 def test_documented_runtime_ensure_uses_real_delegated_nested_parser():
     command, subs, flags, parser = _documented_line(
-        'poolhouse runtime ensure [--allow-unmerged --review-request ID]')
+        'poolhouse runtime ensure [--allow-unmerged --review-branch BRANCH]')
     assert command == 'poolhouse' and subs == ('ensure',)
-    assert flags == {'--allow-unmerged', '--review-request'}
+    assert flags == {'--allow-unmerged', '--review-branch'}
     assert flags <= flags_of(parser, *subs)
-    assert parser.parse_args(['ensure', '--review-request', 'land-1']).review_request == 'land-1'
+    assert parser.parse_args(['ensure', '--review-branch', 'feat-x']).review_branch == 'feat-x'
 
 
 def test_documented_runtime_ensure_refuses_unknown_bracketed_flag():
@@ -281,8 +281,8 @@ def test_documented_runtime_ensure_refuses_unknown_bracketed_flag():
 
 
 def test_documented_runtime_status_does_not_accept_ensure_options():
-    command, subs, flags, parser = _documented_line('poolhouse runtime status --review-request ID')
-    with pytest.raises(AssertionError, match='review-request'):
+    command, subs, flags, parser = _documented_line('poolhouse runtime status --review-branch BRANCH')
+    with pytest.raises(AssertionError, match='review-branch'):
         test_every_flag_the_docs_name_is_one_the_command_accepts('fixture', command, subs, flags, parser)
 
 

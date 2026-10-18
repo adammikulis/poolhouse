@@ -1,209 +1,270 @@
-"""scripts/land against real temporary git repositories with a fast fake gate."""
+"""scripts/land against real git repositories, a bare origin and a real node.
+
+The creator of a branch claims it; the lander is the session that runs the command; an independent reviewer accepts.
+The fake test runner logs what it was called with and the environment it saw.
+"""
 
 from __future__ import annotations
 
 import os
+import signal
 import time
 from pathlib import Path
 
 import pytest
+from land_support import DEV, World, git
 
-from tests.land_support import DEV, ROOT, Project, git
+from poolhouse.board.client import Denied
+from poolhouse.workspace import landing
+
+pytest_plugins = ["node_kit"]
+
+SENSITIVE = "src/poolhouse/credentials/example.py"
 
 
 @pytest.fixture
-def proj(tmp_path):
-    return Project(tmp_path)
+def world(tmp_path, workspace_node):
+    return World(tmp_path, workspace_node)
 
 
-def mod(n: int, body: str = "") -> dict[str, str]:
-    return {f"src/poolhouse/m{n}.py": f"VALUE = {n}\n{body}", f"tests/test_m{n}.py": f"import poolhouse.m{n}\n"}
+def wait_for(path: Path, seconds: float = 60.0) -> None:
+    """Wait until ``path`` exists."""
+    end = time.time() + seconds
+    while not path.exists() and time.time() < end:
+        time.sleep(0.05)
+    assert path.exists(), f"{path} never appeared"
 
 
-def test_plan_covers_stacked_and_rebased_branches_by_patch_id(proj):
-    a = proj.branch("a", mod(1))
-    proj.branch("b", mod(2), start="a")
-    git(proj.root, "checkout", "-q", "-b", "newer")
-    Project.write(proj.root, "docs/other.md", "x\n")
-    proj.commit(proj.root, "chore: moves target")
-    git(proj.root, "checkout", "-q", DEV)
-    git(proj.root, "merge", "-q", "--ff-only", "newer")
-    proj.branch("r", {}, start=DEV)
-    git(proj.base / "r", "cherry-pick", git(a, "rev-parse", "a"))
-    code, out, summary = proj.land("plan", "a", "b", "r")
-    assert code == 0
-    assert [e["branch"] for e in summary["order"]] == ["b"]
-    assert sorted(summary["covered"]) == ["a", "r"]
-    assert summary["order"][0]["commits"] == 2
-    assert "covered: r is contained in b" in out
+def test_a_docs_branch_lands_and_the_worktree_and_branch_are_removed(world):
+    tree, sha = world.start("docs-only", {"docs/a.md": "changed\n"})
+    code, out = world.land(tree)
+    assert code == 0 and "land: " + sha[:12] + " is on origin/" + DEV in out, out
+    assert world.proj.origin_head() == world.proj.local_head() == sha
+    assert not tree.exists() and "docs-only" not in git(world.proj.root, "branch", "--list", "docs-only")
+    assert world.proj.calls() == [], "a documentation change that no test names runs no test"
+    assert [(r["outcome"], r["branch"], r["sha"]) for r in world.records()] == [("landed", "docs-only", sha)]
 
 
-def test_plan_predicts_conflicts_and_lists_dirty_worktrees(proj):
-    proj.branch("x", {"src/poolhouse/mod.py": "VALUE = 2\n"})
-    proj.branch("y", {"src/poolhouse/mod.py": "VALUE = 3\n"})
-    dirty = proj.branch("z", mod(5))
-    (dirty / "scratch.txt").write_text("wip")
-    _, _, summary = proj.land("plan", "x", "y", "z")
-    flagged = {e["branch"]: e for e in summary["order"]}
-    assert flagged["y"]["conflicts_with_plan"] == ["src/poolhouse/mod.py"] or \
-        flagged["x"]["conflicts_with_plan"] == ["src/poolhouse/mod.py"]
-    assert summary["dirty"] == ["z"]
-    assert (dirty / "scratch.txt").read_text() == "wip"
+def test_a_code_branch_runs_the_gate_and_its_affected_tests(world):
+    tree, sha = world.start("tests-only", {"tests/test_new.py": "import poolhouse.mod\n"})
+    code, out = world.land(tree)
+    assert code == 0, out
+    calls = [c for c in world.proj.calls() if not c.startswith("ENV")]
+    assert calls == ["gate", "all tests/test_new.py"]
+    assert world.proj.origin_head() == sha
 
 
-def test_plan_cover_uses_branches_with_worktrees_and_refuses_main(proj):
-    proj.branch("a", mod(1))
-    _, _, summary = proj.land("plan", "--cover")
-    assert [e["branch"] for e in summary["order"]] == ["a"]
-    code, _, summary = proj.land("plan", "main")
-    assert code == 4 and summary["status"] == "error"
+def test_a_hostile_environment_does_not_reach_the_checks(world):
+    tree, _ = world.start("hostile", {"tests/test_new.py": "import poolhouse.mod\n"})
+    code, out = world.land(tree, hostile={"PYTEST_ADDOPTS": "--deselect tests/test_new.py", "POOLHOUSE_LIVE_API": "1", "LAND_HOSTILE": "x"})
+    assert code == 0, out
+    seen = [c for c in world.proj.calls() if c.startswith("ENV")]
+    assert "ENV PYTEST_ADDOPTS=" in seen and "ENV POOLHOUSE_LIVE_API=" in seen and "ENV LAND_HOSTILE=" in seen
+    assert not [c for c in seen if c.split("=", 1)[0] != "ENV POOLHOUSE_GATE_TREE_ONLY" and c.split("=", 1)[1]], seen
+    assert "ENV POOLHOUSE_GATE_TREE_ONLY=1" in seen
 
 
-def test_conflicting_branch_is_ejected_and_the_rest_verified(proj):
-    proj.branch("x", {"src/poolhouse/mod.py": "VALUE = 2\n"})
-    proj.branch("y", {"src/poolhouse/mod.py": "VALUE = 3\n"})
-    proj.branch("z", mod(5))
-    code, out, summary = proj.land("run", "x", "y", "z")
-    assert code == 0 and summary["status"] == "verified"
-    assert len(summary["ejected"]) == 1 and summary["ejected"][0]["check"] == "merge"
-    assert sorted(summary["merged"] + [summary["ejected"][0]["branch"]]) == ["x", "y", "z"]
-    assert "EJECTED" in out and "owner=" in out
+def test_a_failing_test_stops_the_landing_naming_the_test(world):
+    tree, _ = world.start("bad", {"tests/test_bad.py": "# FAILME\n"})
+    before = world.proj.origin_head()
+    code, out = world.land(tree)
+    assert code == 5 and "land: stopped: tests failed: tests/test_bad.py::test_x" in out, out
+    assert world.proj.origin_head() == before and tree.exists()
+    record = world.records()[-1]
+    assert record["outcome"] == "stopped" and "tests/test_bad.py::test_x" in record["cause"]
+    assert any("FAILED tests/test_bad.py::test_x" in line for line in record["tail"])
 
 
-def test_conflicts_stop_halts_the_run(proj):
-    proj.branch("x", {"src/poolhouse/mod.py": "VALUE = 2\n"})
-    proj.branch("y", {"src/poolhouse/mod.py": "VALUE = 3\n"})
-    code, _, summary = proj.land("run", "--conflicts=stop", "x", "y")
-    assert code == 2 and summary["status"] == "stopped"
-    assert proj.calls() == []
+def test_a_sensitive_change_without_an_accept_is_refused_with_the_command_for_the_reviewer(world):
+    tree, sha = world.start("sensitive", {SENSITIVE: "VALUE = 1\n"})
+    before = world.proj.origin_head()
+    code, out = world.land(tree)
+    assert code == 5 and "needs review" in out and SENSITIVE in out, out
+    assert f"poolhouse-workspace land-review sensitive {sha} --verdict accept" in out
+    assert world.proj.origin_head() == before and world.proj.calls() == []
 
 
-def test_docs_only_diff_runs_budgets_and_clean_diff_without_tests(proj):
-    proj.branch("d", {"docs/a.md": "changed\n", "HANDOFF.md": "- item\n"})
-    code, _, summary = proj.land("run", "d")
-    assert code == 0 and summary["kind"] == "docs"
-    assert [c["check"] for c in summary["checks"]] == ["budgets", "clean-diff"]
-    assert proj.calls() == []
+def test_the_creators_accept_under_another_branch_name_does_not_count(world):
+    tree, sha = world.start("mine", {SENSITIVE: "VALUE = 1\n"})
+    creator = world.node.session(world.creator)
+    landing.review(creator, "some-other-name", sha, "accept")
+    with pytest.raises(Denied):
+        landing.review(creator, "mine", sha, "accept")
+    code, out = world.land(tree)
+    assert code == 5 and "needs review" in out, out
+    assert world.proj.origin_head() != sha
 
 
-def test_code_diff_runs_gate_and_affected_selectors_once(proj):
-    proj.branch("a", mod(1))
-    proj.branch("b", mod(2))
-    code, _, summary = proj.land("run", "a", "b")
-    assert code == 0 and summary["kind"] == "code" and summary["full"] == ""
-    calls = proj.calls()
-    assert calls.count("gate") == 1
-    suites = [c for c in calls if c.startswith("all")]
-    assert len(suites) == 1 and "tests/test_m1.py" in suites[0] and "tests/test_m2.py" in suites[0]
+def test_a_branch_nobody_claimed_has_no_creator_of_record(world):
+    tree, sha = world.start("unclaimed", {SENSITIVE: "VALUE = 1\n"}, claim=False)
+    world.accept("unclaimed", sha)
+    code, out = world.land(tree)
+    assert code == 5 and "its creator is not on record" in out, out
+    assert world.proj.origin_head() != sha
 
 
-def test_infrastructure_diff_starts_one_background_full_run(proj):
-    proj.branch("i", {"pyproject.toml": "[project]\nname='x'\n"})
-    code, _, summary = proj.land("run", "i")
-    assert code == 0 and summary["full"]["status"] == "started"
-    deadline = time.time() + 20
-    def started():
-        return [c for c in proj.calls() if c.split()[0] == "full"]
-
-    while not started() and time.time() < deadline:
-        time.sleep(0.1)
-    assert started() == ["full --background"]
+def test_an_independent_accept_of_the_exact_commit_lets_a_sensitive_change_land(world):
+    tree, sha = world.start("reviewed", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("reviewed", sha)
+    code, out = world.land(tree)
+    assert code == 0, out
+    assert world.proj.origin_head() == sha and not tree.exists()
 
 
-def test_second_full_run_is_refused_while_one_is_in_flight(proj):
-    proj.branch("i", {"pyproject.toml": "[project]\nname='x'\n"})
-    proj.branch("j", {"pyproject.toml": "[project]\nname='y'\n", "src/poolhouse/m9.py": "V = 1\n"})
-    lock = Path(git(proj.root, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "land"
-    lock.mkdir(exist_ok=True)
-    (lock / "full.lock").write_text(f"{os.getpid()}\n")
-    _, _, summary = proj.land("run", "i")
-    assert summary["full"]["status"] == "refused"
+def test_an_accept_of_another_commit_does_not_carry_to_an_amended_branch(world):
+    tree, sha = world.start("amended", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("amended", sha)
+    world.proj.write(tree, SENSITIVE, "VALUE = 2\n")
+    git(tree, "add", SENSITIVE)
+    git(tree, "commit", "-q", "--amend", "-m", "feat: amended")
+    newer = git(tree, "rev-parse", "HEAD")
+    assert newer != sha
+    code, out = world.land(tree)
+    assert code == 5 and f"for {newer[:12]}" in out and "needs review" in out, out
+    assert world.proj.origin_head() != newer
 
 
-def test_identical_tree_reuses_recorded_passes(proj):
-    proj.branch("a", mod(1))
-    proj.land("run", "a")
-    first = len(proj.calls())
-    _, out, summary = proj.land("run", "a")
-    assert len(proj.calls()) == first
-    assert [c["status"] for c in summary["checks"]] == ["reused", "reused"]
-    assert "reused from" in out
+def test_a_reject_stops_a_sensitive_landing_even_with_an_accept(world):
+    tree, sha = world.start("rejected", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("rejected", sha)
+    world.accept("rejected", sha, "reject", who=world.other)
+    code, out = world.land(tree)
+    assert code == 5 and "rejected" in out, out
 
 
-def test_bisect_ejects_the_branch_that_breaks_the_gate(proj):
-    proj.branch("a", mod(1))
-    proj.branch("bad", {"BAD_GATE": "1\n", **mod(2)})
-    proj.branch("c", mod(3))
-    proj.branch("d", mod(4))
-    code, out, summary = proj.land("run", "a", "bad", "c", "d")
-    assert code == 0 and summary["status"] == "verified"
-    assert [e["branch"] for e in summary["ejected"]] == ["bad"]
-    assert summary["ejected"][0]["check"] == "gate"
-    assert sorted(summary["merged"]) == ["a", "c", "d"]
-    assert "EJECTED bad check=gate" in out
-    assert len([c for c in proj.calls() if c == "gate"]) <= 6
+def test_an_accept_withdrawn_while_the_checks_run_stops_the_landing(world):
+    tree, sha = world.start("withdrawn", {SENSITIVE: "VALUE = 1\n", "tests/test_slow.py": "# SLOW\n"})
+    world.accept("withdrawn", sha)
+    running = world.start_land(tree)
+    wait_for(world.proj.base / "started")
+    world.accept("withdrawn", sha, "reject")
+    (world.proj.base / "proceed").write_text("1")
+    out = running.communicate(timeout=120)[0]
+    assert running.returncode == 5 and "no longer stands" in out, out
+    assert world.proj.origin_head() != sha
 
 
-def test_failing_test_file_is_attributed_by_selector(proj):
-    proj.branch("a", mod(1))
-    proj.branch("bad", mod(2, "# FAILME\n") | {"tests/test_m2.py": "import poolhouse.m2  # FAILME\n"})
-    _, _, summary = proj.land("run", "a", "bad")
-    assert [e["branch"] for e in summary["ejected"]] == ["bad"]
-    assert "tests/test_m2.py" in summary["ejected"][0]["evidence"]
-    assert summary["merged"] == ["a"]
+def test_a_second_lander_is_refused_naming_the_first(world):
+    first, _ = world.start("slow", {"tests/test_slow.py": "# SLOW\n"})
+    second, _ = world.start("second", {"docs/a.md": "second\n"})
+    running = world.start_land(first)
+    wait_for(world.proj.base / "started")
+    code, out = world.land(second, who=world.other)
+    assert code == 5 and world.lander.name in out and "is landing slow" in out, out
+    assert second.exists()
+    (world.proj.base / "proceed").write_text("1")
+    assert running.communicate(timeout=120)[0].count("land: stopped") == 0 and running.returncode == 0
 
 
-def test_failure_that_also_fails_on_the_target_is_baseline(proj):
-    Project.write(proj.root, "BAD_GATE", "1\n")
-    proj.commit(proj.root, "chore: known failure")
-    proj.branch("a", mod(1))
-    code, output, _summary = proj.land("run", "a")
-    assert code != 0
-    assert "failure evidence cannot establish a baseline" in output
+def test_a_claim_on_the_development_branch_held_by_another_session_refuses(world):
+    tree, _ = world.start("blocked", {"docs/a.md": "blocked\n"})
+    world.node.session(world.other).claim("branch", DEV)
+    code, out = world.land(tree)
+    assert code == 5 and DEV in out and "held" in out, out
+    assert world.proj.origin_head() != git(tree, "rev-parse", "HEAD")
 
 
-def test_finish_refuses_a_dirty_primary_and_prints_the_lead_command(proj):
-    proj.branch("a", mod(1))
-    proj.land("run", "a")
-    (proj.root / "stray.txt").write_text("x")
-    before = git(proj.root, "rev-parse", DEV)
-    code, out, summary = proj.land("finish", "--apply")
-    assert code == 3 and summary["status"] == "blocked"
-    assert "git -C" in out and "merge --ff-only land/" in out
-    assert git(proj.root, "rev-parse", DEV) == before
+def test_the_claim_on_the_development_branch_is_released_after_a_landing(world):
+    tree, _ = world.start("released", {"docs/a.md": "released\n"})
+    assert world.land(tree)[0] == 0
+    world.node.session(world.other).claim("branch", DEV)
 
 
-def test_finish_is_a_dry_run_unless_applied_then_fast_forwards_and_cleans_up(proj):
-    a = proj.branch("a", mod(1))
-    kept = proj.branch("k", mod(2))
-    (kept / "wip.txt").write_text("wip")
-    proj.land("run", "a", "k")
-    before = git(proj.root, "rev-parse", DEV)
-    code, _, summary = proj.land("finish")
-    assert code == 0 and summary["status"] == "dry-run"
-    assert git(proj.root, "rev-parse", DEV) == before and a.exists()
-    code, _, summary = proj.land("finish", "--apply")
-    assert code == 0 and summary["status"] == "landed"
-    assert git(proj.root, "rev-parse", DEV) != before
-    assert not a.exists() and kept.exists()
-    assert "a" in summary["removed"]
-    assert [r["branch"] for r in summary["kept"]] == ["k"] and "dirty" in summary["kept"][0]["reason"]
-    assert "a" not in git(proj.root, "branch", "--list", "a")
-    assert not [t for t in git(proj.root, "worktree", "list").splitlines() if "-land-" in t]
+def test_a_kill_between_the_push_and_the_clean_up_is_repaired_by_the_next_run(world):
+    hook = world.proj.origin / "hooks" / "post-receive"
+    hook.write_text(f"#!/bin/sh\ntouch {world.proj.base / 'pushed'}\nsleep 4\n")
+    hook.chmod(0o755)
+    tree, sha = world.start("killed", {"docs/a.md": "killed\n"})
+    before = git(world.proj.origin, "rev-list", "--count", DEV)
+    running = world.start_land(tree)
+    wait_for(world.proj.base / "pushed")
+    os.kill(running.pid, signal.SIGKILL)
+    running.communicate()
+    assert world.proj.origin_head() == sha and world.proj.local_head() != sha and tree.exists()
+    code, out = world.land(tree)
+    assert code == 0 and "already on origin" in out, out
+    assert world.proj.local_head() == sha and not tree.exists()
+    assert int(git(world.proj.origin, "rev-list", "--count", DEV)) == int(before) + 1
 
 
-def test_finish_keeps_a_branch_that_still_has_unique_patches(proj):
-    a = proj.branch("a", mod(1))
-    proj.land("run", "a")
-    Project.write(a, "src/poolhouse/extra.py", "E = 1\n")
-    proj.commit(a, "feat: after the batch")
-    _, _, summary = proj.land("finish", "--apply")
-    assert [r["branch"] for r in summary["kept"]] == ["a"]
-    assert a.exists()
+def test_the_tree_changing_while_a_check_runs_stops_the_landing(world):
+    tree, sha = world.start("mutated", {"tests/test_mutate.py": "# MUTATE\n"})
+    code, out = world.land(tree)
+    assert code == 5 and "no longer holds the tree" in out, out
+    assert world.proj.origin_head() != sha
 
 
-def test_land_never_pushes_forces_or_names_main():
-    text = "".join((ROOT / "scripts" / name).read_text() for name in
-                   ("land", "land_git.py", "land_plan.py", "land_run.py", "land_finish.py", "land_check.py"))
-    for forbidden in ('"push"', "--force", "-f\"", '"-D"'):
-        assert forbidden not in text
+def test_an_ignored_file_that_is_not_a_cache_stops_the_landing(world):
+    tree, sha = world.start("stray", {"docs/a.md": "stray\n"})
+    (tree / ".env").write_text("SECRET=1\n")
+    (tree / "__pycache__").mkdir()
+    (tree / "__pycache__" / "x.pyc").write_bytes(b"")
+    code, out = world.land(tree)
+    assert code == 5 and ".env" in out and "__pycache__" not in out, out
+    assert world.proj.origin_head() != sha
+
+
+def test_a_stale_branch_that_needs_no_review_is_rebased_and_lands(world):
+    tree, old = world.start("stale", {"docs/a.md": "stale\n"})
+    moved = world.proj.advance("docs/b.md", "b\n")
+    code, out = world.land(tree)
+    assert code == 0, out
+    assert world.proj.origin_head() != old and git(world.proj.root, "merge-base", "--is-ancestor", moved, DEV) == ""
+
+
+def test_a_stale_branch_that_needs_a_review_stops_for_a_new_review(world):
+    tree, sha = world.start("stale-sensitive", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("stale-sensitive", sha)
+    world.proj.advance("docs/b.md", "b\n")
+    code, out = world.land(tree)
+    assert code == 5 and "moved past" in out and "new review" in out, out
+    assert git(tree, "rev-parse", "HEAD") == sha
+
+
+def test_a_conflict_with_origin_stops_and_leaves_the_branch_as_it_was(world):
+    tree, sha = world.start("clash", {"docs/a.md": "mine\n"})
+    world.proj.advance("docs/a.md", "theirs\n")
+    code, out = world.land(tree)
+    assert code == 5 and "conflicts in docs/a.md" in out, out
+    assert git(tree, "rev-parse", "HEAD") == sha and git(tree, "status", "--porcelain") == ""
+
+
+def test_a_lander_of_the_lowest_tier_is_refused(world):
+    tree, _ = world.start("small", {"docs/a.md": "small\n"})
+    small = world.node.member("small-one", model="claude-haiku-5-5")
+    code, out = world.land(tree, who=small)
+    assert code == 5 and "stopped" in out, out
+    assert world.proj.origin_head() != git(tree, "rev-parse", "HEAD")
+
+
+def test_a_dry_run_reports_the_review_and_the_checks_and_changes_nothing(world):
+    tree, sha = world.start("dry", {SENSITIVE: "VALUE = 1\n", "tests/test_new.py": "import poolhouse.mod\n"})
+    code, out = world.land(tree, "--dry-run")
+    assert code == 0 and "review needed" in out and f"land-review dry {sha}" in out, out
+    assert "checks: gate, affected" in out
+    assert world.proj.origin_head() != sha and tree.exists() and world.proj.calls() == []
+
+
+def test_a_branch_already_on_origin_is_only_cleaned_up(world):
+    tree, sha = world.start("landed-elsewhere", {})
+    code, out = world.land(tree)
+    assert code == 0 and "already on origin" in out, out
+    assert not tree.exists() and world.proj.origin_head() == sha
+
+
+def test_a_branch_whose_commits_net_to_nothing_has_nothing_to_land(world):
+    tree, _ = world.start("net-zero", {"docs/a.md": "x\n"})
+    world.proj.write(tree, "docs/a.md", "a\n")
+    world.proj.commit(tree, "chore: revert")
+    code, out = world.land(tree)
+    assert code == 5 and "nothing to land" in out, out
+    assert tree.exists()
+
+
+def test_a_local_only_commit_on_the_development_branch_stops_before_anything_is_pushed(world):
+    tree, sha = world.start("behind-local", {"docs/a.md": "x\n"})
+    world.proj.write(world.proj.root, "docs/local.md", "local\n")
+    world.proj.commit(world.proj.root, "chore: local only")
+    code, out = world.land(tree)
+    assert code == 5 and "holds commits origin lacks" in out, out
+    assert world.proj.origin_head() != sha

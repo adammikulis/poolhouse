@@ -239,7 +239,7 @@ def test_a_table_too_large_to_read_places_nothing(served, monkeypatch):
 
 
 def test_paths_outside_the_node_directory_are_left_alone(served):
-    assert NodeWatch(served.root).judge(["workspace/land-runner.log", "keystore/rate.json"]) == (set(), {})
+    assert NodeWatch(served.root).judge(["workspace/other.log", "keystore/rate.json"]) == (set(), {})
 
 
 def test_the_watch_leaves_out_what_the_node_wrote_for_others_and_fails_what_the_run_caused_with_other_writers_live(served):

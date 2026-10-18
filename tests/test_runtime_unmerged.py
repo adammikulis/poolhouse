@@ -39,19 +39,18 @@ def reviewed(tmp_path, monkeypatch, workspace_node):
     lead = workspace_node.member("runtime-owner")
     project.branch("reviewed-source", {"extra.py": "VALUE = 2\n"})
     sha = git(project.root, "rev-parse", "reviewed-source")
-    request = landing.request(workspace_node.session(author), {
-        "branch": "reviewed-source", "sha": sha, "target": "devline", "selectors": ["tests/test_mod.py"]})["id"]
-    landing.review(workspace_node.session(reviewer), request, sha, "accept")
+    workspace_node.session(author).claim("branch", "reviewed-source")
+    landing.review(workspace_node.session(reviewer), "reviewed-source", sha, "accept")
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv(authority.AGENT_ENV, lead.name)
     monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", "devline")
-    return project, workspace_node, lead, reviewer, sha, request
+    return project, workspace_node, lead, reviewer, sha, "reviewed-source"
 
 
 def approval(reviewed):
-    project, _, _, _, sha, request = reviewed
-    return runtime_unmerged.approve(project.root, sha, request)
+    project, _, _, _, sha, branch = reviewed
+    return runtime_unmerged.approve(project.root, sha, branch)
 
 
 def test_delegated_exact_review_rechecks_and_audits_both_gates(reviewed):
@@ -61,11 +60,11 @@ def test_delegated_exact_review_rechecks_and_audits_both_gates(reviewed):
     uses = [r for r in authority.audit_rows() if r["event"] == "authority.use"]
     assert {r["gate"] for r in uses} == {"runtime.deploy", "runtime.deploy-unmerged"}
     assert all(r["agent"] == lead.name and sha in r["action"] for r in uses)
-    assert all(granted.request in r["action"] for r in uses if r["gate"] == runtime_unmerged.GATE)
+    assert all(granted.branch in r["action"] for r in uses if r["gate"] == runtime_unmerged.GATE)
 
 
 @pytest.mark.parametrize("field,value", [("commit", "f" * 40), ("board", "elsewhere"),
-                                         ("request", "missing"), ("actor", "other")])
+                                         ("branch", "missing"), ("actor", "other")])
 def test_forged_or_replayed_binding_fails(reviewed, field, value):
     project, _, _, _, sha, _ = reviewed
     granted = replace(approval(reviewed), **{field: value})
@@ -88,9 +87,9 @@ def test_person_floor_blocks_each_gate(reviewed, gate):
 
 
 def test_later_reject_invalidates_approval(reviewed):
-    project, node, _, reviewer, sha, request = reviewed
+    project, node, _, reviewer, sha, branch = reviewed
     granted = approval(reviewed)
-    landing.review(node.session(reviewer), request, sha, "reject")
+    landing.review(node.session(reviewer), branch, sha, "reject")
     with pytest.raises(runtime_source.DeployError, match="standing independent"):
         runtime_source.admit(project.root, sha, allow_unmerged=granted)
 
@@ -103,21 +102,21 @@ def test_branch_movement_invalidates_approval(reviewed):
         runtime_source.admit(project.root, sha, allow_unmerged=granted)
 
 
-def test_cancelled_request_invalidates_approval(reviewed):
-    project, node, _, _, sha, request = reviewed
-    granted = approval(reviewed)
-    author = node.members["source-author"]
-    landing.cancel(node.session(author), request)
-    with pytest.raises(runtime_source.DeployError, match="active exact-commit"):
-        runtime_source.admit(project.root, sha, allow_unmerged=granted)
+def test_a_branch_with_no_independent_accept_is_not_approved(reviewed):
+    project, node, _, _, _, _ = reviewed
+    node.session(node.members["source-author"]).claim("branch", "unreviewed")
+    project.branch("unreviewed", {"other.py": "VALUE = 3\n"})
+    sha = git(project.root, "rev-parse", "unreviewed")
+    with pytest.raises(runtime_source.DeployError, match="standing independent"):
+        runtime_unmerged.approve(project.root, sha, "unreviewed")
 
 
 def test_helper_and_lowest_tier_cannot_use_lead_approval(reviewed, monkeypatch):
-    project, node, lead, _, sha, request = reviewed
+    project, node, lead, _, sha, branch = reviewed
     for member in (node.member("helper", parent=lead), node.member("small", model="claude-haiku-5-5")):
         monkeypatch.setenv(authority.AGENT_ENV, member.name)
         with pytest.raises(runtime_source.DeployError, match="live eligible lead"):
-            runtime_unmerged.approve(project.root, sha, request)
+            runtime_unmerged.approve(project.root, sha, branch)
 
 
 def test_offline_node_cannot_reuse_approval(reviewed):
@@ -129,24 +128,24 @@ def test_offline_node_cannot_reuse_approval(reviewed):
 
 
 def test_switch_rechecks_review_before_publishing_selection(reviewed, tmp_path):
-    project, node, _, reviewer, sha, request = reviewed
+    project, node, _, reviewer, sha, branch = reviewed
     granted = approval(reviewed)
     plan = runtime_deploy.Plan(project.root, sha, None, allow_unmerged=granted)
     chosen = runtime.Runtime(tmp_path / "build", sha, "0", runtime.identity())
-    landing.review(node.session(reviewer), request, sha, "reject")
+    landing.review(node.session(reviewer), branch, sha, "reject")
     with pytest.raises(runtime_source.DeployError, match="standing independent"):
         runtime_deploy.switch(chosen, plan)
     assert not (runtime.directory() / "selected.json").exists()
 
 
 def test_node_admission_preserves_and_rechecks_the_exact_approval(reviewed, tmp_path):
-    project, node, _, reviewer, sha, request = reviewed
+    project, node, _, reviewer, sha, branch = reviewed
     granted = approval(reviewed)
     prefix = tmp_path / "build"
     record = node_binary.install(prefix, node.binary, commit=sha)
     binary = node_binary.location(prefix)
     node_supervise._admitted(binary, record["sha256"], project.root, allow_unmerged_commit=granted)
-    landing.review(node.session(reviewer), request, sha, "reject")
+    landing.review(node.session(reviewer), branch, sha, "reject")
     with pytest.raises(runtime_source.DeployError, match="standing independent"):
         node_supervise._admitted(binary, record["sha256"], project.root, allow_unmerged_commit=granted)
     with pytest.raises(runtime_source.DeployError, match="exact reviewed"):
@@ -154,9 +153,9 @@ def test_node_admission_preserves_and_rechecks_the_exact_approval(reviewed, tmp_
 
 
 def cli_args(reviewed, *extra):
-    project, _, _, _, sha, request = reviewed
+    project, _, _, _, sha, branch = reviewed
     args = runtime_cli.GROUP.parser().parse_args([
-        "ensure", "--checkout", str(project.root), "--ref", sha, "--allow-unmerged", "--review-request", request,
+        "ensure", "--checkout", str(project.root), "--ref", sha, "--allow-unmerged", "--review-branch", branch,
         *extra])
     args.via = authority.DELEGATED
     return args

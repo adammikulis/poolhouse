@@ -6,8 +6,8 @@
     scripts/review-backlog --dry-run [--local|--cloud MODEL]   list what would be reviewed and start nothing
     scripts/review-backlog --list                              show the reports
 
-Work is the unlanded branches (git cherry against the development branch), the landing requests in
-needs-review and the open pull requests (read-only `gh`). The reviewer gets a detached copy of the diff in a
+Work is the unlanded branches (git cherry against the development branch) and the open pull requests
+(read-only `gh`). The reviewer gets a detached copy of the diff in a
 scratch directory with every branch, pull request and commit text fenced as data, a role that only reads and
 an environment holding no token. A report is advice: this tool never accepts, lands, pushes or posts.
 Reports are `<sha>.md` under the state root's `reviews/`; a SHA that has one is skipped.
@@ -39,7 +39,6 @@ MODEL_SECONDS = 1800
 SENSITIVE = re.compile(r"authoriz|authority|grant|guard|hook|red[-_]?team", re.I)
 KEPT_ENV = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "TERM", "SHELL", "POOLHOUSE_HOME",
             "POOLHOUSE_CACHE", "POOLHOUSE_WORKSPACE_AGENT")
-QUEUE_LINE = re.compile(r"^land-\d+ (\S+)@([0-9a-f]{6,40}) by \S+: needs-review", re.M)
 FILE_LINE = re.compile(r"^diff --git a/(\S+) b/(\S+)$", re.M)
 VERDICT = re.compile(r"^\s*VERDICT:\s*(flag|clear)\b", re.I | re.M)
 FINDING = re.compile(r"^\s*[-*]\s*\S+:\d+", re.M)
@@ -104,23 +103,6 @@ def branch_items(repo: Path, dev: str) -> list[Item]:
     return found
 
 
-def land_items(repo: Path, dev: str, say: Callable[[str], None]) -> list[Item]:
-    done = call(["poolhouse-workspace", "land-queue", "--json"])
-    if done is None or done.returncode != 0:
-        say("landing requests skipped: poolhouse-workspace land-queue did not answer")
-        return []
-    try:
-        text = json.loads(done.stdout).get("text", "")
-    except ValueError:
-        return []
-    found = []
-    for branch, short in QUEUE_LINE.findall(text):
-        sha = git(repo, "rev-parse", "--verify", "-q", f"{short}^{{commit}}").strip()
-        if sha:
-            found.append(branch_item(repo, dev, sha, f"landing request {branch}"))
-    return found
-
-
 def pull_items(say: Callable[[str], None]) -> list[Item]:
     signed_in = call(["gh", "auth", "status"])
     if signed_in is None or signed_in.returncode != 0:
@@ -145,9 +127,9 @@ def pull_items(say: Callable[[str], None]) -> list[Item]:
 
 
 def collect(repo: Path, dev: str, say: Callable[[str], None]) -> list[Item]:
-    """Work keyed by head SHA: one item for a SHA that is a branch, a landing request and a pull request."""
+    """Work keyed by head SHA: one item for a SHA that is both a branch and a pull request."""
     merged: dict[str, Item] = {}
-    for item in [*land_items(repo, dev, say), *branch_items(repo, dev), *pull_items(say)]:
+    for item in [*branch_items(repo, dev), *pull_items(say)]:
         if item.sha not in merged:
             merged[item.sha] = item
             continue

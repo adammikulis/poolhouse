@@ -85,7 +85,7 @@ SPEND = (
     "held = session.Session(Client(state), board, credentials.load(state, board, name), name)\n"
     "out = {'whoami': held.whoami().name}\n"
     "try:\n"
-    "    held.call('land_brake', pause=False)\n"
+    "    held.call('task_mode', mode='open')\n"
     "    out['spent'] = True\n"
     "except Denied as err:\n"
     "    out['refused'] = str(err)\n"
@@ -96,7 +96,7 @@ SPEND = (
 
 def test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_grant(lead):
     node = lead
-    node.allow(node.lead, "land_control")
+    node.allow(node.lead, "task_authority")
     args = (str(node.state), node.board, node.lead.name)
     here = json.loads(child_output(SPEND, *args, node=node, own_terminal=False))
     assert here == {"whoami": node.lead.name, "spent": True}, "the terminal that registered the session spends its grant"

@@ -36,9 +36,9 @@ def setup(team, who, *extra, typed=TYPED):
 
 def test_a_signature_made_in_python_is_one_the_node_verifies_and_only_the_enrolled_key_counts(team):
     lead = team.lead
-    gids = team.allow(lead, "land_control")
+    gids = team.allow(lead, "link_remove")
     held = board_grants.listing(team.session(lead))
-    assert [(g.gid, g.status, g.action, g.mine) for g in held.grants] == [(gids[0], "live", "land_control", True)]
+    assert [(g.gid, g.status, g.action, g.mine) for g in held.grants] == [(gids[0], "live", "link_remove", True)]
     assert held.persons == [board_grants.fingerprint(team.person.public)]
     stranger = Signer.generate()
     with pytest.raises(Denied):
@@ -46,7 +46,7 @@ def test_a_signature_made_in_python_is_one_the_node_verifies_and_only_the_enroll
     again = Signer.generate()
     with pytest.raises(Denied):
         board_grants.enrol(team.client, lead.token, board_grants.enrolment(again, "an agent's key"))
-    assert [g.action for g in board_grants.listing(team.session(lead)).grants] == ["land_control"]
+    assert [g.action for g in board_grants.listing(team.session(lead)).grants] == ["link_remove"]
 
 
 def test_a_second_key_is_enrolled_only_with_the_approval_of_the_first(team):
@@ -123,10 +123,10 @@ def test_a_person_sets_up_the_lead_grants_once_and_every_item_is_revoked_by_its_
     code, out, err = setup(team, lead, "--days", "7")
     assert code == 0, (out, err)
     assert out.count("Type yes to sign") == 1, "one question for the whole list (the node asks its own, once, for the first key)"
-    assert lead.name in out and "for 7 days" in out and "land_control" in out and "act as a person key" in out
+    assert lead.name in out and "for 7 days" in out and "task_authority" in out and "act as a person key" in out
     for action in board_grants.DEFAULT_ACTIONS:
         assert action in out, out
-    assert set(board_grants.DEFAULT_ACTIONS) == {"land_control", "task_authority", "note_verify", "shard_call"}
+    assert set(board_grants.DEFAULT_ACTIONS) == {"task_authority", "note_verify", "shard_call"}
     assert "shard_consent" not in out and "sync_now" not in out, "what turns test shards on, and a sync, are granted by a person's own command"
     held = board_grants.listing(team.session(lead))
     assert sorted(g.action for g in held.grants) == sorted(board_grants.DEFAULT_ACTIONS)
@@ -139,17 +139,16 @@ def test_a_person_sets_up_the_lead_grants_once_and_every_item_is_revoked_by_its_
     assert team.cli("grants", "--json").returncode == 3, "no session and no terminal reads nothing"
     mine = team.cli("grants", "--mine", "--json", who=lead)
     assert {g["action"] for g in json.loads(mine.stdout)} == set(board_grants.DEFAULT_ACTIONS), mine.stdout
-    # the lead holds them: landing control and task authority work, a subagent's note verification too
+    # the lead holds them: task authority works, a subagent's note verification too
     lead_session = team.session(lead)
-    assert lead_session.call("land_brake", pause=True)["paused"] is True
     assert lead_session.call("task_mode", mode="strict")["mode"] == "strict"
     note = lead_session.note_add("fact", "a claim", "it is so", verify_cmd="true")
     assert team.session(team.kid).note_verify(str(note["seq"]), 0, "ab" * 32).trust == "test-verified", "a subagent verifies under the grant to its parent"
-    victim = next(g for g in held.grants if g.action == "land_control")
+    victim = next(g for g in held.grants if g.action == "task_authority")
     code, out, err = team.terminal("revoke-grant", victim.gid, "--reason", "no longer needed", who=lead, typed=TYPED)
     assert code == 0, (out, err)
     with pytest.raises(Denied):
-        lead_session.call("land_brake", pause=False)
+        lead_session.call("task_mode", mode="open")
     shown = json.loads(team.cli("grants", "--json", who=lead).stdout)
     assert {g["gid"]: g["status"] for g in shown}[victim.gid] == "revoked"
     log = json.loads(team.cli("grant-log", "--json", who=lead).stdout)
@@ -164,7 +163,7 @@ def test_a_process_that_registers_as_the_leads_family_with_a_lying_model_inherit
     assert code == 0, (out, err)
     lead_session, liar_session = team.session(lead), team.session(liar)
     assert lead_session.call("task_mode", mode="strict")["mode"] == "strict"
-    for method, params in (("task_mode", {"mode": "open"}), ("shard_consent", {"enabled": False}), ("land_brake", {"pause": True})):
+    for method, params in (("task_mode", {"mode": "open"}), ("shard_consent", {"enabled": False})):
         with pytest.raises(Denied):
             liar_session.call(method, **params)
     with pytest.raises(Denied):

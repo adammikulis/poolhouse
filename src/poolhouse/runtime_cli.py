@@ -68,7 +68,7 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
         raise runtime_deploy.DeployError("reviewed runtime deployment needs the full commit SHA and the caller's own identity")
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
     if exception and person.marked():
-        exception = runtime_unmerged.approve(primary, commit, args.review_request)
+        exception = runtime_unmerged.approve(primary, commit, args.review_branch)
     if deploying:
         runtime_deploy.admit(primary, commit, allow_unmerged=exception)
     baseline = json.loads(args.automatic_from) if getattr(args, "automatic_from", "") else None
@@ -325,7 +325,7 @@ GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the sel
     flag("--automatic-from", default="", help=argparse.SUPPRESS),
     flag("--force", action="store_true", help="rebuild even when held or current"),
     flag("--allow-unmerged", action="store_true", help="deploy an exact independently reviewed source commit while delegated, or confirm at a terminal"),
-    flag("--review-request", default="", help="exact independent landing review request for a delegated source deployment"),
+    flag("--review-branch", default="", help="the branch whose exact commit an independent landing review accepted, for a delegated source deployment"),
     flag("--force-build", action="store_true", help="build again at once after a failed build (needs an agent)"),
     flag("--now", action="store_true", help="skip the stability delay before a background build"),
     flag("--settle", action="store_true", help="wait until the tip has been unchanged for a few minutes, then build only the newest tip"),

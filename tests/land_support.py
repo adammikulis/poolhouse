@@ -1,4 +1,4 @@
-"""A tiny real git project with a configurable fast gate, for exercising ``scripts/land``."""
+"""A tiny real git project with a bare origin and a fake test runner, and a real node with a creator, a lander and a reviewer."""
 
 from __future__ import annotations
 
@@ -8,59 +8,40 @@ import subprocess
 import sys
 from pathlib import Path
 
+from poolhouse import lock as filelock
+
 ROOT = Path(__file__).resolve().parents[1]
 LAND = ROOT / "scripts" / "land"
 DEV = "devline"
 
 FAKE_TEST = r'''
-import os, pathlib, sys, time, xml.etree.ElementTree as ET
-import testjobs
-from poolhouse.activity import reuse
-from poolhouse.workspace import testruns
+import os, pathlib, sys, time
 here = pathlib.Path('.').resolve()
-jobs = testjobs.Jobs(reuse.reuse_base() / testruns.scope(here))
-job = ''
-if sys.argv[1:2] == ['_job']:
-    job = sys.argv[2]
-    spec = jobs.read(job, 'spec.json')
-    sys.argv = [sys.argv[0], *spec['argv']]
-log = os.environ.get('LAND_FAKE_LOG')
-if log:
-    with open(log, 'a') as f:
-        f.write(' '.join(sys.argv[1:]) + '\n')
-if sys.argv[1:2] == ['submit']:
-    jid = 'fixture-full'
-    jobs.write(jid, 'spec.json', {'id': jid, 'root': str(here), 'argv': ['full', '--background']})
-    jobs.write(jid, 'status.json', {'state': 'done', 'exit': 0})
-    if log:
-        with open(log, 'a') as f:
-            f.write('full --background\n')
-    print(jid)
-    sys.exit(0)
-if list(here.glob('HANG_GATE*')):
-    time.sleep(120)
+base = pathlib.Path(__BASE__)
+with open(base / 'calls.log', 'a') as f:
+    f.write(' '.join(sys.argv[1:]) + '\n')
+    for name in ('PYTEST_ADDOPTS', 'POOLHOUSE_LIVE_API', 'POOLHOUSE_GATE_TREE_ONLY', 'LAND_HOSTILE'):
+        f.write(f'ENV {name}={os.environ.get(name, "")}\n')
 bad = 0
-cases = []
 if sys.argv[1] == 'gate':
-    both = (here / 'COMBO_A').exists() and (here / 'COMBO_B').exists()
-    bad = int(bool(list(here.glob('BAD_GATE*')) or both))
-else:
-    for arg in sys.argv[2:]:
-        path = pathlib.Path(arg)
-        if arg.startswith('tests/') and path.exists():
-            case = ET.Element('testcase', classname=arg[:-3].replace('/', '.'), name='test_x')
-            if 'FAILME' in path.read_text():
-                print(f'FAILED {arg}::test_x - boom')
-                ET.SubElement(case, 'failure', message='boom').text = 'boom'
-                bad = 1
-            cases.append(case)
-if job:
-    if cases:
-        suite = ET.Element('testsuite', tests=str(len(cases)), failures=str(sum(bool(c.findall('failure')) for c in cases)), errors='0')
-        suite.extend(cases)
-        ET.ElementTree(suite).write(jobs.path(job) / 'junit-fixture.xml', encoding='utf-8')
-    import testreuse_store
-    jobs.write(job, 'status.json', {'state': 'done', 'exit': bad, 'pid': os.getpid(), 'started': testreuse_store.process_start(os.getpid()), 'finished': time.time()})
+    bad = int(bool(list(here.glob('BAD_GATE*'))))
+for arg in sys.argv[2:]:
+    path = pathlib.Path(arg)
+    if not (arg.startswith('tests/') and path.exists()):
+        continue
+    text = path.read_text()
+    if 'SLOW' in text:
+        (base / 'started').write_text('1')
+        for _ in range(600):
+            if (base / 'proceed').exists():
+                break
+            time.sleep(0.1)
+    if 'MUTATE' in text:
+        with open(here / 'docs' / 'a.md', 'a') as f:
+            f.write('changed while testing\n')
+    if 'FAILME' in text:
+        print(f'FAILED {arg}::test_x - boom')
+        bad = 1
 sys.exit(bad)
 '''
 
@@ -72,35 +53,27 @@ def git(cwd: Path, *args: str) -> str:
 
 
 class Project:
-    """A repository with a target branch, sibling worktrees for branches and a land runner."""
+    """A repository with a bare origin, a fake test runner and sibling worktrees for branches."""
 
-    def __init__(self, base: Path, home: Path | None = None) -> None:
+    def __init__(self, base: Path) -> None:
         self.base = base
         self.root = base / "proj"
+        self.origin = base / "origin.git"
         self.root.mkdir()
         git(self.root, "init", "-q", "-b", DEV)
         git(self.root, "config", "user.name", "Test Agent")
         git(self.root, "config", "user.email", "agent@example.invalid")
         git(self.root, "config", "commit.gpgsign", "false")
-        self.write(self.root, "scripts/test", FAKE_TEST)
+        self.write(self.root, "scripts/test", FAKE_TEST.replace("__BASE__", repr(str(base))))
         self.write(self.root, "scripts/budgets", "import sys\nsys.exit(0)\n")
         self.write(self.root, "src/poolhouse/mod.py", "VALUE = 1\n")
         self.write(self.root, "tests/test_mod.py", "import poolhouse.mod\n")
         self.write(self.root, "docs/a.md", "a\n")
+        self.write(self.root, ".gitignore", "__pycache__/\n.env\n")
         self.commit(self.root, "chore: seed")
-        self.log = base / "calls.log"
-        self.env = {**os.environ, "POOLHOUSE_HOME": str(home or base / "home"), "DEV_TEST_SLOTS_DIR": str(base / "slots"),
-                    "LAND_FAKE_LOG": str(self.log), "POOLHOUSE_DEV_BRANCH": DEV, 
-                    "PYTHON_KEYRING_BACKEND": "onboard_support.FileKeyring",
-                    "POOLHOUSE_TEST_KEYRING": str(base / "keyring.json"),
-                    "PYTHONPATH": os.pathsep.join((str(ROOT / "tests"), str(ROOT / "scripts"), os.environ.get("PYTHONPATH", "")))}
-
-        # The runner records its passes in the activity log, which a background process may write
-        # only once a person has provisioned the keystore; a headless runner has no person to ask.
-        subprocess.run([sys.executable, "-c",
-                        "from poolhouse import keystore\nkeystore.interactive = lambda: True\n"
-                        "keystore.default().provision()\n"],
-                       env=self.env, check=True, capture_output=True)
+        git(base, "init", "-q", "--bare", str(self.origin))
+        git(self.root, "remote", "add", "origin", str(self.origin))
+        git(self.root, "push", "-q", "origin", DEV)
 
     @staticmethod
     def write(where: Path, rel: str, text: str) -> None:
@@ -111,7 +84,7 @@ class Project:
 
     @staticmethod
     def commit(where: Path, message: str) -> str:
-        """Commit everything in ``where`` and return the new sha."""
+        """Commit every change in ``where`` and return the new sha."""
         git(where, "add", "-A")
         git(where, "commit", "-q", "-m", message)
         return git(where, "rev-parse", "HEAD")
@@ -126,16 +99,98 @@ class Project:
             self.commit(where, f"feat: {name}")
         return where
 
-    def land(self, *args: str) -> tuple[int, str, dict]:
-        """Run ``scripts/land`` and return its status, output and JSON summary."""
-        launcher = ("import runpy, sys, land_failure_evidence; "
-                    "land_failure_evidence.actor = lambda root: ({'id': 'agent-fixture'}, True); "
-                    "sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')")
-        done = subprocess.run([sys.executable, "-c", launcher, str(LAND), *args], cwd=self.root, env=self.env,
-                              capture_output=True, text=True, check=False)
-        last = done.stdout.strip().splitlines()[-1] if done.stdout.strip() else "{}"
-        return done.returncode, done.stdout + done.stderr, json.loads(last)
+    def advance(self, rel: str, text: str) -> str:
+        """Commit a change on the development branch in the primary checkout and push it, as another lander would."""
+        self.write(self.root, rel, text)
+        sha = self.commit(self.root, f"chore: {rel}")
+        git(self.root, "push", "-q", "origin", DEV)
+        return sha
 
     def calls(self) -> list[str]:
-        """The arguments of every ``scripts/test`` call made so far."""
-        return self.log.read_text().splitlines() if self.log.exists() else []
+        """The lines the fake test runner logged: its arguments and the environment it saw."""
+        log = self.base / "calls.log"
+        return log.read_text().splitlines() if log.exists() else []
+
+    def origin_head(self) -> str:
+        """The development branch as the bare origin holds it."""
+        return git(self.origin, "rev-parse", DEV)
+
+    def local_head(self) -> str:
+        """The development branch of the primary checkout."""
+        return git(self.root, "rev-parse", DEV)
+
+
+class World:
+    """A project, a real node, and three sessions: the creator of a branch, a lander and an independent reviewer."""
+
+    def __init__(self, tmp_path: Path, node) -> None:
+        self.node = node
+        (tmp_path / "git").mkdir()
+        self.proj = Project(tmp_path / "git")
+        self.creator = node.member("creator")
+        self.lander = node.member("lander")
+        self.reviewer = node.member("reviewer", model="claude-opus-5-5")
+        self.other = node.member("other")
+
+    def start(self, name: str, files: dict[str, str], claim: bool = True) -> tuple[Path, str]:
+        """A branch of ``files`` whose creator claims the branch and its worktree; the worktree and the tip."""
+        tree = self.proj.branch(name, files)
+        if claim:
+            mine = self.node.session(self.creator)
+            mine.claim("branch", name)
+            mine.claim("worktree", str(tree))
+        return tree, git(tree, "rev-parse", "HEAD")
+
+    def env(self, who, hostile: dict[str, str] | None = None) -> dict[str, str]:
+        """The environment of a lander run for ``who``."""
+        return self.node.env(who, {"POOLHOUSE_DEV_BRANCH": DEV, **(hostile or {})})
+
+    def land(self, tree: Path, *args: str, who=None, hostile: dict[str, str] | None = None) -> tuple[int, str]:
+        """Run ``scripts/land`` from ``tree`` as ``who`` (the lander by default); the exit status and the output."""
+        done = subprocess.run([sys.executable, str(LAND), *args], cwd=tree, env=self.env(who or self.lander, hostile),
+                              capture_output=True, text=True, check=False, timeout=300)
+        return done.returncode, done.stdout + done.stderr
+
+    def start_land(self, tree: Path, *args: str, who=None) -> subprocess.Popen:
+        """Start ``scripts/land`` from ``tree`` and return the running process."""
+        return subprocess.Popen([sys.executable, str(LAND), *args], cwd=tree, env=self.env(who or self.lander),
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    def accept(self, branch: str, sha: str, verdict: str = "accept", who=None) -> None:
+        """An independent review of ``sha`` under ``branch``."""
+        from poolhouse.workspace import landing
+
+        landing.review(self.node.session(who or self.reviewer), branch, sha, verdict)
+
+    def records(self) -> list[dict]:
+        """The lines of the landings log."""
+        log = Path(git(self.proj.root, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "land" / "landings.jsonl"
+        return [json.loads(x) for x in log.read_text().splitlines()] if log.exists() else []
+
+
+class RunnerLock:
+    """An exclusive lock on the landing lock file of a checkout, held by the process until released."""
+
+    def __init__(self, root: Path) -> None:
+        folder = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "land"
+        folder.mkdir(exist_ok=True)
+        self.path = folder / "runner.lock"
+        self.fd: int | None = None
+
+    def acquire(self) -> bool:
+        """Take the lock; false when another process holds it."""
+        fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+        if not filelock.take(fd):
+            os.close(fd)
+            return False
+        os.write(fd, f"pid {os.getpid()}".encode())
+        self.fd = fd
+        return True
+
+    def release(self) -> None:
+        """Give the lock up."""
+        if self.fd is not None:
+            os.ftruncate(self.fd, 0)
+            filelock.release(self.fd)
+            os.close(self.fd)
+            self.fd = None

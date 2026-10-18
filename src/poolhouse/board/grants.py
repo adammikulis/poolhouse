@@ -258,9 +258,8 @@ def log(session: Session, limit: int = 50) -> list[dict[str, Any]]:
     return list(session.call("grant_log", limit=limit)["log"])
 
 
-DEFAULT_ACTIONS = ("land_control", "task_authority", "note_verify", "shard_call")
+DEFAULT_ACTIONS = ("task_authority", "note_verify", "shard_call")
 DESCRIPTIONS = {
-    "land_control": "pause, resume and cancel others' requests in the landing queue",
     "task_authority": "act for the person on tasks: assign, review in strict mode, set the enforcement mode, record a landing",
     "note_verify": "record that the command of a note was run and what it printed (subagents included)",
     "shard_call": "run tests on another device of the pool that allowed this device",

@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-import sys
-from pathlib import Path
 
 import pytest
+from land_support import RunnerLock
 from test_runtime_trust import commit, git
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import land_recover
 
 from poolhouse import (
     node_binary,
@@ -47,7 +43,7 @@ def test_runtime_and_real_runner_use_the_same_lock_even_from_a_worktree(source, 
     repo, head = source
     checkout = tmp_path / "integration"
     git(repo, "worktree", "add", "--detach", str(checkout), head)
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     assert runner.acquire()
     try:
         monkeypatch.setenv("GIT_DIR", checkout.joinpath(".git").read_text().split(": ", 1)[1].strip())
@@ -78,7 +74,7 @@ def test_switch_refuses_unpublished_source_and_rechecks_refs_inside_the_boundary
         runtime_deploy.switch(chosen, plan)
     assert called == []
     git(repo, "update-ref", "refs/remotes/origin/dev", head)
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     assert runner.acquire()
     try:
         with pytest.raises(Busy):
@@ -115,7 +111,7 @@ def test_supervisor_holds_boundary_until_replacement_answers(source, tmp_path, m
     state = tmp_path / "node"
     state.mkdir()
     node_supervise.point(state, tmp_path / "replacement", "new")
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     child, replacement = WaitingChild(), WaitingChild()
     calls = []
     monkeypatch.setattr(node_supervise, "resolve", lambda _: (tmp_path / "new", "new"))
@@ -157,7 +153,7 @@ def test_supervisor_holds_boundary_until_replacement_answers(source, tmp_path, m
 
 def test_explicit_supervisor_shutdown_does_not_wait_for_landing(source, tmp_path, monkeypatch):
     repo, _ = source
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     assert runner.acquire()
     try:
         assert node_supervise._wait(WaitingChild(), tmp_path, (b"", b""), lambda: True) is None
@@ -180,7 +176,7 @@ def test_busy_landing_keeps_the_prepared_runtime_and_current_selection(source, m
     runtime_deploy.prepare_root()
     selected = runtime.directory() / "selected.json"
     selected.write_bytes(b"existing-selection")
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     assert runner.acquire()
     prepared = []
 
@@ -233,7 +229,7 @@ def test_changed_device_identity_keeps_current_node(source, tmp_path, monkeypatc
 def test_direct_swap_keeps_runner_excluded_until_hello(source, tmp_path, monkeypatch):
     repo, _ = source
     prefix, state = tmp_path / "runtime", tmp_path / "node"
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     events = []
     monkeypatch.setattr(runtime, "selection_prefix", lambda: prefix)
     monkeypatch.setattr(node_launch.node_binary, "record_of", lambda _: {"sha256": "new"})
@@ -293,7 +289,7 @@ def test_prior_node_recovery_requires_publication_and_current_floor(source, tmp_
 def test_supervised_observer_defers_timeout_without_rollback_when_landing_starts(source, tmp_path, monkeypatch):
     repo, _ = source
     prefix, state = tmp_path / "runtime", tmp_path / "node"
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     points = []
     monkeypatch.setattr(runtime, "selection_prefix", lambda: prefix)
     monkeypatch.setattr(node_binary, "record_of", lambda _: {"sha256": "new"})
@@ -358,7 +354,7 @@ def test_replacement_failure_restores_prior_while_runner_stays_excluded(source, 
     state = tmp_path / "node"
     state.mkdir()
     child, replacement, restored = WaitingChild(), WaitingChild(), WaitingChild()
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     events = []
     monkeypatch.setattr(node_supervise, "resolve", lambda _: (tmp_path / "new", "new"))
     monkeypatch.setattr(node_supervise, "_program", lambda *args: tmp_path)
@@ -474,7 +470,7 @@ def test_release_race_or_refusal_preserves_child_and_obeys_cooldown(source, tmp_
                                        node_supervise.signature(state), [], False)
     monkeypatch.setattr(node_supervise, "_prepare", lambda *args: plan)
     monkeypatch.setattr(node_supervise, "_replace", lambda *args: pytest.fail("old node must remain running"))
-    runner = land_recover.RunnerLock(repo)
+    runner = RunnerLock(repo)
     calls = []
 
     def release(_):

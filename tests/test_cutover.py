@@ -99,12 +99,12 @@ def test_a_full_run_does_every_step_in_order_and_ends_ready(machine):
     done = machine.run("--yes")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "READY" in done.stdout and "rollback:" in done.stdout
-    order = [line for line in machine.calls() if line.split()[0] in ("python3", "poolhouse", "land", "poolhouse-doctor")]
+    order = [line for line in machine.calls() if line.split()[0] in ("python3", "poolhouse", "poolhouse-doctor")]
     heads = [" ".join(line.split()[:3]) for line in order]
     assert heads == ["python3 -c import", "python3 -m ml_stack.node_launch", "python3 -m pip", "python3 -m pip", "python3 -m pip", "python3 -m pip",
                      "poolhouse migrate plan", "poolhouse migrate run", "poolhouse migrate verify",
                      "poolhouse runtime ensure",
-                     "poolhouse node build", "land up", "poolhouse-doctor"]
+                     "poolhouse node build", "poolhouse-doctor"]
     assert git(machine.repo, "log", "-1", "--format=%s").strip() == COMMIT
     assert "POOLHOUSE_WINDOW_POSITION" in (machine.repo / ".claude" / "settings.json").read_text()
     assert (machine.home / ".poolhouse" / "migrate.log").exists() and not (machine.home / ".ml-stack").exists()
@@ -179,13 +179,6 @@ def test_a_process_that_stops_when_asked_lets_the_run_go_on(machine):
     assert machine.called("launchctl bootout") and "com.ml-stack.traind" in machine.called("launchctl bootout")[0]
     assert all("com.apple" not in line for line in machine.called("launchctl bootout"))
     assert machine.called("kill -TERM") == []
-
-
-def test_a_runner_that_does_not_exit_is_sent_a_term_signal_and_then_reported(machine):
-    (machine.dir / "procs").write_text("4243 /usr/bin/python scripts/land serve\n")
-    done = machine.run("--yes")
-    assert done.returncode == 1 and "4243" in done.stdout and "STOPPED at step 3" in done.stdout
-    assert machine.called("kill -TERM 4243")
 
 
 def test_a_poolhouse_directory_with_more_than_the_stubs_is_refused_and_kept(machine):

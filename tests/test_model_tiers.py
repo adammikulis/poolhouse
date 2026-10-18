@@ -125,33 +125,17 @@ def test_small_qwens_are_the_lowest_tier_and_landing_refuses_them(model):
     assert landing.eligible(agent('small', model)) == LOWEST
     stub = Stub(agent('small', model))
     with pytest.raises(Denied):
-        landing.request(stub, {'branch': 'feat/x', 'sha': 'a' * 40})
-    with pytest.raises(Denied):
-        landing.review(stub, 'req-1', 'a' * 40, 'accept')
+        landing.review(stub, 'feat/x', 'a' * 40, 'accept')
     assert stub.sent == []
 
 
 @pytest.mark.parametrize('model', ['qwen3.8-27b', 'Qwen3.8-27B-UD-Q4_K_XL.gguf', 'qwen3.8-flash-next-gsq-rco'])
-def test_a_big_qwen_may_request_and_review_landing(model):
+def test_a_big_qwen_may_review_landing(model):
     stub = Stub(agent('big', model, CLAIMED))
     assert landing.eligible(stub.who) == ''
-    landing.request(stub, {'branch': 'feat/x', 'sha': 'a' * 40})
-    landing.review(stub, 'req-1', 'a' * 40, 'accept')
-    assert [name for name, _ in stub.sent] == ['claim', 'land_request', 'land_review']
-    assert stub.sent[0][1] == {'kind': 'branch', 'key': 'feat/x'}
-
-
-def test_a_denied_branch_claim_prevents_a_landing_request(monkeypatch):
-    stub = Stub(agent('big', 'qwen3.8-27b', CLAIMED))
-
-    def refuse(kind, key):
-        assert (kind, key) == ('branch', 'feat/x')
-        raise Denied('denied', 'branch held')
-
-    monkeypatch.setattr(stub, 'claim', refuse)
-    with pytest.raises(Denied, match='branch held'):
-        landing.request(stub, {'branch': 'feat/x', 'sha': 'a' * 40})
-    assert stub.sent == []
+    landing.review(stub, 'feat/x', 'a' * 40, 'accept')
+    assert [name for name, _ in stub.sent] == ['land_review']
+    assert stub.sent[0][1] == {'branch': 'feat/x', 'sha': 'a' * 40, 'verdict': 'accept'}
 
 
 def test_a_listed_qwen_that_is_not_verified_counts_as_an_unverified_claude_id_does():

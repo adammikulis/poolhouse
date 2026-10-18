@@ -34,7 +34,6 @@ esac
 FAKE_WORKSPACE = """#!/bin/sh
 echo "$@" >> "@LOG@/workspace-calls"
 case "$1" in
-  land-queue) cat "@LOG@/queue.json";;
   *) exit 9;;
 esac
 """
@@ -70,7 +69,6 @@ def world(tmp_path):
         (bin_dir / name).write_text(body.replace("@LOG@", str(log)), encoding="utf-8")
         (bin_dir / name).chmod(0o755)
     (log / "prs.json").write_text("[]", encoding="utf-8")
-    (log / "queue.json").write_text(json.dumps({"text": "Landing queue: running\n"}), encoding="utf-8")
     home = tmp_path / "home"
 
     class World:
@@ -228,15 +226,6 @@ def test_a_signed_out_gh_skips_the_pull_requests_with_one_line(world):
     assert "feat/a" in done.stdout
 
 
-def test_a_land_request_in_needs_review_is_collected_by_its_sha(world):
-    sha = world.branch("feat/q")
-    queue = f"land-9 feat/q@{sha[:8]} by claude-aaaaaa: needs-review - no independent review yet\n"
-    (world.log / "queue.json").write_text(json.dumps({"text": queue}), encoding="utf-8")
-    done = world.run("--dry-run")
-    assert done.stdout.count(sha[:12]) == 1
-    assert "landing request feat/q" in done.stdout
-
-
 def test_dry_run_lists_work_and_starts_nothing(world):
     sha = world.branch("feat/a")
     done = world.run("--dry-run", "--local", "--model", "qwen-fake")
@@ -278,14 +267,14 @@ def test_the_tool_makes_no_landing_push_or_write_call(world):
     world.run("--local", "--model", "qwen-fake")
     verbs = {" ".join(call.split()[:2]) for call in world.calls("gh-calls")}
     assert verbs <= {"auth status", "pr list", "pr diff"}
-    assert {call.split()[0] for call in world.calls("workspace-calls")} <= {"land-queue"}
+    assert world.calls("workspace-calls") == []
 
 
 def test_the_module_never_names_a_landing_push_or_write_verb():
     source = SCRIPT.read_text(encoding="utf-8")
     for banned in ("land-review", "land-request", "land-cancel", "git push", '"push"', "'push'", "pr comment",
                    "pr review", "pr merge", "pr create", "pr close", "--method", "urllib", "requests.", "http"):
-        assert banned not in source.replace("land-queue", ""), banned
+        assert banned not in source, banned
 
 
 def test_the_default_local_model_is_the_broker_pick_and_is_named(monkeypatch):

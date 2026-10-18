@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -15,6 +16,7 @@ NAME = "orphan-trees"
 OWNER = "scripts/worktrees"
 INCREMENTAL = True
 HARD = True
+MACHINE = True
 
 
 def describe() -> str:
@@ -24,7 +26,7 @@ def describe() -> str:
 
 
 def find(root: Path) -> list[Finding]:
-    if not (root / ".git").exists():
+    if not (root / ".git").exists() or os.environ.get("POOLHOUSE_GATE_TREE_ONLY") == "1":
         return []
     now = time.time()
     try:

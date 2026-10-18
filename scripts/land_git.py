@@ -1,4 +1,4 @@
-"""Git queries and worktree helpers shared by the landing commands."""
+"""Git queries and worktree helpers for the lander."""
 
 from __future__ import annotations
 
@@ -87,49 +87,13 @@ def exists(root: Path | str, ref: str) -> bool:
     return git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False).returncode == 0
 
 
+def is_ancestor(root: Path | str, older: str, newer: str) -> bool:
+    """Whether commit ``older`` is ``newer`` or reachable from it."""
+    return git(root, "merge-base", "--is-ancestor", older, newer, check=False).returncode == 0
+
+
 def refuse_protected(*names: str) -> None:
     """Raise when a branch named here is one landing never touches."""
     for name in names:
         if name in PROTECTED:
             raise ValueError(f"land never touches {name}")
-
-
-def unique(root: Path | str, target: str, branch: str) -> dict[str, str]:
-    """Commits on ``branch`` with no equivalent patch on ``target``, sha to patch-id."""
-    plus = [x[2:] for x in lines(root, "cherry", target, branch) if x.startswith("+ ")]
-    if not plus:
-        return {}
-    log = git(root, "log", "-p", "--no-merges", "--reverse", f"{target}..{branch}").stdout
-    ids = {}
-    for row in git(root, "patch-id", "--stable", stdin=log).stdout.splitlines():
-        patch, _, sha = row.partition(" ")
-        ids[sha] = patch
-    return {sha: ids.get(sha, f"empty:{sha}") for sha in plus}
-
-
-def files_of(root: Path | str, shas: list[str]) -> list[str]:
-    """Sorted paths touched by the given commits."""
-    touched: set[str] = set()
-    for sha in shas:
-        touched.update(lines(root, "show", "--no-renames", "--name-only", "--format=", sha))
-    return sorted(touched)
-
-
-def behind(root: Path | str, target: str, branch: str) -> int:
-    """How many commits ``target`` has that ``branch`` lacks."""
-    return int(out(root, "rev-list", "--count", f"{branch}..{target}"))
-
-
-def merge_tree(root: Path | str, left: str, right: str) -> tuple[str, list[str]]:
-    """The tree of merging ``right`` into ``left`` without a checkout and the conflicted paths."""
-    done = git(root, "merge-tree", "--write-tree", "--name-only", "--no-messages", left, right,
-               check=False)
-    rows = done.stdout.splitlines()
-    if done.returncode not in (0, 1) or not rows:
-        raise RuntimeError(f"git merge-tree {left} {right}: {done.stderr.strip()}")
-    return rows[0], rows[1:] if done.returncode else []
-
-
-def synthetic_merge(root: Path | str, tree: str, left: str, right: str) -> str:
-    """A parentless-of-refs merge commit holding ``tree``, used to chain predicted merges."""
-    return out(root, "commit-tree", tree, "-p", left, "-p", right, "-m", "plan")

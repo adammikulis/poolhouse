@@ -65,7 +65,6 @@ setup_dry_run() {
     make_stub pgrep '[ -s "$D/procs" ] && cat "$D/procs" && exit 0; exit 1'
     make_stub launchctl 'if [ "$1" = list ]; then cat "$D/launchd" 2>/dev/null; fi; exit 0'
     make_stub osascript 'exit 0'
-    make_stub land 'exit 0'
     make_stub poolhouse-doctor '[ -f "$D/doctor.rc" ] && exit "$(cat "$D/doctor.rc")"; exit 0'
     make_stub poolhouse '
 if [ "$1 $2" = "migrate run" ]; then
@@ -85,7 +84,6 @@ case "$*" in
   "-c import ml_stack") exit 0 ;;
 esac
 exit 0'
-    LAND=$DRY/bin/land
     POLLS=1
 }
 
@@ -94,7 +92,6 @@ exit 0'
 GIT_DIR=$(git -C "$ROOT" rev-parse --git-dir 2>/dev/null) || { say "cutover: $ROOT is not a git checkout"; exit 1; }
 case "$GIT_DIR" in /*) ;; *) GIT_DIR=$ROOT/$GIT_DIR ;; esac
 STATE=$GIT_DIR/cutover.state
-LAND=$ROOT/scripts/land
 POLLS=20
 [ -n "$DRY" ] && setup_dry_run
 PY=python3
@@ -125,11 +122,10 @@ live_procs() {
     anc=$(ancestors)
     # Only a program, a -m module or a script run by python that is itself named for the old build counts; a
     # folder of that name on the path (a checkout, a venv inside it) or a file an editor has open does not.
-    pgrep -fl "$PATTERN|scripts/land (serve|supervise)" 2>/dev/null | grep -v 'scripts/cutover' | awk -v skip="$anc" '
+    pgrep -fl "$PATTERN" 2>/dev/null | grep -v 'scripts/cutover' | awk -v skip="$anc" '
         function base(w) { sub(".*/", "", w); return w }
         function old(w) { return base(w) ~ /^(ml-stack|ml_stack|\.ml-stack|poolside-node)/ }
         index(skip, " " $1 " ") != 0 { next }
-        /scripts\/land (serve|supervise)/ { print; next }
         old($2) { print; next }
         base($2) ~ /^python[0-9.]*(\.exe)?$/ {
             for (i = 3; i <= NF; i++) {
@@ -161,11 +157,11 @@ show_plan() {
         case "$n" in
             1) d="git pull --ff-only" ;;
             2) if patch_applied; then d="apply docs/rename-protected.patch (already applied, skipped)"; else d="apply docs/rename-protected.patch and commit it"; fi ;;
-            3) d="stop the old build: land runner, node, supervisors, com.ml-stack.* launchd labels, the app; then verify no process of the old name" ;;
+            3) d="stop the old build: node, supervisors, com.ml-stack.* launchd labels, the app; then verify no process of the old name" ;;
             4) d="remove a stray ~/.poolhouse that holds only activity and sentinel" ;;
             5) d="$PY -m pip install -e . then pip uninstall -y ml-stack" ;;
             6) d="poolhouse migrate plan, poolhouse migrate run, then poolhouse migrate verify" ;;
-            7) d="poolhouse runtime ensure, node build, scripts/land up, poolhouse-doctor" ;;
+            7) d="poolhouse runtime ensure, node build, poolhouse-doctor" ;;
         esac
         say "  step $n [$flag] $d"
     done
@@ -228,7 +224,7 @@ step_stop() {
         done
     fi
     if "$PY" -c 'import ml_stack' >/dev/null 2>&1; then "$PY" -m ml_stack.node_launch stop >/dev/null 2>&1; fi
-    for pid in $(pgrep -f 'scripts/land (serve|supervise)|ml_stack[./]node|ml_stack[./]traind|poolside-node' 2>/dev/null | grep -v 'scripts/cutover' | awk '{print $1}'); do
+    for pid in $(pgrep -f 'ml_stack[./]node|ml_stack[./]traind|poolside-node' 2>/dev/null | grep -v 'scripts/cutover' | awk '{print $1}'); do
         case "$(ancestors)" in *" $pid "*) continue ;; esac
         terminate "$pid"
     done
@@ -291,7 +287,6 @@ step_restart() {
         poolhouse device-setup --yes || stopped 7 restart "poolhouse device-setup --yes failed (approve the one UAC prompt at the machine)"
     else
         [ "$PLATFORM" = macos ] && { poolhouse node build || stopped 7 restart "poolhouse node build failed"; }
-        "$LAND" up || stopped 7 restart "scripts/land up failed"
     fi
     poolhouse-doctor || stopped 7 restart "poolhouse-doctor reported a problem; read its output"
 }

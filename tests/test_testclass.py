@@ -156,9 +156,8 @@ def test_without_enough_history_the_command_shape_decides(tmp_path):
     assert _verdict(root, {}, tier="all", rest=["tests/test_a.py"], background=True).klass == "background"
 
 
-def test_scripts_test_takes_background_and_land_passes_it():
+def test_scripts_test_takes_background():
     assert '"--background"' in (SCRIPTS / "test").read_text()
-    assert '"--background"' in (SCRIPTS / "land_check.py").read_text()
     assert "--now" not in (SCRIPTS / "test").read_text()
 
 

@@ -15,12 +15,12 @@ GATE = "runtime.deploy-unmerged"
 
 @dataclass(frozen=True, slots=True)
 class Approval:
-    """The actor, source and queue decision bound to one runtime commit."""
+    """The actor, source and independent accept bound to one runtime commit."""
 
     primary: Path
     commit: str
     board: str
-    request: str
+    branch: str
     actor: str
 
 
@@ -41,29 +41,21 @@ def validate(approval: Approval, primary: Path, commit: str) -> None:
         if me.name != actor or me.parent or me.retired or landing.eligible(me):
             raise DeployError("reviewed runtime deployment needs a live eligible lead agent")
         authority.require("runtime.deploy", f"runtime deploy {commit} from {primary}")
-        authority.require(GATE, f"runtime deploy {commit} from {primary} review {approval.request}")
-        queue = landing.fold(own)
-        req = queue.requests.get(approval.request)
-        if not req or req["sha"] != commit or req["status"] not in ("queued", "needs-review", "running", "landed"):
-            raise DeployError("the runtime needs an active exact-commit review request")
-        if queue.paused or landing.refusal(own, req) or landing.standing(own, req):
+        authority.require(GATE, f"runtime deploy {commit} from {primary} review {approval.branch}")
+        if landing.standing(own, landing.accepts(own, approval.branch, commit)):
             raise DeployError("the runtime commit has no standing independent approval")
-        target = git(primary, "symbolic-ref", "--quiet", "--short", "HEAD")
-        if req["target"] != target:
-            raise DeployError("the runtime approval names another development branch")
-        branch = req["branch"]
-        if not isinstance(branch, str) or git(primary, "rev-parse", "--verify", f"refs/heads/{branch}") != commit:
+        if git(primary, "rev-parse", "--verify", f"refs/heads/{approval.branch}") != commit:
             raise DeployError("the reviewed runtime branch changed")
     except (board.client.NodeError, OSError, KeyError, TypeError, ValueError) as exc:
         raise DeployError(f"reviewed runtime admission is unavailable: {exc}") from exc
 
 
-def approve(primary: Path, commit: str, request: str) -> Approval:
-    """Return the checked source decision for the caller's exact queue request."""
+def approve(primary: Path, commit: str, branch: str) -> Approval:
+    """Return the checked source decision for the caller's exact commit of ``branch``."""
     try:
         board_id = str(board.client.Client(autostart=False).call("project_resolve", path=str(primary.resolve()))["board"])
     except (board.client.NodeError, OSError, KeyError, TypeError, ValueError) as exc:
         raise DeployError(f"reviewed runtime admission is unavailable: {exc}") from exc
-    approval = Approval(primary.resolve(), commit, board_id, request, os.environ.get(authority.AGENT_ENV, ""))
+    approval = Approval(primary.resolve(), commit, board_id, branch, os.environ.get(authority.AGENT_ENV, ""))
     validate(approval, primary, commit)
     return approval

@@ -27,7 +27,8 @@ REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pushed|primary-
             r"docs/github-protection\.md", r"scripts/github-protection[\w-]*", r"scripts/land[\w.-]*",
             r"src/poolhouse/(protectedwrites|worktreerules|authority|person|real_machine)\.py",
             r"src/poolhouse/board/credentials\.py", r"src/poolhouse/workspace/authority_cli\.py",
-            r"scripts/agent_sandbox_profile\.py")
+            r"scripts/agent_sandbox_profile\.py", r"scripts/affected[\w.-]*", r"scripts/test[\w.-]*", r"scripts/gates/.*",
+            r"tests/conftest\.py", r"pyproject\.toml", r"budgets\.json")
 GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
 REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
