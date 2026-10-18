@@ -41,11 +41,11 @@ VALUE_OPTIONS = frozenset({"-m", "-k", "-c", "-o", "-W", "-p", "-n", "--rootdir"
                            "--cov", "--timeout"})
 DROPPED_OPTIONS = frozenset({"-n", "--numprocesses", "--junitxml"})
 RUNNER_FILES = ("scripts/testreuse_plugin.py", "scripts/testreuse_key.py", "scripts/testreuse_store.py",
-                "scripts/testreuse_run.py", "scripts/testreuse_imports.py", "scripts/testslots_pytest.py",
-                "scripts/testslots_rpc.py")
+                "scripts/testreuse_run.py", "scripts/testreuse_narrow.py", "scripts/testreuse_imports.py",
+                "scripts/testslots_pytest.py", "scripts/testslots_rpc.py")
 ENV_NAME = re.compile(r"""["']([A-Z][A-Z0-9_]{3,})["']""")
 ENV_FIXED = ("PATH", "CI", "TZ", "LANG", "LC_ALL", "CLAUDECODE", "POOLHOUSE_NONINTERACTIVE",
-             "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "POOLHOUSE_NOTIFY", "DEV_TEST_SLOTS")
+             "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "POOLHOUSE_NOTIFY", "DEV_TEST_SLOTS", "PYTEST_ADDOPTS")
 ENV_SKIP = frozenset({"PYTHONPATH", "DEV_TEST_PYTEST_TOKEN", "DEV_TEST_PYTEST_ENDPOINT",
                       "DEV_TEST_WORKERS", "DEV_TEST_SLOTS_DIR", "DEV_TEST_REMOTE_BROKER",
                       "DEV_TEST_LEASE", "DEV_TEST_REMOTE_LEASE", "DEV_TEST_REUSE_DIR",

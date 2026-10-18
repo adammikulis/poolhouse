@@ -115,6 +115,8 @@ def reused_files(command: list[str]) -> set[str]:
     if not (REUSE["on"] and files):
         return set()
     session = testreuse_run.Session(ROOT, command, files, reuse_store())
+    if session.narrow:
+        return set()
     try:
         looks = {file: session.lookup(file) for file in files}
         return {file for file, look in looks.items()
