@@ -50,6 +50,9 @@ for arg in sys.argv[2:]:
     if 'MUTATE' in text:
         with open(here / 'docs' / 'a.md', 'a') as f:
             f.write('changed while testing\n')
+    if 'INTERRUPTME' in text:
+        print(f'test: interrupted during {arg}::test_y')
+        sys.exit(130)
     if 'FAILME' in text:
         print(f'FAILED {arg}::test_x - boom')
         bad = 1
