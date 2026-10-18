@@ -295,11 +295,12 @@ def running_within(path: Path) -> list[int]:
 def command_lines() -> list[tuple[int, float, tuple[str, ...]]]:
     """Every readable process as (pid, start time in epoch seconds, command line), this one excluded."""
     found = []
-    for proc in psutil.process_iter(["pid", "create_time", "cmdline"]):
+    for pid in psutil.pids():
         try:
-            argv = tuple(proc.info.get("cmdline") or ())
-            if argv and proc.info["pid"] != os.getpid():
-                found.append((int(proc.info["pid"]), float(proc.info["create_time"]), argv))
+            proc = psutil.Process(pid)
+            argv = tuple(proc.cmdline() or ())
+            if argv and pid != os.getpid():
+                found.append((pid, float(proc.create_time()), argv))
         except (psutil.Error, OSError, TypeError):
             continue
     return found
