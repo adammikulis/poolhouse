@@ -106,10 +106,16 @@ def absolute(node: ast.ImportFrom, module: str, is_package: bool) -> str:
 
 
 def plugin_names(node: ast.AST) -> list[str]:
-    """The module names a ``pytest_plugins = [...]`` assignment lists; empty for any other node."""
-    if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytest_plugins" for t in node.targets):
-        return [c.value for c in ast.walk(node.value) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
-    return []
+    """The module names a ``pytest_plugins`` assignment (plain, annotated or ``+=``) lists; empty for any other node."""
+    if isinstance(node, ast.Assign):
+        targets = node.targets
+    elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+        targets = [node.target]
+    else:
+        return []
+    if node.value is None or not any(isinstance(t, ast.Name) and t.id == "pytest_plugins" for t in targets):
+        return []
+    return [c.value for c in ast.walk(node.value) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
 
 
 def references(source: str, module: str, is_package: bool, known: dict[str, str]) -> set[str]:

@@ -180,6 +180,8 @@ class ImportNames(ast.NodeVisitor):
         self.names.update(affected.plugin_names(node))
         self.generic_visit(node)
 
+    visit_AnnAssign = visit_AugAssign = visit_Assign
+
     def visit_Name(self, _node: ast.Name) -> None:
         pass
 

@@ -33,6 +33,8 @@ def toy(tmp_path):
     (root / "tests/test_env.py").write_text("import os\n\n\ndef test_a():\n    os.environ['DEV_TEST_NODE_BINARY']\n")
     (root / "tests/serve_like.py").write_text('pytest_plugins = ["node_kit"]\n')
     (root / "tests/test_plugin.py").write_text('pytest_plugins = ["serve_like"]\n\n\ndef test_a():\n    assert True\n')
+    (root / "tests/test_annotated.py").write_text('pytest_plugins: list[str] = ["serve_like"]\n\n\ndef test_a():\n    assert True\n')
+    (root / "tests/test_augmented.py").write_text('pytest_plugins = []\npytest_plugins += ["serve_like"]\n\n\ndef test_a():\n    assert True\n')
     return root
 
 
@@ -40,7 +42,7 @@ def test_a_selection_of_plain_python_files_needs_no_node(toy):
     assert not testnode.needed(toy, ["tests/test_plain.py"])
 
 
-@pytest.mark.parametrize("name", ["test_direct", "test_indirect", "test_named", "test_env", "test_plugin"])
+@pytest.mark.parametrize("name", ["test_direct", "test_indirect", "test_named", "test_env", "test_plugin", "test_annotated", "test_augmented"])
 def test_a_selection_that_can_reach_the_node_kit_needs_the_node(toy, name):
     assert testnode.needed(toy, ["tests/test_plain.py", f"tests/{name}.py"])
 
