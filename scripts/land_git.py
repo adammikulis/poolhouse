@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 PROTECTED = ("main", "master")
+REDIRECTS = re.compile(
+    r"^GIT_(DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|NAMESPACE|PREFIX|REPLACE_REF_BASE"
+    r"|SHALLOW_FILE|CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+|CONFIG_PARAMETERS)$")
+STORED = {"GIT_NO_REPLACE_OBJECTS": "1", "GIT_GRAFT_FILE": os.devnull}
 
 
 @dataclass(frozen=True)
@@ -18,11 +24,17 @@ class Tree:
     head: str
 
 
+def clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment of a git command: this process's, without the variables that move the repository or add configuration,
+    with ``extra`` and with replace refs and the grafts file off."""
+    return {**{k: v for k, v in os.environ.items() if not REDIRECTS.match(k)}, **(extra or {}), **STORED}
+
+
 def git(root: Path | str, *args: str, check: bool = True, env: dict[str, str] | None = None,
         stdin: str | None = None) -> subprocess.CompletedProcess[str]:
-    """Run ``git -C root args`` and return the completed process."""
+    """Run ``git -C root args`` and return the completed process; ``env`` replaces the environment of :func:`clean_env`."""
     done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True,
-                          check=False, env=env, input=stdin)
+                          check=False, env=clean_env() if env is None else {**env, **STORED}, input=stdin)
     if check and done.returncode:
         raise RuntimeError(f"git {' '.join(args)}: {(done.stderr or done.stdout).strip()}")
     return done
@@ -31,6 +43,11 @@ def git(root: Path | str, *args: str, check: bool = True, env: dict[str, str] | 
 def out(root: Path | str, *args: str) -> str:
     """Stripped standard output of a git command that must succeed."""
     return git(root, *args).stdout.strip()
+
+
+def empty_tree(root: Path | str) -> str:
+    """The id of the tree with no files, in the hash of this repository."""
+    return git(root, "hash-object", "-t", "tree", "--stdin", stdin="").stdout.strip()
 
 
 def lines(root: Path | str, *args: str) -> list[str]:

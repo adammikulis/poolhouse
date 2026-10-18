@@ -36,7 +36,9 @@ class Landing:
     branch: str
     s: session.Session
     me: str
+    agent: str = ""
     sha: str = ""
+    remote: str = ""
     step: str = "starting"
     began: float = field(default_factory=time.time)
     lock_fd: int = -1
@@ -44,8 +46,13 @@ class Landing:
 
     @property
     def upstream(self) -> str:
-        """The remote-tracking ref of the development branch."""
+        """The remote-tracking ref of the development branch, as it is called in messages."""
         return f"origin/{self.dev}"
+
+    @property
+    def tracking(self) -> str:
+        """The remote-tracking ref of the development branch in full, so no branch of the same short name stands for it."""
+        return f"refs/remotes/origin/{self.dev}"
 
 
 def say(text: str) -> None:
@@ -94,7 +101,7 @@ def open_landing(root: Path, branch: str, agent: str) -> Landing:
     why = landing.eligible(me) or landing.undecided_trees(me.name, branch)
     if why:
         raise ex.Stop(why)
-    return Landing(mine.path, top.path, lg.common_dir(mine.path), dev, branch, s, me.name)
+    return Landing(mine.path, top.path, lg.common_dir(mine.path), dev, branch, s, me.name, agent)
 
 
 @contextmanager
@@ -142,24 +149,24 @@ def tip(L: Landing) -> str:
 def lift_primary(L: Landing) -> str:
     """Fast-forward the local development branch to origin's; the reason it cannot be, or an empty string."""
     local = lg.out(L.top, "rev-parse", f"refs/heads/{L.dev}")
-    if local == lg.out(L.top, "rev-parse", L.upstream):
+    if local == L.remote:
         return ""
-    if lg.is_ancestor(L.top, local, L.upstream):
-        done = lg.git(L.top, "merge", "--ff-only", L.upstream, check=False)
+    if lg.is_ancestor(L.top, local, L.remote):
+        done = lg.git(L.top, "merge", "--ff-only", L.remote, check=False)
         return (done.stderr.strip().splitlines() or ["fast-forward refused"])[-1] if done.returncode else ""
-    ahead = lg.lines(L.top, "log", "--oneline", f"{L.upstream}..{L.dev}")
+    ahead = lg.lines(L.top, "log", "--oneline", f"{L.remote}..refs/heads/{L.dev}")
     return f"local {L.dev} holds commits origin lacks ({'; '.join(ahead[:3])}) and is left alone"
 
 
 def bring_up_to_date(L: Landing) -> None:
     """Rebase (or merge, when the branch holds merges) onto origin when no review is needed; else stop."""
-    needed, _, first = land_review.required(L.wt, L.dev, L.sha)
+    needed, _, first = land_review.required(L.wt, land_review.fork_point(L.wt, L.remote, L.sha), L.sha)
     if needed:
         raise ex.Stop(f"{L.upstream} moved past {L.sha[:12]}, which needs an independent review ({first}); rebase it onto "
                       f"{L.upstream} and ask for a new review of the new tip")
-    merges = lg.out(L.wt, "rev-list", "--merges", "--count", f"{L.upstream}..{L.sha}") != "0"
+    merges = lg.out(L.wt, "rev-list", "--merges", "--count", f"{L.remote}..{L.sha}") != "0"
     verb = "merge" if merges else "rebase"
-    done = lg.git(L.wt, verb, *(["--no-edit"] if merges else []), L.upstream, check=False)
+    done = lg.git(L.wt, verb, *(["--no-edit"] if merges else []), L.remote, check=False)
     if done.returncode:
         files = lg.lines(L.wt, "diff", "--name-only", "--diff-filter=U")
         lg.git(L.wt, verb, "--abort", check=False)
@@ -167,24 +174,37 @@ def bring_up_to_date(L: Landing) -> None:
     L.sha = tip(L)
 
 
-def sync(L: Landing) -> bool:
-    """Fetch, level the local development branch and the branch with origin; True when the branch is already on origin."""
+def fetch(L: Landing) -> None:
+    """Fetch the development branch and record the commit origin says it holds; stop unless the remote-tracking ref is that commit."""
     fetched = lg.git(L.wt, "fetch", "origin", L.dev, check=False)
     if fetched.returncode:
         raise ex.Stop(f"fetch failed: {(fetched.stderr.strip().splitlines() or ['no output'])[-1]}")
+    asked = lg.git(L.wt, "ls-remote", "origin", f"refs/heads/{L.dev}", check=False)
+    held = asked.stdout.split()[:1]
+    if asked.returncode or not held:
+        raise ex.Stop(f"origin does not say which commit it holds for {L.dev}")
+    L.remote = held[0]
+    local = lg.git(L.wt, "rev-parse", "--verify", "--quiet", f"{L.tracking}^{{commit}}", check=False).stdout.strip()
+    if local != L.remote:
+        raise ex.Stop(f"{L.upstream} is {local[:12] or 'missing'} here and {L.remote[:12]} on origin; fetch {L.dev} again")
+
+
+def sync(L: Landing) -> bool:
+    """Fetch, level the local development branch and the branch with origin; True when the branch is already on origin."""
+    fetch(L)
     L.sha = tip(L)
-    already = lg.is_ancestor(L.wt, L.sha, L.upstream)
+    already = lg.is_ancestor(L.wt, L.sha, L.remote)
     problem = lift_primary(L)
     if problem and not already:
         raise ex.Stop(problem)
-    if not already and not lg.is_ancestor(L.wt, L.upstream, L.sha):
+    if not already and not lg.is_ancestor(L.wt, L.remote, L.sha):
         bring_up_to_date(L)
     return already
 
 
 def review(L: Landing) -> None:
     """Stop unless the diff needs no review or an independent accept stands for exactly this commit."""
-    needed, _, first = land_review.required(L.wt, L.dev, L.sha)
+    needed, _, first = land_review.required(L.wt, L.remote, L.sha)
     L.needs_review = first if needed else ""
     if not needed:
         return
@@ -208,7 +228,8 @@ def recheck(L: Landing, tree: str) -> None:
 def push(L: Landing) -> None:
     """Push exactly the commit that was reviewed and tested, plainly, to the development branch."""
     lg.refuse_protected(L.dev)
-    done = lg.git(L.wt, "push", "origin", f"{L.sha}:refs/heads/{L.dev}", check=False)
+    env = lg.clean_env({session.AGENT_ENV: L.agent} if L.agent else None)
+    done = lg.git(L.wt, "push", "origin", f"{L.sha}:refs/heads/{L.dev}", check=False, env=env)
     if done.returncode:
         lines = [x for x in done.stderr.splitlines() if x.strip()]
         raise ex.Stop("push refused: " + " | ".join(ex.printable(x.strip()) for x in lines[-3:]))
@@ -228,8 +249,11 @@ def cleanup(L: Landing) -> str:
 def finish(L: Landing, outcome: str) -> tuple[str, str]:
     """After the commit is on origin: level the local development branch, clean up, and say what is left."""
     note(L, "cleaning up")
-    lg.git(L.wt, "fetch", "origin", L.dev, check=False)
-    warning = lift_primary(L)
+    try:
+        fetch(L)
+        warning = lift_primary(L)
+    except ex.Stop as stop:
+        warning = str(stop)
     left = cleanup(L)
     if left:
         say(f"kept {L.branch}: {left}")
@@ -246,7 +270,7 @@ def execute(L: Landing) -> tuple[str, str, list[str]]:
         return (*finish(L, "already landed"), [])
     note(L, "checking the review")
     review(L)
-    checks = ex.plan(L.wt, L.upstream, L.sha)
+    checks = ex.plan(L.wt, L.remote, L.sha)
     if checks.kind == "none":
         raise ex.Stop(f"nothing to land: {L.branch} changes nothing against {L.upstream}")
     tree = lg.out(L.wt, "rev-parse", f"{L.sha}^{{tree}}")
@@ -262,15 +286,13 @@ def execute(L: Landing) -> tuple[str, str, list[str]]:
 
 def show(L: Landing) -> None:
     """A dry run: what landing would check and whether it would be reviewed; nothing changes but the remote-tracking ref."""
-    fetched = lg.git(L.wt, "fetch", "origin", L.dev, check=False)
-    if fetched.returncode:
-        raise ex.Stop(f"fetch failed: {(fetched.stderr.strip().splitlines() or ['no output'])[-1]}")
+    fetch(L)
     L.sha = tip(L)
-    if lg.is_ancestor(L.wt, L.sha, L.upstream):
+    if lg.is_ancestor(L.wt, L.sha, L.remote):
         say(f"{L.branch} ({L.sha[:12]}) is already on {L.upstream}")
         return
-    behind = not lg.is_ancestor(L.wt, L.upstream, L.sha)
-    needed, base, first = land_review.required(L.wt, L.dev, L.sha)
+    behind = not lg.is_ancestor(L.wt, L.remote, L.sha)
+    needed, base, first = land_review.required(L.wt, land_review.fork_point(L.wt, L.remote, L.sha), L.sha)
     say(f"{L.branch} at {L.sha}" + (f" is behind {L.upstream}; land rebases it" + (" only when no review is needed" if needed else "") if behind else ""))
     if needed:
         found = landing.accepts(L.s, L.branch, L.sha, str(L.wt))

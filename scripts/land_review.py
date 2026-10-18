@@ -82,11 +82,20 @@ def sensitive(name: str) -> bool:
     return path.suffix != ".md" or path.name.casefold().startswith(SENSITIVE_DOCS)
 
 
-def required(root: Path, target: str, tip: str) -> tuple[bool, str, str]:
-    """Whether the diff of ``tip`` from the development branch needs an independent review, its merge base and the first sensitive path."""
-    target_ref = f"origin/{target}" if lg.exists(root, f"origin/{target}") else target
-    base = lg.out(root, "merge-base", target_ref, tip)
-    raw = lg.git(root, "diff", "--raw", "--no-abbrev", "--no-renames", "-z", base, tip).stdout.split("\0")
+def fork_point(root: Path, upstream: str, tip: str) -> str:
+    """The commit where ``tip`` leaves ``upstream``, or an empty string when they share none."""
+    done = lg.git(root, "merge-base", upstream, tip, check=False)
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def required(root: Path, base: str, tip: str) -> tuple[bool, str, str]:
+    """Whether the diff from ``base`` to ``tip`` needs an independent review, the commit it starts from and the first sensitive path.
+
+    ``base`` is the commit the diff starts from; an empty string, or a commit this checkout lacks, makes every file of ``tip`` part of it.
+    """
+    start = lg.out(root, "rev-parse", f"{base}^{{commit}}") if base and lg.exists(root, base) else lg.empty_tree(root)
+    flags = ("-r", "--raw", "--no-abbrev", "--no-renames", "--ignore-submodules=none", "-z")
+    raw = lg.git(root, "diff-tree", *flags, start, tip).stdout.split("\0")
     for i in range(0, len(raw) - 1, 2):
         fields = raw[i].split()
         name = raw[i + 1]
@@ -95,5 +104,5 @@ def required(root: Path, target: str, tip: str) -> tuple[bool, str, str]:
         before, after, status = fields[0].removeprefix(":"), fields[1], fields[-1]
         odd = {"120000", "100755"} & {before, after} or (before != after and "000000" not in (before, after))
         if odd or sensitive(name) or (status == "D" and name.startswith("tests/")):
-            return True, base, name
-    return False, base, ""
+            return True, start, name
+    return False, start, ""

@@ -70,23 +70,26 @@ def trees_at(tip: str, dev: str) -> list[tuple[str, str]]:
     return [(name, where.get(name, "")) for name in heads if name not in (dev, "main", "master")]
 
 
-def unreviewed(dev: str, tip: str) -> str:
-    """Why pushing ``tip`` to the development branch lacks the independent accept its diff needs, or an empty string.
+def unreviewed(dev: str, tip: str, remote: str) -> str:
+    """Why pushing ``tip`` over ``remote``, the commit the remote holds, lacks the independent accept its diff needs, or an empty string.
 
-    Asks the node whether an accept of exactly ``tip`` stands for some branch pointing at it; a node that does not
-    answer, or a checkout that cannot ask, refuses.
+    The diff starts from ``remote`` as git read it from the remote; a commit this checkout lacks makes the whole tip the diff.
+    Asks the node whether an accept of exactly ``tip`` stands for some branch pointing at it; a node that does not answer, or a
+    checkout that cannot ask, refuses.
     """
     sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
-    first = ""
     try:
         import land_review
 
         from poolhouse.board import session
         from poolhouse.errors import Error
         from poolhouse.workspace import landing
-
+    except ImportError as exc:
+        return f"the review check could not load ({exc})"
+    first = ""
+    try:
         root = Path(_git("rev-parse", "--show-toplevel").stdout.strip())
-        needed, _, first = land_review.required(root, dev, tip)
+        needed, _, first = land_review.required(root, remote, tip)
         if not needed:
             return ""
         branches = trees_at(tip, dev)
@@ -99,8 +102,8 @@ def unreviewed(dev: str, tip: str) -> str:
             if not why:
                 return ""
         return f"{why} for {tip[:12]} (first sensitive path {first}); another agent runs: poolhouse-workspace land-review {branches[0][0]} {tip} --verdict accept"
-    except (ImportError, OSError, ValueError, RuntimeError, KeyError, Error) as exc:
-        return f"the board could not be asked ({exc}) about {first or "the diff"}"
+    except (OSError, ValueError, RuntimeError, KeyError, Error) as exc:
+        return f"the board could not be asked ({exc}) about {first or 'the diff'}"
 
 
 def main(dev: str, lines: list[str]) -> int:
@@ -112,7 +115,7 @@ def main(dev: str, lines: list[str]) -> int:
             continue
         _, tip, remote_ref, base = parts
         if remote_ref == f"refs/heads/{dev}":
-            why = unreviewed(dev, tip)
+            why = unreviewed(dev, tip, base)
             if why:
                 refused = 1
                 print(f"pushed: {remote_ref} needs an independent review: {why}", file=sys.stderr)
