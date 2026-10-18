@@ -1106,6 +1106,7 @@ def _real_home(tmp_path_factory):
         mp.setenv("HOME", str(away))
         mp.setenv("POOLHOUSE_HOME", str(away / ".poolhouse"))
         mp.setenv("POOLHOUSE_CACHE", str(away / ".cache" / "poolhouse"))
+        mp.setenv("DEV_TEST_REUSE_DIR", str(away / ".cache" / "test-reuse"))
         if os.environ.get(live.LAN_TESTS) != "1":
             mp.setenv("POOLHOUSE_NODE_LAN", "off")  # belt only: `poolhouse.lan` already keeps a node off the network under a moved home or pytest
         yield real
