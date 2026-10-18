@@ -12,6 +12,9 @@ from test_testreuse_review import attempt, kinds
 pytestmark = pytest.mark.slow
 
 READS_THE_WHEEL = "from pathlib import Path\n\n\ndef test_a():\n    assert Path(__file__).parents[1].joinpath('dist/pkg.whl').read_bytes()\n"
+WRITES_THE_WHEEL = (
+    "from pathlib import Path\n\n\ndef test_a():\n    out = Path(__file__).parents[1] / 'dist'\n    out.mkdir(exist_ok=True)\n"
+    "    (out / 'pkg.whl').write_bytes(b'w')\n    assert (out / 'pkg.whl').read_bytes()\n")
 USES_TMP = (
     "import os\nimport shutil\nimport tempfile\n\n\n"
     "def test_a():\n"
@@ -35,6 +38,20 @@ def test_a_wheel_built_into_dist_during_the_run_does_not_move_the_tree(project, 
 
     report, _ = attempt(project, store, launch=build)
     assert report.status == 0 and "pass" in kinds(store)
+
+
+def test_a_test_that_builds_and_reads_its_own_wheel_in_dist_is_stored(project, tmp_path):
+    store = storage.Store(tmp_path / "store")
+    (project / FILE).write_text(WRITES_THE_WHEEL)
+    report, _ = attempt(project, store)
+    assert report.status == 0 and "pass" in kinds(store)
+
+
+def test_a_write_to_a_directory_other_than_dist_in_the_checkout_is_still_a_violation(project, tmp_path):
+    store = storage.Store(tmp_path / "store")
+    (project / FILE).write_text(WRITES_THE_WHEEL.replace("'dist'", "'out'"))
+    attempt(project, store)
+    assert "pass" not in kinds(store)
 
 
 def test_a_dist_file_a_test_read_and_the_run_then_rewrote_is_not_stored(project, tmp_path):

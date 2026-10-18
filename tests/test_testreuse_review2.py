@@ -59,8 +59,8 @@ def test_a_file_created_in_an_ignored_directory_during_the_run_stores_nothing(pr
 
     def generate(real):
         def launch(command):
-            (project / "dist").mkdir()
-            (project / "dist/gen.txt").write_text("x")
+            (project / "tests/_generated_run").mkdir()
+            (project / "tests/_generated_run/gen.txt").write_text("x")
             return real(command)
         return launch
 

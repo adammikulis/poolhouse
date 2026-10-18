@@ -1,6 +1,7 @@
 """Pytest plugin: records, per test file, what a run read, listed, probed, imported, wrote and warned about."""
 from __future__ import annotations
 
+import contextlib
 import functools
 import json
 import os
@@ -9,13 +10,16 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from testreuse_facts import BUILT_DIRS
 
 ROOT = Path(os.environ.get("DEV_TEST_REUSE_ROOT", ".")).resolve()
 RECORD = Path(os.environ.get("DEV_TEST_REUSE_RECORD", ""))
 REAL_STATE = tuple(Path.home() / part for part in (".poolhouse", "Library/Keychains", ".ssh", ".gnupg",
                                                      ".cache/huggingface", ".config"))
 IGNORED = (".git", ".pytest_cache", ".testmondata", "__pycache__", ".ruff_cache", ".mypy_cache")
-WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev")})
+SHARED_TEMP = (Path("/tmp"), Path("/var/tmp"))  # noqa: S108 - where tests put short socket roots; writable like the system temp
+WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev"),
+                  *SHARED_TEMP, *(p.resolve() for p in SHARED_TEMP)})
 ALLOWED_ROOT_WRITES = (".pytest_cache", "__pycache__", ".testmondata", ".coverage")
 MUTATING = {"os.mkdir": (0,), "os.rmdir": (0,), "os.remove": (0,), "os.rename": (0, 1), "os.symlink": (1,),
             "os.link": (1,), "os.truncate": (0,), "os.chmod": (0,), "shutil.rmtree": (0,),
@@ -33,7 +37,7 @@ BUSY: list[bool] = []
 
 def _entry(rel: str) -> dict:
     return FILES.setdefault(rel, {"reads": set(), "dirs": set(), "stats": set(), "links": {}, "marks": set(),
-                                  "violations": set(), "skipped": False, "collected": 0})
+                                  "violations": set(), "skipped": False, "collected": 0, "stamps": {}})
 
 
 def _under(path: Path, base: Path) -> bool:
@@ -94,7 +98,8 @@ def _write_ok(absolute: str) -> bool:
     if target.name == "__pycache__" or (target.parent.name == "__pycache__" and ".pyc" in target.name):
         return True  # Python's own bytecode cache, anywhere: regenerable from source, not test output
     if _under(target, ROOT):
-        return any(part.startswith(ALLOWED_ROOT_WRITES) for part in target.relative_to(ROOT).parts)
+        parts = target.relative_to(ROOT).parts
+        return parts[:1] in [(name,) for name in BUILT_DIRS] or any(part.startswith(ALLOWED_ROOT_WRITES) for part in parts)
     return any(_under(target, base) or _under(Path(absolute), base) for base in WRITABLE)
 
 
@@ -116,6 +121,10 @@ def _note_path(bucket: dict, absolute: str, kind: str) -> None:
     if not rel:
         return
     bucket[kind].add(rel)
+    if kind == "reads" and rel.split("/", 1)[0] in BUILT_DIRS and rel not in bucket["stamps"]:
+        with contextlib.suppress(OSError):
+            seen = Path(absolute).stat()
+            bucket["stamps"][rel] = [seen.st_mtime_ns, seen.st_size]
     try:
         relative = lexical.relative_to(ROOT)
     except ValueError:

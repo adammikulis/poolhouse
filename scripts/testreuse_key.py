@@ -28,7 +28,8 @@ SPAWNS = re.compile(r"\b(?:subprocess|Popen|os\.system|os\.exec\w*|os\.spawn\w*|
                     r"concurrent\.futures\.process)\b")
 DYNAMIC = re.compile(r"\b(?:importlib\.util|runpy|pkgutil|entry_points|importorskip|__import__|import_module)\b")
 UNSEEN = re.compile(r"\b(?:DirEntry|scandir|fstat|utime|chown|setxattr|mmap|sqlite3|ladybug)\b")
-SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules"})
+SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules",
+                           *facts.BUILT_DIRS})
 SNAPSHOT_BUDGET_S = 10.0
 RUNNER_OWNED = frozenset({".full-tier-last.json"})
 RUNNER_PLUGINS = frozenset({"testslots_pytest", "testreuse_plugin"})

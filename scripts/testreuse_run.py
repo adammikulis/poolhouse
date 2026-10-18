@@ -145,6 +145,12 @@ def results(junit: Path, root: Path) -> dict[str, dict[str, int]]:
     return rows
 
 
+def merge_stamps(into: dict, more: dict) -> None:
+    """Fold read-time stamps of build output together; two different stamps of one file leave it unmatchable (None)."""
+    for rel, stamp in more.items():
+        into[rel] = stamp if into.get(rel, stamp) == stamp else None
+
+
 def recorded(folder: Path) -> tuple[dict[str, dict], str]:
     """The plugin's per-file records from every process, merged, and why they cannot be trusted, if so."""
     merged: dict[str, dict] = {}
@@ -161,10 +167,11 @@ def recorded(folder: Path) -> tuple[dict[str, dict], str]:
             died += meta.get("died", ())
         for rel, row in data["files"].items():
             into = merged.setdefault(rel, {"reads": set(), "dirs": set(), "stats": set(), "links": {}, "marks": set(),
-                                           "violations": set(), "skipped": False, "collected": 0})
+                                           "violations": set(), "skipped": False, "collected": 0, "stamps": {}})
             for name in ("reads", "dirs", "stats", "marks", "violations"):
                 into[name] |= set(row[name])
             into["links"].update(row["links"])
+            merge_stamps(into["stamps"], row["stamps"])
             into["skipped"] = into["skipped"] or row["skipped"]
             into["collected"] = max(into["collected"], row["collected"])
     shared = merged.pop("*", None)
@@ -172,6 +179,7 @@ def recorded(folder: Path) -> tuple[dict[str, dict], str]:
         for name in ("reads", "dirs", "stats", "violations"):
             row[name] |= shared[name] if shared else set()
         row["links"].update(shared["links"] if shared else {})
+        merge_stamps(row["stamps"], shared["stamps"] if shared else {})
     problem = f"worker {died[0]} died" if died else (
         f"worker {sorted(nodes - workers)[0]} did not report" if nodes - workers else "")
     return merged, problem
@@ -400,13 +408,19 @@ class Session:
                 outcome.detail = f"{outcome.detail} (not stored: {self.unstored})".strip()
             self.events.finished(file, look.key, "pass" if outcome.stored else "pass-unstored", outcome.stored)
 
-    @staticmethod
-    def refusal(seen: dict | None, count: dict) -> str:
+    def refusal(self, seen: dict | None, count: dict) -> str:
         """Why a passing run may not be stored, or empty."""
         if seen is None:
             return "no record of what it read"
         if seen["violations"]:
             return sorted(seen["violations"])[0]
+        for rel, stamp in sorted(seen.get("stamps", {}).items()):
+            try:
+                now = (self.root / rel).stat()
+            except OSError:
+                return f"changed during the run: {rel}"
+            if stamp != [now.st_mtime_ns, now.st_size]:
+                return f"changed during the run: {rel}"
         if seen["skipped"] or count["skipped"]:
             return "a test was skipped"
         if seen["collected"] != count["tests"]:
