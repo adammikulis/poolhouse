@@ -37,11 +37,11 @@ def primary_land() -> Path | None:
 def main() -> int:
     """Hand over to the primary checkout's lander when this file is another copy, then parse the command line and land."""
     target = primary_land()
-    if target is not None and not (target.is_file() and os.path.samefile(target, __file__)):
+    if target is not None and not (target.is_file() and target.samefile(__file__)):
         if not target.is_file():
             print(f"land: stopped: {target} does not exist; the primary checkout holds the lander that runs")
             return 5
-        os.execv(sys.executable, [sys.executable, str(target), *sys.argv[1:]])
+        os.execv(sys.executable, [sys.executable, str(target), *sys.argv[1:]])  # noqa: S606
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
     import land_git as lg
