@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from land_support import DEV, ROOT, World, git
+from land_support import AGENT_PUSH, DEV, ROOT, World, git
 
 pytest_plugins = ["node_kit"]
 
@@ -146,3 +146,78 @@ def test_a_check_that_cannot_load_refuses_the_push_with_a_message(as_lander, pus
     monkeypatch.chdir(tree)
     assert pushed.main(DEV, [push_line(tree, sha)]) == 1
     assert "could not load" in capsys.readouterr().err
+
+
+def merge_of(tree, remote, tip, extra=None):
+    """The merge commit of ``remote`` and ``tip`` that git computes, ``remote`` first; ``extra`` files are amended into it when given."""
+    merged = git(tree, "merge-tree", "--write-tree", remote, tip)
+    made = git(tree, "commit-tree", merged, "-p", remote, "-p", tip, "-m", "chore: merge")
+    if not extra:
+        return made
+    git(tree, "switch", "-q", "--detach", made)
+    for rel, text in extra.items():
+        (Path(tree) / rel).parent.mkdir(parents=True, exist_ok=True)
+        (Path(tree) / rel).write_text(text, encoding="utf-8")
+        git(tree, "add", rel)
+    git(tree, "commit", "-q", "--amend", "-m", "chore: merge")
+    altered = git(tree, "rev-parse", "HEAD")
+    git(tree, "switch", "-q", "-")
+    return altered
+
+
+def test_a_merge_of_the_remote_and_an_accepted_tip_passes(as_lander, pushed, monkeypatch):
+    tree, sha = as_lander.start("merged", {SENSITIVE: "VALUE = 1\n"})
+    as_lander.accept("merged", sha)
+    moved = as_lander.proj.advance("docs/b.md", "b\n")
+    monkeypatch.chdir(tree)
+    assert pushed.unreviewed(DEV, merge_of(tree, moved, sha), moved) == ""
+
+
+def test_a_merge_with_an_edit_beyond_the_clean_merge_is_refused(as_lander, pushed, monkeypatch):
+    tree, sha = as_lander.start("amended-merge", {SENSITIVE: "VALUE = 1\n"})
+    as_lander.accept("amended-merge", sha)
+    moved = as_lander.proj.advance("docs/b.md", "b\n")
+    monkeypatch.chdir(tree)
+    assert pushed.unreviewed(DEV, merge_of(tree, moved, sha), moved) == ""
+    altered = merge_of(tree, moved, sha, {"src/poolhouse/credentials/extra.py": "VALUE = 2\n"})
+    git(tree, "branch", "altered", altered)
+    assert f"land-review altered {altered} --verdict accept" in pushed.unreviewed(DEV, altered, moved)
+
+
+def test_a_merge_whose_second_parent_has_no_accept_is_refused(as_lander, pushed, monkeypatch):
+    tree, sha = as_lander.start("accepted-side", {SENSITIVE: "VALUE = 1\n"})
+    other, unreviewed = as_lander.start("plain-side", {"src/poolhouse/credentials/other.py": "VALUE = 2\n"})
+    as_lander.accept("accepted-side", sha)
+    moved = as_lander.proj.advance("docs/b.md", "b\n")
+    monkeypatch.chdir(tree)
+    assert pushed.unreviewed(DEV, merge_of(tree, moved, sha), moved) == ""
+    why = pushed.unreviewed(DEV, merge_of(other, moved, unreviewed), moved)
+    assert "needs review" in why and f"land-review plain-side {unreviewed} --verdict accept" in why, why
+
+
+def test_a_merge_whose_first_parent_is_not_the_remote_is_refused(as_lander, pushed, monkeypatch):
+    tree, sha = as_lander.start("wrong-parent", {SENSITIVE: "VALUE = 1\n"})
+    as_lander.accept("wrong-parent", sha)
+    base = as_lander.proj.origin_head()
+    moved = as_lander.proj.advance("docs/b.md", "b\n")
+    monkeypatch.chdir(tree)
+    assert pushed.unreviewed(DEV, merge_of(tree, moved, sha), moved) == ""
+    behind = merge_of(tree, base, sha)
+    git(tree, "branch", "behind-merge", behind)
+    assert f"land-review behind-merge {behind} --verdict accept" in pushed.unreviewed(DEV, behind, moved)
+
+
+def test_the_installed_hook_lets_a_clean_merge_through_and_refuses_one_with_an_added_edit(world):
+    world.install_hook()
+    tree, sha = world.start("pushed-merge", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("pushed-merge", sha)
+    moved = world.proj.advance("docs/b.md", "b\n")
+    clean = merge_of(tree, moved, sha)
+    altered = merge_of(tree, moved, sha, {"src/poolhouse/credentials/extra.py": "VALUE = 2\n"})
+    env = {**world.env(world.lander), **AGENT_PUSH}
+    refused = subprocess.run(["git", "push", "origin", f"{altered}:refs/heads/{DEV}"], cwd=tree, env=env, capture_output=True, text=True, check=False)
+    assert refused.returncode != 0 and "needs an independent review" in refused.stderr, refused.stderr
+    assert world.proj.origin_head() == moved
+    done = subprocess.run(["git", "push", "origin", f"{clean}:refs/heads/{DEV}"], cwd=tree, env=env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stderr
+    assert world.proj.origin_head() == clean

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from poolhouse import lock as filelock
 ROOT = Path(__file__).resolve().parents[1]
 LAND = ROOT / "scripts" / "land"
 DEV = "devline"
+AGENT_PUSH = {"CLAUDECODE": "1", "PYTHON": sys.executable, "POOLHOUSE_RUNTIME_ENSURE": "off"}
 
 FAKE_TEST = r'''
 import os, pathlib, sys, time
@@ -22,6 +24,11 @@ with open(base / 'calls.log', 'a') as f:
     f.write(' '.join(sys.argv[1:]) + '\n')
     for name in ('PYTEST_ADDOPTS', 'POOLHOUSE_LIVE_API', 'LAND_HOSTILE'):
         f.write(f'ENV {name}={os.environ.get(name, "")}\n')
+flag = base / 'fail_once'
+if flag.exists():
+    flag.unlink()
+    print('FAILED tests/test_once.py::test_x - boom')
+    sys.exit(1)
 bad = 0
 if sys.argv[1] == 'gate':
     bad = int(bool(list(here.glob('BAD_GATE*'))))
@@ -165,6 +172,14 @@ class World:
         from poolhouse.workspace import landing
 
         landing.review(self.node.session(who or self.reviewer), branch, sha, verdict)
+
+    def install_hook(self) -> None:
+        """Install the repository's pre-push hook; it checks a push made with the ``AGENT_PUSH`` environment."""
+        hooks = Path(git(self.proj.root, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "hooks"
+        hooks.mkdir(exist_ok=True)
+        hook = hooks / "pre-push"
+        hook.write_text("#!/bin/sh\nexec sh " + shlex.quote((ROOT / "scripts/hooks/pre-push").as_posix()) + ' "$@"\n', encoding="utf-8")
+        hook.chmod(0o755)
 
     def records(self) -> list[dict]:
         """The lines of the landings log."""

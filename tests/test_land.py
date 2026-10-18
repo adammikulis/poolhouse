@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
-from land_support import DEV, World, git
+from land_support import AGENT_PUSH, DEV, World, git
 
 from poolhouse import lock as filelock, worktreerules
 from poolhouse.board.client import Denied
@@ -263,12 +263,86 @@ def test_a_stale_branch_that_needs_no_review_is_rebased_and_lands(world):
     assert world.proj.origin_head() != old and git(world.proj.root, "merge-base", "--is-ancestor", moved, DEV) == ""
 
 
-def test_a_stale_branch_that_needs_a_review_stops_for_a_new_review(world):
+def parents(world, sha):
+    """The parents of a commit, first to last."""
+    return git(world.proj.root, "rev-list", "--parents", "-n", "1", sha).split()[1:]
+
+
+def test_a_stale_branch_that_needs_a_review_and_has_none_stops_naming_its_tip(world):
     tree, sha = world.start("stale-sensitive", {SENSITIVE: "VALUE = 1\n"})
-    world.accept("stale-sensitive", sha)
     world.proj.advance("docs/b.md", "b\n")
     code, out = world.land(tree)
-    assert code == 5 and "moved past" in out and "new review" in out, out
+    assert code == 5 and "moved past" in out and f"land-review stale-sensitive {sha} --verdict accept" in out, out
+    assert git(tree, "rev-parse", "HEAD") == sha
+
+
+def test_a_reviewed_tip_behind_origin_lands_as_a_merge_that_keeps_its_accept(world):
+    world.install_hook()
+    tree, sha = world.start("reviewed-stale", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("reviewed-stale", sha)
+    moved = world.proj.advance("docs/b.md", "b\n")
+    code, out = world.land(tree, hostile=AGENT_PUSH)
+    assert code == 0, out
+    head = world.proj.origin_head()
+    assert parents(world, head) == [moved, sha]
+    assert git(world.proj.root, "show", f"{head}:docs/b.md") == "b"
+    assert git(world.proj.root, "show", f"{head}:{SENSITIVE}") == "VALUE = 1"
+    assert world.proj.local_head() == head and not tree.exists()
+
+
+def test_two_reviewed_branches_land_one_after_the_other_without_a_new_review(world):
+    world.install_hook()
+    one, first = world.start("one", {SENSITIVE: "VALUE = 1\n"})
+    two, second = world.start("two", {"src/poolhouse/credentials/other.py": "VALUE = 2\n"})
+    world.accept("one", first)
+    world.accept("two", second)
+    assert world.land(one, hostile=AGENT_PUSH)[0] == 0
+    code, out = world.land(two, hostile=AGENT_PUSH)
+    assert code == 0, out
+    assert parents(world, world.proj.origin_head()) == [first, second]
+    assert git(world.proj.root, "show", f"{world.proj.origin_head()}:{SENSITIVE}") == "VALUE = 1"
+
+
+def test_a_reviewed_tip_that_conflicts_with_origin_stops_without_a_push(world):
+    world.install_hook()
+    tree, sha = world.start("clash-reviewed", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("clash-reviewed", sha)
+    world.proj.advance(SENSITIVE, "VALUE = 9\n")
+    before = world.proj.origin_head()
+    code, out = world.land(tree, hostile=AGENT_PUSH)
+    assert code == 5 and f"conflicts in {SENSITIVE}" in out and "resolve, and ask for a new review" in out, out
+    assert world.proj.origin_head() == before and git(tree, "rev-parse", "HEAD") == sha
+    assert git(tree, "status", "--porcelain") == ""
+
+
+def test_a_run_that_stopped_after_the_merge_is_repaired_by_running_again(world):
+    world.install_hook()
+    tree, sha = world.start("repaired", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("repaired", sha)
+    stale = world.proj.advance("docs/b.md", "b\n")
+    (world.proj.base / "fail_once").write_text("1")
+    code, out = world.land(tree, hostile=AGENT_PUSH)
+    assert code == 5 and "gate failed" in out, out
+    left = git(tree, "rev-parse", "HEAD")
+    assert parents(world, left) == [stale, sha]
+    newest = world.proj.advance("docs/c.md", "c\n")
+    code, out = world.land(tree, hostile=AGENT_PUSH)
+    assert code == 0, out
+    head = world.proj.origin_head()
+    assert parents(world, head) == [newest, sha]
+    assert git(world.proj.root, "show", f"{head}:docs/b.md") == "b"
+
+
+def test_a_dry_run_says_a_reviewed_tip_behind_origin_is_merged_and_whether_it_conflicts(world):
+    tree, sha = world.start("dry-stale", {SENSITIVE: "VALUE = 1\n"})
+    world.accept("dry-stale", sha)
+    world.proj.advance("docs/b.md", "b\n")
+    code, out = world.land(tree, "--dry-run")
+    assert code == 0 and "land merges origin/" + DEV in out and "an independent accept stands" in out, out
+    assert "conflicts" not in out
+    world.proj.advance(SENSITIVE, "VALUE = 9\n")
+    code, out = world.land(tree, "--dry-run")
+    assert code == 0 and f"conflicts in {SENSITIVE}" in out, out
     assert git(tree, "rev-parse", "HEAD") == sha
 
 
