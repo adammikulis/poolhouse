@@ -36,3 +36,18 @@ def test_a_process_whose_command_line_the_system_refuses_is_skipped_and_the_rest
     finally:
         other.kill()
         other.wait()
+
+
+def test_the_state_check_lists_live_processes_past_one_the_system_refuses(monkeypatch, sleeper):
+    import state_attribution
+
+    real = psutil.Process.cmdline
+
+    def cmdline(self):
+        if self.pid == sleeper.pid:
+            raise PermissionError(1, "force permission denied")
+        return real(self)
+
+    monkeypatch.delenv(state_attribution.FIXED_WRITERS, raising=False)
+    monkeypatch.setattr(psutil.Process, "cmdline", cmdline)
+    assert isinstance(state_attribution.live_poolhouse_processes(), list)
