@@ -12,8 +12,8 @@ import pytest
 
 from poolhouse import sandbox
 from poolhouse.sandbox import denial_log, policies, run
-from poolhouse.sandbox.backend import Availability, Wrapped
 from poolhouse.sandbox.denial_log import DenialLog, parse
+from tests.sandbox_kit import UnreadableBackend
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -26,27 +26,6 @@ LOGGER = {"processImagePath": "/usr/bin/logger", "senderImagePath": "/usr/bin/lo
 
 def event(message: object, sender: dict[str, str] = KERNEL) -> str:
     return json.dumps({"eventMessage": message, "messageType": "Error", **sender})
-
-
-class Unreadable:
-    """A backend that confines nothing and cannot say what was refused."""
-
-    name = "unreadable"
-
-    def available(self):
-        return Availability(True)
-
-    def wrap(self, argv, policy):
-        return Wrapped(list(argv), tag="unreadable")
-
-    def watch(self, *_tag):
-        return None
-
-    def denials(self, tag, since):
-        return None
-
-    def finish(self, *_tag):
-        return None
 
 
 def test_an_event_gives_the_tag_the_process_the_operation_and_the_target():
@@ -205,7 +184,7 @@ def test_runs_that_have_ended_are_the_ones_dropped_over_the_cap(tmp_path, seatbe
 
 def test_a_run_whose_refusals_cannot_be_read_is_reported_and_is_not_clean(tmp_path):
     events: list[tuple[str, dict]] = []
-    result = run(["/bin/sh", "-c", "exit 3"], policies.bash(str(tmp_path), str(tmp_path)), via=Unreadable(), diagnose="always",
+    result = run(["/bin/sh", "-c", "exit 3"], policies.bash(str(tmp_path), str(tmp_path)), via=UnreadableBackend(), diagnose="always",
                  on_event=lambda name, fields: events.append((name, fields)))
     unavailable = [fields for name, fields in events if name == "sandbox.denials-unavailable"]
     assert len(unavailable) == 1 and unavailable[0]["severity"] == "warning" and unavailable[0]["backend"] == "unreadable"
@@ -216,6 +195,6 @@ def test_a_run_whose_refusals_cannot_be_read_is_reported_and_is_not_clean(tmp_pa
 
 def test_a_run_that_was_not_diagnosed_does_not_claim_its_refusals_were_unreadable(tmp_path):
     events: list[tuple[str, dict]] = []
-    result = run(["/bin/sh", "-c", "exit 0"], policies.bash(str(tmp_path), str(tmp_path)), via=Unreadable(),
+    result = run(["/bin/sh", "-c", "exit 0"], policies.bash(str(tmp_path), str(tmp_path)), via=UnreadableBackend(),
                  on_event=lambda name, fields: events.append((name, fields)))
     assert not result.denials_unavailable and result.check() is result and not events

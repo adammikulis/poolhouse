@@ -15,8 +15,30 @@ import pytest
 
 from poolhouse import sandbox
 from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy
+from poolhouse.sandbox.backend import Availability, Wrapped
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.seatbelt import Seatbelt
+
+
+class UnreadableBackend:
+    """A backend that confines nothing and cannot say what was refused."""
+
+    name = "unreadable"
+
+    def available(self):
+        return Availability(True)
+
+    def wrap(self, argv, policy):
+        return Wrapped(list(argv), tag="unreadable")
+
+    def watch(self, *_tag):
+        return None
+
+    def denials(self, tag, since):
+        return None
+
+    def finish(self, *_tag):
+        return None
 
 
 @pytest.fixture
