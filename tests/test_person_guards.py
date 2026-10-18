@@ -92,7 +92,9 @@ def test_the_opener_variable_no_longer_opens_main_for_an_agent(world):
 def test_the_development_branch_needs_no_approval_and_consumes_nothing(world):
     tmp, state, repo = world
     approve(tmp, state, repo)
-    done = push(repo, state, line(tip(repo, "HEAD"), ZERO, "0.9dev"), **AGENT)
+    held = tip(repo, "HEAD")
+    commit(repo, "README.md")
+    done = push(repo, state, line(tip(repo, "HEAD"), held, "0.9dev"), **AGENT)
     assert done.returncode == 0 and done.stderr == ""
     assert [r for r in rows(state) if r["type"] == "transition"] == []
 
