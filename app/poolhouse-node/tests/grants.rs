@@ -66,7 +66,7 @@ fn an_agent_cannot_grant_itself_or_anyone_a_thing() {
     let mut n = node(dir.path());
     let (name, token) = session(&mut n, "demo", "a");
     let agent = Person { key: SigningKey::from_bytes(&[0x13; 32]) };
-    let want = Spec::session(&name, "land_control");
+    let want = Spec::session(&name, "link_remove");
     let reply = agent.issue(&mut caller(&mut n), "demo", &token, GID, &want);
     assert_eq!(code(&reply), "denied", "no person key is enrolled: {reply}");
 
@@ -75,7 +75,7 @@ fn an_agent_cannot_grant_itself_or_anyone_a_thing() {
     let mut posing = agent.issue_params("demo", GID, &want);
     posing["person"] = json!(person().fingerprint());
     assert_eq!(code(&req(&mut n, "grant_issue", "demo", &token, posing)), "denied", "naming the person's key is not signing with it");
-    let mut edited = person().issue_params("demo", GID, &Spec::session("someone-else", "land_control"));
+    let mut edited = person().issue_params("demo", GID, &Spec::session("someone-else", "link_remove"));
     edited["to"] = json!({"kind": "session", "name": name});
     assert_eq!(code(&req(&mut n, "grant_issue", "demo", &token, edited)), "denied", "a grant altered after the person signed it is refused");
     let mut unsigned = person().issue_params("demo", GID, &want);
@@ -89,7 +89,7 @@ fn an_agent_cannot_grant_itself_or_anyone_a_thing() {
     assert_eq!(code(&req(&mut n, "person_enroll", "", &token, own_key)), "denied", "a key cannot approve itself");
     assert_eq!(code(&req(&mut n, "grant_revoke", "demo", &token, agent.revoke_params("demo", GID, "x"))), "denied");
 
-    assert!(!check(&mut n, &holder("demo", &name), "land_control", &Scope::any()).unwrap());
+    assert!(!check(&mut n, &holder("demo", &name), "link_remove", &Scope::any()).unwrap());
     assert!(listed(&mut n, &token)["grants"].as_array().unwrap().is_empty());
     assert_eq!(ok(req(&mut n, "person_keys", "", "", json!({})))["keys"].as_array().unwrap().len(), 1);
 }
@@ -113,10 +113,10 @@ fn a_grant_to_a_session_reaches_its_subagents_only_when_it_says_so_and_no_other_
     for (name, held) in [(&lead, true), (&kid, false), (&grandkid, false), (&stranger, false), (&not_kin, false)] {
         assert_eq!(holds(&mut n, &holder("demo", name), "note_verify", &Scope::any()).unwrap(), held, "{name} under a grant to {lead} alone");
     }
-    let with_kin = Spec::to(json!({"kind": "session", "name": lead, "subagents": true}), "land_control");
+    let with_kin = Spec::to(json!({"kind": "session", "name": lead, "subagents": true}), "link_remove");
     ok(put(&mut n, &lead_token, "g-00000000000000a9", &with_kin));
     for (name, held) in [(&lead, true), (&kid, true), (&grandkid, true), (&stranger, false), (&not_kin, false)] {
-        assert_eq!(holds(&mut n, &holder("demo", name), "land_control", &Scope::any()).unwrap(), held, "{name} under a grant to {lead} and its subagents");
+        assert_eq!(holds(&mut n, &holder("demo", name), "link_remove", &Scope::any()).unwrap(), held, "{name} under a grant to {lead} and its subagents");
     }
     let listed = listed(&mut n, &kid_token);
     let mine: Vec<&Value> = listed["grants"].as_array().unwrap().iter().filter(|g| g["mine"] == true).collect();
@@ -166,15 +166,15 @@ fn a_person_grant_allows_exactly_its_scope() {
     let mut n = node(dir.path());
     let (a, at) = session(&mut n, "demo", "a");
     let (b, _) = session(&mut n, "demo", "b");
-    ok(put(&mut n, &at, GID, &Spec::session(&a, "land_control").on("feat/*")));
+    ok(put(&mut n, &at, GID, &Spec::session(&a, "link_remove").on("feat/*")));
     let (me, other) = (holder("demo", &a), holder("demo", &b));
-    assert!(check(&mut n, &me, "land_control", &Scope::on("feat/x")).unwrap());
-    assert!(!check(&mut n, &me, "land_control", &Scope::on("dev")).unwrap(), "another resource");
-    assert!(!check(&mut n, &me, "land_control", &Scope::on("feat/../dev")).unwrap(), "a path that climbs out of the pattern");
-    assert!(!check(&mut n, &me, "land_control", &Scope::any()).unwrap(), "no resource named is not every resource");
+    assert!(check(&mut n, &me, "link_remove", &Scope::on("feat/x")).unwrap());
+    assert!(!check(&mut n, &me, "link_remove", &Scope::on("dev")).unwrap(), "another resource");
+    assert!(!check(&mut n, &me, "link_remove", &Scope::on("feat/../dev")).unwrap(), "a path that climbs out of the pattern");
+    assert!(!check(&mut n, &me, "link_remove", &Scope::any()).unwrap(), "no resource named is not every resource");
     assert!(!check(&mut n, &me, "land_trust", &Scope::on("feat/x")).unwrap(), "another action");
-    assert!(!check(&mut n, &other, "land_control", &Scope::on("feat/x")).unwrap(), "another session");
-    assert!(!check(&mut n, &holder("other", &a), "land_control", &Scope::on("feat/x")).unwrap(), "the same name on another board");
+    assert!(!check(&mut n, &other, "link_remove", &Scope::on("feat/x")).unwrap(), "another session");
+    assert!(!check(&mut n, &holder("other", &a), "link_remove", &Scope::on("feat/x")).unwrap(), "the same name on another board");
 
     let mut here = Spec::session(&a, "task_authority");
     here.device = "cd".repeat(32);
@@ -206,19 +206,19 @@ fn a_grant_ends_by_uses_by_time_and_by_revocation_and_each_use_is_on_the_board()
     targets.sort_unstable();
     assert_eq!(targets, ["note-1", "note-2"]);
 
-    ok(put(&mut n, &at, "g-00000000000000b1", &Spec::session(&a, "land_control").window(-200_000, -100_000)));
+    ok(put(&mut n, &at, "g-00000000000000b1", &Spec::session(&a, "link_remove").window(-200_000, -100_000)));
     assert_eq!(status_of(&mut n, &at, "g-00000000000000b1"), "expired");
-    assert!(!check(&mut n, &me, "land_control", &Scope::any()).unwrap());
-    ok(put(&mut n, &at, "g-00000000000000b2", &Spec::session(&a, "land_control").window(200_000, 3_600_000)));
+    assert!(!check(&mut n, &me, "link_remove", &Scope::any()).unwrap());
+    ok(put(&mut n, &at, "g-00000000000000b2", &Spec::session(&a, "link_remove").window(200_000, 3_600_000)));
     assert_eq!(status_of(&mut n, &at, "g-00000000000000b2"), "not-yet");
-    assert!(!check(&mut n, &me, "land_control", &Scope::any()).unwrap(), "not before it starts");
+    assert!(!check(&mut n, &me, "link_remove", &Scope::any()).unwrap(), "not before it starts");
 
-    ok(put(&mut n, &at, "g-00000000000000b3", &Spec::session(&a, "land_control")));
-    assert!(check(&mut n, &me, "land_control", &Scope::any()).unwrap());
+    ok(put(&mut n, &at, "g-00000000000000b3", &Spec::session(&a, "link_remove")));
+    assert!(check(&mut n, &me, "link_remove", &Scope::any()).unwrap());
     ok(person().revoke(&mut caller(&mut n), "demo", &at, "g-00000000000000b3"));
     assert_eq!(status_of(&mut n, &at, "g-00000000000000b3"), "revoked");
-    assert!(!check(&mut n, &me, "land_control", &Scope::any()).unwrap(), "revoked");
-    let again = person().issue(&mut caller(&mut n), "demo", &at, "g-00000000000000b3", &Spec::session(&a, "land_control"));
+    assert!(!check(&mut n, &me, "link_remove", &Scope::any()).unwrap(), "revoked");
+    let again = person().issue(&mut caller(&mut n), "demo", &at, "g-00000000000000b3", &Spec::session(&a, "link_remove"));
     assert_eq!(code(&again), "invalid", "a revoked grant id is not issued again");
 }
 
@@ -243,14 +243,14 @@ fn grants_name_a_session_a_class_or_a_verified_account() {
     let made = ok(req(&mut n, "register", "demo", &lt, json!({"model": "claude-haiku-5-5", "harness": "claude-code", "session": "kid"})));
     let kid = made["name"].as_str().unwrap().to_string();
     let (outsider, _) = session(&mut n, "demo", "x");
-    ok(put(&mut n, &lt, "g-00000000000000c1", &Spec::to(json!({"kind": "class", "family": "claude"}), "land_control")));
+    ok(put(&mut n, &lt, "g-00000000000000c1", &Spec::to(json!({"kind": "class", "family": "claude"}), "link_remove")));
     ok(put(&mut n, &lt, "g-00000000000000c2", &Spec::to(json!({"kind": "class", "family": "claude", "main": false}), "note_verify")));
     ok(put(&mut n, &lt, "g-00000000000000c3", &Spec::to(json!({"kind": "class", "family": "qwen"}), "sync_now")));
     ok(put(&mut n, &lt, "g-00000000000000c4", &Spec::to(json!({"kind": "class", "family": "claude", "verified": true}), "file_delete")));
     ok(put(&mut n, &lt, "g-00000000000000c5", &Spec::to(json!({"kind": "account", "model": "claude-sonnet-5-5"}), "task_authority")));
     let (l, k) = (holder("demo", &lead), holder("demo", &kid));
-    assert!(check(&mut n, &l, "land_control", &Scope::any()).unwrap(), "a class names its main sessions");
-    assert!(!check(&mut n, &k, "land_control", &Scope::any()).unwrap(), "and not their subagents");
+    assert!(check(&mut n, &l, "link_remove", &Scope::any()).unwrap(), "a class names its main sessions");
+    assert!(!check(&mut n, &k, "link_remove", &Scope::any()).unwrap(), "and not their subagents");
     assert!(check(&mut n, &k, "note_verify", &Scope::any()).unwrap(), "unless it says so");
     assert!(!check(&mut n, &l, "sync_now", &Scope::any()).unwrap(), "another family");
     assert!(!check(&mut n, &l, "file_delete", &Scope::any()).unwrap(), "a claimed model is not a verified one");
@@ -258,9 +258,9 @@ fn grants_name_a_session_a_class_or_a_verified_account() {
     n.host("demo").unwrap().names.verify_model(&lead, "claude-sonnet-5-5").unwrap();
     assert!(check(&mut n, &l, "file_delete", &Scope::any()).unwrap(), "once the node verified it");
     assert!(check(&mut n, &l, "task_authority", &Scope::any()).unwrap());
-    assert!(check(&mut n, &holder("demo", &outsider), "land_control", &Scope::any()).unwrap(), "any main session of the family is named, whoever started it");
+    assert!(check(&mut n, &holder("demo", &outsider), "link_remove", &Scope::any()).unwrap(), "any main session of the family is named, whoever started it");
     let made = ok(req(&mut n, "register", "demo", "", json!({"model": "qwen3", "harness": "pi", "session": "q"})));
-    assert!(!check(&mut n, &holder("demo", made["name"].as_str().unwrap()), "land_control", &Scope::any()).unwrap(), "a session of another family is not");
+    assert!(!check(&mut n, &holder("demo", made["name"].as_str().unwrap()), "link_remove", &Scope::any()).unwrap(), "a session of another family is not");
 }
 
 #[test]
@@ -268,12 +268,12 @@ fn a_grant_that_needs_review_is_used_only_with_one() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (a, at) = session(&mut n, "demo", "a");
-    let mut spec = Spec::session(&a, "land_control");
+    let mut spec = Spec::session(&a, "link_remove");
     spec.review = true;
     ok(put(&mut n, &at, GID, &spec));
     let me = holder("demo", &a);
-    assert!(!check(&mut n, &me, "land_control", &Scope::on("dev")).unwrap(), "no review stands behind this use");
-    assert!(check(&mut n, &me, "land_control", &Scope { resource: "dev", reviewed: true }).unwrap());
+    assert!(!check(&mut n, &me, "link_remove", &Scope::on("dev")).unwrap(), "no review stands behind this use");
+    assert!(check(&mut n, &me, "link_remove", &Scope { resource: "dev", reviewed: true }).unwrap());
 }
 
 #[test]
@@ -289,7 +289,7 @@ fn the_floors_are_never_granted_even_by_a_person_entry() {
         assert_eq!(code(&reply), "denied", "{floor}: {reply}");
         assert!(reply["error"]["message"].as_str().unwrap().contains("floor"), "{reply}");
         assert!(matches!(check(&mut n, &me, floor, &Scope::any()), Err(Error::Denied(_))), "{floor} is refused by name");
-        let mut body = person().issue_params("demo", &gid, &Spec::session(&a, "land_control")).as_object().unwrap().clone();
+        let mut body = person().issue_params("demo", &gid, &Spec::session(&a, "link_remove")).as_object().unwrap().clone();
         body.insert("action".into(), json!(floor));
         body.insert("op".into(), json!("issue"));
         body.insert("board".into(), json!("demo"));
@@ -326,12 +326,12 @@ fn grants_survive_a_restart_and_depend_on_the_enrolled_key() {
     }
     {
         let mut n = node(dir.path());
-        ok(put(&mut n, &at, "g-00000000000000d1", &Spec::session(&a, "land_control")));
-        assert!(check(&mut n, &holder("demo", &a), "land_control", &Scope::any()).unwrap());
+        ok(put(&mut n, &at, "g-00000000000000d1", &Spec::session(&a, "link_remove")));
+        assert!(check(&mut n, &holder("demo", &a), "link_remove", &Scope::any()).unwrap());
     }
     std::fs::write(dir.path().join("persons.json"), b"{}").unwrap();
     let mut n = node(dir.path());
-    assert!(!check(&mut n, &holder("demo", &a), "land_control", &Scope::any()).unwrap(), "with its key gone from this node, a person's grant counts for nothing");
+    assert!(!check(&mut n, &holder("demo", &a), "link_remove", &Scope::any()).unwrap(), "with its key gone from this node, a person's grant counts for nothing");
     assert_eq!(status_of(&mut n, &at, "g-00000000000000d1"), "ignored");
 }
 
@@ -341,9 +341,9 @@ fn the_default_grants_helper_gives_one_session_its_actions_and_no_other() {
     let mut n = node(dir.path());
     let (a, at) = session(&mut n, "demo", "a");
     let (b, _) = session(&mut n, "demo", "b");
-    allow(&mut n, "demo", &at, &a, &["land_control", "note_verify"]);
-    assert!(check(&mut n, &holder("demo", &a), "land_control", &Scope::any()).unwrap());
+    allow(&mut n, "demo", &at, &a, &["link_remove", "note_verify"]);
+    assert!(check(&mut n, &holder("demo", &a), "link_remove", &Scope::any()).unwrap());
     assert!(!check(&mut n, &holder("demo", &a), "land_trust", &Scope::any()).unwrap());
-    assert!(!check(&mut n, &holder("demo", &b), "land_control", &Scope::any()).unwrap());
-    assert_eq!(status_of(&mut n, &at, &gid_of(&a, "land_control")), "live");
+    assert!(!check(&mut n, &holder("demo", &b), "link_remove", &Scope::any()).unwrap());
+    assert_eq!(status_of(&mut n, &at, &gid_of(&a, "link_remove")), "live");
 }

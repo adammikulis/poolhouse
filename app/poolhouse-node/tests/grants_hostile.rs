@@ -152,18 +152,18 @@ fn a_grant_row_forged_on_the_log_is_ignored_and_the_use_of_it_is_refused() {
     enrolled(&n.dir.clone(), &mut caller(&mut n), &token);
     let me = Holder { board: "demo".into(), name: name.clone() };
     let agent = Person { key: ed25519_dalek::SigningKey::from_bytes(&[0x13; 32]) };
-    let mut forged = agent.issue_params("demo", GID, &Spec::session(&name, "land_control")).as_object().unwrap().clone();
+    let mut forged = agent.issue_params("demo", GID, &Spec::session(&name, "link_remove")).as_object().unwrap().clone();
     forged.insert("op".into(), json!("issue"));
     forged.insert("board".into(), json!("demo"));
     forged.insert("person".into(), json!(person().fingerprint()));
-    let mut copied = person().issue_params("demo", "g-00000000000000a2", &Spec::session("claude-bbbbbb", "land_control")).as_object().unwrap().clone();
+    let mut copied = person().issue_params("demo", "g-00000000000000a2", &Spec::session("claude-bbbbbb", "link_remove")).as_object().unwrap().clone();
     copied.insert("op".into(), json!("issue"));
     copied.insert("board".into(), json!("demo"));
     copied.insert("to".into(), json!({"kind": "session", "name": name}));
     for row in [forged, copied] {
         n.host("demo").unwrap().board.append(poolhouse_node::row::Kind::Grant, &name, Value::Object(row), "").unwrap();
     }
-    assert!(!check(&mut n, &me, "land_control", &Scope::any()).unwrap());
+    assert!(!check(&mut n, &me, "link_remove", &Scope::any()).unwrap());
     let all = ok(req(&mut n, "grants", "demo", &token, json!({})));
     assert!(all["grants"].as_array().unwrap().iter().all(|g| g["status"] == "ignored"), "{all}");
     assert_eq!(all["grants"].as_array().unwrap().len(), 2);

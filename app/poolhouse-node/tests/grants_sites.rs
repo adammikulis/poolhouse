@@ -1,5 +1,5 @@
 //! Every action the node used to allow to any session is refused to a session no grant names, and works once one does:
-//! the pool actions on a device, landing control and trust, and the task authority.
+//! the pool actions on a device, trust, and the task authority.
 
 mod kit;
 
@@ -17,7 +17,6 @@ fn sites() -> Vec<(&'static str, &'static str, Value, &'static str)> {
         ("shard_call", "", json!({"device": "nobody", "op": "shard_caps"}), "shard_call"),
         ("shard_consent", "", json!({"enabled": false}), "shard_consent"),
         ("land_trust", "demo", json!({"device": "ab".repeat(32), "trusted": false}), "land_trust"),
-        ("land_brake", "demo", json!({"pause": true}), "land_control"),
         ("task_mode", "demo", json!({"mode": "strict"}), "task_authority"),
     ]
 }

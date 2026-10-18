@@ -24,7 +24,7 @@ pub enum Kind {
     /// The result of running a note's command: its exit code and the hash of its output.
     Verify,
     Task,
-    /// A step of the landing queue: a request, a review, a cancel, a brake, a runner state or beat.
+    /// A review of a landing commit.
     Landing,
     Identity,
     Audit,

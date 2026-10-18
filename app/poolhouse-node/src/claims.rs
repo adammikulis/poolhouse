@@ -239,21 +239,6 @@ pub fn owner(node: &mut Node, board: &str, kind: &str, key: &str) -> Result<Opti
     Ok(node.leases.table.leases.iter().find(|l| l.state == State::Held && l.board == board && mine(l, kind, &name)).map(|l| l.name.clone()))
 }
 
-/// The key of a branch claim ``actor`` holds on ``board``, if it holds one.
-pub fn owned_branch(node: &mut Node, board: &str, actor: &str) -> Result<Option<String>> {
-    rpc::tick(node, &[board])?;
-    for l in node.leases.table.leases.iter().filter(|l| l.state == State::Held && l.board == board && l.name == actor) {
-        for r in &l.resources {
-            if let Resource::Claim { kind, name } = r {
-                if kind == "branch" {
-                    return Ok(Some(shown_as(kind, board, name).to_string()));
-                }
-            }
-        }
-    }
-    Ok(None)
-}
-
 pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     match method {
         "claim" => claim(node, board, token, p),

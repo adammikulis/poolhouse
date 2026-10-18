@@ -55,7 +55,7 @@ fn a_grant_from_another_device_counts_only_from_a_trusted_one_and_only_for_actio
     let (x, xt) = a.session("demo", "x");
     both_ways(&a, &b);
     issue(&b, NV, &Spec::session(&x, "note_verify"));
-    issue(&b, LC, &Spec::session(&x, "land_control"));
+    issue(&b, LC, &Spec::session(&x, "link_remove"));
     both_ways(&a, &b);
 
     let (s, why) = state(&a, &xt, NV);
@@ -69,7 +69,7 @@ fn a_grant_from_another_device_counts_only_from_a_trusted_one_and_only_for_actio
     let (s, why) = state(&a, &xt, LC);
     assert_eq!(s, "ignored");
     assert!(why.contains("the device it applies to"), "landing control does not travel: {why}");
-    assert!(!holds(&a, &x, "land_control"));
+    assert!(!holds(&a, &x, "link_remove"));
 
     trust(&a, &b, false);
     assert_eq!(status(&a, &xt, NV), "ignored", "and not once it stops");
@@ -109,7 +109,7 @@ fn a_floor_or_an_unsigned_grant_from_a_trusted_device_is_still_no_grant() {
     both_ways(&a, &b);
     trust(&a, &b, true);
 
-    let mut body = person().issue_params("demo", NV, &Spec::session(&x, "land_control")).as_object().unwrap().clone();
+    let mut body = person().issue_params("demo", NV, &Spec::session(&x, "link_remove")).as_object().unwrap().clone();
     body.insert("action".into(), json!("push_main"));
     body.insert("op".into(), json!("issue"));
     body.insert("board".into(), json!("demo"));
@@ -138,7 +138,7 @@ fn a_flood_of_grant_entries_from_an_untrusted_device_is_read_newest_first_and_on
     both_ways(&a, &b);
     let gid = |i: u32| format!("g-{i:016x}");
     for i in 1..=205 {
-        issue(&b, &gid(i), &Spec::session(&x, "land_control"));
+        issue(&b, &gid(i), &Spec::session(&x, "link_remove"));
     }
     both_ways(&a, &b);
     let all = a.ok("grants", "demo", &xt, json!({}));
@@ -146,5 +146,5 @@ fn a_flood_of_grant_entries_from_an_untrusted_device_is_read_newest_first_and_on
     assert!(listed.len() <= 200, "a listing is bounded: {}", listed.len());
     assert!(listed.contains(&gid(150).as_str()) && !listed.contains(&gid(1).as_str()) && !listed.contains(&gid(5).as_str()), "the newest of the untrusted device's entries are read, not the oldest");
     assert_eq!(status(&a, &xt, &gid(150)), "ignored");
-    assert!(!holds(&a, &x, "land_control"), "and none of them counts");
+    assert!(!holds(&a, &x, "link_remove"), "and none of them counts");
 }

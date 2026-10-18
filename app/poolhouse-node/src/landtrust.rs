@@ -1,7 +1,6 @@
-//! Whose landing entries this device counts. Landing authority is this device's own: an entry of
-//! the `landing` kind counts in the queue only when this device wrote it, or when a device that
-//! joined the pool is on this list and still an active member. The list is a decision of this
-//! device alone (never replicated, empty by default) and is set through `land_trust`.
+//! Whose board entries this device counts. An entry of the `task` or `grant` kind counts only when this device
+//! wrote it, or when a device that joined the pool is on this list and still an active member. The list is a
+//! decision of this device alone (never replicated, empty by default) and is set through `land_trust`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -20,7 +19,7 @@ struct File {
     devices: BTreeSet<String>,
 }
 
-/// The devices of one pool whose landing entries are counted, kept in one atomically replaced file.
+/// The devices of one pool whose entries are counted, kept in one atomically replaced file.
 pub struct LandTrust {
     path: PathBuf,
     file: File,
@@ -57,7 +56,7 @@ impl LandTrust {
     }
 }
 
-/// The foreign logs of one board, as far as landing is concerned.
+/// The foreign logs of one board, as far as trust is concerned.
 pub struct Writers {
     /// Origins written by a device that is on the list and still active in the pool.
     pub trusted: BTreeSet<String>,
@@ -65,7 +64,7 @@ pub struct Writers {
     pub shown: BTreeMap<String, String>,
 }
 
-/// Which foreign origins of ``board`` hold trusted landing devices, decided now from the pool record and the
+/// Which foreign origins of ``board`` hold trusted devices, decided now from the pool record and the
 /// key that verified each log, never from anything a log says about itself.
 pub fn writers(node: &mut Node, board: &str) -> Result<Writers> {
     let allowed = node.land_trust.devices(&node.members.id);

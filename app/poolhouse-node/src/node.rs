@@ -81,7 +81,7 @@ pub struct Node {
     pub offer: Option<crate::phone::enrol::Offer>,
     /// Where a sealed notification goes.
     pub pusher: Box<dyn crate::phone::push::Pusher>,
-    /// The other devices whose landing entries this device counts; empty by default.
+    /// The other devices whose board entries this device counts; empty by default.
     pub land_trust: LandTrust,
     pub facts: Facts,
     pub boards: BTreeMap<String, Hosted>,

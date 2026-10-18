@@ -20,18 +20,18 @@ fn register(n: &mut Node, from: &Peer, session: &str, token: &str) -> Value {
 }
 
 fn brake(n: &mut Node, from: &Peer, token: &str) -> Value {
-    req_from(n, from, "land_brake", "demo", token, json!({"pause": false}))
+    req_from(n, from, "task_mode", "demo", token, json!({"mode": "open"}))
 }
 
 fn verify(n: &mut Node, from: &Peer, token: &str, note: &str) -> Value {
     req_from(n, from, "note_verify", "demo", token, json!({"note": note, "exit": 0, "out_sha": SHA}))
 }
 
-/// A main session registered from this test's process that holds `land_control`.
+/// A main session registered from this test's process that holds `task_authority`.
 fn lead(n: &mut Node) -> (String, String) {
     let first = ok(register(n, &me(), "lead", ""));
     let (name, token) = (first["name"].as_str().unwrap().to_string(), first["token"].as_str().unwrap().to_string());
-    allow(n, "demo", &token, &name, &["land_control"]);
+    allow(n, "demo", &token, &name, &["task_authority"]);
     (name, token)
 }
 

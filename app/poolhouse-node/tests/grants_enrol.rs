@@ -192,7 +192,7 @@ fn what_a_removed_key_signed_stays_void_and_the_key_is_not_enrolled_again() {
     let device = n.cert.fingerprint();
     ok(req(&mut n, "person_enroll", "", &token, second.enrolment("a laptop", Some((&first, &device)))));
     ok(second.issue(&mut caller(&mut n), "demo", &token, GID, &Spec::session(&name, "note_verify")));
-    let ahead = Spec::session(&name, "land_control").window(120_000, 3_600_000);
+    let ahead = Spec::session(&name, "link_remove").window(120_000, 3_600_000);
     ok(second.issue(&mut caller(&mut n), "demo", &token, "g-00000000000000c3", &ahead));
     let me = Holder { board: "demo".into(), name: name.clone() };
     assert!(check(&mut n, &me, "note_verify", &Scope::any()).unwrap());
