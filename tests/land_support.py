@@ -20,7 +20,7 @@ here = pathlib.Path('.').resolve()
 base = pathlib.Path(__BASE__)
 with open(base / 'calls.log', 'a') as f:
     f.write(' '.join(sys.argv[1:]) + '\n')
-    for name in ('PYTEST_ADDOPTS', 'POOLHOUSE_LIVE_API', 'POOLHOUSE_GATE_TREE_ONLY', 'LAND_HOSTILE'):
+    for name in ('PYTEST_ADDOPTS', 'POOLHOUSE_LIVE_API', 'LAND_HOSTILE'):
         f.write(f'ENV {name}={os.environ.get(name, "")}\n')
 bad = 0
 if sys.argv[1] == 'gate':

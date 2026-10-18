@@ -27,8 +27,7 @@ the branch's worktree, as their own board session; a lead may land a worker's br
    runs `scripts/test gate`; both add `scripts/test all <affected files>` from `affected.select`, and `scripts/test full` when
    the diff touches shared test infrastructure, a path no selector maps, a deleted module or more than 120 files or 4000
    lines. Every check runs in a process group of its own with a fixed environment (`PATH`, `HOME`, the board and device
-   variables, nothing else: no `PYTEST_ADDOPTS`, no caller `PYTHONPATH`, no `POOLHOUSE_LIVE_*`) and
-   `POOLHOUSE_GATE_TREE_ONLY=1`, which skips the gates that scan the machine (`orphan-trees`). The tree is hashed before and
+   variables, nothing else: no `PYTEST_ADDOPTS`, no caller `PYTHONPATH`, no `POOLHOUSE_LIVE_*`). The tree is hashed before and
    after each check and the run stops if it changed or if an ignored file that is not a build cache is present. `scripts/test`
    keeps its own `ran` or `reused from <id>` per file. The selector follows imports one level (`DEPTH = 1`).
 4. **Land.** The branch must still be at the tested commit and the accept is read again; then

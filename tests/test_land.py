@@ -85,8 +85,7 @@ def test_a_hostile_environment_does_not_reach_the_checks(world):
     assert code == 0, out
     seen = [c for c in world.proj.calls() if c.startswith("ENV")]
     assert "ENV PYTEST_ADDOPTS=" in seen and "ENV POOLHOUSE_LIVE_API=" in seen and "ENV LAND_HOSTILE=" in seen
-    assert not [c for c in seen if c.split("=", 1)[0] != "ENV POOLHOUSE_GATE_TREE_ONLY" and c.split("=", 1)[1]], seen
-    assert "ENV POOLHOUSE_GATE_TREE_ONLY=1" in seen
+    assert not [c for c in seen if c.split("=", 1)[1]], seen
 
 
 def test_a_failing_test_stops_the_landing_naming_the_test(world):

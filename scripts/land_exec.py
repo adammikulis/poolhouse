@@ -101,7 +101,6 @@ def check_env(wt: Path) -> dict[str, str]:
     """The environment a check runs in: a short list of the caller's variables and the lander's own."""
     env = {name: os.environ[name] for name in KEEP if name in os.environ}
     env["PYTHONPATH"] = os.pathsep.join((str(wt / "src"), str(wt / "scripts")))
-    env["POOLHOUSE_GATE_TREE_ONLY"] = "1"
     return env
 
 
