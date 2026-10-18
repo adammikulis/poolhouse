@@ -176,6 +176,10 @@ class ImportNames(ast.NodeVisitor):
         self.names.add(base)
         self.names.update(f"{base}.{alias.name}" for alias in node.names)
 
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.names.update(affected.plugin_names(node))
+        self.generic_visit(node)
+
     def visit_Name(self, _node: ast.Name) -> None:
         pass
 
@@ -412,8 +416,7 @@ def plugin_modules(root: Path, rel: str, arguments: list[str]) -> tuple[str, ...
         except SyntaxError:
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytest_plugins" for t in node.targets):
-                names += [c.value for c in ast.walk(node.value) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+            names += affected.plugin_names(node)
     return tuple(names)
 
 

@@ -31,6 +31,8 @@ def toy(tmp_path):
     (root / "src/poolhouse/node_binary.py").write_text("NAME = 'node_binary'\n")
     (root / "tests/test_product.py").write_text("from poolhouse import node_binary\n\n\ndef test_a():\n    assert node_binary.NAME\n")
     (root / "tests/test_env.py").write_text("import os\n\n\ndef test_a():\n    os.environ['DEV_TEST_NODE_BINARY']\n")
+    (root / "tests/serve_like.py").write_text('pytest_plugins = ["node_kit"]\n')
+    (root / "tests/test_plugin.py").write_text('pytest_plugins = ["serve_like"]\n\n\ndef test_a():\n    assert True\n')
     return root
 
 
@@ -38,9 +40,13 @@ def test_a_selection_of_plain_python_files_needs_no_node(toy):
     assert not testnode.needed(toy, ["tests/test_plain.py"])
 
 
-@pytest.mark.parametrize("name", ["test_direct", "test_indirect", "test_named", "test_env"])
+@pytest.mark.parametrize("name", ["test_direct", "test_indirect", "test_named", "test_env", "test_plugin"])
 def test_a_selection_that_can_reach_the_node_kit_needs_the_node(toy, name):
     assert testnode.needed(toy, ["tests/test_plain.py", f"tests/{name}.py"])
+
+
+def test_a_test_module_that_loads_the_serve_node_plugin_needs_the_node():
+    assert testnode.needed(Path(__file__).resolve().parents[1], ["tests/test_serve_cli.py"])
 
 
 def test_a_test_of_the_product_module_named_node_binary_needs_no_node(toy):

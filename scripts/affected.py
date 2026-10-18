@@ -105,6 +105,13 @@ def absolute(node: ast.ImportFrom, module: str, is_package: bool) -> str:
     return ".".join([*base, *([node.module] if node.module else [])])
 
 
+def plugin_names(node: ast.AST) -> list[str]:
+    """The module names a ``pytest_plugins = [...]`` assignment lists; empty for any other node."""
+    if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytest_plugins" for t in node.targets):
+        return [c.value for c in ast.walk(node.value) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+    return []
+
+
 def references(source: str, module: str, is_package: bool, known: dict[str, str]) -> set[str]:
     """The modules in ``known`` that ``source`` imports or names in a string."""
     try:
@@ -121,8 +128,8 @@ def references(source: str, module: str, is_package: bool, known: dict[str, str]
             wanted.update(f"{base}.{alias.name}" for alias in node.names)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             wanted.update(m.group(1) for m in DOTTED.finditer(node.value))
-        elif isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "pytest_plugins" for t in node.targets):
-            wanted.update(c.value for c in ast.walk(node.value) if isinstance(c, ast.Constant) and isinstance(c.value, str))
+        else:
+            wanted.update(plugin_names(node))
     found: set[str] = set()
     for name in wanted:
         hit = resolve(name, known)
