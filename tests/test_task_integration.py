@@ -66,8 +66,8 @@ def project(board, tmp_path, monkeypatch, request):
     (primary / 'scripts').mkdir()
     (primary / 'scripts' / 'test').write_text(GATES)
     (primary / '.gitignore').write_text('.claude/worktrees/\n')
-    (primary / 'sim.py').write_text('speed = 1\n')
-    repo.git(primary, 'add', '--', '.gitignore', 'scripts/test', 'sim.py')
+    (primary / 'README.md').write_text('speed = 1\n')
+    repo.git(primary, 'add', '--', '.gitignore', 'scripts/test', 'README.md')
     repo.git(primary, 'commit', '-m', 'chore: isolated baseline')
     repo.git(tmp_path, 'init', '--bare', str(origin))
     repo.git(primary, 'remote', 'add', 'origin', str(origin))
@@ -83,12 +83,12 @@ def project(board, tmp_path, monkeypatch, request):
     board.work.claim(board.task['id'], allocation['allocation_id'])
     task_worktrees.activate(board.child, board.work.get(board.task['id']))
     if param == 'native_claims':
-        harness_claims.reserve('Write', {'file_path': str(source / 'sim.py')},
+        harness_claims.reserve('Write', {'file_path': str(source / 'README.md')},
                                str(source), board.worker_id, [str(source)])
-        harness_claims.reserve('Bash', {'command': 'git add sim.py'},
+        harness_claims.reserve('Bash', {'command': 'git add README.md'},
                                str(source), board.worker_id, [str(source)])
-    (source / 'sim.py').write_text('speed = 2\n')
-    repo.git(source, 'add', '--', 'sim.py')
+    (source / 'README.md').write_text('speed = 2\n')
+    repo.git(source, 'add', '--', 'README.md')
     repo.git(source, 'commit', '-m', 'fix: reviewed simulation speed')
     patch = repo.git(source, 'diff', '--binary', '--full-index', worktree['baseline_commit'], 'HEAD', binary=True)
     if param == 'bad_patch':
@@ -98,9 +98,9 @@ def project(board, tmp_path, monkeypatch, request):
     repo.git(source, 'add', '--', '.task.patch', '.task-report.md')
     repo.git(source, 'commit', '-m', 'chore: record task artifacts')
     artifacts = {name: hashlib.sha256(repo.git(source, 'show', f'HEAD:{name}', binary=True)).hexdigest()
-                 for name in ('sim.py', '.task.patch', '.task-report.md')}
+                 for name in ('README.md', '.task.patch', '.task-report.md')}
     if param == 'wrong_artifact':
-        artifacts['sim.py'] = 'b' * 64
+        artifacts['README.md'] = 'b' * 64
     proposal = board.work.submit(board.task['id'],
                                  {'summary': 'Native source is committed.', 'artifacts': artifacts,
                                   'checks': [{'name': 'Worker claim', 'passed': True}],
@@ -120,7 +120,7 @@ def claims_of(kit, who=None):
 def test_reviewed_native_patch_runs_maintained_gates_then_fast_forwards_development(board, project):
     review = board.board.review(board.task['id'], accepted())
     result = integrate(board, publish=True)
-    assert result['state'] == 'published' and result['review_hash'] == review['review_hash']
+    assert result['state'] == 'published' and result['review_hash'] == review['review_hash'], result.get('reason') or result.get('blocker') or str({k: v for k, v in result.items() if 'reason' in k or 'block' in k or 'error' in k})
     commands = [json.loads(line) for line in project['log'].read_text().splitlines()]
     assert commands == [['quick', '--base', project['baseline']], ['gate'],
                         ['all', 'tests/test_serve_no_bypass.py', '--redteam']]
@@ -166,9 +166,9 @@ def test_stale_sources_and_release_target_are_refused_before_gates(board, projec
     if change == 'main':
         repo.git(project['primary'], 'branch', '-m', 'main')
     else:
-        (project['source'] / 'sim.py').write_text('speed = 99\n')
+        (project['source'] / 'README.md').write_text('speed = 99\n')
         if change == 'new_commit':
-            repo.git(project['source'], 'add', '--', 'sim.py')
+            repo.git(project['source'], 'add', '--', 'README.md')
             repo.git(project['source'], 'commit', '-m', 'fix: unreviewed source')
     with pytest.raises((Denied, ValueError)):
         integrate(board, publish=True)
@@ -186,8 +186,8 @@ def test_a_proposal_naming_another_artifact_hash_is_refused_before_gates(board, 
 
 def test_parallel_reviewed_branch_merges_in_owned_candidate_without_rebasing(board, project):
     board.board.review(board.task['id'], accepted())
-    (project['primary'] / 'parallel.py').write_text('independent = True\n')
-    repo.git(project['primary'], 'add', '--', 'parallel.py')
+    (project['primary'] / 'CONTRIBUTING.md').write_text('independent = True\n')
+    repo.git(project['primary'], 'add', '--', 'CONTRIBUTING.md')
     repo.git(project['primary'], 'commit', '-m', 'feat: independent parallel development')
     before = repo.git(project['primary'], 'rev-parse', 'HEAD')
     result = integrate(board, publish=True)
@@ -195,7 +195,7 @@ def test_parallel_reviewed_branch_merges_in_owned_candidate_without_rebasing(boa
     assert repo.ancestor(project['primary'], before, result['commit'])
     assert repo.ancestor(project['primary'], project['proposal']['provenance']['commit'], result['commit'])
     assert not project['source'].exists()
-    assert (project['primary'] / 'parallel.py').exists()
+    assert (project['primary'] / 'CONTRIBUTING.md').exists()
 
 
 @pytest.mark.redteam
@@ -203,8 +203,8 @@ def test_parallel_reviewed_branch_merges_in_owned_candidate_without_rebasing(boa
 def test_failed_merge_or_gate_preserves_candidate_and_never_publishes(board, project, monkeypatch, failure):
     board.board.review(board.task['id'], accepted())
     if failure == 'conflict':
-        (project['primary'] / 'sim.py').write_text('speed = 3\n')
-        repo.git(project['primary'], 'add', '--', 'sim.py')
+        (project['primary'] / 'README.md').write_text('speed = 3\n')
+        repo.git(project['primary'], 'add', '--', 'README.md')
         repo.git(project['primary'], 'commit', '-m', 'fix: conflicting independent change')
     else:
         monkeypatch.setenv('FAIL_INTEGRATION_GATE', 'gate')
@@ -334,7 +334,7 @@ def test_registered_parent_integrates_human_created_independently_reviewed_task(
 @pytest.mark.parametrize('project', ['native_claims'], indirect=True)
 def test_integration_returns_the_workers_checkout_and_branch_and_leaves_its_other_reservations(board, project, tmp_path):
     source, scope = project['source'], project['worktree']
-    target = str(source / 'sim.py')
+    target = str(source / 'README.md')
     before = claims_of(board)
     assert before[('worktree', str(source))] == board.worker_id and before[('branch', scope['branch'])] == board.worker_id
     assert before[('area', target)] == board.worker_id
@@ -354,7 +354,7 @@ def test_integration_returns_the_workers_checkout_and_branch_and_leaves_its_othe
 @pytest.mark.parametrize('project', ['native_claims'], indirect=True)
 def test_integration_frees_the_workers_areas_even_when_its_checkout_and_branch_claims_are_already_gone(board, project, tmp_path):
     source, scope = project['source'], project['worktree']
-    target = str(source / 'sim.py')
+    target = str(source / 'README.md')
     shared = harness_claims.normal('area', target)
     before = claims_of(board)
     assert before[('area', target)] == board.worker_id and before[('area', shared)] == board.worker_id
@@ -449,10 +449,10 @@ def test_completed_task_refuses_recreated_branch_without_deleting_it(board, proj
 def test_lead_preserves_exact_reviewed_primary_bytes_before_fast_forward(board, project, staged, monkeypatch):
     board.board.review(board.task['id'], accepted())
     primary = project['primary']
-    content = repo.git(project['source'], 'show', 'HEAD:sim.py', binary=True)
-    (primary / 'sim.py').write_bytes(content)
+    content = repo.git(project['source'], 'show', 'HEAD:README.md', binary=True)
+    (primary / 'README.md').write_bytes(content)
     if staged:
-        repo.git(primary, 'add', '--', 'sim.py')
+        repo.git(primary, 'add', '--', 'README.md')
     git = repo.git
 
     def read_only_primary(root, *arguments, **kwargs):
@@ -465,14 +465,14 @@ def test_lead_preserves_exact_reviewed_primary_bytes_before_fast_forward(board, 
         before = index.read_bytes()
         with pytest.raises(Denied, match='already staged'):
             integrate(board)
-        assert index.read_bytes() == before and (primary / 'sim.py').read_bytes() == content
+        assert index.read_bytes() == before and (primary / 'README.md').read_bytes() == content
         assert not project['log'].exists()
         return
     result = integrate(board)
     assert result['state'] == 'completed'
-    assert (primary / 'sim.py').read_bytes() == content
+    assert (primary / 'README.md').read_bytes() == content
     assert repo.git(primary, 'status', '--porcelain') == ''
-    assert ('area', str(primary / 'sim.py')) not in claims_of(board)
+    assert ('area', str(primary / 'README.md')) not in claims_of(board)
 
 
 @pytest.mark.redteam
@@ -480,14 +480,14 @@ def test_lead_preserves_exact_reviewed_primary_bytes_before_fast_forward(board, 
 def test_unreviewed_primary_bytes_and_child_staging_are_refused(board, project, change):
     board.board.review(board.task['id'], accepted())
     primary = project['primary']
-    (primary / 'sim.py').write_text('speed = 2\n')
+    (primary / 'README.md').write_text('speed = 2\n')
     who = board.parent
     if change == 'working':
-        (primary / 'sim.py').write_text('speed = 99\n')
+        (primary / 'README.md').write_text('speed = 99\n')
     elif change == 'staged':
-        (primary / 'sim.py').write_text('speed = 99\n')
-        repo.git(primary, 'add', '--', 'sim.py')
-        (primary / 'sim.py').write_text('speed = 2\n')
+        (primary / 'README.md').write_text('speed = 99\n')
+        repo.git(primary, 'add', '--', 'README.md')
+        (primary / 'README.md').write_text('speed = 2\n')
     elif change == 'untracked':
         (primary / 'unknown.py').write_text('unknown = True\n')
     else:
@@ -503,9 +503,9 @@ def test_unreviewed_primary_bytes_and_child_staging_are_refused(board, project, 
 @pytest.mark.redteam
 def test_primary_preservation_verification_keeps_index_bytes(board, project):
     primary = project['primary']
-    content = repo.git(project['source'], 'show', 'HEAD:sim.py', binary=True)
-    (primary / 'sim.py').write_bytes(content)
-    repo.git(primary, 'add', '--', 'sim.py')
+    content = repo.git(project['source'], 'show', 'HEAD:README.md', binary=True)
+    (primary / 'README.md').write_bytes(content)
+    repo.git(primary, 'add', '--', 'README.md')
     index = primary / repo.git(primary, 'rev-parse', '--git-path', 'index')
     before = index.read_bytes()
     names = integration_staging.files(primary, project['proposal']['provenance']['commit'])
@@ -516,9 +516,9 @@ def test_primary_preservation_verification_keeps_index_bytes(board, project):
 @pytest.mark.redteam
 def test_primary_preservation_refuses_symlink_bytes(board, project, monkeypatch):
     primary = project['primary']
-    target = primary / 'sim.py'
-    target.write_bytes(repo.git(project['source'], 'show', 'HEAD:sim.py', binary=True))
-    repo.git(primary, 'add', '--', 'sim.py')
+    target = primary / 'README.md'
+    target.write_bytes(repo.git(project['source'], 'show', 'HEAD:README.md', binary=True))
+    repo.git(primary, 'add', '--', 'README.md')
     is_symlink = Path.is_symlink
     monkeypatch.setattr(Path, 'is_symlink', lambda path: path == target or is_symlink(path))
     with pytest.raises(Denied, match='symlinks'):
@@ -532,8 +532,8 @@ def test_unfinished_merge_metadata_requires_reviewed_commit_containment(board, p
     commit = project['proposal']['provenance']['commit']
     marker = primary / repo.git(primary, 'rev-parse', '--git-path', 'MERGE_HEAD')
     marker.write_text((commit if contained else '0' * 40) + '\n')
-    (primary / 'sim.py').write_bytes(repo.git(project['source'], 'show', 'HEAD:sim.py', binary=True))
-    repo.git(primary, 'add', '--', 'sim.py')
+    (primary / 'README.md').write_bytes(repo.git(project['source'], 'show', 'HEAD:README.md', binary=True))
+    repo.git(primary, 'add', '--', 'README.md')
     if not contained:
         with pytest.raises((Denied, RuntimeError)):
             integration_staging.files(primary, commit)

@@ -12,7 +12,7 @@ SENSITIVE_ROOTS = frozenset({
     "SECURITY.md", "app", "budgets.json", "packaging", "patches", "pyproject.toml", "release-please-config.json", "version.txt"})
 ORDINARY_ROOTS = frozenset({
     ".python-version", "CHANGELOG.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "HANDOFF.md", "LICENSE", "NOTICE", "README.md",
-    "THIRD_PARTY_NOTICES.md"})
+    "THIRD_PARTY_NOTICES.md", ".task-report.md", ".task.patch"})
 SPLIT_ROOTS = frozenset({"contracts", "docs", "scripts", "src", "tests"})
 SRC_ORDINARY = frozenset({
     "__init__.py", "api", "asking.py", "bench", "briefing.py", "checks.py", "cli", "command.py", "command_capture.py", "data",

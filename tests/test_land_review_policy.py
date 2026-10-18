@@ -50,7 +50,7 @@ def test_security_test_infrastructure_and_rule_paths_need_review(path):
 
 
 @pytest.mark.parametrize("path", [
-    "docs/notes/example.md", "HANDOFF.md", "CHANGELOG.md", "tests/test_example.py", "src/poolhouse/graph/example.py",
+    "docs/notes/example.md", "HANDOFF.md", "CHANGELOG.md", ".task-report.md", ".task.patch", "tests/test_example.py", "src/poolhouse/graph/example.py",
     "src/poolhouse/bench/example.py", "scripts/nomenclature.py", "contracts/glossary-allowlist.toml"])
 def test_ordinary_paths_need_no_review(path):
     assert not land_review.sensitive(path)

@@ -77,6 +77,7 @@ def unreviewed(dev: str, tip: str) -> str:
     answer, or a checkout that cannot ask, refuses.
     """
     sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
+    first = ""
     try:
         import land_review
 
@@ -99,7 +100,7 @@ def unreviewed(dev: str, tip: str) -> str:
                 return ""
         return f"{why} for {tip[:12]} (first sensitive path {first}); another agent runs: poolhouse-workspace land-review {branches[0][0]} {tip} --verdict accept"
     except (ImportError, OSError, ValueError, RuntimeError, KeyError, Error) as exc:
-        return f"the board could not be asked ({exc})"
+        return f"the board could not be asked ({exc}) about {first or "the diff"}"
 
 
 def main(dev: str, lines: list[str]) -> int:
