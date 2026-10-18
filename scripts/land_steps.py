@@ -110,9 +110,10 @@ def exclusive(L: Landing) -> Iterator[None]:
         note(L, "starting")
         yield
     finally:
+        if L.lock_fd == fd:
+            with suppress(OSError):
+                os.ftruncate(fd, 0)
         L.lock_fd = -1
-        with suppress(OSError):
-            os.ftruncate(fd, 0)
         os.close(fd)
 
 
@@ -312,6 +313,9 @@ def land(root: Path, branch: str, agent: str, dry_run: bool) -> int:
             return run(L)
     except STOPS as stop:
         print(f"land: stopped: {stop}")
+        return 5
+    except KeyboardInterrupt:
+        print("land: stopped: interrupted; run it again to repair or finish")
         return 5
 
 

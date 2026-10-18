@@ -300,7 +300,7 @@ def test_unmerged_exception_requires_the_existing_actual_person_terminal(world, 
     runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
 
 
-@pytest.mark.parametrize("branch", ["main", "master", "land/integration", "promote/snapshot"])
+@pytest.mark.parametrize("branch", ["main", "master", "promote/snapshot"])
 def test_protected_or_integration_primary_branch_cannot_be_a_runtime_source(world, branch):
     git(world.repo, "checkout", "-q", "-b", branch)
     git(world.repo, "update-ref", f"refs/remotes/origin/{branch}", world.tip)

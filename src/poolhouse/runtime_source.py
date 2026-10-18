@@ -27,7 +27,7 @@ def admit(checkout: Path, commit: str, *, allow_unmerged: bool | runtime_unmerge
     runtime_git.primary(checkout)
     branch = git(checkout, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
     expected = os.environ.get("POOLHOUSE_DEV_BRANCH", "").strip()
-    if (not branch or branch in {"main", "master"} or branch.startswith(("land/", "promote/"))
+    if (not branch or branch in {"main", "master"} or branch.startswith("promote/")
             or (expected and branch != expected)):
         raise DeployError("the primary checkout must be on its development branch")
     if allow_unmerged:

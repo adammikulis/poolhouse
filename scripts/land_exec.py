@@ -18,7 +18,7 @@ import land_git as lg
 FULL_FILES = 120
 FULL_LINES = 4000
 INFRA = re.compile(r"^(tests/conftest\.py|scripts/test[^/]*|scripts/testslots[^/]*|pyproject\.toml|packaging/.*)$")
-DOC = re.compile(r"^(HANDOFF\.md|.*\.md|docs/.*)$")
+DOC = re.compile(r"^([^/]+\.md|docs/.*)$")
 FAILED = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.M)
 KEEP = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "POOLHOUSE_HOME", "POOLHOUSE_BOARD",
         "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_DEV_BRANCH", "DEV_TEST_SLOTS_DIR")

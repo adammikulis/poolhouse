@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from land_support import DEV, World, git
 
+from poolhouse import lock as filelock, worktreerules
 from poolhouse.board.client import Denied
 from poolhouse.workspace import landing
 
@@ -52,6 +53,13 @@ def test_a_code_branch_runs_the_gate_and_its_affected_tests(world):
     calls = [c for c in world.proj.calls() if not c.startswith("ENV")]
     assert calls == ["gate", "all tests/test_new.py"]
     assert world.proj.origin_head() == sha
+
+
+def test_a_markdown_file_outside_the_documents_still_gets_the_gate(world):
+    tree, _ = world.start("prompt", {"src/poolhouse/graph/prompt.md": "A prompt the code reads.\n"})
+    code, out = world.land(tree)
+    assert code == 0, out
+    assert [c for c in world.proj.calls() if not c.startswith("ENV")] == ["gate"]
 
 
 def test_a_hostile_environment_does_not_reach_the_checks(world):
@@ -152,8 +160,21 @@ def test_a_second_lander_is_refused_naming_the_first(world):
     code, out = world.land(second, who=world.other)
     assert code == 5 and world.lander.name in out and "is landing slow" in out, out
     assert second.exists()
+    again, text = world.land(second, who=world.other)
+    assert again == 5 and world.lander.name in text, "a refused lander leaves the first lander's note in the lock file"
     (world.proj.base / "proceed").write_text("1")
     assert running.communicate(timeout=120)[0].count("land: stopped") == 0 and running.returncode == 0
+
+
+def test_the_landing_lock_is_the_one_the_runtime_cutover_waits_on(world):
+    tree, _ = world.start("cutover", {"tests/test_slow.py": "# SLOW\n"})
+    running = world.start_land(tree)
+    wait_for(world.proj.base / "started")
+    held = filelock.held_by(worktreerules.landing_lock(world.proj.root))
+    (world.proj.base / "proceed").write_text("1")
+    running.communicate(timeout=120)
+    assert world.lander.name in held and "is landing cutover" in held, held
+    assert filelock.held_by(worktreerules.landing_lock(world.proj.root)) == ""
 
 
 def test_a_claim_on_the_development_branch_held_by_another_session_refuses(world):
@@ -259,6 +280,19 @@ def test_a_branch_whose_commits_net_to_nothing_has_nothing_to_land(world):
     code, out = world.land(tree)
     assert code == 5 and "nothing to land" in out, out
     assert tree.exists()
+
+
+def test_a_local_only_commit_made_while_the_checks_run_is_reported_after_the_push(world):
+    tree, sha = world.start("slow-local", {"tests/test_slow.py": "# SLOW\n"})
+    running = world.start_land(tree)
+    wait_for(world.proj.base / "started")
+    world.proj.write(world.proj.root, "docs/local.md", "local\n")
+    local = world.proj.commit(world.proj.root, "chore: local only")
+    (world.proj.base / "proceed").write_text("1")
+    out = running.communicate(timeout=120)[0]
+    assert running.returncode == 6 and "WARNING" in out and "holds commits origin lacks" in out, out
+    assert world.proj.origin_head() == sha and world.proj.local_head() == local
+    assert world.records()[-1]["outcome"] == "landed" and "holds commits origin lacks" in world.records()[-1]["cause"]
 
 
 def test_a_local_only_commit_on_the_development_branch_stops_before_anything_is_pushed(world):
