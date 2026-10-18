@@ -168,16 +168,14 @@ gate.
   branch, claiming creates the checkout, independent review accepts the proposal, and gated integration lands the
   work and verifies cleanup before completion (docs/tasks.md); a worker report cannot bypass its completion gate.
 
-### Orphans and nested trees
+### Landed trees, work trees and nested trees
 
-`scripts/worktrees` shows every tree with its owner. An *orphan* is a tree whose owner stopped more than the grace
-ago (2 hours by default) and which still holds work nobody landed, bundled or abandoned; before the grace passes it
-is "finished, waiting to land". A tree whose owner is running, or whose owner is unknown and younger than the grace,
-is never an orphan, and only an orphan stops its owner (docs/worktrees.md, "What an orphan stops"). Decide one with `scripts/worktrees close TREE
---landed`, `--bundle` or `--abandon 'reason'` (docs/worktrees.md). Cleanup applies to documentation, investigations
-that created a worktree, cancelled tasks and subagents too. If work must remain, name the path, branch, pending work
-and responsible agent in the handoff; do not report it as complete. The lead checks cleanup for every branch it
-requested. Existing nested worktrees get the same preservation checks before removal; an unregistered directory is
+`scripts/worktrees` shows every tree as *landed* (clean, every commit in the development branch) or *work* (anything
+else), with its unlanded commits, dirty files and age. `scripts/worktrees sweep` removes landed trees untouched for ten
+minutes; a work tree is removed only by `scripts/worktrees close TREE --landed`, `--bundle` or `--abandon 'reason'`
+(docs/worktrees.md). Cleanup applies to documentation, investigations that created a worktree, cancelled tasks and
+subagents too. If work must remain, name the path, branch, pending work and responsible agent in the handoff; do not
+report it as complete. The lead checks cleanup for every branch it requested. Existing nested worktrees get the same preservation checks before removal; an unregistered directory is
 not proof that it is disposable.
 
 ## Testing and gates (AGENTS.md, section 5)

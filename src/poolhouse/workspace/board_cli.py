@@ -6,12 +6,10 @@ import argparse
 import json
 import os
 import sys
-import time
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
-from poolhouse import node_launch, trees, trees_notice
+from poolhouse import node_launch
 from poolhouse.board import credentials, person, person_key, session
 from poolhouse.board.client import Client, Conflict, NodeError
 from poolhouse.board.session import Entry, Native, Session
@@ -275,16 +273,6 @@ def attend(args: argparse.Namespace, s: Session) -> Any:
     return {"authority": "none", "text": text} if text else ""
 
 
-def tree_lines() -> list[str]:
-    """The orphan worktrees and the trees over a threshold of the repository this runs in; none outside a repository."""
-    try:
-        now, root = time.time(), Path.cwd()
-        found = trees.rows(root, now)
-        return [*trees.lines(root, now, found=found), *trees_notice.status_lines(root, now, found)]
-    except (RuntimeError, OSError, ValueError, KeyError, TypeError):
-        return []
-
-
 def _held_line(e: Entry, records: dict[str, dict[str, Any]], width: int) -> str:
     """The text of ``e`` for a summary line: a placeholder while it is held."""
     held = records.get(e.id)
@@ -333,7 +321,7 @@ def digest(args: argparse.Namespace, s: Session) -> Any:
     if not args.status:
         text = "\n".join(part for part in (rollup(s, args.ack), collected(s, args.ack)) if part)
         return {"authority": "none", "text": text or "nothing new"}
-    return {"authority": "none", "text": render.block([*attention.status_lines(s, owed=unanswered(s)), *tree_lines()], "status")}
+    return {"authority": "none", "text": render.block(attention.status_lines(s, owed=unanswered(s)), "status")}
 
 
 def waiting(s: Session) -> dict[str, Any]:

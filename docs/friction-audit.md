@@ -44,7 +44,7 @@ edit guard keeps agents out of that file; **next** needs infrastructure that doe
 | 27 | edit guard | a duplicate function body, a raw HTTP call, a docstring over 12 lines, a signature over 8 parameters, a file over its limit | none needed: refactor | already agent-resolvable | none |
 | 28 | `POOLHOUSE_GUARD=off` | switches off the soft rules for a person's own session | the owner | KEEP-FLOOR | none: the hard rules stay in force |
 | 29 | `.claude/settings.json` hooks | wiring only; none refuses by itself | n/a | no refusal | none |
-| 30 | post-commit, post-merge, runtime-refresh, session and subagent hooks, `tree_watch` | warn or announce; none refuses | n/a | no refusal | none |
+| 30 | post-merge, runtime-refresh, session and subagent hooks | warn or announce; none refuses | n/a | no refusal | none |
 | 31 | release / promote rules | merging a promotion pull request into `main` | live `release-main` authorization | KEEP-FLOOR | none |
 | 32 | generated files | none of the hooks refuses a regenerated file | n/a | no refusal | none |
 
