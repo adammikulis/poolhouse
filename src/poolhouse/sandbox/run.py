@@ -88,6 +88,7 @@ def wrapped(argv: Sequence[str], policy: Policy, *, via: Backend | None = None,
     state = chosen.available()
     if state.ok:
         made = chosen.wrap(argv, policy)
+        chosen.watch()
         return made.argv, made.tag, chosen
     if unsandboxed is None:
         raise SandboxUnavailable(
@@ -193,11 +194,7 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
                     bytes(err.data).decode("utf-8", "replace"), timed_out, capped,
                     name != "none", name, round(time.time() - began, 3))
     if chosen is not None and _diagnose(diagnose, result):
-        for wait in (0.5, 1.0, 1.5) if result.returncode != 0 else (0.0,):
-            time.sleep(wait)
-            result.denials = chosen.denials(tag, began)
-            if result.denials:
-                break
+        result.denials = chosen.denials(tag, began)
     if result.denials:
         emit("sandbox.denied", severity="warning", command=str(argv[0]), policy=policy.name,
              count=len(result.denials), first=result.denials[0], backend=name)

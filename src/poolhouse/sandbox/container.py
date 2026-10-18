@@ -23,5 +23,8 @@ class Container:
         raise NotImplementedError("the container backend is planned, not written; see "
                                   "docs/sandbox.md, 'Replacement path'")
 
+    def watch(self) -> None:
+        return None
+
     def denials(self, tag: str, since: float) -> list[dict[str, str]]:
         return []

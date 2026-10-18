@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 81,
+   "covered": 82,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 96,
+   "covered": 95,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -6430,6 +6430,20 @@
    "note": "console script names and import targets come from the literal reviewed source commit and must match the verified installed distribution"
   },
   {
+   "id": "parser:sandbox/denial_log.py",
+   "kind": "parser",
+   "source": "sandbox/denial_log.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_sandbox_denial_log.py::test_a_target_holding_a_newline_cannot_name_the_tag_of_another_run",
+    "tests/test_sandbox_denial_log.py::test_a_line_that_is_not_a_refusal_with_a_tag_is_not_read",
+    "tests/test_sandbox_redteam.py::test_a_path_naming_the_tag_of_another_run_is_reported_under_its_own_run_only"
+   ],
+   "note": "the stream carries file names a confined process chose; the tag is read from the last line of a message, so a name holding a newline and another run's tag is reported under its own run only"
+  },
+  {
    "id": "parser:sandbox/policies.py",
    "kind": "parser",
    "source": "sandbox/policies.py",
@@ -10443,23 +10457,6 @@
    "note": "actual subprocess receives hostile arguments only inside JSON and closes malformed native control streams"
   },
   {
-   "id": "spawn:harnessid.py:announce",
-   "kind": "spawn",
-   "source": "harnessid.py:announce",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_harness_rails.py::TestWorkspaceCommands::test_a_hostile_label_is_one_argument_and_never_a_shell_line",
-    "tests/test_harness_rails.py::TestHook::test_no_environment_variable_or_argument_lifts_the_policy",
-    "tests/test_harness_rails.py::TestHook::test_a_call_that_asks_with_no_keystore_is_denied_at_once",
-    "tests/test_harness_rails.py::TestHook::test_a_hook_that_fails_blocks_the_call",
-    "tests/test_harness_rails.py::TestSessionFiles::test_the_settings_are_outside_the_tree_read_only_and_hold_no_secret",
-    "tests/test_harness_rails.py::TestPolicy::test_text_naming_the_launchers_files_or_a_person_only_action_is_denied_in_every_role"
-   ],
-   "note": "the harness is spawned with argv only; its hook sits in a settings file the model cannot write, decides from the classifier and a role fixed on the command line, denies when the request store or the hook fails, and a hostile label is one argument"
-  },
-  {
    "id": "spawn:hookcheck.py:_entries",
    "kind": "spawn",
    "source": "hookcheck.py:_entries",
@@ -11067,9 +11064,9 @@
    "note": "actual executable paths containing shell syntax remain literal, control characters cannot execute, probes are single-flight and invalidate on binary changes, stalled probes are killed"
   },
   {
-   "id": "spawn:sandbox/seatbelt.py:Seatbelt.denials",
+   "id": "spawn:sandbox/denial_log.py:DenialLog._probe",
    "kind": "spawn",
-   "source": "sandbox/seatbelt.py:Seatbelt.denials",
+   "source": "sandbox/denial_log.py:DenialLog._probe",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",

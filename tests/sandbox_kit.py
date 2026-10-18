@@ -8,7 +8,7 @@ import shutil
 import socket
 import sys
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -27,6 +27,12 @@ def seatbelt() -> Seatbelt:
     if not state.ok:
         pytest.skip(state.reason)
     return backend
+
+
+@pytest.fixture
+def held() -> Callable[..., Policy]:
+    """The kit's `policy`, for a test that takes it as a fixture."""
+    return policy
 
 
 def no_sandbox_here() -> AllowUnsandboxed | None:
