@@ -11,8 +11,9 @@ the branch's worktree, as their own board session; a lead may land a worker's br
    The landing lock (`<git-common-dir>/land/runner.lock`, an `flock`, the same file the runtime cutover waits on) is taken
    without waiting, and so is the claim on the development branch. A second lander is refused with the name, branch, step and
    start time of the first.
-1. **Sync.** `git fetch origin <dev>`; the local development branch fast-forwards to `origin/<dev>` (a local commit that origin
-   lacks stops the run, naming it). A commit already on `origin/<dev>` only gets the clean-up of step 4. A branch behind
+1. **Sync.** `git fetch origin <dev>`, then `git ls-remote` asks origin which commit it holds; the remote-tracking ref in full
+   (`refs/remotes/origin/<dev>`) must be that commit or the run stops, and every later step uses that commit. The local
+   development branch fast-forwards to it (a local commit that origin lacks stops the run, naming it). A commit already on `origin/<dev>` only gets the clean-up of step 4. A branch behind
    `origin/<dev>` is rebased (merged, when it holds merges) when its diff needs no review; when it does, the run stops: the
    review names an exact commit, so rebase and ask for a new review. A conflict aborts the rebase and names the files.
    A `HANDOFF.md` conflict is resolved by the worker (a union merge would bring back entries that were deleted).
@@ -42,8 +43,15 @@ and the end of the checks' output.
 ## The push hook
 
 `scripts/hooks/pushed` runs for an agent's push (a person's own terminal push is not checked). For a push of the development
-branch whose diff `required` marks, it asks the node for an accept of exactly the pushed commit under a local branch that
-points at it, and refuses without one or when the node does not answer. The lander's own push passes the same hook.
+branch it diffs the pushed commit against the commit git read from the remote and passed on stdin, tree to tree, never a local
+ref; a remote commit this checkout lacks, or none, makes every file of the pushed commit part of the diff. When `required` marks
+the diff, it asks the node for an accept of exactly the pushed commit under a local branch that points at it, and refuses
+without one, when the node does not answer or when it cannot load. The lander's own push passes the same hook, run as the
+landing agent (`--agent NAME` is passed to git as `POOLHOUSE_WORKSPACE_AGENT`).
+
+Every git call of the lander and of the review check reads history as stored: replace refs and the grafts file are off, and
+the variables that move the repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, the object and namespace variables) or
+add configuration (`GIT_CONFIG_COUNT` and its keys and values) are dropped.
 
 ## Exit status
 
@@ -51,6 +59,10 @@ points at it, and refuses without one or when the node does not answer. The land
 
 ## Not covered
 
-The hook cannot know that tests ran; CI is the backstop. The credential that pushes is whoever runs the command
+The hook cannot know that tests ran; CI is the backstop. The hook and the review check run from the checkout that holds the
+installed hooks, and an uncommitted edit of them there is not detected; `scripts/land` runs the review check of the worktree it
+lands, so the hook is where it is enforced. The node and board the hook asks are the ones the environment names
+(`POOLHOUSE_HOME`, `POOLHOUSE_BOARD`), and the interpreter that runs it reads `PYTHONPATH` and the other `PYTHON*` variables of
+the pushing environment. The credential that pushes is whoever runs the command
 (docs/github-protection.md). A session that registers a second identity of its own to review is not told apart from a
 reviewer; a child of the creator may review, as section 1 of AGENTS.md allows.
