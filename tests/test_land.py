@@ -274,6 +274,20 @@ def test_a_lander_of_the_lowest_tier_is_refused(world):
     assert world.proj.origin_head() != git(tree, "rev-parse", "HEAD")
 
 
+def test_main_is_never_landed(world):
+    tree, sha = world.start("towards-main", {"docs/a.md": "x\n"})
+    code, out = world.land(tree, "main")
+    assert code == 5 and "land never touches main" in out, out
+    assert world.proj.origin_head() != sha
+
+
+def test_a_session_the_board_does_not_know_lands_nothing(world):
+    tree, sha = world.start("unknown-session", {"docs/a.md": "x\n"})
+    code, out = world.land(tree, hostile={"POOLHOUSE_WORKSPACE_AGENT": "nobody-registered"})
+    assert code == 5 and "does not know this session" in out, out
+    assert world.proj.origin_head() != sha
+
+
 def test_a_dry_run_reports_the_review_and_the_checks_and_changes_nothing(world):
     tree, sha = world.start("dry", {SENSITIVE: "VALUE = 1\n", "tests/test_new.py": "import poolhouse.mod\n"})
     code, out = world.land(tree, "--dry-run")
