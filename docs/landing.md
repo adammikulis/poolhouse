@@ -14,9 +14,14 @@ the branch's worktree, as their own board session; a lead may land a worker's br
 1. **Sync.** `git fetch origin <dev>`, then `git ls-remote` asks origin which commit it holds; the remote-tracking ref in full
    (`refs/remotes/origin/<dev>`) must be that commit or the run stops, and every later step uses that commit. The local
    development branch fast-forwards to it (a local commit that origin lacks stops the run, naming it). A commit already on `origin/<dev>` only gets the clean-up of step 4. A branch behind
-   `origin/<dev>` is rebased (merged, when it holds merges) when its diff needs no review; when it does, the run stops: the
-   review names an exact commit, so rebase and ask for a new review. A conflict aborts the rebase and names the files.
-   A `HANDOFF.md` conflict is resolved by the worker (a union merge would bring back entries that were deleted).
+   `origin/<dev>` is rebased (merged, when it holds merges) when its diff needs no review. When it does, the accept names an
+   exact commit and a rebase would void it, so the lander checks that an accept stands for the tip and builds a merge commit
+   M of `origin/<dev>` (first parent) and the tip (second parent) from `git merge-tree --write-tree`, moves the branch to M
+   (a fast-forward) and runs the checks on M. The accept stays on the tip; M adds nothing git did not merge by itself. A
+   conflict stops the run without touching the branch: rebase onto `origin/<dev>`, resolve, and ask for a new review. A
+   run interrupted after the merge leaves the branch at M; the next run steps the branch back to the tip and merges again.
+   A conflict of a rebase aborts it and names the files. A `HANDOFF.md` conflict is resolved by the worker (a union merge would
+   bring back entries that were deleted).
 2. **Review.** `scripts/land_review.py::required` lists the changed paths that are security-adjacent (security, encryption,
    access, identity, trust, sharing, serving, compute; guard, rule and landing code; the test selector and gates;
    `pyproject.toml`, `budgets.json`). A path in an area nobody classified needs review too. Then the node must report an
@@ -46,7 +51,9 @@ and the end of the checks' output.
 branch it diffs the pushed commit against the commit git read from the remote and passed on stdin, tree to tree, never a local
 ref; a remote commit this checkout lacks, or none, makes every file of the pushed commit part of the diff. When `required` marks
 the diff, it asks the node for an accept of exactly the pushed commit under a local branch that points at it, and refuses
-without one, when the node does not answer or when it cannot load. The lander's own push passes the same hook, run as the
+without one, when the node does not answer or when it cannot load. A pushed merge commit passes on the accept of its second
+parent when its first parent is the commit git read from the remote and its tree is the tree `git merge-tree --write-tree`
+computes for the two parents; any other tree is unreviewed content and is refused. The lander's own push passes the same hook, run as the
 landing agent (`--agent NAME` is passed to git as `POOLHOUSE_WORKSPACE_AGENT`).
 
 Every git call of the lander and of the review check reads history as stored: replace refs and the grafts file are off, and

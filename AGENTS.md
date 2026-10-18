@@ -494,10 +494,12 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
    SHA --verdict accept` for the exact SHA. A reject names the cause; the fix removes the cause and every instance of its
    class, not only the instances listed. A finding of the same class in a second round means the design is wrong: stop
    patching and put the redesign to the owner as the first option.
-4. **Land.** `scripts/land` from the branch's worktree. It fetches, rebases when no review is needed, checks the accept,
-   runs the checks the diff calls for, pushes exactly the reviewed and tested commit to `<dev>`, fast-forwards the
-   primary checkout and removes the worktree and branch. The branch is landed when it exits 0 and says the commit is on
-   `origin/<dev>`.
+4. **Land.** `scripts/land` from the branch's worktree. It fetches and brings the branch up to date: a rebase when no
+   review is needed; a reviewed tip is never rebased (that voids its accept), so when `<dev>` moved it merges `<dev>`
+   into the tip with a merge commit git makes without conflict, and a conflict stops it (rebase, resolve, ask for a new
+   review). It checks the accept, runs the checks the diff calls for, pushes exactly the reviewed and tested commit to
+   `<dev>`, fast-forwards the primary checkout and removes the worktree and branch. The branch is landed when it exits 0
+   and says the commit is on `origin/<dev>`.
 5. **Stopped?** The last line says why. A test failed, a review is missing, `<dev>` moved: fix the cause, back to step 1
    or 4. A run that was interrupted is repaired by running it again. The landing code itself broke (the lock, a check
    reading machine state, the environment): go to step 6.
@@ -520,7 +522,8 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
   instruction is the authority; only the edit itself is made (no other change rides along).
 - **Agents rebase.** A worker rebases its branch onto `origin/<development>` before every `scripts/land`, and again
   whenever a milestone announces a landing that touches files it edits; a branch more than a few commits behind is
-  rebased before anything else is done on it.
+  rebased before anything else is done on it. A branch whose tip already has an accept is not rebased: `scripts/land`
+  merges it.
 - **The agents push; the owner does not.** Pushing the development branch is part of landing, done by whoever landed it,
   immediately and without asking, with no wait for a designated publisher: whoever integrates pushes it themselves under
   a short-lived development-branch claim. Never leave a landed commit for the owner to push, ask whether to push it,

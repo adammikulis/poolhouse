@@ -43,6 +43,7 @@ class Landing:
     began: float = field(default_factory=time.time)
     lock_fd: int = -1
     needs_review: str = ""
+    reviewed: str = ""
 
     @property
     def upstream(self) -> str:
@@ -158,12 +159,45 @@ def lift_primary(L: Landing) -> str:
     return f"local {L.dev} holds commits origin lacks ({'; '.join(ahead[:3])}) and is left alone"
 
 
+def accept_problem(L: Landing, sha: str) -> str:
+    """Why no independent accept of exactly ``sha`` stands for the branch, or an empty string."""
+    return landing.standing(L.s, landing.accepts(L.s, L.branch, sha, str(L.wt)))
+
+
+def conflict_text(L: Landing, files: list[str]) -> str:
+    """The line for a reviewed tip that does not merge with origin cleanly."""
+    return (f"merging {L.upstream} into {L.branch} conflicts in {', '.join(files[:8]) or 'the branch'}; rebase onto "
+            f"{L.upstream}, resolve, and ask for a new review")
+
+
+def merge_reviewed(L: Landing, first: str) -> None:
+    """Merge origin into the reviewed tip as a commit whose first parent is origin and whose second is the tip, so the accept stays on the tip."""
+    why = accept_problem(L, L.sha)
+    if why:
+        raise ex.Stop(f"{L.upstream} moved past {L.sha[:12]}, which needs an independent review ({first}), and {why}; another agent runs: "
+                      f"poolhouse-workspace land-review {L.branch} {L.sha} --verdict accept")
+    tree, files = lg.merge_tree(L.wt, L.remote, L.sha)
+    if not tree:
+        raise ex.Stop(conflict_text(L, files))
+    merged = lg.out(L.wt, "commit-tree", tree, "-p", L.remote, "-p", L.sha, "-m", f"chore: merge {L.branch} into {L.dev}")
+    lg.git(L.wt, "merge", "--ff-only", merged)
+    say(f"merged {L.upstream} into {L.branch}: {merged[:12]} keeps the accept of {L.sha[:12]}")
+    L.reviewed, L.sha = L.sha, merged
+
+
+def unmerged(L: Landing, sha: str) -> str:
+    """The tip a previous run reviewed, when ``sha`` is that run's merge commit of it and origin; else ``sha``."""
+    parent, second = land_review.merged_parents(L.wt, sha)
+    left = second and lg.is_ancestor(L.wt, parent, L.remote) and not lg.is_ancestor(L.wt, second, L.remote)
+    return second if left else sha
+
+
 def bring_up_to_date(L: Landing) -> None:
-    """Rebase (or merge, when the branch holds merges) onto origin when no review is needed; else stop."""
+    """Merge origin into a reviewed tip; rebase (or merge, when the branch holds merges) onto origin when no review is needed."""
     needed, _, first = land_review.required(L.wt, land_review.fork_point(L.wt, L.remote, L.sha), L.sha)
     if needed:
-        raise ex.Stop(f"{L.upstream} moved past {L.sha[:12]}, which needs an independent review ({first}); rebase it onto "
-                      f"{L.upstream} and ask for a new review of the new tip")
+        merge_reviewed(L, first)
+        return
     merges = lg.out(L.wt, "rev-list", "--merges", "--count", f"{L.remote}..{L.sha}") != "0"
     verb = "merge" if merges else "rebase"
     done = lg.git(L.wt, verb, *(["--no-edit"] if merges else []), L.remote, check=False)
@@ -194,6 +228,10 @@ def sync(L: Landing) -> bool:
     fetch(L)
     L.sha = tip(L)
     already = lg.is_ancestor(L.wt, L.sha, L.remote)
+    stepped = L.sha if already else unmerged(L, L.sha)
+    if stepped != L.sha:
+        L.sha = stepped
+        lg.git(L.wt, "reset", "--hard", stepped)
     problem = lift_primary(L)
     if problem and not already:
         raise ex.Stop(problem)
@@ -208,10 +246,11 @@ def review(L: Landing) -> None:
     L.needs_review = first if needed else ""
     if not needed:
         return
-    why = landing.standing(L.s, landing.accepts(L.s, L.branch, L.sha, str(L.wt)))
+    accepted = L.reviewed or L.sha
+    why = accept_problem(L, accepted)
     if why:
-        raise ex.Stop(f"{why} for {L.sha[:12]} (first sensitive path {first}); another agent runs: "
-                      f"poolhouse-workspace land-review {L.branch} {L.sha} --verdict accept")
+        raise ex.Stop(f"{why} for {accepted[:12]} (first sensitive path {first}); another agent runs: "
+                      f"poolhouse-workspace land-review {L.branch} {accepted} --verdict accept")
 
 
 def recheck(L: Landing, tree: str) -> None:
@@ -220,9 +259,10 @@ def recheck(L: Landing, tree: str) -> None:
         raise ex.Stop(f"{L.branch} moved while its checks ran")
     ex.verify_tree(L.wt, tree)
     if L.needs_review:
-        why = landing.standing(L.s, landing.accepts(L.s, L.branch, L.sha, str(L.wt)))
+        accepted = L.reviewed or L.sha
+        why = accept_problem(L, accepted)
         if why:
-            raise ex.Stop(f"the accept for {L.sha[:12]} no longer stands: {why}")
+            raise ex.Stop(f"the accept for {accepted[:12]} no longer stands: {why}")
 
 
 def push(L: Landing) -> None:
@@ -291,9 +331,15 @@ def show(L: Landing) -> None:
     if lg.is_ancestor(L.wt, L.sha, L.remote):
         say(f"{L.branch} ({L.sha[:12]}) is already on {L.upstream}")
         return
+    L.sha = unmerged(L, L.sha)
     behind = not lg.is_ancestor(L.wt, L.remote, L.sha)
     needed, base, first = land_review.required(L.wt, land_review.fork_point(L.wt, L.remote, L.sha), L.sha)
-    say(f"{L.branch} at {L.sha}" + (f" is behind {L.upstream}; land rebases it" + (" only when no review is needed" if needed else "") if behind else ""))
+    how = f"land merges {L.upstream} into it and the accept of this commit stands" if needed else "land rebases it"
+    say(f"{L.branch} at {L.sha}" + (f" is behind {L.upstream}; {how}" if behind else ""))
+    if behind and needed:
+        tree, files = lg.merge_tree(L.wt, L.remote, L.sha)
+        if not tree:
+            say(conflict_text(L, files))
     if needed:
         found = landing.accepts(L.s, L.branch, L.sha, str(L.wt))
         why = landing.standing(L.s, found)

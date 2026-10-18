@@ -4,7 +4,7 @@
     scripts/land [BRANCH] [--dry-run] [--agent NAME]
 
 Run it from the branch's worktree (BRANCH defaults to the branch checked out there). It fetches origin, rebases the
-branch when that needs no review, asks the board for an independent accept of the exact commit when the diff touches
+branch when that needs no review (a reviewed tip gets origin merged into it), asks the board for an independent accept of the exact commit when the diff touches
 anything sensitive, runs the checks the diff calls for in a clean environment, pushes that commit to origin and
 fast-forwards the primary checkout, then removes the worktree and the branch. One lander runs at a time; a second is
 refused naming the first. --dry-run fetches, reports whether another agent must `poolhouse-workspace land-review`, and

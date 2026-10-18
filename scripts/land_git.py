@@ -55,6 +55,15 @@ def lines(root: Path | str, *args: str) -> list[str]:
     return [x for x in git(root, *args).stdout.splitlines() if x]
 
 
+def merge_tree(root: Path | str, ours: str, theirs: str) -> tuple[str, list[str]]:
+    """The tree of the automatic merge of two commits, or an empty string and the paths that conflict."""
+    done = git(root, "merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs, check=False)
+    if done.returncode > 1:
+        raise RuntimeError(f"git merge-tree: {(done.stderr or done.stdout).strip()}")
+    tree, *names = done.stdout.splitlines()
+    return ("", [n for n in names if n]) if done.returncode else (tree, [])
+
+
 def toplevel(start: Path | str) -> Path:
     """The root of the worktree containing ``start``."""
     return Path(out(start, "rev-parse", "--show-toplevel"))

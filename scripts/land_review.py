@@ -89,6 +89,18 @@ def fork_point(root: Path, upstream: str, tip: str) -> str:
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
+def merged_parents(root: Path, tip: str) -> tuple[str, str]:
+    """The two parents of ``tip`` when it is a merge commit whose tree is exactly the conflict-free automatic merge of them, else two empty strings."""
+    parents = lg.out(root, "rev-list", "--parents", "-n", "1", tip).split()[1:]
+    if len(parents) != 2:
+        return "", ""
+    try:
+        tree, _ = lg.merge_tree(root, parents[0], parents[1])
+    except RuntimeError:
+        return "", ""
+    return (parents[0], parents[1]) if tree and tree == lg.out(root, "rev-parse", f"{tip}^{{tree}}") else ("", "")
+
+
 def required(root: Path, base: str, tip: str) -> tuple[bool, str, str]:
     """Whether the diff from ``base`` to ``tip`` needs an independent review, the commit it starts from and the first sensitive path.
 

@@ -154,8 +154,8 @@ gate.
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.
-- **`scripts/land BRANCH`** lands one branch: it fetches, rebases when no review is needed, checks the accept, runs the
-  checks the diff calls for in a clean environment, pushes exactly the tested commit to the development branch (never
+- **`scripts/land BRANCH`** lands one branch: it fetches, rebases when no review is needed (merges `origin/<dev>` into a reviewed tip),
+  checks the accept, runs the checks the diff calls for in a clean environment, pushes exactly the tested commit to the development branch (never
   `main`, never forced), fast-forwards the primary checkout and removes the worktree and branch. One lander runs at a time;
   a stop names its cause on the last line, and running it again repairs an interrupted run (docs/landing.md).
 - The primary development checkout may receive reviewed changes through a fast-forward merge or authorized direct
