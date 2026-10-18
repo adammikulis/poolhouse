@@ -21,6 +21,12 @@ whatever wrote it, and a metric dropped from the file counts as a rise, because 
 at whatever the tree holds. An agent is refused outright; `POOLHOUSE_BUDGET_RISE=yes` is for the owner's own
 commit. The pre-commit chain is opt-in, so `ci.yml` runs the same check with `--against` the pull request's base.
 
+## What the gates do not read
+
+A gate result depends on the change under test, never on the machine around it: no checker reads other
+worktrees, the worktree registry or another agent's state. A worktree left behind is enforced on its owner
+(docs/worktrees.md, "What an orphan stops").
+
 ## Entries that are not ceilings
 
 `floors-only-rise` holds `tests-collected`: it may not *fall*, because a module that stops being collected leaves

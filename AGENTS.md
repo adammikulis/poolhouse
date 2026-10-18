@@ -581,10 +581,10 @@ queued request is cleaned up by the runner), `git worktree remove ../poolhouse-<
   handoff alone does not finish the task.
 - This covers documentation, investigations that created a worktree, cancelled tasks and subagents too; if work must
   remain, name the path, branch, pending work and responsible agent in the handoff and do not report it complete.
-  `scripts/worktrees` shows every tree with its owner; only an *orphan* (owner stopped more than the grace, 2 hours by
-  default, with work nobody landed, bundled or abandoned) fails the `orphan-trees` gate, and
-  `scripts/worktrees close TREE --landed`, `--bundle` or `--abandon 'reason'` decides one. The lead checks cleanup for
-  every branch it requested (docs/agent-rules.md, "Orphans and nested trees"; docs/worktrees.md).
+  `scripts/worktrees` shows every tree with its owner. An *orphan* (owner stopped more than the grace, 2 hours by
+  default, with work nobody landed, bundled or abandoned) stops its owner, not the landing gate: `land-request` from that
+  session is refused with the exact `scripts/worktrees close TREE --landed`, `--bundle` or `--abandon 'reason'` command.
+  The lead checks cleanup for every branch it requested (docs/agent-rules.md, "Orphans and nested trees"; docs/worktrees.md).
 
 ### Activating a fix
 
