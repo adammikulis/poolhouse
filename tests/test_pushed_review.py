@@ -138,3 +138,11 @@ def test_a_replace_ref_does_not_hide_a_sensitive_tip(as_lander, pushed, monkeypa
     monkeypatch.chdir(tree)
     assert pushed.main(DEV, [push_line(tree, sha)]) == 1
     assert "needs an independent review" in capsys.readouterr().err
+
+
+def test_a_check_that_cannot_load_refuses_the_push_with_a_message(as_lander, pushed, monkeypatch, capsys):
+    tree, sha = as_lander.start("unloaded", {"docs/a.md": "changed\n"})
+    monkeypatch.setitem(sys.modules, "land_review", None)
+    monkeypatch.chdir(tree)
+    assert pushed.main(DEV, [push_line(tree, sha)]) == 1
+    assert "could not load" in capsys.readouterr().err
