@@ -34,7 +34,8 @@ The rules never to break, then the ones needed every hour; each names the sectio
 16. **"If I can't use it, it's not done"**: landed, activated, driven the way a person does (2, 3, 4).
 17. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
 18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
-19. **Land through the queue** (`land-request`); a worker never pushes; clean up before reporting (4).
+19. **Land by "Landing, step by step"**: the queue when it works, the lead's hand landing when it does not or the
+    change fixes it; a worker never pushes; clean up before reporting (4).
 20. **Test your own change with explicit `scripts/test` selectors**; the main agent runs shared gates once per batch
     (5).
 
@@ -481,6 +482,27 @@ Create worktrees beside the primary checkout, never inside it (including `.workt
 
 Whoever made a branch finishes it; the lead steps in only for cross-branch conflicts, security review and release.
 
+**Landing, step by step.** These steps are the whole procedure, in this order; the bullets below are detail.
+
+1. **Is the queue working?** Run `poolhouse-workspace land-queue`. The queue is broken when the runner is down, or a
+   request was ejected in the last day for a cause in the landing machinery rather than the change (a gate reading
+   machine state, the runner's identity, a claim, a quota, a timeout, a baseline it could not establish). If it is
+   broken, or the change fixes the queue, the runner, a gate or the test broker, go to step 6. A fix never goes through
+   the thing it fixes.
+2. **Prepare.** Fetch, rebase onto `origin/<dev>`, run the change's own tests with `scripts/test all <files>`, commit by
+   named files.
+3. **Review, when section 1, "Review scope" requires it.** A different agent accepts the exact SHA. A reject names the
+   cause; the fix removes the cause and every instance of its class, not only the instances listed. A finding of the
+   same class in a second round means the design is wrong: stop patching and put the redesign to the owner as the
+   first option.
+4. **Queue.** `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ...`. The branch is landed only when the runner
+   says `landed` for that SHA.
+5. **Ejected?** Read the reason. The change broke a test: fix the cause, back to step 2. The landing machinery broke it:
+   do not file again; go to step 6 and fix the machinery by hand.
+6. **Hand landing, by the lead.** Stop the runner (`scripts/land down`) and take the development-branch claim; in a worktree from `origin/<dev>`, merge the ready
+   branches; run their tests once on the merged tree; confirm each required accept stands for its exact SHA; fetch,
+   fast-forward `<dev>`, `git push origin <dev>`; clean up ("Cleanup"); post a milestone naming the commit.
+
 - **A worker lands its own branch through the queue.** The development branch is whichever branch the primary checkout
   is on (`POOLHOUSE_DEV_BRANCH` overrides it); nothing names it. When ready: fetch, rebase its own linear commits onto
   `origin/<dev>` (merge `origin/<dev>` instead when the branch holds merges or is shared), run the affected tests, then
@@ -490,7 +512,7 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
   and never reports a branch landed without the runner's `landed` (the gate result) for its exact SHA. One request never
   fails another: a stale, conflicting, red, hanging or runner-breaking request is ejected alone with its reason and
   failing test names, sent to the requester by name, and the rest lands. A subagent whose leaf passed its affected
-  selectors requests landing itself; the runner holds the branch claim, so nobody lands by hand while it runs.
+  selectors requests landing itself; the runner holds the branch claim, so a hand landing (step 6) stops it first.
 - **A rule-file edit the owner orders lands at once.** When the owner asks for a change to `AGENTS.md` or `CLAUDE.md`,
   the lead makes it, commits it, fast-forwards the development branch and pushes it in the same turn, with no queue,
   gate wait or reviewer, then posts a milestone naming the commit so every agent re-reads both files. The owner's
