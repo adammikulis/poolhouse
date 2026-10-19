@@ -11,7 +11,9 @@ from types import SimpleNamespace
 
 import githooks_ready
 import pytest
+import testclass
 import testoptions
+import testselectors
 import testslots
 import testslots_runner
 
@@ -44,10 +46,16 @@ def prepared(environment: dict[str, str], want: int = 0) -> tuple[list[str], dic
     return command, env
 
 
-def test_a_run_with_little_work_starts_one_worker():
+def test_a_pool_of_one_runs_pytest_itself_unless_a_worker_was_asked_for():
     command, env = prepared({"DEV_TEST_BUDGET": "15", "DEV_TEST_ESTIMATE_S": "0.0"})
+    assert command == ["pytest", "-n", "0"]
+    assert env["DEV_TEST_WORKERS"] == "1"
+    command, env = prepared({"DEV_TEST_BUDGET": "15", "DEV_TEST_ESTIMATE_S": "0.0"}, want=1)
     assert command == ["pytest", "-n", "1"]
     assert env["DEV_TEST_WORKERS"] == "1"
+    command, env = prepared({"DEV_TEST_BUDGET": "15", "DEV_TEST_ESTIMATE_S": "4.0"})
+    assert command == ["pytest", "-n", "2"]
+    assert env["DEV_TEST_WORKERS"] == "2"
 
 
 def test_a_run_with_much_work_starts_the_whole_pool():
@@ -168,3 +176,47 @@ def test_a_request_far_back_in_the_queue_does_not_read_every_record_a_hundred_ti
 
 def test_the_request_at_the_head_of_the_queue_keeps_deciding_often(tmp_path):
     assert decisions_while_waiting_a_second(tmp_path, ahead=0) >= 10
+
+
+def test_validation_and_classification_of_the_same_arguments_parse_them_once(monkeypatch):
+    parsed = []
+    real = testoptions.parse_arguments
+    monkeypatch.setattr(testoptions, "parse_arguments", lambda arguments: parsed.append(arguments) or real(arguments))
+    testoptions._positional.cache_clear()
+    arguments = ["--slow", "-n", "2", "tests/test_testphases.py"]
+    try:
+        testselectors.validate(arguments, ROOT)
+        assert testclass.selectors(arguments) == ["tests/test_testphases.py"]
+        assert len(parsed) == 1
+        assert testoptions.positional(arguments) == ["tests/test_testphases.py"]
+        assert len(parsed) == 1
+    finally:
+        testoptions._positional.cache_clear()
+
+
+WHERE = (
+    "import os\nfrom pathlib import Path\n\n\n"
+    "def test_where():\n"
+    "    Path(os.environ['WHERE_LOG']).write_text(os.environ.get('PYTEST_XDIST_WORKER', 'no xdist worker'))\n"
+)
+
+
+def where_a_test_ran(tmp_path, want: str, estimate: str) -> str:
+    """The xdist worker (or none) that ran a test through the supervisor with ``want`` workers asked for."""
+    tmp_path.mkdir()
+    (tmp_path / "test_where.py").write_text(WHERE)
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in {"DEV_TEST_REMOTE_LEASE", "DEV_TEST_LEASE", "DEV_TEST_CLASS", "DEV_TEST_ESTIMATE_S"}}
+    environment.update(DEV_TEST_SLOTS_DIR=str(tmp_path / "slots"), DEV_TEST_BUDGET="4", DEV_TEST_WAIT_S="60",
+                       DEV_TEST_ESTIMATE_S=estimate, PYTHONPATH=str(ROOT / "scripts"), WHERE_LOG=str(tmp_path / "where.log"))
+    command = [sys.executable, str(ROOT / "scripts" / "testslots.py"), "pytest", "--want", want, "--", sys.executable, "-m", "pytest",
+               "-q", "-n", "{workers}", "-p", "testslots_pytest", "-p", "no:cacheprovider", str(tmp_path / "test_where.py")]
+    done = subprocess.run(command, cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    return (tmp_path / "where.log").read_text()
+
+
+def test_a_small_run_through_the_supervisor_starts_no_xdist_worker_and_a_larger_one_starts_them(tmp_path):
+    assert where_a_test_ran(tmp_path / "small", "auto", "0.5") == "no xdist worker"
+    assert where_a_test_ran(tmp_path / "asked", "1", "0.5") == "gw0"
+    assert where_a_test_ran(tmp_path / "large", "auto", "40") in {"gw0", "gw1", "gw2", "gw3"}

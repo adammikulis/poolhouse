@@ -34,9 +34,9 @@ and the run stops unless the primary checkout's `scripts/land*` and `scripts/aff
    releases them), so that session's accept never counts. Any standing reject blocks. `scripts/land --dry-run` prints the
    command the reviewer runs: `poolhouse-workspace land-review BRANCH SHA --verdict accept`.
 3. **Checks.** From the diff against `origin/<dev>`: documentation only runs `scripts/budgets` and `git diff-tree --check`; code
-   runs `scripts/test gate`; both add `scripts/test all <affected files>` from `affected.select`, and `scripts/test full` when
-   the diff touches shared test infrastructure, a path no selector maps, a deleted module or more than 120 files or 4000
-   lines. Every check runs in a process group of its own with a fixed environment (`PATH`, `HOME`, the board and device
+   runs `scripts/test gate`; both add `scripts/test all <affected files>` from `affected.select`. The lander never runs the whole
+   suite: for a code diff it prints `the full suite runs on GitHub for this commit`, and the `ci` workflow runs it on the
+   pushed commit ("The CI run" below). Every check runs in a process group of its own with a fixed environment (`PATH`, `HOME`, the board and device
    variables, nothing else: no `PYTEST_ADDOPTS`, no caller `PYTHONPATH`, no `POOLHOUSE_LIVE_*`). The tree is hashed before and
    after each check and the run stops if it changed or if an ignored file that is not a build cache is present. `scripts/test`
    keeps its own `ran` or `reused from <id>` per file. The selector follows imports one level (`DEPTH = 1`).
@@ -70,9 +70,15 @@ of its own, over the object directory of the checkout, with no configuration of 
 attributes (`info/attributes`, a `.gitattributes` in the worktree, `core.attributesFile`), no merge, diff or text-conversion
 driver, no hook, no ref, replace ref, graft, shallow file or commit graph. Its answer depends only on the commits it is given,
 which it takes by full id; a name is not looked up. It reads the objects without storing any, except the tree of a merge. The
-trees of the review check (`required`, `merged_parents`), the merge of a reviewed tip, the file lists and line counts that pick
+trees of the review check (`required`, `merged_parents`), the merge of a reviewed tip, the file lists that pick
 the checks, `git diff-tree --check`, and the file lists and files that the push check parses and that `no-data-files --range`
 reads all come from it; file names are NUL separated, and a path that is not UTF-8 stops the check.
+
+## The CI run
+
+The whole suite runs on GitHub, in the `ci` workflow, for each push of the development branch that changes more than
+documentation (`paths-ignore` skips `**.md` and `docs/**`). `scripts/land` and a hand push never wait for it. `scripts/test full`
+and `scripts/test all` stay available by hand.
 
 ## Exit status
 

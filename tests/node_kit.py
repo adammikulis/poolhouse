@@ -267,5 +267,6 @@ def workspace_node(node_binary, monkeypatch, request):
     try:
         yield node
     finally:
+        monkeypatch.undo()
         node.stop()
         shutil.rmtree(root, ignore_errors=True)

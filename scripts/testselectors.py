@@ -20,14 +20,10 @@ def validate(arguments: list[str], root: Path) -> None:
                     raise ValueError(f"test path does not exist: {selector}")
         return
     import testoptions
-    config = testoptions.parse_arguments(arguments)
-    try:
-        for selector in config.args:
-            path = Path(selector.split('::', 1)[0])
-            target = path if path.is_absolute() else root / path
-            if not target.exists():
-                raise ValueError(f"test path does not exist: {path}")
-            if not (target.is_file() or target.is_dir()):
-                raise ValueError(f"test path is not a file or directory: {path}")
-    finally:
-        config._ensure_unconfigure()
+    for selector in testoptions.positional(arguments):
+        path = Path(selector.split('::', 1)[0])
+        target = path if path.is_absolute() else root / path
+        if not target.exists():
+            raise ValueError(f"test path does not exist: {path}")
+        if not (target.is_file() or target.is_dir()):
+            raise ValueError(f"test path is not a file or directory: {path}")

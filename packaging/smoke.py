@@ -46,8 +46,8 @@ def first_run(page: Page, name: str, passphrase: str, group: str) -> None:
             page.fill("#n", name)
             press(page, "Continue")
         elif heading == "Pools":
-            if page.locator("#first-run button:text-is('Pair manually')").count():
-                press(page, "Pair manually")
+            if page.locator("#first-run button:text-is('Join manually')").count():
+                press(page, "Join manually")
             page.select_option("#setup-pool-action", "create")
             page.fill("#setup-pool-name", group)
             page.fill("#setup-pool-passphrase", passphrase)

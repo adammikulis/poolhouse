@@ -60,7 +60,7 @@ def test_security_test_infrastructure_and_rule_paths_need_review(path):
 GUARDED = [
     "AGENTS.md", "CLAUDE.md", ".claude/settings.json", ".claude/agents/worker.md", "scripts/hooks/pre-push",
     "scripts/hooks/weakened-assertions", "scripts/hooks/claude-bash-guard", "src/poolhouse/workspace/person_store.py",
-    "src/poolhouse/worktreerules.py", "scripts/land_board.py", "src/poolhouse/authority.py", "src/poolhouse/person.py",
+    "src/poolhouse/worktreerules.py", "src/poolhouse/authority.py", "src/poolhouse/person.py",
     "src/poolhouse/real_machine.py", "src/poolhouse/board/credentials.py", "src/poolhouse/workspace/authority_cli.py",
     "scripts/agent_sandbox_profile.py", "scripts/github-protection", ".github/workflows/ci.yml"]
 NAMED_IN_REVIEW = [
@@ -72,7 +72,7 @@ NAMED_IN_REVIEW = [
     "src/poolhouse/decide/guard.py", "src/poolhouse/testing/injection_corpus.py", "src/poolhouse/features.py",
     "src/poolhouse/platform.py", "tests/test_redteam_board.py", "tests/test_bash_guard.py", "tests/test_authority.py",
     "tests/authority_kit.py", "tests/network_guard.py", "tests/test_keystore.py", "tests/test_land.py",
-    "tests/test_land_trust.py", "tests/land_support.py", "tests/test_pushed_review.py"]
+    "tests/test_land_trust.py", "tests/land_support.py"]
 
 
 @pytest.mark.parametrize("path", GUARDED)

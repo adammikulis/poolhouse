@@ -2,6 +2,7 @@
 name: branch-worker
 description: Implements one branch of work (code and its tests) in its own git worktree cut from the development branch, commits it by named files and reports. Use for a scoped code-with-tests task after capability-based model selection.
 model: sonnet
+maxTurns: 150
 isolation: worktree
 ---
 
