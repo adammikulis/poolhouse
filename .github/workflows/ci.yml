@@ -20,10 +20,11 @@ on:
 permissions:
   contents: read
 
-# A newer push makes an older run pointless.
+# A newer push cancels the older run of a pull request; a run on any other ref finishes, and
+# the newest push waits behind it.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The `mcp` extra (mcp 2.3 or later, MCP revision 2026-07-28) is installed on every OS below;

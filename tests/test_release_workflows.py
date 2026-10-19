@@ -95,9 +95,15 @@ def test_no_checkout_takes_its_ref_from_an_input(step):
     assert "inputs." not in str((step.get("with") or {}).get("ref", ""))
 
 
-def test_concurrent_runs_of_one_ref_cancel_each_other():
+def test_concurrent_runs_of_one_ref_share_a_group():
     assert CI["concurrency"]["group"] == "ci-${{ github.ref }}"
-    assert CI["concurrency"]["cancel-in-progress"] is True
+
+
+@pytest.mark.parametrize("name", ["ci.yml", "release-dry-run.yml", "pool-check.yml"])
+def test_only_a_superseded_pull_request_run_is_cancelled(name):
+    """A newer push cancels the older run of a pull request and no run of any other event."""
+    concurrency = read(name)["concurrency"]
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
 def test_release_please_tests_the_branch_it_opened():
