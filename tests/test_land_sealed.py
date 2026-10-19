@@ -22,7 +22,7 @@ BASE = "one\ntwo\nthree\nfour\nfive\n"
 DISJOINT = ("ONE\ntwo\nthree\nfour\nfive\n", "one\ntwo\nthree\nfour\nFIVE\n", "ONE\ntwo\nthree\nfour\nFIVE\n")
 CLASH = ("one\ntwo\nTHREE\nfour\nfive\n", "one\ntwo\nthree-b\nfour\nfive\n", None)
 FORGED = "forged = 1\n"
-AUDITED = ("scripts/land_review.py", "scripts/land_steps.py", "scripts/land_exec.py", "scripts/hooks/pushed")
+AUDITED = ("scripts/land_review.py", "scripts/land_steps.py", "scripts/land_exec.py", "scripts/land_stale.py", "scripts/hooks/pushed")
 
 
 @pytest.fixture
