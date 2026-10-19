@@ -125,3 +125,25 @@ def test_a_primary_checkout_whose_lander_differs_from_origins_is_refused(world, 
     code, out = world.land(tree)
     assert code == 5 and f"scripts/{name} in the primary checkout" in out and "differs from origin/" + DEV in out, out
     assert world.proj.origin_head() != sha and world.proj.calls() == []
+
+
+def test_a_primary_checkout_whose_imported_lander_module_differs_from_origins_is_refused(world):
+    tree, sha = world.start("stale-import", {"docs/a.md": "changed\n"})
+    module = world.proj.root / "scripts" / "queue_doctor.py"
+    module.write_text(module.read_text() + "\n# local\n", encoding="utf-8")
+    code, out = world.land(tree)
+    assert code == 5 and "scripts/queue_doctor.py in the primary checkout" in out and "differs from origin/" + DEV in out, out
+    assert world.proj.origin_head() != sha and world.proj.calls() == []
+
+
+def test_a_script_the_lander_does_not_import_may_differ_in_the_primary_checkout(world):
+    tree, _ = world.start("unrelated-script", {"docs/a.md": "changed\n"})
+    (world.proj.root / "scripts" / "budgets").write_text("import sys\nsys.exit(0)\n# local\n", encoding="utf-8")
+    code, out = world.land(tree, "--dry-run")
+    assert code == 0 and "differs from origin/" not in out, out
+
+
+def test_the_lander_set_follows_imports_through_other_modules():
+    files = {"scripts/land": b"import land_a\n", "scripts/land_a.py": b"def f():\n    import other\n", "scripts/other.py": b"from third import x\n",
+             "scripts/third.py": b"import json\n", "scripts/unused.py": b"x = 1\n"}
+    assert land_git.lander_modules(files.get) == {"scripts/land", "scripts/land_a.py", "scripts/other.py", "scripts/third.py"}
