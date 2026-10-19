@@ -281,3 +281,11 @@ def test_model_result_carries_only_its_own_staged_base_dependency(device, tmp_pa
     value['base'] = {'path': str(base)}
     with pytest.raises(ValueError, match="dispatch's explicitly staged"):
         store.result(SOURCE, DISPATCH, {'model': value}, node_spec('train.tool-calls'))
+
+
+def test_collected_model_port_cannot_substitute_an_artifact_manifest(device, tmp_path):
+    client, _, _, calls = device
+    reply = {"dispatch_id": DISPATCH, "outputs": {"model": {"kind": "artifact", "resource": "b" * 64}}, "resources": []}
+    with pytest.raises(ValueError, match="resource kind"):
+        client.collect(reply, tmp_path / "received", node_spec("train.tool-calls"), dispatch_id=DISPATCH)
+    assert calls == []

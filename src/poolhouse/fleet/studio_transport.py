@@ -12,6 +12,7 @@ from urllib.parse import quote, urlencode, urlsplit
 
 from poolhouse import http, macauth, sealing
 from poolhouse.http import ONCE, Options, Sealed, ServerError, open_stream
+from poolhouse.studio.catalog import is_model_type
 from poolhouse.studio.resources import model_files, open_model_file
 
 from . import tls
@@ -196,6 +197,12 @@ class MemberExecution:
         dispatch = reply.get("dispatch_id")
         if not isinstance(dispatch_id, str) or not _ID.fullmatch(dispatch_id) or dispatch != dispatch_id:
             raise ValueError("The device returned another execution dispatch.")
+        for port in spec["outputs"]:
+            kind = "model" if is_model_type(port["type"]) else port["type"]
+            value = reply["outputs"].get(port["name"])
+            if (value is not None and kind in {"model", "dataset", "artifact"}
+                    and (not isinstance(value, dict) or value.get("kind") != kind or not isinstance(value.get("resource"), str))):
+                raise ValueError("The device output resource kind differs from its declared port.")
         resources = {}
         total = 0
         for resource in reply["resources"]:
