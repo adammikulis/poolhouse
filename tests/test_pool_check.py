@@ -156,6 +156,14 @@ def test_the_image_holds_what_a_device_needs_and_nothing_of_the_owners():
     assert dock.context_hash(names) == dock.context_hash(list(names)), "the tag is a function of the contents"
 
 
+def test_the_image_copies_every_member_of_the_cargo_workspace():
+    import tomllib
+
+    members = tomllib.loads((dock.ROOT / "app" / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]["members"]
+    missing = [m for m in members if not any(k == f"app/{m}/" or k.startswith(f"app/{m}/") for k in dock.KEEP)]
+    assert not missing, f"the pool check's image lacks workspace members, so cargo cannot load the workspace: {missing}"
+
+
 def test_the_steps_are_named_once_and_each_says_what_it_proves():
     names = [name for name, _ in rig.STEPS]
     assert len(names) == len(set(names))

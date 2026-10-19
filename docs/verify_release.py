@@ -458,7 +458,7 @@ def _():
 # -- telemetry -----------------------------------------------------------
 @check("Telemetry", "this machine reports its own temperature and clocks")
 def _():
-    from poolhouse.train.accelerator import report
+    from poolhouse.fleet.accelerator import report
     got = report()
     have = [k for k in ("temp_c", "clock_mhz", "power_w", "gpu_util_pct") if k in got]
     if not have:

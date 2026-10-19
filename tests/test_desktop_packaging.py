@@ -138,24 +138,24 @@ def test_frozen_collects_wheel_modules_and_dynamic_entrypoints(frozen_collector,
     monkeypatch.setitem(sys.modules, "PyInstaller.utils.hooks", hooks)
     entries = [
         SimpleNamespace(group="console_scripts", module="poolhouse.fleet.daemon"),
-        SimpleNamespace(group="poolhouse.device_report", module="poolhouse.train.accelerator"),
+        SimpleNamespace(group="poolhouse.device_report", module="poolhouse.fleet.accelerator"),
         SimpleNamespace(group="poolhouse.ui_routes", module="poolhouse.workspace.agent_routes"),
         SimpleNamespace(group="poolhouse.ui_routes", module="poolhouse.workspace.task_routes"),
     ]
     installed = SimpleNamespace(files=[PurePosixPath(path) for path in [
         "poolhouse/__init__.py", "poolhouse/world/__init__.py", "poolhouse/bench/cli.py",
-        "poolhouse/ingest/cli.py", "poolhouse/train/accelerator.py",
+        "poolhouse/ingest/cli.py", "poolhouse/fleet/accelerator.py",
         "poolhouse/ui/assets/index.html", "poolhouse-1.0.dist-info/METADATA",
         "../bin/poolhouse", "poolhouse/non-module.py",
     ]], entry_points=entries, locate_file=lambda file: ROOT / "src" / str(file))
     monkeypatch.setattr(frozen_collector, "distribution", lambda name: installed)
     datas, modules = frozen_collector.collect_project()
     assert calls == ["poolhouse.device_report", "poolhouse.ui_routes"]
-    assert (str(ROOT / "src/poolhouse/train/accelerator.py"), "poolhouse/train") in datas
+    assert (str(ROOT / "src/poolhouse/fleet/accelerator.py"), "poolhouse/fleet") in datas
     assert datas[-2:] == [("plugin-metadata", group) for group in calls]
     assert modules == [
-        "plugin_provider.routes", "poolhouse", "poolhouse.bench.cli", "poolhouse.fleet.daemon",
-        "poolhouse.ingest.cli", "poolhouse.train.accelerator", "poolhouse.workspace.agent_routes",
+        "plugin_provider.routes", "poolhouse", "poolhouse.bench.cli", "poolhouse.fleet.accelerator",
+        "poolhouse.fleet.daemon", "poolhouse.ingest.cli", "poolhouse.workspace.agent_routes",
         "poolhouse.workspace.task_routes", "poolhouse.world",
     ]
 

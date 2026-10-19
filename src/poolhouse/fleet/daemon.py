@@ -787,10 +787,10 @@ def run(argv: list[str] | None = None) -> int:
         default=[],
         metavar="MODULE:CALLABLE",
         help="a richer device probe, e.g. "
-        "'poolhouse.train.accelerator:report' on a box with a card. "
+        "'poolhouse.fleet.accelerator:report' on a box with a card. "
         "Repeatable; later ones win. Without any, the daemon reports "
-        "only what the standard library can see, plus whatever is "
-        "registered under the 'poolhouse.device_report' entry point.",
+        "what the standard library and the accelerator probe can see, plus "
+        "whatever is registered under the 'poolhouse.device_report' entry point.",
     )
     ap.add_argument(
         "--slots",

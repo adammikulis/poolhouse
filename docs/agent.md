@@ -92,7 +92,7 @@ differs, or of a dump with no guard file, is refused.
 
 ## Tool-calling models
 
-`poolhouse-train-tools` writes `schema_hash` and `signatures` into a dataset's manifest, refuses
-to reuse data made for other tools, and `poolhouse-train-tools eval --data DIR --url URL` scores a
+`python -m poolhouse.train tools` writes `schema_hash` and `signatures` into a dataset's manifest, refuses
+to reuse data made for other tools, and `python -m poolhouse.train tools eval --data DIR --url URL` scores a
 served model on the held-out rows: tool name, required arguments, valid JSON, exact arguments and
 all together.

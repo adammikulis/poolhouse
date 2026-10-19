@@ -446,7 +446,7 @@ SUMMARY_SCHEMA: dict[str, Any] = {"type": "function", "function": {
                    "Example: for \"what does this group do?\" call summarise with {}.",
     "parameters": {"type": "object", "properties": {}, "required": []}}}
 # Its questions, for a router. Kept out of `TOOL_PROMPTS` because that mapping is also read
-# as "every tool the model has" -- `poolhouse-train-tools` refuses a prompts key naming a
+# as "every tool the model has" -- `python -m poolhouse.train tools` refuses a prompts key naming a
 # tool the schemas lack, and `summarise` is offered only when a caller asks for it.
 SUMMARY_PROMPTS: tuple[str, ...] = (
     "what does this community do?",
