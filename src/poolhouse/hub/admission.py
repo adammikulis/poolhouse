@@ -14,7 +14,7 @@ from poolhouse.requests.model import shown
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HIGH, finding
 
-__all__ = ["LIBRARY", "PERSON", "DigestChanged", "NotApproved", "Trust", "admit", "approved", "ask", "checked"]
+__all__ = ["LIBRARY", "PERSON", "DigestChanged", "NotApproved", "Trust", "admit", "approved", "ask", "checked", "question"]
 
 CLOSING = "Models can hide behaviour that tests do not show. Use it anyway?"
 ARGUMENT = "From a program, `ph.models.pull(repo, file, trust=...)` (`poolhouse.hub.Trust`) decides this itself."
@@ -103,9 +103,9 @@ def _held(path: str, ref: Ref) -> str:
             f"by sentinel; a person releases it with `poolhouse-security release`")
 
 
-def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust) -> list[tuple[str, str]]:
+def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust, moved: list[str]) -> list[tuple[str, str]]:
     """Why ``trust`` does not allow ``files`` of ``ref``: each reason as the sentence a person is asked and
-    as the phrase a program reads. `DigestChanged` whatever the trust."""
+    as the phrase a program reads."""
     publisher = publishers.namespace(ref.repo)
     host = remote.endpoint_host()
     official = publishers.official(host)
@@ -121,32 +121,39 @@ def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust) -> list[tuple[str,
     if trust.markers and publishers.marker(ref.repo, *(f.path for f in files)):
         why.append(("Its name says it was changed to answer what the original would refuse.",
                     "its name says it was changed to answer what the original would refuse"))
-    moved = _changed(ref, files)
     if moved and trust.moved:
         why.append((f"{shown(moved[0], 'label')} is not the file Poolhouse pulled from {ref.repo} before.",
                     f"{moved[0]} differs from the file pulled before"))
     return why
 
 
-def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON) -> None:
-    """Return when ``files`` of ``ref`` (resolved to a commit) may be fetched under ``trust``. `NotApproved`
-    for what ``trust`` does not allow, after asking a person when it asks; `DigestChanged` when the Hub
-    contradicts itself."""
+def question(repo: str, commit: str, reasons: str) -> tuple[str, str]:
+    """The subject and the sentence of the request that puts ``reasons`` about ``repo`` at ``commit`` to a person."""
+    return f"{repo}@{commit[:12]}", " ".join((reasons, f"It is {repo} at {commit[:12]}.", CLOSING))
+
+
+def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON) -> str:
+    """Return when ``files`` of ``ref`` (resolved to a commit) may be fetched under ``trust``: the words of
+    what a person would have been asked and ``trust`` did not ask (the pin of the files keeps them, and serving
+    them asks), empty when nothing is left. `NotApproved` for what ``trust`` does not allow, after asking a
+    person when it asks; `DigestChanged` when the Hub contradicts itself."""
     trust = checked(trust)
     if len(ref.commit) != 40:
         raise ValueError(f"{ref.text} must be resolved to a commit before it is fetched")
-    why = _reasons(ref, files, trust)
+    moved = _changed(ref, files)
+    why = _reasons(ref, files, trust, moved)
+    person = why if trust == PERSON else _reasons(ref, files, PERSON, moved)
+    left = " ".join(words for words, code in person if (words, code) not in why)
     if not why:
-        return
+        return left
     it = f"It is {ref.repo} at {ref.commit[:12]}."
     if not trust.ask:
         raise NotApproved(f"Not fetched: {'; '.join(code for _, code in why)}. {it} Pass another `trust=` "
                           f"(`Trust(publishers=...)` names the owners to fetch from).")
+    subject, sentence = question(ref.repo, ref.commit, " ".join(words for words, _ in why))
     fields = {"publisher": publishers.namespace(ref.repo), "repo": ref.repo, "commit": ref.commit,
               "host": remote.endpoint_host()}
-    subject = f"{ref.repo}@{ref.commit[:12]}"
-    sentence = " ".join((*(person for person, _ in why), it, CLOSING))
     if approved("model_publisher", subject, sentence, **fields):
-        return
+        return left
     told = ask("model_publisher", subject, sentence, **fields)
     raise NotApproved(told.replace(sentence, f"{sentence} {ARGUMENT}", 1))

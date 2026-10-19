@@ -69,7 +69,7 @@ class Want:
     pinned to, whether a digest is ``require_digest``, and how an unscanned file is treated.
     ``verify(path, headers)`` returns why a staged file is not acceptable, or ''. ``rename(final_url,
     headers)`` picks the file name once the answer is known. ``pin_notes`` (``publisher``, ``commit``,
-    ``source_ref``) are recorded in the pin of a model that is kept."""
+    ``source_ref``, ``unvetted``) are recorded in the pin of a model that is kept."""
 
     kind: str = ""
     sha256: str = ""

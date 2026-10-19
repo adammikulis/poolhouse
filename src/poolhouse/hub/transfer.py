@@ -172,6 +172,7 @@ class _Meter:
         self.step = 0
         self.cancel: CancelToken | None = None
         self.session: peering.Session | None = None
+        self.unvetted = ""
 
     def send(self, phase: str, one: RemoteFile, got: int, *, force: bool = False) -> None:
         now = time.monotonic()
@@ -197,16 +198,16 @@ def _by_object_id(one: RemoteFile) -> Callable[[Path, dict[str, str]], str] | No
                                    else f"{one.path} differs from the object id the Hub lists")
 
 
-def _notes(parsed: remote.Ref, one: RemoteFile) -> dict[str, str]:
+def _notes(parsed: remote.Ref, one: RemoteFile, unvetted: str = "") -> dict[str, str]:
     return {"publisher": publishers.namespace(parsed.repo), "commit": parsed.commit,
-            "source_ref": f"{parsed.repo}/{one.path}"}
+            "source_ref": f"{parsed.repo}/{one.path}", **({"unvetted": unvetted} if unvetted else {})}
 
 
-def _want(parsed: remote.Ref, one: RemoteFile, auth: str) -> net.Want:
+def _want(parsed: remote.Ref, one: RemoteFile, auth: str, unvetted: str = "") -> net.Want:
     return net.Want(kind=_kind(one.path), sha256=one.sha256, size=one.size, token=auth,
                     max_bytes=int(one.size * 1.001) + MARGIN if one.size else 1 << 41,
                     purpose="model download", verify=_by_object_id(one),
-                    pin_notes=_notes(parsed, one))
+                    pin_notes=_notes(parsed, one, unvetted))
 
 
 def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> bool:
@@ -216,7 +217,7 @@ def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Mete
     try:
         return meter.session.fetch(  # type: ignore[union-attr]
             peering.Wanted(parsed.repo, one.path, one.size, one.sha256,
-                           tuple(_notes(parsed, one).items())), final,
+                           tuple(_notes(parsed, one, meter.unvetted).items())), final,
             cancelled=lambda: bool(cancel and cancel.cancelled),
             progress=lambda done: meter.send("downloading", one, done),
             phase=lambda name: meter.send(name, one, one.size, force=True))
@@ -236,7 +237,7 @@ def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> N
     hooks = net.Hooks(cancel=cancel, progress=lambda done, _t: meter.send("downloading", one, done),
                       phase=lambda name: meter.send(name, one, one.size, force=True))
     try:
-        net.download(url, final, _want(parsed, one, auth), pipeline=net.default(), hooks=hooks)
+        net.download(url, final, _want(parsed, one, auth, meter.unvetted), pipeline=net.default(), hooks=hooks)
     except net.Truncated as exc:
         if cancel and cancel.cancelled:
             raise Cancelled(one.path) from exc
@@ -341,10 +342,10 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
         if (relative.is_absolute() or ".." in relative.parts
                 or not (folder / relative.parent).resolve().is_relative_to(root)):
             raise ValueError(f"Unsafe model file path: {one.path}")
-    admission.admit(parsed, chosen, run.trust)
+    unvetted = admission.admit(parsed, chosen, run.trust)
     _space(targets[0].final.parent, sum(_remaining(parsed, t) for t in targets))
     meter = _Meter(parsed.text, sum(f.size for f in chosen), len(chosen), run.report)
-    meter.cancel = run.cancel
+    meter.cancel, meter.unvetted = run.cancel, unvetted
     if any(not _present(t.final, t.file) for t in targets):
         meter.session = peering.session(run.members)
     for index, target in enumerate(targets):

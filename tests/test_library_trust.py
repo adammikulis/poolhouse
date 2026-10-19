@@ -19,9 +19,14 @@ from poolhouse import http, hub, requests, sentinel
 from poolhouse.api import models as api_models
 from poolhouse.hub import admission, listing, publishers, transfer
 from poolhouse.hub.admission import LIBRARY, PERSON, Trust
-from poolhouse.serve import models_cli
+from poolhouse.serve import guarded, models_cli
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerSpec
+from poolhouse.serve.leases import recorded_servers
+from poolhouse.serve.manager import ServerManager
+from poolhouse.serve.ports import free_port
+from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.fakehub import fake_hub
+from poolhouse.testing.fakes import fake_llama_binary
 
 FILE = "thing-Q4_K_M.gguf"
 
@@ -296,3 +301,138 @@ def test_the_shipped_list_is_read_when_a_pull_is_checked_so_a_publisher_added_to
     monkeypatch.setattr(publishers, "TRUSTED", publishers.TRUSTED | {"maker"})
     assert hub.pull(ref(), members=False, trust=PERSON).name == FILE
     assert server.downloads
+
+
+# -- a model pulled without a question is asked about once, when it is served ---------------------
+def load(path, tmp_path):
+    """What the Broker asks sentinel before a server starts for ``path``."""
+    return guarded.verify(path, state_file=tmp_path / "servers.json", stop=lambda _p: None)
+
+
+def pinned(path):
+    return sentinel.default().manifest.pin_of(path)
+
+
+def test_a_model_pulled_under_library_from_an_unlisted_publisher_is_asked_about_when_it_is_served(stand, tmp_path):
+    server = stand(repos())
+    got = ph.models.pull("maker/thing-GGUF", FILE, trust=LIBRARY)
+    assert requests.list_requests() == []
+    with pytest.raises(guarded.SentinelRefused, match="This model is from maker, who Poolhouse does not know") as raised:
+        load(got, tmp_path)
+    assert "requests inbox" in str(raised.value)
+    (waiting,) = requests.list_requests(state="pending", kind="model_publisher")
+    assert waiting.human_only and f"maker/thing-GGUF at {server.commit('maker/thing-GGUF')[:12]}" in waiting.reason
+    assert approve("model_publisher") == 1
+    assert load(got, tmp_path) == "" and pinned(got).unvetted == ""
+
+
+def test_the_question_at_serve_time_is_asked_once_and_not_again(stand, tmp_path, monkeypatch):
+    stand(repos())
+    got = ph.models.pull("maker/thing-GGUF", FILE, trust=LIBRARY)
+    with pytest.raises(guarded.SentinelRefused):
+        load(got, tmp_path)
+    approve("model_publisher")
+    load(got, tmp_path)
+
+    def never(*_args, **_fields):
+        raise AssertionError("a person was asked again")
+
+    monkeypatch.setattr(guarded.approvals, "approved", never)
+    monkeypatch.setattr(guarded.approvals, "ask", never)
+    assert load(got, tmp_path) == "" and load(got, tmp_path) == ""
+
+
+def test_a_model_from_a_shipped_publisher_pulled_under_library_is_served_without_a_question(stand, tmp_path):
+    stand(repos("unsloth/thing-GGUF"))
+    got = ph.models.pull("unsloth/thing-GGUF", FILE, trust=LIBRARY)
+    assert pinned(got).unvetted == "" and load(got, tmp_path) == "" and requests.list_requests() == []
+
+
+def test_a_model_the_person_surface_pulled_after_an_approval_is_not_asked_about_again(stand, tmp_path):
+    stand(repos())
+    with pytest.raises(ph.Error, match="This model is from maker"):
+        ph.models.pull("maker/thing-GGUF", FILE)
+    approve("model_publisher")
+    got = ph.models.pull("maker/thing-GGUF", FILE)
+    assert pinned(got).unvetted == "" and load(got, tmp_path) == ""
+    assert requests.list_requests(state="pending") == []
+
+
+@pytest.mark.parametrize("case", [
+    ("maker/thing-GGUF", FILE, False, "a Hub Poolhouse does not know"),
+    ("maker/thing-abliterated-GGUF", FILE, True, "changed to answer what the original would refuse"),
+    ("unsloth/thing-GGUF", "thing-uncensored-Q4_K_M.gguf", True, "changed to answer what the original would refuse")])
+def test_each_question_the_person_surface_would_have_asked_is_asked_at_serve_time(stand, tmp_path, case):
+    repo, file, official, said = case
+    stand(repos(repo, file=file), official=official)
+    got = ph.models.pull(repo, file, trust=LIBRARY)
+    with pytest.raises(guarded.SentinelRefused, match=said):
+        load(got, tmp_path)
+
+
+def test_a_file_that_moved_under_a_new_commit_is_asked_about_at_serve_time_when_pulled_under_library(stand, tmp_path):
+    held = repos("unsloth/thing-GGUF")
+    server = stand(held)
+    first = ph.models.pull("unsloth/thing-GGUF", FILE, trust=LIBRARY)
+    server.moved["unsloth/thing-GGUF"] = 1
+    held["unsloth/thing-GGUF"][FILE] = gguf_bytes(extra=9000)
+    second = ph.models.pull("unsloth/thing-GGUF", FILE, trust=LIBRARY)
+    assert first.resolve() != second.resolve()
+    assert load(first, tmp_path) == ""
+    with pytest.raises(guarded.SentinelRefused, match="is not the file Poolhouse pulled from unsloth/thing-GGUF before"):
+        load(second, tmp_path)
+
+
+def test_a_file_that_moved_is_asked_about_when_the_pull_asks_a_person(stand):
+    held = repos("unsloth/thing-GGUF")
+    server = stand(held)
+    ph.models.pull("unsloth/thing-GGUF", FILE)
+    server.moved["unsloth/thing-GGUF"] = 1
+    held["unsloth/thing-GGUF"][FILE] = gguf_bytes(extra=9000)
+    with pytest.raises(ph.Error, match="is not the file Poolhouse pulled from unsloth/thing-GGUF before"):
+        ph.models.pull("unsloth/thing-GGUF", FILE)
+    with pytest.raises(ph.Error, match=r"differs from the file pulled before.*trust="):
+        ph.models.pull("unsloth/thing-GGUF", FILE, trust=Trust(moved=True))
+
+
+def test_a_trust_that_names_the_publishers_leaves_the_question_for_the_serve(stand, tmp_path):
+    stand(repos("acme/thing-GGUF"))
+    got = ph.models.pull("acme/thing-GGUF", FILE, trust=Trust(publishers=frozenset({"acme"})))
+    with pytest.raises(guarded.SentinelRefused, match="This model is from acme, who Poolhouse does not know"):
+        load(got, tmp_path)
+
+
+def test_a_copy_of_a_model_pulled_without_a_question_is_not_vouched_for_by_the_pull(stand, tmp_path):
+    stand(repos())
+    got = ph.models.pull("maker/thing-GGUF", FILE, trust=LIBRARY)
+    copy = tmp_path / "copy.gguf"
+    copy.write_bytes(got.read_bytes())
+    with pytest.raises(guarded.SentinelRefused, match="was not downloaded by Poolhouse"):
+        load(copy, tmp_path)
+    assert pinned(copy) is None
+
+
+def test_a_copy_of_a_model_is_vouched_for_by_a_pull_that_nobody_needed_to_ask_about(stand, tmp_path):
+    stand({**repos(), **repos("unsloth/thing-GGUF")})
+    ph.models.pull("maker/thing-GGUF", FILE, trust=LIBRARY)
+    kept = ph.models.pull("unsloth/thing-GGUF", FILE, trust=LIBRARY)
+    copy = tmp_path / "copy.gguf"
+    copy.write_bytes(kept.read_bytes())
+    assert [p.publisher for p in sorted(sentinel.default().manifest.pins().values(), key=lambda p: p.path)] == ["maker", "unsloth"]
+    assert load(copy, tmp_path) == "" and pinned(copy).source == "pinned-digest"
+
+
+def test_serving_a_model_pulled_under_library_by_path_starts_no_server_until_a_person_answers(stand, tmp_path):
+    stand(repos())
+    got = ph.models.pull("maker/thing-GGUF", FILE, trust=LIBRARY)
+    state = tmp_path / "servers.json"
+    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)), state_file=state)
+    try:
+        with pytest.raises(guarded.SentinelRefused, match="This model is from maker"):
+            manager.lease(ServerSpec(model=got, port=free_port()), roam=False, timeout=30.0, check_flags=False,
+                          preflight=False, warmup_request=False)
+    finally:
+        for entry in recorded_servers(state).values():
+            if entry.get("pid"):
+                kill_process_tree(entry["pid"])
+    assert recorded_servers(state) == {}

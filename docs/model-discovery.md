@@ -209,7 +209,9 @@ default is `poolhouse.hub.admission.PERSON`, which is the rule in this paragraph
 fetches from and refuses the rest with a message that names the argument; `Trust()` (`LIBRARY`) fetches from any publisher on any
 Hub under any name without asking anyone; `markers`, `moved`, `official_only` and `ask` add the checks below. The digest check stays
 whatever the `Trust`: the Hub listing other bytes for a commit already pulled is refused and quarantined, and every file kept is
-pinned. The commands and the agents (`poolhouse-models`, serving an `hf:` reference, the pool's model download, training and
+pinned. What a `Trust` lets through that `PERSON` would have asked about (an unknown publisher, a Hub that is not the official one, a name that says the
+model was altered, a file unlike an earlier pull of another commit) is kept in the pin of each file, and the first time the model is served a person is
+asked that question; once they approve it the pin no longer waits, and a copy of the file is not vouched for by a pin that still waits. The commands and the agents (`poolhouse-models`, serving an `hf:` reference, the pool's model download, training and
 bench bases) pass `PERSON` themselves, and nothing in a reference, an environment variable, a model recipe, a server spec or a
 tool schema can change it. Under `PERSON`, a pull is refused until a person approves it when the owner of the repository is not one of the
 known publishers (`Qwen`, `unsloth`, `ggml-org`, `google`, `bartowski`, `lmstudio-community`; matched exactly, so `qwen`,

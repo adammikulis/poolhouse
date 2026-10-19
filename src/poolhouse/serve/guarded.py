@@ -12,12 +12,14 @@ from typing import Any
 from poolhouse import sentinel
 from poolhouse.files import sha256_file
 from poolhouse.fleet.onboard.trusted import TrustedLists
+from poolhouse.hub import admission
 from poolhouse.requests import approvals
 from poolhouse.requests.model import shown
 from poolhouse.sentinel import Sentinel
 from poolhouse.sentinel.adapters import broker_listener, serve_hooks
 from poolhouse.sentinel.events import Event, Severity
 from poolhouse.sentinel.findings import HIGH, finding
+from poolhouse.sentinel.integrity import Pin
 from poolhouse.sentinel.servers import unmanaged_findings
 from poolhouse.sentinel.watch import Scanner
 from poolhouse.serve import canaries, decoy
@@ -167,7 +169,7 @@ def _first_use(node: Sentinel, path: Path, digest: str, vouched: bool) -> str:
     and these bytes. Otherwise a person is asked and `SentinelRefused` is raised, in every mode."""
     if vouched:
         return "manifest"
-    if (held := node.manifest.pin_with_digest(digest)) is not None and held.source in VOUCHING:
+    if (held := node.manifest.pin_with_digest(digest)) is not None and held.source in VOUCHING and not held.unvetted:
         return "pinned-digest"
     sentence = (f"{path.name} was not downloaded by Poolhouse and Poolhouse has not seen it before. "
                 f"It is {shown(str(path), 'subject')} (sha256 {digest[:12]}). "
@@ -175,6 +177,18 @@ def _first_use(node: Sentinel, path: Path, digest: str, vouched: bool) -> str:
     if approvals.approved("model_file", path.name, sentence, path=str(path), sha256=digest):
         return "approved"
     raise SentinelRefused(approvals.ask("model_file", path.name, sentence, path=str(path), sha256=digest))
+
+
+def _vetted(node: Sentinel, pin: Pin) -> None:
+    """Put a pulled model to a person when its pull did not (`Pin.unvetted`): `SentinelRefused` until a person
+    approved the repository at that commit, then the pin no longer waits on an answer."""
+    repo = "/".join(pin.source_ref.split("/")[:2])
+    subject, sentence = admission.question(repo, pin.commit, pin.unvetted)
+    fields = {"publisher": pin.publisher, "repo": repo, "commit": pin.commit}
+    if not approvals.approved("model_publisher", subject, sentence, **fields):
+        raise SentinelRefused(approvals.ask("model_publisher", subject, sentence, **fields))
+    node.manifest.vet(pin)
+    logger.info("%s was pulled without a question and a person approved it", Path(pin.path).name)
 
 
 def parts_of(spec: Any) -> tuple[object, ...]:
@@ -188,8 +202,9 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
     """Refuse to start a server for ``model`` when sentinel holds it, its bytes differ from
     the pin, or a signed manifest this machine accepted lists other bytes for it. A model with
     no pin is pinned only when a signed list vouches for it, its bytes are already pinned or a
-    person approved it (a model poolhouse pulled has its pin from the pull). Returns ``verified by manifest serial N`` when a manifest vouched for the file,
-    else ''."""
+    person approved it. A model poolhouse pulled has its pin from the pull; when the pull did not
+    ask what a person would have been asked (`Pin.unvetted`), a person is asked before the first
+    serve. Returns ``verified by manifest serial N`` when a manifest vouched for the file, else ''."""
     node = sentinel.armed()
     register(node, state_file, stop)
     if node.mode == sentinel.Mode.OFF:
@@ -216,4 +231,6 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
     if not node.verify_before_load(path, cached=True):
         raise SentinelRefused(f"{name} does not match its pin and is quarantined by "
                               f"sentinel; the file was moved aside")
+    if pin.unvetted:
+        _vetted(node, pin)
     return _by_manifest(node, Path(pin.path), pin.sha256, name)
