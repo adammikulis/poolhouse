@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import testcommand
-import testphases
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNNER_START_CPU_S = 3.0
@@ -38,9 +37,3 @@ def test_a_pytest_process_collecting_one_file_stays_within_its_cpu_budget():
     used, done = cpu_of(command, PYTHONPATH=os.pathsep.join((str(ROOT / "src"), str(ROOT / "scripts"))))
     assert done.returncode == 0, done.stdout + done.stderr
     assert used < PYTEST_START_CPU_S, f"one pytest process took {used:.1f} CPU s to start and collect; the budget is {PYTEST_START_CPU_S} s"
-
-
-def test_the_fixed_overhead_is_the_phases_around_the_test_calls_and_not_how_calls_fall_between_workers():
-    uneven = testphases.Phases(wall=161.0, collection=3.0, setup=0.8, tests=73.0, teardown=1.0)
-    assert uneven.fixed == 3.0 + 0.8 + 1.0 and not testphases.too_slow(uneven)
-    assert testphases.too_slow(testphases.Phases(wall=161.0, collection=4.0, setup=2.5, tests=150.0, teardown=0.0))

@@ -191,6 +191,10 @@ def test_status_prints_position_and_estimated_start_per_queued_run(tmp_path):
                for line in out.splitlines()), out
 
 
+def labels(plan):
+    return [slot.data["label"] for slot in plan.waiting]
+
+
 def test_a_live_lease_from_older_code_keeps_arrival_order(tmp_path):
     module = _module()
     import testslots_policy
@@ -203,8 +207,7 @@ def test_a_live_lease_from_older_code_keeps_arrival_order(tmp_path):
 
     older, newer = slot("a-old", 1, None), slot("b-new", testslots_policy.VERSION, 1.0)
     assert testslots_policy.has_legacy([older, newer])
-    assert module._decide(newer.data, newer.path, [older, newer], 4)[0] == 0          # arrival order: the older lease is first
-    assert module._decide(older.data, older.path, [older, newer], 4)[0] > 0
+    assert labels(module._plan([older, newer], 4, now)) == ["a-old", "b-new"]          # arrival order: the older lease is first
     current = slot("a-cur", testslots_policy.VERSION, 500.0)
     assert not testslots_policy.has_legacy([current, newer])
-    assert module._decide(newer.data, newer.path, [current, newer], 4)[0] > 0           # the shorter request goes first
+    assert labels(module._plan([current, newer], 4, now)) == ["b-new", "a-cur"]           # the shorter request goes first

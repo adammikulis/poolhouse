@@ -21,6 +21,7 @@ TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))  # noqa: S108 - where tests put sh
 CARGO_CACHE = Path(os.environ.get("DEV_TEST_CARGO_DIR") or Path.home() / ".cache" / "test-cargo")
 """The shared Rust build folder (`scripts/testnode.py`): a build cache rewritten only to what the sources say."""
 SHARED_TEMP = tuple({*TEMP_ROOTS, *(p.resolve() for p in TEMP_ROOTS)})
+SHARED_TMP = tuple({Path("/tmp"), Path("/tmp").resolve()})  # noqa: S108 - the folder whose foreign files a read or listing may not depend on
 WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev"), CARGO_CACHE, CARGO_CACHE.resolve(),
                   *SHARED_TEMP})
 MADE: set[Path] = set()
@@ -110,13 +111,13 @@ def _write_ok(absolute: str) -> bool:
 
 def _shared(absolute: str) -> Path | None:
     """The resolved path of ``absolute`` when it is the shared ``/tmp`` or inside it."""
-    if not absolute.startswith(tuple(map(str, SHARED_TEMP))):
+    if not absolute.startswith(tuple(map(str, SHARED_TMP))):
         return None
     try:
         target = Path(absolute).resolve()
     except OSError:
         return None
-    return target if any(_under(target, base) for base in SHARED_TEMP) else None
+    return target if any(_under(target, base) for base in SHARED_TMP) else None
 
 
 def _made(absolute: str) -> None:

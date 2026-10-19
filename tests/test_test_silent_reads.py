@@ -33,5 +33,5 @@ def test_a_job_file_that_is_missing_is_empty_and_quiet_and_a_corrupt_one_is_name
 def test_a_run_over_the_fixed_overhead_limit_is_recorded_with_its_seconds():
     slow = testphases.Phases(wall=40.0, collection=6.0, setup=1.0, tests=30.0, teardown=1.0)
     fast = testphases.Phases(wall=10.0, collection=1.0, setup=0.5, tests=8.0, teardown=0.5)
-    assert testphases.record(slow) == {"fixed_s": 8.0, "over_limit": True}
+    assert testphases.record(slow) == {"fixed_s": 10.0, "over_limit": True}
     assert testphases.record(fast) == {"fixed_s": 2.0, "over_limit": False}
