@@ -57,7 +57,7 @@ class DeviceExecutions:
         root = ui.runner.files_root / "studio-device-resources"
         root.mkdir(parents=True, exist_ok=True)
         self.transfer = TransferStore(root, max_bytes=shutil.disk_usage(root).free, authorize=admitted)
-        self.adapters = Adapters(ui.runner, process_environment=process_environment)
+        self.adapters = Adapters(ui.runner, process_environment=process_environment, model_resolver=self._resolved_model)
         self.lock = threading.RLock()
         source = Path(__file__).parent.parent
         self.code_fingerprint = digest({str(path.relative_to(source)): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -104,7 +104,7 @@ class DeviceExecutions:
                     raise Conflict("The dispatch identity names different execution content.")
                 return self.status(source, request)
             inputs = self._inputs(source, ident, request, node)
-            context = self._context(source, ident)
+            context = self._context(source, ident, inputs)
             command = self.adapters.prepare(node, inputs, context)
             row = {"id": ident, "scope": source, "node": node, "inputs": request["inputs"],
                    "spec_digest": request["spec_digest"], "request_digest": fingerprint,
@@ -132,14 +132,22 @@ class DeviceExecutions:
             if completed != manifest:
                 raise ValueError("A staged resource differs from the dispatched manifest.")
         hydrated = self.transfer.inputs(source, ident, request["inputs"])
-        validate_models(request["inputs"], manifests, hydrated)
+        validate_models(request["inputs"], manifests, hydrated, self._context(source, ident)["output_dir"])
         if node["type"] == "train.tool-calls" and "model" not in hydrated:
             raise ValueError("Select an explicit staged base model for device training.")
         return hydrated
 
-    def _context(self, source: str, ident: str) -> dict:
+    @staticmethod
+    def _resolved_model(binding: dict, context: dict) -> dict:
+        if binding.get("kind") != "model" or not any(binding == value for value in context.get("staged_models", {}).values()):
+            raise PermissionError("The model must be this dispatch's verified staged resource.")
+        return dict(binding)
+
+    def _context(self, source: str, ident: str, inputs: dict | None = None) -> dict:
         return {"run_id": ident, "node_id": "execution", "files_root": self.ui.runner.files_root,
-                "output_dir": self.transfer.directory(source, ident), "bindings": {}}
+                "output_dir": self.transfer.directory(source, ident), "bindings": {},
+                "staged_models": {name: value for name, value in (inputs or {}).items()
+                                  if isinstance(value, dict) and value.get("kind") == "model"}}
 
     def _gate(self, job) -> bool:
         with self.store.lock:
