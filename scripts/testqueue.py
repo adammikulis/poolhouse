@@ -25,7 +25,7 @@ class RunRecord:
         self.stream = self.path.open("w+")
         take(self.stream)
         self.data = {"id": self.path.stem, "pid": os.getpid(), "label": label, "class": run_class, "state": QUEUED,
-                     "estimate_s": estimate_s, "want": want, "granted": 0, "enqueued": time.time(),
+                     "estimate_s": estimate_s, "want": want, "owner": "", "granted": 0, "enqueued": time.time(),
                      "started": None}
         self._write()
 
@@ -107,6 +107,29 @@ def forecast(runs: list[dict], budget: int, now: float) -> dict[str, Forecast]:
         live = sorted([*live, (clock + size / workers, workers)])
         ahead_s += size
     return result
+
+
+def owner_of(environment: dict) -> str:
+    """The workspace agent a run's environment names (``DEV_TEST_AGENT``), or an empty string."""
+    try:
+        data = json.loads(environment.get("DEV_TEST_AGENT", ""))
+    except ValueError:
+        return ""
+    return str(data.get("id", "")) if isinstance(data, dict) else ""
+
+
+def longest(runs: list[dict], now: float) -> str:
+    """The first line of a status: the longest running or queued run (by estimate, then age) with its owner, estimate and age."""
+    if not runs:
+        return "longest run: none queued or running"
+
+    def size(run: dict) -> tuple[float, float]:
+        return float(run.get("estimate_s") or 0.0), now - float(run.get("enqueued") or now)
+
+    run = max(runs, key=size)
+    shown = f"{size(run)[0]:.0f}s" if run.get("estimate_s") is not None else "?"
+    return (f"longest run: {run['state']} {policy.run_class(run)} owner {run.get('owner') or 'person'} est {shown} "
+            f"age {size(run)[1]:.0f}s; {run['label']}")
 
 
 def describe(run: dict, view: Forecast) -> str:

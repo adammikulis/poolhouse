@@ -21,6 +21,7 @@ def begin(args: argparse.Namespace, rest: list[str], root: Path, reused: set[str
     os.environ["DEV_TEST_CLASS"] = verdict.klass
     if verdict.estimate_s is not None:
         os.environ["DEV_TEST_ESTIMATE_S"] = f"{verdict.estimate_s * workers:.1f}"
+        os.environ["DEV_TEST_ESTIMATE_WORKERS"] = str(workers)
         print(testclass.estimate_line(verdict), flush=True)
     if verdict.reason and verdict.klass == "background":
         print(testclass.notice(verdict), flush=True)
