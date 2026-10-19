@@ -58,14 +58,9 @@ def boundary(checkout: Path) -> Path:
     return primary(checkout) / ".git" / "land" / "runner.lock"
 
 
-def _printable(text: str, limit: int) -> str:
-    """`text` cut to `limit` characters with every character outside printable ASCII replaced by `?`."""
-    return re.sub(r"[^\x20-\x7e]", "?", text)[:limit]
-
-
 def holder(path: Path) -> str:
-    """Who holds the lock file `path`, as its text records it with printable characters only, or "nobody"."""
-    return _printable(held_by(path), 200) or "nobody"
+    """Who holds the lock file `path`, as its text records it (printable ASCII, at most 200 characters), or "nobody"."""
+    return held_by(path)[:200] or "nobody"
 
 
 @contextmanager

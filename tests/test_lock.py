@@ -168,3 +168,12 @@ def test_a_lock_file_owned_by_another_account_is_refused_and_left_alone(tmp_path
 def test_asking_who_holds_a_lock_that_does_not_exist_creates_nothing(tmp_path):
     assert held_by(tmp_path / "state" / "runtimes" / "x.lock") == ""
     assert not (tmp_path / "state").exists()
+
+
+def test_a_refusal_shows_the_holders_text_as_printable_characters_only(tmp_path):
+    path = tmp_path / "l"
+    with only_one(path, note="\x1b[31mred\x1b[0m\nnext"), pytest.raises(Busy) as why, only_one(path, wait=False):
+        pytest.fail("two runs held the same lock at once")
+    assert str(why.value).isprintable() and f"pid {os.getpid()} ?[31mred?[0m?next" in str(why.value)
+    with only_one(path, note="\x1b[31mred"):
+        assert held_by(path) == f"pid {os.getpid()} ?[31mred"

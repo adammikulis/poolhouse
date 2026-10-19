@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import errno
 import os
+import re
 import stat
 import sys
 import time
@@ -110,12 +111,13 @@ def _open(path: Path, *, create: bool) -> int:
 
 
 def _holder(handle: int) -> str:
-    """Who has it, as written at offset 0. ``os.pread`` does not exist on Windows."""
+    """Who has it, as written at offset 0, with every character outside printable ASCII shown as ``?``. ``os.pread`` does not exist on Windows."""
     os.lseek(handle, 0, os.SEEK_SET)
     try:
-        return os.read(handle, 512).decode("utf-8", "replace").strip() or "somebody"
+        text = os.read(handle, 512).decode("utf-8", "replace").strip()
     except OSError:
         return "somebody"
+    return re.sub(r"[^\x20-\x7e]", "?", text) or "somebody"
 
 
 def _write_holder(handle: int, note: str) -> None:
