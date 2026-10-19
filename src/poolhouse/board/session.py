@@ -470,10 +470,30 @@ def _named(node: Client, where: str, agent: str) -> tuple[str, str]:
     return credentials.load(node.state, where, own), own
 
 
+NATIVE_SESSIONS = (("POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID"), ("", "CLAUDE_CODE_SESSION_ID"))
+"""Environment variables that name the native session a process runs in: the harness, then the session id; an empty harness variable means Claude Code."""
+
+
+def _native(node: Client, where: str) -> Session | None:
+    """The session of the native session this process runs in, when the board has a name for it and its token is kept here."""
+    for harness_env, id_env in NATIVE_SESSIONS:
+        native = os.environ.get(id_env, "").strip()
+        if not native:
+            continue
+        try:
+            name = str(node.call("session_lookup", where, harness=os.environ.get(harness_env, "") or SUBAGENT_HARNESS,
+                                 session=native)["name"])
+            return Session(node, where, credentials.load(node.state, where, name), name)
+        except Denied:
+            continue
+    return None
+
+
 def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path | None = None,
             client: Client | None = None) -> Session:
     """The session of the caller: the subagent the harness names in $POOLHOUSE_SUBAGENT, else its token from a file,
-    the agent named (or $POOLHOUSE_WORKSPACE_AGENT), or $POOLHOUSE_WORKSPACE_TOKEN, on the board of the directory it runs in."""
+    the agent named (or $POOLHOUSE_WORKSPACE_AGENT), $POOLHOUSE_WORKSPACE_TOKEN or the native session it runs in,
+    on the board of the directory it runs in."""
     node = client or Client()
     where = place.resolve(node, cwd, board)
     if native := os.environ.get(SUBAGENT_ENV, "").strip():
@@ -485,4 +505,6 @@ def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path
         return Session(node, where, token, named)
     if os.environ.get(TOKEN_ENV, "").strip():
         return Session(node, where, os.environ[TOKEN_ENV].strip(), "")
+    if found := _native(node, where):
+        return found
     raise Denied("denied", "no token: run as a registered session ($POOLHOUSE_WORKSPACE_AGENT) or give --token-file")

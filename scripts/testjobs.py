@@ -125,8 +125,10 @@ class Jobs:
         """Record a job and start its detached runner; returns the id.
 
         A whole-tier job (``extra['exclusive']``, true unless given) is refused while another whole-tier job is live; the check and the
-        record are made under one lock. A foreground run is not exclusive and queues in the broker.
+        record are made under one lock. A foreground run is not exclusive and queues in the broker. A run with no owner is refused.
         """
+        if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
+            raise Refused("this run has no workspace identity, and a run with no owner is not queued: run it as the session the harness gave you")
         self.prune()
         job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         with self.locked():
@@ -174,20 +176,17 @@ class Jobs:
         sys.stdout.flush()
         return len(data)
 
-    def cancel(self, job: str, who: str, secret: str = "") -> str:
-        """Stop a job owned by ``who`` (or whose ``secret`` the caller holds); returns what happened."""
+    def cancel(self, job: str, who: str) -> str:
+        """Stop a job whoever owns it, and log who did; returns what happened."""
         spec, status = self.read(job, "spec.json"), self.state(job)
         if not spec:
             raise Refused(f"no job {job}")
-        owner = spec["owner"].get("id", "")
-        if not (owner and owner == who) and not (secret and secret == spec.get("secret")):
-            raise Refused(f"job {job} belongs to {owner or 'a run with no workspace agent'}")
         if status.get("state") in TERMINAL:
             return f"job {job} already {status['state']}"
         with_pid = int(status.get("pid", 0))
         if storage.alive(with_pid, float(status.get("started", 0))):
             with (self.path(job) / "log").open("a", encoding="utf-8") as log:
-                log.write(f"test: cancelled by {who or 'a caller with the job secret'} running in {Path.cwd()}\n")
+                log.write(f"test: cancelled by {who or 'a caller with no workspace identity'} running in {Path.cwd()}\n")
             os.kill(with_pid, signal.SIGTERM)
         self.write(job, "status.json", {**status, "state": "cancelled", "exit": 130, "finished": time.time()})
         return f"job {job} cancelled"

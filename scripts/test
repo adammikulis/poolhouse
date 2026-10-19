@@ -494,8 +494,10 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
                 raise testjobs.Refused(f"submit takes a tier: {', '.join(FOREGROUND)}")
             if inner[0] != "gate":
                 testselectors.validate(rest[1:], ROOT)
-            print(jobs.submit(inner, REUSE["agent"], ROOT, Path(__file__).resolve(),
-                              {"task": args.task}))
+            owner = run_owner()
+            if owner is None:
+                return 4
+            print(jobs.submit(inner, owner, ROOT, Path(__file__).resolve(), {"task": args.task}))
             return 0
         if args.tier == "_job":
             return run_job(jobs, rest[0], args)
@@ -569,11 +571,25 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     return code
 
 
+def run_owner() -> dict | None:
+    """The owner of a run this process starts: its workspace identity, or a person's terminal; None, after one line, for an agent with no identity."""
+    if REUSE["agent"].get("id"):
+        return REUSE["agent"]
+    if testboard.agent_process():
+        print("test: this run has no workspace identity, so it is not queued: run it as the session the harness gave you "
+              "(`poolhouse-workspace whoami` names it)", file=sys.stderr)
+        return None
+    return {"id": "person", "parent": "", "source": "terminal"}
+
+
 def follow(argv: list[str], args: argparse.Namespace) -> int:
     """Run a tier as a job and show its output until it ends; Ctrl-C cancels it."""
-    jobs, me = jobs_store(), REUSE["agent"].get("id", "")
+    jobs, owner = jobs_store(), run_owner()
+    if owner is None:
+        return 4
+    me = owner["id"]
     try:
-        job = jobs.submit(argv, REUSE["agent"], ROOT, Path(__file__).resolve(),
+        job = jobs.submit(argv, owner, ROOT, Path(__file__).resolve(),
                           {"task": args.task, "exclusive": False})
     except testjobs.Refused as error:
         print(f"test: {error}", file=sys.stderr)
@@ -581,7 +597,7 @@ def follow(argv: list[str], args: argparse.Namespace) -> int:
     try:
         status = jobs.wait(job, float("inf"), tail=True)
     except KeyboardInterrupt:
-        print(f"\n{jobs.cancel(job, me, jobs.read(job, 'spec.json').get('secret', ''))}")
+        print(f"\n{jobs.cancel(job, me)}")
         return 130
     return int(status.get("exit", 1))
 
