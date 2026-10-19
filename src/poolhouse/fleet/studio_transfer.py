@@ -37,6 +37,8 @@ def _name(value: str) -> tuple[str, ...]:
 
 
 def _directory(path: Path, *, create: bool = False) -> int:
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError("Resource directories require canonical absolute paths.")
     descriptor = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for part in path.parts[1:]:
@@ -88,6 +90,8 @@ def _checksum(root: Path, name: str) -> tuple[int, str]:
 def manifest(path: Path, kind: str, *, gym: bool = False) -> dict:
     """Describe explicit regular resource files with canonical sizes and content digests."""
     path = Path(path).absolute()
+    if ".." in path.parts:
+        raise ValueError("Resource paths cannot traverse parent directories.")
     info = path.lstat()
     if stat.S_ISLNK(info.st_mode) or kind not in {"dataset", "model", "artifact"}:
         raise ValueError("Choose a declared regular resource.")
@@ -310,7 +314,7 @@ class TransferStore:
             if value is None:
                 continue
             path = Path(value["path"]).absolute()
-            if not path.is_relative_to(own):
+            if ".." in path.parts or not path.is_relative_to(own):
                 raise ValueError("Remote outputs must belong to this dispatch.")
             resource = manifest(path, value["kind"], gym=value.get("gym", False))
             self.begin(source, dispatch, resource)
@@ -328,6 +332,22 @@ class TransferStore:
             safe[name] = resource_handle(value, resource)
             resources.append(resource)
         return {"outputs": safe, "resources": resources}
+
+    def discard(self, source: str, dispatch: str) -> dict:
+        prefix = self._prefix(source, dispatch)
+        with self.lock:
+            try:
+                directory = _directory(self.root.joinpath(*prefix))
+            except FileNotFoundError:
+                return {"discarded": True}
+            try:
+                if not shutil.rmtree.avoids_symlink_attacks:
+                    raise ValueError("Resource cleanup requires descriptor-safe directory removal.")
+                with contextlib.suppress(FileNotFoundError):
+                    shutil.rmtree("resources", dir_fd=directory)
+            finally:
+                os.close(directory)
+        return {"discarded": True}
 
     def read(self, source: str, dispatch: str, resource: str, **request) -> bytes:
         name, offset, size = request["name"], request.get("offset", 0), request.get("size", CHUNK_BYTES)

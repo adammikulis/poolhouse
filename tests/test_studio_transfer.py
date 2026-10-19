@@ -202,3 +202,29 @@ def test_replayed_chunk_recovers_a_partial_write(transfer):
     store.put(SOURCE, DISPATCH, value['id'], name=source.name, offset=0, data=data[:3])
     assert store.put(SOURCE, DISPATCH, value['id'], name=source.name, offset=0, data=data) == {'offset': len(data)}
     assert store.finish(SOURCE, DISPATCH, value['id']) == value
+
+
+def test_parent_traversal_in_target_output_is_rejected_before_manifest(transfer):
+    store, _, _ = transfer
+    owned = store.directory(SOURCE, DISPATCH)
+    outside = owned.parent / 'private.txt'
+    outside.write_bytes(b'not a dispatch output')
+    malicious = owned / '..' / outside.name
+    with pytest.raises(ValueError, match='belong'):
+        store.result(SOURCE, DISPATCH, {'artifact': {'kind': 'artifact', 'path': str(malicious)}}, node_spec('report'))
+    with pytest.raises(ValueError, match='parent'):
+        manifest(malicious, 'artifact')
+    assert not list(store.root.glob('*/*/resources/*/manifest.json'))
+
+
+def test_cancelled_transfer_discards_only_own_resource_namespace(transfer):
+    store, source, _ = transfer
+    first = stage(store, source)
+    output = store.directory(SOURCE, DISPATCH) / 'retained.json'
+    output.write_text('{}')
+    store.authorize = lambda source, dispatch: True
+    store.begin('other-source', DISPATCH, first)
+    assert store.discard(SOURCE, DISPATCH) == store.discard(SOURCE, DISPATCH) == {'discarded': True}
+    assert output.read_text() == '{}'
+    assert not store.root.joinpath(*store._parts(SOURCE, DISPATCH, first['id'])).exists()
+    assert store._manifest(store._parts('other-source', DISPATCH, first['id'])) == first
