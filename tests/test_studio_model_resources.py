@@ -99,3 +99,22 @@ def test_original_repository_directory_link_cannot_authorize_blob_targets(cached
     monkeypatch.setattr(resources.hfstore, 'repo_root', lambda repo: alias)
     with pytest.raises(ValueError, match='cache directory cannot be a symbolic link'):
         resources.model_files(handle)
+
+
+def test_materialized_base_identity_matches_native_snapshot_without_cache_lookup(cached_model, tmp_path, monkeypatch):
+    handle, _, _ = cached_model
+    staged = tmp_path / 'staged'
+    staged.mkdir()
+    for member in resources.model_files(handle):
+        target = staged / member['relative']
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with resources.open_model_file(member) as source:
+            target.write_bytes(source.read())
+    expected = resources.model_fingerprint(handle)
+    monkeypatch.setattr(resources.hub, 'discover', lambda: pytest.fail('staged base must not query ambient model cache'))
+    assert resources.base_fingerprint({'kind': 'model', 'path': str(staged)}) == expected
+    private = tmp_path / 'private'
+    private.write_bytes(b'private')
+    (staged / 'injected').symlink_to(private)
+    with pytest.raises(ValueError, match='symbolic links'):
+        resources.base_fingerprint({'kind': 'model', 'path': str(staged)})

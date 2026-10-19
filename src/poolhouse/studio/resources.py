@@ -114,8 +114,31 @@ def open_model_file(member: dict):
 
 def model_fingerprint(handle: dict) -> str:
     """Bind a model identity to every approved member's relative name and bytes."""
+    return _fingerprint(model_files(handle))
+
+
+def base_fingerprint(handle: dict) -> str:
+    """Hash an explicitly authorized staged base; this function grants no authority."""
+    root = Path(handle['path'])
+    if not root.is_dir() or any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError('A staged base must be a regular owned directory')
+    members = []
+    for path in sorted(root.rglob('*')):
+        info = path.lstat()
+        if stat.S_ISDIR(info.st_mode):
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError('A staged base cannot contain symbolic links or special files')
+        members.append({'relative': path.relative_to(root).as_posix(), 'path': str(path),
+                        'size': info.st_size, 'identity': _identity(info)})
+    if not members:
+        raise ValueError('A staged base has no regular files')
+    return _fingerprint(members)
+
+
+def _fingerprint(members: list[dict]) -> str:
     rows = []
-    for member in model_files(handle):
+    for member in members:
         checksum = hashlib.sha256()
         with open_model_file(member) as source:
             for chunk in iter(lambda: source.read(1024 * 1024), b''):
