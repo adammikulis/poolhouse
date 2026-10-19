@@ -10,10 +10,13 @@ import subprocess
 
 import pytest
 
-from poolhouse import sandbox
+from poolhouse import sandbox, sentinel
 from poolhouse.sandbox import denial_log, policies, run
+from poolhouse.sandbox.bubblewrap import Bubblewrap
+from poolhouse.sandbox.container import Container
 from poolhouse.sandbox.denial_log import DenialLog, parse
-from tests.sandbox_kit import UnreadableBackend
+from poolhouse.sentinel.adapters import sandbox_listener
+from tests.sandbox_kit import RecordingBackend, UnloggedBackend, UnreadableBackend
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -198,3 +201,44 @@ def test_a_run_that_was_not_diagnosed_does_not_claim_its_refusals_were_unreadabl
     result = run(["/bin/sh", "-c", "exit 0"], policies.bash(str(tmp_path), str(tmp_path)), via=UnreadableBackend(),
                  on_event=lambda name, fields: events.append((name, fields)))
     assert not result.denials_unavailable and result.check() is result and not events
+
+
+def test_a_backend_that_keeps_no_refusal_log_says_so_instead_of_reporting_a_clean_run():
+    assert Bubblewrap().denials("tag", 0.0) is None and Container().denials("tag", 0.0) is None
+    assert not Bubblewrap.keeps_refusal_log and not Container.keeps_refusal_log
+
+
+def test_a_failed_run_on_a_backend_without_a_refusal_log_cannot_pass_check(tmp_path):
+    events: list[tuple[str, dict]] = []
+    result = run(["/bin/sh", "-c", "exit 3"], policies.bash(str(tmp_path), str(tmp_path)), via=UnloggedBackend(),
+                 on_event=lambda name, fields: events.append((name, fields)))
+    [fields] = [fields for name, fields in events if name == "sandbox.denials-unavailable"]
+    assert fields["detail"] == "this backend keeps no refusal log"
+    with pytest.raises(sandbox.SandboxViolation, match="this backend keeps no refusal log"):
+        result.check()
+
+
+def test_a_lost_refusal_log_is_reported_with_its_own_detail(tmp_path):
+    events: list[tuple[str, dict]] = []
+    run(["/bin/sh", "-c", "exit 3"], policies.bash(str(tmp_path), str(tmp_path)), via=UnreadableBackend(),
+        on_event=lambda name, fields: events.append((name, fields)))
+    [fields] = [fields for name, fields in events if name == "sandbox.denials-unavailable"]
+    assert fields["detail"] == "the refusal log could not be read"
+
+
+def test_a_run_that_cannot_start_ends_the_run_it_began_watching(tmp_path):
+    backend = RecordingBackend()
+    with pytest.raises(sandbox.SandboxUnavailable, match="could not start"):
+        run(["/bin/sh", "-c", "exit 0"], policies.bash(str(tmp_path), str(tmp_path)), via=backend,
+            cwd=str(tmp_path / "missing"))
+    assert backend.watched == ["unreadable"] == backend.finished
+
+
+@pytest.mark.parametrize(("backend", "weight"), [(UnloggedBackend(), 0.2), (UnreadableBackend(), 1.0)],
+                         ids=["no-log-by-construction", "log-lost"])
+def test_a_failed_run_whose_refusals_cannot_be_known_adds_to_the_score_by_the_reason(backend, weight, tmp_path):
+    node = sentinel.Sentinel(tmp_path / "sentinel")
+    with node.running("s-blind"):
+        run(["/bin/sh", "-c", "exit 1"], policies.bash(str(tmp_path), str(tmp_path)), via=backend,
+            on_event=sandbox_listener(node))
+    assert node.score.value("session", "s-blind") == pytest.approx(weight)
