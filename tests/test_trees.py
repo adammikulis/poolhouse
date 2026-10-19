@@ -311,6 +311,29 @@ def test_close_refuses_a_path_that_is_not_a_worktree(main, tmp_path):
         trees.close(main, tmp_path, ("landed", ""))
 
 
+def dead_pid() -> int:
+    done = subprocess.Popen([sys.executable, "-c", "pass"])
+    done.wait()
+    return done.pid
+
+
+def test_a_lock_naming_a_dead_process_does_not_hold_the_tree(main):
+    path = tree(main, "stale")
+    git(main, "worktree", "lock", "--reason", f"claude agent x (pid {dead_pid()} start Mon)", str(path))
+    assert not next(t for t in trees.listing(main) if t.path == path.resolve()).locked
+    assert trees.close(main, path, ("landed", ""))["branch"] == "stale"
+    assert not path.exists()
+
+
+def test_a_lock_naming_a_live_process_holds_the_tree(main):
+    path = tree(main, "live")
+    git(main, "worktree", "lock", "--reason", f"claude agent x (pid {os.getpid()} start Mon)", str(path))
+    assert next(t for t in trees.listing(main) if t.path == path.resolve()).locked
+    with pytest.raises(RuntimeError):
+        trees.close(main, path, ("landed", ""))
+    assert path.exists()
+
+
 def test_close_preserves_a_locked_tree(main):
     path = tree(main, "locked")
     git(main, "worktree", "lock", "--reason", "foreign operation", str(path))

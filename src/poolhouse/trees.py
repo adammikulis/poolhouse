@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
+import psutil
+
 from poolhouse import gitstate
 from poolhouse.gitstate import Unsaved, git
 
@@ -38,6 +40,13 @@ class Tree:
     branch: str
     head: str
     locked: bool
+    stale_lock: bool = False
+
+
+def dead_owner(reason: str) -> bool:
+    """Whether a lock reason names a process (``pid N``) that is no longer running."""
+    match = re.search(r"\bpid (\d+)", reason)
+    return bool(match) and not psutil.pid_exists(int(match.group(1)))
 
 
 def listing(root: Path | str) -> list[Tree]:
@@ -48,8 +57,9 @@ def listing(root: Path | str) -> list[Tree]:
         if line:
             fields[key] = value
         elif fields:
+            stale = "locked" in fields and dead_owner(fields["locked"])
             found.append(Tree(Path(fields["worktree"]).resolve(), fields.get("branch", "").removeprefix("refs/heads/"),
-                              fields.get("HEAD", ""), "locked" in fields))
+                              fields.get("HEAD", ""), "locked" in fields and not stale, stale))
             fields = {}
     return found
 
@@ -197,6 +207,8 @@ def close(root: Path | str, path: Path | str, decision: tuple[str, str], keep_br
     head = git(target, "rev-parse", "HEAD") if mode == "abandon" else removal_content(target)
     if head != row["head"]:
         raise Refused(f"{target} changed HEAD before cleanup")
+    if tree.stale_lock:
+        git(primary.path, "worktree", "unlock", str(target))
     git(primary.path, "worktree", "remove", *(["--force"] if kept else []), str(target))
     if target.exists() or any(t.path == target for t in listing(primary.path)):
         raise Refused(f"{target} remains after cleanup")
