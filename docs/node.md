@@ -46,8 +46,7 @@ built and tested alone. The shipping section below puts it in every runtime and 
   `#leases` (claims), `#identity`, `#audit`, `#grants`. Messages to one session are on `#dm`, which a link never
   shares (see "Direct messages"). A linked session writes as `name@its-board`. `unlink {id}` revokes it at once. A link of any
   mode needs a grant on `FROM>TO`: `link_read` for `ro`, `link_write` for `rw`, and ending one needs `link_remove`. A board has at most
-  64 links open, a session makes six a minute, and making or ending a link writes one audit entry on both boards, so the
-  other board's log takes at most that from a session that was granted it. Links are node-local.
+  64 links open, and making or ending a link writes one audit entry on both boards. Links are node-local.
 - Unknown board, a token of another board without a link, and a write over a read-only link are all
   `denied`.
 
@@ -80,7 +79,8 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
   refused), must be a usable name and must not be a local session's name, and is shown as
   `actor@dN`. Posts target `#general` or `#announcements` (with announcement types only). Notes per
   foreign sender are capped. Refusals are recorded (the latest 200) and shown in `status`.
-- **Quotas.** 64 origins per board, 200,000 rows per log, 128 KiB per row, 64 KiB per body text.
+- **Quotas.** 64 origins per board, 200,000 rows and 128 MiB per log (one author writes a quarter of each; the last 2,000 rows and 8 MiB are the
+  node's own: a head, an identity, the audit of a session ending; docs/limits.md, "At a bound"), 128 KiB per row, 64 KiB per body text.
 - **Damage.** A forged, forked or broken copy is `damaged`. It marks the origin damaged only when
   it came from the device that owns the origin (`authoritative`); a relay's bad copy never does.
   Oversized or malformed requests are `invalid`, never evidence against an origin.
@@ -198,7 +198,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `quarantine_list` | board, token | | `{items}` of the entries the caller may read |
 | `quarantine_release` | token with the grant `quarantine_release` | `qid` | `{item}`; writes an audit entry |
 | `claim`, `reserve`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `resources` (`[{kind, key}]`, at least one), `ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{claims: [{changed, claim}]}` / `{kind, key, released}` / `{claims}` |
-| `audit_event` | board, token | `event` (`agent.effort` or `authority.set_denied`), `subject`, `detail` (one clean line each, at most 300 characters) | `{recorded}`; writes an audit entry under the caller's name and counts as one of its sends; any other event is `invalid` |
+| `audit_event` | board, token | `event` (`agent.effort` or `authority.set_denied`), `subject`, `detail` (one clean line each, at most 300 characters) | `{recorded}`; writes an audit entry under the caller's name; any other event is `invalid` |
 | `notes` | board, token | `ref, query, kind, all, limit` | `{notes}` |
 | `note_verify` | board, token | `note, exit, out_sha` | `{notes: [the note]}` |
 | `link`, `unlink`, `links` | board, token with the grant `link_read` or `link_write` (make), `link_remove` (end) | `to, channels, mode` / `id` | the link |
@@ -268,9 +268,9 @@ a fixed channel such as `#general` or `#dm`). It is a fold of the board's `room`
 same members: the first `create` makes it, an open room is joined by whoever asks, a private one only by its maker's
 `add`, and a member leaves. Members are the names in the writers' own logs. A message to a room is written and read
 only by its members (`read` hides it from anyone else whatever the filters), a reply must stay in the room of the
-message it answers, and a board holds at most 200 rooms.
+message it answers, and a board holds at most 200 rooms (the sessions of one process tree made at most 16 of them) of at most 128 members.
 A spawned subagent makes, joins and subscribes to nothing. Subscriptions are kept on this device beside the board
-(`subs.json`, never synced): each delivers only what arrived after it was made, a session has at most twelve and three
+(`subs.json`, never synced): each delivers only what arrived after it was made, a session has at most 256 and three
 in `inbox` mode before it must say `force`. With none, a mention (`@name` naming the session) reaches the inbox and
 `#announcements` the digest. A thread subscription wins over a mention, then a subscribed room, a followed sender and
 a subscribed kind.
@@ -620,7 +620,7 @@ used to be admitted six ways: the GPU, CPU slots, memory, named claims, served m
 `src/lease/` (`types`, `policy`, `table`, `live`, `merge`, `rpc`). Config is `lease-config.json`
 (optional; every field has a default): `cpu_slots` (cores), `memory_mb` (0 = no budget),
 `max_wait_s` 600, `background_share_percent` 50, `unknown_background_s` 180, `queue_patience_s` 60,
-`default_ttl_s` 300, `max_ttl_s` 86400. The file is read again whenever its bytes change (at the next lease call), so a
+`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases` 4096. The file is read again whenever its bytes change (at the next lease call), so a
 budget a program writes there applies at once; a file that does not parse changes nothing (and neither does one that is not a
 JSON object, whose `max_ttl_s` is under 1 or whose `background_share_percent` is over 100), and a deleted one sets the defaults.
 

@@ -378,7 +378,7 @@ A room is `#name` (lower-case letters, digits, `.`, `_`, `-`, at most 40; never 
 `#general` or `#dm`). It is a fold of the board's `room` entries, so every device computes the same members: the
 first `board create` makes it, an open room is joined by whoever asks (`join-board`), a private one only by its
 maker's `board add`, and a member leaves with `leave-board`. A message to a room is written and read only by its
-members. `#general` and `#announcements` are everyone's. A board holds at most 200 rooms; a subagent makes, joins and subscribes to nothing.
+members. `#general` and `#announcements` are everyone's. A board holds at most 200 rooms (the sessions of one process tree make at most 16) of at most 128 members each; a subagent makes, joins and subscribes to nothing.
 
 Rules, enforced by the node and not by the command line:
 
@@ -562,8 +562,8 @@ approved project worktree rather than inferring individual files. Safe reads do 
 
 These reservations require the existing person-set project grant and launcher-approved roots. Tool arguments cannot
 change the owner or expand those permissions. Reservations record the hook parent's PID and start time, the
-checked-out commit when available, and the hook's interpreter and environment. Claims expire and remain renewable
-within the existing lifetime cap; they serialize cooperating managed tools, not arbitrary external processes. The
+checked-out commit when available, and the hook's interpreter and environment. Claims expire and are kept for as long as
+they are renewed; they serialize cooperating managed tools, not arbitrary external processes. The
 serving broker continues to enforce its own live model and GPU leases. Ownership does not award credits or change
 security reputation.
 
