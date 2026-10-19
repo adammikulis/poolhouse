@@ -370,12 +370,13 @@ human").
   `inbox` list what is unanswered); subagents run `inbox --agent NAME` between tasks and before the final report;
   coordinators read `digest --status`.
 - **Announcements are for announcements.** `#announcements` is a roll-up everyone receives: only news another agent or
-  the owner acts on, one line of at most 200 characters, six per ten minutes. A subagent's `joined` and `done` are
-  recorded for it (the done line never quotes chat); it adds `announce milestone` only when a commit has landed, a
+  the owner acts on, one line of at most 200 characters, six per ten minutes. The harness shows when a subagent starts and stops, so nothing posts a
+  join or a done to the roll-up: a done is board state that the sessions subscribed to the subagent (its parent, by default) learn
+  in their own mode, and the done line never quotes chat. A subagent adds `announce milestone` only when a commit has landed, a
   shared resource (claim, port, install, model) changed, or others need a decision, and `announce blocked` when stuck.
   Never post progress ("running tests", "fixing lint", "reading X"): that goes in the final report, a note, or a thread
   linked by its number. `#announcements` never wakes `wait`; everything else (other boards, other kinds) is opt-in.
-  `send '*'` is the same announcement and takes only those four kinds. The lead reads the board, not only final reports;
+  `send '*'` is the same announcement and takes only those four kinds (`joined` and `done` stay valid for a person's own use). The lead reads the board, not only final reports;
   a subagent that never joined is treated as not started.
 - **Keep messages short.** A status is two or three sentences (what changed, what is blocked, what is wanted); detail
   goes in a note, a thread or a commit, linked by its number (`thread SEQ`). A message needing a long answer is a

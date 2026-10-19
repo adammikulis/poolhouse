@@ -95,6 +95,23 @@ trees of the review check (`required`, `merged_parents`), the merge of a reviewe
 the checks, `git diff-tree --check`, and the file lists and files that the push check parses and that `no-data-files --range`
 reads all come from it; file names are NUL separated, and a path that is not UTF-8 stops the check.
 
+## The primary checkout follows origin
+
+Agents push the development branch directly, so nothing else moves the primary checkout. `scripts/hooks/pushed` starts
+`scripts/primary_sync.py --dev BRANCH --sha SHA` detached after an agent's push, on the person's machine only, and
+`scripts/worktrees sweep` runs it last. The script waits up to 60 seconds for `git ls-remote origin BRANCH` to show the pushed
+commit, fetches, and runs `git merge --ff-only origin/BRANCH` in the primary checkout, only when:
+
+- the primary checkout is on the development branch (`$POOLHOUSE_DEV_BRANCH`, else its own branch; never `main` or `master`);
+- `git status --porcelain --untracked-files=all` is empty and no merge, rebase, cherry-pick, revert or bisect is under way;
+- the primary is behind `origin/BRANCH` in a straight line.
+
+Otherwise it prints one line saying why and changes nothing: it never stashes, checks out, resets or touches a changed tree.
+It is idempotent. It holds `<git-common-dir>/primary-sync.lock` without waiting; a run that finds the lock held leaves
+`primary-sync.again` and the holder goes round again (at most five rounds). Output of the detached run is
+`<git-common-dir>/primary-sync.log`. It is the only code that moves the primary checkout for an agent, and the one thing
+it runs is that fast-forward.
+
 ## The CI run
 
 The whole suite runs on GitHub, in the `ci` workflow, for each push of the development branch that changes more than
@@ -111,6 +128,13 @@ longest job timeout in `ci.yml`) and reads the result:
   commit, the failing job and the first three failing test names from the end of `gh run view --log-failed`. The failure is work
   for that session or the lead in the same turn. A red run that follows two other red pushes of the branch is also announced as
   `blocked`, once; a green run ends the streak and a cancelled or skipped run counts for nothing.
+- A run still going 25 minutes after it was created posts one `task` message to the pusher naming each job not finished with its
+  state and age; at 35 minutes it posts another and announces `blocked`. Each is posted once per commit and mark. A shard of
+  `ci.yml` ends itself after 30 minutes, so a hung shard cannot hold the branch's run queue longer.
+- `scripts/status` prints `ok` or `STUCK: ...` first, then the local test broker, the running test jobs and the development
+  branch's GitHub runs with per-job states. It flags a GitHub run past 25 minutes, a local run past its estimate by 5 minutes (a
+  run with no estimate or one under 15 minutes: past 20 minutes in total) and a queued run older than 5 minutes with nothing
+  running. The lead's attention hook adds the line when it is not `ok` (cached 30 seconds, ended after 3 seconds).
 - A missing `gh`, no login, Actions off, a push that starts no run (documentation only) or a run still going after the limit
   is one plain line in `<git-common-dir>/ci-watch/SHA.log` and exit 0; the push is never refused. A missing `gh` is also said
   once at the push. If the board does not take a red message the watcher exits 1 and the next call for that commit posts it.

@@ -258,6 +258,23 @@ def test_a_def_swap_without_a_hunk_of_its_own_is_not_excused_as_a_rename() -> No
     assert not hook.weakened(head + "@@ -1 +1 @@\n" + swap, lambda p: "")
 
 
+def test_a_test_renamed_inside_its_file_with_an_edited_body_is_not_a_removal() -> None:
+    import importlib.machinery
+    import importlib.util
+
+    loader = importlib.machinery.SourceFileLoader("_poolhouse_weakened_same_file", str(HOOKS / "weakened-assertions"))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    hook = importlib.util.module_from_spec(spec)
+    loader.exec_module(hook)
+    head = "diff --git a/tests/test_guard_a.py b/tests/test_guard_a.py\n@@ -1 +1 @@\n"
+    kept = "-def test_a_stop_records_the_model_and_announces_done():\n+def test_a_stop_records_the_model_and_posts_done_quietly():\n"
+    other = "-def test_a_stop_records_the_model_and_announces_done():\n+def test_something_unrelated_entirely():\n"
+    fewer = kept + "-    assert one\n-    assert two\n+    assert one\n"
+    assert not hook.weakened(head + kept, lambda p: "")
+    assert hook.weakened(head + other, lambda p: "")
+    assert hook.weakened(head + fewer, lambda p: "")
+
+
 class TestMerges:
     def sides(self, repo, path, base_text, side_text, extra=None):
         """A merge in progress whose other parent changed ``path`` and whose own side changed another file."""

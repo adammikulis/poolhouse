@@ -52,6 +52,12 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: install
         run: python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,redteam]" pytest-timeout pytest-xdist pyyaml psutil numpy pillow networkx
+      - name: build the node the tests start
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y rustc cargo
+          binary=$(python scripts/testnode.py build)
+          echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
       - name: tests
         run: python -m pytest tests/test_redteam_*.py -q --redteam -n 0
       - name: attacks that need no model, against the recorded baseline

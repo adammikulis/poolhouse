@@ -1,7 +1,7 @@
 {
- "surfaces": 830,
+ "surfaces": 832,
  "by_status": {
-  "covered": 507,
+  "covered": 509,
   "partial": 193,
   "uncovered": 52,
   "n/a": 78,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 94,
+   "covered": 96,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -4354,9 +4354,9 @@
    "note": "the daemon handler is attacked; forged UDP beacons are attacked in tests/test_fleet_discovery.py only for the signature"
   },
   {
-   "id": "listener:fleet/daemon.py:DaemonRuntime.run",
+   "id": "listener:fleet/daemon.py:DaemonRuntime.loop",
    "kind": "listener",
-   "source": "fleet/daemon.py:DaemonRuntime.run",
+   "source": "fleet/daemon.py:DaemonRuntime.loop",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "partial",
@@ -11506,9 +11506,33 @@
    "note": "fixed git argument vectors with a timeout; the repository, remote, commit and tree an authorization binds are read from git, never from prompt or model text"
   },
   {
+   "id": "spawn:worktreerules.py:_blob",
+   "kind": "spawn",
+   "source": "worktreerules.py:_blob",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_worktree_rules.py::test_a_hostile_path_is_one_argv_item_and_never_reaches_a_shell"
+   ],
+   "note": "git is run with argv only; the paths come from a tool call and are one argument each"
+  },
+  {
    "id": "spawn:worktreerules.py:_branch",
    "kind": "spawn",
    "source": "worktreerules.py:_branch",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_worktree_rules.py::test_a_hostile_path_is_one_argv_item_and_never_reaches_a_shell"
+   ],
+   "note": "git is run with argv only; the paths come from a tool call and are one argument each"
+  },
+  {
+   "id": "spawn:worktreerules.py:_holds_only_published",
+   "kind": "spawn",
+   "source": "worktreerules.py:_holds_only_published",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",

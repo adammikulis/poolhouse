@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A SubagentStop hook: refuses a stop while the subagent's tree holds unlanded work; records the subagent's model from its transcript and cancels the test jobs it left queued or running; keeps the identity of a subagent handed back with work unlanded; otherwise announces that it finished as itself (never its last chat line) and retires its identity."""
+"""A SubagentStop hook: refuses a stop while the subagent's tree holds unlanded work; records the subagent's model from its transcript and cancels the test jobs it left queued or running; keeps the identity of a subagent handed back with work unlanded; otherwise posts its done as itself (never its last chat line) for the sessions subscribed to it and retires its identity."""
 
 from __future__ import annotations
 
@@ -31,15 +31,16 @@ def transcript_model(path: str) -> str:
 
 
 def checkout_note(event: dict) -> str:
-    """` on BRANCH in WORKTREE` for the checkout the subagent stopped in, or an empty string when it is not a git checkout."""
+    """` on BRANCH in WORKTREE at SHA` for the checkout the subagent stopped in, or an empty string when it is not a git checkout."""
     where = str(event.get("cwd") or "")
     if not where:
         return ""
     branch = workspace_hook.run(["git", "-C", where, "branch", "--show-current"], "SubagentStop")
-    top = workspace_hook.run(["git", "-C", where, "rev-parse", "--show-toplevel"], "SubagentStop")
+    where_head = workspace_hook.run(["git", "-C", where, "rev-parse", "--show-toplevel", "--short", "HEAD"], "SubagentStop")
+    top, _, head = where_head.stdout.strip().partition("\n") if where_head else ("", "", "")
     if not branch or not top or not branch.stdout.strip():
         return ""
-    return f" on {branch.stdout.strip()} in {Path(top.stdout.strip()).name}"
+    return f" on {branch.stdout.strip()} in {Path(top).name}" + (f" at {head}" if head else "")
 
 
 def main() -> int:
@@ -63,7 +64,8 @@ def main() -> int:
         return 0
     place = checkout_note(event)
     tree_watch.stopped("SubagentStop", str(event.get("cwd") or ""), environment)
-    said = workspace_hook.run(["poolhouse-workspace", "announce", "done", f"finished{place}"[:200]],
+    said = workspace_hook.run(["poolhouse-workspace", "board", "post", "#general", f"done: finished{place}"[:200],
+                               "--type", "status", "--subject", "done"],
                               "SubagentStop", environment=environment)
     agent = str(event.get("agent_id") or "")
     if said is None:
