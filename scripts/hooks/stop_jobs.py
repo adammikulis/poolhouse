@@ -57,7 +57,7 @@ def cancel(stage: str, cwd: str, name: str, environment: dict) -> list[str]:
             if not mine(spec, name, root):
                 continue
             try:
-                jobs.cancel(job, name, str(spec.get("secret", "")))
+                jobs.cancel(job, name)
                 cancelled.append(job)
             except (OSError, ValueError, KeyError, testjobs.Refused) as error:
                 failed.append(f"{job}: {type(error).__name__}: {error}")

@@ -18,7 +18,7 @@ from poolhouse.board import session as sessions
 from poolhouse.board.client import Quota
 from poolhouse.log import warn
 
-__all__ = ["BoardEvents", "acting", "follow_thread", "identity", "thread_for_key"]
+__all__ = ["BoardEvents", "acting", "agent_process", "follow_thread", "identity", "thread_for_key"]
 
 CHANNEL = "#general"
 CLAIM_NOTICE_COOLDOWN_S = 60.0
@@ -38,9 +38,18 @@ def guarded(what: str, call: Callable[[], Any]) -> Any:
         return None
 
 
+AGENT_MARKERS = (sessions.AGENT_ENV, sessions.TOKEN_ENV, sessions.SUBAGENT_ENV, "CLAUDECODE", "POOLHOUSE_AGENT",
+                 "POOLHOUSE_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
+
+
+def agent_process() -> bool:
+    """Whether an agent harness started this process, so a person is not the one at the keyboard."""
+    return any(os.environ.get(name) for name in AGENT_MARKERS)
+
+
 def acting() -> sessions.Session | None:
-    """The session of the identity the harness assigned this process, or None when it assigned none."""
-    if not os.environ.get(sessions.AGENT_ENV) and not os.environ.get(sessions.TOKEN_ENV):
+    """The session of the identity the harness assigned this process or of the native session that started it, or None when it has neither."""
+    if not agent_process():
         return None
     opened = guarded("session", sessions.connect)
     return opened if opened is not None and guarded("session", lambda: opened.name) else None

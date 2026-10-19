@@ -234,9 +234,10 @@ def _grant(me: Slot, waiting: list[Slot], capacity: tuple[int, int, int], room: 
             return 0
         first.data["backfills"] = first.data.get("backfills", 0) + 1
         first.path.write_text(json.dumps(first.data))
+    share = max(minimum, cap // 2) if any(other.path != path for other in waiting) else cap
     if not want:
-        return min(free, max(minimum, cap // max(1, len(waiting) + running)))
-    return min(want, free)
+        return min(free, share, max(minimum, cap // max(1, len(waiting) + running)))
+    return min(want, free, share)
 
 
 def _restore_inode(path: Path, record: dict, fd: int) -> int:

@@ -495,8 +495,7 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
                 raise testjobs.Refused(f"submit takes a tier: {', '.join(FOREGROUND)}")
             if inner[0] != "gate":
                 testselectors.validate(rest[1:], ROOT)
-            print(jobs.submit(inner, REUSE["agent"], ROOT, Path(__file__).resolve(),
-                              {"task": args.task}))
+            print(jobs.submit(inner, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task}))
             return 0
         if args.tier == "_job":
             return run_job(jobs, rest[0], args)
@@ -575,10 +574,20 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     return code
 
 
+def run_owner() -> dict:
+    """The owner of a run this process starts: its workspace identity, or a person's terminal when no agent harness started it.
+
+    An agent with no identity has none, and the job table refuses its run.
+    """
+    if REUSE["agent"].get("id") or testboard.agent_process():
+        return REUSE["agent"]
+    return {"id": "person", "parent": "", "source": "terminal"}
+
+
 def follow(argv: list[str], args: argparse.Namespace) -> int:
     """Run a tier as a job and show its output until it ends; Ctrl-C, SIGTERM and SIGHUP cancel it and wait for it to end."""
     try:
-        return jobs_store().follow(argv, REUSE["agent"], ROOT, Path(__file__).resolve(), {"task": args.task})
+        return jobs_store().follow(argv, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task})
     except (testjobs.Refused, OSError) as error:
         print(f"test: {error}", file=sys.stderr)
         return 4

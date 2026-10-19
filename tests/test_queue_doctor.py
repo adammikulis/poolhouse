@@ -23,7 +23,7 @@ def job(folder: Path, name: str, *, created: float, log_age: float, process: sub
     pid = process.pid if process else 0
     status = {"state": "running", "pid": pid, "started": storage.process_start(pid) if pid else 0.0, "at": created}
     (where / "status.json").write_text(json.dumps(status))
-    (where / "spec.json").write_text(json.dumps({"id": name, "created": created}))
+    (where / "spec.json").write_text(json.dumps({"id": name, "created": created, "owner": {"id": "alice"}}))
     log = where / "log"
     log.write_text("x")
     os.utime(log, (time.time() - log_age,) * 2)
@@ -44,6 +44,20 @@ def test_a_job_with_a_quiet_log_is_ended_and_recorded_as_failed(tmp_path):
         assert process.poll() is not None
         status = jobs.read(name)
         assert status["state"] == "failed" and "queue doctor" in status["detail"] and said
+    finally:
+        process.kill()
+
+
+def test_a_job_with_no_owner_is_ended_on_sight_even_while_it_writes_output(tmp_path):
+    jobs = testjobs.Jobs(tmp_path)
+    process = sleeper()
+    try:
+        name = job(tmp_path, "j0", created=time.time(), log_age=1, process=process)
+        (tmp_path / "jobs" / name / "spec.json").write_text(json.dumps({"id": name, "created": time.time(), "owner": {}}))
+        said = []
+        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: process.wait(timeout=10)) == [name]
+        assert process.poll() is not None
+        assert jobs.read(name)["state"] == "failed" and "it has no owner" in jobs.read(name)["detail"]
     finally:
         process.kill()
 

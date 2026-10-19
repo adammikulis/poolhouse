@@ -153,10 +153,13 @@ class Jobs:
 
         A whole-tier job (``extra['exclusive']``, true unless given) is refused while another whole-tier job is live; the check and the
         record are made under one lock. A foreground run is not exclusive and queues in the broker.
-        An agent's whole-suite run, or one naming more than 30 test files, is refused before anything is recorded.
+        An agent's whole-suite run, one naming more than 30 test files, and a run with no owner are refused before anything is recorded.
         """
         if refusal := testscope.tier_refusal(argv[0], argv[1:], root) if argv else "":
             raise Refused(refusal)
+        if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
+            raise Refused("this run has no workspace identity, so it is not queued: run it as the session the harness gave you "
+                          "(`poolhouse-workspace whoami` names it)")
         self.prune()
         job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         with self.locked():
@@ -216,8 +219,7 @@ class Jobs:
                 return int(self.wait(job, float("inf"), tail=True).get("exit", 1))
             except KeyboardInterrupt:
                 if job:
-                    spec = self.read(job, "spec.json")
-                    print(f"\n{self.cancel(job, owner.get('id', ''), spec.get('secret', ''))}", flush=True)
+                    print(f"\n{self.cancel(job, owner.get('id', ''))}", flush=True)
                 return 130
 
     def watch_follower(self, job: str) -> None:
@@ -236,20 +238,17 @@ class Jobs:
 
         threading.Thread(target=watch, daemon=True).start()
 
-    def cancel(self, job: str, who: str, secret: str = "") -> str:
-        """Stop a job owned by ``who`` (or whose ``secret`` the caller holds) and wait for its runner to end; returns what happened."""
+    def cancel(self, job: str, who: str) -> str:
+        """Stop a job whoever owns it, log who did and wait for its runner to end; returns what happened."""
         spec, status = self.read(job, "spec.json"), self.state(job)
         if not spec:
             raise Refused(f"no job {job}")
-        owner = spec["owner"].get("id", "")
-        if not (owner and owner == who) and not (secret and secret == spec.get("secret")):
-            raise Refused(f"job {job} belongs to {owner or 'a run with no workspace agent'}")
         if status.get("state") in TERMINAL:
             return f"job {job} already {status['state']}"
         with_pid = int(status.get("pid", 0))
         if storage.alive(with_pid, float(status.get("started", 0))):
             with (self.path(job) / "log").open("a", encoding="utf-8") as log:
-                log.write(f"test: cancelled by {who or 'a caller with the job secret'} running in {Path.cwd()}\n")
+                log.write(f"test: cancelled by {who or 'a caller with no workspace identity'} running in {Path.cwd()}\n")
             os.kill(with_pid, signal.SIGTERM)
             self.reap(job, with_pid, float(status.get("started", 0)))
         self.write(job, "status.json", {**status, "state": "cancelled", "exit": 130, "finished": time.time()})
