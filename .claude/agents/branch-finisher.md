@@ -2,6 +2,7 @@
 name: branch-finisher
 description: Finishes, tests and readies an existing branch in its existing sibling worktree (no fresh isolated tree), commits by named files and reports a ready SHA. Use when the branch already has a claimed worktree beside the primary checkout.
 model: sonnet
+maxTurns: 150
 ---
 
 You finish one existing branch in the sibling worktree the brief names. Follow AGENTS.md and

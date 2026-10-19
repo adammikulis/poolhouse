@@ -6,17 +6,21 @@ The fake test runner logs what it was called with and the environment it saw.
 
 from __future__ import annotations
 
+import json
 import os
 import signal
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
+import testreuse_store as storage
 from land_support import AGENT_PUSH, DEV, World, git
 
 from poolhouse import lock as filelock, worktreerules
 from poolhouse.board.client import Denied
-from poolhouse.workspace import landing
+from poolhouse.workspace import landing, testruns
 
 pytest_plugins = ["node_kit"]
 
@@ -72,6 +76,26 @@ def test_a_process_a_check_leaves_behind_is_ended_with_the_check(world):
     pytest.fail(f"process {pid} left behind by a check is still running")
 
 
+def test_a_background_test_job_gone_quiet_is_ended_before_the_checks_run(world, tmp_path):
+    reuse = tmp_path / "reuse"
+    folder = reuse / testruns.scope(world.proj.root) / "jobs" / "stuck"
+    folder.mkdir(parents=True)
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"], start_new_session=True)
+    try:
+        status = {"state": "running", "pid": process.pid, "started": storage.process_start(process.pid), "at": time.time() - 3000}
+        (folder / "status.json").write_text(json.dumps(status))
+        (folder / "spec.json").write_text(json.dumps({"id": "stuck", "created": time.time() - 3000}))
+        (folder / "log").write_text("x")
+        os.utime(folder / "log", (time.time() - 3600,) * 2)
+        tree, _ = world.start("jam", {"tests/test_jam.py": "# JAM\n"})
+        code, out = world.land(tree, hostile={"DEV_TEST_REUSE_DIR": str(reuse)})
+        assert code == 0 and "queue doctor: ended" in out, out
+        assert json.loads((folder / "status.json").read_text())["state"] == "failed"
+        process.wait(timeout=10)
+    finally:
+        process.kill()
+
+
 def test_a_markdown_file_outside_the_documents_still_gets_the_gate(world):
     tree, _ = world.start("prompt", {"src/poolhouse/graph/prompt.md": "A prompt the code reads.\n"})
     code, out = world.land(tree)
@@ -97,6 +121,14 @@ def test_a_failing_test_stops_the_landing_naming_the_test(world):
     record = world.records()[-1]
     assert record["outcome"] == "stopped" and "tests/test_bad.py::test_x" in record["cause"]
     assert any("FAILED tests/test_bad.py::test_x" in line for line in record["tail"])
+
+
+def test_an_interrupted_test_run_says_so_and_names_the_test(world):
+    tree, _ = world.start("cut", {"tests/test_cut.py": "# INTERRUPTME\n"})
+    before = world.proj.origin_head()
+    code, out = world.land(tree)
+    assert code == 5 and "land: stopped: the test run was interrupted by signal 2 during tests/test_cut.py::test_y" in out, out
+    assert "tests failed" not in out and world.proj.origin_head() == before and tree.exists()
 
 
 def test_a_sensitive_change_without_an_accept_is_refused_with_the_command_for_the_reviewer(world):

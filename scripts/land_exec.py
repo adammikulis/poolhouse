@@ -21,6 +21,8 @@ FULL_LINES = 4000
 INFRA = re.compile(r"^(tests/conftest\.py|scripts/test[^/]*|scripts/testslots[^/]*|pyproject\.toml|packaging/.*)$")
 DOC = re.compile(r"^([^/]+\.md|docs/.*)$")
 FAILED = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.M)
+INTERRUPTED = re.compile(r"^test: interrupted during (\S+)", re.M)
+CANCELLED = re.compile(r"^test: (cancelled by .+)", re.M)
 KEEP = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "POOLHOUSE_HOME", "POOLHOUSE_BOARD",
         "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_DEV_BRANCH", "DEV_TEST_SLOTS_DIR")
 CACHES = re.compile(
@@ -176,6 +178,24 @@ def failed_tests(lines: list[str]) -> list[str]:
     return sorted(dict.fromkeys(FAILED.findall("\n".join(lines))))
 
 
+def signal_of(status: int) -> int:
+    """The signal that ended a check with ``status`` (a negative status, or 128 plus the signal), or 0 when none did."""
+    if status < 0:
+        return -status
+    return status - 128 if status in (128 + signal.SIGINT, 128 + signal.SIGKILL, 128 + signal.SIGTERM) else 0
+
+
+def interruption(status: int, lines: list[str]) -> str:
+    """The sentence for a check that a signal ended, naming the last test it started; empty when the check was not interrupted."""
+    number = signal_of(status)
+    if not number:
+        return ""
+    text = "\n".join(lines)
+    last, who = INTERRUPTED.findall(text), CANCELLED.findall(text)
+    return (f"the test run was interrupted by signal {number}" + (f" during {last[-1]}" if last else "")
+            + (f" ({who[-1]})" if who else ""))
+
+
 def run_plan(wt: Path, checks: list[Check], tree: str) -> list[str]:
     """Run each check and return the last lines of the output; stop at the first red or if the tree changed under it."""
     tail: list[str] = []
@@ -186,6 +206,8 @@ def run_plan(wt: Path, checks: list[Check], tree: str) -> list[str]:
         tail = lines[-TAIL:]
         verify_tree(wt, tree)
         if status:
+            if said := interruption(status, lines):
+                raise Stop(said, tail)
             named = failed_tests(lines)
             label = "tests" if check.name in ("affected", "full") else check.name
             raise Stop(f"{label} failed" + (f": {', '.join(named[:10])}" if named else f" (exit {status})"), tail)

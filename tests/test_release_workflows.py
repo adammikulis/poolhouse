@@ -95,9 +95,15 @@ def test_no_checkout_takes_its_ref_from_an_input(step):
     assert "inputs." not in str((step.get("with") or {}).get("ref", ""))
 
 
-def test_concurrent_runs_of_one_ref_cancel_each_other():
+def test_concurrent_runs_of_one_ref_share_a_group():
     assert CI["concurrency"]["group"] == "ci-${{ github.ref }}"
-    assert CI["concurrency"]["cancel-in-progress"] is True
+
+
+@pytest.mark.parametrize("name", ["ci.yml", "release-dry-run.yml", "pool-check.yml"])
+def test_only_a_superseded_pull_request_run_is_cancelled(name):
+    """A newer push cancels the older run of a pull request and no run of any other event."""
+    concurrency = read(name)["concurrency"]
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
 def test_release_please_tests_the_branch_it_opened():
@@ -279,6 +285,31 @@ def bundle_runs() -> list[str]:
 
 def test_the_bundle_is_set_up_and_opened_in_a_browser():
     assert any("packaging/smoke.py" in run for run in bundle_runs())
+
+
+def windows_node_installs() -> list[tuple[str, str]]:
+    """Each ``pip install`` line that comes before the Windows node tests, with its workflow."""
+    found = []
+    for name, workflow in (("ci.yml", CI), ("release-build.yml", BUILD)):
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                run = str(step.get("run", ""))
+                if "tests/test_node_windows.py" not in run:
+                    continue
+                found += [(name, line) for line in run.splitlines() if "pip install" in line
+                          and "pytest" in line]
+    return found
+
+
+def test_the_windows_node_tests_have_a_pip_install_to_check():
+    assert {name for name, _ in windows_node_installs()} == {"ci.yml", "release-build.yml"}
+
+
+@pytest.mark.parametrize("name,line", windows_node_installs())
+def test_the_windows_node_tests_install_the_windows_api_package(name, line):
+    """The node's Windows code imports win32api and win32security; PYTHONPATH=src installs no
+    dependency of the package."""
+    assert "pywin32" in line.split(), f"{name} runs the Windows node tests without pywin32"
 
 
 def test_no_curl_is_piped_into_a_reader_that_stops_early():
