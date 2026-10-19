@@ -251,11 +251,12 @@ def test_a_claim_ends_with_the_process_named_by_pid(team):
 
 def test_spawn_names_the_child_and_a_repeat_is_idempotent_and_another_parent_is_refused(team):
     first = json.loads(team.cli("spawn", "--session", "agent-a", "--model", "claude-haiku-5-5", "--json", who=team.lead).stdout)
-    assert first["parent"] == team.lead.name and first["id"].startswith("claude-")
+    assert first["parent"] == team.lead.name and first["id"].startswith("claude-") and first["model"] == "claude-haiku-5-5"
     assert json.loads(team.cli("spawn", "--session", "agent-a", "--json", who=team.lead).stdout) == first
     refused = team.cli("spawn", "--session", "agent-a", "--json", who=team.bob)
     assert refused.returncode == 3 and "another parent" in refused.stdout
     inherited = json.loads(team.cli("spawn", "--session", "agent-b", "--json", who=team.lead).stdout)
+    assert inherited["model"] == "claude-sonnet-5-5"
     listed = {row["id"]: row for row in json.loads(team.cli("agents", "--json", who=team.lead).stdout)}
     assert (listed[first["id"]]["model"], listed[first["id"]]["model_state"]) == ("claude-haiku-5-5", "claimed")
     assert (listed[inherited["id"]]["model"], listed[inherited["id"]]["model_state"]) == ("claude-sonnet-5-5", "inherited")

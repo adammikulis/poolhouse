@@ -1,5 +1,9 @@
 # Training
 
+Training is an experimental layer: the wheel does not hold it, and it runs from a source checkout as
+`python -m poolhouse.train run|tools|decider|suite`. A build without it has no Fine-tune page, and
+`poolhouse-decide` has no `train` or `make-cases`.
+
 `Trainer` runs the loop on PyTorch or MLX — the framework is taken from the model, so
 the same call works on a Mac and on a CUDA box:
 
@@ -23,7 +27,7 @@ Every piece is usable on its own for a loop you write yourself: `CheckpointState
 Or skip the code entirely and use a recipe:
 
 ```
-poolhouse-train-run --recipe text-lm --data corpus.jsonl --out runs/lm --dry-run
+python -m poolhouse.train run --recipe text-lm --data corpus.jsonl --out runs/lm --dry-run
 ```
 
 `--dry-run` trains twenty steps and writes nothing, so a bad setting costs forty seconds
@@ -32,7 +36,7 @@ instead of six hours.
 ## Fine-tuning a tool caller
 
 ```
-poolhouse-train-tools --tools python:poolhouse.graph.prompts:TOOLS \
+python -m poolhouse.train tools --tools python:poolhouse.graph.prompts:TOOLS \
     --prompts python:poolhouse.graph.prompts:TOOL_PROMPTS --out runs/caller
 ```
 
@@ -57,7 +61,7 @@ each skipped when `--out` already holds its output:
 - **train** runs the `tool-calls` recipe: `--base` (`unsloth/gemma-4-E4B-it` unless
   told otherwise) with every conversation rendered through its own chat template and the
   loss on the assistant tokens only, into `run/` — checkpoints, `metrics.jsonl`, resumable.
-  `--set steps=600` and the other recipe fields work as in `poolhouse-train-run`. It is
+  `--set steps=600` and the other recipe fields work as in `python -m poolhouse.train run`. It is
   torch whatever the machine's default backend is, on the accelerator unless
   `POOLHOUSE_DEVICE=cpu` says otherwise.
 - **export** puts the latest checkpoint back into Hugging Face layout under `model/` and
@@ -65,7 +69,7 @@ each skipped when `--out` already holds its output:
   Q8_0` — so the GGUF lands in `--out`, ready for `poolhouse-serve up`.
 
 `--dry-run` prints the plan with counts and loads no model; `--only synth|train|export` runs
-one stage. The data is plain JSONL rows of `{"messages", "tools"}`, so `poolhouse-train-run
+one stage. The data is plain JSONL rows of `{"messages", "tools"}`, so `python -m poolhouse.train run
 --recipe tool-calls --data runs/caller/data` trains on it too, and so does anything else
 that writes that shape. Whether the fine-tune beats its base is measured, never assumed:
 serve the GGUF and `python -m poolhouse.bench run` it beside the model it came from.
@@ -73,7 +77,7 @@ serve the GGUF and `python -m poolhouse.bench run` it beside the model it came f
 ### From what a model actually did
 
 ```
-poolhouse-train-tools from-bench --kept ~/.poolhouse/bench/runs.ladybug \
+python -m poolhouse.train tools from-bench --kept ~/.poolhouse/bench/runs.ladybug \
     --model e4b --min-f1 0.8 --out runs/caller/data
 ```
 
@@ -106,7 +110,7 @@ model turns, none of them kept).
 ### A model too big to fine-tune whole
 
 ```
-poolhouse-train-run --recipe tool-calls --size e4b --lora --export-gguf \
+python -m poolhouse.train run --recipe tool-calls --size e4b --lora --export-gguf \
     --data runs/caller/data --out runs/caller --set steps=1000 --yes
 ```
 
@@ -131,7 +135,7 @@ A real fine-tune is hours, and a run started with `&` or `nohup` dies with the s
 started it, so `--detach` re-runs the command in its own session with its output in a log
 under `~/.poolhouse/train/logs` and hands the shell straight back. The pid, the argv and the
 log are recorded as the `train` job the same way the bench and the ingest record theirs, so
-`poolhouse-train-run status` says what is running, `wait` blocks until it has ended — the
+`python -m poolhouse.train run status` says what is running, `wait` blocks until it has ended — the
 next command is `wait && next` rather than a loop written by hand — and `stop` ends it. One
 at a time: a second `--detach` beside a run still going is refused, because the two would
 share one GPU and neither measurement would be worth having.

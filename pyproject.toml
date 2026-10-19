@@ -173,13 +173,8 @@ poolhouse-members = "poolhouse.fleet.members:main"
 poolhouse-pool = "poolhouse.fleet.join:main"
 # the same functions the commands call, as MCP tools over stdio, for an agent to drive
 poolhouse-mcp = "poolhouse.mcp:main"
-poolhouse-train-run = "poolhouse.train.run:main"
-# a project's tools -> synthetic conversations -> a fine-tuned caller -> a GGUF
-poolhouse-train-tools = "poolhouse.train.tools:main"
 # choose one of a named set of options and say how sure: ask, score, calibrate, compare
 poolhouse-decide = "poolhouse.decide_cli:main"
-# a pointer-head decision model fine-tuned from labelled cases
-poolhouse-train-decider = "poolhouse.train.decider_cli:main"
 # what this machine can do, and what it does without being asked; --checkouts adds the
 # repositories and working state poolhouse-doctor checks on their own
 poolhouse-setup = "poolhouse.setup:main"
@@ -195,8 +190,6 @@ poolhouse-serve = "poolhouse.serve.cli:main"
 # find a model newer than anything the assistant remembers, and print how to serve it
 poolhouse-models = "poolhouse.serve.models_cli:run"
 poolhouse-store = "poolhouse.graph.store_cli:main"
-# documents read section by section into one graph, with what each cost
-poolhouse-ingest = "poolhouse.ingest:main"
 # set this device up to join a pool (firewall rules in one Windows prompt, the node, the join check): poolhouse device-setup --yes
 poolhouse-device-setup = "poolhouse.device_setup:main"
 # the long commands this machine has recorded: what is running, waiting on one, stopping it
@@ -205,7 +198,6 @@ poolhouse-jobs = "poolhouse.jobs:main"
 poolhouse-test-devices = "poolhouse.testfarm.devices:command"
 # agents coordinating: messages, notes, scratch folders and claims, all data and no authority
 poolhouse-workspace = "poolhouse.workspace.cli:main"
-poolhouse-suite = "poolhouse.train.suite:main"
 poolhouse-claude = "poolhouse.claude:main"
 poolhouse-codex = "poolhouse.codex:launch"
 poolhouse-agent = "poolhouse.harness:main"
@@ -228,11 +220,6 @@ poolhouse-audit = "poolhouse.redact.audit:main"
 # came in from the internet: downloads, hosts, scanners
 poolhouse-security = "poolhouse.net.cli:command"
 
-# What the daemon reports about this box beyond what the standard library can see: the
-# card, its vendor and its memory. Without it every machine reports no accelerator.
-[project.entry-points."poolhouse.device_report"]
-accelerator = "poolhouse.train.accelerator:report"
-
 [tool.hatch.build.targets.sdist]
 exclude = [".claude", "CLAUDE.md", "HANDOFF.md"]
 
@@ -240,15 +227,25 @@ exclude = [".claude", "CLAUDE.md", "HANDOFF.md"]
 packages = ["src/poolhouse"]
 exclude = [
     "src/poolhouse/bench",
+    "src/poolhouse/datasheet",
     "src/poolhouse/draft",
     "src/poolhouse/gym",
     "src/poolhouse/fleet/gym_*.py",
+    "src/poolhouse/fleet/train_*.py",
     "src/poolhouse/fleet/web/components/benchmarks-view.html",
     "src/poolhouse/fleet/web/components/fleet-benchmark.html",
     "src/poolhouse/fleet/web/components/gym-*.html",
+    "src/poolhouse/fleet/web/components/training-view.html",
+    "src/poolhouse/gguf",
+    "src/poolhouse/ingest",
     "src/poolhouse/redteam",
+    "src/poolhouse/scrape",
+    "src/poolhouse/sources",
     "src/poolhouse/surface",
+    "src/poolhouse/testing",
+    "src/poolhouse/train",
     "src/poolhouse/walk",
+    "src/poolhouse/web.py",
     "src/poolhouse/world",
 ]
 

@@ -15,10 +15,11 @@ from typing import Any
 from poolhouse.hub import free_memory, total_memory
 
 from . import managed_compute
+from .accelerator import report as accelerator_report
 from .jobs import DaemonError
 
 REPORT_GROUP = "poolhouse.device_report"
-"""Entry-point group a higher tier registers a richer device probe under."""
+"""Entry-point group another package registers a richer device probe under."""
 _LOG = logging.getLogger(__name__)
 
 
@@ -101,13 +102,13 @@ def stdlib_device_report() -> dict[str, Any]:
 
 @functools.cache
 def registered_reports() -> list[Callable[[], dict[str, Any]]]:
-    """Every device probe a higher tier has registered under ``REPORT_GROUP``."""
+    """The accelerator probe, then every device probe registered under ``REPORT_GROUP``."""
+    out = [accelerator_report]
     try:
         from importlib.metadata import entry_points
         found = entry_points(group=REPORT_GROUP)
     except Exception:                                 # noqa: BLE001
-        return []
-    out = []
+        return out
     for ep in found:
         try:
             out.append(ep.load())
@@ -118,7 +119,7 @@ def registered_reports() -> list[Callable[[], dict[str, Any]]]:
 
 
 def resolve_report(spec: str) -> Callable[[], dict[str, Any]]:
-    """Turn ``"poolhouse.train.accelerator:report"`` into the callable it names."""
+    """Turn ``"poolhouse.fleet.accelerator:report"`` into the callable it names."""
     module, _, attr = spec.partition(":")
     if not module or not attr:
         raise DaemonError(

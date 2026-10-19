@@ -285,3 +285,18 @@ def test_subagent_stop_records_transcript_model_and_posts_done_to_general_not_an
         ['whoami', '--model', 'claude-haiku-4-5', '--harness', 'claude-code'],
         ['board', 'post', '#general', 'done: finished', '--type', 'status', '--subject', 'done'],
         ['retire']]
+
+
+def test_subagent_stop_records_a_model_only_when_it_differs_from_the_one_registered_at_start(commands, tmp_path, monkeypatch, workspace_node):
+    monkeypatch.syspath_prepend(str(HOOKS))
+    import subagent_records
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text('{"message": {"model": "claude-haiku-4-5"}}\n')
+    for agent, registered, expected in (('abcdef12345', 'claude-haiku-4-5', ['board', 'retire']),
+                                        ('fedcba54321', 'claude-sonnet-4-6', ['whoami', 'board', 'retire'])):
+        workspace_node.member(agent, model=registered)
+        subagent_records.save(agent, name='claude-aaaaaa', parent='claude-bbbbbb', model=registered)
+        commands[1].unlink(missing_ok=True)
+        event = {'agent_type': 'Explore', 'agent_id': agent, 'agent_transcript_path': str(transcript)}
+        assert invoke('claude-subagent-stop', event).returncode == 0
+        assert [record['argv'][0] for record in json.loads(commands[1].read_text())] == expected

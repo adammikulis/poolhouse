@@ -1,4 +1,4 @@
-"""``poolhouse-ingest``: the parser, the words it takes instead of a document, and the
+"""``python -m poolhouse.ingest``: the parser, the words it takes instead of a document, and the
 detached run's record."""
 
 from __future__ import annotations
@@ -72,14 +72,14 @@ def _adopt(home: Path | None = None) -> None:
 
 
 def detach(argv: Sequence[str]) -> Path:
-    """Run ``poolhouse-ingest argv`` owned by no terminal, and return the log it writes."""
+    """Run ``python -m poolhouse.ingest argv`` owned by no terminal, and return the log it writes."""
     rest = [a for a in argv if a != "--detach"]
     log = _home() / "logs" / f"ingest-{time.strftime('%Y%m%dT%H%M%S')}.log"
     return jobs.detach("poolhouse.ingest", rest, log=log, kind=KIND, home=_jobs_home()).log
 
 
 def retry(out: str | Path, *, say: Callable[[str], None] = say) -> int:
-    """``poolhouse-ingest retry --out STORE``: the units given up on are read again by the
+    """``python -m poolhouse.ingest retry --out STORE``: the units given up on are read again by the
     next ``--resume`` -- for after the fix that made them fail is in."""
     where = Progress.beside(out)
     if not where.is_file():
@@ -99,7 +99,7 @@ def retry(out: str | Path, *, say: Callable[[str], None] = say) -> int:
 
 def stop(*, say: Callable[[str], None] = say, home: Path | None = None,
          wait: float = STOP_WAIT) -> int:
-    """``poolhouse-ingest stop``: end the detached run and wait for its last fold to land.
+    """``python -m poolhouse.ingest stop``: end the detached run and wait for its last fold to land.
 
     The run folds the source it is on before it exits -- minutes, for a source of thousands
     of nodes -- so this waits up to ``wait`` seconds for the process to go, saying so every
@@ -143,9 +143,9 @@ def stop(*, say: Callable[[str], None] = say, home: Path | None = None,
 
 def wait(*, say: Callable[[str], None] = say, home: Path | None = None,
          every: float = 60.0) -> int:
-    """``poolhouse-ingest wait``: block until the detached run this machine records has
+    """``python -m poolhouse.ingest wait``: block until the detached run this machine records has
     ended, saying so every minute -- so the next command can follow it without a loop
-    written by hand (`poolhouse-ingest wait && poolhouse-ingest tidy --out ... --model ...`)."""
+    written by hand (`python -m poolhouse.ingest wait && python -m poolhouse.ingest tidy --out ... --model ...`)."""
     where = _jobs_home(home)
     _adopt(home)
     if not jobs.alive(KIND, home=where):
@@ -178,10 +178,10 @@ _WORDS = ("status", "show", "sources", "ask", "fold", "import", "retry", "tidy",
 
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        prog="poolhouse-ingest", allow_abbrev=False,
+        prog="python -m poolhouse.ingest", allow_abbrev=False,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Read documents into a knowledge graph, section by section: "
-                    "`poolhouse-ingest DOC.pdf ... --out STORE`.",
+                    "`python -m poolhouse.ingest DOC.pdf ... --out STORE`.",
         epilog="Instead of documents, one of these words:\n"
                "  status   how far the run into --out has got, what failed, what is in the\n"
                "           store, what it cost per unit, how fast the model is reading and\n"
@@ -385,7 +385,7 @@ def _parsed(rest: Sequence[str]) -> Any:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """``poolhouse-ingest``: documents into one graph, or a gold set scored."""
+    """``python -m poolhouse.ingest``: documents into one graph, or a gold set scored."""
     from poolhouse.lock import Busy
 
     rest = list(sys.argv[1:] if argv is None else argv)
@@ -451,7 +451,7 @@ def _dispatch(args: Any, rest: list[str]) -> int:
                 alive = _recorded_alive()
                 if alive:
                     warn(f"error: a detached ingest (pid {alive}) is still reading; "
-                         f"`poolhouse-ingest wait` first, then tidy")
+                         f"`python -m poolhouse.ingest wait` first, then tidy")
                     return 2
                 try:
                     with _stopping(), ingest._serving(args) as client:
@@ -480,11 +480,11 @@ def _dispatch(args: Any, rest: list[str]) -> int:
             # first finished (2026-09-03). The record is the lease; it is cleared when
             # the run ends or `stop` sees it end
             warn(f"error: a detached ingest (pid {alive}) is still running or still "
-                 f"folding on its way out; `poolhouse-ingest stop` waits for it")
+                 f"folding on its way out; `python -m poolhouse.ingest stop` waits for it")
             return 2
         log = detach(rest)
         say(f"detached; the log is {log}")
-        say(f"  poolhouse-ingest status --out {args.out}")
+        say(f"  python -m poolhouse.ingest status --out {args.out}")
         return 0
     if args.gold:
         return _gold_run(args)

@@ -12,7 +12,7 @@ _PROBE = """
 import json, sys
 from importlib.metadata import version
 from poolhouse.fleet.measuring import installed_commit
-from poolhouse.train.accelerator import report
+from poolhouse.fleet.accelerator import report
 result = report()
 result['compute_runtime'] = {'python': sys.executable, 'version': version('poolhouse'),
                              'commit': installed_commit()}

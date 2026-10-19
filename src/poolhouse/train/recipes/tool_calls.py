@@ -1,6 +1,6 @@
 """Fine-tune a chat model to call a project's tools, on conversations made for it.
 
-The data is what ``poolhouse-train-tools`` synthesises — or anything in the same shape: rows
+The data is what ``python -m poolhouse.train tools`` synthesises — or anything in the same shape: rows
 of ``{"messages": [...], "tools": [...]}`` — and the base is a Hugging Face causal LM with
 a chat template, ``unsloth/gemma-4-E4B-it`` unless the data's manifest names another.
 Each conversation is rendered through the model's own template, so what it learns is the
@@ -105,7 +105,7 @@ def build_tool_caller(spec: dict[str, Any], config: dict[str, Any], data: Path |
     if not train:
         raise ValueError(
             f"no conversations under {data}. Expected .jsonl rows with 'messages' (and "
-            "'tools'), which poolhouse-train-tools writes.")
+            "'tools'), which python -m poolhouse.train tools writes.")
 
     size = config.get("size") or sorted(spec["sizes"])[0]
     base, _ = resolve_base(spec, config, manifest)
@@ -189,7 +189,7 @@ def save_pretrained(run_dir: Path | str, base: str, out_dir: Path | str) -> Path
         raise ValueError(
             f"{latest} is a LoRA checkpoint: it holds the adapter, not the whole model, so "
             "there is nothing here to save as a Hugging Face directory. Merge it into the "
-            "base instead -- poolhouse.train.lora.merge, which `poolhouse-train-run "
+            "base instead -- poolhouse.train.lora.merge, which `python -m poolhouse.train run "
             "--export-gguf` runs for you.")
     from safetensors.torch import load_file
 

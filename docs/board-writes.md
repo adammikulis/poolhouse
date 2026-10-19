@@ -17,6 +17,11 @@ done chatter, repeats of one fact and anything a view can derive from a process 
   `send`) are counted by the node and not classified here.
 - Windows: "all" is 7.4 days; "now" is the 1.7 days after the landing queue was removed (2026-10-17 23:01, `c57e2ace3` and `cbc875c54`), which is the rate the
   current code makes. Rows per day are rows divided by the span of the rows counted.
+- Attribution: `board_tally.py` counts every sender. To attribute a run to one session, count that session's own rows by kind before and
+  after (the rows of a subagent carry its name); other workers write meanwhile, so a total can move for them. Rows of the test
+  runner (`test-run`, `test-result`, `test-job`) keep arriving from worktrees that have not merged the cut of 2026-10-19 17:05
+  (`cb0fa19c9`); they stop as those worktrees merge. A subagent that ran `scripts/test`, read its inbox and its digest for an hour wrote
+  only its registration.
 - Not measured: bytes per row, rows refused by the node's rate limits (they are not entries; 81 rejections are counted by `status`), and
   who read a row. Readers are found in the code.
 
@@ -29,7 +34,7 @@ Ranked by rows per day over the whole period.
 | 1 | test file claim and end: `testboard.BoardEvents.claimed` and `.finished`, one `test-run` and one `test-result` per test file | 17,669 | 2,400 | 2,477 | `scripts/test subscribe --key` | no | cut |
 | 2 | landing queue: `beat`, `state`, `request`, `cancel` rows and their `audit land.*` copies (the old lander) | 14,939 | 2,030 | 0 | the lander runner | no | removed 2026-10-17; `landing.rs` keeps the names as retired |
 | 3 | test job start and end: `job_started`, `job_done`, two rows per background job | 8,896 | 1,209 | 1,317 | followers of the thread, task watchers | no | cut; the end of a job is one row only when a task watcher follows it |
-| 4 | install claims: `runtime_deploy.owning`, three paths per build, acquire and release | 8,033 | 1,091 | 85 | the claim check of the hooks | no | kept; node follow-up |
+| 4 | install claims: `runtime_deploy.owning`, acquire and release for the new tree, the launchers and the selection of every build | 8,033 | 1,091 | 85 | the claim check of the hooks | no | cut to the launchers and the selection of a switch that happens (4 rows); node follow-up for the rest |
 | 5 | branch and worktree claims: `claim`, `task_worktrees`, the harness hooks | 2,110 | 287 | 151 | the claim check, `scripts/worktrees` | yes, a refusal | kept |
 | 6 | edit and area claims: `harness_claims.reserve` (one area claim per file the generic harness edits) and `claim area` | 1,792 | 243 | 0 | the claim check of the hooks | yes, a refusal | kept; node follow-up |
 | 7 | identity rows: register, the model recorded at a subagent's stop, retire | 995 | 135 | 224 | every node (replicated state) | yes | kept; node follow-up |
@@ -42,6 +47,7 @@ Ranked by rows per day over the whole period.
 | 14 | `stopped, done refused` milestones: `claude-subagent-stop` when its done post fails | 103 | 14 | 25 | none | no | cut |
 | 15 | `runtime ensure X (was Y)` milestones: `runtime_board.announce` on every switch | 101 | 14 | 11 | none | no | cut |
 | 16 | done post of a stopped subagent: `claude-subagent-stop` | 43 | 6 | 25 | the session subscribed to the subagent | yes | kept |
+| 17 | model recorded at a subagent's stop: `claude-subagent-stop` runs `whoami --model`, an identity row that only turns the label `inherited` into `claimed` | not counted | not counted | about 35 | the label shown beside a message | no | cut when the transcript names the model registered at start |
 
 Rows 2 and 3 are 82.8 percent of the rows in the last 1.7 days (3,795 of 4,581 a day). Row 1 was 26 percent of the whole period and
 has written nothing since it was removed. Renewing a claim (`heartbeat`) writes no row: the lease table writes `acquire`, `release`,
@@ -57,19 +63,36 @@ Each cut has a test that failed before it.
 | `runtime_board.announce` posts `blocked` for a failed or recovered deploy only; a switch, a superseded build and a backed-off build post nothing | 14 (11 milestones, 3 blocked) | 3 (the blocked lines) |
 | `claude-subagent-stop` warns on stderr when its done post is refused | 25 | 0 |
 | The subagent definitions no longer tell a subagent to announce `joined` | 22 | 0 |
+| A runtime build takes its install claims after the build, its smoke and a free landing boundary, for the launchers and the selection only (`runtime_deploy.build_and_switch`; `tests/test_runtime_quiet.py`) | 6 rows for every build, a failed or deferred one included (72 a day on 2026-10-19) | 4 rows for a switch, 0 for a failed or deferred build, 0 for a runtime that is current |
+| `claude-subagent-stop` records the transcript model only when it differs from the model registered at start (`spawn` returns it, `subagent_records` keeps it; `tests/test_claude_workspace_hooks.py`) | about 35 | 0 for a subagent on its parent's model |
 
-The steady state after these cuts is about 630 rows a day (identity 224, claims 236, audit 92, reviews 32, the done post 25 and the
-announcements someone acts on), against 4,581 a day before. The log holds 200,000 rows and holds 57,012: at 4,581 a day it is full
-in 31 days, at 630 a day in 227.
+The steady state after these cuts is about 600 rows a day (identity 190, claims 190, audit 92, reviews 32, the done post 25 and the
+announcements someone acts on), against 4,581 a day before. The log holds 200,000 rows and holds 57,300: at 4,581 a day it is full
+in 31 days, at 600 a day in 238.
+
+Decided to keep, with who acts on it: `landing review` and `audit land.review` (a standing reject stops a push), `blocked` lines of
+a failed deploy or a failed run, the `milestone` of a handed-back worker with unlanded work, and the done post of a stopped subagent
+(the one signal a session subscribed to a subagent gets; the retire is a node row that wakes nobody). Decided to cut earlier and now
+at zero from current code: `joined` (`eb881b97c`), `milestone: stopped, done refused`, `milestone: runtime`, the test runner's
+per-file and per-job rows.
 
 ## What remains, and why
 
-- Identity and audit rows are node state: a registered subagent writes its identity when it starts, again when its model is recorded
-  from its transcript, and once more when it retires, with one audit row for the retirement.
+- Identity and audit rows are node state: a registered subagent writes its identity when it starts and once more when it retires,
+  with one audit row for the retirement (and one more identity row when its model differs from the one it was registered with).
 - Claim rows for paths that exist on one device only (`install`, `worktree`, `area`, `server`, `port`) are replicated to the pool
-  although no other device can hold them. One session made 6,918 install rows in 26 hours (a build every 70 seconds, three paths
-  each); its cause is not traced to a log, the runtime refresh was reworked on 2026-10-19 (`258dc2826`) to build a settled tip once,
-  and the rate since 2026-10-18 is 85 a day. Keeping those claims in the node's own table and out of the board log is a change to
+  although no other device can hold them. Keeping those claims in the node's own table and out of the board log is a change to
   `app/poolhouse-node/src/lease/` and `claims.rs` (HANDOFF).
+- The install-claim loop of 2026-10-16 19:30 to 2026-10-17 21:30 (6,918 rows from one session, a build every 70 seconds): the board
+  shows one commit (`3f7cd18`) built again and again, each time into a new tree, with no other row from that session. A build took
+  its claims for the new tree, the launchers and the selection first and then built for 38 seconds; the cutover needs the primary
+  checkout's landing boundary (`.git/land/runner.lock`), which the landing runner held, so it ended `busy` with the tree kept and
+  the claims released, and the caller built again 32 seconds later. `tests/test_runtime_quiet.py` reproduces the rows (18 for three
+  calls with the boundary held). Claims are now taken after the boundary is known to be free, ensure waits for the boundary before it
+  builds (`c26590c50`), and the landing runner left on 2026-10-17 23:01. The caller that retried every 32 seconds was part of the
+  landing runner; its log is gone and it is not identified further.
+- On 2026-10-19 detached `runtime ensure` processes started by the refresh hooks (`post-merge`, `primary-sync`, session start) of a session that is not a lead are refused
+  ("delegated to a lead agent the node has a session for") about 15 times an hour (`ensure.log`). They write no board row (the
+  refusal is local), and they start a Python process each (HANDOFF).
 - A done post of 25 rows a day is what a session subscribed to a subagent receives in its inbox. It is the only form of done that the
   board keeps.

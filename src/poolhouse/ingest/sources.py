@@ -286,7 +286,7 @@ def _decisions_in(store: Any) -> dict[str, int]:
 
 def show(out: str | Path, *, source: str = "", most: int = 5,
          say: Callable[[str], None] = say) -> int:
-    """``poolhouse-ingest show --out STORE``: what each source was read as, in plain text.
+    """``python -m poolhouse.ingest show --out STORE``: what each source was read as, in plain text.
 
     A sample of concepts with their kind and definition, a sample of relations with the
     verb and the page they were read on, the folds the source made, and how many figures.
@@ -335,7 +335,7 @@ def show(out: str | Path, *, source: str = "", most: int = 5,
 
 
 def sources(out: str | Path, *, most: int = 10, say: Callable[[str], None] = say) -> int:
-    """``poolhouse-ingest sources --out STORE``: every source at a glance, in plain text.
+    """``python -m poolhouse.ingest sources --out STORE``: every source at a glance, in plain text.
 
     Per source, how much of it is read and what the store holds for it; the concepts more
     than one source was read into; the names the hygiene pass joined across sources, with
@@ -369,9 +369,9 @@ def sources(out: str | Path, *, most: int = 10, say: Callable[[str], None] = say
     merged = got["merged"]
     say(f"  between sources ({len(merged)})"
         + ("" if merged else
-           f": no concept merged across sources yet; poolhouse-ingest tidy --out {out}"
+           f": no concept merged across sources yet; python -m poolhouse.ingest tidy --out {out}"
            if got.get("logged") else
-           f": no log of the names the sources share; poolhouse-ingest fold --out {out} "
+           f": no log of the names the sources share; python -m poolhouse.ingest fold --out {out} "
            f"re-folds each source from its reads and writes one"))
     for one in merged[:most]:
         say(f"    {one['a_label']} ({one['a_source']}) = {one['b_label']} "

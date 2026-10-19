@@ -16,7 +16,7 @@ from .request_fields import field, object_body
 
 PURPOSES = {
     "graph": "Serve the graph exploration workspace.", "store": "Inspect and manage graph stores.",
-    "world": "Build and inspect world models.", "ingest": "Ingest source documents into a graph.",
+    "world": "Build and inspect world models.",
     "speech": "Transcribe audio and synthesize speech.", "security": "Inspect security configuration and network policy.",
     "audit": "Audit redaction and data handling.", "credentials": "Manage credentials for model providers.",
     "doctor": "Check installation, dependencies and machine readiness.", "setup": "Configure the local installation.",

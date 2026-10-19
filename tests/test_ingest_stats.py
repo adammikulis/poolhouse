@@ -1,4 +1,4 @@
-"""The numbers `poolhouse-ingest status` reads off a run's own files: speed, drafting, and
+"""The numbers `python -m poolhouse.ingest status` reads off a run's own files: speed, drafting, and
 how long it has been going.
 
 Every source, unit and call here is invented, and nothing opens a port.

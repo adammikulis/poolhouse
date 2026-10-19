@@ -1,4 +1,4 @@
-"""``poolhouse-train-tools``: the three stages, and ``from-bench`` beside them."""
+"""``python -m poolhouse.train tools``: the three stages, and ``from-bench`` beside them."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def _from_bench_arguments(ap: Any) -> Any:
                     help="what the manifest names as the model this data is rendered for")
     ap.add_argument("--out", required=True, metavar="FILE.jsonl",
                     help="one JSONL file of rows, or a directory -- which gets train.jsonl, "
-                         "holdout.jsonl and manifest.json, ready for poolhouse-train-run "
+                         "holdout.jsonl and manifest.json, ready for python -m poolhouse.train run "
                          "--recipe tool-calls --data")
     ap.add_argument("--dry-run", action="store_true",
                     help="count what would be written and write nothing")
@@ -108,13 +108,13 @@ def _from_bench_arguments(ap: Any) -> Any:
 
 
 def _sub_parser(name: str, description: str, arguments: Callable[[Any], Any]) -> Any:
-    """The parser for ``poolhouse-train-tools NAME``, carrying that command's arguments."""
+    """The parser for ``python -m poolhouse.train tools NAME``, carrying that command's arguments."""
     return arguments(argparse.ArgumentParser(
-        prog=f"poolhouse-train-tools {name}", allow_abbrev=False, description=description))
+        prog=f"python -m poolhouse.train tools {name}", allow_abbrev=False, description=description))
 
 
 def _from_bench(argv: list[str]) -> int:
-    """``poolhouse-train-tools from-bench``: kept bench traces into a training file."""
+    """``python -m poolhouse.train tools from-bench``: kept bench traces into a training file."""
     bench = module("poolhouse.bench")
     a = _sub_parser("from-bench", FROM_BENCH, _from_bench_arguments).parse_args(argv)
     store = Path(a.kept).expanduser() if a.kept else bench.home_dir() / "runs.ladybug"
@@ -173,7 +173,7 @@ def _eval_arguments(ap: Any) -> Any:
 
 
 def _eval(argv: list[str]) -> int:
-    """``poolhouse-train-tools eval``: a served model scored on the held-out rows."""
+    """``python -m poolhouse.train tools eval``: a served model scored on the held-out rows."""
     a = _sub_parser("eval", EVAL, _eval_arguments).parse_args(argv)
     data = Path(a.data).expanduser()
     manifest = json.loads((data / "manifest.json").read_text())
@@ -197,12 +197,12 @@ def _eval(argv: list[str]) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    """``poolhouse-train-tools``' own parser, with ``from-bench`` registered under it."""
+    """``python -m poolhouse.train tools``' own parser, with ``from-bench`` registered under it."""
     ap = argparse.ArgumentParser(
-        prog="poolhouse-train-tools", allow_abbrev=False,
+        prog="python -m poolhouse.train tools", allow_abbrev=False,
         description="Plug in a project's tools, make training data from them, fine-tune a "
                     "base model, end with a GGUF. Each stage is skipped when --out has it. "
-                    "`poolhouse-train-tools from-bench --help` builds the same data out of "
+                    "`python -m poolhouse.train tools from-bench --help` builds the same data out of "
                     "what a model actually did, from the traces a bench run kept.")
     ap.add_argument("--tools", required=True,
                     help="JSON list of tool schemas, or python:module:attr "
@@ -240,7 +240,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """``poolhouse-train-tools`` -- tool schemas in, a model that calls them out."""
+    """``python -m poolhouse.train tools`` -- tool schemas in, a model that calls them out."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("from-bench", "eval"):
         try:

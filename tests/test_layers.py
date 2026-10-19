@@ -1,8 +1,9 @@
 """Which package may import which.
 
 The layers are core, model, graph, machine, tools, and experimental (the red-team harness, the
-gym, the bench, the world, the draft tool and the tools that drive the rest, none of which ships
-in the wheel; the gym's files in ``fleet`` count as the gym). Release code reaches an
+gym, the bench, the world, the draft tool, training, the GGUF tools, the shared fakes, reading
+documents and sites into a graph and the tools that drive the rest, none of which ships in the
+wheel; the gym's and the training's files in ``fleet`` count as theirs). Release code reaches an
 experimental module by name through ``poolhouse.optional`` and works when it is absent. A package
 may import a package in a lower layer, and one in its own layer as long as the other does not
 import it back.
@@ -28,23 +29,26 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
               "lock", "log", "macauth", "sealing",
               "markup", "sandbox",
-              "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "scrape", "sentinel",
+              "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "sentinel",
               "real_machine", "records", "requests", "person", "private_path", "private_counters", "protectedwrites", "safetext", "secretpaths",
               "serverkeys",
               "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "ui", "units", "win32", "windows_private", "worktreerules")),
-    ("model", ("client", "decide", "gguf", "hub", "spec", "speech", "vision")),
-    ("graph", ("board_names", "graph", "ingest", "sources")),
+    ("model", ("client", "decide", "hub", "spec", "speech", "vision")),
+    ("graph", ("board_names", "graph")),
     ("machine", ("doctor", "fleet", "serve", "setup", "studio")),
-    ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "datasheet", "decide_cli",
+    ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "decide_cli",
                "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "migrate", "migrate_paths", "migrate_scan", "memory", "reputation", "inbox", "roles", "rules",
-               "api", "testfarm", "testing", "train", "web", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
-    ("experimental", ("bench", "draft", "gym", "redteam", "surface", "walk", "world")),
+               "api", "testfarm", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
+    ("experimental", ("bench", "datasheet", "draft", "gguf", "gym", "ingest", "redteam", "scrape", "sources", "surface", "testing",
+                      "train", "walk", "web", "world")),
 )
 
 EXPERIMENTAL = dict(LAYERS)["experimental"]
-EXPERIMENTAL_FILES = ("src/poolhouse/fleet/gym_*.py", "src/poolhouse/fleet/web/components/gym-*.html",
+EXPERIMENTAL_FILES = ("src/poolhouse/fleet/gym_*.py", "src/poolhouse/fleet/train_*.py",
+                      "src/poolhouse/fleet/web/components/gym-*.html",
                       "src/poolhouse/fleet/web/components/benchmarks-view.html",
-                      "src/poolhouse/fleet/web/components/fleet-benchmark.html")
+                      "src/poolhouse/fleet/web/components/fleet-benchmark.html",
+                      "src/poolhouse/fleet/web/components/training-view.html")
 
 RANK = {package: height for height, (_, packages) in enumerate(LAYERS)
         for package in packages}
@@ -52,10 +56,8 @@ RANK = {package: height for height, (_, packages) in enumerate(LAYERS)
 KNOWN = {
     ("fleet", "serve"),
     ("fleet", "setup"),
-    ("gguf", "serve"),
     ("graph", "serve"),
     ("hub", "serve"),
-    ("ingest", "serve"),
     ("serve", "fleet"),
     ("serve", "setup"),
     ("setup", "fleet"),
@@ -67,6 +69,8 @@ def _package_of_file(path: Path) -> str:
     parts = path.relative_to(ROOT).parts
     if parts[:1] == ("fleet",) and path.match("gym_*.py"):
         return "gym"
+    if parts[:1] == ("fleet",) and path.match("train_*.py"):
+        return "train"
     return parts[0][:-3] if len(parts) == 1 else parts[0]
 
 
@@ -167,7 +171,8 @@ def _pyproject() -> dict:
 
 def test_the_wheel_leaves_out_exactly_the_experimental_packages() -> None:
     excluded = _pyproject()["tool"]["hatch"]["build"]["targets"]["wheel"]["exclude"]
-    assert sorted(excluded) == sorted([*(f"src/poolhouse/{name}" for name in EXPERIMENTAL), *EXPERIMENTAL_FILES])
+    packages = [f"src/poolhouse/{name}" + ("" if (ROOT / name).is_dir() else ".py") for name in EXPERIMENTAL]
+    assert sorted(excluded) == sorted([*packages, *EXPERIMENTAL_FILES])
 
 
 def test_the_experimental_files_are_the_ones_the_wheel_leaves_out() -> None:

@@ -47,7 +47,7 @@ def test_the_daemon_serves_no_gym_routes_or_page_without_the_gym() -> None:
     _run("""
 from poolhouse.fleet import daemon, page, routes, workspace_routes
 assert not [c for c in routes.Router.__mro__ if c.__name__.startswith("Gym")]
-assert object.__new__(routes.Router).job_commands() == ()
+assert object.__new__(routes.Router).job_commands() == ("poolhouse.train",)
 import shutil, tempfile
 from pathlib import Path
 held = Path(tempfile.mkdtemp()) / "components"

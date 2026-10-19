@@ -21,7 +21,7 @@ import json
 import sys
 from pathlib import Path
 
-from poolhouse import home
+from poolhouse import home, optional
 from poolhouse.graph.hygiene import written_from
 from poolhouse.graph.judging import ModelJudge
 from poolhouse.graph.store import GraphStore, StoreMismatch, StoreNeedsUpgrade
@@ -66,8 +66,8 @@ def _say_coverage(path: Path, store: GraphStore) -> None:
         return
     say(f"vectors: {have} of {should} node(s) ({have / should:.0%})")
     if have < should:
-        warn(f"  {should - have} node(s) short of a vector; finish with: "
-             f"poolhouse-ingest embed --out {path} --embed-url URL --embed-model MODEL")
+        finish = optional.command("poolhouse.ingest", f"embed --out {path} --embed-url URL --embed-model MODEL")
+        warn(f"  {should - have} node(s) short of a vector" + (f"; finish with: {finish}" if finish else ""))
 
 
 def _docs(path: Path) -> int:
@@ -166,8 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     hygiene.add_argument("--base-url", default="", metavar="URL",
                          help="a model already serving, to judge the names a spelling apart "
                               "from what it knows; with one the pass is automated and applies "
-                              "what it decides (poolhouse-ingest tidy --model also re-reads the "
-                              "source passages)")
+                              "what it decides")
     hygiene.add_argument("--rejudge", action="store_true",
                          help="with --base-url: ask the judge again about every verdict the "
                               "store holds and write the new ones")

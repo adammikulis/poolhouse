@@ -653,7 +653,7 @@ def test_a_probe_that_raises_costs_detail_not_the_daemon():
 def _fake_metal_smi(monkeypatch, gpu_power):
     import types
 
-    from poolhouse.train import accelerator
+    from poolhouse.fleet import accelerator
 
     fake = types.ModuleType("metal_smi")
     fake.gpu_power = gpu_power
@@ -737,16 +737,13 @@ def test_the_daemon_advertises_what_the_probe_reports(tmp_path):
 
 
 def test_the_package_registers_a_probe_that_can_see_the_card():
-    """Without this entry point the daemon reports only what the standard library sees,
+    """Without this probe the daemon reports only what the standard library sees,
     and the first-run wizard tells every machine it has no GPU."""
-    import tomllib
+    from poolhouse.fleet import accelerator
+    from poolhouse.fleet.device import registered_reports
 
-    repo = Path(__file__).resolve().parent.parent
-    table = tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))
-    spec = table["project"]["entry-points"]["poolhouse.device_report"]["accelerator"]
-
-    assert spec == "poolhouse.train.accelerator:report"
-    assert "accelerator" in resolve_report(spec)()
+    assert registered_reports()[0] is accelerator.report
+    assert "accelerator" in resolve_report("poolhouse.fleet.accelerator:report")()
 
 
 def test_health_answers_with_the_name_the_machine_has_now(tmp_path):

@@ -247,11 +247,11 @@ def test_every_command_the_package_installs_is_looked_for_on_path(monkeypatch, t
 
     monkeypatch.setattr(setup, "checkout", lambda: tmp_path)
     monkeypatch.setattr(shutil, "which",
-                        lambda name, *a, **k: None if name == "poolhouse-ingest"
+                        lambda name, *a, **k: None if name == "poolhouse-store"
                         else f"/opt/bin/{name}")
     found = [f for f in setup.look() if f.name == "commands on PATH"]
     assert found and not found[0].good
-    assert "poolhouse-ingest" in found[0].said
+    assert "poolhouse-store" in found[0].said
     assert "poolhouse-serve" not in found[0].said, "only what is missing is named"
     assert found[0].fix == ["pip", "install", "-e", str(tmp_path)]
 
@@ -273,7 +273,7 @@ def test_the_commands_are_read_from_the_install_and_the_checkouts_pyproject(monk
         'poolhouse-newthing = "poolhouse.newthing:main"\n')
     monkeypatch.setattr(setup, "checkout", lambda: tmp_path)
     names = setup._scripts()
-    assert {"poolhouse-serve", "poolhouse-setup", "poolhouse-ingest"} <= set(names)
+    assert {"poolhouse-serve", "poolhouse-setup", "poolhouse-store"} <= set(names)
     assert "poolhouse-newthing" in names, "named in the checkout, not yet installed"
     assert names == sorted(set(names))
 

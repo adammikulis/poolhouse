@@ -158,7 +158,7 @@ def _between(started: str, ended: str) -> float:
 
 
 def status(out: str | Path, *, say: Callable[[str], None] = say) -> int:
-    """``poolhouse-ingest status``: sections done, what failed, what is folded, and how long left.
+    """``python -m poolhouse.ingest status``: sections done, what failed, what is folded, and how long left.
 
     The estimate is the units still to read at the rate this store has actually measured,
     so it is honest about this machine and this model rather than about any other.
