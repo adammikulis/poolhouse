@@ -9,6 +9,7 @@ test_sandbox_denial_cut.py
 test_sandbox_denial_log.py
 test_sandbox_gpu.py
 test_sandbox_integration.py
+test_sandbox_kit_lock.py
 test_sandbox_policy.py
 test_sandbox_redteam.py
 test_sandbox_seatbelt.py

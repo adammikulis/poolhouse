@@ -17,7 +17,16 @@ from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.container import Container
 from poolhouse.sandbox.denial_log import DenialLog, parse
 from poolhouse.sentinel.adapters import sandbox_listener
-from tests.sandbox_kit import CutBackend, RecordingBackend, UnloggedBackend, UnreadableBackend
+from poolhouse.sentinel.score import WEIGHTS
+from tests.sandbox_kit import (
+    CutBackend,
+    RecordingBackend,
+    SilentBackend,
+    UnloggedBackend,
+    UnparsedBackend,
+    UnreadableBackend,
+    UntracedBackend,
+)
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -235,8 +244,12 @@ def test_a_run_that_cannot_start_ends_the_run_it_began_watching(tmp_path):
     assert backend.watched == ["unreadable"] == backend.finished
 
 
-@pytest.mark.parametrize(("backend", "weight"), [(UnloggedBackend(), 0.2), (UnreadableBackend(), 1.0), (CutBackend(), 0.2)],
-                         ids=["no-log-by-construction", "log-lost", "report-cut-off"])
+@pytest.mark.parametrize(("backend", "weight"), [
+    (UnloggedBackend(), 0.2), (UnreadableBackend(), 1.0), (UntracedBackend(), 0.2),
+    (CutBackend(), WEIGHTS["sandbox.denied"]), (SilentBackend(), WEIGHTS["sandbox.denied"]),
+    (UnparsedBackend(), WEIGHTS["sandbox.denied"]),
+], ids=["no-log-by-construction", "log-lost", "cut-report-of-nobody-in-particular", "cut-report-of-the-run",
+        "refused-and-no-report", "report-the-run-made-unreadable"])
 def test_a_failed_run_whose_refusals_cannot_be_known_adds_to_the_score_by_the_reason(backend, weight, tmp_path):
     node = sentinel.Sentinel(tmp_path / "sentinel")
     with node.running("s-blind"):

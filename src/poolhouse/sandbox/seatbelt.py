@@ -17,13 +17,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from poolhouse.sandbox import denial_log
-from poolhouse.sandbox.backend import (
-    CUT_REFUSAL_LOG,
-    LOST_REFUSAL_LOG,
-    Availability,
-    Wrapped,
-    program_of,
-)
+from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, Availability, Wrapped, program_of
 from poolhouse.sandbox.path_language import expressions
 from poolhouse.sandbox.policy import NetMode, Policy, PolicyError, checked_path
 
@@ -240,13 +234,17 @@ class Seatbelt:
         """Start the system log stream that refusals are read from and register the run tagged ``tag`` on it; call it before the command starts."""
         denial_log.shared().watch(tag)
 
+    def started(self, tag: str, pid: int) -> None:
+        """The run tagged ``tag`` started as the process ``pid``; its processes are followed from here."""
+        denial_log.shared().track(tag, pid)
+
     def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
         """What the sandbox refused the run tagged ``tag``, as the stream `watch` registered it on carried it; None when that cannot be known."""
         return denial_log.shared().denials(tag)
 
     def unreadable(self, tag: str) -> str:
         """Why `denials` could not say what the run tagged ``tag`` was refused."""
-        return CUT_REFUSAL_LOG if denial_log.shared().cut(tag) else LOST_REFUSAL_LOG
+        return denial_log.shared().why_unreadable(tag) or LOST_REFUSAL_LOG
 
     def finish(self, tag: str) -> None:
         """The run tagged ``tag`` has ended."""

@@ -10,11 +10,15 @@ from typing import Protocol
 
 from poolhouse.sandbox.policy import Policy, PolicyError
 
-__all__ = ["CUT_REFUSAL_LOG", "LOST_REFUSAL_LOG", "NO_REFUSAL_LOG", "Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
+__all__ = ["CUT_REFUSAL_LOG", "CUT_UNTRACED_LOG", "LOST_REFUSAL_LOG", "NO_REFUSAL_LOG", "SILENT_REFUSAL_LOG",
+           "UNPARSED_REFUSAL_LOG", "Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
 
 NO_REFUSAL_LOG = "this backend keeps no refusal log"
 LOST_REFUSAL_LOG = "the refusal log could not be read"
-CUT_REFUSAL_LOG = "a refusal report was cut off by the kernel"
+CUT_REFUSAL_LOG = "a refusal report of a process of this run was cut off by the kernel"
+CUT_UNTRACED_LOG = "a refusal report was cut off by the kernel and could not be traced to a process of another run"
+SILENT_REFUSAL_LOG = "the command was refused and no refusal report of it reached the log"
+UNPARSED_REFUSAL_LOG = "a refusal report of this run could not be read"
 
 
 class SandboxUnavailable(RuntimeError):
@@ -41,8 +45,9 @@ class Wrapped:
 class Backend(Protocol):
     """One way of confining a process: ``wrap`` turns a command and a policy into the command
     that runs it confined, ``watch`` readies the backend to report refusals before the command
-    starts, ``denials`` reads back what the sandbox refused (None when it cannot be known),
-    ``unreadable`` says why it could not be known and ``finish`` says the run has ended."""
+    starts, ``started`` says which process the run started as, ``denials`` reads back what the sandbox
+    refused (None when it cannot be known), ``unreadable`` says why it could not be known and ``finish``
+    says the run has ended."""
 
     name: str
 
@@ -51,6 +56,8 @@ class Backend(Protocol):
     def wrap(self, argv: Sequence[str], policy: Policy) -> Wrapped: ...
 
     def watch(self, tag: str) -> None: ...
+
+    def started(self, tag: str, pid: int) -> None: ...
 
     def denials(self, tag: str, since: float) -> list[dict[str, str]] | None: ...
 

@@ -3,10 +3,11 @@
 The kernel's refusal reports carry the tag of the profile that refused and are not kept for a
 later ``log show``, so the stream runs from the first confined command to the end of the process.
 The kernel cuts a report longer than about a thousand bytes at its end, which removes the tag; the
-stream also carries every kernel report that long, and every run watched while one arrives is
-unreadable. ``denials`` is None whenever the stream cannot say what a run was refused: it never
-started, did not answer, ended or restarted after the run was watched, never watched the run, or a
-report was cut off while the run was watched.
+stream also carries every kernel report that long. A cut report names the process that was refused, so
+it makes unreadable the run that process belongs to (`process_tree`), and every run whose processes
+were not followed from its start. ``denials`` is None whenever the stream cannot say what a run was
+refused: it never started, did not answer, ended or restarted after the run was watched, never
+watched the run, or a report of the run was cut off or could not be read.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from poolhouse.platform import start_grouped
+from poolhouse.sandbox import process_tree
+from poolhouse.sandbox.backend import CUT_REFUSAL_LOG, CUT_UNTRACED_LOG, UNPARSED_REFUSAL_LOG
 
 __all__ = ["DenialLog", "parse", "shared"]
 
@@ -51,8 +54,12 @@ RETRY_SECONDS = 60.0
 KEEP_TAGS = 256
 KEEP_PER_TAG = 1000
 
-DENIAL = re.compile(r"Sandbox: (?P<proc>[^(]+)\((?P<pid>\d+)\) deny\(\d+\) (?P<op>[\w*-]+)\s*(?P<target>.*)",
-                    re.DOTALL)
+HEAD = r"Sandbox: (?P<proc>[^\n]+?)\((?P<pid>\d+)\) deny\(\d+\) "
+DENIAL = re.compile(HEAD + r"(?P<op>[\w*-]+)\s*(?P<target>.*)", re.DOTALL)
+DUPLICATE = re.compile(r"\d+ duplicate reports? for Sandbox: ")
+"""The kernel's note that it left out repeats of a refusal it had reported already."""
+REPORT_HEAD = re.compile(r"(?:\d+ duplicate reports? for )?Sandbox: [^\n]+?\((?P<pid>\d+)\) ")
+UNKNOWN_PID = -1
 NOISE = re.compile(
     r"\.CFUserTextEncoding$|/\.?GlobalPreferences[^/]*\.plist$|^com\.apple\.SystemConfiguration\.configd$"
     r"|^/Users/[^/]+$|^com\.apple\.analyticsd$|^com\.apple\.system\.opendirectoryd\.membership$"
@@ -105,6 +112,12 @@ def parse(line: str) -> tuple[str, dict[str, str]] | None:
     return None if tag is None or entry is None else (tag, entry)
 
 
+def reported_pid(message: str) -> int:
+    """The pid a kernel Sandbox message names as the process that was refused, or `UNKNOWN_PID`."""
+    found = REPORT_HEAD.match(message)
+    return int(found["pid"]) if found else UNKNOWN_PID
+
+
 def may_be_cut(message: str) -> bool:
     """Whether the kernel may have cut the end of ``message`` off: it is as long as the kernel's limit lets one be, or says so."""
     return message.endswith(CUT_MARK) or len(message.encode("utf-8", "surrogatepass")) >= CUT_BYTES
@@ -112,12 +125,18 @@ def may_be_cut(message: str) -> bool:
 
 @dataclass(slots=True)
 class _Run:
-    """One watched run: the stream it was watched on, what that stream carried for it, whether a
-    refusal report was cut off meanwhile, and whether it has ended."""
+    """One watched run: the stream it was watched on, what that stream carried for it, the processes
+    it started, the processes a cut report was heard for while it ran (and whether one named no process),
+    whether a report of its own could not be read, and whether it has ended."""
 
     generation: int
     entries: list[dict[str, str]] = field(default_factory=list)
-    cut: bool = False
+    tree: process_tree.Tree | None = None
+    cut_own: bool = False
+    cut_pids: set[int] = field(default_factory=set)
+    cut_flood: bool = False
+    cut_blind: bool = False
+    unparsed: bool = False
     ended: bool = False
 
 
@@ -152,6 +171,13 @@ class DenialLog:
             self._trim()
         return generation is not None
 
+    def track(self, tag: str, pid: int) -> None:
+        """Follow the processes of the run tagged ``tag``, which started as ``pid``, so that a cut report is charged to the run it belongs to."""
+        tree = process_tree.follow(pid)
+        with self._changed:
+            if tag in self._runs:
+                self._runs[tag].tree = tree
+
     def finish(self, tag: str) -> None:
         """Mark the run tagged ``tag`` as ended; its refusals stay readable until the cap needs the room."""
         with self._changed:
@@ -181,16 +207,34 @@ class DenialLog:
             if self._generation != run.generation or not self.running():
                 logger.warning("sandbox refusals cannot be reported: the system log stream restarted or ended after the command started")
                 return None
-            if run.cut:
-                logger.warning("sandbox refusals cannot be reported: the kernel cut off a refusal report while the command ran")
+            if why := self._why(run):
+                logger.warning("sandbox refusals cannot be reported: %s", why)
                 return None
             return [dict(entry) for entry in run.entries]
 
-    def cut(self, tag: str) -> bool:
-        """Whether a refusal report was cut off by the kernel while the run tagged ``tag`` was watched."""
+    def why_unreadable(self, tag: str) -> str:
+        """Why the refusals of the run tagged ``tag`` cannot be known from the reports heard for it, or an empty string."""
         with self._changed:
             run = self._runs.get(tag)
-            return run is not None and run.cut
+            return "" if run is None else self._why(run)
+
+    def _why(self, run: _Run) -> str:
+        """Why ``run``'s refusals cannot be known from the reports heard, or an empty string. Call it holding the lock."""
+        if run.unparsed:
+            return UNPARSED_REFUSAL_LOG
+        if run.cut_own or (run.tree is not None and run.tree.holds_any(run.cut_pids)):
+            return CUT_REFUSAL_LOG
+        if run.cut_blind:
+            return CUT_UNTRACED_LOG
+        if run.tree is not None and run.tree.complete:
+            return ""
+        if run.cut_flood or any(not self._followed(pid) for pid in run.cut_pids):
+            return CUT_UNTRACED_LOG
+        return ""
+
+    def _followed(self, pid: int) -> bool:
+        """Whether ``pid`` is a process of a run this stream watches."""
+        return any(run.tree is not None and pid in run.tree for run in self._runs.values())
 
     def close(self) -> None:
         """Stop the stream this process started."""
@@ -256,19 +300,41 @@ class DenialLog:
 
     def _hear(self, message: str) -> None:
         """Record what one kernel message says about a run, or about a probe. A message that no probe
-        or watched run owns and that may have been cut off makes every run still going unreadable."""
+        or watched run owns and that may have been cut off is charged to the runs still going: to the one
+        whose process it names, and to those whose processes were not followed from their start."""
         tag, entry = trailing_tag(message), refusal(message)
         with self._changed:
             run = None if tag is None else self._runs.get(tag)
             if answered := [token for token in self._probes if token in message]:
                 self._probes.update(dict.fromkeys(answered, True))
             elif run is not None:
-                if entry is not None and not NOISE.search(entry["target"]) and len(run.entries) < KEEP_PER_TAG:
-                    run.entries.append(entry)
+                self._take(run, message, entry)
             elif may_be_cut(message):
-                for watched in self._runs.values():
-                    watched.cut = watched.cut or not watched.ended
+                self._cut(reported_pid(message))
             self._changed.notify_all()
+
+    @staticmethod
+    def _take(run: _Run, message: str, entry: dict[str, str] | None) -> None:
+        """Keep what a message that carries ``run``'s tag reported; one that is neither a refusal nor a
+        note of repeats of one makes the run unreadable."""
+        if entry is None:
+            run.unparsed = run.unparsed or not DUPLICATE.match(message)
+        elif not NOISE.search(entry["target"]) and len(run.entries) < KEEP_PER_TAG:
+            run.entries.append(entry)
+
+    def _cut(self, pid: int) -> None:
+        """Remember that a report naming the process ``pid`` was cut off, for every run still going."""
+        for run in self._runs.values():
+            if run.ended:
+                continue
+            if pid == UNKNOWN_PID:
+                run.cut_blind = True
+            elif run.tree is not None and pid in run.tree:
+                run.cut_own = True
+            elif len(run.cut_pids) < KEEP_PER_TAG:
+                run.cut_pids.add(pid)
+            else:
+                run.cut_flood = True
 
     def _trim(self) -> None:
         """Drop the oldest ended runs while there are more than ``KEEP_TAGS``; a run still going is never dropped."""

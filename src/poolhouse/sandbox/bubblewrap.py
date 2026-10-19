@@ -106,6 +106,9 @@ class Bubblewrap:
     def watch(self, tag: str) -> None:
         return None
 
+    def started(self, tag: str, pid: int) -> None:
+        return None
+
     def finish(self, tag: str) -> None:
         return None
 

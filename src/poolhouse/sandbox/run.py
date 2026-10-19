@@ -22,7 +22,7 @@ else:
     resource = None
 
 from poolhouse.platform import start_process
-from poolhouse.sandbox.backend import Backend, SandboxUnavailable
+from poolhouse.sandbox.backend import SILENT_REFUSAL_LOG, Backend, SandboxUnavailable
 from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy
 from poolhouse.sandbox.seatbelt import Seatbelt
@@ -150,18 +150,22 @@ def _wait(proc: subprocess.Popen[bytes], deadline: float | None, *captures: _Cap
     return False
 
 
-def _execute(full: Sequence[str], argv: Sequence[str], policy: Policy, cwd: str | os.PathLike[str],
-             stdin: bytes | None) -> Result:
-    """Start ``full``, hold it to the policy's limits until it ends, and return how it ended."""
-    limits = policy.limits
-    began = time.time()
+def _start(full: Sequence[str], argv: Sequence[str], policy: Policy, cwd: str | os.PathLike[str],
+           piped: bool) -> subprocess.Popen[bytes]:
+    """Start ``full`` in a process group of its own, with a pipe for its input when ``piped``."""
     try:
-        proc = start_process(
-            full, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+        return start_process(
+            full, stdin=subprocess.PIPE if piped else subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=HOOKS.environment(policy.env), cwd=cwd,
-            preexec_fn=_limits(limits))
+            preexec_fn=_limits(policy.limits))
     except OSError as exc:
         raise SandboxUnavailable(f"{policy.name}: could not start {argv[0]}: {exc}") from exc
+
+
+def _complete(proc: subprocess.Popen[bytes], argv: Sequence[str], policy: Policy, stdin: bytes | None,
+              began: float) -> Result:
+    """Feed ``proc`` its input, hold it to the policy's limits until it ends, and return how it ended."""
+    limits = policy.limits
     out, err = _Capture(proc.stdout, limits.output_bytes), _Capture(proc.stderr, limits.output_bytes)
     out.start()
     err.start()
@@ -208,7 +212,10 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
         cwd = (policy.write or policy.read or ("/",))[0]
     began = time.time()
     try:
-        result = _execute(full, argv, policy, cwd, stdin)
+        proc = _start(full, argv, policy, cwd, stdin is not None)
+        if chosen is not None:
+            chosen.started(tag, proc.pid)
+        result = _complete(proc, argv, policy, stdin, began)
         result.sandboxed, result.backend = chosen is not None, name
         if chosen is not None:
             _read_denials(chosen, tag, began, diagnose, result)
@@ -231,9 +238,18 @@ def _read_denials(chosen: Backend, tag: str, began: float, diagnose: str, result
     """Put what the sandbox refused the run in ``result``."""
     if _diagnose(diagnose, result):
         found = chosen.denials(tag, began)
-        result.denials_unavailable = found is None
-        result.denials_detail = "" if found is not None else chosen.unreadable(tag)
         result.denials = found or []
+        result.denials_detail = ""
+        if found is None:
+            result.denials_detail = chosen.unreadable(tag)
+        elif not found and _says_refused(result):
+            result.denials_detail = SILENT_REFUSAL_LOG
+        result.denials_unavailable = found is None or bool(result.denials_detail)
+
+
+def _says_refused(result: Result) -> bool:
+    """Whether the run failed and its own output says the system refused it something."""
+    return result.returncode != 0 and "operation not permitted" in result.stderr.lower()
 
 
 def _diagnose(when: str, result: Result) -> bool:

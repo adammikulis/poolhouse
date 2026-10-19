@@ -8,8 +8,8 @@ import os
 import shutil
 import socket
 import sys
-import tempfile
 import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -19,8 +19,11 @@ from poolhouse import sandbox
 from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy
 from poolhouse.sandbox.backend import (
     CUT_REFUSAL_LOG,
+    CUT_UNTRACED_LOG,
     LOST_REFUSAL_LOG,
     NO_REFUSAL_LOG,
+    SILENT_REFUSAL_LOG,
+    UNPARSED_REFUSAL_LOG,
     Availability,
     Wrapped,
 )
@@ -40,6 +43,9 @@ class UnreadableBackend:
         return Wrapped(list(argv), tag="unreadable")
 
     def watch(self, *_tag):
+        return None
+
+    def started(self, tag, pid):
         return None
 
     def denials(self, tag, since):
@@ -62,7 +68,7 @@ class UnloggedBackend(UnreadableBackend):
 
 
 class CutBackend(UnreadableBackend):
-    """A backend that confines nothing and lost a refusal report to the kernel's length limit."""
+    """A backend that confines nothing and lost a refusal report of the run's own to the kernel's length limit."""
 
     name = "cut"
 
@@ -70,40 +76,109 @@ class CutBackend(UnreadableBackend):
         return CUT_REFUSAL_LOG
 
 
+class UntracedBackend(UnreadableBackend):
+    """A backend that confines nothing and lost a refusal report that may or may not be the run's."""
+
+    name = "untraced"
+
+    def unreadable(self, tag):
+        return CUT_UNTRACED_LOG
+
+
+class SilentBackend(UnreadableBackend):
+    """A backend that confines nothing and whose log never carried a report of what refused the run."""
+
+    name = "silent"
+
+    def unreadable(self, tag):
+        return SILENT_REFUSAL_LOG
+
+
+class UnparsedBackend(UnreadableBackend):
+    """A backend that confines nothing and could not read a refusal report of the run's own."""
+
+    name = "unparsed"
+
+    def unreadable(self, tag):
+        return UNPARSED_REFUSAL_LOG
+
+
+class QuietBackend(UnreadableBackend):
+    """A backend that confines nothing and whose log carries no refusal at all for the run."""
+
+    name = "quiet"
+
+    def denials(self, tag, since):
+        return []
+
+
 class RecordingBackend(UnreadableBackend):
-    """A backend that remembers which runs it was asked to watch and which it was told had ended."""
+    """A backend that remembers which runs it was asked to watch, which process each one started as and which it was told had ended."""
 
     name = "recording"
 
     def __init__(self):
-        self.watched, self.finished = [], []
+        self.watched, self.finished, self.started_as = [], [], {}
 
     def watch(self, tag):
         self.watched.append(tag)
+
+    def started(self, tag, pid):
+        self.started_as[tag] = pid
 
     def finish(self, tag):
         self.finished.append(tag)
 
 
+LOCK_BASE = "/private/tmp/poolhouse-seatbelt-log"
+"""One path for every test run on the machine, whatever ``TMPDIR`` each one was given."""
+LOCK_TIMEOUT_S = 600.0
+"""Seconds a test waits for the lock before it fails; a holder that exits lets go of it."""
+LOCK_POLL_S = 0.02
+_HELD: list[bool] = []
+
+
+def _lock(fd: int, mode: int, name: str) -> None:
+    """Take the lock ``mode`` on ``fd``, failing the test when another test run holds it for `LOCK_TIMEOUT_S`."""
+    import fcntl
+
+    deadline = time.monotonic() + LOCK_TIMEOUT_S
+    while True:
+        try:
+            fcntl.flock(fd, mode | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                pytest.fail(f"waited {LOCK_TIMEOUT_S:g} s for the machine-wide Seatbelt log {name} lock, "
+                            f"which another test run holds", pytrace=False)
+            time.sleep(LOCK_POLL_S)
+
+
 @contextlib.contextmanager
 def kernel_log(alone: bool = False) -> Iterator[None]:
     """Hold the machine-wide lock around a test that reads Seatbelt refusals (shared) or makes the kernel
-    cut one off (alone): a cut report reaches every refusal stream on the machine, and every run being
-    watched meanwhile becomes unreadable. A test waiting to be alone holds back the ones that follow."""
+    cut one off (alone): a cut report reaches every refusal stream on the machine. A test waiting to be
+    alone holds back the ones that follow. A test takes the lock once: asking again fails the test."""
     import fcntl
 
-    base = Path(tempfile.gettempdir()) / "poolhouse-seatbelt-log"
-    gate, lock = (os.open(f"{base}.{name}", os.O_RDWR | os.O_CREAT, 0o600) for name in ("gate", "lock"))
-    mode = fcntl.LOCK_EX if alone else fcntl.LOCK_SH
+    if _HELD:
+        pytest.fail(f"this test already holds the Seatbelt log lock ({'alone' if _HELD[0] else 'shared'}) and asked for it "
+                    f"again ({'alone' if alone else 'shared'}): a test takes `seatbelt` or `seatbelt_alone`, once", pytrace=False)
+    held = []
     try:
-        fcntl.flock(gate, mode)
-        fcntl.flock(lock, mode)
-        if not alone:
-            fcntl.flock(gate, fcntl.LOCK_UN)
-        yield
+        for name in ("gate", "lock"):
+            held.append(os.open(f"{LOCK_BASE}.{name}", os.O_RDWR | os.O_CREAT, 0o600))
+            _lock(held[-1], fcntl.LOCK_EX if alone else fcntl.LOCK_SH, name)
+            if name == "gate" and not alone:
+                fcntl.flock(held[-1], fcntl.LOCK_UN)
+        _HELD.append(alone)
+        try:
+            yield
+        finally:
+            _HELD.pop()
     finally:
-        os.close(gate)
-        os.close(lock)
+        for fd in held:
+            os.close(fd)
 
 
 def _held_backend(alone: bool) -> Iterator[Seatbelt]:

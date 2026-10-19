@@ -105,26 +105,48 @@ Known limits:
   (a few milliseconds) and only happens after a failed run or with `diagnose="always"`. A process
   that is itself confined cannot run `log`.
 - When the stream cannot say what a run was refused (it did not start, did not answer, ended or
-  restarted after the run began, or the kernel cut off a refusal report while the run was watched),
+  restarted after the run began, a report of the run was cut off or could not be read, or the run
+  failed with "Operation not permitted" and the stream carried no refusal for it),
   `Result.denials_unavailable` is set, `Result.check()` raises `SandboxViolation`, and a
   `sandbox.denials-unavailable` event (warning) goes to the sentinel. Only events sent by the
   kernel's Sandbox extension count as refusals, and only for a run the process watched. Bubblewrap and
   the container backend keep no refusal log at all: a failed run on them reports
-  `sandbox.denials-unavailable` with the detail "this backend keeps no refusal log" (sentinel weight
-  0.2, against 1.0 for a log that was lost) and `Result.check()` raises.
+  `sandbox.denials-unavailable` with the detail "this backend keeps no refusal log" and
+  `Result.check()` raises.
 - The kernel cuts a refusal report over about 1010 bytes at its end, which removes the profile's tag
-  (a refused path of about 935 bytes or more). The stream therefore also carries every kernel Sandbox
-  report of 200 or more characters, and one that no watched run or probe owns and that is 900 bytes
-  or longer, or ends in the kernel's cut mark, makes every run being watched at that moment
-  unreadable (detail "a refusal report was cut off by the kernel", sentinel weight 0.2: the report
-  names a process that has usually exited by the time it arrives, so a run beside the one that
-  provoked it is made unreadable too). The start-up probes include a long report, so a stream that
-  cannot carry one is not used. A report cut inside a multi-byte character is not delivered by the
-  system log at all; a refusal of a path that long, made of such characters, cannot be seen by any
-  reader of the log.
+  (a refused path of about 940 bytes or more). The stream therefore also carries every kernel Sandbox
+  report of 200 or more characters. One that no watched run or probe owns and that is 900 bytes or
+  longer, or ends in the kernel's cut mark, still names the process that was refused
+  (`Sandbox: cat(1234) deny(1) ...`). `process_tree.py` follows the processes of each run from the
+  moment it starts (`kqueue` fork notifications and libproc's child lists, so a child is followed even
+  when it ends within milliseconds), and the report makes unreadable the run whose process it names
+  (detail "a refusal report of a process of this run was cut off by the kernel"). A report whose
+  process belongs to no run leaves every run whose processes were followed from the start readable; it
+  makes unreadable only a run that was not followed from its start (the process had already ended when
+  the run was first looked at, a process had more than 4096 children, or the run started more than 65536
+  processes), with the detail "... could
+  not be traced to a process of another run"; so does a report that names no process, for every run
+  being watched. A process that forks and ends within the reaction time of the
+  notification (tens of microseconds) is not followed, so a cut report of such a process is taken
+  for a foreign one. The start-up probes include a long report, so a stream that cannot carry one is
+  not used.
+- A report cut inside a multi-byte character is not delivered by the system log at all. A run that
+  fails with "Operation not permitted" while the stream carried no refusal for it (and one whose
+  only refusals were the start-up ones listed below) is unreadable, with the detail "the command was
+  refused and no refusal report of it reached the log". A failure with that text that the sandbox did
+  not cause is reported the same way. A report of the run's own tag that is neither a refusal nor the
+  kernel's note of repeated refusals makes the run unreadable ("a refusal report of this run could not be
+  read").
+- Sentinel weights of `sandbox.denials-unavailable`: 1.0 for a log that was lost; 0.2 for a backend
+  without a log and for a cut report that could not be traced (the failure may not be the run's);
+  the weight of a refusal (2.0) for a report of the run's own that was cut off, never delivered or
+  unreadable.
 - A sandbox event counts toward the score of the session whose tool call started the run
-  (`Sentinel.running_session`, which follows `asyncio.to_thread`) and of no other; a run started
-  outside a tool call counts for nobody.
+  (`Sentinel.running_session`, the innermost tool call of that sentinel in the running context) and of
+  no other. The context follows `asyncio.to_thread` and `contextvars.copy_context().run`; a plain
+  `threading.Thread` or an executor does not inherit it, so a run started there counts for nobody and
+  the sentinel logs a warning (`counts for nobody`) when a tool call was running meanwhile. A run
+  started outside a tool call counts for nobody.
 - Refusals that every confined process provokes at start-up (preference files, a few Mach
   services, `net.routetable`) are filtered out of `Result.denials`.
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import logging
 import threading
 
 import pytest
@@ -80,3 +82,49 @@ def test_a_session_of_another_sentinel_is_not_counted(tmp_path):
     with theirs.running("s-theirs"):
         blind_run(ours, tmp_path)
     assert ours.score.value("session", "s-theirs") == 0 and theirs.score.value("session", "s-theirs") == 0
+
+
+def test_a_tool_call_of_another_sentinel_started_inside_this_one_does_not_hide_it(tmp_path):
+    ours, theirs = sentinel.Sentinel(tmp_path / "ours"), sentinel.Sentinel(tmp_path / "theirs")
+    with ours.running("s-ours"), theirs.running("s-theirs"):
+        blind_run(ours, tmp_path)
+        assert ours.running_session() == "s-ours" and theirs.running_session() == "s-theirs"
+    assert ours.score.value("session", "s-ours") == pytest.approx(1.0)
+    assert ours.score.value("session", "s-theirs") == 0 == theirs.score.value("session", "s-theirs")
+
+
+def test_a_nested_tool_call_of_the_same_sentinel_counts_for_the_innermost_and_the_outer_one_again_after(tmp_path):
+    node = sentinel.Sentinel(tmp_path / "sentinel")
+    with node.running("s-outer"):
+        with node.running("s-inner"):
+            blind_run(node, tmp_path)
+        assert node.running_session() == "s-outer"
+    assert node.running_session() == ""
+    assert node.score.value("session", "s-inner") == pytest.approx(1.0) and node.score.value("session", "s-outer") == 0
+
+
+def test_a_sandbox_event_from_a_thread_that_did_not_inherit_the_tool_call_is_said_to_count_for_nobody(tmp_path, caplog):
+    node = sentinel.Sentinel(tmp_path / "sentinel")
+    with caplog.at_level(logging.WARNING, logger="poolhouse.sentinel"), node.running("s-threaded"):
+        thread = threading.Thread(target=blind_run, args=(node, tmp_path))
+        thread.start()
+        thread.join()
+    assert node.score.value("session", "s-threaded") == 0
+    assert "counts for nobody" in caplog.text and "s-threaded" in caplog.text
+
+
+def test_a_sandbox_event_from_a_thread_given_the_context_of_the_tool_call_counts_for_it(tmp_path, caplog):
+    node = sentinel.Sentinel(tmp_path / "sentinel")
+    with caplog.at_level(logging.WARNING, logger="poolhouse.sentinel"), node.running("s-carried"):
+        thread = threading.Thread(target=contextvars.copy_context().run, args=(blind_run, node, tmp_path))
+        thread.start()
+        thread.join()
+    assert node.score.value("session", "s-carried") == pytest.approx(1.0)
+    assert "counts for nobody" not in caplog.text
+
+
+def test_a_sandbox_event_with_no_tool_call_running_is_not_said_to_count_for_nobody(tmp_path, caplog):
+    node = sentinel.Sentinel(tmp_path / "sentinel")
+    with caplog.at_level(logging.WARNING, logger="poolhouse.sentinel"):
+        blind_run(node, tmp_path)
+    assert "counts for nobody" not in caplog.text
