@@ -7,6 +7,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,9 @@ BECAUSE = "POOLHOUSE_SENTINEL_BECAUSE"
 MISSING = "integrity.missing"
 GONE_SCANS = 3
 """Scans in a row a pinned file may be gone before its pin is dropped."""
+
+
+_RUNNING: ContextVar[tuple[Sentinel, str] | None] = ContextVar("poolhouse_sentinel_running", default=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +195,7 @@ class Sentinel:
         meanwhile can be attributed to it."""
         with self._flight_lock:
             self._flights[session] = self._flights.get(session, 0) + 1
+        owner = _RUNNING.set((self, session))
         try:
             yield
         finally:
@@ -198,6 +203,13 @@ class Sentinel:
                 self._flights[session] -= 1
                 if not self._flights[session]:
                     del self._flights[session]
+            _RUNNING.reset(owner)
+
+    def running_session(self) -> str:
+        """The session whose tool call of this sentinel is running in this context (a thread started
+        by ``asyncio.to_thread`` has its caller's), or an empty string."""
+        owner = _RUNNING.get()
+        return owner[1] if owner is not None and owner[0] is self else ""
 
     def in_flight(self) -> list[str]:
         """The sessions with a tool call running now."""

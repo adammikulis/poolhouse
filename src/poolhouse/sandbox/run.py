@@ -22,7 +22,7 @@ else:
     resource = None
 
 from poolhouse.platform import start_process
-from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, NO_REFUSAL_LOG, Backend, SandboxUnavailable
+from poolhouse.sandbox.backend import Backend, SandboxUnavailable
 from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy
 from poolhouse.sandbox.seatbelt import Seatbelt
@@ -232,8 +232,7 @@ def _read_denials(chosen: Backend, tag: str, began: float, diagnose: str, result
     if _diagnose(diagnose, result):
         found = chosen.denials(tag, began)
         result.denials_unavailable = found is None
-        result.denials_detail = "" if found is not None else (
-            LOST_REFUSAL_LOG if chosen.keeps_refusal_log else NO_REFUSAL_LOG)
+        result.denials_detail = "" if found is not None else chosen.unreadable(tag)
         result.denials = found or []
 
 

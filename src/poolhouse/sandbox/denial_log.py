@@ -2,8 +2,11 @@
 
 The kernel's refusal reports carry the tag of the profile that refused and are not kept for a
 later ``log show``, so the stream runs from the first confined command to the end of the process.
-``denials`` is None whenever the stream cannot say what a run was refused: it never started, did
-not answer, ended or restarted after the run was watched, or never watched the run.
+The kernel cuts a report longer than about a thousand bytes at its end, which removes the tag; the
+stream also carries every kernel report that long, and every run watched while one arrives is
+unreadable. ``denials`` is None whenever the stream cannot say what a run was refused: it never
+started, did not answer, ended or restarted after the run was watched, never watched the run, or a
+report was cut off while the run was watched.
 """
 
 from __future__ import annotations
@@ -32,7 +35,12 @@ SANDBOX_EXEC = "/usr/bin/sandbox-exec"
 PROBE_PROGRAM = "/usr/bin/true"
 PREFIX = "poolhouse-sandbox:"
 PROBE = "probe~"
-PREDICATE = f'eventMessage CONTAINS "{PREFIX}"'
+CUT_CHARS = 200  # the stream's character floor for a kernel report; a report of multi-byte characters has fewer characters than bytes
+CUT_BYTES = 900  # a kernel report this long may have been cut: the kernel's limit is about 1010 bytes
+CUT_MARK = "<\u2026>"  # what the kernel puts at the end of a report it cut
+LONG_PAD = "x" * 300
+PREDICATE = (f'eventMessage CONTAINS "{PREFIX}" OR '
+             f'(senderImagePath ENDSWITH "/Sandbox" AND eventMessage MATCHES "(?s).{{{CUT_CHARS},}}")')
 KERNEL = "/kernel"
 SANDBOX_KEXT = "/Sandbox.kext/Contents/MacOS/Sandbox"
 NOT_STREAMED = -1
@@ -53,12 +61,11 @@ NOISE = re.compile(
 """Targets every confined process probes at start-up and survives being refused."""
 
 
-def parse(line: str) -> tuple[str, dict[str, str]] | None:
-    """``(tag, refusal)`` for one ndjson event of the stream; None for any line that is not a refusal.
+def kernel_message(line: str) -> str | None:
+    """The message of one ndjson event of the stream when the kernel's Sandbox extension sent it, else None.
 
     Only an event the kernel's Sandbox extension sent counts, so another process's log line cannot
-    pose as a refusal. The profile puts its tag on the last line of the message, so a target holding
-    a newline cannot name the tag of another run.
+    pose as a refusal.
     """
     if not line.startswith("{"):
         return None
@@ -71,20 +78,46 @@ def parse(line: str) -> tuple[str, dict[str, str]] | None:
         return None
     if not isinstance(message, str) or process != KERNEL or not (isinstance(sender, str) and sender.endswith(SANDBOX_KEXT)):
         return None
-    body, _, last = message.rpartition("\n")
-    found = DENIAL.fullmatch(body)
-    if found is None or not last.startswith(PREFIX):
+    return message
+
+
+def trailing_tag(message: str) -> str | None:
+    """The tag on the last line of ``message``. The profile puts its tag there, so a target holding
+    a newline cannot name the tag of another run."""
+    last = message.rpartition("\n")[2]
+    return last[len(PREFIX):] if last.startswith(PREFIX) else None
+
+
+def refusal(message: str) -> dict[str, str] | None:
+    """The process, operation and target a kernel message reports, or None when it reports no refusal."""
+    found = DENIAL.fullmatch(message.rpartition("\n")[0])
+    if found is None:
         return None
-    return last[len(PREFIX):], {"process": found["proc"].strip(), "operation": found["op"],
-                                "target": found["target"].strip()}
+    return {"process": found["proc"].strip(), "operation": found["op"], "target": found["target"].strip()}
+
+
+def parse(line: str) -> tuple[str, dict[str, str]] | None:
+    """``(tag, refusal)`` for one ndjson event of the stream; None for any line that is not a tagged refusal."""
+    message = kernel_message(line)
+    if message is None:
+        return None
+    tag, entry = trailing_tag(message), refusal(message)
+    return None if tag is None or entry is None else (tag, entry)
+
+
+def may_be_cut(message: str) -> bool:
+    """Whether the kernel may have cut the end of ``message`` off: it is as long as the kernel's limit lets one be, or says so."""
+    return message.endswith(CUT_MARK) or len(message.encode()) >= CUT_BYTES
 
 
 @dataclass(slots=True)
 class _Run:
-    """One watched run: the stream it was watched on, what that stream carried for it, and whether it has ended."""
+    """One watched run: the stream it was watched on, what that stream carried for it, whether a
+    refusal report was cut off meanwhile, and whether it has ended."""
 
     generation: int
     entries: list[dict[str, str]] = field(default_factory=list)
+    cut: bool = False
     ended: bool = False
 
 
@@ -148,7 +181,16 @@ class DenialLog:
             if self._generation != run.generation or not self.running():
                 logger.warning("sandbox refusals cannot be reported: the system log stream restarted or ended after the command started")
                 return None
+            if run.cut:
+                logger.warning("sandbox refusals cannot be reported: the kernel cut off a refusal report while the command ran")
+                return None
             return [dict(entry) for entry in run.entries]
+
+    def cut(self, tag: str) -> bool:
+        """Whether a refusal report was cut off by the kernel while the run tagged ``tag`` was watched."""
+        with self._changed:
+            run = self._runs.get(tag)
+            return run is not None and run.cut
 
     def close(self) -> None:
         """Stop the stream this process started."""
@@ -177,11 +219,12 @@ class DenialLog:
             except OSError as exc:
                 self._fail(f"could not start {LOG}: {exc}")
                 return None
-            if not self._probe("ready", START_SECONDS):
-                said = "; ".join(self._said)
-                self.close()
-                self._fail(f"the system log did not carry a test refusal ({said or 'it said nothing'})")
-                return None
+            for kind, what in (("ready", "a test refusal"), ("cut", "a long test refusal")):
+                if not self._probe(kind, START_SECONDS):
+                    said = "; ".join(self._said)
+                    self.close()
+                    self._fail(f"the system log did not carry {what} ({said or 'it said nothing'})")
+                    return None
             self._failed_at = None
             return self._generation
 
@@ -205,24 +248,26 @@ class DenialLog:
     def _read(self, proc: subprocess.Popen[str]) -> None:
         with contextlib.suppress(ValueError, OSError):
             for line in proc.stdout:
-                found = parse(line)
-                if found is not None:
-                    self._add(*found)
+                message = kernel_message(line)
+                if message is not None:
+                    self._hear(message)
                 elif not line.startswith("{") and line.strip():
                     self._said.append(line.strip()[:200])
 
-    def _add(self, tag: str, entry: dict[str, str]) -> None:
+    def _hear(self, message: str) -> None:
+        """Record what one kernel message says about a run, or about a probe. A message that no probe
+        or watched run owns and that may have been cut off makes every run still going unreadable."""
+        tag, entry = trailing_tag(message), refusal(message)
         with self._changed:
-            if tag.startswith(PROBE):
-                if tag in self._probes:
-                    self._probes[tag] = True
-                    self._changed.notify_all()
-                return
-            run = self._runs.get(tag)
-            if run is None:
-                return
-            if not NOISE.search(entry["target"]) and len(run.entries) < KEEP_PER_TAG:
-                run.entries.append(entry)
+            run = None if tag is None else self._runs.get(tag)
+            if answered := [token for token in self._probes if token in message]:
+                self._probes.update(dict.fromkeys(answered, True))
+            elif run is not None and not message.endswith(CUT_MARK):
+                if entry is not None and not NOISE.search(entry["target"]) and len(run.entries) < KEEP_PER_TAG:
+                    run.entries.append(entry)
+            elif may_be_cut(message):
+                for watched in self._runs.values():
+                    watched.cut = watched.cut or not watched.ended
             self._changed.notify_all()
 
     def _trim(self) -> None:
@@ -233,9 +278,11 @@ class DenialLog:
             del self._runs[tag]
 
     def _probe(self, kind: str, seconds: float) -> bool:
-        """Have the kernel refuse a profile tagged with a fresh token, again until the stream carries it."""
+        """Have the kernel refuse a profile tagged with a fresh token, again until the stream carries it.
+        The ``cut`` kind puts the token in a message long enough for the stream's second clause to carry it."""
         token = f"{PROBE}{kind}-{secrets.token_hex(8)}"
-        profile = f'(version 1)(deny default (with message "{PREFIX}{token}"))'
+        said = f"{token}{LONG_PAD}" if kind == "cut" else f"{PREFIX}{token}"
+        profile = f'(version 1)(deny default (with message "{said}"))'
         deadline = time.monotonic() + seconds
         with self._changed:
             self._probes[token] = False

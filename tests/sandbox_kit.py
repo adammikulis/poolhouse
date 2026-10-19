@@ -3,10 +3,12 @@ for running this interpreter, and a loopback listener."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import socket
 import sys
+import tempfile
 import threading
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -15,7 +17,7 @@ import pytest
 
 from poolhouse import sandbox
 from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy
-from poolhouse.sandbox.backend import Availability, Wrapped
+from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, NO_REFUSAL_LOG, Availability, Wrapped
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.seatbelt import Seatbelt
 
@@ -24,7 +26,6 @@ class UnreadableBackend:
     """A backend that confines nothing and cannot say what was refused."""
 
     name = "unreadable"
-    keeps_refusal_log = True
 
     def available(self):
         return Availability(True)
@@ -38,6 +39,9 @@ class UnreadableBackend:
     def denials(self, tag, since):
         return None
 
+    def unreadable(self, tag):
+        return LOST_REFUSAL_LOG
+
     def finish(self, *_tag):
         return None
 
@@ -46,7 +50,9 @@ class UnloggedBackend(UnreadableBackend):
     """A backend that confines nothing and keeps no refusal log by construction."""
 
     name = "unlogged"
-    keeps_refusal_log = False
+
+    def unreadable(self, tag):
+        return NO_REFUSAL_LOG
 
 
 class RecordingBackend(UnreadableBackend):
@@ -64,14 +70,47 @@ class RecordingBackend(UnreadableBackend):
         self.finished.append(tag)
 
 
-@pytest.fixture
-def seatbelt() -> Seatbelt:
-    """The real Seatbelt backend, or a skip where ``sandbox-exec`` does not exist."""
+@contextlib.contextmanager
+def kernel_log(alone: bool = False) -> Iterator[None]:
+    """Hold the machine-wide lock around a test that reads Seatbelt refusals (shared) or makes the kernel
+    cut one off (alone): a cut report reaches every refusal stream on the machine, and every run being
+    watched meanwhile becomes unreadable. A test waiting to be alone holds back the ones that follow."""
+    import fcntl
+
+    base = Path(tempfile.gettempdir()) / "poolhouse-seatbelt-log"
+    gate, lock = (os.open(f"{base}.{name}", os.O_RDWR | os.O_CREAT, 0o600) for name in ("gate", "lock"))
+    mode = fcntl.LOCK_EX if alone else fcntl.LOCK_SH
+    try:
+        fcntl.flock(gate, mode)
+        fcntl.flock(lock, mode)
+        if not alone:
+            fcntl.flock(gate, fcntl.LOCK_UN)
+        yield
+    finally:
+        os.close(gate)
+        os.close(lock)
+
+
+def _held_backend(alone: bool) -> Iterator[Seatbelt]:
     backend = Seatbelt()
     state = backend.available()
     if not state.ok:
         pytest.skip(state.reason)
-    return backend
+    with kernel_log(alone):
+        yield backend
+
+
+@pytest.fixture
+def seatbelt() -> Iterator[Seatbelt]:
+    """The real Seatbelt backend, or a skip where ``sandbox-exec`` does not exist; no test that makes the
+    kernel cut a refusal report off runs meanwhile."""
+    yield from _held_backend(False)
+
+
+@pytest.fixture
+def seatbelt_alone() -> Iterator[Seatbelt]:
+    """The real Seatbelt backend, with no other test that reads refusals running meanwhile."""
+    yield from _held_backend(True)
 
 
 @pytest.fixture

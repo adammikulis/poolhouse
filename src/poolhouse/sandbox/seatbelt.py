@@ -17,7 +17,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from poolhouse.sandbox import denial_log
-from poolhouse.sandbox.backend import Availability, Wrapped, program_of
+from poolhouse.sandbox.backend import (
+    CUT_REFUSAL_LOG,
+    LOST_REFUSAL_LOG,
+    Availability,
+    Wrapped,
+    program_of,
+)
 from poolhouse.sandbox.path_language import expressions
 from poolhouse.sandbox.policy import NetMode, Policy, PolicyError, checked_path
 
@@ -203,7 +209,6 @@ class Seatbelt:
     """Runs a command under a generated Seatbelt profile."""
 
     name = "seatbelt"
-    keeps_refusal_log = True
 
     def available(self) -> Availability:
         if sys.platform != "darwin":
@@ -238,6 +243,10 @@ class Seatbelt:
     def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
         """What the sandbox refused the run tagged ``tag``, as the stream `watch` registered it on carried it; None when that cannot be known."""
         return denial_log.shared().denials(tag)
+
+    def unreadable(self, tag: str) -> str:
+        """Why `denials` could not say what the run tagged ``tag`` was refused."""
+        return CUT_REFUSAL_LOG if denial_log.shared().cut(tag) else LOST_REFUSAL_LOG
 
     def finish(self, tag: str) -> None:
         """The run tagged ``tag`` has ended."""

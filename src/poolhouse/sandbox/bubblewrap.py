@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from poolhouse.platform import start_process, terminate_process_group
-from poolhouse.sandbox.backend import Availability, Wrapped, program_of
+from poolhouse.sandbox.backend import NO_REFUSAL_LOG, Availability, Wrapped, program_of
 from poolhouse.sandbox.policy import NetMode, Policy, PolicyError, checked_path
 
 __all__ = ["Bubblewrap", "arguments"]
@@ -76,7 +76,6 @@ class Bubblewrap:
     """Runs a command inside bubblewrap namespaces."""
 
     name = "bubblewrap"
-    keeps_refusal_log = False
 
     def available(self) -> Availability:
         if not sys.platform.startswith("linux"):
@@ -112,3 +111,6 @@ class Bubblewrap:
 
     def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
         return None
+
+    def unreadable(self, tag: str) -> str:
+        return NO_REFUSAL_LOG

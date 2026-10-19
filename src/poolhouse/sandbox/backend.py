@@ -10,10 +10,11 @@ from typing import Protocol
 
 from poolhouse.sandbox.policy import Policy, PolicyError
 
-__all__ = ["LOST_REFUSAL_LOG", "NO_REFUSAL_LOG", "Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
+__all__ = ["CUT_REFUSAL_LOG", "LOST_REFUSAL_LOG", "NO_REFUSAL_LOG", "Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
 
 NO_REFUSAL_LOG = "this backend keeps no refusal log"
 LOST_REFUSAL_LOG = "the refusal log could not be read"
+CUT_REFUSAL_LOG = "a refusal report was cut off by the kernel"
 
 
 class SandboxUnavailable(RuntimeError):
@@ -40,12 +41,10 @@ class Wrapped:
 class Backend(Protocol):
     """One way of confining a process: ``wrap`` turns a command and a policy into the command
     that runs it confined, ``watch`` readies the backend to report refusals before the command
-    starts, ``denials`` reads back what the sandbox refused (None when it cannot be known) and
-    ``finish`` says the run has ended. ``keeps_refusal_log`` is False for a backend that has no
-    log of refusals to read."""
+    starts, ``denials`` reads back what the sandbox refused (None when it cannot be known),
+    ``unreadable`` says why it could not be known and ``finish`` says the run has ended."""
 
     name: str
-    keeps_refusal_log: bool
 
     def available(self) -> Availability: ...
 
@@ -54,6 +53,8 @@ class Backend(Protocol):
     def watch(self, tag: str) -> None: ...
 
     def denials(self, tag: str, since: float) -> list[dict[str, str]] | None: ...
+
+    def unreadable(self, tag: str) -> str: ...
 
     def finish(self, tag: str) -> None: ...
 

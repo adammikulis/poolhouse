@@ -13,12 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse.interventions import Call
-from poolhouse.sandbox.backend import NO_REFUSAL_LOG
+from poolhouse.sandbox.backend import CUT_REFUSAL_LOG, NO_REFUSAL_LOG
 from poolhouse.sentinel.core import Sentinel
 from poolhouse.sentinel.events import Event, Severity
 from poolhouse.sentinel.human import agent_may
 from poolhouse.sentinel.policy import Mode
-from poolhouse.sentinel.score import NO_REFUSAL_LOG_WEIGHT
+from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT
 from poolhouse.sentinel.store import Record
 
 __all__ = ["GuardLogHandler", "RailAnswer", "agent_gate", "broker_listener", "note_refusal",
@@ -129,7 +129,8 @@ def broker_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], No
 def sandbox_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], None]:
     """A callback with the sandbox's ``on_event(event, fields)`` shape: a refusal, a timeout, a
     missing sandbox or a run without one becomes an event on the bus, and counts toward the score
-    of each session that has a tool call running (the only attribution a sandbox run has)."""
+    of the session whose tool call started the run, and of no other session; a run started outside a
+    tool call counts for nobody."""
     levels = {"warning": Severity.WARNING, "notice": Severity.NOTICE}
 
     def on(event: str, fields: dict[str, object]) -> None:
@@ -139,9 +140,9 @@ def sandbox_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], N
         sentinel.bus.emit(Event(event, level, "sandbox", f"policy:{fields.get('policy', '')}",
                                 {k: v for k, v in fields.items() if k != "severity"},
                                 sentinel.clock()))
-        weight = NO_REFUSAL_LOG_WEIGHT if fields.get("detail") == NO_REFUSAL_LOG else None
-        for session in sentinel.in_flight():
-            sentinel.note("session", session, event, weight)
+        weight = UNATTRIBUTED_WEIGHT if fields.get("detail") in (NO_REFUSAL_LOG, CUT_REFUSAL_LOG) else None
+        if owner := sentinel.running_session():
+            sentinel.note("session", owner, event, weight)
     return on
 
 
