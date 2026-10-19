@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
 import testnode
+import testreuse_key as keys
 from test_gatescope import load_runner
+
+ROOT = Path(__file__).resolve().parents[1]
 
 NODE_KIT = "def runner_binary():\n    return None\n"
 PLAIN = "def test_a():\n    assert True\n"
@@ -50,7 +54,7 @@ def test_a_selection_that_names_no_file_needs_the_node(toy):
 def test_the_runner_asks_cargo_for_nothing_when_the_selection_needs_no_node(monkeypatch):
     runner = load_runner()
     monkeypatch.setattr(runner.testnode, "ensure", lambda *a, **k: pytest.fail("asked for the node"))
-    monkeypatch.setattr(runner.testnode, "needed", lambda root, files: False)
+    monkeypatch.setattr(runner.testnode, "needed", lambda root, files, facts: False)
     assert runner.build_node(["tests/test_plain.py"]) == 0
 
 
@@ -58,5 +62,42 @@ def test_the_runner_builds_the_node_when_the_selection_needs_it(monkeypatch, tmp
     runner = load_runner()
     built = []
     monkeypatch.setattr(runner.testnode, "ensure", lambda *a, **k: built.append(1) or Path(tmp_path / "node"))
-    monkeypatch.setattr(runner.testnode, "needed", lambda root, files: True)
+    monkeypatch.setattr(runner.testnode, "needed", lambda root, files, facts: True)
     assert runner.build_node(["tests/test_direct.py"]) == 0 and built
+
+
+@pytest.fixture
+def parsed(monkeypatch):
+    """The sources the import analysis parses, in order."""
+    names = []
+    real = keys.import_names
+    monkeypatch.setattr(keys, "import_names", lambda source, module, package: names.append(module) or real(source, module, package))
+    return names
+
+
+def test_a_second_check_of_a_selection_parses_no_source(toy, tmp_path, parsed):
+    selection = ["tests/test_plain.py", "tests/test_indirect.py"]
+    assert testnode.needed(toy, selection, keys.import_facts(tmp_path / "store"))
+    assert parsed
+    parsed.clear()
+    assert testnode.needed(toy, selection, keys.import_facts(tmp_path / "store"))
+    assert parsed == []
+
+
+def test_an_edited_source_is_parsed_again_and_the_others_are_not(toy, tmp_path, parsed):
+    selection = ["tests/test_indirect.py"]
+    testnode.needed(toy, selection, keys.import_facts(tmp_path / "store"))
+    parsed.clear()
+    (toy / "tests/helper.py").write_text("import node_kit\n\nVALUE = node_kit\nOTHER = 1\n")
+    testnode.needed(toy, selection, keys.import_facts(tmp_path / "store"))
+    assert parsed == ["tests.helper"]
+
+
+def test_the_node_check_of_a_warm_selection_in_this_repository_reads_without_parsing_and_is_quick(tmp_path, parsed):
+    store, selection = tmp_path / "store", ["tests/test_testphases.py", "tests/test_testclass.py", "tests/test_testorder.py"]
+    cold = testnode.needed(ROOT, selection, keys.import_facts(store))
+    parsed.clear()
+    began = time.monotonic()
+    assert testnode.needed(ROOT, selection, keys.import_facts(store)) == cold
+    assert parsed == []
+    assert time.monotonic() - began < 3.0

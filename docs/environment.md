@@ -16,7 +16,7 @@ install line provide it.
 | purpose | what it runs | needs | one-line fix |
 |---|---|---|---|
 | `runtime` | the library | the `dependencies` in pyproject, Python >= 3.12 | `pip install .` |
-| `dev` | `scripts/test`, pytest | runtime + the `test` extra (pytest, xdist, testmon, numpy, keyring, ...) + git | `pip install '.[test]'` |
+| `dev` | `scripts/test`, pytest | runtime + the `test` extra (pytest, xdist, timeout, testmon, numpy, keyring, ...) + git | `pip install '.[test]'` |
 | `gate` | `scripts/budgets`, `redteam_coverage.py`, `reference`, `scripts/test gate` | the imports those reach + ruff and pyright at `scripts/gates/pinned.txt` + git | `pip install -r scripts/gates/pinned.txt` |
 | `commit` | the pre-commit name check | the `privacy` extra and the spaCy model `en_core_web_sm` | `pip install '.[privacy]' && python -m spacy download en_core_web_sm` |
 | `build` | `packaging/build.py`, the app | `build`, `hatchling`, cargo at the `rust-version` in `app/Cargo.toml` | `rustup update stable` |

@@ -71,7 +71,6 @@ def test_what_origin_gained_cannot_change_the_green_result(tmp_path, branch, ups
                  id="a deleted module"),
     pytest.param(TEST_A, {"tests/test_layers.py": "import poolhouse.units\n"}, {**UNITS, **LAYERS}, "tests/test_layers.py reaches",
                  id="a changed tree-wide guard test"),
-    pytest.param({"tests/conftest.py": "x = 1\n"}, {"docs/b.md": "b\n"}, None, "the whole suite ran", id="a branch that ran the whole suite"),
     pytest.param({**TEST_A, "src/poolhouse/units.py": "X = 5\n"}, {"tests/test_up.py": "import poolhouse.units\n"}, UNITS,
                  "tests/test_up.py reaches the branch", id="a new test that reaches the branch's module"),
     pytest.param({"src/poolhouse/units.py": "X = 5\n"}, {"tests/test_up.py": "import poolhouse.units\n"}, UNITS,

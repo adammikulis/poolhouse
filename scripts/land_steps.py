@@ -436,6 +436,8 @@ def execute(L: Landing) -> tuple[str, str, list[str]]:
         checks = ex.plan(L.wt, L.remote, L.sha)
         if checks.kind == "none":
             raise ex.Stop(f"nothing to land: {L.branch} changes nothing against {L.upstream}")
+        if checks.ci and green is None:
+            say(checks.ci)
         tree = lg.tree_id(L.wt, L.sha)
         ex.verify_tree(L.wt, tree)
         green, tail = prove(L, checks, tree, green)
@@ -472,7 +474,7 @@ def show(L: Landing) -> None:
         say("no independent review needed")
     checks = ex.plan(L.wt, base, L.sha)
     say(f"{checks.kind} diff of {len(checks.changed)} files; checks: {', '.join(c.name for c in checks.checks) or 'none'}"
-        + (f"; whole suite because {checks.full}" if checks.full else ""))
+        + (f"; {checks.ci}" if checks.ci else ""))
 
 
 def record(L: Landing, outcome: str, cause: str, tail: list[str]) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import affected
 import land_exec as ex
 import land_git as lg
 
+SHARED = re.compile(r"^(tests/conftest\.py|scripts/test[^/]*|pyproject\.toml|packaging/.*)$")
 GUARD_TESTS = frozenset(f"tests/{name}" for name in affected.GUARDS)
 
 
@@ -38,7 +40,7 @@ def carried(green: Green, sha: str, base: str) -> Green:
 
 def reach(wt: Path, upstream: list[str], green: Green) -> str:
     """The first reason a change to the ``upstream`` paths can alter a test that ran for ``green``, or an empty string."""
-    shared = next((p for p in upstream if ex.INFRA.match(p) or p in affected.EVERYTHING or lg.LANDER.fullmatch(p)), "")
+    shared = next((p for p in upstream if SHARED.match(p) or p in affected.EVERYTHING or lg.LANDER.fullmatch(p)), "")
     if shared:
         return f"origin changed {shared}, which every test depends on"
     try:
@@ -62,8 +64,6 @@ def stale(wt: Path, green: Green, sha: str, base: str, plan: ex.Plan) -> str:
     if frozenset(plan.changed) != green.changed or tuple(c.name for c in plan.checks) != green.names:
         return "the changes of the branch or the checks they call for differ from the ones that ran"
     upstream = lg.changed(wt, green.base, base)
-    if "full" in green.names and upstream:
-        return "the whole suite ran and origin gained commits"
     both = sorted(green.changed.intersection(upstream))
     if both:
         return f"origin changed {both[0]}, which the branch changes too"

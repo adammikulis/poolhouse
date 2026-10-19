@@ -62,6 +62,7 @@ import testjobs
 import testnode
 import testphases
 import testprelude
+import testreuse_key
 import testreuse_run
 import testreuse_store
 import testselectors
@@ -590,7 +591,7 @@ def build_node(files: list[str] | None = None) -> int:
 
     A selection of named files that cannot start a node builds nothing and asks cargo nothing.
     """
-    if files and not testnode.needed(ROOT, files):
+    if files and not testnode.needed(ROOT, files, testreuse_key.import_facts(reuse_store().folder)):
         return 0
     try:
         os.environ[testnode.ENV] = str(testnode.ensure(ROOT, admit=lambda: testslots.lease(2, 1, label="node build"),
