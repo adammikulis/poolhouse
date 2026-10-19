@@ -68,9 +68,9 @@ class Rig:
     def gh_scenario(self, **data) -> None:
         (self.base / "scenario.json").write_text(json.dumps(data), encoding="utf-8")
 
-    def gh_run(self, age_s: float, status: str = "in_progress", number: int = 4242) -> dict:
-        return {"databaseId": number, "status": status, "conclusion": "", "createdAt": stamp(age_s), "headSha": "a" * 40,
-                "workflowName": "ci", "url": f"https://github.invalid/runs/{number}"}
+    def gh_run(self, age_s: float, status: str = "in_progress", number: int = 4242, workflow: str = "ci", sha: str = "a") -> dict:
+        return {"databaseId": number, "status": status, "conclusion": "", "createdAt": stamp(age_s), "headSha": sha * 40,
+                "workflowName": workflow, "url": f"https://github.invalid/runs/{number}"}
 
     def run_record(self, state: str, age_s: float, est: str = "100", owner: str = "claude-abc123", label: str = "pytest") -> None:
         """Start a process that holds a broker run record in ``state`` that began ``age_s`` ago."""
@@ -159,6 +159,42 @@ def test_a_github_run_inside_twenty_five_minutes_is_ok_and_shows_its_jobs(rig):
     rig.gh_scenario(runs=[rig.gh_run(5 * 60)], jobs=jobs)
     lines = rig.status()[1]
     assert lines[0] == "ok" and any("gates" in ln and "in_progress" in ln for ln in lines), lines
+
+
+def test_a_queued_github_run_over_five_minutes_with_no_later_run_started_is_stuck(rig):
+    rig.gh_scenario(runs=[rig.gh_run(13 * 60, "queued", 1, "pool-check", "b")], jobs=[])
+    code, lines = rig.status()
+    assert code == 0 and lines[0] == "STUCK: github: pool-check bbbbbbb queued 13 min", lines
+
+
+def test_a_queued_github_run_inside_five_minutes_is_ok(rig):
+    rig.gh_scenario(runs=[rig.gh_run(4 * 60, "queued", 1)], jobs=[])
+    assert rig.status()[1][0] == "ok"
+
+
+def test_a_queued_github_run_behind_a_started_run_of_the_same_workflow_says_so_and_is_ok_until_twenty_five_minutes(rig):
+    rig.gh_scenario(runs=[rig.gh_run(10 * 60, "queued", 2), rig.gh_run(20 * 60, "in_progress", 1)], jobs=[])
+    lines = rig.status()[1]
+    assert lines[0] == "ok", lines
+    assert any("queued" in ln and "waiting behind run 1" in ln for ln in lines), lines
+    rig.gh_scenario(runs=[rig.gh_run(26 * 60, "queued", 2), rig.gh_run(40 * 60, "in_progress", 1)], jobs=[])
+    assert rig.status()[1][0].startswith("STUCK: github:"), "a run past 25 minutes is flagged whatever it waits behind"
+
+
+def test_a_queued_github_run_is_judged_against_runs_of_its_own_workflow(rig):
+    rig.gh_scenario(runs=[rig.gh_run(10 * 60, "queued", 2, "pool-check"), rig.gh_run(20 * 60, "in_progress", 1, "ci")], jobs=[])
+    assert rig.status()[1][0].startswith("STUCK: github: pool-check")
+
+
+def test_a_queued_github_run_is_not_flagged_when_a_later_run_of_its_workflow_has_started(rig):
+    rig.gh_scenario(runs=[rig.gh_run(2 * 60, "in_progress", 2), rig.gh_run(10 * 60, "queued", 1, sha="c")], jobs=[])
+    assert rig.status()[1][0] == "ok"
+
+
+def test_every_queued_github_run_is_judged_not_only_the_first_few_listed(rig):
+    runs = [rig.gh_run(60 + n, "in_progress", 100 + n, f"w{n}") for n in range(6)] + [rig.gh_run(9 * 60, "queued", 1, "late")]
+    rig.gh_scenario(runs=runs, jobs=[])
+    assert rig.status()[1][0].startswith("STUCK: github: late"), "the queued run is the seventh active row"
 
 
 @pytest.mark.parametrize("said", ["To get started with GitHub CLI, please run:  gh auth login", "HTTP 403: Actions has been disabled"])

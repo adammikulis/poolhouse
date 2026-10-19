@@ -1,8 +1,9 @@
 """The report behind scripts/status: the local test broker, the test jobs and the GitHub runs of the development branch.
 
-Stuck means: a GitHub run still going after 25 minutes; a local run past its estimate by 5 minutes (a run without an
-estimate, or with one under 15 minutes, past 20 minutes in total); a queued run older than 5 minutes with nothing running.
-A missing gh or login is one line in the github section and never an error.
+Stuck means: a GitHub run still going after 25 minutes; a GitHub run queued for more than 5 minutes while no run of the same
+workflow has started after it (one queued behind a running run of its workflow is only flagged after 25 minutes); a local run past
+its estimate by 5 minutes (a run without an estimate, or with one under 15 minutes, past 20 minutes in total); a queued local run
+older than 5 minutes with nothing running. A missing gh or login is one line in the github section and never an error.
 """
 
 from __future__ import annotations
@@ -27,7 +28,8 @@ QUEUED_S = 5 * 60
 GH_TIMEOUT_S = 20.0
 JOBS_SHOWN = 3
 PROBLEMS_SHOWN = 2
-ACTIVE = frozenset({"in_progress", "queued", "waiting", "pending", "requested"})
+WAITING = frozenset({"queued", "waiting", "pending", "requested"})
+ACTIVE = WAITING | {"in_progress"}
 JOB_LINE = re.compile(r"^\S+\s+(running|queued)\s")
 
 
@@ -93,6 +95,17 @@ def job_lines(gh: Gh, run: dict) -> list[str]:
     return [*rows, f"    {done} job{'s' if done != 1 else ''} finished"] if jobs else ["    no jobs yet"]
 
 
+def queue_note(run: dict, rows: list[dict]) -> tuple[str, bool]:
+    """For a run that has not started: ' waiting behind run N' when a run of its workflow is going, and whether it is stuck."""
+    age = age_s(run.get("createdAt"))
+    same = [r for r in rows if r is not run and r.get("workflowName") == run.get("workflowName")]
+    ahead = next((r for r in same if r.get("status") == "in_progress" and str(r.get("createdAt")) < str(run.get("createdAt"))), None)
+    if ahead is not None:
+        return f"; waiting behind run {ahead['databaseId']}", age > GITHUB_S
+    later = any(r.get("status") not in WAITING and str(r.get("createdAt")) > str(run.get("createdAt")) for r in same)
+    return "", age > QUEUED_S and not later
+
+
 def github() -> tuple[list[str], list[str]]:
     """The development branch's recent runs with per-job states for those in progress, and what is stuck among them."""
     dev = development_branch()
@@ -102,12 +115,18 @@ def github() -> tuple[list[str], list[str]]:
                        "databaseId,status,conclusion,createdAt,workflowName,headSha,url", timeout=GH_TIMEOUT_S) if dev else []
         rows = [r for r in rows or [] if isinstance(r, dict)]
         lines, problems = [f"github: {dev or 'no development branch'}"], []
-        for run in [r for r in rows if r.get("status") in ACTIVE][:JOBS_SHOWN + 2]:
+        active = [r for r in rows if r.get("status") in ACTIVE]
+        for n, run in enumerate(active):
             age = age_s(run.get("createdAt"))
-            lines.append(f"  {run.get('workflowName', '?')} {str(run.get('headSha', ''))[:7]} {run['status']} {minutes(age)}; run {run['databaseId']}")
-            if age > GITHUB_S:
-                problems.append(f"github run {run['databaseId']} ({run.get('workflowName', '?')}) is {run['status']} after {minutes(age)}")
-            if run["status"] == "in_progress":
+            name, sha = run.get("workflowName", "?"), str(run.get("headSha", ""))[:7]
+            note, stuck = queue_note(run, rows) if run["status"] in WAITING else ("", age > GITHUB_S)
+            if n < JOBS_SHOWN + 2:
+                lines.append(f"  {name} {sha} {run['status']} {minutes(age)}; run {run['databaseId']}{note}")
+            if stuck and run["status"] in WAITING:
+                problems.append(f"github: {name} {sha} queued {minutes(age)}{note.replace(';', ',')}")
+            elif stuck:
+                problems.append(f"github run {run['databaseId']} ({name}) is {run['status']} after {minutes(age)}")
+            if run["status"] == "in_progress" and n < JOBS_SHOWN + 2:
                 lines.extend(job_lines(gh, run))
         if len(lines) == 1:
             last = rows[0] if rows else {}
