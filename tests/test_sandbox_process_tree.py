@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator
 import pytest
 
 from poolhouse.sandbox import process_tree
+from tests.sandbox_kit import UnreadFollower
 
 
 @pytest.fixture(autouse=True)
@@ -115,13 +116,6 @@ def test_a_run_that_starts_more_processes_than_a_tree_keeps_is_not_complete(shel
     assert not tree.complete
 
 
-class Unread(process_tree._Follower):
-    """A follower whose reader thread never runs: only `flush` takes in what the kernel reported."""
-
-    def _read(self, queue: object) -> None:
-        return
-
-
 def test_a_process_that_never_forked_is_a_sealed_tree(shell):
     _, tree = shell("exec sleep 30")
     time.sleep(0.3)
@@ -160,7 +154,7 @@ def test_a_process_that_started_and_reaped_a_child_before_it_was_looked_at_is_no
 
 
 def test_a_fork_the_reader_has_not_taken_in_is_counted_by_flush():
-    follower = Unread()
+    follower = UnreadFollower()
     proc = subprocess.Popen(["/bin/sh", "-c", "sleep 0.3; sleep 0.01; exec sleep 30"], start_new_session=True)
     try:
         tree = follower.follow(proc.pid)

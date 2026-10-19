@@ -27,7 +27,13 @@ from poolhouse.sandbox.denial_log import DenialLog
 from poolhouse.sandbox.seatbelt import Seatbelt
 from poolhouse.sentinel.adapters import sandbox_listener
 from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, WATCH_AT, WEIGHTS
-from tests.sandbox_kit import QuietBackend, RecordingBackend, UntrackableBackend, policy
+from tests.sandbox_kit import (
+    QuietBackend,
+    RecordingBackend,
+    UnreadFollower,
+    UntrackableBackend,
+    policy,
+)
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -474,6 +480,22 @@ def test_a_cut_refusal_of_a_process_nobody_followed_makes_a_run_that_started_a_p
         stream._hear(cut_report(gone_pid()))
         assert stream.denials("forker") is None and stream.why_unreadable("forker") == CUT_UNTRACED_LOG
         assert stream.denials("still") == []
+    finally:
+        os.killpg(forker.pid, 9)
+        forker.wait()
+        stream.close()
+
+
+def test_the_forks_the_reader_has_not_taken_in_are_counted_before_a_run_is_read(seatbelt, monkeypatch):
+    monkeypatch.setattr(process_tree, "_FOLLOWER", UnreadFollower())
+    stream = DenialLog()
+    stream.watch("forker")
+    forker = subprocess.Popen(["/bin/sh", "-c", "sleep 0.3; exec sleep 30"], start_new_session=True)
+    try:
+        stream.track("forker", forker.pid)
+        time.sleep(0.8)
+        stream._hear(cut_report(gone_pid()))
+        assert stream.denials("forker") is None and stream.why_unreadable("forker") == CUT_UNTRACED_LOG
     finally:
         os.killpg(forker.pid, 9)
         forker.wait()

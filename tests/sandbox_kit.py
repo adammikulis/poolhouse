@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import sandbox
-from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy
+from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy, process_tree
 from poolhouse.sandbox.backend import (
     CUT_REFUSAL_LOG,
     CUT_UNTRACED_LOG,
@@ -130,6 +130,13 @@ class RecordingBackend(UnreadableBackend):
 
     def finish(self, tag):
         self.finished.append(tag)
+
+
+class UnreadFollower(process_tree._Follower):
+    """A follower whose reader thread never runs: only `flush` takes in what the kernel reported."""
+
+    def _read(self, queue):
+        return
 
 
 class UntrackableBackend(RecordingBackend):
