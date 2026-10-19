@@ -96,7 +96,11 @@ class JobRunner:
             values = {key: value for key, value in row.items() if key in Job.__dataclass_fields__}
             job = Job(**values)
             self.jobs[job.id] = job
-            if job.state == 'queued' and row.get('version') == 2:
+            if job.state == 'queued' and job.id.startswith('studio-'):
+                job.state = 'interrupted'
+                job.recovery_note = 'Studio execution requires renewed authorization after restart.'
+                job.finished_at = time.time()
+            elif job.state == 'queued' and row.get('version') == 2:
                 self._queue.append(job.id)
             elif row.get('version') == 2 and job.state == 'running' and owns(job):
                 self._adopted.add(job.id)
@@ -238,15 +242,21 @@ class JobRunner:
 
     # -- submission ------------------------------------------------------
     def submit(self, name: str, argv: Iterable[str], cwd: str,
-               env: dict[str, str] | None = None) -> Job:
+               env: dict[str, str] | None = None, *, job_id: str | None = None) -> Job:
         argv = [str(a) for a in argv]
         if not argv:
             raise DaemonError("empty argv")
-        job_id = f"{int(time.time())}-{secrets.token_hex(3)}"
+        job_id = job_id or f"{int(time.time())}-{secrets.token_hex(3)}"
+        if not job_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in job_id):
+            raise DaemonError("invalid job identity")
         job = Job(id=job_id, name=name or argv[0], argv=argv, cwd=cwd,
                   submitted_at=time.time(),
                   env={str(k): str(v) for k, v in (env or {}).items()})
         with self._lock:
+            if prior := self.jobs.get(job_id):
+                if (prior.argv, prior.cwd, prior.env) != (job.argv, job.cwd, job.env):
+                    raise DaemonError("job identity already names a different execution")
+                return prior
             if self._stop.is_set() or self._records.fd is None:
                 raise DaemonError('the Fleet runner is frozen; submit to its active replacement')
             self.record(job)
