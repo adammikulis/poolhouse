@@ -31,9 +31,8 @@ earlier passes of unchanged files and says so per file ([test-reuse.md](test-reu
 CPU capacity defaults to the logical CPU count minus one, with a minimum of
 one. `DEV_TEST_RESERVED_CORES` changes that reservation. This reserves capacity;
 it does not pin execution to a particular efficiency core. `DEV_TEST_BUDGET`
-sets an explicit owner override. Normal load uses the full configured capacity;
-severe load above `DEV_TEST_LOAD_HIGH` times the CPU count reduces the default
-capacity. Existing active permits finish before new work enters.
+sets an explicit owner override. The capacity does not change with the machine's load.
+Existing active permits finish before new work enters.
 
 The supervisor admits pytest startup, then each worker's configuration and collection, and each
 test's complete setup, call and teardown. Idle workers hold no CPU permits. A
