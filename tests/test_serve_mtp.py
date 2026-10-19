@@ -278,6 +278,7 @@ def test_the_judge_lease_asks_for_no_mtp_and_a_none_arm_serves_without():
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(300)
 def test_a_real_server_drafts_by_default_and_keeps_greedy_output(cache, tmp_path, _real_home):
     """The managed build, a small model that carries its own prediction layer, and nothing else
     running: the default serves draft-mtp, and greedy output equals that of the same model

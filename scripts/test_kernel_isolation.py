@@ -34,7 +34,7 @@ GATE = frozenset({"test_layers.py", "test_budgets.py", "test_budget_floors.py",
                   "test_onboard_human.py", "test_cli_reference.py", "test_test_kernel_isolation.py"})
 PUBLIC_ENV = frozenset({"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "CI", "CLAUDECODE",
                         "DEV_TEST_BUDGET", "DEV_TEST_HEAVY_LANES", "DEV_TEST_LANE_WAIT_S",
-                        "DEV_TEST_LOAD_HIGH", "DEV_TEST_RESERVED_CORES", "DEV_TEST_WAIT_S",
+                        "DEV_TEST_RESERVED_CORES", "DEV_TEST_WAIT_S",
                         "DEV_TEST_WORKERS", "DEV_TEST_PYTEST_ENDPOINT", "DEV_TEST_PYTEST_TOKEN",
                         "DEV_TEST_REMOTE_BROKER", "DEV_TEST_SLOTS_DIR", "DEV_TEST_PTY_TOKEN",
                         "DEV_TEST_PTY_ENDPOINT", "DEV_TEST_PYTEST_IDENTITY", "DEV_TEST_PTY_IDENTITY"})

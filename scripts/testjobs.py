@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import testreuse_store as storage
+import testscope
 
 KEEP_S = 3 * 86400.0
 POLL_S = 0.4
@@ -152,7 +153,10 @@ class Jobs:
 
         A whole-tier job (``extra['exclusive']``, true unless given) is refused while another whole-tier job is live; the check and the
         record are made under one lock. A foreground run is not exclusive and queues in the broker.
+        An agent's whole-suite run, or one naming more than 30 test files, is refused before anything is recorded.
         """
+        if refusal := testscope.tier_refusal(argv[0], argv[1:], root) if argv else "":
+            raise Refused(refusal)
         self.prune()
         job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         with self.locked():

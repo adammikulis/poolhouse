@@ -57,7 +57,7 @@ def test_the_runner_never_lets_the_credential_helper_be_consulted():
 def test_the_runner_installs_what_ci_installs():
     text = (RUNNER.parent / "test-on-linux-setup").read_text(encoding="utf-8")
     install = next(s["run"] for s in steps() if s.get("name") == "install test dependencies")
-    for package in ("pytest-xdist", "numpy", "psutil", "pillow", "networkx", "gguf",
+    for package in ("pytest-xdist", "pytest-timeout", "numpy", "psutil", "pillow", "networkx", "gguf",
                     "safetensors"):
         assert package in text, f"the container does not install {package}, and CI does"
     extras = re.search(r'-e "(\.\[[^\]]*\])"', install).group(1)

@@ -24,7 +24,7 @@ from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_
 from poolhouse.serve.process import every_server, pid_exists
 
 pytest_plugins = ["serve_node"]
-pytestmark = [pytest.mark.slow, pytest.mark.usefixtures("serve_leases")]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(600), pytest.mark.usefixtures("serve_leases")]
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 LIMIT = 4 * 1024 ** 3
 

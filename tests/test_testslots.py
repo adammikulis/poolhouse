@@ -166,16 +166,14 @@ def _load():
     return module
 
 
-def test_the_cap_follows_the_load_average(monkeypatch):
+def test_the_budget_is_the_base_whatever_the_load(monkeypatch):
     monkeypatch.setenv("DEV_TEST_RESERVED_CORES", "1")
+    monkeypatch.delenv("DEV_TEST_BUDGET", raising=False)
     m = _load()
-    assert m.cap_for(None, cores=16) == 15
-    assert m.cap_for(2.0, cores=16) == 15
-    assert m.cap_for(12.0, cores=16) == 15
-    assert m.cap_for(31.9, cores=16) == 15
-    assert m.cap_for(32.1, cores=16) == 7
-    assert m.cap_for(500.0, cores=4) == 1
-    assert m.cap_for(0.1, cores=4) == 3
+    monkeypatch.setattr(m, "_cores", lambda: 16)
+    for load in (0.1, 31.9, 32.1, 165.0, 500.0):
+        monkeypatch.setattr(m.os, "getloadavg", lambda load=load: (load, load, load))
+        assert m.budget() == 15
     assert m.base_budget(1) == 1
 
 

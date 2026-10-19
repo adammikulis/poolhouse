@@ -35,11 +35,18 @@ def event(stage: str) -> dict | None:
         return None
 
 
-def run(command: list[str], stage: str, *, environment: dict | None = None):
+def attempt(command: list[str], stage: str, *, environment: dict | None = None):
+    """The finished process of ``command`` whatever its exit status; None (with a warning) when it could not run."""
     try:
-        done = subprocess.run(command, capture_output=True, text=True, check=False, timeout=30, env=environment)
+        return subprocess.run(command, capture_output=True, text=True, check=False, timeout=30, env=environment)
     except (OSError, subprocess.TimeoutExpired) as error:
         warning(stage, error)
+        return None
+
+
+def run(command: list[str], stage: str, *, environment: dict | None = None):
+    done = attempt(command, stage, environment=environment)
+    if done is None:
         return None
     if done.returncode:
         warning(stage, f'command exited {done.returncode}: {done.stderr or done.stdout or "no diagnostic returned"}')
@@ -81,7 +88,7 @@ def refresh_runtime(stage: str, checkout: Path | None = None, agent: str = '') -
 
 def session_environment(value: dict, stage: str) -> dict | None:
     environment = dict(os.environ)
-    for name in ('POOLHOUSE_SESSION_ID', 'POOLHOUSE_SESSION_HARNESS', 'POOLHOUSE_WORKSPACE_AGENT'):
+    for name in ('POOLHOUSE_SESSION_ID', 'POOLHOUSE_SESSION_HARNESS', 'POOLHOUSE_WORKSPACE_AGENT', 'POOLHOUSE_SUBAGENT'):
         environment.pop(name, None)
     session = value.get('session_id')
     if session is None:
@@ -240,8 +247,10 @@ def parent_environment(event: dict, stage: str) -> dict | None:
 
 def own_environment(event: dict, stage: str) -> dict | None:
     """The environment of a subagent acting as itself, or None when the board has not named it."""
+    import subagent_records
     environment = session_environment(event, stage)
-    name = agent_name(str(event.get('agent_id') or ''), str(event.get('cwd') or ''))
+    name = agent_name(subagent_records.native_key(str(event.get('agent_id') or '')) if event.get('agent_id') else '',
+                      str(event.get('cwd') or ''))
     if environment is None or not name:
         return None
     environment['POOLHOUSE_WORKSPACE_AGENT'] = name
