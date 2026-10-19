@@ -350,3 +350,72 @@ def test_linked_main_checkout_edits_and_staging_are_refused(repo):
     assert worktreerules.bash_refusal(f"git -C {work} add a.py", str(primary))
     assert worktreerules.bash_refusal("git commit -m x", str(work))
     assert commit(work, CLAUDECODE="1").returncode == 1
+
+
+def _published(repo):
+    """The primary with `a.py` already published as `x = 2` at origin/dev, and its working copy holding exactly that."""
+    primary, work, _ = repo
+    (work / "a.py").write_text("x = 2\n", encoding="utf-8")
+    git(work, "commit", "-qam", "chore: published")
+    git(primary, "update-ref", "refs/remotes/origin/dev", "work")
+    (primary / "a.py").write_text("x = 2\n", encoding="utf-8")
+    return primary
+
+
+@pytest.mark.parametrize("command", [
+    "git restore -- a.py", "git restore --staged --worktree -- a.py", "git restore --source=HEAD -- a.py",
+    "git restore -s HEAD -W -- a.py", "git checkout -- a.py", "git -C {primary} restore -- a.py",
+    "git restore -- a.py scripts/hooks/primary-only",
+])
+def test_the_primary_may_restore_a_file_that_holds_what_is_published(repo, command):
+    primary = _published(repo)
+    (primary / "a.py").write_text("x = 2\n", encoding="utf-8")
+    assert worktreerules.bash_refusal(command.format(primary=primary), str(primary)) == ""
+
+
+def test_the_primary_may_restore_a_file_that_equals_the_published_one_and_not_head(repo):
+    primary, work, _ = repo
+    (work / "a.py").write_text("x = 3\n", encoding="utf-8")
+    git(work, "commit", "-qam", "chore: ahead")
+    git(primary, "update-ref", "refs/remotes/origin/dev", "work")
+    (primary / "a.py").write_text("x = 3\n", encoding="utf-8")
+    assert worktreerules.bash_refusal("git restore -- a.py", str(primary)) == ""
+    assert worktreerules.bash_refusal("git checkout -- a.py", str(primary)) == ""
+
+
+@pytest.mark.parametrize("command", ["git restore -- a.py", "git checkout -- a.py", "git restore --staged -- a.py"])
+def test_the_primary_may_not_restore_a_file_with_unpublished_changes(repo, command):
+    primary = _published(repo)
+    (primary / "a.py").write_text("x = 99\n", encoding="utf-8")
+    said = worktreerules.bash_refusal(command, str(primary))
+    assert "changes the primary checkout" in said and "origin/dev" in said
+
+
+def test_the_primary_may_not_restore_a_file_whose_staged_copy_is_unpublished(repo):
+    primary = _published(repo)
+    (primary / "a.py").write_text("x = 99\n", encoding="utf-8")
+    git(primary, "add", "a.py")
+    (primary / "a.py").write_text("x = 2\n", encoding="utf-8")
+    assert worktreerules.bash_refusal("git restore --staged --worktree -- a.py", str(primary))
+
+
+@pytest.mark.parametrize("command", [
+    "git restore -- .", "git restore -- *.py", "git restore -- a.p?", "git restore -- ?.py", "git restore -- sub", "git restore -- sub/",
+    "git restore -- ../work/a.py", "git restore -- ':(glob)**'", "git restore a.py", "git restore -p -- a.py",
+    "git restore --source -- a.py", "git restore -- a.py missing.py", "git restore -- scripts", "git restore --", "git checkout -- .",
+    "git checkout -- sub", "git checkout -f -- a.py", "git checkout work", "git checkout -b more",
+    "git checkout work -- a.py", "git checkout -", "git restore -- .git/HEAD",
+])
+def test_the_primary_still_refuses_any_other_restore_or_checkout(repo, command):
+    primary = _published(repo)
+    (primary / "sub").mkdir()
+    (primary / "sub" / "c.py").write_text("z = 1\n", encoding="utf-8")
+    (primary / "a.py").write_text("x = 2\n", encoding="utf-8")
+    assert worktreerules.bash_refusal(command, str(primary))
+
+
+def test_a_restore_in_the_guarded_hook_is_allowed_for_a_published_file(repo):
+    primary = _published(repo)
+    assert bash("git restore -- a.py", primary) == ALLOWED
+    (primary / "a.py").write_text("x = 99\n", encoding="utf-8")
+    assert bash("git restore -- a.py", primary) == BLOCKED
