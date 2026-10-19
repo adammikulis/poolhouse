@@ -159,4 +159,55 @@ def test_authorized_tools_use_explicit_callback(tmp_path):
     assert adapter.execute_authorized(node, {'arguments': {'x': 2}}, {'principal': {'session': 'current'}}) == {'result': {'ok': True}}
     assert calls == [('declared', {'x': 2}, {'session': 'current'})]
     with pytest.raises(ValueError, match='authorized tool integration'):
-        Adapters(None).execute_authorized(node, {'arguments': {}}, {})
+        Adapters(None, tool_call=None).execute_authorized(node, {'arguments': {}}, {})
+
+
+def test_model_binding_resolves_installed_snapshot_without_fetch(tmp_path, monkeypatch):
+    from poolhouse.studio import adapters
+
+    snapshot = tmp_path / 'snapshot'
+    snapshot.mkdir()
+    monkeypatch.setattr(adapters.hub, 'held_snapshot', lambda repo: snapshot if repo == 'sample/model' else None)
+    context = {'bindings': {'model': {'kind': 'model', 'id': 'sample/model'}}, 'files_root': tmp_path}
+    result = Adapters(None).immediate({'type': 'model'}, {}, context)
+    assert result['model']['path'] == str(snapshot)
+    context['bindings']['model']['id'] = '../private'
+    with pytest.raises(ValueError, match='local model library'):
+        Adapters(None).immediate({'type': 'model'}, {}, context)
+
+
+def test_default_tools_are_fixed_read_operations_and_checked(monkeypatch):
+    from poolhouse.studio import adapters
+
+    calls = []
+    checked = []
+    schema = {'function': {'name': 'serve_status'}}
+    def function(**args):
+        calls.append(args)
+        return {'ready': True}
+
+    modules = {'poolhouse.chatpolicy': SimpleNamespace(READ={'serve_status', 'serve_up'}),
+               'poolhouse.do': SimpleNamespace(command_tools=lambda: [(schema, function)]),
+               'poolhouse.mcp': SimpleNamespace(checked=lambda fn, args: checked.append((fn, args)))}
+    monkeypatch.setattr(adapters.optional, 'module', modules.__getitem__)
+    assert adapters.tool_catalog() == [schema]
+    assert adapters.governed_tool('serve_status', {}, {'principal': {'session': 'current'}}) == {'ready': True}
+    assert checked == [(function, {})]
+    assert calls == [{}]
+    with pytest.raises(ValueError, match='not available'):
+        adapters.governed_tool('serve_up', {}, {'principal': {}})
+    with pytest.raises(ValueError, match='authenticated'):
+        adapters.governed_tool('serve_status', {}, {})
+
+
+def test_templates_cover_lifecycle_and_keep_resources_unbound():
+    from poolhouse.studio.templates import templates
+
+    library = templates()
+    assert len(library) == 6
+    assert all(graph['schema_version'] == 1 and isinstance(graph['groups'], dict) for graph in library)
+    for graph in library:
+        assert all(not node['bindings'] for node in graph['nodes'])
+        assert all(edge['source']['node'] in {node['id'] for node in graph['nodes']} for edge in graph['edges'])
+    tools = next(graph for graph in library if graph['id'] == 'inference-and-tools')
+    assert next(node for node in tools['nodes'] if node['type'] == 'tools.call')['parameters']['tool'] == 'serve_status'

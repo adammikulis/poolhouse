@@ -37,6 +37,13 @@ def templates() -> list[dict]:
                    ('generate', 'generate.structured'), ('tool', 'tools.call')],
                    [('model', 'model', 'generate', 'model'), ('prompt', 'prompt', 'generate', 'prompt'),
                     ('generate', 'response', 'tool', 'arguments')])
+    for node in tools['nodes']:
+        if node['id'] == 'tool':
+            node['parameters'] = {'tool': 'serve_status'}
+        elif node['id'] == 'prompt':
+            node['parameters'] = {'template': 'Return an empty JSON object.'}
+        elif node['id'] == 'generate':
+            node['parameters'] = {'json_schema': '{"type":"object","properties":{},"additionalProperties":false}'}
     gym = _graph('gym-training-and-evaluation', [('recordings', 'gym.recordings'),
                  ('train', 'gym.train'), ('evaluate', 'gym.evaluate'), ('chart', 'chart')],
                  [('recordings', 'dataset', 'train', 'dataset'), ('train', 'model', 'evaluate', 'model'),

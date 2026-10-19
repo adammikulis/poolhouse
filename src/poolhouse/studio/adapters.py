@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from poolhouse import hub
+from poolhouse import hub, optional
 from poolhouse.credentials import child_environment
 from poolhouse.files import write_json
 
@@ -18,10 +18,33 @@ def confined(root: Path, relative: str) -> Path:
     return path
 
 
+LOCAL_TOOLS = frozenset({'serve_status', 'jobs_status', 'models_on_disk'})
+
+
+def tool_catalog() -> list[dict]:
+    tools = optional.module('poolhouse.do').command_tools()
+    read = optional.module('poolhouse.chatpolicy').READ
+    return [schema for schema, _function in tools if schema['function']['name'] in LOCAL_TOOLS & read]
+
+
+def governed_tool(name: str, arguments: dict, context: dict) -> Any:
+    if name not in LOCAL_TOOLS or name not in optional.module('poolhouse.chatpolicy').READ:
+        raise ValueError('This tool is not available to Studio workflows')
+    if not context.get('principal'):
+        raise ValueError('Tool execution requires the current authenticated session')
+    mcp = optional.module('poolhouse.mcp')
+    tools = optional.module('poolhouse.do').command_tools()
+    for schema, function in tools:
+        if schema['function']['name'] == name:
+            mcp.checked(function, arguments)
+            return function(**arguments)
+    raise ValueError('The selected tool is not installed')
+
+
 class Adapters:
     """Prepare fixed workers and collect their declared structured outputs."""
 
-    def __init__(self, runner: Any, *, process_environment: Any = child_environment, tool_call: Any = None) -> None:
+    def __init__(self, runner: Any, *, process_environment: Any = child_environment, tool_call: Any = governed_tool) -> None:
         self.runner = runner
         self.process_environment = process_environment
         self.tool_call = tool_call
@@ -33,9 +56,11 @@ class Adapters:
             if binding.get('kind') != kind or not binding.get('id'):
                 raise ValueError(f"Select a {kind} resource")
             if kind == 'model':
-                if Path(binding['id']).is_absolute() or '..' in Path(binding['id']).parts:
+                if Path(binding['id']).is_absolute() or '..' in Path(binding['id']).parts or binding['id'].startswith(('~', 'hf:', 'http:','https:')):
                     raise ValueError('Select a model from the local model library')
-                found = hub.located(binding['id'])
+                if '/' in binding['id'] and len(binding['id'].split('/')) != 2:
+                    raise ValueError('Select an installed model identifier')
+                found = hub.held_snapshot(binding['id']) if '/' in binding['id'] else hub.located(binding['id'])
                 if not found:
                     raise ValueError('The selected model is not installed')
                 path = Path(found).resolve(strict=True)
