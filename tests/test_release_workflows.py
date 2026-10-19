@@ -124,6 +124,14 @@ def test_the_redteam_installs_the_extras_its_tests_import():
     assert {"test", "redteam", "memory", "store", "hub", "web", "privacy", "guardrails", "mcp", "fleet-onboard"} <= set(extras)
 
 
+def test_the_redteam_builds_the_node_its_tests_start():
+    """The node fixture refuses a pytest run that names no built binary."""
+    runs = [str(s.get("run", "")) for s in read("redteam.yml")["jobs"]["redteam"]["steps"]]
+    built = next(i for i, run in enumerate(runs) if "scripts/testnode.py build" in run and "DEV_TEST_NODE_BINARY" in run)
+    assert any("cargo" in run for run in runs[:built + 1]), "the build needs a Rust toolchain"
+    assert built < next(i for i, run in enumerate(runs) if "python -m pytest" in run)
+
+
 def test_a_redteam_run_cancels_only_a_superseded_pull_request_run():
     concurrency = read("redteam.yml")["concurrency"]
     assert concurrency["group"] == "redteam-${{ github.ref }}"
