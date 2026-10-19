@@ -108,17 +108,20 @@ def test_a_cut_refusal_of_a_program_with_such_a_name_is_still_the_runs(tmp_path,
     assert result.returncode != 0 and result.denials_unavailable and result.denials_detail == CUT_REFUSAL_LOG
 
 
-def failing_score(tmp_path: Path, name: str, script: str, backend=None) -> float:
-    """What a run of ``script`` adds to the score of the session that ran it."""
+def failing_score(tmp_path: Path, name: str, script: str, backend=None) -> tuple[float, list[tuple[str, str]]]:
+    """``(score, events)``: what a run of ``script`` adds to the score of the session that ran it, and the events and details it reported."""
     node = sentinel.Sentinel(tmp_path / name)
+    seen: list[tuple[str, str]] = []
+
+    def hear(event: str, fields: dict) -> None:
+        seen.append((event, str(fields.get("detail", ""))))
+        sandbox_listener(node)(event, fields)
+
+    project = tmp_path / "project"
+    project.mkdir(exist_ok=True)
     with node.running("s-failing"):
-        if backend is None:
-            project = tmp_path / "project"
-            project.mkdir(exist_ok=True)
-            run(["/bin/sh", "-c", script], policy(read=[project]), on_event=sandbox_listener(node))
-        else:
-            run(["/bin/sh", "-c", script], policy(), via=backend, on_event=sandbox_listener(node))
-    return node.score.value("session", "s-failing")
+        run(["/bin/sh", "-c", script], policy(read=[project]) if backend is None else policy(), via=backend, on_event=hear)
+    return node.score.value("session", "s-failing"), seen
 
 
 @pytest.mark.parametrize(("odd", "weight"), [(False, UNREPORTED_FAILURE_WEIGHT), (True, WEIGHTS["sandbox.denied"])],
@@ -126,7 +129,8 @@ def failing_score(tmp_path: Path, name: str, script: str, backend=None) -> float
 def test_a_refusal_the_log_cannot_carry_with_the_output_hidden_and_a_failing_exit_adds_a_little(tmp_path, seatbelt_alone, odd, weight):
     target = accented_file(tmp_path / str(odd), odd)
     script = f"/bin/cat {shlex.quote(str(target))} 2>/dev/null; exit 1"
-    assert failing_score(tmp_path, f"node-{odd}", script) == pytest.approx(weight)
+    score, events = failing_score(tmp_path, f"node-{odd}", script)
+    assert score == pytest.approx(weight), events
 
 
 def test_a_failed_run_with_no_report_in_the_log_is_the_failure_it_says_it_is():
@@ -147,7 +151,7 @@ def test_a_failed_run_with_no_report_is_attributable_by_its_detail_and_weighs_li
     events: list[tuple[str, dict]] = []
     run(["/bin/sh", "-c", "exit 1"], policy(), via=QuietBackend(), on_event=lambda name, fields: events.append((name, fields)))
     assert [fields["detail"] for name, fields in events if name == "sandbox.failure-unreported"] == [UNREPORTED_FAILURE_LOG]
-    assert failing_score(tmp_path, "quiet", "exit 1", QuietBackend()) == pytest.approx(UNREPORTED_FAILURE_WEIGHT)
+    assert failing_score(tmp_path, "quiet", "exit 1", QuietBackend())[0] == pytest.approx(UNREPORTED_FAILURE_WEIGHT)
     assert 0 < UNREPORTED_FAILURE_WEIGHT < 0.2
 
 
