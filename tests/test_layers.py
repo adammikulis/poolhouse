@@ -1,7 +1,7 @@
 """Which package may import which.
 
-The layers are core, model, graph, machine, tools, and dev (the red-team harness, which drives
-the rest). A package may import a package in a
+The layers are core, model, graph, machine, tools, and experimental (the red-team harness and the
+tools that drive the rest, none of which ships in the wheel). A package may import a package in a
 lower layer, and one in its own layer as long as the other does not import it back.
 ``KNOWN`` lists the edges that break that today; it may only shrink.
 """
@@ -12,6 +12,7 @@ import ast
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -33,9 +34,11 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("machine", ("doctor", "fleet", "gym", "serve", "setup")),
     ("tools", ("coordination", "agent", "bench", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "datasheet", "decide_cli",
                "do", "draft", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "migrate", "migrate_paths", "migrate_scan", "memory", "reputation", "inbox", "roles", "rules",
-               "surface", "api", "testfarm", "testing", "train", "walk", "web", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
-    ("dev", ("redteam",)),
+               "api", "testfarm", "testing", "train", "web", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
+    ("experimental", ("redteam", "surface", "walk")),
 )
+
+EXPERIMENTAL = dict(LAYERS)["experimental"]
 
 RANK = {package: height for height, (_, packages) in enumerate(LAYERS)
         for package in packages}
@@ -151,3 +154,18 @@ def test_the_beacon_s_memory_number_does_not_load_the_graph(tmp_path: Path) -> N
         f"{str(tmp_path)!r}).report()")
     graph = sorted(m for m in pulled if m.startswith("poolhouse.graph"))
     assert not graph, f"the beacon's room number loads {graph}"
+
+
+def _pyproject() -> dict:
+    return tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+
+
+def test_the_wheel_leaves_out_exactly_the_experimental_packages() -> None:
+    excluded = _pyproject()["tool"]["hatch"]["build"]["targets"]["wheel"]["exclude"]
+    assert sorted(excluded) == sorted(f"src/poolhouse/{name}" for name in EXPERIMENTAL)
+
+
+def test_no_console_script_runs_an_experimental_package() -> None:
+    targets = _pyproject()["project"]["scripts"].values()
+    runs = sorted(t for t in targets if t.split(":")[0].split(".")[1] in EXPERIMENTAL)
+    assert not runs, f"experimental packages run as python -m poolhouse.<name>, not as commands: {runs}"
