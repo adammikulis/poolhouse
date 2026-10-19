@@ -208,7 +208,8 @@ def _pin(args: argparse.Namespace) -> int:
 
 def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.Outcome:
     previous = str(runtime_store.selection().get("commit", ""))
-    outcome = runtime_deploy.ensure(plan, force=args.force, force_build=args.force_build)
+    outcome = runtime_deploy.ensure(plan, force=args.force, force_build=args.force_build,
+                                    after_wait=lambda: runtime_trust.authorize("ensure"))
     if outcome.action in ("switched", "recovered"):
         allowed = (plan.allow_unmerged if isinstance(plan.allow_unmerged, runtime_unmerged.Approval) else plan.commit) \
             if plan.allow_unmerged and outcome.commit == plan.commit else ""

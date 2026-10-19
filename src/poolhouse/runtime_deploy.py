@@ -373,8 +373,9 @@ def prepare_root() -> Path:
     return root
 
 
-def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builder: Builder = build) -> Outcome:
-    """Make the plan's commit the selected runtime, recovering a broken selection first."""
+def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builder: Builder = build,
+           after_wait: Callable[[], None] | None = None) -> Outcome:
+    """Make the plan's commit the selected runtime, recovering a broken selection first; ``after_wait`` runs once the boundary wait is over."""
     state = "" if force else settled(plan)
     if state:
         held = runtime_store.read_state().get("held") or {}
@@ -383,6 +384,8 @@ def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builde
     try:
         if plan.boundary_wait_s > 0:
             runtime_git.until_free(plan.checkout, plan.boundary_wait_s)
+            if after_wait is not None:
+                after_wait()
         with only_one(root / "deploy.lock", wait=False, note="ensure"):
             _automatic(plan)
             return _ensured(plan, force, force_build, builder)

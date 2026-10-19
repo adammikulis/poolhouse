@@ -160,3 +160,16 @@ def test_ensure_carries_its_boundary_wait_into_the_plan_and_the_node_swap(source
         assert runtime_cli.main(["ensure", "--now", "--no-update", "--checkout", str(repo), *words]) == 0
         plans.append(swaps[-1]["boundary_wait_s"])
     assert plans == [runtime_cli.runtime_git.BOUNDARY_WAIT_S, 7.0]
+
+
+def test_the_authority_is_asked_again_after_the_boundary_wait_and_before_anything_is_built(cutover):
+    asked = []
+
+    def revoked():
+        asked.append("after the wait")
+        raise PermissionError("authority revoked")
+
+    threading.Timer(0.3, cutover.holder.release).start()
+    with pytest.raises(PermissionError, match="revoked"):
+        runtime_deploy.ensure(replace(cutover.plan, boundary_wait_s=10), builder=cutover.builder, after_wait=revoked)
+    assert asked == ["after the wait"] and cutover.built == [] and cutover.selected == []
