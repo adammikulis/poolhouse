@@ -1,0 +1,139 @@
+"""The report behind scripts/status: the local test broker, the test jobs and the GitHub runs of the development branch.
+
+Stuck means: a GitHub run still going after 25 minutes; a local run past its estimate by 5 minutes (a run without an
+estimate, or with one under 15 minutes, past 20 minutes in total); a queued run older than 5 minutes with nothing running.
+A missing gh or login is one line in the github section and never an error.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import srcpath  # noqa: F401
+import testslots
+from ci_watch import Gh, Skipped, age_s
+
+ROOT = Path(__file__).resolve().parent.parent
+GITHUB_S = 25 * 60
+OVER_ESTIMATE_S = 5 * 60
+LOCAL_TOTAL_S = 20 * 60
+QUEUED_S = 5 * 60
+GH_TIMEOUT_S = 20.0
+JOBS_SHOWN = 3
+PROBLEMS_SHOWN = 2
+ACTIVE = frozenset({"in_progress", "queued", "waiting", "pending", "requested"})
+JOB_LINE = re.compile(r"^\S+\s+(running|queued)\s")
+
+
+def minutes(seconds: float) -> str:
+    """``seconds`` as whole minutes."""
+    return f"{seconds / 60:.0f} min"
+
+
+def local(now: float) -> tuple[list[str], list[str]]:
+    """The broker's runs, one line each, and what is stuck among them."""
+    st = testslots.status()
+    runs = st["runs"]
+    lines = [f"broker: budget {st['budget']} workers, {st['in_use']} in use, {sum(r['state'] == 'running' for r in runs)} run(s) running, "
+             f"{sum(r['state'] == 'queued' for r in runs)} queued"]
+    problems = []
+    idle = not st["running"] and not any(r["state"] == "running" for r in runs)
+    for run in runs:
+        est, owner = run.get("estimate_s"), run.get("owner") or "person"
+        running = run["state"] == "running"
+        age = now - float(run.get("started" if running else "enqueued") or now)
+        lines.append(f"  {run['state']:<8} {testslots.policy.run_class(run):<11} owner {owner} est {'?' if est is None else f'{est:.0f}s'} "
+                     f"age {age:.0f}s; {run['label']}")
+        what = f"{run['state']} run {run['label'][:40]} (owner {owner})"
+        total = now - float(run.get("enqueued") or now)
+        if running and est is not None and age > float(est) + OVER_ESTIMATE_S:
+            problems.append(f"{what} is {minutes(age - float(est))} past its estimate")
+        elif running and (est is None or float(est) + OVER_ESTIMATE_S <= LOCAL_TOTAL_S) and total > LOCAL_TOTAL_S:
+            problems.append(f"{what} has taken {minutes(total)}")
+        elif not running and idle and total > QUEUED_S:
+            problems.append(f"{what} has waited {minutes(total)} with nothing running")
+    return lines, problems
+
+
+def test_jobs() -> list[str]:
+    """The running and queued jobs `scripts/test status` lists."""
+    try:
+        done = subprocess.run([sys.executable, str(ROOT / "scripts" / "test"), "status"], cwd=ROOT, capture_output=True, text=True,
+                              errors="replace", check=False, stdin=subprocess.DEVNULL, timeout=GH_TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired) as why:
+        return [f"test jobs: scripts/test status gave no answer ({type(why).__name__})"]
+    live = [f"  {ln}" for ln in done.stdout.splitlines() if JOB_LINE.match(ln)]
+    return ["test jobs:", *(live or ["  none running"])]
+
+
+def development_branch() -> str:
+    """$POOLHOUSE_DEV_BRANCH, else the branch of the primary checkout."""
+    if os.environ.get("POOLHOUSE_DEV_BRANCH"):
+        return os.environ["POOLHOUSE_DEV_BRANCH"]
+    try:
+        out = subprocess.run(["git", "worktree", "list", "--porcelain"], cwd=ROOT, capture_output=True, text=True, check=False,
+                             timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return next((ln.split("refs/heads/", 1)[1] for ln in out.splitlines() if ln.startswith("branch refs/heads/")), "")
+
+
+def job_lines(gh: Gh, run: dict) -> list[str]:
+    """The jobs of ``run`` not yet finished, with state and age, and how many have finished."""
+    view = gh.json("run", "view", str(run["databaseId"]), "--json", "jobs", timeout=GH_TIMEOUT_S)
+    jobs = [j for j in (view.get("jobs") if isinstance(view, dict) else None) or [] if isinstance(j, dict)]
+    rows = [f"    {j.get('name', '?')}: {j.get('status', '?')} {minutes(age_s(j.get('startedAt')))}" for j in jobs if j.get("status") != "completed"]
+    done = len(jobs) - len(rows)
+    return [*rows, f"    {done} job{'s' if done != 1 else ''} finished"] if jobs else ["    no jobs yet"]
+
+
+def github() -> tuple[list[str], list[str]]:
+    """The development branch's recent runs with per-job states for those in progress, and what is stuck among them."""
+    dev = development_branch()
+    gh = Gh(ROOT)
+    try:
+        rows = gh.json("run", "list", "--branch", dev, "--limit", "20", "--json",
+                       "databaseId,status,conclusion,createdAt,workflowName,headSha,url", timeout=GH_TIMEOUT_S) if dev else []
+        rows = [r for r in rows or [] if isinstance(r, dict)]
+        lines, problems = [f"github: {dev or 'no development branch'}"], []
+        for run in [r for r in rows if r.get("status") in ACTIVE][:JOBS_SHOWN + 2]:
+            age = age_s(run.get("createdAt"))
+            lines.append(f"  {run.get('workflowName', '?')} {str(run.get('headSha', ''))[:7]} {run['status']} {minutes(age)}; run {run['databaseId']}")
+            if age > GITHUB_S:
+                problems.append(f"github run {run['databaseId']} ({run.get('workflowName', '?')}) is {run['status']} after {minutes(age)}")
+            if run["status"] == "in_progress":
+                lines.extend(job_lines(gh, run))
+        if len(lines) == 1:
+            last = rows[0] if rows else {}
+            lines.append(f"  nothing in progress; latest {last.get('workflowName', '?')} {last.get('status', '?')} {last.get('conclusion', '')}".rstrip()
+                         if rows else "  no runs")
+        return lines, problems
+    except Skipped as why:
+        return [f"github: {why}"], []
+
+
+def report(now: float) -> list[str]:
+    """The verdict line followed by the three sections."""
+    lines, problems = local(now)
+    lines += test_jobs()
+    shown, found = github()
+    lines += shown
+    problems += found
+    head = "ok" if not problems else "STUCK: " + "; ".join(problems[:PROBLEMS_SHOWN]) + (f" (+{len(problems) - PROBLEMS_SHOWN} more)" if len(problems) > PROBLEMS_SHOWN else "")
+    return [head, *lines]
+
+
+def main(argv: list[str]) -> int:
+    """Print the report, or only its first line with ``--verdict``."""
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--verdict", action="store_true", help="print only the first line")
+    args = parser.parse_args(argv)
+    lines = report(time.time())
+    print("\n".join(lines[:1] if args.verdict else lines))
+    return 0
