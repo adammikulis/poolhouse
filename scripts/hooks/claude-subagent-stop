@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A SubagentStop hook: refuses a stop while the subagent's tree holds unlanded work; otherwise records the subagent's model from its transcript, announces that it finished as itself (never its last chat line) and retires its identity."""
+"""A SubagentStop hook: refuses a stop while the subagent's tree holds unlanded work and keeps the identity of a subagent handed back with work unlanded; otherwise announces that it finished as itself (never its last chat line) and retires its identity."""
 
 from __future__ import annotations
 
@@ -45,9 +45,9 @@ def main() -> int:
     if event is None:
         return 0
     environment = workspace_hook.own_environment(event, "SubagentStop")
-    refusal = stop_landed.check(event, environment)
-    if refusal:
-        print(json.dumps({"decision": "block", "reason": refusal}))
+    verdict = stop_landed.check(event, environment)
+    if verdict.reason:
+        print(json.dumps({"decision": "block", "reason": verdict.reason}))
         return 0
     if environment is None:
         return 0
@@ -56,6 +56,8 @@ def main() -> int:
     if model:
         workspace_hook.run(["poolhouse-workspace", "whoami", "--model", model, "--harness", "claude-code"],
                            "SubagentStop", environment=environment)
+    if verdict.unfinished:
+        return 0
     place = checkout_note(event)
     tree_watch.stopped("SubagentStop", str(event.get("cwd") or ""), environment)
     said = workspace_hook.run(["poolhouse-workspace", "announce", "done", f"finished{place}"[:200]],

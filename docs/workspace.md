@@ -63,7 +63,8 @@ context and the subagent runs every command with `--agent NAME`; `--agent` only 
 to use, and the token decides who is sending. `inbox`, `brief`, `claim` and `announce` all run as the subagent. A
 message from a subagent shows its own name and its model; `agents` and `status` show its parent. The Claude
 SubagentStop hook refuses the stop while the child's tree holds unlanded work (docs/worktrees.md, "A subagent's stop"),
-then announces `done` and retires that child. Codex SubagentStop records a turn checkpoint and keeps
+then, when the child's work is landed or closed, announces `done` and retires it; a child handed back with work
+unlanded keeps its identity and token for a resume. Codex SubagentStop records a turn checkpoint and keeps
 the child live for follow-up work; explicit retirement or the root SessionEnd ends it. The launchers retire the
 session they registered when they exit. A parent (any ancestor) can end a descendant through
 the node. A parent frees a claim its subagent can no longer release with

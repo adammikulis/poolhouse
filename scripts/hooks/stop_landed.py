@@ -133,11 +133,19 @@ def say(kind: str, text: str, environment: dict | None) -> None:
     workspace_hook.run(["poolhouse-workspace", "announce", kind, text[:200]], STAGE, environment=environment)
 
 
-def check(event: dict, environment: dict | None) -> str:
-    """The reason to refuse this stop, or an empty string.
+class Verdict(NamedTuple):
+    """The answer for one stop: the reason to refuse it (empty to let it go), and whether the subagent's own work is unfinished."""
+
+    reason: str
+    unfinished: bool
+
+
+def check(event: dict, environment: dict | None) -> Verdict:
+    """Whether this stop is refused and whether the subagent is finished.
 
     The first two refusals of a subagent are answered; the third stop goes through with a milestone
-    naming the tree. A stop with nothing unlanded forgets the count.
+    naming the tree, and the subagent is not finished, so its identity stays for a resume that lands
+    the work. A stop with nothing unlanded forgets the count.
     """
     agent = str(event.get("agent_id") or event.get("cwd") or "")
     try:
@@ -145,15 +153,15 @@ def check(event: dict, environment: dict | None) -> str:
         used = refused(agent)
         if not held:
             remember(agent, 0)
-            return ""
+            return Verdict("", False)
         if used >= REFUSALS:
             remember(agent, 0)
-            say("milestone", f"stopped with unlanded work, tree left for cleanup: {where(held)}", environment)
-            return ""
+            say("milestone", f"handed back with unlanded work, identity kept: {where(held)}", environment)
+            return Verdict("", True)
         remember(agent, used + 1)
     except (OSError, RuntimeError, ValueError) as error:
         workspace_hook.warning(STAGE, f"landed check: {error}")
-        return ""
+        return Verdict("", True)
     if used + 1 == REFUSALS:
         say("blocked", f"stop refused twice, work not landed: {where(held)}", environment)
-    return reason(held)
+    return Verdict(reason(held), True)

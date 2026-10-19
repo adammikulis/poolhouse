@@ -171,8 +171,11 @@ def test_the_second_refusal_says_blocked_and_the_third_stop_goes_through_with_a_
     passed(world.stop())
     milestones = world.announced("milestone")
     assert len(milestones) == 1 and "unlanded" in milestones[0] and "worker/topic" in milestones[0]
-    assert len(world.announced("blocked")) == 1 and world.announced("done") and ["retire"] in world.recorded()
-    assert all(len(text) <= 200 for text in world.announced("blocked") + milestones)
+    assert len(world.announced("blocked")) == 1 and all(len(text) <= 200 for text in world.announced("blocked") + milestones)
+    assert world.announced("done") == [] and ["retire"] not in world.recorded()
+    world.land()
+    passed(world.stop())
+    assert len(world.announced("done")) == 1 and ["retire"] in world.recorded()
 
 
 def test_landing_between_stops_starts_the_count_again(world):

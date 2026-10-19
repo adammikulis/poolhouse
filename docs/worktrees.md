@@ -65,5 +65,7 @@ cannot read. A subagent whose directory is already gone, or that stopped outside
 The refusal is one sentence that names the tree and says to land it with `scripts/land`, or, when the work is
 superseded or cannot land, to run `scripts/worktrees close TREE --bundle` (`--abandon 'reason'` for uncommitted files).
 The second refusal of the same subagent also posts `announce blocked`; the third stop goes through, posts a milestone
-naming the branch and tree, and the tree stays as work for `scripts/worktrees` and its cleanup. A stop that finds
-everything landed forgets the count. The count lives in the hooks' state directory (`POOLHOUSE_HOOK_STATE`).
+naming the branch and tree, and the tree stays as work for `scripts/worktrees` and its cleanup. That stop announces no
+`done` and does not retire the subagent: its identity and token stay, so the lead can resume it to claim and land after a
+review accept. A stop that finds everything landed (or the tree closed or gone) forgets the count, announces `done`
+and retires the subagent. The count lives in the hooks' state directory (`POOLHOUSE_HOOK_STATE`).
