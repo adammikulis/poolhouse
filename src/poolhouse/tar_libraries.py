@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from poolhouse.safenames import MOST_ENTRIES, MOST_UNPACKED, Unsafe, safe_join
 
-LIBRARY = re.compile(r".+\.so(?:\.\d+)*$")
+SHARED_OBJECT = re.compile(r".+\.so(?:\.\d+)*$")
 
 
 def members(tf: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, tarfile.TarInfo]]:
@@ -49,7 +49,7 @@ def _regular(item: tarfile.TarInfo, index: dict[str, tarfile.TarInfo],
         if item.name in seen:
             raise Unsafe(f"{item.name!r} is a cyclic library link")
         seen.add(item.name)
-        if not LIBRARY.fullmatch(PurePosixPath(item.name).name):
+        if not SHARED_OBJECT.fullmatch(PurePosixPath(item.name).name):
             raise Unsafe(f"{item.name!r} is not a shared-library alias")
         destination = item.linkname
         if destination.startswith(("/", "\\")) or PureWindowsPath(destination).drive:
@@ -59,7 +59,7 @@ def _regular(item: tarfile.TarInfo, index: dict[str, tarfile.TarInfo],
         if reached not in index:
             raise Unsafe(f"{item.name!r} is a dangling library link")
         item = index[reached]
-        if not LIBRARY.fullmatch(PurePosixPath(item.name).name) or not (item.isfile() or item.issym()):
+        if not SHARED_OBJECT.fullmatch(PurePosixPath(item.name).name) or not (item.isfile() or item.issym()):
             raise Unsafe(f"{item.name!r} is not a regular shared library")
     for name in seen:
         resolved[name] = item

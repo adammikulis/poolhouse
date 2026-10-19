@@ -44,6 +44,11 @@ class Pin:
     """The 40-character commit a pulled Hub file was listed at; empty for any other pin."""
     source_ref: str = ""
     """``owner/repo/path`` of a pulled Hub file, so a later pull of that path is compared with this digest."""
+    unvetted: str = ""
+    """What a person would have been asked about a pulled Hub file that the pull did not ask (words, as the
+    question puts them); empty once nobody had to be asked or a person answered."""
+    host: str = ""
+    """The host and port of the Hub a pulled file came from; empty for any other pin."""
 
     def to_json(self) -> dict[str, Any]:
         return {f: getattr(self, f) for f in self.__slots__}
@@ -82,8 +87,13 @@ class Manifest:
         return sorted(found, key=lambda p: -p.pinned_at)
 
     def pin_with_digest(self, sha256: str) -> Pin | None:
-        """A pin whose digest is ``sha256``, or None."""
-        return next((p for p in self.pins().values() if p.sha256 == sha256.lower()), None)
+        """A pin whose digest is ``sha256`` (one nobody has to be asked about first), or None."""
+        found = [p for p in self.pins().values() if p.sha256 == sha256.lower()]
+        return min(found, key=lambda p: bool(p.unvetted), default=None)
+
+    def vet(self, pin: Pin) -> Pin:
+        """``pin`` as it was, no longer waiting on an answer."""
+        return self._record(replace(pin, unvetted=""))
 
     def _save(self, pins: dict[str, Pin]) -> None:
         self._file.save({"pins": {p: v.to_json() for p, v in sorted(pins.items())}})

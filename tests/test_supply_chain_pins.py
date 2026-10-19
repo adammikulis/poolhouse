@@ -5,6 +5,7 @@ the test's state root, real Ed25519 signatures, a real local HTTP site / fake Hu
 from __future__ import annotations
 
 import base64
+import dataclasses
 import hashlib
 import json
 import struct
@@ -106,6 +107,50 @@ def test_a_pull_without_a_published_digest_pins_the_bytes_it_got_and_says_so(tmp
     final, body = pulled(site, pipe, sha=False)
     pin = pins()[str(final)]
     assert pin.sha256 == SHA(body) and pin.digest_from == "computed" and pin.source == "pull"
+
+
+def test_a_model_downloaded_through_a_pipeline_that_lists_every_host_is_not_pinned_as_a_pull(tmp_path, site, pipe):
+    body = gguf_bytes(extra=4096)
+    site.add("/m.gguf", body, headers={"Content-Type": "application/octet-stream"})
+    anywhere = dataclasses.replace(pipe, policy=net.Policy(allowed=net.policy.ANYWHERE, path=tmp_path / "all.jsonl"))
+    final = home.home() / "models" / "m.gguf"
+    net.download(site.base + "/m.gguf", final, net.Want(), anywhere)
+    assert final.read_bytes() == body and str(final) not in pins()
+    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
+        load(final)
+    (waiting,) = requests.list_requests(state="pending", kind="model_file")
+    assert str(final) in waiting.reason
+
+
+@pytest.mark.parametrize("allowed", [("*.*",), ("?*",)])
+def test_a_model_downloaded_through_a_wildcard_allow_list_is_not_pinned_as_a_pull(tmp_path, site, pipe, allowed):
+    body = gguf_bytes(extra=4096)
+    site.add("/m.gguf", body, headers={"Content-Type": "application/octet-stream"})
+    anywhere = dataclasses.replace(pipe, policy=net.Policy(allowed=allowed, path=tmp_path / "all.jsonl"))
+    final = home.home() / "models" / "m.gguf"
+    net.download(site.base + "/m.gguf", final, net.Want(), anywhere)
+    assert final.read_bytes() == body and str(final) not in pins()
+
+
+def test_a_model_downloaded_with_a_wildcard_in_the_environment_allow_list_is_not_pinned_as_a_pull(tmp_path, site, pipe, monkeypatch):
+    body = gguf_bytes(extra=4096)
+    site.add("/m.gguf", body, headers={"Content-Type": "application/octet-stream"})
+    monkeypatch.setenv("POOLHOUSE_NET_ALLOW_HOSTS", "*")
+    wide = dataclasses.replace(pipe, policy=net.Policy(allowed=(), path=tmp_path / "all.jsonl"))
+    final = home.home() / "models" / "m.gguf"
+    net.download(site.base + "/m.gguf", final, net.Want(), wide)
+    assert final.read_bytes() == body and str(final) not in pins()
+
+
+def test_a_copy_of_a_model_downloaded_through_a_pipeline_that_lists_every_host_is_not_vouched_for(tmp_path, site, pipe):
+    body = gguf_bytes(extra=4096)
+    site.add("/m.gguf", body, headers={"Content-Type": "application/octet-stream"})
+    anywhere = dataclasses.replace(pipe, policy=net.Policy(allowed=net.policy.ANYWHERE, path=tmp_path / "all.jsonl"))
+    net.download(site.base + "/m.gguf", home.home() / "models" / "m.gguf", net.Want(), anywhere)
+    copy = where("copy.gguf")
+    copy.write_bytes(body)
+    with pytest.raises(SentinelRefused, match="was not downloaded by Poolhouse"):
+        load(copy)
 
 
 def test_a_model_poolhouse_did_not_pull_waits_for_a_person_and_is_then_pinned_as_approved(tmp_path):

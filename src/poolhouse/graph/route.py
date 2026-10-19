@@ -26,7 +26,7 @@ MARGIN = 0.05
 class Routed:
     """An order over tools, and whether it is confident enough to act on."""
 
-    __slots__ = ("order", "scores", "clear")
+    __slots__ = ("clear", "order", "scores")
 
     @property
     def chat(self) -> bool:

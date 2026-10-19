@@ -53,7 +53,8 @@ def fetch(cache_dir: str | Path | None = None) -> Path:
                         if size else 1 << 30, purpose="injection classifier")
         final = root.joinpath(*(safe_filename(part) for part in path.split("/")))
         if not final.is_file():
-            net.download(f"{base}/{MODEL}/resolve/main/{urllib.parse.quote(path)}", final, want)
+            net.download(f"{base}/{MODEL}/resolve/main/{urllib.parse.quote(path)}", final, want,
+                         pipeline=net.default())
     folder = root / "onnx"
     if not (folder / "model.onnx").is_file():
         raise FileNotFoundError(f"{MODEL} has no onnx/model.onnx on {base}")

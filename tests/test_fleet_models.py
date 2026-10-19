@@ -556,7 +556,7 @@ class TestGettingInTheBackground:
         """A pull that reports half the bytes, waits to be released, then lands the file."""
         release, halfway = threading.Event(), threading.Event()
 
-        def pull(ref, dest=None, on_progress=None, cancel=None, *, members=None):
+        def pull(ref, dest=None, on_progress=None, cancel=None, **_options):
             from poolhouse.hub.transfer import Progress
 
             on_progress(Progress(ref, "downloading", "f", 0, 1, len(payload) // 2, len(payload)))

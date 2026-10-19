@@ -101,6 +101,15 @@ class FakeHub:
                          "lfs": {"oid": digest, "size": len(body)}})
         return rows
 
+    def siblings(self, repo: str) -> list[dict[str, Any]]:
+        """The files of ``repo`` as ``/api/models/<repo>/revision/<rev>?blobs=true`` lists them."""
+        rows = []
+        for row in self.listing(repo):
+            lfs = row.get("lfs")
+            rows.append({"rfilename": row["path"], "size": row["size"],
+                         **({"lfs": {"sha256": lfs["oid"], "size": lfs["size"]}} if lfs else {"blobId": row["oid"]})})
+        return rows
+
     def commit(self, repo: str, generation: int | None = None) -> str:
         """The commit id the Hub names for ``repo`` (its ``generation``-th, the newest by default)."""
         moved = self.moved.get(repo, 0) if generation is None else generation
@@ -129,6 +138,8 @@ class FakeHub:
         elif "revision" in bits:
             ref = "/".join(bits[bits.index("revision") + 1:])
             body = {"id": repo, "sha": self.prs.get(repo, {}).get(ref) or self.commit(repo)}
+            if query.get("blobs"):
+                body["siblings"] = self.siblings(repo)
         else:
             return 404, b"{}"
         return 200, json.dumps(body).encode()

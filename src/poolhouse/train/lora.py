@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
+from poolhouse.hub.admission import PERSON
 from poolhouse.hub.transfer import base_folder
 from poolhouse.train.step import TorchStep
 from poolhouse.units import span
@@ -239,7 +240,7 @@ def merge(base: str, adapter: Path | str, out: Path | str, *, device: str = "cpu
     if not (adapter / "adapter_config.json").is_file():
         raise FileNotFoundError(f"no adapter under {adapter}; train one first")
 
-    base = base_folder(base)
+    base = base_folder(base, trust=PERSON)
     model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32)
     model.to(device)
     merged = PeftModel.from_pretrained(model, str(adapter)).merge_and_unload()

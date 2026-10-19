@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import errors, home, http, hub, lock, net
-from poolhouse.hub import admission, hfstore, members as peering, publishers, remote
+from poolhouse.hub import admission, hfstore, members as peering, remote
 from poolhouse.hub.remote import GatedRepo, NotFound, RemoteFile
 from poolhouse.net.download import staged_part
 from poolhouse.units import human_bytes
@@ -172,6 +172,7 @@ class _Meter:
         self.step = 0
         self.cancel: CancelToken | None = None
         self.session: peering.Session | None = None
+        self.unvetted = ""
 
     def send(self, phase: str, one: RemoteFile, got: int, *, force: bool = False) -> None:
         now = time.monotonic()
@@ -197,16 +198,11 @@ def _by_object_id(one: RemoteFile) -> Callable[[Path, dict[str, str]], str] | No
                                    else f"{one.path} differs from the object id the Hub lists")
 
 
-def _notes(parsed: remote.Ref, one: RemoteFile) -> dict[str, str]:
-    return {"publisher": publishers.namespace(parsed.repo), "commit": parsed.commit,
-            "source_ref": f"{parsed.repo}/{one.path}"}
-
-
-def _want(parsed: remote.Ref, one: RemoteFile, auth: str) -> net.Want:
+def _want(parsed: remote.Ref, one: RemoteFile, auth: str, unvetted: str = "") -> net.Want:
     return net.Want(kind=_kind(one.path), sha256=one.sha256, size=one.size, token=auth,
                     max_bytes=int(one.size * 1.001) + MARGIN if one.size else 1 << 41,
                     purpose="model download", verify=_by_object_id(one),
-                    pin_notes=_notes(parsed, one))
+                    pin_notes=admission.notes(parsed.repo, parsed.commit, one.path, unvetted))
 
 
 def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> bool:
@@ -216,7 +212,7 @@ def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Mete
     try:
         return meter.session.fetch(  # type: ignore[union-attr]
             peering.Wanted(parsed.repo, one.path, one.size, one.sha256,
-                           tuple(_notes(parsed, one).items())), final,
+                           tuple(admission.notes(parsed.repo, parsed.commit, one.path, meter.unvetted).items())), final,
             cancelled=lambda: bool(cancel and cancel.cancelled),
             progress=lambda done: meter.send("downloading", one, done),
             phase=lambda name: meter.send(name, one, one.size, force=True))
@@ -236,7 +232,7 @@ def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> N
     hooks = net.Hooks(cancel=cancel, progress=lambda done, _t: meter.send("downloading", one, done),
                       phase=lambda name: meter.send(name, one, one.size, force=True))
     try:
-        net.download(url, final, _want(parsed, one, auth), hooks=hooks)
+        net.download(url, final, _want(parsed, one, auth, meter.unvetted), pipeline=net.default(), hooks=hooks)
     except net.Truncated as exc:
         if cancel and cancel.cancelled:
             raise Cancelled(one.path) from exc
@@ -285,7 +281,8 @@ def _space(folder: Path, need: int) -> None:
 
 
 def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = None,
-         cancel: CancelToken | None = None, *, members: bool | None = None) -> Path:
+         cancel: CancelToken | None = None, *, members: bool | None = None,
+         trust: admission.Trust = admission.PERSON) -> Path:
     """Download ``ref`` and return its GGUF file or safetensors folder, in the Hub cache's snapshot.
 
     ``dest`` writes plain files into that folder instead of the cache. Every shard of a sharded build comes
@@ -295,14 +292,16 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
     it. Two processes pulling the same file take turns.
 
     Members are asked first (``members=False`` skips them; `poolhouse.hub.members`): their
-    bytes count only if they hash to the Hub's own digest, else the Hub is used.
+    bytes count only if they hash to the Hub's own digest, else the Hub is used. ``trust`` says what is fetched
+    without an answer; the default asks a person about anything but a shipped publisher (`admission.Trust`).
     """
+    run = _Run(on_progress, cancel, members, admission.checked(trust))
     parsed = remote.resolve(remote.parse(ref))
     if parsed.file.lower().endswith(".safetensors"):
         files = remote.listing(parsed.repo, parsed.commit)
         if parsed.file not in {one.path for one in files}:
             raise NotFound(f"{parsed.repo} has no {parsed.file}")
-        return _snapshot_files(parsed, files, dest, _Run(on_progress, cancel, members))
+        return _snapshot_files(parsed, files, dest, run)
     try:
         parsed, chosen = plan(parsed)
     except NotFound:
@@ -313,8 +312,8 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
         if "config.json" not in names or not any(name.lower().endswith(".safetensors")
                                                    for name in names):
             raise
-        return _snapshot_files(parsed, files, dest, _Run(on_progress, cancel, members))
-    folder = _bring(parsed, chosen, dest, _Run(on_progress, cancel, members))
+        return _snapshot_files(parsed, files, dest, run)
+    folder = _bring(parsed, chosen, dest, run)
     return folder / chosen[0].path
 
 
@@ -325,6 +324,7 @@ class _Run:
     report: Report | None = None
     cancel: CancelToken | None = None
     members: bool | None = None
+    trust: admission.Trust = admission.PERSON
 
 
 def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None,
@@ -337,10 +337,10 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
         if (relative.is_absolute() or ".." in relative.parts
                 or not (folder / relative.parent).resolve().is_relative_to(root)):
             raise ValueError(f"Unsafe model file path: {one.path}")
-    admission.admit(parsed, chosen)
+    unvetted = admission.admit(parsed, chosen, run.trust)
     _space(targets[0].final.parent, sum(_remaining(parsed, t) for t in targets))
     meter = _Meter(parsed.text, sum(f.size for f in chosen), len(chosen), run.report)
-    meter.cancel = run.cancel
+    meter.cancel, meter.unvetted = run.cancel, unvetted
     if any(not _present(t.final, t.file) for t in targets):
         meter.session = peering.session(run.members)
     for index, target in enumerate(targets):
@@ -363,12 +363,13 @@ PICKLES = (".bin", ".pt", ".pth", ".ckpt", ".pkl", ".pickle", ".h5", ".msgpack",
 
 
 def snapshot(repo: str, revision: str = "main", on_progress: Report | None = None,
-             cancel: CancelToken | None = None, *, dest: str | Path | None = None) -> Path:
+             cancel: CancelToken | None = None, *, dest: str | Path | None = None,
+             trust: admission.Trust = admission.PERSON) -> Path:
     """Every file of ``repo`` but its pickle-based weights, in the Hub cache (or ``dest``);
-    returns the snapshot folder. For a repository that holds safetensors."""
+    returns the snapshot folder. For a repository that holds safetensors, fetched under ``trust``."""
+    run = _Run(on_progress, cancel, trust=admission.checked(trust))
     parsed = remote.resolve(remote.Ref(repo, "", "", revision))
-    return _snapshot_files(parsed, remote.listing(repo, parsed.commit), dest,
-                           _Run(on_progress, cancel))
+    return _snapshot_files(parsed, remote.listing(repo, parsed.commit), dest, run)
 
 
 def _snapshot_files(parsed: remote.Ref, files: list[RemoteFile], dest: str | Path | None,
@@ -380,12 +381,14 @@ def _snapshot_files(parsed: remote.Ref, files: list[RemoteFile], dest: str | Pat
     return _bring(parsed, chosen, dest, run)
 
 
-def base_folder(base: str) -> str:
-    """A base model to train from, as a folder: ``base`` when it is one on this machine, else the snapshot
-    of the repository (``hf:owner/repo`` or ``owner/repo``) pulled through the publisher check."""
+def base_folder(base: str, *, trust: admission.Trust = admission.PERSON) -> str:
+    """A base model to train from, as a folder: ``base`` when it is one on this machine (a person is asked first about
+    a pulled one the pull did not ask about, `admission.vetted`), else the snapshot of the repository
+    (``hf:owner/repo`` or ``owner/repo``) pulled under ``trust``."""
     if Path(base).expanduser().is_dir():
+        admission.vetted(Path(base).expanduser())
         return str(Path(base).expanduser())
-    return str(snapshot(base.removeprefix("hf:")))
+    return str(snapshot(base.removeprefix("hf:"), trust=trust))
 
 
 def held_snapshot(repo: str) -> Path | None:

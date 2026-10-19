@@ -312,6 +312,6 @@ def test_a_pull_pins_each_file_to_the_size_and_digest_the_listing_gives():
     want = pulling._want(parsed, one, "tok")
     assert (want.sha256, want.size, want.token, want.kind) == ("ab" * 32, 1000, "tok", "gguf")
     assert 1000 <= want.max_bytes < 1000 + 2 * pulling.MARGIN
-    assert want.pin_notes == {"publisher": "unsloth", "commit": "c" * 40,
+    assert want.pin_notes == {"publisher": "unsloth", "commit": "c" * 40, "host": remote.endpoint_host(),
                               "source_ref": "unsloth/thing/UD/a-Q4_K_M.gguf"}
     assert pulling._want(parsed, remote.RemoteFile("README.md", 5), "").kind == ""

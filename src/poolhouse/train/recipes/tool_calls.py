@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from poolhouse.hub.admission import PERSON
 from poolhouse.hub.transfer import base_folder
 from poolhouse.train.recipes.base import resolve_base
 from poolhouse.train.recipes.built import Built
@@ -66,7 +67,7 @@ def load_base(base: str, *, device: Any = None, dtype: Any = None) -> tuple[Any,
             "the tool-calls recipe fine-tunes a Hugging Face checkpoint and needs torch and "
             "transformers: pip install 'poolhouse[torch]' transformers") from exc
 
-    base = base_folder(base)
+    base = base_folder(base, trust=PERSON)
     tokenizer = AutoTokenizer.from_pretrained(base)
     if not getattr(tokenizer, "chat_template", None):
         raise ValueError(f"{base} has no chat template, so there is no format to teach; "
