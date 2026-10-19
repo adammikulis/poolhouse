@@ -97,10 +97,9 @@ def test_areas_held_under_a_path_keep_another_session_from_a_worktree_or_install
         b.reserve([("area", str(tmp_path / "work" / "src" / "m.py"))])
 
 
-def test_a_heartbeat_names_the_claims_whose_eight_hour_lifetime_held_the_renewal_back(team):
+def test_a_heartbeat_renews_every_claim_the_caller_holds_for_the_time_it_names_with_no_lifetime_cap(team):
     run(team, team.alpha, "claim", "port", "9500")
     run(team, team.alpha, "claim", "server", "api")
-    assert run(team, team.alpha, "heartbeat", "--ttl", "600") == {"renewed": 2, "capped": []}
-    done = run(team, team.alpha, "heartbeat", "--ttl", "86400")
-    assert done["renewed"] == 2 and sorted(done["capped"]) == ["port:9500", "server:api"]
-    assert all(28_700 < c["expires_in_s"] <= 28_800 for c in run(team, team.alpha, "claims")), "renewed to the lifetime and no further"
+    assert run(team, team.alpha, "heartbeat", "--ttl", "600") == {"renewed": 2}
+    assert run(team, team.alpha, "heartbeat", "--ttl", "86400") == {"renewed": 2}
+    assert all(86_300 < c["expires_in_s"] <= 86_400 for c in run(team, team.alpha, "claims")), "renewed for the whole time asked"

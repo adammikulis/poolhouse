@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +95,6 @@ class Claim:
     lease: str
     pid: int
     changed: bool = True
-    capped: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,18 +385,10 @@ class Session:
         return [_claim(c) for c in self.call("claims", **({"kind": kind} if kind else {}))["claims"]]
 
     def renew_claims(self, ttl_s: int) -> list[Claim]:
-        """Extend every claim this session holds by ``ttl_s``, never past eight hours after it was taken; each is marked
-        `capped` when that held it back."""
-        renewed = []
+        """Extend every claim this session holds to ``ttl_s`` seconds from now."""
         for c in (c for c in self.claims() if c.owner == self.name):
-            try:
-                capped = bool(self.call("lease_renew", id=c.lease, ttl_s=ttl_s)["capped"])
-            except Denied as err:
-                if "lifetime" not in str(err):
-                    raise
-                capped = True
-            renewed.append(replace(c, capped=capped))
-        return renewed
+            self.call("lease_renew", id=c.lease, ttl_s=ttl_s)
+        return [c for c in self.claims() if c.owner == self.name]
 
     def cursor(self, question: str) -> dict[str, int]:
         return credentials.cursors(self.client.state, self.board, self._cursor_name()).get(question, {})
