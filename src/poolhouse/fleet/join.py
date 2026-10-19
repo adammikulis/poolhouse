@@ -21,6 +21,7 @@ import os
 import sys
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -353,13 +354,17 @@ def members(*, pool_key_path: Path | str | None = None, timeout_s: float = 2.0,
     """Every daemon on the LAN that proves it holds one of this machine's pool keys.
 
     One machine in two pools answers on each; it is listed once with both. Machines
-    that share a name are listed apart (`named_apart`).
+    that share a name are listed apart (`named_apart`). Every pool is asked at once, so
+    the wait is one ``timeout_s`` however many pools this machine is in.
     """
     # Keyed on the daemon, not its address: the same daemon answers each pool with a
     # beacon of its own, and can be heard on loopback for one and the LAN for the other.
     found: dict[str, dict[str, Any]] = {}
-    for member in memberships(pool_key_path):
-        for beacon in finder(member.key, timeout_s=timeout_s, port=port):
+    held = memberships(pool_key_path)
+    with ThreadPoolExecutor(max_workers=max(1, len(held))) as asking:
+        heard = list(asking.map(lambda one: finder(one.key, timeout_s=timeout_s, port=port), held))
+    for member, beacons in zip(held, heard, strict=True):
+        for beacon in beacons:
             who = f"{beacon.machine or beacon.hostname}:{beacon.port}"
             row = found.get(who)
             if row is None:

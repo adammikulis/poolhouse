@@ -431,6 +431,21 @@ class TestStatus:
         assert [r["name"] for r in rows] == ["larch"]
         assert sorted(rows[0]["pools"]) == ["home", "lab"]
 
+    def test_every_pool_is_asked_at_once(self, key):
+        """Two pools wait one window, not two: a finder that returns only when both are asking at the same time."""
+        join_pool_by_passphrase(WORDS, group="home", path=key)
+        join_pool_by_passphrase("other words here", group="lab", path=key)
+        together = threading.Barrier(2, timeout=10)
+        asked: list[bytes] = []
+
+        def finder(pool_key, **_):
+            together.wait()
+            asked.append(pool_key)
+            return []
+
+        assert members(pool_key_path=key, timeout_s=1.0, finder=finder) == []
+        assert sorted(asked) == sorted(m.key for m in memberships(key))
+
     def test_status_command_prints_json_rows(self, key, udp, daemons, monkeypatch, capsys):
 
         join_pool_by_passphrase(WORDS, group="home", path=key)
@@ -585,6 +600,7 @@ class TestThePage:
         cookie = headers["Set-Cookie"].split(";")[0]
         # Another machine in the same pool, holding two models and serving one.
         daemons.append(FakeDaemon(_free_tcp(), load_pool_key(s.keyfile), udp, name="larch"))
+        s.call("/health")  # a daemon a person presses Join on has already answered a health check; its first report loads the accelerator libraries
         try:
             yield s, cookie
         finally:
