@@ -24,6 +24,11 @@ try:
 except ImportError as exc:
     ci_watch = None
     print(f"pushed: warning: the ci watcher could not load ({exc}); the ci run is not watched", file=sys.stderr)
+try:
+    import primary_sync
+except ImportError as exc:
+    primary_sync = None
+    print(f"pushed: warning: the primary checkout sync could not load ({exc}); the primary checkout is not moved", file=sys.stderr)
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -87,6 +92,16 @@ def watch_ci(dev: str, tips: list[str]) -> None:
             print(f"pushed: warning: the ci run of {tip[:12]} is not watched ({exc})", file=sys.stderr)
 
 
+def follow(dev: str, tips: list[str]) -> None:
+    """Start the detached fast-forward of the primary checkout to the newest pushed development tip; a failure to start is a warning."""
+    if not tips or primary_sync is None:
+        return
+    try:
+        primary_sync.start(tips[-1], dev, Path.cwd())
+    except (OSError, RuntimeError) as exc:
+        print(f"pushed: warning: the primary checkout is not moved after this push ({exc})", file=sys.stderr)
+
+
 def main(dev: str, lines: list[str]) -> int:
     """Return 1 when any pushed ref is refused."""
     refused = 0
@@ -115,6 +130,7 @@ def main(dev: str, lines: list[str]) -> int:
     if not refused:
         subprocess.run([sys.executable, str(HERE / "runtime-refresh"), "pushed"], check=False)
         watch_ci(dev, tips)
+        follow(dev, tips)
     if refused:
         print("\nEvery pushed commit passes the pre-commit hooks. Fix it in a new commit.", file=sys.stderr)
     return refused
