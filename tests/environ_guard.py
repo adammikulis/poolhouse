@@ -13,6 +13,18 @@ import os
 
 import pytest
 
+from poolhouse.node_supervise import PARENT_ENV
+
+
+@pytest.fixture(scope="session", autouse=True)
+def nodes_stop_with_this_process():
+    """A node a test starts, from this process or a child of it, is stopped by its supervisor once this process has exited.
+    Set for the session and not at import: the runner imports ``conftest.py`` to check the selectors, and the value must not reach its
+    environment."""
+    os.environ[PARENT_ENV] = str(os.getpid())
+    yield
+    os.environ.pop(PARENT_ENV, None)
+
 
 @pytest.fixture(autouse=True)
 def environment_is_restored():

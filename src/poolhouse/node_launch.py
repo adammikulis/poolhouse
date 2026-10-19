@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -91,7 +92,8 @@ def _presence(extra: list[str] | None) -> list[str]:
 
 
 def _start_supervisor(state: Path, extra: list[str]) -> None:
-    argv = ["supervise", "--state", str(state), *(f"--arg={word}" for word in extra)]
+    parent = "" if state == default_state() else os.environ.get(node_supervise.PARENT_ENV, "")
+    argv = ["supervise", "--state", str(state), *(f"--arg={word}" for word in extra), *(["--parent-pid", parent] if parent.isdigit() else [])]
     jobs.detach("poolhouse.node_launch", argv, log=state / "supervisor.log")
 
 
@@ -305,9 +307,10 @@ GROUP.add("ensure", _command(lambda state, args: ensure_node(state, extra=args.a
 GROUP.add("status", _command(lambda state, args: status(state)), help="the node's health", options=STATE)
 GROUP.add("stop", _command(lambda state, args: {"stopped": stop_node(state)}), help="stop the node and its supervisor", options=STATE)
 GROUP.add("swap", _command(lambda state, args: swap(state)), help="move the node onto the selected runtime's binary", options=STATE)
-GROUP.add("supervise", lambda args: node_supervise.supervise(Path(args.state) if args.state else default_state(), args.arg),
+GROUP.add("supervise", lambda args: node_supervise.supervise(Path(args.state) if args.state else default_state(), args.arg, args.parent_pid),
           help="keep the node running (what `ensure` starts)",
-          options=[*STATE, flag("--arg", action="append", default=[], help="an argument for `poolhouse-node run`")])
+          options=[*STATE, flag("--arg", action="append", default=[], help="an argument for `poolhouse-node run`"),
+                   flag("--parent-pid", type=int, default=0, help="stop when this process has exited")])
 
 main = GROUP.run
 
