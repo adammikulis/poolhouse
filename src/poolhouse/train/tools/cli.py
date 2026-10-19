@@ -12,6 +12,7 @@ from typing import Any
 
 from poolhouse.client import Client
 from poolhouse.log import say, warn
+from poolhouse.optional import module
 from poolhouse.train.tools import drift
 from poolhouse.train.tools.dataset import counts, lines, split, write_dataset
 from poolhouse.train.tools.evaluate import evaluate
@@ -114,8 +115,7 @@ def _sub_parser(name: str, description: str, arguments: Callable[[Any], Any]) ->
 
 def _from_bench(argv: list[str]) -> int:
     """``poolhouse-train-tools from-bench``: kept bench traces into a training file."""
-    from poolhouse import bench
-
+    bench = module("poolhouse.bench")
     a = _sub_parser("from-bench", FROM_BENCH, _from_bench_arguments).parse_args(argv)
     store = Path(a.kept).expanduser() if a.kept else bench.home_dir() / "runs.ladybug"
     if not store.exists():

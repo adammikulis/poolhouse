@@ -25,13 +25,13 @@ Commands execute in the daemon files root with the existing job environment and 
 | Devices, availability, pools, fleet coordination | Fleet |
 | Decision ask, probabilities, evaluation, calibration, fetching | Tools decision lab |
 | Graph store and graph server | Tools: poolhouse-store, poolhouse-graph |
-| World model, ingestion, walking, retrieval surfaces | Tools: poolhouse-world, poolhouse-ingest, poolhouse-walk, poolhouse-surface |
+| World model, ingestion, walking, retrieval surfaces | Tools: python -m poolhouse.world, poolhouse-ingest, python -m poolhouse.walk, python -m poolhouse.surface |
 | Speech providers, transcription and synthesis | Tools: poolhouse-speech |
 | Security, audit and credentials | Tools: poolhouse-security, poolhouse-audit, poolhouse-credentials |
 | Diagnostics and installation | Tools: poolhouse-doctor, poolhouse-setup |
 | Workspace coordination, jobs, suites | Tools: poolhouse-workspace, poolhouse-jobs, poolhouse-suite |
 | Agent and MCP workflows | Tools: poolhouse-agent, poolhouse-claude, poolhouse-mcp |
-| Serving, drafts, native chat agents and memory | Tools: poolhouse-serve, poolhouse-draft, poolhouse-chat, poolhouse-memory |
+| Serving, drafts, native chat agents and memory | Tools: poolhouse-serve, python -m poolhouse.draft, poolhouse-chat, poolhouse-memory |
 | Libraries, machine preferences, updates | Settings |
 
 ## Native environment integration

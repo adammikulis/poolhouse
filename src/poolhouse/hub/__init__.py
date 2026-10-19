@@ -13,6 +13,7 @@ modules to something a test or `bench.selfcheck` patches -- `files`, `located`, 
 
 from __future__ import annotations
 
+from poolhouse.hub.admission import LIBRARY, PERSON, Trust
 from poolhouse.hub.cards import advice, card, in_gguf
 from poolhouse.hub.cli import main
 from poolhouse.hub.discover import (
@@ -97,7 +98,9 @@ __all__ = [
     "DRAFT_KINDS",
     "DRAFT_MARK",
     "FORMATS",
+    "LIBRARY",
     "NO_HEAD",
+    "PERSON",
     "PREFER",
     "QUANT",
     "SHARD",
@@ -117,6 +120,7 @@ __all__ = [
     "NotFound",
     "Progress",
     "Repo",
+    "Trust",
     "advice",
     "aside",
     "base_folder",

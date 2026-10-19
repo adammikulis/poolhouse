@@ -281,7 +281,7 @@ class Models:
         self.store.mkdir(parents=True, exist_ok=True)
         report = (lambda got: on_progress(got.done_bytes, got.total_bytes)) if on_progress else None
         try:
-            pulled = hub.pull(reference(source), on_progress=report, members=False).resolve()
+            pulled = hub.pull(reference(source), on_progress=report, members=False, trust=hub.PERSON).resolve()
             wanted = Path(name).name
             if Path(wanted).suffix.lower() not in hub.WEIGHT_SUFFIXES:
                 wanted = pulled.name

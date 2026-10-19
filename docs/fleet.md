@@ -73,7 +73,7 @@ rtx.pull("out/lm/step_000010000/model.safetensors", "local/model.safetensors")
 Uploads and downloads resume and are verified by digest.
 
 A model sweep goes across the pool the same way. `poolhouse.fleet.sweeps` is the pool side
-of `poolhouse-bench sweep --fleet`: `plan(models, devices)` sends each model, largest first,
+of `python -m poolhouse.bench sweep --fleet`: `plan(models, devices)` sends each model, largest first,
 to the idle device with the most room for it -- `room_bytes` is what the daemon announces,
 `hub.room()` rather than free memory -- spreading models over machines rather than
 stacking them, and names every model that fits nowhere and why on each member. `jobs_from`
@@ -85,7 +85,7 @@ there; `import_runs(FILE.json, into, host=...)` does the same by hand from a
 `show --export` file for a device with no daemon. A daemon refuses a bench job (409, with
 `refused` saying which) when its checkout's commit is not the dispatcher's, when its
 `measuring.lock` is held or a bench of its own is still running, or when a model's
-estimated bytes exceed its room; otherwise it runs `poolhouse-bench ... --detach` on itself
+estimated bytes exceed its room; otherwise it runs `python -m poolhouse.bench ... --detach` on itself
 and adopts the pid into its job list, so `poolhouse-members ls` shows it `measuring` and no
 training job starts beside it. The dispatcher counts as a device through `here()`.
 
@@ -292,7 +292,7 @@ installed, a re-exec where there is not. A pull that fails changes nothing, so t
 keeps running the code it started with and says so on the next `poolhouse-pool status`.
 
 Neither this nor the release update ever interrupts work: both wait for no job running, no
-benchmark measuring (the same lock `poolhouse-bench status` reads, so a run started at the
+benchmark measuring (the same lock `python -m poolhouse.bench status` reads, so a run started at the
 keyboard counts) and no model loaded. A machine part way through a sweep is left alone
 until it is not, however new the code is.
 
@@ -334,14 +334,14 @@ inside the daemon's TLS, which every connection from another machine uses. The w
 answers other machines (`--ui-from-lan`) over TLS only; it signs in with the passphrase, which
 is sent to this machine's own address or inside TLS and never over plain HTTP.
 
-**What a device may run.** `POST /jobs` accepts `poolhouse-bench ...` and
+**What a device may run.** `POST /jobs` accepts `python -m poolhouse.bench ...` and
 `python -m poolhouse.fleet.calibration ...`, run in the daemon's own folder with its own
 environment, and refuses any other program, any `cwd` and any `env` from the wire. A pool
-sweep (`poolhouse-bench sweep --fleet`) dispatches measurements through `POST /bench`, which
+sweep (`python -m poolhouse.bench sweep --fleet`) dispatches measurements through `POST /bench`, which
 takes a typed job and no command line.
 
 The app's Pool view has the same Join button, and a "Run across the pool" form that
-builds `poolhouse-bench sweep --fleet --serve MODEL ...` from the models the devices hold,
+builds `python -m poolhouse.bench sweep --fleet --serve MODEL ...` from the models the devices hold,
 starts it detached, and shows `status` and `history` beside it.
 
 **For an agent**, `poolhouse-mcp` serves the same functions as MCP tools over stdio. In

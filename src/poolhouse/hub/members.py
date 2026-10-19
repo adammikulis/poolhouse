@@ -45,7 +45,7 @@ class Wanted:
     size: int
     sha256: str = ""
     pin_notes: tuple[tuple[str, str], ...] = ()
-    """``publisher``, ``commit`` and ``source_ref`` of the file, recorded in the pin of a file kept."""
+    """``publisher``, ``commit``, ``host``, ``source_ref`` and ``unvetted`` of the file, recorded in the pin of a file kept."""
 
     @property
     def name(self) -> str:

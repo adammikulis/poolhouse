@@ -138,11 +138,11 @@ def _serving(args: Any, say: Callable[[str], None] = say) -> Any:
     when a profile measured it with a build, a head and a cache type is a different program
     from the one the measurement was about.
     """
-    from poolhouse import bench
     from poolhouse.lock import only_one
+    from poolhouse.serve.process import measuring_lock_file
 
     config, _measured = _run(args, say=say)
-    with only_one(bench.home_dir() / "measuring.lock",
+    with only_one(measuring_lock_file(),
                   wait=not getattr(args, "no_queue", False),
                   announce=lambda line: say(f"waiting for the bench -- {line}")):
         if not getattr(args, "model", ""):

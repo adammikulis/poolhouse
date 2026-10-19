@@ -24,7 +24,7 @@ performance are not claimed anywhere.
 3. Tailscale is already half-built as a route: read-only detection, a learned tailnet address after the
    certificate matched, and no install or config (`fleet/tailnet.py`, `fleet/onboard/routes.py` [V]). But the
    Android companion and its invite refuse tailnet IPv4, see section 2.5 [V].
-4. Fleet jobs cannot run tests. The daemon refuses every argv except `poolhouse-bench` and
+4. Fleet jobs cannot run tests. The daemon refuses every argv except `python -m poolhouse.bench` and
    `python -m poolhouse.fleet.calibration` (`fleet/commands.py:allowed` [V]). The test broker and the reuse
    store are per device (section 2.1).
 5. The pool-wide board is built by the node (`docs/node.md`): per-device signed logs, a hybrid-clock merge,
@@ -76,7 +76,7 @@ What runs today:
 - `poolhouse.fleet.Device.discover()`, `run(units, devices)` places work by label, backend, VRAM, RAM, CPUs and
   schedule window, retries on a different machine, sets a machine aside after three failures (`fleet/pool.py`
   `Requires`, `fleet/work.py` `QUARANTINE_AFTER = 3` [V]).
-- What a daemon will run: `poolhouse-bench` and `python -m poolhouse.fleet.calibration`, nothing else
+- What a daemon will run: `python -m poolhouse.bench` and `python -m poolhouse.fleet.calibration`, nothing else
   (`fleet/commands.py` [V]). A bench job is refused on a differing commit, a held `measuring.lock` or too little
   room (`fleet/sweeps.py`, `docs/fleet.md` [D]).
 - A local model is started on the device it runs on: `poolhouse-workspace agent start` there, admitted through that

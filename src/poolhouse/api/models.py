@@ -11,8 +11,9 @@ import re
 from pathlib import Path
 
 from poolhouse import errors, hub
+from poolhouse.hub.admission import PERSON, Trust
 
-__all__ = ["cache_dir", "path", "pull"]
+__all__ = ["Trust", "cache_dir", "path", "pull"]
 
 REPO = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*")
 
@@ -22,16 +23,18 @@ def cache_dir() -> Path:
     return hub.hub_cache()
 
 
-def pull(repo: str, file: str) -> Path:
+def pull(repo: str, file: str, *, trust: Trust = PERSON) -> Path:
     """Download ``file`` of the Hub repository ``repo`` (``owner/name``) into the cache; the path of the file there.
 
-    Raises `Error` for a repository or file that does not exist or a download that fails; a file already in the
-    cache is not downloaded again.
+    ``trust`` says what is fetched without an answer: by default only the publishers Poolhouse ships with, and a
+    person answers for the rest; ``Trust()`` fetches from any publisher and ``Trust(publishers=frozenset({"owner"}))``
+    from those named. Raises `Error` for a repository or file that does not exist, one ``trust`` does not allow, or
+    a download that fails; a file already in the cache is not downloaded again.
     """
     if not REPO.fullmatch(repo) or not file:
         raise errors.Error("name a repository as owner/name and a file in it")
     try:
-        return hub.fetch(f"hf:{repo}/{file}")
+        return hub.fetch(f"hf:{repo}/{file}", trust=trust)
     except (ValueError, OSError) as exc:
         raise errors.Error(str(exc)) from None
 

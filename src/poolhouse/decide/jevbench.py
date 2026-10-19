@@ -70,7 +70,7 @@ def locate(part: Part, *, download: bool = False) -> Path:
         want = net.Want(sha256=part.sha256, size=part.size, require_digest=True,
                         max_bytes=part.size + 4096, purpose=PURPOSE)
         try:
-            net.download(f"{HOST_URL}/{REPO}/{COMMIT}/{part.path}", path, want)
+            net.download(f"{HOST_URL}/{REPO}/{COMMIT}/{part.path}", path, want, pipeline=net.default())
         except net.Blocked as exc:
             raise DecideError(f"{part.path} does not match its pinned hash; held: {exc}") from None
         except OSError as exc:

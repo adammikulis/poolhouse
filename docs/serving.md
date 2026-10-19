@@ -345,7 +345,7 @@ poolhouse-serve profile
 poolhouse-serve profile Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf
 poolhouse-serve profile Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf --for ingest
 poolhouse-serve up model.gguf --profile --workload ingest
-poolhouse-bench report --profile
+python -m poolhouse.bench report --profile
 ```
 
 ```
@@ -422,7 +422,7 @@ another quantisation) comes back with `note` saying so. A rewrite from a run tha
 asking records keeps the asking of the record for the same file, never another
 quantisation's.
 
-Nothing writes a record by hand. `poolhouse-bench report --profile` takes, per model **and
+Nothing writes a record by hand. `python -m poolhouse.bench report --profile` takes, per model **and
 workload**, **the fastest row whose F1 the questions could not tell apart from the best** — among that model's
 longest runs, held is `score.held_up`, the two 95% bands overlapping — and writes the build,
 head, cache, thinking, context, asking and sampling it was served and asked with, saying in
@@ -490,7 +490,7 @@ drawn faintly behind, and each `--room` in force is drawn across it, so the char
 solid, the second dashed. `--at N` sets the context the second panel charges at (default
 32768). The legend carries each model's arithmetic in full: `87.2G + 0.14G/user at 32k`,
 which is `Fit.line(context)`, the pair of numbers every line is drawn from. Drawing needs
-matplotlib (`pip install 'poolhouse[plot]'`); nothing else here does, and `poolhouse-bench
+matplotlib (`pip install 'poolhouse[plot]'`); nothing else here does, and `python -m poolhouse.bench
 show --plot` deliberately still writes hand-built SVG with no library so it opens on a
 machine with no packages. With `--write` alongside, the page embeds the picture beside it.
 
@@ -513,7 +513,7 @@ The fleet app shows the same view under **Fit**, at `/ui/fit`, from the same two
 `/ui/fit.json` hands over the records worked out for the room and the head count the sliders
 stand at, so every number on the screen is the one `poolhouse-serve fit` prints. A sibling
 tab, **What it cost to be
-right**, draws `poolhouse-bench show --rates` the same way: accuracy against wall clock,
+right**, draws `python -m poolhouse.bench show --rates` the same way: accuracy against wall clock,
 tokens paid for, or KV and runtime, with the Pareto frontier joined -- nothing on it is both
 more accurate and cheaper, so choosing among those points is choosing a budget. Both pages
 are hand-drawn SVG with no library and no CDN, so they open on a machine that has never been
@@ -578,7 +578,7 @@ The guard's judge lease (`guard/native.py`) asks for `mtp=False`: it reads the p
 of one token (`max_tokens=1`), so there is nothing to draft, and in the build checked
 (`b11380`) tokens accepted from a draft carry no `logprobs` (`TODO: set result.probs` in
 `server-context.cpp`), so any scoring that reads more than the first token must not be
-served drafted. The bench's no-head arms and `poolhouse-draft`'s `none` arm set `mtp=False` too, so
+served drafted. The bench's no-head arms and `python -m poolhouse.draft`'s `none` arm set `mtp=False` too, so
 a baseline is a baseline.
 
 #### What has been measured
@@ -587,7 +587,7 @@ Draft depth: a model whose architecture is in `serve.mtp.DEPTH` is started at th
 unless the lease names one; every other model gets the server's own default (3). The table
 is `gemma4: 2` only.
 
-Measured on this repo's own runs (`poolhouse-bench` store, 2026-09-01 to 2026-09-06, Mac;
+Measured on this repo's own runs (`python -m poolhouse.bench` store, 2026-09-01 to 2026-09-06, Mac;
 `docs/report-2026-09-23.md`, "Draft heads, per model", and `docs/llama-cpp-per-request-speculative.md`).
 Speed is the head's seconds-per-question against the same model's undrafted run on the same
 build; accept is the share of drafted tokens kept. A head cannot change an answer, so the F1
@@ -640,7 +640,7 @@ target's embeddings: the default offers it the non-shared `mtp-...-Q8_0.gguf` on
 loads that head-only file as `-md` is not known without loading it. The one check, on a quiet
 machine (loads the 87G model once per arm):
 
-    poolhouse-draft Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf --depth 2 --depth 3 --depth 4
+    python -m poolhouse.draft Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf --depth 2 --depth 3 --depth 4
 
 An arm that cannot load prints the server's error; a loading head prints accept and speed
 against the no-head arm, which are the first numbers for this build.

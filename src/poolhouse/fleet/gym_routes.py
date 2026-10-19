@@ -7,6 +7,7 @@ import os
 import time
 
 from poolhouse.gym import catalogue, manager
+from poolhouse.gym.catalog import ENVIRONMENTS
 from poolhouse.gym.models import model_choices
 from poolhouse.gym.transport import interpreter
 
@@ -18,6 +19,19 @@ from .request_fields import field, object_body
 
 class GymRoutes:
     """Environment catalogue, snapshots and session controls."""
+
+    def job_commands(self) -> tuple[str, ...]:
+        return (*super().job_commands(), "poolhouse-gym")
+
+    def job_launch(self, command, args, root):
+        if command != "poolhouse-gym" or len(args) < 2 or args[0] not in {"run", "train", "evaluate"}:
+            return super().job_launch(command, args, root)
+        if args[1] not in ENVIRONMENTS:
+            raise ValueError("Choose a supported Gym environment.")
+        configure_interpreters(self.ui)
+        environment = {"POOLHOUSE_GYM_PYTHON": "", "POOLHOUSE_GYM_PYTHONS": "{}",
+                       "POOLHOUSE_GYM_FILES_ROOT": str(root)}
+        return [interpreter(args[1]), "-m", "poolhouse.gym.cli", *args], environment
 
     def route(self) -> bool:
         if not self.path.startswith("/ui/gym"):

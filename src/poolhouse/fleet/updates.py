@@ -206,7 +206,7 @@ def download(asset: dict[str, Any], into: Path | str, *, on_progress: Any = None
             sha256=want, size=int(asset.get("size") or 0), require_digest=True,
             allow_unscanned=allow_unscanned, library_links=library_links,
             max_bytes=8 << 30, purpose="release download"),
-            hooks=hooks)
+            pipeline=net.default(), hooks=hooks)
     except net.ChecksumMismatch:
         raise UpdateError("the download does not match the digest GitHub reports for it") from None
     except (net.Blocked, net.Truncated, ServerError, OSError, Refused) as exc:

@@ -13,6 +13,7 @@ from poolhouse.files import records_in
 from poolhouse.graph.conversation import converse
 from poolhouse.ingest.judge import sources_for
 from poolhouse.log import say
+from poolhouse.optional import module
 
 __all__ = ["ask", "asked_f1", "asked_lines", "graph_of", "read_asked", "score_asked",
            "spent_line"]
@@ -116,7 +117,7 @@ def score_asked(graph: Mapping[str, Any], client: Any, asked: Sequence[Mapping[s
     expected, by `bench.score` and not by a second scorer of this command's own -- a
     number measured two ways is two numbers. ``finder`` is `ask`'s: what ``look_up`` calls.
     """
-    from poolhouse.bench.score import Row
+    Row = module("poolhouse.bench.score").Row
 
     rows: list[Any] = []
     for index, one in enumerate(asked, start=1):

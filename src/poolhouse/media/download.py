@@ -82,7 +82,7 @@ def fetch(
     want = net.Want(sha256=expect_sha256 or "", size=expect_bytes or 0, purpose="document download",
                     max_bytes=2 << 30)
     try:
-        net.download(url, target, want, hooks=net.Hooks(progress=progress))
+        net.download(url, target, want, pipeline=net.default(), hooks=net.Hooks(progress=progress))
     except net.ChecksumMismatch as exc:
         raise DownloadError(f"{label}: sha256 mismatch ({exc}). The file was set aside.") from exc
     except net.Blocked as exc:

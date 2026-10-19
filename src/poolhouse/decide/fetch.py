@@ -73,7 +73,7 @@ def _fetch(pin: Pin, path: Path) -> None:
     want = net.Want(sha256=pin.sha256, size=pin.size, require_digest=True,
                     max_bytes=pin.size + (1 << 20), purpose="decide model")
     try:
-        net.download(_url(pin), blob, want)
+        net.download(_url(pin), blob, want, pipeline=net.default())
     except net.Blocked as exc:
         raise DecideError(f"{pin.repo}/{pin.filename} does not match its pinned size and "
                           f"hash; the file was held: {exc}") from None

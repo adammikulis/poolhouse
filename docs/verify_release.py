@@ -765,6 +765,9 @@ def _():
 
 @check("Measuring", "an evening of measurement is a file checked before the first model loads")
 def _():
+    from poolhouse import optional
+    if not optional.held("poolhouse.bench"):
+        return "the bench is an experimental layer and this build does not hold it"
     from poolhouse.bench import queue
     steps = queue.read(Path(__file__).resolve().parent / "examples" / "flash-next-restart.queue")
     assert steps and all(s.argv for s in steps), "the shipped queue parsed to nothing"

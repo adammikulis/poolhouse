@@ -68,7 +68,7 @@ each skipped when `--out` already holds its output:
 one stage. The data is plain JSONL rows of `{"messages", "tools"}`, so `poolhouse-train-run
 --recipe tool-calls --data runs/caller/data` trains on it too, and so does anything else
 that writes that shape. Whether the fine-tune beats its base is measured, never assumed:
-serve the GGUF and `poolhouse-bench run` it beside the model it came from.
+serve the GGUF and `python -m poolhouse.bench run` it beside the model it came from.
 
 ### From what a model actually did
 

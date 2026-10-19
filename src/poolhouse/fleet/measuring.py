@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, optional
 from poolhouse.home import machine_id
 from poolhouse.hub import room as machine_room
 from poolhouse.lock import held_by
@@ -410,6 +410,8 @@ class BenchHost:
         bench detached, the pid is adopted into the runner under ``bench:<label>`` with
         the bench's own log, and a thread watches the pid and settles the job.
         """
+        if not optional.held("poolhouse.bench"):
+            raise Refused("launch", f"{self.name} has no bench in this build, so it measures nothing")
         if not same_commit(self.commit, job.commit):
             raise Refused("commit", f"{self.name} runs poolhouse {self.commit or '(unknown)'}, "
                                     f"the dispatcher {job.commit}; measuring with different "

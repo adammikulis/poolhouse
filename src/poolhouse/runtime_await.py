@@ -1,10 +1,9 @@
-"""Wait for a commit on the development branch to reach the remote before a runtime build starts."""
+"""Wait for the development branch's tip to reach the remote before a runtime build starts."""
 
 from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from pathlib import Path
 
 from poolhouse import runtime, runtime_deploy, runtime_source
 from poolhouse.lock import held_by, only_one
@@ -19,22 +18,21 @@ def waiting() -> str:
     return held_by(runtime.directory() / LOCK)
 
 
-def published(checkout: Path, commit: str) -> bool:
-    """Whether `commit` is on the development branch the remote holds; a commit the local branch lacks raises `DeployError`."""
-    try:
-        runtime_source.admit(checkout, commit)
-    except runtime_source.Unpublished:
-        return False
-    return True
+def following[T](plan_for: Callable[[], T], seconds: float, *, sleep: Callable[[float], None] = time.sleep,
+                 clock: Callable[[], float] = time.monotonic) -> T:
+    """The result of `plan_for` once it stops raising `Unpublished`, asked again every `POLL_S` for at most `seconds` (never more than `AWAIT_S`).
 
-
-def until_published(checkout: Path, commit: str, seconds: float, *, sleep: Callable[[float], None] = time.sleep,
-                    clock: Callable[[], float] = time.monotonic) -> bool:
-    """Wait up to `seconds`, at most `AWAIT_S`, for `commit` to reach the remote; false when it did not, `Busy` when another process waits."""
+    It holds the publish lock for the whole wait, so the tip is followed as the branch moves; `Busy` when another process
+    waits, `DeployError` when the wait ran out.
+    """
+    limit = min(AWAIT_S, seconds)
     with only_one(runtime_deploy.prepare_root() / LOCK, wait=False, note="runtime build waiting for a push"):
-        deadline = clock() + min(AWAIT_S, seconds)
-        while not published(checkout, commit):
-            if clock() >= deadline:
-                return False
-            sleep(POLL_S)
-        return True
+        deadline = clock() + limit
+        while True:
+            try:
+                return plan_for()
+            except runtime_source.Unpublished as unpublished:
+                if clock() >= deadline:
+                    raise runtime_deploy.DeployError(f"{unpublished.commit[:7]} did not reach origin within {max(0.0, limit):.0f}s; "
+                                                     "no runtime was built") from unpublished
+                sleep(POLL_S)
