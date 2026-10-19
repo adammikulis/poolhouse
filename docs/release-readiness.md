@@ -389,8 +389,8 @@ three-day delete and the sealed record (HANDOFF's Release cut is the only place 
 
 ### 4.2 The backdoored-model slices B1 to B6
 
-Source: `docs/strands-box.md` on branch `docs/strands-box-design` (land-2878, in a batch when written), section 11 "Slices"; its
-section 1 is the threat of a tampered or abliterated model, which HANDOFF calls the backdoored-model slices. It is a design: no
+Source: the Box design, section 11 "Slices" (its document is not in the repository); its
+section 1 is the threat of a tampered or abliterated model, which HANDOFF calls the backdoored-model slices. No
 `src/poolhouse/agentbox` exists and no slice is built. The Release cut section of `HANDOFF.md` (branch
 `chore/handoff-release-cut`) names B2, B4, B5 and B6 as blocking the release and names the Box enforcer as not in the first release;
 Question 2 asks which holds.
@@ -433,7 +433,7 @@ The owner names each as accepted or fixed; none is accepted by this page.
   node-written `cut` lists shown as counts; one Keystore key per pool.
 - The slice 1 known limits of section 6.
 - `docs/compromised-agents.md` 16.2 (eight items), if the compromised-agent defences ship.
-- `docs/strands-box.md` section 13 (eight residual risks), if Box ships.
+- The Box design's section 13 (eight residual risks), if Box ships (its document is not in the repository).
 - Same-user malware outside any sandbox reads the keystore, the node's state and the credentials file (`docs/credentials.md`,
   `docs/keystore.md`).
 
@@ -460,7 +460,7 @@ must be true first.
 ## 6. Not in 0.3, and known limits shipped
 
 Not in 0.3, named by the owner (HANDOFF "Release cut"): the Box enforcer, decoys, two-box layering and lab mode
-(`docs/strands-box.md`, slices B7 to B18). The default stays the Poolhouse proxy and kernel sandbox. Question 2 asks about B2 to B6.
+(slices B7 to B18 of the Box design; its document is not in the repository). The default stays the Poolhouse proxy and kernel sandbox. Question 2 asks about B2 to B6.
 
 Deferred in HANDOFF or a design document, with no 0.3 decision recorded (Question 14 asks the owner to confirm each):
 

@@ -224,7 +224,7 @@ def _record(plan: Plan) -> None:
 
 def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset()) -> None:
     """Prepare owned commands and atomically publish the selected runtime."""
-    with runtime_git.crossing(plan.checkout, wait_s=plan.boundary_wait_s, note="runtime cutover"):
+    with runtime_git.crossing(plan.checkout, note="runtime cutover"):
         _automatic(plan)
         admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged if chosen.commit == plan.commit else False)
         floor = max(plan.floor, floor_of(plan.checkout, resolve_commit(plan.checkout)))
@@ -373,14 +373,19 @@ def prepare_root() -> Path:
     return root
 
 
-def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builder: Builder = build) -> Outcome:
-    """Make the plan's commit the selected runtime, recovering a broken selection first."""
+def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builder: Builder = build,
+           after_wait: Callable[[], None] | None = None) -> Outcome:
+    """Make the plan's commit the selected runtime, recovering a broken selection first; ``after_wait`` runs once the boundary wait is over."""
     state = "" if force else settled(plan)
     if state:
         held = runtime_store.read_state().get("held") or {}
         return Outcome(state, plan.commit, str(held.get("reason", "")) if state == "held" else "")
     root = prepare_root()
     try:
+        if plan.boundary_wait_s > 0:
+            runtime_git.until_free(plan.checkout, plan.boundary_wait_s)
+            if after_wait is not None:
+                after_wait()
         with only_one(root / "deploy.lock", wait=False, note="ensure"):
             _automatic(plan)
             return _ensured(plan, force, force_build, builder)

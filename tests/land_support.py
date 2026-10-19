@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import shutil
 import subprocess
@@ -11,8 +10,6 @@ import sys
 from pathlib import Path
 
 import land_git
-
-from poolhouse import lock as filelock
 
 ROOT = Path(__file__).resolve().parents[1]
 DEV = "devline"
@@ -243,31 +240,3 @@ class World:
         """The lines of the landings log."""
         log = Path(git(self.proj.root, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "land" / "landings.jsonl"
         return [json.loads(x) for x in log.read_text().splitlines()] if log.exists() else []
-
-
-class RunnerLock:
-    """An exclusive lock on the landing lock file of a checkout, held by the process until released."""
-
-    def __init__(self, root: Path) -> None:
-        folder = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")) / "land"
-        folder.mkdir(exist_ok=True)
-        self.path = folder / "runner.lock"
-        self.fd: int | None = None
-
-    def acquire(self) -> bool:
-        """Take the lock; false when another process holds it."""
-        fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
-        if not filelock.take(fd):
-            os.close(fd)
-            return False
-        os.write(fd, f"pid {os.getpid()}".encode())
-        self.fd = fd
-        return True
-
-    def release(self) -> None:
-        """Give the lock up."""
-        if self.fd is not None:
-            os.ftruncate(self.fd, 0)
-            filelock.release(self.fd)
-            os.close(self.fd)
-            self.fd = None
