@@ -106,6 +106,16 @@ def test_only_a_superseded_pull_request_run_is_cancelled(name):
     assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
+def test_a_shard_that_hangs_ends_within_thirty_minutes():
+    """A shard holds the run's concurrency group, so a stuck one stops every newer run until it times out."""
+    assert CI["jobs"]["shards"]["timeout-minutes"] <= 30
+
+
+@pytest.mark.parametrize(("job", "limit"), [("windows", 30), ("gates", 5)])
+def test_the_other_ci_jobs_keep_their_time_limits(job, limit):
+    assert CI["jobs"][job]["timeout-minutes"] <= limit
+
+
 REDTEAM_PATHS = ["src/poolhouse/**", "tests/redteam*/**", "tests/test_redteam_*.py", "docs/redteam/**", "scripts/redteam*"]
 
 

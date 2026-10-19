@@ -10,10 +10,15 @@ from collections.abc import Callable
 from pathlib import Path
 
 import psutil
+import queue_notice
 import testjobs
 import testreuse_store as storage
 
 QUIET_S = 900.0
+ESTIMATE_MAX_S = 1200.0
+OVERRUN_S = 1200.0
+ADMIT_NOTICE_S = 600.0
+PASS_EVERY_S = 10.0
 MAX_AGE_S = 5400.0
 GRACE_S = 5.0
 OLD_QUIET_S = 300.0
@@ -30,6 +35,40 @@ def _log_age(jobs: testjobs.Jobs, job: str, now: float) -> float:
         return 0.0
 
 
+def person(spec: object) -> bool:
+    """Whether a person's terminal started the job; the doctor never ends one."""
+    owner = spec.get("owner") if isinstance(spec, dict) else None
+    return isinstance(owner, dict) and owner.get("source") == "terminal"
+
+
+def duration(seconds: float) -> str:
+    """Seconds written as "90 s", "45 min" or "2.8 h"."""
+    return f"{seconds:.0f} s" if seconds < 120 else f"{seconds / 60:.0f} min" if seconds < 7200 else f"{seconds / 3600:.1f} h"
+
+
+def estimate_text(status: dict) -> str:
+    """The job's estimate and the workers it is expected to take."""
+    return f"estimated {duration(float(status['estimate_s']))} on {status.get('workers', '?')} workers"
+
+
+def estimate_cause(spec: dict, status: dict) -> str:
+    """Why an estimate is too long: the estimate and, for a whole-suite run, who runs those."""
+    argv, root = spec.get("argv"), spec.get("root")
+    whole = isinstance(argv, list) and isinstance(root, str) and testjobs.is_full([str(a) for a in argv], Path(root))
+    return f"{estimate_text(status)}: " + ("a full suite; GitHub runs those" if whole else "too long to hold the queue; run fewer files")
+
+
+def over_estimate(spec: dict, status: dict, now: float) -> str:
+    """Why an agent's job is over its estimate (empty when it is not): estimated over 20 minutes, or running 20 minutes past its estimate."""
+    estimate = status.get("estimate_s")
+    if not isinstance(estimate, (int, float)):
+        return ""
+    if estimate > ESTIMATE_MAX_S:
+        return estimate_cause(spec, status)
+    ran = now - float(status.get("at", now))
+    return f"ran {duration(ran)}, {duration(ran - estimate)} past its estimate of {duration(estimate)}" if ran > estimate + OVERRUN_S else ""
+
+
 def hung(jobs: testjobs.Jobs, job: str, now: float) -> str:
     """Why ``job`` is hung (empty when it is not): it has no owner, its log is quiet, or it has run too long."""
     status = jobs.read(job)
@@ -39,6 +78,10 @@ def hung(jobs: testjobs.Jobs, job: str, now: float) -> str:
     owner = spec.get("owner") if isinstance(spec, dict) else None
     if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
         return "it has no owner"
+    if person(spec):
+        return ""
+    if why := over_estimate(spec, status, now):
+        return why
     created = spec.get("created", status.get("at", now)) if isinstance(spec, dict) else now
     quiet = _log_age(jobs, job, now)
     if now - float(created) > MAX_AGE_S and quiet > OLD_QUIET_S:
@@ -63,8 +106,8 @@ def end(pid: int, started: float, sleep: Callable[[float], None] = time.sleep) -
 
 
 def sweep(jobs: testjobs.Jobs, now: float | None = None, say: Callable[[str], None] = print,
-          sleep: Callable[[float], None] = time.sleep) -> list[str]:
-    """End every hung job and record it as failed with the reason; returns the ids ended."""
+          sleep: Callable[[float], None] = time.sleep, tell: Callable[..., bool] = queue_notice.post) -> list[str]:
+    """End every hung job, record it as failed with the reason and tell its owner and the board; returns the ids ended."""
     now = time.time() if now is None else now
     ended = []
     for job in jobs.ids():
@@ -81,8 +124,42 @@ def sweep(jobs: testjobs.Jobs, now: float | None = None, say: Callable[[str], No
             jobs.write(job, "status.json", {**status, "state": "failed", "exit": 3, "finished": now,
                                             "detail": f"ended by the queue doctor: {why}"})
             say(f"queue doctor: ended job {job}: {why}")
+            tell(jobs, job, "ended", f"ended by the queue doctor: {why}", say)
             ended.append(job)
     return ended
+
+
+def admitted(jobs: testjobs.Jobs, job: str, estimate_s: float, workers: int, say: Callable[[str], None] = print) -> str:
+    """Record the running job's estimate, tell the board about an admission over 10 minutes and return why the doctor ends the job (empty to run it)."""
+    now = time.time()
+    status = {**jobs.read(job), "estimate_s": estimate_s, "workers": workers}
+    jobs.write(job, "status.json", status)
+    spec = jobs.read(job, "spec.json")
+    if person(spec):
+        return ""
+    if estimate_s > ADMIT_NOTICE_S:
+        queue_notice.post(jobs, job, "admitted", f"admitted: {estimate_text(status)}", say)
+    why = over_estimate(spec, status, now)
+    if why:
+        queue_notice.post(jobs, job, "ended", f"ended by the queue doctor: {why}", say)
+    return why
+
+
+def check(root: Path, say: Callable[[str], None] = print, now: float | None = None) -> list[str]:
+    """One doctor pass for the project at ``root``, at most one every ``PASS_EVERY_S``; a failure of the pass never stops the caller."""
+    try:
+        jobs = jobs_of(root)
+        stamp = jobs.folder / "doctor-pass"
+        moment = time.time() if now is None else now
+        if stamp.exists() and moment - stamp.stat().st_mtime < PASS_EVERY_S:
+            return []
+        jobs.folder.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+        os.utime(stamp, (moment, moment))
+    except (OSError, ValueError, TypeError, ImportError) as error:
+        say(f"queue doctor: pass failed: {type(error).__name__}: {error}"[:200])
+        return []
+    return mend(root, say, now)
 
 
 def jobs_of(root: Path) -> testjobs.Jobs:
