@@ -78,6 +78,7 @@ def test_cancel_stops_a_running_job_for_its_owner_only(table):
         jobs.cancel(job, "bob")
     assert jobs.cancel(job, "alice").endswith("cancelled")
     assert jobs.wait(job, 20)["state"] == "cancelled"
+    assert f"test: cancelled by alice running in {Path.cwd()}" in (jobs.path(job) / "log").read_text()
     assert "already cancelled" in jobs.cancel(job, "alice")
 
 
