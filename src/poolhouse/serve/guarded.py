@@ -19,7 +19,6 @@ from poolhouse.sentinel import Sentinel
 from poolhouse.sentinel.adapters import broker_listener, serve_hooks
 from poolhouse.sentinel.events import Event, Severity
 from poolhouse.sentinel.findings import HIGH, finding
-from poolhouse.sentinel.integrity import Pin
 from poolhouse.sentinel.servers import unmanaged_findings
 from poolhouse.sentinel.watch import Scanner
 from poolhouse.serve import canaries, decoy
@@ -179,16 +178,13 @@ def _first_use(node: Sentinel, path: Path, digest: str, vouched: bool) -> str:
     raise SentinelRefused(approvals.ask("model_file", path.name, sentence, path=str(path), sha256=digest))
 
 
-def _vetted(node: Sentinel, pin: Pin) -> None:
-    """Put a pulled model to a person when its pull did not (`Pin.unvetted`): `SentinelRefused` until a person
-    approved the repository at that commit, then the pin no longer waits on an answer."""
-    repo = "/".join(pin.source_ref.split("/")[:2])
-    subject, sentence = admission.question(repo, pin.commit, pin.unvetted)
-    fields = {"publisher": pin.publisher, "repo": repo, "commit": pin.commit, **({"host": pin.host} if pin.host else {})}
-    if not approvals.approved("model_publisher", subject, sentence, **fields):
-        raise SentinelRefused(approvals.ask("model_publisher", subject, sentence, **fields))
-    node.manifest.vet(pin)
-    logger.info("%s was pulled without a question and a person approved it", Path(pin.path).name)
+def _vetted(path: Path) -> None:
+    """Put a pulled model (a file, or a folder of them) to a person when its pull did not (`Pin.unvetted`):
+    `SentinelRefused` until a person approved the repository at that commit."""
+    try:
+        admission.vetted(path)
+    except admission.NotApproved as exc:
+        raise SentinelRefused(str(exc)) from None
 
 
 def parts_of(spec: Any) -> tuple[object, ...]:
@@ -213,6 +209,7 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
         raise SentinelRefused(why)
     path = file_of(model)
     if path is None:
+        _vetted(Path(str(model)).expanduser())
         return ""
     name = path.name
     pin = node.manifest.pin_of(path)
@@ -232,5 +229,5 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> st
         raise SentinelRefused(f"{name} does not match its pin and is quarantined by "
                               f"sentinel; the file was moved aside")
     if pin.unvetted:
-        _vetted(node, pin)
+        _vetted(path)
     return _by_manifest(node, Path(pin.path), pin.sha256, name)

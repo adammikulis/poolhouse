@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import errors, home, http, hub, lock, net
-from poolhouse.hub import admission, hfstore, members as peering, publishers, remote
+from poolhouse.hub import admission, hfstore, members as peering, remote
 from poolhouse.hub.remote import GatedRepo, NotFound, RemoteFile
 from poolhouse.net.download import staged_part
 from poolhouse.units import human_bytes
@@ -198,16 +198,11 @@ def _by_object_id(one: RemoteFile) -> Callable[[Path, dict[str, str]], str] | No
                                    else f"{one.path} differs from the object id the Hub lists")
 
 
-def _notes(parsed: remote.Ref, one: RemoteFile, unvetted: str = "") -> dict[str, str]:
-    return {"publisher": publishers.namespace(parsed.repo), "commit": parsed.commit, "host": remote.endpoint_host(),
-            "source_ref": f"{parsed.repo}/{one.path}", **({"unvetted": unvetted} if unvetted else {})}
-
-
 def _want(parsed: remote.Ref, one: RemoteFile, auth: str, unvetted: str = "") -> net.Want:
     return net.Want(kind=_kind(one.path), sha256=one.sha256, size=one.size, token=auth,
                     max_bytes=int(one.size * 1.001) + MARGIN if one.size else 1 << 41,
                     purpose="model download", verify=_by_object_id(one),
-                    pin_notes=_notes(parsed, one, unvetted))
+                    pin_notes=admission.notes(parsed.repo, parsed.commit, one.path, unvetted))
 
 
 def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> bool:
@@ -217,7 +212,7 @@ def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Mete
     try:
         return meter.session.fetch(  # type: ignore[union-attr]
             peering.Wanted(parsed.repo, one.path, one.size, one.sha256,
-                           tuple(_notes(parsed, one, meter.unvetted).items())), final,
+                           tuple(admission.notes(parsed.repo, parsed.commit, one.path, meter.unvetted).items())), final,
             cancelled=lambda: bool(cancel and cancel.cancelled),
             progress=lambda done: meter.send("downloading", one, done),
             phase=lambda name: meter.send(name, one, one.size, force=True))
@@ -387,9 +382,11 @@ def _snapshot_files(parsed: remote.Ref, files: list[RemoteFile], dest: str | Pat
 
 
 def base_folder(base: str, *, trust: admission.Trust = admission.PERSON) -> str:
-    """A base model to train from, as a folder: ``base`` when it is one on this machine, else the snapshot
-    of the repository (``hf:owner/repo`` or ``owner/repo``) pulled under ``trust``."""
+    """A base model to train from, as a folder: ``base`` when it is one on this machine (a person is asked first about
+    a pulled one the pull did not ask about, `admission.vetted`), else the snapshot of the repository
+    (``hf:owner/repo`` or ``owner/repo``) pulled under ``trust``."""
     if Path(base).expanduser().is_dir():
+        admission.vetted(Path(base).expanduser())
         return str(Path(base).expanduser())
     return str(snapshot(base.removeprefix("hf:"), trust=trust))
 

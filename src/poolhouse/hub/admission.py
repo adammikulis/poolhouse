@@ -4,7 +4,9 @@ does not allow waits for a person (`PERSON`, the default) or is refused naming t
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from poolhouse import sentinel
 from poolhouse.hub import publishers, remote
@@ -13,8 +15,10 @@ from poolhouse.requests.approvals import approved, ask
 from poolhouse.requests.model import shown
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HIGH, finding
+from poolhouse.sentinel.integrity import Pin
 
-__all__ = ["LIBRARY", "PERSON", "DigestChanged", "NotApproved", "Trust", "admit", "approved", "ask", "checked", "question"]
+__all__ = ["LIBRARY", "PERSON", "DigestChanged", "NotApproved", "Trust", "admit", "approved", "ask", "checked", "notes",
+           "question", "vetted"]
 
 CLOSING = "Models can hide behaviour that tests do not show. Use it anyway?"
 ARGUMENT = "From a program, `ph.models.pull(repo, file, trust=...)` (`poolhouse.hub.Trust`) decides this itself."
@@ -127,6 +131,13 @@ def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust, moved: list[str]) 
     return why
 
 
+def notes(repo: str, commit: str, path: str, unvetted: str = "") -> dict[str, str]:
+    """What the pin of the file ``path`` of ``repo`` at ``commit`` records of its pull: the publisher, the commit, the Hub,
+    the file, and ``unvetted`` (the words `admit` returned) when there are any."""
+    return {"publisher": publishers.namespace(repo), "commit": commit, "host": remote.endpoint_host(),
+            "source_ref": f"{repo}/{path}", **({"unvetted": unvetted} if unvetted else {})}
+
+
 def question(repo: str, commit: str, reasons: str) -> tuple[str, str]:
     """The subject and the sentence of the request that puts ``reasons`` about ``repo`` at ``commit`` to a person."""
     return f"{repo}@{commit[:12]}", " ".join((reasons, f"It is {repo} at {commit[:12]}.", CLOSING))
@@ -157,3 +168,28 @@ def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON) -> str:
         return left
     told = ask("model_publisher", subject, sentence, **fields)
     raise NotApproved(told.replace(sentence, f"{sentence} {ARGUMENT}", 1))
+
+
+def _waiting(path: Path) -> list[Pin]:
+    """The pins of the pulled files at ``path`` (a file, or a folder of them, links followed) that wait on a question."""
+    held = {os.path.realpath(p.path): p for p in sentinel.default().manifest.pins().values() if p.unvetted}
+    if not held:
+        return []
+    files = [path] if path.is_file() else [Path(root, name) for root, _, names in os.walk(path) for name in names]
+    return list({held[real].path: held[real] for one in files if (real := os.path.realpath(one)) in held}.values())
+
+
+def vetted(path: Path | str) -> None:
+    """Return when no file at or under ``path`` waits on a question its pull did not ask (`Pin.unvetted`: a `Trust`
+    let it through that `PERSON` would have asked about). `NotApproved` after asking a person until they approved the
+    repository at that commit; one answer covers every file of it, and the pins no longer wait."""
+    node = sentinel.default()
+    if node.mode == sentinel.Mode.OFF:
+        return
+    for pin in _waiting(Path(path).expanduser()):
+        repo = "/".join(pin.source_ref.split("/")[:2])
+        subject, sentence = question(repo, pin.commit, pin.unvetted)
+        fields = {"publisher": pin.publisher, "repo": repo, "commit": pin.commit, **({"host": pin.host} if pin.host else {})}
+        if not approved("model_publisher", subject, sentence, **fields):
+            raise NotApproved(ask("model_publisher", subject, sentence, **fields))
+        node.manifest.vet(pin)

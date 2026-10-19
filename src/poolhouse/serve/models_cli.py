@@ -250,7 +250,7 @@ def _adopt(args: argparse.Namespace) -> int:
 
 
 def _snapshot(args: argparse.Namespace) -> int:
-    path = hf_cache.fetch(args.repo, revision=args.revision, repo_type=args.repo_type)
+    path = hf_cache.fetch(args.repo, revision=args.revision, repo_type=args.repo_type, trust=PERSON)
     return _emit(args, {"repo": args.repo, "repo_type": args.repo_type,
                         "requested_revision": args.revision,
                         "resolved_revision": path.name, "path": str(path)},

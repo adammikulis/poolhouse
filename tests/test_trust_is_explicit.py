@@ -3,7 +3,8 @@ uses, and nothing outside the facade modules names, builds or looks up the allow
 or the allowing pipeline (`net.library`, `ANYWHERE`), whatever the owner of the call is called: `ph.models.pull`,
 `ph.hub.fetch`, `import poolhouse.net`, an aliased import, a star import, a name read from a string.
 
-The scan is a function over source text, and the tests below feed it code that breaks each rule to show it says so."""
+The scan is a function over source text, and the tests below feed it code that breaks each rule to show it says so.
+It stops accidents, not attackers: a name built at run time (``getattr(module, name)``, ``vars``) passes it."""
 
 from __future__ import annotations
 
@@ -20,7 +21,8 @@ NET_FACADES = {"src/poolhouse/net/policy.py", "src/poolhouse/net/pipeline.py", "
 PASSES_ON = {"src/poolhouse/api/models.py", "src/poolhouse/hub/listing.py", "src/poolhouse/hub/transfer.py"}
 
 PULLS = {f"poolhouse.{where}.{name}" for where in ("hub", "hub.transfer", "hub.listing", "models", "api.models")
-         for name in ("pull", "fetch", "snapshot", "base_folder")}
+         for name in ("pull", "fetch", "snapshot", "base_folder")} | {"poolhouse.hub.hf_cache.fetch"}
+TRUST_FIELDS = {"publishers", "shipped", "official_only", "markers", "moved", "ask"}
 DOWNLOADS = {"poolhouse.net.get", "poolhouse.net.download", "poolhouse.net.download.download"}
 POLICIES = {"poolhouse.net.Policy", "poolhouse.net.policy.Policy"}
 BUILDS = {f"poolhouse.{where}.Trust" for where in ("hub", "hub.admission", "models", "api.models")}
@@ -88,6 +90,12 @@ def looks_up(call: ast.Call) -> bool:
     return named and any(isinstance(a, ast.Constant) and a.value == "library" for a in call.args)
 
 
+def wildcard_only(node: ast.AST) -> bool:
+    """Whether ``node`` is a string of wildcards alone (``*``, ``*.*``, ``?*``): a host pattern that matches every host."""
+    text = node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else ""
+    return bool(text) and set(text) <= set("*?.[]!-") and bool(set(text) & set("*?"))
+
+
 def keyword(call: ast.Call, name: str) -> str:
     return next((ast.unparse(k.value) for k in call.keywords if k.arg == name), "")
 
@@ -112,7 +120,11 @@ def scan(source: str, path: str) -> list[str]:
     for star in names.stars:
         if star in STARRED and not (trust_door or net_door):
             flag(1, f"star-imports {star}, which lists the allowing names")
+    called = {id(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
     for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute | ast.Name) and id(node) not in called
+                and names.of(node) in PULLS | DOWNLOADS and path not in PASSES_ON | NET_FACADES):
+            flag(node, f"passes {names.of(node)} around without calling it")
         if isinstance(node, ast.Constant) and node.value in {"LIBRARY", "ANYWHERE"} and not opened(str(node.value)):
             flag(node, f"names {node.value!r} as a string")
         if isinstance(node, ast.Call) and looks_up(node) and not net_door:
@@ -129,10 +141,10 @@ def scan(source: str, path: str) -> list[str]:
         if target in BUILDS and not trust_door:
             flag(node, "builds a Trust")
         if target in POLICIES and not net_door and any(
-                isinstance(c, ast.Constant) and c.value == "*" for a in (*node.args, *(k.value for k in node.keywords))
-                for c in ast.walk(a)):
+                wildcard_only(c) for a in (*node.args, *(k.value for k in node.keywords)) for c in ast.walk(a)):
             flag(node, "builds a Policy that lists every host")
-        if target == "dataclasses.replace" and node.args and ast.unparse(node.args[0]).endswith("PERSON"):
+        if target == "dataclasses.replace" and (
+                (node.args and ast.unparse(node.args[0]).endswith("PERSON")) or TRUST_FIELDS & {k.arg for k in node.keywords}):
             flag(node, "loosens PERSON")
         if target in PULLS:
             given = keyword(node, "trust")
@@ -247,7 +259,10 @@ def test_a_policy_that_lists_every_host_is_flagged_however_it_is_spelled():
     for code in ("from poolhouse import net\nnet.Policy(allowed=('*',))",
                  "from poolhouse.net import Policy\nPolicy(['api.acme.example', '*'])",
                  "import poolhouse as ph\nph.net.Policy(allowed=('*',))",
-                 "from poolhouse.net.policy import Policy as P\nP(allowed=['*'])"):
+                 "from poolhouse.net.policy import Policy as P\nP(allowed=['*'])",
+                 "from poolhouse import net\nnet.Policy(('*.*',))",
+                 "from poolhouse import net\nnet.Policy(allowed=('api.acme.example', '?*'))",
+                 "from poolhouse import net\nnet.Policy(allowed=['**'])"):
         assert any("lists every host" in one for one in flagged(code)), code
     assert flagged("from poolhouse import net\nnet.Policy(allowed=('*.acme.example',))") == []
 
@@ -274,3 +289,27 @@ def test_the_scan_follows_a_relative_import_and_a_name_defined_in_the_module():
 def test_a_call_that_is_not_a_pull_is_left_alone():
     assert flagged("class Member:\n    def pull(self, x): ...\nMember().pull('a')\nm = Member()\nm.pull('b')") == []
     assert flagged("import subprocess\nsubprocess.run(['git', 'pull'])\nlibrary = 3\nx = library\n") == []
+
+
+def test_a_trust_loosened_by_a_replace_is_flagged_whatever_it_is_replaced_from():
+    for code in ("import dataclasses\nfrom poolhouse.hub.admission import PERSON\nx = dataclasses.replace(PERSON, ask=False)\n",
+                 "import dataclasses\nx = dataclasses.replace(base, publishers=None)\n",
+                 "import dataclasses\nx = dataclasses.replace(trust, shipped=False, markers=False)\n"):
+        assert any("loosens PERSON" in one for one in flagged(code)), code
+    assert flagged("import dataclasses\nx = dataclasses.replace(job, name='b')\n") == []
+
+
+def test_a_pull_or_a_download_passed_around_without_a_call_is_flagged():
+    for code in ("from poolhouse import hub\nf = hub.pull\nf('hf:a/b', trust=hub.PERSON)",
+                 "import poolhouse as ph\nf = ph.models.pull\n",
+                 "from poolhouse import net\nrun = net.download\n",
+                 "from poolhouse.hub import fetch\nx = [fetch]\n"):
+        assert any("around without calling it" in one for one in flagged(code)), code
+    assert flagged("from poolhouse import hub\nhub.pull('hf:a/b', trust=hub.PERSON)") == []
+    assert flagged("from poolhouse.hub import fetch\nx = [fetch]\n", "src/poolhouse/api/models.py") == []
+
+
+def test_a_snapshot_into_the_cache_names_its_trust_like_any_other_pull():
+    code = "from poolhouse.hub import hf_cache\nhf_cache.fetch('a/b')\n"
+    assert any("names no trust" in one for one in flagged(code))
+    assert flagged("from poolhouse.hub import hf_cache\nfrom poolhouse.hub.admission import PERSON\nhf_cache.fetch('a/b', trust=PERSON)\n") == []

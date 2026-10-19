@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from poolhouse import files, hub, lock, net, worktreerules
-from poolhouse.hub import remote
+from poolhouse.hub import admission, remote
 from poolhouse.hub.hfstore import git_blob_sha1
 from poolhouse.hub.transfer import PICKLES
 from poolhouse.net.sniff import expected_kind
@@ -32,6 +32,10 @@ class Member:
             return "snapshot file size differs from its revision metadata"
         actual = files.sha256_file(path) if self.lfs else git_blob_sha1(path, self.size)
         return "" if actual == self.digest else "snapshot file differs from its revision digest"
+
+    def listed(self) -> remote.RemoteFile:
+        """The file as a Hub listing holds it."""
+        return remote.RemoteFile(self.name, self.size, self.digest if self.lfs else "", "" if self.lfs else self.digest)
 
 
 def _members(data: dict) -> list[Member]:
@@ -67,8 +71,20 @@ def _members(data: dict) -> list[Member]:
     return members
 
 
-def fetch(repo: str, *, revision: str = "main", repo_type: str = "model") -> Path:
-    """Download a public model or dataset revision into the standard Hub cache."""
+def _unvetted(ref: remote.Ref, repo_type: str, members: list[Member], trust: admission.Trust) -> str:
+    """The words of the question a person would be asked about the files and ``trust`` did not ask: `admission.admit`
+    for a model repository (`NotApproved` for what ``trust`` does not allow); a dataset holds no model, so a model file
+    in one always waits for a person."""
+    if repo_type == "model":
+        return admission.admit(ref, [m.listed() for m in members], trust)
+    return f"This file is from the dataset {ref.repo}, which is not a model repository."
+
+
+def fetch(repo: str, *, revision: str = "main", repo_type: str = "model",
+          trust: admission.Trust = admission.PERSON) -> Path:
+    """Download a public model or dataset revision into the standard Hub cache. A model repository is fetched under
+    ``trust`` (`admission.admit`, a person answers for any publisher but the shipped ones by default); each model file
+    kept is pinned with its publisher, commit and the question ``trust`` left for the first serve."""
     if not REPO.fullmatch(repo) or repo_type not in {"model", "dataset"}:
         raise ValueError("snapshot needs an owner/repository and model or dataset type")
     if not isinstance(revision, str) or not revision or len(revision) > 200:
@@ -94,6 +110,7 @@ def fetch(repo: str, *, revision: str = "main", repo_type: str = "model") -> Pat
         destinations.append(safe_join(root, f"refs/{revision}"))
     if any(worktreerules.checkouts(path) is not None for path in (root, folder, *destinations)):
         raise ValueError("the Hub snapshot must be outside a Git checkout")
+    unvetted = _unvetted(remote.Ref(repo, revision=revision, commit=commit), repo_type, members, admission.checked(trust))
     prefix = "datasets/" if repo_type == "dataset" else ""
     with lock.only_one(root / ".poolhouse-snapshot.lock", announce=lambda _text: None):
         for member in members:
@@ -107,7 +124,8 @@ def fetch(repo: str, *, revision: str = "main", repo_type: str = "model") -> Pat
             net.download(url, target, net.Want(
                 kind=expected_kind(member.name), sha256=member.digest if member.lfs else "", size=member.size,
                 require_digest=member.lfs, max_bytes=max(1, member.size), verify=member.verify,
-                purpose="public Hub snapshot"), pipeline=net.default())
+                purpose="public Hub snapshot", pin_notes=admission.notes(repo, commit, member.name, unvetted)),
+                pipeline=net.default())
         if not COMMIT.fullmatch(revision):
             files.write_text(safe_join(root, f"refs/{revision}"), commit)
     return folder
