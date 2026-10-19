@@ -85,6 +85,16 @@ def _group_interface(definition: dict, inner: dict, definitions: dict) -> dict:
     return interfaces
 
 
+def _execution(node: dict) -> None:
+    if set(node) - {"id", "type", "version", "parameters", "bindings", "group", "name", "sweep", "execution"}:
+        raise ValueError("Unknown node field")
+    execution = node.get("execution", {})
+    if (not isinstance(execution, dict) or set(execution) - {"machine"}
+            or (execution and (not isinstance(execution.get("machine"), str)
+                               or not execution["machine"] or len(execution["machine"]) > 256))):
+        raise ValueError("Choose an authenticated device for execution")
+
+
 def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "") -> dict:
     if len(stack) > MAX_DEPTH:
         raise ValueError("Group nesting is too deep")
@@ -98,8 +108,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         if not isinstance(identifier, str) or not IDENTIFIER.fullmatch(identifier) or identifier in ids:
             raise ValueError("Node identifiers must be unique simple names")
         ids.add(identifier)
-        if set(node) - {"id", "type", "version", "parameters", "bindings", "group", "name", "sweep"}:
-            raise ValueError("Unknown node field")
+        _execution(node)
         if node.get("type") != "group":
             node["id"] = prefix + identifier
             nodes.append(node)

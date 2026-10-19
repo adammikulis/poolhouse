@@ -49,8 +49,9 @@ def _artifacts(node: dict, values: dict, direction: str) -> dict:
 class WorkflowEngine:
     """Advance independent graph branches through fixed execution adapters."""
 
-    def __init__(self, store: StudioStore, runner: Any, adapters: Any, authorize: Any) -> None:
+    def __init__(self, store: StudioStore, runner: Any, adapters: Any, authorize: Any, dispatcher: Any = None) -> None:
         self.store, self.runner, self.adapters, self.authorize = store, runner, adapters, authorize
+        self.dispatcher = dispatcher
         self.lock = threading.RLock()
         source = Path(__file__).parent.parent
         self.implementation = digest({str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -82,7 +83,7 @@ class WorkflowEngine:
                 run = self.store.graph.get_doc(row["id"])
                 if run["state"] in {"queued", "running"}:
                     for node in run["nodes"].values():
-                        if node["state"] == "running" and not self.runner.jobs.get(node.get("job_id")):
+                        if node["state"] == "running" and not node.get("execution") and not self.runner.jobs.get(node.get("job_id")):
                             node.update(state="interrupted", error="The prior execution outcome is unknown; it was not replayed.")
                     self.store.put("run", run)
 
@@ -94,7 +95,11 @@ class WorkflowEngine:
             raise ValueError(checked["errors"])
         graph = checked["graph"]
         graph = self._selected(graph, output_nodes)
-        requirements = getattr(self.adapters, "validate", lambda nodes: [])(graph["nodes"])
+        remote = [node for node in graph["nodes"] if self._remote(node)]
+        local = [node for node in graph["nodes"] if node not in remote]
+        requirements = getattr(self.adapters, "validate", lambda nodes: [])(local)
+        if remote:
+            requirements.extend(self.dispatcher.validate(remote, principal))
         if requirements:
             raise ValueError(requirements)
         for node in graph["nodes"]:
@@ -168,7 +173,7 @@ class WorkflowEngine:
                        "bindings": node.get("bindings", {}), "principal": run["principal"]}
             if not self.authorize(run["principal"], node, inputs):
                 if state["state"] == "running" and state.get("job_id"):
-                    self.runner.stop(state["job_id"])
+                    self._stop_child(state, run["principal"])
                 state.update(state="blocked", error="Authorization changed. Sign in and review this run.")
                 continue
             try:
@@ -185,6 +190,9 @@ class WorkflowEngine:
         return run
 
     def _node(self, run: dict, node: dict, state: dict, inputs: dict, context: dict) -> None:
+        if self._remote(node):
+            self._remote_node(run, node, state, inputs, context)
+            return
         if state["state"] == "running":
             self.runner.snapshot()
             job = self.runner.jobs.get(state["job_id"])
@@ -199,7 +207,8 @@ class WorkflowEngine:
             return
         context["output_dir"].mkdir(parents=True, exist_ok=True)
         spec = node_spec(node["type"], node.get("version", 1))
-        state["fingerprint"] = digest({"node": node, "inputs": inputs, "implementation": [spec, self.implementation],
+        dependency = getattr(self.adapters, "dependency_fingerprint", lambda node: "")(node)
+        state["fingerprint"] = digest({"node": node, "inputs": inputs, "implementation": [spec, self.implementation, dependency],
                                        "artifacts": _artifacts(node, inputs, "inputs")})
         if not spec.get("side_effects"):
             with self.store.lock:
@@ -249,7 +258,7 @@ class WorkflowEngine:
         state["artifacts"] = _artifacts(node, state["outputs"], "outputs")
         state["lineage"] = {"run": run["id"], "node": node["id"], "inputs": digest(inputs),
                             "implementation": node_spec(node["type"], node.get("version", 1))["implementation"]}
-        if not node_spec(node["type"], node.get("version", 1)).get("side_effects"):
+        if not state.get("execution") and not node_spec(node["type"], node.get("version", 1)).get("side_effects"):
             with self.store.lock:
                 self.store.graph.put_doc("studio.cache:" + digest({"principal": run["principal"], "key": state["fingerprint"]}),
                                          {"outputs": state["outputs"], "artifacts": state["artifacts"], "run": run["id"]})
@@ -265,7 +274,7 @@ class WorkflowEngine:
                 return run
             for state in run["nodes"].values():
                 if state["state"] == "running" and state.get("job_id"):
-                    self.runner.stop(state["job_id"])
+                    self._stop_child(state, principal)
                 if state["state"] not in TERMINAL:
                     state["state"] = "cancelled"
             run.update(state="cancelled", finished_at=time.time())
@@ -304,3 +313,33 @@ class WorkflowEngine:
         self._stop.set()
         self._wake.set()
         self._thread.join()
+        if self.dispatcher is not None:
+            self.dispatcher.close()
+
+    def _remote(self, node: dict) -> bool:
+        target = node.get("execution", {}).get("machine")
+        if target and self.dispatcher is None:
+            raise ValueError("Device execution is unavailable in this session.")
+        return bool(target and self.dispatcher.is_remote(node))
+
+    def _remote_node(self, run: dict, node: dict, state: dict, inputs: dict, context: dict) -> None:
+        if not state.get("execution"):
+            dispatch_id = digest({"run": run["id"], "node": node["id"]})
+            state.update(state="running", job_id="studio-device-" + dispatch_id[:32],
+                         execution={"machine": node["execution"]["machine"], "id": dispatch_id,
+                                    "digest": digest({"node": node, "inputs": inputs, "implementation": self.implementation})})
+            state["fingerprint"] = state["execution"]["digest"]
+            self.store.put("run", run)
+            self.dispatcher.start(run, node, inputs, context, state["execution"])
+        result = self.dispatcher.poll(state["execution"], context)
+        if result is None:
+            return
+        state.update(result)
+        if state["state"] == "done":
+            self._completed(run, node, state, inputs)
+
+    def _stop_child(self, state: dict, principal: dict) -> None:
+        if state.get("execution"):
+            self.dispatcher.cancel(state["execution"], principal)
+        else:
+            self.runner.stop(state["job_id"])
