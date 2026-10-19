@@ -29,15 +29,22 @@ MODULES = {"task-publishing": frozenset({"tasks-view"}),
     "workspace-jobs", "history-view", "tasks-view", "data-view", "knowledge-view", "training-view", "tools-view", "benchmarks-view",
     "gym-world-options", "gym-recordings", "gym-model-options", "gym-view",
 })}
+#: components from the experimental layer; a build without their files leaves them out
+EXPERIMENTAL = frozenset({"gym-scene-controls", "gym-drone-camera", "gym-scene", "gym-recordings", "gym-world-options",
+                          "gym-model-options", "gym-view", "gym-drone-geometry"})
 #: the fit screen on its own, for a machine running no daemon
 FIT_ONLY = ("fleet-model", "fit-model", "fit-view", "fit-charts", "rates-view",
             "telemetry-view")
 
 
+def _absent(part: str | Component) -> bool:
+    return not isinstance(part, Component) and part in EXPERIMENTAL and not (COMPONENTS_DIR / f"{part}.html").is_file()
+
+
 def components(names: Sequence[str | Component] = COMPONENTS) -> list[Component]:
     """Return page components with shared modules inserted before their consumers."""
     parts = [part if isinstance(part, Component) else load(COMPONENTS_DIR, [part])[0]
-             for part in names]
+             for part in names if not _absent(part)]
     present = {part.name for part in parts}
     for module, consumers in MODULES.items():
         if module in present:
@@ -52,5 +59,7 @@ def components(names: Sequence[str | Component] = COMPONENTS) -> list[Component]
 def render(parts: Sequence[str | Component] = COMPONENTS) -> str:
     """The whole page, as one string."""
     shell = (WEB / "shell.html").read_text(encoding="utf-8")
+    if _absent("gym-view"):
+        shell = shell.replace("<gym-view></gym-view>", "")
     page = assemble(shell, components(parts))
     return page.replace("__VOCABULARY_DATA__", vocabulary.payload()).replace("__VOCAB__", vocabulary.default_vocabulary())

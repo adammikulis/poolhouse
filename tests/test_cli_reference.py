@@ -61,7 +61,7 @@ def test_reference_check_rejects_a_stale_table_without_writing(tmp_path):
     page.write_text(original, encoding="utf-8")
     command = [sys.executable, str(REPO / "scripts/reference"), "--check", "--page", str(page)]
     assert subprocess.run(command, capture_output=True).returncode == 0
-    stale = original.replace("| `poolhouse-gym", "| `stale-gym", 1)
+    stale = original.replace("| `poolhouse-models", "| `stale-models", 1)
     assert stale != original
     page.write_text(stale, encoding="utf-8")
     result = subprocess.run(command, capture_output=True, text=True)

@@ -9,11 +9,8 @@ from pathlib import Path
 
 from poolhouse.contracts import recipes
 from poolhouse.files import write_json
-from poolhouse.gym.catalog import ENVIRONMENTS
-from poolhouse.gym.transport import interpreter
 
 from .files import safe_relpath
-from .gym_interpreters import configure_interpreters
 from .jobs import DaemonError
 from .request_fields import field, object_body
 
@@ -126,25 +123,25 @@ class WorkspaceRoutes:
                         "root": str(root), "files": rows})
         return True
 
+    def job_commands(self) -> tuple[str, ...]:
+        """Commands a job may name that are not console scripts."""
+        return ()
+
+    def job_launch(self, command: str, args: list[str], root: Path) -> tuple[list[str], dict[str, str] | None]:
+        """The argv and environment a submitted command runs with."""
+        return [command, *args], None
+
     def _submit(self, root: Path) -> bool:
         req = object_body(self)
         command = field(req, "command", str, "")
-        if command not in {entry["name"] for entry in commands()}:
+        if command not in {entry["name"] for entry in commands()} | set(self.job_commands()):
             raise ValueError("Choose an installed poolhouse command.")
         args = req.get("args", [])
         if not isinstance(args, list) or any(not isinstance(a, str) for a in args):
             raise ValueError("Arguments must be a list of strings.")
         if "--detach" in args:
             raise ValueError("Workspace jobs are monitored directly; remove --detach.")
-        argv = [command, *args]
-        environment = None
-        if command == "poolhouse-gym" and len(args) >= 2 and args[0] in {"run", "train", "evaluate"}:
-            if args[1] not in ENVIRONMENTS:
-                raise ValueError("Choose a supported Gym environment.")
-            configure_interpreters(self.ui)
-            argv = [interpreter(args[1]), "-m", "poolhouse.gym.cli", *args]
-            environment = {"POOLHOUSE_GYM_PYTHON": "", "POOLHOUSE_GYM_PYTHONS": "{}",
-                           "POOLHOUSE_GYM_FILES_ROOT": str(root)}
+        argv, environment = self.job_launch(command, args, root)
         metadata = field(req, "metadata", dict, {})
         name = field(req, "name", str, command)
         if field(req, "preview", bool, False):
