@@ -1,9 +1,11 @@
 """Which package may import which.
 
 The layers are core, model, graph, machine, tools, and experimental (the red-team harness, the
-gym and the tools that drive the rest, none of which ships in the wheel; the gym's files in
-``fleet`` count as the gym). A package may import a package in a
-lower layer, and one in its own layer as long as the other does not import it back.
+gym, the bench, the world, the draft tool and the tools that drive the rest, none of which ships
+in the wheel; the gym's files in ``fleet`` count as the gym). Release code reaches an
+experimental module by name through ``poolhouse.optional`` and works when it is absent. A package
+may import a package in a lower layer, and one in its own layer as long as the other does not
+import it back.
 ``KNOWN`` lists the edges that break that today; it may only shrink.
 """
 
@@ -26,34 +28,33 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
               "lock", "log", "macauth", "sealing",
               "markup", "sandbox",
-              "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "paths", "platform", "safenames", "redact", "scrape", "sentinel",
+              "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "scrape", "sentinel",
               "real_machine", "records", "requests", "person", "private_path", "private_counters", "protectedwrites", "safetext", "secretpaths",
               "serverkeys",
               "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "ui", "units", "win32", "windows_private", "worktreerules")),
     ("model", ("client", "decide", "gguf", "hub", "spec", "speech", "vision")),
-    ("graph", ("board_names", "graph", "ingest", "sources", "world")),
+    ("graph", ("board_names", "graph", "ingest", "sources")),
     ("machine", ("doctor", "fleet", "serve", "setup")),
-    ("tools", ("coordination", "agent", "bench", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "datasheet", "decide_cli",
-               "do", "draft", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "migrate", "migrate_paths", "migrate_scan", "memory", "reputation", "inbox", "roles", "rules",
+    ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "datasheet", "decide_cli",
+               "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "migrate", "migrate_paths", "migrate_scan", "memory", "reputation", "inbox", "roles", "rules",
                "api", "testfarm", "testing", "train", "web", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
-    ("experimental", ("gym", "redteam", "surface", "walk")),
+    ("experimental", ("bench", "draft", "gym", "redteam", "surface", "walk", "world")),
 )
 
 EXPERIMENTAL = dict(LAYERS)["experimental"]
-EXPERIMENTAL_FILES = ("src/poolhouse/fleet/gym_*.py", "src/poolhouse/fleet/web/components/gym-*.html")
+EXPERIMENTAL_FILES = ("src/poolhouse/fleet/gym_*.py", "src/poolhouse/fleet/web/components/gym-*.html",
+                      "src/poolhouse/fleet/web/components/benchmarks-view.html",
+                      "src/poolhouse/fleet/web/components/fleet-benchmark.html")
 
 RANK = {package: height for height, (_, packages) in enumerate(LAYERS)
         for package in packages}
 
 KNOWN = {
-    ("doctor", "bench"),
-    ("fleet", "bench"),
     ("fleet", "serve"),
     ("fleet", "setup"),
     ("gguf", "serve"),
     ("graph", "serve"),
     ("hub", "serve"),
-    ("ingest", "bench"),
     ("ingest", "serve"),
     ("serve", "fleet"),
     ("serve", "setup"),

@@ -105,7 +105,7 @@ specific port (`roam=False`) does not get another.
 A reranker is served with `poolhouse-serve up MODEL --reranking` (`llama-server --reranking`, which
 answers `/v1/rerank`; `poolhouse.client.rerank.rerank` is the client). Like an embedding server it
 is a different kind of server: a `reranking` lease is never given a chat or embedding server, and
-a chat or embedding lease is never given a reranker. `poolhouse-bench retrieval --rerank-url URL`
+a chat or embedding lease is never given a reranker. `python -m poolhouse.bench retrieval --rerank-url URL`
 compares it with the fused and vector orders on the scored questions.
 
 ### Requests

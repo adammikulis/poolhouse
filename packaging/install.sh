@@ -244,7 +244,7 @@ link_scripts() {
   [ "$MODE" = system ] && TO="${POOLHOUSE_DEST:-/usr/local/bin}"
   mkdir -p "$TO" 2>/dev/null || true
   for name in poolhouse poolhouse-traind poolhouse-pool poolhouse-members poolhouse-serve \
-              poolhouse-models poolhouse-bench poolhouse-setup poolhouse-doctor poolhouse-mcp; do
+              poolhouse-models poolhouse-setup poolhouse-doctor poolhouse-mcp; do
     [ -x "$FROM/$name" ] || continue
     ln -sf "$FROM/$name" "$TO/$name" 2>/dev/null || true
   done

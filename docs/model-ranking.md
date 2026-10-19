@@ -1,12 +1,12 @@
 # Which model answers best
 
 - **Written:** 2026-09-23, at commit 28d13f5.
-- **Command:** `poolhouse-bench show --kept ~/.poolhouse/bench/runs.ladybug --rank docs/model-ranking.md`
+- **Command:** `python -m poolhouse.bench show --kept ~/.poolhouse/bench/runs.ladybug --rank docs/model-ranking.md`
 - **Store:** `~/.poolhouse/bench/runs.ladybug`, opened read-only, the newest run from 2026-09-06.
 - **Models:** the five in the table, each named by the file it served.
 
 Measured over the invented community that ships with this package, by
-`poolhouse-bench`. A conclusion, not evidence: the runs behind it are not in this
+`python -m poolhouse.bench`. A conclusion, not evidence: the runs behind it are not in this
 repository. Re-measure after any model release -- none of this survives one.
 
 Accuracy is each model's largest run -- the most questions, the newest on a tie --

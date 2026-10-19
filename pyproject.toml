@@ -192,14 +192,9 @@ poolhouse-credentials = "poolhouse.credentials.cli:command"
 # what this machine can hear and say: transcribe a file, say a line, find the speech in it
 poolhouse-speech = "poolhouse.speech.cli:main"
 poolhouse-serve = "poolhouse.serve.cli:main"
-# what a change to the asking costs, and whether it was worth it
-poolhouse-bench = "poolhouse.bench.run:main"
 # find a model newer than anything the assistant remembers, and print how to serve it
 poolhouse-models = "poolhouse.serve.models_cli:run"
 poolhouse-store = "poolhouse.graph.store_cli:main"
-# an invented organised group -- company, community, university, open-source, nonprofit --
-# as a graph with people who could talk, and questions about it with known answers
-poolhouse-world = "poolhouse.world.cli:main"
 # documents read section by section into one graph, with what each cost
 poolhouse-ingest = "poolhouse.ingest:main"
 # set this device up to join a pool (firewall rules in one Windows prompt, the node, the join check): poolhouse device-setup --yes
@@ -226,8 +221,6 @@ poolhouse-reputation = "poolhouse.reputation.cli:main"
 # the activity log: what agents, people and the stack did, read-only
 poolhouse-log = "poolhouse.activity.cli:main"
 poolhouse-requests = "poolhouse.inbox.cli:main"
-# what a draft head is worth for one model: no head, then the head at each depth
-poolhouse-draft = "poolhouse.draft:main"
 poolhouse-help = "poolhouse.cli:help_main"
 # every tracked file read for a person's details, reported and never blocked
 poolhouse-audit = "poolhouse.redact.audit:main"
@@ -246,12 +239,17 @@ exclude = [".claude", "CLAUDE.md", "HANDOFF.md"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/poolhouse"]
 exclude = [
+    "src/poolhouse/bench",
+    "src/poolhouse/draft",
     "src/poolhouse/gym",
     "src/poolhouse/fleet/gym_*.py",
+    "src/poolhouse/fleet/web/components/benchmarks-view.html",
+    "src/poolhouse/fleet/web/components/fleet-benchmark.html",
     "src/poolhouse/fleet/web/components/gym-*.html",
     "src/poolhouse/redteam",
     "src/poolhouse/surface",
     "src/poolhouse/walk",
+    "src/poolhouse/world",
 ]
 
 # The contracts are ONE file on disk (repo-root `contracts/`), pulled into the wheel at
