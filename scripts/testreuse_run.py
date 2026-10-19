@@ -16,6 +16,7 @@ from pathlib import Path
 
 import testreuse_key as keys
 import testreuse_store as storage
+from testreuse_narrow import narrowed
 
 from poolhouse.log import warn
 
@@ -221,6 +222,7 @@ class Session:
                  events: Events | None = None) -> None:
         self.root, self.command, self.files, self.store = root, command, files, store
         self.events = events or Events()
+        self.narrow = narrowed(command)
         self.closures = keys.Closures(root, keys.import_facts(store.folder))
         self.rate = canary_rate()
         self.commit = ""
@@ -284,6 +286,9 @@ class Session:
         self.checked[file] = look.key
         if look.barred:
             outcome.detail = f"(not reusable: {look.barred})"
+            plan.run.append(file)
+            return
+        if self.narrow:
             plan.run.append(file)
             return
         hit, why = self.store.hit(look.key, self.root, self.closures)
@@ -387,6 +392,9 @@ class Session:
             return
         if hit is not None:
             outcome.how = "ran  canary agrees"
+        if self.narrow and count:
+            outcome.detail = f"{outcome.detail} (not stored: the run selects part of the file)".strip()
+            return
         if not ran.store or look.barred or not count:
             return
         if not outcome.passed:
