@@ -16,13 +16,14 @@ seconds workers waited for CPU permits (`queued for CPU`); the queue wait is the
 that the warning measures.
 Every checkout shares the same admission broker.
 
-Agents run affected tests for their own changes: explicit file selectors, at most 30. The main agent
+Agents run affected tests for their own changes: explicit file selectors, any number of them. The main agent
 coordinates shared structural and security gates once per consolidated integration batch before publication.
 The full suite is GitHub's job: the `ci` workflow runs it on every pushed commit, and an agent never runs one.
 For an agent (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE` or a Codex session set) `scripts/test`
-refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file or more than 30
-(directories count as the test files under them), and the broker (`scripts/testslots_runner.py`) admits no agent
-pytest run naming more than 30 test files; `quick` and `gate` stay allowed. A person's terminal sets none of the
+refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file, and any run that names
+every test file (directories count as the test files under them); the broker (`scripts/testslots_runner.py`) admits no agent
+pytest run that names every test file; `quick` and `gate` stay allowed. The refusal reads `the whole suite runs on a schedule
+and on pull requests; name the files you changed`. A person's terminal sets none of the
 markers and is never refused. The main agent owns `quick`; workers use explicit affected selectors.
 
 `scripts/test <tier>` runs as a background job that the command follows: `submit` prints the job id
