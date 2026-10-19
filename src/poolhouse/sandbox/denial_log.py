@@ -107,7 +107,7 @@ def parse(line: str) -> tuple[str, dict[str, str]] | None:
 
 def may_be_cut(message: str) -> bool:
     """Whether the kernel may have cut the end of ``message`` off: it is as long as the kernel's limit lets one be, or says so."""
-    return message.endswith(CUT_MARK) or len(message.encode()) >= CUT_BYTES
+    return message.endswith(CUT_MARK) or len(message.encode("utf-8", "replace")) >= CUT_BYTES
 
 
 @dataclass(slots=True)
@@ -262,7 +262,7 @@ class DenialLog:
             run = None if tag is None else self._runs.get(tag)
             if answered := [token for token in self._probes if token in message]:
                 self._probes.update(dict.fromkeys(answered, True))
-            elif run is not None and not message.endswith(CUT_MARK):
+            elif run is not None:
                 if entry is not None and not NOISE.search(entry["target"]) and len(run.entries) < KEEP_PER_TAG:
                     run.entries.append(entry)
             elif may_be_cut(message):

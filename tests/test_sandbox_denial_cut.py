@@ -115,7 +115,8 @@ def test_a_report_the_kernel_did_not_cut_leaves_the_runs_readable(message, seatb
     f"Sandbox: cat(4242) deny(1) file-read-data /x{'z' * 900}\n{denial_log.PREFIX}running"[:-3],
     f"Sandbox: cat(4242) deny(1) file-read-data /x\n{denial_log.PREFIX}running{denial_log.CUT_MARK}",
     f"Sandbox: cat(4242) deny(1) file-read-data /x{'z' * 960}\n{denial_log.PREFIX}run",
-], ids=["tag-cut-in-the-middle", "mark-after-the-tag", "tag-prefix-only"])
+    "Sandbox: cat(4242) deny(1) file-read-data /x" + "\ud800" * 400,
+], ids=["tag-cut-in-the-middle", "mark-after-the-tag", "tag-prefix-only", "lone-surrogates"])
 def test_a_report_cut_inside_or_after_the_tag_is_a_cut_report(message, seatbelt):
     stream = DenialLog()
     try:
