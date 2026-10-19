@@ -130,8 +130,9 @@ def test_the_cli_stamps_the_token_holder_even_when_the_environment_names_another
     done = team.cli("send", team.bob.name, "note", "as the child", "--agent", child.name, who=team.lead)
     assert done.returncode == 0, done.stderr
     assert [m["from"] for m in json.loads(team.cli("inbox", "--json", who=team.bob).stdout)] == [child.name]
-    generic = team.cli("whoami", "--agent", "claude", who=team.lead)
-    assert generic.returncode == 3 and f"yours is {team.lead.name}" in generic.stderr
+    generic = team.cli("whoami", "--agent", "claude", "--json", who=team.lead)
+    assert generic.returncode == 0 and f"running as {team.lead.name}" in generic.stderr
+    assert json.loads(generic.stdout)["id"] == team.lead.name
 
 
 def test_inbox_children_shows_only_the_messages_of_the_callers_descendants(team):

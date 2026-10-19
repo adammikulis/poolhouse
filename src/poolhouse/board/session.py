@@ -10,13 +10,18 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from poolhouse import home
 from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, Conflict, Denied
+from poolhouse.log import warn
 
-__all__ = ["AGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration", "Sent",
-           "Session", "connect", "find", "register"]
+__all__ = ["AGENT_ENV", "SUBAGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration",
+           "Sent", "Session", "connect", "find", "register"]
 
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
+SUBAGENT_ENV = "POOLHOUSE_SUBAGENT"
+"""The native id of the subagent a command runs for: the harness's PreToolUse hook sets it, and the board names the identity behind it."""
+SUBAGENT_HARNESS = "claude-code"
 PAGE = 1000
 CHUNK = 256 * 1024
 TOKEN_ENV = "POOLHOUSE_WORKSPACE_TOKEN"  # noqa: S105 - the name of a variable, not a credential
@@ -439,19 +444,45 @@ def find(harness: str, native_id: str, *, cwd: Path | None = None, client: Clien
         return ""
 
 
+def _subagent(node: Client, where: str, native: str, agent: str) -> Session:
+    """The session of the subagent whose native id the harness put in $POOLHOUSE_SUBAGENT; a name given by `--agent` is not used."""
+    try:
+        name = str(node.call("session_lookup", where, harness=SUBAGENT_HARNESS, session=native)["name"])
+    except Denied:
+        name = ""
+    if not name:
+        raise Denied("denied", "this subagent has no name on the board, and a workspace command would run as the session "
+                     "that started it: hand the result back in the final message")
+    if agent and agent != name:
+        warn(f"--agent {agent} is not you: running as {name}")
+    return Session(node, where, credentials.load(node.state, where, name), name)
+
+
+def _named(node: Client, where: str, agent: str) -> tuple[str, str]:
+    """``(token, name)`` of the session ``agent`` names; when it has no token and the environment names this session, that one."""
+    own = os.environ.get(AGENT_ENV, "")
+    try:
+        return credentials.load(node.state, where, agent or own), agent or own
+    except Denied:
+        if not (agent and own and agent != own):
+            raise
+    warn(f"--agent {agent} is not a live session here: running as {own}")
+    return credentials.load(node.state, where, own), own
+
+
 def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path | None = None,
             client: Client | None = None) -> Session:
-    """The session of the caller: its token from a file, the agent named (or $POOLHOUSE_WORKSPACE_AGENT),
-    or $POOLHOUSE_WORKSPACE_TOKEN, on the board of the directory it runs in."""
+    """The session of the caller: the subagent the harness names in $POOLHOUSE_SUBAGENT, else its token from a file,
+    the agent named (or $POOLHOUSE_WORKSPACE_AGENT), or $POOLHOUSE_WORKSPACE_TOKEN, on the board of the directory it runs in."""
     node = client or Client()
     where = place.resolve(node, cwd, board)
-    named = agent or os.environ.get(AGENT_ENV, "")
+    if native := os.environ.get(SUBAGENT_ENV, "").strip():
+        return _subagent(node, where, native, agent)
     if token_file:
-        token = Path(token_file).expanduser().read_text(encoding="utf-8").strip()
-    elif named:
-        token = credentials.load(node.state, where, named)
-    elif os.environ.get(TOKEN_ENV, "").strip():
-        token = os.environ[TOKEN_ENV].strip()
-    else:
-        raise Denied("denied", "no token: run as a registered session ($POOLHOUSE_WORKSPACE_AGENT) or give --token-file")
-    return Session(node, where, token, named)
+        return Session(node, where, home.expand(token_file).read_text(encoding="utf-8").strip(), agent or os.environ.get(AGENT_ENV, ""))
+    if agent or os.environ.get(AGENT_ENV, ""):
+        token, named = _named(node, where, agent)
+        return Session(node, where, token, named)
+    if os.environ.get(TOKEN_ENV, "").strip():
+        return Session(node, where, os.environ[TOKEN_ENV].strip(), "")
+    raise Denied("denied", "no token: run as a registered session ($POOLHOUSE_WORKSPACE_AGENT) or give --token-file")

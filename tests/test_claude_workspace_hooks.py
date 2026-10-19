@@ -33,6 +33,9 @@ path = Path(os.environ['HOOK_CALLS'])
 calls = json.loads(path.read_text()) if path.exists() else []
 calls.append(dict(argv=sys.argv[1:], session=os.environ.get('POOLHOUSE_SESSION_ID'), agent=os.environ.get('POOLHOUSE_WORKSPACE_AGENT'), harness=os.environ.get('POOLHOUSE_SESSION_HARNESS')))
 path.write_text(json.dumps(calls))
+if sys.argv[1:2] == ['spawn'] and not os.environ.get('HOOK_FAILURE'):
+    print(json.dumps(dict(id='claude-aaaaaa', parent='claude-bbbbbb', board='demo')))
+    raise SystemExit(0)
 if os.environ.get('HOOK_FAILURE'):
     print(os.environ['HOOK_FAILURE'], file=sys.stderr)
     raise SystemExit(3)
@@ -50,6 +53,7 @@ print('Authenticated parent brief: hello-model; claims and independent review re
     monkeypatch.chdir(tmp_path)  # outside any checkout, so the hooks report no worktrees of the real one
     monkeypatch.setenv('PATH', str(directory))
     monkeypatch.setenv('HOOK_CALLS', str(calls))
+    monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path / 'hookstate'))
     monkeypatch.delenv('ANTHROPIC_MODEL', raising=False)
     return directory, calls
 
@@ -126,7 +130,7 @@ def test_subagent_event_includes_brief_and_actual_primary_branch_rules(commands,
     assert 'Acquire authenticated claims before mutation' in context and 'separate sibling worktrees' in context
     records = json.loads(commands[1].read_text())
     assert [record['argv'] for record in records] == [
-        ['spawn', '--session', 'abcdef12345', '--harness', 'claude-code'],
+        ['spawn', '--session', 'abcdef12345', '--harness', 'claude-code', '--json'],
         ['announce', 'joined', 'Explore'],
         ['brief', '--registered']]
     assert records[0]['session'] == 'native-parent' and records[0]['harness'] == 'claude-code'
@@ -178,6 +182,7 @@ def test_actual_hooks_record_claimed_metadata_and_authenticated_subagent_brief(t
     monkeypatch.delenv('CODEX_SESSION_ID', raising=False)
     monkeypatch.delenv('POOLHOUSE_AGENT', raising=False)
     monkeypatch.setenv('PYTHONPATH', str(ROOT / 'src'))
+    monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path / 'hookstate'))
     repository = tmp_path / 'project'
     git.run(['init', '-b', 'development', str(repository)])
     git.run(['-c', 'user.name=Hook fixture', '-c', 'user.email=fixture@example.invalid',
@@ -195,7 +200,7 @@ def test_actual_hooks_record_claimed_metadata_and_authenticated_subagent_brief(t
     context = json.loads(brief.stdout)['hookSpecificOutput']['additionalContext']
     child = board_session.find('claude-code', 'abcdef12345', client=workspace_node.client)
     assert re.fullmatch(r'claude-[0-9a-f]{6}', child) and child != me
-    assert f'run every workspace command with `--agent {child}`' in context
+    assert f'You are the subagent {child}' in context and 'runs every workspace command you type as you' in context
     assert f'spawned by {me}' in context and '--label' not in context
     assert 'Your registration, model and the joined and done announcements are recorded for you' in context
     assert 'Keep the main session ' + me + ' as central coordinator' in context
