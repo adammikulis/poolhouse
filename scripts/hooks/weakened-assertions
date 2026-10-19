@@ -6,7 +6,7 @@
 
 Covers tests/ files named test_redteam_*, test_*guard* or test_*auth*, and files that use the
 redteam marker. Weakening is fewer assertions than before, a removed test function, or an added
-skip, skipif or xfail. A `Reviewed-by-second:` line in the commit message accepts the diff.
+skip, skipif or xfail. A `Reviewed-by-second:` or `Owner-order:` line in the commit message accepts the diff.
 """
 
 from __future__ import annotations
@@ -190,8 +190,8 @@ def main(argv: list[str] | None = None) -> int:
     print("weakened-assertions: a guard, authority or red-team test lost strength", file=sys.stderr)
     for line in found:
         print(f"  {line}", file=sys.stderr)
-    print("  add a `Reviewed-by-second: <name>` line once a second reviewer has read it.",
-          file=sys.stderr)
+    print("  add a `Reviewed-by-second: <name>` line once a second reviewer has read it, or an "
+          "`Owner-order: <what the owner said>` line.", file=sys.stderr)
     return 1
 
 
