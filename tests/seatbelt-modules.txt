@@ -13,6 +13,7 @@ test_sandbox_redteam.py
 test_sandbox_seatbelt.py
 test_sentinel_score_wiring.py
 test_sentinel_screens_wired.py
+test_serve_confined_tag.py
 test_serve_llamacpp.py
 test_serve_llamacpp_ccache.py
 test_test_kernel_isolation.py
