@@ -102,3 +102,29 @@ def test_remote_dependency_failure_prevents_all_dispatch(setup):
         engine.submit(PRINCIPAL, workflow, [], "devices")
     assert dispatcher.started == []
     assert store.records("run", PRINCIPAL["scope"]) == []
+
+
+def test_remote_intent_fingerprints_declared_input_bytes_and_target_implementation(setup, tmp_path):
+    store, engine, dispatcher = setup
+    path = tmp_path / "examples.jsonl"
+    path.write_text('{"text":"first"}\n')
+    node = {"id": "validate", "type": "data.validate", "version": 1,
+            "parameters": {}, "execution": {"machine": "device-a"}}
+    inputs = {"dataset": {"kind": "dataset", "path": str(path)}}
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Resources", graph())
+    run = engine.submit(PRINCIPAL, workflow, [], "resources")
+    context = {"principal": PRINCIPAL}
+    first = {"state": "pending", "outputs": {}}
+    run["graph"] = {"nodes": [node], "edges": []}
+    run["nodes"] = {"validate": first}
+    engine._remote_node(run, node, first, inputs, context)
+    path.write_text('{"text":"second"}\n')
+    second = {"state": "pending", "outputs": {}}
+    run["nodes"]["validate"] = second
+    engine._remote_node(run, node, second, inputs, context)
+    assert first["execution"]["digest"] != second["execution"]["digest"]
+    dispatcher.fingerprint = lambda node: "new-companion"
+    third = {"state": "pending", "outputs": {}}
+    run["nodes"]["validate"] = third
+    engine._remote_node(run, node, third, inputs, context)
+    assert second["execution"]["digest"] != third["execution"]["digest"]

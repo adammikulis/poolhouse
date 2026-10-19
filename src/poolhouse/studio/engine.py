@@ -324,11 +324,16 @@ class WorkflowEngine:
 
     def _remote_node(self, run: dict, node: dict, state: dict, inputs: dict, context: dict) -> None:
         if not state.get("execution"):
+            artifacts = _artifacts(node, inputs, "inputs")
+            implementation = getattr(self.dispatcher, "fingerprint", lambda node: "")(node)
             dispatch_id = digest({"run": run["id"], "node": node["id"]})
             state.update(state="running", job_id="studio-device-" + dispatch_id[:32],
                          execution={"machine": node["execution"]["machine"], "id": dispatch_id,
-                                    "digest": digest({"node": node, "inputs": inputs, "implementation": self.implementation})})
+                                    "digest": digest({"node": node, "inputs": inputs, "artifacts": artifacts,
+                                                      "implementation": [self.implementation, implementation]})})
+            state["input_artifacts"] = artifacts
             state["fingerprint"] = state["execution"]["digest"]
+            context["input_artifacts"] = artifacts
             self.store.put("run", run)
             self.dispatcher.start(run, node, inputs, context, state["execution"])
         result = self.dispatcher.poll(state["execution"], context)
