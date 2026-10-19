@@ -71,14 +71,19 @@ def version(name: str, executable: str, arguments: list[str]) -> str:
     return done.stdout
 
 
-def needed(root: Path, files: list[str]) -> bool:
-    """Whether a run of ``files`` can start the node binary: one of them, or what they import, names the node kit; true when no file is named."""
+def needed(root: Path, files: list[str], facts=None) -> bool:
+    """Whether a run of ``files`` can start the node binary: one of them, or what they import, names the node kit; true when no file is named.
+
+    ``facts`` is the shared import-facts file: a source whose bytes it holds is not parsed again, and the facts this call
+    computed are written back to it.
+    """
     if not files:
         return True
     import testreuse_key as keys
 
-    closures = keys.Closures(root)
+    closures = keys.Closures(root, facts)
     names = {*closures.closure(files)[0], *(c for f in files for c in keys.conftests(root, f))}
+    closures.save()
     markers = (*NODE_MARKERS, ENV)
     return any(marker in keys.text_of(root / name) for name in names if name.startswith("tests/") for marker in markers)
 

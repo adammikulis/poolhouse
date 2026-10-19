@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import functools
 import hashlib
 import json
 import os
@@ -41,11 +42,11 @@ VALUE_OPTIONS = frozenset({"-m", "-k", "-c", "-o", "-W", "-p", "-n", "--rootdir"
                            "--cov", "--timeout"})
 DROPPED_OPTIONS = frozenset({"-n", "--numprocesses", "--junitxml"})
 RUNNER_FILES = ("scripts/testreuse_plugin.py", "scripts/testreuse_key.py", "scripts/testreuse_store.py",
-                "scripts/testreuse_run.py", "scripts/testreuse_imports.py", "scripts/testslots_pytest.py",
-                "scripts/testslots_rpc.py")
+                "scripts/testreuse_run.py", "scripts/testreuse_narrow.py", "scripts/testreuse_imports.py",
+                "scripts/testslots_pytest.py", "scripts/testslots_rpc.py")
 ENV_NAME = re.compile(r"""["']([A-Z][A-Z0-9_]{3,})["']""")
 ENV_FIXED = ("PATH", "CI", "TZ", "LANG", "LC_ALL", "CLAUDECODE", "POOLHOUSE_NONINTERACTIVE",
-             "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "POOLHOUSE_NOTIFY", "DEV_TEST_SLOTS")
+             "POOLHOUSE_LIVE_API", "POOLHOUSE_LIVE_NET", "POOLHOUSE_NOTIFY", "DEV_TEST_SLOTS", "PYTEST_ADDOPTS")
 ENV_SKIP = frozenset({"PYTHONPATH", "DEV_TEST_PYTEST_TOKEN", "DEV_TEST_PYTEST_ENDPOINT",
                       "DEV_TEST_WORKERS", "DEV_TEST_SLOTS_DIR", "DEV_TEST_REMOTE_BROKER",
                       "DEV_TEST_LEASE", "DEV_TEST_REMOTE_LEASE", "DEV_TEST_REUSE_DIR",
@@ -306,9 +307,15 @@ def plugin_pins() -> list[str]:
                    if any(point.group == "pytest11" for point in d.entry_points)})
 
 
+@functools.cache
+def installed_owners() -> dict[str, list[str]]:
+    """Top-level module name to the installed distributions that provide it, read once per process."""
+    return dict(metadata.packages_distributions())
+
+
 def pins_for(names: set[str]) -> list[str]:
     """``name==version`` of the installed distributions that provide the top-level ``names``."""
-    owners = metadata.packages_distributions()
+    owners = installed_owners()
     return sorted({f"{owner}=={metadata.version(owner)}" for name in names for owner in owners.get(name, ())})
 
 

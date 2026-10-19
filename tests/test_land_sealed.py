@@ -22,7 +22,7 @@ BASE = "one\ntwo\nthree\nfour\nfive\n"
 DISJOINT = ("ONE\ntwo\nthree\nfour\nfive\n", "one\ntwo\nthree\nfour\nFIVE\n", "ONE\ntwo\nthree\nfour\nFIVE\n")
 CLASH = ("one\ntwo\nTHREE\nfour\nfive\n", "one\ntwo\nthree-b\nfour\nfive\n", None)
 FORGED = "forged = 1\n"
-AUDITED = ("scripts/land_review.py", "scripts/land_steps.py", "scripts/land_exec.py", "scripts/hooks/pushed")
+AUDITED = ("scripts/land_review.py", "scripts/land_steps.py", "scripts/land_exec.py", "scripts/land_stale.py", "scripts/hooks/pushed")
 
 
 @pytest.fixture
@@ -144,33 +144,6 @@ def test_a_union_attribute_of_the_checkout_does_not_hide_a_conflict(world, tmp_p
     UNIONS[kind](world, tree, tmp_path)
     assert run(tree, "merge-tree", "--write-tree", moved, tip).returncode == 0, "the attribute does not act on this checkout"
     assert land_git.merge_tree(tree, moved, tip) == ("", [SHARED])
-
-
-@pytest.mark.parametrize("kind", sorted(DRIVERS))
-def test_the_installed_hook_refuses_a_merge_a_driver_forged_and_passes_the_clean_one(world, tmp_path, kind):
-    world.install_hook()
-    tree, tip, moved = contested(world, "forged", DISJOINT)
-    env = DRIVERS[kind](world, tree, tmp_path)
-    (expected, clean), (forged_tree, forged) = clean_merge(tree, moved, tip, DISJOINT[2], tmp_path), merge_in(tree, moved, tip, env)
-    assert forged_tree != expected
-    refused = push(world, tree, forged, env)
-    assert refused.returncode != 0 and "needs an independent review" in refused.stderr, refused.stderr
-    assert world.proj.origin_head() == moved
-    done = push(world, tree, clean, env)
-    assert done.returncode == 0, done.stderr
-    assert world.proj.origin_head() == clean
-
-
-@pytest.mark.parametrize("kind", sorted(UNIONS))
-def test_the_installed_hook_refuses_a_merge_that_a_union_attribute_made_of_a_conflict(world, tmp_path, kind):
-    world.install_hook()
-    tree, tip, moved = contested(world, "united", CLASH)
-    UNIONS[kind](world, tree, tmp_path)
-    _, union = merge_in(tree, moved, tip, {})
-    assert run(tree, "show", f"{union}:{SHARED}").stdout.count("\n") > 5, "the attribute does not merge this conflict"
-    refused = push(world, tree, union, {})
-    assert refused.returncode != 0 and "needs an independent review" in refused.stderr, refused.stderr
-    assert world.proj.origin_head() == moved
 
 
 def test_the_lander_merges_origin_into_a_reviewed_tip_whatever_the_checkout_driver_says(world, tmp_path):

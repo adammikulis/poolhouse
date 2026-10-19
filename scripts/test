@@ -62,8 +62,10 @@ import testjobs
 import testnode
 import testphases
 import testprelude
+import testreuse_key
 import testreuse_run
 import testreuse_store
+import testscope
 import testselectors
 import testslots
 import testslots_runner
@@ -115,6 +117,8 @@ def reused_files(command: list[str]) -> set[str]:
     if not (REUSE["on"] and files):
         return set()
     session = testreuse_run.Session(ROOT, command, files, reuse_store())
+    if session.narrow:
+        return set()
     try:
         looks = {file: session.lookup(file) for file in files}
         return {file for file, look in looks.items()
@@ -197,7 +201,7 @@ def execute_run(command, environment, tier, record: OutputRecord):
     index = shown.index("-n")
     want = int(shown[index + 1])
     shown[index + 1] = "{workers}"
-    shown.extend(["-p", "testslots_pytest", "-p", "testdurations", "-p", "testagentenv_pytest", "-p", "testphases"])
+    shown.extend(["-p", "testslots_pytest", "-p", "testdurations", "-p", "testagentenv_pytest", "-p", "testphases", "-p", "testinterrupt"])
     phases_fd, phases_name = tempfile.mkstemp(suffix=".phases.json")
     os.close(phases_fd)
     phases_file = Path(phases_name)
@@ -491,8 +495,7 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
                 raise testjobs.Refused(f"submit takes a tier: {', '.join(FOREGROUND)}")
             if inner[0] != "gate":
                 testselectors.validate(rest[1:], ROOT)
-            print(jobs.submit(inner, REUSE["agent"], ROOT, Path(__file__).resolve(),
-                              {"task": args.task}))
+            print(jobs.submit(inner, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task}))
             return 0
         if args.tier == "_job":
             return run_job(jobs, rest[0], args)
@@ -544,9 +547,14 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     """Run a recorded job in this detached process and record how it ended."""
     spec = jobs.read(job, "spec.json")
     me = {"pid": os.getpid(), "started": testreuse_store.process_start(os.getpid())}
+    if refusal := testscope.tier_refusal(spec["argv"][0], spec["argv"][1:], ROOT):
+        print(f"test: {refusal}", file=sys.stderr)
+        jobs.write(job, "status.json", {"state": "failed", "exit": 4, "finished": time.time(), "detail": refusal, **me})
+        return 4
     thread = REUSE["events"].job_started(job, spec)
     jobs.write(job, "status.json", {"state": "running", "at": time.time(), "thread": thread, **me})
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    jobs.watch_follower(job)
     state, code = "failed", 1
     flags = ["--task", args.task] if args.task else []
     try:
@@ -566,21 +574,23 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     return code
 
 
+def run_owner() -> dict:
+    """The owner of a run this process starts: its workspace identity, or a person's terminal when no agent harness started it.
+
+    An agent with no identity has none, and the job table refuses its run.
+    """
+    if REUSE["agent"].get("id") or testboard.agent_process():
+        return REUSE["agent"]
+    return {"id": "person", "parent": "", "source": "terminal"}
+
+
 def follow(argv: list[str], args: argparse.Namespace) -> int:
-    """Run a tier as a job and show its output until it ends; Ctrl-C cancels it."""
-    jobs, me = jobs_store(), REUSE["agent"].get("id", "")
+    """Run a tier as a job and show its output until it ends; Ctrl-C, SIGTERM and SIGHUP cancel it and wait for it to end."""
     try:
-        job = jobs.submit(argv, REUSE["agent"], ROOT, Path(__file__).resolve(),
-                          {"task": args.task, "exclusive": False})
-    except testjobs.Refused as error:
+        return jobs_store().follow(argv, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task})
+    except (testjobs.Refused, OSError) as error:
         print(f"test: {error}", file=sys.stderr)
         return 4
-    try:
-        status = jobs.wait(job, float("inf"), tail=True)
-    except KeyboardInterrupt:
-        print(f"\n{jobs.cancel(job, me, jobs.read(job, 'spec.json').get('secret', ''))}")
-        return 130
-    return int(status.get("exit", 1))
 
 
 def build_node(files: list[str] | None = None) -> int:
@@ -588,7 +598,7 @@ def build_node(files: list[str] | None = None) -> int:
 
     A selection of named files that cannot start a node builds nothing and asks cargo nothing.
     """
-    if files and not testnode.needed(ROOT, files):
+    if files and not testnode.needed(ROOT, files, testreuse_key.import_facts(reuse_store().folder)):
         return 0
     try:
         os.environ[testnode.ENV] = str(testnode.ensure(ROOT, admit=lambda: testslots.lease(2, 1, label="node build"),
@@ -636,6 +646,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         os.environ.pop("DEV_TEST_AGENT", None)
     if args.on:
+        if refusal := testscope.tier_refusal(args.tier, rest, ROOT):
+            print(f"test: {refusal}", file=sys.stderr)
+            return 4
         import test_on
         return test_on.main(args, rest, ROOT, lambda tier, file: pytest_command(1, *TIER_FLAGS[tier], file), REUSE["on"])
     if args.confine:

@@ -55,7 +55,7 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - The automatically scheduled final broad job `20261015-203240-bc82` was cancelled at the owner's wrap boundary; it is not a passing full-suite receipt. Four test supervisors left by cancellation were stopped through the maintained installed controller under exact ownership/PID checks; shared node 85672 was preserved. Proof: `/private/tmp/poolhouse-wrap-stopped-owned-test-nodes.json`.
 
 - Development is `0.3dev`. Never publish `main`, tags or a release without its separate exact authorization. Use the installed repository GitHub App holder for development publication; never personal credentials or exported tokens.
-- **Do not use GitHub Actions:** the included minutes are exhausted; keep workflows disabled. Use the project `.venv` and isolated installed runtimes; no shared Python installation changes.
+- Use the project `.venv` and isolated installed runtimes; no shared Python installation changes.
 - Do not restore removed Codex hooks/settings/lifecycle configuration. Installed notification commands were exercised manually under the actual owning session.
 
 ### Blocked public contract batch — preserved, not landed

@@ -95,9 +95,39 @@ def test_no_checkout_takes_its_ref_from_an_input(step):
     assert "inputs." not in str((step.get("with") or {}).get("ref", ""))
 
 
-def test_concurrent_runs_of_one_ref_cancel_each_other():
+def test_concurrent_runs_of_one_ref_share_a_group():
     assert CI["concurrency"]["group"] == "ci-${{ github.ref }}"
-    assert CI["concurrency"]["cancel-in-progress"] is True
+
+
+@pytest.mark.parametrize("name", ["ci.yml", "release-dry-run.yml", "pool-check.yml"])
+def test_only_a_superseded_pull_request_run_is_cancelled(name):
+    """A newer push cancels the older run of a pull request and no run of any other event."""
+    concurrency = read(name)["concurrency"]
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+
+
+REDTEAM_PATHS = ["src/poolhouse/**", "tests/redteam*/**", "tests/test_redteam_*.py", "docs/redteam/**", "scripts/redteam*"]
+
+
+def test_the_redteam_runs_on_a_push_and_a_pull_request_that_touch_what_it_attacks():
+    """The workflow file is not on the default branch, so a schedule alone never starts it."""
+    triggers = read("redteam.yml")["on"]
+    assert triggers["push"]["branches"] == ["0.3dev"]
+    for event in ("push", "pull_request"):
+        assert set(REDTEAM_PATHS) <= set(triggers[event]["paths"]), event
+
+
+def test_the_redteam_installs_the_extras_its_tests_import():
+    """The red-team tests import the keystore and the web and store layers (collection fails without them)."""
+    install = next(s["run"] for s in read("redteam.yml")["jobs"]["redteam"]["steps"] if "pip install" in str(s.get("run", "")))
+    extras = install.split('".[')[1].split("]")[0].split(",")
+    assert {"test", "redteam", "memory", "store", "hub", "web", "privacy", "guardrails", "mcp", "fleet-onboard"} <= set(extras)
+
+
+def test_a_redteam_run_cancels_only_a_superseded_pull_request_run():
+    concurrency = read("redteam.yml")["concurrency"]
+    assert concurrency["group"] == "redteam-${{ github.ref }}"
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
 def test_release_please_tests_the_branch_it_opened():
@@ -281,6 +311,31 @@ def test_the_bundle_is_set_up_and_opened_in_a_browser():
     assert any("packaging/smoke.py" in run for run in bundle_runs())
 
 
+def windows_node_installs() -> list[tuple[str, str]]:
+    """Each ``pip install`` line that comes before the Windows node tests, with its workflow."""
+    found = []
+    for name, workflow in (("ci.yml", CI), ("release-build.yml", BUILD)):
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                run = str(step.get("run", ""))
+                if "tests/test_node_windows.py" not in run:
+                    continue
+                found += [(name, line) for line in run.splitlines() if "pip install" in line
+                          and "pytest" in line]
+    return found
+
+
+def test_the_windows_node_tests_have_a_pip_install_to_check():
+    assert {name for name, _ in windows_node_installs()} == {"ci.yml", "release-build.yml"}
+
+
+@pytest.mark.parametrize("name,line", windows_node_installs())
+def test_the_windows_node_tests_install_the_windows_api_package(name, line):
+    """The node's Windows code imports win32api and win32security; PYTHONPATH=src installs no
+    dependency of the package."""
+    assert "pywin32" in line.split(), f"{name} runs the Windows node tests without pywin32"
+
+
 def test_no_curl_is_piped_into_a_reader_that_stops_early():
     """`grep -q` closes the pipe on its first match; under pipefail curl then fails 23."""
     for run in bundle_runs():
@@ -355,6 +410,10 @@ def test_the_dry_run_path_filter_covers_what_ships_the_app():
         ".github/workflows/release*.yml",
     ):
         assert expected in paths
+
+
+def test_a_development_push_builds_the_bundles_only_for_what_ships_the_app():
+    assert DRY_RUN["on"]["push"]["paths"] == DRY_RUN["on"]["pull_request"]["paths"]
 
 
 def test_the_dry_run_calls_release_without_publishing():

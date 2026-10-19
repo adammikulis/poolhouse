@@ -8,7 +8,7 @@ use: same tier names, same printed lines, same content-keyed reuse, and `--on al
 scripts/test all tests/test_x.py --on "Windows PC"     those files on one device (name or fingerprint)
 scripts/test quick --on all                            the files the change reaches, on every other device
 scripts/test gate --on wsl-box                         the structural checks there
-scripts/test full --on all --split                     divide the list between this machine and the devices
+scripts/test full --on all --split                     (a person) divide the list between this machine and the devices
 poolhouse-test-devices                                  the devices: platform, free slots out of two, last result
 ```
 

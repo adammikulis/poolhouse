@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import threading
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -318,12 +319,13 @@ def test_a_torn_last_chain_line_is_recovered_not_fatal(project, tmp_path):
     assert reuse.chain_ok(store.folder) and kinds(store)[-1] == "pass"
 
 
-def test_an_unauthenticated_caller_cannot_cancel_an_unauthenticated_job(table):
+def test_a_run_with_no_owner_is_not_queued_and_a_job_left_without_one_is_cancelled_by_any_caller(table):
     jobs, fake, root = table
-    job = jobs.submit(["tests/x.py"], {"id": ""}, root, fake, {})
-    with pytest.raises(testjobs.Refused):
-        jobs.cancel(job, "")
-    jobs.cancel(job, "", secret=jobs.read(job, "spec.json")["secret"])
+    with pytest.raises(testjobs.Refused, match="no workspace identity"):
+        jobs.submit(["tests/x.py"], {"id": ""}, root, fake, {})
+    jobs.write("old", "spec.json", {"id": "old", "argv": ["tests/x.py"], "owner": {"id": ""}})
+    jobs.write("old", "status.json", {"state": "queued", "at": time.time()})
+    assert jobs.cancel("old", "bob").endswith("cancelled")
 
 
 def test_failing_class_tests_get_node_ids_with_the_class(table):

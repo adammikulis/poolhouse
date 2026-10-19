@@ -639,6 +639,12 @@ def test_a_phrase_that_ends_in_a_variable_letter_is_not_a_name(tmp_path, phrase)
     assert code == 0, said
 
 
+def test_a_sentence_break_between_single_letters_is_not_a_name(tmp_path):
+    where = repo(tmp_path, {"nodes": [], "messages": {}})
+    code, said = check(where, tmp_path, notes="the step fails because " + "Y" + ". " + "A" + " report names the fix.\n")
+    assert code == 0, said
+
+
 def test_the_other_lone_capitals_keep_their_protection(tmp_path):
     where = repo(tmp_path, {"nodes": [], "messages": {}})
     name = "Jane " + "N"

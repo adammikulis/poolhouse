@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import testnode
 
@@ -15,6 +17,7 @@ RUSTUP_HOME = os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup"))
 CARGO_HOME = os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))
 
 
+@pytest.mark.timeout(600)
 def test_shared_native_governance_rejects_bad_checkpoints_and_retains_late_evidence(tmp_path):
     staged = tmp_path / "workspace"
     testnode.stage(ROOT / "app", testnode.sources(ROOT / "app"), staged)

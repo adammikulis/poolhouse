@@ -67,18 +67,25 @@ def test_submit_returns_at_once_and_the_job_survives_to_completion(table):
     assert jobs.result(job, root)["failing"] == []
 
 
-def test_cancel_stops_a_running_job_for_its_owner_only(table):
+def test_cancel_stops_a_running_job_for_anyone_and_logs_who(table):
     jobs, _, _ = table
     job = start(table, ["tests/x.py", "60", "0"])
     deadline = time.monotonic() + 20
     while jobs.state(job).get("state") != "running" and time.monotonic() < deadline:
         time.sleep(0.1)
     time.sleep(0.5)
-    with pytest.raises(testjobs.Refused, match="belongs to alice"):
-        jobs.cancel(job, "bob")
-    assert jobs.cancel(job, "alice").endswith("cancelled")
+    assert jobs.cancel(job, "bob").endswith("cancelled")
     assert jobs.wait(job, 20)["state"] == "cancelled"
-    assert "already cancelled" in jobs.cancel(job, "alice")
+    assert f"test: cancelled by bob running in {Path.cwd()}" in (jobs.path(job) / "log").read_text()
+    assert "already cancelled" in jobs.cancel(job, "")
+
+
+@pytest.mark.parametrize("owner", [{}, {"id": ""}, {"id": []}, None, "alice"])
+def test_a_run_with_no_owner_is_not_recorded_or_started(table, owner):
+    jobs, _, _ = table
+    with pytest.raises(testjobs.Refused, match="no workspace identity"):
+        start(table, ["tests/x.py", "1", "0"], owner)
+    assert jobs.ids() == []
 
 
 def test_only_one_whole_tier_job_runs_at_a_time(table):

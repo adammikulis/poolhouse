@@ -229,6 +229,57 @@ def _switches_to_a_branch(segment: str) -> bool:
     return len(rest) == 1 and not rest[0].startswith("-") and rest[0] not in {"main", "master"}
 
 
+RESTORE_FLAGS = frozenset({"--staged", "-S", "--worktree", "-W", "--quiet", "-q"})
+GLOB_OR_MAGIC = re.compile(r"[*?\[\]\\]|^:")
+
+
+def _blob(primary: Path, spec: str) -> str:
+    done = subprocess.run(["git", "-C", str(primary), "rev-parse", "--verify", "-q", spec],
+                          capture_output=True, text=True, timeout=5, check=False, env=_git_environment())
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def _holds_only_published(primary: Path, relative: str, file: Path) -> bool:
+    """Whether `file` and its staged copy are byte-identical to the blob at origin/<development> or at HEAD."""
+    published = {_blob(primary, f"{rev}:{relative}") for rev in (f"origin/{_branch(primary)}", "HEAD")} - {""}
+    done = subprocess.run(["git", "-C", str(primary), "hash-object", "--", str(file)],
+                          capture_output=True, text=True, timeout=5, check=False, env=_git_environment())
+    staged = _blob(primary, f":{relative}")
+    return done.returncode == 0 and done.stdout.strip() in published and staged in published
+
+
+def _restores_published_files(rest: str, verb: str, where: Path, primary: Path) -> bool:
+    """Whether `git restore [--source=REV] [--staged] [--worktree] -- <paths>` or `git checkout -- <paths>` names
+    only plain files whose content is already published at origin/<development> or HEAD."""
+    try:
+        words = shlex.split(rest, posix=os.name != "nt")
+    except ValueError:
+        return False
+    if "--" not in words:
+        return False
+    options, paths = words[:words.index("--")], [_unquote(one) for one in words[words.index("--") + 1:]]
+    flags = RESTORE_FLAGS if verb == "restore" else {"-q", "--quiet"}
+    index = 0
+    while index < len(options):
+        if options[index] in {"--source", "-s"} and verb == "restore":
+            index += 1
+        elif not (options[index] in flags or (options[index].startswith("--source=") and verb == "restore")):
+            return False
+        index += 1
+    if index != len(options) or not paths:
+        return False
+    root = primary.resolve()
+    for one in paths:
+        file = (where / one).resolve()
+        if GLOB_OR_MAGIC.search(one) or one in {".", ".."} or not file.is_file() or (where / one).is_symlink():
+            return False
+        if root not in file.parents or ".git" in file.relative_to(root).parts:
+            return False
+        if not _holds_only_published(primary, file.relative_to(root).as_posix(), file):
+            return False
+    return True
+
+
 def _worktree_target(segment: str) -> str | None:
     try:
         words = [_unquote(word) for word in shlex.split(segment, posix=os.name != "nt")]
@@ -288,6 +339,13 @@ def bash_refusal(command: str, cwd: str) -> str:
                 continue
             if primary and git["verb"] == "switch" and _switches_to_a_branch(segment):
                 continue
+            if primary and git["verb"] in {"restore", "checkout"}:
+                if _restores_published_files(segment[git.end():], git["verb"], where, primary):
+                    continue
+                return (f"`git {git['verb']}` changes the primary checkout. A restore of plain files "
+                        f"(`git restore -- <file>` or `git checkout -- <file>`, no glob, directory or `.`) is "
+                        f"allowed when each file already holds exactly what origin/{_branch(primary)} or HEAD "
+                        f"holds. " + USE_A_WORKTREE.format(primary=primary))
             if primary and not (git["verb"] == "merge" and _landing(segment)):
                 what = ("`git merge` in the primary checkout lands one branch: "
                         "`git merge --ff-only <branch>`" if git["verb"] == "merge"

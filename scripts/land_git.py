@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import atexit
 import functools
 import os
@@ -9,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -235,16 +237,68 @@ def conflicted(root: Path | str) -> list[str]:
     return sorted({row.split("\t", 1)[1] for row in rows if "\t" in row})
 
 
+def imported_names(source: bytes) -> set[str]:
+    """The top-level module names the Python ``source`` imports; empty when it does not parse."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return set()
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            names.add(node.module.split(".")[0])
+    return names
+
+
+def lander_modules(read: Callable[[str], bytes | None]) -> set[str]:
+    """scripts/land and every scripts/ module it imports, directly or through another, as ``read`` returns the files."""
+    found = {"scripts/land"} if read("scripts/land") is not None else set()
+    pending = list(found)
+    while pending:
+        for module in imported_names(read(pending.pop()) or b""):
+            name = f"scripts/{module}.py"
+            if name not in found and read(name) is not None:
+                found.add(name)
+                pending.append(name)
+    return found
+
+
+def lander_set(names: set[str], read: Callable[[str], bytes | None]) -> set[str]:
+    """The lander files among the scripts/ files ``names``: those matching LANDER and the modules lander_modules finds through ``read``."""
+    return {name for name in names if LANDER.fullmatch(name)} | lander_modules(read)
+
+
+def commit_reader(root: Path | str, commit: str) -> tuple[set[str], Callable[[str], bytes | None]]:
+    """The scripts/ files of ``commit`` and a reader of their bytes that returns None for a file the commit lacks."""
+    listed = {name for name in sealed(root, "ls-tree", "--name-only", "-z", commit, "scripts/").stdout.split("\0") if name}
+    return listed, lambda name: blob(root, commit, name) if name in listed else None
+
+
 def lander_problem(top: Path | str, commit: str) -> str:
-    """The first lander file (scripts/land*, scripts/affected*) whose bytes in the checkout ``top`` differ from those in ``commit``, or an empty string."""
-    listed = sealed(top, "ls-tree", "--name-only", "-z", commit, "scripts/").stdout.split("\0")
-    stored = {name for name in listed if LANDER.fullmatch(name)}
-    present = {f"scripts/{p.name}" for p in (Path(top) / "scripts").iterdir() if p.is_file() and LANDER.fullmatch(f"scripts/{p.name}")}
+    """The first lander file (scripts/land*, scripts/affected*, every scripts/ module they import) whose bytes in the checkout ``top`` differ from those in ``commit``, or an empty string."""
+    listed, from_commit = commit_reader(top, commit)
+
+    def from_checkout(name: str) -> bytes | None:
+        path = Path(top) / name
+        return path.read_bytes() if path.is_file() else None
+
+    here = {f"scripts/{p.name}" for p in (Path(top) / "scripts").iterdir() if p.is_file()}
+    stored = lander_set(listed, from_commit)
+    present = lander_set(here, from_checkout)
     for name in sorted(stored | present):
-        want = blob(top, commit, name) if name in stored else None
-        if want is None or name not in present or (Path(top) / name).read_bytes() != want:
+        want = from_commit(name)
+        if want is None or name not in present or from_checkout(name) != want:
             return name
     return ""
+
+
+def lander_moved(root: Path | str, old: str, new: str) -> str:
+    """The first lander file whose bytes differ between the commits ``old`` and ``new`` (one that only one of them has counts), or an empty string."""
+    names_old, read_old = commit_reader(root, old)
+    names_new, read_new = commit_reader(root, new)
+    return next((n for n in sorted(lander_set(names_old, read_old) | lander_set(names_new, read_new)) if read_old(n) != read_new(n)), "")
 
 
 def refuse_protected(*names: str) -> None:

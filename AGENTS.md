@@ -19,8 +19,8 @@ The rules never to break, then the ones needed every hour; each names the sectio
    built (1).
 8. **Do what was said, when and in the order said**; never postponed, reordered or widened; a blocker is one line; no
    agent sets a limit on the work (2).
-9. **Decide what you can; ask only owner-only decisions**, ranked by what is correct; never loosen a guard for a green
-   gate (2).
+9. **Decide what you can; ask only owner-only decisions**, ranked by what is correct; a guard or rule in the way of
+   what the owner ordered is changed, never cited as the reason it cannot be done (2).
 10. **Nothing blocks on a person**: a person-only step is asked once and everything else goes on, with the safe default
     in force (2).
 11. **Investigate a failure before anything is retried**; a slow gate is a defect and a timeout is never the fix (2, 5).
@@ -36,7 +36,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 19. **Land by "Landing, step by step"**: `scripts/land BRANCH`, the lead's hand landing only when the change fixes the
     lander; a worker never pushes by hand; clean up before reporting (4).
-20. **Test your own change with explicit `scripts/test` selectors**; the main agent runs shared gates once per batch
+20. **Test your own change with explicit `scripts/test` selectors**, at most 30 files and never the full suite (GitHub runs it); the main agent runs shared gates once per batch
     (5).
 
 Contents: [1 Hard floors](#1-hard-floors) | [2 How to work](#2-how-to-work) |
@@ -181,6 +181,12 @@ its own item after the landing. A blocker is reported as "Reporting a problem" s
 owner names (for example "cut the release, then work on the next development branch") is used from then on. Briefs to
 workers state exactly what to land and forbid additions.
 
+**The owner's order beats a rule.** When an order needs a change this file, another rule file, a hook, a guard or a gate
+forbids, the agent changes that rule, hook, guard or gate in the same piece of work and does what was ordered, with one
+line in the commit message naming the order. It never stops to cite the rule as the reason the order cannot be carried
+out, and never asks again for what the owner has already said. Only the floors that no agent can reach at all (the
+person's keystore, secrets, the administrator prompt) stay a person's, and `main` still waits for the owner's approval.
+
 **Limits on the work belong to the owner.** A cost or speed goal is met by removing waste (retries, rework, duplicate
 runs, idle workers, work nobody asked for), never by shrinking what was asked. No agent sets a cap on coverage, depth,
 rows, findings, tool calls or rounds beyond the ones written in these rules or named by the owner. If a brief imposes any
@@ -204,9 +210,9 @@ you chose.
 plan, a recommending report) are ordered by what is correct for the product: security, intent, long-term cost; never by
 ease to build, never marked "Recommended" for it, never dropped for being more work. State effort and cost as facts
 beside an option, never as its rank. Before recommending, ask whether the first option weakens a guard, a test or a
-boundary: if so it is not the recommendation and is named the weaker one. A guard is never loosened (a wider allowlist,
-an excused path, a skipped check) to turn a gate green: fix the cause; a change that narrows a guard goes to the owner
-as a decision with the correct option first.
+boundary: if so it is named the weaker one. A guard that stands in the way of what the owner ordered is changed or
+removed by the agent, and the commit message says which guard and which order. An agent never asks the owner whether to
+loosen a guard the owner has already said to loosen.
 
 **Never hand the owner a command an agent can run.** "Please run this" is the exception, not a way to finish a task. An
 agent runs every command it can, restarts what it stops, and fixes a service that needs a person's step after a normal
@@ -230,6 +236,11 @@ Fix it, then say what you fixed. Raise a problem you did not fix only if you are
 decision only the owner can make, hardware or an account you lack, or fixing it would go outside what was asked. Say
 which, in one line, at once, and do every part that is not blocked.
 
+- **A problem comes with its fix.** A message that brings the owner a problem says in the same message what will be
+  changed to remove it, and who is changing it: the concrete fix, or the one decision the owner must make with the fix as
+  the first option. A message that lists what is wrong, or several bad designs, and stops there is wrong: the agent has
+  not finished investigating. An obstacle (a guard, a rule, a refusal, a lock, a retired identity, a queue) is never
+  reported as a fact of the system; it is a thing to change, and the message names the change.
 - **Say it short.** A few lines, result or question first, findings as a list; prose that has to be mined is work handed
   back.
 - **Dependencies and root causes.** Do not leave a relevant regression, security issue or missing prerequisite
@@ -537,7 +548,7 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
   Every agent starting a task, finishing one or returning from a wait fetches and fast-forwards development first; a
   local-only commit on it is not left past the end of its task. Do not accumulate ready branches, wait for every worker,
   impose broad development holds, or defer publication or activation behind unrelated development or work, another
-  feature, refactoring, cleanup or background full suites; keep authorization, independent review and required checks
+  feature, refactoring, cleanup or the GitHub run; keep authorization, independent review and required checks
   intact. Serialize development mutations with a short-lived checked branch claim, released promptly after sync.
 - **Keep landing short.** A ready branch lands the moment it is verified and never waits for a day, an hour or
   another task. Run `git cherry <dev> <branch>` before porting and drop equivalent patches; a tree already gated is not
@@ -560,8 +571,8 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
 - Work that changes an architectural premise (host broker, transport, authority) gets a board note and the coordinator's
   acknowledgement before it is built. A "superseded" verdict names the development-branch commit that replaces each
   behaviour it drops. A feature is not landed until a person can reach it in the interface.
-- A conflict resolution never weakens an authority, locality or verification check; touching one needs a second reviewer
-  and a test failing against the weakened form. A diff removing or weakening an assertion in a red-team, guard or
+- A conflict resolution does not weaken an authority, locality or verification check by accident; a weakening the owner
+  ordered is made on purpose and named in the commit message. A diff removing or weakening an assertion in a red-team, guard or
   authority test is refused by `scripts/hooks/weakened-assertions` (commit-msg hook and CI) unless the commit message
   carries a `Reviewed-by-second:` line.
 - Code on the default path of `scripts/test` or a hook has a measured fixed cost and a test that bounds it.
@@ -651,18 +662,19 @@ Agents test their own changed behavior with reviewed explicit affected selectors
 (`scripts/test all tests/<affected-file>...`), including the relevant browser, subprocess and packaging tests for
 changed surfaces (the slow tests for packaging, page and Fleet changes). Report the exact tree, commands, results and
 limitations. Invalid selectors fail before admission; never replace a missing selector with an unreviewed omission.
-Documentation-only changes need consistency review and clean diffs. Workers do not run shared gates or full suites, and
-nobody runs a full suite after every intermediate commit or a second full suite before every merge.
+Documentation-only changes need consistency review and clean diffs. **The full suite is GitHub's job**: the `ci`
+workflow runs it on every pushed commit, and an agent never runs one locally. For an agent `scripts/test` refuses the
+`fast`, `full`, `slow` and `all` tiers when they name no test file or more than 30, and the broker admits no agent run
+of more than 30 test files (`quick` and `gate` stay allowed). Workers do not run shared gates.
 
 - The main coordinator obtains another agent's review for each security-adjacent branch and assembles the batch in a
   claimed checkout (an isolated worktree for concurrent work or conflicts). It runs the shared structural/security
   checks once on the combined tree before the primary fast-forward and publication: `scripts/test gate`,
   `scripts/budgets`, `scripts/redteam_coverage.py --check`, clean generated references, layer and wiring checks,
   serving-bypass checks and the human-only floor. It repeats incremental affected checks when remote reconciliation or a
-  later change touches their surface, handles full end-to-end verification, owns `scripts/test quick` (its cold-map
-  recording and fallback can start full runs), and schedules full and full red-team suites in the background, one
-  background full suite at a time. Shared checks are not repeated for every leaf branch or intermediate commit. Do not
-  raise budgets or weaken guards to clear a check.
+  later change touches their surface and owns `scripts/test quick`. The full suite is the GitHub
+  run of the pushed commit; its result, not a local run, is the end-to-end verification. Shared checks are
+  not repeated for every leaf branch or intermediate commit. Do not raise budgets to clear a check.
 - Gate cost is per batch, scaled to the diff: combine all ready leaves into one run; documentation-only diffs need a
   clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff
   (`scripts/land`). A tree that already passed a check is not checked again (`reused from <id>`); a failure that
@@ -688,7 +700,7 @@ Mechanics: tests/README.md, docs/test-execution.md, docs/test-reuse.md, docs/age
 - **A slow gate is a defect, and a timeout is never the fix.** A gate, test run or command far over its usual time, or
   one that hits a limit, is investigated the same turn from the batch record, runner log, per-test durations and broker
   queue waits, and the cause is fixed (section 2, "Investigate a failure before anything is retried"). No agent raises a
-  timeout or idle limit, loosens a guard, skips a gate or resubmits unchanged to get past one. A gate that aborts on a
+  timeout or idle limit, skips a gate or resubmits unchanged to get past one. A gate that aborts on a
   limit requeues once, then is ejected to its requester with the slow phase named; no landing request waits for a
   person.
 - **Reuse.** The report says `ran` or `reused from <run id>` per file, and `--no-reuse` forces execution; say "reused"

@@ -30,11 +30,7 @@ def workflows() -> dict:
 
 
 def ci() -> dict:
-    return workflows()["jobs"]["test"]
-
-
-def entries() -> list[dict]:
-    return ci()["strategy"]["matrix"]["include"]
+    return workflows()["jobs"]["shards"]
 
 
 def steps() -> list[dict]:
@@ -57,7 +53,7 @@ def test_the_runner_never_lets_the_credential_helper_be_consulted():
 def test_the_runner_installs_what_ci_installs():
     text = (RUNNER.parent / "test-on-linux-setup").read_text(encoding="utf-8")
     install = next(s["run"] for s in steps() if s.get("name") == "install test dependencies")
-    for package in ("pytest-xdist", "numpy", "psutil", "pillow", "networkx", "gguf",
+    for package in ("pytest-xdist", "pytest-timeout", "numpy", "psutil", "pillow", "networkx", "gguf",
                     "safetensors"):
         assert package in text, f"the container does not install {package}, and CI does"
     extras = re.search(r'-e "(\.\[[^\]]*\])"', install).group(1)
@@ -84,15 +80,16 @@ def test_the_runner_passes_pytest_arguments_through():
     assert 'POOLHOUSE_LINUX_SINGLE="$SINGLE"' in text
 
 
-def test_every_matrix_entry_runs_the_slow_tests_on_ubuntu():
-    assert {e.get("pytest") for e in entries()} == {"--slow"}
-    assert {e["os"] for e in entries()} == {"ubuntu-latest"}
+def test_every_shard_runs_the_slow_tests_on_ubuntu():
+    run = next(s["run"] for s in steps() if s.get("name") == "tests")
+    assert "--slow" in run.split()
+    assert ci()["runs-on"] == "ubuntu-latest"
 
 
 def test_no_push_waits_on_macos():
     """A macOS run outlasts the gap between two pushes, so one on the push path is
     cancelled by the next push and never reports."""
-    assert {e["os"] for e in entries()} == {"ubuntu-latest"}
+    assert ci()["runs-on"] == "ubuntu-latest"
     when = workflows()["jobs"]["macos"]["if"]
     assert "github.event_name == 'schedule'" in when
     assert "github.event_name == 'workflow_dispatch'" in when
