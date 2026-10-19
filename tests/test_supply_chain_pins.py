@@ -122,6 +122,26 @@ def test_a_model_downloaded_through_a_pipeline_that_lists_every_host_is_not_pinn
     assert str(final) in waiting.reason
 
 
+@pytest.mark.parametrize("allowed", [("*.*",), ("?*",)])
+def test_a_model_downloaded_through_a_wildcard_allow_list_is_not_pinned_as_a_pull(tmp_path, site, pipe, allowed):
+    body = gguf_bytes(extra=4096)
+    site.add("/m.gguf", body, headers={"Content-Type": "application/octet-stream"})
+    anywhere = dataclasses.replace(pipe, policy=net.Policy(allowed=allowed, path=tmp_path / "all.jsonl"))
+    final = home.home() / "models" / "m.gguf"
+    net.download(site.base + "/m.gguf", final, net.Want(), anywhere)
+    assert final.read_bytes() == body and str(final) not in pins()
+
+
+def test_a_model_downloaded_with_a_wildcard_in_the_environment_allow_list_is_not_pinned_as_a_pull(tmp_path, site, pipe, monkeypatch):
+    body = gguf_bytes(extra=4096)
+    site.add("/m.gguf", body, headers={"Content-Type": "application/octet-stream"})
+    monkeypatch.setenv("POOLHOUSE_NET_ALLOW_HOSTS", "*")
+    wide = dataclasses.replace(pipe, policy=net.Policy(allowed=(), path=tmp_path / "all.jsonl"))
+    final = home.home() / "models" / "m.gguf"
+    net.download(site.base + "/m.gguf", final, net.Want(), wide)
+    assert final.read_bytes() == body and str(final) not in pins()
+
+
 def test_a_copy_of_a_model_downloaded_through_a_pipeline_that_lists_every_host_is_not_vouched_for(tmp_path, site, pipe):
     body = gguf_bytes(extra=4096)
     site.add("/m.gguf", body, headers={"Content-Type": "application/octet-stream"})

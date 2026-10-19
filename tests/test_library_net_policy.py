@@ -142,3 +142,22 @@ def test_the_library_pipeline_keeps_the_guards_that_are_not_a_host_list(unsealed
     assert [type(s) for s in lib.scanners] == [type(s) for s in net.default().scanners]
     assert lib.policy.allowed == policy.ANYWHERE
 
+
+
+@pytest.mark.parametrize("allowed", [("*",), ("*.*",), ("api.acme.example", "?*"), ("*.invalid",)])
+def test_an_allow_list_that_matches_any_host_lists_every_host_however_it_is_spelled(allowed, tmp_path):
+    assert net.Policy(allowed=allowed, path=tmp_path / "approvals.jsonl").lists_every_host()
+
+
+def test_an_allow_list_of_named_hosts_does_not_list_every_host(tmp_path):
+    named = net.Policy(allowed=("api.acme.example", "*.cdn.acme.example"), path=tmp_path / "approvals.jsonl")
+    assert not named.lists_every_host() and not net.default().policy.lists_every_host()
+    assert not net.Policy(allowed=(), path=tmp_path / "approvals.jsonl").lists_every_host()
+
+
+@pytest.mark.parametrize("hosts", ["*", "*.*", "api.acme.example,*"])
+def test_a_wildcard_in_the_environment_allow_list_lists_every_host(monkeypatch, tmp_path, hosts):
+    monkeypatch.setenv(policy.ENV, hosts)
+    assert net.Policy(allowed=("api.acme.example",), path=tmp_path / "approvals.jsonl").lists_every_host()
+    monkeypatch.setenv(policy.ENV, "edge.acme.example")
+    assert not net.Policy(allowed=("api.acme.example",), path=tmp_path / "approvals.jsonl").lists_every_host()
