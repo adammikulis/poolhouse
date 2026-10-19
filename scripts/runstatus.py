@@ -118,10 +118,10 @@ def github() -> tuple[list[str], list[str]]:
         return [f"github: {why}"], []
 
 
-def report(now: float) -> list[str]:
-    """The verdict line followed by the three sections."""
+def report(now: float, jobs: bool = True) -> list[str]:
+    """The verdict line followed by the three sections (the test jobs only when ``jobs``)."""
     lines, problems = local(now)
-    lines += test_jobs()
+    lines += test_jobs() if jobs else []
     shown, found = github()
     lines += shown
     problems += found
@@ -134,6 +134,6 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--verdict", action="store_true", help="print only the first line")
     args = parser.parse_args(argv)
-    lines = report(time.time())
+    lines = report(time.time(), jobs=not args.verdict)
     print("\n".join(lines[:1] if args.verdict else lines))
     return 0
