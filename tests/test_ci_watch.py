@@ -12,7 +12,9 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import ci_watch
@@ -72,6 +74,7 @@ class Rig:
         self.bin.mkdir()
         (self.bin / "git").symlink_to(shutil.which("git") or "git")
         self.state = Path(self.proj.root / ".git" / "ci-watch")
+        self.status_url = "http://127.0.0.1:1/summary.json"
         self.scenario(runs=[])
 
     def install_gh(self) -> None:
@@ -108,7 +111,8 @@ class Rig:
 
     def env(self, who=None) -> dict[str, str]:
         """The environment of a watcher: this node, the pusher (or nobody) and a PATH of this rig's bin folder alone."""
-        return self.node.env(who, {"PATH": str(self.bin), "FAKE_GH_DIR": str(self.base)})
+        return self.node.env(who, {"PATH": str(self.bin), "FAKE_GH_DIR": str(self.base),
+                                   "POOLHOUSE_GITHUB_STATUS_URL": self.status_url})
 
     def watch(self, sha: str, *extra: str, who="pusher") -> tuple[int, str]:
         """Run ``scripts/ci_watch.py`` for ``sha`` as the pusher (by default); the exit status and the output."""
@@ -281,6 +285,34 @@ def test_a_run_still_going_at_the_second_mark_is_also_announced_as_blocked(rig):
     assert len(rig.stuck()) == 2
     (line,) = rig.blocked()
     assert sha[:12] in line and "shard 3 on Python 3.13" in line and len(line) <= 200, line
+
+
+def test_an_open_actions_incident_leaves_out_the_blocked_announcement(rig):
+    summary = {"status": {"description": "Partial System Outage"}, "components": [],
+               "incidents": [{"name": "Delayed Actions runs", "components": [{"name": "Actions"}]}]}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps(summary).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    rig.status_url = f"http://127.0.0.1:{server.server_port}/summary.json"
+    try:
+        rig.install_gh()
+        sha = rig.commit("stuck-incident")
+        rig.going(sha, SHARDS, age_s=0, watch_sleep=6)
+        rig.watch(sha, "--warn-s", "1", "--block-s", "3")
+    finally:
+        server.shutdown()
+    assert len(rig.stuck()) == 2 and rig.blocked() == []
 
 
 def test_a_stuck_run_is_told_once_per_commit_and_mark(rig):

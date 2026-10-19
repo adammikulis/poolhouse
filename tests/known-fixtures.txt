@@ -348,3 +348,5 @@ Low Power Mode
 Apple M9 Ultra
 Apple M1
 Some Editor
+Partial System Outage
+All Systems Operational

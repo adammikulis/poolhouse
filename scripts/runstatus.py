@@ -4,6 +4,10 @@ Stuck means: a GitHub run still going after 25 minutes; a GitHub run queued for 
 workflow has started after it (one queued behind a running run of its workflow is only flagged after 25 minutes); a local run past
 its estimate by 5 minutes (a run without an estimate, or with one under 15 minutes, past 20 minutes in total); a queued local run
 older than 5 minutes with nothing running. A missing gh or login is one line in the github section and never an error.
+
+When a GitHub run is flagged, githubstatus.com is read (scripts/github_status.py). An open incident for Actions makes the finding
+information, not a verdict: `ok (github degraded: <incident>; ci b3abc57 queued 18 min)`. Without one the verdict gains
+`github reports: <status description>; <incident names>`.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import sys
 import time
 from pathlib import Path
 
+import github_status
 import srcpath  # noqa: F401
 import testslots
 from ci_watch import Gh, Skipped, age_s
@@ -106,8 +111,9 @@ def queue_note(run: dict, rows: list[dict]) -> tuple[str, bool]:
     return "", age > QUEUED_S and not later
 
 
-def github() -> tuple[list[str], list[str]]:
-    """The development branch's recent runs with per-job states for those in progress, and what is stuck among them."""
+def github() -> tuple[list[str], list[str], github_status.Summary | None]:
+    """The development branch's recent runs with per-job states for those in progress, what is stuck among them and, when something
+    is, what githubstatus.com reports."""
     dev = development_branch()
     gh = Gh(ROOT)
     try:
@@ -132,19 +138,28 @@ def github() -> tuple[list[str], list[str]]:
             last = rows[0] if rows else {}
             lines.append(f"  nothing in progress; latest {last.get('workflowName', '?')} {last.get('status', '?')} {last.get('conclusion', '')}".rstrip()
                          if rows else "  no runs")
-        return lines, problems
+        return lines, problems, github_status.fetch() if problems else None
     except Skipped as why:
-        return [f"github: {why}"], []
+        return [f"github: {why}"], [], None
 
 
 def report(now: float, jobs: bool = True) -> list[str]:
     """The verdict line followed by the three sections (the test jobs only when ``jobs``)."""
     lines, problems = local(now)
     lines += test_jobs() if jobs else []
-    shown, found = github()
+    shown, found, said = github()
     lines += shown
-    problems += found
+    if said is not None and said.actions:
+        info = "; ".join(["github degraded: " + "; ".join(said.actions), *(p.removeprefix("github: ") for p in found)])
+        lines.append(f"  {info}")
+    else:
+        info = ""
+        problems += found
     head = "ok" if not problems else "STUCK: " + "; ".join(problems[:PROBLEMS_SHOWN]) + (f" (+{len(problems) - PROBLEMS_SHOWN} more)" if len(problems) > PROBLEMS_SHOWN else "")
+    if info and not problems:
+        head += f" ({info})"
+    elif said is not None and not info:
+        head += f". {said.line()}"
     return [head, *lines]
 
 

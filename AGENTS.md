@@ -500,7 +500,8 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
    No accept, claim, creator or lander lock is needed. The push check refuses Python that does not parse and data
    files, and a standing reject of that commit; nothing else.
 3. **Watch GitHub.** GitHub runs the full suite on the pushed commit. The CI watcher posts a red run to the session that
-   pushed it, naming the failing job and tests, and the pusher fixes it in the same turn.
+   pushed it, naming the failing job and tests, and the pusher fixes it in the same turn. GitHub CI is a signal, never a
+   gate: while githubstatus.com lists an open Actions incident, a stuck run is information, not a blocker.
 4. **Clean up.** Remove the worktree and branch once the commit is on `origin/<dev>` (`scripts/worktrees sweep`).
 
 - **A worker pushes its own branch.** The development branch is whichever branch the primary checkout is on

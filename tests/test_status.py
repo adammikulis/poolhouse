@@ -6,7 +6,9 @@ import json
 import shutil
 import subprocess
 import sys
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -58,6 +60,7 @@ class Rig:
         self.bin.mkdir()
         (self.bin / "git").symlink_to(shutil.which("git") or "git")
         self.holders: list[subprocess.Popen] = []
+        self.status_url = "http://127.0.0.1:1/summary.json"
         self.gh_scenario(runs=[], jobs=[])
 
     def install_gh(self) -> None:
@@ -81,7 +84,7 @@ class Rig:
 
     def status(self, *extra: str) -> tuple[int, list[str]]:
         env = {"PATH": str(self.bin), "DEV_TEST_SLOTS_DIR": str(self.slots), "FAKE_GH_DIR": str(self.base),
-               "HOME": str(self.base), "POOLHOUSE_DEV_BRANCH": "0.3dev"}
+               "HOME": str(self.base), "POOLHOUSE_DEV_BRANCH": "0.3dev", "POOLHOUSE_GITHUB_STATUS_URL": self.status_url}
         done = subprocess.run([sys.executable, str(SCRIPT), *extra], cwd=ROOT, env=env, capture_output=True, text=True,
                               check=False, timeout=120)
         return done.returncode, (done.stdout + done.stderr).splitlines()
@@ -164,7 +167,38 @@ def test_a_github_run_inside_twenty_five_minutes_is_ok_and_shows_its_jobs(rig):
 def test_a_queued_github_run_over_five_minutes_with_no_later_run_started_is_stuck(rig):
     rig.gh_scenario(runs=[rig.gh_run(13 * 60, "queued", 1, "pool-check", "b")], jobs=[])
     code, lines = rig.status()
-    assert code == 0 and lines[0] == "STUCK: github: pool-check bbbbbbb queued 13 min", lines
+    assert code == 0 and lines[0] == "STUCK: github: pool-check bbbbbbb queued 13 min. github reports: githubstatus.com did not answer (ServerUnreachable)", lines
+
+
+def serving(summary: dict) -> HTTPServer:
+    """A local server that answers every request with ``summary`` as JSON."""
+    body = json.dumps(summary).encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_an_open_actions_incident_makes_a_stuck_github_run_information(rig):
+    rig.gh_scenario(runs=[rig.gh_run(18 * 60, "queued", 1, "ci", "b")], jobs=[])
+    server = serving({"status": {"description": "Partial System Outage"}, "components": [],
+                      "incidents": [{"name": "Delayed Actions runs", "components": [{"name": "Actions"}]}]})
+    rig.status_url = f"http://127.0.0.1:{server.server_port}/summary.json"
+    try:
+        code, lines = rig.status()
+    finally:
+        server.shutdown()
+    assert code == 0 and lines[0].startswith("ok (github degraded: Delayed Actions runs"), lines
 
 
 def test_a_queued_github_run_inside_five_minutes_is_ok(rig):

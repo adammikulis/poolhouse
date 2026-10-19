@@ -7,7 +7,7 @@ A green run posts nothing. A red run posts one task message to the pushing sessi
 $POOLHOUSE_WORKSPACE_AGENT) naming the failing job and the first failing tests, and a run that is still red two pushes
 later is also announced as blocked. A run still going 25 minutes after it was created posts one message naming each job
 not finished and its age, and at 35 minutes another one and an announcement that it is blocked; each is posted once per
-commit. Without gh, without a login or with Actions off it prints one line and exits 0.
+commit; the blocked announcement is left out while githubstatus.com lists an open incident for Actions. Without gh, without a login or with Actions off it prints one line and exits 0.
 A second call for the same commit prints the first result. `scripts/hooks/pushed` starts it detached after an agent's push.
 """
 
@@ -24,6 +24,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import github_status
 import land_git as lg
 import srcpath  # noqa: F401
 
@@ -176,7 +177,7 @@ class Alarm:
 
         s = session.connect(cwd=self.repo, agent=self.agent)
         board_cli.delivered(s, s.name, "task", text, subject=f"ci stuck {self.sha[:12]} {int(mark)}")
-        if mark == self.marks[1]:
+        if mark == self.marks[1] and not github_status.fetch().actions:
             board_cli.announced(s, "blocked", f"ci run for {self.sha[:12]} on {self.dev} is stuck: {waiting}"[:190])
 
 
