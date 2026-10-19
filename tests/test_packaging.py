@@ -28,13 +28,13 @@ def test_the_web_interface_ships_in_the_fleet_wheel(tmp_path):
     wheel = build(tmp_path)
     names = zipfile.ZipFile(wheel).namelist()
 
-    from poolhouse.fleet.page import COMPONENTS
+    from poolhouse.fleet.page import COMPONENTS, EXPERIMENTAL
 
     for asset in ("shell.html", "style.css"):
         assert f"poolhouse/fleet/web/{asset}" in names, f"{asset} missing from {wheel.name}"
     for name in COMPONENTS:
-        assert f"poolhouse/fleet/web/components/{name}.html" in names, \
-            f"{name} missing from {wheel.name}"
+        assert (f"poolhouse/fleet/web/components/{name}.html" in names) == (name not in EXPERIMENTAL), \
+            f"{name} wrongly in or missing from {wheel.name}"
 
 
 @pytest.mark.slow
