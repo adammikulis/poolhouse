@@ -152,6 +152,11 @@ def cargo_root() -> Path:
     return Path(named) if named else account() / ".cache" / CARGO_FOLDER
 
 
+def node_folder(cache: Path | None = None) -> Path:
+    """The folder that holds the built node binaries, one per key: under the Rust build folder unless ``cache`` names another."""
+    return (cache or cargo_root()) / FOLDER
+
+
 def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
     """The workspace of ``app`` staged at a fixed path and the target folder every run with the same ``Cargo.lock`` and compiler shares, so
     only the crates whose files changed are compiled again; a run that stages different sources gets its own staged copy."""
@@ -191,7 +196,7 @@ def ensure(root: Path, *, cache: Path | None = None, cargo: str = "",
     toolchain = version("rustc", tool("rustc"), ["--version", "--verbose"])
     compiler = cargo or tool("cargo")
     version("cargo", compiler, ["--version"])
-    base = (cache or home.cache()) / FOLDER
+    base = node_folder(cache)
     base.mkdir(parents=True, exist_ok=True)
     app = root / "app"
     files = sources(app)

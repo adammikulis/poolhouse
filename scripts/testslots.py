@@ -11,9 +11,10 @@ import sys
 import tempfile
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import testqueue
@@ -29,9 +30,16 @@ HEAVY_MODULES = frozenset({
     "test_graph_store_scale",
 })
 
-MIN_RETRY_S, MAX_RETRY_S, RETRY_PER_AHEAD_S = 0.01, 0.5, 0.005
 WAIT_S = 3600.0
-NOTIFY = "notify"
+ALLOCATION = "allocation.json"
+"""The directory's record of the last admission pass: cap, workers in use, and the first requests in grant order."""
+FAST_S, SLOW_S = 0.005, 0.1
+"""Seconds between a waiter's looks at its own record: when the record is near the front of the queue, and when it is not."""
+REFRESH_S = 0.3
+"""The longest a waiter lets the admission pass go unrun while it waits (load, holders that died, aged requests)."""
+ALIVE_EVERY_S, STABLE_S, SCAN = 0.25, 0.05, 64
+"""Seconds between liveness checks of one record, the age at which a record may be cached, candidates tried per grant."""
+
 EXPORT_LEASE = contextvars.ContextVar("export_test_lease", default=True)
 CHECK_CANCELLED = contextvars.ContextVar("check_test_cancelled", default=lambda: None)
 
@@ -39,6 +47,12 @@ def slots_dir() -> Path:
     d = Path(os.environ.get("DEV_TEST_SLOTS_DIR") or Path.home() / ".cache" / "dev-test-slots")
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def pin_slots_dir() -> None:
+    """Set ``DEV_TEST_SLOTS_DIR`` to the machine-wide directory when it is unset; a set one is left alone and not made."""
+    if "DEV_TEST_SLOTS_DIR" not in os.environ:
+        os.environ["DEV_TEST_SLOTS_DIR"] = str(slots_dir())
 
 
 def _cores() -> int:
@@ -84,9 +98,12 @@ class Slot:
 
 
 @contextlib.contextmanager
-def _mutex(d: Path) -> Iterator[None]:
+def _mutex(d: Path, cancellable: bool = True) -> Iterator[None]:
+    """Hold the directory mutex; a wait for it stops with the caller's cancellation unless ``cancellable`` is false."""
     with (d / "mutex.lock").open("a+") as fh:
         while not take(fh):
+            if cancellable:
+                CHECK_CANCELLED.get()()
             time.sleep(0.01)
         try:
             yield
@@ -126,7 +143,7 @@ def _valid_record(data: object) -> bool:
     return (data["pid"] > 0 and data["want"] >= 0 and data["minimum"] > 0
             and data["granted"] >= 0 and (not data["want"] or max(data["minimum"], data["granted"]) <= data["want"])
             and isinstance(data.get("label"), str) and isinstance(data.get("token"), str)
-            and type(data.get("backfills", 0)) is int and 0 <= data.get("backfills", 0) <= 2
+            and type(data.get("backfills", 0)) is int and data.get("backfills", 0) >= 0
             and data.get("class", policy.INTERACTIVE) in policy.CLASSES)
 
 
@@ -167,20 +184,51 @@ def _publish(path: Path, record: dict) -> int:
         Path(name).unlink(missing_ok=True)
 
 
+_RECORDS: dict[str, tuple[tuple[int, int, int], dict]] = {}
+_VERIFIED: dict[str, float] = {}
+
+
+def _record(path: Path, wall: float) -> dict | None:
+    """The record in ``path``, parsed again only when the file changed; a record written in the last moments is never cached."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    signature = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+    cached = _RECORDS.get(str(path))
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if wall - stat.st_mtime >= STABLE_S and isinstance(data, dict):
+        _RECORDS[str(path)] = (signature, data)
+    return data
+
+
 def _read(d: Path, mine: Path | None = None) -> list[Slot]:
+    """The valid records of live leases; a record whose holder was last seen alive over ``ALIVE_EVERY_S`` ago is checked again and removed when its holder is gone."""
     out: list[Slot] = []
+    now, wall = time.monotonic(), time.time()
+    seen = set()
     for p in sorted(d.glob("*.slot")):
-        if p != mine and not _alive(p):
-            with contextlib.suppress(OSError):
-                p.unlink()
-            _notify(d)
-            continue
-        try:
-            data = json.loads(p.read_text())
-            if _valid_record(data):
-                out.append(Slot(p, data))
-        except (OSError, ValueError):
-            continue
+        key = str(p)
+        seen.add(key)
+        if p != mine and now - _VERIFIED.get(key, -ALIVE_EVERY_S * 2) >= ALIVE_EVERY_S:
+            if not _alive(p):
+                with contextlib.suppress(OSError):
+                    p.unlink()
+                _RECORDS.pop(key, None)
+                _VERIFIED.pop(key, None)
+                continue
+            _VERIFIED[key] = now
+        data = _record(p, wall)
+        if data is not None and _valid_record(data):
+            out.append(Slot(p, dict(data)))
+    for table in (_RECORDS, _VERIFIED):
+        for key in table.keys() - seen:
+            del table[key]
     return out
 
 
@@ -189,9 +237,22 @@ def status() -> dict:
     with _mutex(d):
         slots = _read(d)
     running = [s for s in slots if s.granted > 0]
+    now = time.time()
     return {"budget": budget(), "base": base_budget(), "in_use": sum(s.granted for s in running),
             "running": [s.data for s in running], "waiting": [s.data for s in slots if s.granted == 0],
-            "runs": testqueue.read_runs(d)}
+            "runs": testqueue.read_runs(d), "first": _blocker(_plan(slots, budget(), now), now)}
+
+
+def _blocker(plan: Plan, now: float) -> str:
+    """Who is first in line and why it is not running, or an empty string when nothing waits."""
+    if not plan.waiting:
+        return ""
+    head, free = plan.waiting[0].data, plan.cap - plan.used
+    if free < head["minimum"]:
+        why = f"it needs {head['minimum']} workers and {free} of {plan.cap} are free"
+    else:
+        why = f"{free} of {plan.cap} workers are free and the next admission pass grants it"
+    return f"first in line: pid {head['pid']} {head.get('label')}, waiting {now - float(head.get('since', now)):.0f}s: {why}"
 
 
 @dataclass
@@ -244,19 +305,29 @@ def _grant(me: Slot, waiting: list[Slot], capacity: tuple[int, int]) -> int:
         return 0
     first = waiting[0]
     if first.path != path:
-        if free >= first.data["minimum"] or first.data.get("backfills", 0) >= 2:
+        if free >= first.data["minimum"] or policy.reserved(first.data, time.time()):
             return 0
         first.data["backfills"] = first.data.get("backfills", 0) + 1
         first.path.write_text(json.dumps(first.data))
     return free if not want else min(want, free)
 
 
-def _restore_inode(path: Path, record: dict, fd: int) -> int:
-    if _owns_inode(fd, path):
-        return fd
-    replacement = _publish(path, record)
-    os.close(fd)
-    return replacement
+@dataclass
+class Held:
+    """The descriptor that holds a request's lock; it is replaced, and the old one closed, whenever the record is published again."""
+
+    fd: int
+
+    def replace(self, path: Path, record: dict) -> None:
+        """Publish ``record`` at ``path`` again and hold its lock instead."""
+        replacement = _publish(path, record)
+        old, self.fd = self.fd, replacement
+        os.close(old)
+
+
+def _restore_inode(path: Path, record: dict, held: Held) -> None:
+    if not _owns_inode(held.fd, path):
+        held.replace(path, record)
 
 
 def _own_records(directory: Path, path: Path, record: dict) -> list[Slot] | None:
@@ -264,7 +335,7 @@ def _own_records(directory: Path, path: Path, record: dict) -> list[Slot] | None
     owned = next((slot for slot in slots if slot.path == path), None)
     if owned is None:
         return None
-    if owned.data["token"] != record["token"] or owned.granted != record["granted"]:
+    if owned.data["token"] != record["token"] or (record["granted"] and owned.granted != record["granted"]):
         raise RuntimeError("testslots: lease record ownership changed")
     return slots
 
@@ -310,60 +381,177 @@ def _request(want: int, minimum: int | None, label: str, run_class: str) -> tupl
     return want, minimum, record
 
 
-def _decide(me: dict, path: Path, slots: list[Slot], cap: int) -> tuple[int, int, list]:
-    """The workers granted to the record at ``path`` now, the workers in use and the labels queued ahead of it."""
-    now = time.time()
+@dataclass
+class Plan:
+    """The queue at one moment: requests in grant order, the workers in use and the cap."""
+
+    waiting: list[Slot]
+    used: int
+    cap: int
+
+
+def _plan(slots: list[Slot], cap: int, now: float) -> Plan:
+    """The grant order of the waiting requests and the capacity in use."""
     queue = [s for s in slots if s.granted == 0]
     waiting = sorted(queue, key=lambda s: s.path) if policy.has_legacy(slots) else policy.order(queue, now)
-    used = sum(s.granted for s in slots)
-    granted = _grant(Slot(path, me), waiting, (cap, used))
-    place = next((i for i, s in enumerate(waiting) if s.path == path), 0)
-    return granted, used, [s.data.get("label") for s in waiting[:place]]
+    return Plan(waiting, sum(s.granted for s in slots), cap)
 
 
-def retry_after(ahead: int) -> float:
-    """Seconds a waiting lease sleeps before it decides again: a request with others ahead of it cannot be
-    granted before they are, and every decision reads every slot record."""
-    return min(MAX_RETRY_S, max(MIN_RETRY_S, RETRY_PER_AHEAD_S * ahead))
+def _store(slot: Slot) -> None:
+    """Write the slot's record into its file, in place so the holder's lock stays on the same file."""
+    slot.path.write_text(json.dumps(slot.data))
 
 
-def _stamp(d: Path) -> int:
-    """The modification time of the notify file, which moves when a lease is released or a share is granted."""
+def _allocate(slots: list[Slot], cap: int, now: float) -> Plan:
+    """Grant, in grant order, every request that fits and may be granted by any process; the plan of what still waits.
+
+    The nearest requests are marked ``front`` so they look at their records often and the rest rarely."""
+    plan = _plan(slots, cap, now)
+    pool = list(plan.waiting)
+    while pool and cap - plan.used >= 1:
+        for candidate in pool[:SCAN]:
+            workers = _grant(candidate, pool, (cap, plan.used))
+            if workers and not _alive(candidate.path):
+                with contextlib.suppress(OSError):
+                    candidate.path.unlink()
+                pool.remove(candidate)
+                break
+            if workers:
+                candidate.data["granted"] = workers
+                _store(candidate)
+                plan.used += workers
+                pool.remove(candidate)
+                break
+        else:
+            break
+    plan.waiting = pool
+    for index, slot in enumerate(pool):
+        near = index < cap + 12
+        if bool(slot.data.get("front")) != near:
+            slot.data["front"] = near
+            _store(slot)
+    return plan
+
+
+def _write_allocation(d: Path, plan: Plan) -> None:
+    """Record the pass: its cap, the workers in use and the first requests in grant order."""
+    document = {"cap": plan.cap, "used": plan.used, "queued": len(plan.waiting),
+                "order": [[slot.path.name, slot.data.get("label")] for slot in plan.waiting[:40]]}
+    temporary = d / f".{ALLOCATION}.{os.getpid()}.tmp"
+    temporary.write_text(json.dumps(document))
+    temporary.replace(d / ALLOCATION)
+
+
+def _pass(d: Path, cap: int) -> Plan:
+    """One admission pass under the directory mutex: read the records, grant what fits, record the pass."""
+    with _mutex(d):
+        plan = _allocate(_read(d), cap, time.time())
+        _write_allocation(d, plan)
+    return plan
+
+
+def _stale(d: Path, slack: float) -> bool:
+    """Whether the last admission pass is more than ``REFRESH_S`` plus ``slack`` seconds old."""
     try:
-        return (d / NOTIFY).stat().st_mtime_ns
+        return time.time() - (d / ALLOCATION).stat().st_mtime > REFRESH_S + slack
     except OSError:
-        return 0
+        return True
 
 
-def _notify(d: Path) -> None:
-    """Wake the waiters: they decide again when the notify file's time moves."""
-    with contextlib.suppress(OSError):
-        (d / NOTIFY).touch()
+def _saturated(d: Path) -> bool:
+    """Whether a recent admission pass left every worker in use, so a request that has just arrived cannot be granted yet."""
+    try:
+        document = json.loads((d / ALLOCATION).read_text())
+        return document["used"] >= document["cap"] and not _stale(d, 0.0)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
-def _record_grant(d: Path, me: dict, path: Path, slots: list[Slot], granted: int) -> None:
-    """Write the grant into the record; waiters that share the budget by arrival decide again."""
-    me["granted"] = granted
-    path.write_text(json.dumps(me))
-    if any(not slot.data.get("want") for slot in slots if slot.granted == 0 and slot.path != path):
-        _notify(d)
+def _own(path: Path) -> tuple[int, bool] | None:
+    """The workers granted to the record at ``path`` and whether it is near the front, or None when it cannot be read."""
+    try:
+        data = json.loads(path.read_text())
+        return int(data["granted"]), bool(data.get("front"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
-def _wait_for_change(d: Path, stamp: int, cap: int, pause: float) -> None:
-    """Sleep until a lease is released or a share is granted, the load moves the cap, or MAX_RETRY_S passes; a
-    waiter decides again only then, so a long queue does not read every record at every poll."""
-    end = time.monotonic() + MAX_RETRY_S
-    while time.monotonic() < end:
-        time.sleep(pause)
-        CHECK_CANCELLED.get()()
-        if _stamp(d) != stamp or budget() != cap:
-            return
+def _view(d: Path, name: str) -> tuple[int, list]:
+    """The workers in use and the labels of the requests ahead of the one in ``name``, from the last admission pass."""
+    try:
+        document = json.loads((d / ALLOCATION).read_text())
+        order = document["order"]
+        place = next((i for i, (found, _) in enumerate(order) if found == name), None)
+        return int(document["used"]), [label for _, label in (order if place is None else order[:place])]
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0, []
+
+
+@dataclass
+class Outcome:
+    """What one admission pass found for a waiting request."""
+
+    granted: int = 0
+    used: int = 0
+    ahead: list = field(default_factory=list)
+    republished: bool = False
+    skipped: bool = False
+
+
+def _attempt(path: Path, me: dict, held: Held, cap: int, skip: bool) -> Outcome:
+    """Run an admission pass for the record at ``path``; with ``skip`` a pass that another waiter has just run stands."""
+    d = path.parent
+    with _mutex(d):
+        _restore_inode(path, me, held)
+        if skip and not _stale(d, 0.0):
+            return Outcome(skipped=True)
+        slots = _own_records(d, path, me)
+        if slots is None:
+            held.replace(path, me)
+            return Outcome(republished=True)
+        plan = _allocate(slots, cap, time.time())
+        _write_allocation(d, plan)
+        mine = next(slot for slot in slots if slot.path == path)
+        place = next((i for i, slot in enumerate(plan.waiting) if slot.path == path), 0)
+        return Outcome(mine.granted, plan.used, [slot.data.get("label") for slot in plan.waiting[:place]])
+
+
+def _release(d: Path, path: Path, fd: int) -> None:
+    """Remove the record at ``path``, close its lock and grant what the freed workers allow; never stopped by a cancelled caller."""
+    cap = budget()
+    with _mutex(d, cancellable=False):
+        if sys.platform == "win32":
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            path.unlink()
+        if sys.platform != "win32":
+            os.close(fd)
+        with contextlib.suppress(OSError, ValueError):
+            _write_allocation(d, _allocate(_read(d), cap, time.time()))
+
+
+@dataclass
+class Notes:
+    """When a waiting request last said it was queued, and what it said."""
+
+    at: float
+    state: tuple | None = None
+
+    def due(self, now: float, state: tuple) -> bool:
+        """Whether to say it again: after twenty seconds, or on a changed state after one."""
+        if now - self.at >= 20 or (state != self.state and now - self.at >= 1):
+            self.at, self.state = now, state
+            return True
+        return False
 
 
 @contextlib.contextmanager
 def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambda m: print(m, file=sys.stderr, flush=True),
           run_class: str = policy.INTERACTIVE) -> Iterator[Lease]:
-    """Acquire a bounded CPU lease (shortest estimated work first, aged requests ahead), released on context exit or process death."""
+    """Acquire a bounded CPU lease (shortest estimated work first, aged requests ahead), released on context exit or process death.
+
+    Each pass of admission grants every request that fits, so a waiter looks at its own record, often when it is near the front of
+    the queue and rarely when it is not, and runs a pass itself only when it arrives or when none has run for ``REFRESH_S``."""
     _reject_nested()
     want, minimum, me = _request(want, minimum, label, run_class)
     d = slots_dir()
@@ -371,47 +559,49 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
     t0 = time.monotonic()
     deadline = t0 + wait_limit()
     with _mutex(d):
-        fd = _publish(path, me)
-    last_note = t0
-    last_state = None
+        held = Held(_publish(path, me))
+    notes = Notes(t0)
+    slack = int(me["token"][:4], 16) / 0xFFFF * REFRESH_S
+    arriving, used, ahead, granted, cap = True, 0, [], 0, budget()
     try:
         while True:
             CHECK_CANCELLED.get()()
-            cap = budget()
-            stamp = _stamp(d)
-            with _mutex(d):
-                fd = _restore_inode(path, me, fd)
-                slots = _own_records(d, path, me)
-                if slots is None:
-                    replacement = _publish(path, me)
-                    os.close(fd)
-                    fd = replacement
-                    continue
-                granted, used, ahead = _decide(me, path, slots, cap)
-                if granted:
-                    _record_grant(d, me, path, slots, granted)
+            owned = None if arriving else _own(path)
+            if owned is not None and owned[0]:
+                granted = me["granted"] = owned[0]
+                break
+            first = arriving
+            if arriving:
+                run, owned = not _saturated(d), _own(path)
+            else:
+                run = owned is None or _stale(d, slack)
+            arriving = False
+            if run:
+                cap = budget()
+                found = _attempt(path, me, held, cap, skip=not first and owned is not None)
+                arriving = found.republished
+                if found.granted:
+                    granted = me["granted"] = found.granted
                     break
+                if arriving:
+                    continue
+                if not found.skipped:
+                    used, ahead = found.used, found.ahead
+                owned = _own(path)
             now = time.monotonic()
             if now > deadline:
                 raise TimeoutError(f"testslots: waited {now - t0:.0f}s for {minimum} of {cap} workers ({used} in use); the wait limit is "
                                    f"{wait_limit():.0f} s (DEV_TEST_WAIT_S, default {WAIT_S:.0f}); see `python scripts/testslots.py status`")
-            state = (minimum, want, cap, used, tuple(ahead))
-            if now - last_note >= 20 or (state != last_state and now - last_note >= 1):
-                last_note, last_state = now, state
-                say(f"testslots: waiting for {minimum}-{want or 'auto'} workers ({used}/{cap} in use, "
-                    f"{len(ahead)} run(s) ahead: {', '.join(map(str, ahead)) or 'none'})")
-            _wait_for_change(d, stamp, cap, retry_after(len(ahead)))
+            if now - notes.at >= 1:
+                used, ahead = _view(d, path.name)
+            if notes.due(now, (minimum, want, cap, used, tuple(ahead))):
+                say(f"testslots: queued for {minimum}-{want or 'auto'} workers: {used}/{cap} permits in use, "
+                    f"{len(ahead)} run(s) ahead{': ' + ', '.join(map(str, ahead)) if ahead else ''}")
+            time.sleep(FAST_S if owned is not None and owned[1] else SLOW_S)
         with _lease_environment(path, me["token"]):
             yield Lease(granted, time.monotonic() - t0)
     finally:
-        with _mutex(d):
-            if sys.platform == "win32":
-                os.close(fd)
-            with contextlib.suppress(OSError):
-                path.unlink()
-            _notify(d)
-            if sys.platform != "win32":
-                os.close(fd)
+        _release(d, path, held.fd)
 
 
 def _lane_count() -> int:
@@ -502,6 +692,8 @@ def main(argv: list[str] | None = None) -> int:
         load = "?"
     print(f"budget {st['budget']} workers (base {st['base']}; load {load} on {_cores()} cores), {st['in_use']} in use, "
           f"{_lane_count()} heavy lane(s)")
+    if st["first"]:
+        print(f"  {st['first']}")
     for s in st["running"]:
         print(f"  running  {s['granted']:>2}  pid {s['pid']:<7} {policy.run_class(s):<11} {_who(s)}")
     for s in st["waiting"]:

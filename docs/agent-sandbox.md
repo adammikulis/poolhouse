@@ -84,7 +84,7 @@ The values come from `scripts/agent_sandbox_profile.py`; the file the person ins
 | `sandbox.enabled`, `failIfUnavailable` | `true` |
 | `sandbox.excludedCommands` | `poolhouse runtime ensure`, `poolhouse runtime rollback`, `poolhouse runtime restart-host`: the three deploy commands, guarded by the `runtime.deploy` authority gate (see the matrix) |
 | `sandbox.allowUnsandboxedCommands`, `autoAllowBashIfSandboxed` | `false` |
-| `sandbox.filesystem.allowWrite` | every checkout from `git worktree list` (explicit paths: Linux does not expand wildcards), the primary `.git`, the scratch and temp directories, `~/.poolhouse/{workspace,logs,activity,requests,holds,hook-diagnostics}` and the broker, server and lock files, `~/.cache/{dev-test-slots,poolhouse,huggingface,pip,ms-playwright}` |
+| `sandbox.filesystem.allowWrite` | every checkout from `git worktree list` (explicit paths: Linux does not expand wildcards), the primary `.git`, the scratch and temp directories, `~/.poolhouse/{workspace,logs,activity,requests,holds,hook-diagnostics}` and the broker, server and lock files, `~/.cache/{dev-test-slots,test-reuse-sandbox,test-cargo-sandbox,poolhouse,huggingface,pip,ms-playwright}` (`test-reuse-sandbox` holds the stored passes of the sandbox's test runs and `test-cargo-sandbox` its Rust build folder and node binary; the owner's `~/.cache/test-reuse`, `~/.cache/test-cargo` and the passed gate steps in `~/.cache/test-gate` are not listed, so a sandboxed command cannot write what the owner's runs and the task evidence read and run) |
 | `sandbox.filesystem.denyWrite` | per checkout `scripts/hooks`, `.claude`, `.mcp.json`, `.githooks`, `.git/config`, `.git/hooks`; in the primary `.git`: `config`, `hooks`, `info`, `worktrees/*/config.worktree`, `worktrees/*/hooks`; `~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.gitconfig`, shell rc files, `~/.pyenv/{versions,shims}`, `~/.local/bin`, `~/Library/LaunchAgents` (macOS) or the systemd user and autostart directories (Linux); under `~/.poolhouse`: `runtimes`, `keystore`, `hooks`, `gate`, `guard`, `machine-id`, `wired-limit.json`, `node/client`, `node/person`, and in `workspace` the local-agents |
 | `sandbox.filesystem.denyRead` | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, browser profiles (Chrome, Firefox, Safari, Keychains, Cookies), and under `~/.poolhouse`: `node/client`, `node/person`, `workspace/local-agents`, `keystore`, `server-keys.json`, `pool.key.old`, `pool.json`, `credentials.*`, `onboard` |
 | `sandbox.filesystem.allowRead` | none |
@@ -92,7 +92,7 @@ The values come from `scripts/agent_sandbox_profile.py`; the file the person ins
 | `sandbox.network.allowLocalBinding` | `true` on macOS only |
 | `sandbox.credentials.envVars.deny` | `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_MESSAGING_TOKEN`, `POOLHOUSE_HOME`, `POOLHOUSE_CACHE`, `POOLHOUSE_AGENT`, `POOLHOUSE_WORKSPACE_AGENT`, `POOLHOUSE_NET_ALLOW_HOSTS`, `HF_ENDPOINT`, `HF_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, API keys, `SSH_AUTH_SOCK`, `PYTHONPATH`, `PYTHONSTARTUP`, `PYTHON_KEYRING_BACKEND`, `GIT_CONFIG_*`, `GIT_SSH_COMMAND`, `GIT_ASKPASS`, `PIP_*INDEX_URL`, `BASH_ENV`, `ENV` |
 | `permissions.deny` | `Edit` and `Write` rules for every `denyWrite` path |
-| `env` | `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` |
+| `env` | `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, `DEV_TEST_REUSE_DIR=~/.cache/test-reuse-sandbox`, `DEV_TEST_CARGO_DIR=~/.cache/test-cargo-sandbox` (the folders a sandboxed `scripts/test` writes) |
 
 The host list is the one in `poolhouse.net.policy.ALLOWED` (hub and GitHub release hosts) plus
 `pypi.org` and `files.pythonhosted.org` from `poolhouse.net.packages`. The geocoder is left out.
@@ -156,7 +156,8 @@ protected only by what workspace-write leaves unreadable (reads are broad by def
 checkout rule that `.git` and `.codex` under a writable root are read-only. PREDICTED; the
 sibling-worktree `.git` pointer needs the primary `.git` as a writable root, which also makes
 `config` and `hooks` writable. That is a known weaker result than Claude Code's; use
-sandbox-runtime for Codex when it matters.
+sandbox-runtime for Codex when it matters. The fragment's `[shell_environment_policy.set]` table carries the same
+`DEV_TEST_REUSE_DIR` and `DEV_TEST_CARGO_DIR`.
 
 ## Local-model harness: sandbox-runtime
 
@@ -170,7 +171,8 @@ srt --settings "/Library/Application Support/ClaudeCode/srt-settings.json" -- po
 `srt-settings.json` carries the same `denyRead`, `allowWrite`, `denyWrite` and host list as the
 Claude profile, plus `api.anthropic.com` for a Claude-backed harness. A local model reaches its
 served port on loopback; the lease from `poolhouse-serve up` is taken by a process outside the
-wrapper, and the wrapped agent connects to it. Reads outside `denyRead` are allowed (the
+wrapper, and the wrapped agent connects to it. sandbox-runtime inherits the environment, so the command that wraps the harness exports the
+`DEV_TEST_REUSE_DIR` and `DEV_TEST_CARGO_DIR` of the managed `env` (PREDICTED, nothing wraps a harness yet). Reads outside `denyRead` are allowed (the
 sandbox-runtime model, sandbox.md). For commands the agent loop starts itself, `SandboxedBash`
 (`poolhouse.sandbox.tools`) applies a stricter allow-list policy and stays the default.
 

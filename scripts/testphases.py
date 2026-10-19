@@ -45,6 +45,11 @@ class Phases:
         return max(0.0, self.wall - self.tests - self.queued)
 
 
+def record(phases: Phases) -> dict:
+    """The figures a job records: the fixed seconds and whether they are over the limit."""
+    return {"fixed_s": round(phases.fixed, 1), "over_limit": too_slow(phases)}
+
+
 def line(phases: Phases) -> str:
     """The one-line breakdown, with a warning when the fixed overhead is large."""
     text = (f"test: phases collection {phases.collection:.1f} s, session setup {phases.setup:.1f} s, "

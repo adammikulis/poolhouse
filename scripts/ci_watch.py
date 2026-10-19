@@ -32,7 +32,7 @@ from poolhouse import lan, lock
 
 WORKFLOW = "ci"
 WAIT_S = 180
-POLL_S = 10
+POLL_S = 60
 RUN_TIMEOUT_S = 100 * 60
 WARN_S = 25 * 60
 BLOCK_S = 35 * 60

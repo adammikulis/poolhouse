@@ -111,7 +111,7 @@ from poolhouse.testing.fakes import (  # noqa: E402
 
 if not os.environ.get("PYTEST_XDIST_WORKER"):
     githooks_ready.ensure(REPO)
-os.environ.setdefault("DEV_TEST_SLOTS_DIR", str(testslots.slots_dir()))
+testslots.pin_slots_dir()
 """The machine-wide slot directory, fixed before the session moves ``HOME`` so every worker and
 every run shares one set of heavy lanes."""
 

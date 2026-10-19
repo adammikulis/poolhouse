@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 import xml.etree.ElementTree as ET
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,6 +69,7 @@ class Outcome:
     stored: str = ""
     key: str = ""
     not_run: bool = False
+    unstored: str = ""
 
 
 @dataclass
@@ -107,12 +109,26 @@ class Report:
         reused = sum(o.how.startswith("reused") for o in self.outcomes)
         return len(self.outcomes) - reused, reused
 
+    def degraded(self) -> list[tuple[str, int]]:
+        """Why executed files stored no result, most common cause first."""
+        return Counter(o.unstored for o in self.outcomes if o.unstored).most_common()
+
+    def summary(self) -> dict:
+        """The counts a job records: files run and reused, and the files that stored nothing with their causes."""
+        ran, reused = self.counts()
+        causes = self.degraded()
+        return {"ran": ran, "reused": reused, **({"unstored": sum(n for _, n in causes), "causes": causes[:3]} if causes else {})}
+
     def lines(self) -> list[str]:
-        """One line per file and a summary that counts both kinds."""
+        """One line per file, a summary that counts both kinds, and a line when files that ran stored no result."""
         rows = [f"  {o.how}  {o.file}  key {o.key[:12]}" + (f"  {o.detail}" if o.detail else "") for o in self.outcomes]
         ran, reused = self.counts()
         sampling = "canary off" if self.canary <= 0 else f"canary {self.canary:.0%}"
-        return [*rows, *([f"test: {self.note}"] if self.note else []), f"test: {ran} file(s) ran, {reused} reused ({sampling})"]
+        rows = [*rows, *([f"test: {self.note}"] if self.note else []), f"test: {ran} file(s) ran, {reused} reused ({sampling})"]
+        if causes := self.degraded():
+            rows.append(f"test: reuse degraded: {sum(n for _, n in causes)} of {len(self.outcomes)} file(s) stored no result "
+                        f"({'; '.join(f'{n} x {cause}' for cause, n in causes[:3])})")
+        return rows
 
 
 def selectors(command: list[str], root: Path) -> list[str] | None:
@@ -382,6 +398,7 @@ class Session:
         if ran.problem:
             outcome.passed = outcome.passed and not ran.problem.startswith(("the tree", "pytest exited"))
             outcome.detail = f"{outcome.detail} (not stored: {ran.problem})".strip()
+            outcome.unstored = ran.problem
             return
         if hit is not None and not outcome.passed:
             detail = f"cached pass from {hit.id} but a fresh run failed"
@@ -402,7 +419,7 @@ class Session:
             return
         why = self.refusal(ran.seen, count)
         if why:
-            outcome.detail = f"{outcome.detail} (result not stored: {why})".strip()
+            outcome.detail, outcome.unstored = f"{outcome.detail} (result not stored: {why})".strip(), why
             self.events.finished(file, look.key, "pass-unstored", "")
             return
         try:
@@ -413,12 +430,12 @@ class Session:
             why = (f"its closure uses {manifest['unobserved']}, which the runner cannot observe"
                    if manifest["unobserved"] else "")
         if why:
-            outcome.detail = f"{outcome.detail} (result not stored: {why})".strip()
+            outcome.detail, outcome.unstored = f"{outcome.detail} (result not stored: {why})".strip(), why
             self.events.finished(file, look.key, "pass-unstored", "")
         else:
             outcome.stored = self.store_entry(file, ran, "pass", manifest)
             if not outcome.stored:
-                outcome.detail = f"{outcome.detail} (not stored: {self.unstored})".strip()
+                outcome.detail, outcome.unstored = f"{outcome.detail} (not stored: {self.unstored})".strip(), self.unstored
             self.events.finished(file, look.key, "pass" if outcome.stored else "pass-unstored", outcome.stored)
 
     def refusal(self, seen: dict | None, count: dict) -> str:

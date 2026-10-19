@@ -22,6 +22,8 @@ import testwritedeny
 
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACT_CONTEXT = contextvars.ContextVar("test_artifact_context", default=None)
+QUEUED = {"seconds": 0.0}
+"""Seconds this process spent queued for its runs' first permit; a time limit on the run excludes them."""
 
 
 @dataclass
@@ -30,6 +32,12 @@ class Preparation:
     terminals: object | None = None
     confined: object | None = None
     browser: object | None = None
+
+
+def note_queued(waited: float) -> float:
+    """Add the seconds a run waited for its first permit to this process's total; the rounded seconds."""
+    QUEUED["seconds"] += waited
+    return round(waited, 1)
 
 
 def confining(environment: dict[str, str]) -> bool:
@@ -115,12 +123,13 @@ def run_once(command: list[str], want: int = 0, label: str = "pytest", env: dict
     output = None
     prepared = Preparation(want=want)
     try:
-        with testslots.lease(1, 1, label=f"{label}: coordinator", run_class=run_class):
+        with testslots.lease(1, 1, label=f"{label}: coordinator", run_class=run_class) as leased:
             if launch is not None:
                 launch.prepare()
             command, environment = prepare_pytest(command, environment, admission, launch, prepared)
             confined = prepared.confined
-            record.update(state=testqueue.RUNNING, granted=int(environment["DEV_TEST_WORKERS"]), started=time.time())
+            record.update(state=testqueue.RUNNING, granted=int(environment["DEV_TEST_WORKERS"]), started=time.time(),
+                          queued_s=note_queued(leased.waited))
             process = subprocess.Popen(policy.lower_priority(command, run_class), env=environment, cwd=Path(__file__).resolve().parent.parent,
                                        close_fds=True, pass_fds=confined.bootstrap.pass_fds if confined is not None else (),
                                        stdin=subprocess.DEVNULL, start_new_session=True,

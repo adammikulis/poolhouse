@@ -1,4 +1,4 @@
-"""A queued lease reads the slot records when something changed, not at every poll."""
+"""A queued lease reads every slot record when it arrives and when no admission pass has run for a moment, not at every poll."""
 
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("testslots", sys.argv[1]); m = importlib.util.module_from_spec(spec)
 sys.modules["testslots"] = m; spec.loader.exec_module(m)
 decisions = []
-real = m._decide
-m._decide = lambda *args: decisions.append(time.time()) or real(*args)
+real = m._attempt
+m._attempt = lambda *args, **kwargs: decisions.append(time.time()) or real(*args, **kwargs)
 with m.lease(1, 1, label="waiter", say=lambda s: None):
     granted = time.time()
 Path(sys.argv[2]).write_text(json.dumps({"decisions": decisions, "granted": granted}))
@@ -48,7 +48,7 @@ def until(path: Path, seconds: float = 30) -> None:
         time.sleep(0.02)
 
 
-def test_the_head_of_the_queue_is_granted_as_soon_as_the_holder_leaves_and_decides_rarely_before(tmp_path):
+def test_the_head_of_the_queue_is_granted_as_soon_as_the_holder_leaves_and_runs_few_passes_before(tmp_path):
     inherited = {k: v for k, v in os.environ.items() if k not in {"DEV_TEST_REMOTE_LEASE", "DEV_TEST_LEASE"}}
     env = {**inherited, "DEV_TEST_SLOTS_DIR": str(tmp_path / "slots"), "DEV_TEST_BUDGET": "1", "DEV_TEST_WAIT_S": "60"}
     held, leave, report = tmp_path / "held", tmp_path / "leave", tmp_path / "report.json"
@@ -63,5 +63,5 @@ def test_the_head_of_the_queue_is_granted_as_soon_as_the_holder_leaves_and_decid
     waiter.wait(10)
     seen = json.loads(report.read_text())
     before = [t for t in seen["decisions"] if t < left]
-    assert len(before) <= 8, f"{len(before)} decisions in about 2 s with nothing changing"
+    assert len(before) <= 8, f"{len(before)} admission passes in about 2 s with nothing changing"
     assert seen["granted"] - left < 0.5

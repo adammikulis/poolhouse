@@ -44,9 +44,9 @@ def test_the_answer_is_cached_for_thirty_seconds(tmp_path):
     cmd = command(tmp_path, "print('STUCK: a')")
     now = time.time()
     assert stuck_verdict.check(tmp_path / "state", cmd, now=now) == "STUCK: a"
-    assert stuck_verdict.check(tmp_path / "state", cmd, now=now + 29) == "STUCK: a"
+    assert stuck_verdict.check(tmp_path / "state", cmd, now=now + 299) == "STUCK: a"
     assert calls(tmp_path) == 1
-    assert stuck_verdict.check(tmp_path / "state", cmd, now=now + 31) == "STUCK: a"
+    assert stuck_verdict.check(tmp_path / "state", cmd, now=now + 301) == "STUCK: a"
     assert calls(tmp_path) == 2
 
 

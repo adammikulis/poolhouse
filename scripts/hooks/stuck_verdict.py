@@ -1,4 +1,4 @@
-"""The first line of `scripts/status` for the lead's attention hook: cached 30 seconds, ended after 3 seconds, empty unless stuck.
+"""The first line of `scripts/status` for the lead's attention hook: cached 5 minutes, ended after 3 seconds, empty unless stuck.
 
 $POOLHOUSE_STATUS_COMMAND (a JSON list) replaces the command; without it the line is read only on the person's machine.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 import workspace_hook
 
 ROOT = Path(__file__).resolve().parents[2]
-CACHE_S = 30.0
+CACHE_S = 300.0
 TIMEOUT_S = 3.0
 STUCK = "STUCK:"
 

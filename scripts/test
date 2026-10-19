@@ -57,6 +57,7 @@ import affected
 import gaterun
 import gatescope
 import queue_doctor
+import testcommand
 import testextras
 import testhistory
 import testjobs
@@ -64,12 +65,14 @@ import testnode
 import testphases
 import testprelude
 import testqueue
+import testreap
 import testreuse_key
 import testreuse_run
 import testreuse_store
 import testscope
 import testselectors
 import testslots
+import testslots_policy
 import testslots_runner
 import testtime
 
@@ -91,12 +94,14 @@ RECORD_WORKERS = 3
 FOREGROUND = ("quick", "fast", "full", "slow", "all", "gate")
 BUSY_EXIT = 6
 JOB_COMMANDS = ("submit", "status", "wait", "result", "cancel", "subscribe", "_job")
+NO_REUSE_COST = ("test: --no-reuse runs every named file again, including the ones with a stored pass, at the full cost of "
+                 "their run and its fixed overhead; leave it off except to watch a mutated test fail (docs/test-execution.md)")
 REUSE: dict = {"on": True, "session": None, "agent": {"id": "", "source": "none"}, "events": testreuse_run.Events()}
 
 
 def pytest_command(workers: int, *rest: str) -> list[str]:
     """The pytest invocation every tier shares."""
-    return [sys.executable, "-m", "pytest", "-q", "-rfE", "-n", str(workers), *rest]
+    return [sys.executable, "-m", "pytest", "-q", "-rfE", *testcommand.UNUSED_PLUGINS, "-n", str(workers), *rest]
 
 
 def run(command: list[str], env: dict[str, str] | None = None, tier: str = "", *, artifact_output: bool = False) -> int:
@@ -125,7 +130,10 @@ def reused_files(command: list[str]) -> set[str]:
         looks = {file: session.lookup(file) for file in files}
         return {file for file, look in looks.items()
                 if not look.barred and session.store.hit(look.key, ROOT, session.closures)[0]}
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        note = f"the estimate could not read the reuse store ({type(error).__name__}: {str(error)[:120]})"
+        print(f"test: reuse degraded: {note}", file=sys.stderr, flush=True)
+        REUSE.setdefault("notes", []).append(note)
         return set()
 
 
@@ -237,6 +245,7 @@ def execute_run(command, environment, tier, record: OutputRecord):
     phases = testphases.read(phases_file)
     phases_file.unlink(missing_ok=True)
     if phases is not None:
+        REUSE["phases"] = phases
         print(testphases.line(phases), flush=True)
     if testextras.on() and tier in ("full", "all") and not [a for a in command if a.startswith("tests/") or a == "-k"]:
         measured(command, junit, wall, load)
@@ -424,7 +433,8 @@ STALE_HINTS = {"command reference": "docs/commands.md is stale: run `scripts/ref
 def script_status(name: str, command: list[str]) -> int:
     """Run a check script and show its whole output as one block, so a lane running beside pytest does not interleave."""
     clean_env = {k: v for k, v in os.environ.items() if k not in ("DEV_TEST_REUSE_RECORD", "DEV_TEST_REUSE_ROOT")}
-    done = subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True, env=clean_env)
+    done = subprocess.run(testslots_policy.lower_priority(command, testslots_policy.BACKGROUND), cwd=ROOT, check=False,
+                          capture_output=True, text=True, env=clean_env)
     text = (done.stdout + done.stderr).rstrip()
     if text:
         print(f"gate: {name} output\n{text}", flush=True)
@@ -453,7 +463,8 @@ def gate(args: argparse.Namespace, rest: list[str]) -> int:
         return 0
     if failed := build_node():
         return failed
-    held = gaterun.Gate(ROOT, gatescope.base_ref(ROOT, args.base), reuse_store().folder / "gate-steps", REUSE["on"])
+    held = gaterun.Gate(ROOT, gatescope.base_ref(ROOT, args.base), gaterun.steps_folder(reuse.reuse_base(), testruns.scope(ROOT)),
+                        REUSE["on"])
     named = gate_steps(args.workers, rest)
     outcomes = held.run(gate_lanes(args, named))
     order = [name for name, _ in named]
@@ -481,7 +492,7 @@ def heavy(over: float) -> int:
 def show(job: str, status: dict, spec: dict) -> str:
     """One line describing a job."""
     ran = status.get("summary", {})
-    counts = f" ran {ran['ran']} reused {ran['reused']}" if ran else ""
+    counts = (f" ran {ran['ran']} reused {ran['reused']}" + (f" unstored {ran['unstored']}" if ran.get("unstored") else "")) if ran else ""
     return (f"{job}  {status.get('state', '?'):9}  {' '.join(spec.get('argv', []))[:60]}  "
             f"owner {spec.get('owner', {}).get('id') or '-'}{counts}"
             + (f"  exit {status['exit']}" if "exit" in status else ""))
@@ -506,7 +517,7 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
         if args.tier == "status" and not rest:
             print(testqueue.longest(testslots.status()["runs"], time.time()))
             for job in jobs.ids():
-                print(show(job, jobs.state(job), jobs.read(job, "spec.json")))
+                print(show(job, jobs.state(job), jobs.read(job, "spec.json")) + followers_note(jobs, job))
             return 0
         job = rest[0] if rest else ""
         if args.tier == "cancel":
@@ -555,7 +566,8 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         jobs.write(job, "status.json", {"state": "failed", "exit": 4, "finished": time.time(), "detail": refusal, **me})
         return 4
     thread = REUSE["events"].job_started(job, spec)
-    jobs.write(job, "status.json", {"state": "running", "at": time.time(), "thread": thread, **me})
+    jobs.mark_running(job, {"thread": thread, **me})
+    jobs.record_tree(job, tree_hash(ROOT))
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     jobs.watch_follower(job)
     state, code = "failed", 1
@@ -569,9 +581,11 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         state, code = "done", stop.code if isinstance(stop.code, int) else 1
     finally:
         report = REUSE.get("report")
-        ran, reused = report.counts() if report else (0, 0)
         status = {"state": state, "exit": code, "finished": time.time(), "thread": thread, **me,
-                  "summary": {"ran": ran, "reused": reused} if report else {}}
+                  **({"tree": tree_hash(ROOT)} if state == "done" and code == 0 else {}),
+                  "queued_s": round(testslots_runner.QUEUED["seconds"], 1),
+                  **(testphases.record(REUSE["phases"]) if REUSE.get("phases") else {}),
+                  "summary": report.summary() if report else {}, **({"notes": REUSE["notes"]} if REUSE.get("notes") else {})}
         jobs.write(job, "status.json", status)
         REUSE["events"].job_done(job, spec, status, thread)
     return code
@@ -597,11 +611,24 @@ def run_owner() -> dict:
 
 def follow(argv: list[str], args: argparse.Namespace) -> int:
     """Run a tier as a job and show its output until it ends; Ctrl-C, SIGTERM and SIGHUP cancel it and wait for it to end."""
+    jobs = jobs_store()
     try:
-        return jobs_store().follow(argv, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task})
+        return jobs.follow(argv, run_owner(), ROOT, Path(__file__).resolve(), {"task": args.task, "key": join_key(jobs, argv)})
     except (testjobs.Refused, OSError) as error:
         print(f"test: {error}", file=sys.stderr)
         return 4
+
+
+def join_key(jobs: testjobs.Jobs, argv: list[str]) -> dict:
+    """What makes two runs one job: the same arguments and tree. The tree is hashed only when a live job has the same arguments."""
+    tree = tree_hash(ROOT) if jobs.candidates(argv) else ""
+    return {"argv": argv, "tree": tree or None}
+
+
+def followers_note(jobs: testjobs.Jobs, job: str) -> str:
+    """`  followers N` for a live job that more than one process is following, else an empty string."""
+    count = len(jobs.followers(job)) if jobs.state(job).get("state") in ("queued", "running") else 0
+    return f"  followers {count}" if count > 1 else ""
 
 
 def build_node(files: list[str] | None = None) -> int:
@@ -634,7 +661,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="xdist worker ceiling (default: 0 = automatic pool up to what the broker grants); -n 1 runs sequentially")
     parser.add_argument("--background", action="store_true",
                         help="admit this run as background: interactive runs go first and it runs at lower CPU priority")
-    parser.add_argument("--no-reuse", action="store_true", help="execute every named test file")
+    parser.add_argument("--no-reuse", action="store_true",
+                        help="execute every named test file again, stored pass or not; only for watching a mutated test fail")
     parser.add_argument("--timeout", type=float, default=3600.0, help="wait: seconds to wait")
     parser.add_argument("--task", default="", help="submit/tier runs: the task whose watchers hear how the job ends")
     parser.add_argument("--key", default="", help="subscribe: follow the run of this reuse key prefix")
@@ -648,6 +676,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confine", action="store_true", help="macOS: run pytest under the Seatbelt confinement kernel")
     args, rest = parser.parse_known_args(argv)
     REUSE["on"] = not args.no_reuse
+    if args.no_reuse and not os.environ.get("DEV_TEST_JOB"):
+        print(NO_REUSE_COST, file=sys.stderr, flush=True)
     session = testboard.acting()
     REUSE["session"] = session
     if session is not None:
@@ -680,13 +710,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.tier == "record":
         testprelude.begin(args, rest, ROOT)
         return build_node() or record(args)          # takes its own lease: a nested one would wait on itself
-    if args.tier != "gate":
+    if args.tier != "gate" and not os.environ.get("DEV_TEST_JOB"):
         try:
             testselectors.validate(rest, ROOT)
         except (ValueError, OSError) as error:
             print(f"test: {error}", file=sys.stderr)
             return 4
     if not os.environ.get("DEV_TEST_JOB"):
+        testreap.reap(say=lambda text: print(text, file=sys.stderr, flush=True))
         return follow(argv, args)
     command = pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)
     doctor_admits(testprelude.begin(args, rest, ROOT, reused_files(command)))

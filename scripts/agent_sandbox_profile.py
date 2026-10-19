@@ -52,8 +52,12 @@ DARWIN_DENY_READ = ("Library/Application Support/Google/Chrome", "Library/Applic
 DARWIN_DENY_WRITE = ("Library/LaunchAgents",)
 LINUX_DENY_READ = (".config/google-chrome", ".config/chromium", ".mozilla")
 LINUX_DENY_WRITE = (".config/systemd", ".config/autostart", ".local/share/systemd")
-CACHE_ALLOW_WRITE = (".cache/dev-test-slots", ".cache/poolhouse", ".cache/huggingface", ".cache/pip",
-                     ".cache/ms-playwright", "Library/Caches/ms-playwright", "Library/Caches/pip")
+TEST_FOLDERS = {"DEV_TEST_REUSE_DIR": ".cache/test-reuse-sandbox", "DEV_TEST_CARGO_DIR": ".cache/test-cargo-sandbox"}
+"""The folders a sandboxed `scripts/test` stores passes and builds Rust in, keyed by the variable that names each; `claude_settings`
+and `codex_toml` set them. `~/.cache/test-reuse`, `~/.cache/test-cargo` and `~/.cache/test-gate` are the owner's and are not on the
+write list."""
+CACHE_ALLOW_WRITE = (".cache/dev-test-slots", *TEST_FOLDERS.values(), ".cache/poolhouse", ".cache/huggingface",
+                     ".cache/pip", ".cache/ms-playwright", "Library/Caches/ms-playwright", "Library/Caches/pip")
 SHARED_GIT_DENY = ("config", "hooks", "info", "worktrees/*/config.worktree", "worktrees/*/hooks")
 DEPLOY_COMMANDS = ("poolhouse runtime ensure", "poolhouse runtime rollback", "poolhouse runtime restart-host")
 """Run outside the sandbox because they write the runtimes root; the `runtime.deploy` authority gate is their guard."""
@@ -88,6 +92,11 @@ def write_roots(layout: Layout) -> list[str]:
     roots += _under(layout.home, CACHE_ALLOW_WRITE)
     roots.append(str(layout.primary / ".git"))
     return list(dict.fromkeys(roots))
+
+
+def store_environment(layout: Layout) -> dict[str, str]:
+    """The variables that point `scripts/test` at the sandbox's own store and Rust build folder."""
+    return {name: str(layout.home / folder) for name, folder in TEST_FOLDERS.items()}
 
 
 def deny_write(layout: Layout) -> list[str]:
@@ -144,7 +153,7 @@ def claude_settings(layout: Layout) -> dict:
             "credentials": {"envVars": {"deny": list(SCRUBBED_ENV)}},
         },
         "permissions": {"deny": edit_rules(layout)},
-        "env": {"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"},
+        "env": {"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1", **store_environment(layout)},
     }
 
 
@@ -167,5 +176,6 @@ def codex_toml(layout: Layout) -> str:
              "[sandbox_workspace_write]", "network_access = false",
              "exclude_tmpdir_env_var = false", "exclude_slash_tmp = false", "writable_roots = ["]
     lines += [f"  {json.dumps(path)}," for path in roots]
-    lines += ["]", ""]
-    return "\n".join(lines)
+    lines += ["]", "", "[shell_environment_policy.set]"]
+    lines += [f"{name} = {json.dumps(value)}" for name, value in store_environment(layout).items()]
+    return "\n".join([*lines, ""])

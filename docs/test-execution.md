@@ -32,11 +32,66 @@ cancels its job. Jobs use the admission below and are owned by the submitting wo
 which `scripts/testslots.py status` shows beside each lease. A run that names test files reuses
 earlier passes of unchanged files and says so per file ([test-reuse.md](test-reuse.md)).
 
+## Reuse is the default
+
+A run that names test files reuses every unchanged file's stored pass; nothing asks for it and a brief never says
+"use --no-reuse". `--no-reuse` executes each named file again at the full cost of its run and prints one line saying so. It
+is for watching a mutated test fail, and for nothing else: an affected-test report, a landing request and a rerun after an
+unrelated edit all use the store. The runner states why a file's result was not stored (`result not stored: ...`); the
+causes measured on 2026-10-16 across 724 stored job logs were a write outside the temporary root by a fixture (the node
+fixtures make their short socket folder under the literal `/tmp`, which the plugin now counts as temporary like `TMPDIR`),
+a `mkdir` of the slot directory by `tests/conftest.py` (made only when `DEV_TEST_SLOTS_DIR` is unset now), a skip, and a
+closure that uses a call the runner cannot observe (`ladybug`, `sqlite3`, `utime`, `fstat`).
+
+## Test nodes do not outlive their run
+
+`tests/environ_guard.py` sets `POOLHOUSE_NODE_PARENT_PID` to the pytest process in every test process and its children. A node
+supervisor started with it (`--parent-pid`, from `node_launch._start_supervisor`) stops the node and itself once that process
+has exited, whether the run was killed or ended. `scripts/test` also stops, at the start of each followed run
+(`scripts/testreap.py`), the supervisors and nodes whose state folder is a test's `/tmp/ml...` folder and whose run is gone: a
+supervisor whose `--parent-pid` process has exited (a zombie counts as exited, and so does a process that started after the
+supervisor and took the number), a supervisor with no `--parent-pid` that has run for more than an hour, a node whose
+supervisor is stopped, and a node that has run for more than an hour with no parent. A gate that runs longer than an hour keeps
+its nodes while its pytest process runs. Each process is read again (start time and command line) just before the signal and is
+left alone when it is no longer the one listed. It prints how many it stopped. The Rust node itself has no parent watch: a
+supervisor killed with `SIGKILL` leaves its node until the next reap.
+
+## Jobs: following and cancelling
+
+A run that `scripts/test` starts in the foreground is a job: a detached supervisor records its status and the caller shows its log.
+A queued or running job with the same arguments and the same tree hash (the git tree of everything not ignored, hashed only when a
+live job has the same arguments) is followed instead of started again: the caller prints `following job X, same tree and selectors`,
+`scripts/test status` shows `followers N`, and a follower's Ctrl-C leaves the job running for the others; the last follower's cancel
+stops it, and a job whose followers have all gone stops itself. A cancelled, failed or finished job is never followed, and a job whose
+tree is not recorded is never followed. A run that joined a job and finds its checkout changed when the job passed is told so and
+exits 4.
+
+`scripts/test cancel JOB` stops the job for every follower. The job is recorded `cancelling` first, so no run joins it, and its runner
+gets SIGTERM and then SIGKILL for its process group; the job is recorded `cancelled` once the runner has ended, and goes back to its
+earlier state when it has not. A job left `cancelling` for ten seconds is cancelled again by the next cancel.
+
+## Fixed overhead
+
+A run's fixed overhead is its collection, session setup and teardown, the three phases `testphases` prints; the calls
+between workers are not part of it, so an uneven share of slow tests does not read as overhead. The limit is 5 s (AGENTS.md).
+`tests/test_runner_overhead.py` bounds the CPU seconds the runner takes to start and one pytest process takes to start and
+collect, because CPU time holds on a busy machine where wall time does not. Measured 2026-10-16 on a 16-core machine at load
+about 35: a one-file run took 17 s wall, 6.3 s of it inside pytest. Contributors found and removed: the `langsmith` pytest
+plugin imported by every pytest process (`testcommand.UNUSED_PLUGINS`), the hook installer that `tests/conftest.py` ran in
+every xdist worker (now `tests/git_hooks.py`, once, by the controller, and a machine-local wrapper counts as installed), and a
+second selector validation in the job process.
+
 CPU capacity defaults to the logical CPU count minus one, with a minimum of
 one. `DEV_TEST_RESERVED_CORES` changes that reservation. This reserves capacity;
 it does not pin execution to a particular efficiency core. `DEV_TEST_BUDGET`
 sets an explicit owner override. The capacity does not change with the machine's load.
-Existing active permits finish before new work enters.
+Existing active permits finish before new work enters. A run that waits for its first permit is told
+how many permits are in use and `N run(s) ahead` with their labels; the seconds it waited are in its run record
+and in the job status as `queued_s`, so a time limit on the run counts from the grant. The gate's
+check scripts (`scripts/budgets` with ruff and pyright, the reference and coverage checks) run beside
+the structure tests without a permit; they start at lower priority (`nice` +10) so they yield to
+admitted tests. Load that is not ours (an editor's pyright server, a virtual machine, the window
+server) is not admitted by this broker.
 
 The supervisor admits pytest startup, then each worker's configuration and collection, and each
 test's complete setup, call and teardown. Idle workers hold no CPU permits. A
@@ -58,12 +113,23 @@ or repeat unchanged status after twenty seconds. Short waits stay quiet.
 Per-test RPC waits do not print into pytest's progress output; use the shared
 status command to inspect their queue.
 
-`python scripts/testslots.py status` reports active permits and waiting work.
+`python scripts/testslots.py status` reports active permits and waiting work, and names the
+request that is first in line and why it is not running.
 A queued minimum cannot exceed the configured capacity. Small requests can fill
-a temporarily unusable gap twice before an older larger request reserves the
-gap. Wait limits raise an error; they never disable admission. A command started
+a temporarily unusable gap until two of them have passed an older larger request or it has
+waited 30 s (`DEV_TEST_BACKFILL_WAIT_S`), then it reserves the gap, so a wide head request waits for the
+running work and not for the queue behind it. Wait limits raise an error;
+they never disable admission. A command started
 inside a live test permit fails promptly instead of queuing behind its parent.
 Run an independent suite after the parent releases its permit.
+
+Admission is one pass over the directory under its mutex, and a pass grants every request that fits, in
+grant order. A request runs a pass when it arrives (unless the last pass left every worker busy), when it
+releases its permit, and when it waits and no pass has run for 0.3 to 0.6 s (holders that died, aged
+requests). A waiter reads only its own record: every 5 ms when the last pass put it among the first
+`cap + 12` requests, every 100 ms otherwise, so three hundred waiters cost a few mutex acquisitions per
+second. A dead holder's record is removed when it is first seen, at least every 0.25 s after, and before it
+is given a grant. A wait for the mutex stops with a cancelled caller, and a release never does.
 
 `python scripts/testslots.py pytest --want auto --min 1 --label NAME -- COMMAND`
 supervises a pytest command that loads `-p testslots_pytest` (`scripts/test` also loads `-p testagentenv_pytest`, which clears the agent markers for every test) and uses

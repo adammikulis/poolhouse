@@ -8,6 +8,10 @@ INTERACTIVE = "interactive"
 BACKGROUND = "background"
 CLASSES = (INTERACTIVE, BACKGROUND)
 VERSION = 2
+BACKFILLS = 2
+"""How many later requests may take idle capacity ahead of a head request that does not fit before the head holds it back."""
+BACKFILL_WAIT_S = 30.0
+"""How long a head request waits before it holds idle capacity back from later requests."""
 BACKGROUND_MAX_WAIT_S = 600.0
 UNKNOWN_BACKGROUND_S = 180.0
 BACKGROUND_NICE = 10
@@ -20,6 +24,17 @@ def max_wait() -> float:
     """Seconds a request waits before it is granted ahead of the ordering (DEV_TEST_BACKGROUND_WAIT_S)."""
     raw = os.environ.get("DEV_TEST_BACKGROUND_WAIT_S", "")
     return float(raw) if raw.replace(".", "", 1).isdigit() else BACKGROUND_MAX_WAIT_S
+
+
+def backfill_wait() -> float:
+    """Seconds a head request waits before later requests stop taking idle capacity ahead of it (DEV_TEST_BACKFILL_WAIT_S)."""
+    raw = os.environ.get("DEV_TEST_BACKFILL_WAIT_S", "")
+    return float(raw) if raw.replace(".", "", 1).isdigit() else BACKFILL_WAIT_S
+
+
+def reserved(head: dict, now: float) -> bool:
+    """Whether a head request that does not fit holds idle capacity back: after ``BACKFILLS`` later requests passed it or ``backfill_wait`` seconds."""
+    return head.get("backfills", 0) >= BACKFILLS or now - float(head.get("since", now)) > backfill_wait()
 
 
 def run_class(data: dict) -> str:

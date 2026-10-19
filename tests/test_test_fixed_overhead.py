@@ -135,45 +135,6 @@ def test_parsing_arguments_imports_no_conftest_and_keeps_the_tier_options():
         "['tests/test_test_fixed_overhead.py::test_x', 'tests/test_testphases.py']", "[]"]
 
 
-def test_a_request_waits_longer_the_further_back_it_is_in_the_queue():
-    assert testslots.retry_after(0) == 0.01
-    assert testslots.retry_after(10) == pytest.approx(0.05)
-    assert testslots.retry_after(10_000) == 0.5
-
-
-WAITER = '''
-import sys, time
-sys.path.insert(0, sys.argv[1])
-import testslots as m
-ahead, calls, real, began = int(sys.argv[2]), [], m._decide, time.monotonic()
-
-def decide(me, path, slots, cap):
-    calls.append(1)
-    if time.monotonic() - began < 1.0:
-        return 0, 0, ["other"] * ahead
-    return real(me, path, slots, cap)
-
-m._decide = decide
-with m.lease(1, 1, label="waiter", say=lambda text: None):
-    pass
-print(len(calls))
-'''
-
-
-def decisions_while_waiting_a_second(tmp_path, ahead: int) -> int:
-    environment = {name: value for name, value in os.environ.items()
-                   if name not in {"DEV_TEST_REMOTE_LEASE", "DEV_TEST_LEASE", "DEV_TEST_CLASS", "DEV_TEST_ESTIMATE_S"}}
-    environment.update(DEV_TEST_SLOTS_DIR=str(tmp_path / "slots"), DEV_TEST_BUDGET="4", DEV_TEST_WAIT_S="60")
-    done = subprocess.run([sys.executable, "-c", WAITER, str(ROOT / "scripts"), str(ahead)], env=environment,
-                          capture_output=True, text=True, timeout=60)
-    assert done.returncode == 0, done.stderr
-    return int(done.stdout.split()[-1])
-
-
-def test_a_request_far_back_in_the_queue_does_not_read_every_record_a_hundred_times_a_second(tmp_path):
-    assert decisions_while_waiting_a_second(tmp_path, ahead=100) <= 6
-
-
 def test_validation_and_classification_of_the_same_arguments_parse_them_once(monkeypatch):
     parsed = []
     real = testoptions.parse_arguments
