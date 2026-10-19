@@ -276,8 +276,6 @@ impl Node {
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
         if parent.is_empty() {
             crate::idle::admit_main(self, board, &harness, session, &lineage)?;
-        } else {
-            crate::writes::check_children(self, board, &parent, &harness, session)?;
         }
         let revived = self.boards.get(board).and_then(|h| h.names.find(&harness, session).and_then(|n| h.names.get(n))).is_some_and(|i| i.retired);
         self.make_room_for_a_token()?;

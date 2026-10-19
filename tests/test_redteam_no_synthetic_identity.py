@@ -26,7 +26,7 @@ pytestmark = pytest.mark.redteam
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "poolhouse"
 REGISTERED_BY = {
-    "src/poolhouse/api/_node.py": {"register"},
+    "src/poolhouse/board/founding.py": {"register"},
     "src/poolhouse/board/person.py": {"register"},
     "src/poolhouse/board/place.py": {"register"},
     "src/poolhouse/board/public.py": {"register"},
@@ -35,6 +35,7 @@ REGISTERED_BY = {
     "src/poolhouse/node_join.py": {"register"},
     "src/poolhouse/node_join_check.py": {"register"},
     "src/poolhouse/workspace/board_cli.py": {"register"},
+    "src/poolhouse/workspace/codex_hooks.py": {"register"},
     "src/poolhouse/workspace/localstart.py": {"register"},
 }
 """The reviewed places that ask the node to register a session: each registers the session of the process that asks."""

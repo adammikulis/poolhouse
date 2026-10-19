@@ -36,17 +36,13 @@ def definition_model(event: dict) -> str:
     return ""
 
 
-QUOTA = 4
-"""The exit status of a workspace command the board refused over a quota."""
-
-
-def registration(event: dict, parent: dict) -> tuple[dict, int, str]:
-    """Ask the board to register this subagent as a child of whoever started it; (answer, 0, "") or ({}, exit status, why not)."""
+def register(event: dict, parent: dict) -> tuple[dict, str]:
+    """Ask the board to register this subagent as a child of whoever started it; (answer, "") or ({}, why not)."""
     agent = str(event.get("agent_id") or "")
     if not agent:
         reason = "the event has no agent_id"
         workspace_hook.warning("SubagentStart", f"{reason}; the subagent cannot be given its own name")
-        return {}, 1, reason
+        return {}, reason
     command = ["poolhouse-workspace", "spawn", "--session", subagent_records.native_key(agent), "--harness", "claude-code",
                "--json"]
     model = definition_model(event)
@@ -54,34 +50,15 @@ def registration(event: dict, parent: dict) -> tuple[dict, int, str]:
         command += ["--model", model]
     done = workspace_hook.attempt(command, "SubagentStart", environment=parent)
     if done is None:
-        return {}, 1, "the board did not answer"
+        return {}, "the board did not answer"
     if done.returncode:
         reason = " ".join((done.stderr or done.stdout or "no reason given").split())[:300]
         workspace_hook.warning("SubagentStart", f"command exited {done.returncode}: {reason}")
-        return {}, done.returncode, reason
+        return {}, reason
     try:
-        return json.loads(done.stdout), 0, ""
+        return json.loads(done.stdout), ""
     except ValueError:
-        return {}, 1, "the board's answer was not JSON"
-
-
-def make_room(parent: dict) -> bool:
-    """End the subagent of the starting session that stopped longest ago, as itself; False when none has stopped."""
-    for record in subagent_records.stopped_under(parent.get("POOLHOUSE_WORKSPACE_AGENT", "")):
-        gone = workspace_hook.run(["poolhouse-workspace", "retire"], "SubagentStart",
-                                  environment={**parent, "POOLHOUSE_WORKSPACE_AGENT": record["name"]})
-        subagent_records.next_identity(record["agent_id"])
-        if gone is not None:
-            return True
-    return False
-
-
-def register(event: dict, parent: dict) -> tuple[dict, str]:
-    """Register the subagent, ending subagents that stopped while the starting session is at its limit; (answer, why not)."""
-    while True:
-        made, status, why = registration(event, parent)
-        if made or status != QUOTA or not make_room(parent):
-            return made, why
+        return {}, "the board's answer was not JSON"
 
 
 def unregistered(event: dict, parent: dict, why: str) -> str:
@@ -102,8 +79,7 @@ def workspace_brief(event: dict) -> str:
     made, why = register(event, parent)
     if not made:
         return unregistered(event, parent, why)
-    subagent_records.save(str(event["agent_id"]), name=made["id"], parent=made["parent"], board=made.get("board", ""),
-                          stopped_at=0)
+    subagent_records.save(str(event["agent_id"]), name=made["id"], parent=made["parent"], board=made.get("board", ""))
     environment = workspace_hook.own_environment(event, "SubagentStart")
     if environment is None:
         return ""
