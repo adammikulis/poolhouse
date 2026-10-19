@@ -216,3 +216,24 @@ def test_a_small_run_through_the_supervisor_starts_no_xdist_worker_and_a_larger_
     assert where_a_test_ran(tmp_path / "small", "auto", "0.5") == "no xdist worker"
     assert where_a_test_ran(tmp_path / "asked", "1", "0.5") == "gw0"
     assert where_a_test_ran(tmp_path / "large", "auto", "40") in {"gw0", "gw1", "gw2", "gw3"}
+
+
+LOADED = (
+    "import os, sys\n"
+    "sys.path.insert(0, sys.argv[1])\n"
+    "import testslots\n"
+    "testslots._cores = lambda: 16\n"
+    "os.getloadavg = lambda: (500.0, 500.0, 500.0)\n"
+    "with testslots.lease(int(sys.argv[2]), 1, label='wide', say=lambda text: None) as got:\n"
+    "    print(got.workers)\n"
+)
+
+
+def test_a_request_is_granted_in_full_on_a_machine_under_heavy_load(tmp_path):
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in {"DEV_TEST_REMOTE_LEASE", "DEV_TEST_LEASE", "DEV_TEST_CLASS", "DEV_TEST_ESTIMATE_S", "DEV_TEST_BUDGET"}}
+    environment.update(DEV_TEST_SLOTS_DIR=str(tmp_path / "slots"), DEV_TEST_RESERVED_CORES="1", DEV_TEST_WAIT_S="60")
+    done = subprocess.run([sys.executable, "-c", LOADED, str(ROOT / "scripts"), "12"], env=environment,
+                          capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    assert int(done.stdout.split()[-1]) == 12

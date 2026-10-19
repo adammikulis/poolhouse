@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import rules_loader
+import subagent_records
 import tree_watch
 import workspace_hook
 
@@ -35,26 +36,74 @@ def definition_model(event: dict) -> str:
     return ""
 
 
-def spawn(event: dict) -> bool:
-    """Ask the board to register this subagent as a child of whoever started it; the board names it."""
+QUOTA = 4
+"""The exit status of a workspace command the board refused over a quota."""
+
+
+def registration(event: dict, parent: dict) -> tuple[dict, int, str]:
+    """Ask the board to register this subagent as a child of whoever started it; (answer, 0, "") or ({}, exit status, why not)."""
     agent = str(event.get("agent_id") or "")
     if not agent:
-        workspace_hook.warning("SubagentStart", "the event has no agent_id; the subagent cannot be given its own name")
-        return False
-    parent = workspace_hook.parent_environment(event, "SubagentStart")
-    if parent is None:
-        return False
-    command = ["poolhouse-workspace", "spawn", "--session", agent, "--harness", "claude-code"]
+        reason = "the event has no agent_id"
+        workspace_hook.warning("SubagentStart", f"{reason}; the subagent cannot be given its own name")
+        return {}, 1, reason
+    command = ["poolhouse-workspace", "spawn", "--session", subagent_records.native_key(agent), "--harness", "claude-code",
+               "--json"]
     model = definition_model(event)
     if model:
         command += ["--model", model]
-    return workspace_hook.run(command, "SubagentStart", environment=parent) is not None
+    done = workspace_hook.attempt(command, "SubagentStart", environment=parent)
+    if done is None:
+        return {}, 1, "the board did not answer"
+    if done.returncode:
+        reason = " ".join((done.stderr or done.stdout or "no reason given").split())[:300]
+        workspace_hook.warning("SubagentStart", f"command exited {done.returncode}: {reason}")
+        return {}, done.returncode, reason
+    try:
+        return json.loads(done.stdout), 0, ""
+    except ValueError:
+        return {}, 1, "the board's answer was not JSON"
+
+
+def make_room(parent: dict) -> bool:
+    """End the subagent of the starting session that stopped longest ago, as itself; False when none has stopped."""
+    for record in subagent_records.stopped_under(parent.get("POOLHOUSE_WORKSPACE_AGENT", "")):
+        gone = workspace_hook.run(["poolhouse-workspace", "retire"], "SubagentStart",
+                                  environment={**parent, "POOLHOUSE_WORKSPACE_AGENT": record["name"]})
+        subagent_records.next_identity(record["agent_id"])
+        if gone is not None:
+            return True
+    return False
+
+
+def register(event: dict, parent: dict) -> tuple[dict, str]:
+    """Register the subagent, ending subagents that stopped while the starting session is at its limit; (answer, why not)."""
+    while True:
+        made, status, why = registration(event, parent)
+        if made or status != QUOTA or not make_room(parent):
+            return made, why
+
+
+def unregistered(event: dict, parent: dict, why: str) -> str:
+    """Tell the starting session on the board, and the subagent in its context, that it has no identity."""
+    kind = " ".join(str(event.get("agent_type") or "subagent").split())[:40]
+    workspace_hook.run(["poolhouse-workspace", "announce", "blocked",
+                        f"subagent {event.get('agent_id')} ({kind}) has no identity: {why}"[:200]],
+                       "SubagentStart", environment=parent)
+    return (f"The harness could not register you on the board ({why}). A workspace command of yours is refused, because it would "
+            "run as the session that started you: put your result in your final message and the session that started you records it.")
 
 
 def workspace_brief(event: dict) -> str:
     """Register the subagent as its own identity, announce it as itself and return its brief."""
-    if not spawn(event):
+    parent = workspace_hook.parent_environment(event, "SubagentStart")
+    if parent is None:
         return ""
+    made, why = register(event, parent)
+    if not made:
+        return unregistered(event, parent, why)
+    subagent_records.save(str(event["agent_id"]), name=made["id"], parent=made["parent"], board=made.get("board", ""),
+                          stopped_at=0)
     environment = workspace_hook.own_environment(event, "SubagentStart")
     if environment is None:
         return ""
