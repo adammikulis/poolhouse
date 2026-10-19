@@ -337,7 +337,7 @@ combine-as-imports = true
 include = ["src/poolhouse"]
 executionEnvironments = [
     { root = "tests", extraPaths = ["src", "tests", "scripts", "scripts/hooks"] },
-    { root = "." },
+    { root = ".", extraPaths = ["src", "scripts", "scripts/hooks"] },
 ]
 typeCheckingMode = "off"
 reportAssertAlwaysTrue = "error"

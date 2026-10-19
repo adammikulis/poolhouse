@@ -35,6 +35,7 @@ pub mod netif;
 pub mod netsync;
 pub mod node;
 pub mod notes;
+pub mod notice;
 pub mod join_code;
 pub mod peer;
 pub mod phone;

@@ -33,7 +33,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("machine", ("doctor", "fleet", "gym", "serve", "setup")),
     ("tools", ("coordination", "agent", "bench", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "datasheet", "decide_cli",
                "do", "draft", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "migrate", "migrate_paths", "migrate_scan", "memory", "reputation", "inbox", "roles", "rules",
-               "surface", "api", "testfarm", "testing", "train", "walk", "web", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
+               "surface", "api", "testfarm", "testing", "train", "walk", "web", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
     ("dev", ("redteam",)),
 )
 

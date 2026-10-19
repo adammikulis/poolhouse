@@ -12,6 +12,14 @@ from poolhouse.runtime_git import COMMIT as COMMIT, DeployError as DeployError, 
 FLOOR = "packaging/runtime-floor"
 
 
+class Unpublished(DeployError):
+    """The commit is on the local development branch and the remote's copy does not hold it yet."""
+
+    def __init__(self, message: str, checkout: Path, commit: str) -> None:
+        super().__init__(message)
+        self.checkout, self.commit = checkout, commit
+
+
 def resolve_commit(checkout: Path, ref: str = "HEAD") -> str:
     """The full commit a ref names in a checkout."""
     if ref.startswith("-"):
@@ -41,7 +49,8 @@ def admit(checkout: Path, commit: str, *, allow_unmerged: bool | runtime_unmerge
     for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
         published = resolve_commit(checkout, ref)
         if git(checkout, "merge-base", commit, published, check=False) != commit:
-            raise DeployError(f"{commit[:7]} is not on the development branch published at origin/{branch}")
+            message = f"{commit[:7]} is not on the development branch published at origin/{branch}"
+            raise Unpublished(message, checkout, commit) if ref.startswith("refs/remotes/") else DeployError(message)
 
 
 def parse_epoch(text: str) -> int:

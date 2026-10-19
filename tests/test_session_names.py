@@ -68,8 +68,7 @@ def test_two_real_hook_sessions_show_different_names_in_agents_announcements_and
     me = workspace_node.session(workspace_node.adopt(names[0]))
     shown = {agent.name: agent.name for agent in me.agents()}
     assert shown[names[0]] == names[0] and shown[names[1]] == names[1]
-    rows = [e for e in me.read(channel='#announcements').entries if e.fields['type'] == 'joined']
-    assert {e.sender for e in rows} == set(names)
+    assert [e for e in me.read(channel='#announcements').entries if e.fields['type'] == 'joined'] == []
     # A subagent is its own identity under its own unique name; the listing names its parent.
     one = next(a for a in me.agents() if a.name == names[0])
     assert one.harness == 'claude-code' and one.model == 'claude-sonnet-5-5'

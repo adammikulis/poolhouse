@@ -346,6 +346,12 @@ def announcements(node):
     return [(e.fields['type'], e.sender, e.text) for e in node.session(node.lead).read(channel='#announcements').entries]
 
 
+def done_posts(node):
+    """The (sender, text) of every done the stop hook posted to #general."""
+    entries = node.session(node.lead).read(channel='#general').entries
+    return [(e.sender, e.text) for e in entries if e.fields.get('subject') == 'done']
+
+
 def test_a_nested_subagent_is_a_child_of_its_spawner_and_stop_speaks_as_itself(board, tmp_path):
     events = spawn_events(tmp_path, nested=True)
     first, second = start(board, events['child']), start(board, events['grandchild'])
@@ -353,9 +359,10 @@ def test_a_nested_subagent_is_a_child_of_its_spawner_and_stop_speaks_as_itself(b
     assert len({board.lead.name, first.name, second.name}) == 3
     assert parents[first.name] == board.lead.name and parents[second.name] == first.name
     assert hook('claude-subagent-stop', {**events['grandchild'], 'agent_transcript_path': ''}).returncode == 0
-    rows = announcements(board)
-    assert [(kind, name) for kind, name, _ in rows] == [('joined', first.name), ('joined', second.name), ('done', second.name)]
-    assert rows[2][2].startswith('finished')
+    assert announcements(board) == []
+    posts = done_posts(board)
+    assert [name for name, _ in posts] == [second.name]
+    assert posts[0][1].startswith('done: finished')
 
 
 def test_subagents_and_their_children_never_become_coordinators(board, tmp_path):
@@ -381,8 +388,8 @@ def test_a_subagent_that_stops_is_marked_done_with_its_branch_and_its_identity_e
     for number in range(4):
         board.session(child).post('#announcements', 'milestone', f'noise {number}', subject='milestone')
     assert hook('claude-subagent-stop', event).returncode == 0
-    last = announcements(board)[-1]
-    assert last[:2] == ('done', child.name) and 'on worker/topic in repo' in last[2]
+    last = done_posts(board)[-1]
+    assert last[0] == child.name and 'on worker/topic in repo' in last[1]
     assert child.name not in [a.name for a in board.session(board.lead).agents()]
     assert child.name in [a.name for a in board.session(board.lead).agents(retired=True)]
     with pytest.raises(board_session.Denied, match='token is not known'):

@@ -36,11 +36,12 @@ def checkout_note(event: dict) -> str:
     if not where:
         return ""
     branch = workspace_hook.run(["git", "-C", where, "branch", "--show-current"], "SubagentStop")
-    where_head = workspace_hook.run(["git", "-C", where, "rev-parse", "--show-toplevel", "--short", "HEAD"], "SubagentStop")
+    where_head = workspace_hook.attempt(["git", "-C", where, "rev-parse", "--show-toplevel", "--short", "HEAD"], "SubagentStop")
     top, _, head = where_head.stdout.strip().partition("\n") if where_head else ("", "", "")
     if not branch or not top or not branch.stdout.strip():
         return ""
-    return f" on {branch.stdout.strip()} in {Path(top).name}" + (f" at {head}" if head else "")
+    sha = head if not where_head.returncode else ""
+    return f" on {branch.stdout.strip()} in {Path(top).name}" + (f" at {sha}" if sha else "")
 
 
 def main() -> int:

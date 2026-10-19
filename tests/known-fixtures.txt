@@ -350,3 +350,6 @@ Apple M1
 Some Editor
 Partial System Outage
 All Systems Operational
+
+# allowed with `hook allow` on 2026-10-16: not people
+Quillon Thistlewick

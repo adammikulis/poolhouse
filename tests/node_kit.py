@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import node_orphans
 import pytest
 import testnode
 from pool_check import wire
@@ -59,6 +60,7 @@ def runner_binary() -> Path:
 @pytest.fixture(scope="session")
 def node_binary(tmp_path_factory) -> Path:
     """The runner's node binary, copied to a folder of this session's own."""
+    node_orphans.reap()
     mine = tmp_path_factory.mktemp("node") / "poolhouse-node"
     shutil.copy2(runner_binary(), mine)
     return mine
@@ -255,6 +257,7 @@ def workspace_node(node_binary, monkeypatch, request):
     root = Path(tempfile.mkdtemp(prefix="ml")).resolve()
     state = root / "node"
     state.mkdir(mode=0o700)
+    node_orphans.claim(root)
     (state / "write-limits.json").write_text(json.dumps(getattr(request.module, "NODE_WRITE_LIMITS", WRITE_LIMITS)))
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))
     monkeypatch.setenv("POOLHOUSE_BOARD", BOARD)

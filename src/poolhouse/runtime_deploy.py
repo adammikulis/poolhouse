@@ -66,6 +66,7 @@ class Plan:
     agent: str = ""
     allow_unmerged: bool | runtime_unmerged.Approval = False
     automatic_from: tuple[str, ...] | None = None
+    boundary_wait_s: float = 0.0
 
 
 class Superseded(DeployError):
@@ -223,7 +224,7 @@ def _record(plan: Plan) -> None:
 
 def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset()) -> None:
     """Prepare owned commands and atomically publish the selected runtime."""
-    with only_one(runtime_git.boundary(plan.checkout), wait=False, note="runtime cutover"):
+    with runtime_git.crossing(plan.checkout, wait_s=plan.boundary_wait_s, note="runtime cutover"):
         _automatic(plan)
         admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged if chosen.commit == plan.commit else False)
         floor = max(plan.floor, floor_of(plan.checkout, resolve_commit(plan.checkout)))
