@@ -219,4 +219,16 @@ def pid_alive(pid: int) -> bool:
         return True          # it exists; it belongs to somebody else
     except OSError:
         return False
-    return True
+    return not _exited(pid)
+
+
+def _exited(pid: int) -> bool:
+    """Whether ``pid`` has exited and waits only for its parent to collect it."""
+    import psutil
+
+    try:
+        return psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
+    except psutil.Error:
+        return False

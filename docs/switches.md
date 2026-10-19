@@ -15,7 +15,7 @@ Classes
 - **C, plain config**: a path, a name, a limit, an address; no safety consequence.
 - **D, opt-in speed-up**: faster when set and off by default. The decision column says why it stays off or why it was turned on.
 
-Counts: A 32, B 35, C 112, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
+Counts: A 32, B 35, C 114, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
 
 ## A: opt-in safety
 
@@ -66,8 +66,8 @@ Not a variable but a switch: `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONI
 
 | Names | What they set |
 | --- | --- |
-| `POOLHOUSE_ACTIVITY`, `POOLHOUSE_ACTIVITY_RETENTION_DAYS`, `POOLHOUSE_ACTOR`, `POOLHOUSE_SESSION`, `POOLHOUSE_SESSION_HARNESS`, `POOLHOUSE_SESSION_ID`, `POOLHOUSE_WORKSPACE_AGENT`, `POOLHOUSE_WORKSPACE_HOME`, `POOLHOUSE_WORKSPACE_TOKEN`, `POOLHOUSE_WORKSPACE_DENYLIST`, `POOLHOUSE_BOARD`, `POOLHOUSE_AGENT`, `POOLHOUSE_HOOK_STATE`, `POOLHOUSE_ATTENTION_EVERY_S`, `POOLHOUSE_LABELS` | who is speaking and where it is recorded; set by the launchers, never typed |
-| `POOLHOUSE_NO_MEMBERS`, `POOLHOUSE_ADMISSION_WAIT_S`, `POOLHOUSE_REQUEST_WAIT_S`, `POOLHOUSE_LEASE_FOR`, `POOLHOUSE_SLOTS`, `POOLHOUSE_LOG_DAYS`, `POOLHOUSE_LOG_FILES`, `POOLHOUSE_LOG_MB`, `POOLHOUSE_MIN_INTERVAL` | waits, reasons and sizes; `POOLHOUSE_NO_MEMBERS=1` stops a download asking the pool's other members first |
+| `POOLHOUSE_ACTIVITY`, `POOLHOUSE_ACTIVITY_RETENTION_DAYS`, `POOLHOUSE_ACTOR`, `POOLHOUSE_SESSION`, `POOLHOUSE_SESSION_HARNESS`, `POOLHOUSE_SESSION_ID`, `POOLHOUSE_WORKSPACE_AGENT`, `POOLHOUSE_SUBAGENT`, `POOLHOUSE_WORKSPACE_HOME`, `POOLHOUSE_WORKSPACE_TOKEN`, `POOLHOUSE_WORKSPACE_DENYLIST`, `POOLHOUSE_BOARD`, `POOLHOUSE_AGENT`, `POOLHOUSE_HOOK_STATE`, `POOLHOUSE_ATTENTION_EVERY_S`, `POOLHOUSE_LABELS` | who is speaking and where it is recorded; set by the launchers, never typed |
+| `POOLHOUSE_NODE_PARENT_PID`, `POOLHOUSE_NO_MEMBERS`, `POOLHOUSE_ADMISSION_WAIT_S`, `POOLHOUSE_REQUEST_WAIT_S`, `POOLHOUSE_LEASE_FOR`, `POOLHOUSE_SLOTS`, `POOLHOUSE_LOG_DAYS`, `POOLHOUSE_LOG_FILES`, `POOLHOUSE_LOG_MB`, `POOLHOUSE_MIN_INTERVAL` | the owner process of a started test node (its supervisor stops when that process is gone), waits, reasons and sizes; `POOLHOUSE_NO_MEMBERS=1` stops a download asking the pool's other members first |
 | `POOLHOUSE_STEP_LEDGER` | a file a check names so every step it asks of a person is written to it, one JSON line each (the onboarding step count; `app/poolhouse-node/src/gov/signer.rs`) |
 | `POOLHOUSE_ADOPT_CACHE`, `POOLHOUSE_BUILD`, `POOLHOUSE_DEST`, `POOLHOUSE_MODE`, `POOLHOUSE_MODELS`, `POOLHOUSE_NAME`, `POOLHOUSE_OFFLINE_MODELS`, `POOLHOUSE_OFFLINE_WHEELS`, `POOLHOUSE_OFFLINE_ZIP`, `POOLHOUSE_PREFIX`, `POOLHOUSE_REF`, `POOLHOUSE_REPO`, `POOLHOUSE_SRC`, `POOLHOUSE_TRACK`, `POOLHOUSE_VERSION`, `POOLHOUSE_WIRE`, `POOLHOUSE_BUILD_ID`, `POOLHOUSE_BUILD_SEQ` | the installer and the build the node reports |
 | `POOLHOUSE_AGENT_APP`, `POOLHOUSE_API_KEY`, `POOLHOUSE_CANARY_API_KEY`, `POOLHOUSE_CREDENTIALS_FILE`, `POOLHOUSE_DECIDE_KEY`, `POOLHOUSE_DECIDE_URL`, `POOLHOUSE_DEVICE_KEY_PASSPHRASE`, `POOLHOUSE_JOIN_CODE`, `POOLHOUSE_MEMORY_KEYS`, `POOLHOUSE_MEMORY_PASSPHRASE`, `POOLHOUSE_MEMORY_PROFILE`, `POOLHOUSE_PASSPHRASE`, `POOLHOUSE_POOL`, `POOLHOUSE_POOL_KEY`, `POOLHOUSE_SIGNING_PASSPHRASE`, `POOLHOUSE_RELEASE_SIGNING_KEY`, `POOLHOUSE_VOLUME_KEYCHAIN`, `POOLHOUSE_MEMBER_NAME` | a secret or a name handed to one command, or the keychain item name; never a switch |

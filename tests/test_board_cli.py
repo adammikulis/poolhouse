@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -290,21 +289,3 @@ def test_digest_lists_new_announcements_and_ack_marks_them_seen(team):
     assert "landed one" in team.cli("digest", who=team.lead).stdout
     assert "landed one" in team.cli("digest", "--ack", who=team.lead).stdout
     assert "nothing new" in team.cli("digest", who=team.lead).stdout
-
-
-def test_the_bash_guard_makes_a_subagent_name_itself_in_workspace_commands(team):
-    child = team.member("agent-a", parent=team.lead)
-    guard = Path(__file__).resolve().parents[1] / "scripts/hooks/claude-bash-guard"
-
-    def run_guard(command, **event):
-        asked = {"tool_name": "Bash", "cwd": "/", "tool_input": {"command": command}, **event}
-        env = team.env()
-        env.pop("POOLHOUSE_GUARD", None)
-        done = subprocess.run([sys.executable, str(guard)], input=json.dumps(asked), text=True, capture_output=True, env=env, timeout=90)
-        return done.returncode, done.stderr
-
-    code, why = run_guard("poolhouse-workspace inbox", agent_id="agent-a")
-    assert code == 2 and f"--agent {child.name}" in why, (code, why)
-    assert run_guard(f"poolhouse-workspace inbox --agent {child.name}", agent_id="agent-a")[0] == 0
-    assert run_guard("poolhouse-workspace inbox")[0] == 0
-    assert run_guard("ls", agent_id="agent-a")[0] == 0

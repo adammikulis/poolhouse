@@ -24,7 +24,7 @@ pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "ci_watch.py"
 FAKE_GH = r'''#!__PYTHON__
-import json, os, pathlib, sys
+import json, os, pathlib, sys, time
 base = pathlib.Path(os.environ["FAKE_GH_DIR"])
 args = sys.argv[1:]
 with open(base / "calls.log", "a") as f:
@@ -36,6 +36,7 @@ if args[:2] == ["run", "list"]:
         sys.exit(1)
     print(json.dumps(scenario["runs"]))
 elif args[:2] == ["run", "watch"]:
+    time.sleep(scenario.get("watch_sleep", 0))
     print("watching")
 elif args[:2] == ["run", "view"] and "--log-failed" in args:
     print(scenario["log"])
@@ -98,6 +99,13 @@ class Rig:
         done = {**row, "status": "completed", "jobs": JOBS if conclusion == "failure" else JOBS[:1]}
         self.scenario(runs=[row], view=done, log=LOG)
 
+    def going(self, sha: str, jobs: list[dict], age_s: float = 0.0, watch_sleep: float = 5.0) -> None:
+        """The fake gh reports a run of ``sha`` that began ``age_s`` ago and never ends; its `run watch` hangs ``watch_sleep`` seconds."""
+        began = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - age_s))
+        row = self.run_for(sha, "", began, "in_progress")
+        view = {**row, "jobs": [{"startedAt": began, **job} for job in jobs]}
+        self.scenario(runs=[row], view=view, log="", watch_sleep=watch_sleep)
+
     def env(self, who=None) -> dict[str, str]:
         """The environment of a watcher: this node, the pusher (or nobody) and a PATH of this rig's bin folder alone."""
         return self.node.env(who, {"PATH": str(self.bin), "FAKE_GH_DIR": str(self.base)})
@@ -118,6 +126,11 @@ class Rig:
         """The bodies of the ci task messages the pusher received."""
         found = self.node.session(self.pusher).read_all(kind="message")
         return [e.text for e in found if str(e.fields.get("subject", "")).startswith("ci red")]
+
+    def stuck(self) -> list[str]:
+        """The bodies of the stuck-run messages the pusher received."""
+        found = self.node.session(self.pusher).read_all(kind="message")
+        return [e.text for e in found if str(e.fields.get("subject", "")).startswith("ci stuck")]
 
     def blocked(self) -> list[str]:
         """The `blocked` announcements."""
@@ -241,6 +254,63 @@ def test_a_green_run_or_a_cancelled_one_decides_what_counts_as_the_streak(rig):
 def test_the_watch_outlasts_the_longest_job_of_the_workflow():
     longest = max(int(m) for m in re.findall(r"timeout-minutes: (\d+)", (ROOT / ".github/workflows/ci.yml").read_text()))
     assert longest * 60 <= ci_watch.RUN_TIMEOUT_S
+
+
+SHARDS = [{"name": "shard 1 on Python 3.13", "status": "completed", "conclusion": "success"},
+          {"name": "shard 3 on Python 3.13", "status": "in_progress", "conclusion": ""},
+          {"name": "shard 4 on Python 3.13", "status": "queued", "conclusion": ""}]
+
+
+def test_a_run_still_going_at_the_first_mark_names_the_jobs_not_finished_and_their_age(rig):
+    rig.install_gh()
+    sha = rig.commit("stuck1")
+    rig.going(sha, SHARDS, age_s=0)
+    code, out = rig.watch(sha, "--warn-s", "1", "--block-s", "600")
+    assert code == 0, out
+    (body,) = rig.stuck()
+    assert sha[:12] in body and "shard 3 on Python 3.13" in body and "shard 4 on Python 3.13" in body, body
+    assert "shard 1 on Python 3.13" not in body and "in_progress" in body and "queued" in body, body
+    assert rig.blocked() == []
+
+
+def test_a_run_still_going_at_the_second_mark_is_also_announced_as_blocked(rig):
+    rig.install_gh()
+    sha = rig.commit("stuck2")
+    rig.going(sha, SHARDS, age_s=0, watch_sleep=6)
+    rig.watch(sha, "--warn-s", "1", "--block-s", "3")
+    assert len(rig.stuck()) == 2
+    (line,) = rig.blocked()
+    assert sha[:12] in line and "shard 3 on Python 3.13" in line and len(line) <= 200, line
+
+
+def test_a_stuck_run_is_told_once_per_commit_and_mark(rig):
+    rig.install_gh()
+    sha = rig.commit("stuck3")
+    rig.going(sha, SHARDS, age_s=0, watch_sleep=6)
+    rig.watch(sha, "--warn-s", "1", "--block-s", "3")
+    rig.watch(sha, "--warn-s", "1", "--block-s", "3")
+    assert len(rig.stuck()) == 2 and len(rig.blocked()) == 1
+
+
+def test_a_run_with_no_job_started_says_it_is_waiting_for_the_one_before(rig):
+    rig.install_gh()
+    sha = rig.commit("stuck4")
+    rig.going(sha, [], age_s=0)
+    rig.watch(sha, "--warn-s", "1", "--block-s", "600")
+    (body,) = rig.stuck()
+    assert "no job has started" in body, body
+
+
+def test_a_run_that_ends_before_the_first_mark_posts_no_stuck_message(rig):
+    rig.install_gh()
+    sha = rig.commit("quick")
+    rig.answer(sha, "success", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    code, out = rig.watch(sha, "--warn-s", "600", "--block-s", "1200")
+    assert code == 0 and rig.stuck() == [] and rig.blocked() == [], out
+
+
+def test_the_marks_are_twenty_five_and_thirty_five_minutes():
+    assert (ci_watch.WARN_S, ci_watch.BLOCK_S) == (25 * 60, 35 * 60)
 
 
 def load_pushed():
