@@ -19,7 +19,7 @@ def waiting() -> str:
 
 
 def following[T](plan_for: Callable[[], T], seconds: float, *, sleep: Callable[[float], None] = time.sleep,
-              clock: Callable[[], float] = time.monotonic) -> T:
+                 clock: Callable[[], float] = time.monotonic) -> T:
     """The result of `plan_for` once it stops raising `Unpublished`, asked again every `POLL_S` for at most `seconds` (never more than `AWAIT_S`).
 
     It holds the publish lock for the whole wait, so the tip is followed as the branch moves; `Busy` when another process

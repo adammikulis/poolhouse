@@ -145,10 +145,11 @@ def test_authority_is_checked_again_after_the_wait_and_before_anything_is_built(
         seen.append(git(world.repo, "rev-parse", "refs/remotes/origin/dev"))
         if len(seen) > 1:
             raise HumanRequired("runtime ensure is a person's again")
+        threading.Timer(0.5, publish, (world, tip)).start()
         return authority.PERSON
 
     monkeypatch.setattr(runtime_cli.runtime_trust, "authorize", authorize)
-    code, plans = build_after_push(world, tip, monkeypatch, 30, 0.3)
+    code, plans = waiter(world, monkeypatch, 30)
     assert code == 1 and plans == [] and "a person's again" in capsys.readouterr().err
     assert len(seen) == 2 and seen[0] != tip and seen[1] == tip
 
