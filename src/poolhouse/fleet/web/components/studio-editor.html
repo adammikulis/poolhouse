@@ -16,7 +16,11 @@
             !pending ||
             (
               spec[pending.side === "outputs" ? "inputs" : "outputs"] || []
-            ).some((p) => p.type === pending.type);
+            ).some((p) =>
+              pending.side === "outputs"
+                ? S.compatible(pending, p)
+                : S.compatible(p, pending),
+            );
           const sections = [];
           const nodes = this.specs.filter(
             (spec) =>
@@ -36,8 +40,10 @@
                       if (pending) {
                         const side =
                             pending.side === "outputs" ? "inputs" : "outputs",
-                          port = spec[side].find(
-                            (p) => p.type === pending.type,
+                          port = spec[side].find((p) =>
+                            pending.side === "outputs"
+                              ? S.compatible(pending, p)
+                              : S.compatible(p, pending),
                           );
                         this.canvas.port(n, port, side);
                       }
@@ -147,6 +153,7 @@
             };
             box.append(E("label", {}, "Choose " + name, select));
           }
+          this.sweepControls(box, node, spec);
           const links = E("div", { class: "studio-links" });
           for (const input of spec.inputs || []) {
             const select = E(
@@ -161,7 +168,7 @@
             for (const n of this.graph.nodes.filter((n) => n.id !== node.id)) {
               const ns = S.spec(this, n);
               for (const output of ns.outputs || [])
-                if (output.type === input.type) {
+                if (S.compatible(output, input)) {
                   const value = JSON.stringify({
                     node: n.id,
                     port: output.name,

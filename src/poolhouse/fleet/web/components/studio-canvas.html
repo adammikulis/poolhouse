@@ -48,12 +48,7 @@
             Math.hypot(e.clientX - start.x, e.clientY - start.y) < 5
           )
             return;
-          this.pending = {
-            node: start.node.id,
-            port: start.port.name,
-            type: start.port.type,
-            side: start.side,
-          };
+          this.pending = S.portReference(start.node, start.port, start.side);
           this.editor.message("Choose a compatible node to connect.");
           this.editor.library();
           this.editor.querySelector("#studio-search").focus();

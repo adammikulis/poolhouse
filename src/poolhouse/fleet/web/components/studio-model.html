@@ -10,6 +10,15 @@
       layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     S.id = () => crypto.randomUUID();
+    S.compatible = (output, input) =>
+      (input.accepted_types || [input.type]).includes(output.type);
+    S.portReference = (node, port, side) => ({
+      node: node.id,
+      port: port.name,
+      type: port.type,
+      accepted_types: port.accepted_types,
+      side,
+    });
     S.api = async (path, body, method) => {
       const r = await window.fleetModel.api(
         "/ui/studio" + path,
@@ -57,7 +66,7 @@
                 (p) => p.name === ref.port,
               )
             : null;
-          return { name, type: p?.type || "unknown" };
+          return { ...p, name, type: p?.type || "unknown" };
         });
       const properties = Object.fromEntries(
         Object.entries(group.parameters || {}).map(([name, ref]) => {

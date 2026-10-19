@@ -20,6 +20,14 @@ SPECS = [
      'parameters': {'properties': {'title': {'type': 'string', 'default': 'Results'}}}},
 ]
 
+SPECS.extend([
+    {'type': 'language-example', 'version': 1, 'title': 'Language producer', 'family': 'Inference',
+     'inputs': [], 'outputs': [{'name': 'model', 'type': 'language-model'}],
+     'parameters': {'properties': {}}},
+    {'type': 'model-example', 'version': 1, 'title': 'Model consumer', 'family': 'Inference',
+     'inputs': [{'name': 'model', 'type': 'model', 'accepted_types': ['model', 'language-model']}],
+     'outputs': [], 'parameters': {'properties': {}}},
+])
 
 
 @pytest.fixture
@@ -359,3 +367,43 @@ def test_failed_save_blocks_run_and_new_workflow(studio_page):
     expect(page.locator('#studio-runs')).to_contain_text('done')
     assert len(state['submissions']) == 1
     assert not errors
+
+
+def test_subtype_port_suggestions_and_inspector_connections(studio_page):
+    page, _state, errors = studio_page
+    add(page, 'Language producer')
+    page.get_by_role('button', name='Language producer output model, language-model').click()
+    expect(page.locator('.studio-library')).to_contain_text('Compatible nodes')
+    expect(page.locator('.studio-library').get_by_role('button', name='Model consumer')).to_be_visible()
+    expect(page.locator('.studio-library').get_by_role('button', name='Report')).to_have_count(0)
+    add(page, 'Model consumer')
+    expect(page.locator('.studio-connections path')).to_have_count(1)
+    expect(page.locator('.studio-inspector').get_by_label('Connect model')).not_to_have_value('')
+    assert not errors
+
+
+def test_actual_sweep_controls_save_typed_choices(tmp_path):
+    pytest.importorskip('playwright.sync_api')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    try:
+        with browser(Window(profile=tmp_path / 'sweep-browser', headless=True)) as page:
+            page.goto(f'http://127.0.0.1:{served.port}/ui/')
+            page.locator('.studio-library').get_by_role('button', name='Inference Ready to configure', exact=True).click()
+            page.locator('.studio-node[aria-label="Generate"]').focus()
+            page.keyboard.press('Enter')
+            page.locator('.studio-inspector').get_by_text('Sweep parameters', exact=True).click()
+            page.get_by_label('Sweep temperature', exact=True).fill('0.1\n0.8')
+            page.get_by_label('Sweep temperature', exact=True).press('Tab')
+            page.get_by_role('button', name='Save', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Saved')
+            page.reload()
+            page.locator('.studio-node[aria-label="Generate"]').focus()
+            page.keyboard.press('Enter')
+            page.locator('.studio-inspector').get_by_text('Sweep parameters', exact=True).click()
+            expect(page.get_by_label('Sweep temperature', exact=True)).to_have_value('0.1\n0.8')
+    finally:
+        if hasattr(served.ui, 'studio'):
+            served.ui.studio.close()
+        served.close()

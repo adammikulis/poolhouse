@@ -1,0 +1,78 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installSweeps = (proto) =>
+      Object.assign(proto, {
+        sweepControls(host, node, spec) {
+          const properties = Object.entries(spec.parameters?.properties || {});
+          if (node.type === "group" || !properties.length) return;
+          const details = E(
+            "details",
+            {},
+            E("summary", {}, "Sweep parameters"),
+            E(
+              "p",
+              {},
+              "Enter one value per line to compare parameter choices. Empty fields use the node’s configured value.",
+            ),
+          );
+          for (const [name, field] of properties) {
+            const id = "studio-" + S.id(),
+              input = E("textarea", {
+                id,
+                "aria-label": "Sweep " + (field.title || name),
+                rows: 3,
+                placeholder: field.enum?.join("\n") || "One value per line",
+              });
+            input.value = (node.sweep?.[name] || []).map(String).join("\n");
+            input.onchange = () => {
+              const lines = input.value
+                .split("\n")
+                .map((s) => s.trim())
+                .filter(Boolean);
+              const values = lines.map((s) =>
+                field.type === "boolean"
+                  ? s === "true"
+                    ? true
+                    : s === "false"
+                      ? false
+                      : null
+                  : ["integer", "number"].includes(field.type)
+                    ? Number(s)
+                    : s,
+              );
+              if (
+                values.some(
+                  (v) =>
+                    v === null ||
+                    (typeof v === "number" &&
+                      (!Number.isFinite(v) ||
+                        (field.type === "integer" && !Number.isInteger(v)))) ||
+                    (field.enum && !field.enum.includes(v)),
+                )
+              ) {
+                input.setCustomValidity(
+                  "Enter one valid parameter value per line.",
+                );
+                input.reportValidity();
+                return;
+              }
+              input.setCustomValidity("");
+              this.checkpoint();
+              node.sweep ||= {};
+              if (values.length) node.sweep[name] = values;
+              else delete node.sweep[name];
+              if (!Object.keys(node.sweep).length) delete node.sweep;
+              this.changed();
+            };
+            details.append(
+              E("label", { for: id }, "Sweep " + (field.title || name)),
+              input,
+            );
+          }
+          host.append(details);
+        },
+      });
+  })();
+</script>

@@ -115,12 +115,11 @@
                   (this.portStart.node.id !== node.id ||
                     this.portStart.port.name !== port.name)
                 ) {
-                  this.pending = {
-                    node: this.portStart.node.id,
-                    port: this.portStart.port.name,
-                    type: this.portStart.port.type,
-                    side: this.portStart.side,
-                  };
+                  this.pending = S.portReference(
+                    this.portStart.node,
+                    this.portStart.port,
+                    this.portStart.side,
+                  );
                   this.port(node, port, side);
                   this.portStart = null;
                 }
@@ -170,12 +169,7 @@
         port(node, port, side) {
           const editor = this.editor;
           if (!this.pending) {
-            this.pending = {
-              node: node.id,
-              port: port.name,
-              type: port.type,
-              side,
-            };
+            this.pending = S.portReference(node, port, side);
             editor.message(
               "Choose a compatible " +
                 (side === "outputs" ? "input" : "output") +
@@ -196,8 +190,15 @@
             editor.library();
             return;
           }
-          if (old.side === side || old.type !== port.type) {
-            editor.message("Connect an output to an input with the same type.");
+          if (
+            old.side === side ||
+            !(side === "inputs"
+              ? S.compatible(old, port)
+              : S.compatible(port, old))
+          ) {
+            editor.message(
+              "Connect an output to an input with compatible types.",
+            );
             return;
           }
           const source =
