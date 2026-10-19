@@ -1,7 +1,7 @@
 {
- "surfaces": 831,
+ "surfaces": 832,
  "by_status": {
-  "covered": 508,
+  "covered": 509,
   "partial": 193,
   "uncovered": 52,
   "n/a": 78,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 94,
+   "covered": 95,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
