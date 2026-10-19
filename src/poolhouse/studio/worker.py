@@ -144,6 +144,12 @@ def _prepare_data(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
         target = out / 'reviewed.jsonl'
         count = optional.module('poolhouse.gym.recordings').export_reviewed(trajectory['path'], reviews['path'], target)
         return {'dataset': {'kind': 'dataset', 'path': str(target), 'rows': count}}
+    if kind.startswith('gym.'):
+        return _gym(kind, parameters, inputs, out)
+    raise ValueError('Unknown data operation')
+
+
+def _gym(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     if kind == 'gym.train':
         rows = rows_of(inputs['dataset'])
         environment = parameters.get('environment') or rows[0].get('environment')
@@ -151,16 +157,22 @@ def _prepare_data(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
             raise ValueError('Select the Gym environment for this recording')
         result = optional.module('poolhouse.gym.training').train(environment,
                     timesteps=parameters.get('timesteps', 2048), seed=parameters.get('seed', 0))
-        return {'model': {'kind': 'model', 'path': result['checkpoint'], 'gym': result}, 'metrics': result}
+        source = Path(result['checkpoint'])
+        target = out / 'policy.zip'
+        shutil.copyfile(source, target)
+        public = {k: v for k, v in result.items() if k != 'checkpoint'}
+        write_json(out / 'policy-manifest.json', public)
+        return {'model': {'kind': 'model', 'path': str(target), 'gym': True}, 'metrics': public}
     if kind == 'gym.evaluate':
         model = inputs['model']
-        manifest = model.get('gym')
-        if not manifest:
+        if not model.get('gym'):
             raise ValueError('Select a trained Gym policy')
-        metrics = optional.module('poolhouse.gym.training').evaluate(manifest['environment'], model['path'],
+        training = optional.module('poolhouse.gym.training')
+        original, manifest = training.matching_policy(model['path'], out.parent.parent)
+        metrics = training.evaluate(manifest['environment'], original,
                     config=manifest.get('config'), episodes=parameters.get('episodes', 5))
         return {'metrics': metrics, 'report': metrics}
-    raise ValueError('Unknown data operation')
+    raise ValueError('Unknown Gym operation')
 
 
 def _export(model: dict, format: str, out: Path) -> dict:

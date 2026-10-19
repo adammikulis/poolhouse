@@ -4,7 +4,7 @@ import json
 import uuid
 from pathlib import Path
 
-from poolhouse.files import write_json
+from poolhouse.files import sha256_file, write_json
 from poolhouse.gym.adapters import make_environment
 from poolhouse.gym.paths import artifact_root
 
@@ -22,6 +22,35 @@ def load_policy(checkpoint, env=None):
         if trained != env.unwrapped.steering_magnitude:
             raise ValueError(f"Car checkpoint requires steering_magnitude={trained}; use its training configuration")
     return PPO.load(source, env=env, device="cpu")
+
+
+def matching_policy(checkpoint, owned_root):
+    """Resolve an owned policy copy to an identical trusted native checkpoint."""
+    source = Path(checkpoint)
+    root = Path(owned_root).resolve(strict=True)
+    if source.is_symlink() or not source.is_file() or not source.resolve().is_relative_to(root):
+        raise ValueError("Select an owned Studio policy artifact")
+    if source.stat().st_nlink != 1:
+        raise ValueError("Policy artifact must be an independent regular file")
+    digest = sha256_file(source)
+    trusted_root = artifact_root().resolve(strict=True)
+    for directory in sorted(trusted_root.glob('training-*')):
+        if directory.is_symlink() or not directory.is_dir():
+            continue
+        native = directory / 'policy.zip'
+        manifest_path = directory / 'manifest.json'
+        if native.is_symlink() or manifest_path.is_symlink() or not native.is_file() or not manifest_path.is_file():
+            continue
+        if native.stat().st_nlink != 1 or sha256_file(native) != digest:
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (ValueError, OSError):
+            continue
+        if manifest.get('checkpoint') != str(native) or not manifest.get('environment'):
+            continue
+        return native, manifest
+    raise ValueError("The trusted original of this policy is unavailable or has changed")
 
 
 def train(environment, config=None, timesteps=2048, seed=0, checkpoint=None):
