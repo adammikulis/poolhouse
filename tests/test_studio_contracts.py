@@ -93,3 +93,45 @@ def test_free_text_is_not_exported():
     value = {"nodes": [{"id": "prompt", "type": "prompt", "parameters": {"template": "secret /private/path"}}], "edges": []}
     package = export_package(value, package_id="example", version="1", name="Example")
     assert package["graph"]["nodes"][0]["parameters"] == {}
+
+
+def test_package_group_parameter_roundtrip_and_unused_group_attack():
+    value = graph()
+    inner = value["nodes"].pop()
+    value["groups"] = {"recipe": {"nodes": [inner], "edges": [], "inputs": {"data": {"node": "train", "port": "dataset"}},
+                                  "outputs": {}, "parameters": {"steps": {"node": "train", "parameter": "steps"}}}}
+    value["nodes"].append({"id": "group", "type": "group", "group": "recipe", "parameters": {"steps": 20}})
+    value["edges"][0]["target"] = {"node": "group", "port": "data"}
+    package = export_package(value, package_id="group", version="1", name="Group")
+    assert package["graph"]["nodes"][1]["parameters"]["steps"] == 20
+    assert validate_graph(package["graph"])["graph"]["nodes"][1]["parameters"]["steps"] == 20
+    value["groups"]["unused"] = {"nodes": [{"id": "loop", "type": "group", "group": "unused"}], "edges": []}
+    assert not validate_graph(value)["valid"]
+    value["groups"].pop("unused")
+    value["groups"]["recipe"]["parameters"]["steps"]["token"] = "secret"
+    with pytest.raises(ValueError, match="interface"):
+        export_package(value, package_id="bad", version="1", name="Bad")
+
+
+def test_declared_strings_and_strict_provenance():
+    value = {"nodes": [{"id": "prompt", "type": "prompt", "parameters": {"template": "Hello"}}], "edges": []}
+    package = export_package(value, package_id="prompt", version="1", name="Prompt", portable_parameters={"prompt": ["template"]})
+    assert package["graph"]["nodes"][0]["parameters"]["template"] == "Hello"
+    package["provenance"] = {"source_id": {"token": "secret"}}
+    _resign(package)
+    with pytest.raises(ValueError, match="provenance"):
+        import_package(package)
+    with pytest.raises(ValueError, match="declaration"):
+        export_package(value, package_id="bad", version="1", name="Bad", portable_parameters={"private": ["secret"]})
+
+
+def test_sweep_expansion_and_boolean_versions():
+    value = graph()
+    value["nodes"][1]["sweep"] = {"steps": [20, 40]}
+    result = validate_graph(value)
+    assert result["valid"]
+    assert len(result["graph"]["nodes"]) == 4
+    assert result["graph"]["variants"]["train"] == ["train/sweep/0", "train/sweep/1"]
+    value = graph()
+    value["nodes"][0]["version"] = True
+    assert not validate_graph(value)["valid"]

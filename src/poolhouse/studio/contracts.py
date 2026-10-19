@@ -1,6 +1,7 @@
 """Typed workflow validation and reusable-group expansion."""
 from __future__ import annotations
 
+import itertools
 import json
 import math
 import re
@@ -68,7 +69,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         if not isinstance(identifier, str) or not IDENTIFIER.fullmatch(identifier) or identifier in ids:
             raise ValueError("Node identifiers must be unique simple names")
         ids.add(identifier)
-        if set(node) - {"id", "type", "version", "parameters", "bindings", "group", "name"}:
+        if set(node) - {"id", "type", "version", "parameters", "bindings", "group", "name", "sweep"}:
             raise ValueError("Unknown node field")
         if node.get("type") != "group":
             node["id"] = prefix + identifier
@@ -189,11 +190,47 @@ def _has_cycle(nodes: dict, successors: dict) -> bool:
     return seen != len(nodes)
 
 
+def _sweeps(graph: dict) -> dict:
+    requests = []
+    for node in graph["nodes"]:
+        sweep = node.pop("sweep", {})
+        if not isinstance(sweep, dict):
+            raise ValueError("Sweep settings must map parameters to values")
+        for parameter, values in sweep.items():
+            if not isinstance(parameter, str) or not isinstance(values, list) or not values:
+                raise ValueError("Each sweep parameter needs a nonempty value list")
+            requests.append((node["id"], parameter, values))
+    if not requests:
+        return graph
+    size = len(graph["nodes"])
+    for _, _, values in requests:
+        size *= len(values)
+        if size > MAX_NODES:
+            raise ValueError("Expanded sweep has too many nodes")
+    nodes, edges = [], []
+    variants = {node["id"]: [] for node in graph["nodes"]}
+    for index, values in enumerate(itertools.product(*(request[2] for request in requests))):
+        instance = deepcopy(graph)
+        by_id = {node["id"]: node for node in instance["nodes"]}
+        for (identifier, parameter, _), value in zip(requests, values, strict=True):
+            by_id[identifier].setdefault("parameters", {})[parameter] = value
+        names = {identifier: f"{identifier}/sweep/{index}" for identifier in by_id}
+        for node in instance["nodes"]:
+            variants[node["id"]].append(names[node["id"]])
+            node["id"] = names[node["id"]]
+        for edge in instance["edges"]:
+            for endpoint in edge.values():
+                endpoint["node"] = names[endpoint["node"]]
+        nodes.extend(instance["nodes"])
+        edges.extend(instance["edges"])
+    return {"nodes": nodes, "edges": edges, "variants": variants}
+
+
 def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
                    authorize: Callable | None = None) -> dict:
     """Validate and expand a workflow without executing or resolving resources."""
     try:
-        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "groups", "layout", "description"}:
+        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "groups", "layout", "description", "sweeps"}:
             raise ValueError("Invalid workflow fields")
         if type(graph.get("schema_version", 1)) is not int or graph.get("schema_version", 1) != 1 or not _finite(graph):
             raise ValueError("Unsupported workflow version or nonfinite value")
@@ -201,8 +238,12 @@ def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
             raise ValueError("Workflow needs nodes, connections and group definitions")
         if len(graph["nodes"]) > MAX_NODES or len(json.dumps(graph)) > 2_000_000:
             raise ValueError("Workflow exceeds the supported graph size")
-        expanded = _expand(graph, graph.get("groups", {}))
+        definitions = graph.get("groups", {})
+        for key in definitions:
+            _expand({"nodes": [{"id": "check", "type": "group", "group": key}], "edges": []}, definitions)
+        expanded = _expand(graph, definitions)
         expanded.pop("resolve")
+        expanded = _sweeps(expanded)
         errors = _validate_expanded(expanded, capabilities, authorize)
         return {"valid": not errors, "errors": errors, "graph": expanded}
     except (ValueError, TypeError, KeyError, RecursionError) as exc:
