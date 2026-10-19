@@ -11,12 +11,14 @@ and the run stops unless the primary checkout's `scripts/land*` and `scripts/aff
 
 0. **Preconditions.** The primary checkout is on the development branch; the branch has a clean worktree with no merge or
    rebase in progress; the repository has an `origin`; the board answers and the session is above the lowest model tier.
-   The landing lock (`<git-common-dir>/land/runner.lock`, an `flock`, the same file the runtime cutover waits on) is taken
-   without waiting, and so is the claim on the development branch. A second lander is refused with the name, branch, step and
-   start time of the first.
+   A lock of the branch (`<git-common-dir>/land/branch-<hash>.lock`) is taken without waiting for the whole run, so a second
+   lander of the same branch is refused naming the first. Steps 1 to 3 hold no repository lock and no claim: any number of
+   branches sync and run their checks at once (the test broker queues the CPU).
 1. **Sync.** `git fetch origin <dev>`, then `git ls-remote` asks origin which commit it holds; the remote-tracking ref in full
-   (`refs/remotes/origin/<dev>`) must be that commit or the run stops, and every later step uses that commit. The local
-   development branch fast-forwards to it (a local commit that origin lacks stops the run, naming it). A commit already on `origin/<dev>` only gets the clean-up of step 4. A branch behind
+   (`refs/remotes/origin/<dev>`) must be that commit or the run stops (a difference caused by another lander's push or fetch
+   between the two reads is read again, up to three times), and every later step uses that commit. A local development branch
+   with a commit that origin lacks stops the run, naming it; it fast-forwards at step 4. The first sync fixes the commit the
+   lander in memory came from. A commit already on `origin/<dev>` only gets the clean-up of step 4. A branch behind
    `origin/<dev>` is rebased (merged, when it holds merges) when its diff needs no review. When it does, the accept names an
    exact commit and a rebase would void it, so the lander checks that an accept stands for the tip and builds a merge commit
    M of `origin/<dev>` (first parent) and the tip (second parent) from `git merge-tree --write-tree`, moves the branch to M
@@ -39,12 +41,31 @@ and the run stops unless the primary checkout's `scripts/land*` and `scripts/aff
    lines. Every check runs in a process group of its own with a fixed environment (`PATH`, `HOME`, the board and device
    variables, nothing else: no `PYTEST_ADDOPTS`, no caller `PYTHONPATH`, no `POOLHOUSE_LIVE_*`). The tree is hashed before and
    after each check and the run stops if it changed or if an ignored file that is not a build cache is present. `scripts/test`
-   keeps its own `ran` or `reused from <id>` per file. The selector follows imports one level (`DEPTH = 1`).
-4. **Land.** The branch must still be at the tested commit and the accept is read again; then
-   `git push origin <sha>:refs/heads/<dev>` (plain, never forced; a rejected push stops with git's line). The primary
-   checkout fast-forwards, then the worktree and branch are removed. A kill between the push and the fast-forward is repaired
-   by running the command again. If the local development branch holds a commit that origin lacks, the commit is on origin
-   and the lander says so (exit 6) and leaves that branch alone.
+   keeps its own `ran` or `reused from <id>` per file. The selector follows imports one level (`DEPTH = 1`). The checks run on
+   the tree of the tip, identified by the tip and the commit of `origin/<dev>` they ran against (the base).
+4. **Land.** Only this step holds the landing lock (`<git-common-dir>/land/runner.lock`, an `flock`, the same file the runtime
+   cutover waits on) and the claim on the development branch. A lander that finds the lock held says who holds it and waits up
+   to 120 seconds for it, then stops naming the holder; a claim held by another session stops it at once. Under the lock it
+   fetches and asks `git ls-remote` again, then:
+   - **origin is still the base**: the lander in memory must still be the one `origin/<dev>` holds (a change to
+     `scripts/land*` or `scripts/affected*` since the run began stops it), the branch must still be at the tested commit, the
+     tree unchanged and the accept read again; then `git push origin <sha>:refs/heads/<dev>` (plain, never forced; a rejected
+     push stops with git's line). The primary checkout fast-forwards, then the worktree and branch are removed. A kill between
+     the push and the fast-forward is repaired by running the command again. If the local development branch holds a commit
+     that origin lacks, the commit is on origin and the lander says so (exit 6) and leaves that branch alone.
+   - **origin moved**: nothing is pushed. The lock and the claim are released and the run goes back to step 1 for the new
+     base (a rebase, or the merge of a reviewed tip), then the review check of step 2. The earlier green result stands for the
+     new commit, with no run, when every one of these holds; otherwise step 3 runs again, outside the lock:
+     origin's new commits and the branch change no path in common; the branch's files are those that were tested, unchanged;
+     the branch's diff against the new base calls for the same checks and the same test files; the paths the new commits
+     changed are not shared test infrastructure, the lander, `pyproject.toml` or `budgets.json`, are mapped by a selector, and
+     reach no test file that ran (the selector of step 3, applied to the new commits' paths); the whole suite did not run;
+     origin still descends from the base. A branch with a new commit, a different tip or a test run that is no longer valid is
+     never pushed on the earlier result. After three rounds the run stops with `origin/<dev> moved 3 times ...; run land again`.
+
+The whole-tree results (`scripts/test gate`, `scripts/budgets`) and the tree-wide guard tests (`affected.GUARDS`) are not run
+again for new upstream paths that pass the list above; the combined-tree gates the lead runs per batch and CI cover a
+combination of two changes that no path-level check can see.
 
 One line per run is appended to `<git-common-dir>/land/landings.jsonl`: time, session, branch, commit, outcome, cause, seconds
 and the end of the checks' output.

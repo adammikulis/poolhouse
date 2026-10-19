@@ -1,7 +1,11 @@
-"""The lander: one branch onto the development branch, in the order preconditions, sync, review, checks, push, cleanup."""
+"""The lander: one branch onto the development branch, in the order preconditions, sync, review, checks, push, cleanup.
+
+The checks run outside the landing lock. The lock and the claim on the development branch are taken for the push and the clean-up only.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import signal
@@ -14,6 +18,7 @@ from pathlib import Path
 import land_exec as ex
 import land_git as lg
 import land_review
+import land_stale
 
 from poolhouse import lock
 from poolhouse.board import session
@@ -22,6 +27,9 @@ from poolhouse.devbranch import development_branch
 from poolhouse.workspace import landing
 
 CLAIM_TTL_S = 7200
+LOCK_WAIT_S = 120.0
+MAX_ROUNDS = 3
+FETCH_TRIES = 3
 RESTART_STEPS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply")
 
 
@@ -44,6 +52,7 @@ class Landing:
     lock_fd: int = -1
     needs_review: str = ""
     reviewed: str = ""
+    lander_base: str = ""
 
     @property
     def upstream(self) -> str:
@@ -105,15 +114,29 @@ def open_landing(root: Path, branch: str, agent: str) -> Landing:
     return Landing(mine.path, top.path, lg.common_dir(mine.path), dev, branch, s, me.name, agent)
 
 
+def acquire(fd: int, path: Path, wait_s: float) -> None:
+    """Take the lock on ``fd``, waiting up to ``wait_s`` seconds and saying once who holds it; ``ex.Stop`` naming the holder when it stays held."""
+    end = time.monotonic() + wait_s
+    pause, told = 0.02, False
+    while not lock.take(fd):
+        holder = lock.held_by(path) or "another lander"
+        if not told:
+            say(f"waiting for the landing lock: {holder}")
+            told = True
+        if time.monotonic() >= end:
+            raise ex.Stop(f"the landing lock is still held after {wait_s:g}s: {holder}")
+        time.sleep(pause)
+        pause = min(0.5, pause * 2)
+
+
 @contextmanager
-def exclusive(L: Landing) -> Iterator[None]:
-    """Hold the landing lock of this repository (the runtime cutover waits on it too) for the block; a second lander is refused naming the holder."""
+def exclusive(L: Landing, wait_s: float = LOCK_WAIT_S) -> Iterator[None]:
+    """Hold the landing lock of this repository (the runtime cutover waits on it too) for the block, waiting up to ``wait_s`` seconds for its holder."""
     path = L.common / "land" / "runner.lock"
     path.parent.mkdir(exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        if not lock.take(fd):
-            raise ex.Stop(lock.held_by(path) or "another lander holds the lock")
+        acquire(fd, path, wait_s)
         L.lock_fd = fd
         note(L, "starting")
         yield
@@ -122,6 +145,28 @@ def exclusive(L: Landing) -> Iterator[None]:
             with suppress(OSError):
                 os.ftruncate(fd, 0)
         L.lock_fd = -1
+        os.close(fd)
+
+
+@contextmanager
+def one_run(L: Landing) -> Iterator[None]:
+    """Hold the lock of this branch for the whole run, so a second lander of the same branch is refused naming the first."""
+    folder = L.common / "land"
+    folder.mkdir(exist_ok=True)
+    path = folder / f"branch-{hashlib.sha256(L.branch.encode()).hexdigest()[:16]}.lock"
+    fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    taken = False
+    try:
+        if not lock.take(fd):
+            raise ex.Stop(f"{L.branch} is already being landed by {lock.held_by(path) or 'another lander'}")
+        taken = True
+        os.ftruncate(fd, 0)
+        os.write(fd, f"pid {os.getpid()} {L.me} is landing {L.branch}".encode())
+        yield
+    finally:
+        if taken:
+            with suppress(OSError):
+                os.ftruncate(fd, 0)
         os.close(fd)
 
 
@@ -147,16 +192,22 @@ def tip(L: Landing) -> str:
     return lg.out(L.wt, "rev-parse", f"refs/heads/{L.branch}^{{commit}}")
 
 
-def lift_primary(L: Landing) -> str:
-    """Fast-forward the local development branch to origin's; the reason it cannot be, or an empty string."""
+def local_ahead(L: Landing) -> str:
+    """The commits of the local development branch that origin lacks, as a sentence, or an empty string when it is level with origin's or behind it."""
     local = lg.out(L.top, "rev-parse", f"refs/heads/{L.dev}")
-    if local == L.remote:
-        return ""
     if lg.is_ancestor(L.top, local, L.remote):
-        done = lg.git(L.top, "merge", "--ff-only", L.remote, check=False)
-        return (done.stderr.strip().splitlines() or ["fast-forward refused"])[-1] if done.returncode else ""
+        return ""
     ahead = lg.sealed(L.top, "log", "--oneline", f"{L.remote}..{local}").stdout.splitlines()
     return f"local {L.dev} holds commits origin lacks ({'; '.join(ahead[:3])}) and is left alone"
+
+
+def lift_primary(L: Landing) -> str:
+    """Fast-forward the local development branch to origin's; the reason it cannot be, or an empty string."""
+    problem = local_ahead(L)
+    if problem or lg.out(L.top, "rev-parse", f"refs/heads/{L.dev}") == L.remote:
+        return problem
+    done = lg.git(L.top, "merge", "--ff-only", L.remote, check=False)
+    return (done.stderr.strip().splitlines() or ["fast-forward refused"])[-1] if done.returncode else ""
 
 
 def accept_problem(L: Landing, sha: str) -> str:
@@ -209,26 +260,39 @@ def bring_up_to_date(L: Landing) -> None:
 
 
 def fetch(L: Landing) -> None:
-    """Fetch the development branch and record the commit origin says it holds; stop unless the remote-tracking ref is that commit."""
-    fetched = lg.git(L.wt, "fetch", "origin", L.dev, check=False)
-    if fetched.returncode:
-        raise ex.Stop(f"fetch failed: {(fetched.stderr.strip().splitlines() or ['no output'])[-1]}")
-    asked = lg.git(L.wt, "ls-remote", "origin", f"refs/heads/{L.dev}", check=False)
-    held = asked.stdout.split()[:1]
-    if asked.returncode or not held:
-        raise ex.Stop(f"origin does not say which commit it holds for {L.dev}")
-    L.remote = held[0]
-    local = lg.git(L.wt, "rev-parse", "--verify", "--quiet", f"{L.tracking}^{{commit}}", check=False).stdout.strip()
-    if local != L.remote:
-        raise ex.Stop(f"{L.upstream} is {local[:12] or 'missing'} here and {L.remote[:12]} on origin; fetch {L.dev} again")
+    """Fetch the development branch and record the commit origin says it holds; stop unless the remote-tracking ref is that commit.
+
+    Another lander's push or fetch between the two reads makes them differ for a moment, so a mismatch is read again up to ``FETCH_TRIES`` times.
+    """
+    for _ in range(FETCH_TRIES):
+        fetched = lg.git(L.wt, "fetch", "origin", L.dev, check=False)
+        if fetched.returncode:
+            raise ex.Stop(f"fetch failed: {(fetched.stderr.strip().splitlines() or ['no output'])[-1]}")
+        asked = lg.git(L.wt, "ls-remote", "origin", f"refs/heads/{L.dev}", check=False)
+        held = asked.stdout.split()[:1]
+        if asked.returncode or not held:
+            raise ex.Stop(f"origin does not say which commit it holds for {L.dev}")
+        L.remote = held[0]
+        local = lg.git(L.wt, "rev-parse", "--verify", "--quiet", f"{L.tracking}^{{commit}}", check=False).stdout.strip()
+        if local == L.remote:
+            return
+    raise ex.Stop(f"{L.upstream} is {local[:12] or 'missing'} here and {L.remote[:12]} on origin; fetch {L.dev} again")
 
 
 def check_lander(L: Landing) -> None:
-    """Stop unless the lander files of the primary checkout are the ones origin's development branch holds."""
+    """Stop unless the lander files of the primary checkout are the ones origin's development branch holds; the first call fixes the commit the run's own lander came from."""
     name = lg.lander_problem(L.top, L.remote)
     if name:
         raise ex.Stop(f"{name} in the primary checkout {L.top} differs from {L.upstream}, whose lander is the one that runs; "
                       f"bring {L.dev} there level with {L.upstream} first")
+    L.lander_base = L.lander_base or L.remote
+
+
+def lander_unchanged(L: Landing) -> None:
+    """Stop when origin changed a lander file after this run began: the code in memory is the older lander."""
+    name = next((p for p in lg.changed(L.wt, L.lander_base, L.remote) if lg.LANDER.fullmatch(p)), "")
+    if name:
+        raise ex.Stop(f"the lander changed on origin while this run was going ({name}); run land again")
 
 
 def record_creator(L: Landing) -> None:
@@ -245,7 +309,7 @@ def record_creator(L: Landing) -> None:
 
 
 def sync(L: Landing) -> bool:
-    """Fetch, level the local development branch and the branch with origin; True when the branch is already on origin."""
+    """Fetch and bring the branch up to date with origin, stopping when the local development branch holds commits origin lacks; True when the branch is already on origin."""
     fetch(L)
     check_lander(L)
     L.sha = tip(L)
@@ -254,8 +318,8 @@ def sync(L: Landing) -> bool:
     if stepped != L.sha:
         L.sha = stepped
         lg.git(L.wt, "reset", "--hard", stepped)
-    problem = lift_primary(L)
-    if problem and not already:
+    problem = "" if already else local_ahead(L)
+    if problem:
         raise ex.Stop(problem)
     if not already and not lg.is_ancestor(L.wt, L.remote, L.sha):
         bring_up_to_date(L)
@@ -324,27 +388,59 @@ def finish(L: Landing, outcome: str) -> tuple[str, str]:
     return outcome, warning
 
 
+def prove(L: Landing, checks: ex.Plan, tree: str, earlier: land_stale.Green | None) -> tuple[land_stale.Green, list[str]]:
+    """The passed checks of this tip against this base: the earlier green result when nothing origin gained since can change it, else a run."""
+    if earlier is not None:
+        why = land_stale.stale(L.wt, earlier, L.sha, L.remote, checks)
+        if not why:
+            say(f"{L.upstream} moved from {earlier.base[:12]} to {L.remote[:12]} without reaching what {L.branch} changes or the tests it ran: "
+                "the earlier green result stands")
+            return land_stale.carried(earlier, L.sha, L.remote), list(earlier.tail)
+        say(f"checks again: {why}")
+    note(L, "running checks")
+    tail = ex.run_plan(L.wt, checks.checks, tree)
+    return land_stale.green_of(L.sha, L.remote, checks, tail), tail
+
+
+def publish(L: Landing, green: land_stale.Green, tree: str) -> tuple[str, str] | None:
+    """Under the lock and the claim: push the tested commit when origin is still where the checks left it, else None."""
+    with exclusive(L), dev_claim(L):
+        note(L, "pushing")
+        fetch(L)
+        check_lander(L)
+        lander_unchanged(L)
+        if L.remote != green.base:
+            say(f"{L.upstream} moved from {green.base[:12]} to {L.remote[:12]} while the checks ran")
+            return None
+        recheck(L, tree)
+        push(L)
+        say(f"{L.sha[:12]} is on {L.upstream}")
+        return finish(L, "landed")
+
+
 def execute(L: Landing) -> tuple[str, str, list[str]]:
     """Land the branch: the outcome, a warning (empty when none) and the end of the checks' output."""
     note(L, "syncing")
     record_creator(L)
-    if sync(L):
-        say(f"{L.branch} ({L.sha[:12]}) is already on {L.upstream}")
-        return (*finish(L, "already landed"), [])
-    note(L, "checking the review")
-    review(L)
-    checks = ex.plan(L.wt, L.remote, L.sha)
-    if checks.kind == "none":
-        raise ex.Stop(f"nothing to land: {L.branch} changes nothing against {L.upstream}")
-    tree = lg.tree_id(L.wt, L.sha)
-    ex.verify_tree(L.wt, tree)
-    note(L, "running checks")
-    tail = ex.run_plan(L.wt, checks.checks, tree)
-    note(L, "pushing")
-    recheck(L, tree)
-    push(L)
-    say(f"{L.sha[:12]} is on {L.upstream}")
-    return (*finish(L, "landed"), tail)
+    green: land_stale.Green | None = None
+    for _ in range(MAX_ROUNDS):
+        L.reviewed = ""
+        if sync(L):
+            say(f"{L.branch} ({L.sha[:12]}) is already on {L.upstream}")
+            with exclusive(L), dev_claim(L):
+                return (*finish(L, "already landed"), [])
+        note(L, "checking the review")
+        review(L)
+        checks = ex.plan(L.wt, L.remote, L.sha)
+        if checks.kind == "none":
+            raise ex.Stop(f"nothing to land: {L.branch} changes nothing against {L.upstream}")
+        tree = lg.tree_id(L.wt, L.sha)
+        ex.verify_tree(L.wt, tree)
+        green, tail = prove(L, checks, tree, green)
+        done = publish(L, green, tree)
+        if done:
+            return (*done, tail)
+    raise ex.Stop(f"{L.upstream} moved {MAX_ROUNDS} times while {L.branch} was being checked and brought up to date; run land again")
 
 
 def show(L: Landing) -> None:
@@ -381,6 +477,7 @@ def record(L: Landing, outcome: str, cause: str, tail: list[str]) -> None:
     """Append one line about this run to the landings log of the repository."""
     row = {"ts": round(time.time()), "who": L.me, "branch": L.branch, "sha": L.sha, "outcome": outcome, "cause": cause,
            "seconds": round(time.time() - L.began, 1), "tail": tail}
+    (L.common / "land").mkdir(exist_ok=True)
     with (L.common / "land" / "landings.jsonl").open("a", encoding="utf-8") as log:
         log.write(json.dumps(row, sort_keys=True) + "\n")
 
@@ -401,7 +498,7 @@ def land(root: Path, branch: str, agent: str, dry_run: bool) -> int:
         if dry_run:
             show(L)
             return 0
-        with exclusive(L), dev_claim(L):
+        with one_run(L):
             return run(L)
     except STOPS as stop:
         print(f"land: stopped: {stop}")
@@ -412,7 +509,7 @@ def land(root: Path, branch: str, agent: str, dry_run: bool) -> int:
 
 
 def run(L: Landing) -> int:
-    """Execute under the lock and the claim, record the run and return the exit status."""
+    """Execute, record the run and return the exit status."""
     outcome, cause, tail, code = "stopped", "", [], 5
     try:
         outcome, cause, tail = execute(L)
