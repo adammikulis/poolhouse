@@ -67,5 +67,5 @@ superseded or cannot land, to run `scripts/worktrees close TREE --bundle` (`--ab
 The second refusal of the same subagent also posts `announce blocked`; the third stop goes through, posts a milestone
 naming the branch and tree, and the tree stays as work for `scripts/worktrees` and its cleanup. That stop announces no
 `done` and does not retire the subagent: its identity and token stay, so the lead can resume it to claim and land after a
-review accept. A stop that finds everything landed (or the tree closed or gone) forgets the count, announces `done`
+review accept. A stop that finds everything landed (or the tree closed or gone) forgets the count, posts its `done` for its subscribers
 and retires the subagent. The count lives in the hooks' state directory (`POOLHOUSE_HOOK_STATE`).
