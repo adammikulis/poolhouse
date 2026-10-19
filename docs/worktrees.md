@@ -25,12 +25,14 @@ the commit's own content and does not count.
 A work tree is never removed automatically. A landed tree is removed by `sweep` once nothing in it has changed for
 ten minutes (its directory, HEAD, index or HEAD log) and no process has its working directory inside it. `sweep`
 deletes the branch too, unless the branch was created less than a day ago, when the tree goes and the branch stays.
+`sweep` ends with `scripts/primary_sync.py`, which fast-forwards the primary checkout to `origin/<dev>` (docs/landing.md,
+"The primary checkout follows origin").
 A tree git cannot read (a corrupt `.git` file, a git command that stalls) is listed as unreadable work, flagged by the
 report, and never breaks the listing.
 
 ```
 scripts/worktrees                                   # one line per tree: branch, ahead and behind, age, landed or work
-scripts/worktrees sweep [--min-age SECONDS]         # remove landed trees untouched for 600 seconds
+scripts/worktrees sweep [--min-age SECONDS]         # remove landed trees untouched for 600 seconds, then primary_sync
 scripts/worktrees close TREE --landed               # a landed tree, now
 scripts/worktrees close TREE --bundle               # unlanded commits go to a verified git bundle first
 scripts/worktrees close TREE --abandon "reason"     # saves the uncommitted changes, removes the tree, keeps the branch

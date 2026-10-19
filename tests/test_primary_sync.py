@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import subprocess
 import sys
 import time
@@ -252,3 +254,36 @@ def test_a_sync_starts_only_on_the_persons_machine(rig):
     before = rig.head()
     assert primary_sync.start(sha, DEV, rig.pusher) is False, "a test run is not the person's machine"
     assert rig.head() == before
+
+
+def load_pushed():
+    """The pushed hook as a module."""
+    loader = importlib.machinery.SourceFileLoader("pushed_hook", str(ROOT / "scripts/hooks/pushed"))
+    spec = importlib.util.spec_from_loader("pushed_hook", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def test_the_push_hook_starts_a_sync_for_a_push_of_the_development_branch(rig, monkeypatch):
+    started = []
+    monkeypatch.chdir(rig.pusher)
+    monkeypatch.setenv("POOLHOUSE_RUNTIME_ENSURE", "off")
+    hook = load_pushed()
+    monkeypatch.setattr(hook, "ci_watch", None)
+    monkeypatch.setattr(hook.primary_sync, "start", lambda sha, dev, repo: started.append((sha, dev, repo)) or True)
+    sha = rig.commit()
+    zero = "0" * 40
+    assert hook.main(DEV, [f"refs/heads/work {sha} refs/heads/work {zero}"]) == 0
+    assert started == []
+    assert hook.main(DEV, [f"refs/heads/{DEV} {sha} refs/heads/{DEV} {zero}"]) == 0
+    assert started == [(sha, DEV, rig.pusher)]
+
+
+def test_sweep_ends_by_following_origin(rig):
+    sha = rig.push()
+    done = subprocess.run([sys.executable, str(ROOT / "scripts" / "worktrees"), "sweep"], cwd=rig.primary, capture_output=True,
+                          text=True, check=False, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "primary-sync: the primary checkout moved from" in done.stdout
+    assert rig.head() == sha
