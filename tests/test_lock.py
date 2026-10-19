@@ -139,3 +139,32 @@ def test_asking_who_holds_it_neither_waits_nor_blanks_the_record(tmp_path):
         assert held_by(path) == f"pid {os.getpid()}"
         assert held_by(path) == f"pid {os.getpid()}", "asking twice must not blank it"
     assert held_by(path) == ""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks are POSIX")
+@pytest.mark.parametrize("target_exists", [True, False])
+def test_a_lock_file_that_is_a_symlink_is_refused_and_its_target_left_alone(tmp_path, target_exists):
+    target = tmp_path / "precious"
+    if target_exists:
+        target.write_text("precious")
+    link = tmp_path / "runner.lock"
+    link.symlink_to(target)
+    with pytest.raises(OSError), only_one(link, wait=False):
+        pytest.fail("a symlinked lock file was taken")
+    assert held_by(link) == ""
+    assert (target.read_text() == "precious") if target_exists else not target.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="account ids are POSIX")
+def test_a_lock_file_owned_by_another_account_is_refused_and_left_alone(tmp_path, monkeypatch):
+    path = tmp_path / "runner.lock"
+    path.write_text("someone else's")
+    monkeypatch.setattr(os, "getuid", lambda: path.stat().st_uid + 1)
+    with pytest.raises(PermissionError), only_one(path, wait=False):
+        pytest.fail("a lock file of another account was taken")
+    assert held_by(path) == "" and path.read_text() == "someone else's"
+
+
+def test_asking_who_holds_a_lock_that_does_not_exist_creates_nothing(tmp_path):
+    assert held_by(tmp_path / "state" / "runtimes" / "x.lock") == ""
+    assert not (tmp_path / "state").exists()

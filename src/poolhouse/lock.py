@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import errno
 import os
+import stat
 import sys
 import time
 from collections.abc import Iterator
@@ -98,6 +99,16 @@ def release(handle: Any) -> None:
     fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def _open(path: Path, *, create: bool) -> int:
+    """Open the lock file `path` read-write; never through a symlink, and only a regular file this account owns."""
+    handle = os.open(path, os.O_RDWR | (os.O_CREAT if create else 0) | getattr(os, "O_NOFOLLOW", 0), 0o644)
+    info = os.fstat(handle)
+    if not stat.S_ISREG(info.st_mode) or (hasattr(os, "getuid") and info.st_uid != os.getuid()):
+        os.close(handle)
+        raise PermissionError(f"{path} is not a lock file this account owns")
+    return handle
+
+
 def _holder(handle: int) -> str:
     """Who has it, as written at offset 0. ``os.pread`` does not exist on Windows."""
     os.lseek(handle, 0, os.SEEK_SET)
@@ -127,7 +138,7 @@ def only_one(what: str | Path, *, wait: bool = True, timeout: float = 0.0,
     """
     path = Path(what).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    handle = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+    handle = _open(path, create=True)
     began, told, taken, tries = time.monotonic(), False, False, 0
     try:
         while not take(handle):
@@ -188,12 +199,12 @@ def held_by(what: str | Path) -> str:
     """Who holds the lock on ``what``, as `only_one` records it, or "" when nobody does.
 
     Asked without waiting and without disturbing the record, so a holder's pid survives
-    being asked about.
+    being asked about; nothing is created, and a file that is missing or is not an owned
+    regular file has no holder.
     """
     path = Path(what).expanduser()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        handle = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        handle = _open(path, create=False)
     except OSError:
         return ""
     try:
