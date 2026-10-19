@@ -80,7 +80,7 @@ def test_a_refusal_the_code_swallowed_is_still_on_the_list():
 
 
 @pytest.mark.parametrize("argv", [["/usr/bin/open", "x"], ["/usr/bin/osascript", "-e", "x"], ["/usr/bin/security", "find-generic-password"],
-                                  "/usr/bin/open https://example.test", ["xdg-open", "x"] if sys.platform == "linux" else ["/usr/bin/open"]])
+                                  "/usr/bin/open https://example.test", ["/usr/bin/xdg-open", "x"]])
 def test_starting_a_program_that_puts_something_on_screen_is_refused(argv):
     with watching() as seen, pytest.raises(PermissionError):
         subprocess.Popen(argv)

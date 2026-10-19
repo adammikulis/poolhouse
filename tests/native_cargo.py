@@ -46,18 +46,19 @@ def communicate(process, deadline):
 class NodeUnits:
     def __init__(self, work, temporary):
         self.work = work
-        testnode.stage(ROOT / "app", testnode.sources(ROOT / "app"), work / "app")
+        build = testnode.shared_build(ROOT / "app")
+        self.staged = build.staged
         (work / "home").mkdir()
         self.environment = {**os.environ, "HOME": str(work / "home"), "TMPDIR": str(temporary),
                             "RUSTUP_HOME": str(ACCOUNT / ".rustup"), "CARGO_HOME": str(ACCOUNT / ".cargo"),
-                            "CARGO_TARGET_DIR": str(work / "target"), "CARGO_BUILD_JOBS": "1"}
+                            "CARGO_TARGET_DIR": str(build.target), "CARGO_BUILD_JOBS": "1"}
 
     def run(self, case):
         selected, count = CASES[case]
         argv = [testnode.tool("cargo"), "test", "--locked", "--offline", "-p", "poolhouse-node", "--lib",
                 selected, "--", "--test-threads=1"]
         deadline = time.monotonic() + 600
-        process = start_process(argv, cwd=self.work / "app", env=self.environment, stdin=subprocess.DEVNULL,
+        process = start_process(argv, cwd=self.staged, env=self.environment, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = communicate(process, deadline)
         assert process.returncode == 0, stdout + stderr
