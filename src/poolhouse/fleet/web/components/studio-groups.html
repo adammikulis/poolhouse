@@ -12,9 +12,12 @@
           };
         },
         restoreSnapshot(saved) {
-          this.graph = saved.graph;
+          this.openContext(saved.graph, saved.path);
+        },
+        openContext(graph, path) {
+          this.graph = graph;
           this.context = [];
-          for (const id of saved.path) {
+          for (const id of path) {
             const node = this.graph.nodes.find((n) => n.id === id),
               definition = this.graph.groups[node.group];
             this.context.push({ parent: this.graph, node, definition });

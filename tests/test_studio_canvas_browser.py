@@ -17,7 +17,11 @@ SPECS = [
      'parameters': {'properties': {'template': {'type': 'string', 'default': 'Hello', 'title': 'Prompt text'}}}},
     {'type': 'report', 'version': 1, 'title': 'Report', 'family': 'Results',
      'inputs': [{'name': 'text', 'type': 'text'}], 'outputs': [],
-     'parameters': {'properties': {'title': {'type': 'string', 'default': 'Results'}}}},
+     'parameters': {'properties': {
+         'title': {'type': 'string', 'default': 'Results'},
+         'iterations': {'type': 'integer', 'default': 1},
+         'mode': {'type': 'string', 'enum': ['smoke', 'train'], 'default': 'smoke'},
+         'enabled': {'type': 'boolean', 'default': False}}}},
 ]
 
 SPECS.extend([
@@ -224,7 +228,7 @@ def test_actual_catalogue_template_run_and_package_round_trip(tmp_path):
             page.set_viewport_size({'width': 1440, 'height': 1000})
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             add(page, re.compile('fine tuning and evaluation', re.IGNORECASE))
-            expect(page.locator('.studio-node')).to_have_count(7)
+            expect(page.locator('.studio-node')).to_have_count(9)
             page.locator('.studio-node').filter(has=page.get_by_text('Dataset', exact=True)).first.focus()
             page.keyboard.press('Enter')
             page.locator('.studio-inspector').get_by_label('Choose dataset').select_option('examples.jsonl')
@@ -407,3 +411,28 @@ def test_actual_sweep_controls_save_typed_choices(tmp_path):
         if hasattr(served.ui, 'studio'):
             served.ui.studio.close()
         served.close()
+
+
+@pytest.mark.parametrize(('field', 'invalid', 'valid'), [
+    ('iterations', 'not-a-number', '2'), ('mode', 'other', 'train'), ('enabled', 'maybe', 'true'),
+])
+def test_invalid_sweep_draft_blocks_submission_and_survives_selection(studio_page, field, invalid, valid):
+    page, state, errors = studio_page
+    add(page, 'Report')
+    page.locator('.studio-inspector').get_by_text('Sweep parameters', exact=True).click()
+    page.get_by_label('Sweep ' + field, exact=True).fill(invalid)
+    page.get_by_label('Sweep ' + field, exact=True).press('Tab')
+    page.get_by_role('button', name='Run workflow', exact=True).click()
+    expect(page.locator('.studio-status')).to_contain_text('Correct the highlighted sweep value')
+    assert not state['submissions']
+    add(page, 'Model consumer')
+    page.get_by_role('button', name='Save', exact=True).click()
+    expect(page.get_by_label('Sweep ' + field, exact=True)).to_have_value(invalid)
+    assert not state['saved']
+    assert not state['submissions']
+    page.get_by_label('Sweep ' + field, exact=True).fill(valid)
+    page.get_by_label('Sweep ' + field, exact=True).press('Tab')
+    page.get_by_role('button', name='Run workflow', exact=True).click()
+    expect(page.locator('#studio-runs')).to_contain_text('done')
+    assert len(state['submissions']) == 1
+    assert not errors

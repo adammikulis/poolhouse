@@ -15,7 +15,8 @@
           select.value = this.workflowId || "";
         },
         async open(workflow) {
-          if (this.dirty || this.saving) await this.save();
+          if (this.dirty || this.saving || this.sweepDrafts?.size)
+            await this.save();
           this.context = [];
           this.packageId = null;
           this.packageVersion = null;
@@ -56,6 +57,7 @@
           );
         },
         async save() {
+          this.validateEditorControls();
           clearTimeout(this.autosave);
           if (this.saving) {
             await this.saving;

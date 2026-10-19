@@ -4,6 +4,44 @@
       E = window.fleetModel.el;
     S.installSweeps = (proto) =>
       Object.assign(proto, {
+        validateEditorControls() {
+          this.flushGroup();
+          const root = this.rootGraph();
+          for (const [key, draft] of this.sweepDrafts || []) {
+            let graph = root;
+            for (const id of draft.path) {
+              const instance = graph?.nodes.find((n) => n.id === id);
+              graph = instance ? root.groups[instance.group] : null;
+            }
+            if (!graph?.nodes.some((n) => n.id === draft.node)) {
+              this.sweepDrafts.delete(key);
+              continue;
+            }
+            this.openContext(root, draft.path);
+            this.selected = new Set([draft.node]);
+            this.render();
+            const input = [...this.querySelectorAll("[data-sweep-draft]")].find(
+              (n) => n.dataset.sweepDraft === key,
+            );
+            if (input) {
+              input.closest("details").open = true;
+              input.focus();
+              input.reportValidity();
+            }
+            throw Error(
+              "Correct the highlighted sweep value before saving or running.",
+            );
+          }
+          const invalid = this.querySelector(":invalid");
+          if (invalid) {
+            invalid.closest("details")?.setAttribute("open", "");
+            invalid.focus();
+            invalid.reportValidity();
+            throw Error(
+              "Correct the highlighted value before saving or running.",
+            );
+          }
+        },
         sweepControls(host, node, spec) {
           const properties = Object.entries(spec.parameters?.properties || {});
           if (node.type === "group" || !properties.length) return;
@@ -25,7 +63,16 @@
                 rows: 3,
                 placeholder: field.enum?.join("\n") || "One value per line",
               });
-            input.value = (node.sweep?.[name] || []).map(String).join("\n");
+            const path = this.context.map((c) => c.node.id),
+              key = [...path, node.id, name].join("/");
+            input.dataset.sweepDraft = key;
+            input.value =
+              this.sweepDrafts?.get(key)?.value ??
+              (node.sweep?.[name] || []).map(String).join("\n");
+            if (this.sweepDrafts?.has(key))
+              input.setCustomValidity(
+                "Enter one valid parameter value per line.",
+              );
             input.onchange = () => {
               const lines = input.value
                 .split("\n")
@@ -52,6 +99,12 @@
                     (field.enum && !field.enum.includes(v)),
                 )
               ) {
+                this.sweepDrafts ||= new Map();
+                this.sweepDrafts.set(key, {
+                  path,
+                  node: node.id,
+                  value: input.value,
+                });
                 input.setCustomValidity(
                   "Enter one valid parameter value per line.",
                 );
@@ -59,6 +112,7 @@
                 return;
               }
               input.setCustomValidity("");
+              this.sweepDrafts?.delete(key);
               this.checkpoint();
               node.sweep ||= {};
               if (values.length) node.sweep[name] = values;
