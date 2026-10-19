@@ -18,10 +18,10 @@ CARGO_HOME = os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))
 
 
 @pytest.mark.timeout(600)
-def test_shared_native_governance_rejects_bad_checkpoints_and_retains_late_evidence(tmp_path):
-    staged = tmp_path / "workspace"
-    testnode.stage(ROOT / "app", testnode.sources(ROOT / "app"), staged)
-    environment = {**os.environ, "RUSTUP_HOME": RUSTUP_HOME, "CARGO_HOME": CARGO_HOME, "CARGO_TARGET_DIR": str(tmp_path / "target"),
+def test_shared_native_governance_rejects_bad_checkpoints_and_retains_late_evidence():
+    build = testnode.shared_build(ROOT / "app")
+    staged = build.staged
+    environment = {**os.environ, "RUSTUP_HOME": RUSTUP_HOME, "CARGO_HOME": CARGO_HOME, "CARGO_TARGET_DIR": str(build.target),
                    "CARGO_BUILD_JOBS": "1", "RUST_TEST_THREADS": "1"}
     result = subprocess.run([testnode.tool("cargo"), "test", "--offline", "--locked", "-p", "poolhouse-node",
                              "--lib", "gov::phone_verify", "--", "--nocapture"],

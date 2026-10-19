@@ -18,7 +18,9 @@ REAL_STATE = tuple(Path.home() / part for part in (".poolhouse", "Library/Keycha
                                                      ".cache/huggingface", ".config"))
 IGNORED = (".git", ".pytest_cache", ".testmondata", "__pycache__", ".ruff_cache", ".mypy_cache")
 SHARED_TEMP = (Path("/tmp"), Path("/var/tmp"))  # noqa: S108 - where tests put short socket roots; writable like the system temp
-WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev"),
+CARGO_CACHE = Path(os.environ.get("DEV_TEST_CARGO_DIR") or Path.home() / ".cache" / "test-cargo")
+"""The shared Rust build folder (`scripts/testnode.py`): a build cache rewritten only to what the sources say."""
+WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev"), CARGO_CACHE, CARGO_CACHE.resolve(),
                   *SHARED_TEMP, *(p.resolve() for p in SHARED_TEMP)})
 ALLOWED_ROOT_WRITES = (".pytest_cache", "__pycache__", ".testmondata", ".coverage")
 MUTATING = {"os.mkdir": (0,), "os.rmdir": (0,), "os.remove": (0,), "os.rename": (0, 1), "os.symlink": (1,),
