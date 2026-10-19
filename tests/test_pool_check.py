@@ -67,20 +67,21 @@ def test_eventually_names_what_it_waited_for_and_the_last_thing_it_saw():
     assert eventually(lambda: "now", 1, "anything") == "now"
 
 
-def test_the_updater_rig_waits_for_the_node_the_supervisor_restarts_and_for_it_to_know_the_pool_builds(tmp_path):
+def test_the_updater_rig_waits_for_the_node_to_know_the_pool_builds(tmp_path):
     from pool_check import updater
     ahead = {"build": {"build_seq": 5}, "members": [{"status": "active", "build_seq": 9}]}
     alone = {"build": {"build_seq": 5}, "members": []}
-    replies = iter([ConnectionError("the node closed the connection"), {"pid": 7}, FileNotFoundError("no socket"), {"pid": 9}, alone, {"pid": 9}, ahead])
+    replies = iter([ConnectionError("the node closed the connection"), alone, FileNotFoundError("no socket"), alone, ahead])
 
-    def ask(_state, _method):
+    def ask(_state, method):
+        assert method == "pool_status"
         reply = next(replies)
         if isinstance(reply, Exception):
             raise reply
         return reply
-    assert updater.wait_for_restart(tmp_path, 7, seconds=10, ask=ask) == ahead
-    with pytest.raises(RuntimeError, match="did not bring the node back"):
-        updater.wait_for_restart(tmp_path, 7, seconds=0.5, ask=lambda _s, m: {"pid": 7} if m == "hello" else alone)
+    assert updater.wait_for_pool_builds(tmp_path, seconds=10, ask=ask) == ahead
+    with pytest.raises(RuntimeError, match="the node knows of no member on a newer build"):
+        updater.wait_for_pool_builds(tmp_path, seconds=0.5, ask=lambda _s, _m: alone)
 
 
 def test_the_removal_failure_says_who_holds_the_entry_and_reads_the_fields_the_node_reports():
