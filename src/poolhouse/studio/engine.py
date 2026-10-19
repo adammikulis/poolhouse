@@ -52,13 +52,28 @@ class WorkflowEngine:
     def __init__(self, store: StudioStore, runner: Any, adapters: Any, authorize: Any) -> None:
         self.store, self.runner, self.adapters, self.authorize = store, runner, adapters, authorize
         self.lock = threading.RLock()
-        self.implementation = digest({p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                                      for p in Path(__file__).parent.glob("*.py")})
+        source = Path(__file__).parent.parent
+        self.implementation = digest({str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
+                                      for p in source.rglob("*.py")})
         self._stop = threading.Event()
         self._wake = threading.Event()
+        self.runner.studio_gate = self._admit_child
         self._recover()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="studio-scheduler")
         self._thread.start()
+
+    def _admit_child(self, job: Any) -> bool:
+        for run in self._all_runs():
+            if run["state"] not in {"queued", "running"}:
+                continue
+            for node in run["graph"]["nodes"]:
+                state = run["nodes"][node["id"]]
+                if state.get("job_id") == job.id:
+                    edges = [e for e in run["graph"]["edges"] if e["target"]["node"] == node["id"]]
+                    inputs = {e["target"]["port"]: run["nodes"][e["source"]["node"]]["outputs"].get(e["source"]["port"])
+                              for e in edges}
+                    return self.authorize(run["principal"], node, inputs)
+        return False
 
     def _recover(self) -> None:
         with self.store.lock:

@@ -147,7 +147,9 @@ class StudioRoutes:
         if self.path == "/ui/studio/runs":
             if self.method == "GET":
                 self.send(200, {"runs": [self._public_run(row) for row in store.records("run", scope)
-                                         if principal.get("owner") or row["principal"]["id"] == principal["id"]]})
+                                         if (principal.get("owner") or row["principal"]["id"] == principal["id"])
+                                         and all(engine.authorize(principal, node, row["nodes"][node["id"]].get("outputs", {}))
+                                                 for node in row["graph"]["nodes"])]})
             elif self.method == "POST":
                 req = object_body(self)
                 workflow = store.get("workflow", field(req, "workflow_id", str, ""), scope)

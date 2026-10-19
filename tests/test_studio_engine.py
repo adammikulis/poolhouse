@@ -1,5 +1,6 @@
 """Durable Studio snapshots, scheduling and uncertain execution recovery."""
 
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -170,3 +171,17 @@ def test_artifact_filename_and_content_have_distinct_fingerprints(tmp_path):
     (folder / "a").unlink()
     (folder / "ab").write_text("c")
     assert first != artifact_fingerprints({"kind": "artifact", "path": str(folder)})
+
+
+def test_queued_child_rechecks_authorization_at_actual_dispatch(tmp_path):
+    checked = Event()
+    runner = JobRunner(tmp_path)
+    runner.studio_gate = lambda job: checked.set() or False
+    try:
+        runner.submit("example", ["unused"], str(tmp_path), job_id="studio-revoked")
+        assert checked.wait(3)
+        row = next(job for job in runner.snapshot() if job["id"] == "studio-revoked")
+        assert row["state"] == "interrupted"
+        assert row["pid"] is None
+    finally:
+        runner.shutdown()
