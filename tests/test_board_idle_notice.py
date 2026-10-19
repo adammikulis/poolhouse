@@ -9,8 +9,7 @@ import pytest
 
 pytest_plugins = ["node_kit"]
 
-NODE_WRITE_LIMITS = {"sends": 1_000_000, "subagent_sends": 1_000_000, "sessions_per_harness": 1_000_000,
-                     "sessions_per_lineage": 1_000_000, "idle_retire_s": 3, "child_beat_s": 1}
+NODE_WRITE_LIMITS = {"sends": 1_000_000, "subagent_sends": 1_000_000, "idle_retire_s": 3, "child_beat_s": 1}
 
 
 @pytest.fixture
