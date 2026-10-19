@@ -313,7 +313,7 @@ def describe(doc: Mapping[str, Any], scenes: Sequence[Mapping[str, Any]]) -> str
 
 
 def run(args: Any) -> int:
-    """``poolhouse-bench animate COMPARISON.json --out FILE.mp4``."""
+    """``python -m poolhouse.bench animate COMPARISON.json --out FILE.mp4``."""
     try:
         doc = load(args.comparison)
     except (OSError, ValueError, json.JSONDecodeError) as e:

@@ -766,7 +766,7 @@ def test_preflight_only_resolves_a_draft_named_by_file(monkeypatch, tmp_path, ca
     head.write_bytes(b"GGUF")
     model = tmp_path / "m.gguf"
     model.write_bytes(b"GGUF")
-    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref: head)
+    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref, trust=None: head)
     preflight = FakePreflight()
     monkeypatch.setattr("poolhouse.serve.preflight.Preflight", preflight)
     monkeypatch.setattr("poolhouse.hub.room", lambda: 0)

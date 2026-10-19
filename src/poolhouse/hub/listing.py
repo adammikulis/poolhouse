@@ -7,6 +7,7 @@ from pathlib import Path
 
 from poolhouse import errors, hub
 from poolhouse.hub import publishers, remote
+from poolhouse.hub.admission import PERSON, Trust
 from poolhouse.hub.naming import _SHARD, _precision
 from poolhouse.hub.transfer import pull
 
@@ -159,8 +160,9 @@ class FetchError(OSError, errors.Error):
     """A Hub model could not be fetched; its cause retains the endpoint's refusal."""
 
 
-def fetch(reference: str, *, members: bool | None = None) -> Path:
-    """Download an `hf:` reference into the Hugging Face hub cache, without serving it.
+def fetch(reference: str, *, members: bool | None = None, trust: Trust = PERSON) -> Path:
+    """Download an `hf:` reference into the Hugging Face hub cache, without serving it, under ``trust``
+    (a person answers for any publisher but the shipped ones by default).
 
     A sharded model's *every* shard comes down, not only the one named: the file given is
     one member of a build, and a server started against a partial download fails at the far
@@ -173,7 +175,7 @@ def fetch(reference: str, *, members: bool | None = None) -> Path:
         raise ValueError(f"{reference!r} should look like hf:owner/repo/file.gguf")
     repo, name = parts
     try:
-        got = pull(f"hf:{repo}/{name}", members=members)
+        got = pull(f"hf:{repo}/{name}", members=members, trust=trust)
     except remote.NotFound as exc:
         raise FetchNotFound(str(exc)) from exc
     except remote.RemoteError as exc:

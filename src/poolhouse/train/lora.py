@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
+from poolhouse.hub.admission import PERSON
 from poolhouse.hub.transfer import base_folder
 from poolhouse.train.step import TorchStep
 from poolhouse.units import span
@@ -81,7 +82,7 @@ def ceiling_default() -> float:
 # frozen base), and torch's MPS backend sustains on the order of 2 TFLOP/s of bf16 matmul
 # on this class of machine -- so ~500 tokens a second for each billion active parameters.
 # It is an estimate and says so everywhere it is printed. The way to replace it with a
-# measurement is `poolhouse-train-run --dry-run`, which trains 20 real steps and reports
+# measurement is `python -m poolhouse.train run --dry-run`, which trains 20 real steps and reports
 # seconds per step; `Fit.measured` re-states the plan from that number.
 TOKENS_PER_S_PER_B = {"mps": 500.0, "cuda": 4000.0, "cpu": 40.0}
 
@@ -239,7 +240,7 @@ def merge(base: str, adapter: Path | str, out: Path | str, *, device: str = "cpu
     if not (adapter / "adapter_config.json").is_file():
         raise FileNotFoundError(f"no adapter under {adapter}; train one first")
 
-    base = base_folder(base)
+    base = base_folder(base, trust=PERSON)
     model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32)
     model.to(device)
     merged = PeftModel.from_pretrained(model, str(adapter)).merge_and_unload()

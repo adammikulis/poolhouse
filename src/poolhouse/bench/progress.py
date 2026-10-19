@@ -168,7 +168,7 @@ def _status_line() -> str:
             last = json.loads(measuring_file().read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return "nothing is measuring"
-        return "\n".join([f"nothing is measuring; the last one -- poolhouse-bench "
+        return "\n".join([f"nothing is measuring; the last one -- python -m poolhouse.bench "
                           f"{' '.join(last.get('argv') or ())} -- started "
                           f"{last.get('started', '?')} and has ended.",
                           *_log_said(str(last.get("log") or ""))])
@@ -179,7 +179,7 @@ def _status_line() -> str:
     began = _epoch(str(record.get("started") or ""))
     return "\n".join([f"measuring {f'for {_span(time.time() - began)}, ' if began else ''}"
                       f"since {record.get('started', '?')} (pid {record.get('pid')}):",
-                      f"  poolhouse-bench {' '.join(record.get('argv') or ())}",
+                      f"  python -m poolhouse.bench {' '.join(record.get('argv') or ())}",
                       *_how_said(record.get("how") or {}),
                       *_log_said(str(record.get("log") or ""))])
 

@@ -96,7 +96,7 @@ def look() -> Quiet:
             f"A second model merely holding memory costs throughput.")
     if held is not None:
         reasons.append(f"a measurement holds the card: {measurement_said(held)} -- wait "
-                       f"for it, or stop it with 'poolhouse-bench stop'.")
+                       f"for it, or stop it with 'python -m poolhouse.bench stop'.")
     if load > BUSY_LOAD or (busy is not None and busy > BUSY_PERCENT):
         reasons.append(f"the machine is busy: load {load:.2f} per core over {cores} "
                        f"core(s)"

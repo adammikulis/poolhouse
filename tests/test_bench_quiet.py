@@ -52,9 +52,9 @@ class TestWhatItRefuses:
         held = {"pid": 99, "argv": ["drafts", "--sample", "40"], "started": "2026-01-01"}
         _idle(monkeypatch, measuring=held)
         said = "\n".join(look().reasons)
-        assert "poolhouse-bench drafts --sample 40" in said
+        assert "python -m poolhouse.bench drafts --sample 40" in said
         assert "pid 99" in said
-        assert "poolhouse-bench stop" in said
+        assert "python -m poolhouse.bench stop" in said
 
     def test_a_loaded_machine_is_refused_even_with_nothing_serving(self, monkeypatch):
         _idle(monkeypatch, load=BUSY_LOAD + 0.1, busy=5.0)

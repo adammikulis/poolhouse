@@ -113,7 +113,7 @@ def transcript(kept: Sequence[Mapping[str, Any]], label: str = "",
     guessing was accepted -- the numbers `Spent` totals per answer, before they are totalled.
 
     It is where a wrong answer is diagnosed and where a training example is read before
-    thousands of them are written: `poolhouse-train-tools from-bench` turns exactly these
+    thousands of them are written: `python -m poolhouse.train tools from-bench` turns exactly these
     turns into a dataset, and a turn that reads wrong here trains wrong there.
 
     ``label`` narrows to the runs whose label contains it, ``question`` to the questions

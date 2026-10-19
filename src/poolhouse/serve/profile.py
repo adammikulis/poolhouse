@@ -22,7 +22,7 @@ machine that measured a model again keeps its own answer without editing the pac
 record written before workloads is read as the graph asking, and a record that keeps its
 draft depth under ``serve`` is read the same as one that keeps it under ``request``.
 
-Nothing here measures anything. `poolhouse-bench report --profile` writes the records from
+Nothing here measures anything. The bench's `report --profile` writes the records from
 the store's best row per model and workload, which is the only way a record should ever
 appear.
 """
@@ -34,6 +34,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from poolhouse import optional
 from poolhouse.asking import Asking
 from poolhouse.records import Records
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
@@ -46,6 +47,7 @@ __all__ = [
     "Profile",
     "add",
     "asking_for",
+    "how_measured",
     "local_file",
     "package_file",
     "profile_for",
@@ -74,6 +76,12 @@ ASK = "ask"
 
 INGEST = "ingest"
 CHAT = "chat"
+
+
+def how_measured() -> str:
+    """The sentence that says how a record is measured, or an empty string when this build holds no bench."""
+    sweep, report = optional.command("poolhouse.bench", "sweep"), optional.command("poolhouse.bench", "report --profile")
+    return f" `{sweep}` measures it and `{report}` writes the record." if sweep else ""
 
 
 def workload_named(name: str) -> str:

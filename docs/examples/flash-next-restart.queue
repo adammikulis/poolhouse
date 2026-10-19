@@ -2,12 +2,12 @@
 # evening: every improvement smoked, compared on ten questions, then the hundred with
 # everything that held -- traces on throughout.
 #
-# Run it with:   poolhouse-bench queue docs/examples/flash-next-restart.queue --detach --yes
-# Read it first: poolhouse-bench queue docs/examples/flash-next-restart.queue --dry-run
+# Run it with:   python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --detach --yes
+# Read it first: python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --dry-run
 #
 # Two things the shell script did that a queue file does not: `poolhouse-serve down --port
 # 8080` before it (free the GPU by hand, once) and the page rebuilt after it. A queue runs
-# `poolhouse-bench` lines and nothing else, on purpose -- what it queues is measurement.
+# `python -m poolhouse.bench` lines and nothing else, on purpose -- what it queues is measurement.
 
 set FX=hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf
 set BIN=${HOME}/.poolhouse/llama.cpp/named/unsloth/llama-server

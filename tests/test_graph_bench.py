@@ -1460,7 +1460,7 @@ def test_empty_runs_are_skipped_named_and_forgotten(tmp_path, capsys):
     import poolhouse.bench as bench
 
     assert bench._main(["show", "--kept", str(store)]) == 0
-    assert "2 empty run(s) skipped -- poolhouse-bench forget --empty removes them" \
+    assert "2 empty run(s) skipped -- python -m poolhouse.bench forget --empty removes them" \
         in capsys.readouterr().out
 
     assert bench._main(["forget", "--empty", "--kept", str(store)]) == 0
@@ -1533,8 +1533,8 @@ def test_detach_reruns_the_command_in_its_own_session_with_a_log_of_its_own(tmp_
 
     said = capsys.readouterr().out
     assert str(log) in said
-    assert "poolhouse-bench status" in said and "poolhouse-bench tail -f" in said
-    assert "poolhouse-bench stop" in said
+    assert "python -m poolhouse.bench status" in said and "python -m poolhouse.bench tail -f" in said
+    assert "python -m poolhouse.bench stop" in said
 
 
 def test_detach_on_windows_asks_for_a_detached_process_group(tmp_path, monkeypatch):
@@ -1587,7 +1587,7 @@ def test_status_says_what_is_measuring_or_that_nothing_is(tmp_path, monkeypatch,
     assert bench.main(["status"]) == 0
     said = capsys.readouterr().out
     assert f"since 2026-09-01T18:00:00 (pid {os.getpid()})" in said
-    assert "poolhouse-bench sweep --serve tiny" in said
+    assert "python -m poolhouse.bench sweep --serve tiny" in said
     assert "sweep-tiny-20260901T180000.log" in said
     assert "last: third" in said
 
@@ -1825,7 +1825,7 @@ def test_every_hf_reference_is_fetched_before_the_lock_and_no_prefetch_skips_it(
     seen = _serving(monkeypatch, tmp_path)
     fetched = []
 
-    def fake_fetch(reference):
+    def fake_fetch(reference, *, trust=None):
         # the measuring lock must not be held while the Hub is being waited on
         with only_one(tmp_path / "home" / "measuring.lock", wait=False):
             pass
@@ -1870,7 +1870,7 @@ def test_a_fetch_that_fails_is_said_and_the_rest_still_come_down(capsys):
     import poolhouse.bench as bench
     import poolhouse.hub
 
-    def flaky(reference):
+    def flaky(reference, *, trust=None):
         if "gone" in reference:
             raise OSError("no such repository")
         return pathlib.Path("/dev/null")
@@ -3149,7 +3149,7 @@ def test_detach_writes_argv_started_and_commit_at_the_top_of_the_log(tmp_path, m
 
 
 def test_detach_records_the_job_for_wait_and_status(tmp_path, monkeypatch, capsys):
-    """`poolhouse-bench wait` blocks on the same pid `detach` wrote, through `poolhouse.jobs`,
+    """`python -m poolhouse.bench wait` blocks on the same pid `detach` wrote, through `poolhouse.jobs`,
     without refusing a second `--detach` -- the queue behind the lock is bench's own."""
     import subprocess
 
@@ -4021,7 +4021,7 @@ def test_an_untraced_run_is_kept_exactly_as_it_was_before_traces_existed(tmp_pat
 
 
 def test_show_trace_prints_one_line_per_call_with_what_it_called_and_what_it_cost(capsys):
-    """`poolhouse-bench show --trace LABEL`: the table says a question took three calls, and
+    """`python -m poolhouse.bench show --trace LABEL`: the table says a question took three calls, and
     this says which three. It is where a wrong answer is diagnosed and where a training
     example is read before thousands of them are written from the same rows."""
     from dataclasses import asdict

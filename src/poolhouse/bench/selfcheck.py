@@ -156,7 +156,7 @@ def _scratch_store(where: Path) -> Path:
 
 
 def _scratch_world(where: Path) -> Path:
-    """A tiny invented company, written the way `poolhouse-world make --out` writes one;
+    """A tiny invented company, written the way `python -m poolhouse.world make --out` writes one;
     `load_world` then simulates its messages, as it does for any world without them."""
     world = make("company", "small", seed=1)
     where.mkdir(parents=True, exist_ok=True)
@@ -256,7 +256,7 @@ def _faked(args: argparse.Namespace, home: Path, built: list[Any]):
         given = Path(str(explicit)).expanduser() if explicit else None
         return given.resolve() if given is not None and given.is_file() else stand_in
 
-    def fetched(reference: str) -> Path:
+    def fetched(reference: str, **_: Any) -> Path:
         # a head named by hf: file is fetched into the cache and served by path; here
         # it lands under the scratch home, as a file that is never read
         head = home / "cache" / str(reference).removeprefix("hf:").rsplit("/", 1)[-1]
@@ -363,7 +363,7 @@ def _raw_flags(spec: Any) -> frozenset[str]:
 
 
 def selfcheck(argv: Sequence[str]) -> str:
-    """Drive ``poolhouse-bench argv`` through the whole path with no server and no GPU.
+    """Drive ``python -m poolhouse.bench argv`` through the whole path with no server and no GPU.
 
     The model, the server and the machine are faked; the askings, the spec, the preflight,
     the clients, two questions over the invented community (a tiny world for `extract`),

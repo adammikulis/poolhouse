@@ -21,10 +21,10 @@ class GymRoutes:
     """Environment catalogue, snapshots and session controls."""
 
     def job_commands(self) -> tuple[str, ...]:
-        return (*super().job_commands(), "poolhouse-gym")
+        return (*super().job_commands(), "poolhouse.gym")
 
     def job_launch(self, command, args, root):
-        if command != "poolhouse-gym" or len(args) < 2 or args[0] not in {"run", "train", "evaluate"}:
+        if command != "poolhouse.gym" or len(args) < 2 or args[0] not in {"run", "train", "evaluate"}:
             return super().job_launch(command, args, root)
         if args[1] not in ENVIRONMENTS:
             raise ValueError("Choose a supported Gym environment.")

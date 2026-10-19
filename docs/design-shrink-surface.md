@@ -114,8 +114,9 @@ tests that walk the tree, the import paths in docs and tests and the red-team ma
 3. The package's console script leaves `[project.scripts]`, `cli/reference.py` and `docs/commands.md`; it runs as
    `python -m poolhouse.<name>` from a checkout.
 4. `tests/test_wiring.py` counts an experimental package as wired by `python -m` (section 7).
-5. Its tests stay and keep running under the gates, marked by a list `tests/experimental-modules.txt` (the form of
-   `tests/heavy-modules.txt`); release shards skip them and the nightly schedule runs them.
+5. Its tests stay and keep running in the CI shards on pull requests, `main` and nightly; the list of an experimental
+   package's test files is derived from the layer by `tests/test_experimental_tests_run_in_ci.py`, which fails when a
+   file is in no shard (docs/test-execution.md, "CI shards").
 
 The alternative, a top-level `experimental/` directory with its own distribution, isolates harder and costs more: the
 gates and tests must first be taught a second root (19 gate files, the mutation sampler, 65 tests), which is a prerequisite
@@ -166,7 +167,7 @@ test, no budget. Check: `scripts/test all tests/test_wiring.py tests/test_layers
 Leaves the build: `src/poolhouse/redteam/` (24), `src/poolhouse/walk/` (3), `src/poolhouse/surface/` (4).
 Edit: `pyproject.toml` (remove `poolhouse-walk` and `poolhouse-surface`, add the wheel exclude), `cli/reference.py`,
 `docs/commands.md`, `tests/test_layers.py` (new layer; `redteam` moves from `dev` into it), `tests/test_wiring.py`
-(`STANDALONE` entries `redteam` and the new rule), `tests/experimental-modules.txt` (new). Budgets: none. Red-team: the
+(`STANDALONE` entries `redteam` and the new rule). Budgets: none. Red-team: the
 red-team harness tests keep running (section 6). This slice also adds the mechanism every later slice uses.
 
 **Slice 3: gym.** Cut: `fleet/workspace_routes.py` (`poolhouse.gym.catalog`, `poolhouse.gym.transport`, the
@@ -226,8 +227,8 @@ use. `answers`, `community`, `judging`, `tidy`, `looking`, `tree`, `absorbing` a
 with `backend`, `vision` and their console scripts, by the layer mechanism of section 3. First step in its own commit: a
 measurement of the cut edges (the 17 `fleet` imports of `graph`, `memory`, `reputation`, the three `backend` imports) with
 the same `ast` walk as section 1, written into this section before any file moves; then the cut in `fleet` (the daemon's
-knowledge view), the layer entries, the wheel excludes, the `KNOWN` and `STANDALONE` edits and the experimental test list.
-The `graph` tests that name the leaving modules move to `tests/experimental-modules.txt` and keep running; torch leaves the
+knowledge view), the layer entries, the wheel excludes, the `KNOWN` and `STANDALONE` edits.
+The `graph` tests that name the leaving modules stay in the CI shards; torch leaves the
 release test install in this slice. Sizes are not yet measured (about 3,500 lines and most of the 122 debt sites by the
 estimate in D1); `scripts/budgets` counts stay as they are under isolation.
 

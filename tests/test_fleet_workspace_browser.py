@@ -35,7 +35,7 @@ def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playw
         pw.expect(page.locator('tools-view #runner pre')).to_contain_text('poolhouse-doctor --help')
         args = page.evaluate("document.querySelector('training-view').spec()")
         from poolhouse.train.run import _parser
-        parsed = _parser().parse_args(args['args'])
+        parsed = _parser().parse_args(args['args'][1:])
         assert parsed.recipe == 'text-lm'
         assert parsed.data == 'datasets/demo.jsonl'
         check_training_controls(page, pw)
@@ -80,11 +80,11 @@ def check_training_controls(page, pw):
     page.locator('training-view [data-step="1"]').click()
     page.get_by_label('Fine-tuning strategy').select_option('adapter')
     specification = page.evaluate("document.querySelector('training-view').spec()")
-    parsed = _parser().parse_args(specification['args'])
+    parsed = _parser().parse_args(specification['args'][1:])
     assert parsed.lora and 'base=models/demo-base' in parsed.set
     page.get_by_label('Fine-tuning strategy').select_option('full')
     specification = page.evaluate("document.querySelector('training-view').spec()")
-    parsed = _parser().parse_args(specification['args'])
+    parsed = _parser().parse_args(specification['args'][1:])
     assert not parsed.lora and 'lora=false' in parsed.set
 
 

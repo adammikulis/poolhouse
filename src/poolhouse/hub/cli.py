@@ -7,7 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import hub
+from poolhouse import hub, optional
+from poolhouse.hub.admission import PERSON
 from poolhouse.hub.naming import _SHARD
 from poolhouse.log import say, warn
 from poolhouse.units import human_bytes
@@ -96,7 +97,7 @@ def _layout(args) -> int:
 
     named = str(hub.located(args.model) or args.model)
     if named.startswith("hf:"):
-        named = str(hub.fetch(named))
+        named = str(hub.fetch(named, trust=PERSON))
     try:
         shape = layout(named)
     except (OSError, ValueError, struct.error) as exc:
@@ -130,7 +131,9 @@ def _card(args) -> int:
             say(f"  {name:16} {value:g}")
         flags = " ".join(f"--{n.replace('_', '-')} {v:g}" for n, v in asked.items()
                          if n in ("temperature", "top_p", "top_k", "min_p"))
-        say(f"\npoolhouse-bench run {flags}")
+        run = optional.command("poolhouse.bench", f"run {flags}")
+        if run:
+            say(f"\n{run}")
     else:
         say(f"{args.repo}'s card names no sampler settings. That is an answer: "
             f"nobody has chosen one, so the caller's default stands.")
@@ -142,7 +145,7 @@ def _card(args) -> int:
 def _fetch(args) -> int:
     """``poolhouse-models fetch``: every shard of each reference, with what came down."""
     for one in args.refs:
-        path = hub.fetch(one, members=False if args.no_members else None)
+        path = hub.fetch(one, members=False if args.no_members else None, trust=PERSON)
         total = 0
         for shard in hub.shards_beside(path):
             size = shard.stat().st_size if shard.exists() else 0

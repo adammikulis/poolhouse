@@ -325,14 +325,14 @@ def test_outcomes_reach_the_board_as_announcements_and_failures_as_incidents(wor
     commit(repo, "a")
     me = workspace_node.session(agent)
     first = runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
-    assert runtime_board.announce(first, "", me)
+    assert first.action == "switched" and not runtime_board.announce(first, "", me)
     second_commit = commit(repo, "b")
     failed = runtime_deploy.ensure(plan_for(repo, launchers), builder=builder(hook_code=3))
     assert failed.action == "failed"
     assert runtime_board.announce(failed, first.commit, me)
     assert not runtime_board.announce(runtime_deploy.Outcome("current", second_commit), "", me)
     rows = announced(me)
-    assert len(rows) == 2
+    assert len(rows) == 1
     texts = json.dumps(rows)
     assert first.commit[:7] in texts and "diagnostic=" in texts and second_commit[:7] in texts
     assert "stays selected" in texts
@@ -578,12 +578,19 @@ def test_discarding_a_tree_unlaunches_it_even_when_deletion_fails(world, monkeyp
 
 def test_board_text_carries_only_full_hex_commits(world, workspace_node, agent):
     me = workspace_node.session(agent)
-    good = runtime_deploy.Outcome("switched", "a" * 40)
+    good = runtime_deploy.Outcome("recovered", "a" * 40)
     assert runtime_board.announce(good, "x; rm -rf /", me)
     [posted] = announced(me)
     assert "none" in posted and "rm" not in posted
-    assert not runtime_board.announce(runtime_deploy.Outcome("switched", "z" * 40), "", me)
+    assert not runtime_board.announce(runtime_deploy.Outcome("recovered", "z" * 40), "", me)
     assert len(announced(me)) == 1
+
+
+def test_a_switch_to_a_new_build_writes_no_announcement(world, workspace_node, agent):
+    me = workspace_node.session(agent)
+    for action in ("switched", "superseded", "backoff", "busy", "held", "current"):
+        assert not runtime_board.announce(runtime_deploy.Outcome(action, "a" * 40), "b" * 40, me)
+    assert announced(me) == []
 
 
 def test_the_session_start_refresh_is_bounded_and_the_smoke_environment_disables_it(monkeypatch):
@@ -673,7 +680,7 @@ def test_without_an_agent_ensure_and_recovery_run_unclaimed_and_post_nothing(wor
     shutil.rmtree(runtime_store.selection()["prefix"])
     assert runtime_deploy.ensure(plan_for(repo, launchers), builder=builder(hook_code=3)).action == "recovered"
     assert seen and all(who is None for who in seen)
-    assert not runtime_board.announce(runtime_deploy.Outcome("switched", second), "", runtime_deploy.acting(plan_for(repo, launchers)))
+    assert not runtime_board.announce(runtime_deploy.Outcome("recovered", second), "", runtime_deploy.acting(plan_for(repo, launchers)))
 
 
 def test_the_acting_session_is_the_workspace_agent_and_collides_with_its_harness_claim(world, workspace_node, agent):

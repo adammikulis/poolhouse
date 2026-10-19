@@ -206,7 +206,7 @@ def download(asset: dict[str, Any], into: Path | str, *, on_progress: Any = None
             sha256=want, size=int(asset.get("size") or 0), require_digest=True,
             allow_unscanned=allow_unscanned, library_links=library_links,
             max_bytes=8 << 30, purpose="release download"),
-            hooks=hooks)
+            pipeline=net.default(), hooks=hooks)
     except net.ChecksumMismatch:
         raise UpdateError("the download does not match the digest GitHub reports for it") from None
     except (net.Blocked, net.Truncated, ServerError, OSError, Refused) as exc:
@@ -382,7 +382,7 @@ def in_the_way(*, jobs: Callable[[], bool] | None = None,
     """Why an update has to wait, or "" when nothing is in its way.
 
     Three things, and any one of them is enough: a training job, a benchmark measuring
-    (the same lock ``poolhouse-bench status`` reads, so a run somebody started at the
+    (the same lock ``python -m poolhouse.bench status`` reads, so a run somebody started at the
     keyboard counts), and a model server this machine holds a lease on. Replacing the code
     under any of them turns a measurement into a mixture of two builds, or drops a served
     model mid-answer. A check that raises counts as busy: not being able to tell is not a

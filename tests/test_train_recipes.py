@@ -8,8 +8,8 @@ import math
 import pytest
 
 from poolhouse.contracts import ContractError, recipe, recipes
+from poolhouse.decide.holdout import LeakageError, stratified
 from poolhouse.testing import needs_a_backend
-from poolhouse.train.holdout import LeakageError, stratified
 from poolhouse.train.recipes import build, known, validate
 from poolhouse.train.recipes.models import suggest_size
 

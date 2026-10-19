@@ -1,10 +1,18 @@
 # Measuring
 
+The bench is an experimental layer: the wheel does not hold it, and it runs from a source checkout as
+`python -m poolhouse.bench`. A build without it has no Benchmarks page and no bench tools.
+
+```sh
+python -m poolhouse.bench sweep --serve MODEL.gguf --smoke
+python -m poolhouse.bench show --rates
+```
+
 ## What has been measured
 
 What the kept runs say is in [`report-2026-09-23.md`](report-2026-09-23.md) and
 [`model-ranking.md`](model-ranking.md). Each names the date it was written, the command that
-wrote it, the store it read and the models in it; `poolhouse-bench report` and `poolhouse-bench
+wrote it, the store it read and the models in it; `python -m poolhouse.bench report` and `python -m poolhouse.bench
 show --rank` write them again from any store. Architectures that behave unlike a dense
 transformer when served have their own notes under
 [`docs/architectures/`](architectures/README.md).
@@ -26,13 +34,13 @@ Read against that report:
 A new model release invalidates all of it. Re-run it.
 
 The runs themselves are in a graph store under `~/.poolhouse/bench`, which nothing backs up.
-`poolhouse-bench show --export PATH` writes them out, so a day of GPU time is not on one disk.
+`python -m poolhouse.bench show --export PATH` writes them out, so a day of GPU time is not on one disk.
 **That file does not belong in a repository, and `--export` refuses one**: the numbers
 describe one machine and one llama.cpp build, they go stale with the next model release, and
 `run --graph` takes any graph, including a real community's. Back it up somewhere outside a
 working tree.
 
-What is worth keeping here is the conclusion, not the evidence. `poolhouse-bench show --rank
+What is worth keeping here is the conclusion, not the evidence. `python -m poolhouse.bench show --rank
 FILE.md` writes one line per model -- its best run, and what that run cost -- because that is
 what the defaults in this library are set from, and a default with no recorded reason is a
 default nobody can argue with. Both it and `--export` carry only runs whose recorded graph
@@ -63,7 +71,7 @@ has no generated figures and shows `-`, never 0.
   fires, eight points down or sixty percent of the tokens does not. `efficient` marks every
   model on the frontier of F1 against generated tokens, and `reference` the most accurate.
 
-`poolhouse-bench standard` (lm-eval) records the metric, the scored count and the seconds, not
+`python -m poolhouse.bench standard` (lm-eval) records the metric, the scored count and the seconds, not
 generated tokens, so its sets have no figure here yet.
 
 The default sets are GSM8K, MMLU-Pro and IFEval. HumanEval runs only when `--tasks` names it
@@ -115,10 +123,10 @@ comparable. `show --detail LABEL` prints the whole record and `show --export` ca
 ## Measuring a change to the asking
 
 ```
-poolhouse-bench prepare --embed-url http://127.0.0.1:8081 --embed-model embeddinggemma-2-Q8_0.gguf
-poolhouse-bench sweep --on gptoss=http://127.0.0.1:8080 --on e4b=http://127.0.0.1:8083 \
+python -m poolhouse.bench prepare --embed-url http://127.0.0.1:8081 --embed-model embeddinggemma-2-Q8_0.gguf
+python -m poolhouse.bench sweep --on gptoss=http://127.0.0.1:8080 --on e4b=http://127.0.0.1:8083 \
     --embed-url http://127.0.0.1:8081 --embed-model embeddinggemma-2-Q8_0.gguf
-poolhouse-bench show
+python -m poolhouse.bench show
 ```
 
 `sweep` measures each model twice — as it is, and with a search run before it — and prints
@@ -162,9 +170,9 @@ There are two question sets, and a ranking should be read on both. The curated s
 person, a role nobody has but one person nearly does, a count scored as the people counted,
 an answer two hops away from the person the question describes, and things only somebody's
 own words say. Rather than write all hundred by hand, half of the second fifty were drawn by
-handing this graph to [the generator](world.md) and reading what it produced; `poolhouse-bench
+handing this graph to [the generator](world.md) and reading what it produced; `python -m poolhouse.bench
 prepare --mix` prints how many questions ask for each kind of answer, which is what says
-whether it still measures the whole page or has drifted into being about people. The generated set, `poolhouse-world questions --world DIR --n 200`,
+whether it still measures the whole page or has drifted into being about people. The generated set, `python -m poolhouse.world questions --world DIR --n 200`,
 is derived from an invented world's truth for breadth -- hundreds of questions over
 thousands of people, tagged by `kind`, with `--kinds aggregate,twohop,trap,quote` to draw
 only those -- and reaches sizes the hand-written set never will. Both are fed to
@@ -256,11 +264,11 @@ which is the point of measuring ten of them on one load — `report --profile` t
 winner into that model's record.
 
 ```
-poolhouse-bench sweep --serve gemma-4-E2B-it --also terse --also card --detach
-poolhouse-bench status
-poolhouse-bench tail -f
-poolhouse-bench stop
-poolhouse-bench sweep --serve gemma-4-E2B-it --also terse --also card --resume
+python -m poolhouse.bench sweep --serve gemma-4-E2B-it --also terse --also card --detach
+python -m poolhouse.bench status
+python -m poolhouse.bench tail -f
+python -m poolhouse.bench stop
+python -m poolhouse.bench sweep --serve gemma-4-E2B-it --also terse --also card --resume
 ```
 
 A measurement is hours, and a child of a shell -- `nohup`, `&`, a redirect into a scratch
@@ -274,14 +282,14 @@ down with it. `sweep --resume` then skips every model and way already kept today
 same questions, context and slots, so the killed sweep costs the model it died on and not
 the ones before it.
 
-### An evening as a file: `poolhouse-bench queue`
+### An evening as a file: `python -m poolhouse.bench queue`
 
 A night of measurements is not one command, it is nine — a fairness sample, a knob matrix
 smoked one knob at a time, the hundred-question runs, the extraction runs, then the ranking
 and the report. That was a zsh script in a scratch directory, rewritten nine times in one
 evening (2026-09-02), with `&&` between each smoke and the run it guarded and a `--yes`
 typed onto every long line; nothing could say what was running or what was left.
-`poolhouse-bench queue FILE` is that evening as a file:
+`python -m poolhouse.bench queue FILE` is that evening as a file:
 
 ```
 # the restart: every improvement smoked, compared on ten, then the hundred
@@ -295,13 +303,13 @@ show --rank docs/model-ranking.md
 ```
 
 ```
-poolhouse-bench queue docs/examples/flash-next-restart.queue --dry-run
-poolhouse-bench queue docs/examples/flash-next-restart.queue --yes --detach
-poolhouse-bench status          # step 3/9, what is left, and what it has kept so far
-poolhouse-bench stop            # the queue, and the step inside it
+python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --dry-run
+python -m poolhouse.bench queue docs/examples/flash-next-restart.queue --yes --detach
+python -m poolhouse.bench status          # step 3/9, what is left, and what it has kept so far
+python -m poolhouse.bench stop            # the queue, and the step inside it
 ```
 
-One `poolhouse-bench` invocation per line, `#` comments, `${VAR}` from a `set` line or from
+One `python -m poolhouse.bench` invocation per line, `#` comments, `${VAR}` from a `set` line or from
 the environment, and a `smoke:` whose failure skips the `then:` under it and says so — the
 `&&` kept, so a serving that will not load is never measured on a hundred questions while the
 rest of the evening still happens. Every line is checked against this parser as the file is
@@ -309,7 +317,7 @@ read, so `--sampel` on the last line is refused before the first model loads rat
 after the eighth measurement, and an unset `${FX}` is refused rather than expanded to
 nothing and measured as the default model.
 
-It is not a second scheduler. Each step is its own `poolhouse-bench` process, so it brings
+It is not a second scheduler. Each step is its own `python -m poolhouse.bench` process, so it brings
 the measuring lock, the self-check, the estimate and the smoke it already has, and a step
 of a queue and a run started by hand still wait for each other; the queue holds no lock and
 is only the thing that waits. `--yes` and `--ceiling` are given once at the top and passed
@@ -377,9 +385,9 @@ serve, which also holds an adopted server's nothing -- and `show` prints `load` 
 `--rank` carries it.
 
 ```
-poolhouse-bench sweep --serve gemma-4-E2B-it --serve gemma-4-E4B-it --serve gpt-oss-120b \
+python -m poolhouse.bench sweep --serve gemma-4-E2B-it --serve gemma-4-E4B-it --serve gpt-oss-120b \
     --shortlist-for e2b,e4b --serve-kv q8_0
-poolhouse-bench drafts gemma-4-E4B-it --draft '' --draft auto --n-max 4 --n-max 8 --n-max 16
+python -m poolhouse.bench drafts gemma-4-E4B-it --draft '' --draft auto --n-max 4 --n-max 8 --n-max 16
 ```
 
 `sweep --shortlist-for e2b,e4b` gives the shortlist half only to the models whose name holds
@@ -403,7 +411,7 @@ per question, over this one, as `1.42x` -- `--rank` carries it into `cost from`,
 and how far F1 moved, and names the fastest configuration whose F1 held within the noise.
 
 ```
-poolhouse-bench concurrent e2b-4x3 --conversations 4 --turns 3 --base-url http://127.0.0.1:8080
+python -m poolhouse.bench concurrent e2b-4x3 --conversations 4 --turns 3 --base-url http://127.0.0.1:8080
 ```
 
 Everything above asks one question at a time, which is right for timing a model and wrong
@@ -425,10 +433,10 @@ turn to prove the path.
 ### Measuring the reading, not the asking
 
 ```
-poolhouse-world make --kind community --size small --seed 3 --out ./world
-poolhouse-bench extract flash-next --world ./world --serve Qwen3.8-Flash-Next --smoke
-poolhouse-bench extract flash-next --world ./world --serve Qwen3.8-Flash-Next --twice
-poolhouse-bench show --extract
+python -m poolhouse.world make --kind community --size small --seed 3 --out ./world
+python -m poolhouse.bench extract flash-next --world ./world --serve Qwen3.8-Flash-Next --smoke
+python -m poolhouse.bench extract flash-next --world ./world --serve Qwen3.8-Flash-Next --twice
+python -m poolhouse.bench show --extract
 ```
 
 Everything above measures a graph that already exists. Before it exists it has to be read
@@ -521,6 +529,6 @@ load of the model; the `ctx` column shows `/rb` and `show` carries the budget.
 `show` prints `llama.cpp build N` under the table (from the run's `server.served_by.version`), and
 when the runs it shows used different builds it lists each build with its runs and says they are
 not directly comparable. `compare` does the same for its two runs. At the start of `queue` and
-`sweep`, `poolhouse-bench` prints `llama.cpp: build N, M behind master (age)` and a warning when
+`sweep`, `python -m poolhouse.bench` prints `llama.cpp: build N, M behind master (age)` and a warning when
 the build is over 24 hours old and behind; it never updates the build
 (docs/llama-cpp-tracking.md, "Keeping up to date").

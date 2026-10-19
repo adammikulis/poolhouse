@@ -60,7 +60,7 @@ def mix(questions: Sequence[Mapping[str, Any]],
 
     The one number that says whether a question set still measures the whole page or has
     drifted into being about people: a set is grown a handful at a time, and the kind each
-    addition lands under is not the kind whoever wrote it had in mind. `poolhouse-bench
+    addition lands under is not the kind whoever wrote it had in mind. `python -m poolhouse.bench
     prepare --mix` prints it.
     """
     grouped = filed(questions, graph)

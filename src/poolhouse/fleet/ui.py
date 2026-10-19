@@ -16,6 +16,7 @@ from poolhouse import jsonl
 from poolhouse.fleet.join_request import JoinHooks, JoinRequest
 from poolhouse.home import machine_id
 from poolhouse.http import Options, Server, ServerError, open_stream
+from poolhouse.optional import module
 
 from . import pausing, recovery
 from .discovery import (
@@ -429,11 +430,11 @@ class UI:
                 "reached": sum(1 for a in answers if a.ok), "total": len(answers)}
 
     def bench_state(self) -> dict[str, Any]:
-        """What ``poolhouse-bench status`` says, for the page. The bench's home is
+        """What ``python -m poolhouse.bench status`` says, for the page. The bench's home is
         `poolhouse.bench.home_dir`, the one the command reads."""
         try:
-            from poolhouse.bench.progress import status
-            from poolhouse.bench.underway import measuring
+            status = module("poolhouse.bench.progress").status
+            measuring = module("poolhouse.bench.underway").measuring
         except ImportError as exc:
             return {"available": False, "text": f"the bench is not installed here: {exc}",
                     "measuring": None}
@@ -442,10 +443,8 @@ class UI:
     def bench_history(self, limit: int = 20) -> list[dict[str, Any]]:
         from dataclasses import asdict
 
-        from poolhouse.bench import home_dir
-        from poolhouse.bench.history import history
-
-        return [asdict(e) for e in history(home_dir())][::-1][:limit]
+        history = module("poolhouse.bench.history").history
+        return [asdict(e) for e in history(module("poolhouse.bench").home_dir())][::-1][:limit]
 
     def fit(self, room: int = 0, users: int = 1) -> dict[str, Any]:
         """The measured fit records, worked out for a room of this size.
@@ -486,7 +485,7 @@ class UI:
 
     def rates(self) -> dict[str, Any]:
         """Every kept bench run as a point: what it scored, what it cost, and where the
-        frontier runs -- ``poolhouse-bench show --rates`` as data rather than as a table.
+        frontier runs -- ``python -m poolhouse.bench show --rates`` as data rather than as a table.
 
         Nothing here measures anything. `keep._kept` reads the store the command reads,
         `score.derived` turns one run into the rates it already prints, `score.composed`
@@ -496,13 +495,16 @@ class UI:
         same reason the fit records carry their two composing numbers rather than answers.
         """
         try:
-            from poolhouse.bench import home_dir
-            from poolhouse.bench.frontier import AXES, pareto
-            from poolhouse.bench.keep import _kept
-            from poolhouse.bench.score import COSTS, NOISE, composed, derived, host_of
+            home_dir = module("poolhouse.bench").home_dir
+            frontier = module("poolhouse.bench.frontier")
+            _kept = module("poolhouse.bench.keep")._kept
+            score = module("poolhouse.bench.score")
         except ImportError as exc:                       # a device-tier install has no bench
             return {"error": f"the bench is not installed here: {exc}",
                     "runs": [], "axes": {}, "keys": {}, "store": ""}
+        AXES, pareto = frontier.AXES, frontier.pareto
+        COSTS, NOISE, composed, derived, host_of = (
+            score.COSTS, score.NOISE, score.composed, score.derived, score.host_of)
         store = home_dir() / "runs.ladybug"
         kept = _kept(store)
         points = list(kept) + composed(kept)
@@ -550,25 +552,22 @@ class UI:
                          "Point this at a page that does: its address and /metrics.")}
 
     def start_sweep(self, argv: list[str]) -> dict[str, Any]:
-        """Start ``poolhouse-bench argv`` detached and hand back its log and pid."""
+        """Start ``python -m poolhouse.bench argv`` detached and hand back its log and pid."""
         import shlex
 
-        from poolhouse.bench.underway import detach, measuring_file
-
-        log = (self.detach or detach)(argv)
+        underway = module("poolhouse.bench.underway")
+        log = (self.detach or underway.detach)(argv)
         try:
-            held = json.loads(measuring_file().read_text(encoding="utf-8"))
+            held = json.loads(underway.measuring_file().read_text(encoding="utf-8"))
         except (OSError, ValueError):
             held = {}
         return {"log": str(log), "pid": held.get("pid"), "argv": list(argv),
-                "command": "poolhouse-bench " + shlex.join(argv)}
+                "command": "python -m poolhouse.bench " + shlex.join(argv)}
 
     def stop_sweep(self, pid: int) -> str:
         """Stop the detached measurement, but only the one the page was shown."""
-        from poolhouse.bench.progress import stop
-        from poolhouse.bench.underway import measuring
-
-        held = measuring()
+        stop = module("poolhouse.bench.progress").stop
+        held = module("poolhouse.bench.underway").measuring()
         if held is None or int(held.get("pid") or 0) != int(pid):
             return "nothing is measuring under that pid"
         return stop()

@@ -1,4 +1,4 @@
-"""What ``poolhouse-bench`` does, as functions that take values and return them.
+"""What ``python -m poolhouse.bench`` does, as functions that take values and return them.
 
 The `Config` a ``--serve``'d model is measured in (`measured_run`, `swept`,
 `serving_fields`), the store a graph is prepared in (`prepare`), what a store holds for
@@ -312,7 +312,7 @@ def fleet_planned(argv: Sequence[str], models: Sequence[str], *,
     stores = [v for v in _values_of(argv, "--store") if v]
     if stores:
         raise Refused(f"error: --store {stores[-1]} is a graph store on this machine, and a "
-                      f"member cannot read it; each member uses the store its own 'poolhouse-bench "
+                      f"member cannot read it; each member uses the store its own 'python -m poolhouse.bench "
                       f"prepare' built, or none with --store ''")
     mine = _commit()
     if not mine:

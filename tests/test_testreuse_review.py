@@ -357,9 +357,9 @@ def test_a_board_notice_never_raises_out_of_a_run():
             raise RuntimeError(name)
 
     events = testboard.BoardEvents(Broken())
-    assert events.claimed(FILE, "k" * 64) == 0
+    assert events.agent == {"id": "", "source": "none"}
     events.canary_mismatch(FILE, "detail")
-    events.job_done("j", {}, {"exit": 0}, 0)
+    events.job_done("j", {}, {"exit": 0})
 
 
 def test_a_malformed_canary_rate_does_not_crash_and_zero_is_reported(project, tmp_path, monkeypatch):

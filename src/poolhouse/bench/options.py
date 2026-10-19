@@ -1,4 +1,4 @@
-"""Every ``poolhouse-bench`` subcommand's flags, built when a parser asks for them.
+"""Every ``python -m poolhouse.bench`` subcommand's flags, built when a parser asks for them.
 
 One function per subcommand, plus the four sets more than one takes: `asking_options` is
 what a measuring command is asked with, `reaching_options` how much one tool result may
@@ -68,7 +68,7 @@ def asking_options() -> tuple[Option, ...]:
         flag("--trace", action=argparse.BooleanOptionalAction, default=None,
              help="keep each question's transcript -- every call with its arguments, "
                   "what came back and what it cost -- beside the totals, for "
-                  "`show --trace` and `poolhouse-train-tools from-bench`. Default: on "
+                  "`show --trace` and `python -m poolhouse.train tools from-bench`. Default: on "
                   f"at {SHORT} questions or fewer, off for a full run, where the "
                   "transcripts are tens of megabytes in a store nothing backs up"),
         flag("--sample", type=int, default=0, metavar="N",
@@ -492,10 +492,10 @@ def show_options() -> tuple[Option, ...]:
              help="the store the runs are in (default: %(default)s)"),
         flag("--compare", nargs=2, metavar=("BEFORE", "AFTER"), default=None),
         flag("--extract", action="store_true",
-             help="only the extraction runs (poolhouse-bench extract), in their own "
+             help="only the extraction runs (python -m poolhouse.bench extract), in their own "
                   "table; without it they print under the answering table"),
         flag("--speed", action="store_true",
-             help="the speed runs (poolhouse-bench speed), one table per label: "
+             help="the speed runs (python -m poolhouse.bench speed), one table per label: "
                   "prefill and decode tokens/s and the first token by prompt size "
                   "and streams"),
         flag("--detail", nargs="?", const="", default=None, metavar="LABEL",
@@ -619,7 +619,7 @@ def queue_options() -> tuple[Option, ...]:
     """``queue``: an evening of measurements from a file."""
     return (
         flag("label", metavar="FILE",
-             help="the queue file: one `poolhouse-bench` invocation per line, "
+             help="the queue file: one `python -m poolhouse.bench` invocation per line, "
                   "`#` comments, `set NAME=VALUE` with ${NAME} (the environment "
                   "when nothing sets it), and a `smoke:` line whose failure "
                   "skips the `then:` under it. See docs/examples/"),

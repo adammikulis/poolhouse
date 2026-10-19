@@ -36,8 +36,8 @@ Every cell is one call of the existing machinery, no new framework.
 | task | machinery | measures |
 | --- | --- | --- |
 | `jevbench` | `poolhouse-decide jevbench --backend logprob --gguf MODEL` | accuracy over JevBench's public items (all tiers, `--tier original`); ms per decision (one token out, so close to prefill) |
-| `generation` | `poolhouse-bench sweep --serve MODEL --plain-only --sample 20` | F1 over the bench store's question set with its 95% bootstrap band; wall seconds per question |
-| `speed` | `poolhouse-bench speed --serve MODEL --prompts 512,4096 --streams 1 --generate 256` | prefill tokens/s, decode tokens/s, time to first token, wall seconds |
+| `generation` | `python -m poolhouse.bench sweep --serve MODEL --plain-only --sample 20` | F1 over the bench store's question set with its 95% bootstrap band; wall seconds per question |
+| `speed` | `python -m poolhouse.bench speed --serve MODEL --prompts 512,4096 --streams 1 --generate 256` | prefill tokens/s, decode tokens/s, time to first token, wall seconds |
 
 - **Thinking.** `generation` runs with thinking on (no reasoning budget) and off
   (`--reasoning-budget 0`); the bench store records it as the run's thinking column.

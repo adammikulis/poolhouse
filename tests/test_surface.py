@@ -1,4 +1,4 @@
-"""``poolhouse-surface``: the walk, what it is safe to run, the normalising and the diff."""
+"""``python -m poolhouse.surface``: the walk, what it is safe to run, the normalising and the diff."""
 
 from __future__ import annotations
 
@@ -25,9 +25,8 @@ def test_the_umbrella_is_one_of_the_commands_walked():
 
 @pytest.mark.slow
 def test_a_command_is_walked_with_every_subcommand_it_declares():
-    found = [node.spoken for node in ops.walk(SRC, ["world"])]
-    assert found == ["world", "world make", "world questions", "world simulate",
-                     "world emit", "world check"]
+    found = [node.spoken for node in ops.walk(SRC, ["features"])]
+    assert found == ["features", "features list", "features enable", "features disable"]
 
 
 @pytest.mark.slow
@@ -39,9 +38,9 @@ def test_a_command_with_no_subcommands_is_a_single_node():
 
 @pytest.mark.slow
 def test_a_parser_that_requires_a_subcommand_refuses_a_bare_argv():
-    by_words = {node.spoken: node for node in ops.walk(SRC, ["world"])}
-    assert by_words["world"].refuses
-    assert by_words["world make"].refuses
+    by_words = {node.spoken: node for node in ops.walk(SRC, ["features"])}
+    assert by_words["features"].refuses
+    assert by_words["features enable"].refuses
 
 
 @pytest.mark.slow
@@ -56,9 +55,9 @@ def _node(spoken: str, refuses: bool) -> ops.Node:
 
 
 def test_a_refused_parser_is_run_bare_and_an_accepting_one_is_not():
-    nodes = [_node("world", True), _node("world make", True), _node("claude", False)]
+    nodes = [_node("features", True), _node("features enable", True), _node("claude", False)]
     made = {run.slug: run.verdict for run in ops.invocations(nodes)}
-    assert made == {"world": "refused", "world.make": "refused"}
+    assert made == {"features": "refused", "features.enable": "refused"}
 
 
 def test_a_declared_invocation_is_run_where_no_parser_refuses():
@@ -72,7 +71,7 @@ def test_a_declared_invocation_for_a_command_outside_the_walk_is_left_out():
 
 
 def test_nothing_is_run_at_all_when_only_help_is_asked_for():
-    assert ops.invocations([_node("world", True)], help_only=True) == []
+    assert ops.invocations([_node("features", True)], help_only=True) == []
 
 
 def test_a_node_with_no_invocation_is_named_as_help_only():
@@ -109,14 +108,14 @@ def test_this_machine_is_settled_out_of_the_help():
 @pytest.mark.slow
 def test_two_captures_of_the_same_commands_do_not_differ(tmp_path):
     before, after = tmp_path / "before", tmp_path / "after"
-    ops.capture(before, src=SRC, only=["world"])
-    ops.capture(after, src=SRC, only=["world"])
+    ops.capture(before, src=SRC, only=["features"])
+    ops.capture(after, src=SRC, only=["features"])
     assert ops.compare(before, after) == []
 
 
 @pytest.mark.slow
 def test_a_capture_writes_the_help_of_every_node_and_says_what_it_ran(tmp_path):
-    taken = ops.capture(tmp_path, src=SRC, only=["world"])
+    taken = ops.capture(tmp_path, src=SRC, only=["features"])
     written = {path.name for path in (tmp_path / "help").iterdir()}
     assert written == {f"{node.slug}.txt" for node in taken.nodes}
     assert (tmp_path / "manifest.json").exists()
@@ -126,19 +125,19 @@ def test_a_capture_writes_the_help_of_every_node_and_says_what_it_ran(tmp_path):
 @pytest.mark.slow
 def test_a_changed_flag_shows_up_in_the_diff(tmp_path):
     before, after = tmp_path / "before", tmp_path / "after"
-    ops.capture(before, src=SRC, only=["world"])
-    ops.capture(after, src=SRC, only=["world"])
-    moved = after / "help" / "world.make.txt"
-    moved.write_text(moved.read_text().replace("--seed", "--sown"))
+    ops.capture(before, src=SRC, only=["features"])
+    ops.capture(after, src=SRC, only=["features"])
+    moved = after / "help" / "features.enable.txt"
+    moved.write_text(moved.read_text().replace("--root", "--base"))
     changed = ops.compare(before, after)
-    assert [one.name for one in changed] == ["world make --help"]
-    assert "-  --seed" in changed[0].diff and "+  --sown" in changed[0].diff
+    assert [one.name for one in changed] == ["features enable --help"]
+    assert "-  --root" in changed[0].diff and "+  --base" in changed[0].diff
 
 
 @pytest.mark.slow
 def test_the_command_captures_and_then_says_nothing_differs(tmp_path, capsys):
     for name in ("before", "after"):
-        assert main(["capture", "--out", str(tmp_path / name), "--only", "world",
+        assert main(["capture", "--out", str(tmp_path / name), "--only", "features",
                      "--help-only"]) == 0
     capsys.readouterr()
     assert main(["diff", str(tmp_path / "before"), str(tmp_path / "after")]) == 0
@@ -148,17 +147,17 @@ def test_the_command_captures_and_then_says_nothing_differs(tmp_path, capsys):
 @pytest.mark.slow
 def test_the_command_exits_1_when_a_capture_differs(tmp_path, capsys):
     for name in ("before", "after"):
-        main(["capture", "--out", str(tmp_path / name), "--only", "world", "--help-only"])
-    gone = tmp_path / "after" / "help" / "world.emit.txt"
+        main(["capture", "--out", str(tmp_path / name), "--only", "features", "--help-only"])
+    gone = tmp_path / "after" / "help" / "features.disable.txt"
     gone.unlink()
     capsys.readouterr()
     assert main(["diff", str(tmp_path / "before"), str(tmp_path / "after")]) == 1
-    assert "world emit --help" in capsys.readouterr().out
+    assert "features disable --help" in capsys.readouterr().out
 
 
 @pytest.mark.slow
 def test_listing_says_what_would_be_run_and_what_would_not(tmp_path, capsys):
-    assert main(["list", "--only", "claude,world"]) == 0
+    assert main(["list", "--only", "claude,features"]) == 0
     printed = capsys.readouterr().out
     assert "claude" in printed and "not declared safe" in printed
-    assert "world make" in printed and "bare" in printed
+    assert "features enable" in printed and "bare" in printed

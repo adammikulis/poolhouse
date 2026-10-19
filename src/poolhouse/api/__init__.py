@@ -30,7 +30,7 @@ SURFACE: dict[str, tuple[str, ...]] = {
     "board": ("connect", "register", "Board", "Message", "Note", "Claim", "Agent", "Task", "Ask", "Approval"),
     "leases": ("view", "acquire", "wait", "renew", "release", "cpu_slots", "memory_mb", "gpu", "model_slot", "claim", "LeaseRecord"),
     "test": ("devices", "run", "Device", "Result"),
-    "models": ("pull", "path", "cache_dir"),
+    "models": ("pull", "path", "cache_dir", "Trust"),
     "serve": ("up", "down", "status", "Served"),
     "client": ("Client", "Request", "Transport", "Family", "Reply", "is_healthy", "ServerError", "ServerUnreachable"),
     "hub": ("discover", "ModelInfo", "fetch", "located", "hub_cache"),

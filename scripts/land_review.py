@@ -17,7 +17,7 @@ ORDINARY_ROOTS = frozenset({
 SPLIT_ROOTS = frozenset({"contracts", "docs", "scripts", "src", "tests"})
 SRC_ORDINARY = frozenset({
     "__init__.py", "asking.py", "bench", "briefing.py", "checks.py", "cli", "command.py", "command_capture.py", "data",
-    "datasheet", "decide", "decide_cli.py", "deciders.py", "doctor.py", "draft.py", "entities", "errors.py", "extraction.py",
+    "datasheet", "decide", "decide_cli.py", "deciders.py", "doctor.py", "draft", "entities", "errors.py", "extraction.py",
     "features_cli.py", "files.py", "files_windows.py", "geo.py", "gguf", "graph", "gym", "ingest", "installed.py",
     "json_objects.py", "jsonl", "kvtype.py", "log.py", "markup.py", "media", "messages.py", "migrate_paths.py",
     "migrate_scan.py", "py.typed", "records.py", "sources", "spec", "speech", "subscribers.py", "surface", "telemetry.py",
@@ -32,7 +32,7 @@ SRC_SENSITIVE = frozenset({
     "keystore_guard.py", "lan.py", "leasetable.py", "legacy.py", "limits.py", "lock.py", "macauth.py", "mcp.py", "memory",
     "migrate.py", "net", "node_app.py", "node_binary.py", "node_build.py", "node_health.py", "node_join.py",
     "node_join_check.py", "node_key.py", "node_launch.py", "node_permission.py", "node_pool.py", "node_signing.py",
-    "node_supervise.py", "paths.py", "person.py", "pi.py", "platform.py", "private_counters.py", "private_path.py",
+    "node_supervise.py", "optional.py", "paths.py", "person.py", "pi.py", "platform.py", "private_counters.py", "private_path.py",
     "protectedwrites.py", "real_machine.py", "redact", "redteam", "reputation", "requests", "roles.py", "rules.py",
     "runtime.py", "runtime_await.py", "runtime_board.py", "runtime_bridges.py", "runtime_cli.py", "runtime_coalesce.py",
     "runtime_deploy.py", "runtime_git.py", "runtime_host.py", "runtime_launchers.py", "runtime_source.py", "runtime_stale.py", "runtime_store.py",

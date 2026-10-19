@@ -24,9 +24,10 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TextIO
 
-from poolhouse import activity, hub, mcp, person, requests
+from poolhouse import activity, hub, mcp, optional, person, requests
 from poolhouse.client import ollama
 from poolhouse.command_capture import captured
+from poolhouse.home import state
 from poolhouse.interventions import Call, Confirm
 from poolhouse.log import say
 from poolhouse.rules import Rules, describe
@@ -216,19 +217,16 @@ BENCH_SUBS: dict[str, bool] = {"compare": False, "animate": False, "standard": T
 
 
 def bench_cli(sub: str, args: Sequence[str], detach: bool) -> dict[str, Any]:
-    """``poolhouse-bench sub args``: detached with a log and pid when it measures, else run
+    """``python -m poolhouse.bench sub args``: detached with a log and pid when it measures, else run
     in-process with what it printed."""
     if detach:
-        from poolhouse.bench.underway import detach as start
+        from poolhouse import jobs
 
-        log = start([sub, *args])
-        from poolhouse import bench, jobs
-
-        record = jobs.recorded("bench", home=bench.home_dir() / "jobs")
+        log = optional.module("poolhouse.bench.underway").detach([sub, *args])
+        record = jobs.recorded("bench", home=state("bench") / "jobs")
         return {"log": str(log), "pid": record.get("pid"), "argv": [sub, *args]}
-    from poolhouse.bench.run import _main
-
-    return captured(lambda: _main([sub, *list(args)]))
+    main = optional.module("poolhouse.bench.run")._main
+    return captured(lambda: main([sub, *list(args)]))
 
 
 def _bench_tool(sub: str, detach: bool) -> mcp.Tool:
@@ -239,26 +237,22 @@ def _bench_tool(sub: str, detach: bool) -> mcp.Tool:
     what = ("Start it detached; returns the log and pid, and jobs_wait waits for it."
             if detach else "Runs it and returns what it printed.")
     return mcp.Tool(f"bench_{sub}",
-                    f"poolhouse-bench {sub} ARGS, exactly as the command line takes them "
-                    f"(follows the CLI: `poolhouse-bench {sub} --help` says what). {what}", fn)
+                    f"python -m poolhouse.bench {sub} ARGS, exactly as the command line takes them "
+                    f"(follows the CLI: `python -m poolhouse.bench {sub} --help` says what). {what}", fn)
 
 
 # -- jobs -------------------------------------------------------------------------------
 def _jobs_home(kind: str) -> Path | None:
-    if kind == "bench":
-        from poolhouse import bench
-
-        return bench.home_dir() / "jobs"
-    return None
+    return state("bench") / "jobs" if kind == "bench" else None
 
 
 def jobs_status() -> dict[str, Any]:
     """Every long command this machine records -- the bench's and the rest -- running or
     ended, since when, with its log."""
-    from poolhouse import bench, jobs
+    from poolhouse import jobs
 
     said: list[str] = []
-    for home in (jobs.home_dir(), bench.home_dir() / "jobs"):
+    for home in (jobs.home_dir(), state("bench") / "jobs"):
         jobs.status(say=said.append, home=home)
     return {"text": "\n".join(said)}
 
@@ -378,7 +372,7 @@ def command_tools(registry: Sequence[mcp.Tool] | None = None, *,
     lookups' sources, for a test."""
     listed = list(mcp.TOOLS if registry is None else registry)
     names = {t.name for t in listed}
-    for sub, detach in BENCH_SUBS.items():
+    for sub, detach in BENCH_SUBS.items() if optional.held("poolhouse.bench") else ():
         if f"bench_{sub}" not in names:
             listed.append(_bench_tool(sub, detach))
     if "jobs_status" not in names:

@@ -6,15 +6,14 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
+from poolhouse.optional import module
 from poolhouse.train.tools.dataset import side_of
 from poolhouse.train.tools.schemas import CHAT, _fn, schemas_of
 
 
 def _scored(row: Mapping[str, Any]) -> float:
     """F1 for one kept bench row, as the bench scores it."""
-    from poolhouse.bench.score import _hit
-
-    return float(_hit(row))
+    return float(module("poolhouse.bench.score")._hit(row))
 
 
 def _good_rows(kept: Sequence[Mapping[str, Any]], model: str,

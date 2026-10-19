@@ -180,7 +180,7 @@ def role_catalogue() -> dict[str, list[str]]:
 
 
 def load(where: str | Path) -> World:
-    """The world `poolhouse-world make --out DIR` wrote, read back.
+    """The world `python -m poolhouse.world make --out DIR` wrote, read back.
 
     ``world.json`` (kind, size, seed, people) is read when it is there, the way
     `world.simulate.run` reads it; without it the graph's own ``meta`` says the same.

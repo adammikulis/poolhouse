@@ -1,9 +1,9 @@
-"""``poolhouse-bench compare``: several configurations of one model as one document.
+"""``python -m poolhouse.bench compare``: several configurations of one model as one document.
 
 `assemble` takes the store and a list of labels and writes, per label, what served it
 (`served_by`), the graph bench's newest run under that label, the newest speed run
 (`speed.KIND`) served the same way, the memory either measured, the standard sets a
-``poolhouse-bench standard`` JSON scored under the same label, and the draft head's
+``python -m poolhouse.bench standard`` JSON scored under the same label, and the draft head's
 acceptance. Nothing absent is 0: a configuration measured on the graph and not for
 speed carries ``"speed": null``.
 
@@ -234,7 +234,7 @@ def add_arguments(sub: Any) -> Any:
                      help="the N newest labels the store holds graph runs under "
                           "(default 3 when given bare), newest first")
     one.add_argument("--standard", action="append", default=[], metavar="FILE.json",
-                     help="a standard-set result written by poolhouse-bench standard, "
+                     help="a standard-set result written by python -m poolhouse.bench standard, "
                           "matched to a label by its own; repeatable")
     one.add_argument("--export", required=True, metavar="FILE.json",
                      help="where to write the document; not inside a repository")

@@ -96,7 +96,7 @@ def remember(argv: Sequence[str], *, pid: int, log: str = "", started: str = "",
 def ended() -> None:
     """Mark this process's record finished, so nothing reads it as a live measurement.
 
-    The record stays: `poolhouse-bench status` names the last run from it and `tail` finds
+    The record stays: `python -m poolhouse.bench status` names the last run from it and `tail` finds
     that run's log through it.
     """
     try:
@@ -122,7 +122,7 @@ def _named_in(argv: Sequence[str]) -> str:
 
 
 def detach(argv: Sequence[str]) -> Path:
-    """Run ``poolhouse-bench argv`` owned by no terminal, and return the log it writes."""
+    """Run ``python -m poolhouse.bench argv`` owned by no terminal, and return the log it writes."""
     rest = [a for a in argv if a != "--detach"]
     cmd = next((a for a in rest if a in MEASURING), "bench")
     log = (bench.home_dir() / "logs"

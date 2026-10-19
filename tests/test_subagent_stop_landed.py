@@ -85,6 +85,8 @@ path = Path(os.environ['HOOK_CALLS'])
 calls = json.loads(path.read_text()) if path.exists() else []
 calls.append(dict(argv=sys.argv[1:], agent=os.environ.get('POOLHOUSE_WORKSPACE_AGENT')))
 path.write_text(json.dumps(calls))
+if os.environ.get('HOOK_REFUSE') == sys.argv[1]:
+    sys.exit(1)
 claims = Path(os.environ['HOOK_CLAIMS'])
 print(claims.read_text() if sys.argv[1] == 'claims' and claims.exists() else '[]' if sys.argv[1] == 'claims' else 'ok')
 """)
@@ -180,6 +182,14 @@ def test_the_second_refusal_says_blocked_and_the_third_stop_goes_through_with_a_
     world.land()
     passed(world.stop())
     assert len(world.done()) == 1 and ["retire"] in world.recorded()
+
+
+def test_a_refused_done_post_writes_no_announcement_however_often_the_stop_repeats(world, monkeypatch):
+    monkeypatch.setenv("HOOK_REFUSE", "board")
+    stops = [world.stop() for _ in range(3)]
+    assert world.announced("milestone") == [] and world.announced("blocked") == []
+    assert ["retire"] not in world.recorded()
+    assert all(done.returncode == 0 and not done.stdout.strip() and "done post refused" in done.stderr for done in stops)
 
 
 def test_landing_between_stops_starts_the_count_again(world):

@@ -9,7 +9,7 @@ from poolhouse.command import flag, option
 from poolhouse.log import say, warn
 from poolhouse.serve import ops
 from poolhouse.serve.ops import Refused
-from poolhouse.serve.profile import ASK, WORKLOADS, said
+from poolhouse.serve.profile import ASK, WORKLOADS, how_measured, said
 
 __all__ = ["OPTIONS", "cmd_profile"]
 
@@ -41,8 +41,7 @@ def cmd_profile(args: argparse.Namespace) -> int:
         say(json.dumps([one.as_dict() for one in chosen], indent=2))
         return 0
     if not chosen:
-        say("nothing has been measured yet. `poolhouse-bench sweep` measures one and "
-            "`poolhouse-bench report --profile` writes the record.")
+        say("nothing has been measured yet." + how_measured().replace(" measures it", " measures one", 1))
         return 0
     say("\n\n".join(said(one) for one in chosen))
     if model and not wanted:

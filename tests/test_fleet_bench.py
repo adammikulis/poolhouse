@@ -1,9 +1,9 @@
-"""The fleet side of ``poolhouse-bench sweep --fleet``: real daemons on loopback, a bench
+"""The fleet side of ``python -m poolhouse.bench sweep --fleet``: real daemons on loopback, a bench
 that is a small script rather than a model, and stores in ``tmp_path``.
 
 Two fake daemons are two real ``Server``s running the real handler over a
 real `JobRunner`; only three things are stood in for -- the memory a member may use, the
-commit it runs, and the launch of ``poolhouse-bench --detach``, which would load a model
+commit it runs, and the launch of ``python -m poolhouse.bench --detach``, which would load a model
 and write under ``~/.poolhouse``. Nothing here reads that directory. Every name is invented.
 """
 
@@ -355,7 +355,7 @@ def test_dispatch_and_wait_see_done_and_the_job_is_listed_like_any_other(boxes):
     assert roomy.member.health()["busy"] is True, "a measurement holds the GPU"
     listed = {j["id"]: j for j in roomy.member.jobs()}
     assert listed[handles[0].id]["name"] == "bench:sweep"
-    assert listed[handles[0].id]["argv"][:2] == ["poolhouse-bench", "sweep"]
+    assert listed[handles[0].id]["argv"][:4] == ["python", "-m", "poolhouse.bench", "sweep"]
 
     done = wait(handles, poll_s=0.1, timeout_s=20, log=said.append)
 
@@ -455,7 +455,7 @@ def test_a_bench_runs_on_this_interpreter_unless_the_app_is_frozen(boxes, monkey
     (failed,) = wait(dispatch({roomy.member: _job("big.gguf")}, log=said.append),
                      poll_s=0.1, timeout_s=20, log=said.append)
     assert failed.state == "failed"
-    assert "error: roomy could not start poolhouse-bench" in "\n".join(said)
+    assert "error: roomy could not start python -m poolhouse.bench" in "\n".join(said)
     assert "Measuring" in "\n".join(said)
 
 
@@ -617,7 +617,7 @@ def test_a_job_stopped_while_preparing_stays_stopped_when_its_pid_arrives(tmp_pa
     from poolhouse.fleet.measuring import _alive
 
     runner = JobRunner(tmp_path / "runner", slots=1)
-    job = runner.hold(DaemonJob(id="j1", name="bench", argv=["poolhouse-bench"],
+    job = runner.hold(DaemonJob(id="j1", name="bench", argv=["python", "-m", "poolhouse.bench"],
                                 cwd=str(tmp_path)))
     runner.stop(job.id)
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
@@ -774,7 +774,7 @@ def test_the_export_route_answers_the_flat_shape_show_export_writes(boxes):
 
 
 def test_import_runs_by_hand_from_a_flat_export_file(tmp_path):
-    """A member with no daemon: `poolhouse-bench show --export` there, copy, import here."""
+    """A member with no daemon: `python -m poolhouse.bench show --export` there, copy, import here."""
     from poolhouse.bench import derived, runs
 
     exported = tmp_path / "attic.json"
@@ -879,9 +879,9 @@ def test_the_bench_home_moves_with_the_environment(tmp_path):
     assert Path(said) == tmp_path / "elsewhere"
 
 
-# -- ops.fleet_planned / fleet_measure: the poolhouse-bench sweep --fleet side -----------
+# -- ops.fleet_planned / fleet_measure: the python -m poolhouse.bench sweep --fleet side -----------
 #
-# `bench/ops.py` is the glue between `poolhouse-bench sweep --fleet` and the fleet
+# `bench/ops.py` is the glue between `python -m poolhouse.bench sweep --fleet` and the fleet
 # functions above: it has to turn `--members` names (or none) into the real members `plan`
 # needs, and the placement `plan` returns into the ``{member: Job}`` mapping `dispatch`
 # needs. Discovery itself (real UDP, a real pool key) is `tests/test_fleet_discovery.py`'s
@@ -1073,7 +1073,7 @@ def _own_graph(where: Path) -> list[str]:
 def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(
         tmp_path, monkeypatch, workspace_node, loopback_advertisers):
     """Nothing here is mocked: a real ``poolhouse-pool`` daemon booted as a subprocess, found
-    by real UDP discovery, given a real HTTP job that runs the real ``poolhouse-bench`` over a
+    by real UDP discovery, given a real HTTP job that runs the real ``python -m poolhouse.bench`` over a
     graph that is not the shipped community, on a llama-server-shaped process instead of a
     GPU; the run it keeps comes home. The graph and questions are gone from the
     dispatcher's disk before the job is sent, so the member reads only what the job carried."""

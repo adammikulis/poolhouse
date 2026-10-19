@@ -1,4 +1,4 @@
-"""Post runtime deploy outcomes and incidents to the board as the session of the deploying agent."""
+"""Post a failed or recovered runtime deploy to the board as the session of the deploying agent; a switch to a new build posts nothing."""
 
 from __future__ import annotations
 
@@ -16,15 +16,13 @@ LIMIT = 190
 SHORT = 7
 
 
-def _text(outcome: Outcome, previous: str, verb: str) -> tuple[str, str]:
-    """The announcement kind and one line for an outcome."""
+def _text(outcome: Outcome, previous: str, verb: str) -> str:
+    """The `blocked` line for a recovered or failed outcome."""
     now = outcome.commit[:SHORT]
     was = previous[:SHORT] if COMMIT.fullmatch(previous) else "none"
-    if outcome.action == "switched":
-        return "milestone", f"runtime {verb} {now} (was {was})"
     if outcome.action == "recovered":
-        return "blocked", f"runtime recovered from a broken selection; {now} wanted, {was} was selected"
-    return "blocked", f"runtime {verb} of {now} failed; {was} stays selected"
+        return f"runtime recovered from a broken selection; {now} wanted, {was} was selected"
+    return f"runtime {verb} of {now} failed; {was} stays selected"
 
 
 def incident(outcome: Outcome, stage: str) -> str:
@@ -36,15 +34,14 @@ def incident(outcome: Outcome, stage: str) -> str:
 
 
 def announce(outcome: Outcome, previous: str, who: Session | None, *, verb: str = "ensure") -> bool:
-    """Post one announcement for a switch, recovery or failure as the session ``who``; True when the board took it."""
-    if who is None or outcome.action in {"current", "busy", "held"} or not COMMIT.fullmatch(outcome.commit):
+    """Post one `blocked` announcement for a recovery or failure as the session ``who``; True when the board took it."""
+    if who is None or outcome.action not in {"recovered", "failed"} or not COMMIT.fullmatch(outcome.commit):
         return False
-    kind, text = _text(outcome, previous, verb)
-    if kind == "blocked":
-        found = incident(outcome, verb)
-        text = f"{text} [diagnostic={found}]" if found else text
+    text = _text(outcome, previous, verb)
+    found = incident(outcome, verb)
+    text = f"{text} [diagnostic={found}]" if found else text
     try:
-        board_cli.announced(who, kind, text[:LIMIT])
+        board_cli.announced(who, "blocked", text[:LIMIT])
     except (Refused, NodeError, OSError, ValueError):
         return False
     return True

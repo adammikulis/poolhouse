@@ -30,7 +30,7 @@ schedule runs. It prints one line:
 |---|---|---|
 | `updated: build 11300 -> b11359-...` | built, smoke-tested and made active | 0 |
 | `current: ...` | already on master, or within `--max-behind-hours` (a build made less than N hours ago is left alone) | 0 |
-| `deferred: <reason>` | a broker lease holds a model for work, a `poolhouse-bench` measurement holds the measuring lock, or a bench queue is running; nothing changed, and a resident server keeps its binary while only new leases use the new one | 0 |
+| `deferred: <reason>` | a broker lease holds a model for work, a `python -m poolhouse.bench` measurement holds the measuring lock, or a bench queue is running; nothing changed, and a resident server keeps its binary while only new leases use the new one | 0 |
 | `skipped: master <sha> failed its smoke test ...` | that commit failed its smoke test and is not built again until upstream moves (recorded in `track.json` as `failed`) | 0 |
 | `failed: ... the active build is unchanged` | the smoke test failed | 1 |
 | `pinned: ...`, `offline: ...` | newer upstream exists but the track is pinned, or upstream could not be checked | 2 |
@@ -43,7 +43,7 @@ queue of sweeps asks GitHub once.
 Where it runs: the lead's heartbeat ([heartbeat.md](heartbeat.md)) each firing; the optional daily
 `llama-cpp-ensure` unit, which `python -m poolhouse.fleet.autostart prepare --role llama-cpp-ensure`
 stages and a person installs ([install.md](install.md)); and a read-only pre-step of
-`poolhouse-bench queue` and `sweep`, which prints `llama.cpp: build N, M behind master (age)` and a
+`python -m poolhouse.bench queue` and `sweep`, which prints `llama.cpp: build N, M behind master (age)` and a
 warning when the build is more than 24 hours old and behind. A queue never updates the build. Cmake and ninja are
 looked up in `/opt/homebrew/bin` and `/usr/local/bin` when a unit's `PATH` lacks them.
 

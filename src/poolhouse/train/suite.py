@@ -4,7 +4,7 @@ A `Suite` is a name, a line saying what it measures, and a function that runs on
 one backend and returns a flat mapping of numbers. `run` seeds each one, takes the lock,
 records the commit, the host, the wall clock, the peak memory and how busy the card was
 when it started, and folds the seeds into a `Spread` per metric. `said` reads one back
-out; `register` adds one; `poolhouse-suite` is the command.
+out; `register` adds one; `python -m poolhouse.train suite` is the command.
 """
 
 from __future__ import annotations
@@ -20,9 +20,8 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.backend import detect_backend, set_seeds
-from poolhouse.bench.keep import _commit
-from poolhouse.bench.record import Measured, Spread
 from poolhouse.log import say, warn
+from poolhouse.optional import module
 
 __all__ = ["KIND", "Suite", "busy_pct", "file_name", "known", "lock_path",
            "peak_memory_bytes", "register", "registered", "run", "said", "suite_lock"]
@@ -137,7 +136,7 @@ def file_name(name: str, backend: str, commit: str, config: Mapping[str, Any],
     return f"{name}.{backend}.{commit or 'unknown'}.{told}.{digest}.json"
 
 
-def said(one: Measured) -> str:
+def said(one: Any) -> str:
     """One suite run as a person reads it: every metric with its spread, one screen."""
     head = f"{one.label} [{one.server.get('backend') or ''}] @ {one.sha or 'unknown'}"
     if one.dirty:
@@ -169,12 +168,13 @@ class _Under:
 
 
 def _folded(under: _Under, each: Sequence[Mapping[str, float]], *, seconds: float = 0.0,
-            failures: Sequence[str] = (), peak: int = 0) -> Measured:
+            failures: Sequence[str] = (), peak: int = 0) -> Any:
     """Mean and spread over the seeds that finished, not the seeds that were asked for."""
-    metrics = {key: Spread.over([one[key] for one in each if key in one])
+    record = module("poolhouse.bench.record")
+    metrics = {key: record.Spread.over([one[key] for one in each if key in one])
                for key in sorted({k for one in each for k in one})}
     host = socket.gethostname()
-    return Measured(
+    return record.Measured(
         label=under.name, kind=KIND, at=time.strftime("%FT%T"), host=host,
         commit=under.commit, seconds=seconds, seeds=under.seeds, metrics=metrics,
         failures=tuple(failures),
@@ -185,7 +185,7 @@ def _folded(under: _Under, each: Sequence[Mapping[str, float]], *, seconds: floa
 
 def run(name: str, *, backend: str = "", seeds: Sequence[int] = (0, 1, 2),
         out_dir: Path | str | None = None, where: Path | str | None = None,
-        wait: bool = True, lock: Path | str | None = None, **arguments: Any) -> Measured:
+        wait: bool = True, lock: Path | str | None = None, **arguments: Any) -> Any:
     """Run one suite on one backend over ``seeds``, and write the result after each one.
 
     ``backend`` is a name `poolhouse.backend` knows; left out, the detected default.
@@ -201,7 +201,8 @@ def run(name: str, *, backend: str = "", seeds: Sequence[int] = (0, 1, 2),
     if suite.backends and backend not in suite.backends:
         raise ValueError(f"{name} runs on {', '.join(suite.backends)}, not {backend!r}")
 
-    under = _Under(name, backend, _commit(Path(where) if where is not None else None),
+    commit = module("poolhouse.bench.keep")._commit(Path(where) if where is not None else None)
+    under = _Under(name, backend, commit,
                    tuple(int(s) for s in seeds), dict(arguments))
     written = None
     if out_dir is not None:
@@ -259,7 +260,7 @@ def parser():
     import argparse
 
     top = argparse.ArgumentParser(
-        prog="poolhouse-suite",
+        prog="python -m poolhouse.train suite",
         description="A measurement run over several seeds, written down with the commit, "
                     "the spread and what else was running.")
     top.add_argument("--import", dest="imports", action="append", default=[],
