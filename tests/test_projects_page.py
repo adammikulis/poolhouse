@@ -4,9 +4,9 @@ import json
 from urllib.parse import urlsplit
 
 import pytest
+from web_assets import serve_page_asset
 
-from poolhouse.fleet.page import WEB, render
-from poolhouse.ui import assets_dir
+from poolhouse.fleet.page import render
 
 pytestmark = pytest.mark.slow
 
@@ -21,10 +21,8 @@ def answer(request, state):
         state["posts"].append((path, request.request.post_data_json))
     if path == "/":
         return request.fulfill(body=render(), content_type="text/html")
-    if path.startswith("/ui/ml-ui/"):
-        return request.fulfill(path=str(assets_dir() / path.rsplit("/", 1)[-1]))
-    if path == "/ui/static/style.css":
-        return request.fulfill(path=str(WEB / "style.css"))
+    if serve_page_asset(request, path):
+        return
     body = {"ok": True}
     if path == "/ui/setup":
         body = {"needs_setup": False, "needs_password": False, "name": "local-test"}

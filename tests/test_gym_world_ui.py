@@ -13,10 +13,21 @@ open_page = fleet_page.open_page
 pytestmark = pytest.mark.slow
 
 
+def every_environment_installed(route):
+    response = route.fetch()
+    body = response.json()
+    for environment in body['environments']:
+        environment.update(available=True, missing=[])
+    route.fulfill(response=response, json=body)
+
+
 @pytest.fixture
 def gym_page(joined, open_page):
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#gym')
     page.wait_for_function("() => document.querySelector('gym-view')?.catalogue.length > 0")
+    page.route('**/ui/gym/catalogue', every_environment_installed)
+    page.evaluate("document.querySelector('gym-view').load()")
+    page.wait_for_function("() => document.querySelector('gym-view').catalogue.every(item => item.available)")
     page.get_by_label('Environment', exact=True).select_option('car')
     page.locator('gym-view .gym-world-settings > summary').click()
     page.get_by_label('Simulation mode', exact=True).select_option('world')
