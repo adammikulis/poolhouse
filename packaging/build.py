@@ -33,16 +33,25 @@ def run(argv: list[str], **kw) -> None:
 
 def wheels() -> list[Path]:
     DIST.mkdir(exist_ok=True)
-    for old in DIST.glob("poolhouse-*.whl"):
-        old.unlink()
-    run([sys.executable, "-m", "build", "--wheel", "--outdir", str(DIST), str(ROOT)],
-        stdout=subprocess.DEVNULL)
-    made = sorted(DIST.glob("*.whl"))
+    sys.path.insert(0, str(ROOT / "src"))
+    from poolhouse.fleet import compute_artifact
+    from poolhouse.safenames import unpack
+
+    for pattern in ("poolhouse-*.whl", "poolhouse_studio_compute-*.whl"):
+        for old in DIST.glob(pattern):
+            old.unlink()
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    for wheel in made:
-        if wheel.name.startswith("poolhouse-"):
-            STAMP(wheel, commit, ROOT)
-    return made
+    with tempfile.TemporaryDirectory(prefix="poolhouse-wheel-source-") as temporary:
+        stage = Path(temporary)
+        snapshot, source = stage / "source.zip", stage / "source"
+        run(["git", "archive", "--format=zip", "--output", str(snapshot), commit])
+        unpack(snapshot, source)
+        run([sys.executable, "-m", "build", "--wheel", "--outdir", str(DIST), str(source)],
+            stdout=subprocess.DEVNULL)
+        base, = DIST.glob("poolhouse-*.whl")
+        compute_artifact.build(source, base, commit)
+        STAMP(base, commit, ROOT)
+    return sorted(DIST.glob("*.whl"))
 
 
 def wheelhouse(out: Path) -> list[Path]:

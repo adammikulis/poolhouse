@@ -27,12 +27,17 @@ def stamp(wheel: Path, commit: str, checkout: Path) -> None:
     """Record runtime provenance and update the wheel's integrity manifest."""
     with zipfile.ZipFile(wheel) as archive:
         contents = {name: archive.read(name) for name in archive.namelist()}
+    contents["poolhouse/fleet/built-from"] = (commit + "\n").encode()
+    contents[f"poolhouse/fleet/{ORIGIN}"] = (str(checkout.resolve()) + "\n").encode()
+    write_wheel(wheel, contents)
+
+
+def write_wheel(wheel: Path, contents: dict[str, bytes]) -> None:
+    """Write a wheel and regenerate its complete integrity record."""
     records = [name for name in contents if name.endswith(".dist-info/RECORD")]
     if len(records) != 1:
         raise ValueError("wheel must contain one RECORD")
     record = records[0]
-    contents["poolhouse/fleet/built-from"] = (commit + "\n").encode()
-    contents[f"poolhouse/fleet/{ORIGIN}"] = (str(checkout.resolve()) + "\n").encode()
     manifest = io.StringIO(newline="")
     writer = csv.writer(manifest)
     for name, data in contents.items():

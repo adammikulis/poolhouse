@@ -41,7 +41,7 @@ def test_managed_worker_fixed_command_and_structured_collection(tmp_path):
     context = {'output_dir': tmp_path, 'bindings': {}, 'files_root': tmp_path}
     node = {'id': 'a', 'type': 'report', 'parameters': {}}
     prepared = adapter.prepare(node, {'report': {'loss': 1.2}}, context)
-    assert prepared['argv'] == ['/managed/python', '-I', '-m', 'poolhouse.studio.worker', str(tmp_path / 'request.json')]
+    assert prepared['argv'] == ['/managed/python', '-B', '-I', '-m', 'poolhouse.studio.worker', str(tmp_path / 'request.json')]
     with pytest.raises(ValueError, match='structured result'):
         adapter.collect(node, {}, context)
     (tmp_path / 'result.json').write_text(json.dumps({'outputs': {'artifact': {'path': 'report.json'}}}))
@@ -217,15 +217,16 @@ def test_templates_cover_lifecycle_and_keep_resources_unbound():
     assert next(node for node in tools['nodes'] if node['type'] == 'tools.call')['parameters']['tool'] == 'serve_status'
 
 
-def test_dependencies_checked_in_managed_runtime_before_dispatch():
+def test_dependencies_checked_in_managed_runtime_before_dispatch(monkeypatch):
     probes = []
     environment = SimpleNamespace(exists=True, require_current_runtime=lambda: None,
                                   installed=lambda: probes.append('managed') or {'torch': '2'})
     adapter = Adapters(SimpleNamespace(environment=environment))
+    monkeypatch.setattr(adapter, 'dependency_fingerprint', lambda node: probes.append('code') or 'digest')
     errors = adapter.validate([{'id': 'data', 'type': 'dataset'},
                                {'id': 'train', 'type': 'train.tool-calls', 'parameters': {'framework': 'mlx'}},
                                {'id': 'gym', 'type': 'gym.train'}])
-    assert probes == ['managed']
+    assert probes == ['managed', 'code']
     assert {error['node'] for error in errors} == {'train', 'gym'}
     assert 'mlx-lm' in errors[0]['message']
     assert Adapters(None).validate([{'id': 'prompt', 'type': 'prompt'}]) == []

@@ -62,9 +62,13 @@ def test_build_uses_the_committed_snapshot_of_the_named_commit(tmp_path, monkeyp
         if argv[0] == "git" and "archive" in argv:
             with zipfile.ZipFile(argv[argv.index("--output") + 1], "w") as archive:
                 archive.writestr("pyproject.toml", "[project]\nname='poolhouse'\n")
+                for name in ("train", "bench", "gym", "world"):
+                    archive.writestr(f"src/poolhouse/{name}/__init__.py", "")
         if "wheel" in argv:
             wheels = Path(argv[argv.index("--wheel-dir") + 1])
-            _wheel(wheels / "poolhouse-0.1.0-py3-none-any.whl")
+            made = _wheel(wheels / "poolhouse-0.1.0-py3-none-any.whl")
+            with zipfile.ZipFile(made, "a") as archive:
+                archive.writestr("poolhouse-0.1.0.dist-info/METADATA", "Name: poolhouse\nVersion: 0.1.0\n")
         return "ok"
 
     monkeypatch.setattr(runtime_wheel, "_run", run)

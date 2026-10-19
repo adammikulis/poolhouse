@@ -28,6 +28,7 @@ if _built.is_file():
 _wheels = Path("../dist")
 if _wheels.is_dir():
     datas += [(str(w), "wheels") for w in _wheels.glob("*.whl")]
+    datas.append((str(_wheels / "compute-artifact.json"), "poolhouse/fleet"))
 
 hidden = [
     "poolhouse.fleet.daemon", "poolhouse.fleet.api", "poolhouse.fleet.jobs",

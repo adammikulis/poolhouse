@@ -10,6 +10,13 @@ from poolhouse.credentials import child_environment
 from poolhouse.files import write_json
 
 
+def needs_compute(node: dict) -> bool:
+    kind = node["type"]
+    return (kind.startswith(("train.", "gym.")) or kind in {"data.synthesize", "data.harvest"}
+            or (kind == "evaluate" and node.get("parameters", {}).get("suite", "holdout") == "holdout")
+)
+
+
 def confined(root: Path, relative: str) -> Path:
     root = root.resolve()
     path = (root / relative).resolve(strict=True)
@@ -69,6 +76,21 @@ class Adapters:
         self.process_environment = process_environment
         self.tool_call = tool_call
 
+    def dependency_fingerprint(self, node: dict) -> str:
+        if not needs_compute(node):
+            return ''
+        environment = self.runner.environment
+        if environment is None or not environment.exists:
+            raise OSError('Install Training essentials in Libraries to run this node')
+        return environment.require_compute()
+
+    def availability(self, specs: list[dict]) -> dict[str, list[str]]:
+        nodes = [{'id': spec['type'], 'type': spec['type'], 'parameters': {}}
+                 for spec in specs]
+        issues = self.validate(nodes)
+        return {node['type']: [issue['message'] for issue in issues if issue['node'] == node['id']]
+                for node in nodes}
+
     def validate(self, nodes: list[dict]) -> list[dict]:
         schema_errors = []
         for node in nodes:
@@ -89,7 +111,15 @@ class Adapters:
         except (OSError, RuntimeError, ValueError) as error:
             return [{'node': node['id'], 'code': 'dependency', 'message': str(error)} for node in workers]
         errors = schema_errors
+        compute_error = ''
+        if any(needs_compute(node) for node in workers):
+            try:
+                self.dependency_fingerprint(next(node for node in workers if needs_compute(node)))
+            except (OSError, RuntimeError, ValueError) as error:
+                compute_error = str(error)
         for node in workers:
+            if compute_error and needs_compute(node):
+                errors.append({'node': node['id'], 'code': 'dependency', 'message': compute_error})
             kind, parameters = node['type'], node.get('parameters', {})
             required = set()
             if kind.startswith('gym.'):
@@ -149,6 +179,8 @@ class Adapters:
         if environment is None or not environment.exists:
             raise ValueError("Install the managed compute runtime before running this node")
         environment.require_current_runtime()
+        if needs_compute(node) or inputs.get("model", {}).get("recipe"):
+            environment.require_compute()
         inputs = dict(inputs)
         for port, binding in context.get('bindings', {}).items():
             if port not in inputs and binding.get('kind') == 'dataset':
@@ -158,7 +190,7 @@ class Adapters:
         out.mkdir(parents=True, exist_ok=True)
         request = out / 'request.json'
         write_json(request, {'node': node, 'inputs': inputs, 'output_dir': str(out)})
-        return {'argv': [str(environment.python), '-I', '-m', 'poolhouse.studio.worker', str(request)],
+        return {'argv': [str(environment.python), '-B', '-I', '-m', 'poolhouse.studio.worker', str(request)],
                 'cwd': str(out), 'env': self.process_environment()}
 
     def collect(self, node: dict, job: Any, context: dict) -> dict:

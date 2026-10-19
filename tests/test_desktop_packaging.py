@@ -34,16 +34,24 @@ def test_window_refuses_empty_native_build(builder, tmp_path, monkeypatch):
 
 def test_built_desktop_wheel_carries_full_commit_and_distribution_metadata(builder, monkeypatch):
     def build(argv, **kwargs):
+        if argv[0] == 'git':
+            subprocess.run(argv, cwd=builder.ROOT, check=True, capture_output=True)
+            return
         assert argv[1:4] == ["-m", "build", "--wheel"]
+        assert Path(argv[-1]) != builder.ROOT
         subprocess.run([sys.executable, "-c",
                         "import hatchling.build; hatchling.build.build_wheel(" + repr(str(builder.DIST)) + ")"],
-                       cwd=builder.ROOT, check=True, capture_output=True, text=True)
+                       cwd=argv[-1], check=True, capture_output=True, text=True)
 
     monkeypatch.setattr(builder, "run", build)
     expected = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     made = builder.wheels()
-    assert len(made) == 1
-    with zipfile.ZipFile(made[0]) as archive:
+    assert len(made) == 2
+    base = next(wheel for wheel in made if wheel.name.startswith("poolhouse-"))
+    from poolhouse.fleet import compute_artifact
+    manifest = compute_artifact.from_wheel(base)
+    compute_artifact.verify(base.with_name(manifest["filename"]), manifest, expected)
+    with zipfile.ZipFile(base) as archive:
         assert archive.read("poolhouse/fleet/built-from").decode().strip() == expected
         assert len(expected) == 40
         metadata = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
