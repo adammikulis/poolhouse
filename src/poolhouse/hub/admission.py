@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import sentinel
+from poolhouse.files import sha256_file
 from poolhouse.hub import publishers, remote
 from poolhouse.hub.remote import Ref, RemoteError, RemoteFile
 from poolhouse.requests.approvals import approved, ask
@@ -170,13 +171,61 @@ def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON) -> str:
     raise NotApproved(told.replace(sentence, f"{sentence} {ARGUMENT}", 1))
 
 
+def _files(path: Path) -> list[str]:
+    """Every regular file at or under ``path``, directory links followed once each."""
+    if path.is_file():
+        return [str(path)]
+    found: list[str] = []
+    seen: set[str] = set()
+    todo = [str(path)]
+    while todo:
+        top = todo.pop()
+        real = os.path.realpath(top)
+        if real in seen:
+            continue
+        seen.add(real)
+        try:
+            with os.scandir(top) as entries:
+                for entry in entries:
+                    if entry.is_dir():
+                        todo.append(entry.path)
+                    elif entry.is_file():
+                        found.append(entry.path)
+        except OSError:
+            continue
+    return found
+
+
+def _pin_of_bytes(one: str, held: list[Pin], vouched: list[Pin]) -> Pin | None:
+    """The waiting pin whose size and digest the file ``one`` has, unless a pin nobody waits on has them too."""
+    try:
+        size = Path(one).stat().st_size
+        sames = [p for p in held if p.bytes == size]
+        if not sames:
+            return None
+        digest = sha256_file(one)
+    except OSError:
+        return None
+    if any(p.bytes == size and p.sha256 == digest for p in vouched):
+        return None
+    return next((p for p in sames if p.sha256 == digest), None)
+
+
 def _waiting(path: Path) -> list[Pin]:
-    """The pins of the pulled files at ``path`` (a file, or a folder of them, links followed) that wait on a question."""
-    held = {os.path.realpath(p.path): p for p in sentinel.default().manifest.pins().values() if p.unvetted}
+    """The pins of the pulled files at ``path`` (a file, or a folder of them, links followed) that wait on a question:
+    a file counts when it is a pulled file's path or has the size and digest of one, wherever it sits."""
+    every = list(sentinel.default().manifest.pins().values())
+    held = [p for p in every if p.unvetted]
     if not held:
         return []
-    files = [path] if path.is_file() else [Path(root, name) for root, _, names in os.walk(path) for name in names]
-    return list({held[real].path: held[real] for one in files if (real := os.path.realpath(one)) in held}.values())
+    by_path = {os.path.realpath(p.path): p for p in held}
+    vouched = [p for p in every if not p.unvetted]
+    found: dict[str, Pin] = {}
+    for one in _files(path):
+        pin = by_path.get(os.path.realpath(one)) or _pin_of_bytes(one, held, vouched)
+        if pin:
+            found[pin.path] = pin
+    return list(found.values())
 
 
 def vetted(path: Path | str) -> None:
