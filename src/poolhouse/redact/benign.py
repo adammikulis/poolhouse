@@ -45,6 +45,8 @@ def placeholder(body: str) -> str | None:
     words = body.split()
     if len(words) > 1 and words[-1] in PLACEHOLDER_LETTERS:
         return "placeholder: a trailing X or Y stands for a variable"
+    if len(words) > 1 and all(len(w.rstrip(".")) == 1 for w in words):
+        return "placeholder: every word is a single letter, a sentence break after a variable"
     return None
 
 

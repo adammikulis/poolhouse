@@ -123,6 +123,14 @@ def test_a_failing_test_stops_the_landing_naming_the_test(world):
     assert any("FAILED tests/test_bad.py::test_x" in line for line in record["tail"])
 
 
+def test_an_interrupted_test_run_says_so_and_names_the_test(world):
+    tree, _ = world.start("cut", {"tests/test_cut.py": "# INTERRUPTME\n"})
+    before = world.proj.origin_head()
+    code, out = world.land(tree)
+    assert code == 5 and "land: stopped: the test run was interrupted by signal 2 during tests/test_cut.py::test_y" in out, out
+    assert "tests failed" not in out and world.proj.origin_head() == before and tree.exists()
+
+
 def test_a_sensitive_change_without_an_accept_is_refused_with_the_command_for_the_reviewer(world):
     tree, sha = world.start("sensitive", {SENSITIVE: "VALUE = 1\n"})
     before = world.proj.origin_head()
