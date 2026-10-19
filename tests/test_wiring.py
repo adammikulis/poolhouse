@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from test_layers import EXPERIMENTAL
 
 from poolhouse import cli
 
@@ -17,7 +18,6 @@ STANDALONE = {
     "coding": "called by the workspace runner as poolhouse.coding.launch_coding_agent",
     "datasheet": "loaded by name as python:poolhouse.datasheet:tools, never imported",
     "protectedwrites": "loaded by file through poolhouse.worktreerules, so the hook scripts need no package on the path",
-    "redteam": "run as python -m poolhouse.redteam, never imported",
     "web": "loaded by name as python:poolhouse.web:tools, never imported",
 }
 
@@ -108,6 +108,9 @@ COMMANDS = _commands()
 
 @pytest.mark.parametrize("name", _pieces())
 def test_piece_is_wired_in(name: str) -> None:
+    if name in EXPERIMENTAL:
+        assert (SRC / name / "__main__.py").is_file(), f"poolhouse.{name} is experimental and runs as python -m poolhouse.{name}"
+        return
     if name in CALLERS or name in COMMANDS or name in STANDALONE:
         return
     targets = _lazy_commands().get(name, set())

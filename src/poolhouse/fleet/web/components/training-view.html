@@ -56,6 +56,7 @@ training-view .training-review-actions{display:flex;gap:12px;flex-wrap:wrap;marg
 <script>
 (function () {
   const M = window.fleetModel, W = window.workspaceModel, E = M.el;
+  const LOADING = 'Loading training workflows…';
   class TrainingView extends HTMLElement {
     connectedCallback() {
       if (this.wired) return;
@@ -64,13 +65,15 @@ training-view .training-review-actions{display:flex;gap:12px;flex-wrap:wrap;marg
       this.form = this.querySelector('#config');
       this.runtimeNote = this.querySelector('#training-runtime');
       this.querySelector('#browse-data').onclick = () => M.go('data');
+      this.gym = !!document.querySelector('gym-view');
+      this.querySelector('#open-gym').hidden = !this.gym;
       this.querySelector('#open-gym').onclick = () => M.go('gym');
       const b = this.querySelector('#training-recipe');
       const dataset = this.querySelector('#training-dataset');
       const review = this.querySelector('#training-review');
       this.mode = W.field(this.querySelector('#training-workflow'), 'Workflow', 'select');
       [['recipe', 'Supervised / tool calling'], ['decider', 'Decision model'],
-       ['rl', 'Reinforcement learning']].forEach(([value, text]) => this.mode.append(E('option', {value}, text)));
+       ...(this.gym ? [['rl', 'Reinforcement learning']] : [])].forEach(([value, text]) => this.mode.append(E('option', {value}, text)));
       this.recipe = W.field(b, 'Recipe', 'select');
       this.size = W.field(b, 'Model size', 'select');
       this.framework = W.field(b, 'Training backend', 'select');
@@ -176,7 +179,7 @@ training-view .training-review-actions{display:flex;gap:12px;flex-wrap:wrap;marg
     async load() {
       this.pending = true;
       this.paintActions();
-      this.note.textContent = 'Loading training workflows…';
+      this.note.textContent = LOADING;
       this.note.classList.remove('error');
       this.retryButton.hidden = true;
       try {
@@ -184,10 +187,12 @@ training-view .training-review-actions{display:flex;gap:12px;flex-wrap:wrap;marg
         this.recipes = result.recipes || [];
         try { this.libraries = (await W.api('/ui/libraries')).libraries || []; this.libraryError = ''; }
         catch (error) { this.libraries = []; this.libraryError = error.message; this.retryButton.hidden = false; }
-        try { this.environments = (await W.api('/ui/gym/catalogue')).environments || []; this.environmentError = ''; }
-        catch (error) { this.environmentError = error.message; this.environments = []; }
+        if (this.gym) {
+          try { this.environments = (await W.api('/ui/gym/catalogue')).environments || []; this.environmentError = ''; }
+          catch (error) { this.environmentError = error.message; this.environments = []; }
+        }
         this.buildOptions();
-        this.note.textContent = '';
+        if (this.note.textContent === LOADING) this.note.textContent = '';
       } catch (error) {
         this.report(error);
         this.retryButton.hidden = false;

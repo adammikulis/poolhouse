@@ -9,8 +9,6 @@ from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
-import psutil
-
 from poolhouse.lock import Busy, held_by, only_one
 
 COMMIT = re.compile(r"[0-9a-f]{40}")
@@ -60,22 +58,9 @@ def boundary(checkout: Path) -> Path:
     return primary(checkout) / ".git" / "land" / "runner.lock"
 
 
-def _printable(text: str, limit: int) -> str:
-    """`text` cut to `limit` characters with every character outside printable ASCII replaced by `?`."""
-    return re.sub(r"[^\x20-\x7e]", "?", text)[:limit]
-
-
 def holder(path: Path) -> str:
-    """Who holds the lock file `path`: its recorded text and the command line of that process, printable characters only, or "nobody"."""
-    text = _printable(held_by(path), 200)
-    found = re.match(r"pid (\d+)", text)
-    command = ""
-    if found:
-        try:
-            command = _printable(" ".join(psutil.Process(int(found.group(1))).cmdline()), 120)
-        except psutil.Error:
-            command = ""
-    return (text + (f" ({command})" if command else "")) if text else "nobody"
+    """Who holds the lock file `path`, as its text records it (printable ASCII, at most 200 characters), or "nobody"."""
+    return held_by(path)[:200] or "nobody"
 
 
 @contextmanager
@@ -91,3 +76,9 @@ def crossing(checkout: Path, *, wait_s: float = 0.0, note: str = "") -> Iterator
             raise Busy(f"{path} is held by {holder(path)}"
                        + (f"; still held after waiting {wait_s:.0f}s" if wait_s > 0 else "")) from None
         yield path
+
+
+def until_free(checkout: Path, wait_s: float) -> None:
+    """Wait up to `wait_s` seconds (at most `BOUNDARY_WAIT_MAX_S`) for the boundary to be free and hold nothing afterwards; `Busy` names the holder."""
+    with crossing(checkout, wait_s=wait_s, note="runtime build waiting"):
+        pass

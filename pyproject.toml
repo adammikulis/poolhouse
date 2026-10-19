@@ -157,7 +157,6 @@ Issues = "https://github.com/adammikulis/poolhouse/issues"
 Changelog = "https://github.com/adammikulis/poolhouse/blob/main/CHANGELOG.md"
 
 [project.scripts]
-poolhouse-gym = "poolhouse.gym.cli:main"
 # Every command this package installs starts with `poolhouse`, so `compgen -c poolhouse` (or a
 # tab) lists the whole toolkit. That is not tidiness for its own sake: an agent that cannot
 # enumerate these writes the command again by hand, which is how searching the Hub, timing a
@@ -230,12 +229,8 @@ poolhouse-requests = "poolhouse.inbox.cli:main"
 # what a draft head is worth for one model: no head, then the head at each depth
 poolhouse-draft = "poolhouse.draft:main"
 poolhouse-help = "poolhouse.cli:help_main"
-# every command's --help and every safe command's output, written down to be diffed
-poolhouse-surface = "poolhouse.surface.cli:main"
 # every tracked file read for a person's details, reported and never blocked
 poolhouse-audit = "poolhouse.redact.audit:main"
-# open a page, click through its screens, screenshot each one and read what came back
-poolhouse-walk = "poolhouse.walk.cli:main"
 # what sentinel has seen and holds: events, quarantine, pins, the log's hash chain; and what
 # came in from the internet: downloads, hosts, scanners
 poolhouse-security = "poolhouse.net.cli:command"
@@ -250,6 +245,14 @@ exclude = [".claude", "CLAUDE.md", "HANDOFF.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/poolhouse"]
+exclude = [
+    "src/poolhouse/gym",
+    "src/poolhouse/fleet/gym_*.py",
+    "src/poolhouse/fleet/web/components/gym-*.html",
+    "src/poolhouse/redteam",
+    "src/poolhouse/surface",
+    "src/poolhouse/walk",
+]
 
 # The contracts are ONE file on disk (repo-root `contracts/`), pulled into the wheel at
 # build time. No copy is kept in the source tree, so there is nothing to drift.
