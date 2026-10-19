@@ -48,7 +48,7 @@ as an agent that takes and gives tasks, a subagent of the session that starts it
 ### Subagents
 
 Each coding agent uses its own branch and worktree beside the primary checkout, as described in
-[the repository rules](../AGENTS.md#worktrees). Before `announce done` or a final report, land the work, check for
+[the repository rules](../AGENTS.md#worktrees). Before the final report, land the work, check for
 unique commits, uncommitted files and ignored state, remove the worktree and merged branch, prune, and verify the
 path is absent from `git worktree list`. The parent checks its subagents' cleanup. A retained worktree needs a
 handoff naming its path, branch, pending work and responsible agent; it is not a completed task.

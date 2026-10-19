@@ -96,7 +96,7 @@ BUSY_EXIT = 6
 JOB_COMMANDS = ("submit", "status", "wait", "result", "cancel", "subscribe", "_job")
 NO_REUSE_COST = ("test: --no-reuse runs every named file again, including the ones with a stored pass, at the full cost of "
                  "their run and its fixed overhead; leave it off except to watch a mutated test fail (docs/test-execution.md)")
-REUSE: dict = {"on": True, "session": None, "agent": {"id": "", "source": "none"}, "events": testreuse_run.Events()}
+REUSE: dict = {"on": True, "session": None, "agent": {"id": "", "source": "none"}, "events": testboard.Events()}
 
 
 def pytest_command(workers: int, *rest: str) -> list[str]:
@@ -513,7 +513,7 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
         if args.tier == "_job":
             return run_job(jobs, rest[0], args)
         if args.tier == "subscribe":
-            return subscribe(jobs, rest, args)
+            return subscribe(args)
         if args.tier == "status" and not rest:
             print(testqueue.longest(testslots.status()["runs"], time.time()))
             for job in jobs.ids():
@@ -540,20 +540,14 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
         return 4
 
 
-def subscribe(jobs: testjobs.Jobs, rest: list[str], args: argparse.Namespace) -> int:
-    """Follow a job, a reuse key or a task through the board's own subscriptions."""
+def subscribe(args: argparse.Namespace) -> int:
+    """Follow a task through the board's own subscription: its watchers hear how a job attached to it ends."""
     session = REUSE["session"]
     if session is None:
         raise testjobs.Refused("subscribe needs a workspace agent: run it as the identity the harness assigned")
-    if args.task:
-        print(Tasks(session).subscribe(args.task))
-        return 0
-    thread = int(jobs.read(rest[0]).get("thread", 0)) if rest else 0
-    if args.key:
-        thread = testboard.thread_for_key(reuse_store().folder, args.key)
-    if not thread:
-        raise testjobs.Refused("that run has not opened a board thread yet")
-    print(testboard.follow_thread(session, thread))
+    if not args.task:
+        raise testjobs.Refused("subscribe needs --task ID: a job is followed with `scripts/test wait` or `result`")
+    print(Tasks(session).subscribe(args.task))
     return 0
 
 
@@ -565,8 +559,7 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         print(f"test: {refusal}", file=sys.stderr)
         jobs.write(job, "status.json", {"state": "failed", "exit": 4, "finished": time.time(), "detail": refusal, **me})
         return 4
-    thread = REUSE["events"].job_started(job, spec)
-    jobs.mark_running(job, {"thread": thread, **me})
+    jobs.mark_running(job, me)
     jobs.record_tree(job, tree_hash(ROOT))
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     jobs.watch_follower(job)
@@ -581,13 +574,13 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         state, code = "done", stop.code if isinstance(stop.code, int) else 1
     finally:
         report = REUSE.get("report")
-        status = {"state": state, "exit": code, "finished": time.time(), "thread": thread, **me,
+        status = {"state": state, "exit": code, "finished": time.time(), **me,
                   **({"tree": tree_hash(ROOT)} if state == "done" and code == 0 else {}),
                   "queued_s": round(testslots_runner.QUEUED["seconds"], 1),
                   **(testphases.record(REUSE["phases"]) if REUSE.get("phases") else {}),
                   "summary": report.summary() if report else {}, **({"notes": REUSE["notes"]} if REUSE.get("notes") else {})}
         jobs.write(job, "status.json", status)
-        REUSE["events"].job_done(job, spec, status, thread)
+        REUSE["events"].job_done(job, spec, status)
     return code
 
 
@@ -664,8 +657,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-reuse", action="store_true",
                         help="execute every named test file again, stored pass or not; only for watching a mutated test fail")
     parser.add_argument("--timeout", type=float, default=3600.0, help="wait: seconds to wait")
-    parser.add_argument("--task", default="", help="submit/tier runs: the task whose watchers hear how the job ends")
-    parser.add_argument("--key", default="", help="subscribe: follow the run of this reuse key prefix")
+    parser.add_argument("--task", default="", help="submit/tier runs: the task whose watchers hear how the job ends; subscribe: the task to follow")
     parser.add_argument("--base", default=BASE, help="branch quick diffs against")
     parser.add_argument("--slow", action="store_true", help="quick: include slow tests")
     parser.add_argument("--full", action="store_true", help="gate: run every check even when the diff reaches none")

@@ -70,8 +70,7 @@ def main() -> int:
                               "SubagentStop", environment=environment)
     agent = str(event.get("agent_id") or "")
     if said is None:
-        workspace_hook.run(["poolhouse-workspace", "announce", "milestone", f"stopped, done refused{place}"[:200]],
-                           "SubagentStop", environment=environment)
+        workspace_hook.warning("SubagentStop", f"done post refused{place}; the identity stays until a stop posts it")
         return 0
     if workspace_hook.run(["poolhouse-workspace", "retire"], "SubagentStop", environment=environment) is not None:
         subagent_records.next_identity(agent)
