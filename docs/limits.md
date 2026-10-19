@@ -1,0 +1,127 @@
+# Limits
+
+The limits in force, with their values, where each is set, what it protects and who changes it. A refusal at a node limit says which
+limit it was, its value and the setting that holds it (`limits::refuse`,
+`app/poolhouse-node/tests/quota_refusals.rs`). A limit is kept for memory, disk or a hang; a rate that bounded only abuse by one
+session is not kept (the owner never asked for one). The security floors are the owner's alone: an agent never loosens one.
+
+| Name | Value | File and line | What it protects | Who changes it |
+|---|---|---|---|---|
+| `MAX_BOARDS` | 256 | `app/poolhouse-node/src/node.rs:38` | boards a node hosts: memory and open files | the owner, in source |
+| `MAX_IDENTITIES` | 10_000 | `app/poolhouse-node/src/identity.rs:16` | sessions a board holds: memory | the owner, in source |
+| `MAX_TOKENS_PER_NAME` | 8 | `app/poolhouse-node/src/identity.rs:17` | tokens one session holds: the ninth ends the oldest | the owner, in source |
+| `MOST_TOKENS` | 2048 | `app/poolhouse-node/src/identity.rs:19` | tokens a node holds: memory; when full the tokens of sessions idle for `IDLE_MS` end | the owner, in source |
+| `IDLE_MS` | 30 * 24 * 3600 * 1000 | `app/poolhouse-node/src/identity.rs:20` | how long a session may be silent before its token can be dropped to make room | the owner, in source |
+| `MAX_LOG_ROWS` | 200_000 | `app/poolhouse-node/src/board.rs:19` | rows one device's log keeps: memory and disk of a board | the owner, in source |
+| `MAX_ORIGINS` | 64 | `app/poolhouse-node/src/board.rs:18` | logs a device holds for one board: memory | the owner, in source |
+| `MAX_REJECTED` | 200 | `app/poolhouse-node/src/board.rs:20` | refused foreign rows kept for `status`: memory | the owner, in source |
+| `MAX_ROW_BYTES` | 128 * 1024 | `app/poolhouse-node/src/row.rs:14` | the size of one signed row | the owner, in source |
+| `BODY_BYTES` | 64 * 1024 | `app/poolhouse-node/src/fold.rs:32` | the size of a row's body | the owner, in source |
+| `NOTES_PER_SENDER` | 200 | `app/poolhouse-node/src/fold.rs:33` | notes folded for one sender: the fold's memory | the owner, in source |
+| `READ_MAX` | 1000 | `app/poolhouse-node/src/node.rs:36` | entries one `read` returns | the owner, in source |
+| `inbox_pending` | 500 | `app/poolhouse-node/src/writes.rs:36` | direct messages unread in a session's inbox: memory of the log and the reader's context | the owner, `<state>/write-limits.json` |
+| `unread_per_sender` | 100 | `app/poolhouse-node/src/writes.rs:36` | direct messages unread from one sender: one sender cannot fill an inbox | the owner, `<state>/write-limits.json` |
+| `notes_per_author` | 500 | `app/poolhouse-node/src/writes.rs:36` | notes one author keeps on a board: memory | the owner, `<state>/write-limits.json` |
+| `child_beat_s` | 1800 | `app/poolhouse-node/src/writes.rs:36` | seconds a session may go unheard before it is idle, unless it holds a live lease | the owner, `<state>/write-limits.json` |
+| `idle_retire_s` | 86 400 | `app/poolhouse-node/src/writes.rs:36` | seconds a session may be idle before the node retires it and its token ends | the owner, `<state>/write-limits.json` |
+| `MOST_ACTIVE` | 64 | `app/poolhouse-node/src/links.rs:15` | links one board has open | the owner, in source |
+| `MAX_PROJECTS` | 256 | `app/poolhouse-node/src/registry.rs:23` | projects a node holds | the owner, in source |
+| `MAX_SOURCES` | 32 | `app/poolhouse-node/src/registry.rs:21` | places one project keeps | the owner, in source |
+| `SCAN_DEPTH` | 3 | `app/poolhouse-node/src/registry.rs:69` | how deep a place is searched for a git repository: a walk that cannot run away | the owner, in source |
+| `SCAN_ENTRIES` | 4000 | `app/poolhouse-node/src/registry.rs:70` | entries read by that search | the owner, in source |
+| `ROOMS_TOTAL` | 200 | `app/poolhouse-node/src/rooms.rs:19` | rooms one board holds: every read folds them | the owner, in source |
+| `LOUD_FREE` | 3 | `app/poolhouse-node/src/subs.rs:25` | inbox subscriptions a session takes before it must say `force`: its context, not memory | the owner, in source |
+| `MAX_BYTES` | 256 * 1024 * 1024 | `app/poolhouse-node/src/scratch.rs:18` | bytes one session keeps in scratch folders: disk | the owner, in source |
+| `MOST_FOLDERS` | 16 | `app/poolhouse-node/src/scratch.rs:20` | scratch folders one session keeps: disk | the owner, in source |
+| `TTL_S` | 3 * 86_400 | `app/poolhouse-node/src/scratch.rs:19` | seconds a scratch folder lives: disk | the owner, in source |
+| `MAX_BLOB` | 9 * 1024 * 1024 | `app/poolhouse-node/src/files.rs:25` | bytes of one file on a board: disk and memory while it is sealed | the owner, in source |
+| `CHUNK` | 256 * 1024 | `app/poolhouse-node/src/files.rs:27` | bytes of one chunk of an upload | the owner, in source |
+| `MAX_STAGED` | 8 | `app/poolhouse-node/src/files.rs:28` | uploads waiting to be finished: disk | the owner, in source |
+| `MAX_ITEMS` | 5000 | `app/poolhouse-node/src/quarantine.rs:25` | flagged entries a device holds: memory | the owner, in source |
+| `MAX_PER_CALL` | 100 | `app/poolhouse-node/src/quarantine.rs:26` | entries one quarantine call takes | the owner, in source |
+| `MAX_TASKS` | 5000 | `app/poolhouse-node/src/tasks/mod.rs:25` | tasks on a board: memory of the task fold | the owner, in source |
+| `HEARTBEAT_S` | 120 | `app/poolhouse-node/src/tasks/mod.rs:24` | seconds a task claim lives without a heartbeat: a dead worker's task is freed | the owner, in source |
+| `MAX_RESOURCES` | 8 | `app/poolhouse-node/src/lease/types.rs:14` | resources one lease request names | the owner, in source |
+| `MAX_TAG` | 64 | `app/poolhouse-node/src/lease/types.rs:16` | length of a lease tag | the owner, in source |
+| `max_ttl_s` | 86 400 | `app/poolhouse-node/src/lease/types.rs:259` | seconds one renewal keeps a lease: a dead holder without a pid frees its resource | the owner, `<state>/lease-config.json` |
+| `MAX_WAIT_MS` | 600_000 | `app/poolhouse-node/src/lease/rpc.rs:19` | milliseconds a `lease_wait` holds a server thread and keeps its queued request alive: a client that left would otherwise hold both for ever | the owner, in source |
+| `MOST_ANCHORS` | 32 | `app/poolhouse-node/src/lineage.rs:23` | processes read above a requester when its lineage is found | the owner, in source |
+| `MAX_FRAME` | 1024 * 1024 | `app/poolhouse-node/src/wire.rs:10` | bytes of one frame on the local socket | the owner, in source |
+| `MAX_PEER_FRAME` | 4 * 1024 * 1024 | `app/poolhouse-node/src/wire.rs:13` | bytes of one frame between devices | the owner, in source |
+| `MAX_BATCH_BYTES` | 2 * 1024 * 1024 | `app/poolhouse-node/src/sync.rs:15` | bytes one sync pull carries | the owner, in source |
+| `MAX_ACT_BYTES` | 16 * 1024 | `app/poolhouse-node/src/gov/mod.rs:42` | bytes of one governance act | the owner, in source |
+| `PAGE_BYTES` | 2 * 1024 * 1024 | `app/poolhouse-node/src/gov/mod.rs:45` | bytes of one page of acts | the owner, in source |
+| `ADMIN_ACTS_PER_KEYS` | 16 | `app/poolhouse-node/src/gov/mod.rs:53` | admin acts held per set of keys: memory of the pool log | the owner, in source |
+| `MOST_JUNK_PER_DEVICE` | 32 | `app/poolhouse-node/src/gov/room.rs:16` | acts of no kind held for one device: a member cannot fill the pool log | the owner, in source |
+| `MOST_LEAVES_PER_DEVICE` | 8 | `app/poolhouse-node/src/gov/room.rs:17` | leave acts held for one device | the owner, in source |
+| `MOST_LOGGED_PER_ORIGIN` | 500 | `app/poolhouse-node/src/grants/calls.rs:18` | grant uses logged per origin: memory | the owner, in source |
+| `MOST_KEYS` | 8 | `app/poolhouse-node/src/grants/person.rs:18` | person keys a node holds, phones included | the owner, in source; a security floor no agent loosens |
+| `MOST_NONCES` | 256 | `app/poolhouse-node/src/grants/person.rs:20` | signature nonces remembered, so a signed request cannot be replayed | the owner, in source; a security floor no agent loosens |
+| `MAX_SPAN_MS` | 366 * 24 * 3600 * 1000 | `app/poolhouse-node/src/grants/spec.rs:23` | how long one grant may last | the owner, in source; a security floor no agent loosens |
+| `SKEW_MS` | 5 * 60 * 1000 | `app/poolhouse-node/src/grants/spec.rs:25` | clock difference tolerated when a grant is checked | the owner, in source; a security floor no agent loosens |
+| `SKEW_MAX_MS` | 300_000 | `app/poolhouse-node/src/rules.rs:12` | clock difference tolerated for a foreign row | the owner, in source |
+| `MAX_AGE_MS` | 60_000 | `app/poolhouse-node/src/beacon.rs:29` | age of a beacon that is still believed | the owner, in source |
+| `JOIN_BYTES` | 256 * 1024 | `app/poolhouse-node/src/peer.rs:69` | bytes of a join request | the owner, in source |
+| `MOST_RUNNING` | 2 | `app/poolhouse-node/src/shard/host.rs:31` | shards running at once on a device: CPU | the owner, in source |
+| `MOST_OPEN` | 6 | `app/poolhouse-node/src/shard/host.rs:32` | shards a device holds open: disk | the owner, in source |
+| `MOST_KEPT` | 40 | `app/poolhouse-node/src/shard/host.rs:33` | finished shards kept: disk | the owner, in source |
+| `MOST_RESULT` | 900 << 10 | `app/poolhouse-node/src/shard/host.rs:35` | bytes of one shard result | the owner, in source |
+| `STALE_UPLOAD` | Duration::from_secs(600) | `app/poolhouse-node/src/shard/host.rs:36` | an upload with no chunk for this long is dropped: disk | the owner, in source |
+| `GRACE_S` | 120 | `app/poolhouse-node/src/shard/host.rs:38` | seconds a shard gets to stop before it is killed | the owner, in source |
+| `KILL_AFTER` | Duration::from_secs(45) | `app/poolhouse-node/src/shard/host.rs:39` | seconds after a stop request that a shard is killed | the owner, in source |
+| `MOST_KEYS (rates)` | 1024 | `app/poolhouse-node/src/limits.rs:10` | keys the in-memory rate table holds; a new key past it drops the least recently used | the owner, in source |
+| `OPEN_JOINS_PER_SOURCE` | 5 | `app/poolhouse-node/src/peer.rs:82` | open-pool joins from one address in `OPEN_JOIN_WINDOW`: a flood of strangers asking to join | the owner, in source; a security floor no agent loosens |
+| `OPEN_JOINS_PER_POOL` | 10 | `app/poolhouse-node/src/peer.rs:83` | open-pool joins in all in `OPEN_JOIN_WINDOW` | the owner, in source; a security floor no agent loosens |
+| `OPEN_JOIN_WINDOW` | 600 s | `app/poolhouse-node/src/peer.rs:84` | the window of the two open join limits | the owner, in source; a security floor no agent loosens |
+| `WRONG_CODES` | 10 | `app/poolhouse-node/src/phone/enrol.rs:34` | wrong phone codes from one address in `WRONG_WINDOW`: guessing a code | the owner, in source; a security floor no agent loosens |
+| `WRONG_WINDOW` | 600 s | `app/poolhouse-node/src/phone/enrol.rs:35` | the window of the wrong code limit | the owner, in source; a security floor no agent loosens |
+| `OFFER_TTL_MS` | 10 * 60 * 1000 | `app/poolhouse-node/src/phone/enrol.rs:31` | how long a phone code lives | the owner, in source; a security floor no agent loosens |
+| `MOST_PHONES` | 8 | `app/poolhouse-node/src/phone/mod.rs:38` | phones a device holds | the owner, in source; a security floor no agent loosens |
+| `MOST_OFFERS_PER_HOUR` | 3 | `app/poolhouse-node/src/phone/calls.rs:14` | phone codes one session asks for in an hour | the owner, in source; a security floor no agent loosens |
+| `MOST_REMOVALS_PER_HOUR` | 6 | `app/poolhouse-node/src/phone/calls.rs:15` | requests one session makes to remove phones in an hour | the owner, in source; a security floor no agent loosens |
+| `MOST_CODES_PER_PHONE` | 3 | `app/poolhouse-node/src/phone/http.rs:29` | phone codes one phone asks for in an hour | the owner, in source; a security floor no agent loosens |
+| `MOST_TRIES_PER_ADDRESS` | 60 | `app/poolhouse-node/src/phone/http.rs:30` | phone enrolment and decision tries from one address in a minute | the owner, in source; a security floor no agent loosens |
+| `MOST_PER_ADDRESS` | 6 | `app/poolhouse-node/src/phone/http.rs:28` | connections one address holds on the phone endpoint | the owner, in source; a security floor no agent loosens |
+| `MOST_PENDING` | 64 | `app/poolhouse-node/src/approvals/mod.rs:52` | approval requests waiting on a node | the owner, in source; a security floor no agent loosens |
+| `MOST_PENDING_PER_SESSION` | 8 | `app/poolhouse-node/src/approvals/mod.rs:53` | approval requests waiting from one session | the owner, in source; a security floor no agent loosens |
+| `MOST_REQUESTS` | 6 | `app/poolhouse-node/src/approvals/mod.rs:54` | approval requests one session makes in `REQUEST_WINDOW_MS`: asking until the person gives in | the owner, in source; a security floor no agent loosens |
+| `REQUEST_WINDOW_MS` | 10 * 60 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:55` | the window of the request limit | the owner, in source; a security floor no agent loosens |
+| `MAX_TTL_MS` | 24 * 3600 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:57` | the longest a request lives | the owner, in source; a security floor no agent loosens |
+| `backoff_ms` | 30 000 | `app/poolhouse-node/src/approvals/fatigue.rs:62` | how long after a decline the same kind of request is refused | the owner, in source; a security floor no agent loosens |
+| `most_held` | 8 | `app/poolhouse-node/src/approvals/fatigue.rs:63` | requests held back for one requester | the owner, in source; a security floor no agent loosens |
+| `reask_ms` | 600 000 | `app/poolhouse-node/src/approvals/fatigue.rs:63` | how long a cancelled or expired request counts as asked again | the owner, in source; a security floor no agent loosens |
+| `QUIET_MS` | 10 * 60_000 | `app/poolhouse-node/src/presence/mod.rs:31` | the ask cooldown: no new question to the person this long after one was not answered yes | the owner, in source; a security floor no agent loosens |
+| `ASK_FOR_MS` | 120_000 | `app/poolhouse-node/src/presence/mod.rs:28` | how long a question to the person stays open | the owner, in source; a security floor no agent loosens |
+| `COOLDOWN` | std::time::Duration::from_secs(10 * 60) | `app/poolhouse-node/src/gov/ops.rs:30` | the ask cooldown: after a no the same kind of ask waits this long, and the window of `MOST_ASKS` | the owner, in source; a security floor no agent loosens |
+| `MOST_ASKS` | 12 | `app/poolhouse-node/src/gov/ops.rs:31` | times a pool asks the person in `COOLDOWN`: asking until the person accepts from exhaustion | the owner, in source; a security floor no agent loosens |
+| `OPEN_PER_HOUR` | 5 | `app/poolhouse-node/src/gov/mod.rs:62` | open joins one member signs in an hour | the owner, in source; a security floor no agent loosens |
+| `OPEN_POOL_PER_HOUR` | 10 | `app/poolhouse-node/src/gov/mod.rs:65` | open joins a pool takes in an hour | the owner, in source; a security floor no agent loosens |
+| `DELEGATE_PER_HOUR` | 3 | `app/poolhouse-node/src/gov/mod.rs:60` | devices a delegate admits in an hour | the owner, in source; a security floor no agent loosens |
+| `DELEGATE_PER_DAY` | 10 | `app/poolhouse-node/src/gov/mod.rs:61` | devices a delegate admits in a day | the owner, in source; a security floor no agent loosens |
+| `maxTurns` | 150 | `.claude/agents/branch-worker.md:5`, `.claude/agents/branch-finisher.md:5` | tool turns one worker agent makes before the harness ends it: a worker that never reports | the owner |
+| `pytest timeout` | 120 s a test | `pyproject.toml:268` | one test that hangs; a longer one carries `@pytest.mark.timeout(N)` | the owner |
+| `CI test timeout` | 120 s a test | `.github/workflows/ci.yml:108` | the same limit on the pushed commit | the owner |
+| `CI shard timeout` | 30 minutes | `.github/workflows/ci.yml:46` | one of the eight test shards that hangs | the owner |
+| `STOP_GRACE_S` | 90.0 s | `scripts/land_exec.py:32` | seconds a land leader gets to cancel its test jobs before its process group is killed | the owner |
+| `REFUSALS` | 2 | `scripts/hooks/stop_landed.py:16` | stops of one subagent refused for work development lacks before it may stop; the stop hook's other refusal is a test job it could not cancel (`scripts/hooks/stop_jobs.py`) | the owner |
+| `ci_watch WAIT_S` | 180 | `scripts/ci_watch.py:34` | seconds the watcher waits for a run to appear | the owner |
+| `ci_watch POLL_S` | 60 | `scripts/ci_watch.py:35` | seconds between asks of GitHub while a run is watched | the owner |
+| `ci_watch RUN_TIMEOUT_S` | 100 * 60 | `scripts/ci_watch.py:36` | seconds a run is watched before the watcher gives up | the owner |
+| `ci_watch WARN_S` | 25 * 60 | `scripts/ci_watch.py:37` | seconds into a run when the watcher says it is slow | the owner |
+| `ci_watch BLOCK_S` | 35 * 60 | `scripts/ci_watch.py:38` | seconds into a run when the watcher says it is stuck | the owner |
+| `ci_watch MIN_WATCH_S` | 60.0 | `scripts/ci_watch.py:39` | the shortest a run is watched | the owner |
+| `primary_sync WAIT_S` | 60.0 s | `scripts/primary_sync.py:29` | seconds the primary checkout waits for a lock before it skips a sync | the owner |
+| `NOTE_COMMITS` | 10 | `scripts/worktrees:35` | a note printed under a worktree that is far ahead of or behind development; nothing is refused | the owner |
+| `NOTE_AHEAD` | 30 | `scripts/worktrees:36` | a note printed under a worktree that is far ahead of or behind development; nothing is refused | the owner |
+| `NOTE_BEHIND` | 20 | `scripts/worktrees:37` | a note printed under a worktree that is far ahead of or behind development; nothing is refused | the owner |
+| `NOTE_AGE_BEHIND_DAYS` | 1.0 | `scripts/worktrees:38` | a note printed under a worktree that is far ahead of or behind development; nothing is refused | the owner |
+| `queue_doctor QUIET_ALERT_S` | 900.0 s | `scripts/queue_doctor.py:17` | when the queue doctor tells the owner of a quiet, long or old test job; only a dead or ownerless job is ended | the owner |
+| `queue_doctor ESTIMATE_ALERT_S` | 1200.0 s | `scripts/queue_doctor.py:18` | when the queue doctor tells the owner of a quiet, long or old test job; only a dead or ownerless job is ended | the owner |
+| `queue_doctor OVERRUN_ALERT_S` | 1200.0 s | `scripts/queue_doctor.py:19` | when the queue doctor tells the owner of a quiet, long or old test job; only a dead or ownerless job is ended | the owner |
+| `queue_doctor AGE_ALERT_S` | 5400.0 s | `scripts/queue_doctor.py:22` | when the queue doctor tells the owner of a quiet, long or old test job; only a dead or ownerless job is ended | the owner |
+| `queue_doctor ADMIT_NOTICE_S` | 600.0 s | `scripts/queue_doctor.py:20` | when the queue doctor tells the owner of a quiet, long or old test job; only a dead or ownerless job is ended | the owner |
+| `queue_doctor NODE_MAX_AGE_S` | 3600.0 s | `scripts/queue_doctor.py:24` | when the queue doctor tells the owner of a quiet, long or old test job; only a dead or ownerless job is ended | the owner |
+| `queue_doctor GRACE_S` | 5.0 s | `scripts/queue_doctor.py:23` | when the queue doctor tells the owner of a quiet, long or old test job; only a dead or ownerless job is ended | the owner |
+| `DEV_TEST_RESERVED_CORES` | 1 | `scripts/testslots.py:68` | logical cores the test budget leaves to the machine | the owner, in the environment |
+| `DEV_TEST_BUDGET` | logical cores minus the reserved ones, at least 1 | `docs/test-execution.md:86` | CPU permits the test broker grants at once | the owner, in the environment |
+| `hook timeout` | 15 s | `.claude/settings.json:61` | a harness hook that hangs | the owner |

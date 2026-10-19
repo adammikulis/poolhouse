@@ -581,7 +581,7 @@ model-and-version account) is not built; a grant is the only thing that widens w
 What a node holds is bounded, so no process fills the node's memory or disk. A rate is kept in memory (a restart clears it) in a
 table of at most 1,024 keys; a new key past the bound drops the key used longest ago, so no key is refused for the others'. A use is
 counted when it was made: a refused or failed attempt counts for nothing. The rates are the ones that guard a person's approval, a join, a
-phone and a pool's asks.
+phone and a pool's asks. `docs/limits.md` lists every limit with its value, file, what it protects and who changes it.
 
 | what | limit | refused as |
 |---|---|---|
