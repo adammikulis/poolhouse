@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import renames  # noqa: E402
 
 NAMES = ("test_redteam_*", "test_*guard*", "test_*auth*")
-SIGN = re.compile(r"^Reviewed-by-second:\s*\S", re.M)
+SIGN = re.compile(r"^(Reviewed-by-second|Owner-order):\s*\S", re.M)
 ASSERT = re.compile(r"^\s*(assert\b|self\.assert\w*\(|with pytest\.raises\b|pytest\.raises\()")
 DEF = re.compile(r"^\s*(?:async\s+)?def (test\w*)\(")
 SKIP = re.compile(r"pytest\.(mark\.(skip|skipif|xfail)\b|skip\(|xfail\(|importorskip\()")

@@ -133,6 +133,12 @@ def test_the_commit_message_line_accepts_it(tmp_path) -> None:
     assert refused.returncode == 1
     assert "1 fewer assertions" in refused.stderr
     assert sh(repo, sys.executable, str(HOOK), "--staged", "--message", str(signed)).returncode == 0
+    ordered = tmp_path / "ordered"
+    ordered.write_text("chore: weaken\n\nOwner-order: the owner said to remove it\n")
+    empty = tmp_path / "empty"
+    empty.write_text("chore: weaken\n\nOwner-order:\n")
+    assert sh(repo, sys.executable, str(HOOK), "--staged", "--message", str(ordered)).returncode == 0
+    assert sh(repo, sys.executable, str(HOOK), "--staged", "--message", str(empty)).returncode == 1
 
 
 GUARD = "tests/test_x_guard.py"
