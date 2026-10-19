@@ -111,10 +111,11 @@ def test_materialization_refuses_preexisting_output_adapter_link(tmp_path):
 
 
 @pytest.mark.parametrize('claimed', ['text-lm', 'classify-text', ''])
-def test_recorded_conversation_checkpoint_cannot_hide_base_requirement(tmp_path, monkeypatch, claimed):
+@pytest.mark.parametrize('kind', ['evaluate', 'generate'])
+def test_recorded_conversation_checkpoint_cannot_hide_base_requirement(tmp_path, monkeypatch, claimed, kind):
     (tmp_path / 'state.json').write_text('{"config":{"recipe":"tool-calls","framework":"mlx","base":"/private/model"}}')
     monkeypatch.setattr(worker.gpu, 'hold', lambda purpose: pytest.fail('forged recipe must fail before compute'))
     model = {'path': str(tmp_path), 'recipe': claimed}
     with pytest.raises(ValueError, match='recipe metadata'):
-        worker.execute({'type': 'evaluate', 'parameters': {'suite': 'holdout'}},
-                       {'model': model, 'dataset': {'path': str(tmp_path)}}, tmp_path)
+        worker.execute({'type': kind, 'parameters': {'suite': 'tool-calls'}},
+                       {'model': model, 'dataset': {'path': str(tmp_path)}, 'prompt': 'question'}, tmp_path)

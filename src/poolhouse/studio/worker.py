@@ -119,9 +119,9 @@ def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
 
 def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
     schema = response_schema(parameters.get('json_schema')) if structured else None
+    base = checkpoint_base(inputs['model'], framework='mlx')
     if inputs['model'].get('recipe') != 'tool-calls':
         raise ValueError('Trained generation requires an MLX conversation model')
-    base = checkpoint_base(inputs['model'], framework='mlx')
     with gpu.hold('Studio trained model generation'):
         built = optional.module('poolhouse.train.recipes').load(inputs['model']['path'], base_override=base)
         if built.config.get('framework') != 'mlx' or built.config.get('recipe') != 'tool-calls':
@@ -279,7 +279,8 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
         if not 0 < cut < len(rows):
             raise ValueError('Split needs examples in both partitions')
         return {'train': dataset(out, 'train', rows[:cut]), 'test': dataset(out, 'test', rows[cut:])}
-    if kind == 'evaluate' and (inputs['model'].get('recipe') or parameters.get('suite', 'holdout') == 'holdout'):
+    if kind == 'evaluate' and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()
+                               or parameters.get('suite', 'holdout') == 'holdout'):
         return _checkpoint_evaluate(inputs, parameters)
     if kind in ('generate', 'generate.structured') and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()):
         return _native_generate(inputs, parameters, structured=kind == 'generate.structured')
