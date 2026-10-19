@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import testqueue
+import testscope
 import testslots
 import testslots_policy as policy
 import testslots_rpc
@@ -73,6 +74,8 @@ def run_pytest(command: list[str], want: int = 0, label: str = "pytest", env: di
     `sandbox-exec` themselves run under a kernel denial of writes to the real state root
     (scripts/testwritedeny.py), the rest beside them without it."""
     environment = environment_for(env)
+    if refusal := testscope.size_refusal(command[command.index("pytest") + 1:] if "pytest" in command else [], ROOT, environment):
+        raise testscope.Refused(refusal)
     plan = None if container or confining(environment) else testwritedeny.passes(command, environment, ROOT)
     environment.pop(testwritedeny.ENV, None)
     if plan is None:
