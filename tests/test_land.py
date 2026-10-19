@@ -219,26 +219,16 @@ def test_an_accept_from_a_reviewer_ended_for_cause_stops_counting(world, cause, 
         assert world.proj.origin_head() != sha
 
 
-def test_a_second_lander_is_refused_naming_the_first(world):
-    first, _ = world.start("slow", {"tests/test_slow.py": "# SLOW\n"})
-    second, _ = world.start("second", {"docs/a.md": "second\n"})
-    running = world.start_land(first)
-    wait_for(world.proj.base / "started")
-    code, out = world.land(second, who=world.other)
-    assert code == 5 and world.lander.name in out and "is landing slow" in out, out
-    assert second.exists()
-    again, text = world.land(second, who=world.other)
-    assert again == 5 and world.lander.name in text, "a refused lander leaves the first lander's note in the lock file"
-    (world.proj.base / "proceed").write_text("1")
-    assert running.communicate(timeout=120)[0].count("land: stopped") == 0 and running.returncode == 0
-
-
 def test_the_landing_lock_is_the_one_the_runtime_cutover_waits_on(world):
+    world.hold_pushes()
     tree, _ = world.start("cutover", {"tests/test_slow.py": "# SLOW\n"})
     running = world.start_land(tree)
     wait_for(world.proj.base / "started")
-    held = filelock.held_by(worktreerules.landing_lock(world.proj.root))
+    assert filelock.held_by(worktreerules.landing_lock(world.proj.root)) == "", "the checks run outside the lock"
     (world.proj.base / "proceed").write_text("1")
+    wait_for(world.proj.base / "pushed")
+    held = filelock.held_by(worktreerules.landing_lock(world.proj.root))
+    (world.proj.base / "release").write_text("1")
     running.communicate(timeout=120)
     assert world.lander.name in held and "is landing cutover" in held, held
     assert filelock.held_by(worktreerules.landing_lock(world.proj.root)) == ""

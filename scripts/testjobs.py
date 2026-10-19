@@ -10,15 +10,21 @@ import secrets
 import signal
 import subprocess
 import sys
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from pathlib import Path
 
 import testreuse_store as storage
+import testscope
 
 KEEP_S = 3 * 86400.0
 POLL_S = 0.4
+WATCH_S = 1.0
+ENDS_S = 60.0
+KILLED_S = 10.0
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGHUP)
 TERMINAL = ("done", "failed", "cancelled")
 FULL_TIERS = ("fast", "full", "slow", "all", "quick", "gate")
 
@@ -45,6 +51,27 @@ def node_id(classname: str, name: str, root: Path) -> str:
         if (root / path).is_file():
             return "::".join([path, *parts[size:], name])
     return "::".join([classname.replace(".", "/") + ".py", name])
+
+
+def interrupt(*_: object) -> None:
+    """Turn a stop signal into a KeyboardInterrupt in the waiting code."""
+    raise KeyboardInterrupt
+
+
+@contextlib.contextmanager
+def stop_as_interrupt() -> Iterator[None]:
+    """Within the block, SIGTERM and SIGHUP raise KeyboardInterrupt; the handlers are restored after."""
+    previous = [(number, signal.signal(number, interrupt)) for number in STOP_SIGNALS]
+    try:
+        yield
+    finally:
+        for number, handler in previous:
+            signal.signal(number, handler)
+
+
+def follower() -> dict:
+    """This process as the follower of a foreground job."""
+    return {"pid": os.getpid(), "started": storage.process_start(os.getpid())}
 
 
 class Jobs:
@@ -125,10 +152,13 @@ class Jobs:
         """Record a job and start its detached runner; returns the id.
 
         A whole-tier job (``extra['exclusive']``, true unless given) is refused while another whole-tier job is live; the check and the
-        record are made under one lock. A foreground run is not exclusive and queues in the broker. A run with no owner is refused.
+        record are made under one lock. A foreground run is not exclusive and queues in the broker.
+        An agent's whole-suite run, one naming more than 30 test files, and a run with no owner are refused before anything is recorded.
         """
         if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
             raise Refused("this run has no workspace identity, and a run with no owner is not queued: run it as the session the harness gave you")
+        if refusal := testscope.tier_refusal(argv[0], argv[1:], root) if argv else "":
+            raise Refused(refusal)
         self.prune()
         job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         with self.locked():
@@ -176,8 +206,39 @@ class Jobs:
         sys.stdout.flush()
         return len(data)
 
+    def follow(self, argv: list[str], owner: dict, root: Path, script: Path, extra: dict) -> int:
+        """Run ``argv`` as a job, show its log until it ends and return its exit status.
+
+        A SIGTERM, SIGHUP or Ctrl-C cancels the job and waits for its runner to end; the status is then 130.
+        """
+        job = ""
+        with stop_as_interrupt():
+            try:
+                job = self.submit(argv, owner, root, script, {**extra, "exclusive": False, "follower": follower()})
+                return int(self.wait(job, float("inf"), tail=True).get("exit", 1))
+            except KeyboardInterrupt:
+                if job:
+                    print(f"\n{self.cancel(job, owner.get('id', ''))}", flush=True)
+                return 130
+
+    def watch_follower(self, job: str) -> None:
+        """Stop this process when the foreground run that follows ``job`` has gone; a job nobody follows is left alone."""
+        mine = self.read(job, "spec.json").get("follower")
+        if not isinstance(mine, dict):
+            return
+        pid, started = int(mine.get("pid", 0)), float(mine.get("started", 0))
+
+        def watch() -> None:
+            while storage.alive(pid, started):
+                time.sleep(WATCH_S)
+            with contextlib.suppress(OSError), (self.path(job) / "log").open("a", encoding="utf-8") as log:
+                log.write("test: cancelled because the run that was following it ended\n")
+            os.kill(os.getpid(), signal.SIGTERM)
+
+        threading.Thread(target=watch, daemon=True).start()
+
     def cancel(self, job: str, who: str) -> str:
-        """Stop a job whoever owns it, and log who did; returns what happened."""
+        """Stop a job whoever owns it, log who did and wait for its runner to end; returns what happened."""
         spec, status = self.read(job, "spec.json"), self.state(job)
         if not spec:
             raise Refused(f"no job {job}")
@@ -188,8 +249,24 @@ class Jobs:
             with (self.path(job) / "log").open("a", encoding="utf-8") as log:
                 log.write(f"test: cancelled by {who or 'a caller with no workspace identity'} running in {Path.cwd()}\n")
             os.kill(with_pid, signal.SIGTERM)
+            self.reap(job, with_pid, float(status.get("started", 0)))
         self.write(job, "status.json", {**status, "state": "cancelled", "exit": 130, "finished": time.time()})
         return f"job {job} cancelled"
+
+    def reap(self, job: str, pid: int, started: float) -> None:
+        """Wait for the runner ``pid`` to end, kill its process group after ``ENDS_S``, and raise OSError if it stays."""
+        for limit, kill in ((ENDS_S, False), (KILLED_S, True)):
+            if kill:
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.killpg(pid, signal.SIGKILL)
+            deadline = time.monotonic() + limit
+            while storage.alive(pid, started):
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.05)
+            else:
+                return
+        raise OSError(f"job {job}: the runner (pid {pid}) is still running after it was cancelled")
 
     def result(self, job: str, root: Path) -> dict:
         """The job's status, summary, failing node ids and junit files."""

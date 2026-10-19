@@ -19,6 +19,11 @@ try:
     import land_git as lg
 except ImportError as exc:
     raise SystemExit(f"pushed: the git helper could not load ({exc}); the push is refused") from None
+try:
+    import ci_watch
+except ImportError as exc:
+    ci_watch = None
+    print(f"pushed: warning: the ci watcher could not load ({exc}); the ci run is not watched", file=sys.stderr)
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -73,15 +78,26 @@ def unparseable(base: str, tip: str) -> list[str]:
     return bad
 
 
+def watch_ci(dev: str, tips: list[str]) -> None:
+    """Start the detached watcher of the GitHub `ci` run of each pushed development tip; a failure to start is a warning."""
+    for tip in tips if ci_watch else []:
+        try:
+            ci_watch.start(tip, dev, Path.cwd())
+        except (OSError, RuntimeError) as exc:
+            print(f"pushed: warning: the ci run of {tip[:12]} is not watched ({exc})", file=sys.stderr)
+
+
 def main(dev: str, lines: list[str]) -> int:
     """Return 1 when any pushed ref is refused."""
     refused = 0
+    tips = []
     for line in lines:
         parts = line.split()
         if len(parts) != 4 or parts[1] == ZERO:
             continue
         _, tip, remote_ref, base = parts
         if remote_ref == f"refs/heads/{dev}":
+            tips.append(tip)
             for where, branch in leftover_worktrees(tip):
                 print(f"pushed: warning: {branch} has nothing outside {dev}; remove its worktree:",
                       f"  git worktree remove {shlex.quote(where)}", f"  git branch -d {shlex.quote(branch)}", sep="\n", file=sys.stderr)
@@ -98,6 +114,7 @@ def main(dev: str, lines: list[str]) -> int:
             refused = 1
     if not refused:
         subprocess.run([sys.executable, str(HERE / "runtime-refresh"), "pushed"], check=False)
+        watch_ci(dev, tips)
     if refused:
         print("\nEvery pushed commit passes the pre-commit hooks. Fix it in a new commit.", file=sys.stderr)
     return refused
