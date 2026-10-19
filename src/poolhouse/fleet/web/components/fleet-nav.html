@@ -1,6 +1,6 @@
 <template>
   <aside class="workspace-rail" aria-label="Workspace navigation">
-    <a class="poolhouse-mark" href="#chat" aria-label="Poolhouse home" title="Poolhouse home">
+    <a class="poolhouse-mark" href="#studio" aria-label="Poolhouse home" title="Poolhouse home">
       <svg viewBox="0 0 64 64" aria-hidden="true">
         <rect x="31" y="35" width="27" height="19" rx="5" fill="var(--poolhouse-cyan)"/>
         <path d="M34 42q3-3 6 0t6 0 6 0 4 0M34 48q3-3 6 0t6 0 6 0 4 0" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
@@ -34,7 +34,7 @@
   const M = window.fleetModel, el = M.el;
   const GROUPS = [
     {id:"conversations", title:"Conversations", color:"pink", icon:"chat", pages:[["Model chats","chat"],["Team channels","board"]]},
-    {id:"studio", title:"Studio", color:"orange", icon:"studio", pages:[["Models","models"],["Fine-tune","training"],["Worlds","gym"],["Evaluate","benchmarks"],["Data","data"]]},
+    {id:"studio", title:"Studio", color:"orange", icon:"studio", pages:[["Canvas","studio"],["Models","models"],["Fine-tune","training"],["Worlds","gym"],["Evaluate","benchmarks"],["Data","data"]]},
     {id:"work", title:"Work", color:"yellow", icon:"work", pages:[["Tasks","tasks"],["Projects","projects"],["Tools","tools"],["Graph","knowledge"],["History","history"]]},
     {id:"pool", title:"Pool", color:"cyan", icon:"pool", pages:[["Devices","pool"],["Capacity","fit"]]},
   ];

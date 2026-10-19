@@ -281,5 +281,5 @@ or `both`); with `--yes` it needs `--scope`.
 ## Not yet
 
 Exporting and importing a project bundle between users, ranking tools from outcomes with a decider, syncing across devices, proposing facts
-automatically after a task, ingesting documents (`poolhouse-ingest`) into the same graph, the
+automatically after a task, ingesting documents (`python -m poolhouse.ingest`) into the same graph, the
 chat session files (`~/.poolhouse/chat/ID.json`) under the same per-user encryption.

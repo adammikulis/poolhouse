@@ -27,6 +27,7 @@ from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
 from poolhouse.net import packages
 
+from . import compute_artifact
 from .managed_compute import process_environment
 from .runtime_wheel import cache_wheel, current_wheel, wheel_commit
 
@@ -397,6 +398,10 @@ class Environment:
             raise OSError("Refresh Training essentials in Libraries before starting work: "
                           f"managed runtime {actual or 'unstamped'}; app runtime {expected}")
 
+    def require_compute(self) -> str:
+        """Verify the app-owned optional code before a managed job executes it."""
+        return compute_artifact.probe(self.python, environment=process_environment())
+
     def state(self, vendor: str = "") -> dict[str, Any]:
         have = self.installed()
         return {
@@ -418,6 +423,7 @@ class Environment:
         if installed and lib.name == "core":
             try:
                 target.require_current_runtime()
+                compute_artifact.probe(target.python, environment=process_environment())
             except (OSError, subprocess.SubprocessError):
                 installed = False
         return {"name": lib.name, "title": lib.title, "blurb": lib.blurb,
@@ -468,6 +474,14 @@ class Environment:
                         done[name] = {"ok": False, "error": _last_error(prepared.stderr)}
                         continue
                 out = target.pip(args)
+                if out.returncode == 0 and (name in {"core", "train-mlx", "bench"} or name.startswith("gym")):
+                    directory = target.wheels()
+                    if directory is None:
+                        raise OSError("The app compute artifact is unavailable")
+                    out = compute_artifact.install(target.python, directory, environment=process_environment())
+            except (OSError, ValueError) as exc:
+                done[name] = {"ok": False, "error": str(exc)}
+                continue
             except subprocess.TimeoutExpired:
                 done[name] = {"ok": False, "error": "timed out"}
                 continue

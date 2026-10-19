@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,7 @@ NODES: set[str] = set()
 DIED: list[str] = []
 ENABLED = bool(os.environ.get("DEV_TEST_REUSE_RECORD"))
 BUSY: list[bool] = []
+OPEN_CALLS = threading.local()
 
 
 def _entry(rel: str) -> dict:
@@ -177,7 +179,7 @@ def _audit(event: str, args: tuple) -> None:
             return
         bucket = _entry(CURRENT[-1])
         if event == "open" and isinstance(args[0], PATHS):
-            absolute = _resolve(args[0])
+            absolute = _resolve(args[0], _open_directory(args))
             writing = _writing(args[1], args[2])
             if writing and not _write_ok(absolute):
                 bucket["violations"].add(f"wrote {absolute}")
@@ -209,6 +211,31 @@ def _audit(event: str, args: tuple) -> None:
                         bucket["violations"].add(f"{event.split('.')[-1]} {absolute}")
     finally:
         BUSY.pop()
+
+
+def _open_directory(arguments: tuple) -> object:
+    stack = getattr(OPEN_CALLS, "stack", ())
+    if not stack or len(arguments) < 3 or arguments[1] is not None:
+        return None
+    path, flags, descriptor = stack[-1]
+    cloexec = getattr(os, "O_CLOEXEC", 0)
+    if _text(arguments[0]) == _text(path) and (arguments[2] & ~cloexec) == (flags & ~cloexec):
+        return descriptor
+    return None
+
+
+def _probe_open(original):
+    @functools.wraps(original)
+    def wrapper(path, flags, mode=0o777, *, dir_fd=None):
+        stack = getattr(OPEN_CALLS, "stack", None)
+        if stack is None:
+            stack = OPEN_CALLS.stack = []
+        stack.append((path, flags, dir_fd))
+        try:
+            return original(path, flags, mode, dir_fd=dir_fd)
+        finally:
+            stack.pop()
+    return wrapper
 
 
 def _note_probe(path: object, dir_fd: object) -> None:
@@ -248,7 +275,7 @@ def _probe_access(original):
 
 if ENABLED:
     sys.addaudithook(_audit)
-    for _name, _make in (("stat", _probe_stat), ("lstat", _probe_lstat), ("access", _probe_access)):
+    for _name, _make in (("stat", _probe_stat), ("lstat", _probe_lstat), ("access", _probe_access), ("open", _probe_open)):
         _original = getattr(os, _name)
         _wrapper = _make(_original)
         for _support in (os.supports_follow_symlinks, os.supports_effective_ids, os.supports_dir_fd,

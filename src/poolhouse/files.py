@@ -12,6 +12,7 @@ import errno
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Callable, Iterator, Mapping, Set
 from contextlib import contextmanager
@@ -35,7 +36,7 @@ class CrossDevice(OSError):
     """The source and the target are on different filesystems."""
 
 
-def promote(source: Path | str, target: Path | str) -> Path:
+def promote(source: Path | str, target: Path | str, *, directory_fd: int | None = None) -> Path:
     """Put a finished ``source`` in ``target``'s place in one step. Returns ``target``.
 
     ``source`` may be a file, a directory or a symlink, and must be on the same filesystem
@@ -43,7 +44,10 @@ def promote(source: Path | str, target: Path | str) -> Path:
     """
     source, target = Path(source), Path(target)
     try:
-        replace(source, target)
+        if directory_fd is None:
+            replace(source, target)
+        else:
+            _promote_relative(source, target, directory_fd)
     except OSError as exc:
         if exc.errno != errno.EXDEV:
             raise
@@ -52,6 +56,18 @@ def promote(source: Path | str, target: Path | str) -> Path:
             f"{source} and {target} are on different filesystems, so moving one onto the "
             f"other would copy it") from None
     return target
+
+
+def _promote_relative(source: Path, target: Path, descriptor: int) -> None:
+    if type(descriptor) is not int or descriptor < 0 or not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+        raise ValueError("Atomic promotion requires an open directory descriptor.")
+    for path in (source, target):
+        if path.is_absolute() or len(path.parts) != 1 or path.name in {".", "..", ""}:
+            raise ValueError("Descriptor promotion accepts direct child names only.")
+    info = os.stat(source, dir_fd=descriptor, follow_symlinks=False)
+    if not (stat.S_ISDIR(info.st_mode) or (stat.S_ISREG(info.st_mode) and info.st_nlink == 1)):
+        raise ValueError("Descriptor promotion requires a regular file or directory without links.")
+    replace(str(source), str(target), src_dir_fd=descriptor, dst_dir_fd=descriptor)
 
 
 @contextmanager

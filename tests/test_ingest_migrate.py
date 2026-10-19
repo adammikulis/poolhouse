@@ -318,7 +318,7 @@ def test_fold_refuses_a_store_that_still_names_its_sources_books(tmp_path):
     assert ingest.fold(where, say=said.append) == 1
 
     assert f"{where} still names its sources `book:`" in said[0]
-    assert "poolhouse-ingest migrate" in said[0]
+    assert "python -m poolhouse.ingest migrate" in said[0]
     with GraphStore(where, read_only=True) as store:
         assert store.counts() == before, "refused, and nothing written"
         assert f"source:{SLUG}" not in {n["id"] for n in store.nodes()}

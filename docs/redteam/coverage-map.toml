@@ -14,6 +14,20 @@
 uncovered = 52
 partial = 193
 
+[[group]]
+match = ["route:fleet/studio_routes.py:/ui/studio/*"]
+status = "covered"
+count = 17
+tests = ["tests/test_studio_security.py", "tests/test_studio_engine.py", "tests/test_studio_artifacts.py", "tests/test_studio_contracts.py"]
+note = "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+
+[[group]]
+match = ["egress:fleet/studio_library.py:MemberLibrary._response"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_pool_library.py"]
+note = "Current enrolled pool discovery pins encrypted devices. Exact destination guards refuse redirects, bounded sealed responses reject malformed packages and nonmonotonic pages, and bounded error bodies prevent a malicious device exhausting memory. Immutable versions and safe offline warnings preserve local publication."
+
 
 [[group]]
 match = ["parser:client/systemone.py"]
@@ -367,6 +381,27 @@ count = 1
 tests = ["tests/test_fleet_environment.py::test_runtime_revision_probe_rejects_stale_literal_hostile_interpreter",
          "tests/test_fleet_environment.py::test_frozen_runtime_requires_exact_bundled_commit_before_work"]
 note = "Real interpreter paths containing shell punctuation remain literal argv; unstamped and mismatched revisions cannot start work, and probing has an explicit timeout and no shell"
+
+[[group]]
+match = ["spawn:fleet/compute_artifact.py:probe"]
+status = "covered"
+count = 1
+tests = ["tests/test_compute_artifact.py::test_probe_uses_fixed_isolated_argv_and_refuses_hostile_result",
+         "tests/test_compute_artifact.py::test_probe_ignores_hostile_python_environment_and_refuses_unlisted_code"]
+note = "The isolated interpreter ignores injected Python startup and manifest environment values, rejects unexpected source and compiled bytecode plus changed revisions, and uses fixed argv with trusted JSON stdin and no shell, retry or fallback"
+
+[[group]]
+match = ["egress:fleet/studio_transport.py:MemberExecution.__init__",
+         "egress:fleet/studio_transport.py:MemberExecution._wire"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
+         "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
+         "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
+         "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
+         "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
+         "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"]
+note = "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
 
 [[group]]
 match = ["spawn:fleet/managed_compute.py:report"]

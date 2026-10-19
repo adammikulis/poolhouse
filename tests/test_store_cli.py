@@ -126,7 +126,7 @@ def test_check_warns_and_names_the_finishing_command_when_coverage_is_partial(tm
     out, err = capsys.readouterr()
     assert "vectors: 1 of 2 node(s) (50%)" in out
     assert "1 node(s) short of a vector" in err
-    assert "poolhouse-ingest embed --out" in err
+    assert "python -m poolhouse.ingest embed --out" in err
 
 
 def test_check_over_nothing_worth_embedding_says_so_without_a_denominator(tmp_path, capsys):

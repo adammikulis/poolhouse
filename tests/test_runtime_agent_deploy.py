@@ -57,7 +57,7 @@ def test_a_delegated_agent_s_ensure_deploys_and_is_audited_with_the_agent(lead, 
     assert (entry.outcome, entry.meta["command"], entry.meta["agent"]) == ("switched", "ensure", agent.name)
     assert entry.meta["person"] is False and entry.meta["authority"] == authority.DELEGATED
     used = [row for row in authority.audit_rows() if row["event"] == "authority.use"]
-    assert [(row["gate"], row["agent"]) for row in used] == [("runtime.deploy", agent.name)]
+    assert [(row["gate"], row["agent"]) for row in used] == [("runtime.deploy", agent.name)] * 2
 
 
 def test_an_agent_is_refused_while_the_gate_is_the_person_s_and_nothing_is_built(lead, agent, capsys):  # noqa: F811

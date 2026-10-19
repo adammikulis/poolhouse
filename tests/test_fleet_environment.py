@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -102,10 +103,34 @@ class TestEnvironment:
 
 @pytest.mark.slow
 class TestBuildingItForReal:
-    def test_it_builds_and_installs_and_a_job_can_use_it(self, tmp_path):
+    def test_it_builds_and_installs_and_a_job_can_use_it(self, tmp_path, monkeypatch):
+        import shutil
+
+        from wheel_support import fresh_wheel
+
+        from poolhouse.fleet import compute_artifact
+        from poolhouse.fleet.wheel_provenance import stamp
+
+        root = Path(__file__).resolve().parents[1]
+        directory = tmp_path / 'wheels'
+        directory.mkdir()
+        built = fresh_wheel(root)
+        base = directory / built.name
+        shutil.copy2(built, base)
+        # Test-owned expected manifest models what the immutable app ships.
+        revision = 'a' * 40
+        import subprocess
+
+        from poolhouse.safenames import unpack
+        snapshot, source = tmp_path / 'source.zip', tmp_path / 'source'
+        subprocess.run(['git', 'archive', '--format=zip', '--output', str(snapshot), 'HEAD'],
+                       cwd=root, check=True, capture_output=True)
+        unpack(snapshot, source)
+        compute_artifact.build(source, base, revision)
+        stamp(base, revision, root)
+        monkeypatch.setattr(compute_artifact, 'expected', lambda: compute_artifact.from_wheel(base))
         env = Environment(tmp_path)
-        if env.wheels() is None:
-            pytest.skip("no wheels built; run packaging/build.py")
+        monkeypatch.setattr(env, 'wheels', lambda: directory)
         done = env.install(["core"])
         assert done["core"]["ok"], done
 
@@ -115,7 +140,7 @@ class TestBuildingItForReal:
         assert "poolhouse" in have, "a job could not import poolhouse.train"
 
         import subprocess
-        out = subprocess.run([str(env.python), "-c",
+        out = subprocess.run([str(env.python), "-B", "-I", "-c",
                               "import poolhouse.train, numpy; print('ok')"],
                              capture_output=True, text=True, timeout=120)
         assert out.returncode == 0, out.stderr[-300:]
@@ -225,6 +250,9 @@ def test_managed_driving_install_supplies_source_outside_package_metadata(tmp_pa
         return subprocess.CompletedProcess(args, 0, stdout='')
 
     monkeypatch.setattr(env, 'pip', pip)
+    monkeypatch.setattr(env, 'wheels', lambda: tmp_path)
+    monkeypatch.setattr('poolhouse.fleet.environment.compute_artifact.install',
+                        lambda *args, **kwargs: subprocess.CompletedProcess([], 0))
     result = env.install([name])
     assert result[name]['ok']
     assert calls == [['install', '--upgrade', f'poolhouse[{name}]', METADRIVE_SOURCE]]

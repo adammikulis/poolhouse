@@ -80,7 +80,8 @@ def workspace_brief(event: dict) -> str:
     made, why = register(event, parent)
     if not made:
         return unregistered(event, parent, why)
-    subagent_records.save(str(event["agent_id"]), name=made["id"], parent=made["parent"], board=made.get("board", ""))
+    subagent_records.save(str(event["agent_id"]), name=made["id"], parent=made["parent"], board=made.get("board", ""),
+                          model=made.get("model", ""))
     environment = workspace_hook.own_environment(event, "SubagentStart")
     if environment is None:
         return ""

@@ -16,9 +16,7 @@ SRC = REPO / "src" / "poolhouse"
 
 STANDALONE = {
     "coding": "called by the workspace runner as poolhouse.coding.launch_coding_agent",
-    "datasheet": "loaded by name as python:poolhouse.datasheet:tools, never imported",
     "protectedwrites": "loaded by file through poolhouse.worktreerules, so the hook scripts need no package on the path",
-    "web": "loaded by name as python:poolhouse.web:tools, never imported",
 }
 
 

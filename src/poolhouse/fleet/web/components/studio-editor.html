@@ -1,0 +1,299 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installEditor = (proto) =>
+      Object.assign(proto, {
+        library() {
+          const box = this.querySelector("#studio-library-items");
+          if (!box) return;
+          const search =
+              this.querySelector("#studio-search").value.toLowerCase(),
+            pending = this.canvas.pending;
+          const matches = (title) =>
+            String(title).toLowerCase().includes(search);
+          const compatible = (spec) =>
+            !pending ||
+            (
+              spec[pending.side === "outputs" ? "inputs" : "outputs"] || []
+            ).some((p) =>
+              pending.side === "outputs"
+                ? S.compatible(pending, p)
+                : S.compatible(p, pending),
+            );
+          const sections = [];
+          const nodes = this.specs.filter(
+            (spec) =>
+              matches((spec.title || spec.type) + " " + spec.family) &&
+              compatible(spec),
+          );
+          if (nodes.length)
+            sections.push(
+              E("h2", {}, pending ? "Compatible nodes" : "Nodes"),
+              ...nodes.map((spec) =>
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    onclick: () => {
+                      const n = this.add(spec);
+                      if (pending) {
+                        const side =
+                            pending.side === "outputs" ? "inputs" : "outputs",
+                          port = spec[side].find((p) =>
+                            pending.side === "outputs"
+                              ? S.compatible(pending, p)
+                              : S.compatible(p, pending),
+                          );
+                        this.canvas.port(n, port, side);
+                      }
+                    },
+                  },
+                  spec.title || spec.type,
+                  E("small", {}, spec.family || "Workflow"),
+                ),
+              ),
+            );
+          const templates = this.templates.filter((t) => matches(t.title));
+          if (templates.length && !pending)
+            sections.push(
+              E("h2", {}, "Templates"),
+              ...templates.map((t) =>
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    onclick: () =>
+                      this.perform(async () => {
+                        await this.open(null);
+                        this.graph = S.clone(t.graph);
+                        this.normalize();
+                        this.querySelector("#studio-title").value = t.title;
+                        this.changed();
+                        this.canvas.fit();
+                      }),
+                  },
+                  t.title,
+                  E("small", {}, t.description || "Ready to configure"),
+                ),
+              ),
+            );
+          const groups = Object.entries(this.graph.groups).filter(([, g]) =>
+            matches(g.name || "Group"),
+          );
+          if (groups.length && !pending)
+            sections.push(
+              E("h2", {}, "Saved groups"),
+              ...groups.map(([id, g]) =>
+                E(
+                  "button",
+                  { type: "button", onclick: () => this.insertGroup(id) },
+                  g.name || "Group",
+                  E("small", {}, "Independent copy"),
+                ),
+              ),
+            );
+          if (!sections.length) sections.push(E("p", {}, "No matching nodes."));
+          box.replaceChildren(...sections);
+        },
+        inspector() {
+          const box = this.querySelector(".studio-inspector"),
+            nodes = this.graph.nodes.filter((n) => this.selected.has(n.id));
+          if (nodes.length !== 1) {
+            box.replaceChildren(
+              E("h2", {}, "Inspector"),
+              E(
+                "p",
+                {},
+                nodes.length
+                  ? nodes.length +
+                      " nodes selected. Group, copy or delete this selection."
+                  : "Select a node to configure it.",
+              ),
+            );
+            return;
+          }
+          const node = nodes[0],
+            spec = S.spec(this, node);
+          box.replaceChildren(E("h2", {}, spec.title || node.type));
+          if (spec.description) box.append(E("p", {}, spec.description));
+          for (const [name, schema] of Object.entries(
+            spec.parameters?.properties || {},
+          ))
+            S.field(box, name, schema, node.parameters[name], (value) => {
+              this.checkpoint();
+              node.parameters[name] = value;
+              this.changed();
+            });
+          for (const [name, resource] of Object.entries(spec.bindings || {})) {
+            if (!resource.kind) continue;
+            const kind = resource.kind,
+              choices =
+                this.resources?.[kind + "s"] ||
+                (kind === "model"
+                  ? this.resources?.models
+                  : this.resources?.datasets) ||
+                [];
+            const select = E(
+              "select",
+              { "aria-label": "Choose " + name },
+              E("option", { value: "" }, "Choose " + name),
+              ...choices.map((r) =>
+                E("option", { value: r.id }, r.title || r.id),
+              ),
+            );
+            select.value = node.bindings?.[name]?.id || "";
+            select.onchange = () => {
+              this.checkpoint();
+              node.bindings ||= {};
+              if (select.value)
+                node.bindings[name] = { kind, id: select.value };
+              else delete node.bindings[name];
+              this.changed();
+            };
+            box.append(E("label", {}, "Choose " + name, select));
+          }
+          this.sweepControls(box, node, spec);
+          const links = E("div", { class: "studio-links" });
+          for (const input of spec.inputs || []) {
+            const select = E(
+              "select",
+              { "aria-label": "Connect " + input.name },
+              E(
+                "option",
+                { value: "" },
+                "Choose " + input.name + " (" + input.type + ")",
+              ),
+            );
+            for (const n of this.graph.nodes.filter((n) => n.id !== node.id)) {
+              const ns = S.spec(this, n);
+              for (const output of ns.outputs || [])
+                if (S.compatible(output, input)) {
+                  const value = JSON.stringify({
+                    node: n.id,
+                    port: output.name,
+                  });
+                  select.append(
+                    E(
+                      "option",
+                      { value },
+                      (ns.title || n.type) + " · " + output.name,
+                    ),
+                  );
+                  const edge = this.graph.edges.find(
+                    (e) =>
+                      e.target.node === node.id && e.target.port === input.name,
+                  );
+                  if (
+                    edge?.source.node === n.id &&
+                    edge.source.port === output.name
+                  )
+                    select.value = value;
+                }
+            }
+            select.onchange = () => {
+              this.checkpoint();
+              this.graph.edges = this.graph.edges.filter(
+                (e) =>
+                  e.target.node !== node.id || e.target.port !== input.name,
+              );
+              if (select.value)
+                this.graph.edges.push({
+                  source: JSON.parse(select.value),
+                  target: { node: node.id, port: input.name },
+                });
+              this.changed();
+            };
+            links.append(
+              E("label", {}, input.name + " · " + input.type, select),
+            );
+          }
+          box.append(links);
+          if (node.type === "group")
+            box.append(
+              E(
+                "button",
+                { type: "button", onclick: () => this.enterGroup(node) },
+                "Open group",
+              ),
+              E(
+                "button",
+                { type: "button", onclick: () => this.unpackGroup(node) },
+                "Unpack group",
+              ),
+            );
+          if (this.context.length) {
+            const definition = this.context.at(-1).definition;
+            box.append(E("h2", {}, "Group interface"));
+            for (const side of ["inputs", "outputs"])
+              for (const port of spec[side] || []) {
+                const name = Object.entries(definition[side] || {}).find(
+                  ([, ref]) => ref.node === node.id && ref.port === port.name,
+                )?.[0];
+                const field = E("input", {
+                  value: name || "",
+                  "aria-label": "Expose " + side + " " + port.name,
+                  placeholder: "Public name",
+                });
+                field.onchange = () =>
+                  this.expose(
+                    side,
+                    field.value,
+                    { node: node.id, port: port.name },
+                    name,
+                  );
+                box.append(
+                  E("label", {}, "Expose " + side + " " + port.name, field),
+                );
+              }
+            for (const name of Object.keys(spec.parameters?.properties || {})) {
+              const exposed = Object.entries(definition.parameters || {}).find(
+                ([, ref]) => ref.node === node.id && ref.parameter === name,
+              )?.[0];
+              const field = E("input", {
+                value: exposed || "",
+                "aria-label": "Expose parameter " + name,
+                placeholder: "Public name",
+              });
+              field.onchange = () =>
+                this.expose(
+                  "parameters",
+                  field.value,
+                  { node: node.id, parameter: name },
+                  exposed,
+                );
+              box.append(E("label", {}, "Expose parameter " + name, field));
+            }
+          }
+        },
+        outlineView() {
+          const box = this.querySelector(".studio-outline");
+          box.replaceChildren(
+            E("h2", {}, "Workflow outline"),
+            ...this.graph.nodes.map((n) => {
+              const spec = S.spec(this, n),
+                inputs = this.graph.edges
+                  .filter((e) => e.target.node === n.id)
+                  .map((e) => e.target.port)
+                  .join(", ");
+              return E(
+                "button",
+                {
+                  type: "button",
+                  class: this.selected.has(n.id) ? "studio-selected" : "",
+                  "aria-pressed": String(this.selected.has(n.id)),
+                  onclick: (e) => this.select(n.id, e.shiftKey),
+                },
+                spec.title || n.type,
+                E(
+                  "small",
+                  {},
+                  inputs ? "Connected: " + inputs : "No connected inputs",
+                ),
+              );
+            }),
+          );
+        },
+      });
+  })();
+</script>

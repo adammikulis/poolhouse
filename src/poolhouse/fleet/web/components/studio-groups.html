@@ -1,0 +1,339 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installGroups = (proto) =>
+      Object.assign(proto, {
+        snapshot() {
+          this.flushGroup();
+          return {
+            graph: S.clone(this.rootGraph()),
+            path: this.context.map((c) => c.node.id),
+          };
+        },
+        restoreSnapshot(saved) {
+          this.openContext(saved.graph, saved.path);
+        },
+        openContext(graph, path) {
+          this.graph = graph;
+          this.context = [];
+          for (const id of path) {
+            const node = this.graph.nodes.find((n) => n.id === id),
+              definition = this.graph.groups[node.group];
+            this.context.push({ parent: this.graph, node, definition });
+            this.graph = {
+              nodes: definition.nodes,
+              edges: definition.edges,
+              groups: this.graph.groups,
+              layout: this.graph.layout.groups?.[node.group] || {
+                nodes: {},
+                viewport: { x: 0, y: 0, zoom: 1 },
+              },
+            };
+          }
+        },
+        expose(side, name, ref, previous) {
+          if (name && !/^[A-Za-z0-9_.-]+$/.test(name)) {
+            this.message(
+              "Use letters, numbers, dots, dashes or underscores for the public name.",
+            );
+            return;
+          }
+          this.checkpoint();
+          const current = this.context.at(-1),
+            definition = current.definition;
+          definition[side] ||= {};
+          if (previous) delete definition[side][previous];
+          if (name) definition[side][name] = ref;
+          if (previous && previous !== name) {
+            if (side === "parameters" && previous in current.node.parameters) {
+              if (name)
+                current.node.parameters[name] =
+                  current.node.parameters[previous];
+              delete current.node.parameters[previous];
+            }
+            if (side !== "parameters") {
+              const endpoint = side === "inputs" ? "target" : "source";
+              current.parent.edges = current.parent.edges.filter((edge) => {
+                if (
+                  edge[endpoint].node !== current.node.id ||
+                  edge[endpoint].port !== previous
+                )
+                  return true;
+                if (!name) return false;
+                edge[endpoint].port = name;
+                return true;
+              });
+            }
+          }
+          this.changed();
+        },
+        reorderInterface(side, name, direction) {
+          this.checkpoint();
+          const definition = this.context.at(-1).definition,
+            entries = Object.entries(definition[side] || {}),
+            index = entries.findIndex(([key]) => key === name),
+            next = index + direction;
+          if (next < 0 || next >= entries.length) return;
+          [entries[index], entries[next]] = [entries[next], entries[index]];
+          definition[side] = Object.fromEntries(entries);
+          this.changed();
+        },
+        makeGroup() {
+          if (!this.selected.size) return;
+          this.checkpoint();
+          const ids = this.selected,
+            id = S.id(),
+            instanceId = S.id(),
+            nodes = this.graph.nodes.filter((n) => ids.has(n.id)),
+            edges = this.graph.edges.filter(
+              (e) => ids.has(e.source.node) && ids.has(e.target.node),
+            ),
+            incoming = this.graph.edges.filter(
+              (e) => !ids.has(e.source.node) && ids.has(e.target.node),
+            ),
+            outgoing = this.graph.edges.filter(
+              (e) => ids.has(e.source.node) && !ids.has(e.target.node),
+            ),
+            definition = {
+              name: "Reusable group",
+              nodes: S.clone(nodes),
+              edges: S.clone(edges),
+              inputs: {},
+              outputs: {},
+              parameters: {},
+            };
+          this.graph.layout.groups ||= {};
+          this.graph.layout.groups[id] = {
+            nodes: {},
+            viewport: { x: 0, y: 0, zoom: 1 },
+          };
+          for (const n of nodes)
+            this.graph.layout.groups[id].nodes[n.id] = S.clone(
+              S.position(this, n.id),
+            );
+          const unique = (map, name) => {
+            let key = name,
+              i = 2;
+            while (map[key]) key = name + "_" + i++;
+            return key;
+          };
+          for (const edge of incoming) {
+            const key = unique(definition.inputs, edge.target.port);
+            definition.inputs[key] = S.clone(edge.target);
+            edge.target = { node: instanceId, port: key };
+          }
+          for (const edge of outgoing) {
+            let key = Object.entries(definition.outputs).find(
+              ([, p]) =>
+                p.node === edge.source.node && p.port === edge.source.port,
+            )?.[0];
+            if (!key) {
+              key = unique(definition.outputs, edge.source.port);
+              definition.outputs[key] = S.clone(edge.source);
+            }
+            edge.source = { node: instanceId, port: key };
+          }
+          this.graph.groups[id] = definition;
+          this.graph.nodes = this.graph.nodes.filter((n) => !ids.has(n.id));
+          this.graph.nodes.push({
+            id: instanceId,
+            type: "group",
+            group: id,
+            parameters: {},
+          });
+          this.graph.edges = this.graph.edges.filter(
+            (e) => !ids.has(e.source.node) && !ids.has(e.target.node),
+          );
+          this.graph.layout.nodes[instanceId] = S.clone(
+            S.position(this, nodes[0].id),
+          );
+          this.selected = new Set([instanceId]);
+          this.changed();
+          this.message(
+            "Group created. Open it to expose ports and parameters.",
+          );
+        },
+        insertGroup(id) {
+          this.checkpoint();
+          const copy = S.copyGroup(this, this.graph.groups, id);
+          const node = {
+            id: S.id(),
+            type: "group",
+            group: copy,
+            parameters: {},
+          };
+          this.graph.nodes.push(node);
+          this.graph.layout.nodes[node.id] = { x: 80, y: 80 };
+          this.selected = new Set([node.id]);
+          this.changed();
+        },
+        rootGraph() {
+          return this.context[0]?.parent || this.graph;
+        },
+        flushGroup() {
+          if (!this.context.length) return;
+          const current = this.context.at(-1);
+          Object.assign(current.definition, {
+            nodes: this.graph.nodes,
+            edges: this.graph.edges,
+          });
+          current.parent.layout.groups ||= {};
+          current.parent.layout.groups[current.node.group] = this.graph.layout;
+        },
+        enterGroup(node) {
+          this.flushGroup();
+          const definition = this.graph.groups[node.group];
+          if (!definition) return;
+          this.context.push({ parent: this.graph, definition, node });
+          this.graph = {
+            nodes: definition.nodes,
+            edges: definition.edges,
+            groups: this.graph.groups,
+            layout: this.graph.layout.groups?.[node.group] || {
+              nodes: {},
+              viewport: { x: 0, y: 0, zoom: 1 },
+            },
+          };
+          this.normalize();
+          this.selected.clear();
+          this.undoStack = [];
+          this.redoStack = [];
+          this.render();
+        },
+        leaveGroup() {
+          if (!this.context.length) return;
+          this.flushGroup();
+          const left = this.context.pop();
+          this.graph = left.parent;
+          this.selected = new Set([left.node.id]);
+          this.undoStack = [];
+          this.redoStack = [];
+          this.changed();
+        },
+        groupPath() {
+          const box = this.querySelector("#studio-group-path");
+          box.replaceChildren();
+          if (!this.context.length) return;
+          box.append(
+            E(
+              "button",
+              { type: "button", onclick: () => this.leaveGroup() },
+              "← Back to parent",
+            ),
+            E(
+              "span",
+              {},
+              this.context.map((c) => c.definition.name).join(" / "),
+            ),
+          );
+          const current = this.context.at(-1);
+          for (const side of ["inputs", "outputs", "parameters"])
+            for (const [name, ref] of Object.entries(
+              current.definition[side] || {},
+            )) {
+              const row = E("span", {}, side + " · " + name);
+              row.append(
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Move " + side + " " + name + " earlier",
+                    onclick: () => this.reorderInterface(side, name, -1),
+                  },
+                  "↑",
+                ),
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Move " + side + " " + name + " later",
+                    onclick: () => this.reorderInterface(side, name, 1),
+                  },
+                  "↓",
+                ),
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Hide " + side + " " + name,
+                    onclick: () => this.expose(side, "", ref, name),
+                  },
+                  "Hide",
+                ),
+              );
+              box.append(row);
+            }
+
+          const name = E("input", {
+            "aria-label": "Group name",
+            value: current.definition.name,
+          });
+          name.onchange = () => {
+            current.definition.name = name.value;
+            this.changed(false);
+          };
+          box.append(
+            name,
+            E(
+              "button",
+              {
+                type: "button",
+                onclick: () => {
+                  this.flushGroup();
+                  this.changed();
+                  this.message(
+                    "Group changes saved. Existing independent copies are unchanged.",
+                  );
+                },
+              },
+              "Update saved group",
+            ),
+          );
+        },
+        unpackGroup(node) {
+          const group = this.graph.groups[node.group];
+          if (!group) return;
+          this.checkpoint();
+          const ids = new Map(group.nodes.map((n) => [n.id, S.id()])),
+            offset = S.position(this, node.id);
+          for (const n of S.clone(group.nodes)) {
+            const old = n.id;
+            n.id = ids.get(old);
+            this.graph.nodes.push(n);
+            const p = this.graph.layout.groups?.[node.group]?.nodes?.[old] || {
+              x: 0,
+              y: 0,
+            };
+            this.graph.layout.nodes[n.id] = {
+              x: p.x + offset.x,
+              y: p.y + offset.y,
+            };
+          }
+          for (const e of S.clone(group.edges)) {
+            e.source.node = ids.get(e.source.node);
+            e.target.node = ids.get(e.target.node);
+            this.graph.edges.push(e);
+          }
+          for (const edge of this.graph.edges) {
+            if (edge.source.node === node.id) {
+              const ref = group.outputs[edge.source.port];
+              edge.source = { node: ids.get(ref.node), port: ref.port };
+            }
+            if (edge.target.node === node.id) {
+              const ref = group.inputs[edge.target.port];
+              edge.target = { node: ids.get(ref.node), port: ref.port };
+            }
+          }
+          for (const [name, ref] of Object.entries(group.parameters || {}))
+            if (name in node.parameters)
+              this.graph.nodes.find(
+                (n) => n.id === ids.get(ref.node),
+              ).parameters[ref.parameter] = node.parameters[name];
+          this.graph.nodes = this.graph.nodes.filter((n) => n.id !== node.id);
+          this.selected = new Set(ids.values());
+          this.changed();
+        },
+      });
+  })();
+</script>

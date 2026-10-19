@@ -419,7 +419,7 @@ def _embedded(args: Any) -> None:
         return
     base = str(getattr(args, "embed_url", "") or EMBED_URL)
     model = str(getattr(args, "embed_model", "") or "embed")
-    finish = f"poolhouse-ingest embed --out {args.out} --embed-url {base} --embed-model {model}"
+    finish = f"python -m poolhouse.ingest embed --out {args.out} --embed-url {base} --embed-model {model}"
     try:
         got = embed_store(args.out, base_url=base, model=model,
                           smooth_hops=int(getattr(args, "smooth", 0) or 0), log=say)

@@ -1,7 +1,7 @@
 {
- "surfaces": 821,
+ "surfaces": 842,
  "by_status": {
-  "covered": 508,
+  "covered": 529,
   "partial": 193,
   "uncovered": 52,
   "n/a": 68,
@@ -19,14 +19,14 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 21,
+   "n/a": 20,
    "unmapped": 0
   },
   "context": {
    "covered": 8,
    "partial": 0,
    "uncovered": 4,
-   "n/a": 17,
+   "n/a": 18,
    "unmapped": 0
   },
   "desktop": {
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 48,
+   "covered": 51,
    "partial": 46,
    "uncovered": 0,
    "n/a": 0,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 97,
+   "covered": 114,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 95,
+   "covered": 96,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -642,16 +642,6 @@
    "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
-   "id": "cli:poolhouse-ingest",
-   "kind": "cli",
-   "source": "poolhouse.ingest:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
    "id": "cli:poolhouse-jobs",
    "kind": "cli",
    "source": "poolhouse.jobs:main",
@@ -1100,6 +1090,16 @@
    "id": "context:serve/llamacpp_smoke.py",
    "kind": "context",
    "source": "serve/llamacpp_smoke.py",
+   "trust": "tool results, pages, files, members, stored facts",
+   "attacker": "text from outside is read by a model as an instruction",
+   "status": "n/a",
+   "tests": [],
+   "note": "prompts built from the person's own benchmark questions, canaries and fixed smoke checks"
+  },
+  {
+   "id": "context:studio/worker.py",
+   "kind": "context",
+   "source": "studio/worker.py",
    "trust": "tool results, pages, files, members, stored facts",
    "attacker": "text from outside is read by a model as an instruction",
    "status": "n/a",
@@ -2038,6 +2038,52 @@
     "tests/test_net_no_bypass.py"
    ],
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:fleet/studio_library.py:MemberLibrary._response",
+   "kind": "egress",
+   "source": "fleet/studio_library.py:MemberLibrary._response",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_pool_library.py"
+   ],
+   "note": "Current enrolled pool discovery pins encrypted devices. Exact destination guards refuse redirects, bounded sealed responses reject malformed packages and nonmonotonic pages, and bounded error bodies prevent a malicious device exhausting memory. Immutable versions and safe offline warnings preserve local publication."
+  },
+  {
+   "id": "egress:fleet/studio_transport.py:MemberExecution.__init__",
+   "kind": "egress",
+   "source": "fleet/studio_transport.py:MemberExecution.__init__",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
+    "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
+    "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
+    "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
+    "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
+    "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"
+   ],
+   "note": "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
+  },
+  {
+   "id": "egress:fleet/studio_transport.py:MemberExecution._wire",
+   "kind": "egress",
+   "source": "fleet/studio_transport.py:MemberExecution._wire",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
+    "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
+    "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
+    "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
+    "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
+    "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"
+   ],
+   "note": "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
   },
   {
    "id": "egress:fleet/ui.py:_scraped",
@@ -8576,6 +8622,261 @@
    "note": "LAN hints are bounded nonce-matching metadata; local setup or a signed-in person selects a named recovery file, validates its bounded shape, and authenticates a native encrypted protocol-3 beacon before any membership write; scans and recovery joins never access the keystore"
   },
   {
+   "id": "route:fleet/studio_routes.py:/ui/studio/*",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/nodes",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/packages",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._packages",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/packages*",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._packages",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/packages/export",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._packages",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/packages/import",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._packages",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/packages/preview",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._packages",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/packages/publish",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._packages",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/resources",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/runs",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._runs",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/runs*",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/runs/*",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._runs",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/templates",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/validate",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/workflows",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._workflows",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/workflows*",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/workflows/*",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._workflows",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
    "id": "route:fleet/workspace_routes.py:/ui/workspace/*",
    "kind": "route",
    "source": "fleet/workspace_routes.py:WorkspaceRoutes.route",
@@ -9873,6 +10174,19 @@
     "tests/test_autostart_prepare.py::test_arguments_with_spaces_quotes_and_percent_stay_single_argv_elements"
    ],
    "note": "service-manager commands are argument lists with no shell; hostile characters in an argument reach the program as one literal element, and a program that hangs or cannot start is a failure"
+  },
+  {
+   "id": "spawn:fleet/compute_artifact.py:probe",
+   "kind": "spawn",
+   "source": "fleet/compute_artifact.py:probe",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_compute_artifact.py::test_probe_uses_fixed_isolated_argv_and_refuses_hostile_result",
+    "tests/test_compute_artifact.py::test_probe_ignores_hostile_python_environment_and_refuses_unlisted_code"
+   ],
+   "note": "The isolated interpreter ignores injected Python startup and manifest environment values, rejects unexpected source and compiled bytecode plus changed revisions, and uses fixed argv with trusted JSON stdin and no shell, retry or fallback"
   },
   {
    "id": "spawn:fleet/device.py:_ram_used_gb",

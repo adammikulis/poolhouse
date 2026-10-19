@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import optional
 from poolhouse.entities.fold import merged_spans
 
 __all__ = [
@@ -79,9 +80,10 @@ class Report:
 
     def said(self) -> str:
         if self.findings:
+            fold = optional.command("poolhouse.ingest", "fold")
             return (f"NOT SOUND: after the pass the store does not read back whole -- "
                     f"{len(self.findings)} finding(s), e.g. {self.findings[0]!r}; the pass "
-                    f"is not a success. Rebuild from the reads (poolhouse-ingest fold) and "
+                    f"is not a success. Rebuild from the reads{f' ({fold})' if fold else ''} and "
                     f"report the store engine version. It would have said: ") + self._said()
         return self._said()
 
