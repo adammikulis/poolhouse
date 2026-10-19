@@ -1,4 +1,4 @@
-"""A session retires its own identity when it ends for good, and a device holds a bounded number of live sessions."""
+"""A session retires its own identity when it ends for good, and a terminal starts as many sessions as it needs."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from poolhouse.board import client as board_client, session as board_session
 from poolhouse.net import git
 
 pytest_plugins = ["node_kit"]
-NODE_WRITE_LIMITS = {"sessions_per_lineage": 6, "sessions_per_harness": 100}
 ROOT = Path(__file__).resolve().parents[1]
 HOOKS = ROOT / "scripts/hooks"
 
@@ -99,13 +98,8 @@ def test_a_session_that_ends_twice_or_is_unknown_does_not_fail_the_hook(workspac
     assert hook("claude-session-end").returncode == 0
 
 
-def test_a_terminal_that_starts_sessions_without_ending_them_is_stopped_and_ending_one_makes_room(workspace_node, project):
-    for index in range(6):
-        assert start(f"runaway-{index}").returncode == 0
-    refused = start("runaway-6")
-    assert refused.returncode == 0 and "this terminal already has 6 live claude-code sessions" in refused.stderr
-    assert not board_session.find("claude-code", "runaway-6", client=workspace_node.client), "the refused session holds no name"
-    assert end("runaway-1").returncode == 0
-    ok = start("runaway-6")
-    assert ok.returncode == 0 and not ok.stderr
-    assert board_session.find("claude-code", "runaway-6", client=workspace_node.client)
+def test_a_terminal_starts_as_many_sessions_as_it_needs_without_ending_any(workspace_node, project):
+    for index in range(12):
+        started = start(f"worker-{index}")
+        assert started.returncode == 0 and not started.stderr
+        assert board_session.find("claude-code", f"worker-{index}", client=workspace_node.client)

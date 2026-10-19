@@ -23,10 +23,10 @@ pub const LIMITS_FILE: &str = "write-limits.json";
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WriteLimits {
-    /// Messages, notes and claims one session writes in `window_s`; a subagent writes `child_sends` of them, and counts against its parent's too.
+    /// Messages, notes and claims one session writes in `window_s`; a subagent writes `child_sends` of them (never fewer than `sends`), and counts against its parent's too.
     pub sends: usize,
     pub child_sends: usize,
-    /// What all the subagents of one session write together in `window_s`, besides each one's `child_sends`; none of it is the parent's own `sends`.
+    /// What all the subagents of one session write together in `window_s` (never fewer than `sends`), besides each one's `child_sends`; none of it is the parent's own `sends`.
     pub subagent_sends: usize,
     pub window_s: f64,
     /// Announcements one session writes in `announce_window_s` before the board is told it is over; an announcement is never refused for it.
@@ -39,10 +39,6 @@ pub struct WriteLimits {
     pub notes_per_author: usize,
     /// Seconds a session may go unheard before it is idle, unless it holds a live lease.
     pub child_beat_s: u64,
-    /// Live main sessions of one harness a board holds, and live ones one process lineage (a terminal) started; a session is live while it is
-    /// not idle (see `child_beat_s`).
-    pub sessions_per_harness: usize,
-    pub sessions_per_lineage: usize,
     /// Seconds a session may be idle before the node retires it.
     pub idle_retire_s: u64,
 }
@@ -50,9 +46,9 @@ pub struct WriteLimits {
 impl Default for WriteLimits {
     fn default() -> WriteLimits {
         WriteLimits {
-            sends: 30, child_sends: 10, subagent_sends: 120, window_s: 60.0, announces: 6, announce_window_s: 600.0,
+            sends: 30, child_sends: 30, subagent_sends: 120, window_s: 60.0, announces: 6, announce_window_s: 600.0,
             inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, child_beat_s: 1800,
-            sessions_per_harness: 24, sessions_per_lineage: 8, idle_retire_s: 86_400,
+            idle_retire_s: 86_400,
         }
     }
 }
@@ -102,8 +98,8 @@ fn family(who: &Holder, parent: &str) -> String {
 fn may_send(node: &mut Node, who: &Holder) -> bool {
     let (limits, parent) = (node.writes.clone(), parent_of(node, who));
     let Some(parent) = parent else { return node.rates.permits(&key("send", who), limits.sends, limits.window()) };
-    node.rates.permits(&key("send", who), limits.child_sends.min(limits.sends), limits.window())
-        && node.rates.permits(&family(who, &parent), limits.subagent_sends, limits.window())
+    node.rates.permits(&key("send", who), limits.child_sends.max(limits.sends), limits.window())
+        && node.rates.permits(&family(who, &parent), limits.subagent_sends.max(limits.sends), limits.window())
 }
 
 fn count_send(node: &mut Node, who: &Holder) {

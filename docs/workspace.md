@@ -85,11 +85,8 @@ goes on under another id (`reason` `clear` or `resume`) and for any event of a s
 session resumed later from the same terminal registers again and is the same name.
 
 `agents` marks a session `idle` when it has made no request for 30 minutes and holds no lease whose process still runs. The
-node retires a session that has been idle for 24 hours, so a terminal left overnight keeps its session. An idle session
-does not count toward the bound: a device holds at most 24 live main sessions of one harness and
-8 started from one terminal, and refuses the next with one sentence that says to end one. A person in another terminal is
-not held back by a terminal that starts sessions in a loop. The numbers are in
-[docs/node.md](node.md), "Limits" and "Idle sessions and the bound".
+node retires a session that has been idle for 24 hours, so a terminal left overnight keeps its session. A device holds any number of live sessions. The numbers are in
+[docs/node.md](node.md), "Limits" and "Idle sessions".
 
 ### Reading one agent's records: `--for-agent NAME`
 

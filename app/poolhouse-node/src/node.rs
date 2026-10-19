@@ -34,11 +34,9 @@ use crate::tally::Tally;
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
-/// How many boards a node hosts at most, how many sessions a lineage registers in a minute, and how many boards it creates in an hour.
+/// How many boards a node hosts at most, and how many boards a lineage creates in an hour.
 pub const MAX_BOARDS: usize = 256;
-const MOST_REGISTRATIONS_PER_MINUTE: usize = 60;
 const MOST_NEW_BOARDS_PER_HOUR: usize = 16;
-const MINUTE: Duration = Duration::from_secs(60);
 const HOUR: Duration = Duration::from_secs(3600);
 
 /// One board this node holds and the names registered on it.
@@ -253,8 +251,8 @@ impl Node {
 
     /// Register a session on ``board`` (creating the board on first use) from the process ``peer``; a token given makes
     /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
-    /// the lineage it was registered from. A lineage registers sessions and creates boards a few times a minute and an hour,
-    /// and a node hosts a bounded number of boards. Returns name, token, whether new.
+    /// the lineage it was registered from. A lineage creates a few boards an hour, and a node hosts a bounded number of
+    /// boards. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let Native { model, harness, session } = native;
         let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
@@ -265,17 +263,14 @@ impl Node {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
         }
         let lineage = peer.lineage();
-        let (made, boards) = (format!("register {}", limit_key(&lineage)), format!("board {}", limit_key(&lineage)));
+        let boards = format!("board {}", limit_key(&lineage));
         let new_board = !self.boards.contains_key(board);
-        if !self.rates.permits(&made, MOST_REGISTRATIONS_PER_MINUTE, MINUTE) {
-            return Err(Error::Quota("this process tree registers sessions as fast as it may: try again in a minute".into()));
-        }
         if new_board && (self.boards.len() >= MAX_BOARDS || !self.rates.permits(&boards, MOST_NEW_BOARDS_PER_HOUR, HOUR)) {
             return Err(Error::Quota("this process tree creates boards as fast as it may, or this node hosts as many as it will".into()));
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
         if parent.is_empty() {
-            crate::idle::admit_main(self, board, &harness, session, &lineage)?;
+            crate::idle::sweep(self, board)?;
         }
         let revived = self.boards.get(board).and_then(|h| h.names.find(&harness, session).and_then(|n| h.names.get(n))).is_some_and(|i| i.retired);
         self.make_room_for_a_token()?;
@@ -289,7 +284,6 @@ impl Node {
         }
         let origin = self.host(board)?.board.origin().to_string();
         let token = self.tokens.issue(board, &name, &bound)?;
-        self.rates.record(&made, MINUTE);
         if new_board {
             self.rates.record(&boards, HOUR);
         }

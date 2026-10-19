@@ -303,12 +303,8 @@ the session asked for or reviewed). The node itself ends a session as `idle` (se
 `idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
 (a retired subagent never does); its old tokens stay refused and it is given a new one.
 
-**Idle sessions and the bound.** A session is *idle* when it is not retired and has neither made a request within 30 minutes
-(`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. The node refuses to register a main
-session (`quota`, in one plain sentence) when the board already holds 24 live ones of its harness, or 8 live ones started from the
-same terminal; an idle session counts for neither, so a forgotten session never keeps a person from starting a new one, and one
-terminal that starts sessions in a loop stops at 8 while another terminal is not held back. A session already registered is not
-new, so it is given its token again at the bound. The node retires a session that has been idle for 24 hours (`idle_retire_s`;
+**Idle sessions.** A session is *idle* when it is not retired and has neither made a request within 30 minutes
+(`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. No count of live sessions is kept: any number register, from one terminal or many. The node retires a session that has been idle for 24 hours (`idle_retire_s`;
 its tokens end, its leases are released and the board gets an `audit` entry by `node`) whenever it lists sessions or registers one.
 
 **Claims** are leases of one `claim` resource taken without waiting. `reserve` takes a set of them in one call of the
@@ -594,7 +590,6 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | tokens a name holds | 8 (a ninth ends the oldest but the first) | the oldest ends |
 | tokens a node holds | 2,048; when full, the tokens of sessions idle for 30 days end | `quota` |
 | boards a node hosts | 256 | `quota` |
-| registrations by a lineage | 60 a minute | `quota` |
 | boards a lineage creates | 16 an hour | `quota` |
 | links a board has open | 64 | `quota` |
 | links a lineage makes | 6 a minute | `quota` |
@@ -607,16 +602,15 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | connections the phone endpoint holds; a request body | 48; 64 KiB | the connection closes |
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
-| messages, notes and claims one session writes | 30 a minute; a subagent 10, and what its subagents write together is held to 120 a minute of their own, which is none of the parent's 30 | `quota` |
+| messages, notes and claims one session writes | 30 a minute; a subagent as many (`child_sends`, never below `sends`), and what its subagents write together is held to 120 a minute of their own (`subagent_sends`, never below `sends`), which is none of the parent's 30 | `quota` |
 | announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written and the board gets an `announce_over_quota` audit entry | none |
 | direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
 | notes an author keeps on a board | 500 | `quota` |
-| live main sessions of one harness on a board; of one harness started from one terminal (process lineage) | 24; 8 (live: not retired, and either holding a lease whose process still runs or heard from within 30 minutes; an idle session counts for neither) | `quota` |
 | idle time before the node retires a session | 24 hours (no lease held, not heard from) | none |
 
 The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`; the limits on what a
 session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `sends`, `child_sends`, `subagent_sends`,
-`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `child_beat_s`, `sessions_per_harness`, `sessions_per_lineage` and `idle_retire_s`. A message
+`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `child_beat_s` and `idle_retire_s`. A message
 is unread until its recipient reads its inbox with a `since` cursor past it: the node keeps the furthest cursor each session presented
 on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
 counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
