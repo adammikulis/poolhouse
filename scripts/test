@@ -547,6 +547,7 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     thread = REUSE["events"].job_started(job, spec)
     jobs.write(job, "status.json", {"state": "running", "at": time.time(), "thread": thread, **me})
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    jobs.watch_follower(job)
     state, code = "failed", 1
     flags = ["--task", args.task] if args.task else []
     try:
@@ -567,20 +568,12 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
 
 
 def follow(argv: list[str], args: argparse.Namespace) -> int:
-    """Run a tier as a job and show its output until it ends; Ctrl-C cancels it."""
-    jobs, me = jobs_store(), REUSE["agent"].get("id", "")
+    """Run a tier as a job and show its output until it ends; Ctrl-C, SIGTERM and SIGHUP cancel it and wait for it to end."""
     try:
-        job = jobs.submit(argv, REUSE["agent"], ROOT, Path(__file__).resolve(),
-                          {"task": args.task, "exclusive": False})
-    except testjobs.Refused as error:
+        return jobs_store().follow(argv, REUSE["agent"], ROOT, Path(__file__).resolve(), {"task": args.task})
+    except (testjobs.Refused, OSError) as error:
         print(f"test: {error}", file=sys.stderr)
         return 4
-    try:
-        status = jobs.wait(job, float("inf"), tail=True)
-    except KeyboardInterrupt:
-        print(f"\n{jobs.cancel(job, me, jobs.read(job, 'spec.json').get('secret', ''))}")
-        return 130
-    return int(status.get("exit", 1))
 
 
 def build_node(files: list[str] | None = None) -> int:

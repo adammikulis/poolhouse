@@ -389,13 +389,19 @@ STOPS = (ex.Stop, NodeError, RuntimeError, OSError)
 
 
 def terminate(*_: object) -> None:
-    """Turn SIGTERM into an exit that runs the cleanups of the run."""
+    """Turn SIGTERM or SIGHUP into an exit that runs the cleanups of the run."""
     raise SystemExit(143)
+
+
+def stop_on_signals() -> None:
+    """Make SIGTERM and SIGHUP (the terminal lost) end the run through its cleanups."""
+    for number in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(number, terminate)
 
 
 def land(root: Path, branch: str, agent: str, dry_run: bool) -> int:
     """Run the lander for ``branch`` from ``root``; the exit status (0 landed or already, 5 stopped, 6 landed with a warning)."""
-    signal.signal(signal.SIGTERM, terminate)
+    stop_on_signals()
     try:
         L = open_landing(root, branch, agent)
         if dry_run:
