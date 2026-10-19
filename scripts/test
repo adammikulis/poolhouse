@@ -646,6 +646,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         os.environ.pop("DEV_TEST_AGENT", None)
     if args.on:
+        if refusal := testscope.tier_refusal(args.tier, rest, ROOT):
+            print(f"test: {refusal}", file=sys.stderr)
+            return 4
         import test_on
         return test_on.main(args, rest, ROOT, lambda tier, file: pytest_command(1, *TIER_FLAGS[tier], file), REUSE["on"])
     if args.confine:

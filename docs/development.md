@@ -186,7 +186,7 @@ python scripts/test all tests/<affected-file>.py -n 1
 Agents test their own changes through `scripts/test`, which defaults to one worker and uses
 shared broker admission. Explicit `-n 0` requests an automatic pool; explicit worker ceilings
 remain effective. The main agent runs shared structural/security gates once per consolidated
-integration batch before publication, handles full end-to-end checks, and schedules full suites.
+integration batch before publication. The full suite runs on GitHub for every pushed commit; an agent never runs it.
 
 | tier | what it runs | about |
 |---|---|---|

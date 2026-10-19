@@ -136,7 +136,7 @@ gate.
   retain their assigned permissions and send ready commits to their parent; the parent carries integration and
   pushing through without waiting for another publisher. Do not accumulate ready branches or local-only commits until
   the end of a session, wait for every worker to finish, or defer publication behind cleanup, unrelated work or
-  background full suites. After publication, promptly complete the merged branch's maintained worktree cleanup.
+  the GitHub run. After publication, promptly complete the merged branch's maintained worktree cleanup.
 - **Pull and push as work lands.** Fetch before preparing each integration batch and again immediately before
   pushing. Reconcile upstream advancement, conflicts included, in an isolated integration worktree, review the
   resulting changes and run the incremental affected gates before landing the exact tree; equivalent recovered
@@ -180,7 +180,7 @@ not proof that it is disposable.
 
 - Gate cost is per batch: combine all ready leaves into one run and start it whenever a leaf is ready and no gate is
   in flight. Scale it to the diff: documentation-only or handoff-only batches need a clean diff and `scripts/budgets`.
-  A background full-suite failure blocks only landings touching the failing surface and gets one named owner at once.
+  A failure of the GitHub run blocks only landings touching the failing surface and gets one named owner at once.
   `scripts/land` applies this: documentation-only diffs get `scripts/budgets` and a clean diff; code diffs get
   `scripts/test gate` and the affected selectors of the diff; the whole suite runs on GitHub for the pushed commit
   (docs/landing.md, "The CI run"). A tree that already passed a check is not checked again (`reused from <id>`), and a
@@ -189,7 +189,7 @@ not proof that it is disposable.
   relevant regression before the affected change lands. A missing cold selector cache does not require a full suite
   for a leaf change; use reviewed explicit affected tests.
 - **Linux testing is active and is not paused.** Use the available WSL device for Linux verification, under the same
-  reviewed-selector and background-suite policy as other platforms. Report the exact device, operating system,
+  reviewed-selector policy as other platforms. Report the exact device, operating system,
   runtime and tested commit; a Mac result or historical Linux receipt is not verification of the current WSL setup.
   Report platform gaps and known failures honestly. Do not run a second full suite before every merge.
 - Use the maintained test broker for every run; shared CPU/GPU admission and ownership apply before work starts. Do

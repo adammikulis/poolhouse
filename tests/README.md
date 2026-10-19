@@ -20,15 +20,15 @@ checks and background suites, including the Linux run on the WSL device.
 | --- | --- | --- |
 | `quick` | the tests the change reaches (below) | when relevant changed behavior needs verification |
 | `fast` | every test not marked `slow` or `heavy`, and not the four that import mlx while collecting | when broader affected coverage is justified |
-| `full` | every test not marked `slow` | background verification per batch/schedule |
+| `full` | every test not marked `slow` | a person's terminal; an agent is refused (GitHub runs the suite) |
 | `slow` | only the tests marked `slow` | after touching packaging, the page or the fleet |
-| `all` | everything, `--slow` included | background/CI suite, or explicit affected slow-test selectors |
+| `all` | everything, `--slow` included | CI, or explicit affected selectors (an agent: 1 to 30 files) |
 
 ```sh
 scripts/test quick --explain      # which file selected which test file
 scripts/test fast -n 2            # while a bench has the GPU
 scripts/test all tests/<affected-file>.py -n 1   # brokered sequential reproduction
-scripts/test full --durations=0 --durations-min=1.8    # scheduled background timing
+scripts/test full --durations=0 --durations-min=1.8    # a person's terminal: timing of the whole suite
 ```
 
 A run that names test files prints `ran` or `reused from <run id>` for each file and counts both;
