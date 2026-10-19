@@ -4,7 +4,6 @@ scripts are rewritten, any other file naming the old path is only reported. Real
 from __future__ import annotations
 
 import stat
-import time
 from pathlib import Path
 
 import pytest
@@ -148,13 +147,16 @@ def test_the_command_group_lists_verify():
     assert "verify" in {command.name for command in migrate.GROUP.commands}
 
 
-def big_tree(account: Path, count: int = 200_000) -> Path:
-    """An old state directory with a huge pruned models directory, a dangling link and a venv."""
+def big_tree(account: Path, count: int = 50) -> Path:
+    """An old state directory with a pruned models directory holding a venv config and a dangling link a scan would
+    report, a dangling link and a venv."""
     old = old_state(account)
     models = old / "models" / "family"
     models.mkdir(parents=True)
     for i in range(count):
         (models / f"{i}.x").write_text(str(old), encoding="utf-8")
+    (models / "pyvenv.cfg").write_text(f"home = {old}/models/bin\n")
+    (models / "dead").symlink_to(old / "builds" / "missing")
     (old / "gone").symlink_to(old / "builds" / "missing")
     venv = old / "spec-venv"
     (venv / "bin").mkdir(parents=True)
@@ -166,9 +168,7 @@ def big_tree(account: Path, count: int = 200_000) -> Path:
 @pytest.mark.timeout(900)
 def test_the_default_scan_skips_a_huge_pruned_directory_and_still_finds_the_link_and_the_venv(account):
     old = big_tree(account)
-    started = time.monotonic()
     found = migrate_paths.scan([old], migrate._pairs(account), planning=True)
-    assert time.monotonic() - started < 1.0
     assert [p.name for p in found.stuck] == ["gone"]
     assert sorted(p.name for p in found.rewrite) == ["pyvenv.cfg", "tool"]
     assert not found.report and not found.stopped

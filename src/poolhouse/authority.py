@@ -21,6 +21,7 @@ DELEGATED = "delegated"
 PERSON = "person"
 FLOOR_ENV = "POOLHOUSE_AUTHORITY_FLOOR"
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
+SUBAGENT_ENV = "POOLHOUSE_SUBAGENT"
 DELEGATING = ("CLAUDECODE", "POOLHOUSE_AGENT")
 
 GATES: dict[str, str] = {
@@ -211,7 +212,7 @@ def require(gate: str, action: str, terminal: tuple[bool, bool] | None = None,
         require_person(action, terminal, env)
         return PERSON
     who = found.get(AGENT_ENV, "")
-    if not workspace_lead(who):
+    if found.get(SUBAGENT_ENV) or not workspace_lead(who):
         raise HumanRequired(f"{action} is delegated to a lead agent the node has a session for, not a helper or an unnamed process")
     _log({"event": "authority.use", "gate": gate, "action": action, "agent": who or marker,
           "project": project})

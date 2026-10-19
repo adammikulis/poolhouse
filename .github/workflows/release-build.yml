@@ -100,7 +100,7 @@ jobs:
           python packaging/build.py --node
           if ($LASTEXITCODE -ne 0) { throw "the node did not build" }
           if (-not (Get-ChildItem dist\node\poolhouse-node-*.exe)) { throw "no poolhouse-node.exe in dist/node" }
-          python -m pip install pytest pytest-xdist numpy psutil keyring cryptography pyyaml pywin32
+          python -m pip install pytest pytest-timeout pytest-xdist numpy psutil keyring cryptography pyyaml pywin32
           $env:PYTHONPATH = "src"
           python -m pytest tests/test_node_windows.py -q -n 0 -p no:cacheprovider
           if ($LASTEXITCODE -ne 0) { throw "the Windows node tests failed" }

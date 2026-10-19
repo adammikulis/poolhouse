@@ -20,7 +20,7 @@ from poolhouse.serve.process import every_server
 
 pytest_plugins = ["serve_node"]
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(300)]
 
 
 BASE = "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
