@@ -13,6 +13,7 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 HOOKS = REPO / "scripts" / "hooks"
 SITE = "def g():\n    try:\n        pass\n    except Exception:\n        pass\n"
+FILLER = "".join(f"\nVALUE_{i} = {i}" for i in range(12)) + "\n"
 GUARD_TEST = "def test_denied():\n    assert deny()\n    assert other()\n" + "".join(
     f"\n\ndef test_case_{i}():\n    assert case_{i}()\n" for i in range(8))
 
@@ -141,7 +142,7 @@ class TestBudgets:
     def start(self, repo):
         repo.write("pyproject.toml", (REPO / "pyproject.toml").read_text(encoding="utf-8"))
         repo.write("budgets.json", '{"broad-excepts": 9}\n')
-        repo.write("src/ml_stack/a.py", SITE)
+        repo.write("src/ml_stack/a.py", SITE + FILLER)
         repo.commit("base")
 
     def test_a_pure_rename_adds_no_site(self, repo):
@@ -153,7 +154,7 @@ class TestBudgets:
     def test_a_rename_that_adds_a_site_is_refused(self, repo):
         self.start(repo)
         repo.move("src/ml_stack/a.py", "src/poolhouse/a.py")
-        repo.write("src/poolhouse/a.py", SITE + "\n\n" + SITE.replace("def g", "def h"))
+        repo.write("src/poolhouse/a.py", SITE + FILLER + "\n\n" + SITE.replace("def g", "def h"))
         done = repo.hook("budgets")
         assert done.returncode == 1 and "gains 1 site" in done.stderr
 
