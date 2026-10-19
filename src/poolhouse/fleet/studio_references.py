@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 PATH_FIELDS = frozenset({"base", "base_id", "base_model_name_or_path", "tokenizer_file", "directory",
-                         "checkpoint_path", "resume_from_checkpoint", "model_path"})
+                         "checkpoint_path", "resume_from_checkpoint", "model_path", "vocab_file", "merges_file",
+                         "sentencepiece_model_file"})
 
 
 def _references(value, root: Path, files: set[str]) -> None:
@@ -15,6 +16,9 @@ def _references(value, root: Path, files: set[str]) -> None:
             _references(item, root, files)
     elif isinstance(value, dict):
         for key, item in value.items():
+            if key == "weight_map" and isinstance(item, dict):
+                for filename in item.values():
+                    _references({"model_path": filename}, root, files)
             if key in {"trust_remote_code", "auto_map"} and item:
                 raise ValueError("Device models use installed model implementations only.")
             if key in PATH_FIELDS and isinstance(item, str) and item:
@@ -40,8 +44,9 @@ def validate_models(inputs: dict, manifests: list[dict], hydrated: dict) -> None
         path = Path(hydrated[name]["path"])
         root = path if manifest["shape"] == "directory" else path.parent
         files = {entry["name"] for entry in manifest["files"]}
+        if any(Path(filename).name == "state.json" for filename in files):
+            raise ValueError("Checkpoint reuse requires an explicitly staged base override.")
         for filename in files:
-            if Path(filename).name in {"state.json", "manifest.json", "config.json", "adapter_config.json",
-                                      "tokenizer_config.json", "decider.json", "policy-manifest.json"}:
+            if filename.endswith(".json"):
                 with (root / filename).open() as source:
                     _references(json.load(source), root, files)

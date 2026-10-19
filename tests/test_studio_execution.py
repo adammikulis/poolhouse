@@ -148,5 +148,28 @@ def test_staged_model_digest_does_not_authorize_serialized_target_paths(tmp_path
     with pytest.raises(ValueError, match='staged base'):
         validate_models(handles, manifests, hydrated)
     (model / 'state.json').write_text(json.dumps({'config': {'base': 'https://invalid.example/model'}}))
-    with pytest.raises(ValueError, match='downloads'):
+    with pytest.raises(ValueError, match='staged base'):
         validate_models(handles, manifests, hydrated)
+
+
+@pytest.mark.parametrize("configuration", [{}, {"base": ""}])
+def test_checkpoint_cannot_fall_back_to_target_cached_base(tmp_path, configuration):
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "state.json").write_text(json.dumps({"config": configuration}))
+    manifests = [{"id": "a" * 64, "shape": "directory", "files": [{"name": "state.json"}]}]
+    with pytest.raises(ValueError, match="staged base"):
+        validate_models({"model": {"kind": "model", "resource": "a" * 64}}, manifests,
+                        {"model": {"path": str(model)}})
+
+
+@pytest.mark.parametrize("filename", ["/private/target-weights.safetensors", "../target.safetensors", "missing.safetensors"])
+def test_sharded_model_references_only_declared_staged_files(tmp_path, filename):
+    model = tmp_path / "model"
+    model.mkdir()
+    index = "model.safetensors.index.json"
+    (model / index).write_text(json.dumps({"weight_map": {"weight": filename}}))
+    manifests = [{"id": "a" * 64, "shape": "directory", "files": [{"name": index}]}]
+    with pytest.raises(ValueError, match="staged base"):
+        validate_models({"model": {"kind": "model", "resource": "a" * 64}}, manifests,
+                        {"model": {"path": str(model)}})
