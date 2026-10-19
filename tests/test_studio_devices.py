@@ -38,6 +38,9 @@ class Dispatcher:
     def cancel(self, execution, principal):
         self.stopped.append(execution["id"])
 
+    def resume(self, execution, principal):
+        self.stopped.append("resume:" + execution["id"])
+
     def close(self):
         pass
 
@@ -128,3 +131,35 @@ def test_remote_intent_fingerprints_declared_input_bytes_and_target_implementati
     run["nodes"]["validate"] = third
     engine._remote_node(run, node, third, inputs, context)
     assert second["execution"]["digest"] != third["execution"]["digest"]
+
+
+def test_lost_dispatch_acknowledgement_interrupts_and_resume_attaches_original_intent(setup):
+    store, engine, dispatcher = setup
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Devices", graph())
+    run = engine.submit(PRINCIPAL, workflow, [], "lost-ack")
+    def lost(run, node, inputs, context, execution):
+        dispatcher.started.append(execution["id"])
+        raise OSError("acknowledgement lost")
+    dispatcher.start = lost
+    run = engine.advance(run)
+    identities = [state["execution"]["id"] for state in run["nodes"].values()]
+    assert {state["state"] for state in run["nodes"].values()} == {"interrupted"}
+    run = engine.resume(PRINCIPAL, run["id"])
+    engine.advance(run)
+    assert dispatcher.started == identities
+    assert sorted(dispatcher.stopped) == sorted("resume:" + identity for identity in identities)
+
+
+def test_unreachable_revocation_cancellation_keeps_independent_device_moving(setup):
+    store, engine, dispatcher = setup
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Devices", graph())
+    run = engine.submit(PRINCIPAL, workflow, [], "revoked")
+    run["nodes"]["device-a"].update(state="running", job_id="remote", execution={"id": "lost", "machine": "device-a"})
+    engine.authorize = lambda principal, node, inputs: node is None or node["id"] != "device-a"
+    def unreachable(execution, principal):
+        raise OSError("device offline")
+    dispatcher.cancel = unreachable
+    result = engine.advance(run)
+    assert result["nodes"]["device-a"]["state"] == "interrupted"
+    assert result["nodes"]["device-b"]["state"] == "running"
+    assert result["state"] == "running"

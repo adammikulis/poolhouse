@@ -173,7 +173,11 @@ class WorkflowEngine:
                        "bindings": node.get("bindings", {}), "principal": run["principal"]}
             if not self.authorize(run["principal"], node, inputs):
                 if state["state"] == "running" and state.get("job_id"):
-                    self._stop_child(state, run["principal"])
+                    try:
+                        self._stop_child(state, run["principal"])
+                    except (ValueError, OSError, RuntimeError) as exc:
+                        state.update(state="interrupted", error="Cancellation outcome is unknown: " + str(exc))
+                        continue
                 state.update(state="blocked", error="Authorization changed. Sign in and review this run.")
                 continue
             try:
@@ -274,10 +278,14 @@ class WorkflowEngine:
                 return run
             for state in run["nodes"].values():
                 if state["state"] == "running" and state.get("job_id"):
-                    self._stop_child(state, principal)
+                    try:
+                        self._stop_child(state, principal)
+                    except (ValueError, OSError, RuntimeError) as exc:
+                        state.update(state="interrupted", error="Cancellation outcome is unknown: " + str(exc))
                 if state["state"] not in TERMINAL:
                     state["state"] = "cancelled"
-            run.update(state="cancelled", finished_at=time.time())
+            run.update(state="interrupted" if any(n["state"] == "interrupted" for n in run["nodes"].values()) else "cancelled",
+                       finished_at=time.time())
             return self.store.put("run", run)
 
     def resume(self, principal: dict, ident: str) -> dict:
@@ -287,11 +295,26 @@ class WorkflowEngine:
                 raise PermissionError("This run belongs to another session.")
             if not self.authorize(principal, None, {}):
                 raise PermissionError("Sign in again before resuming this run.")
+            run.update(principal=principal, state="queued")
+            self.store.put("run", run)
             for node in run["graph"]["nodes"]:
                 state = run["nodes"][node["id"]]
                 if state["state"] == "interrupted":
+                    if state.get("execution"):
+                        if not self.authorize(principal, node, {}):
+                            raise PermissionError("A resource in this run is no longer authorized.")
+                        try:
+                            self.dispatcher.resume(state["execution"], principal)
+                        except (ValueError, OSError, RuntimeError):
+                            run["state"] = "interrupted"
+                            self.store.put("run", run)
+                            raise
+                        state["state"] = "running"
+                        continue
                     child = self.runner.jobs.get(state.get("job_id"))
                     if not child or child.pid is not None or child.recovery_note != "Studio execution requires renewed authorization after restart.":
+                        run["state"] = "interrupted"
+                        self.store.put("run", run)
                         raise ValueError("Reconcile the interrupted child job before resuming; its side effects will not be repeated.")
                     if not self.authorize(principal, node, {}):
                         raise PermissionError("A resource in this run is no longer authorized.")
@@ -335,8 +358,16 @@ class WorkflowEngine:
             state["fingerprint"] = state["execution"]["digest"]
             context["input_artifacts"] = artifacts
             self.store.put("run", run)
-            self.dispatcher.start(run, node, inputs, context, state["execution"])
-        result = self.dispatcher.poll(state["execution"], context)
+            try:
+                self.dispatcher.start(run, node, inputs, context, state["execution"])
+            except (ValueError, OSError, RuntimeError) as exc:
+                state.update(state="interrupted", error="Dispatch outcome is unknown: " + str(exc))
+                return
+        try:
+            result = self.dispatcher.poll(state["execution"], context)
+        except (ValueError, OSError, RuntimeError) as exc:
+            state.update(state="interrupted", error="Device outcome is unknown: " + str(exc))
+            return
         if result is None:
             return
         state.update(result)
