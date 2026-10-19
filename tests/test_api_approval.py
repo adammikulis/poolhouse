@@ -43,7 +43,7 @@ def test_a_denied_request_changes_nothing_and_a_withdrawn_one_ends(phone_node):
     first = board.request_approval([ph.board.Ask("sync_now", uses=1)])
     assert endpoint.ok("decide", phone.decision(endpoint.ok("get", {"id": first.id}, token=phone.token), "deny"))["state"] == "denied"
     assert first.wait(5) == "denied" and first.message() == "You said no; nothing changed."
-    with pytest.raises(ph.Error, match=r"declined a moment ago; wait .* before asking for it again"):
+    with pytest.raises(ph.Error, match=r"declined a moment ago; wait a little before asking for it again"):
         board.request_approval([ph.board.Ask("sync_now", uses=1)])
     second = board.request_approval([ph.board.Ask("link_read", "a>b", uses=1)])
     assert second.cancel() == "cancelled" and second.message() == "The request was withdrawn."

@@ -120,8 +120,8 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
             return Err(Error::Denied(if cause == "blocked" { format!("A person blocked this agent, so it cannot ask for {} more.", wait_words(until_ms, now)) }
                                      else { format!("This agent is suspended for {} more after asking again and again; a person can lift that from their phone.", wait_words(until_ms, now)) }));
         }
-        Standing::Backoff { until_ms } => {
-            return Err(crate::limits::floor(&format!("That kind of request was declined a moment ago; wait {} before asking for it again.", wait_words(until_ms, now))));
+        Standing::Backoff { .. } => {
+            return Err(crate::limits::floor("That kind of request was declined a moment ago; wait a little before asking for it again."));
         }
         Standing::Held { key, .. } => Some(key),
         Standing::Free => None,
