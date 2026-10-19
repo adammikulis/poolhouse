@@ -49,6 +49,39 @@ class Adapters:
         self.process_environment = process_environment
         self.tool_call = tool_call
 
+    def validate(self, nodes: list[dict]) -> list[dict]:
+        workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call')]
+        if not workers:
+            return []
+        environment = self.runner.environment
+        if environment is None or not environment.exists:
+            return [{'node': node['id'], 'code': 'dependency', 'message': 'Install the managed compute runtime to run this node'} for node in workers]
+        try:
+            environment.require_current_runtime()
+            packages = environment.installed()
+        except (OSError, RuntimeError, ValueError) as error:
+            return [{'node': node['id'], 'code': 'dependency', 'message': str(error)} for node in workers]
+        errors = []
+        for node in workers:
+            kind, parameters = node['type'], node.get('parameters', {})
+            required = set()
+            if kind.startswith('gym.'):
+                required = {'gymnasium', 'stable-baselines3'}
+            elif kind in ('train.decision', 'evaluate.decision'):
+                required = {'torch', 'transformers', 'peft'}
+            elif kind.startswith('train.'):
+                framework = parameters.get('framework') or ('mlx' if 'mlx' in packages else 'torch')
+                required = {'mlx', 'mlx-lm'} if framework == 'mlx' and kind == 'train.tool-calls' else {framework}
+                if kind == 'train.tool-calls' and framework == 'torch':
+                    required.add('transformers')
+                    if parameters.get('lora'):
+                        required.add('peft')
+            missing = required - set(packages)
+            if missing:
+                errors.append({'node': node['id'], 'code': 'dependency',
+                               'message': 'Install the required compute libraries: ' + ', '.join(sorted(missing))})
+        return errors
+
     def immediate(self, node: dict, inputs: dict, context: dict) -> dict | None:
         kind = node['type']
         if kind in ('dataset', 'model'):

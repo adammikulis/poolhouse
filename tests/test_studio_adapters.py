@@ -211,3 +211,22 @@ def test_templates_cover_lifecycle_and_keep_resources_unbound():
         assert all(edge['source']['node'] in {node['id'] for node in graph['nodes']} for edge in graph['edges'])
     tools = next(graph for graph in library if graph['id'] == 'inference-and-tools')
     assert next(node for node in tools['nodes'] if node['type'] == 'tools.call')['parameters']['tool'] == 'serve_status'
+
+
+def test_dependencies_checked_in_managed_runtime_before_dispatch():
+    probes = []
+    environment = SimpleNamespace(exists=True, require_current_runtime=lambda: None,
+                                  installed=lambda: probes.append('managed') or {'torch': '2'})
+    adapter = Adapters(SimpleNamespace(environment=environment))
+    errors = adapter.validate([{'id': 'data', 'type': 'dataset'},
+                               {'id': 'train', 'type': 'train.tool-calls', 'parameters': {'framework': 'mlx'}},
+                               {'id': 'gym', 'type': 'gym.train'}])
+    assert probes == ['managed']
+    assert {error['node'] for error in errors} == {'train', 'gym'}
+    assert 'mlx-lm' in errors[0]['message']
+    assert Adapters(None).validate([{'id': 'prompt', 'type': 'prompt'}]) == []
+
+
+def test_missing_runtime_fails_before_worker_submission():
+    errors = Adapters(SimpleNamespace(environment=None)).validate([{'id': 'split', 'type': 'data.split'}])
+    assert errors == [{'node': 'split', 'code': 'dependency', 'message': 'Install the managed compute runtime to run this node'}]
