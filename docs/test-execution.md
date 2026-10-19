@@ -158,8 +158,7 @@ selection of directories or nodes is estimated in full. It prints the estimate (
 recorded tests`). An estimate of `DEV_TEST_BACKGROUND_S` (default 180) or more classes the run
 `background`, below it `interactive`, whatever the tier name. With fewer than 50 recorded tests the
 command shape decides: tiers `full`, `slow`, `record`, `all` or `fast` with no file or node selector,
-and `--redteam` are background. `--background` forces the class (`scripts/land` passes it to its full
-run); `quick` and `gate` are interactive. A background run prints one line saying why, its pytest
+and `--redteam` are background. `--background` forces the class; `quick` and `gate` are interactive. A background run prints one line saying why, its pytest
 processes start at `nice` +10 (no change where `os.nice` is absent), and `testslots.py status` shows each
 lease's class.
 
@@ -194,10 +193,8 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
   sibling `<repo>-land-<stamp>` worktree on `land/<stamp>`, keeping both sides of `HANDOFF.md`.
   A documentation-only diff runs `scripts/budgets` and `git diff --check`. A code diff runs
   `scripts/test gate` and `scripts/test all` on the selectors `scripts/affected.py` computes from the
-  combined diff. A diff touching `tests/conftest.py`, `scripts/test*`, `scripts/testslots*`,
-  `pyproject.toml` or `packaging/`, an unmapped path, or more than 120 files or 4000 changed lines
-  also starts one background `scripts/test full`; a second is refused while a land full run or a
-  broker entry labelled `full` is live.
+  combined diff. The whole suite runs on GitHub for the pushed commit; `scripts/test full` and
+  `scripts/test all` stay available by hand.
 - A pass is recorded with `record_run` under the tree hash; the same tree and check later print
   `reused from <id>`. A failing check is first run on a clean worktree of the base: failing there
   too is reported as `baseline`. Otherwise the merge commits are bisected with only the failing
