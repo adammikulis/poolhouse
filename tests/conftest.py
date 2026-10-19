@@ -1075,6 +1075,10 @@ def _real_home(tmp_path_factory):
                   os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or str(browsers / "ms-playwright"))
         # matplotlib rebuilds its font list in an empty HOME, once per worker
         mp.setenv("MPLCONFIGDIR", os.environ.get("MPLCONFIGDIR") or str(browsers / "matplotlib"))
+        # the graph engine installs its fts and vector extensions under HOME on first use: link the machine's downloaded ones
+        if (account / ".lbdb" / "extension").is_dir():
+            (away / ".lbdb").mkdir()
+            (away / ".lbdb" / "extension").symlink_to(account / ".lbdb" / "extension", target_is_directory=True)
         mp.setenv("HOME", str(away))
         mp.setenv("POOLHOUSE_HOME", str(away / ".poolhouse"))
         mp.setenv("POOLHOUSE_CACHE", str(away / ".cache" / "poolhouse"))
