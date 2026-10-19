@@ -308,7 +308,7 @@ class TransferStore:
         own = self.directory(source, dispatch)
         if set(outputs) - {port["name"] for port in spec["outputs"]}:
             raise ValueError("Remote outputs must match the declared node ports.")
-        resources, safe = [], dict(outputs)
+        resources, safe = {}, dict(outputs)
         for name in resource_ports(spec, "outputs"):
             value = outputs.get(name)
             if value is None:
@@ -317,6 +317,9 @@ class TransferStore:
             if ".." in path.parts or not path.is_relative_to(own):
                 raise ValueError("Remote outputs must belong to this dispatch.")
             resource = manifest(path, value["kind"], gym=value.get("gym", False))
+            safe[name] = resource_handle(value, resource)
+            if resource["id"] in resources:
+                continue
             self.begin(source, dispatch, resource)
             for file in resource["files"]:
                 root = path if resource["shape"] == "directory" else path.parent
@@ -329,9 +332,8 @@ class TransferStore:
                     if offset == 0:
                         self.put(source, dispatch, resource["id"], name=file["name"], offset=0, data=b"")
             self.finish(source, dispatch, resource["id"])
-            safe[name] = resource_handle(value, resource)
-            resources.append(resource)
-        return {"outputs": safe, "resources": resources}
+            resources[resource["id"]] = resource
+        return {"outputs": safe, "resources": list(resources.values())}
 
     def discard(self, source: str, dispatch: str) -> dict:
         prefix = self._prefix(source, dispatch)
