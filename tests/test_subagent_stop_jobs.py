@@ -90,7 +90,7 @@ def scene(tmp_path, monkeypatch, workspace_node):
     yield made
     for job in made.table.ids():
         if made.state(job) in ("queued", "running"):
-            made.table.cancel(job, "someone", made.table.read(job, "spec.json")["secret"])
+            made.table.cancel(job, "someone")
 
 
 def test_a_stopped_subagent_has_its_queued_and_running_test_jobs_cancelled(scene):
