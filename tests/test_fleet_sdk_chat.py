@@ -146,3 +146,25 @@ def test_sdk_preserves_reasoning_alongside_the_answer():
         assert reply_parts(reply) == ("The answer.", "Consider the evidence.")
     finally:
         fake.close()
+
+
+@pytest.mark.slow
+def test_output_tokens_typed_while_the_chat_page_loads_are_kept(tmp_path, sdk_playwright):
+    from test_fleet_ui import Serving
+
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    held = []
+    browser = sdk_playwright.chromium.launch(headless=True)
+    try:
+        page = browser.new_page()
+        page.route("**/ui/models", lambda route: route.continue_() if held else held.append(route))
+        page.goto(f"http://127.0.0.1:{served.port}/ui#chat")
+        page.click('#conversation-details')
+        page.locator('#chat-output-tokens').fill('32000')
+        held[0].continue_()
+        page.wait_for_load_state("networkidle")
+        assert page.locator('#chat-output-tokens').input_value() == '32000'
+    finally:
+        browser.close()
+        served.close()
