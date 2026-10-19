@@ -611,13 +611,12 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written and the board gets an `announce_over_quota` audit entry | none |
 | direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
 | notes an author keeps on a board | 500 | `quota` |
-| live subagents a session has | 16 (not retired, and either holding a lease whose process still runs or heard from within 30 minutes) | `quota` |
-| live main sessions of one harness on a board; of one harness started from one terminal (process lineage) | 24; 8 (live as for subagents; an idle session counts for neither) | `quota` |
+| live main sessions of one harness on a board; of one harness started from one terminal (process lineage) | 24; 8 (live: not retired, and either holding a lease whose process still runs or heard from within 30 minutes; an idle session counts for neither) | `quota` |
 | idle time before the node retires a session | 24 hours (no lease held, not heard from) | none |
 
 The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`; the limits on what a
 session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `sends`, `child_sends`, `subagent_sends`,
-`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `children`, `child_beat_s`, `sessions_per_harness`, `sessions_per_lineage` and `idle_retire_s`. A message
+`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `child_beat_s`, `sessions_per_harness`, `sessions_per_lineage` and `idle_retire_s`. A message
 is unread until its recipient reads its inbox with a `since` cursor past it: the node keeps the furthest cursor each session presented
 on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
 counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
