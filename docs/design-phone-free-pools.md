@@ -17,13 +17,13 @@ taps and plain sentences, and the pool must say honestly how much weaker a compu
   the old level, so nothing downgrades silently.
 - **The computer journey.** Found a pool: say it, tap **Make pool**, answer the computer's password or fingerprint prompt (2 counted steps).
   Add a device: type the code the first computer shows into the new device (0 taps while the 30-day delegate lives). Approve: tap, prompt.
-  Remove a member: open, approve, prompt, pick a number. Recover: a recovery file, six words, seven days.
+  Remove a member: open, approve, prompt, pick a number. Recover: 24 words, seven days.
 - **Honest weakness.** At `computer` a program running as you outside the agent sandbox could sign without the prompt. What stands in the way
   is stated per operation in 2.5. `native` closes that and not root; `phone` closes both.
 - **Build.** Eight slices (section 3). The protocol lands first (slice 1). After slice 4 a computer-only person can found a pool, approve,
   add a device by a card and remove one; slice 5 makes a join cost nothing and ends with the live check on the owner's Mac. Windows and Linux
   without a prompt are slice 7: those computers join pools and found none until it lands, and the refusal says why in one sentence.
-- **Three decisions** for the owner (section 5), each with a default in force.
+- **Three decisions** made by the owner, recorded in section 5.
 
 ## 1. What the code does today with no phone
 
@@ -145,7 +145,7 @@ A person bad with tech: Poolhouse installed, then taps and plain sentences. No t
 | 1 | Says "Make a pool called home" | The agent calls `ph.pool.found`; the card appears in the Poolhouse window and as a notification | say |
 | 2 | Taps **Make pool** on the card: "Make the pool 'home' (secure) and put the computer 'Studio' in it. This computer will approve changes to it. Your agents can add devices for 30 days." | The node raises the prompt | tap |
 | 3 | Answers the computer's prompt (password or fingerprint) | The signer makes the pool key if none exists, signs the bundle; the pool exists and the computer is its first member | prompt |
-| 4 | (Optional, once, never a blocker) the app offers "Save a recovery file" | See recovery below | optional |
+| 4 | (Optional, once, never a blocker) the app offers "Write down your recovery words" | See recovery below | optional |
 
 Counted: 1 tap, 1 prompt. The pool exists with no phone and no terminal. The same flow runs for the `open` policy, with the card saying "anyone on
 this Wi-Fi can join".
@@ -175,17 +175,16 @@ Nothing here asks twice. Opening the app to look asks nothing; a locked screen m
 
 **Recover when the only computer is lost** (journey 4)
 
-- *Once, at founding or later, optional:* the app offers "Save a recovery file so you can take this pool back if this computer is lost". One tap,
-  one prompt, then the operating system's save dialog (the person picks the place: a USB stick, a cloud drive) and **six words shown once**
-  to write down. The file holds a recovery-role key sealed with scrypt and ChaCha20-Poly1305 under those words (`seal_file`, `src/poolhouse/fleet/onboard/signing.py:52-81`). The node never keeps it. If the person
+- *Once, at founding or later, optional:* the app offers "Write down your recovery words so you can take this pool back if this computer is lost". One tap,
+  one prompt, then **24 generated words shown once** to write down. No file is made. The words are the recovery secret, and the node never keeps them. If the person
   skips it, a weekly one-line nudge asks again (`docs/pools-and-serving.md` 1.8). The recovery key joins the pool by an `admin_add` of role
   `recovery`, with its own acceptance, so it waits out the 24-hour hold and the app says "ready tomorrow".
-- *Recovering:* on any surviving member's Poolhouse, "Take back this pool": choose the file, type the six words, answer that computer's prompt.
+- *Recovering:* on any surviving member's Poolhouse, "Take back this pool": type the 24 words, answer that computer's prompt.
   The app makes a new pool key on that computer and signs `recover {new admin set}` with the recovery key outside the node, which takes the
   signed act back through `pool_submit`. It takes effect after
   `recover_delay_days` (7 by default, 1 to 30) counted on each member's awake clock from the first moment it saw the act. Every member shows
   "Pool 'home' will get new admins in 6 days unless a current admin cancels it". A key at the pool's current level cancels it; so does the recovery
-  key. A wrong word opens nothing; the file can only be guessed at offline, which six words and scrypt make impractical.
+  key. A wrong word opens nothing; 24 words make a guess impractical.
 - *No surviving member:* nothing holds the pool, so there is nothing to recover; the person makes a new pool. A pool of one device says so at
   founding in the same sentence as the nudge.
 
@@ -200,7 +199,7 @@ differs is what that program could do with it and what is left to undo it.
 | Admit a device | Add a device it controls, as a member who reads boards and takes work | The delegate's caps (30 days, 3 an hour, 10 a day) and a notice with **Remove** on every member's screen; a key signing an admit shows the prompt | Remove the device (sticky; its own admits go with it, `docs/node.md` "Who governs a pool") |
 | Approve a grant | Grant a session of its own an action, as today's typed yes already allows | The fatigue ledger; the number to match; per-device scope; sensitive grants take four steps | Revoke the grant |
 | Remove a member | Remove devices you own | The card, the prompt, the pick; every member shows who was removed | Re-admit with a new certificate |
-| Change who governs (admins, thresholds, holds, floors) | Add its own key and drop yours | 24-hour hold on every member's screen as a banner; the recovery key cannot be dropped except by its own signature (`gov/chain.rs:228`) | Only a key at the floor, or the recovery file after 7 days. With one key and no recovery file nothing undoes it: this is the worst case, which the nudge, the banner and the level line exist for |
+| Change who governs (admins, thresholds, holds, floors) | Add its own key and drop yours | 24-hour hold on every member's screen as a banner; the recovery key cannot be dropped except by its own signature (`gov/chain.rs:228`) | Only a key at the floor, or the recovery words after 7 days. With one key and no recovery words written down nothing undoes it: this is the worst case, which the nudge, the banner and the level line exist for |
 | Recover | Cannot: the recovery key is a separate secret | 7 days, a banner, cancel by any key at the floor | The current keys cancel it |
 
 At `native` the same table holds for programs running as you and fails only for root. At `phone` it holds for both, and fails for a stolen
@@ -260,7 +259,7 @@ Each slice lands alone, with tests seen to fail first. Any test of 1.2 that is c
 | 3 | **The computer signer** | `grants.Signs`, `person_key`, `founding.found` | `ComputerKey` with tickets; a Python rebuild of an act's signing bytes (`poolhouse/pool-act/v2`) to compare with the node's; `presence` raises the prompt per card, only for a card the person opened; `founding.default_admin` returns it; refusals rewritten | `signing_without_a_ticket_raises`; `a_ticket_for_other_bytes_is_refused`; `the_signer_refuses_bytes_that_do_not_match_the_act`; `a_ticket_is_used_once_and_ends_in_two_minutes`; `an_agent_session_cannot_get_a_prompt_raised`; `a_refused_prompt_founds_nothing_and_is_quiet_for_ten_minutes`; `test_pool_found.py:116` rewritten | M |
 | 4 | **The card on the computer** | `approvals/` text, fatigue, number to match; `app/src-tauri`; the UI daemon | An approval list and card view, notification, **Approve** then prompt, the pick; `approval_decide` from the app; `contracts/computer-friction.json` | Playwright on its own Chromium (never the owner's browser): the card text equals the node's; no terminal step in the journey (`POOLHOUSE_STEP_LEDGER`); `tests/test_computer_friction.py`; a held requester is shown nothing | L |
 | 5 | **Join and remove without a phone** | SPAKE2 join, delegate rules, `gov_remove` | The code is shown on the first computer and absent from the agent's reply; `key_binding` follows custody (two lines at `node.rs:164`); the `delegate` act in the founding bundle; notices with **Remove**; a join screen for the code | `the_agent_is_not_told_the_code`; `a_keystore_device_signs_a_delegate_admit_and_a_copied_directory_does_not`; `a_join_with_a_live_delegate_asks_nobody`; `an_expired_delegate_asks_a_card`; pool-check `join-computer-only`. **Live check on the owner's Mac (2.9) closes the slice** | M |
-| 6 | **Recovery** | `Role::Recovery`, `recover_delay_days`, the awake clock | Acts `recover`, `recover_cancel`, `recovery_replace`; the recovery file (`seal_file`) and its import on a surviving member; banners | `a_recover_takes_effect_only_after_seven_awake_days_on_each_device`; `a_current_key_cancels_it`; `a_wrong_word_opens_nothing`; `a_file_for_another_pool_is_refused`; pool-check `gov-recovery-timelock` | L |
+| 6 | **Recovery** | `Role::Recovery`, `recover_delay_days`, the awake clock | Acts `recover`, `recover_cancel`, `recovery_replace`; the 24-word recovery phrase and its entry on a surviving member; banners | `a_recover_takes_effect_only_after_seven_awake_days_on_each_device`; `a_current_key_cancels_it`; `a_wrong_word_opens_nothing`; `a_phrase_for_another_pool_is_refused`; pool-check `gov-recovery-timelock` | L |
 | 7 | **Prompts on Windows and Linux without `pkexec`** | `presence/` refuses with a plain sentence (`presence/mod.rs:224`) | Windows credential prompt; a desktop polkit path; a standard macOS account is asked for an administrator's password by the system | Per platform, on the owner's WSL and Windows devices; until then those computers join pools and found none | M each |
 | 8 | **`native`** | `app/poolhouse-authority`, `app/native-approval` | Installer (one administrator approval, offered later in Settings, never at first run), IPC, key registry, issuer policy, level `native`, the question of 2.6 R5 | The ten attacks of `docs/notes/native-finalizer-design.md`; blocked for people other than the owner until a paid Apple account (`docs/pool-encryption.md` 8.1) | L |
 
@@ -272,7 +271,7 @@ No automated check raises the operating system's prompt (it is refused off the r
 order, and the slice is not done until it passes: (1) a fresh account with Poolhouse installed and no phone; (2) "Make a pool called home": one tap, one
 prompt, the pool exists, `pool_status` says `computer`; (3) a second device types the code shown on the first screen and joins with no tap,
 and the first screen shows the notice; (4) an agent asks for `add_device`: the card, the tap, the prompt, the pick; (5) cancel the prompt: nothing
-is signed and the next prompt waits ten minutes; (6) remove the second device and see it refused at its next request; (7) save a recovery file;
+is signed and the next prompt waits ten minutes; (6) remove the second device and see it refused at its next request; (7) write down the recovery words;
 (8) delete the first account's state directory, take the pool back from the second device, and see the seven-day banner on both.
 
 ## 4. Attack first
@@ -295,36 +294,26 @@ slice 1, and a finding is fixed or named here as accepted with the owner.
 | **A malicious agent minting its own key** | `pool_draft_found` refuses a named level; a `computer` row exists only after the prompt for that key; the node signs rows with its device key | A program that can write the state directory and holds the device key can write a row. The sandbox closes it, as for `phone: true` today |
 | **Takeover by whoever is merely present** | Presence gives no key. A device joining holds no admin power. The prompt asks for the account's secret, not for presence | Someone at an unlocked, unattended computer who knows its password: see the stolen unlocked laptop |
 
-## 5. Open decisions
+## 5. Decisions made
 
-Each has a default in force until the owner answers; none holds another item.
+The owner made these three decisions. The rest of this document follows them.
 
-**D1. What does phase 1 (the first outside person) do with `computer`?** A pool whose only key is `computer` can be taken by a program running as
-its founder, and a person who joins it trusts that. Options, most secure first:
-1. In phase 1 a new pool needs `native` or `phone`. Cost: a computer-only person who is not the owner cannot found a pool, which is the block the
-   owner ruled out; `native` is also blocked for outsiders until a paid Apple account exists (`docs/pool-encryption.md` 8.1).
-2. `computer` is a stepping stone: pools founded at it are reissued at `native` when the helper exists. Cost: a reissue for every such pool.
-3. `computer` is a lasting level, said on the joiner's screen and in the pool header, with **Add a phone** and the protected computer on offer.
-   Cost: a visible weaker label. This is the weaker option.
-**In force: 3.** Phase 0 has no outside person, so nothing is exposed now, and nothing waits for the answer.
+**D1. A pool with only a computer's key is never blocked.** The owner's order: a pool is not blocked on a phone, because some people will not connect one.
+Founding a pool, adding devices, approving and removing members work with a computer key and no phone. The option of requiring a stronger key for new
+pools is dropped. Computer-only pools are allowed, and they are reissued at the `native` level once that level exists. The level is shown to the person in
+plain words, as the "Shown to the person as" column of 2.1 gives it. The cost, accepted with the order: a program running as the founder can take such a
+pool, and a person who joins it trusts that. The joiner's screen and the pool header say so.
 
-**D2. The recovery export: what is it?** The owner chose an export and a time lock. Options, most recoverable and most secure first:
-1. A file the person saves anywhere, sealed under six generated words written down (2.4). Two things to keep; neither alone recovers.
-2. Twenty-four generated words and no file. One thing to keep; long to type.
-3. A second computer as the recovery key. Nothing to write down; needs a second computer, so it fails the lost-only-computer case.
-**In force: 1**, lock 7 days.
+**D2. Recovery is 24 words, with no file.** The person writes down 24 generated words, shown once; the node never keeps them. A recovery takes effect
+only after a 7-day lock. The file sealed under six words is dropped.
 
-**D3. The delegate on a computer-only pool.** The founding bundle lets the first computer's device key sign admits for 30 days within 3 an
-hour and 10 a day, with no prompt. At `computer` a program running as you can use that device key as well as the pool key, so the delegate is
-as weak as the key it stands beside; it is also what makes a join cost nothing. Options, most secure first:
-1. Leave it out: every join is a card, a tap and a prompt (2 steps) on the first computer.
-2. Include it, as for phone pools (`docs/pools-and-serving.md` 3.1): joins cost 0 steps. This is the weaker option.
-**In force: 2**, because the owner has accepted the same trade for phone pools, onboarding is the product, and the notice with **Remove** is on
-every member.
+**D3. Founding gives the founding computer the 30-day delegate.** Adding your own devices then costs no tap, the same trade as phone pools
+(`docs/pools-and-serving.md` 3.1). A program running as you can use that device key as well as the pool key; the admit rate (3 an hour, 10 a day) and
+removal bound it.
 
 ## 6. Documents that change
 
-`docs/glossary.md` (strong and weak key become assurance levels and floors; add **assurance level**, **floor**, **recovery file**);
+`docs/glossary.md` (strong and weak key become assurance levels and floors; add **assurance level**, **floor**, **recovery phrase**);
 `docs/node.md` "Who governs a pool" and "Standing grants"; `docs/pools-and-serving.md` 1.3 ("What a one-person pool does" says the laptop's key is
 weak and signs nothing that matters), 1.8, 1.12, 3.1; `docs/phone-approval.md` (the `LEVEL:` line, the computer decider); `docs/pool-check.md:97`;
 `docs/release-readiness.md` POOL-2, GOV-2 to GOV-5, GOV-7; `HANDOFF.md:46-49` and "Phone optional" as each slice lands.
