@@ -24,9 +24,9 @@ Poolhouse is pre-1.0, and the phone-to-node founding journey is still being buil
 - **Build and search knowledge graphs.** Keep concepts and their relationships, search them, follow connections
   and render a page you can explore. Document ingestion keeps source references alongside extracted claims.
   See [graphs](docs/graph.md) and [document ingestion](docs/ingest.md).
-- **Train and measure models.** Run training recipes, evaluate answers and compare settings. Decision models return
-  probabilities for options you supply; chat models generate text. See [training](docs/training.md),
-  [decision models](docs/decision-models.md) and [benchmarks](docs/bench.md).
+- **Ask decision models.** Decision models return probabilities for options you supply; chat models generate text.
+  See [decision models](docs/decision-models.md). A source checkout also trains and measures models:
+  [training](docs/training.md) and [benchmarks](docs/bench.md).
 
 These tools can use local hardware, and some integrations fetch models or call external services. Where work runs
 and which services it contacts depend on the configuration and the API you choose. A provider running your work can

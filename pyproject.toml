@@ -116,7 +116,7 @@ pdf = ["pdfminer.six>=20251230", "pillow>=10.0", "poolhouse[pdf-render]"]
 # with POOLHOUSE_PDF_ENGINE=pymupdf. Only the datasheet pin tables need it now: page pictures and
 # outline pages work with the permissive `pdf` extra.
 pdf-agpl = ["pymupdf>=1.24"]
-# `poolhouse-bench animate`: a comparison of builds as an animated graphic
+# `python -m poolhouse.bench animate`: a comparison of builds as an animated graphic
 viz = ["manim>=0.19"]
 # `poolhouse-serve fit --plot` draws two panels to a png/svg. Only this needs it: the bench's
 # own --plot writes hand-built SVG with no library, so it opens on a machine with no packages
@@ -134,7 +134,7 @@ guardrails = ["nemoguardrails>=0.24.1,<0.25; python_version < '3.14'"]
 # a prompt-injection classifier run on the CPU through onnxruntime (`poolhouse.guard.classifier`);
 # the ONNX export of protectai/deberta-v3-base-prompt-injection-v2 is fetched once
 guard-model = ["onnxruntime>=1.20", "tokenizers>=0.21", "numpy>=1.24", "huggingface_hub>=1.32"]
-# `poolhouse-bench standard`: GSM8K, MMLU-Pro, IFEval and HumanEval through lm-evaluation-harness;
+# `python -m poolhouse.bench standard`: GSM8K, MMLU-Pro, IFEval and HumanEval through lm-evaluation-harness;
 # `ifeval` brings langdetect, immutabledict and nltk
 standard = ["lm-eval[ifeval]>=0.4"]
 # `python -m poolhouse.redteam`: attacks on this library's own model-facing surfaces, sent through
@@ -173,13 +173,8 @@ poolhouse-members = "poolhouse.fleet.members:main"
 poolhouse-pool = "poolhouse.fleet.join:main"
 # the same functions the commands call, as MCP tools over stdio, for an agent to drive
 poolhouse-mcp = "poolhouse.mcp:main"
-poolhouse-train-run = "poolhouse.train.run:main"
-# a project's tools -> synthetic conversations -> a fine-tuned caller -> a GGUF
-poolhouse-train-tools = "poolhouse.train.tools:main"
 # choose one of a named set of options and say how sure: ask, score, calibrate, compare
 poolhouse-decide = "poolhouse.decide_cli:main"
-# a pointer-head decision model fine-tuned from labelled cases
-poolhouse-train-decider = "poolhouse.train.decider_cli:main"
 # what this machine can do, and what it does without being asked; --checkouts adds the
 # repositories and working state poolhouse-doctor checks on their own
 poolhouse-setup = "poolhouse.setup:main"
@@ -205,7 +200,6 @@ poolhouse-jobs = "poolhouse.jobs:main"
 poolhouse-test-devices = "poolhouse.testfarm.devices:command"
 # agents coordinating: messages, notes, scratch folders and claims, all data and no authority
 poolhouse-workspace = "poolhouse.workspace.cli:main"
-poolhouse-suite = "poolhouse.train.suite:main"
 poolhouse-claude = "poolhouse.claude:main"
 poolhouse-codex = "poolhouse.codex:launch"
 poolhouse-agent = "poolhouse.harness:main"
@@ -228,11 +222,6 @@ poolhouse-audit = "poolhouse.redact.audit:main"
 # came in from the internet: downloads, hosts, scanners
 poolhouse-security = "poolhouse.net.cli:command"
 
-# What the daemon reports about this box beyond what the standard library can see: the
-# card, its vendor and its memory. Without it every machine reports no accelerator.
-[project.entry-points."poolhouse.device_report"]
-accelerator = "poolhouse.train.accelerator:report"
-
 [tool.hatch.build.targets.sdist]
 exclude = [".claude", "CLAUDE.md", "HANDOFF.md"]
 
@@ -243,11 +232,16 @@ exclude = [
     "src/poolhouse/draft",
     "src/poolhouse/gym",
     "src/poolhouse/fleet/gym_*.py",
+    "src/poolhouse/fleet/train_*.py",
     "src/poolhouse/fleet/web/components/benchmarks-view.html",
     "src/poolhouse/fleet/web/components/fleet-benchmark.html",
     "src/poolhouse/fleet/web/components/gym-*.html",
+    "src/poolhouse/fleet/web/components/training-view.html",
+    "src/poolhouse/gguf",
     "src/poolhouse/redteam",
     "src/poolhouse/surface",
+    "src/poolhouse/testing",
+    "src/poolhouse/train",
     "src/poolhouse/walk",
     "src/poolhouse/world",
 ]

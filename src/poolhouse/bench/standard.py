@@ -1,7 +1,7 @@
 """Standard benchmark sets -- GSM8K, MMLU-Pro, IFEval, HumanEval -- through
 lm-evaluation-harness against any OpenAI-compatible chat endpoint, one JSON per configuration.
 
-``poolhouse-bench standard --url URL --model NAME [--tasks ...]`` runs each set
+``python -m poolhouse.bench standard --url URL --model NAME [--tasks ...]`` runs each set
 as its own `lm_eval.simple_evaluate` call under the bench's measuring lock, times it by wall
 clock, and writes::
 
@@ -196,7 +196,7 @@ def _slug(text: str) -> str:
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="poolhouse-bench standard", allow_abbrev=False,
+        prog="python -m poolhouse.bench standard", allow_abbrev=False,
         description="Standard benchmark sets through lm-evaluation-harness against an "
                     "OpenAI-compatible chat endpoint; one JSON per configuration.")
     p.add_argument("--url", required=True,

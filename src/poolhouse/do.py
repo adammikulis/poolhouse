@@ -217,7 +217,7 @@ BENCH_SUBS: dict[str, bool] = {"compare": False, "animate": False, "standard": T
 
 
 def bench_cli(sub: str, args: Sequence[str], detach: bool) -> dict[str, Any]:
-    """``poolhouse-bench sub args``: detached with a log and pid when it measures, else run
+    """``python -m poolhouse.bench sub args``: detached with a log and pid when it measures, else run
     in-process with what it printed."""
     if detach:
         from poolhouse import jobs
@@ -237,8 +237,8 @@ def _bench_tool(sub: str, detach: bool) -> mcp.Tool:
     what = ("Start it detached; returns the log and pid, and jobs_wait waits for it."
             if detach else "Runs it and returns what it printed.")
     return mcp.Tool(f"bench_{sub}",
-                    f"poolhouse-bench {sub} ARGS, exactly as the command line takes them "
-                    f"(follows the CLI: `poolhouse-bench {sub} --help` says what). {what}", fn)
+                    f"python -m poolhouse.bench {sub} ARGS, exactly as the command line takes them "
+                    f"(follows the CLI: `python -m poolhouse.bench {sub} --help` says what). {what}", fn)
 
 
 # -- jobs -------------------------------------------------------------------------------

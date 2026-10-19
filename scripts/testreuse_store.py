@@ -170,19 +170,3 @@ class Store:
         with contextlib.suppress(OSError, ValueError):
             if json.loads(path.read_text(encoding="utf-8")).get("pid") == os.getpid():
                 path.unlink(missing_ok=True)
-
-    def note_thread(self, lookup: str, seq: int) -> None:
-        """Remember the board thread of the run for ``lookup`` and show it on this process's claim."""
-        write_atomic(self.folder / "threads" / lookup, str(seq))
-        path = self.folder / "inflight" / f"{lookup}.json"
-        with contextlib.suppress(OSError, ValueError):
-            record = json.loads(path.read_text(encoding="utf-8"))
-            if record.get("pid") == os.getpid():
-                write_atomic(path, json.dumps({**record, "thread": seq}))
-
-    def thread_of(self, lookup: str) -> int:
-        """The board thread most recently opened for ``lookup``, or 0."""
-        try:
-            return int((self.folder / "threads" / lookup).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return 0

@@ -129,7 +129,7 @@ def stop_gently(proc: Any) -> str:
 
 def stop_pid(pid: int) -> str:
     """`stop_gently` for a process there is no ``Popen`` for -- a bench the daemon adopted
-    after ``poolhouse-bench --detach`` started it. Returns what was sent.
+    after ``python -m poolhouse.bench --detach`` started it. Returns what was sent.
 
     POSIX: ``SIGTERM`` by pid, which the bench turns into an exit that releases its model
     and its lock. Windows: ``os.kill`` with ``CTRL_BREAK_EVENT`` reaches the process group

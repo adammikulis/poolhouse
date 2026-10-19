@@ -382,7 +382,7 @@ def in_the_way(*, jobs: Callable[[], bool] | None = None,
     """Why an update has to wait, or "" when nothing is in its way.
 
     Three things, and any one of them is enough: a training job, a benchmark measuring
-    (the same lock ``poolhouse-bench status`` reads, so a run somebody started at the
+    (the same lock ``python -m poolhouse.bench status`` reads, so a run somebody started at the
     keyboard counts), and a model server this machine holds a lease on. Replacing the code
     under any of them turns a measurement into a mixture of two builds, or drops a served
     model mid-answer. A check that raises counts as busy: not being able to tell is not a

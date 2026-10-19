@@ -40,7 +40,7 @@ def _pyplot():
 
     Optional the way every other heavy dependency here is optional -- `torch_ops`,
     `vision.payloads` both raise with the install line rather than failing on
-    an ImportError somebody has to interpret. Note that `poolhouse-bench show --plot` is
+    an ImportError somebody has to interpret. Note that `python -m poolhouse.bench show --plot` is
     *not* the precedent it looks like: that one writes hand-built SVG with no library at
     all, on purpose, because it has to open on a machine with no packages. A PNG cannot be
     written that way, which is why this one has a dependency and that one does not.

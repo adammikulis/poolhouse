@@ -10,7 +10,7 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from poolhouse import hub, limits as limits_mod, platform
+from poolhouse import hub, limits as limits_mod, optional, platform
 from poolhouse.client import thinking
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
@@ -299,8 +299,8 @@ def cmd_up(args: argparse.Namespace) -> int:
         profile, took = from_profile(args, model, wanted)
         if profile is None:
             warn(f"no measured profile for {model.rsplit('/', 1)[-1]} doing {wanted}; "
-                 "serving as asked -- `poolhouse-bench report --profile` writes one from "
-                 "the store")
+                 "serving as asked" + (f" -- `{write}` writes one from the store" if (
+                     write := optional.command("poolhouse.bench", "report --profile")) else ""))
         else:
             warn(f"profile {profile.model} for {profile.workload}: "
                  + (", ".join(took) or "nothing left to fill"))

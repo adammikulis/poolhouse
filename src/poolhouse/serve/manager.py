@@ -112,7 +112,7 @@ def _descends_from(pid: int, ancestor: Any) -> bool:
 def measurement_said(held: dict[str, Any]) -> str:
     """The measurement named for a message: its command, its pid and when it started."""
     argv = " ".join(str(a) for a in (held.get("argv") or []))
-    what = f"poolhouse-bench {argv}" if argv else "a measurement that wrote no record of itself"
+    what = f"python -m poolhouse.bench {argv}" if argv else "a measurement that wrote no record of itself"
     since = f", started {held['started']}" if held.get("started") else ""
     return f"{what} (pid {held.get('pid')}){since}"
 
@@ -414,7 +414,7 @@ class ServerManager(Admitting):
                 f"port {spec.port}: the card is being measured by "
                 f"{measurement_said(held)}. Loading a second model onto it would spoil "
                 f"that measurement and this one. Wait for it to finish, stop it with "
-                f"'poolhouse-bench stop', or pass --anyway to load beside it.")
+                f"'python -m poolhouse.bench stop', or pass --anyway to load beside it.")
         for part in guarded.parts_of(spec):
             if part:
                 guarded.verify(part, state_file=self.state_file, stop=self.reclaim)

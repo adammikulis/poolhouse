@@ -1,4 +1,4 @@
-"""poolhouse-train-run: train one recipe from a config file.
+"""python -m poolhouse.train run: train one recipe from a config file.
 
 Every run that writes anything writes a ``manifest.json`` naming its training data by hash
 and example count. ``--lora`` trains an adapter, plans its cost before a weight loads, and
@@ -71,7 +71,7 @@ def current(*, home: Path | None = None) -> dict[str, Any]:
 
 
 def detach(argv: Sequence[str]) -> Path:
-    """Run ``poolhouse-train-run argv`` owned by no terminal, and return the log it writes."""
+    """Run ``python -m poolhouse.train run argv`` owned by no terminal, and return the log it writes."""
     rest = [a for a in argv if a != "--detach"]
     log = home_dir() / "logs" / f"train-{time.strftime('%Y%m%dT%H%M%S')}.log"
     return jobs.detach("poolhouse.train.run", rest, log=log, kind=KIND, home=_jobs_home()).log
@@ -79,27 +79,27 @@ def detach(argv: Sequence[str]) -> Path:
 
 def wait(*, say: Callable[[str], None] = say, home: Path | None = None,
          every: float = 60.0) -> int:
-    """``poolhouse-train-run wait``: block until the detached run this machine records has
+    """``python -m poolhouse.train run wait``: block until the detached run this machine records has
     ended, saying so every minute -- so what follows it is `wait && next` rather than a
     loop written by hand."""
     return jobs.wait(KIND, say=say, every=every, home=_jobs_home(home))
 
 
 def stop(*, say: Callable[[str], None] = say, home: Path | None = None) -> int:
-    """``poolhouse-train-run stop``: end the detached run. Whatever it checkpointed stays
+    """``python -m poolhouse.train run stop``: end the detached run. Whatever it checkpointed stays
     where ``--out`` put it."""
     return jobs.stop(KIND, say=say, home=_jobs_home(home))
 
 
 def status(*, say: Callable[[str], None] = say, home: Path | None = None) -> int:
-    """``poolhouse-train-run status``: what this machine records -- the training run and any
+    """``python -m poolhouse.train run status``: what this machine records -- the training run and any
     other long command, the same lines `poolhouse-jobs status` prints."""
     return jobs.status(say=say, home=_jobs_home(home))
 
 
 def parity(*, say: Callable[[str], None] = say, first: str = "torch",
            second: str = "mlx") -> int:
-    """``poolhouse-train-run parity``: every array operation on two backends, side by side.
+    """``python -m poolhouse.train run parity``: every array operation on two backends, side by side.
 
     Prints one row per operation with the largest absolute difference between the two,
     and returns 1 if any of them disagree by more than the tolerance.
@@ -365,7 +365,7 @@ def _parser() -> Any:
     import argparse
 
     ap = argparse.ArgumentParser(
-        prog="poolhouse-train-run", formatter_class=argparse.RawDescriptionHelpFormatter,
+        prog="python -m poolhouse.train run", formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Instead of the flags, one of these words:\n"
                "  status   what long runs this machine records -- pid, argv, log\n"
                "  wait     block until the detached training run has ended\n"
@@ -390,7 +390,7 @@ def _parser() -> Any:
     ap.add_argument("--detach", action="store_true",
                     help=f"run this in the background, owned by nobody's terminal, with "
                          f"its output in a log under {home_dir() / 'logs'}; "
-                         f"`poolhouse-train-run status|wait|stop` follow it")
+                         f"`python -m poolhouse.train run status|wait|stop` follow it")
     group = ap.add_argument_group(
         "lora", "train an adapter instead of every weight -- what makes an 8B base "
                 "trainable on one machine. Needs peft: pip install 'poolhouse[train-lora]'")
@@ -432,11 +432,11 @@ def main(argv: list[str] | None = None) -> int:
         pid = running()
         if pid:
             warn(f"error: a training run (pid {pid}) is still going; "
-                 f"`poolhouse-train-run wait` blocks until it has ended, `stop` ends it")
+                 f"`python -m poolhouse.train run wait` blocks until it has ended, `stop` ends it")
             return 2
         log = detach(rest)
         say(f"detached; the log is {log}")
-        say("  poolhouse-train-run status")
+        say("  python -m poolhouse.train run status")
         return 0
 
     stopping = threading.Event()

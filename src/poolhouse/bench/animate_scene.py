@@ -1,4 +1,4 @@
-"""The manim scene behind ``poolhouse-bench animate``: draws the tables ``animate`` builds.
+"""The manim scene behind ``python -m poolhouse.bench animate``: draws the tables ``animate`` builds.
 
 Only ``Text`` is used for lettering, never ``Tex``, so no LaTeX is needed to render.
 """

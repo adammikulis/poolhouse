@@ -36,7 +36,7 @@ def schema() -> dict[str, Any]:
 def load_world(where: str | Path, *, days: int = DAYS) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     """The truth and the messages: ``(graph, messages, note)``.
 
-    ``where`` is what `poolhouse-world make --out` wrote, or what `simulate` wrote beside it
+    ``where`` is what `python -m poolhouse.world make --out` wrote, or what `simulate` wrote beside it
     (that one has ``messages.jsonl``). A world with no messages is simulated for ``days``
     working days with the template writer -- no model -- into a temporary directory, and
     the note says so; the truth is then the graph *after* the simulation, since an arc's

@@ -1,4 +1,4 @@
-"""``poolhouse-train-decider`` and ``poolhouse-decide train``: the command line of
+"""``python -m poolhouse.train decider`` and ``poolhouse-decide train``: the command line of
 `poolhouse.train.decider`."""
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ OPTIONS = [
 ]
 
 COMMANDS = Group(
-    "poolhouse-train-decider",
+    "python -m poolhouse.train decider",
     "Fine-tune a pointer-head decision model from labelled cases: a LoRA on a small base "
     "model and a pointer head, options shuffled on every pass, a temperature per question "
     "kind fitted on cases held apart from training and scoring. Checks the data first, holds "
@@ -129,5 +129,5 @@ COMMANDS = Group(
 main = COMMANDS.run
 
 
-if __name__ == "__main__":  # pragma: no cover - the entry point is `poolhouse-train-decider`
+if __name__ == "__main__":  # pragma: no cover - the entry point is `python -m poolhouse.train decider`
     raise SystemExit(main())

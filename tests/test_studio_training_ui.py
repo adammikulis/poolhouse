@@ -28,13 +28,13 @@ def test_training_steps_validate_dataset_and_preserve_recipe_arguments(joined, o
     expect(page.locator('training-view #config > .status')).to_contain_text('trains for 20 steps')
     spec = page.evaluate("document.querySelector('training-view').spec()")
     from poolhouse.train.run import _parser
-    parsed = _parser().parse_args(spec['args'])
+    parsed = _parser().parse_args(spec['args'][1:])
     assert parsed.recipe == 'tool-calls' and parsed.lora
     assert parsed.data == 'datasets/demo.jsonl' and 'base=models/demo-base' in parsed.set
     page.get_by_role('button', name='Back', exact=True).click()
     assert page.get_by_label('Base model ID or local directory').input_value() == 'models/demo-base'
     page.get_by_label('Fine-tuning strategy').select_option('full')
-    parsed = _parser().parse_args(page.evaluate("document.querySelector('training-view').spec()")['args'])
+    parsed = _parser().parse_args(page.evaluate("document.querySelector('training-view').spec()")['args'][1:])
     assert not parsed.lora and 'lora=false' in parsed.set
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -124,7 +124,7 @@ def test_fresh_rl_workflow_requires_no_dataset(joined, open_page):
     assert page.get_by_label('Dataset path (relative to files root)').input_value() == ''
     assert not page.get_by_label('Dataset path (relative to files root)').is_visible()
     spec = page.evaluate("document.querySelector('training-view').spec()")
-    assert spec['command'] == 'poolhouse-gym' and '--data' not in spec['args']
+    assert spec['command'] == 'poolhouse.gym' and '--data' not in spec['args']
     assert not errors
 
 

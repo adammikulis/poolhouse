@@ -1,4 +1,4 @@
-"""poolhouse-train-tools: a project's tool schemas, turned into a model that calls them.
+"""python -m poolhouse.train tools: a project's tool schemas, turned into a model that calls them.
 
 One command does three things, each skipped when its output is already in ``--out``:
 `synth` reads the worked examples out of the tool descriptions and templates them into

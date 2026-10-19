@@ -1,4 +1,4 @@
-"""``poolhouse-bench`` -- the subcommands, the measuring lock, and running in the background.
+"""``python -m poolhouse.bench`` -- the subcommands, the measuring lock, and running in the background.
 
 Every subcommand parses its arguments and prints; the work is in `poolhouse.bench.ops` and
 the modules beside it, and its flags are in `poolhouse.bench.options`. `main` is what the
@@ -77,7 +77,7 @@ __all__ = ["COMMANDS", "main"]
 # allow_abbrev=False on every parser here: a flag that is documented but not defined must
 # be refused by name, not bound by prefix to whichever neighbour shares its first letters
 # -- `--short` became `--shortlist` that way and the error blamed the wrong flag.
-COMMANDS = Group("poolhouse-bench",
+COMMANDS = Group("python -m poolhouse.bench",
                  "Time a set of questions through a graph, and compare two runs.",
                  allow_abbrev=False)
 
@@ -92,13 +92,13 @@ def _module(name: str) -> Any:
 
 
 def _parser() -> argparse.ArgumentParser:
-    """The command line of ``poolhouse-bench``, built once per call and shared with `detach`,
+    """The command line of ``python -m poolhouse.bench``, built once per call and shared with `detach`,
     which needs a label out of an argv before handing it to the child."""
     return COMMANDS.parser()
 
 
 def _main(argv: list[str] | None = None) -> int:
-    """``poolhouse-bench`` -- what a change to the asking costs, and whether it was worth it."""
+    """``python -m poolhouse.bench`` -- what a change to the asking costs, and whether it was worth it."""
     words = list(argv if argv is not None else sys.argv[1:])
     args = _parser().parse_args(words)
     # the line as given, for `sweep --fleet` to hand each member the same line with one model
@@ -528,7 +528,7 @@ def cmd_show(args: Any) -> int:
         bench_extract.table(kept.extracted)
     hollow = empties(args.kept)
     if hollow:
-        say(f"{len(hollow)} empty run(s) skipped -- poolhouse-bench forget --empty "
+        say(f"{len(hollow)} empty run(s) skipped -- python -m poolhouse.bench forget --empty "
             f"removes them")
     return 0
 
@@ -590,7 +590,7 @@ def cmd_stop(args: Any) -> int:
 @COMMANDS.command("wait",
                   help="block until the detached measurement has ended, saying so "
                        "every minute -- so the next command can follow it "
-                       "(poolhouse-bench wait && poolhouse-bench report --profile)",
+                       "(python -m poolhouse.bench wait && python -m poolhouse.bench report --profile)",
                   options=options.wait_options, allow_abbrev=False)
 def cmd_wait(args: Any) -> int:
     return jobs.wait("bench", every=args.every, home=bench.home_dir() / "jobs")
@@ -600,20 +600,20 @@ def cmd_wait(args: Any) -> int:
 # queue's log is named after the queue file instead of "bench".
 @COMMANDS.command("queue",
                   help="run an evening of measurements from a file: one "
-                       "poolhouse-bench line per step, smoke:/then: pairs, "
+                       "python -m poolhouse.bench line per step, smoke:/then: pairs, "
                        "set VAR= and ${VAR}, one at a time through the "
                        "measuring lock",
                   options=options.queue_options, allow_abbrev=False)
 def cmd_queue(args: Any) -> int:
-    # The queue holds no lock: each of its steps is its own `poolhouse-bench`, and takes
+    # The queue holds no lock: each of its steps is its own `python -m poolhouse.bench`, and takes
     # the measuring lock itself, so a step of a queue and a run started by hand still
     # wait for each other.
     if args.detach:
         log = detach(getattr(args, "_argv", None) or sys.argv[1:])
         say(f"the queue is running in the background; log: {log}\n"
-            f"  poolhouse-bench status   -- the step it is on, and what is left\n"
-            f"  poolhouse-bench tail -f  -- follow the log\n"
-            f"  poolhouse-bench stop     -- end the queue and the step inside it")
+            f"  python -m poolhouse.bench status   -- the step it is on, and what is left\n"
+            f"  python -m poolhouse.bench tail -f  -- follow the log\n"
+            f"  python -m poolhouse.bench stop     -- end the queue and the step inside it")
         return 0
     if not args.dry_run:
         llamacpp_note.announce()
@@ -654,7 +654,7 @@ COMMANDS.borrow(
 
 
 def _estimated(rest: Sequence[str]) -> int:
-    """Print what ``poolhouse-bench rest`` should take -- one ``estimate:`` line per model
+    """Print what ``python -m poolhouse.bench rest`` should take -- one ``estimate:`` line per model
     and the total, read from the runs kept in its store -- and return 5 when that is over
     the ceiling and ``--yes`` was not given, with the refusal on stderr; 0 otherwise."""
     args = _parser().parse_args([a for a in rest if a not in ("--detach", "--no-queue")])
@@ -706,9 +706,9 @@ def main(argv: list[str] | None = None) -> int:
             return refused
         log = detach(rest)
         say(f"measuring in the background; log: {log}\n"
-            f"  poolhouse-bench status   -- what is measuring, and its last line\n"
-            f"  poolhouse-bench tail -f  -- follow the log\n"
-            f"  poolhouse-bench stop     -- end it, taking its server down")
+            f"  python -m poolhouse.bench status   -- what is measuring, and its last line\n"
+            f"  python -m poolhouse.bench tail -f  -- follow the log\n"
+            f"  python -m poolhouse.bench stop     -- end it, taking its server down")
         return 0
     refuse = "--no-queue" in rest
     rest = [a for a in rest if a != "--no-queue"]

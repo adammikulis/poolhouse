@@ -2,7 +2,7 @@
 
 Every fixture here is invented and lives in ``tmp_path``: no store outside it is opened, no
 model is served, and the steps are run by a fake in place of `queue.run_step`, so nothing
-here starts an `poolhouse-bench` or touches a GPU.
+here starts an `python -m poolhouse.bench` or touches a GPU.
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def test_the_label_a_step_keeps_under_is_read_off_the_line(tmp_path):
 # -- running it -------------------------------------------------------------------------------
 
 class FakeBench:
-    """An `poolhouse-bench` that runs nothing: it writes down the line and returns a code."""
+    """An `python -m poolhouse.bench` that runs nothing: it writes down the line and returns a code."""
 
     def __init__(self, codes: dict[str, int] | None = None) -> None:
         self.calls: list[list[str]] = []
@@ -199,7 +199,7 @@ def test_dry_run_prints_the_steps_expanded_and_runs_none_of_them(tmp_path, capsy
     assert fake.calls == []
     said = capsys.readouterr().out
     assert "2 step(s), 1 smoke/then pair(s)" in said
-    assert f"poolhouse-bench sweep --serve {FX} --label-suffix=-v2 --smoke" in said
+    assert f"python -m poolhouse.bench sweep --serve {FX} --label-suffix=-v2 --smoke" in said
     assert "[label Bellwether-12B-v2]" in said
     assert "--yes" in said                                   # what would be added, shown
     assert "nothing ran: --dry-run" in said
@@ -228,7 +228,7 @@ def test_resume_skips_a_step_whose_label_the_store_already_holds(tmp_path, capsy
 
 
 def test_status_says_which_step_is_running_and_what_is_left(tmp_path, monkeypatch):
-    """`poolhouse-bench status` reads the same file the queue writes as it goes, so what is
+    """`python -m poolhouse.bench status` reads the same file the queue writes as it goes, so what is
     running is a fact about the machine and not a line somebody remembers typing."""
     where = a_queue(tmp_path, "sweep --serve raincoat-2b.gguf --sample 10\n"
                               "sweep --serve bellwether-12b.gguf --sample 10\n"
@@ -309,7 +309,7 @@ def test_the_whole_queue_detaches_the_way_a_run_does(tmp_path, monkeypatch, caps
     assert held["pid"] == 4343 and held["argv"] == ["queue", str(where), "--yes"]
 
     said = capsys.readouterr().out
-    assert "poolhouse-bench status" in said and "poolhouse-bench stop" in said
+    assert "python -m poolhouse.bench status" in said and "python -m poolhouse.bench stop" in said
 
 
 def test_the_queue_is_dispatched_by_the_command_and_returns_what_the_steps_did(

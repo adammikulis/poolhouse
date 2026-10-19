@@ -8,7 +8,7 @@
     iq_vs_kquant.py --analyse  read the results and write the table and the verdict
 
 Every cell is one call of the existing machinery: `poolhouse-decide jevbench` (the logprob
-backend), `poolhouse-bench sweep` (the question set) or `poolhouse-bench speed`.
+backend), `python -m poolhouse.bench sweep` (the question set) or `python -m poolhouse.bench speed`.
 """
 
 from __future__ import annotations

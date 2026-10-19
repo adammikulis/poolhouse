@@ -158,9 +158,9 @@ class Boom:
 
 
 def test_job_done_survives_any_error_from_the_board():
-    events = testboard.BoardEvents(Boom())
-    events.job_done("j", {"argv": ["fast"]}, {"exit": 0}, 7)
-    events.claimed("tests/x.py", "k" * 64)
+    events = testboard.BoardEvents(Boom(), lambda: ["bob"])
+    events.job_done("j", {"argv": ["fast"]}, {"exit": 0})
+    events.canary_mismatch("tests/x.py", "detail")
 
 
 def test_acting_survives_any_error_from_the_workspace(monkeypatch):

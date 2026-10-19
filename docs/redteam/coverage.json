@@ -1,10 +1,10 @@
 {
- "surfaces": 826,
+ "surfaces": 821,
  "by_status": {
-  "covered": 509,
+  "covered": 508,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 72,
+  "n/a": 68,
   "unmapped": 0
  },
  "by_kind": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 25,
+   "n/a": 21,
    "unmapped": 0
   },
   "context": {
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 82,
+   "covered": 81,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -830,49 +830,9 @@
    "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
-   "id": "cli:poolhouse-suite",
-   "kind": "cli",
-   "source": "poolhouse.train.suite:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
    "id": "cli:poolhouse-test-devices",
    "kind": "cli",
    "source": "poolhouse.testfarm.devices:command",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
-   "id": "cli:poolhouse-train-decider",
-   "kind": "cli",
-   "source": "poolhouse.train.decider_cli:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
-   "id": "cli:poolhouse-train-run",
-   "kind": "cli",
-   "source": "poolhouse.train.run:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
-   "id": "cli:poolhouse-train-tools",
-   "kind": "cli",
-   "source": "poolhouse.train.tools:main",
    "trust": "the person at a terminal; arguments may carry text from outside",
    "attacker": "hostile argument text or path reaches the command",
    "status": "n/a",
@@ -6962,18 +6922,6 @@
     "tests/test_fleet_task_routes.py::test_malformed_requests_and_identity_overrides_do_not_mutate"
    ],
    "note": "Native coordinator graphs and Fleet sockets reject self-review, same-device economic review, missing read/project authority, altered task/proposal/review hashes, browser identity overrides and foreign-page mutations"
-  },
-  {
-   "id": "parser:workspace/testboard.py",
-   "kind": "parser",
-   "source": "workspace/testboard.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_workspace_rules.py"
-   ],
-   "note": ""
   },
   {
    "id": "parser:workspace/worktree_lifecycle.py",

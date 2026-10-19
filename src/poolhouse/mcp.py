@@ -6,7 +6,7 @@ Each tool calls the same function the matching command calls -- `serve.cli.look`
 would be told, and nothing is reimplemented here. Anything long -- a model load, a download, a
 measurement -- never blocks the call: it is started in its own session, owned by no
 terminal, and the handle (log path and pid) comes back at once. ``bench_status`` and
-``bench_history`` read the same files ``poolhouse-bench status|history`` read.
+``bench_history`` read the same files ``python -m poolhouse.bench status|history`` read.
 
 The protocol is spoken two ways, chosen at startup: the ``mcp`` SDK's ``FastMCP`` when it
 is installed (``pip install 'poolhouse[mcp]'``), and otherwise a small JSON-RPC loop over
@@ -64,7 +64,7 @@ def mcp_home() -> Path:
     """Where a detached command run through MCP keeps its logs."""
     return state("mcp")
 """Where detached commands that are not the bench's keep their logs. The bench keeps its
-own, under its own home, because ``poolhouse-bench status`` reads them from there."""
+own, under its own home, because ``python -m poolhouse.bench status`` reads them from there."""
 
 
 def _hints(*, read_only: bool, destructive: bool = False, idempotent: bool = False,
@@ -104,7 +104,7 @@ def detached(module: str, argv: list[str], *, name: str,
              home: Path | None = None) -> dict[str, Any]:
     """Run ``python -m module argv`` in its own session and return its log and pid.
 
-    The same shape ``poolhouse-bench --detach`` makes, for the commands that have no
+    The same shape ``python -m poolhouse.bench --detach`` makes, for the commands that have no
     ``--detach`` of their own: a server coming up, a download. The log's header names the
     module and its arguments, so a log found later says what it was.
     """
@@ -285,7 +285,7 @@ _BENCH_FLAGS = frozenset({
     "--top-p", "--top-k", "--min-p", "--n-predict", "--card", "--anyway", "--ceiling", "--yes",
     "--no-selfcheck", "--no-smoke", "--per-question", "--no-queue", "--no-prefetch",
 })
-"""The ``poolhouse-bench`` subcommands and flags a tool may pass: none takes a path to run, a
+"""The ``python -m poolhouse.bench`` subcommands and flags a tool may pass: none takes a path to run, a
 store or kept file to read or write, or an endpoint to call."""
 
 
@@ -302,7 +302,7 @@ def _checked_bench_argv(argv: list[str]) -> list[str]:
 
 
 def bench_run(argv: list[str]) -> dict[str, Any]:
-    """Start ``poolhouse-bench argv`` (e.g. ``["sweep", "--serve", "hf:...", "--smoke"]``)
+    """Start ``python -m poolhouse.bench argv`` (e.g. ``["sweep", "--serve", "hf:...", "--smoke"]``)
     detached, exactly as ``--detach`` would; returns the log path, pid and argv, and
     ``bench_status`` follows it."""
     underway = module("poolhouse.bench.underway")
@@ -317,14 +317,14 @@ def bench_run(argv: list[str]) -> dict[str, Any]:
 
 def bench_status() -> dict[str, Any]:
     """What is measuring right now, its last log line, or that nothing is
-    (``poolhouse-bench status``)."""
+    (``python -m poolhouse.bench status``)."""
     status = module("poolhouse.bench.progress").status
     return {"text": status(), "measuring": module("poolhouse.bench.underway").measuring()}
 
 
 def bench_history(since: str = "", limit: int = 20) -> list[dict[str, Any]]:
     """Every measurement the bench has run, newest first -- what ran, when, how long, how it
-    ended and what it kept (``poolhouse-bench history``); ``since`` is an ISO date or a
+    ended and what it kept (``python -m poolhouse.bench history``); ``since`` is an ISO date or a
     span like ``2d``."""
     log = module("poolhouse.bench.history")
     rows = log.history(state("bench"))
@@ -337,7 +337,7 @@ def bench_history(since: str = "", limit: int = 20) -> list[dict[str, Any]]:
 def bench_show(last: int = 0, since: str = "", extract: bool = False,
                speed: bool = False) -> list[dict[str, Any]]:
     """Every benchmark run kept, as records: what was served, how it was asked, what it
-    scored and what it cost (``poolhouse-bench show``). ``last`` keeps the newest N and
+    scored and what it cost (``python -m poolhouse.bench show``). ``last`` keeps the newest N and
     ``since`` an ISO time; ``extract`` asks for the extraction runs and ``speed`` for the
     speed grids instead of the answering ones."""
     ops = module("poolhouse.bench.ops")
@@ -358,7 +358,7 @@ def fleet_members(timeout_s: float = 2.0) -> list[dict[str, Any]]:
 def world_make(kind: str = "company", size: str = "small", seed: int = 0,
                out: str = "") -> dict[str, Any]:
     """Invent an organised group as a graph with people who could talk
-    (``poolhouse-world make``); ``out`` is the directory written (default: under
+    (``python -m poolhouse.world make``); ``out`` is the directory written (default: under
     ``~/.poolhouse/worlds``)."""
     where = out or str(state("worlds") / f"{kind}-{size}-{seed}")
     return module("poolhouse.world.ops").invent(kind=kind, size=size, seed=int(seed), out=where)

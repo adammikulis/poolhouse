@@ -1,4 +1,4 @@
-"""poolhouse-train-tools: a project's tool schemas, turned into a model that calls them.
+"""python -m poolhouse.train tools: a project's tool schemas, turned into a model that calls them.
 
 Everything here runs on the CPU over models built in ``tmp_path`` -- a Gemma3 of two layers
 and a tokenizer trained on the synthetic questions -- and nothing is downloaded. The chat
@@ -544,7 +544,7 @@ def _kept_run(rows, *, label="e4b-shortlist", model="invented-e4b.gguf"):
 
 
 class TestFromBench:
-    """`poolhouse-train-tools from-bench`: a bench run's traces into training examples.
+    """`python -m poolhouse.train tools from-bench`: a bench run's traces into training examples.
 
     The synthesiser teaches the *shape* of a call from the descriptions; this teaches the
     calls that actually scored, on a real graph, with real ids -- which is the only source
@@ -637,7 +637,7 @@ class TestFromBench:
 
     def test_a_directory_out_is_a_dataset_the_recipe_reads(self, tmp_path):
         """The same rows the synthesiser writes, so the two sources mix in one directory
-        and `poolhouse-train-run --recipe tool-calls --data` reads either."""
+        and `python -m poolhouse.train run --recipe tool-calls --data` reads either."""
         from poolhouse.train.recipes.conversations import read_conversations
         from poolhouse.train.tools import from_bench, write_dataset
 

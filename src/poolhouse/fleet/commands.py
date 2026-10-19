@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
 import sys
 from collections.abc import Sequence
-from pathlib import Path
 
-__all__ = ["CONSOLE", "INTERPRETERS", "MODULES", "allowed"]
+__all__ = ["INTERPRETERS", "MODULES", "allowed"]
 
-CONSOLE = frozenset({"poolhouse-bench"})
-"""Console scripts, named without a path."""
-MODULES = frozenset({"poolhouse.fleet.calibration"})
+MODULES = frozenset({"poolhouse.bench", "poolhouse.fleet.calibration"})
 """Modules run as ``python -m MODULE``."""
 INTERPRETERS = frozenset({"python", "python3"})
 
@@ -21,11 +17,7 @@ def allowed(argv: Sequence[str]) -> list[str]:
     if not argv:
         raise ValueError("empty argv")
     program = str(argv[0])
-    if program in CONSOLE:
-        found = shutil.which(program) or str(Path(sys.executable).parent / program)
-        return [found, *map(str, argv[1:])]
     if program in INTERPRETERS and len(argv) >= 3 and argv[1] == "-m" and argv[2] in MODULES:
         return [sys.executable, *map(str, argv[1:])]
     raise ValueError(f"{program!r} is not a command a member may be asked to run "
-                     f"(allowed: {', '.join(sorted(CONSOLE))}, python -m "
-                     f"{', '.join(sorted(MODULES))})")
+                     f"(allowed: python -m {', '.join(sorted(MODULES))})")

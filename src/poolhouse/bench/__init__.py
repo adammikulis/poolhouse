@@ -1,4 +1,4 @@
-"""What a change to the asking costs and whether it was worth it: ``poolhouse-bench``.
+"""What a change to the asking costs and whether it was worth it: ``python -m poolhouse.bench``.
 
 `keep` keeps runs and `score` says what one is worth; `questions`, `counting`, `measure`
 and `holding` ask questions and count what the server spent; `serve`, `run` and `options`

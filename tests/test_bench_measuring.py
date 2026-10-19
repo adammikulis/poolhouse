@@ -1,4 +1,4 @@
-"""What `poolhouse-bench status` says while a measurement is running.
+"""What `python -m poolhouse.bench status` says while a measurement is running.
 
 The record is written when the measuring lock is taken and retired when it is released,
 so a run started in the foreground is as visible as a detached one, and it says how it is
@@ -55,7 +55,7 @@ def test_a_run_in_the_foreground_is_measuring_and_says_how_it_asks(tmp_path, mon
 
     said = seen[0]
     assert f"(pid {os.getpid()})" in said and "measuring for " in said
-    assert "poolhouse-bench run in-the-foreground" in said
+    assert "python -m poolhouse.bench run in-the-foreground" in said
     assert "asking: temperature 0.0 (greedy), n_predict 16384" in said
     assert "log: none -- it prints to the terminal it was started in" in said
     assert "nothing is measuring" in status(results=False)

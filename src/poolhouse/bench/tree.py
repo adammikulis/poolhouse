@@ -1,4 +1,4 @@
-"""``poolhouse-bench tree``: tree speculative decoding on MLX, checked lossless and timed by arm.
+"""``python -m poolhouse.bench tree``: tree speculative decoding on MLX, checked lossless and timed by arm.
 
 ``lossless`` loads the target once and, for each drafter, decodes fixed prompts greedily
 through the tree engine. A reply identical to plain greedy decoding passes. One that differs
@@ -386,7 +386,7 @@ def _keep(args: argparse.Namespace, kind: str, body: dict[str, Any]) -> Path:
 
 
 def run(args: argparse.Namespace) -> int:
-    """``poolhouse-bench tree lossless|speed``, under the measuring lock; 3 when it does not fit."""
+    """``python -m poolhouse.bench tree lossless|speed``, under the measuring lock; 3 when it does not fit."""
     if not args.drafter:
         raise SystemExit("error: name at least one --drafter")
     with only_one(bench.home_dir() / "measuring.lock", announce=warn):

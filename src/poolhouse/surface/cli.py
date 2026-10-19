@@ -1,8 +1,8 @@
-"""``poolhouse-surface`` -- every command's help and output, captured and compared.
+"""``python -m poolhouse.surface`` -- every command's help and output, captured and compared.
 
-    poolhouse-surface capture --out ./before
-    poolhouse-surface capture --out ./after
-    poolhouse-surface diff ./before ./after
+    python -m poolhouse.surface capture --out ./before
+    python -m poolhouse.surface capture --out ./after
+    python -m poolhouse.surface diff ./before ./after
 
 ``capture`` walks every ``poolhouse-<command>`` and every subcommand each declares, writes
 ``--help`` for all of them and the output of the ones that are safe to run, and prints
@@ -26,7 +26,7 @@ from poolhouse.surface.ops import SurfaceFailed
 __all__ = ["COMMANDS", "main"]
 
 COMMANDS = Group(
-    "poolhouse-surface",
+    "python -m poolhouse.surface",
     "Every command's --help and every safe command's output, written to a directory and "
     "compared with another -- so a refactor is diffed rather than eyeballed.")
 main = COMMANDS.run
@@ -47,7 +47,7 @@ def _only(named: str) -> list[str]:
         flag("--src", default="", metavar="DIR",
              help="the src/ of the checkout to ask (default: the one this is running from)"),
         flag("--only", default="", metavar="WORDS",
-             help="only these commands, comma-separated -- `serve,bench`; `` is poolhouse "
+             help="only these commands, comma-separated -- `serve,features`; `` is poolhouse "
                   "itself"),
         flag("--help-only", action="store_true", dest="help_only",
              help="capture no invocations at all, only --help"),
@@ -129,5 +129,5 @@ def cmd_diff(args: argparse.Namespace) -> int:
     return 1
 
 
-if __name__ == "__main__":  # pragma: no cover - the entry point is `poolhouse-surface`
+if __name__ == "__main__":  # pragma: no cover - the entry point is `python -m poolhouse.surface`
     raise SystemExit(main())

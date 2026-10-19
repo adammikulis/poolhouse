@@ -180,7 +180,7 @@ def test_gym_jobs_use_saved_example_python_without_shell_expansion(daemon, monke
     from poolhouse.fleet import workspace_routes
     from poolhouse.fleet.settings import Settings
 
-    monkeypatch.setattr(workspace_routes, 'commands', lambda: [{'name': 'poolhouse-gym'}])
+    monkeypatch.setattr(workspace_routes, 'commands', lambda: [{'name': 'poolhouse.gym'}])
     monkeypatch.setenv('POOLHOUSE_GYM_PYTHONS', '{}')
     python = tmp_path / 'Python with spaces' / 'bin' / 'python'
     python.parent.mkdir(parents=True)
@@ -190,12 +190,12 @@ def test_gym_jobs_use_saved_example_python_without_shell_expansion(daemon, monke
     daemon.ui.settings = Settings.load(daemon.ui.settings_path)
     args = ['train', 'drone', '--config', '{"note":"$(touch /tmp/nope); a b"}']
     code, result, _ = daemon.call('/ui/workspace/jobs', method='POST', body={
-        'command': 'poolhouse-gym', 'args': args, 'preview': True})
+        'command': 'poolhouse.gym', 'args': args, 'preview': True})
     assert code == 200
     assert result['argv'] == [str(python), '-m', 'poolhouse.gym.cli', *args]
     assert daemon.runner.snapshot() == []
     assert daemon.call('/ui/workspace/jobs', method='POST', body={
-        'command': 'poolhouse-gym', 'args': ['train', '../../escape']})[0] == 400
+        'command': 'poolhouse.gym', 'args': ['train', '../../escape']})[0] == 400
     monkeypatch.setenv('POOLHOUSE_GYM_PYTHONS', '{}')
 
 
@@ -213,14 +213,14 @@ def test_saved_drone_interpreter_runs_a_queued_native_session(daemon, monkeypatc
     if not python or not Path(python).is_file():
         pytest.skip('Set POOLHOUSE_TEST_DRONE_PYTHON to the installed native drone Python')
     monkeypatch.setenv('POOLHOUSE_GYM_PYTHONS', '{}')
-    monkeypatch.setattr(workspace_routes, 'commands', lambda: [{'name': 'poolhouse-gym'}])
+    monkeypatch.setattr(workspace_routes, 'commands', lambda: [{'name': 'poolhouse.gym'}])
     daemon.ui.settings.gym_pythons = {'drone': python}
     daemon.ui.settings.save(daemon.ui.settings_path)
     daemon.ui.settings = Settings.load(daemon.ui.settings_path)
     monkeypatch.setenv('PYTHONPATH', str(Path(__file__).resolve().parents[1] / 'src'))
     config = {'world': {'trees': 0, 'hikers': 1, 'fires': 0, 'n_agents': 1}}
     code, result, _ = daemon.call('/ui/workspace/jobs', method='POST', body={
-        'command': 'poolhouse-gym', 'args': ['run', 'drone', '--steps', '1', '--action', '0',
+        'command': 'poolhouse.gym', 'args': ['run', 'drone', '--steps', '1', '--action', '0',
                                          '--config', json.dumps(config)]})
     assert code == 202
     job = daemon.runner.jobs[result['id']]

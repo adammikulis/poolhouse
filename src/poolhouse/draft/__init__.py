@@ -1,4 +1,4 @@
-"""``poolhouse-draft`` -- what a draft head is worth for one model, measured arm by arm.
+"""``python -m poolhouse.draft`` -- what a draft head is worth for one model, measured arm by arm.
 
 One argument is the whole experiment: find the head, pick the workload, check the machine
 is quiet, serve the model once per arm, and print what each arm cost with its units.
@@ -439,12 +439,12 @@ def _measure(args: argparse.Namespace, model: str, head: str, spec_type: str) ->
     for line in recommendation(measured, model=model, head=head,
                                build=str(args.build or "")):
         say(line)
-    say(f"\nevery arm is kept in {kept}; `poolhouse-bench show` reads them back.")
+    say(f"\nevery arm is kept in {kept}; `python -m poolhouse.bench show` reads them back.")
     return 0
 
 
 def cmd_draft(args: argparse.Namespace) -> int:
-    """``poolhouse-draft MODEL``: what the draft head is worth, arm by arm."""
+    """``python -m poolhouse.draft MODEL``: what the draft head is worth, arm by arm."""
     model = str(located(args.model) or args.model)
     args.build = build_for(model, str(args.build or ""))
     if args.build:
@@ -511,7 +511,7 @@ OPTIONS = (
 )
 
 COMMANDS = Group(
-    "poolhouse-draft",
+    "python -m poolhouse.draft",
     "What a draft head is worth for one model: no head, then the head at each depth, "
     "measured on the same work and printed side by side.",
     options=OPTIONS, run=cmd_draft)

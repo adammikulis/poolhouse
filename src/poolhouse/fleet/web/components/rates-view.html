@@ -236,7 +236,7 @@
       if (!points.length) {
         this.body.replaceChildren(el("p", { class: "empty" }, s.ratesError
           || "Nothing has been measured into the runs store yet. "
-             + "poolhouse-bench sweep --smoke asks two questions through the whole path."));
+             + "A source checkout fills it: python -m poolhouse.bench sweep --smoke asks two questions through the whole path."));
         return;
       }
       const tip = el("div", { class: "tip" });
@@ -251,7 +251,7 @@
         el("div", { class: "panels", style: "grid-template-columns: 1fr" }, panel),
         this.ratesTable(points),
         el("p", { class: "note" },
-          "The same runs `poolhouse-bench show --rates` prints, from the same store. Raw "
+          "The same runs `python -m poolhouse.bench show --rates` prints from a source checkout, from the same store. Raw "
           + "runs describe one machine and one llama.cpp build and are not committed; what "
           + "is committed is the ranking they support."));
       this.paintHotRun();
