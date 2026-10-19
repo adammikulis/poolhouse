@@ -20,6 +20,7 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -30,6 +31,9 @@ from poolhouse.redact.secrets import env_secrets, redact
 ENV = "DEV_TEST_NODE_BINARY"
 """Output of the runner, input of the node fixture: the binary this run's tests start."""
 FOLDER = "test-node"
+CARGO_FOLDER = "test-cargo"
+CARGO_ENV = "DEV_TEST_CARGO_DIR"
+"""Names the shared Rust build folder instead of the account's ``~/.cache/test-cargo``."""
 MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority")
 KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
@@ -133,6 +137,38 @@ def prune(base: Path, keep: str) -> None:
             continue
         if idle:
             shutil.rmtree(folder, ignore_errors=True)
+
+
+class SharedBuild(NamedTuple):
+    """A staged copy of the Rust workspace and the cargo target folder that compiles it."""
+
+    staged: Path
+    target: Path
+
+
+def cargo_root() -> Path:
+    """The folder the Rust tests build in: outside every checkout, and outside the poolhouse state and cache roots a test may not write."""
+    named = os.environ.get(CARGO_ENV)
+    return Path(named) if named else account() / ".cache" / CARGO_FOLDER
+
+
+def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
+    """The workspace of ``app`` staged at a fixed path and the target folder every run with the same ``Cargo.lock`` and compiler shares, so
+    only the crates whose files changed are compiled again; a run that stages different sources gets its own staged copy."""
+    toolchain = version("rustc", tool("rustc"), ["--version", "--verbose"])
+    files = sources(app)
+    key = key_of(app, files, toolchain)
+    locked = hashlib.sha256(b"\n".join([(app / "Cargo.lock").read_bytes(), toolchain.encode()])).hexdigest()[:KEY_LENGTH]
+    base = root or cargo_root()
+    staged, target = base / "workspaces" / key / "app", base / "targets" / locked
+    target.mkdir(parents=True, exist_ok=True)
+    with only_one(base / "stage.lock", announce=lambda _text: None, note="staging the Rust workspace for the tests"):
+        stage(app, files, staged)
+        for folder in (staged.parent, target):
+            os.utime(folder)
+        prune(base / "workspaces", key)
+        prune(base / "targets", locked)
+    return SharedBuild(staged, target)
 
 
 def compile_node(work: Path, target: Path, cargo: str) -> Path:

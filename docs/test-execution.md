@@ -228,6 +228,16 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
 
 The last line of every command is a JSON summary.
 
+## Rust builds in tests
+
+The tests that run `cargo test` (`tests/native_cargo.py`, `test_native_authority_*.py`, `test_phone_native_governance.py`) get a
+staged copy of `app/` and a target folder from `testnode.shared_build`: the copy sits at a fixed path under
+`~/.cache/test-cargo/workspaces/<key of the sources and compiler>/app`, rewritten only where a file differs, and the target
+folder `~/.cache/test-cargo/targets/<key of Cargo.lock and compiler>` is shared by every run with the same lock file and compiler,
+so a run compiles the crates whose files changed and not the registry dependencies again (`DEV_TEST_CARGO_DIR` names another
+folder). The folder is outside every checkout and outside `~/.poolhouse` and `~/.cache/poolhouse`, which a test may not write;
+the reuse plugin counts it as a place a test may write because it holds only what the sources say. Folders idle for three days
+are removed. Cargo's own lock on the target folder serialises two runs that build at once.
 
 ## Fixed cost of a scoped run
 
