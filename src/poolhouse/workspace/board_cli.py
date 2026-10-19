@@ -182,7 +182,8 @@ def agents(args: argparse.Namespace, s: Session) -> Any:
 def spawn(args: argparse.Namespace, s: Session) -> Any:
     """Register a subagent's native session as a child of the caller."""
     made = s.register(Native(clean_model(args.model) if args.model else "", clean_harness(args.harness), args.session))
-    return {"id": made.name, "parent": made.parent, "board": made.board}
+    model = next((a.model for a in s.agents() if a.name == made.name), "")
+    return {"id": made.name, "parent": made.parent, "board": made.board, "model": model}
 
 
 def retire(args: argparse.Namespace, s: Session) -> Any:
