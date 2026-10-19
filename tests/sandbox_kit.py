@@ -4,9 +4,11 @@ for running this interpreter, and a loopback listener."""
 from __future__ import annotations
 
 import contextlib
+import errno
 import os
 import shutil
 import socket
+import stat
 import sys
 import threading
 import time
@@ -130,12 +132,43 @@ class RecordingBackend(UnreadableBackend):
         self.finished.append(tag)
 
 
+class UntrackableBackend(RecordingBackend):
+    """A backend that confines nothing and cannot follow the process a run started as."""
+
+    name = "untrackable"
+
+    def started(self, tag, pid):
+        self.pid = pid
+        raise RuntimeError("the processes of the run cannot be followed")
+
+
 LOCK_BASE = "/private/tmp/poolhouse-seatbelt-log"
 """One path for every test run on the machine, whatever ``TMPDIR`` each one was given."""
 LOCK_TIMEOUT_S = 600.0
 """Seconds a test waits for the lock before it fails; a holder that exits lets go of it."""
 LOCK_POLL_S = 0.02
 _HELD: list[bool] = []
+
+
+def _uid() -> int:
+    return os.getuid()
+
+
+def _open_lock(path: str) -> int:
+    """The descriptor of the lock file ``path``, made for its owner when it is missing; fails the test when
+    the path is a symbolic link, is not a regular file or belongs to another user, since the directory is
+    one that every user can write to."""
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as exc:
+        why = "is a symbolic link" if exc.errno == errno.ELOOP else f"cannot be opened ({exc})"
+        pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
+        os.close(fd)
+        why = "is not a regular file" if not stat.S_ISREG(info.st_mode) else "is owned by another user"
+        pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
+    return fd
 
 
 def _lock(fd: int, mode: int, name: str) -> None:
@@ -167,7 +200,7 @@ def kernel_log(alone: bool = False) -> Iterator[None]:
     held = []
     try:
         for name in ("gate", "lock"):
-            held.append(os.open(f"{LOCK_BASE}.{name}", os.O_RDWR | os.O_CREAT, 0o600))
+            held.append(_open_lock(f"{LOCK_BASE}.{name}"))
             _lock(held[-1], fcntl.LOCK_EX if alone else fcntl.LOCK_SH, name)
             if name == "gate" and not alone:
                 fcntl.flock(held[-1], fcntl.LOCK_UN)

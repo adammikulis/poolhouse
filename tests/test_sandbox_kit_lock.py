@@ -100,6 +100,35 @@ def test_a_test_that_takes_the_lock_twice_fails_instead_of_waiting_for_itself(fi
         pass
 
 
+def test_a_lock_file_that_is_a_symbolic_link_fails_the_test_and_leaves_what_it_points_to_alone(private_lock, tmp_path):
+    precious = tmp_path / "precious"
+    precious.write_text("keep")
+    Path(f"{sandbox_kit.LOCK_BASE}.lock").symlink_to(precious)
+    with pytest.raises(FAILED, match="symbolic link"), kernel_log():
+        pass
+    assert precious.read_text() == "keep"
+
+
+def test_a_lock_file_that_is_not_a_regular_file_fails_the_test(private_lock):
+    os.mkfifo(f"{sandbox_kit.LOCK_BASE}.gate")
+    with pytest.raises(FAILED, match="regular file"), kernel_log():
+        pass
+
+
+def test_a_lock_file_that_another_user_made_fails_the_test(private_lock, monkeypatch):
+    with kernel_log():
+        pass
+    monkeypatch.setattr(sandbox_kit, "_uid", lambda: os.getuid() + 1)
+    with pytest.raises(FAILED, match="owned by another user"), kernel_log():
+        pass
+
+
+def test_the_lock_files_are_made_for_their_owner_alone(private_lock):
+    with kernel_log():
+        pass
+    assert {Path(f"{sandbox_kit.LOCK_BASE}.{name}").stat().st_mode & 0o777 for name in ("gate", "lock")} == {0o600}
+
+
 def test_no_module_but_the_kit_defines_a_seatbelt_fixture_of_its_own():
     own = [path.name for path in TESTS.glob("*.py")
            if path.name not in {"sandbox_kit.py", Path(__file__).name} and re.search(r"def seatbelt(_alone)?\(", path.read_text())]
