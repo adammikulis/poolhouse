@@ -105,3 +105,22 @@ def test_short_views_start_below_context_navigation(tmp_path, playwright):
         browser.close()
     finally:
         served.close()
+
+
+def test_screen_asked_for_while_the_page_boots_is_the_one_opened(tmp_path, playwright):
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    held = []
+    try:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.route('**/ui/setup', lambda route: route.continue_() if held else held.append(route))
+        page.goto(f'http://127.0.0.1:{served.port}/ui')
+        page.wait_for_function("() => window.fleetModel.requestedRoute === 'chat'")
+        page.evaluate("() => { location.hash = 'knowledge'; }")
+        page.wait_for_function("() => window.fleetModel.requestedRoute === 'knowledge'")
+        held[0].continue_()
+        page.wait_for_function("() => window.fleetModel.route === 'knowledge'")
+        browser.close()
+    finally:
+        served.close()
