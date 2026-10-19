@@ -210,3 +210,17 @@ def test_training_capability_does_not_redefine_existing_mlx_installation():
     assert training.packages == ('poolhouse[train-mlx]',)
     assert training.platforms == ('darwin',) and training.vendors == ('apple',)
     assert training.default is False
+
+
+def test_checkpoint_loads_for_generation_without_training_data(base, data, cpu, tmp_path):
+    from poolhouse.train.recipes import load
+    from poolhouse.train.run import run
+
+    out = tmp_path / 'trained'
+    result = run('tool-calls', settings(base), data, out, say=lambda line: None)
+    assert result['checkpoint']
+    restored = load(out)
+    assert restored.config['base'] == str(base)
+    assert restored.batches is None
+    assert restored.eval_batches is None
+    assert restored.config['framework'] == 'mlx'

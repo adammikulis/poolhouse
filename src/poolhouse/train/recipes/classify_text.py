@@ -19,7 +19,7 @@ from poolhouse.train.recipes.models import (
 
 
 def _classes(config: dict[str, Any], labels: list[str]) -> list[str]:
-    """The sorted labels, or the ``classes`` a trained run recorded when there is no data."""
+    """Return the recorded class vocabulary or the sorted training labels."""
     classes = [str(c) for c in config.get("classes") or []] or sorted(set(labels))
     if set(labels) - set(classes):
         raise ValueError("Evaluation data contains labels absent from the trained model")

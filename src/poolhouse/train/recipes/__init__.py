@@ -133,7 +133,7 @@ def _built(recipe_id: str, config: dict[str, Any], data: Path | str | None,
 
 
 def load(directory: Path | str, *, which: str = "latest", data: Path | str | None = None) -> Built:
-    """The recipe a run trained, rebuilt without data and holding ``which`` checkpoint's weights."""
+    """Rebuild a trained recipe with saved weights and optional evaluation data."""
     root = Path(directory).expanduser()
     where = find_latest(root) if which == "latest" else root / which
     if where is None or not is_valid(where):

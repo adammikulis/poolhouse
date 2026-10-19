@@ -128,10 +128,8 @@ def build(spec: dict[str, Any], config: dict[str, Any], data: Path | None) -> Bu
 
     if not config.get('lora'):
         raise ValueError('MLX conversation fine-tuning requires the LoRA adapter strategy')
-    if data is None:
-        raise ValueError('Conversation fine-tuning requires a dataset')
-    train, holdout, manifest = read_conversations(data)
-    if not train:
+    train, holdout, manifest = read_conversations(data) if data is not None else ([], [], {})
+    if data is not None and not train:
         raise ValueError('No training conversations with messages were found')
     selected, _ = resolve_base(spec, config, manifest)
     base = local_base(selected)
@@ -145,7 +143,7 @@ def build(spec: dict[str, Any], config: dict[str, Any], data: Path | None) -> Bu
                 (row := render(tokenizer, sample['messages'], sample.get('tools'), context=context))]
     evaluation = [row for sample in holdout if
                   (row := render(tokenizer, sample['messages'], sample.get('tools'), context=context))]
-    if not training:
+    if data is not None and not training:
         raise ValueError(f'Every assistant answer was cut off at context {context}; raise it')
     keys, params = attach(model, config)
     optimizer = optim.AdamW(learning_rate=float(config['learning_rate']), weight_decay=0.0, bias_correction=True)
@@ -161,9 +159,9 @@ def build(spec: dict[str, Any], config: dict[str, Any], data: Path | None) -> Bu
                  'trainable_parameters': sum(p.size for _, p in tree_flatten(model.trainable_parameters()))}
     return Built(model=model, optimizer=optimizer, loss=masked_loss,
                  step=AdapterStep(model, optimizer, masked_loss, identity=identity), config=effective,
-                 batches=conversation_batches(training, batch_size=batch, pad_id=pad, seed=seed),
+                 batches=conversation_batches(training, batch_size=batch, pad_id=pad, seed=seed) if data is not None else None,
                  eval_batches=conversation_batches(evaluation or training, batch_size=batch,
-                                                   pad_id=pad, seed=seed + 1))
+                                                   pad_id=pad, seed=seed + 1) if data is not None else None)
 
 
 class Plan(lora.Fit):
