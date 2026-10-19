@@ -281,15 +281,9 @@ def every_server() -> list[dict]:
 def running_within(path: Path) -> list[int]:
     """Pids of live processes whose executable, working directory or arguments lie inside ``path``."""
     base = str(path)
-    found = []
-    for proc in psutil.process_iter(["pid", "exe", "cwd", "cmdline"]):
-        try:
-            words = [proc.info.get("exe") or "", proc.info.get("cwd") or "", *(proc.info.get("cmdline") or [])]
-        except (psutil.Error, OSError):
-            continue
-        if any(word == base or word.startswith(base + os.sep) for word in words):
-            found.append(int(proc.info["pid"]))
-    return found
+    return [int(info["pid"]) for _proc, info in readable(["pid", "exe", "cwd", "cmdline"])
+            if any(word == base or word.startswith(base + os.sep)
+                   for word in [info.get("exe") or "", info.get("cwd") or "", *(info.get("cmdline") or [])])]
 
 
 def readable(attrs: list[str]) -> list[tuple[Any, dict]]:
