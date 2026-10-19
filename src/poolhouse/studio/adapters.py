@@ -1,6 +1,7 @@
 """Fixed execution adapters for Studio nodes."""
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -80,12 +81,46 @@ class Adapters:
         self.model_resolver = model_resolver or (lambda binding, context: model_resource(binding))
 
     def dependency_fingerprint(self, node: dict) -> str:
-        if not needs_compute(node):
+        kind = node['type']
+        required = needs_compute(node) or kind == 'evaluate.decision'
+        native = required or kind in {'generate', 'generate.structured', 'evaluate', 'export'}
+        if not native:
             return ''
         environment = self.runner.environment
         if environment is None or not environment.exists:
-            raise OSError('Install Training essentials in Libraries to run this node')
-        return environment.require_compute()
+            if required:
+                raise OSError('Install Training essentials in Libraries to run this node')
+            return 'unavailable'
+        try:
+            companion = environment.require_compute()
+        except OSError:
+            if required:
+                raise
+            companion = 'unavailable'
+        packages = environment.installed()
+        names = {'numpy', 'safetensors', 'mlx', 'mlx-lm', 'torch', 'transformers',
+                 'tokenizers', 'peft', 'huggingface-hub'}
+        if kind.startswith('gym.'):
+            names |= {'gymnasium', 'stable-baselines3', 'metadrive-simulator', 'rware', 'sumo-rl', 'pyflyt'}
+        parameters = node.get('parameters', {})
+        required_names = set()
+        if kind.startswith('train.'):
+            framework = parameters.get('framework') or ('mlx' if 'mlx' in packages else 'torch')
+            required_names = {framework}
+            if kind == 'train.tool-calls':
+                required_names |= {'mlx-lm'} if framework == 'mlx' else {'transformers'}
+            if kind == 'train.decision':
+                required_names = {'torch', 'transformers', 'peft'}
+        elif kind == 'evaluate.decision':
+            required_names = {'torch', 'transformers', 'peft'}
+        elif kind.startswith('gym.'):
+            required_names = {'gymnasium', 'stable-baselines3'}
+        missing = {name for name in required_names if not packages.get(name)}
+        if missing:
+            raise OSError('Install the required compute libraries: ' + ', '.join(sorted(missing)))
+        payload = {'companion': companion,
+                   'versions': {name: packages.get(name) or 'unavailable' for name in sorted(names)}}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
     def availability(self, specs: list[dict]) -> dict[str, list[str]]:
         nodes = [{'id': spec['type'], 'type': spec['type'], 'parameters': {}}
@@ -139,7 +174,7 @@ class Adapters:
         compute_error = ''
         if any(needs_compute(node) for node in workers):
             try:
-                self.dependency_fingerprint(next(node for node in workers if needs_compute(node)))
+                environment.require_compute()
             except (OSError, RuntimeError, ValueError) as error:
                 compute_error = str(error)
         for node in workers:
