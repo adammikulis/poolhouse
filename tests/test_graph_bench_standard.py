@@ -223,6 +223,31 @@ def test_humaneval_confirms_unsafe_code_and_lets_code_eval_run(tmp_path, faked, 
                    "n": 164, "seconds": got["seconds"], "task": "humaneval_instruct"}
 
 
+def test_humaneval_is_not_a_default_set_and_the_default_run_executes_no_generated_code(
+        tmp_path, faked, monkeypatch):
+    calls, script = faked
+    monkeypatch.delenv("HF_ALLOW_CODE_EVAL", raising=False)
+    assert "humaneval" not in standard.DEFAULT_SETS
+    assert all(not standard.SETS[name].unsafe for name in standard.DEFAULT_SETS)
+    assert "humaneval" in standard.SETS
+    script["gsm8k_cot_llama"] = recorded("gsm8k_cot_llama", 1, 1319,
+                                         **{"exact_match,strict-match": 0.5})
+    script["mmlu_pro"] = recorded("mmlu_pro", 1, 12032, **{"exact_match,custom-extract": 0.5})
+    script["ifeval"] = recorded("ifeval", 1, 541, **{"prompt_level_strict_acc,none": 0.5})
+    assert standard_cmd(["--url", URL, "--model", "quill-2b",
+                          "--out", str(tmp_path / "d.json")]) == 0
+    assert [c["tasks"][0] for c in calls] == ["gsm8k_cot_llama", "mmlu_pro", "ifeval"]
+    assert all(c["confirm_run_unsafe_code"] is False for c in calls)
+    assert os.environ.get("HF_ALLOW_CODE_EVAL") is None
+
+
+def test_the_tasks_help_says_humaneval_runs_the_models_code_unsandboxed(capsys):
+    with pytest.raises(SystemExit):
+        standard_cmd(["--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    assert "unsandboxed" in text and "only when named" in text
+
+
 # -- the lock ----------------------------------------------------------------------------
 
 def test_no_queue_is_refused_with_3_while_another_measurement_holds_the_lock(

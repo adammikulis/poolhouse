@@ -72,7 +72,7 @@ SETS: dict[str, Set] = {
                      unsafe=True),
 }
 
-DEFAULT_SETS = ("gsm8k", "mmlu_pro", "ifeval", "humaneval")
+DEFAULT_SETS = ("gsm8k", "mmlu_pro", "ifeval")
 
 
 # -- the harness -------------------------------------------------------------------------
@@ -206,10 +206,10 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--tasks", default=",".join(DEFAULT_SETS),
                    help="comma-separated, from: gsm8k (gsm8k_cot_llama, 8-shot CoT), "
                         "mmlu_pro (5-shot CoT over 14 subjects), ifeval (541 prompts), "
-                        "humaneval (humaneval_instruct, 164 problems; the model's code is "
-                        "executed on this machine through `evaluate`'s code_eval in a "
-                        "subprocess with HF_ALLOW_CODE_EVAL=1 -- leave it out of --tasks "
-                        "to keep generated code from running here). Default: all four")
+                        "humaneval (humaneval_instruct, 164 problems; runs only when "
+                        "named here: the model's code is executed unsandboxed on this "
+                        "machine through `evaluate`'s code_eval in a subprocess with "
+                        "HF_ALLOW_CODE_EVAL=1). Default: gsm8k,mmlu_pro,ifeval")
     p.add_argument("--limit", type=int, default=None,
                    help="score only the first N documents of each set (the harness's own "
                         "limit); the JSON records how many were scored")
