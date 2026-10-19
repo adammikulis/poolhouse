@@ -1,7 +1,81 @@
 <script>
-(function(){
-const S=window.studioModel,E=window.fleetModel.el;
-S.installGroups=proto=>Object.assign(proto,{
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installGroups = (proto) =>
+      Object.assign(proto, {
+        snapshot() {
+          this.flushGroup();
+          return {
+            graph: S.clone(this.rootGraph()),
+            path: this.context.map((c) => c.node.id),
+          };
+        },
+        restoreSnapshot(saved) {
+          this.graph = saved.graph;
+          this.context = [];
+          for (const id of saved.path) {
+            const node = this.graph.nodes.find((n) => n.id === id),
+              definition = this.graph.groups[node.group];
+            this.context.push({ parent: this.graph, node, definition });
+            this.graph = {
+              nodes: definition.nodes,
+              edges: definition.edges,
+              groups: this.graph.groups,
+              layout: this.graph.layout.groups?.[node.group] || {
+                nodes: {},
+                viewport: { x: 0, y: 0, zoom: 1 },
+              },
+            };
+          }
+        },
+        expose(side, name, ref, previous) {
+          if (name && !/^[A-Za-z0-9_.-]+$/.test(name)) {
+            this.message(
+              "Use letters, numbers, dots, dashes or underscores for the public name.",
+            );
+            return;
+          }
+          this.checkpoint();
+          const current = this.context.at(-1),
+            definition = current.definition;
+          definition[side] ||= {};
+          if (previous) delete definition[side][previous];
+          if (name) definition[side][name] = ref;
+          if (previous && previous !== name) {
+            if (side === "parameters" && previous in current.node.parameters) {
+              if (name)
+                current.node.parameters[name] =
+                  current.node.parameters[previous];
+              delete current.node.parameters[previous];
+            }
+            if (side !== "parameters") {
+              const endpoint = side === "inputs" ? "target" : "source";
+              current.parent.edges = current.parent.edges.filter((edge) => {
+                if (
+                  edge[endpoint].node !== current.node.id ||
+                  edge[endpoint].port !== previous
+                )
+                  return true;
+                if (!name) return false;
+                edge[endpoint].port = name;
+                return true;
+              });
+            }
+          }
+          this.changed();
+        },
+        reorderInterface(side, name, direction) {
+          this.checkpoint();
+          const definition = this.context.at(-1).definition,
+            entries = Object.entries(definition[side] || {}),
+            index = entries.findIndex(([key]) => key === name),
+            next = index + direction;
+          if (next < 0 || next >= entries.length) return;
+          [entries[index], entries[next]] = [entries[next], entries[index]];
+          definition[side] = Object.fromEntries(entries);
+          this.changed();
+        },
         makeGroup() {
           if (!this.selected.size) return;
           this.checkpoint();
@@ -79,9 +153,7 @@ S.installGroups=proto=>Object.assign(proto,{
         },
         insertGroup(id) {
           this.checkpoint();
-          const group = S.clone(this.graph.groups[id]),
-            copy = S.id();
-          this.graph.groups[copy] = group;
+          const copy = S.copyGroup(this, this.graph.groups, id);
           const node = {
             id: S.id(),
             type: "group",
@@ -153,6 +225,43 @@ S.installGroups=proto=>Object.assign(proto,{
             ),
           );
           const current = this.context.at(-1);
+          for (const side of ["inputs", "outputs", "parameters"])
+            for (const [name, ref] of Object.entries(
+              current.definition[side] || {},
+            )) {
+              const row = E("span", {}, side + " · " + name);
+              row.append(
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Move " + side + " " + name + " earlier",
+                    onclick: () => this.reorderInterface(side, name, -1),
+                  },
+                  "↑",
+                ),
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Move " + side + " " + name + " later",
+                    onclick: () => this.reorderInterface(side, name, 1),
+                  },
+                  "↓",
+                ),
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Hide " + side + " " + name,
+                    onclick: () => this.expose(side, "", ref, name),
+                  },
+                  "Hide",
+                ),
+              );
+              box.append(row);
+            }
+
           const name = E("input", {
             "aria-label": "Group name",
             value: current.definition.name,
@@ -222,7 +331,6 @@ S.installGroups=proto=>Object.assign(proto,{
           this.selected = new Set(ids.values());
           this.changed();
         },
-
-});
-})();
+      });
+  })();
 </script>

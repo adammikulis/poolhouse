@@ -1,10 +1,26 @@
 <script>
-(function(){
-const S=window.studioModel,E=window.fleetModel.el;
-S.installRuns=proto=>Object.assign(proto,{
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installRuns = (proto) =>
+      Object.assign(proto, {
+        rememberSubmission(value) {
+          this.submission = value;
+          try {
+            if (value)
+              sessionStorage.setItem(
+                "poolhouse-studio-submission",
+                JSON.stringify(value),
+              );
+            else sessionStorage.removeItem("poolhouse-studio-submission");
+          } catch {}
+        },
         async run(selected = false) {
           if (this.submitting) return;
           this.submitting = true;
+          this.message("Validating workflow…");
+          this.querySelector("#studio-run").disabled = true;
+          this.querySelector("#studio-run-selected").disabled = true;
           try {
             await this.save();
             const validation = await S.api("/validate", {
@@ -20,14 +36,19 @@ S.installRuns=proto=>Object.assign(proto,{
               );
               return;
             }
-            const outputs = selected ? [...this.selected] : [],
+            const prefix = this.context.map((c) => c.node.id).join("/");
+            const outputs = selected
+                ? [...this.selected].map((id) =>
+                    prefix ? prefix + "/" + id : id,
+                  )
+                : [],
               signature = JSON.stringify([
                 this.workflowId,
                 this.revision,
                 outputs,
               ]);
             if (this.submission?.signature !== signature)
-              this.submission = { signature, key: S.id() };
+              this.rememberSubmission({ signature, key: S.id() });
             const r = await S.api("/runs", {
               workflow_id: this.workflowId,
               revision: this.revision,
@@ -35,10 +56,19 @@ S.installRuns=proto=>Object.assign(proto,{
               idempotency_key: this.submission.key,
             });
             this.activeRun = r.run;
+            if (this.submission)
+              this.rememberSubmission({ ...this.submission, runId: r.run.id });
+            if (
+              ["done", "completed", "failed", "cancelled"].includes(r.run.state)
+            )
+              this.rememberSubmission(null);
             this.message("Run submitted. Edits apply to your next run.");
             await this.refreshRuns();
           } finally {
             this.submitting = false;
+            this.querySelector("#studio-run").disabled = false;
+            this.querySelector("#studio-run-selected").disabled =
+              !this.selected.size;
           }
         },
         async refreshRuns() {
@@ -85,6 +115,13 @@ S.installRuns=proto=>Object.assign(proto,{
               "/runs/" + encodeURIComponent(this.activeRun.id),
             );
             this.activeRun = latest.run;
+            if (
+              this.submission?.runId === latest.run.id &&
+              ["done", "completed", "failed", "cancelled"].includes(
+                latest.run.state,
+              )
+            )
+              this.rememberSubmission(null);
             this.runDetail();
             this.canvas.paint();
           }
@@ -95,6 +132,42 @@ S.installRuns=proto=>Object.assign(proto,{
               () => this.perform(() => this.refreshRuns()),
               2000,
             );
+        },
+        metricChart(value) {
+          const entries = Object.entries(value || {}).filter(
+            ([, v]) => typeof v === "number" && Number.isFinite(v),
+          );
+          if (!entries.length) return null;
+          const ns = "http://www.w3.org/2000/svg",
+            svg = document.createElementNS(ns, "svg");
+          const width = 480,
+            height = entries.length * 34 + 20,
+            max = Math.max(1, ...entries.map(([, v]) => Math.abs(v)));
+          svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+          svg.setAttribute("role", "img");
+          svg.setAttribute(
+            "aria-label",
+            entries.map(([k, v]) => k + ": " + v).join(", "),
+          );
+          svg.style.maxWidth = "680px";
+          svg.style.width = "100%";
+          entries.forEach(([name, value], i) => {
+            const text = document.createElementNS(ns, "text");
+            text.setAttribute("x", "0");
+            text.setAttribute("y", String(i * 34 + 22));
+            text.setAttribute("fill", "var(--text)");
+            text.setAttribute("font-size", "12");
+            text.textContent = name + " · " + value;
+            const rect = document.createElementNS(ns, "rect");
+            rect.setAttribute("x", "190");
+            rect.setAttribute("y", String(i * 34 + 6));
+            rect.setAttribute("width", String((Math.abs(value) / max) * 280));
+            rect.setAttribute("height", "22");
+            rect.setAttribute("rx", "5");
+            rect.setAttribute("fill", "var(--poolhouse-orange)");
+            svg.append(rect, text);
+          });
+          return svg;
         },
         runDetail() {
           const box = this.querySelector("#studio-run-detail"),
@@ -157,10 +230,17 @@ S.installRuns=proto=>Object.assign(proto,{
                     : node.logs.join("\n"),
                 ),
               );
-            if (node.outputs)
+            if (node.outputs) {
+              const chart = this.metricChart(node.outputs.metrics);
+              if (chart) box.append(chart);
               box.append(E("pre", {}, JSON.stringify(node.outputs, null, 2)));
+            }
           }
-          for (const artifact of run.artifacts || []) {
+          if (
+            Object.values(run.nodes || {}).some((n) =>
+              ["done", "completed"].includes(n.state),
+            )
+          )
             box.append(
               E(
                 "button",
@@ -169,20 +249,18 @@ S.installRuns=proto=>Object.assign(proto,{
                   onclick: () =>
                     this.perform(async () => {
                       const result = await S.api(
-                        "/runs/" +
-                          encodeURIComponent(run.id) +
-                          "/artifacts/" +
-                          encodeURIComponent(artifact.id),
+                        "/runs/" + encodeURIComponent(run.id) + "/artifacts",
                       );
-                      S.download("artifact.json", result.artifact || result);
+                      S.download(
+                        "run-" + run.id + "-artifacts.json",
+                        result.artifacts,
+                      );
                     }),
                 },
-                artifact.title || artifact.name || artifact.id,
+                "Export run artifacts",
               ),
             );
-          }
         },
-
-});
-})();
+      });
+  })();
 </script>

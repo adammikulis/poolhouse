@@ -17,10 +17,12 @@
           ? {}
           : { method: method || "POST", body: JSON.stringify(body) },
       );
-      if (!r.ok)
+      if (!r.ok) {
+        window.fleetModel.refused(r);
         throw Object.assign(Error(r.error || "Studio request unavailable"), {
           response: r,
         });
+      }
       return r;
     };
     S.spec = (editor, node, seen = []) => {
@@ -113,6 +115,19 @@
         );
       host.append(label, input);
       return input;
+    };
+    S.copyGroup = (editor, source, id, mapped = new Map()) => {
+      if (mapped.has(id)) return mapped.get(id);
+      const value = source[id];
+      if (!value) throw Error("The reusable group is missing.");
+      const copy = S.id();
+      mapped.set(id, copy);
+      const definition = S.clone(value);
+      editor.graph.groups[copy] = definition;
+      for (const node of definition.nodes)
+        if (node.type === "group")
+          node.group = S.copyGroup(editor, source, node.group, mapped);
+      return copy;
     };
     S.defaults = (spec) =>
       Object.fromEntries(

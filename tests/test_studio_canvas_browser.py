@@ -1,6 +1,8 @@
 """Studio graph editing and durable run controls through the application."""
 from __future__ import annotations
 
+import re
+
 import pytest
 from browser_expect import expect
 from test_fleet_ui import Serving
@@ -49,8 +51,11 @@ def studio_page(tmp_path):
             elif path == '/runs' and data is not None:
                 state['submissions'].append(data)
                 run = {'id': 'run-1', 'workflow_id': data['workflow_id'], 'revision': data['revision'],
-                       'state': 'completed', 'nodes': {}}
+                       'state': 'done', 'nodes': {}}
                 state['runs'] = [run]
+                if state.pop('disconnect_next', False):
+                    request.abort()
+                    return
                 result = {'run': run}
             elif path == '/runs':
                 result = {'runs': state['runs']}
@@ -80,14 +85,18 @@ def test_build_connect_configure_run_and_snapshot(studio_page):
     expect(page.locator('.studio-connections path')).to_have_count(1)
     page.get_by_label('Workflow title').fill('Experiment')
     page.get_by_label('Workflow title').press('Tab')
+    state['disconnect_next'] = True
     page.get_by_role('button', name='Run workflow', exact=True).click()
-    expect(page.locator('#studio-runs')).to_contain_text('completed')
-    assert len(state['submissions']) == 1
+    expect(page.locator('.studio-status')).to_contain_text('Failed')
+    page.get_by_role('button', name='Run workflow', exact=True).click()
+    expect(page.locator('#studio-runs')).to_contain_text('done')
+    assert len(state['submissions']) == 2
+    assert state['submissions'][0]['idempotency_key'] == state['submissions'][1]['idempotency_key']
     assert state['saved'][-1]['graph']['edges'][0]['target']['port'] == 'text'
     first = state['submissions'][0]
     page.get_by_role('button', name='Run workflow', exact=True).click()
-    page.wait_for_function("document.querySelector('.studio-status').textContent.includes('submitted')")
-    assert state['submissions'][-1]['idempotency_key'] == first['idempotency_key']
+    expect(page.locator('.studio-status')).to_contain_text('submitted')
+    assert state['submissions'][-1]['idempotency_key'] != first['idempotency_key']
     assert not errors
 
 
@@ -128,3 +137,109 @@ def test_node_labels_and_prompt_text_remain_inert(studio_page):
     assert page.locator('#studio-portable img').count() == 0
     assert not page.evaluate('Boolean(window.studioInjected)')
     assert not errors
+
+
+def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
+    page, _state, errors = studio_page
+    add(page, 'Prompt template')
+    page.get_by_role('button', name='Group selection', exact=True).click()
+    page.get_by_role('button', name='Group selection', exact=True).click()
+    page.get_by_role('button', name='Copy', exact=True).click()
+    page.get_by_role('button', name='Paste', exact=True).click()
+    expect(page.locator('.studio-node')).to_have_count(2)
+    page.locator('.studio-node').first.get_by_role('button', name='Open group').click()
+    page.locator('.studio-node').get_by_role('button', name='Open group').click()
+    page.locator('.studio-node').focus()
+    page.keyboard.press('Enter')
+    field = page.get_by_label('Expose parameter template')
+    field.fill('shared_prompt')
+    field.press('Tab')
+    page.get_by_role('button', name='Undo', exact=True).click()
+    page.locator('.studio-node').focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_label('Expose parameter template')).to_have_value('')
+    page.get_by_role('button', name='Redo', exact=True).click()
+    page.locator('.studio-node').focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_label('Expose parameter template')).to_have_value('shared_prompt')
+    page.locator('.studio-inspector').get_by_label('Prompt text').fill('Changed original')
+    page.locator('.studio-inspector').get_by_label('Prompt text').press('Tab')
+    page.get_by_role('button', name='← Back to parent').click()
+    page.get_by_role('button', name='← Back to parent').click()
+    page.locator('.studio-node').nth(1).get_by_role('button', name='Open group').click()
+    page.locator('.studio-node').get_by_role('button', name='Open group').click()
+    page.locator('.studio-node').focus()
+    page.keyboard.press('Enter')
+    expect(page.locator('.studio-inspector').get_by_label('Prompt text')).to_have_value('Hello')
+    assert not errors
+
+
+def test_narrow_screen_uses_outline_without_canvas(studio_page):
+    page, _state, errors = studio_page
+    add(page, 'Prompt template')
+    page.set_viewport_size({'width': 390, 'height': 844})
+    expect(page.locator('.studio-outline')).to_be_visible()
+    expect(page.locator('studio-canvas')).not_to_be_visible()
+    page.locator('.studio-outline').get_by_role('button', name='Prompt template').click()
+    expect(page.locator('.studio-inspector').get_by_label('Prompt text')).to_have_value('Hello')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    assert not errors
+
+
+def make_prompt_group(page):
+    add(page, 'Prompt template')
+    page.locator('.studio-inspector').get_by_label('template', exact=True).fill('Reusable prompt')
+    page.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
+    page.get_by_role('button', name='Group selection', exact=True).click()
+    page.locator('.studio-node').get_by_role('button', name='Open group').click()
+    page.locator('.studio-node').focus()
+    page.keyboard.press('Enter')
+    page.get_by_label('Expose outputs prompt').fill('prompt')
+    page.get_by_label('Expose outputs prompt').press('Tab')
+    page.get_by_role('button', name='← Back to parent').click()
+
+
+def test_actual_catalogue_template_run_and_package_round_trip(tmp_path):
+    pytest.importorskip('playwright.sync_api')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    served.files.joinpath('examples.jsonl').write_text('{"prompt":"Example","response":"Answer"}\n')
+    try:
+        with browser(Window(profile=tmp_path / 'actual-browser', headless=True)) as page:
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.set_viewport_size({'width': 1440, 'height': 1000})
+            page.goto(f'http://127.0.0.1:{served.port}/ui/')
+            add(page, re.compile('fine tuning and evaluation', re.IGNORECASE))
+            expect(page.locator('.studio-node')).to_have_count(7)
+            page.locator('.studio-node').filter(has=page.get_by_text('Dataset', exact=True)).first.focus()
+            page.keyboard.press('Enter')
+            page.locator('.studio-inspector').get_by_label('Choose dataset').select_option('examples.jsonl')
+            page.get_by_role('button', name='Save', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Saved')
+            page.get_by_role('button', name='New', exact=True).click()
+            make_prompt_group(page)
+            page.get_by_role('button', name='Run workflow', exact=True).click()
+            expect(page.locator('#studio-runs')).to_contain_text('done', timeout=10000)
+            page.get_by_role('button', name='Run workflow', exact=True).click()
+            expect(page.locator('.studio-run-row')).to_have_count(2)
+            page.get_by_role('button', name='Share', exact=True).click()
+            page.get_by_label('Package content').select_option('selection')
+            page.locator('#studio-portable input[type=checkbox]').check()
+            with page.expect_download() as download:
+                page.get_by_role('button', name='Export file', exact=True).click()
+            package_path = download.value.path()
+            page.get_by_role('button', name='Import', exact=True).click()
+            page.locator('#studio-import-file').set_input_files(package_path)
+            expect(page.locator('#studio-import-preview')).to_contain_text('Import adds configuration only')
+            page.get_by_role('button', name='Import configuration', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Package imported')
+            expect(page.locator('.studio-node')).to_have_count(1)
+            page.get_by_role('button', name='Run workflow', exact=True).click()
+            expect(page.locator('.studio-run-row')).to_have_count(3)
+            assert not errors
+    finally:
+        if hasattr(served.ui, 'studio'):
+            served.ui.studio.close()
+        served.close()

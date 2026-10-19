@@ -10,57 +10,20 @@
             this.flushGroup();
             this.querySelector("#studio-package-title").value =
               this.querySelector("#studio-title").value;
-            let content = this.querySelector("#studio-portable");
-            if (!content) {
-              content = E(
-                "fieldset",
-                { id: "studio-portable" },
-                E("legend", {}, "Include text parameters"),
-              );
-              dialog.insertBefore(
-                content,
-                dialog.querySelector(".studio-toolbar"),
-              );
-            }
-            content.replaceChildren(
-              E("legend", {}, "Include text parameters"),
-              E(
-                "p",
-                {},
-                "Choose text to share. Resource bindings, files and run history are excluded.",
-              ),
+            const scope = this.querySelector("#studio-package-scope");
+            scope.replaceChildren(
+              E("option", { value: "workflow" }, "Complete workflow"),
             );
-            const visit = (graph, prefix = "") => {
-              for (const n of graph.nodes) {
-                const spec = S.spec(this, n);
-                if (n.type === "group") continue;
-                for (const [name, field] of Object.entries(
-                  spec.parameters?.properties || {},
-                )) {
-                  if (field.type !== "string" || field.enum) continue;
-                  const input = E("input", {
-                    type: "checkbox",
-                    "data-node": prefix + n.id,
-                    "data-parameter": name,
-                  });
-                  content.append(
-                    E(
-                      "label",
-                      {},
-                      input,
-                      (spec.title || n.type) +
-                        " · " +
-                        name +
-                        ": " +
-                        String(n.parameters[name] ?? field.default ?? ""),
-                    ),
-                  );
-                }
-              }
-              for (const [id, g] of Object.entries(graph.groups || {}))
-                visit(g, prefix + id + "/");
-            };
-            visit(this.rootGraph());
+            if (this.selected.size)
+              scope.append(
+                E(
+                  "option",
+                  { value: "selection" },
+                  "Selected nodes and groups",
+                ),
+              );
+            scope.onchange = () => this.sharingFields();
+            this.sharingFields();
             dialog.showModal();
           };
           this.querySelector("#studio-package-library").onclick = () =>
@@ -84,6 +47,89 @@
               file.value = "";
             });
         },
+        sharingGraph() {
+          const selected =
+            this.querySelector("#studio-package-scope").value === "selection";
+          const graph = selected ? this.graph : this.rootGraph(),
+            nodes = selected
+              ? graph.nodes.filter((n) => this.selected.has(n.id))
+              : graph.nodes;
+          const ids = new Set(nodes.map((n) => n.id)),
+            groups = {};
+          const collect = (id) => {
+            if (groups[id]) return;
+            const definition = graph.groups[id];
+            if (!definition) return;
+            groups[id] = S.clone(definition);
+            for (const n of definition.nodes)
+              if (n.type === "group") collect(n.group);
+          };
+          for (const n of nodes) if (n.type === "group") collect(n.group);
+          return {
+            nodes: S.clone(nodes),
+            edges: S.clone(
+              graph.edges.filter(
+                (e) => ids.has(e.source.node) && ids.has(e.target.node),
+              ),
+            ),
+            groups,
+          };
+        },
+        sharingFields() {
+          let content = this.querySelector("#studio-portable");
+          if (!content) {
+            content = E(
+              "fieldset",
+              { id: "studio-portable" },
+              E("legend", {}, "Include text parameters"),
+            );
+            this.querySelector("#studio-share-dialog").insertBefore(
+              content,
+              this.querySelector("#studio-share-dialog").querySelector(
+                ".studio-toolbar",
+              ),
+            );
+          }
+          content.replaceChildren(
+            E("legend", {}, "Include text parameters"),
+            E(
+              "p",
+              {},
+              "Choose text to share. Resource bindings, files and run history are excluded.",
+            ),
+          );
+          const visit = (graph, prefix = "") => {
+            for (const n of graph.nodes) {
+              const spec = S.spec(this, n);
+              if (n.type === "group") continue;
+              for (const [name, field] of Object.entries(
+                spec.parameters?.properties || {},
+              )) {
+                if (field.type !== "string" || field.enum) continue;
+                const input = E("input", {
+                  type: "checkbox",
+                  "data-node": prefix + n.id,
+                  "data-parameter": name,
+                });
+                content.append(
+                  E(
+                    "label",
+                    {},
+                    input,
+                    (spec.title || n.type) +
+                      " · " +
+                      name +
+                      ": " +
+                      String(n.parameters[name] ?? field.default ?? ""),
+                  ),
+                );
+              }
+            }
+            for (const [id, g] of Object.entries(graph.groups || {}))
+              visit(g, prefix + id + "/");
+          };
+          visit(this.sharingGraph());
+        },
         portableParameters() {
           const selected = {};
           for (const input of this.querySelectorAll(
@@ -95,7 +141,15 @@
         async exportPackage(publish) {
           await this.save();
           const result = await S.api("/packages/export", {
-            workflow_id: this.workflowId,
+            graph: this.sharingGraph(),
+            kind:
+              this.querySelector("#studio-package-scope").value === "selection"
+                ? this.selected.size === 1 &&
+                  this.graph.nodes.find((n) => this.selected.has(n.id)).type !==
+                    "group"
+                  ? "node"
+                  : "group"
+                : "workflow",
             revision: this.revision,
             package_id: this.packageId || "workflow-" + S.id(),
             version: String((this.packageVersion || 0) + 1),
@@ -104,6 +158,10 @@
             description: this.querySelector("#studio-package-docs").value,
             licence: this.querySelector("#studio-package-license").value,
             portable_parameters: this.portableParameters(),
+            tags: this.querySelector("#studio-package-tags")
+              .value.split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
           });
           const pack = result.package;
           this.packageId = pack.id;
@@ -221,6 +279,8 @@
           dialog.replaceChildren(
             E("h2", {}, pack.name || "Workflow package"),
             E("p", {}, pack.description || ""),
+            E("p", {}, "Package " + pack.id + " · digest " + pack.digest),
+            E("pre", {}, JSON.stringify(pack.provenance || {}, null, 2)),
             E(
               "p",
               {},

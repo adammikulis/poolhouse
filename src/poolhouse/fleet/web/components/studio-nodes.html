@@ -1,0 +1,223 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installCanvasNodes = (proto) =>
+      Object.assign(proto, {
+        node(node) {
+          const editor = this.editor,
+            spec = S.spec(editor, node),
+            p = S.position(editor, node.id),
+            state =
+              editor.activeRun?.nodes?.[
+                [...editor.context.map((c) => c.node.id), node.id].join("/")
+              ]?.state || "ready",
+            status =
+              {
+                done: "✓",
+                completed: "✓",
+                failed: "!",
+                running: "▶",
+                blocked: "⊘",
+                interrupted: "?",
+                cancelled: "■",
+              }[state] || "○";
+          const card = E("article", {
+            class: "studio-node",
+            "data-node-id": node.id,
+            tabindex: 0,
+            role: "group",
+            "aria-label": spec.title || node.type,
+            "aria-selected": String(editor.selected.has(node.id)),
+            style: `left:${p.x}px;top:${p.y}px`,
+          });
+          const head = E(
+            "header",
+            {},
+            E("strong", {}, spec.title || node.type),
+            E("span", { class: "studio-state" }, status + " " + state),
+          );
+          card.append(head);
+          head.onpointerdown = (e) => this.dragNode(e, node, card);
+          card.onkeydown = (e) => {
+            if (e.target !== card) return;
+            if (e.key === "Enter") {
+              editor.select(node.id, e.shiftKey);
+              editor.querySelector(".studio-inspector input")?.focus();
+            }
+            if (e.key.startsWith("Arrow")) {
+              e.preventDefault();
+              editor.checkpoint();
+              const delta = e.shiftKey ? 40 : 10;
+              const pos = editor.graph.layout.nodes[node.id] || { x: 0, y: 0 };
+              pos.x +=
+                e.key === "ArrowRight"
+                  ? delta
+                  : e.key === "ArrowLeft"
+                    ? -delta
+                    : 0;
+              pos.y +=
+                e.key === "ArrowDown"
+                  ? delta
+                  : e.key === "ArrowUp"
+                    ? -delta
+                    : 0;
+              editor.graph.layout.nodes[node.id] = pos;
+              editor.changed();
+            }
+          };
+          card.onclick = (e) => {
+            if (e.target === card) editor.select(node.id, e.shiftKey);
+          };
+          head.ondblclick = () =>
+            node.type === "group" && editor.enterGroup(node);
+          const ports = E("div", { class: "studio-node-ports" });
+          for (const side of ["inputs", "outputs"]) {
+            const box = E("div", {
+              class: side === "outputs" ? "studio-output" : "studio-input",
+            });
+            for (const port of spec[side] || []) {
+              const pending =
+                this.pending?.node === node.id &&
+                this.pending?.port === port.name &&
+                this.pending?.side === side;
+              const b = E(
+                "button",
+                {
+                  type: "button",
+                  "data-port": port.name,
+                  "data-side": side,
+                  "aria-label": `${spec.title} ${side === "inputs" ? "input" : "output"} ${port.name}, ${port.type}`,
+                  "aria-pressed": String(!!pending),
+                },
+                (side === "inputs" ? "◉ " : "") +
+                  port.name +
+                  (side === "outputs" ? " ◉" : ""),
+                E("span", { class: "studio-port-type" }, port.type),
+              );
+              b.onclick = (e) => {
+                e.stopPropagation();
+                this.port(node, port, side);
+              };
+              b.onpointerdown = (e) => {
+                e.stopPropagation();
+                this.portStart = {
+                  node,
+                  port,
+                  side,
+                  x: e.clientX,
+                  y: e.clientY,
+                };
+              };
+              b.onpointerup = (e) => {
+                if (
+                  this.portStart &&
+                  (this.portStart.node.id !== node.id ||
+                    this.portStart.port.name !== port.name)
+                ) {
+                  this.pending = {
+                    node: this.portStart.node.id,
+                    port: this.portStart.port.name,
+                    type: this.portStart.port.type,
+                    side: this.portStart.side,
+                  };
+                  this.port(node, port, side);
+                  this.portStart = null;
+                }
+              };
+              box.append(b);
+            }
+            ports.append(box);
+          }
+          card.append(ports);
+          const controls = E("div", { class: "studio-node-controls" });
+          for (const [name, parameter] of Object.entries(
+            spec.parameters?.properties || {},
+          )
+            .filter(([, v]) => !v.advanced)
+            .slice(0, 2))
+            S.field(
+              controls,
+              name,
+              parameter,
+              node.parameters[name],
+              (value) => {
+                editor.checkpoint();
+                node.parameters[name] = value;
+                editor.changed();
+              },
+            );
+          card.append(controls);
+          if (spec.available === false || spec.missing?.length)
+            card.append(
+              E(
+                "div",
+                { class: "studio-node-missing" },
+                "Requires " +
+                  (spec.missing || spec.required_capabilities || []).join(", "),
+              ),
+            );
+          if (node.type === "group")
+            card.append(
+              E(
+                "button",
+                { type: "button", onclick: () => editor.enterGroup(node) },
+                "Open group",
+              ),
+            );
+          return card;
+        },
+        port(node, port, side) {
+          const editor = this.editor;
+          if (!this.pending) {
+            this.pending = {
+              node: node.id,
+              port: port.name,
+              type: port.type,
+              side,
+            };
+            editor.message(
+              "Choose a compatible " +
+                (side === "outputs" ? "input" : "output") +
+                " or add a suggested node.",
+            );
+            editor.library();
+            this.paint();
+            return;
+          }
+          const old = this.pending;
+          if (
+            old.node === node.id &&
+            old.port === port.name &&
+            old.side === side
+          ) {
+            this.pending = null;
+            this.paint();
+            editor.library();
+            return;
+          }
+          if (old.side === side || old.type !== port.type) {
+            editor.message("Connect an output to an input with the same type.");
+            return;
+          }
+          const source =
+              side === "inputs"
+                ? { node: old.node, port: old.port }
+                : { node: node.id, port: port.name },
+            target =
+              side === "inputs"
+                ? { node: node.id, port: port.name }
+                : { node: old.node, port: old.port };
+          editor.checkpoint();
+          editor.graph.edges = editor.graph.edges.filter(
+            (e) =>
+              !(e.target.node === target.node && e.target.port === target.port),
+          );
+          editor.graph.edges.push({ source, target });
+          this.pending = null;
+          editor.changed();
+          editor.message("Connection added");
+        },
+      });
+  })();
+</script>

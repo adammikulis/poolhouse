@@ -1,4 +1,3 @@
-
 <template>
   <section
     class="studio-workspace"
@@ -74,7 +73,16 @@
         Packages contain declared workflow configuration. Recipients choose
         their own resources.
       </p>
-      <label>Package title<input id="studio-package-title" /></label
+      <label
+        >Content<select
+          id="studio-package-scope"
+          aria-label="Package content"
+        ></select></label
+      ><label
+        >Tags<input
+          id="studio-package-tags"
+          placeholder="training, evaluation" /></label
+      ><label>Package title<input id="studio-package-title" /></label
       ><label>Documentation<textarea id="studio-package-docs"></textarea></label
       ><label>Licence<input id="studio-package-license" value="MIT" /></label>
       <div class="studio-toolbar">
@@ -103,6 +111,17 @@
         this.undoStack = [];
         this.redoStack = [];
         this.revision = 0;
+        try {
+          const value = JSON.parse(
+            sessionStorage.getItem("poolhouse-studio-submission") || "null",
+          );
+          if (
+            value &&
+            typeof value.signature === "string" &&
+            typeof value.key === "string"
+          )
+            this.submission = value;
+        } catch {}
         this.context = [];
         this.canvas = this.querySelector("studio-canvas");
         this.canvas.editor = this;
@@ -167,7 +186,17 @@
             S.api("/workflows"),
           ]);
           this.specs = nodes.nodes || [];
-          this.templates = templates.templates || [];
+          this.templates = (templates.templates || []).map((t) => ({
+            id: t.id,
+            title: t.title || t.name,
+            description: t.description,
+            graph: t.graph || {
+              nodes: t.nodes,
+              edges: t.edges || [],
+              groups: t.groups || {},
+              layout: t.layout || {},
+            },
+          }));
           this.resources = await S.api("/resources");
           this.workflows = workflows.workflows || [];
           this.workflowList();
@@ -195,6 +224,8 @@
       async open(workflow) {
         if (this.dirty) await this.save();
         this.context = [];
+        this.packageId = null;
+        this.packageVersion = null;
         this.graph = S.clone(workflow?.graph || S.empty());
         this.normalize();
         this.workflowId = workflow?.id;
@@ -217,7 +248,7 @@
         this.graph.layout.viewport ||= { x: 0, y: 0, zoom: 1 };
       }
       checkpoint() {
-        this.undoStack.push(S.clone(this.graph));
+        this.undoStack.push(this.snapshot());
         this.redoStack = [];
       }
       changed(paint = true) {
@@ -291,8 +322,8 @@
         };
         this.graph.nodes.push(node);
         this.graph.layout.nodes[node.id] = position || {
-          x: 60 + this.graph.nodes.length * 25,
-          y: 60 + this.graph.nodes.length * 25,
+          x: 40 + ((this.graph.nodes.length-1)%3)*300,
+          y: 60 + Math.floor((this.graph.nodes.length-1)/3)*260,
         };
         this.selected = new Set([node.id]);
         this.changed();
@@ -312,15 +343,15 @@
         this.querySelector("#studio-undo").disabled = !this.undoStack.length;
         this.querySelector("#studio-redo").disabled = !this.redoStack.length;
         this.querySelector("#studio-run-selected").disabled =
-          !this.selected.size;
+          this.submitting || !this.selected.size;
         this.groupPath();
       }
       undo(redo = false) {
         const from = redo ? this.redoStack : this.undoStack,
           to = redo ? this.undoStack : this.redoStack;
         if (!from.length) return;
-        to.push(S.clone(this.graph));
-        this.graph = from.pop();
+        to.push(this.snapshot());
+        this.restoreSnapshot(from.pop());
         this.selected.clear();
         this.changed();
       }
@@ -345,16 +376,17 @@
         for (const n of S.clone(this.clipboard.nodes)) {
           const old = n.id;
           n.id = map.get(old);
+          if (n.type === "group")
+            n.group = S.copyGroup(this, this.clipboard.groups, n.group);
           this.graph.nodes.push(n);
           const p = this.clipboard.layout.nodes[old] || { x: 0, y: 0 };
-          this.graph.layout.nodes[n.id] = { x: p.x + 40, y: p.y + 40 };
+          this.graph.layout.nodes[n.id] = { x: p.x + 300, y: p.y + 40 };
         }
         for (const edge of S.clone(this.clipboard.edges)) {
           edge.source.node = map.get(edge.source.node);
           edge.target.node = map.get(edge.target.node);
           this.graph.edges.push(edge);
         }
-        Object.assign(this.graph.groups, this.clipboard.groups);
         this.selected = new Set(map.values());
         this.changed();
       }

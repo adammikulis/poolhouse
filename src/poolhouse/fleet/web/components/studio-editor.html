@@ -119,39 +119,34 @@
               node.parameters[name] = value;
               this.changed();
             });
-          if (["dataset", "model"].includes(node.type)) {
-            const kind = node.type,
+          for (const [name, resource] of Object.entries(spec.bindings || {})) {
+            if (!resource.kind) continue;
+            const kind = resource.kind,
               choices =
-                this.resources?.[kind === "model" ? "models" : "datasets"] ||
-                [],
-              select = E(
-                "select",
-                { "aria-label": "Choose " + kind },
-                E("option", { value: "" }, "Choose " + kind),
-                ...choices.map((r) =>
-                  E("option", { value: r.id }, r.title || r.id),
-                ),
-              );
-            select.value = node.bindings?.[kind]?.id || "";
+                this.resources?.[kind + "s"] ||
+                (kind === "model"
+                  ? this.resources?.models
+                  : this.resources?.datasets) ||
+                [];
+            const select = E(
+              "select",
+              { "aria-label": "Choose " + name },
+              E("option", { value: "" }, "Choose " + name),
+              ...choices.map((r) =>
+                E("option", { value: r.id }, r.title || r.id),
+              ),
+            );
+            select.value = node.bindings?.[name]?.id || "";
             select.onchange = () => {
               this.checkpoint();
               node.bindings ||= {};
               if (select.value)
-                node.bindings[kind] = { kind, id: select.value };
-              else delete node.bindings[kind];
+                node.bindings[name] = { kind, id: select.value };
+              else delete node.bindings[name];
               this.changed();
             };
-            box.append(E("label", {}, "Choose " + kind, select));
+            box.append(E("label", {}, "Choose " + name, select));
           }
-          const bindings =
-            spec.bindings?.properties || spec.resources?.properties || {};
-          for (const [name, schema] of Object.entries(bindings))
-            S.field(box, name, schema, node.bindings?.[name], (value) => {
-              this.checkpoint();
-              node.bindings ||= {};
-              node.bindings[name] = value;
-              this.changed();
-            });
           const links = E("div", { class: "studio-links" });
           for (const input of spec.inputs || []) {
             const select = E(
@@ -233,17 +228,13 @@
                   "aria-label": "Expose " + side + " " + port.name,
                   placeholder: "Public name",
                 });
-                field.onchange = () => {
-                  this.checkpoint();
-                  definition[side] ||= {};
-                  if (name) delete definition[side][name];
-                  if (field.value)
-                    definition[side][field.value] = {
-                      node: node.id,
-                      port: port.name,
-                    };
-                  this.changed();
-                };
+                field.onchange = () =>
+                  this.expose(
+                    side,
+                    field.value,
+                    { node: node.id, port: port.name },
+                    name,
+                  );
                 box.append(
                   E("label", {}, "Expose " + side + " " + port.name, field),
                 );
@@ -257,16 +248,13 @@
                 "aria-label": "Expose parameter " + name,
                 placeholder: "Public name",
               });
-              field.onchange = () => {
-                definition.parameters ||= {};
-                if (exposed) delete definition.parameters[exposed];
-                if (field.value)
-                  definition.parameters[field.value] = {
-                    node: node.id,
-                    parameter: name,
-                  };
-                this.changed();
-              };
+              field.onchange = () =>
+                this.expose(
+                  "parameters",
+                  field.value,
+                  { node: node.id, parameter: name },
+                  exposed,
+                );
               box.append(E("label", {}, "Expose parameter " + name, field));
             }
           }
