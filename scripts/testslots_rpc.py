@@ -104,9 +104,9 @@ class Admission(socketserver.ThreadingTCPServer):
         self.running_threads: set[threading.Thread] = set()
         self.handlers = threading.BoundedSemaphore(128)
         self.request_count = 0
-        self.wait_limit = float(os.environ.get("DEV_TEST_WAIT_S", "3600"))
+        self.wait_limit = testslots.wait_limit()
         if not math.isfinite(self.wait_limit) or self.wait_limit <= 0:
-            raise ValueError("testslots: finite positive wait required")
+            raise ValueError(f"testslots: DEV_TEST_WAIT_S is {self.wait_limit}; it must be a finite number of seconds above 0 (default {testslots.WAIT_S:.0f})")
         address = self.address(container)
         super().__init__(address, Handler)
         host = "host.docker.internal" if container else "127.0.0.1"
@@ -295,7 +295,7 @@ class Handler(socketserver.StreamRequestHandler):
 @contextlib.contextmanager
 def request(operation: str, *, label: str = "pytest", phase: str = "test", heavy: bool = False) -> Iterator[dict]:
     with connection(os.environ["DEV_TEST_PYTEST_ENDPOINT"], os.environ.get("DEV_TEST_PYTEST_IDENTITY")) as channel:
-        channel.settimeout(float(os.environ.get("DEV_TEST_WAIT_S", "3600")))
+        channel.settimeout(testslots.wait_limit())
         with channel.makefile("rwb") as stream:
             _write(stream, {"operation": operation, "token": os.environ["DEV_TEST_PYTEST_TOKEN"],
                             "parent": os.environ.get("DEV_TEST_REMOTE_LEASE"), "label": label, "phase": phase, "heavy": heavy})

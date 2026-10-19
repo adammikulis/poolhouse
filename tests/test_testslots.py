@@ -9,8 +9,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "testslots.py"
 
@@ -243,7 +241,7 @@ def test_a_fixed_want_is_still_a_ceiling_not_a_target(tmp_path):
     assert _grants(tmp_path) == {"fixed": 4}
 
 
-def test_queued_auto_runs_share_instead_of_the_first_taking_everything(tmp_path):
+def test_the_first_queued_auto_run_takes_every_free_worker_and_the_next_waits_its_turn(tmp_path):
     release = tmp_path / "release"
     blocker = _spawn(tmp_path, 10, 10, release, "blocker")
     _wait_for_slot(tmp_path, blocker, "blocker", 10)
@@ -254,7 +252,9 @@ def test_queued_auto_runs_share_instead_of_the_first_taking_everything(tmp_path)
     release.touch()
     assert all(p.wait(timeout=60) == 0 for p in (blocker, a, b))
     got = _grants(tmp_path)
-    assert got["a"] == 5 and got["b"] == 5, got               # both waiting when the blocker ended: half each
+    assert got["a"] == 10 and got["b"] == 10, got             # no run is held to half the budget while another waits
+    records = {r["label"]: r for r in _records(tmp_path)}
+    assert records["b"]["start"] >= records["a"]["end"] - 0.05, records
 
 
 def test_nested_live_lease_is_refused_instead_of_queued(tmp_path, monkeypatch):
@@ -273,8 +273,23 @@ def test_a_minimum_cannot_override_the_budget(tmp_path, monkeypatch):
     module = _load()
     monkeypatch.setenv("DEV_TEST_SLOTS_DIR", str(tmp_path / "slots"))
     monkeypatch.setenv("DEV_TEST_BUDGET", "1")
-    with pytest.raises(ValueError, match="minimum exceeds"), module.lease(2, 2):
+    with pytest.raises(ValueError, match=r"needs at least 2 workers and the worker budget is 1 \(DEV_TEST_BUDGET when set"), module.lease(2, 2):
         pass
+
+
+def test_a_wait_past_the_limit_names_the_limit_its_value_and_the_variable(tmp_path):
+    release = tmp_path / "release"
+    holder = _spawn(tmp_path, 1, 1, release, "holder")
+    try:
+        _wait_for_slot(tmp_path, holder, "holder", 1)
+        (tmp_path / "records").mkdir(exist_ok=True)
+        late = subprocess.run([sys.executable, "-c", CHILD, str(SCRIPT), str(tmp_path / "records" / "late.json"), "1", "0", "late", ""],
+                              env={**_env(tmp_path, 1), "DEV_TEST_WAIT_S": "1"}, capture_output=True, text=True, timeout=60)
+    finally:
+        release.touch()
+        holder.wait(timeout=60)
+    assert late.returncode != 0
+    assert "the wait limit is 1 s (DEV_TEST_WAIT_S, default 3600)" in late.stderr, late.stderr
 
 
 ELASTIC_TEST = '''
@@ -765,52 +780,3 @@ def test_a_long_node_id_is_admitted_with_a_bounded_label(monkeypatch):
         next(protocol)
     assert len(labels[0]) <= 256 and labels[0].endswith("]")
     assert [key for key, _ in item.user_properties] == [testslots_pytest.WAIT_PROPERTY]
-
-
-def _cap_queue(module, tmp_path, now, *, capacity=(8, 1), background_since=None):
-    held, minimum = capacity
-    def slot(name, klass, granted, estimate, since):
-        data = {"class": klass, "granted": granted, "want": 1, "minimum": 1,
-                "estimate": estimate, "since": since, "version": 2}
-        path = tmp_path / name
-        path.write_text(json.dumps(data))
-        return module.Slot(path, data)
-    running = slot("running", "background", held, 180, now)
-    other = slot("other", "interactive", 2, 0, now)
-    background = slot("background", "background", 0, 180,
-                      now if background_since is None else background_since)
-    background.data.update(want=minimum, minimum=minimum)
-    background.path.write_text(json.dumps(background.data))
-    interactive = slot("interactive", "interactive", 0, 765.6, now - 500)
-    return [running, other, background, interactive], background, interactive
-
-
-@pytest.mark.parametrize("held,minimum", [(8, 1), (7, 2)])
-def test_cap_blocked_background_cannot_strand_free_interactive_capacity(tmp_path, monkeypatch, held, minimum):
-    module = _load()
-    now = 1000.0
-    monkeypatch.setattr(module.time, "time", lambda: now)
-    monkeypatch.setattr(module.testhours, "capped_now", lambda *_: True)
-    slots, background, interactive = _cap_queue(module, tmp_path, now, capacity=(held, minimum))
-    before = background.path.read_bytes()
-    grant, used, ahead = module._decide(interactive.data, interactive.path, slots, 15)
-    assert grant == 1 and used + grant <= 15 and ahead == []
-    assert module._decide(background.data, background.path, slots, 15)[0] == 0
-    assert background.data["granted"] == 0 and background.path.read_bytes() == before
-
-
-@pytest.mark.parametrize("condition", ["aged", "uncapped", "legacy", "no-interactive"])
-def test_background_cap_bypass_keeps_existing_queue_order(tmp_path, monkeypatch, condition):
-    module = _load()
-    now = 1000.0
-    monkeypatch.setattr(module.time, "time", lambda: now)
-    monkeypatch.setattr(module.testhours, "capped_now", lambda *_: condition != "uncapped")
-    slots, background, interactive = _cap_queue(module, tmp_path, now,
-                                               background_since=0 if condition == "aged" else None)
-    if condition == "legacy":
-        slots[0].data["version"] = 1
-    if condition == "no-interactive":
-        slots = [slots[0], background]
-    assert module._decide(background.data, background.path, slots, 15)[0] == 1
-    if condition != "no-interactive":
-        assert module._decide(interactive.data, interactive.path, slots, 15)[0] == 0

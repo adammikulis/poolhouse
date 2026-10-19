@@ -130,12 +130,13 @@ def run_once(command: list[str], want: int = 0, label: str = "pytest", env: dict
                 output = threading.Thread(target=relay, args=(process, confined), daemon=True)
                 output.start()
                 confined.bootstrap.launched(process)
-            deadline = time.monotonic() + float(environment.get("DEV_TEST_WAIT_S", "3600"))
+            deadline = time.monotonic() + testslots.wait_limit(environment)
             while not admission.ready.wait(.01):
                 if process.poll() is not None:
                     return process.returncode
                 if time.monotonic() > deadline:
-                    raise TimeoutError("testslots: pytest collection did not finish before the wait limit")
+                    raise TimeoutError(f"testslots: pytest collection did not finish within {testslots.wait_limit(environment):.0f} s "
+                                       f"(DEV_TEST_WAIT_S, default {testslots.WAIT_S:.0f})")
         admission.admitted.set()
         return process.wait()
     finally:
