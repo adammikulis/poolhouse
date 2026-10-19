@@ -262,8 +262,8 @@ which, in one line, at once, and do every part that is not blocked.
   the owner is work handed back, the same fault as a command handed to the owner.
 - **Clear a jam before adding to it.** When the test queue, the landing gate, a broker or an agent quota is stalled, the
   next action is to clear it (end the hung jobs, fix the cause), never to submit, spawn or file more work into it. The
-  queue doctor ends a background test job that has gone quiet or run past its limit; an agent that finds a stalled
-  queue clears it the same turn.
+  queue doctor ends a background test job whose runner is gone or that has no owner, and tells the owner of one that is quiet,
+  old or long (it ends nothing for time); an agent that finds a stalled queue clears it the same turn.
 - **Ask what a fix needs in order to land.** Before dispatching a fix, name what must run to verify, review and land it
   (the test queue, reviewer slots, the landing gate, a quota). When that is the thing that is broken, unblock it first
   (a private broker directory for the fix's own tests, a separate landing lane, the quota change landed before more

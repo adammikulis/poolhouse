@@ -1,4 +1,4 @@
-"""The queue doctor runs inside the broker: it ends an agent's job that is too long, tells the board once, leaves a person's run alone, and every status names the longest run first."""
+"""The queue doctor runs inside the broker: it tells an agent's owner once about a job that is long and ends nothing for it, leaves a person's run alone, and every status names the longest run first."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import queue_doctor  # noqa: E402
-import queue_notice  # noqa: E402
 import testjobs  # noqa: E402
 import testqueue  # noqa: E402
 import testreuse_store as storage  # noqa: E402
@@ -60,22 +59,18 @@ def words(entries) -> str:
     return " ".join(entry.fields["body"] for entry in entries)
 
 
-def test_an_agent_job_estimated_at_two_hours_is_ended_and_the_board_names_it(tmp_path, board):
+def test_an_agent_job_estimated_at_two_hours_keeps_running_and_its_owner_is_told_once(tmp_path, board):
     node, owner, doctor = board
     jobs, process = testjobs.Jobs(tmp_path), sleeper()
     try:
         name = make_job(tmp_path, "j1", {"id": owner.name, **AGENT}, estimate=7200.0 * 1.4, process=process)
-        said = []
-        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: process.wait(timeout=10)) == [name]
-        assert process.poll() is not None
-        assert "ended by the queue doctor: estimated 2.8 h on 15 workers: a full suite; GitHub runs those" in jobs.read(name)["detail"]
+        assert queue_doctor.sweep(jobs, sleep=lambda s: None) == []
+        assert queue_doctor.sweep(jobs, sleep=lambda s: None) == []
+        assert process.poll() is None and jobs.read(name)["state"] == "running"
         inbox = words(node.session(owner).read_all(inbox=True))
-        announced = words(node.session(doctor).read_all(channel="#announcements"))
-        for text in (inbox, announced):
-            assert name in text and owner.name in text and "estimated 2.8 h on 15 workers: a full suite; GitHub runs those" in text
-        queue_notice.post(jobs, name, "ended", "ended by the queue doctor: again", say=said.append)
-        assert words(node.session(owner).read_all(inbox=True)).count(name) == 1
-        assert words(node.session(doctor).read_all(channel="#announcements")).count(name) == 1
+        assert name in inbox and "estimated 2.8 h on 15 workers" in inbox and "ESTIMATE_ALERT_S = 1200 s" in inbox
+        assert inbox.count("ESTIMATE_ALERT_S") == 1
+        assert name not in words(node.session(doctor).read_all(channel="#announcements"))
     finally:
         process.kill()
         process.wait(timeout=5)
@@ -84,7 +79,7 @@ def test_an_agent_job_estimated_at_two_hours_is_ended_and_the_board_names_it(tmp
 def test_a_persons_run_is_never_ended(tmp_path, board):
     jobs, process = testjobs.Jobs(tmp_path), sleeper()
     try:
-        make_job(tmp_path, "j1", PERSON, estimate=9000.0, quiet=queue_doctor.QUIET_S + 600, ran=99999.0, process=process)
+        make_job(tmp_path, "j1", PERSON, estimate=9000.0, quiet=queue_doctor.QUIET_ALERT_S + 600, ran=99999.0, process=process)
         assert queue_doctor.sweep(jobs, sleep=lambda s: None) == []
         assert process.poll() is None
         assert queue_doctor.hung(jobs, "j1", time.time()) == ""
@@ -93,13 +88,15 @@ def test_a_persons_run_is_never_ended(tmp_path, board):
         process.wait(timeout=5)
 
 
-def test_an_agent_job_twenty_minutes_past_its_estimate_is_ended(tmp_path, board):
+def test_an_agent_job_twenty_minutes_past_its_estimate_keeps_running_and_its_owner_is_told(tmp_path, board):
     jobs, process = testjobs.Jobs(tmp_path), sleeper()
     try:
-        name = make_job(tmp_path, "j1", {"id": board[1].name, **AGENT}, estimate=600.0, ran=600.0 + queue_doctor.OVERRUN_S + 60,
+        name = make_job(tmp_path, "j1", {"id": board[1].name, **AGENT}, estimate=600.0, ran=600.0 + queue_doctor.OVERRUN_ALERT_S + 60,
                         argv=("all", "tests/test_x.py"), process=process)
-        assert queue_doctor.sweep(jobs, sleep=lambda s: process.wait(timeout=10)) == [name]
-        assert "past its estimate of 10 min" in jobs.read(name)["detail"]
+        assert queue_doctor.sweep(jobs, sleep=lambda s: None) == []
+        assert process.poll() is None and jobs.read(name)["state"] == "running"
+        inbox = words(board[0].session(board[1]).read_all(inbox=True))
+        assert "past its estimate of 10 min" in inbox and "OVERRUN_ALERT_S = 1200 s" in inbox
     finally:
         process.kill()
         process.wait(timeout=5)
@@ -115,19 +112,20 @@ def test_a_job_inside_its_estimate_is_left_running(tmp_path, board):
         process.wait(timeout=5)
 
 
-def test_a_run_admitted_over_ten_minutes_is_announced_once_and_over_twenty_is_ended(tmp_path, board):
+def test_a_run_admitted_over_ten_minutes_is_announced_once_and_none_is_ended(tmp_path, board):
     node, owner, doctor = board
     jobs = testjobs.Jobs(tmp_path)
     make_job(tmp_path, "slow", {"id": owner.name, **AGENT}, argv=("all", "tests/test_x.py"))
-    assert queue_doctor.admitted(jobs, "slow", 900.0, 4) == ""
-    assert queue_doctor.admitted(jobs, "slow", 900.0, 4) == ""
+    assert queue_doctor.admitted(jobs, "slow", 900.0, 4) is None
+    assert queue_doctor.admitted(jobs, "slow", 900.0, 4) is None
     assert jobs.read("slow")["estimate_s"] == 900.0
     assert f"test job slow (owner {owner.name}) admitted: estimated 15 min on 4 workers" in words(node.session(owner).read_all(inbox=True))
     assert words(node.session(doctor).read_all(channel="#announcements")).count("slow") == 1
     make_job(tmp_path, "huge", {"id": owner.name, **AGENT})
-    assert "estimated 2.8 h on 15 workers: a full suite; GitHub runs those" in queue_doctor.admitted(jobs, "huge", 10080.0, 15)
+    assert queue_doctor.admitted(jobs, "huge", 10080.0, 15) is None
+    assert jobs.read("huge")["estimate_s"] == 10080.0 and jobs.read("huge")["state"] == "running"
     make_job(tmp_path, "short", {"id": owner.name, **AGENT}, argv=("all", "tests/test_x.py"))
-    assert queue_doctor.admitted(jobs, "short", 60.0, 2) == ""
+    assert queue_doctor.admitted(jobs, "short", 60.0, 2) is None
     assert "short" not in words(node.session(owner).read_all(inbox=True))
 
 
@@ -135,7 +133,7 @@ def test_a_person_run_admitted_over_ten_minutes_posts_nothing(tmp_path, board):
     node, owner, _ = board
     jobs = testjobs.Jobs(tmp_path)
     make_job(tmp_path, "mine", PERSON)
-    assert queue_doctor.admitted(jobs, "mine", 90000.0, 15) == ""
+    assert queue_doctor.admitted(jobs, "mine", 90000.0, 15) is None
     assert node.session(owner).read_all(inbox=True) == []
 
 
@@ -177,7 +175,7 @@ def test_every_status_starts_with_the_longest_run(tmp_path, command):
     assert first.startswith("longest run: queued") and "owner agent-big" in first and "est 10080s" in first and "big run" in first, done.stdout
 
 
-def test_a_scripts_test_call_runs_the_doctor_and_ends_an_agents_two_hour_job(tmp_path):
+def test_a_scripts_test_call_runs_the_doctor_and_leaves_an_agents_two_hour_job_running(tmp_path):
     from poolhouse.workspace import testruns
     env = environment(tmp_path)
     store = Path(env["DEV_TEST_REUSE_DIR"]) / testruns.scope(ROOT)
@@ -187,10 +185,10 @@ def test_a_scripts_test_call_runs_the_doctor_and_ends_an_agents_two_hour_job(tmp
         done = subprocess.run([sys.executable, str(ROOT / "scripts/test"), "status"], cwd=ROOT, env=env,
                               capture_output=True, text=True, timeout=120, check=False)
         assert done.returncode == 0, done.stderr
-        assert "queue doctor: ended job j1: estimated 2.8 h on 15 workers: a full suite; GitHub runs those" in done.stderr
-        assert "no board identity here, so the ended notice for job j1 is not sent" in done.stderr
-        assert process.wait(timeout=20) is not None
-        assert testjobs.Jobs(store).read(name)["state"] == "failed"
+        assert "queue doctor: ended job" not in done.stderr
+        assert "no board identity here, so the estimate notice for job j1 is not sent" in done.stderr
+        assert process.poll() is None
+        assert testjobs.Jobs(store).read(name)["state"] == "running"
     finally:
         if process.poll() is None:
             process.kill()

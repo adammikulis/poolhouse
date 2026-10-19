@@ -1,4 +1,4 @@
-"""The queue doctor ends background test jobs that have gone quiet or run too long, and leaves live ones alone."""
+"""The queue doctor ends a background test job whose runner is gone or that has no owner, tells the owner of a quiet or old one, and leaves live ones running."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import psutil
 import queue_doctor
+import queue_notice
 import testjobs
 import testreuse_store as storage
 
@@ -34,18 +35,34 @@ def sleeper() -> subprocess.Popen:
     return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"], start_new_session=True)
 
 
-def test_a_job_with_a_quiet_log_is_ended_and_recorded_as_failed(tmp_path):
+def test_a_job_with_a_quiet_log_keeps_running_and_its_owner_is_told_once(tmp_path):
     jobs = testjobs.Jobs(tmp_path)
     process = sleeper()
+    told = []
+
+    def tell(table, name, kind, text, say):
+        told.append((name, kind, text))
+        return True
+
     try:
-        name = job(tmp_path, "j1", created=time.time() - 3000, log_age=queue_doctor.QUIET_S + 60, process=process)
-        said = []
-        assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: process.wait(timeout=10)) == [name]
-        assert process.poll() is not None
-        status = jobs.read(name)
-        assert status["state"] == "failed" and "queue doctor" in status["detail"] and said
+        name = job(tmp_path, "j1", created=time.time() - 3000, log_age=queue_doctor.QUIET_ALERT_S + 60, process=process)
+        assert queue_doctor.sweep(jobs, sleep=lambda s: None, tell=tell) == []
+        assert process.poll() is None and jobs.read(name)["state"] == "running"
+        assert [(n, k) for n, k, _ in told] == [(name, "quiet")] and "quiet" in queue_notice.NOTE_ONLY
+        assert "QUIET_ALERT_S = 900 s" in told[0][2] and "a notice only" in told[0][2]
     finally:
         process.kill()
+
+
+def test_a_job_whose_runner_is_gone_is_recorded_as_failed(tmp_path):
+    jobs = testjobs.Jobs(tmp_path)
+    process = sleeper()
+    name = job(tmp_path, "j1", created=time.time() - 30, log_age=1, process=process)
+    process.kill()
+    process.wait(timeout=10)
+    assert queue_doctor.sweep(jobs, sleep=lambda s: None) == [name]
+    status = jobs.read(name)
+    assert status["state"] == "failed" and "its runner process is gone" in status["detail"]
 
 
 def test_a_job_with_no_owner_is_ended_on_sight_even_while_it_writes_output(tmp_path):
@@ -73,12 +90,14 @@ def test_a_job_that_is_producing_output_is_left_alone(tmp_path):
         process.kill()
 
 
-def test_a_job_older_than_the_limit_is_ended_once_it_has_gone_a_little_quiet(tmp_path):
+def test_a_job_older_than_the_mark_keeps_running_and_its_owner_is_told_how_long_it_ran(tmp_path):
     jobs = testjobs.Jobs(tmp_path)
     process = sleeper()
+    told = []
     try:
-        job(tmp_path, "j3", created=time.time() - queue_doctor.MAX_AGE_S - 60, log_age=queue_doctor.OLD_QUIET_S + 60, process=process)
-        assert queue_doctor.sweep(jobs, sleep=lambda s: process.wait(timeout=10)) == ["j3"]
+        job(tmp_path, "j3", created=time.time() - queue_doctor.AGE_ALERT_S - 60, log_age=5, process=process)
+        assert queue_doctor.sweep(jobs, sleep=lambda s: None, tell=lambda *a, **k: told.append(a[2:4]) or True) == []
+        assert process.poll() is None and [kind for kind, _ in told] == ["old"] and "AGE_ALERT_S = 5400 s" in told[0][1]
     finally:
         process.kill()
 
@@ -87,7 +106,7 @@ def test_a_reused_pid_is_never_signalled(tmp_path):
     jobs = testjobs.Jobs(tmp_path)
     process = sleeper()
     try:
-        name = job(tmp_path, "j4", created=time.time() - 3000, log_age=queue_doctor.QUIET_S + 60, process=process)
+        name = job(tmp_path, "j4", created=time.time() - 3000, log_age=queue_doctor.QUIET_ALERT_S + 60, process=process)
         status = jobs.read(name)
         jobs.write(name, "status.json", {**status, "started": status["started"] - 500})
         queue_doctor.sweep(jobs, sleep=lambda s: None)
@@ -108,7 +127,8 @@ def test_a_stray_entry_in_the_jobs_folder_does_not_stop_the_pass(tmp_path):
     (tmp_path / "jobs" / "stray.dir").mkdir(parents=True)
     process = sleeper()
     try:
-        name = job(tmp_path, "j6", created=time.time() - 3000, log_age=queue_doctor.QUIET_S + 60, process=process)
+        name = job(tmp_path, "j6", created=time.time() - 3000, log_age=5, process=process)
+        (tmp_path / "jobs" / name / "spec.json").write_text(json.dumps({"id": name, "created": time.time(), "owner": {}}))
         said = []
         assert queue_doctor.sweep(jobs, say=said.append, sleep=lambda s: process.wait(timeout=10)) == [name]
         assert any("stray.dir" in line for line in said)
@@ -120,8 +140,8 @@ def test_an_old_job_that_is_still_printing_is_left_alone(tmp_path):
     jobs = testjobs.Jobs(tmp_path)
     process = sleeper()
     try:
-        job(tmp_path, "j7", created=time.time() - queue_doctor.MAX_AGE_S - 600, log_age=5, process=process)
-        assert queue_doctor.sweep(jobs, sleep=lambda s: None) == []
+        job(tmp_path, "j7", created=time.time() - queue_doctor.AGE_ALERT_S - 600, log_age=5, process=process)
+        assert queue_doctor.sweep(jobs, sleep=lambda s: None, tell=lambda *a, **k: True) == []
         assert process.poll() is None
     finally:
         process.kill()

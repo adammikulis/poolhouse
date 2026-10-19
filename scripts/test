@@ -577,13 +577,12 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     return code
 
 
-def doctor_admits(verdict) -> str:
-    """Record the estimate of this process's job; why the queue doctor ends it (an agent's job estimated over 20 minutes), or an empty string."""
-    if verdict.estimate_s is None:
-        return ""
-    return queue_doctor.admitted(jobs_store(), os.environ["DEV_TEST_JOB"], verdict.estimate_s,
-                                 int(os.environ.get("DEV_TEST_ESTIMATE_WORKERS", "1")),
-                                 lambda text: print(text, file=sys.stderr, flush=True))
+def doctor_admits(verdict) -> None:
+    """Record the estimate of this process's job for the queue doctor."""
+    if verdict.estimate_s is not None:
+        queue_doctor.admitted(jobs_store(), os.environ["DEV_TEST_JOB"], verdict.estimate_s,
+                              int(os.environ.get("DEV_TEST_ESTIMATE_WORKERS", "1")),
+                              lambda text: print(text, file=sys.stderr, flush=True))
 
 
 def run_owner() -> dict:
@@ -690,9 +689,7 @@ def main(argv: list[str] | None = None) -> int:
     if not os.environ.get("DEV_TEST_JOB"):
         return follow(argv, args)
     command = pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)
-    if why := doctor_admits(testprelude.begin(args, rest, ROOT, reused_files(command))):
-        print(f"test: ended by the queue doctor: {why}", file=sys.stderr)
-        return 3
+    doctor_admits(testprelude.begin(args, rest, ROOT, reused_files(command)))
     if args.tier != "gate" and (failed := build_node(testreuse_run.selectors(command, ROOT))):
         return failed
     if args.tier == "quick":

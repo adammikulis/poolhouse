@@ -76,7 +76,7 @@ def test_a_process_a_check_leaves_behind_is_ended_with_the_check(world):
     pytest.fail(f"process {pid} left behind by a check is still running")
 
 
-def test_a_background_test_job_gone_quiet_is_ended_before_the_checks_run(world, tmp_path):
+def test_a_background_test_job_with_no_owner_is_ended_before_the_checks_run(world, tmp_path):
     reuse = tmp_path / "reuse"
     folder = reuse / testruns.scope(world.proj.root) / "jobs" / "stuck"
     folder.mkdir(parents=True)
