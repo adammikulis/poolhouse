@@ -1,5 +1,8 @@
 # An invented world
 
+The world is an experimental layer: the wheel does not hold it, and it runs from a source checkout as
+`python -m poolhouse.world`.
+
 A demo of a graph read out of a community needs a community, and a real one cannot be shown.
 `poolhouse.world` invents one from a seed: an organised group with people who have reasonable
 jobs, a voice each, and a memory -- the graph -- so that when they talk (`world.simulate`)
@@ -17,11 +20,11 @@ take them unchanged:
 | `nonprofit` | programmes under an executive director, a board that `advises`, volunteers, funders |
 
 ```sh
-poolhouse-world make --kind company --size medium --seed 3 --out ./world --json
-poolhouse-world questions --world ./world --n 40 --out questions.jsonl
-poolhouse-bench run <model> --graph ./world/graph.json --questions questions.jsonl
-poolhouse-world simulate --world ./world --out ./talk --days 20 --mix 0.3 --model-url http://127.0.0.1:8080
-poolhouse-world emit --from ./talk --as slack-export --out ./export
+python -m poolhouse.world make --kind company --size medium --seed 3 --out ./world --json
+python -m poolhouse.world questions --world ./world --n 40 --out questions.jsonl
+python -m poolhouse.bench run <model> --graph ./world/graph.json --questions questions.jsonl
+python -m poolhouse.world simulate --world ./world --out ./talk --days 20 --mix 0.3 --model-url http://127.0.0.1:8080
+python -m poolhouse.world emit --from ./talk --as slack-export --out ./export
 ```
 
 `make` writes `graph.json`, `personas.json`, an empty `calendar.json` and `world.json`;

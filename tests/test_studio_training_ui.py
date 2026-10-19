@@ -245,3 +245,24 @@ def test_unavailable_mlx_inventory_blocks_queue_and_retains_review(joined, open_
     expect(page.locator('training-view #training-runtime')).to_contain_text(
         'Could not verify' if inventory == 'failed' else 'not available on this device')
     assert not errors
+
+
+def test_a_build_without_the_gym_offers_no_reinforcement_learning(joined, open_page, tmp_path, monkeypatch):
+    import shutil
+
+    from poolhouse.fleet import page as fleet_page_module
+
+    held = tmp_path / 'components'
+    shutil.copytree(fleet_page_module.COMPONENTS_DIR, held, ignore=shutil.ignore_patterns('gym-*.html'))
+    monkeypatch.setattr(fleet_page_module, 'COMPONENTS_DIR', held)
+    page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#training')
+    requests = []
+    page.on('request', lambda request: requests.append(request.url))
+    page.evaluate("document.querySelector('training-view').load()")
+    page.get_by_label('Dataset path (relative to files root)').wait_for()
+    workflows = page.get_by_label('Workflow', exact=True).locator('option').all_inner_texts()
+    assert workflows == ['Supervised / tool calling', 'Decision model']
+    expect(page.get_by_role('button', name='Explore RL worlds')).to_have_count(0)
+    page.wait_for_load_state('networkidle')
+    assert not [url for url in requests if '/ui/gym' in url]
+    assert not errors

@@ -1,10 +1,10 @@
 {
- "surfaces": 832,
+ "surfaces": 826,
  "by_status": {
   "covered": 509,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 78,
+  "n/a": 72,
   "unmapped": 0
  },
  "by_kind": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 31,
+   "n/a": 25,
    "unmapped": 0
   },
   "context": {
@@ -534,16 +534,6 @@
    "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
-   "id": "cli:poolhouse-bench",
-   "kind": "cli",
-   "source": "poolhouse.bench.run:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
    "id": "cli:poolhouse-chat",
    "kind": "cli",
    "source": "poolhouse.chat:main",
@@ -620,16 +610,6 @@
    "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
-   "id": "cli:poolhouse-draft",
-   "kind": "cli",
-   "source": "poolhouse.draft:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
    "id": "cli:poolhouse-features",
    "kind": "cli",
    "source": "poolhouse.features_cli:main",
@@ -650,16 +630,6 @@
     "tests/test_redteam_graph_serve.py::test_the_page_server_answers_hostile_requests_without_failing_or_leaking"
    ],
    "note": ""
-  },
-  {
-   "id": "cli:poolhouse-gym",
-   "kind": "cli",
-   "source": "poolhouse.gym.cli:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
    "id": "cli:poolhouse-help",
@@ -870,16 +840,6 @@
    "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
-   "id": "cli:poolhouse-surface",
-   "kind": "cli",
-   "source": "poolhouse.surface.cli:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
    "id": "cli:poolhouse-test-devices",
    "kind": "cli",
    "source": "poolhouse.testfarm.devices:command",
@@ -933,16 +893,6 @@
    "note": "the daemon's handler and the join exchange are attacked; the join and member-book argument parsing are not"
   },
   {
-   "id": "cli:poolhouse-walk",
-   "kind": "cli",
-   "source": "poolhouse.walk.cli:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
    "id": "cli:poolhouse-workspace",
    "kind": "cli",
    "source": "poolhouse.workspace.cli:main",
@@ -954,16 +904,6 @@
     "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal"
    ],
    "note": ""
-  },
-  {
-   "id": "cli:poolhouse-world",
-   "kind": "cli",
-   "source": "poolhouse.world.cli:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
    "id": "context:agent/compact.py",

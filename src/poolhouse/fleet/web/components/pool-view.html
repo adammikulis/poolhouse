@@ -309,7 +309,7 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
     }
 
     drawSweep(fleet) {
-      this.querySelector("fleet-benchmark").update(fleet);
+      this.querySelector("fleet-benchmark").update?.(fleet);
     }
 
   }

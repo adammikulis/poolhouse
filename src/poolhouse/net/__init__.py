@@ -12,6 +12,7 @@ reads from the web.
 
 from __future__ import annotations
 
+from poolhouse.httpguard import Fetched
 from poolhouse.net.download import (
     Blocked,
     ChecksumMismatch,
@@ -21,16 +22,16 @@ from poolhouse.net.download import (
     Want,
     download,
 )
-from poolhouse.net.pipeline import Ask, Pipeline, Reply, default, use
+from poolhouse.net.pipeline import ASK, Ask, Pipeline, Reply, default, library, use
 from poolhouse.net.policy import Distrusted, NeedsApproval, Policy
 from poolhouse.net.provenance import Provenance, recent
 from poolhouse.net.scan import Outcome, Scanner, ScanPolicy, ScanResult, scan_file
 
 __all__ = ["Ask", "Blocked", "ChecksumMismatch", "Distrusted", "Hooks", "NeedsApproval", "NoDigest", "Outcome", "Pipeline",
            "Policy", "Provenance", "Reply", "ScanPolicy", "ScanResult", "Scanner", "Truncated",
-           "Want", "default", "download", "get", "recent", "scan_file", "use"]
+           "Want", "default", "download", "get", "library", "recent", "scan_file", "use"]
 
 
-def get(url: str, **kwargs):  # type: ignore[no-untyped-def]
-    """``url``'s answer through the default pipeline; see `Pipeline.get`."""
-    return default().get(url, **kwargs)
+def get(url: str, ask: Ask = ASK, *, pipeline: Pipeline | None = None) -> Fetched:
+    """``url``'s answer through ``pipeline``, else `default`; see `Pipeline.get`."""
+    return (pipeline or default()).get(url, ask)

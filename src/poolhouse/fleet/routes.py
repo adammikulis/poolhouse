@@ -14,6 +14,7 @@ from poolhouse.ui import assets as ui_assets
 from . import (
     component_routes,
     credential_routes,
+    experimental_routes,
     invite_routes,
     lan_pools,
     project_client,
@@ -31,8 +32,6 @@ from .discovery import (
 )
 from .extension_routes import ExtensionRoutes
 from .features_routes import FeatureRoutes
-from .gym_recording_routes import GymRecordingRoutes
-from .gym_routes import GymRoutes
 from .initial_setup_routes import InitialSetupRoutes
 from .knowledge_routes import KnowledgeRoutes
 from .launch_routes import LaunchRoutes
@@ -847,7 +846,7 @@ class JobRoutes:
 
 class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
              BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
-             KnowledgeRoutes, WorkspaceRoutes, GymRecordingRoutes, GymRoutes, LaunchRoutes, ExtensionRoutes, Base):
+             KnowledgeRoutes, *experimental_routes.load(), WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
 
     def run(self) -> bool:

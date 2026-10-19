@@ -22,7 +22,7 @@ class Budget:
     overhead_floor_bytes: int
 
     @classmethod
-    def for_profile(cls, profile: Profile = "desktop") -> "Budget":
+    def for_profile(cls, profile: Profile = "desktop") -> Budget:
         raw = load("model_tiers.json").get("budget", {})
         if profile not in raw:
             raise ContractError(

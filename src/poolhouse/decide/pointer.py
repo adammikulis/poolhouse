@@ -19,6 +19,7 @@ from poolhouse.decide.calibrate import Calibration
 from poolhouse.decide.pins import STRANDS_V19, Checkpoint
 from poolhouse.decide.sources import Source, local_source, strands_source, temperature_for
 from poolhouse.decide.types import BackendUnavailable, DecideError
+from poolhouse.hub import admission
 
 MAX_TOKENS = 4096
 
@@ -66,6 +67,7 @@ def build_head(torch: Any, hidden: int, dim: int) -> Any:
 def load_torso(base_dir: Path, lora_dir: Path | None, dtype: str, device: str, *,
                trainable: bool = False) -> Any:
     """The base model's decoder with its adapter applied, from safetensors only."""
+    admission.vetted(base_dir)
     torch = _torch()
     import transformers
     config = json.loads((base_dir / "config.json").read_text())

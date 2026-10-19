@@ -228,10 +228,11 @@ run between devices.
 
 | Name | Contract |
 |---|---|
-| `ph.models.pull(repo, file)` | Download one file of a Hub repository (every shard of a sharded build) into the Hugging Face hub cache; its path. |
+| `ph.models.pull(repo, file, *, trust=PERSON)` | Download one file of a Hub repository (every shard of a sharded build) into the Hugging Face hub cache; its path. `trust` says what is fetched without asking anyone: by default only the publishers Poolhouse ships with on the official Hub, and a person answers for the rest; a different `Trust` allows more or less. |
+| `ph.models.Trust` | The frozen dataclass a pull checks a repository against: `publishers` (the owners fetched from, `None` for any), `shipped`, `official_only`, `markers`, `moved` and `ask`. `Trust()` allows every publisher on every Hub without asking and `Trust(publishers=frozenset({"owner"}))` only the owners named; what a `Trust` does not allow is refused with a message that names `trust=`. The Hub listing other bytes for a commit already pulled is refused whatever the `Trust`. What a `Trust` lets through that the default would have asked a person about is kept in the pin of the file, and the first time the model is served (`poolhouse-serve`, `ph.serve.up`) or loaded by one of Poolhouse's own loaders that takes a path (a training base, the speculative decoder's weights, the MLX trainer's base, a decider's base) a person is asked the same question, once for a whole folder. A program that reads the pulled file or folder with code of its own calls `poolhouse.hub.admission.vetted(path)` first: nothing else asks, and the question is that program's to put. |
 | `ph.models.path(repo, file)` | Where it is in the cache, or `None`. Downloads nothing. |
 | `ph.models.cache_dir()` | The cache folder (`$HF_HUB_CACHE`, `$HF_HOME/hub`, or `~/.cache/huggingface/hub`). |
-| `ph.serve.up(model, *, context=0, parallel=0, wait=True, reason="")` | Lease a server of `model` (path, cached file name, or `hf:owner/repo/file.gguf`). Waits until it is ready, or returns `queued` with `wait=False`. `ph.Error` when refused, with what would fit. |
+| `ph.serve.up(model, *, context=0, parallel=0, wait=True, reason="")` | Lease a server of `model` (path, cached file name, or `hf:owner/repo/file.gguf`). Waits until it is ready, or returns `queued` with `wait=False`. `ph.Error` when refused, with what would fit. An `hf:` reference from a publisher Poolhouse does not ship with waits for a person; pull it with `ph.models.pull(..., trust=...)` first and serve the path. |
 | `ph.serve.down(target)` | Release a lease by id, port or part of a model name; the ids released. |
 | `ph.serve.status()` | The `Served` leases of this device: `lease`, `model`, `state`, `base_url`, `port`, `context`, `parallel`, `adopted`. |
 | `ph.serve.Served` | The frozen dataclass. |
@@ -260,7 +261,7 @@ Two `up`s of one shape share one server; the server stops when its last lease go
 | `ph.client.ServerError`, `ph.client.ServerUnreachable` | The failures of a request; the second means nothing answered. |
 | `ph.hub.discover(...)` | Models on this machine (every folder poolhouse searches) as `ModelInfo`s. |
 | `ph.hub.ModelInfo` | One model: path, format, size, repository. |
-| `ph.hub.fetch(reference)` | Download an `hf:owner/repo/file` reference into the Hub cache; its path. |
+| `ph.hub.fetch(reference, *, trust=PERSON)` | Download an `hf:owner/repo/file` reference into the Hub cache; its path. `trust` is `ph.models.Trust`. |
 | `ph.hub.located(name)` | The local file a model name stands for, or `None`. |
 | `ph.hub.hub_cache()` | The Hub cache folder. |
 

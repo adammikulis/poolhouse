@@ -15,14 +15,15 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from poolhouse import agent_hooks, bench, checks, hook_diagnostics, hookcheck, node_pool
-from poolhouse.bench.underway import measuring, measuring_file
+from poolhouse import agent_hooks, checks, hook_diagnostics, hookcheck, node_pool, optional
 from poolhouse.checks import Finding, ask
 from poolhouse.command import Group, flag, option
+from poolhouse.home import state
 from poolhouse.log import say
 from poolhouse.serve.binary import child_env, managed_current, managed_named
 from poolhouse.serve.build_platform import server_name
 from poolhouse.serve.build_report import manifest_of
+from poolhouse.serve.process import measuring, measuring_file
 
 __all__ = ["HOOKS", "STALE_BUILD_DAYS", "ahead_of", "bench_of", "builds_of",
            "hooks_of", "install_of", "look_checkouts", "main", "repositories", "status_of",
@@ -243,7 +244,7 @@ def _measuring(home: Path) -> Finding | None:
 
 def _newest_run_at(store: Path) -> tuple[float, int]:
     """When the newest kept run was written, as epoch seconds, and how many there are."""
-    kept = bench.runs(store) if store.exists() else []
+    kept = optional.module("poolhouse.bench").runs(store) if store.exists() else []
     at = 0.0
     for one in kept:
         try:
@@ -267,7 +268,8 @@ def _started(log: Path) -> float:
 def bench_of(home: Path) -> list[Finding]:
     """The bench store under ``home``: empty runs, a dead lock, a log with no run."""
     out: list[Finding] = []
-    if not home.is_dir():
+    bench = optional.load("poolhouse.bench")
+    if bench is None or not home.is_dir():
         return out
     store = home / "runs.ladybug"
     try:
@@ -398,7 +400,7 @@ def look_checkouts(repos: list[Path] | None = None, *, bench_home: Path | None =
             found = install_of(repo, checkout=checkout, python=python)
             if found is not None:
                 out.append(found)
-    out.extend(bench_of(bench.home_dir() if bench_home is None else bench_home))
+    out.extend(bench_of(state("bench") if bench_home is None else bench_home))
     out.extend(builds_of(managed_current() if current is None else current,
                          managed_named() if named is None else named))
     return out

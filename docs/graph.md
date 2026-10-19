@@ -47,7 +47,7 @@ that makes such a result safe to ask for: N tokens per tool result instead of th
 characters, with `look_at`, `look_around` and `list_kind` packing **whole entries with their
 quotes**, most-mentioned first, rather than every entry with its words clipped — because the
 quote is the evidence. Both are off by default (`reach=None`): a small model decodes
-cheaply and holds an expensive cache, and a fatter result is a worse trade for it. `poolhouse-bench --also reach` measures the fat
+cheaply and holds an expensive cache, and a fatter result is a worse trade for it. `python -m poolhouse.bench --also reach` measures the fat
 asking against the default on one load, and `--reach N` sets the size on every way.
 
 **`look_up`'s first hits are put in the order the vectors mean.** Fusion decides which
@@ -93,7 +93,7 @@ ids the prose names kept first, `cut N of M lit` in `steps`), and an entry the p
 that no tool ever returned is dropped (`dropped N unread from show`). `tight=False` is the
 loose asking kept as a **control** — the words the ranking runs and the answer cache
 fingerprinted, the same schema objects, byte for byte as they were — and
-`poolhouse-bench --also loose` measures it against the default on the same load.
+`python -m poolhouse.bench --also loose` measures it against the default on the same load.
 
 **Three more askings, each off until it is measured: `batch`, `kinds`, `summary`.**
 Over a hundred questions of the invented community, Qwen3.8-Flash-Next `UD-Q4_K_XL` asked
@@ -116,7 +116,7 @@ this group about?" has no name in it to look up — and adds `summarise`: counts
 ten most-mentioned entries of each kind with a line of their own words and their ids in
 brackets, and the busiest relations, computed from the graph with no model call at all.
 `routing_prompts(summary=True)` is what to route against when it is offered.
-`poolhouse-bench --also batch --also kinds --also summary` measures all three against the
+`python -m poolhouse.bench --also batch --also kinds --also summary` measures all three against the
 default on one load.
 
 **Two more, pulling the other way: `single` and `few`.** `Asking(single=True)` is
@@ -146,7 +146,7 @@ is a number in a store, not a taste. The same goes for sampling: a model is meas
 temperature, top-p and top-k that suit *it*, not at one setting shared by all. So the choice
 lives in the model's **profile** (`poolhouse/data/profiles.json`,
 `poolhouse.serve.profile`, and [the shape a model measured best in](serving.md)):
-`poolhouse-bench report --profile`
+`python -m poolhouse.bench report --profile`
 writes, per model and workload, the asking and the sampling of the fastest row whose F1 the questions
 could not tell apart from the best — F1 alone would trade real seconds for a hundredth of a
 point it cannot see — with the label of the row that set it. `converse(question, graph, client,
@@ -368,7 +368,7 @@ recalled turns, the ten-turn window and the question; because the summary sits a
 everything that changes per question, it is inside the cached prefix and re-read for free
 until it changes. `tests/test_graph_thread.py` holds, with a scripted model, that a fact
 stated at turn one is in front of the model at turn two hundred twice, once in the summary
-and once recalled, and that the prefix is identical across turns 193–200. Measure the `cached` share per turn with `poolhouse-bench
+and once recalled, and that the prefix is identical across turns 193–200. Measure the `cached` share per turn with `python -m poolhouse.bench
 concurrent` after changing `EVERY`; a summary that changes too often shows up there.
 
 `store` above is the conversation store, `thread.conversation_store(corpus)`, which

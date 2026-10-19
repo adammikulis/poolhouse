@@ -25,10 +25,17 @@ README = REPO / "README.md"
 DOCS = REPO / "docs"
 
 
+EXPERIMENTAL_COMMANDS = {"poolhouse-bench": "poolhouse.bench.run:main", "poolhouse-draft": "poolhouse.draft:main",
+                         "poolhouse-world": "poolhouse.world.cli:main"}
+"""The experimental layer's commands: not installed, run as ``python -m poolhouse.<name>``, and held to the same help."""
+
+MODULE_RUN = re.compile(r"^python3? -m poolhouse\.([a-z]+)\b")
+
+
 def _scripts() -> dict[str, str]:
-    """``command -> module:attr`` for every entry point ``pyproject.toml`` installs."""
+    """``command -> module:attr`` for every entry point ``pyproject.toml`` installs, and the experimental commands."""
     table = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["scripts"]
-    return dict(table)
+    return {**table, **EXPERIMENTAL_COMMANDS}
 
 
 SCRIPTS = _scripts()
@@ -114,7 +121,7 @@ def test_every_command_answers_help(command, capsys):
     assert "usage:" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("command", sorted(c for c in SCRIPTS if c.startswith("poolhouse-")))
+@pytest.mark.parametrize("command", sorted(c for c in SCRIPTS if c.startswith("poolhouse-") and c not in EXPERIMENTAL_COMMANDS))
 def test_the_umbrella_hands_back_the_same_help(command, capsys):
     """``poolhouse chat --help`` is ``poolhouse-chat --help``; ``poolhouse train run`` joins the words."""
     words = command[len("poolhouse-"):].split("-")
@@ -191,8 +198,9 @@ def _command_lines(text: str) -> list[tuple[int, str]]:
         if line.rstrip().endswith("\\"):
             pending = (number, line.rstrip()[:-1])
             continue
-        if line.strip().startswith("poolhouse"):
-            found.append((number, line.strip()))
+        named = MODULE_RUN.sub(lambda run: f"poolhouse-{run.group(1)}", line.strip())
+        if named.startswith("poolhouse"):
+            found.append((number, named))
     return found
 
 

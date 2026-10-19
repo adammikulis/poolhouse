@@ -25,7 +25,7 @@ from poolhouse.net.policy import mirror_netloc
 from poolhouse.net.scan import Scanner, ScanPolicy
 from poolhouse.net.scanners import default_scanners
 
-__all__ = ["ASK", "PAGE", "Ask", "Pipeline", "Reply", "bearer", "default", "use"]
+__all__ = ["ASK", "PAGE", "Ask", "Pipeline", "Reply", "bearer", "default", "library", "use"]
 
 PAGE = Limits(max_bytes=8 * 1024 * 1024, deadline_s=60.0)
 """The limits of a page or an API answer held in memory."""
@@ -191,14 +191,27 @@ def bearer(url: str, headers: dict[str, str] | None, token: str,
 
 
 _CURRENT: Pipeline | None = None
+_STANDARD: dict[str, Pipeline] = {}
 
 
 def default() -> Pipeline:
-    """The pipeline in force: the one `use` installed, else a standard one."""
-    global _CURRENT
-    if _CURRENT is None:
-        _CURRENT = Pipeline()
-    return _CURRENT
+    """The pipeline in force: the one `use` installed, else the standard one, which admits the built-in
+    hosts and the hosts a person approved."""
+    if _CURRENT is not None:
+        return _CURRENT
+    if "app" not in _STANDARD:
+        _STANDARD["app"] = Pipeline()
+    return _STANDARD["app"]
+
+
+def library() -> Pipeline:
+    """The pipeline a program names to reach any host: the one `use` installed, else a standard one that
+    admits every host. Addresses, redirects, size limits, scanning and the hold apply as in `default`."""
+    if _CURRENT is not None:
+        return _CURRENT
+    if "library" not in _STANDARD:
+        _STANDARD["library"] = Pipeline(policy=hosts.Policy(allowed=hosts.ANYWHERE))
+    return _STANDARD["library"]
 
 
 @contextlib.contextmanager

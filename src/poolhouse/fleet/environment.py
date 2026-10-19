@@ -231,7 +231,7 @@ class Environment:
             try:
                 net.download(asset["browser_download_url"], archive, net.Want(
                     sha256=digest, require_digest=True, size=int(asset.get("size") or 0),
-                    max_bytes=2 << 30, purpose="python download"))
+                    max_bytes=2 << 30, purpose="python download"), pipeline=net.default())
             except (net.Blocked, net.Truncated, ServerError, Refused) as exc:
                 raise OSError(f"could not download Python: {exc}") from None
             if on_progress:

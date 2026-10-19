@@ -69,7 +69,7 @@ class Want:
     pinned to, whether a digest is ``require_digest``, and how an unscanned file is treated.
     ``verify(path, headers)`` returns why a staged file is not acceptable, or ''. ``rename(final_url,
     headers)`` picks the file name once the answer is known. ``pin_notes`` (``publisher``, ``commit``,
-    ``source_ref``) are recorded in the pin of a model that is kept."""
+    ``source_ref``, ``host``, ``unvetted``) are recorded in the pin of a model that is kept."""
 
     kind: str = ""
     sha256: str = ""
@@ -259,7 +259,8 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
     if hooks.phase:
         hooks.phase("verifying")
     return _finish(pipe, staged, final, want, Arrival(url, shown.url, shown.status,
-                       tuple(shown.redirects), shown.headers, host, hooks.phase))
+                       tuple(shown.redirects), shown.headers, host, hooks.phase,
+                       not pipe.policy.lists_every_host()))
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,6 +274,7 @@ class Arrival:
     headers: dict[str, str]
     host: str
     phase: Callable[[str], None] | None = None
+    named: bool = True
 
 
 def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
@@ -334,9 +336,10 @@ def _pin_pulled(final: Path, kind: str, want: Want, digest: str, arrival: Arriva
     serving it later is a check against what arrived, not a first-use trust. Runs only after
     every check passed and the file was promoted; ``digest`` is that of the staged bytes
     (equal to ``want.sha256`` when one was pinned), nothing is hashed again. A failure to
-    record is logged and does not undo the download: the file then falls back to first-use."""
+    record is logged and does not undo the download: the file then falls back to first-use, as does a file
+    downloaded through a policy that names no host (``arrival.named`` is False)."""
     what = PINNED_KINDS.get(kind)
-    if what is None:
+    if what is None or not arrival.named:
         return
     try:
         node = sentinel.default()

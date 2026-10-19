@@ -7,6 +7,9 @@ inputs, action probabilities when available, applied actions, rewards, and episo
 
 ## Installation
 
+Gym is an experimental layer: the wheel does not hold it, and it runs from a source checkout as
+`python -m poolhouse.gym`. A build without it has no Gym page and no `/ui/gym` routes.
+
 In the desktop app, open the environment library installer and select the Gym libraries
 you need. Simulators run in that managed Python environment, separately from the desktop
 binary. The app reports which dependencies are installed in the selected environment.
@@ -16,7 +19,7 @@ For a source checkout:
 ```sh
 python -m pip install -e '.[gym]'
 python -m pip install 'metadrive-simulator @ git+https://github.com/metadriverse/metadrive.git@85e5dadc6c7436d324348f6e3d8f8e680c06b4db'
-poolhouse-gym catalogue
+python -m poolhouse.gym catalogue
 ```
 
 Install individual extras to select workloads:
@@ -259,10 +262,10 @@ Camera previews remain in the live stream and are omitted from saved trajectorie
 default. Set `record_frames` to `true` to save separate PNG files with frame references.
 
 ```sh
-poolhouse-gym run car --controller manual --action 5 --steps 100 \
+python -m poolhouse.gym run car --controller manual --action 5 --steps 100 \
   --config '{"map":"S","traffic_density":0.1}'
-poolhouse-gym run warehouse --controller random --steps 100
-poolhouse-gym replay /path/to/session/trajectory.jsonl
+python -m poolhouse.gym run warehouse --controller random --steps 100
+python -m poolhouse.gym replay /path/to/session/trajectory.jsonl
 ```
 
 Sessions write `manifest.json`, `worker.log`, and `trajectory.jsonl` in their artifact
@@ -277,11 +280,11 @@ default. Car actions are discrete; warehouse policies use joint `MultiDiscrete` 
 and the sum of native individual rewards. Traffic policies use native SUMO-RL spaces.
 
 ```sh
-poolhouse-gym train car --timesteps 2048 --seed 0 \
+python -m poolhouse.gym train car --timesteps 2048 --seed 0 \
   --config '{"map":"S","traffic_density":0.1,"horizon":500}'
-poolhouse-gym train warehouse --timesteps 2048 --seed 0
-poolhouse-gym train traffic --timesteps 2048 --seed 0
-poolhouse-gym evaluate car /path/to/gym/training-run/policy.zip \
+python -m poolhouse.gym train warehouse --timesteps 2048 --seed 0
+python -m poolhouse.gym train traffic --timesteps 2048 --seed 0
+python -m poolhouse.gym evaluate car /path/to/gym/training-run/policy.zip \
   --episodes 5 --seed 10000 \
   --config '{"map":"S","traffic_density":0.1,"horizon":500}'
 ```
@@ -305,7 +308,7 @@ as JSONL using episode ID, sequence, and an action name from that session:
 ```
 
 ```sh
-poolhouse-gym export /path/to/session/trajectory.jsonl reviews.jsonl cases.jsonl
+python -m poolhouse.gym export /path/to/session/trajectory.jsonl reviews.jsonl cases.jsonl
 ```
 
 Export includes only explicitly reviewed transitions and uses the observation before the

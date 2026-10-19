@@ -20,6 +20,7 @@ from mlx_vlm.models.qwen4_exp.ple_storage import PLE_MARKER, prepare_external_pl
 from mlx_vlm.utils import load_model
 
 from poolhouse import home, hub
+from poolhouse.hub import admission
 from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.spec import LAYOUTS, attention
 from poolhouse.spec.accept import Rule
@@ -45,8 +46,9 @@ def weights(name: str | Path) -> Path:
     """A local weights directory or file, or a Hub repository id brought into the Hub cache."""
     where = home.expand(name)
     if where.exists():
+        admission.vetted(where)
         return where
-    return hub.snapshot(str(name))
+    return hub.snapshot(str(name), trust=hub.PERSON)
 
 
 def external_ple(path: Path) -> Path:
