@@ -56,12 +56,14 @@ if _status:
 import affected
 import gaterun
 import gatescope
+import queue_doctor
 import testextras
 import testhistory
 import testjobs
 import testnode
 import testphases
 import testprelude
+import testqueue
 import testreuse_key
 import testreuse_run
 import testreuse_store
@@ -502,6 +504,7 @@ def job_command(args: argparse.Namespace, rest: list[str], argv: list[str]) -> i
         if args.tier == "subscribe":
             return subscribe(jobs, rest, args)
         if args.tier == "status" and not rest:
+            print(testqueue.longest(testslots.status()["runs"], time.time()))
             for job in jobs.ids():
                 print(show(job, jobs.state(job), jobs.read(job, "spec.json")))
             return 0
@@ -572,6 +575,15 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
         jobs.write(job, "status.json", status)
         REUSE["events"].job_done(job, spec, status, thread)
     return code
+
+
+def doctor_admits(verdict) -> str:
+    """Record the estimate of this process's job; why the queue doctor ends it (an agent's job estimated over 20 minutes), or an empty string."""
+    if verdict.estimate_s is None:
+        return ""
+    return queue_doctor.admitted(jobs_store(), os.environ["DEV_TEST_JOB"], verdict.estimate_s,
+                                 int(os.environ.get("DEV_TEST_ESTIMATE_WORKERS", "1")),
+                                 lambda text: print(text, file=sys.stderr, flush=True))
 
 
 def run_owner() -> dict:
@@ -645,6 +657,8 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["DEV_TEST_AGENT"] = json.dumps({**REUSE["agent"], "job": os.environ.get("DEV_TEST_JOB", "")})
     else:
         os.environ.pop("DEV_TEST_AGENT", None)
+    if not os.environ.get("DEV_TEST_JOB"):
+        queue_doctor.check(ROOT, say=lambda text: print(text, file=sys.stderr, flush=True))
     if args.on:
         if refusal := testscope.tier_refusal(args.tier, rest, ROOT):
             print(f"test: {refusal}", file=sys.stderr)
@@ -676,7 +690,9 @@ def main(argv: list[str] | None = None) -> int:
     if not os.environ.get("DEV_TEST_JOB"):
         return follow(argv, args)
     command = pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)
-    testprelude.begin(args, rest, ROOT, reused_files(command))
+    if why := doctor_admits(testprelude.begin(args, rest, ROOT, reused_files(command))):
+        print(f"test: ended by the queue doctor: {why}", file=sys.stderr)
+        return 3
     if args.tier != "gate" and (failed := build_node(testreuse_run.selectors(command, ROOT))):
         return failed
     if args.tier == "quick":
