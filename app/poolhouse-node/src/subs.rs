@@ -23,6 +23,8 @@ const TYPES: [&str; 5] = ["board", "thread", "agent", "kind", "mentions"];
 const MODES: [&str; 3] = ["inbox", "digest", "silent"];
 const MESSAGE_TYPES: [&str; 9] = ["task", "status", "handoff", "question", "answer", "claim", "release", "note", "file"];
 const LOUD_FREE: usize = 3;
+/// Subscriptions one session keeps.
+pub const MOST_SUBS: usize = 256;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -45,6 +47,8 @@ pub struct Sub {
 pub struct Subs {
     path: PathBuf,
     by_name: BTreeMap<String, Vec<Sub>>,
+    /// Subscriptions one session keeps.
+    pub most: usize,
 }
 
 impl Subs {
@@ -54,7 +58,7 @@ impl Subs {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
             Err(e) => return Err(e.into()),
         };
-        Ok(Subs { path: path.into(), by_name })
+        Ok(Subs { path: path.into(), by_name, most: MOST_SUBS })
     }
 
     fn save(&self) -> Result<()> {
@@ -162,6 +166,31 @@ fn check_target(node: &mut Node, board: &str, actor: &str, stype: &str, target: 
     }
 }
 
+/// Make room for a new subscription of ``actor`` to ``(stype, target)`` when it keeps as many as it may: the ones to subagents that
+/// ended go first, and the refusal comes only if it is still full.
+fn make_room(node: &mut Node, board: &str, actor: &str, (stype, target): (&str, &str)) -> Result<()> {
+    let hosted = node.host(board)?;
+    let mine = hosted.subs.of(actor);
+    if mine.len() < hosted.subs.most || mine.iter().any(|s| s.stype == stype && s.target == target) {
+        return Ok(());
+    }
+    let mut ended = Vec::new();
+    for s in mine.iter().filter(|s| s.stype == "agent") {
+        if !node.can_receive(board, &s.target)? {
+            ended.push(s.target.clone());
+        }
+    }
+    let hosted = node.host(board)?;
+    if !ended.is_empty() {
+        hosted.subs.by_name.entry(actor.into()).or_default().retain(|s| !(s.stype == "agent" && ended.contains(&s.target)));
+        hosted.subs.save()?;
+    }
+    if hosted.subs.of(actor).len() >= hosted.subs.most {
+        return Err(crate::limits::refuse(&format!("{actor} already keeps as many subscriptions as a session may"), hosted.subs.most, "MOST_SUBS", "subs.rs"));
+    }
+    Ok(())
+}
+
 fn subscribe(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
     let actor = access.actor.clone();
@@ -180,6 +209,7 @@ fn subscribe(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) 
     if (stype, target.as_str()) == ("board", ANNOUNCE) && mode == "inbox" {
         return Err(Error::Invalid(format!("{ANNOUNCE} is a roll-up, never inbox: use digest or silent")));
     }
+    make_room(node, board, &actor, (stype, &target))?;
     let hosted = node.host(board)?;
     let mine = hosted.subs.of(&actor);
     let existing = mine.iter().find(|s| s.stype == stype && s.target == target).cloned();

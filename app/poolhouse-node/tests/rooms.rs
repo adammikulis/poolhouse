@@ -5,7 +5,7 @@ use kit::*;
 use kit::procs;
 use poolhouse_node::node::Node;
 use poolhouse_node::rooms::{MEMBERS_PER_ROOM, MOST_ROOMS_PER_LINEAGE};
-use poolhouse_node::subs::mentions;
+use poolhouse_node::subs::{mentions, MOST_SUBS};
 use poolhouse_node::sync::exchange_nodes;
 use serde_json::{json, Value};
 use tempfile::tempdir;
@@ -314,4 +314,50 @@ fn a_foreign_message_to_a_room_nobody_made_or_a_member_forged_is_read_by_no_one(
     assert_eq!(code(&join), "denied", "a private room of another device is not joined");
     let other = ok(req(&mut b, "rooms", "demo", &bt, json!({})))["rooms"].as_array().unwrap().iter().map(|r| r["name"].clone()).collect::<Vec<_>>();
     assert!(!other.contains(&json!("#mine")));
+}
+
+fn watch(n: &mut Node, token: &str, agent: &str) -> Value {
+    req(n, "subscribe", "demo", token, json!({"stype": "agent", "target": agent, "mode": "inbox", "force": true}))
+}
+
+fn kids_watched(n: &mut Node, most: usize) -> (String, Vec<(String, String)>) {
+    let (_, lead) = session(n, "demo", "lead");
+    n.boards.get_mut("demo").unwrap().subs.most = most;
+    let kids: Vec<(String, String)> = (0..most + 1).map(|i| kid(n, &lead, &format!("kid{i}"))).collect();
+    for (name, _) in &kids[..most] {
+        ok(watch(n, &lead, name));
+    }
+    (lead, kids)
+}
+
+#[test]
+fn the_default_bound_on_the_subscriptions_of_a_session_is_the_constant() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    session(&mut n, "demo", "lead");
+    assert_eq!((MOST_SUBS, n.boards["demo"].subs.most), (256, 256));
+}
+
+#[test]
+fn a_session_keeps_a_bounded_number_of_subscriptions_and_the_refusal_names_the_limit() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (lead, kids) = kids_watched(&mut n, 6);
+    let refused = watch(&mut n, &lead, &kids[6].0);
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("the limit is 6, set by MOST_SUBS in subs.rs"), "{refused}");
+    ok(watch(&mut n, &lead, &kids[0].0));
+}
+
+#[test]
+fn a_full_set_of_subscriptions_drops_the_ones_to_subagents_that_ended_before_it_refuses() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (lead, kids) = kids_watched(&mut n, 6);
+    for (name, _) in &kids[..2] {
+        ok(req(&mut n, "retire", "demo", &lead, json!({"target": name})));
+    }
+    ok(watch(&mut n, &lead, &kids[6].0));
+    let held = ok(req(&mut n, "subs", "demo", &lead, json!({})))["subs"].as_array().unwrap().len();
+    assert_eq!(held, 5, "the two ended subagents were dropped to make room");
 }
