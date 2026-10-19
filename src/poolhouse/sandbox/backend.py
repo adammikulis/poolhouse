@@ -17,7 +17,7 @@ NO_REFUSAL_LOG = "this backend keeps no refusal log"
 LOST_REFUSAL_LOG = "the refusal log could not be read"
 CUT_REFUSAL_LOG = "a refusal report of a process of this run was cut off by the kernel"
 CUT_UNTRACED_LOG = "a refusal report was cut off by the kernel and could not be traced to a process of another run"
-SILENT_REFUSAL_LOG = "the command was refused and no refusal report of it reached the log"
+SILENT_REFUSAL_LOG = "the command failed with \"Operation not permitted\" and no refusal report of it reached the log"
 UNPARSED_REFUSAL_LOG = "a refusal report of this run could not be read"
 
 
@@ -45,7 +45,8 @@ class Wrapped:
 class Backend(Protocol):
     """One way of confining a process: ``wrap`` turns a command and a policy into the command
     that runs it confined, ``watch`` readies the backend to report refusals before the command
-    starts, ``started`` says which process the run started as, ``denials`` reads back what the sandbox
+    starts, ``started`` says which process the run started as (that process runs nothing until it returns,
+    and one that raises ends the run before the command has run), ``denials`` reads back what the sandbox
     refused (None when it cannot be known), ``unreadable`` says why it could not be known and ``finish``
     says the run has ended."""
 

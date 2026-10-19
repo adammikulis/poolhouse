@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -14,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import sandbox, sentinel
-from poolhouse.sandbox import denial_log, run
+from poolhouse.sandbox import denial_log, hold, process_tree, run
 from poolhouse.sandbox.backend import (
     CUT_REFUSAL_LOG,
     CUT_UNTRACED_LOG,
@@ -22,9 +24,10 @@ from poolhouse.sandbox.backend import (
     UNPARSED_REFUSAL_LOG,
 )
 from poolhouse.sandbox.denial_log import DenialLog
+from poolhouse.sandbox.seatbelt import Seatbelt
 from poolhouse.sentinel.adapters import sandbox_listener
-from poolhouse.sentinel.score import WEIGHTS
-from tests.sandbox_kit import QuietBackend, RecordingBackend, policy
+from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, WATCH_AT, WEIGHTS
+from tests.sandbox_kit import QuietBackend, RecordingBackend, UntrackableBackend, policy
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -354,9 +357,15 @@ def beside(tmp_path: Path, hostile, *, script: str = "sleep 2; exit 1"):
 
 
 @pytest.mark.parametrize("message", ["A" * 1000, "B" * 205 + denial_log.CUT_MARK], ids=["long", "short-with-the-cut-mark"])
-def test_a_cut_report_that_an_unrelated_process_caused_leaves_a_run_beside_it_readable(tmp_path, seatbelt_alone, message):
-    _, bystander = beside(tmp_path, lambda: forge_cut_report(message))
+def test_a_cut_report_that_an_unrelated_process_caused_leaves_a_run_that_started_nothing_readable(tmp_path, seatbelt_alone, message):
+    _, bystander = beside(tmp_path, lambda: forge_cut_report(message), script="exec /bin/sleep 2")
     assert not bystander.denials_unavailable and bystander.denials == []
+
+
+@pytest.mark.parametrize("message", ["A" * 1000, "B" * 205 + denial_log.CUT_MARK], ids=["long", "short-with-the-cut-mark"])
+def test_a_cut_report_that_an_unrelated_process_caused_makes_a_run_that_started_a_process_unreadable(tmp_path, seatbelt_alone, message):
+    _, bystander = beside(tmp_path, lambda: forge_cut_report(message))
+    assert bystander.denials_unavailable and bystander.denials_detail == CUT_UNTRACED_LOG
 
 
 def test_a_refusal_cut_off_in_one_run_leaves_a_run_beside_it_readable(tmp_path, seatbelt_alone):
@@ -396,3 +405,258 @@ def test_probing_with_a_path_the_kernel_cuts_off_scores_like_any_other_refusal(t
     ordinary = score_of(tmp_path, "whole", long_file(tmp_path / "whole", WHOLE))
     assert ordinary == pytest.approx(WEIGHTS["sandbox.denied"])
     assert score_of(tmp_path, "cut", long_file(tmp_path / "cut", size)) == pytest.approx(ordinary)
+
+
+FORKS_AND_FAILS = """
+import os, sys, time
+pid = os.fork()
+if pid == 0:
+    if sys.argv[2] == "detached":
+        os.setsid()
+        if os.fork():
+            os._exit(0)
+    try:
+        open(sys.argv[1]).read()
+    except OSError:
+        pass
+    os._exit(0)
+os.waitpid(pid, 0)
+time.sleep(0.1)
+sys.stderr.write("failed\\n")
+sys.exit(1)
+"""
+"""A command that has a child read a path outside its policy and end, and then fails."""
+LOADED_RUNS = 4
+
+
+@contextlib.contextmanager
+def busy_host(threads: int = 3):
+    """Threads that compute in this process, as a node with work of its own does, so that its readers wait for the interpreter."""
+    stop = threading.Event()
+
+    def spin() -> None:
+        while not stop.is_set():
+            pass
+
+    workers = [threading.Thread(target=spin, daemon=True) for _ in range(threads)]
+    for worker in workers:
+        worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        for worker in workers:
+            worker.join()
+
+
+@pytest.mark.parametrize("mode", ["child", "detached"])
+def test_a_refusal_cut_off_in_a_child_that_ends_at_once_never_reads_as_a_clean_run_on_a_busy_host(tmp_path, seatbelt_alone, mode):
+    project = tmp_path / "project"
+    project.mkdir()
+    target = long_file(tmp_path, 1000)
+    read = []
+    with busy_host():
+        for _ in range(LOADED_RUNS):
+            result = run([sys.executable, "-c", FORKS_AND_FAILS, str(target), mode], policy(read=[project], python=True))
+            read.append((result.denials_unavailable, result.denials_detail))
+    assert set(read) <= {(True, CUT_REFUSAL_LOG), (True, CUT_UNTRACED_LOG)}
+
+
+def test_a_cut_refusal_of_a_process_nobody_followed_makes_a_run_that_started_a_process_unreadable(seatbelt, processes):
+    stream = DenialLog()
+    stream.watch("forker")
+    stream.watch("still")
+    forker = subprocess.Popen(["/bin/sh", "-c", "sleep 0.3; exec sleep 30"], start_new_session=True)
+    try:
+        stream.track("forker", forker.pid)
+        stream.track("still", processes().pid)
+        time.sleep(0.8)
+        stream._hear(cut_report(gone_pid()))
+        assert stream.denials("forker") is None and stream.why_unreadable("forker") == CUT_UNTRACED_LOG
+        assert stream.denials("still") == []
+    finally:
+        os.killpg(forker.pid, 9)
+        forker.wait()
+        stream.close()
+
+
+def test_a_cut_refusal_of_a_pid_a_process_of_the_run_had_long_ago_is_not_the_runs(seatbelt, monkeypatch):
+    monkeypatch.setattr(process_tree, "GRACE_S", 0.2)
+    stream = DenialLog()
+    parent = subprocess.Popen(["/bin/sh", "-c", "sleep 0.1 & echo $!; exec sleep 30"], stdout=subprocess.PIPE, text=True,
+                              start_new_session=True)
+    try:
+        stream.watch("long-running")
+        stream.track("long-running", parent.pid)
+        child = int(parent.stdout.readline())
+        time.sleep(0.8)
+        stream._hear(cut_report(child))
+        assert stream.denials("long-running") is None and stream.why_unreadable("long-running") == CUT_UNTRACED_LOG
+    finally:
+        os.killpg(parent.pid, 9)
+        parent.wait()
+        parent.stdout.close()
+        stream.close()
+
+
+def test_the_tree_of_a_run_that_has_ended_is_let_go(seatbelt, processes):
+    stream = DenialLog()
+    try:
+        proc = processes()
+        stream.watch("done")
+        stream.track("done", proc.pid)
+        tree = stream._runs["done"].tree
+        stream.finish("done")
+        assert stream._runs["done"].tree is None and proc.pid not in process_tree._FOLLOWER._owners
+        assert tree is not None and stream.denials("done") == []
+    finally:
+        stream.close()
+
+
+@pytest.mark.parametrize(("name", "pids"), [
+    ("cat", (4321,)), ("x(1) c", (4321,)), ("a(1) b(2)", (4321,)), ("(7)", (4321,)), ("v8 (3)", (4321,)),
+    ("x(1) deny(1) y", (1, 4321)), ("(1) deny(2) (3) deny(4)", (1, 3, 4321)),
+], ids=["plain", "parenthesis-and-digit", "two-groups", "only-a-group", "space-and-digit", "name-holding-a-deny", "name-holding-two-denies"])
+def test_the_pids_a_cut_report_names_come_after_a_process_name_that_holds_parentheses_and_digits(name, pids):
+    assert denial_log.reported_pids(f"Sandbox: {name}(4321) deny(1) file-read-data /aaaa") == pids
+    assert denial_log.reported_pids(f"3 duplicate reports for Sandbox: {name}(4321) deny(1) file-read-data /aaaa") == pids
+
+
+@pytest.mark.parametrize("message", ["", "no head at all", "Sandbox: cat deny(1) file-read-data /x", "Sandbox: cat(4321) denied file-read-data /x",
+                                     "sandbox: cat(4321) deny(1) file-read-data /x"])
+def test_a_report_that_names_no_process_names_no_pid(message):
+    assert denial_log.reported_pids(message) == ()
+
+
+def test_a_path_that_looks_like_the_head_of_a_report_adds_to_the_pids_and_never_hides_the_real_one():
+    message = "Sandbox: cat(4321) deny(1) file-read-data /tmp/a(9) deny(1) b"
+    assert denial_log.reported_pids(message) == (4321, 9)
+
+
+def test_a_cut_report_whose_process_name_names_the_pid_of_another_run_is_still_charged_to_the_run_that_made_it(seatbelt, processes):
+    stream = DenialLog()
+    try:
+        hostile, bystander = processes(), processes()
+        for tag, proc in (("hostile", hostile), ("bystander", bystander)):
+            stream.watch(tag)
+            stream.track(tag, proc.pid)
+        stream._hear(f"Sandbox: x({bystander.pid}) deny(1) y({hostile.pid}) deny(1) file-read-data /private/tmp/{'z' * 900}{denial_log.CUT_MARK}")
+        assert stream.why_unreadable("hostile") == CUT_REFUSAL_LOG
+    finally:
+        stream.close()
+
+
+def test_a_note_of_repeats_of_a_refusal_the_run_was_reported_is_not_a_report_that_cannot_be_read(seatbelt):
+    stream = DenialLog()
+    try:
+        stream.watch("running")
+        stream._hear(f"Sandbox: cat(4242) deny(1) file-read-data /private/x\n{denial_log.PREFIX}running")
+        stream._hear(f"2 duplicate reports for Sandbox: cat(4242) deny(1) file-read-data /private/x\n{denial_log.PREFIX}running")
+        assert stream.denials("running") == [{"process": "cat", "operation": "file-read-data", "target": "/private/x"}]
+        assert stream.why_unreadable("running") == ""
+    finally:
+        stream.close()
+
+
+@pytest.mark.parametrize("note", [
+    "2 duplicate reports for Sandbox: cat(4242) deny(1) file-read-data /private/x",
+    "2 duplicate reports for Sandbox: cat(4242) deny(1) file-read-data /private/other",
+    "2 duplicate reports for Sandbox: not a report",
+    "2 duplicate reports for Sandbox: ",
+], ids=["no-earlier-report", "another-target", "not-a-report", "empty"])
+def test_a_note_of_repeats_of_a_refusal_the_run_was_not_reported_makes_it_unreadable(seatbelt, note):
+    stream = DenialLog()
+    try:
+        stream.watch("running")
+        stream._hear(f"Sandbox: cat(4242) deny(1) file-read-data /private/y\n{denial_log.PREFIX}running")
+        stream._hear(f"{note}\n{denial_log.PREFIX}running")
+        assert stream.denials("running") is None and stream.why_unreadable("running") == UNPARSED_REFUSAL_LOG
+    finally:
+        stream.close()
+
+
+def test_a_run_that_could_not_be_followed_does_not_run_the_command_and_fails(tmp_path):
+    backend, events = UntrackableBackend(), []
+    with pytest.raises(sandbox.SandboxUnavailable, match="could not be followed"):
+        run(["/bin/sh", "-c", f"touch {shlex.quote(str(tmp_path / 'ran'))}; exec sleep 60"], policy(), via=backend,
+            on_event=lambda name, fields: events.append(name))
+    try:
+        with pytest.raises(ProcessLookupError):
+            os.kill(backend.pid, 0)
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(backend.pid, 9)
+    assert not (tmp_path / "ran").exists()
+    assert backend.watched == ["unreadable"] == backend.finished and "sandbox.unavailable" in events
+
+
+def test_a_command_that_has_a_child_read_a_forbidden_path_and_then_executes_another_program_is_never_read_as_clean(
+        tmp_path, seatbelt_alone, monkeypatch):
+    """The host is slow to follow the run, as one with threads of its own is; the command still runs nothing before it has."""
+    real = Seatbelt.started
+
+    def slow(self, tag, pid):
+        time.sleep(0.3)
+        real(self, tag, pid)
+
+    monkeypatch.setattr(Seatbelt, "started", slow)
+    project = tmp_path / "project"
+    project.mkdir()
+    target = long_file(tmp_path, 1000)
+    result = run(["/bin/sh", "-c", f"/bin/cat {shlex.quote(str(target))}; exec /bin/sleep 1"], policy(read=[project]), diagnose="always")
+    assert result.denials_unavailable and result.denials_detail in (CUT_REFUSAL_LOG, CUT_UNTRACED_LOG)
+
+
+def test_the_command_has_no_descriptor_of_the_hold_that_kept_it_back(tmp_path):
+    own = subprocess.run(["/bin/sh", "-c", "ls /dev/fd"], capture_output=True, text=True, check=True)
+    result = run(["/bin/sh", "-c", "ls /dev/fd"], policy(), via=RecordingBackend())
+    assert result.ok and set(result.stdout.split()) == set(own.stdout.split())
+
+
+class SlowBackend(RecordingBackend):
+    """A backend that takes a while to follow a run, and notes whether the command had run by then."""
+
+    name = "slow"
+
+    def __init__(self, marker: Path, seconds: float) -> None:
+        super().__init__()
+        self.marker, self.seconds, self.ran_early = marker, seconds, None
+
+    def started(self, tag, pid):
+        super().started(tag, pid)
+        time.sleep(self.seconds)
+        self.ran_early = self.marker.exists()
+
+
+def test_the_command_runs_nothing_before_the_backend_has_been_told_which_process_it_is(tmp_path):
+    backend = SlowBackend(tmp_path / "ran", 0.4)
+    result = run(["/bin/sh", "-c", f"touch {shlex.quote(str(tmp_path / 'ran'))}"], policy(), via=backend)
+    assert result.ok and backend.ran_early is False and (tmp_path / "ran").exists()
+
+
+def test_a_command_the_backend_does_not_follow_in_time_is_not_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(hold, "HOLD_S", 0.3)
+    backend = SlowBackend(tmp_path / "ran", 1.0)
+    with pytest.raises(sandbox.SandboxUnavailable, match="could not start"):
+        run(["/bin/sh", "-c", f"touch {shlex.quote(str(tmp_path / 'ran'))}"], policy(), via=backend)
+    assert not (tmp_path / "ran").exists() and backend.watched == ["unreadable"] == backend.finished
+
+
+def test_a_failed_run_the_system_refused_for_another_reason_scores_as_a_failure_that_may_not_be_its_own(tmp_path):
+    if shutil.which("chflags") is None:
+        pytest.skip("a locked file needs chflags")
+    locked = tmp_path / "locked"
+    locked.write_text("x")
+    subprocess.run(["chflags", "uchg", str(locked)], check=True)
+    node = sentinel.Sentinel(tmp_path / "sentinel")
+    listener = sandbox_listener(node)
+    try:
+        with node.running("s-innocent"):
+            for _ in range(6):
+                result = run(["/bin/rm", str(locked)], policy(), via=QuietBackend(), on_event=listener)
+                assert result.denials_unavailable and result.denials_detail == SILENT_REFUSAL_LOG
+    finally:
+        subprocess.run(["chflags", "nouchg", str(locked)], check=False)
+    assert node.score.value("session", "s-innocent") == pytest.approx(6 * UNATTRIBUTED_WEIGHT)
+    assert node.score.value("session", "s-innocent") < WATCH_AT
+    assert not node.score.held("session", "s-innocent") and not node.bus.recent(kind="score.watch")

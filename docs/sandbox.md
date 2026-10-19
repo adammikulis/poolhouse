@@ -117,30 +117,35 @@ Known limits:
   (a refused path of about 940 bytes or more). The stream therefore also carries every kernel Sandbox
   report of 200 or more characters. One that no watched run or probe owns and that is 900 bytes or
   longer, or ends in the kernel's cut mark, still names the process that was refused
-  (`Sandbox: cat(1234) deny(1) ...`). `process_tree.py` follows the processes of each run from the
-  moment it starts (`kqueue` fork notifications and libproc's child lists, so a child is followed even
-  when it ends within milliseconds), and the report makes unreadable the run whose process it names
-  (detail "a refusal report of a process of this run was cut off by the kernel"). A report whose
-  process belongs to no run leaves every run whose processes were followed from the start readable; it
-  makes unreadable only a run that was not followed from its start (the process had already ended when
-  the run was first looked at, a process had more than 4096 children, or the run started more than 65536
-  processes), with the detail "... could
-  not be traced to a process of another run"; so does a report that names no process, for every run
-  being watched. A process that forks and ends within the reaction time of the
-  notification (tens of microseconds) is not followed, so a cut report of such a process is taken
-  for a foreign one. The start-up probes include a long report, so a stream that cannot carry one is
-  not used.
+  (`Sandbox: cat(1234) deny(1) ...`); a process name or a path can hold text that reads like that head,
+  so every `(pid) deny(` in the report counts as a pid it may name. `process_tree.py` follows the
+  processes of each run from the moment it starts: the process waits, before it runs its program, until
+  the backend has been told its pid (`hold.py`); `kqueue` fork notifications and libproc's child lists
+  add each child, a pid stays the run's for ten seconds after its process ended, and a pid that a new
+  process takes is followed again. The report makes unreadable the run whose process it names (detail
+  "a refusal report of a process of this run was cut off by the kernel"). A child that ends before its
+  parent's notification is read is not listed, so a tree counts the forks it was told of and a report
+  of a process that no run follows is the run's own only when the run started nothing but its first
+  process: it makes unreadable every run that forked or whose processes were not followed from the
+  start (the process had already ended when the run was first looked at, a process had more than 4096
+  children, or the run started more than 65536 processes), with the detail "... could not be traced
+  to a process of another run". A run whose first process never forked, and a report of a process
+  that a run still going follows, are not charged to it. A report that names no process makes every
+  run being watched unreadable. A run that ends hands the pids of its processes to the runs beside it, so
+  that a report of one of them is not charged to them. The start-up probes include a long report, so a
+  stream that cannot carry one is not used, and a probe is answered only by the refusal report it
+  provokes (the probe program's refusal, ending in the probe's own token).
 - A report cut inside a multi-byte character is not delivered by the system log at all. A run that
   fails with "Operation not permitted" while the stream carried no refusal for it (and one whose
-  only refusals were the start-up ones listed below) is unreadable, with the detail "the command was
-  refused and no refusal report of it reached the log". A failure with that text that the sandbox did
-  not cause is reported the same way. A report of the run's own tag that is neither a refusal nor the
-  kernel's note of repeated refusals makes the run unreadable ("a refusal report of this run could not be
-  read").
+  only refusals were the start-up ones listed below) is unreadable, with the detail "the command
+  failed with "Operation not permitted" and no refusal report of it reached the log"; a locked file
+  gives the same message without any refusal. A report of the run's own tag that is neither a refusal nor
+  the kernel's note of repeats of a refusal the run was reported (or of a start-up one) makes the run
+  unreadable ("a refusal report of this run could not be read").
 - Sentinel weights of `sandbox.denials-unavailable`: 1.0 for a log that was lost; 0.2 for a backend
-  without a log and for a cut report that could not be traced (the failure may not be the run's);
-  the weight of a refusal (2.0) for a report of the run's own that was cut off, never delivered or
-  unreadable.
+  without a log, for a cut report that could not be traced and for "Operation not permitted" with no
+  refusal report (the failure may not be the run's); the weight of a refusal (2.0) for a report of the
+  run's own that was cut off or could not be read.
 - A sandbox event counts toward the score of the session whose tool call started the run
   (`Sentinel.running_session`, the innermost tool call of that sentinel in the running context) and of
   no other. The context follows `asyncio.to_thread` and `contextvars.copy_context().run`; a plain

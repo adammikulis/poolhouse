@@ -42,9 +42,9 @@ WEIGHTS: dict[str, float] = {
 
 UNATTRIBUTED_WEIGHT = 0.2
 """What a failed run adds when its refusals cannot be known and the failure may not be its own: a backend
-that keeps no refusal log, or a refusal report cut off that may belong to a run whose processes were not
-followed from their start. A refusal that was cut off, or never reached the log, for a process of the
-run adds the weight of a refusal; a log that was lost adds 1.0."""
+that keeps no refusal log, a refusal report cut off that may belong to another run, or "Operation not
+permitted" with no refusal report of it (a locked file says the same). A refusal report of the run's own
+process that was cut off or could not be read adds the weight of a refusal; a log that was lost adds 1.0."""
 
 
 @dataclass(slots=True)

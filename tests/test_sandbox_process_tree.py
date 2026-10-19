@@ -113,3 +113,117 @@ def test_a_run_that_starts_more_processes_than_a_tree_keeps_is_not_complete(shel
     while tree.complete and time.monotonic() < deadline:
         time.sleep(0.01)
     assert not tree.complete
+
+
+class Unread(process_tree._Follower):
+    """A follower whose reader thread never runs: only `flush` takes in what the kernel reported."""
+
+    def _read(self, queue: object) -> None:
+        return
+
+
+def test_a_process_that_never_forked_is_a_sealed_tree(shell):
+    _, tree = shell("exec sleep 30")
+    time.sleep(0.3)
+    process_tree.flush()
+    assert tree.complete and tree.sealed
+
+
+def test_a_process_that_forked_is_not_a_sealed_tree_when_the_child_has_ended(shell):
+    _, tree = shell("sleep 0.05; sleep 30")
+    deadline = time.monotonic() + 5
+    while tree.sealed and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not tree.sealed and tree.complete
+
+
+def test_a_process_with_a_child_when_it_was_first_looked_at_is_not_a_sealed_tree():
+    proc = subprocess.Popen(["/bin/sh", "-c", "sleep 30 & wait"], start_new_session=True)
+    try:
+        time.sleep(0.4)
+        assert not process_tree.follow(proc.pid).sealed
+    finally:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+
+
+def test_a_process_that_started_and_reaped_a_child_before_it_was_looked_at_is_not_a_sealed_tree():
+    proc = subprocess.Popen(["/bin/sh", "-c", "sleep 0.01; read line"], stdin=subprocess.PIPE, start_new_session=True)
+    try:
+        time.sleep(0.5)
+        tree = process_tree.follow(proc.pid)
+        assert tree.complete and not tree.sealed
+    finally:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+        proc.stdin.close()
+
+
+def test_a_fork_the_reader_has_not_taken_in_is_counted_by_flush():
+    follower = Unread()
+    proc = subprocess.Popen(["/bin/sh", "-c", "sleep 0.3; sleep 0.01; exec sleep 30"], start_new_session=True)
+    try:
+        tree = follower.follow(proc.pid)
+        time.sleep(0.8)
+        assert tree.sealed
+        follower.flush()
+        assert not tree.sealed
+    finally:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+
+
+def test_a_tree_that_has_been_released_is_not_followed_any_more(shell):
+    proc, tree = shell("sleep 0.5; sleep 30 & echo $!; wait")
+    process_tree.release(tree)
+    time.sleep(1.2)
+    process_tree.flush()
+    assert not followed(tree, printed(proc, 1), 0.1)
+
+
+def test_a_pid_that_an_ended_process_had_belongs_to_the_tree_for_a_while_only(monkeypatch):
+    monkeypatch.setattr(process_tree, "GRACE_S", 0.2)
+    tree = process_tree.Tree(100)
+    assert tree.add(200)
+    tree.ended(200)
+    assert 200 in tree and tree.holds_any([200])
+    time.sleep(0.3)
+    assert 200 not in tree and not tree.holds_any([200]) and 100 in tree
+
+
+def test_a_pid_that_an_ended_process_had_can_be_taken_again(monkeypatch):
+    tree = process_tree.Tree(100)
+    assert tree.add(200)
+    tree.ended(200)
+    assert tree.add(200)
+    monkeypatch.setattr(process_tree, "GRACE_S", 0.0)
+    time.sleep(0.05)
+    assert 200 in tree
+
+
+def test_a_tree_that_is_full_of_pids_that_have_expired_is_still_complete(monkeypatch):
+    monkeypatch.setattr(process_tree, "KEPT", 3)
+    monkeypatch.setattr(process_tree, "GRACE_S", 0.0)
+    tree = process_tree.Tree(100)
+    for pid in (200, 300):
+        assert tree.add(pid)
+        tree.ended(pid)
+    time.sleep(0.05)
+    assert tree.add(400) and tree.add(500) and tree.complete
+
+
+def test_a_process_that_took_the_pid_of_one_that_ended_is_followed_with_its_children(shell, monkeypatch):
+    root, tree = shell("sleep 30")
+    reused = subprocess.Popen(["/bin/sh", "-c", "sleep 0.5; sleep 30 & echo $!; wait"], stdout=subprocess.PIPE, text=True,
+                              start_new_session=True)
+    try:
+        assert tree.add(reused.pid)
+        tree.ended(reused.pid)
+        listing = process_tree._FOLLOWER._children
+        monkeypatch.setattr(process_tree._FOLLOWER, "_children", lambda pid: [reused.pid] if pid == root.pid else listing(pid))
+        process_tree._FOLLOWER._scan(root.pid, tree)
+        assert followed(tree, [int(reused.stdout.readline())])
+    finally:
+        os.killpg(reused.pid, signal.SIGKILL)
+        reused.wait()
+        reused.stdout.close()

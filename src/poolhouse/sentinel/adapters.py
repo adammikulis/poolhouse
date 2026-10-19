@@ -32,10 +32,10 @@ __all__ = ["GuardLogHandler", "RailAnswer", "agent_gate", "broker_listener", "no
 
 logger = logging.getLogger("poolhouse.sentinel")
 
-UNATTRIBUTED = (NO_REFUSAL_LOG, CUT_UNTRACED_LOG)
+UNATTRIBUTED = (NO_REFUSAL_LOG, CUT_UNTRACED_LOG, SILENT_REFUSAL_LOG)
 """Details of a failed run whose refusals cannot be known, and that may not be the run's own refusal."""
-REFUSED = (CUT_REFUSAL_LOG, SILENT_REFUSAL_LOG, UNPARSED_REFUSAL_LOG)
-"""Details of a failed run that was refused something its refusal log cannot say."""
+REFUSED = (CUT_REFUSAL_LOG, UNPARSED_REFUSAL_LOG)
+"""Details of a failed run that was refused something its refusal log cannot say: a report of its own was cut off or could not be read."""
 
 _OUTCOMES = (("already seen", "replay"), ("outside the window", "clock"),
              ("too many failures", "locked"), ("not signed", "bad_sig"))
