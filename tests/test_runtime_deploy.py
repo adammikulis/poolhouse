@@ -191,13 +191,14 @@ def test_ensure_replaces_a_corrupt_selection_with_a_fallback_then_builds_head(wo
 def test_ensure_without_a_new_commit_recovers_a_corrupt_selection_from_the_fallback(world):
     repo, launchers, _ = world
     first = commit(repo, "a")
-    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
-    commit(repo, "b")
-    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    built = [runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())]
+    second = commit(repo, "b")
+    built.append(runtime_deploy.ensure(plan_for(repo, launchers), builder=builder()))
+    assert [(o.action, o.commit) for o in built] == [("switched", first), ("switched", second)], [o.detail for o in built]
     import shutil
     shutil.rmtree(runtime_store.selection()["prefix"])
     outcome = runtime_deploy.ensure(plan_for(repo, launchers), builder=builder(hook_code=3))
-    assert outcome.action == "recovered" and runtime_store.selection()["commit"] == first
+    assert (outcome.action, runtime_store.selection()["commit"]) == ("recovered", first), outcome.detail
     assert launcher_output(launchers) == f"help {first[:7]}"
 
 
