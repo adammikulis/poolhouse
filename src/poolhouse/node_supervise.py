@@ -33,7 +33,7 @@ from poolhouse import (
 )
 from poolhouse.files import read_json, write_json
 from poolhouse.home import state as state_root
-from poolhouse.lock import Busy, only_one
+from poolhouse.lock import Busy, only_one, pid_alive
 from poolhouse.node_health import node_health, node_stop_event, state_key
 from poolhouse.platform import is_windows, start_process
 
@@ -243,11 +243,22 @@ def refusal(state: Path, within_s: float) -> str:
     return ""
 
 
-def supervise(state: Path, extra: list[str] | None = None) -> int:
-    """Keep the node of ``state`` running until stopped; 0 on a stop, 1 when it cannot find a verified binary or is already supervised."""
+PARENT_ENV = "POOLHOUSE_NODE_PARENT_PID"
+"""The pid of the process that owns the node being started; a supervisor started with it stops when that process is gone."""
+
+
+def _until_parent_gone(stopping: Callable[[], bool], parent: int) -> Callable[[], bool]:
+    """``stopping``, or true once the process ``parent`` has exited; unchanged when there is no parent."""
+    return (lambda: stopping() or not pid_alive(parent)) if parent > 0 else stopping
+
+
+def supervise(state: Path, extra: list[str] | None = None, parent: int = 0) -> int:
+    """Keep the node of ``state`` running until stopped, or until the process ``parent`` exits when one is given; 0 on a stop, 1 when it
+    cannot find a verified binary or is already supervised."""
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
     _no_core_files()
     stopping, close = _stop_requests(state)
+    stopping = _until_parent_gone(stopping, parent)
     try:
         with only_one(state / LOCK, wait=False, note="node supervisor"):
             if state == state_root("node") and os.environ.get(build_update.OFF_ENV) != "off":

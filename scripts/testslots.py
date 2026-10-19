@@ -489,7 +489,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] != ["status"]:
         print(__doc__)
         return 2
+    queue_doctor_pass()
     st = status()
+    print(testqueue.longest(st["runs"], time.time()))
     try:
         load = f"{os.getloadavg()[0]:.1f}"
     except (OSError, AttributeError):
@@ -504,6 +506,15 @@ def main(argv: list[str] | None = None) -> int:
     for run in st["runs"]:
         print(testqueue.describe(run, views[run["id"]]))
     return 0
+
+
+def queue_doctor_pass() -> None:
+    """Run the queue doctor for this checkout's jobs; skipped where its modules cannot be imported."""
+    try:
+        import queue_doctor
+    except ImportError:
+        return
+    queue_doctor.check(Path(__file__).resolve().parent.parent, say=lambda text: print(text, file=sys.stderr, flush=True))
 
 
 def _who(slot: dict) -> str:

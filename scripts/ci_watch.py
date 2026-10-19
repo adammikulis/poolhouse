@@ -5,7 +5,9 @@
 
 A green run posts nothing. A red run posts one task message to the pushing session (`--agent`, else
 $POOLHOUSE_WORKSPACE_AGENT) naming the failing job and the first failing tests, and a run that is still red two pushes
-later is also announced as blocked. Without gh, without a login or with Actions off it prints one line and exits 0.
+later is also announced as blocked. A run still going 25 minutes after it was created posts one message naming each job
+not finished and its age, and at 35 minutes another one and an announcement that it is blocked; each is posted once per
+commit. Without gh, without a login or with Actions off it prints one line and exits 0.
 A second call for the same commit prints the first result. `scripts/hooks/pushed` starts it detached after an agent's push.
 """
 
@@ -19,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import land_git as lg
@@ -30,6 +33,9 @@ WORKFLOW = "ci"
 WAIT_S = 180
 POLL_S = 10
 RUN_TIMEOUT_S = 100 * 60
+WARN_S = 25 * 60
+BLOCK_S = 35 * 60
+MIN_WATCH_S = 60.0
 LOG_TAIL = 400
 TESTS_NAMED = 3
 BLOCKED_AFTER = 3
@@ -41,6 +47,10 @@ SHA = re.compile(r"[0-9a-f]{40}")
 
 class Skipped(Exception):
     """The run cannot be watched; the message is the one plain line that says why."""
+
+
+class TimedOut(Skipped):
+    """A gh command ran past its time limit and was ended."""
 
 
 class Gh:
@@ -57,7 +67,7 @@ class Gh:
         except FileNotFoundError:
             raise Skipped("gh is not installed") from None
         except subprocess.TimeoutExpired:
-            raise Skipped(f"gh {' '.join(args[:2])} did not answer in {timeout:.0f} s") from None
+            raise TimedOut(f"gh {' '.join(args[:2])} did not answer in {timeout:.0f} s") from None
         if done.returncode:
             said = next((ln.strip() for ln in done.stderr.splitlines() if ln.strip()), f"exit {done.returncode}")
             raise Skipped(f"gh {' '.join(args[:2])} failed: {said[:200]}")
@@ -115,12 +125,85 @@ def find_run(gh: Gh, sha: str, wait_s: float, poll_s: float) -> dict | None:
         time.sleep(poll_s)
 
 
-def ended(gh: Gh, run: dict, poll_s: float) -> dict:
+def age_s(stamp: object) -> float:
+    """Seconds since the ISO time ``stamp`` (0 when it does not parse)."""
+    try:
+        return max(0.0, time.time() - datetime.fromisoformat(str(stamp)).timestamp())
+    except ValueError:
+        return 0.0
+
+
+def not_finished(view: object) -> str:
+    """The jobs of a run view that have not finished, each with its state and age; a sentence when none has started."""
+    jobs = view.get("jobs") if isinstance(view, dict) else None
+    rows = [f"{j.get('name', '?')} ({j.get('status', '?')}, {age_s(j.get('startedAt')) / 60:.0f} min)"
+            for j in jobs or [] if isinstance(j, dict) and j.get("status") != "completed"]
+    return "; ".join(rows) if rows else "no job has started (the run waits behind an earlier run of this branch)"
+
+
+class Alarm:
+    """Posts the stuck-run messages for one watched commit, each once per mark."""
+
+    def __init__(self, repo: Path, sha: str, dev: str, agent: str, marks: tuple[float, float] = (WARN_S, BLOCK_S)) -> None:
+        self.repo, self.sha, self.dev, self.agent, self.marks = repo, sha, dev, agent, marks
+        self.state = state_dir(repo)
+
+    def __call__(self, gh: Gh, run: dict, mark: float) -> None:
+        """Tell the pushing session that ``run`` is still going at ``mark`` seconds; the board's refusal is one stderr line."""
+        marker = self.state / f"{self.sha}.stuck-{int(mark)}"
+        if marker.exists():
+            return
+        try:
+            view = gh.json("run", "view", str(run["databaseId"]), "--json", "status,jobs,url")
+        except Skipped:
+            view = {}
+        waiting = not_finished(view)
+        text = (f"The GitHub ci run for {self.sha[:12]} on {self.dev} has been going for {age_s(run.get('createdAt')) / 60:.0f} minutes "
+                f"and newer runs of the branch wait behind it. Not finished: {waiting}. Find why those jobs hang and cancel the run "
+                f"(gh run cancel {run['databaseId']}). Run: {run.get('url', '')}")
+        try:
+            self.post(text, mark, waiting)
+        except Exception as why:  # noqa: BLE001 -- any board failure is one plain line
+            print(f"ci-watch: the board did not take the stuck-run message for {self.sha[:12]}: {why}", file=sys.stderr)
+            return
+        self.state.mkdir(parents=True, exist_ok=True)
+        marker.write_text("", encoding="utf-8")
+
+    def post(self, text: str, mark: float, waiting: str) -> None:
+        """Send the message, and at the second mark the blocked announcement."""
+        from poolhouse.board import session
+        from poolhouse.workspace import board_cli
+
+        s = session.connect(cwd=self.repo, agent=self.agent)
+        board_cli.delivered(s, s.name, "task", text, subject=f"ci stuck {self.sha[:12]} {int(mark)}")
+        if mark == self.marks[1]:
+            board_cli.announced(s, "blocked", f"ci run for {self.sha[:12]} on {self.dev} is stuck: {waiting}"[:190])
+
+
+def waited(gh: Gh, run: dict, poll_s: float, alarm: Alarm) -> None:
+    """Wait for the run with `gh run watch`, calling ``alarm`` at each mark the run outlasts; ``Skipped`` after ``RUN_TIMEOUT_S``."""
+    number = str(run["databaseId"])
+    for mark in (*alarm.marks, None):
+        left = (RUN_TIMEOUT_S if mark is None else mark) - age_s(run.get("createdAt"))
+        if mark is None:
+            left = max(left, MIN_WATCH_S)
+        if left > 0:
+            try:
+                gh("run", "watch", number, "--interval", str(max(1, int(poll_s))), timeout=left)
+                return
+            except TimedOut:
+                if mark is None:
+                    raise Skipped(f"run {number} is not finished after {RUN_TIMEOUT_S // 60} minutes; no longer watching it") from None
+        if mark is not None:
+            alarm(gh, run, mark)
+
+
+def ended(gh: Gh, run: dict, poll_s: float, alarm: Alarm) -> dict:
     """The run once it has completed, with its jobs; ``Skipped`` when it is still going after ``RUN_TIMEOUT_S``."""
     number = str(run["databaseId"])
     if run.get("status") != "completed":
         try:
-            gh("run", "watch", number, "--interval", str(max(1, int(poll_s))), timeout=RUN_TIMEOUT_S)
+            waited(gh, run, poll_s, alarm)
         except Skipped as why:
             raise Skipped(f"run {number} is not finished ({why}); no longer watching it") from None
     view = gh.json("run", "view", number, "--json", "status,conclusion,jobs,url,createdAt")
@@ -145,12 +228,13 @@ def failing(gh: Gh, run: dict) -> tuple[str, list[str]]:
     return (jobs[0] if jobs else ""), tests
 
 
-def observe(gh: Gh, sha: str, dev: str, wait_s: float, poll_s: float) -> dict:
+def observe(gh: Gh, sha: str, dev: str, timing: tuple[float, float], alarm: Alarm) -> dict:
     """Wait for the run of ``sha`` to end and describe it; ``Skipped`` when there is nothing to report."""
+    wait_s, poll_s = timing
     run = find_run(gh, sha, wait_s, poll_s)
     if run is None:
         raise Skipped(f"no `{WORKFLOW}` run for {sha[:12]} appeared (a push that changes only documentation starts none)")
-    run = ended(gh, run, poll_s)
+    run = ended(gh, run, poll_s, alarm)
     outcome = outcome_of(str(run.get("conclusion", "")))
     job, tests = failing(gh, run) if outcome == "red" else ("", [])
     line = f"ci {outcome} for {sha[:12]} on {dev}: run {run['databaseId']} {run.get('conclusion') or 'ended'}"
@@ -199,8 +283,9 @@ def tell(record: dict, state: Path, repo: Path, agent: str) -> tuple[int, str]:
     return 0, record["line"]
 
 
-def watch(sha: str, dev: str, agent: str, repo: Path, timing: tuple[float, float] = (WAIT_S, POLL_S)) -> tuple[int, str]:
-    """Watch ``sha``: the exit status and the one line saying what the run did; a commit watched before gives the first result."""
+def watch(sha: str, dev: str, agent: str, repo: Path,
+          timing: tuple[float, float, float, float] = (WAIT_S, POLL_S, WARN_S, BLOCK_S)) -> tuple[int, str]:
+    """Watch ``sha``; ``timing`` is seconds to wait for the run, between polls, and the two stuck-run marks. The exit status and the one line."""
     state = state_dir(repo)
     state.mkdir(parents=True, exist_ok=True)
     try:
@@ -208,7 +293,7 @@ def watch(sha: str, dev: str, agent: str, repo: Path, timing: tuple[float, float
             record = load(state, sha)
             if not record:
                 try:
-                    record = observe(Gh(repo), sha, dev, *timing)
+                    record = observe(Gh(repo), sha, dev, timing[:2], Alarm(repo, sha, dev, agent, timing[2:]))
                 except Skipped as why:
                     return 0, f"ci-watch: {why}"
                 record["told"] = record["outcome"] != "red"
@@ -244,12 +329,15 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--agent", default="", help="the session to tell (default: $POOLHOUSE_WORKSPACE_AGENT)")
     parser.add_argument("--wait-s", type=float, default=WAIT_S, help="seconds to wait for the run to appear")
     parser.add_argument("--poll-s", type=float, default=POLL_S, help="seconds between asking GitHub")
+    parser.add_argument("--warn-s", type=float, default=WARN_S, help="seconds after the run was created for the first stuck-run message")
+    parser.add_argument("--block-s", type=float, default=BLOCK_S, help="seconds after the run was created for the second message and the announcement")
     args = parser.parse_args(argv)
     if not SHA.fullmatch(args.sha):
         print("ci-watch: give the full 40-character id of the commit")
         return 2
     repo = Path.cwd()
-    code, line = watch(args.sha, args.dev or lg.out(repo, "branch", "--show-current"), args.agent, repo, (args.wait_s, args.poll_s))
+    code, line = watch(args.sha, args.dev or lg.out(repo, "branch", "--show-current"), args.agent, repo,
+                      (args.wait_s, args.poll_s, args.warn_s, args.block_s))
     print(line, flush=True)
     return code
 

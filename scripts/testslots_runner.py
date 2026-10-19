@@ -65,6 +65,7 @@ def open_admission(environment: dict[str, str], label: str, want: int, unix: boo
     admission = testslots_rpc.UnixAdmission(False, run_class) if unix else testslots_rpc.Admission(False, run_class)
     estimate = environment.get("DEV_TEST_ESTIMATE_S")
     record = testqueue.RunRecord(testslots.slots_dir(), label, run_class, float(estimate) if estimate else None, want)
+    record.update(owner=testqueue.owner_of(environment))
     return run_class, admission, record
 
 

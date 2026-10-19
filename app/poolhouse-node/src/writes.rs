@@ -1,5 +1,5 @@
 //! What one session may write: how often it sends, how many announcements, how many messages wait unread in an inbox and from one
-//! sender, how many notes an author keeps, and how many live subagents a session has. A rate is kept in memory with the others of
+//! sender, and how many notes an author keeps. A rate is kept in memory with the others of
 //! `limits::Rates` (a restart clears it) and a use is counted when it was made; the unread messages and the notes are counted by
 //! `tally` as rows arrive and again from the log when the node starts.
 
@@ -37,8 +37,7 @@ pub struct WriteLimits {
     pub unread_per_sender: usize,
     /// Notes one author keeps on a board.
     pub notes_per_author: usize,
-    /// Live subagents one session has: not retired, and either holding a live lease or heard from within `child_beat_s`.
-    pub children: usize,
+    /// Seconds a session may go unheard before it is idle, unless it holds a live lease.
     pub child_beat_s: u64,
     /// Live main sessions of one harness a board holds, and live ones one process lineage (a terminal) started; a session is live while it is
     /// not idle (see `child_beat_s`).
@@ -52,7 +51,7 @@ impl Default for WriteLimits {
     fn default() -> WriteLimits {
         WriteLimits {
             sends: 30, child_sends: 10, subagent_sends: 120, window_s: 60.0, announces: 6, announce_window_s: 600.0,
-            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, children: 16, child_beat_s: 1800,
+            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, child_beat_s: 1800,
             sessions_per_harness: 24, sessions_per_lineage: 8, idle_retire_s: 86_400,
         }
     }
@@ -193,18 +192,4 @@ pub fn holds_lease(node: &Node, board: &str, name: &str) -> bool {
 /// still the one that took it, or heard from within `child_beat_s`. A session that is not retired and not live is idle.
 pub fn is_live(node: &Node, board: &str, name: &str, ident: &Ident, now: u64) -> bool {
     !ident.retired && (now.saturating_sub(ident.seen_ms) <= node.writes.child_beat_s * 1000 || holds_lease(node, board, name))
-}
-
-/// Refuse a registration that would give ``parent`` more live subagents than it may have; a session already registered is not new.
-pub fn check_children(node: &Node, board: &str, parent: &str, harness: &str, session: &str) -> Result<()> {
-    let Some(hosted) = node.boards.get(board).filter(|_| !parent.is_empty()) else { return Ok(()) };
-    if hosted.names.find(harness, session).is_some() {
-        return Ok(());
-    }
-    let now = hosted.board.now_ms();
-    let live = hosted.names.all().iter().filter(|(n, i)| i.parent == parent && is_live(node, board, n, i, now)).count();
-    if live >= node.writes.children {
-        return Err(Error::Quota(format!("{parent} already has {live} live subagents: retire one before registering another")));
-    }
-    Ok(())
 }
