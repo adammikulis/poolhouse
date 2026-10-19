@@ -15,15 +15,15 @@ was running or what was left. That is a queue file, and this is the thing that r
 
     show --rank docs/model-ranking.md
 
-One `poolhouse-bench` invocation per line, `#` comments, `${VAR}` from a `set` line (or
+One `python -m poolhouse.bench` invocation per line, `#` comments, `${VAR}` from a `set` line (or
 from the environment), and a `smoke:` whose failure skips the `then:` under it and says
-so. Every step is a separate `poolhouse-bench` process, so each takes the measuring lock
+so. Every step is a separate `python -m poolhouse.bench` process, so each takes the measuring lock
 itself and two steps never share the GPU; the queue holds no lock of its own and is only
 the thing that waits. `queue --detach` puts the whole evening in the background the way a
-run detaches, `poolhouse-bench status` says which step is running and what is left, and
-`poolhouse-bench stop` ends the queue and the step inside it.
+run detaches, `python -m poolhouse.bench status` says which step is running and what is left, and
+`python -m poolhouse.bench stop` ends the queue and the step inside it.
 
-Not a second scheduler: the steps are `poolhouse-bench` lines, and everything that decides
+Not a second scheduler: the steps are `python -m poolhouse.bench` lines, and everything that decides
 whether a measurement may run -- the self-check, the estimate against the ceiling, the
 smoke, the lock -- stays in the step, where it already is.
 """
@@ -65,12 +65,12 @@ class QueueError(ValueError):
 
 @dataclass
 class Step:
-    """One `poolhouse-bench` invocation out of the file."""
+    """One `python -m poolhouse.bench` invocation out of the file."""
 
     n: int                          # 1-based, over the whole queue
     line: int                       # the line of the file it came from
     kind: str                       # "step", "smoke", or "then"
-    argv: list[str]                 # what follows `poolhouse-bench`
+    argv: list[str]                 # what follows `python -m poolhouse.bench`
     label: str = ""                 # what `--resume` looks for in the runs store
     state: str = "queued"           # queued | ok | failed | skipped
     seconds: float = 0.0
@@ -116,7 +116,7 @@ def expand(text: str, variables: dict[str, str], *, line: int) -> str:
 def parse(text: str, *, validate: bool = True) -> list[Step]:
     """The steps a queue file names, in order, with its `set` lines expanded.
 
-    Every line is checked against ``poolhouse-bench``'s own parser as it is read, so a flag
+    Every line is checked against ``python -m poolhouse.bench``'s own parser as it is read, so a flag
     that does not exist is a refusal before the first model is loaded rather than a
     traceback after the fourth.
     """
@@ -143,8 +143,8 @@ def parse(text: str, *, validate: bool = True) -> list[Step]:
             raise QueueError(f"line {lineno}: {why}") from None
         if not argv:
             continue
-        if argv[0] == "poolhouse-bench":                 # written out in full: allowed, ignored
-            argv = argv[1:]
+        if argv[:3] == ["python", "-m", "poolhouse.bench"]:      # written out in full: allowed, ignored
+            argv = argv[3:]
         if not argv:
             raise QueueError(f"line {lineno}: nothing to run")
         if kind == "then" and pending_smoke is None:
@@ -176,7 +176,7 @@ def read(path: str | Path, *, validate: bool = True) -> list[Step]:
 
 
 def _parsed(argv: Sequence[str], *, where: str = "") -> Any:
-    """``argv`` through ``poolhouse-bench``'s own parser, with argparse's exit turned into a
+    """``argv`` through ``python -m poolhouse.bench``'s own parser, with argparse's exit turned into a
     `QueueError` and its usage kept out of the log."""
     import contextlib
     import io
@@ -189,7 +189,7 @@ def _parsed(argv: Sequence[str], *, where: str = "") -> Any:
             return _parser().parse_args(list(argv))
     except SystemExit:
         first = next((ln for ln in reversed(said.getvalue().splitlines()) if ln.strip()), "")
-        raise QueueError(f"{where}: poolhouse-bench {' '.join(argv)}\n  {first.strip()}") from None
+        raise QueueError(f"{where}: python -m poolhouse.bench {' '.join(argv)}\n  {first.strip()}") from None
 
 
 def label_of(argv: Sequence[str], *, where: str = "") -> str:
@@ -255,7 +255,7 @@ def _state() -> dict[str, Any]:
 
 
 def queue_status() -> str:
-    """The `queue` block of ``poolhouse-bench status``: which step is running and what is
+    """The `queue` block of ``python -m poolhouse.bench status``: which step is running and what is
     left, or one line about the queue that last ran. Empty when no queue has ever run.
 
     `status` calls this; nothing else here knows about `status`, so the two stay apart.
@@ -303,7 +303,7 @@ def _forward_stderr(stream: Any, kept: "deque[str]") -> None:
 
 
 def run_step(argv: Sequence[str]) -> int:
-    """One `poolhouse-bench argv` as its own process, its output going where the queue's
+    """One `python -m poolhouse.bench argv` as its own process, its output going where the queue's
     goes -- the terminal, or the detached queue's log.
 
     Its own process, not a function call: that is what puts each step through the measuring
@@ -382,7 +382,7 @@ def run_queue(path: str | Path, *, dry_run: bool = False, resume: bool = False,
             f"{sum(1 for s in steps if s.kind == 'smoke')} smoke/then pair(s)")
         for step in steps:
             told = _for_step(step.argv, yes=yes, ceiling=ceiling)
-            say(f"  {step.n:>2}  {step.kind:<5}  poolhouse-bench {' '.join(told)}"
+            say(f"  {step.n:>2}  {step.kind:<5}  python -m poolhouse.bench {' '.join(told)}"
                 + (f"    [label {step.label}]" if step.label else ""))
         say("nothing ran: --dry-run")
         return 0
@@ -424,7 +424,7 @@ def run_queue(path: str | Path, *, dry_run: bool = False, resume: bool = False,
                 continue
             note(step, "running")
             say(f"--- {time.strftime('%H:%M:%S')} step {step.n}/{total}: "
-                f"poolhouse-bench {' '.join(step.argv)}", flush=True)
+                f"python -m poolhouse.bench {' '.join(step.argv)}", flush=True)
             began = time.monotonic()
             code = (runner or run_step)(_for_step(step.argv, yes=yes, ceiling=ceiling))
             step.seconds = time.monotonic() - began

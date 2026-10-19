@@ -29,7 +29,7 @@ Commands execute in the daemon files root with the existing job environment and 
 | Speech providers, transcription and synthesis | Tools: poolhouse-speech |
 | Security, audit and credentials | Tools: poolhouse-security, poolhouse-audit, poolhouse-credentials |
 | Diagnostics and installation | Tools: poolhouse-doctor, poolhouse-setup |
-| Workspace coordination, jobs, suites | Tools: poolhouse-workspace, poolhouse-jobs, poolhouse-suite |
+| Workspace coordination, jobs, suites | Tools: poolhouse-workspace, poolhouse-jobs, python -m poolhouse.train suite |
 | Agent and MCP workflows | Tools: poolhouse-agent, poolhouse-claude, poolhouse-mcp |
 | Serving, drafts, native chat agents and memory | Tools: poolhouse-serve, python -m poolhouse.draft, poolhouse-chat, poolhouse-memory |
 | Libraries, machine preferences, updates | Settings |

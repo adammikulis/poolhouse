@@ -1,4 +1,4 @@
-"""``poolhouse-bench report``: every measurement arranged as one document.
+"""``python -m poolhouse.bench report``: every measurement arranged as one document.
 
 The report is composed rather than measured, so what is tested here is the arranging: that
 runs group by the model they were served from, that a run served with a bound reasoning
@@ -269,7 +269,7 @@ def test_the_text_rendering_has_no_pipes_and_the_same_numbers(store, fits):
 def test_an_empty_store_says_what_to_run(tmp_path):
     body = report([])
     assert "Nothing kept yet" in body
-    assert "poolhouse-bench sweep" in body
+    assert "python -m poolhouse.bench sweep" in body
 
 
 # -- the subcommand ----------------------------------------------------------------------

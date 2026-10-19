@@ -187,7 +187,7 @@ def wait(kind: str, *, say: Callable[[str], None] = say, every: float = 60.0,
          home: Path | None = None) -> int:
     """Block until the ``kind`` job this machine records has ended, saying so every
     ``every`` seconds -- so the next command can follow it without a loop written by hand
-    (``poolhouse-bench wait && poolhouse-bench report --profile``)."""
+    (``python -m poolhouse.bench wait && python -m poolhouse.bench report --profile``)."""
     pid = alive(kind, home=home)
     if not pid:
         say(f"no {kind} job is running")

@@ -1197,7 +1197,7 @@ class TestUpdatingItself:
 
 
 class TestTheBenchOnThePage:
-    """`UI.bench_state` is the bench half of `/ui/fleet`: what `poolhouse-bench status` says."""
+    """`UI.bench_state` is the bench half of `/ui/fleet`: what `python -m poolhouse.bench status` says."""
 
     def _ui(self, tmp_path):
         return UI(name="studio", pool_key_path=tmp_path / "pool.key")
@@ -1226,7 +1226,7 @@ class TestTheBenchOnThePage:
         assert state["available"] is True
         assert state["measuring"]["pid"] == os.getpid()
         assert state["measuring"]["argv"] == ["sweep", "--serve", "models/beacon.gguf"]
-        assert "poolhouse-bench sweep --serve models/beacon.gguf" in state["text"]
+        assert "python -m poolhouse.bench sweep --serve models/beacon.gguf" in state["text"]
         assert str(os.getpid()) in state["text"]
 
     def test_an_install_without_the_bench_says_so_rather_than_breaking_the_page(

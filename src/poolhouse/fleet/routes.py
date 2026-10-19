@@ -822,7 +822,7 @@ class JobRoutes:
             self.send(400, {"error": str(exc)})
             return True
         if req.get("dry_run"):
-            self.send(200, {"argv": argv, "command": "poolhouse-bench " + shlex.join(argv)})
+            self.send(200, {"argv": argv, "command": "python -m poolhouse.bench " + shlex.join(argv)})
             return True
         try:
             self.send(202, self.ui.start_sweep(argv))

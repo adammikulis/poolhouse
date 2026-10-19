@@ -512,9 +512,8 @@ def servings(model: str = "", *, workload: str = "") -> list[Any]:
         found = profile_mod.profile_for(model, workload=named, records=every)
         if found is None:
             raise Refused(f"nothing measured for {model.rsplit('/', 1)[-1]} doing {named}, "
-                          f"and nothing measured it for {profile_mod.ASK} either. "
-                          "`poolhouse-bench sweep` measures it and `poolhouse-bench report "
-                          "--profile` writes the record.")
+                          f"and nothing measured it for {profile_mod.ASK} either."
+                          + profile_mod.how_measured())
         return [found]
     if not model:
         return every
@@ -524,9 +523,7 @@ def servings(model: str = "", *, workload: str = "") -> list[Any]:
         if found is not None and found.workload == named:
             mine.append(found)
     if not mine:
-        raise Refused(f"nothing measured for {model.rsplit('/', 1)[-1]}. "
-                      "`poolhouse-bench sweep` measures it and `poolhouse-bench report "
-                      "--profile` writes the record.")
+        raise Refused(f"nothing measured for {model.rsplit('/', 1)[-1]}." + profile_mod.how_measured())
     return mine
 
 

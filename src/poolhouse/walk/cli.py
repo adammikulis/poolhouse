@@ -1,8 +1,8 @@
-"""``poolhouse-walk``: open a page, press through its screens, and read what came back.
+"""``python -m poolhouse.walk``: open a page, press through its screens, and read what came back.
 
-    poolhouse-walk fleet
-    poolhouse-walk fleet pool chat models --out ./shots
-    poolhouse-walk graph search detail 3d --base http://127.0.0.1:8794
+    python -m poolhouse.walk fleet
+    python -m poolhouse.walk fleet pool chat models --out ./shots
+    python -m poolhouse.walk graph search detail 3d --base http://127.0.0.1:8794
 
 Each screen is screenshotted into ``--out`` and its text printed. The exit code is 1 when
 any screen raised a console error or could not be reached, and 2 when the page never
@@ -28,7 +28,7 @@ from poolhouse.walk.ops import FLEET, GRAPH, Stop, Walk, WalkFailed
 __all__ = ["COMMANDS", "main", "report"]
 
 COMMANDS = Group(
-    "poolhouse-walk",
+    "python -m poolhouse.walk",
     "Open the interface the way a person does: click through its screens, screenshot "
     "each one, print what it said, and refuse the walk when the console went red.")
 main = COMMANDS.run
@@ -84,7 +84,7 @@ def _walked(args: argparse.Namespace, page: str, **extra: object) -> int:
                               headless=args.headless, timeout_s=float(args.timeout),
                               answer_s=float(args.wait), **extra))  # type: ignore[arg-type]
     except (ValueError, WalkFailed) as exc:
-        warn(f"poolhouse-walk: {exc}")
+        warn(f"python -m poolhouse.walk: {exc}")
         return 2
     return report(stops, out, int(args.chars))
 

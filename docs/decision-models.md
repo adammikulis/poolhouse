@@ -13,7 +13,7 @@ needs a sentence or a plan.
     got.choice, got.confidence, got.scores, got.abstained, got.latency_ms
 
 `poolhouse-decide batch|ask|train|eval|calibrate|bench|jevbench|list|make-cases|export-cases|check-cases|fetch`
-is the command; `POST /decide` on the daemon (same bearer token as every route, 256 KB body
+is the command (`train` and `make-cases` are there when the build holds training, a source checkout); `POST /decide` on the daemon (same bearer token as every route, 256 KB body
 limit) and the `decide` MCP tool call the same router.
 
 ## Named questions about one state
@@ -168,7 +168,7 @@ Reading it:
 
 ### Fine-tuning
 
-`poolhouse-train-decider guards --init strands --steps 120 --lr 5e-5 --out DIR` continued the
+`python -m poolhouse.train decider guards --init strands --steps 120 --lr 5e-5 --out DIR` continued the
 released checkpoint on 248 guard cases (61 for calibration, 103 held-out test cases from
 whole groups, all three questions pooled) in 364 s: accuracy 0.903 to 0.951, Brier 0.230 to
 0.069, ECE 0.216 to 0.035. The cases are one author's templates, so the test cases resemble
@@ -262,7 +262,7 @@ the card prints only a reduced character set. Never commit the file you trained 
   GPUs, and a case over 1024 tokens is refused.
 - A temperature cannot change which option wins, only how sure the decider says it is.
 - The real-model path has been run here only on a random 2-layer model on CPU (the tests); the
-  same code on Qwen3.5 was last run by the earlier `poolhouse-train-decider` measurements above.
+  same code on Qwen3.5 was last run by the earlier `python -m poolhouse.train decider` measurements above.
 
 ## Licences
 
@@ -271,7 +271,7 @@ the card prints only a reduced character set. Never commit the file you trained 
 | strands-decider code, github.com/strands-labs/strands-decider | Apache-2.0 (LICENSE; GitHub reports the same) | read for the architecture; none of it is copied |
 | checkpoint `StrandsAgents/strands-decider-2B-hobson-v19` | Apache-2.0 (card metadata and LICENSE.md) | downloaded on request, pinned by commit, size and SHA-256; not redistributed |
 | base `Qwen/Qwen3.5-2B-Base` | Apache-2.0 (card and LICENSE) | same; the release is a LoRA on this model (the post's base is Qwen3.5-2B, not Qwen2.5) |
-| base `Qwen/Qwen3.5-0.8B-Base` | Apache-2.0 | the default base for `poolhouse-train-decider` |
+| base `Qwen/Qwen3.5-0.8B-Base` | Apache-2.0 | the default base for `python -m poolhouse.train decider` |
 | training data of the checkpoint | 29 public Hub datasets plus two author releases and teacher outputs from Qwen3.5-4B, each under its own licence; its `data/sources.md` lists them | not read or redistributed here; read that file before using the checkpoint where the data's terms matter |
 | this package | Apache-2.0 | a re-implementation of the described architecture and prompt layout; see `NOTICE` |
 

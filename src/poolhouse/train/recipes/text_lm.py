@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from poolhouse.backend import detect_backend
-from poolhouse.train.holdout import contiguous_tail
+from poolhouse.decide.holdout import contiguous_tail
 from poolhouse.train.recipes.built import Built
 from poolhouse.train.recipes.data import VOCAB, as_bytes, lm_batches, read_text
 from poolhouse.train.recipes.models import build_mlx_lm, build_torch_lm, suggest_size

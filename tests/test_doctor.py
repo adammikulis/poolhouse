@@ -14,6 +14,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -287,11 +288,11 @@ def test_empty_runs_are_counted_and_named_with_forget_as_the_fix(tmp_path):
     found = by_name(bench_of(home), "bench: runs")
     assert not found.good
     assert found.said == "2 run(s) read back as nothing: bench:hollow:1, bench:hollow:2"
-    assert found.fix == ["poolhouse-bench", "forget", "--empty", "--kept", str(home / "runs.ladybug")]
+    assert found.fix == [sys.executable, "-m", "poolhouse.bench", "forget", "--empty", "--kept", str(home / "runs.ladybug")]
 
 
 def test_a_record_whose_pid_is_gone_is_the_last_run_and_not_a_fault(tmp_path):
-    """`poolhouse-bench status` names the last run from this record and `tail` finds its log
+    """`python -m poolhouse.bench status` names the last run from this record and `tail` finds its log
     through it, so a finished measurement is reported and never offered for deletion."""
     pid = dead_pid()
     home = make_bench(tmp_path / "bench", lock_pid=pid)
@@ -307,7 +308,7 @@ def test_a_lock_whose_pid_is_alive_is_a_measurement_in_progress(tmp_path):
     home = make_bench(tmp_path / "bench", lock_pid=os.getpid(), logs=("sweep-x-20260830T100000.log",))
     found = by_name(bench_of(home), "bench: measuring")
     assert found.good
-    assert found.said == f"pid {os.getpid()} since 2026-08-30T10:00:00: poolhouse-bench sweep"
+    assert found.said == f"pid {os.getpid()} since 2026-08-30T10:00:00: python -m poolhouse.bench sweep"
     # the log it is writing is not a run that died
     assert by_name(bench_of(home), "bench: logs").good
 

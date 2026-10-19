@@ -171,7 +171,7 @@ class Client:
         overruling a caller who measured. gemma-4's card asks for temperature 1.0; on a
         tool-calling task that measured 15 points worse than greedy. The card is worth
         reading — `poolhouse-models card <repo>`, or `Client.card` — and worth trying —
-        `poolhouse-bench --card` — but what ships is what the benchmark favoured.
+        `python -m poolhouse.bench --card` — but what ships is what the benchmark favoured.
 
         Greedy by default, because a caller who has not chosen wants the repeatable answer.
         """

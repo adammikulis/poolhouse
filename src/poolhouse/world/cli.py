@@ -1,10 +1,10 @@
-"""``poolhouse-world``: invent an organised group, ask it questions, make it talk, export it.
+"""``python -m poolhouse.world``: invent an organised group, ask it questions, make it talk, export it.
 
-    poolhouse-world make --kind company --size medium --seed 3 --out ./world
-    poolhouse-world questions --world ./world --n 40 > questions.jsonl
-    poolhouse-world simulate --world ./world --out ./talk --days 20
-    poolhouse-world emit --from ./talk --as slack-export --out ./export
-    poolhouse-world check ./export ./mail.mbox --truth ./talk
+    python -m poolhouse.world make --kind company --size medium --seed 3 --out ./world
+    python -m poolhouse.world questions --world ./world --n 40 > questions.jsonl
+    python -m poolhouse.world simulate --world ./world --out ./talk --days 20
+    python -m poolhouse.world emit --from ./talk --as slack-export --out ./export
+    python -m poolhouse.world check ./export ./mail.mbox --truth ./talk
 
 Every subcommand parses and prints; the work is in `poolhouse.world.ops`, `world.simulate`
 and `world.check`.
@@ -28,7 +28,7 @@ from poolhouse.world.questions import KINDS as QUESTION_KINDS
 __all__ = ["COMMANDS", "EXPORTS", "main", "read_messages"]
 
 COMMANDS = Group(
-    "poolhouse-world",
+    "python -m poolhouse.world",
     "Invent an organised group -- a company, a community, a university, an open-source "
     "project or a nonprofit -- as a graph with people who could talk; ask it questions "
     "with known answers; make it talk; export the talk.")

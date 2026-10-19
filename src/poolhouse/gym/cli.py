@@ -13,7 +13,7 @@ from poolhouse.log import say
 
 
 def commands():
-    group = Group("poolhouse-gym", "Run, train, and evaluate specialist simulators")
+    group = Group("python -m poolhouse.gym", "Run, train, and evaluate specialist simulators")
     group.add("catalogue", handle, help="List environments and installation diagnostics")
     common = (flag("environment", choices=list(ENVIRONMENTS)),
               flag("--config", default="{}", help="Native environment configuration as JSON"),

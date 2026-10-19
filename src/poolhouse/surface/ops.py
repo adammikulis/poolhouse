@@ -1,4 +1,4 @@
-"""What ``poolhouse-surface`` does, as functions that take values and return them.
+"""What ``python -m poolhouse.surface`` does, as functions that take values and return them.
 
 `walk` asks a checkout for every command and subcommand it answers to; `capture` writes
 their help and output under a directory; `compare` reads two of those and returns what
@@ -41,7 +41,6 @@ SAFE: dict[str, tuple[str, ...]] = {
     "serve status": (),
     "serve limits": (),
     "serve fit": ("--room", "24G"),
-    "bench status": (),
     "speech providers": (),
     "suite list": (),
 }

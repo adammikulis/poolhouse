@@ -1,7 +1,7 @@
-"""``poolhouse-train-decider``: fine-tune a pointer-head decision model from labelled cases.
+"""``python -m poolhouse.train decider``: fine-tune a pointer-head decision model from labelled cases.
 
-    poolhouse-train-decider guards --out ./my-decider --steps 200
-    poolhouse-train-decider cases.jsonl --out ./my-decider --init strands --download
+    python -m poolhouse.train decider guards --out ./my-decider --steps 200
+    python -m poolhouse.train decider cases.jsonl --out ./my-decider --init strands --download
 
 A LoRA on a small base model plus a ~1M-parameter pointer head, trained on the cases with
 the options shuffled on every pass, then a temperature per question kind fitted on cases
@@ -29,6 +29,7 @@ from poolhouse.decide.base import text_of
 from poolhouse.decide.calibrate import fit_temperature, softmax
 from poolhouse.decide.cases import Case, fingerprint
 from poolhouse.decide.fetch import locate
+from poolhouse.decide.holdout import by_group
 from poolhouse.decide.pins import QWEN35_0_8B_BASE, STRANDS_V19, Checkpoint
 from poolhouse.decide.pointer import PointerDecider, build_head, device_name, load_torso
 from poolhouse.decide.sources import CONFIG, FORMAT, Source, question_key, strands_source
@@ -37,7 +38,6 @@ from poolhouse.files import sha256_file, write_json
 from poolhouse.home import expand
 from poolhouse.log import say
 from poolhouse.train import gpu
-from poolhouse.train.holdout import by_group
 from poolhouse.train.lora import (
     DEFAULT_TARGETS,
     Lora,

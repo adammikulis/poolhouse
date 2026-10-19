@@ -1,6 +1,6 @@
 """``poolhouse`` -- one command in front of every ``poolhouse-<command>``.
 
-``poolhouse bench sweep ...`` runs ``poolhouse-bench sweep ...`` in this process; bare, it
+``poolhouse chat ...`` runs ``poolhouse-chat ...`` in this process; bare, it
 starts the app the way ``poolhouse.fleet.launch`` does.
 """
 

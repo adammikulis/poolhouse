@@ -77,7 +77,7 @@ def import_runs(path_or_json: str | Path | Sequence[Mapping[str, Any]] | Mapping
     """Put a member's runs into ``into`` as new ``bench:`` docs with ``server["host"]``,
     ``server["machine"]`` and ``server["commit"]`` set. Returns the keys written.
 
-    ``path_or_json`` is a file ``poolhouse-bench show --export`` wrote on the member, the
+    ``path_or_json`` is a file ``python -m poolhouse.bench show --export`` wrote on the member, the
     JSON text of one, the list it holds, or what `bench_export` answered (``{"runs":
     [...]}``, which names the member's commit and `home.machine_id`); a whole run record,
     rows and all, is taken as it is. A run already in ``into`` -- same label, ``at`` and

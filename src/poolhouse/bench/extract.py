@@ -384,7 +384,7 @@ def add_arguments(sub: Any) -> Any:
                              "against the truth that wrote them")
     ap.add_argument("label", help="what this run is, e.g. flash-next-extract")
     ap.add_argument("--world", required=True, metavar="DIR",
-                    help="what poolhouse-world make --out wrote, or what simulate wrote "
+                    help="what python -m poolhouse.world make --out wrote, or what simulate wrote "
                          "(with messages.jsonl). Without messages, a few working days are "
                          "simulated with the template writer into a temporary directory")
     ap.add_argument("--serve", action="append", default=[], metavar="MODEL",
@@ -625,7 +625,7 @@ def _against(read: _Reading) -> int:
 
 
 def run(args: Any) -> int:
-    """``poolhouse-bench extract``: sample, read, fold, score, keep, and print the table."""
+    """``python -m poolhouse.bench extract``: sample, read, fold, score, keep, and print the table."""
     if len(args.serve) > 1:
         warn("error: --serve takes one model; a comparison is one run per model")
         return 2

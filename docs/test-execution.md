@@ -260,6 +260,13 @@ whether the tests passed or not; a test that needs longer carries `@pytest.mark.
 repository requires, `test (ubuntu-latest, 3.13, --slow)`, is the job that waits for every shard. The next
 Python runs the same shards on the nightly schedule only.
 
+The experimental layer's test files (every file that imports a package of the `experimental` layer in
+`tests/test_layers.py`) are shards like any other: they run on pull requests, on `main` and nightly, on both
+Pythons nightly, and no shard skips them. `tests/test_experimental_tests_run_in_ci.py` derives the list from that
+layer, fails when a package has no test file or a file is in no shard, and fails when the shards job
+excludes a file with `--ignore`, `--deselect`, `-k` or `-m`. Locally they run like any file:
+`scripts/test all tests/test_graph_bench.py`.
+
 `scripts/ci_shards.py record --junit junit-*.xml` rewrites the durations file from the junit files of a
 CI run (the mean over the files that ran it), and `record --history` from the per-test history above.
 `scripts/ci_shards.py summary --shards 8` prints each job's total and the longest file.

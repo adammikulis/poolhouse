@@ -61,7 +61,7 @@ def test_the_measuring_lock_defers():
     fake = FakeEnsure(measuring={"pid": 4242, "argv": ["sweep", "--serve", "x"], "started": "2026-10-12T09:00:00"})
     done = llamacpp_ensure.ensure(fake.env())
     assert fake.updates == [] and done.code == 0
-    assert done.line.startswith("deferred: ") and "poolhouse-bench sweep" in done.line and "4242" in done.line
+    assert done.line.startswith("deferred: ") and "python -m poolhouse.bench sweep" in done.line and "4242" in done.line
 
 
 def test_a_running_queue_defers():

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import hub
+from poolhouse import hub, optional
 from poolhouse.hub.admission import PERSON
 from poolhouse.hub.naming import _SHARD
 from poolhouse.log import say, warn
@@ -131,7 +131,9 @@ def _card(args) -> int:
             say(f"  {name:16} {value:g}")
         flags = " ".join(f"--{n.replace('_', '-')} {v:g}" for n, v in asked.items()
                          if n in ("temperature", "top_p", "top_k", "min_p"))
-        say(f"\npoolhouse-bench run {flags}")
+        run = optional.command("poolhouse.bench", f"run {flags}")
+        if run:
+            say(f"\n{run}")
     else:
         say(f"{args.repo}'s card names no sampler settings. That is an answer: "
             f"nobody has chosen one, so the caller's default stands.")

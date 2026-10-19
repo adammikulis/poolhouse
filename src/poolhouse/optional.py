@@ -6,12 +6,17 @@ from importlib import import_module
 from importlib.util import find_spec
 from types import ModuleType
 
-__all__ = ["held", "load", "module"]
+__all__ = ["command", "held", "load", "module"]
 
 
 def held(name: str) -> bool:
     """Whether this build holds the module ``name``, without importing it."""
     return find_spec(name) is not None
+
+
+def command(name: str, args: str = "") -> str:
+    """``python -m NAME ARGS`` when this build holds the module ``name``, else an empty string."""
+    return f"python -m {name} {args}".strip() if held(name) else ""
 
 
 def module(name: str) -> ModuleType:

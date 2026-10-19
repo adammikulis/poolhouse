@@ -19,7 +19,7 @@ question's. A question about finding somebody does not contain the label it is l
 a listing question expects every member; a path question expects the chain, and the chain
 must be *a* shortest path (`tests/test_graph_community.py` derives it from the graph rather
 than trusting the list). About a dozen turn on words only a message carries, because most
-of a community is what people said. `poolhouse-bench prepare --mix` prints how many ask for
+of a community is what people said. `python -m poolhouse.bench prepare --mix` prints how many ask for
 each kind of answer, which is the number to watch when adding more: the second fifty were
 half drawn by `poolhouse.world.questions` over this same graph and half written by hand,
 and both halves were kept to the shares the first fifty already had.

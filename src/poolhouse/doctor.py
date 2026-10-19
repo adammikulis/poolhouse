@@ -219,14 +219,14 @@ def install_of(repo: Path, *, checkout: Path | None = None,
 def _measuring(home: Path) -> Finding | None:
     """What is measuring on this machine, or what ran last, or None when neither.
 
-    A record whose run has ended is what `poolhouse-bench status` names the last run from
+    A record whose run has ended is what `python -m poolhouse.bench status` names the last run from
     and what `tail` finds its log through, so it is reported, never offered for deletion.
     """
     held = measuring(home)
     if held is not None:
         return Finding(name="bench: measuring", good=True,
                        said=f"pid {held.get('pid')} since {held.get('started') or '?'}: "
-                            f"poolhouse-bench {' '.join(held.get('argv') or ())}".rstrip())
+                            f"python -m poolhouse.bench {' '.join(held.get('argv') or ())}".rstrip())
     try:
         last = json.loads(measuring_file(home).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -236,7 +236,7 @@ def _measuring(home: Path) -> Finding | None:
     return Finding(
         name="bench: measuring", good=True,
         said="nothing is measuring",
-        note=f"the last was poolhouse-bench {' '.join(last.get('argv') or ())}, started "
+        note=f"the last was python -m poolhouse.bench {' '.join(last.get('argv') or ())}, started "
              f"{last.get('started') or '?'}"
              + (f" and ended {last['ended']}" if last.get("ended") else
                 f", and pid {last.get('pid')} is gone"))
@@ -282,7 +282,7 @@ def bench_of(home: Path) -> list[Finding]:
             name="bench: runs", good=False,
             said=f"{len(hollow)} run(s) read back as nothing: "
                  + ", ".join(hollow[:3]) + (" ..." if len(hollow) > 3 else ""),
-            fix=["poolhouse-bench", "forget", "--empty", "--kept", str(store)],
+            fix=[sys.executable, "-m", "poolhouse.bench", "forget", "--empty", "--kept", str(store)],
             note="each was a measurement that saved a row of dashes; the table skips them "
                  "and says nothing about why"))
 
@@ -301,7 +301,7 @@ def bench_of(home: Path) -> list[Finding]:
             said=f"{len(died)} log(s) newer than the newest kept run, with no run kept: "
                  + ", ".join(lg.name for lg in died[-3:]),
             note="a measurement that started and kept nothing died before saving -- its "
-                 "last lines say where; poolhouse-bench tail reads the latest"))
+                 "last lines say where; python -m poolhouse.bench tail reads the latest"))
     elif logs or count:
         out.append(Finding(name="bench: logs", good=True,
                            said=f"{count} run(s) kept; every log has one"))
@@ -429,7 +429,7 @@ COMMAND = Group(
                   help="a checkout to look at; may repeat. Default: those "
                        f"${CHECKOUTS} lists, separated by {os.pathsep!r}"),
              flag("--bench-home", metavar="PATH",
-                  help="the bench's home (default: where poolhouse-bench keeps its store)"),
+                  help="the bench's home (default: where python -m poolhouse.bench keeps its store)"),
              option("yes", help="run every offered fix without asking")],
     run=_findings,
     epilog="poolhouse-doctor hooks [ID] inspects local hook failures, first occurrence, "
