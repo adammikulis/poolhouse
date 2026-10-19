@@ -194,12 +194,13 @@ def prepare_pytest(command, environment, admission, launch, prepared):
     confined = terminals = None
     maximum = int(environment.get("DEV_TEST_BUDGET", "0")) or testslots.base_budget()
     workers = min(prepared.want or testslots.pool_for(testslots.estimate_of(environment), maximum), maximum)
+    processes = 0 if workers == 1 and not prepared.want and launch is None and not confining(environment) else workers
     environment.update(DEV_TEST_SLOTS_DIR=str(testslots.slots_dir().resolve()), DEV_TEST_WORKERS=str(workers),
                        DEV_TEST_PYTEST_ENDPOINT=admission.endpoint, DEV_TEST_PYTEST_TOKEN=admission.token,
                        DEV_TEST_REMOTE_BROKER=str(testslots.slots_dir().resolve()))
     for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
         environment.setdefault(name, "1")
-    command = [part.replace("{workers}", str(workers)) for part in command]
+    command = [part.replace("{workers}", str(processes)) for part in command]
     if launch is not None:
         environment["DEV_TEST_PYTEST_IDENTITY"] = json.dumps(admission.identity)
         command, environment = launch.command(environment)

@@ -8,6 +8,9 @@ exit status 4, including in `quick`; an empty affected-test selection remains va
 an automatic pool up to broker capacity. Explicit worker ceilings remain effective.
 An automatic pool is sized from the run's estimate (below): the square root of the estimated seconds, at least 1 and at most the
 broker's capacity, because each worker costs about a second of start-up; a run with no estimate takes the whole capacity.
+A pool of one runs pytest itself with no xdist worker (one process, one collection); an explicit `-n 1` still starts an xdist worker.
+Before admission the runner builds the node binary only for a selection that can start one; that check reads the shared import facts
+(`import-facts.json` in the reuse store), so it parses only sources whose bytes changed. The pytest arguments are parsed once per process.
 The phase line `scripts/test` prints splits a run into collection, session setup, tests, teardown and the
 seconds workers waited for CPU permits (`queued for CPU`); the queue wait is the machine's, so only the rest is the fixed overhead
 that the warning measures.
@@ -28,9 +31,8 @@ earlier passes of unchanged files and says so per file ([test-reuse.md](test-reu
 CPU capacity defaults to the logical CPU count minus one, with a minimum of
 one. `DEV_TEST_RESERVED_CORES` changes that reservation. This reserves capacity;
 it does not pin execution to a particular efficiency core. `DEV_TEST_BUDGET`
-sets an explicit owner override. Normal load uses the full configured capacity;
-severe load above `DEV_TEST_LOAD_HIGH` times the CPU count reduces the default
-capacity. Existing active permits finish before new work enters.
+sets an explicit owner override. The capacity does not change with the machine's load.
+Existing active permits finish before new work enters.
 
 The supervisor admits pytest startup, then each worker's configuration and collection, and each
 test's complete setup, call and teardown. Idle workers hold no CPU permits. A
@@ -151,15 +153,15 @@ Only measured durations decide a run's length: the `slow` and `heavy` labels (th
 tier, cache or queue.
 
 Before admission `scripts/test` estimates the run: the recorded seconds of the selected files and nodes,
-summed per file without collecting, plus 30 s for each file with no record, divided by the workers the
-broker would grant. Named files whose pass the test-reuse store would serve (a read-only lookup, no
+summed per file without collecting, plus for each file with no record its test functions (counted in the source) at the
+mean seconds of a recorded test with the slowest one percent left out, at most 30 s a file (30 s when nothing is recorded),
+divided by the workers the broker would grant. Named files whose pass the test-reuse store would serve (a read-only lookup, no
 claim) cost nothing; a reused file never runs, so the plugin records no duration for it, and a
 selection of directories or nodes is estimated in full. It prints the estimate (`test: estimated 38 s`, or `estimated 42 min from 3,120
 recorded tests`). An estimate of `DEV_TEST_BACKGROUND_S` (default 180) or more classes the run
 `background`, below it `interactive`, whatever the tier name. With fewer than 50 recorded tests the
 command shape decides: tiers `full`, `slow`, `record`, `all` or `fast` with no file or node selector,
-and `--redteam` are background. `--background` forces the class (`scripts/land` passes it to its full
-run); `quick` and `gate` are interactive. A background run prints one line saying why, its pytest
+and `--redteam` are background. `--background` forces the class; `quick` and `gate` are interactive. A background run prints one line saying why, its pytest
 processes start at `nice` +10 (no change where `os.nice` is absent), and `testslots.py status` shows each
 lease's class.
 
@@ -194,10 +196,8 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
   sibling `<repo>-land-<stamp>` worktree on `land/<stamp>`, keeping both sides of `HANDOFF.md`.
   A documentation-only diff runs `scripts/budgets` and `git diff --check`. A code diff runs
   `scripts/test gate` and `scripts/test all` on the selectors `scripts/affected.py` computes from the
-  combined diff. A diff touching `tests/conftest.py`, `scripts/test*`, `scripts/testslots*`,
-  `pyproject.toml` or `packaging/`, an unmapped path, or more than 120 files or 4000 changed lines
-  also starts one background `scripts/test full`; a second is refused while a land full run or a
-  broker entry labelled `full` is live.
+  combined diff. The whole suite runs on GitHub for the pushed commit; `scripts/test full` and
+  `scripts/test all` stay available by hand.
 - A pass is recorded with `record_run` under the tree hash; the same tree and check later print
   `reused from <id>`. A failing check is first run on a clean worktree of the base: failing there
   too is reported as `baseline`. Otherwise the merge commits are bisected with only the failing
@@ -212,3 +212,31 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
 
 The last line of every command is a JSON summary.
 
+
+## Fixed cost of a scoped run
+
+Measured 2026-10-19 on a 16-core macOS machine at load 32 with
+`scripts/test all tests/test_test_time.py tests/test_testclass.py tests/test_testorder.py --no-reuse`: a `cProfile` of the detached
+job process with a timestamp around each stage of `main`, run against an empty private broker directory (`DEV_TEST_SLOTS_DIR`,
+`DEV_TEST_BUDGET=15`, so the queue wait left is the protocol's) and against the shared broker, whose permit table was sampled every
+50 ms while the run waited. The reuse store held 2,988 import facts.
+
+| stage | seconds |
+| --- | --- |
+| follower process: imports, argument parse, job record | 0.8 |
+| job process: imports | 0.35 |
+| job process: argument parse (validation and classification) | 0.9 before, 0.6 after |
+| job process: node-needed check (`testnode.needed`) | 2.4 to 3.3 before, 0.3 after |
+| four tree hashes | 0.3 |
+| pytest process start, plugin load, conftest import, collection | 1.1 to 1.4 |
+| first-test setup (session fixtures, two walks of the real state root, about 4,000 files) | 0.6 to 0.8 |
+| per-test autouse fixtures | about 0.025 each |
+| reuse recording after pytest | 0.65 |
+| queue wait, empty broker | 0.1 for the whole run |
+| queue wait, shared broker at budget 7 of 15 | 2 to 12 for the whole run |
+| `python packaging/build.py` (hatchling cached) | 4.5 per input digest per checkout |
+
+On the shared broker no permit was free during 85 percent of the sampled waiting (the load rule had halved the budget to 7), and
+the grant latency of the head of the queue after a release was 17 ms with no other request waiting and 80 ms with 60 waiting, so the
+wait is the machine's. What a run controls is how many leases it takes: a worker holds one for its bootstrap and collection, and every
+test takes one. A built wheel is stamped with the commit and the checkout it was built from, so it is not shared between checkouts.
