@@ -82,7 +82,7 @@ def ceiling_default() -> float:
 # frozen base), and torch's MPS backend sustains on the order of 2 TFLOP/s of bf16 matmul
 # on this class of machine -- so ~500 tokens a second for each billion active parameters.
 # It is an estimate and says so everywhere it is printed. The way to replace it with a
-# measurement is `poolhouse-train-run --dry-run`, which trains 20 real steps and reports
+# measurement is `python -m poolhouse.train run --dry-run`, which trains 20 real steps and reports
 # seconds per step; `Fit.measured` re-states the plan from that number.
 TOKENS_PER_S_PER_B = {"mps": 500.0, "cuda": 4000.0, "cpu": 40.0}
 

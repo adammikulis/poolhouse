@@ -31,7 +31,8 @@ MODULES = {"task-publishing": frozenset({"tasks-view"}),
 })}
 #: components from the experimental layer; a build without their files leaves them out
 EXPERIMENTAL = frozenset({"gym-scene-controls", "gym-drone-camera", "gym-scene", "gym-recordings", "gym-world-options",
-                          "gym-model-options", "gym-view", "gym-drone-geometry", "benchmarks-view", "fleet-benchmark"})
+                          "gym-model-options", "gym-view", "gym-drone-geometry", "benchmarks-view", "fleet-benchmark",
+                          "training-view"})
 #: the fit screen on its own, for a machine running no daemon
 FIT_ONLY = ("fleet-model", "fit-model", "fit-view", "fit-charts", "rates-view",
             "telemetry-view")

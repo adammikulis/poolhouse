@@ -2,6 +2,16 @@
 
 from __future__ import annotations
 
+from poolhouse.decide.holdout import (
+    GUARD,
+    LeakageError,
+    Split,
+    assert_no_duplicates,
+    by_group,
+    contiguous_tail,
+    spread_order,
+    stratified,
+)
 from poolhouse.fleet import (
     Advertiser,
     Beacon,
@@ -39,16 +49,6 @@ from poolhouse.train.guard import (
     StallWatchdog,
     StepTimer,
     TrainingDiverged,
-)
-from poolhouse.train.holdout import (
-    GUARD,
-    LeakageError,
-    Split,
-    assert_no_duplicates,
-    by_group,
-    contiguous_tail,
-    spread_order,
-    stratified,
 )
 from poolhouse.train.metrics import MetricsLog, Throughput, read
 from poolhouse.train.schedule import (

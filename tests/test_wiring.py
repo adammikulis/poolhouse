@@ -109,7 +109,9 @@ COMMANDS = _commands()
 @pytest.mark.parametrize("name", _pieces())
 def test_piece_is_wired_in(name: str) -> None:
     if name in EXPERIMENTAL:
-        assert (SRC / name / "__main__.py").is_file(), f"poolhouse.{name} is experimental and runs as python -m poolhouse.{name}"
+        used = {path for path in CALLERS.get(name, ()) if path.split("/")[2].removesuffix(".py") in EXPERIMENTAL}
+        assert (SRC / name / "__main__.py").is_file() or used, \
+            f"poolhouse.{name} is experimental: it runs as python -m poolhouse.{name} or another experimental package imports it"
         return
     if name in CALLERS or name in COMMANDS or name in STANDALONE:
         return

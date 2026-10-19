@@ -34,7 +34,7 @@ inference — the fine-tune has no shortlist to run and no extra context to read
    how many ids it held, and per call the timings `Spent.note` reads. On by default for a
    run of 20 questions or fewer, off for the hundred, `POOLHOUSE_BENCH_TRACE=1` to force it.
    (`bench.measure.Counting`, `bench.wants_trace`, `Row.trace`.)
-2. **Harvest.** `poolhouse-train-tools from-bench --kept STORE --model e4b --min-f1 0.8
+2. **Harvest.** `python -m poolhouse.train tools from-bench --kept STORE --model e4b --min-f1 0.8
    --base unsloth/gemma-4-E4B-it --out DIR` turns every traced question that scored well
    enough into one example per model turn. **Pass `--base`**: the manifest's base is what
    the recipe renders the chat template with and fine-tunes, and its default is E4B,
@@ -87,7 +87,7 @@ given what came back.
 ```
 
 Identical to what `synthesise` writes, so the two sources mix in one directory and
-`poolhouse-train-run --recipe tool-calls --data` reads either. Deliberate choices in it:
+`python -m poolhouse.train run --recipe tool-calls --data` reads either. Deliberate choices in it:
 
 - **`tools` is what was offered on that call, not every tool that exists.** `graph.conversation`
   takes tools away as a question goes on; an example that offers a tool the model did not
@@ -116,7 +116,7 @@ only by spending the GPU again. Per model, at the same threshold:
 | `oss` | 162 | 742 |
 | `e2b` | 64 | 278 |
 
-(`poolhouse-train-tools from-bench --dry-run` prints this for any store: it is `would_yield`,
+(`python -m poolhouse.train tools from-bench --dry-run` prints this for any store: it is `would_yield`,
 and it exists so that the answer "0" is never given without the number beside it. Turns per
 question run 4.9 for E4B and 6.3 for Flash-Next — a fuller question, and a fuller lesson.)
 
@@ -212,7 +212,7 @@ separately: it makes A/B on one load possible.)
 
 ```
 # the command, once the traces are harvested
-poolhouse-train-run --recipe tool-calls --size e4b --lora --export-gguf \
+python -m poolhouse.train run --recipe tool-calls --size e4b --lora --export-gguf \
     --data ~/.poolhouse/train/e4b-traces --out ~/.poolhouse/train/e4b-tools \
     --set steps=1000 --yes
 ```
@@ -249,7 +249,7 @@ fewer than one epoch.
 | data | 3–5k turns from 2–3 traced hundred-question runs | `from-bench --dry-run` after the runs |
 | GPU to gather | ~3 runs × 100 questions × 3–25 s ≈ 0.5–2 h | `python -m poolhouse.bench estimate` before each |
 | LoRA, E4B, one epoch | 1000 steps at batch 4, ctx 2048, 8192 tokens a step | printed by the command above, from the contract's own numbers |
-| s/step | ~65 s (500 tokens/s per billion active parameters, `lora.TOKENS_PER_S_PER_B`) | `poolhouse-train-run --dry-run` trains 20 real steps, writes nothing, and prints `measured: N s/step` |
+| s/step | ~65 s (500 tokens/s per billion active parameters, `lora.TOKENS_PER_S_PER_B`) | `python -m poolhouse.train run --dry-run` trains 20 real steps, writes nothing, and prints `measured: N s/step` |
 | wall clock to train | ~18 h for the epoch; ~5 h 30 for 300 steps; 22 min for the 20 a dry run does | the measured s/step × steps, which the dry run restates |
 | export + serve | minutes | — |
 | the deciding bench | 2 × 100 questions ≈ 20 min | `python -m poolhouse.bench estimate`, and the ceiling refuses over it |

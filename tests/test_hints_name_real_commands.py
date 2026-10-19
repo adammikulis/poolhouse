@@ -12,8 +12,9 @@ from test_layers import EXPERIMENTAL
 REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src" / "poolhouse"
 
-REMOVED = tuple(f"poolhouse-{name}" for name in EXPERIMENTAL)
-"""The names the experimental layer's packages had as console scripts; they run as ``python -m poolhouse.<name>``."""
+REMOVED = (*(f"poolhouse-{name}" for name in EXPERIMENTAL),
+           "poolhouse-train-run", "poolhouse-train-tools", "poolhouse-train-decider", "poolhouse-suite")
+"""The names the experimental layer's commands had as console scripts; they run as ``python -m poolhouse.<name>``."""
 
 DATED = re.compile(r"\d{4}-\d{2}-\d{2}")
 UNCHANGED_DOCUMENTS = {"CHANGELOG.md", "glossary.md", "design-shrink-surface.md"}
@@ -25,7 +26,7 @@ def installed() -> set[str]:
 
 def named_in(text: str) -> set[str]:
     """The removed console scripts ``text`` names."""
-    found = {m.group(0) for m in re.finditer(r"(?<![\w./-])poolhouse-[a-z]+(?![\w-])", text)}
+    found = {m.group(0) for m in re.finditer(r"(?<![\w./-])poolhouse-[a-z]+(?:-[a-z]+)*(?![\w-])", text)}
     return {name for name in found if name in REMOVED and name not in installed()}
 
 
@@ -53,6 +54,7 @@ def offenders() -> list[str]:
 def test_the_scan_finds_a_removed_script_and_leaves_an_installed_one() -> None:
     assert named_in("run `poolhouse-bench sweep` or poolhouse-serve status") == {"poolhouse-bench"}
     assert named_in("python -m poolhouse.bench and the poolhouse-gym-session key") == set()
+    assert named_in("`poolhouse-train-run --recipe R` and poolhouse-suite") == {"poolhouse-train-run", "poolhouse-suite"}
 
 
 def test_every_experimental_package_has_a_name_to_look_for() -> None:

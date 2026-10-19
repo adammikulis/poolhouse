@@ -26,7 +26,9 @@ DOCS = REPO / "docs"
 
 
 EXPERIMENTAL_COMMANDS = {"poolhouse-bench": "poolhouse.bench.run:main", "poolhouse-draft": "poolhouse.draft:main",
-                         "poolhouse-world": "poolhouse.world.cli:main"}
+                         "poolhouse-world": "poolhouse.world.cli:main",
+                         "poolhouse-train-run": "poolhouse.train.run:main", "poolhouse-train-tools": "poolhouse.train.tools:main",
+                         "poolhouse-train-decider": "poolhouse.train.decider_cli:main", "poolhouse-suite": "poolhouse.train.suite:main"}
 """The experimental layer's commands: not installed, run as ``python -m poolhouse.<name>``, and held to the same help."""
 
 MODULE_RUN = re.compile(r"^python3? -m poolhouse\.([a-z]+)\b")

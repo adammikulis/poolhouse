@@ -21,6 +21,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from poolhouse import optional
 from poolhouse.client.systemone import MAX_BYTES, SystemOne, loads
 from poolhouse.command import Group, flag, option
 from poolhouse.decide import jevbench, questions, registry, router
@@ -29,14 +30,12 @@ from poolhouse.decide.cases import Case, fingerprint, read_cases, write_cases
 from poolhouse.decide.eval import FLOOR, Report, evaluate, score
 from poolhouse.decide.fetch import locate
 from poolhouse.decide.guards import guard_cases
+from poolhouse.decide.holdout import by_group
 from poolhouse.decide.pins import STRANDS_V19
 from poolhouse.decide.types import BackendUnavailable, DecideError, Decision, Option, options_of
 from poolhouse.files import write_json
 from poolhouse.log import say, warn
 from poolhouse.serve import broker_wire
-from poolhouse.train import decider_cli as trainer
-from poolhouse.train.decider_data import Plan, guard_cases_from_tools
-from poolhouse.train.holdout import by_group
 
 __all__ = ["COMMANDS", "main"]
 
@@ -260,9 +259,10 @@ def _export(args: Namespace) -> int:
 
 
 def _make(args: Namespace) -> int:
+    data = optional.module("poolhouse.train.decider_data")
     tools = json.loads(Path(args.tools).read_text())
     tools = tools.get("tools", tools) if isinstance(tools, dict) else tools
-    made = guard_cases_from_tools(tools, Plan(seed=args.seed, per_tool=args.per_tool))
+    made = data.guard_cases_from_tools(tools, data.Plan(seed=args.seed, per_tool=args.per_tool))
     say(f"wrote {write_cases(args.out, made)} synthetic cases for {len(tools)} tools to {args.out}")
     say("their labels come from rules about each tool's name and description: read a sample "
         "before trusting a score measured on them")
@@ -276,7 +276,7 @@ def _list(args: Namespace) -> int:
         say(f"{row['name']:<24} {row['base']:<28} "
             + (f"accuracy {acc:.3f}  " if acc is not None else "") + row["path"])
     if not rows:
-        say("no trained deciders; `poolhouse-train-decider` makes one")
+        say("no trained deciders" + (f"; `{make}` makes one" if (make := optional.command("poolhouse.train", "decider")) else ""))
     return 0
 
 
@@ -379,20 +379,20 @@ def export_cmd(args: Namespace) -> int:
     return _export(args)
 
 
-@COMMANDS.command("make-cases", help="synthesise guard cases from an MCP tool list", options=[
-    flag("tools", help="a JSON file: the tool list an MCP server returns"),
-    flag("--per-tool", type=int, default=8), flag("--seed", type=int, default=0),
-    option("out", required=True)])
-def make_cmd(args: Namespace) -> int:
-    """Synthesise guard cases from a tool list."""
-    return _guarded(_make, args)
+if optional.held("poolhouse.train"):
+    @COMMANDS.command("make-cases", help="synthesise guard cases from an MCP tool list", options=[
+        flag("tools", help="a JSON file: the tool list an MCP server returns"),
+        flag("--per-tool", type=int, default=8), flag("--seed", type=int, default=0),
+        option("out", required=True)])
+    def make_cmd(args: Namespace) -> int:
+        """Synthesise guard cases from a tool list."""
+        return _guarded(_make, args)
 
-
-@COMMANDS.command("train", help="fine-tune, calibrate, register and score a decider",
-                  options=trainer.OPTIONS)
-def train_cmd(args: Namespace) -> int:
-    """Fine-tune a decider from labelled cases."""
-    return trainer.run(args)
+    @COMMANDS.command("train", help="fine-tune, calibrate, register and score a decider",
+                      options=optional.module("poolhouse.train.decider_cli").OPTIONS)
+    def train_cmd(args: Namespace) -> int:
+        """Fine-tune a decider from labelled cases."""
+        return optional.module("poolhouse.train.decider_cli").run(args)
 
 
 @COMMANDS.command("list", help="the trained deciders on this machine")

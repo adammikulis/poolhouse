@@ -68,7 +68,7 @@ def asking_options() -> tuple[Option, ...]:
         flag("--trace", action=argparse.BooleanOptionalAction, default=None,
              help="keep each question's transcript -- every call with its arguments, "
                   "what came back and what it cost -- beside the totals, for "
-                  "`show --trace` and `poolhouse-train-tools from-bench`. Default: on "
+                  "`show --trace` and `python -m poolhouse.train tools from-bench`. Default: on "
                   f"at {SHORT} questions or fewer, off for a full run, where the "
                   "transcripts are tens of megabytes in a store nothing backs up"),
         flag("--sample", type=int, default=0, metavar="N",

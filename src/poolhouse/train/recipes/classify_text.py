@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from poolhouse.backend import detect_backend
-from poolhouse.train.holdout import stratified
+from poolhouse.decide.holdout import stratified
 from poolhouse.train.recipes.built import Built
 from poolhouse.train.recipes.data import class_batches, pad_to, read_labelled
 from poolhouse.train.recipes.models import (

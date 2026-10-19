@@ -1,7 +1,7 @@
 {
   "id": "tool-calls",
   "title": "Teach a model to call my tools",
-  "blurb": "Give it conversations that end in a tool call -- poolhouse-train-tools makes them from your tool schemas, or from what a model actually called on a bench run -- and a chat model learns which tool a question wants and how to call it. A small base is fine-tuned whole; anything bigger takes a LoRA.",
+  "blurb": "Give it conversations that end in a tool call -- python -m poolhouse.train tools makes them from your tool schemas, or from what a model actually called on a bench run -- and a chat model learns which tool a question wants and how to call it. A small base is fine-tuned whole; anything bigger takes a LoRA.",
   "data": {
     "formats": [
       ".jsonl"

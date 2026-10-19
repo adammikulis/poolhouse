@@ -94,7 +94,7 @@ class DataView extends HTMLElement {
   if(f.directory)return this.folder(f.path);const token=Symbol();this.previewRequest=token;
   try{
    const r=await W.api('/ui/workspace/file?path='+encodeURIComponent(f.path));if(this.previewRequest!==token)return;
-   this.selected=f;this.drawFiles();this.querySelector('#preview-title').textContent=f.name;this.querySelector('#use-dataset').hidden=false;
+   this.selected=f;this.drawFiles();this.querySelector('#preview-title').textContent=f.name;this.querySelector('#use-dataset').hidden=!document.querySelector('training-view');
    this.querySelector('#preview').textContent=r.text+(r.truncated?'\n[Preview truncated]':'');this.querySelector('#raw-preview').hidden=false;
    this.drawPreview(f,r);
   }catch(error){W.status(this.note,error);}

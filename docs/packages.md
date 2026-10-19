@@ -23,12 +23,14 @@
 | `poolhouse.redact` | Reading a file for a real person's details — the hook's reader and `poolhouse-audit` |
 | `poolhouse.train` | Atomic checkpoints, schedules, guards, metrics, leak-safe splits, tokenizer fertility |
 | `poolhouse.backend` | One array API over MLX and PyTorch, so math is written once |
-| `poolhouse.testing` | Cross-backend numerical parity harness, behind `poolhouse-train-run parity`, and the fakes the suite shares |
+| `poolhouse.testing` | Cross-backend numerical parity harness, behind `python -m poolhouse.train run parity`, and the fakes the suite shares |
 
 `poolhouse.serve` and `poolhouse.client` can be used alone from another application:
 [embedding.md](embedding.md).
 
-Everything above ships in one package. Its dependencies are `packaging` and `psutil`; the
+Everything above ships in one package, except the experimental layer (`bench`, `draft`, `gguf`, `gym`,
+`redteam`, `surface`, `testing`, `train`, `walk`, `world`), which the wheel leaves out and a source checkout
+runs as `python -m poolhouse.<name>`. Its dependencies are `packaging` and `psutil`; the
 extras carry what a module needs beyond them: `[claude] [train] [train-lora] [gguf] [graph] [store]
 [scrape] [web] [hub] [vision] [pdf] [viz] [plot] [testing] [telemetry] [mcp] [standard]
 [privacy] [arrays] [test]`, plus `[torch]` and `[mlx]`, and `[all]`. `[all]` includes

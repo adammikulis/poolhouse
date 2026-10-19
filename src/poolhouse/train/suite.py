@@ -4,7 +4,7 @@ A `Suite` is a name, a line saying what it measures, and a function that runs on
 one backend and returns a flat mapping of numbers. `run` seeds each one, takes the lock,
 records the commit, the host, the wall clock, the peak memory and how busy the card was
 when it started, and folds the seeds into a `Spread` per metric. `said` reads one back
-out; `register` adds one; `poolhouse-suite` is the command.
+out; `register` adds one; `python -m poolhouse.train suite` is the command.
 """
 
 from __future__ import annotations
@@ -260,7 +260,7 @@ def parser():
     import argparse
 
     top = argparse.ArgumentParser(
-        prog="poolhouse-suite",
+        prog="python -m poolhouse.train suite",
         description="A measurement run over several seeds, written down with the commit, "
                     "the spread and what else was running.")
     top.add_argument("--import", dest="imports", action="append", default=[],

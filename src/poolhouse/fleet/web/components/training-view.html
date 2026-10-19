@@ -338,7 +338,7 @@ training-view .training-review-actions{display:flex;gap:12px;flex-wrap:wrap;marg
         command = 'poolhouse.gym'; args = ['train', this.recipe.value, '--timesteps', this.inputs.timesteps.value,
           '--seed', this.inputs.seed.value, '--config', this.inputs.config.value];
         if (this.inputs.checkpoint.value) args.push('--checkpoint', this.inputs.checkpoint.value);
-      } else { command = 'poolhouse-train-run'; args = ['--recipe', this.recipe.value, '--data', this.data.value, '--out', this.out.value]; }
+      } else { command = 'poolhouse.train'; args = ['run', '--recipe', this.recipe.value, '--data', this.data.value, '--out', this.out.value]; }
       if (this.mode.value === 'recipe') {
         if (this.recipe.value === 'tool-calls' && this.lora.value === 'adapter') args.push('--lora');
         if (this.size.value) args.push('--size', this.size.value);

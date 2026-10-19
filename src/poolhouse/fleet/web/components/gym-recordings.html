@@ -80,14 +80,14 @@
       try {
         const result = await W.post('/ui/gym/recordings/' + this.recording.value + '/export', { path: this.output.value });
         sessionStorage.setItem('poolhouse-dataset', result.path);
+        const training = document.querySelector('training-view');
         this.note.replaceChildren(E('span', {}, `${result.cases} reviewed cases exported to ${result.path}. `),
-          W.button('Fine-tune decision model', () => {
+          ...(training ? [W.button('Fine-tune decision model', () => {
             M.go('training');
-            const training = document.querySelector('training-view');
             training.mode.value = 'decider';
             training.buildOptions();
             training.data.value = result.path;
-          }));
+          })] : []));
       } catch (error) { W.status(this.note, error); }
     }
   }

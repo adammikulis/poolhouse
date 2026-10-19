@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from importlib import import_module
 
-NAMES = ("poolhouse.fleet.gym_recording_routes:GymRecordingRoutes", "poolhouse.fleet.gym_routes:GymRoutes")
-PREFIXES = ("poolhouse.fleet.gym_", "poolhouse.gym")
+NAMES = ("poolhouse.fleet.gym_recording_routes:GymRecordingRoutes", "poolhouse.fleet.gym_routes:GymRoutes",
+         "poolhouse.fleet.train_routes:TrainRoutes")
+PREFIXES = ("poolhouse.fleet.gym_", "poolhouse.gym", "poolhouse.fleet.train_", "poolhouse.train")
 
 
 def load() -> tuple[type, ...]:
