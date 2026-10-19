@@ -18,6 +18,8 @@ abuse by one session is not kept (the owner never asked for one). The security f
 - **Leases** (`max_leases_per_holder`, `max_leases`). A request past either is refused with the limit; a reserve naming more resources
   than a session may hold is refused whole before any is looked at. A quiet lease with no process behind it is kept `default_ttl_s`
   between renewals however long it asks.
+- **`write-limits.json`** names only the keys of the rows above. A file that still holds a removed key (`sends`, `child_sends`,
+  `subagent_sends`, `window_s`, `announces`, `announce_window_s`) stops the node starting and names the key: delete the key.
 - **Boards, rooms and subscriptions** (`MOST_BOARDS_PER_LINEAGE`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`, `MOST_SUBS`). They count
   what is held, not how fast it was made: a board is held while a session registered from the process tree is live, a room while it
   exists, a subscription until it is removed. A new subscription at the bound first drops those to subagents that ended. A board is
