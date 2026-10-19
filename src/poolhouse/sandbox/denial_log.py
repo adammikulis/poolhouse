@@ -107,7 +107,7 @@ def parse(line: str) -> tuple[str, dict[str, str]] | None:
 
 def may_be_cut(message: str) -> bool:
     """Whether the kernel may have cut the end of ``message`` off: it is as long as the kernel's limit lets one be, or says so."""
-    return message.endswith(CUT_MARK) or len(message.encode("utf-8", "replace")) >= CUT_BYTES
+    return message.endswith(CUT_MARK) or len(message.encode("utf-8", "surrogatepass")) >= CUT_BYTES
 
 
 @dataclass(slots=True)
