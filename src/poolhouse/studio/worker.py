@@ -57,8 +57,10 @@ def _decision(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
 
 def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     recipe = kind.removeprefix('train.')
-    config = {k: v for k, v in parameters.items() if k != 'mode'}
-    if inputs.get('model'):
+    config = {k: v for k, v in parameters.items() if k not in ('mode', 'base')}
+    if recipe == 'tool-calls':
+        if not inputs.get('model'):
+            raise ValueError('Select an authorized base model for fine-tuning')
         config['base'] = inputs['model']['path']
     recipes = optional.module('poolhouse.train.recipes')
     config = recipes.validate(recipe, config)
@@ -76,18 +78,19 @@ def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
 def _checkpoint_evaluate(inputs: dict) -> dict:
     recipes = optional.module('poolhouse.train.recipes')
     with gpu.hold('Studio checkpoint evaluation'):
-        built = recipes.load(inputs['model']['path'])
-        recipe = built.config['recipe']
-        accepted = {field['name'] for field in recipes.spec(recipe).get('fields', [])} | set(recipes.UNIVERSAL)
-        config = {k: v for k, v in built.config.items() if k in accepted}
-        data = recipes.build(recipe, config, Path(inputs['dataset']['path']),
-                             framework=built.config['framework'])
-        batches = data.eval_batches or data.batches
+        built = recipes.load(inputs['model']['path'], data=Path(inputs['dataset']['path']))
+        batches = built.eval_batches or built.batches
         if batches is None:
             raise ValueError('Evaluation dataset produced no batches')
         step = built.step or optional.module('poolhouse.train.step').step_for(built.model, built.optimizer, built.loss)
-        loss = float(step.eval_loss(batches(0)))
-    metrics = {'loss': loss}
+        examples = int(built.config.get('holdout_rows') or built.config.get('rows') or 1)
+        batch_count = (examples + int(built.config['batch_size']) - 1) // int(built.config['batch_size'])
+        loss = sum(float(step.eval_loss(batches(index))) for index in range(batch_count)) / batch_count
+        metrics = {'loss': loss, 'examples': examples, 'batches': batch_count}
+        if built.predict is not None and built.config.get('recipe') == 'classify-text':
+            rows = rows_of(inputs['dataset'])
+            metrics['accuracy'] = sum(built.predict(row['text'])['label'] == row['label'] for row in rows) / len(rows)
+            metrics['examples'] = len(rows)
     return {'metrics': metrics, 'report': metrics}
 
 

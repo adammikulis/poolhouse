@@ -230,3 +230,9 @@ def test_dependencies_checked_in_managed_runtime_before_dispatch():
 def test_missing_runtime_fails_before_worker_submission():
     errors = Adapters(SimpleNamespace(environment=None)).validate([{'id': 'split', 'type': 'data.split'}])
     assert errors == [{'node': 'split', 'code': 'dependency', 'message': 'Install the managed compute runtime to run this node'}]
+
+
+def test_fine_tuning_requires_authorized_model_binding(tmp_path):
+    with pytest.raises(ValueError, match='authorized base model'):
+        execute({'type': 'train.tool-calls', 'parameters': {'base': '/unbound/private'}},
+                {'dataset': {'path': str(tmp_path)}}, tmp_path)
