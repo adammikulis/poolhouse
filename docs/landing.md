@@ -110,7 +110,8 @@ Otherwise it prints one line saying why and changes nothing: it never stashes, c
 It is idempotent. It holds `<git-common-dir>/primary-sync.lock` without waiting; a run that finds the lock held leaves
 `primary-sync.again` and the holder goes round again (at most five rounds). Output of the detached run is
 `<git-common-dir>/primary-sync.log`. It is the only code that moves the primary checkout for an agent, and the one thing
-it runs is that fast-forward.
+it runs besides that fast-forward is the runtime refresh (`scripts/hooks/runtime-refresh`, docs/install.md, "Triggers"), started
+after each sync that waited for a pushed commit (`--sha`) to reach `origin`.
 
 ## The CI run
 

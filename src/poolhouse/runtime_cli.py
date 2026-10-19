@@ -17,11 +17,14 @@ from poolhouse import (
     node_pool,
     person,
     runtime,
+    runtime_await,
     runtime_board,
     runtime_coalesce,
     runtime_deploy,
+    runtime_git,
     runtime_host,
     runtime_launchers,
+    runtime_source,
     runtime_stale,
     runtime_store,
     runtime_trust,
@@ -77,7 +80,8 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
         raise runtime_deploy.DeployError("invalid automatic runtime selection snapshot")
     return runtime_deploy.Plan(primary, commit, _launchers(args.launchers),
                                runtime_trust.floor(primary), args.timeout, args.wait, args.agent,
-                               allow_unmerged=exception, automatic_from=tuple(baseline) if baseline is not None else None)
+                               allow_unmerged=exception, automatic_from=tuple(baseline) if baseline is not None else None,
+                               boundary_wait_s=getattr(args, "boundary_wait", 0.0))
 
 
 def _start_background(argv: list[str]) -> None:
@@ -127,7 +131,9 @@ def _ensure(args: argparse.Namespace) -> int:
             human.mint("deploy an unmerged commit", args.ref)
     if not args.background and not args.no_update and not args.allow_unmerged and not getattr(args, "automatic_from", ""):
         _caught_up(args)
-    plan = plan_from(args)
+    plan = _planned(args)
+    if plan is None:
+        return 0
     if args.background:
         settled = runtime_deploy.settled(plan)
         if settled:
@@ -144,6 +150,42 @@ def _ensure(args: argparse.Namespace) -> int:
     if args.settle and not args.now:
         return _settled(args)
     return 0 if _run(args, plan).ok else 1
+
+
+def _planned(args: argparse.Namespace) -> runtime_deploy.Plan | None:
+    """The plan for the checkout's tip; none when the tip is not on the remote yet and a waiter for its push builds it or waits already."""
+    try:
+        return plan_from(args)
+    except runtime_source.Unpublished as exc:
+        if args.background:
+            _awaiting(args, exc)
+            return None
+        if not args.await_published:
+            raise
+        if not _arrived(args, exc):
+            return None
+    return plan_from(args)
+
+
+def _arrived(args: argparse.Namespace, unpublished: runtime_source.Unpublished) -> bool:
+    """Wait for the refused commit to reach the remote; false when another process already waits, `DeployError` when it never does."""
+    try:
+        if runtime_await.until_published(unpublished.checkout, unpublished.commit, args.await_published):
+            return True
+    except Busy:
+        say("runtime build already waiting for a push")
+        return False
+    raise runtime_deploy.DeployError(f"{unpublished.commit[:7]} did not reach origin within "
+                                     f"{min(runtime_await.AWAIT_S, args.await_published):.0f}s; no runtime was built")
+
+
+def _awaiting(args: argparse.Namespace, why: Exception) -> None:
+    """A background refresh for a commit the remote does not hold yet: one detached process waits for the push, then builds."""
+    if runtime_await.waiting():
+        say("runtime build already waiting for a push")
+    else:
+        _start_background([*_again(args), "--await-published", str(runtime_await.AWAIT_S)])
+        say(f"{why}; a background build starts when the push arrives; log: {runtime.directory() / 'ensure.log'}")
 
 
 def _caught_up(args: argparse.Namespace) -> None:
@@ -174,16 +216,17 @@ def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.
     if outcome.action in ("switched", "recovered"):
         allowed = (plan.allow_unmerged if isinstance(plan.allow_unmerged, runtime_unmerged.Approval) else plan.commit) \
             if plan.allow_unmerged and outcome.commit == plan.commit else ""
-        outcome = _with_node(outcome, allowed)
+        outcome = _with_node(outcome, allowed, plan.boundary_wait_s)
     _audited(args, "ensure", plan, outcome.action, outcome.detail)
     runtime_board.announce(outcome, previous, runtime_deploy.acting(plan), verb="ensure")
     say(f"{outcome.action} {outcome.commit[:7]} {outcome.detail}".strip())
     return outcome
 
 
-def _with_node(outcome: runtime_deploy.Outcome, allow_unmerged_commit: str | runtime_unmerged.Approval = "") -> runtime_deploy.Outcome:
+def _with_node(outcome: runtime_deploy.Outcome, allow_unmerged_commit: str | runtime_unmerged.Approval = "",
+               boundary_wait_s: float = 0.0) -> runtime_deploy.Outcome:
     """Move the running node onto the new runtime's binary and say what happened; the board is on disk, so nothing is lost."""
-    moved = node_launch.swap(allow_unmerged_commit=allow_unmerged_commit)
+    moved = node_launch.swap(allow_unmerged_commit=allow_unmerged_commit, boundary_wait_s=boundary_wait_s)
     detail = "; ".join(part for part in (outcome.detail, f"node {moved['action']}: {moved['detail']}") if part)
     return runtime_deploy.Outcome("failed" if moved["action"] == "failed" else outcome.action, outcome.commit, detail)
 
@@ -323,6 +366,9 @@ GROUP = Group("poolhouse runtime", "Build, verify and select the installed runti
 GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the selected runtime", options=[
     *COMMON, flag("--ref", default="HEAD"),
     flag("--automatic-from", default="", help=argparse.SUPPRESS),
+    flag("--boundary-wait", type=float, default=runtime_git.BOUNDARY_WAIT_S,
+         help="seconds to wait for a landing to finish before the cutover; the refusal names who holds the boundary"),
+    flag("--await-published", type=float, default=0.0, help=argparse.SUPPRESS),
     flag("--force", action="store_true", help="rebuild even when held or current"),
     flag("--allow-unmerged", action="store_true", help="deploy an exact independently reviewed source commit while delegated, or confirm at a terminal"),
     flag("--review-branch", default="", help="the branch whose exact commit an independent landing review accepted, for a delegated source deployment"),
