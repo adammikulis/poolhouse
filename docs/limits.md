@@ -1,35 +1,62 @@
 # Limits
 
 The limits in force, with their values, where each is set, what it protects and who changes it. A refusal at a node limit says which
-limit it was, its value and the setting that holds it (`limits::refuse`,
-`app/poolhouse-node/tests/quota_refusals.rs`). A limit is kept for memory, disk or a hang; a rate that bounded only abuse by one
-session is not kept (the owner never asked for one). The security floors are the owner's alone: an agent never loosens one.
+limit it was, its value and the setting that holds it (`limits::refuse`); a refusal at a security floor says what was refused and what
+to do and never the budget (`limits::floor`); `app/poolhouse-node/tests/quota_refusals.rs` fails for a refusal built any other way, for
+a setting that does not exist and for one this table leaves out. A limit is kept for memory, disk or a hang; a rate that bounded only
+abuse by one session is not kept (the owner never asked for one). The security floors are the owner's alone: an agent never loosens one.
+
+## At a bound
+
+- **A log** (`MAX_LOG_ROWS`, `MAX_LOG_BYTES`, `AUTHOR_SHARE_PERCENT`, `RESERVED_ROWS`, `RESERVED_BYTES`). One author (a session) writes at
+  most a quarter of the rows and of the bytes of a device's log; past it that author is refused with the share named and every other
+  session still writes. The log as a whole refuses author rows `RESERVED_ROWS` rows (and `RESERVED_BYTES` bytes) before its end; the
+  rest is for the node's own rows: a head (so the log is still signed and synced), an identity and the audit of a session ending (so a
+  session can still be ended). A lease entry or a notice a full log refuses is skipped: the lease table is the record of a lease. A
+  copy of another device's log that would pass the rows or the bytes is refused whole. A log that reaches the end of the reserve takes
+  nothing more and does not recover: it has no rotation or compaction, which `HANDOFF.md` lists as its own item.
+- **Leases** (`max_leases_per_holder`, `max_leases`). A request past either is refused with the limit; a reserve naming more resources
+  than a session may hold is refused whole before any is looked at. A quiet lease with no process behind it is kept `default_ttl_s`
+  between renewals however long it asks.
+- **Boards, rooms and subscriptions** (`MOST_BOARDS_PER_LINEAGE`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`, `MOST_SUBS`). They count
+  what is held, not how fast it was made: a board is held while a session registered from the process tree is live, a room while it
+  exists, a subscription until it is removed. A new subscription at the bound first drops those to subagents that ended. A board is
+  never removed (it is a replicated log): `HANDOFF.md` lists reaping the boards nobody holds as its own item.
 
 | Name | Value | File and line | What it protects | Who changes it |
 |---|---|---|---|---|
 | `MAX_BOARDS` | 256 | `app/poolhouse-node/src/node.rs:38` | boards a node hosts: memory and open files | the owner, in source |
+| `MOST_BOARDS_PER_LINEAGE` | 32 | `app/poolhouse-node/src/node.rs:40` | boards that have a live session registered from one process tree: memory and open files | the owner, in source |
 | `MAX_IDENTITIES` | 10_000 | `app/poolhouse-node/src/identity.rs:16` | sessions a board holds: memory | the owner, in source |
+| `SHORT` | 6 | `app/poolhouse-node/src/identity.rs:15` | characters of the shortest name a session is given: when every length is taken no name is left | the owner, in source |
 | `MAX_TOKENS_PER_NAME` | 8 | `app/poolhouse-node/src/identity.rs:17` | tokens one session holds: the ninth ends the oldest | the owner, in source |
 | `MOST_TOKENS` | 2048 | `app/poolhouse-node/src/identity.rs:19` | tokens a node holds: memory; when full the tokens of sessions idle for `IDLE_MS` end | the owner, in source |
 | `IDLE_MS` | 30 * 24 * 3600 * 1000 | `app/poolhouse-node/src/identity.rs:20` | how long a session may be silent before its token can be dropped to make room | the owner, in source |
-| `MAX_LOG_ROWS` | 200_000 | `app/poolhouse-node/src/board.rs:19` | rows one device's log keeps: memory and disk of a board | the owner, in source |
-| `MAX_ORIGINS` | 64 | `app/poolhouse-node/src/board.rs:18` | logs a device holds for one board: memory | the owner, in source |
+| `MAX_LOG_ROWS` | 200_000 | `app/poolhouse-node/src/logbounds.rs:7` | rows one device's log keeps: memory and disk of a board | the owner, in source |
+| `MAX_LOG_BYTES` | 128 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:9` | bytes of rows one device's log keeps: memory and disk of a board | the owner, in source |
+| `RESERVED_ROWS` | 2_000 | `app/poolhouse-node/src/logbounds.rs:11` | rows at the end of the log only the node's own rows use: a head, an identity, the audit of a session ending | the owner, in source |
+| `RESERVED_BYTES` | 8 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:13` | bytes at the end of the log only the node's own rows use | the owner, in source |
+| `AUTHOR_SHARE_PERCENT` | 25 | `app/poolhouse-node/src/logbounds.rs:15` | the share of the rows and of the bytes one author writes: one session cannot fill the log for the others | the owner, in source |
+| `MAX_ORIGINS` | 64 | `app/poolhouse-node/src/board.rs:19` | logs a device holds for one board: memory | the owner, in source |
 | `MAX_REJECTED` | 200 | `app/poolhouse-node/src/board.rs:20` | refused foreign rows kept for `status`: memory | the owner, in source |
 | `MAX_ROW_BYTES` | 128 * 1024 | `app/poolhouse-node/src/row.rs:14` | the size of one signed row | the owner, in source |
 | `BODY_BYTES` | 64 * 1024 | `app/poolhouse-node/src/fold.rs:32` | the size of a row's body | the owner, in source |
 | `NOTES_PER_SENDER` | 200 | `app/poolhouse-node/src/fold.rs:33` | notes folded for one sender: the fold's memory | the owner, in source |
 | `READ_MAX` | 1000 | `app/poolhouse-node/src/node.rs:36` | entries one `read` returns | the owner, in source |
-| `inbox_pending` | 500 | `app/poolhouse-node/src/writes.rs:36` | direct messages unread in a session's inbox: memory of the log and the reader's context | the owner, `<state>/write-limits.json` |
-| `unread_per_sender` | 100 | `app/poolhouse-node/src/writes.rs:36` | direct messages unread from one sender: one sender cannot fill an inbox | the owner, `<state>/write-limits.json` |
-| `notes_per_author` | 500 | `app/poolhouse-node/src/writes.rs:36` | notes one author keeps on a board: memory | the owner, `<state>/write-limits.json` |
-| `child_beat_s` | 1800 | `app/poolhouse-node/src/writes.rs:36` | seconds a session may go unheard before it is idle, unless it holds a live lease | the owner, `<state>/write-limits.json` |
-| `idle_retire_s` | 86 400 | `app/poolhouse-node/src/writes.rs:36` | seconds a session may be idle before the node retires it and its token ends | the owner, `<state>/write-limits.json` |
+| `inbox_pending` | 500 | `app/poolhouse-node/src/writes.rs:23` | direct messages unread in a session's inbox: memory of the log and the reader's context | the owner, `<state>/write-limits.json` |
+| `unread_per_sender` | 100 | `app/poolhouse-node/src/writes.rs:24` | direct messages unread from one sender: one sender cannot fill an inbox | the owner, `<state>/write-limits.json` |
+| `notes_per_author` | 500 | `app/poolhouse-node/src/writes.rs:26` | notes one author keeps on a board: memory | the owner, `<state>/write-limits.json` |
+| `child_beat_s` | 1800 | `app/poolhouse-node/src/writes.rs:28` | seconds a session may go unheard before it is idle, unless it holds a live lease | the owner, `<state>/write-limits.json` |
+| `idle_retire_s` | 86 400 | `app/poolhouse-node/src/writes.rs:30` | seconds a session may be idle before the node retires it and its token ends | the owner, `<state>/write-limits.json` |
 | `MOST_ACTIVE` | 64 | `app/poolhouse-node/src/links.rs:15` | links one board has open | the owner, in source |
 | `MAX_PROJECTS` | 256 | `app/poolhouse-node/src/registry.rs:23` | projects a node holds | the owner, in source |
 | `MAX_SOURCES` | 32 | `app/poolhouse-node/src/registry.rs:21` | places one project keeps | the owner, in source |
 | `SCAN_DEPTH` | 3 | `app/poolhouse-node/src/registry.rs:69` | how deep a place is searched for a git repository: a walk that cannot run away | the owner, in source |
 | `SCAN_ENTRIES` | 4000 | `app/poolhouse-node/src/registry.rs:70` | entries read by that search | the owner, in source |
 | `ROOMS_TOTAL` | 200 | `app/poolhouse-node/src/rooms.rs:19` | rooms one board holds: every read folds them | the owner, in source |
+| `MOST_ROOMS_PER_LINEAGE` | 16 | `app/poolhouse-node/src/rooms.rs:21` | rooms the sessions of one process tree made | the owner, in source |
+| `MEMBERS_PER_ROOM` | 128 | `app/poolhouse-node/src/rooms.rs:23` | members of one room: every read folds them | the owner, in source |
+| `MOST_SUBS` | 256 | `app/poolhouse-node/src/subs.rs:27` | subscriptions one session keeps: `subs.json` is written whole on each change | the owner, in source |
 | `LOUD_FREE` | 3 | `app/poolhouse-node/src/subs.rs:25` | inbox subscriptions a session takes before it must say `force`: its context, not memory | the owner, in source |
 | `MAX_BYTES` | 256 * 1024 * 1024 | `app/poolhouse-node/src/scratch.rs:18` | bytes one session keeps in scratch folders: disk | the owner, in source |
 | `MOST_FOLDERS` | 16 | `app/poolhouse-node/src/scratch.rs:20` | scratch folders one session keeps: disk | the owner, in source |
@@ -42,9 +69,14 @@ session is not kept (the owner never asked for one). The security floors are the
 | `MAX_TASKS` | 5000 | `app/poolhouse-node/src/tasks/mod.rs:25` | tasks on a board: memory of the task fold | the owner, in source |
 | `HEARTBEAT_S` | 120 | `app/poolhouse-node/src/tasks/mod.rs:24` | seconds a task claim lives without a heartbeat: a dead worker's task is freed | the owner, in source |
 | `MAX_RESOURCES` | 8 | `app/poolhouse-node/src/lease/types.rs:14` | resources one lease request names | the owner, in source |
+| `max_leases_per_holder` | 512 | `app/poolhouse-node/src/lease/types.rs:253` | leases, held or queued, one session keeps: the table is swept whole on every lease call | the owner, `<state>/lease-config.json` |
+| `max_leases` | 4096 | `app/poolhouse-node/src/lease/types.rs:255` | leases, held or queued, the table keeps | the owner, `<state>/lease-config.json` |
+| `cpu_slots` | the device's cores | `app/poolhouse-node/src/lease/types.rs:239` | CPU slots the table grants and the most one request asks for | the owner, `<state>/lease-config.json` |
+| `memory_mb` | 0 (no budget) | `app/poolhouse-node/src/lease/types.rs:241` | megabytes the table grants and the most one request asks for | the owner, `<state>/lease-config.json` |
 | `MAX_TAG` | 64 | `app/poolhouse-node/src/lease/types.rs:16` | length of a lease tag | the owner, in source |
-| `max_ttl_s` | 86 400 | `app/poolhouse-node/src/lease/types.rs:259` | seconds one renewal keeps a lease: a dead holder without a pid frees its resource | the owner, `<state>/lease-config.json` |
-| `MAX_WAIT_MS` | 600_000 | `app/poolhouse-node/src/lease/rpc.rs:19` | milliseconds a `lease_wait` holds a server thread and keeps its queued request alive: a client that left would otherwise hold both for ever | the owner, in source |
+| `max_ttl_s` | 86 400 | `app/poolhouse-node/src/lease/types.rs:251` | seconds one renewal keeps a lease; a quiet lease with no pid is kept `default_ttl_s` instead: a dead holder without a pid frees its resource | the owner, `<state>/lease-config.json` |
+| `MOST_WAITERS` | 64 | `app/poolhouse-node/src/lease/rpc.rs:22` | `lease_wait` requests a node holds a thread for at once | the owner, in source |
+| `MAX_WAIT_MS` | 600_000 | `app/poolhouse-node/src/lease/rpc.rs:20` | milliseconds a `lease_wait` holds a server thread and keeps its queued request alive: a client that left would otherwise hold both for ever | the owner, in source |
 | `MOST_ANCHORS` | 32 | `app/poolhouse-node/src/lineage.rs:23` | processes read above a requester when its lineage is found | the owner, in source |
 | `MAX_FRAME` | 1024 * 1024 | `app/poolhouse-node/src/wire.rs:10` | bytes of one frame on the local socket | the owner, in source |
 | `MAX_PEER_FRAME` | 4 * 1024 * 1024 | `app/poolhouse-node/src/wire.rs:13` | bytes of one frame between devices | the owner, in source |
@@ -87,9 +119,9 @@ session is not kept (the owner never asked for one). The security floors are the
 | `MOST_REQUESTS` | 6 | `app/poolhouse-node/src/approvals/mod.rs:54` | approval requests one session makes in `REQUEST_WINDOW_MS`: asking until the person gives in | the owner, in source; a security floor no agent loosens |
 | `REQUEST_WINDOW_MS` | 10 * 60 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:55` | the window of the request limit | the owner, in source; a security floor no agent loosens |
 | `MAX_TTL_MS` | 24 * 3600 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:57` | the longest a request lives | the owner, in source; a security floor no agent loosens |
-| `backoff_ms` | 30 000 | `app/poolhouse-node/src/approvals/fatigue.rs:62` | how long after a decline the same kind of request is refused | the owner, in source; a security floor no agent loosens |
-| `most_held` | 8 | `app/poolhouse-node/src/approvals/fatigue.rs:63` | requests held back for one requester | the owner, in source; a security floor no agent loosens |
-| `reask_ms` | 600 000 | `app/poolhouse-node/src/approvals/fatigue.rs:63` | how long a cancelled or expired request counts as asked again | the owner, in source; a security floor no agent loosens |
+| `backoff_ms` | 30 000 | `app/poolhouse-node/src/approvals/fatigue.rs:35` | how long after a decline the same kind of request is refused | the owner, in source; a security floor no agent loosens |
+| `most_held` | 8 | `app/poolhouse-node/src/approvals/fatigue.rs:56` | requests held back for one requester | the owner, in source; a security floor no agent loosens |
+| `reask_ms` | 600 000 | `app/poolhouse-node/src/approvals/fatigue.rs:54` | how long a cancelled or expired request counts as asked again | the owner, in source; a security floor no agent loosens |
 | `QUIET_MS` | 10 * 60_000 | `app/poolhouse-node/src/presence/mod.rs:31` | the ask cooldown: no new question to the person this long after one was not answered yes | the owner, in source; a security floor no agent loosens |
 | `ASK_FOR_MS` | 120_000 | `app/poolhouse-node/src/presence/mod.rs:28` | how long a question to the person stays open | the owner, in source; a security floor no agent loosens |
 | `COOLDOWN` | std::time::Duration::from_secs(10 * 60) | `app/poolhouse-node/src/gov/ops.rs:30` | the ask cooldown: after a no the same kind of ask waits this long, and the window of `MOST_ASKS` | the owner, in source; a security floor no agent loosens |

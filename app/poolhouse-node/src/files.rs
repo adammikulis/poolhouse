@@ -102,8 +102,17 @@ fn put(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
     if upload.len() < 8 || upload.len() > 64 || !upload.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) {
         return Err(Error::Invalid("an upload is named by 8 to 64 lower-case letters and digits".into()));
     }
-    if total == 0 || total > MAX_BLOB || data.is_empty() || data.len() > CHUNK || offset + data.len() > total {
-        return Err(crate::limits::refuse(&format!("a file is sent in chunks of up to {CHUNK} bytes"), format!("{MAX_BLOB} bytes"), "MAX_BLOB", "files.rs"));
+    if total == 0 || data.is_empty() {
+        return Err(Error::Invalid("a file and each chunk of it hold at least one byte".into()));
+    }
+    if total > MAX_BLOB {
+        return Err(crate::limits::refuse("the file is larger than a file on a board may be", format!("{MAX_BLOB} bytes"), "MAX_BLOB", "files.rs"));
+    }
+    if data.len() > CHUNK {
+        return Err(crate::limits::refuse("a chunk of an upload is larger than a chunk may be", format!("{CHUNK}"), "CHUNK", "files.rs"));
+    }
+    if offset + data.len() > total {
+        return Err(Error::Invalid(format!("the chunk ends at {} bytes, past the size of {total} the upload announced", offset + data.len())));
     }
     let base = dir(node, board);
     let staging = base.join("staging");

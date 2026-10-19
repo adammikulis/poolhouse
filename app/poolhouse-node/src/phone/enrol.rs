@@ -97,7 +97,7 @@ fn spend_offer(node: &mut Node, ip: IpAddr, secret: &str, now_ms: u64) -> Result
     let first = node.persons.is_empty();
     let tries = format!("phone code {ip}");
     if !node.rates.permits(&tries, WRONG_CODES, WRONG_WINDOW) {
-        return Err(crate::limits::refuse("Too many wrong codes came from this address; wait ten minutes.", format!("{WRONG_CODES} in ten minutes"), "WRONG_CODES", "phone/enrol.rs"));
+        return Err(crate::limits::floor("Too many wrong codes came from this address; wait ten minutes."));
     }
     if first {
         if !node.firsts.offered(Purpose::Phone, now_ms) {
@@ -134,10 +134,10 @@ fn brakes(node: &mut Node, by: &str, now: u64) -> Result<()> {
     }
     let adds: Vec<&Approval> = node.approvals.all().iter().filter(|a| a.kind == PHONE_ADD).collect();
     if adds.iter().any(|a| a.live()) {
-        return Err(crate::limits::refuse("Another phone is already waiting for one of your phones to approve it: answer that first.", "one phone waiting at a time", "PHONE_ADD", "phone/enrol.rs"));
+        return Err(crate::limits::floor("Another phone is already waiting for one of your phones to approve it: answer that first."));
     }
     if adds.iter().any(|a| now.saturating_sub(a.created_ms) < HOUR_MS && matches!(a.state.as_str(), DENIED | EXPIRED | CANCELLED | FAILED)) {
-        return Err(crate::limits::refuse("A phone asked to be added less than an hour ago and was not approved; wait before another is added.", "one hour after a phone is not approved", "HOUR_MS", "phone/enrol.rs"));
+        return Err(crate::limits::floor("A phone asked to be added less than an hour ago and was not approved; wait before another is added."));
     }
     Ok(())
 }

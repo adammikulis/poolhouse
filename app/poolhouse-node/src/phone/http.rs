@@ -105,7 +105,7 @@ fn offer(node: &mut Node, id: &str) -> Result<Value> {
     }
     let key = format!("phone offer {id}");
     if !node.rates.permits(&key, MOST_CODES_PER_PHONE, Duration::from_secs(3600)) {
-        return Err(crate::limits::refuse("This phone has asked for as many codes as it may; try again later.", format!("{MOST_CODES_PER_PHONE} an hour"), "MOST_CODES_PER_PHONE", "phone/http.rs"));
+        return Err(crate::limits::floor("This phone has asked for as many codes as it may; try again later."));
     }
     node.rates.record(&key, Duration::from_secs(3600));
     let by = format!("the phone {}", node.phones.get(id).map(|f| f.name.clone()).unwrap_or_default());
@@ -168,7 +168,7 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
         ("POST", "add" | "decide") => {
             let key = format!("phone {op} {ip}");
             if !n.rates.permits(&key, MOST_TRIES_PER_ADDRESS, Duration::from_secs(60)) {
-                return reply(Err(crate::limits::refuse("Too many tries from this address; wait a minute.", format!("{MOST_TRIES_PER_ADDRESS} a minute"), "MOST_TRIES_PER_ADDRESS", "phone/http.rs")));
+                return reply(Err(crate::limits::floor("Too many tries from this address; wait a minute.")));
             }
             n.rates.record(&key, Duration::from_secs(60));
             return reply(if op == "add" { enrol(&mut n, ip, &params) } else {

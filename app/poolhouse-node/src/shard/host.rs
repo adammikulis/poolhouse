@@ -278,7 +278,7 @@ impl Shards {
         Ok(json!({"id": req["id"], "state": "running", "python": version}))
     }
 
-    /// The device's CPU slots for this shard from the lease service; `Quota` when none are free.
+    /// The device's CPU slots for this shard from the lease service; a quota refusal when none are free.
     fn take_slots(&self, node: &mut Node, spec: &Spec) -> Result<String> {
         let name = format!("shard-{}", &spec.id[..8]);
         let count = (node.leases.cfg.cpu_slots / 2).max(1);

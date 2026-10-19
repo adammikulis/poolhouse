@@ -86,7 +86,7 @@ const OPEN_JOIN_WINDOW: std::time::Duration = std::time::Duration::from_secs(600
 fn open_join_allowed(node: &mut Node, ip: IpAddr) -> Result<()> {
     let source = format!("open-join {ip}");
     if !node.rates.permits(&source, OPEN_JOINS_PER_SOURCE, OPEN_JOIN_WINDOW) || !node.rates.permits("open-join", OPEN_JOINS_PER_POOL, OPEN_JOIN_WINDOW) {
-        return Err(crate::limits::refuse("this pool is taking open joins as fast as it may: try again in a few minutes", format!("{OPEN_JOINS_PER_SOURCE} from one address and {OPEN_JOINS_PER_POOL} in all, in ten minutes"), "OPEN_JOINS_PER_POOL", "peer.rs"));
+        return Err(crate::limits::floor("this pool is taking open joins as fast as it may: try again in a few minutes"));
     }
     node.rates.record(&source, OPEN_JOIN_WINDOW);
     node.rates.record("open-join", OPEN_JOIN_WINDOW);
@@ -331,7 +331,7 @@ impl PeerClient {
         let message = reply["error"]["message"].as_str().unwrap_or("refused").to_string();
         Err(match reply["error"]["code"].as_str() {
             Some("denied") => Error::Denied(message),
-            Some("quota") => Error::Quota(message),
+            Some("quota") => crate::limits::relayed(message),
             Some("damaged") => Error::Damaged(message),
             Some("gap") => Error::Gap(message),
             _ => Error::Invalid(message),

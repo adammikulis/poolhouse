@@ -81,7 +81,7 @@ impl Console {
             return Err(refused());
         }
         if IN_USE.swap(true, Ordering::SeqCst) {
-            return Err(crate::limits::refuse("The last question is still on its console: try again in a moment.", "one question at a time", "IN_USE", "sys/win/console.rs"));
+            return Err(crate::limits::floor("The last question is still on its console: try again in a moment."));
         }
         let mut list = [0u32; 1];
         // SAFETY: one valid slot and a length of one; the count of attached processes is returned either way.

@@ -121,7 +121,7 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
                                      else { format!("This agent is suspended for {} more after asking again and again; a person can lift that from their phone.", wait_words(until_ms, now)) }));
         }
         Standing::Backoff { until_ms } => {
-            return Err(crate::limits::refuse(&format!("That kind of request was declined a moment ago; wait {} before asking for it again.", wait_words(until_ms, now)), format!("{} ms after a decline", node.fatigue.rules.backoff_ms), "backoff_ms", "approvals/fatigue.rs"));
+            return Err(crate::limits::floor(&format!("That kind of request was declined a moment ago; wait {} before asking for it again.", wait_words(until_ms, now))));
         }
         Standing::Held { key, .. } => Some(key),
         Standing::Free => None,
@@ -130,14 +130,14 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let repeated = node.approvals.all().iter().any(|a| a.same == same && matches!(a.state.as_str(), CANCELLED | EXPIRED) && now.saturating_sub(a.decided_ms) < reask);
     let rate = format!("approval {board}/{name}");
     if !node.rates.permits(&rate, MOST_REQUESTS, Duration::from_millis(REQUEST_WINDOW_MS)) {
-        return Err(crate::limits::refuse("One session has made as many requests as it may; try again later.", format!("{MOST_REQUESTS} in ten minutes"), "MOST_REQUESTS", "approvals/mod.rs"));
+        return Err(crate::limits::floor("One session has made as many requests as it may; try again later."));
     }
     let kept = held_key.as_ref().map_or(0, |k| node.approvals.all().iter().filter(|a| a.state == HELD && a.held_by == *k).count());
     if kept >= node.fatigue.rules.most_held {
-        return Err(crate::limits::refuse("Your requests are being held back and as many as will be kept are waiting; ask again when a person has answered.", node.fatigue.rules.most_held, "most_held", "approvals/fatigue.rs"));
+        return Err(crate::limits::floor("Your requests are being held back and as many as will be kept are waiting; ask again when a person has answered."));
     }
     if node.approvals.pending_of(&name) >= MOST_PENDING_PER_SESSION || node.approvals.pending_count() >= MOST_PENDING {
-        return Err(crate::limits::refuse("Too many of your requests are waiting; wait for an answer or cancel one.", format!("{MOST_PENDING_PER_SESSION} for a session and {MOST_PENDING} on a node"), "MOST_PENDING_PER_SESSION", "approvals/mod.rs"));
+        return Err(crate::limits::floor("Too many of your requests are waiting; wait for an answer or cancel one."));
     }
     let repeat = node.fatigue.declined_before(board, &scopes, now);
     if repeat > 0 && asks.len() > 1 {
