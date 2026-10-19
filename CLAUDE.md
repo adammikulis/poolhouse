@@ -5,6 +5,16 @@
 [AGENTS.md](AGENTS.md) (imported above) is the complete repository policy; everything here applies in addition to it and only covers
 Claude Code. [docs/glossary.md](docs/glossary.md) is the vocabulary and is binding: use its words, never the ones it bans.
 
+## A blocker is fixed, never reported or worked around (critical, standing)
+
+When a design, rule, guard, lock, identity or claim scheme, review requirement, queue or tool refusal blocks development, finding
+it and fixing it are one task: change the thing that blocks, in the same turn. Never state it as a fact of the system ("X cannot
+because of the cause"), never list problems and stop, and never route around it (an extra reviewer, a manual claim, a retry,
+waiting). The moment such a sentence is about to be written, the next action is the change that removes the cause. A report to
+the owner says what was changed; when the agent is truly blocked (a person-only act, a harness permission only the owner can grant) it says what was
+tried and asks the one decision with the fix as the first option. If the concept is the flaw, the whole concept is removed, not one
+hook at a time. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
+
 ## Session start and names
 
 The `SessionStart` hook registers the lead, announces it and puts the inbox in its context; when the hook output is absent, the lead
