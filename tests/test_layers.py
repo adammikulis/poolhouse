@@ -34,7 +34,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "ui", "units", "win32", "windows_private", "worktreerules")),
     ("model", ("client", "decide", "gguf", "hub", "spec", "speech", "vision")),
     ("graph", ("board_names", "graph", "ingest", "sources")),
-    ("machine", ("doctor", "fleet", "serve", "setup")),
+    ("machine", ("doctor", "fleet", "serve", "setup", "studio")),
     ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "datasheet", "decide_cli",
                "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "migrate", "migrate_paths", "migrate_scan", "memory", "reputation", "inbox", "roles", "rules",
                "api", "testfarm", "testing", "train", "web", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),

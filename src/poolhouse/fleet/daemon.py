@@ -487,6 +487,9 @@ class DaemonRuntime:
         finally:
             if studio is not None:
                 studio.store.close()
+            pool_store = getattr(self.interface, "_studio_pool_store", None)
+            if pool_store is not None:
+                pool_store.close()
 
     def update_admission(self):
         return only_one(self.root / "runtime-install.lock", wait=False)

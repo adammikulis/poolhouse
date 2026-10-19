@@ -22,6 +22,8 @@ from .files import safe_relpath
 from .managed_compute import process_environment
 from .request_fields import field, object_body
 from .session import parse_cookie
+from .studio_artifacts import artifact_files, open_artifact, stream_artifact
+from .studio_library import provider as pool_library
 
 _INITIALIZE = threading.Lock()
 
@@ -66,12 +68,12 @@ class StudioRoutes:
                     if checker is None or not checker():
                         return False
                     for binding in (node or {}).get("bindings", {}).values():
-                        if not isinstance(binding, dict) or binding.get("kind") not in {"dataset", "model"}:
+                        if not isinstance(binding, dict) or binding.get("kind") not in {"dataset", "model", "recordings", "traces"}:
                             return False
-                        if binding["kind"] == "dataset":
+                        if binding["kind"] != "model":
                             try:
                                 safe_relpath(ui.runner.files_root, binding.get("id", ""))
-                            except ValueError:
+                            except (ValueError, RuntimeError):
                                 return False
                     additional = getattr(ui, "studio_authorize", None)
                     return bool(additional(principal, node, inputs)) if additional else True
@@ -177,11 +179,61 @@ class StudioRoutes:
             elif len(parts) == 2 and parts[1] == "artifacts" and self.method == "GET":
                 row = store.get("run", parts[0], scope)
                 self.send(200, {"artifacts": [{"node": ident, "outputs": node["outputs"]}
-                                              for ident, node in row["nodes"].items() if node["state"] == "done"]})
+                                              for ident, node in row["nodes"].items() if node["state"] == "done"],
+                                "files": self._artifact_files(engine, principal, row)})
+            elif parts[1:] == ["artifacts", "file"] and self.method in {"GET", "HEAD"}:
+                selected = {name: self.asked(name) for name in ("node", "port", "name")}
+                opened, filename = open_artifact(run, self.ui.runner.files_root, selected,
+                                                lambda node, outputs: engine.authorize(principal, node, outputs))
+                stream_artifact(self.handler, opened, filename)
+            elif parts[1:] == ["logs"] and self.method == "GET":
+                state = run["nodes"].get(self.asked("node"))
+                if state is None:
+                    raise KeyError("Choose a node in this run.")
+                job = self.ui.runner.jobs.get(state.get("job_id"))
+                if job is None:
+                    self.send(200, {"log": "", "metrics": [], "state": state["state"]})
+                else:
+                    return self._job_detail(self.ui.runner, job)
             else:
                 self.send(405, {"error": "Choose a supported run action."})
             return True
         return False
+
+    def _artifact_files(self, engine, principal, run):
+        def authorize(node, outputs):
+            return engine.authorize(principal, node, outputs)
+        result = artifact_files(run, self.ui.runner.files_root, authorize)
+        for identifier, state in run["nodes"].items():
+            if not state.get("reused_from"):
+                continue
+            original = self._artifact_origin(engine, principal, run, identifier)
+            rows = artifact_files(original, self.ui.runner.files_root, authorize)
+            result.extend({**row, "reused_from": original["id"]} for row in rows)
+        return result
+
+    @staticmethod
+    def _artifact_origin(engine, principal, run, identifier):
+        expected, visited = run["nodes"][identifier], {run["id"]}
+        original = run
+        while original["nodes"][identifier].get("reused_from"):
+            source = original["nodes"][identifier]["reused_from"]
+            if source in visited:
+                raise ValueError("Artifact lineage contains a cycle.")
+            visited.add(source)
+            original = engine.store.get("run", source, principal["scope"])
+            state = original["nodes"].get(identifier)
+            if (not state or state.get("fingerprint") != expected.get("fingerprint")
+                    or state.get("outputs") != expected.get("outputs")):
+                raise ValueError("Cached artifact lineage does not match its source.")
+            if not principal.get("owner") and original["principal"]["id"] != principal["id"]:
+                raise PermissionError("The original artifact belongs to another session.")
+            node = next(node for node in original["graph"]["nodes"] if node["id"] == identifier)
+            if not engine.authorize(principal, node, state["outputs"]):
+                raise PermissionError("The original artifact is no longer authorized.")
+        return {**original, "graph": {**original["graph"], "nodes": [node for node in original["graph"]["nodes"]
+                                                                   if node["id"] == identifier]},
+                "nodes": {identifier: original["nodes"][identifier]}}
 
     @staticmethod
     def _public_run(run: dict) -> dict:
@@ -194,13 +246,14 @@ class StudioRoutes:
         provider = self.asked("provider", "local")
         if provider == "pool":
             factory = getattr(self.ui, "studio_pool_library", None)
-            if factory is None:
-                raise ValueError("The pool library is unavailable on this device.")
-            library = factory(principal)
+            library = factory(principal) if factory else pool_library(self.ui)
+        elif provider != "local":
+            raise ValueError("Choose the local or pool library.")
         else:
             library = LocalLibrary(engine.store.graph, scope=principal["scope"], lock=engine.store.lock)
         if self.path == "/ui/studio/packages" and self.method == "GET":
-            self.send(200, {"packages": library.search(self.asked("q"))})
+            self.send(200, {"packages": library.search(self.asked("q")),
+                            "unavailable": getattr(library, "unavailable", [])})
         elif self.path == "/ui/studio/packages/export" and self.method == "POST":
             req = object_body(self)
             workflow = (engine.store.get("workflow", field(req, "workflow_id", str, ""), principal["scope"])
@@ -208,6 +261,7 @@ class StudioRoutes:
             package = export_package(workflow["graph"], package_id=field(req, "package_id", str, workflow["id"]),
                                      version=field(req, "version", str, "1.0.0"), name=field(req, "name", str, workflow["title"]),
                                      kind=field(req, "kind", str, "workflow"), licence=field(req, "licence", str, ""),
+                                     description=field(req, "description", str, ""), tags=field(req, "tags", list, []),
                                      portable_parameters=field(req, "portable_parameters", dict, {}))
             self.send(200, {"package": package})
         elif self.path == "/ui/studio/packages/preview" and self.method == "POST":
@@ -220,7 +274,8 @@ class StudioRoutes:
             self.send(201, {"package": package, "workflow": row})
         elif self.path == "/ui/studio/packages/publish" and self.method == "POST":
             package = import_package(field(object_body(self), "package", dict, {}))
-            self.send(201, {"package": library.publish(package)})
+            self.send(201, {"package": library.publish(package),
+                            "unavailable": getattr(library, "unavailable", [])})
         else:
             self.send(405, {"error": "Choose a supported package action."})
         return True

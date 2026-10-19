@@ -14,6 +14,20 @@
 uncovered = 52
 partial = 193
 
+[[group]]
+match = ["route:fleet/studio_routes.py:/ui/studio/*"]
+status = "covered"
+count = 17
+tests = ["tests/test_studio_security.py", "tests/test_studio_engine.py", "tests/test_studio_artifacts.py", "tests/test_studio_contracts.py"]
+note = "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+
+[[group]]
+match = ["egress:fleet/studio_library.py:MemberLibrary._response"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_pool_library.py"]
+note = "Current enrolled pool discovery pins encrypted devices. Exact destination guards refuse redirects, bounded sealed responses reject malformed packages and nonmonotonic pages, and bounded error bodies prevent a malicious device exhausting memory. Immutable versions and safe offline warnings preserve local publication."
+
 
 [[group]]
 match = ["parser:client/systemone.py"]

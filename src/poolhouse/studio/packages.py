@@ -123,7 +123,8 @@ def export_package(graph: dict, *, package_id: str, version: str, name: str,
     _declarations(graph, selected)
     portable = _portable_graph(graph, selected)
     package = {"schema_version": 1, "id": package_id, "version": version, "kind": metadata.get("kind", "workflow"),
-               "name": name, "description": metadata.get("description", ""), "licence": metadata.get("licence", ""), "tags": [],
+               "name": name, "description": metadata.get("description", ""), "licence": metadata.get("licence", ""),
+               "tags": metadata.get("tags", []),
                "provenance": {}, "portable_parameters": selected, "dependencies": _dependencies(portable), "graph": portable}
     package["digest"] = content_digest(package)
     return import_package(package)

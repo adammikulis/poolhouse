@@ -39,6 +39,7 @@ from . import (
     device_auth,
     invite_routes,
     projects as project_routes,
+    studio_library,
 )
 from .availability import Availability, parse_window
 from .daemon_control import protected
@@ -428,6 +429,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if project_routes.answer(self, daemon.projects, parsed):
                 return
+            if studio_library.answer(self, ui, path):
+                return
             if path == "/health":
                 status = runner.status()
                 sched = schedule.public() if schedule is not None else None
@@ -615,6 +618,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if member_answer(self, roster, "POST", self.path.split("?")[0], body):
                 return
             if project_routes.register(self, daemon.projects, pool_key_path, body):
+                return
+            if studio_library.answer(self, ui, self.path.split("?")[0], body):
                 return
             try:
                 self._route_post(body or b"{}")
