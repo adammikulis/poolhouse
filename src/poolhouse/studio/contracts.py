@@ -230,7 +230,7 @@ def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
                    authorize: Callable | None = None) -> dict:
     """Validate and expand a workflow without executing or resolving resources."""
     try:
-        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "groups", "layout", "description", "sweeps"}:
+        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "groups", "layout", "description"}:
             raise ValueError("Invalid workflow fields")
         if type(graph.get("schema_version", 1)) is not int or graph.get("schema_version", 1) != 1 or not _finite(graph):
             raise ValueError("Unsupported workflow version or nonfinite value")

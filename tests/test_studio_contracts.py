@@ -135,3 +135,33 @@ def test_sweep_expansion_and_boolean_versions():
     value = graph()
     value["nodes"][0]["version"] = True
     assert not validate_graph(value)["valid"]
+
+
+def test_inert_node_packages_allow_exposed_missing_inputs():
+    value = {"nodes": [{"id": "train", "type": "train.classify-text", "parameters": {"steps": 20}}], "edges": []}
+    package = export_package(value, package_id="recipe", version="1", name="Recipe", kind="node")
+    assert not validate_graph(package["graph"])["valid"]
+    assert import_package(package)["graph"]["nodes"][0]["parameters"]["steps"] == 20
+
+
+def test_pool_library_uses_shared_authenticated_board_log():
+    from types import SimpleNamespace
+
+    from poolhouse.studio.library import PoolLibrary
+    entries = []
+    class Session:
+        board = "project"
+        def read_all(self, **_):
+            return entries
+        def note_add(self, kind, title, body):
+            entries.append(SimpleNamespace(fields={"nkind": kind, "title": title, "body": body}))
+    first, second = PoolLibrary(Session()), PoolLibrary(Session())
+    package = export_package(graph(), package_id="shared", version="1", name="Shared")
+    assert first.publish(package) == package
+    assert first.publish(package) == package
+    assert len(entries) == 1
+    assert second.get("shared", "1") == package
+    assert second.search("shared") == [package]
+    changed = export_package(graph(), package_id="shared", version="1", name="Different")
+    with pytest.raises(ValueError, match="immutable"):
+        second.publish(changed)

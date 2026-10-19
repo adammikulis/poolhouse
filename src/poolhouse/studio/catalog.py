@@ -48,6 +48,18 @@ def node_catalog() -> list[dict[str, Any]]:
         _node("gym.train", "Gym policy training", "Training", {"dataset": "dataset"}, {"model": "model", "metrics": "metrics"}, capabilities=["gym"], side_effects=True),
         _node("gym.evaluate", "Evaluate Gym policy", "Evaluation", {"model": "model"}, {"metrics": "metrics", "report": "report"}, capabilities=["gym"]),
     ]
+    catalog.extend([
+        _node("generate.structured", "Structured response", "Inference", {"model": "model", "prompt": "text"},
+              {"text": "text", "response": "json"}, properties={"temperature": {"type": "number", "default": 0.7, "minimum": 0, "maximum": 2},
+              "json_schema": {"type": "string", "default": '{"type":"object"}'}}, capabilities=["inference"]),
+        _node("train.decision", "Train decision model", "Training", {"model": "model", "dataset": "dataset"},
+              {"model": "model", "metrics": "metrics", "checkpoint": "artifact"}, properties={
+              "steps": {"type": "integer", "default": 60, "minimum": 1}, "batch_size": {"type": "integer", "default": 4, "minimum": 1},
+              "lr": {"type": "number", "default": 0.0002, "exclusiveMinimum": 0}, "max_tokens": {"type": "integer", "default": 1024, "minimum": 1}},
+              capabilities=["training"], side_effects=True),
+        _node("evaluate.decision", "Evaluate decision model", "Evaluation", {"model": "model", "dataset": "dataset"},
+              {"metrics": "metrics", "report": "report"}, capabilities=["evaluation"]),
+    ])
     for recipe in recipes():
         fields: dict[str, Any] = {}
         for field in recipe.get("fields", []):
@@ -67,7 +79,16 @@ def node_catalog() -> list[dict[str, Any]]:
         if spec["type"] in ("dataset", "model", "data.harvest", "gym.recordings"):
             resource = {"data.harvest": "traces", "gym.recordings": "recordings"}.get(spec["type"], spec["type"])
             spec["bindings"] = {resource: {"kind": resource, "required": True}}
-        if spec["type"].startswith("train."):
+        if spec["type"] == "data.harvest":
+            spec["bindings"] = {"traces": {"kind": "dataset", "required": True}}
+        if spec["type"] == "gym.recordings":
+            spec["bindings"] = {"trajectory": {"kind": "dataset", "required": True}, "reviews": {"kind": "dataset", "required": True}}
+        if spec["type"] == "gym.train":
+            spec["parameters"] = _schema({"environment": {"type": "string", "enum": ["", "drone", "car", "traffic-driving", "warehouse", "traffic"], "default": ""},
+                "timesteps": {"type": "integer", "default": 2048, "minimum": 1}, "seed": {"type": "integer", "default": 0}})
+        if spec["type"] == "gym.evaluate":
+            spec["parameters"] = _schema({"episodes": {"type": "integer", "default": 5, "minimum": 1}})
+        if spec["type"].startswith("train.") and spec["type"] != "train.decision":
             spec["inputs"].append({"name": "model", "type": "model", "required": False})
     return deepcopy(catalog)
 

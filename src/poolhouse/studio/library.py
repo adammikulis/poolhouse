@@ -1,6 +1,7 @@
 """Local and pool package-library providers backed by the graph store."""
 from __future__ import annotations
 
+import json
 from threading import RLock
 from typing import Protocol
 
@@ -55,9 +56,46 @@ class LocalLibrary:
             and set(tags or []).issubset(value["tags"])]
 
 
-class PoolLibrary(LocalLibrary):
-    """Store packages in the authenticated caller's pool-board scope."""
-    def __init__(self, graph: GraphStore, board: str, *, lock=None):
-        if not board:
-            raise ValueError("A pool library requires an authenticated board")
-        super().__init__(graph, f"pool:{board}", lock=lock)
+class PoolLibrary:
+    """Publish inert packages through an authenticated pool board's replicated log."""
+    def __init__(self, session, *, lock=None):
+        if not session.board:
+            raise ValueError("A pool library requires an authenticated board session")
+        self.session = session
+        self.lock = lock or RLock()
+
+    def _packages(self) -> list[dict]:
+        versions = {}
+        for entry in self.session.read_all(kind="note"):
+            if entry.fields.get("nkind") != "studio-package":
+                continue
+            package = import_package(json.loads(entry.fields.get("body", "")))
+            key = (package["id"], package["version"])
+            previous = versions.get(key)
+            if previous and previous["digest"] != package["digest"]:
+                raise ValueError("Conflicting immutable package versions exist on this board")
+            versions[key] = package
+        return list(versions.values())
+
+    def publish(self, package: dict) -> dict:
+        checked = import_package(package)
+        with self.lock:
+            existing = self.get(checked["id"], checked["version"])
+            if existing and existing["digest"] != checked["digest"]:
+                raise ValueError("This immutable package version already has different content")
+            if not existing:
+                self.session.note_add("studio-package", f"{checked['id']}@{checked['version']}",
+                                      json.dumps(checked, sort_keys=True, separators=(",", ":")))
+        return checked
+
+    def get(self, package_id: str, version: str) -> dict | None:
+        with self.lock:
+            return next((package for package in self._packages()
+                         if package["id"] == package_id and package["version"] == version), None)
+
+    def search(self, query: str = "", tags: list[str] | None = None) -> list[dict]:
+        with self.lock:
+            packages = self._packages()
+        return [package for package in packages if query.casefold() in " ".join(
+            [package["name"], package["description"], *package["tags"]]).casefold()
+            and set(tags or []).issubset(package["tags"])]
