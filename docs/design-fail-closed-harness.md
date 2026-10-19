@@ -96,7 +96,7 @@ the result and the event. Enforcement held in both, so a relayed run is not with
 |---|---|---|---|---|---|
 | 1 | Kernel cuts a report (~1010 bytes) | the tag at its end is gone | open; closed for every in-flight run (fix) | closed, scoped by the pid in the report's head, and a run is cleared only on positive evidence: the pid is in another watched run's descendants, or the process table shows it has no poolhouse profile (read while it lives, `poolhouse.serve.process`). A pid that is gone, was reparented to pid 1 (`setsid`, double fork) or cannot be placed is not evidence: every run in flight is unreadable (cause: cut, unattributed). The run whose descendants hold the pid owns the report. A child that exited before the run's end-of-run list leaves the pid unplaced | S3 |
 | 2 | Report carries our tag but does not parse (`_hear`: run found, `entry` is None) | dropped; includes a process name holding `(` (the pattern is `[^(]+\(\d+\) deny`) and any format change in a macOS update | open | closed: unreadable, cause `unparsed` | S2 |
-| 3 | Readiness probe | on development `_add` answers a probe only when the line parses to a refusal; the fix branch's `_hear` is a regression of that: it counts a probe as answered when its token occurs in any kernel message and never checks that the report parses into process, operation and target | development closed; the fix branch open: a format change passes it | the fix branch lands with `_hear` answering a probe only from a message that parses to the process, operation and target the probe provokes (the behaviour that proves it is in S0); S2 records the result with the OS build | S0, S2 |
+| 3 | Readiness probe | on development `_add` answers a probe only when the line parses to a refusal; the fix branch's `_hear` is a regression of that: it counts a probe as answered when its token occurs in any kernel message and never checks that the report parses into process, operation and target | closed on development and on the fix branch: `_hear` answers a probe only from a message that parses to `sandbox-exec`'s refusal of the probe program and ends in the probe's own token | stays closed; the behaviour that proves it is in S0; S2 records the result with the OS build | S0, S2 |
 | 4 | Noise filter (`NOISE.search(target)`) | `\.CFUserTextEncoding$` and `/GlobalPreferences*.plist$` are unanchored at the front, so any path with that ending is dropped; `^/Users/[^/]+$` drops a refused listing of the home directory; no count | open | the exact operation and target entries the confined start-up makes, counted as `quiet` and shown; a probe of any noise target still shows in `quiet` | S2 |
 | 5 | Per-run cap (`KEEP_PER_TAG = 1000`) | later entries dropped silently; the count under-reports; the "first" refusal may not be the worst | open | seen with `dropped = n`; `dropped > 0` is a flood signal to the owner | S2 |
 | 6 | Run cap (`KEEP_TAGS = 256`, ended runs trimmed) | a trimmed run reads back as unreadable | closed | closed; stays in the catalogue | S0 |
@@ -335,8 +335,7 @@ device has no refusal channel; it runs untrusted code under the tighter policy a
 ## 7. Slices
 
 Each slice lands alone: its behaviours are red against its parent, the suite is green after it, it updates the documents it
-touches and prunes `HANDOFF.md`. Order is by what is correct, not by ease. `fix/denial-long-paths` lands first, with the one
-change row 3 names (`_hear` answers a probe only from a message that parses). S6 follows S0, and S1's consumer flip follows S6.
+touches and prunes `HANDOFF.md`. Order is by what is correct, not by ease. `fix/denial-long-paths` lands first. S6 follows S0, and S1's consumer flip follows S6.
 
 | Slice | Delivers | First red |
 | --- | --- | --- |

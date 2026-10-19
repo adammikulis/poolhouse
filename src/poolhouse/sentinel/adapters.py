@@ -13,16 +13,30 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse.interventions import Call
-from poolhouse.sandbox.backend import NO_REFUSAL_LOG
+from poolhouse.sandbox.backend import (
+    CUT_REFUSAL_LOG,
+    CUT_UNTRACED_LOG,
+    NO_REFUSAL_LOG,
+    SILENT_REFUSAL_LOG,
+    UNPARSED_REFUSAL_LOG,
+    UNREPORTED_FAILURE_LOG,
+)
 from poolhouse.sentinel.core import Sentinel
 from poolhouse.sentinel.events import Event, Severity
 from poolhouse.sentinel.human import agent_may
 from poolhouse.sentinel.policy import Mode
-from poolhouse.sentinel.score import NO_REFUSAL_LOG_WEIGHT
+from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, UNREPORTED_FAILURE_WEIGHT, WEIGHTS
 from poolhouse.sentinel.store import Record
 
 __all__ = ["GuardLogHandler", "RailAnswer", "agent_gate", "broker_listener", "note_refusal",
            "rail_answer", "sandbox_listener", "screening", "serve_hooks", "watch_authenticator"]
+
+logger = logging.getLogger("poolhouse.sentinel")
+
+UNATTRIBUTED = (NO_REFUSAL_LOG, CUT_UNTRACED_LOG, SILENT_REFUSAL_LOG)
+"""Details of a failed run whose refusals cannot be known, and that may not be the run's own refusal."""
+REFUSED = (CUT_REFUSAL_LOG, UNPARSED_REFUSAL_LOG)
+"""Details of a failed run that was refused something its refusal log cannot say: a report of its own was cut off or could not be read."""
 
 _OUTCOMES = (("already seen", "replay"), ("outside the window", "clock"),
              ("too many failures", "locked"), ("not signed", "bad_sig"))
@@ -129,7 +143,9 @@ def broker_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], No
 def sandbox_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], None]:
     """A callback with the sandbox's ``on_event(event, fields)`` shape: a refusal, a timeout, a
     missing sandbox or a run without one becomes an event on the bus, and counts toward the score
-    of each session that has a tool call running (the only attribution a sandbox run has)."""
+    of the session whose tool call started the run, and of no other session. A run started outside a
+    tool call, or in a thread that did not inherit the context of one, counts for nobody, and the
+    listener logs a warning when a tool call was running meanwhile."""
     levels = {"warning": Severity.WARNING, "notice": Severity.NOTICE}
 
     def on(event: str, fields: dict[str, object]) -> None:
@@ -139,9 +155,14 @@ def sandbox_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], N
         sentinel.bus.emit(Event(event, level, "sandbox", f"policy:{fields.get('policy', '')}",
                                 {k: v for k, v in fields.items() if k != "severity"},
                                 sentinel.clock()))
-        weight = NO_REFUSAL_LOG_WEIGHT if fields.get("detail") == NO_REFUSAL_LOG else None
-        for session in sentinel.in_flight():
-            sentinel.note("session", session, event, weight)
+        detail = fields.get("detail")
+        weight = (UNATTRIBUTED_WEIGHT if detail in UNATTRIBUTED else WEIGHTS["sandbox.denied"] if detail in REFUSED
+                  else UNREPORTED_FAILURE_WEIGHT if detail == UNREPORTED_FAILURE_LOG else None)
+        if owner := sentinel.running_session():
+            sentinel.note("session", owner, event, weight)
+        elif flying := sentinel.in_flight():
+            logger.warning("sandbox event %s counts for nobody: it came from outside the context of the tool calls running "
+                           "(%s), as from a thread that did not copy it", event, ", ".join(flying))
     return on
 
 

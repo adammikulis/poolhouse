@@ -13,10 +13,11 @@ import pytest
 
 from poolhouse import home
 from poolhouse.sandbox import run
-from poolhouse.sandbox.seatbelt import Seatbelt
 from poolhouse.serve import llamacpp_ccache, llamacpp_compile
 from poolhouse.serve.build_paths import BuildFailed
 from poolhouse.serve.llamacpp_compile import Job, Toolchain
+
+pytest_plugins = ["tests.sandbox_kit"]
 
 CMAKE = """cmake_minimum_required(VERSION 3.14)
 project(stub NONE)
@@ -24,15 +25,6 @@ add_custom_target(llama-server ALL
   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/bin
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/server.sh ${CMAKE_BINARY_DIR}/bin/llama-server)
 """
-
-
-@pytest.fixture
-def seatbelt() -> Seatbelt:
-    """The real Seatbelt backend, or a skip where ``sandbox-exec`` does not exist."""
-    backend = Seatbelt()
-    if not (state := backend.available()).ok:
-        pytest.skip(state.reason)
-    return backend
 
 
 def toolchain() -> Toolchain:
