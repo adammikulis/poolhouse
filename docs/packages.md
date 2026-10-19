@@ -12,7 +12,7 @@
 | `poolhouse.gguf` | Converter/quantiser discovery, export, tokenizer-metadata repair |
 | `poolhouse.speech` | ASR / TTS / VAD behind three protocols and one resolver |
 | `poolhouse.vision` | Image payloads, and a gate that verifies a model can see (experimental) |
-| `poolhouse.graph` | A graph: stored, searched, drawn. Asking it, its invented community, tidying it and its tensor form (a converter, message passing, DAG sweeps) are the `graph_extras` files the wheel leaves out |
+| `poolhouse.graph` | A graph: stored, searched, drawn. Asking it (its prompts, grammar, replies and routing), its invented community, tidying it (hygiene, merging, names, verdicts) and its tensor form (a converter, message passing, DAG sweeps) are the `graph_extras` files the wheel leaves out |
 | `poolhouse.bench` | Timing and scoring a model's answers, and comparing what served them |
 | `poolhouse.entities` | Resolving names, planning edits, spelling, paths through a graph |
 | `poolhouse.scrape` | Reading a site you are signed in to, with presets to start from |

@@ -47,10 +47,9 @@ print("\\\\n".join(failed))
 def test_the_retained_graph_modules_load_none_of_the_extras() -> None:
     out = _run(f"""
 import importlib
-retained = ("access", "cache", "columns", "completions", "concerns", "cypher", "drift", "grammar", "ground", "guard", "hygiene",
-            "merging", "metrics", "names", "page", "payloads", "places", "prompts", "propose", "questions", "rebuild", "replies",
-            "requests", "review", "route", "routes", "search", "serve", "store", "store_cli", "thread", "topology", "vectors",
-            "verdicts")
+retained = ("access", "cache", "columns", "completions", "concerns", "cypher", "drift", "ground", "guard", "metrics", "page",
+            "payloads", "places", "propose", "questions", "rebuild", "requests", "review", "routes", "search", "serve", "store",
+            "store_cli", "thread", "topology", "vectors")
 for name in retained:
     importlib.import_module("poolhouse.graph." + name)
 loaded = sorted(m for m, held in sys.modules.items() if held is not None

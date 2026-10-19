@@ -46,8 +46,9 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 EXPERIMENTAL = dict(LAYERS)["experimental"]
-GRAPH_EXTRAS = ("absorbing", "answers", "community", "conversation", "dag", "data", "judging", "looking", "message",
-                "relations", "smoothing", "tensors", "tidy", "tree")
+GRAPH_EXTRAS = ("absorbing", "answers", "community", "conversation", "dag", "data", "grammar", "hygiene", "judging", "looking",
+                "merging", "message", "names", "prompts", "relations", "replies", "route", "smoothing", "tensors", "tidy", "tree",
+                "verdicts")
 """Files of ``graph`` that are experimental: ``graph_extras`` is the name the layer test gives them."""
 EXPERIMENTAL_FILES = (*(f"src/poolhouse/graph/{name}.py" for name in GRAPH_EXTRAS), "src/poolhouse/fleet/gym_*.py", "src/poolhouse/fleet/train_*.py",
                       "src/poolhouse/fleet/web/components/gym-*.html",
