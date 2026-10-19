@@ -153,8 +153,8 @@ def render(request: dict[str, Any]) -> dict[str, Any]:
 def serve() -> None:
     """Read the request from stdin and answer on stdout."""
     request = json.loads(sys.stdin.buffer.read())
-    limit_resources(request["limits"])
     watchdog(int(request["limits"]["memory_bytes"]))
+    limit_resources(request["limits"])
     try:
         answer = render(request)
     except Refusal as exc:
